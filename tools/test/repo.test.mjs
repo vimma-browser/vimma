@@ -31,7 +31,7 @@ describe("canonical repository", () => {
     const claude = readFileSync(new URL("claude.yml", dir), "utf8");
     expect(claude).toContain(`github.event.sender.login == '${MAINTAINER}'`);
     const owners = workflows.flatMap(([, text]) => [...text.matchAll(/^ +OWNER: (\S+)/gm)]);
-    expect(owners.length).toBe(3);
+    expect(owners.length).toBe(4); // upstream-beta.yml; upstream.yml's track, key, drift
     for (const m of owners) expect(m[1]).toBe(MAINTAINER);
   });
 

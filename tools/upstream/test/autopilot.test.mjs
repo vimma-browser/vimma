@@ -8,6 +8,7 @@ import { detect, driftLine, githubOutputText, labelsFor, outputs, summary } from
 import {
   BODY_LIMIT,
   auditLine,
+  betaIssues,
   branchName,
   conflictLines,
   draftDecision,
@@ -166,6 +167,7 @@ const context = (over = {}) =>
     runUrl: "https://github.com/vimma-browser/vimma/actions/runs/1",
     owner: "JRanne",
     error: "",
+    betaIssues: [],
     ...over,
   });
 
@@ -468,6 +470,64 @@ describe("autopilot body", () => {
     expect(body).toContain("| Check | Result |");
   });
 
+  // Spec upstream-beta-canary, decision 11: the release-day reviewer sees what the Beta canary
+  // already reported for the major the bump moves to.
+  it("the PR body names the Beta canary's issues for a new major, open and closed", () => {
+    const newMajor = { ...securityRelease, current: "156.0.1" };
+    const body = prBody(
+      context({
+        detection: newMajor,
+        betaIssues: [
+          { number: 230, state: "OPEN" },
+          { number: 221, state: "CLOSED" },
+        ],
+      }),
+    );
+    expect(body).toContain(
+      "Beta canary: Firefox 157's Betas were reported in #230 (open) and #221 (closed), " +
+        "label `upstream-beta`. One closed after a passing run was fixed on `main`; one still " +
+        "open, or closed when this release shipped, lists breakage that may remain " +
+        '(docs/rebase.md, "Before the release: the Beta canary").',
+    );
+    expect(body.indexOf("Beta canary:")).toBeLessThan(body.indexOf("| Check | Result |"));
+    const one = prBody(
+      context({ detection: newMajor, betaIssues: [{ number: 230, state: "OPEN" }] }),
+    );
+    expect(one).toContain("Firefox 157's Betas were reported in #230 (open), label");
+  });
+
+  it("no canary issue, or a release within the major Vimma ships: no Beta canary line", () => {
+    const newMajor = { ...securityRelease, current: "156.0.1" };
+    expect(prBody(context({ detection: newMajor }))).not.toContain("Beta canary");
+    // 157.0.1 → 157.0.2: the 157 bump already named them, and they are closed by now
+    expect(prBody(context({ betaIssues: [{ number: 221, state: "CLOSED" }] }))).not.toContain(
+      "Beta canary",
+    );
+  });
+
+  it("reads the issue list from upstream.yml and keeps only issue numbers and states", () => {
+    expect(betaIssues('[{"number":221,"state":"CLOSED"},{"number":230,"state":"OPEN"}]')).toEqual([
+      { number: 230, state: "OPEN" },
+      { number: 221, state: "CLOSED" },
+    ]);
+    expect(betaIssues("")).toEqual([]);
+    expect(betaIssues("not json")).toEqual([]);
+    expect(betaIssues('{"number":1,"state":"OPEN"}')).toEqual([]);
+    expect(
+      betaIssues(
+        JSON.stringify([
+          { number: "230 [x](https://example.com)", state: "OPEN" },
+          { number: 0, state: "OPEN" },
+          { number: 1.5, state: "OPEN" },
+          { number: 7, state: "MERGED" },
+          { number: 8, state: "open" },
+          { number: 9, state: "OPEN" },
+          { number: 9, state: "OPEN" },
+        ]),
+      ),
+    ).toEqual([{ number: 9, state: "OPEN" }]);
+  });
+
   it("the tracking issue mentions the owner for a security release only", async () => {
     const body = issueBody(context());
     expect(body).toMatch(/^@JRanne Firefox 157\.0\.2 was released on 2026-10-13/);
@@ -511,6 +571,21 @@ describe("autopilot body", () => {
         "true",
       ]).stdout,
     ).toBe("false\n");
+    const newMajor = join(dir, "major.json");
+    writeFileSync(newMajor, JSON.stringify({ ...securityRelease, current: "156.0.1" }));
+    const pr = spawnSync(
+      process.execPath,
+      [
+        bodyScript,
+        "pr",
+        "--detection",
+        newMajor,
+        "--beta-issues",
+        '[{"number":230,"state":"OPEN"}]',
+      ],
+      { encoding: "utf8" },
+    );
+    expect(pr.stdout).toContain("Firefox 157's Betas were reported in #230 (open)");
     expect(run(["nope"]).status).toBe(2);
   });
 });

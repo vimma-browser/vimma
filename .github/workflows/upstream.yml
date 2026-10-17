@@ -3,6 +3,8 @@
 # rebases Vimma onto it and opens a tested PR with no manual step; a person reviews and merges.
 #
 #   detect       every 4 h, < 1 min, read-only. Newer release? security (MFSA)? drift?
+#                Mozilla's release key changed or about to expire?
+#   key          that key change: a `security` issue. Runs gh only.
 #   track        a newer release: its tracking issue, labelled upstream (+ security).
 #   patch-check  stream + SHA-512-verify the source tarball, dry-run our patches, patch audit,
 #                artifact preflight. Read-only.
@@ -41,7 +43,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read # surfer.json, tools/upstream; the branch lookup
-      issues: read # the tracking and drift issues
+      issues: read # the tracking and drift issues; the Beta canary's issues
     outputs:
       version: ${{ steps.detect.outputs.version }}
       labels: ${{ steps.detect.outputs.labels }}
@@ -52,11 +54,30 @@ jobs:
       rebase: ${{ steps.state.outputs.rebase }}
       issue: ${{ steps.state.outputs.issue }}
       track: ${{ steps.state.outputs.track }}
+      beta-issues: ${{ steps.beta.outputs.beta-issues }}
+      key-title: ${{ steps.key.outputs.key-title }}
+      key-report: ${{ steps.key.outputs.key-report }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: tools/upstream # and the root files, surfer.json among them
+
+      # Spec build-supply-chain, decision 21 (docs/security.md, B7): a new subkey, a new
+      # revocation, another primary key or a signing subkey within 60 days of expiry becomes an
+      # issue (the `key` job). It only reads the pinned key. A download or parse failure warns
+      # and never stops release detection, which drives security bumps.
+      - name: Compare Mozilla's release key with the pinned key
+        id: key
+        run: |
+          url=https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central/KEY
+          if curl -fsSL --retry 3 --max-time 60 "$url" -o "$RUNNER_TEMP/mozilla-KEY"; then
+            python3 tools/upstream/mozilla-key-check.py --current "$RUNNER_TEMP/mozilla-KEY" \
+              --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY" ||
+              echo "::warning::Could not check Mozilla's release key (mozilla-key-check.py)"
+          else
+            echo "::warning::Could not download Mozilla's release key from $url"
+          fi
 
       # The runner's own Node: no setup-node, no npm ci (Node built-ins only).
       - name: Detect a newer Firefox release, classify it, measure drift
@@ -99,6 +120,61 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Branch $branch: rebase=$rebase; tracking issue: ${number:-none} (track=$track)" \
             | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The Beta canary's issues for this major, open or closed: the canary closes them once the
+      # release is out, possibly before this run, and a closed one still says what was found
+      # (spec upstream-beta-canary, decision 11). The bump PR only names them, so a failed
+      # lookup leaves the list empty instead of stopping a security bump.
+      - name: The Beta canary's issues for this release
+        id: beta
+        if: steps.detect.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.detect.outputs.version }}
+        run: |
+          major=${VERSION%%.*}
+          title="Firefox $major beta: canary findings"
+          if [[ $major =~ ^[0-9]+$ ]] &&
+            list=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --label upstream-beta \
+              --limit 20 --search "\"$title\" in:title" --json number,state,title) &&
+            found=$(jq -c --arg t "$title" '[.[] | select(.title == $t) | {number, state}]' <<< "$list"); then
+            :
+          else
+            echo "::warning::Could not list the Beta canary's issues for Firefox $major"
+            found='[]'
+          fi
+          echo "beta-issues=$found" >> "$GITHUB_OUTPUT"
+          echo "Beta canary issues for Firefox $major: $found" >> "$GITHUB_STEP_SUMMARY"
+
+  key:
+    needs: detect
+    if: needs.detect.outputs.key-title != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Runs gh alone: no checkout, so nothing from the repository runs with this token.
+    permissions:
+      issues: write # the "Mozilla's release key changed" issue
+    steps:
+      - name: Open or update the key issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: ${{ needs.detect.outputs.key-title }}
+          REPORT: ${{ needs.detect.outputs.key-report }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OWNER: JRanne # tools/repo.mjs MAINTAINER: an organization cannot be @-mentioned
+        run: |
+          printf '@%s %s\n\nDetected by [upstream.yml](%s).\n' "$OWNER" "$REPORT" "$RUN_URL" > key.md
+          gh label create security --color B60205 --description "Security: act within days" --force
+          open=$(gh issue list --state open --label security --search "\"$TITLE\" in:title" \
+            --json number,title --jq "[.[] | select(.title == env.TITLE)][0].number // empty")
+          # One open issue per title, kept current: detect runs every 4 hours.
+          if [ -n "$open" ]; then
+            gh issue edit "$open" --body-file key.md
+          else
+            gh issue create --title "$TITLE" --label security --body-file key.md
+          fi
+          echo "::warning::$TITLE (docs/runbook.md, \"Mozilla's release key\")"
 
   track:
     needs: detect
@@ -213,6 +289,7 @@ jobs:
       VERSION: ${{ needs.detect.outputs.version }}
       LABELS: ${{ needs.detect.outputs.labels }}
       ISSUE: ${{ needs.track.outputs.issue || needs.detect.outputs.issue }}
+      BETA_ISSUES: ${{ needs.detect.outputs.beta-issues }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -255,7 +332,8 @@ jobs:
               --audit "$pc/patch-audit.txt" --patch-result "$PATCH_RESULT" \
               --artifacts "$ARTIFACTS" --artifacts-note "$ARTIFACTS_NOTE" --tests "$TESTS" \
               --has-token "$HAS_TOKEN" --issue "$ISSUE" --branch "$branch" \
-              --repo "$GITHUB_REPOSITORY" --run-url "$RUN_URL" --error "$RUNNER_TEMP/pr-error.txt"
+              --repo "$GITHUB_REPOSITORY" --run-url "$RUN_URL" --error "$RUNNER_TEMP/pr-error.txt" \
+              --beta-issues "$BETA_ISSUES"
           }
           body pr > "$RUNNER_TEMP/pr.md"
           title=$(body title)

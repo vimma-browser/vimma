@@ -1,6 +1,6 @@
 # Spec: upstream-beta-canary
 
-Status: accepted (sub-PRs 1 to 3 implemented, #192, #197 and #206; sub-PR 4: [#218](https://github.com/vimma-browser/vimma/issues/218)) · Area: `.github/workflows/upstream-beta.yml` (new), `.github/workflows/e2e.yml`,
+Status: implemented · Area: `.github/workflows/upstream-beta.yml` (new), `.github/workflows/e2e.yml`,
 `.github/workflows/upstream.yml` (one step moves into a shared script),
 `tools/upstream/canary.mjs` (new), `tools/upstream/source-check.sh` (new),
 `tools/upstream/patch-check.py`, `tools/upstream/artifact-preflight.mjs`,
@@ -335,9 +335,15 @@ detect ──► source-check ──► test (e2e.yml) ──► render ──�
     gives the hunk and its new upstream context, so the re-export on release day is a known,
     prepared change.
 11. **The autopilot's bump PR links the canary's issue.** `autopilot-body.mjs` adds a line naming
-    the open `upstream-beta` issue for the release's major, if one exists, so the release-day
+    the `upstream-beta` issues for the release's major, if any exist, so the release-day
     reviewer sees what was already known. The lookup runs in `upstream.yml`'s `detect` job, which
-    already holds `issues: read`; no job gains a permission.
+    already holds `issues: read`; no job gains a permission. It lists open and closed issues,
+    because the canary closes the issue for `N` once `N` is released (B7) and may run before the
+    autopilot does, and because an issue closed after a passing run shows what was fixed on
+    `main`. The line appears only when the release starts a new major, because a dot release's
+    major was named by the bump to `N.0`. Only issue numbers and states reach the PR body, so no
+    issue text is rendered there, and a failed lookup leaves the line out instead of stopping a
+    security bump.
 12. **A new issue mentions the owner; nothing else does.** The `open` body ends with a line
     mentioning the repository owner (`github.repository_owner`), so a new finding reaches someone
     the day it is found instead of waiting in the label's list. Updated bodies, progress comments
@@ -435,7 +441,14 @@ Vitest, `tools/test/upstream-beta-workflow.test.mjs` (text checks of the workflo
 Vitest, existing files:
 
 - `tools/test/upstream-workflow.test.mjs`: `upstream.yml checks the source through source-check.sh`;
-  `e2e.yml continues after a failed suite only in beta mode`.
+  `e2e.yml continues after a failed suite only in beta mode`;
+  `detect finds the canary's issues for the release's major, open and closed`;
+  `a failed lookup never stops the bump: no issues, a warning`;
+  `the bump PR's body gets the canary's issues from detect`.
+- `tools/upstream/test/autopilot.test.mjs`:
+  `the PR body names the Beta canary's issues for a new major, open and closed`;
+  `no canary issue, or a release within the major Vimma ships: no Beta canary line`;
+  `reads the issue list from upstream.yml and keeps only issue numbers and states`.
 - `tools/artifact-build/test`:
   - `reads the tree from sourcestamp.txt`
   - `a beta tarball uses the mozilla-beta index and MOZ_ARTIFACT_TASK, not MOZ_ARTIFACT_REVISION`
@@ -490,7 +503,7 @@ and artifact checked by hand.
 3. **The canary** (`ci(upstream):`). `upstream-beta.yml`, `canary.mjs`, their tests, the docs and
    the ADR-002 amendment. Merged with the schedule in place; a manual run on the current Beta is
    checked before the first scheduled one.
-4. **Bump PR link** (`ci(upstream):`). `autopilot-body.mjs` names the open `upstream-beta` issue
+4. **Bump PR link** (`ci(upstream):`). `autopilot-body.mjs` names the `upstream-beta` issues
    (decision 11). Independent of 3 once 3 has merged.
 
 Each sub-PR is mergeable alone and leaves PR CI and `upstream.yml` working as before.

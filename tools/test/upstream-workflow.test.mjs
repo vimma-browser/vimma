@@ -47,6 +47,7 @@ describe("upstream autopilot workflow", () => {
     expect(permissions(job(upstream, "patch-check"))).toEqual(["contents: read"]);
     expect(permissions(job(upstream, "test"))).toEqual(["contents: read"]);
     expect(permissions(job(upstream, "drift"))).toEqual(["contents: read", "issues: write"]);
+    expect(permissions(job(upstream, "key"))).toEqual(["issues: write"]);
     expect(permissions(job(upstream, "publish"))).toEqual([
       "contents: write",
       "pull-requests: write",
@@ -60,6 +61,21 @@ describe("upstream autopilot workflow", () => {
     }
     expect(job(upstream, "test")).not.toContain("secrets: inherit");
     expect(upstream).not.toMatch(/secrets\.SAFEBROWSING/);
+  });
+
+  it("detect compares Mozilla's KEY with the pinned key; a change opens a security issue", () => {
+    const detect = job(upstream, "detect");
+    expect(detect).toContain(
+      "https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central/KEY",
+    );
+    expect(detect).toContain("python3 tools/upstream/mozilla-key-check.py --current");
+    expect(detect).toContain("key-title: ${{ steps.key.outputs.key-title }}");
+    const key = job(upstream, "key");
+    expect(key).toContain("if: needs.detect.outputs.key-title != ''");
+    // It runs only gh: no checkout, so no repository code runs with issues: write.
+    expect(key).not.toContain("actions/checkout");
+    expect(key).not.toContain("secrets.");
+    expect(key).toContain("--label security");
   });
 
   it("no workflow runs on pull_request_target", () => {
@@ -168,6 +184,72 @@ describe("upstream autopilot workflow", () => {
     expect(block).toContain('grep -qi "not permitted to create or approve pull requests"');
     expect(block).toContain("autopilot-body.mjs");
     expect(block).toContain("body fallback");
+  });
+
+  // Spec upstream-beta-canary, decision 11: detect looks up the canary's issues with the
+  // issues: read it already holds; publish only renders them into the bump PR's body.
+  /** @param {string} version @param {string} ghOut @param {number} [ghStatus] */
+  const betaLookup = (version, ghOut, ghStatus = 0) => {
+    const tmp = tempDir("upstream-beta-lookup-");
+    const out = join(tmp, "out");
+    const argv = join(tmp, "argv");
+    writeFileSync(out, "");
+    writeFileSync(argv, "");
+    writeFileSync(join(tmp, "list.json"), ghOut);
+    writeFileSync(
+      join(tmp, "gh"),
+      `#!/bin/sh\nprintf '%s\\n' "$@" > "${argv}"\ncat "${join(tmp, "list.json")}"\nexit ${ghStatus}\n`,
+      { mode: 0o755 },
+    );
+    const r = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script(step(upstream, "beta"))], {
+      encoding: "utf8",
+      env: {
+        PATH: `${tmp}:${process.env.PATH}`,
+        VERSION: version,
+        GITHUB_OUTPUT: out,
+        GITHUB_REPOSITORY: "vimma-browser/vimma",
+        GITHUB_STEP_SUMMARY: join(tmp, "summary"),
+      },
+    });
+    return {
+      status: r.status,
+      stdout: r.stdout,
+      output: readFileSync(out, "utf8"),
+      argv: readFileSync(argv, "utf8").trim().split("\n").join(" "),
+    };
+  };
+
+  it("detect finds the canary's issues for the release's major, open and closed", () => {
+    const list = JSON.stringify([
+      { number: 230, state: "OPEN", title: "Firefox 159 beta: canary findings" },
+      { number: 221, state: "CLOSED", title: "Firefox 159 beta: canary findings" },
+      { number: 219, state: "CLOSED", title: "Firefox 158 beta: canary findings" },
+      { number: 218, state: "OPEN", title: "Re: Firefox 159 beta: canary findings" },
+    ]);
+    const r = betaLookup("159.0", list);
+    expect(r.status).toBe(0);
+    expect(r.output).toBe(
+      'beta-issues=[{"number":230,"state":"OPEN"},{"number":221,"state":"CLOSED"}]\n',
+    );
+    expect(r.argv).toContain(
+      "issue list --repo vimma-browser/vimma --state all --label upstream-beta",
+    );
+    expect(r.argv).toContain('--search "Firefox 159 beta: canary findings" in:title');
+    expect(betaLookup("159.0.1", list).output).toContain('"number":230');
+  });
+
+  it("a failed lookup never stops the bump: no issues, a warning", () => {
+    const r = betaLookup("159.0", "", 1);
+    expect(r.status).toBe(0);
+    expect(r.output).toBe("beta-issues=[]\n");
+    expect(r.stdout).toContain("::warning::");
+  });
+
+  it("the bump PR's body gets the canary's issues from detect", () => {
+    expect(job(upstream, "detect")).toContain("beta-issues: ${{ steps.beta.outputs.beta-issues }}");
+    const block = job(upstream, "publish");
+    expect(block).toContain("BETA_ISSUES: ${{ needs.detect.outputs.beta-issues }}");
+    expect(block).toContain('--beta-issues "$BETA_ISSUES"');
   });
 
   it("the drift job fails the run", () => {

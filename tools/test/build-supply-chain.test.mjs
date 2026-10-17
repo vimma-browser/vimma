@@ -232,3 +232,25 @@ describe("build supply chain: Dependabot", () => {
     ).toBe("review");
   });
 });
+
+describe("the Safe Browsing key (decision 18, B6)", () => {
+  it("the Safe Browsing key comes only from the build environment, in the two build jobs", () => {
+    const dir = new URL(".github/workflows/", root);
+    /** @type {string[]} */
+    const users = [];
+    /** @type {string[]} */
+    const inBuild = [];
+    for (const name of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+      for (const [id, job] of jobs(workflow(name))) {
+        const env = typeof job.environment === "object" ? job.environment?.name : job.environment;
+        if (env === "build") inBuild.push(`${name}:${id}`);
+        if (JSON.stringify(job).includes("secrets.SAFEBROWSING_API_KEY")) {
+          users.push(`${name}:${id}`);
+          expect(env, `${name}:${id} reads the key outside the build environment`).toBe("build");
+        }
+      }
+    }
+    expect(users.sort()).toEqual(["nightly.yml:build", "release.yml:build"]);
+    expect(inBuild.sort()).toEqual(["nightly.yml:build", "release.yml:build"]);
+  });
+});

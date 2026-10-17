@@ -62,7 +62,8 @@ be fixed on `main` ahead of time. Prepare the re-export instead: check out the B
 (`surfer.json` set to the Beta in a scratch checkout, `python3 tools/upstream/bump-surfer-json.py
 --allow-beta 159.0b2`, never committed), redo the hunk the issue shows (section 3), and keep the
 new patch on a branch. On release day the autopilot's PR fails on the same patch; apply the
-prepared change there. The autopilot's tracking issue then already has the work done.
+prepared change there. The autopilot's tracking issue then already has the work done, and its
+bump PR names the canary's issues for that version.
 
 ## 1. The autopilot: from release to PR
 
@@ -101,6 +102,9 @@ prepared change there. The autopilot's tracking issue then already has the work 
 5. **`publish`** (the only job that can push). Pushes `upstream/firefox-X.Y.Z` with one commit,
    `upstream: firefox X.Y.Z`, and opens the PR of that title, labelled like the issue, which
    closes the issue on merge. Older open bump PRs and tracking issues are closed as superseded.
+   For a new major, the PR body also names the Beta canary's `Firefox N beta: canary findings`
+   issues, open or closed (see "Before the release: the Beta canary"), so you see what was
+   already found and fixed on `main` before you review the bump.
    The PR is a **draft** unless every patch applies, the suites passed and `UPSTREAM_PR_TOKEN` is
    set (runbook): a PR opened with `GITHUB_TOKEN` starts no CI until you mark it ready.
    **If Actions may not open PRs** (the repository setting is off), the branch is still pushed

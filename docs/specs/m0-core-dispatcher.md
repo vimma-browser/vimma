@@ -29,7 +29,10 @@ exactly the bindings the dispatcher uses.
 - **Chord** = `{ key, ctrl, alt, shift, meta }`. Canonical text: modifiers in the order
   `ctrl+alt+shift+meta+`, then the key. Examples: `ctrl+b`, `shift+t`, `ctrl+alt+]`, `?`.
 - Letters are stored lowercase; uppercase means shift (`T` ≡ `shift+t`). For other printable
-  characters shift is part of the character and is dropped (`shift+?` ≡ `?`).
+  characters shift is part of the character and is dropped (`shift+?` ≡ `?`). (Since changed: a
+  letter whose lower case is more than one character, `İ` (U+0130) whose lower case is `i̇`, is
+  kept as typed and treated like other printable characters, because a stored key is one
+  character; `normaliseKey` in `packages/vimma-core/src/keys.mjs`, #313.)
 - Named keys: `esc`, `enter`, `tab`, `space`, `backspace`, `delete`, `up`, `down`, `left`,
   `right`, `home`, `end`, `pageup`, `pagedown`, `insert`, `f1`…`f12`; `minus` and `plus` are aliases
   for `-` and `+` (Herdr writes `prefix+minus`).

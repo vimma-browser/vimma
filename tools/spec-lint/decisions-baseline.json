@@ -61,16 +61,6 @@
     "Output",
     "The list is data"
   ],
-  "upstream-beta-canary.md": [
-    "test",
-    "render",
-    "report",
-    "A separate workflow, not a mode of `upstream.yml`.",
-    "The tested-build record is the run's own artifact.",
-    "Its own label, `upstream-beta`, and not `upstream`.",
-    "Findings keep the run green; only a broken canary is red (B9).",
-    "An open canary issue does not block or warn on merges to `main`."
-  ],
   "vimma-mcp.md": [
     "`vimma-ctl mcp`",
     "Two switches.",

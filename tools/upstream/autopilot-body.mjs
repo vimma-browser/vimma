@@ -11,7 +11,8 @@
  *   node tools/upstream/autopilot-body.mjs <issue|title|pr|fallback|drift> --detection FILE
  *     [--patch-check FILE --patch-markdown FILE --patch-result ok|fail|norun --audit FILE
  *      --artifacts yes|no|unknown --artifacts-note TEXT --tests RESULT --has-token true|false
- *      --issue N --branch NAME --repo OWNER/NAME --run-url URL --owner LOGIN --error FILE]
+ *      --issue N --branch NAME --repo OWNER/NAME --run-url URL --owner LOGIN --error FILE
+ *      --beta-issues JSON]
  *
  * Writes Markdown to stdout (`pr --draft-only` prints "true" or "false"). Node built-ins only.
  * Every string from outside (a hunk, an advisory, an error) is constrained by a regexp in
@@ -37,7 +38,8 @@ export const BODY_LIMIT = 64000;
  * @typedef {{ detection: Detection, patchReport: PatchReport | null, patchMarkdown: string,
  *   patchResult: string, audit: string, artifacts: string, artifactsNote: string,
  *   tests: string, hasToken: boolean, issue: string, branch: string, repo: string,
- *   runUrl: string, owner: string, error: string }} Context
+ *   runUrl: string, owner: string, error: string, betaIssues: BetaIssue[] }} Context
+ * @typedef {{ number: number, state: "OPEN" | "CLOSED" }} BetaIssue
  */
 
 /**
@@ -176,6 +178,54 @@ function advisoryLines(d) {
 }
 
 /**
+ * The Beta canary's issues for the release's major, as upstream.yml's detect job found them
+ * (`gh issue list --json number,state`). Only a positive integer and GitHub's two issue states
+ * pass, so nothing else from the list can reach the PR body. Newest first, each once.
+ * @param {string} json
+ * @returns {BetaIssue[]}
+ */
+export function betaIssues(json) {
+  let list;
+  try {
+    list = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  /** @type {Map<number, BetaIssue>} */
+  const seen = new Map();
+  for (const i of list) {
+    const ok = Number.isSafeInteger(i?.number) && i.number > 0;
+    if (ok && (i.state === "OPEN" || i.state === "CLOSED")) {
+      seen.set(i.number, { number: i.number, state: i.state });
+    }
+  }
+  return [...seen.values()].sort((a, b) => b.number - a.number);
+}
+
+/**
+ * The line naming the Beta canary's issues (spec upstream-beta-canary, decision 11), only for a
+ * bump to a new major: the canary tests the Betas of a major, so a dot release within the major
+ * Vimma ships has nothing new to show, and its bump of `N.0` already named them.
+ * @param {Context} c
+ * @returns {string[]}
+ */
+function betaLines(c) {
+  const d = c.detection;
+  const major = d.release.version.split(".")[0];
+  if (!c.betaIssues.length || major === d.current.split(".")[0]) return [];
+  const names = c.betaIssues.map((i) => `#${i.number} (${i.state === "OPEN" ? "open" : "closed"})`);
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+  return [
+    `Beta canary: Firefox ${major}'s Betas were reported in ${list}, label \`upstream-beta\`. ` +
+      "One closed after a passing run was fixed on `main`; one still open, or closed when this " +
+      "release shipped, lists breakage that may remain " +
+      '(docs/rebase.md, "Before the release: the Beta canary").',
+    "",
+  ];
+}
+
+/**
  * The bump PR's body.
  * @param {Context} c
  */
@@ -189,6 +239,7 @@ export function prBody(c) {
     `Opened by the upstream autopilot ([run](${c.runUrl})).` +
       (c.issue ? ` Closes #${c.issue}.` : ""),
     "",
+    ...betaLines(c),
     "| Check | Result |",
     "| --- | --- |",
     "| Source tarball | SHA-512 matches a `SHA512SUMS` signed by Mozilla's release key |",
@@ -380,6 +431,7 @@ function main() {
       "run-url": { type: "string", default: "" },
       owner: { type: "string", default: "" },
       error: { type: "string" },
+      "beta-issues": { type: "string", default: "" },
       "draft-only": { type: "boolean", default: false },
     },
   });
@@ -404,6 +456,7 @@ function main() {
     runUrl: values["run-url"] ?? "",
     owner: values.owner ?? "",
     error: readMaybe(values.error),
+    betaIssues: betaIssues(values["beta-issues"] ?? ""),
   };
   const v = detection.release.version;
   /** @type {Record<string, () => string>} */

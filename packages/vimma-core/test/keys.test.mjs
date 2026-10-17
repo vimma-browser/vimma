@@ -44,6 +44,14 @@ describe("parseKey", () => {
     expect(parseKey(text)).toEqual(expected);
   });
 
+  // "İ" (U+0130) lower-cases to "i̇", two code units, which is no longer one key (issue #313).
+  test("a capital letter whose lower case is longer than one character keeps its own key", () => {
+    expect(parseKey("İ")).toEqual(chord("İ"));
+    expect(parseKey("shift+İ")).toEqual(chord("İ"));
+    expect(parseKey(formatKey(parseKey("İ")))).toEqual(parseKey("İ"));
+    expect(parseBinding(formatBinding(parseBinding("İ")))).toEqual(parseBinding("İ"));
+  });
+
   test.each(["", "ctrl+", "ctrl+foo", "hyper+k", "ctrl+ctrl+k", "ab"])(
     "invalid chord %j throws KeyNotationError",
     (text) => {

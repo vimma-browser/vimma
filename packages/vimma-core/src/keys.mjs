@@ -112,7 +112,10 @@ function normaliseKey(raw, shift) {
   if (raw.length === 1) {
     if (raw === " ") return { key: "space", shift };
     const lower = raw.toLowerCase();
-    if (lower !== raw.toUpperCase()) {
+    // A key is one character, so a letter whose lower case is longer (U+0130 "İ" becomes "i̇",
+    // i and a combining dot above, per Unicode SpecialCasing.txt) cannot be stored lowercase. It
+    // is kept as typed, like the other printable characters.
+    if (lower.length === 1 && lower !== raw.toUpperCase()) {
       // a letter: uppercase means shift
       return { key: lower, shift: shift || raw !== lower };
     }
