@@ -1,6 +1,6 @@
 # Spec: build-supply-chain
 
-Status: accepted (sub-PRs 1 and 2 implemented, #280 and #289; sub-PRs 3 to 5: [#223](https://github.com/vimma-browser/vimma/issues/223), [#224](https://github.com/vimma-browser/vimma/issues/224), [#225](https://github.com/vimma-browser/vimma/issues/225)) · Area: `package.json`, `package-lock.json`, `.npmrc` (new),
+Status: accepted (sub-PRs 1, 2, 4 and 5 implemented, #280, #289, #286 and #350; sub-PR 3: [#223](https://github.com/vimma-browser/vimma/issues/223)) · Area: `package.json`, `package-lock.json`, `.npmrc` (new),
 `.github/dependabot.yml`, `.github/workflows/dependabot-automerge.yml`,
 `.github/workflows/release.yml`, `.github/workflows/nightly.yml`, `.github/workflows/e2e.yml`,
 `.github/workflows/sites.yml`, `.github/workflows/upstream.yml`,
@@ -13,9 +13,7 @@ Status: accepted (sub-PRs 1 and 2 implemented, #280 and #289; sub-PRs 3 to 5: [#
 none · ADR: ADR-021 (new, "Mozilla's release key is the trust anchor for the Firefox source");
 [ADR-001](../adr/001-engine-firefox-surfer.md) gains one paragraph on how Surfer is pinned
 
-Issues: [#223](https://github.com/vimma-browser/vimma/issues/223),
-[#224](https://github.com/vimma-browser/vimma/issues/224),
-[#225](https://github.com/vimma-browser/vimma/issues/225)
+Issues: [#223](https://github.com/vimma-browser/vimma/issues/223)
 
 ## Summary
 
@@ -106,7 +104,7 @@ The change is to CI; its observable behaviour is what the workflows accept, refu
    pull request, a comment, an issue or another workflow run can trigger names a self-hosted
    runner. The nightly and the release build run on GitHub-hosted runners.
 9. **The Safe Browsing key is confined.** The key is an environment secret of the `build`
-   environment, which only `main` and `v*` tags may use. Only the two build jobs name that
+   environment, which only `main` may use. Only the two build jobs name that
    environment.
 10. **Mozilla's key changes are noticed.** When Mozilla's published key has a subkey or a
     revocation that Vimma's pinned copy lacks, or the pinned signing subkey expires within 60
@@ -635,7 +633,9 @@ download --force` gave `--force` to npm, and `npx --no commitlint --from A --to 
 ### Secrets and settings
 
 18. **The Safe Browsing key moves to an environment.** A `build` environment holds
-    `SAFEBROWSING_API_KEY`, with deployment allowed only from `main` and tags matching `v*`. The
+    `SAFEBROWSING_API_KEY`, with deployment allowed only from `main`, because both build jobs run
+    only from `main` and a `v*` tag rule would let anyone who can push a tag deploy an edited
+    workflow from it (a tag ruleset restricts updating tags, not creating them). The
     `build` jobs of `nightly.yml` and `release.yml` declare `environment: build`; the repository
     secret is deleted. Reason: today a branch's edited `nightly.yml` can drop the `if:` that keeps
     the key on `main`; an environment policy is enforced by GitHub, outside any workflow file. This
@@ -753,7 +753,7 @@ repository, and GitHub's hosted runners. Each rule links its tests (Tests, below
   trigger **never** runs on a self-hosted runner. **⚠ setting:** fork pull request approval is
   `all_external_contributors` (`gh api repos/vimma-browser/vimma/actions/permissions/fork-pr-contributor-approval`).
 - B6. The Safe Browsing key **must** be available only to jobs in the `build` environment,
-  deployable only from `main` and `v*` tags, and only the two build jobs use it.
+  deployable only from `main`, and only the two build jobs use it.
 - B7. A change to Mozilla's release key **must** open a `security` issue within 4 hours of
   appearing in Mozilla's `KEY` file, and 60 days before the pinned signing subkey expires.
 

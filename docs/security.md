@@ -535,6 +535,14 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   its own shell, files and network, or what its host lets it do unasked; that is the agent
   host's matter. A prompt-injected agent with a shell can also read the control token like any
   process of yours, which is why the `full` role is a separate switch to keep off.
+- **Build infrastructure.** Trusted: GitHub's hosted runner image and the Actions service,
+  Mozilla's release key, and the toolchains Mozilla's build fetches. Everything else that
+  reaches a build is verified or pinned: Firefox source (B1), Vimma's code (the release tag or
+  `main`, written only through reviewed pull requests), npm packages (lockfile integrity, B3,
+  B4) and actions (commit SHAs). A cosign signature on a release attests "built by
+  `release.yml` at this tag on a GitHub-hosted runner from these verified inputs"; it does not
+  attest that the binary is reproducible, or anything about a compromised runner image or
+  Actions service (spec [build-supply-chain](specs/build-supply-chain.md), decision 20).
 - **What you type.** Commands you type yourself (`:open`, `:source`, the control socket with your
   token) act with your authority; the rules above stop text from others from doing the same.
 
@@ -781,11 +789,9 @@ Spec: [build-supply-chain](specs/build-supply-chain.md), [ADR-001](adr/001-engin
 **Reach:** Mozilla's archive and Taskcluster, the npm registry, this repository, and GitHub's
 hosted runners. Dependabot pull requests run and auto-merge today, whether or not a build runs.
 
-**Planned:** the spec's later deliveries add the rest of B3 (every package in the
+**Planned:** the spec's last delivery adds the rest of B3 (every package in the
 release path held for review, with its published diff,
-[#223](https://github.com/vimma-browser/vimma/issues/223)), and B6 and B7 (the Safe Browsing key
-in a `build` environment, and a watch on Mozilla's release key,
-[#225](https://github.com/vimma-browser/vimma/issues/225)).
+[#223](https://github.com/vimma-browser/vimma/issues/223)).
 
 - B1. Nothing is **ever** built from, or reported on, a Firefox source tarball unless its SHA-512
   is listed in a `SHA512SUMS` carrying exactly one good signature by a valid signing subkey of
@@ -887,6 +893,31 @@ in a `build` environment, and a watch on Mozilla's release key,
   [`triggers are read in every spelling YAML allows`](../tools/test/self-hosted-runner.test.mjs),
   [`no workflow names a self-hosted runner, and both build jobs run on ubuntu-24.04`](../tools/test/self-hosted-runner.test.mjs),
   [`each build job runs only from main`](../tools/test/self-hosted-runner.test.mjs)
+- B6. The Safe Browsing key **must** be available only to jobs in the `build` environment,
+  deployable only from `main`, and only the two build jobs (`nightly.yml` and
+  `release.yml`) use it. The environment's deployment rule is enforced by GitHub, outside any
+  workflow file, so a branch's or tag's edited workflow cannot read the key by dropping an
+  `if:`. No tag may deploy: a tag ruleset restricts moving a tag, not creating one. The key
+  still ships inside every keyed binary (spec m0-safebrowsing-key): this limits who can use it
+  from CI, not who can read it. **⚠ setting:** the `build` environment, with `main` as its only
+  deployment rule, holds `SAFEBROWSING_API_KEY`, and no repository secret of that name exists
+  (`gh api repos/vimma-browser/vimma/actions/secrets`; docs/runbook.md, "Google Safe Browsing
+  key"). While a repository secret of that name remains, any job of any branch can read it.
+  [`the Safe Browsing key comes only from the build environment, in the two build jobs`](../tools/test/build-supply-chain.test.mjs)
+- B7. A change to Mozilla's release key **must** open a `security` issue within 4 hours of
+  appearing in Mozilla's `KEY` file, and 60 days before the pinned signing subkey expires.
+  `upstream.yml`'s `detect` job (every 4 hours) downloads
+  `nightly/latest-mozilla-central/KEY` and `tools/upstream/mozilla-key-check.py` compares it
+  with the pinned key in a throwaway `GNUPGHOME`; it never edits the keyring. A new subkey or
+  revocation, a different primary key (never adopted: ADR-021 is reviewed) or the expiry warning
+  becomes one open issue per title, written by the `key` job, which runs only `gh` with
+  `issues: write`. **⚠ limit:** a failed download or parse warns and does not fail the run, so
+  release detection, which drives security bumps, never waits on it.
+  [`test_a_new_subkey_or_revocation_in_mozillas_key_is_reported`](../tools/upstream/test_mozilla_key_check.py),
+  [`test_a_different_primary_key_is_reported_and_never_adopted`](../tools/upstream/test_mozilla_key_check.py),
+  [`test_a_signing_subkey_expiring_within_60_days_is_reported`](../tools/upstream/test_mozilla_key_check.py),
+  [`test_an_unchanged_key_reports_nothing`](../tools/upstream/test_mozilla_key_check.py),
+  [`detect compares Mozilla's KEY with the pinned key; a change opens a security issue`](../tools/test/upstream-workflow.test.mjs)
 - B8. The nightly **never** creates, replaces or deletes a release, and no job of it can write
   contents. Its `build` job, which runs npm, Surfer, `mach` and the mochitests, holds
   `contents: read` only and keeps its package as a workflow artifact for 7 days. The failure
