@@ -47,6 +47,7 @@ describe("upstream autopilot workflow", () => {
     expect(permissions(job(upstream, "patch-check"))).toEqual(["contents: read"]);
     expect(permissions(job(upstream, "test"))).toEqual(["contents: read"]);
     expect(permissions(job(upstream, "drift"))).toEqual(["contents: read", "issues: write"]);
+    expect(permissions(job(upstream, "key"))).toEqual(["issues: write"]);
     expect(permissions(job(upstream, "publish"))).toEqual([
       "contents: write",
       "pull-requests: write",
@@ -60,6 +61,21 @@ describe("upstream autopilot workflow", () => {
     }
     expect(job(upstream, "test")).not.toContain("secrets: inherit");
     expect(upstream).not.toMatch(/secrets\.SAFEBROWSING/);
+  });
+
+  it("detect compares Mozilla's KEY with the pinned key; a change opens a security issue", () => {
+    const detect = job(upstream, "detect");
+    expect(detect).toContain(
+      "https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central/KEY",
+    );
+    expect(detect).toContain("python3 tools/upstream/mozilla-key-check.py --current");
+    expect(detect).toContain("key-title: ${{ steps.key.outputs.key-title }}");
+    const key = job(upstream, "key");
+    expect(key).toContain("if: needs.detect.outputs.key-title != ''");
+    // It runs only gh: no checkout, so no repository code runs with issues: write.
+    expect(key).not.toContain("actions/checkout");
+    expect(key).not.toContain("secrets.");
+    expect(key).toContain("--label security");
   });
 
   it("no workflow runs on pull_request_target", () => {

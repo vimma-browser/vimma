@@ -905,6 +905,17 @@ review such a change as a change to the key check. Never add it to a pull reques
 is not a reviewed rotation; remove it if a later push changes the key again, since the label
 stays on the pull request across pushes.
 
+**The key watch.** Every 4 hours `upstream.yml`'s `detect` job compares Mozilla's
+`nightly/latest-mozilla-central/KEY` with the pinned key (`tools/upstream/mozilla-key-check.py`,
+docs/security.md B7) and the `key` job opens, or keeps current, one `security` issue per finding:
+"Mozilla's release key changed" for a new subkey, a new revocation or a different primary key,
+and "Mozilla's release signing subkey expires <date>" within 60 days of the pinned subkey's
+expiry. The issue lists the fingerprints. For a new subkey or revocation, follow the steps above
+and close the issue with the pull request; for a different primary key, stop and review ADR-021.
+The check never edits the keyring. A failed download only warns in the run's log. Its fixtures,
+`tools/upstream/fixtures/key/`, are Mozilla's `KEY` of 158.0 and the same key before the
+2026-08-06 rotation, made by `make-pre-rotation.py` there.
+
 The synthetic signature fixtures in `tools/upstream/fixtures/sums/synthetic/` come from
 `tools/upstream/fixtures/sums/make-synthetic.sh` (throwaway keys, no secret key committed).
 
@@ -941,8 +952,30 @@ The local artifact build copies the same mozconfig, so it is keyed too (rebuild 
 `browser_vimma_safebrowsing.js`; set `VIMMA_EXPECT_SAFEBROWSING_KEY=0` to test a keyless build
 on purpose.
 
-**In CI**, the key is the repository secret `SAFEBROWSING_API_KEY` (`gh secret set
-SAFEBROWSING_API_KEY < ~/.config/vimma/keys/safebrowsing`). `nightly.yml` writes it to a mode-600
+**In CI**, the key is the secret `SAFEBROWSING_API_KEY` of the `build` environment, which only
+`main` may deploy from (no tag: anyone who can push a tag could otherwise deploy an edited
+workflow from it); only the `build` jobs of `nightly.yml` and `release.yml`
+name that environment (docs/security.md, B6). A repository administrator sets it up once, in
+this order (until step 3, the jobs keep reading the old repository secret, so nothing breaks):
+
+```sh
+R=repos/vimma-browser/vimma
+# 1. The environment, deployable only from main.
+gh api -X PUT $R/environments/build --input - <<'JSON'
+{ "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
+JSON
+gh api -X POST $R/environments/build/deployment-branch-policies -f name=main -f type=branch
+# 2. The key as an environment secret.
+gh secret set SAFEBROWSING_API_KEY --env build < ~/.config/vimma/keys/safebrowsing
+# 3. Delete the repository secret, so no other job can read it.
+gh secret delete SAFEBROWSING_API_KEY
+# Check: the environment holds the key, the repository does not.
+gh secret list --env build                  # SAFEBROWSING_API_KEY
+gh secret list | grep SAFEBROWSING || echo "no repository secret: done"
+```
+
+An environment secret takes precedence over a repository secret of the same name, so steps 1
+and 2 can come before or after the workflow change; step 3 comes after step 2. `nightly.yml` writes it to a mode-600
 file in `$RUNNER_TEMP` and deletes it after its last `mach` call. PR builds (`e2e.yml`) never get
 it: they build keyless, which `browser_vimma_safebrowsing.js` checks. `release.yml`'s `build` job
 does the same as the nightly, and its smoke check fails a release built without the key.
@@ -951,12 +984,13 @@ Debugging: `browser.safebrowsing.debug` = `true` logs list updates to stdout, wi
 replaced by `[trimmed-google-api-key]`. Still check before pasting a log anywhere.
 
 **Forks:** the nightly and release builds fail closed without `SAFEBROWSING_API_KEY`. Set your
-own key as that secret, or remove the key step (your builds then ship keyless, with Safe
+own key as a secret of a `build` environment in your fork (the steps above, with your
+repository's name), or remove the key step (your builds then ship keyless, with Safe
 Browsing honestly off).
 
 **Rotate** (quota trouble or abuse; the key is extractable from every binary by design, so a
 "leak" alone is no reason): create the new key in the console, replace the local file
-(the `read -rs` line above) and the secret (`gh secret set` as above), rebuild and run the smoke
+(the `read -rs` line above) and the secret (`gh secret set --env build` as above), rebuild and run the smoke
 script, then delete the old key in the console. Builds already shipped keep the old key and
 stop getting lists once it is deleted, so rotate before a release, not after.
 
@@ -1264,7 +1298,8 @@ neither needs another file.
    above); the `build` job runs on `ubuntu-24.04`.
 2. Trigger: nothing to set. `release-please.yml`'s `release-build` job starts `release.yml`
    with `GITHUB_TOKEN`. The maintainer's publish, from a personal account, starts `aur.yml`.
-3. Safe Browsing key: the `SAFEBROWSING_API_KEY` secret ("Google Safe Browsing key" above);
+3. Safe Browsing key: the `SAFEBROWSING_API_KEY` secret of the `build` environment ("Google
+   Safe Browsing key" above);
    the `build` job fails without it, and its smoke check fails a build that lacks the key.
 4. Maintainer line for the `.deb` and the PKGBUILD:
    `gh variable set PACKAGE_MAINTAINER --body 'Your Name <you@example.org>'` (public in every

@@ -25,7 +25,8 @@ tests.**
 
 - Every key that does something, including going back and forward in history, shows up in the
   `ctrl+b ?` overlay.
-- Firefox's own shortcuts are off, and every shortcut is configurable through Vimma.
+- Firefox's own shortcuts are off, and every shortcut is configurable through Vimma. Vimma's
+  defaults are Firefox's own keys, so a Firefox user keeps every shortcut they know.
 - DevTools keys stay exactly as they are in Firefox, and can still be changed in config.toml.
 
 ## User stories
@@ -130,17 +131,17 @@ tests.**
 
 Where Firefox handles a key, and how Vimma can stop it:
 
-| Source                                                                                                                                                                                 | Handled                                                                                        | How Vimma turns it off                                                                                 |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `#mainKeyset` (`browser/base/content/browser-sets.inc.xhtml`, letters `browserSets.ftl`)                                                                                               | `GlobalKeyListener` on keypress, after the page unless `reserved="true"`                       | `disabled="true"` (today's mechanism)                                                                  |
-| `#devtoolsKeyset` (`devtools/startup/DevToolsStartup.sys.mjs` `KeyShortcuts`, inserted before `#mainKeyset` by `hookKeyShortcuts`; letters `key-shortcuts.ftl`)                        | same                                                                                           | `disabled="true"`: watch every `<keyset>` of the window, not one id                                    |
-| `#gfxDebugKeyset` (`browser-graphics-utils.js`, only with WebRender capture on), `key_quickRestart` (`browser-development-helpers.js`, dev builds), `key_windowRecordingCmd` (Nightly) | same                                                                                           | same                                                                                                   |
-| `Tabbrowser.on_keydown` / `on_keypress`, `tabbox.js`, `browser-ctrlTab.js` (`ShortcutUtils.getSystemActionForEvent`), chrome system group                                              | in chrome before the page; each returns on `defaultPrevented`; `F7` waits for the page's reply | consume the keydown (as Firefox, the page never had these keys)                                        |
-| `MenuBarListener.cpp` (`alt` tap shows the menu bar: `ui.key.menuAccessKeyFocuses` true on GTK; `F10`; menu `accesskey`s `alt+f e v s b t h`)                                          | chrome                                                                                         | pref off for the `alt` tap; drop the `accesskey` of `#main-menubar > menu` (DOM, no patch); `F10` kept |
-| `FindBarChild.sys.mjs` (`'` and `/` quick find when `accessibility.typeaheadfind.manual`)                                                                                              | in the page process, keypress                                                                  | pref `accessibility.typeaheadfind.manual = false`                                                      |
-| `EventStateManager::PostHandleKeyboardEvent` (`Tab`, `F6`, `ctrl+Tab` fallback; hardware zoom keys)                                                                                    | default action                                                                                 | kept (focus navigation, a11y)                                                                          |
-| `AppCommand` (`HandleAppCommandEvent`, browser.js: hardware Back, Forward, Reload, Search, … and mouse side buttons)                                                                   | chrome                                                                                         | kept (not keyboard shortcuts)                                                                          |
-| Editor / native key bindings (`ShortcutKeyDefinitions.cpp`, GTK key themes): text editing, page scrolling (`space`, `pageup`, arrows)                                                  | default action in the focused field / document                                                 | kept (the field's and the page's own keys)                                                             |
+| Source                                                                                                                                                                                 | Handled                                                                                        | How Vimma turns it off                                              |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `#mainKeyset` (`browser/base/content/browser-sets.inc.xhtml`, letters `browserSets.ftl`)                                                                                               | `GlobalKeyListener` on keypress, after the page unless `reserved="true"`                       | `disabled="true"` (today's mechanism)                               |
+| `#devtoolsKeyset` (`devtools/startup/DevToolsStartup.sys.mjs` `KeyShortcuts`, inserted before `#mainKeyset` by `hookKeyShortcuts`; letters `key-shortcuts.ftl`)                        | same                                                                                           | `disabled="true"`: watch every `<keyset>` of the window, not one id |
+| `#gfxDebugKeyset` (`browser-graphics-utils.js`, only with WebRender capture on), `key_quickRestart` (`browser-development-helpers.js`, dev builds), `key_windowRecordingCmd` (Nightly) | same                                                                                           | same                                                                |
+| `Tabbrowser.on_keydown` / `on_keypress`, `tabbox.js`, `browser-ctrlTab.js` (`ShortcutUtils.getSystemActionForEvent`), chrome system group                                              | in chrome before the page; each returns on `defaultPrevented`; `F7` waits for the page's reply | consume the keydown (as Firefox, the page never had these keys)     |
+| `MenuBarListener.cpp` (`alt` tap shows the menu bar: `ui.key.menuAccessKeyFocuses` true on GTK; `F10`; menu `accesskey`s `alt+f e v s b t h`)                                          | chrome                                                                                         | pref off for the `alt` tap; menu `accesskey`s and `F10` kept        |
+| `FindBarChild.sys.mjs` (`'` and `/` quick find when `accessibility.typeaheadfind.manual`)                                                                                              | in the page process, keypress                                                                  | pref `accessibility.typeaheadfind.manual = false`                   |
+| `EventStateManager::PostHandleKeyboardEvent` (`Tab`, `F6`, `ctrl+Tab` fallback; hardware zoom keys)                                                                                    | default action                                                                                 | kept (focus navigation, a11y)                                       |
+| `AppCommand` (`HandleAppCommandEvent`, browser.js: hardware Back, Forward, Reload, Search, … and mouse side buttons)                                                                   | chrome                                                                                         | kept (not keyboard shortcuts)                                       |
+| Editor / native key bindings (`ShortcutKeyDefinitions.cpp`, GTK key themes): text editing, page scrolling (`space`, `pageup`, arrows)                                                  | default action in the focused field / document                                                 | kept (the field's and the page's own keys)                          |
 
 Reserved keys (`reserved="true"`): `ctrl+n`, `ctrl+t`, `ctrl+w`, `ctrl+shift+w`, `ctrl+shift+p`,
 `ctrl+q`, and `F11` while in full screen (`key_exitFullScreen`). Every other key element defaults
@@ -160,9 +161,12 @@ Every key that does something in a Linux browser window today, with its fate:
 
 - **(a)** bound by default to an existing Vimma action;
 - **(b)** bound by default to a new named action (Decisions 3–4);
-- **(c)** left unbound and off by default (rare, legacy, conditional, or clashing), listed in the
-  guide and reachable with `:firefox` (Decision 5);
-- **(d)** not a window shortcut: stays as it is.
+- **(c)** left unbound and off by default: keys that exist only in some builds or settings, and
+  the two that clash with Vimma's modal keys (`'`, the `alt` tap); listed in the guide and
+  reachable with `:firefox` (Decision 5);
+- **(d)** not a window shortcut, or the menu bar's own access keys: stays as it is.
+
+Fates a and b both mean a Vimma binding whose default key is Firefox's own key (Decision 16).
 
 "First" is who gets the key first (Decision 6): **V** Vimma (Firefox reserves the chord, or it is
 one of Vimma's keys since key-handling-batch), **P** the page (Firefox lets the page override it).
@@ -180,7 +184,7 @@ Chords are written as Vimma canonicalises them: `shift` folds into the character
 | `ctrl+l`                   | `focusURLBar` → `Browser:OpenLocation`                 | focus the address bar                    | a    | `focus_urlbar` (all)                                                      | P     |
 | `alt+d`                    | `focusURLBar2` → `Browser:OpenLocation`                | focus the address bar                    | a    | `focus_urlbar` (all)                                                      | P     |
 | `ctrl+k`                   | `key_search` → `Tools:Search`                          | web search                               | a    | Vimma's since key-handling-batch: none in normal, readline kill in fields | V     |
-| `ctrl+j`                   | `key_search2` → `Tools:Search`                         | web search (Linux's second key)          | c    | — (`I`, then type)                                                        | —     |
+| `ctrl+j`                   | `key_search2` → `Tools:Search`                         | web search (Linux's second key)          | b    | `web_search` (all)                                                        | P     |
 | `ctrl+shift+y`             | `key_openDownloads` → `Tools:Downloads`                | Library: downloads                       | b    | `downloads` (all)                                                         | P     |
 | `ctrl+shift+a`             | `key_openAddons` → `Tools:Addons`                      | about:addons                             | b    | `addons_manager` (all)                                                    | P     |
 | `ctrl+o`                   | `openFileKb` → `Browser:OpenFile`                      | open a file                              | a    | `history_back` (n), since key-handling-batch                              | V     |
@@ -213,23 +217,23 @@ Chords are written as Vimma canonicalises them: `shift` folds into the character
 | `ctrl+}` (alt letter)      | unnamed → `View:PictureInPicture`                      | the same on layouts where `}` differs    | b    | `picture_in_picture` (all)                                                | P     |
 | `ctrl+r`                   | `key_reload` → `Browser:Reload`                        | reload                                   | a    | `reload` (all)                                                            | P     |
 | `ctrl+shift+r`             | `key_reload_skip_cache` → `Browser:ReloadSkipCache`    | reload, bypass cache                     | b    | `reload_hard` (all)                                                       | P     |
-| `shift+esc`                | `key_aboutProcesses` → `View:AboutProcesses`           | about:processes                          | c    | —                                                                         | —     |
+| `shift+esc`                | `key_aboutProcesses` → `View:AboutProcesses`           | about:processes                          | b    | `about_processes` (all)                                                   | P     |
 | `ctrl+u`                   | `key_viewSource` → `View:PageSource`                   | view source                              | a    | half page up (n) / delete to line start (i); source is `gf`               | V     |
 | `ctrl+i`                   | `key_viewInfo` → `View:PageInfo`                       | Page Info                                | a    | `history_forward` (n)                                                     | V     |
-| `ctrl+f`                   | `key_find` → `cmd_find`                                | find in page                             | c    | — (unbound, Q1)                                                           | —     |
+| `ctrl+f`                   | `key_find` → `cmd_find`                                | find in page                             | a    | `find_forward` (all)                                                      | P     |
 | `ctrl+g`                   | `key_findAgain` → `cmd_findAgain`                      | next match                               | a    | `find_next` (all)                                                         | P     |
 | `ctrl+shift+g`             | `key_findPrevious` → `cmd_findPrevious`                | previous match                           | a    | `find_previous` (all)                                                     | P     |
 | `f3`                       | `key_findAgain2` → `cmd_findAgain`                     | next match                               | a    | `find_next` (all)                                                         | P     |
 | `shift+f3`                 | `key_findPrevious2` → `cmd_findPrevious`               | previous match                           | a    | `find_previous` (all)                                                     | P     |
 | `ctrl+d`                   | `addBookmarkAsKb` → `Browser:AddBookmarkAs`            | bookmark the page                        | a    | half page down (n); bookmarking is `ctrl+b a`                             | V     |
-| `ctrl+shift+d`             | `bookmarkAllTabsKb`                                    | bookmark all tabs                        | c    | —                                                                         | —     |
+| `ctrl+shift+d`             | `bookmarkAllTabsKb`                                    | bookmark all tabs                        | b    | `bookmark_all_tabs` (all)                                                 | P     |
 | `ctrl+shift+o`             | `manBookmarkKb` → `Browser:ShowAllBookmarks`           | Library: bookmarks                       | b    | `bookmarks_library` (all)                                                 | P     |
 | `ctrl+b`                   | `viewBookmarksSidebarKb`                               | bookmarks sidebar                        | a    | the prefix                                                                | V     |
-| `ctrl+shift+b`             | `viewBookmarksToolbarKb`                               | show/hide the bookmarks toolbar          | c    | — (`ctrl+b u` hides the whole toolbar)                                    | —     |
+| `ctrl+shift+b`             | `viewBookmarksToolbarKb`                               | show/hide the bookmarks toolbar          | b    | `toggle_bookmarks_toolbar` (all)                                          | P     |
 | `esc`                      | `key_stop` → `Browser:Stop`                            | stop loading                             | b    | `stop_loading` (n)                                                        | P     |
-| `ctrl+alt+x`               | `viewGenaiChatSidebarKb`                               | AI chatbot sidebar                       | c    | —                                                                         | —     |
-| `ctrl+alt+u`               | `viewOpenTabsSidebarKb`                                | open-tabs sidebar                        | c    | — (`ctrl+b b` is Vimma's side panel)                                      | —     |
-| `ctrl+alt+z`               | `toggleSidebarKb`                                      | toggle the sidebar                       | c    | —                                                                         | —     |
+| `ctrl+alt+x`               | `viewGenaiChatSidebarKb`                               | AI chatbot sidebar                       | b    | `ai_chatbot_sidebar` (all)                                                | P     |
+| `ctrl+alt+u`               | `viewOpenTabsSidebarKb`                                | open-tabs sidebar                        | b    | `open_tabs_sidebar` (all)                                                 | P     |
+| `ctrl+alt+z`               | `toggleSidebarKb`                                      | toggle the sidebar                       | b    | `toggle_firefox_sidebar` (all)                                            | P     |
 | `ctrl+h`                   | `key_gotoHistory`                                      | history sidebar                          | a    | backspace in fields (i), since key-handling-batch                         | V     |
 | `ctrl+minus`               | `key_fullZoomReduce` → `cmd_fullZoomReduce`            | zoom out                                 | b    | `page_zoom_out` (all)                                                     | P     |
 | `ctrl+_`                   | unnamed → `cmd_fullZoomReduce`                         | zoom out                                 | b    | `page_zoom_out` (all)                                                     | P     |
@@ -237,7 +241,7 @@ Chords are written as Vimma canonicalises them: `shift` folds into the character
 | `ctrl+=`                   | unnamed → `cmd_fullZoomEnlarge`                        | zoom in                                  | b    | `page_zoom_in` (all)                                                      | P     |
 | `ctrl+0`                   | `key_fullZoomReset` → `cmd_fullZoomReset`              | reset zoom                               | b    | `page_zoom_reset` (all)                                                   | P     |
 | `ctrl+shift+tab`           | `key_showAllTabs` (ctrlTab runs it)                    | previous tab                             | a    | `previous_tab` (all)                                                      | V     |
-| `ctrl+shift+x`             | `key_switchTextDirection` → `cmd_switchTextDirection`  | flip text direction in a field           | c    | —                                                                         | —     |
+| `ctrl+shift+x`             | `key_switchTextDirection` → `cmd_switchTextDirection`  | flip text direction in a field           | b    | `switch_text_direction` (all)                                             | P     |
 | `ctrl+shift+p`             | `key_privatebrowsing` → `Tools:PrivateBrowsing`        | new private window                       | a    | `private_workspace` (all), since private-workspace                        | V     |
 | `ctrl+shift+s`             | `key_screenshot` → `Browser:Screenshot`                | screenshot                               | b    | `screenshot` (all)                                                        | P     |
 | `ctrl+shift+delete`        | `key_sanitize` → `Tools:Sanitize`                      | clear recent history                     | b    | `clear_history` (all)                                                     | P     |
@@ -259,22 +263,22 @@ counted. Other locales may fill them; the coverage test (Decision 11) reads the 
 
 **`#devtoolsKeyset`** (DevToolsStartup `KeyShortcuts`; `modifiers` = `accel,shift` on Linux):
 
-| Key                | Firefox id                 | What it does                           | Fate | Vimma action                            | First |
-| ------------------ | -------------------------- | -------------------------------------- | ---- | --------------------------------------- | ----- |
-| `ctrl+shift+i`     | `key_toggleToolbox`        | toggle the toolbox                     | b    | `devtools` (all)                        | P     |
-| `f12`              | `key_toggleToolboxF12`     | toggle the toolbox                     | b    | `devtools` (all)                        | P     |
-| `ctrl+alt+shift+i` | `key_browserToolbox`       | Browser Toolbox                        | b    | `browser_toolbox` (all)                 | P     |
-| `ctrl+shift+j`     | `key_browserConsole`       | Browser Console                        | b    | `browser_console` (all)                 | P     |
-| `ctrl+shift+m`     | `key_responsiveDesignMode` | Responsive Design Mode                 | b    | `responsive_design` (all)               | P     |
-| `ctrl+shift+c`     | `key_inspector`            | Inspector                              | b    | `devtools_inspector` (all)              | P     |
-| `ctrl+shift+k`     | `key_webconsole`           | Web Console                            | b    | `devtools_console` (all)                | P     |
-| `ctrl+shift+z`     | `key_jsdebugger`           | Debugger (redo in a field: Decision 6) | b    | `devtools_debugger` (all)               | P     |
-| `ctrl+shift+e`     | `key_netmonitor`           | Network                                | b    | `devtools_network` (all)                | P     |
-| `shift+f7`         | `key_styleeditor`          | Style Editor                           | b    | `devtools_style_editor` (all)           | P     |
-| `shift+f5`         | `key_performance`          | Performance                            | b    | `devtools_performance` (all)            | P     |
-| `shift+f9`         | `key_storage`              | Storage                                | b    | `devtools_storage` (all)                | P     |
-| `ctrl+shift+w`     | `key_dom`                  | DOM panel                              | c    | — (the chord is close window, reserved) | —     |
-| `shift+f12`        | `key_accessibility`        | Accessibility panel                    | b    | `devtools_accessibility` (all)          | P     |
+| Key                | Firefox id                 | What it does                           | Fate | Vimma action                                                           | First |
+| ------------------ | -------------------------- | -------------------------------------- | ---- | ---------------------------------------------------------------------- | ----- |
+| `ctrl+shift+i`     | `key_toggleToolbox`        | toggle the toolbox                     | b    | `devtools` (all)                                                       | P     |
+| `f12`              | `key_toggleToolboxF12`     | toggle the toolbox                     | b    | `devtools` (all)                                                       | P     |
+| `ctrl+alt+shift+i` | `key_browserToolbox`       | Browser Toolbox                        | b    | `browser_toolbox` (all)                                                | P     |
+| `ctrl+shift+j`     | `key_browserConsole`       | Browser Console                        | b    | `browser_console` (all)                                                | P     |
+| `ctrl+shift+m`     | `key_responsiveDesignMode` | Responsive Design Mode                 | b    | `responsive_design` (all)                                              | P     |
+| `ctrl+shift+c`     | `key_inspector`            | Inspector                              | b    | `devtools_inspector` (all)                                             | P     |
+| `ctrl+shift+k`     | `key_webconsole`           | Web Console                            | b    | `devtools_console` (all)                                               | P     |
+| `ctrl+shift+z`     | `key_jsdebugger`           | Debugger (redo in a field: Decision 6) | b    | `devtools_debugger` (all)                                              | P     |
+| `ctrl+shift+e`     | `key_netmonitor`           | Network                                | b    | `devtools_network` (all)                                               | P     |
+| `shift+f7`         | `key_styleeditor`          | Style Editor                           | b    | `devtools_style_editor` (all)                                          | P     |
+| `shift+f5`         | `key_performance`          | Performance                            | b    | `devtools_performance` (all)                                           | P     |
+| `shift+f9`         | `key_storage`              | Storage                                | b    | `devtools_storage` (all)                                               | P     |
+| `ctrl+shift+w`     | `key_dom`                  | DOM panel                              | b    | `devtools_dom`, no default key (the chord is `close_window`, reserved) | —     |
+| `shift+f12`        | `key_accessibility`        | Accessibility panel                    | b    | `devtools_accessibility` (all)                                         | P     |
 
 Conditional (**c**): the profiler's `ctrl+shift+1`, `ctrl+shift+2`, `ctrl+alt+shift+1`,
 `ctrl+alt+shift+2` (only with the profiler button in the toolbar) and `ctrl+shift+5`
@@ -290,9 +294,9 @@ Conditional (**c**): the profiler's `ctrl+shift+1`, `ctrl+shift+2`, `ctrl+alt+sh
 | `ctrl+shift+pagedown`                                                                                              | Tabbrowser `on_keydown` (`MOVE_TAB_FORWARD`)                               | move the tab right                          | b    | `move_tab_right` (all)                                               | V     |
 | `ctrl+shift+pageup`                                                                                                | Tabbrowser `on_keydown` (`MOVE_TAB_BACKWARD`)                              | move the tab left                           | b    | `move_tab_left` (all)                                                | V     |
 | `ctrl+f4`                                                                                                          | Tabbrowser `on_keydown` (`CLOSE_TAB`)                                      | close the tab (not pinned)                  | a    | `close_tab` (all)                                                    | V     |
-| `f7`                                                                                                               | Tabbrowser `on_keypress` (`TOGGLE_CARET_BROWSING`, after the page's reply) | caret browsing (asks first)                 | c    | — (unbound, Q4)                                                      | —     |
+| `f7`                                                                                                               | Tabbrowser `on_keypress` (`TOGGLE_CARET_BROWSING`, after the page's reply) | caret browsing (asks first)                 | b    | `caret_browsing` (all)                                               | P     |
 | `alt` (tap)                                                                                                        | MenuBarListener                                                            | shows the menu bar                          | c    | off: `ui.key.menuAccessKeyFocuses = false`, Q3                       | —     |
-| `alt+f`, `alt+e`, `alt+v`, `alt+s`, `alt+b`, `alt+t`, `alt+h` (7 keys)                                             | menu bar accesskeys (`menubar.ftl`)                                        | open a menu                                 | c    | off: the host drops `accesskey` from `#main-menubar > menu`          | —     |
+| `alt+f`, `alt+e`, `alt+v`, `alt+s`, `alt+b`, `alt+t`, `alt+h` (7 keys)                                             | menu bar accesskeys (`menubar.ftl`)                                        | open a menu                                 | d    | kept: the menu bar's own access keys (Decision 16)                   | —     |
 | `'`                                                                                                                | FindBarChild (quick find, links only)                                      | quick find links                            | c    | off: `accessibility.typeaheadfind.manual = false`; `f` hints instead | —     |
 | `/`                                                                                                                | FindBarChild (quick find)                                                  | quick find                                  | a    | `find_forward` (n) already; off in fields by the same pref           | V     |
 | `f10`, `shift+f10`, context-menu key                                                                               | MenuBarListener / widget                                                   | menu bar, context menu                      | d    | platform accessibility keys                                          | —     |
@@ -318,12 +322,15 @@ bar, find bar, editing and scrolling, hardware keys, `Esc` in dialogs) counts as
 | (c) unbound, off     | 27                                                                                                                                    |
 | (d) stays as it is   | 21                                                                                                                                    |
 
+(Since changed: Decision 16 moves ten c keys to b, `ctrl+f` from c to a, and the 7 menu access
+keys from c to d. Fate c keeps the conditional keys, `'` and the `alt` tap.)
+
 ## Decisions
 
 1. **Nothing is Firefox's by default.** Every key in the inventory with fate a, b or c is off as a
-   Firefox shortcut; fates a and b are Vimma bindings. A key in the window either runs a Vimma
-   binding, is a text field's or page's own key (fate d), or does nothing. So `ctrl+b ?`, `:map`
-   and bindings.md list every active key.
+   Firefox shortcut; fates a and b are Vimma bindings on Firefox's own keys (Decision 16). A key
+   in the window either runs a Vimma binding, is a text field's or page's own key (fate d), or
+   does nothing. So `ctrl+b ?`, `:map` and bindings.md list every active key.
 2. **Bound means off.** Whatever `[firefox]` says, the host disables every Firefox key whose chord
    Vimma binds in any mode, so a Vimma binding and a Firefox shortcut can never both run on one
    key (a page-first binding and Firefox's key would otherwise both fire on the same keypress).
@@ -344,7 +351,14 @@ bar, find bar, editing and scrolling, hardware keys, `Esc` in dialogs) counts as
    "Developer tools" group: `devtools`, `browser_toolbox`, `browser_console`,
    `responsive_design`, `devtools_inspector`, `devtools_console`, `devtools_debugger`,
    `devtools_network`, `devtools_style_editor`, `devtools_performance`, `devtools_storage`,
-   `devtools_accessibility` (ids `devtools.*`). 38 new actions.
+   `devtools_accessibility` (ids `devtools.*`). 38 new actions. Decision 16 adds ten more for
+   the keys that were fate c: "Browser" gains `web_search` (`browser.search`, Firefox's
+   `Tools:Search`), `about_processes` (`browser.processes`), `bookmark_all_tabs`
+   (`browser.bookmark_all_tabs`), `toggle_bookmarks_toolbar` (`browser.bookmarks_toolbar`),
+   `ai_chatbot_sidebar` (`browser.sidebar_chatbot`), `open_tabs_sidebar`
+   (`browser.sidebar_tabs`), `toggle_firefox_sidebar` (`browser.sidebar`),
+   `switch_text_direction` (`browser.text_direction`) and `caret_browsing`
+   (`browser.caret_browsing`); "Developer tools" gains `devtools_dom` (`devtools.dom`).
    - **No `new_private_window`.** Firefox's `ctrl+shift+p` is already Vimma's `private_workspace`
      (`workspace.private`, `defaults.mjs:89`, group "Workspaces"): go to the private workspace, or
      open it. A second action that opens one more private window per press would undo
@@ -359,7 +373,13 @@ bar, find bar, editing and scrolling, hardware keys, `Esc` in dialogs) counts as
    `cmd_fullZoomEnlarge`, `View:PictureInPicture`, …) or, for keys with no `<command>` (`goHome`,
    the devtools keys), a `command` event on the key element itself, which is what
    `GlobalKeyListener` sends (the sub-PR checks it reaches a `disabled` key's listener; if not, the
-   runner re-enables the element for that one dispatch). Page commands act on the selected tab,
+   runner re-enables the element for that one dispatch). `caret_browsing` cannot do either:
+   Firefox's F7 runs the private `Tabbrowser#toggleCaretBrowsing`
+   (`browser/components/tabbrowser/Tabbrowser.sys.mjs:9197`, Firefox 157), which no command or
+   key reaches, so its runner repeats those steps: nothing when
+   `accessibility.browsewithcaret_shortcut.enabled` is false, the same confirmation (the
+   `tabbrowser-confirm-caretbrowsing-*` strings) when `accessibility.warn_on_browsewithcaret` is
+   true, then it flips `accessibility.browsewithcaret`. Page commands act on the selected tab,
    which is the focused pane's. `quit` calls `goQuitApplication` with an event whose `ctrlKey`
    (meta on macOS) is set, so the source is `"shortcut"` and Firefox still asks first
    (`browser.warnOnQuitShortcut`). Tab moves and `select_last_tab` count the workspace's visible
@@ -431,9 +451,8 @@ bar, find bar, editing and scrolling, hardware keys, `Esc` in dialogs) counts as
    of the window (`#mainKeyset`, `#devtoolsKeyset`, the conditional ones), and the out-of-keyset
    handlers, which the host stops by consuming the keydown of an unbound, not-enabled chord (V:
    the page never had these keys in Firefox either; `F7`, the one P key there, goes to the page
-   first and Vimma consumes its reply). The menu bar accesskeys lose their `accesskey` attribute
-   while off (the host keeps the original, as `vimma-disabled` keeps today's), and two prefs are
-   set in Vimma's branding prefs: `ui.key.menuAccessKeyFocuses = false`,
+   first and Vimma consumes its reply). The menu bar's access keys stay (Decision 16), and two
+   prefs are set in Vimma's branding prefs: `ui.key.menuAccessKeyFocuses = false`,
    `accessibility.typeaheadfind.manual = false`. `ALL_KEEP` goes: `ctrl+q` is now `quit`, a Vimma
    binding with Firefox's confirmation (Decision 4). Editing keys (`internal`, `key_delete`,
    Backspace) are d and never touched.
@@ -445,7 +464,7 @@ bar, find bar, editing and scrolling, hardware keys, `Esc` in dialogs) counts as
      inventory or with ctrl, alt, meta, or a function key", so `enable = ["esc"]` (Firefox's stop)
      is valid.
    - **A `disable` list** keeps its meaning: those chords off, the other unbound ones Firefox's.
-     Since Vimma now binds the common keys, a list only matters for the c keys.
+     Since Vimma binds every Firefox key but the c keys, a list only matters for those.
 10. **Migration: none needed, no schema bump.** `[firefox]` keeps its schema-2 shape; only the
     default changes. A file without `[firefox]` (or with the template's commented lines) gets
     `"all"` with the next start. A file that sets `disable = [...]` keeps it (Decision 9); about:vimma
@@ -453,8 +472,8 @@ bar, find bar, editing and scrolling, hardware keys, `Esc` in dialogs) counts as
     the overlay's "Firefox (on in config.toml)" group shows each one, so nothing is hidden. Files
     are never rewritten (ConfigHost): the template gains `# disable = "all"` and a new comment
     (below); an old file's stale comment above its commented-out list is harmless, and the guide
-    says so. The template comment: `# Firefox's own shortcuts are off; Vimma binds the common ones
-(ctrl+b ? lists them). enable = ["ctrl+j"] gives one back exactly as Firefox runs it.`
+    says so. The template comment: `# Firefox's own shortcuts are off; Vimma binds them on the same
+keys (ctrl+b ? lists them). enable = ["ctrl+j"] gives one back exactly as Firefox runs it.`
 11. **The overlay is complete.** With the defaults every active key is a binding, so the overlay
     is complete by construction. For keys a user turns back on, `bindingTable` gains a
     "Firefox (on in config.toml)" group from the host's `FirefoxKeys.status()`: one row per live
@@ -474,7 +493,8 @@ bar, find bar, editing and scrolling, hardware keys, `Esc` in dialogs) counts as
     - `ShortcutUtils.getSystemActionForEvent` over every ctrl/shift/alt/meta combination of the
       named keys and F-keys returns an action only for table rows (new out-of-keyset keys fail);
     - each out-of-keyset c/a key, synthesised with a keymap that unbinds it, changes nothing
-      (selected tab, tab order, caret browsing pref, menu bar state, find bar);
+      (selected tab, tab order, caret browsing pref, find bar);
+    - the menu bar's access keys (`#main-menubar > menu`) keep their `accesskey` (fate d);
     - real key events (`EventUtils.synthesizeKey`) for each a/b chord run Vimma's action, so the
       shift-folding between XUL `modifiers` and Vimma's notation is checked, not assumed.
       The upstream autopilot ([m7-upstream-autopilot](m7-upstream-autopilot.md)) already runs
@@ -497,6 +517,27 @@ bar, find bar, editing and scrolling, hardware keys, `Esc` in dialogs) counts as
     consuming keydowns, DOM attributes on the menu bar, and two prefs in Vimma's branding prefs
     file. No ADR line is needed.
 
+16. **Firefox's own keys are the defaults.** Every Firefox shortcut is a Vimma binding whose
+    default key is Firefox's own key, so users keep their Firefox habits while every key is
+    listed in `ctrl+b ?` and can be rebound in one place, Vimma's keymap. The keys that were fate
+    c become fate b (new actions, Decision 3) on their Firefox chords, and `ctrl+f` becomes a
+    second key for `find_forward` (fate a), because Vimma's `/` search already drives Firefox's
+    finder. Three exceptions, each with its reason:
+    - **`'` (quick find, links only) and the `alt` tap stay off**, because they clash with
+      Vimma's modal keys: `'` is a plain key that normal mode owns, and an `alt` tap moves focus
+      to the menu bar, away from the page whose keys normal mode handles.
+    - **The 7 menu bar access keys (`alt+f e v s b t h`) are fate d**, left to Firefox's menu
+      bar while it exists, because they are attributes of its menus rather than shortcuts Vimma
+      can rebind, and dropping them would leave the menu bar without a keyboard path.
+    - **`ctrl+shift+w` stays `close_window`.** Firefox's reserved close-window key wins over the
+      DevTools' DOM panel key on the same chord, so `devtools_dom` gets no default key; it can
+      be bound by name.
+
+    The conditional keys stay fate c, because they exist only in developer builds or with
+    settings Vimma does not change, and two of their chords (`ctrl+alt+r`, `ctrl+^`) are already
+    Vimma's. Fate d is unchanged apart from the menu access keys. Sub-PR 1 left these keys
+    unbound; sub-PR 2 binds them.
+
 ## Sub-PRs
 
 Each is its own keymap PR, in this order, one open at a time:
@@ -514,7 +555,8 @@ Each is its own keymap PR, in this order, one open at a time:
    README, and toolbar-toggle.md's "`alt` still shows it" line (Q3). `[firefox]` keeps today's
    default `disable` (`OVERLAP_CHORDS`) here, so unbound Firefox keys are as before.
 2. **Firefox's own shortcuts off.** Default `disable = "all"` with the wider "all"; consuming the
-   out-of-keyset handlers; the menu bar accesskeys and the two prefs; `enable` dropping default
+   out-of-keyset handlers; the two prefs; the ten actions of Decision 16 with their default keys
+   (`ctrl+f` added to `find_forward`); `enable` dropping default
    bindings and its new error; `firefox_command`, `:firefox` and `:` bindings with the "Commands"
    group; the "Firefox (on in config.toml)" group; about:vimma; the template comment.
 3. **The coverage test** (Decision 12) and its `docs/rebase.md` line.
@@ -627,17 +669,18 @@ Firefox `<command>` (the c keys stay reachable through `:firefox`).
 
 ## Decided questions
 
-1. **`ctrl+f`:** unbound by default, so a page that handles it gets it, and otherwise it does
-   nothing. `find_forward` keeps its Vimma keys, and `[keys]` can add `ctrl+f`.
+1. **`ctrl+f`:** a second default key for `find_forward`, after the page (P), so a page that
+   handles it still gets it (Decision 16).
 2. **`ctrl+[` in a text field:** in insert mode and text fields it does nothing. In normal mode it
    is still back, as listed under "Go back".
 3. **The `alt` tap that shows the menu bar:** off (`ui.key.menuAccessKeyFocuses = false`, and `F10`
    still opens the menus). This replaces toolbar-toggle's "`alt` still shows it", and sub-PR 1
    updates that spec.
-4. **`F7`:** unbound by default, and Firefox's caret browsing toggle is off with the rest.
-   `copy_mode` keeps its Vimma keys.
+4. **`F7`:** `caret_browsing`, Firefox's caret browsing toggle with its confirmation
+   (Decisions 4 and 16). `copy_mode` keeps its Vimma keys.
 5. **DevTools keys:** exactly as in Firefox, so a developer's habits keep working. All 12 actions
    are bound by default on Firefox's chords, and each one can be rebound or unbound by name in
-   `[keys]` in config.toml, like any other action. The DOM panel's `ctrl+shift+w` stays unbound, as
-   it is in Firefox, where the reserved close-window key wins. The profiler and tracer keys stay
-   conditional and can be reached through `:firefox`.
+   `[keys]` in config.toml, like any other action. The DOM panel's `ctrl+shift+w` stays
+   `close_window`, as it is in Firefox, where the reserved close-window key wins; `devtools_dom`
+   has no default key (Decision 16). The profiler and tracer keys stay conditional and can be
+   reached through `:firefox`.
