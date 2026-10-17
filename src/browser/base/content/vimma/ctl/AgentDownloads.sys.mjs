@@ -26,15 +26,22 @@ import {
   HEAD_BYTES,
   ZIP_TAIL_BYTES,
   clamArguments,
+  clamDefinitionsDate,
   clamVerdict,
+  clamVersionArguments,
+  clamdArguments,
+  clamdConfig,
+  clamdSocketTrusted,
   dangerousContent,
   dangerousName,
   dangerousType,
   displayDir,
+  passwdUid,
   downloadRefusedNotice,
   downloadSavedNotice,
   quarantineProblem,
   resolveDownloadDir,
+  staleDefinitions,
   zipEntryList,
   zipLocate,
   zipVerdict,
@@ -53,6 +60,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   Integration: "resource://gre/modules/Integration.sys.mjs",
   Subprocess: "resource://gre/modules/Subprocess.sys.mjs",
+  ctypes: "resource://gre/modules/ctypes.sys.mjs",
   clearInterval: "resource://gre/modules/Timer.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setInterval: "resource://gre/modules/Timer.sys.mjs",
@@ -62,6 +70,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const DEFAULT_DIR = /** @type {string} */ (DEFAULT_CONFIG.mcp?.download_dir);
 const DEFAULT_MAX_MB = /** @type {number} */ (DEFAULT_CONFIG.mcp?.download_max_mb);
+const DEFAULT_MAX_AGE_DAYS = /** @type {number} */ (DEFAULT_CONFIG.mcp?.clamav_max_age_days);
 /** How often a part file is measured while its question waits (the cap, decision 31 f). */
 const WATCH_MS = 250;
 /** The longest ClamAV may take on one file before it counts as an error. */
@@ -73,12 +82,16 @@ const CLAM_TIMEOUT_PREF = "vimma.mcp.clamTimeoutMs";
  * system's, never one found on PATH, and only when the user cannot write it or its folder.
  */
 const CLAM_PATHS = Object.freeze(["/usr/bin/clamscan", "/usr/local/bin/clamscan"]);
+/** The only clamdscan Vimma runs, checked as clamscan is (decision 45). */
+const CLAMD_PATHS = Object.freeze(["/usr/bin/clamdscan", "/usr/local/bin/clamdscan"]);
+/** The clamd config clamdscan is pointed at, checked as the scanners are (decision 45). */
+const CLAMD_CONF = "/etc/clamav/clamd.conf";
 /** How long after agent-open a download counts as that open's (security.md M11). */
 const OPENER_MS = 60_000;
 
 /**
  * @typedef {{ conn: string | number | null, name: string, what: Record<string, any>,
- *   allowedKind: string | null, scan: "none" | "clean" | "partial" | "error",
+ *   allowedKind: string | null, scan: "none" | "clean" | "stale" | "partial" | "error",
  *   refused: boolean }} Tracked
  */
 
@@ -475,18 +488,20 @@ async function ownedByAnother(path) {
 }
 
 /**
- * The system's clamscan (decision 31 g; C2's one exception): the first of CLAM_PATHS that is a
- * regular executable file another user (root) owns, that the user cannot write, in a folder the
- * user cannot write. Never one found on PATH. Null when there is none.
+ * The first of `paths` that is a regular file (and executable, when asked) another user (root)
+ * owns, that the user cannot write, in a folder the user cannot write: a scanner or config
+ * the user's own processes cannot replace. Never one found on PATH. Null when there is none.
+ * @param {readonly string[]} paths @param {boolean} trusted  test-only: skip the ownership
+ *   and write checks @param {boolean} [executable]
  * @returns {Promise<string | null>}
  */
-async function findClam() {
-  const hook = AgentDownloads._clamForTests;
-  for (const path of hook?.paths ?? CLAM_PATHS) {
+async function findSystemFile(paths, trusted, executable = true) {
+  for (const path of paths) {
     try {
       const file = new lazy.FileUtils.File(path);
-      if (!file.exists() || !file.isFile() || file.isSymlink() || !file.isExecutable()) continue;
-      if (hook?.trusted) return path;
+      if (!file.exists() || !file.isFile() || file.isSymlink()) continue;
+      if (executable && !file.isExecutable()) continue;
+      if (trusted) return path;
       if (file.isWritable() || file.parent?.isWritable()) continue;
       if (!(await ownedByAnother(path))) continue;
       return path;
@@ -497,34 +512,112 @@ async function findClam() {
   return null;
 }
 
+/** The system's clamscan (decision 31 g; C2's one exception), or null. */
+function findClam() {
+  const hook = AgentDownloads._clamForTests;
+  return findSystemFile(hook?.paths ?? CLAM_PATHS, !!hook?.trusted);
+}
+
+/**
+ * A socket's type and owner, from statx(2), or null. Neither IOUtils nor nsIFile gives a file's
+ * owner, and the no-op chmod of `ownedByAnother` proves only "not the user's", not "root or
+ * clamav". statx is used, not stat, because struct statx has one layout on every architecture
+ * (linux/include/uapi/linux/stat.h), where struct stat differs between x86_64 and aarch64. A
+ * symlink is not followed, so it never counts as a socket.
+ * @param {string} path
+ * @returns {{ isSocket: boolean, uid: number } | null}
+ */
+function socketOwner(path) {
+  const ctypes = lazy.ctypes;
+  /** @type {any} */
+  let libc;
+  try {
+    libc = ctypes.open("libc.so.6");
+    const Statx = new ctypes.StructType("statx", [
+      { stx_mask: ctypes.uint32_t },
+      { stx_blksize: ctypes.uint32_t },
+      { stx_attributes: ctypes.uint64_t },
+      { stx_nlink: ctypes.uint32_t },
+      { stx_uid: ctypes.uint32_t },
+      { stx_gid: ctypes.uint32_t },
+      { stx_mode: ctypes.uint16_t },
+      { spare: ctypes.uint8_t.array(226) },
+    ]);
+    const statx = libc.declare(
+      "statx",
+      ctypes.default_abi,
+      ctypes.int,
+      ctypes.int,
+      ctypes.char.ptr,
+      ctypes.int,
+      ctypes.unsigned_int,
+      Statx.ptr,
+    );
+    const AT_FDCWD = -100;
+    const AT_SYMLINK_NOFOLLOW = 0x100;
+    const STATX_TYPE_UID = 0x1 | 0x8;
+    const st = new Statx();
+    if (statx(AT_FDCWD, path, AT_SYMLINK_NOFOLLOW, STATX_TYPE_UID, st.address()) !== 0) {
+      return null;
+    }
+    if ((st.stx_mask & STATX_TYPE_UID) !== STATX_TYPE_UID) return null;
+    return { isSocket: (st.stx_mode & 0o170000) === 0o140000, uid: st.stx_uid };
+  } catch (e) {
+    console.error("vimma: statx failed", e);
+    return null;
+  } finally {
+    libc?.close();
+  }
+}
+
+/**
+ * clamdscan, when clamd can be used (decision 45): a system clamdscan, a system clamd.conf
+ * that `clamdConfig` accepts, and its socket owned by root or clamav. Null otherwise.
+ * @returns {Promise<{ path: string, conf: string } | null>}
+ */
+async function findClamd() {
+  const hook = AgentDownloads._clamForTests;
+  if (hook && !hook.clamd) return null;
+  const trusted = !!hook?.trusted;
+  const path = await findSystemFile(hook?.clamd?.paths ?? CLAMD_PATHS, trusted);
+  if (!path) return null;
+  const conf = await findSystemFile([hook?.clamd?.conf ?? CLAMD_CONF], trusted, false);
+  if (!conf) return null;
+  const read = clamdConfig(await IOUtils.readUTF8(conf).catch(() => ""));
+  if ("problem" in read) return null;
+  if (trusted) return { path, conf };
+  const passwd = await IOUtils.readUTF8("/etc/passwd").catch(() => "");
+  const owner = socketOwner(read.socket);
+  if (!owner || !clamdSocketTrusted(owner, passwdUid(passwd, "clamav"))) return null;
+  return { path, conf };
+}
+
 /**
  * @typedef {{ kind: "clean" } | { kind: "infected", signature: string }
  *   | { kind: "partial", reason: string } | { kind: "error", why: string }} ClamAnswer
  */
 
 /**
- * Run clamscan on `path`, its output read to the end (stdout kept, stderr drained), within the
- * time limit: its answer, or an error.
- * @param {string} clam  from findClam @param {string} path
- * @returns {Promise<ClamAnswer>}
+ * Run one of the scanners with arguments from `clamArguments`, `clamdArguments` or
+ * `clamVersionArguments` (the only process Vimma starts, C2), its output read to the end
+ * (stdout kept, stderr drained), within the time limit.
+ * @param {string} program  from findClam or findClamd @param {string[]} args
+ * @returns {Promise<{ exitCode: number, stdout: string } | "late" | null>}  null when it
+ *   could not run
  */
-async function runClam(clam, path) {
+async function runProgram(program, args) {
   /** @type {any} */
   let proc;
   /** @type {any} */
   let timer;
   try {
-    proc = await lazy.Subprocess.call({
-      command: clam,
-      arguments: clamArguments(path),
-      stderr: "pipe",
-    });
+    proc = await lazy.Subprocess.call({ command: program, arguments: args, stderr: "pipe" });
     const ms = Services.prefs.getIntPref(CLAM_TIMEOUT_PREF, 0) || CLAM_TIMEOUT_MS;
     proc.stdin.close().catch(() => {});
     const run = (async () => {
       const drain = (async () => {
         while (await proc.stderr.readString()) {
-          // Read and dropped, so a full pipe never stops clamscan.
+          // Read and dropped, so a full pipe never stops the scanner.
         }
       })().catch(() => {});
       let stdout = "";
@@ -533,25 +626,66 @@ async function runClam(clam, path) {
       }
       await drain;
       const { exitCode } = await proc.wait();
-      return clamVerdict({ exitCode, stdout });
+      return { exitCode, stdout };
     })();
     // Past the limit it is killed and not waited for: a child it left may hold the pipes open.
     const late = new Promise((resolve) => {
       timer = lazy.setTimeout(() => resolve(null), ms);
     });
-    const verdict = await Promise.race([run, late]);
-    if (!verdict) {
+    const done = await Promise.race([run, late]);
+    if (!done) {
       run.catch(() => {});
       proc.kill();
-      return { kind: "error", why: "ClamAV took too long" };
+      return "late";
     }
-    return verdict.kind === "error" ? { kind: "error", why: "ClamAV failed" } : verdict;
+    return done;
   } catch (e) {
-    console.error("vimma: clamscan failed", e);
-    return { kind: "error", why: "ClamAV failed" };
+    console.error("vimma: ClamAV failed", e);
+    return null;
   } finally {
     lazy.clearTimeout(timer);
   }
+}
+
+/**
+ * Why a scanner's definitions are too old to call a scan clean (decisions 43-44), or null.
+ * @param {string} program @param {string[]} args  from clamVersionArguments
+ */
+async function definitionsProblem(program, args) {
+  const run = await runProgram(program, args);
+  const date = run && run !== "late" && run.exitCode === 0 ? clamDefinitionsDate(run.stdout) : null;
+  const maxDays = McpHost.config?.clamavMaxAgeDays ?? DEFAULT_MAX_AGE_DAYS;
+  return staleDefinitions(date, Date.now(), maxDays);
+}
+
+/**
+ * A scan's answer, from a run of `runProgram`.
+ * @param {{ exitCode: number, stdout: string } | "late" | null} run
+ * @returns {ClamAnswer}
+ */
+function answer(run) {
+  if (run === "late") return { kind: "error", why: "ClamAV took too long" };
+  const verdict = run ? clamVerdict(run) : { kind: /** @type {const} */ ("error") };
+  return verdict.kind === "error" ? { kind: "error", why: "ClamAV failed" } : verdict;
+}
+
+/**
+ * Scan `path`: with clamd when it can be used and its definitions are current, else with
+ * clamscan (decision 45: any clamd failure, stale or undated definitions included, ends in a
+ * full clamscan). Null when there is no scanner.
+ * @param {string} path
+ * @returns {Promise<{ verdict: ClamAnswer, stale: string | null } | null>}
+ */
+async function scan(path) {
+  const clamd = await findClamd();
+  if (clamd && !(await definitionsProblem(clamd.path, clamVersionArguments(clamd.conf)))) {
+    const verdict = answer(await runProgram(clamd.path, clamdArguments(clamd.conf, path)));
+    if (verdict.kind !== "error") return { verdict, stale: null };
+  }
+  const clam = await findClam();
+  if (!clam) return null;
+  const stale = await definitionsProblem(clam, clamVersionArguments());
+  return { verdict: answer(await runProgram(clam, clamArguments(path))), stale };
 }
 
 /**
@@ -590,9 +724,9 @@ async function check(download, base) {
     const outcome = await askAgain({ danger: danger.text });
     if (!outcome.allow) return block(download, { kind: "danger", text: danger.text });
   }
-  const clam = await findClam();
-  if (clam) {
-    const verdict = await runClam(clam, path);
+  const scanned = await scan(path);
+  if (scanned) {
+    const { verdict, stale } = scanned;
     if (verdict.kind === "infected") {
       return block(download, { kind: "infected", signature: verdict.signature });
     }
@@ -604,8 +738,17 @@ async function check(download, base) {
       if (!outcome.allow) {
         return block(download, { kind: "danger", text: `${unscanned}; you said no` });
       }
+      t.scan = verdict.kind;
+    } else if (stale) {
+      // Clean by old definitions is never reported clean (decision 43).
+      const outcome = await askAgain({ unscanned: stale });
+      if (!outcome.allow) {
+        return block(download, { kind: "danger", text: `${stale}; you said no` });
+      }
+      t.scan = "stale";
+    } else {
+      t.scan = verdict.kind;
     }
-    t.scan = verdict.kind;
   }
   return before ?? { shouldBlock: false, verdict: "" };
 }
@@ -746,11 +889,18 @@ function wrapDialog() {
 
 export const AgentDownloads = {
   /**
-   * Test-only: the clamscan candidates in place of CLAM_PATHS; `trusted` skips the ownership
-   * and write checks (a test's fake is the user's own).
-   * @type {{ paths: string[], trusted?: boolean } | null}
+   * Test-only: the clamscan candidates in place of CLAM_PATHS; `clamd`, clamdscan's in place
+   * of CLAMD_PATHS and the config in place of CLAMD_CONF (no clamd without it); `trusted` skips
+   * the ownership and write checks and the socket's (a test's fakes are the user's own).
+   * @type {{ paths: string[], trusted?: boolean,
+   *   clamd?: { paths: string[], conf: string } } | null}
    */
   _clamForTests: null,
+
+  /** Test-only: `socketOwner`. @param {string} path */
+  _socketOwnerForTests(path) {
+    return socketOwner(path);
+  },
 
   /** Once per app (AgentPages.init): the hooks stay for the session. */
   init() {

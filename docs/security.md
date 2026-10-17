@@ -252,12 +252,17 @@ text that pages, add-ons and bookmarks choose.
   [`toggles_in_the_side_panels_slot_one_panel_at_a_time`](../tests/browser/browser_vimma_bookmarks.js),
   [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.mjs)
 - C2. Chrome code **never** builds code from text (`eval`, `Function`) and **never** starts a
-  process, with one exception: the system's `clamscan` (only `/usr/bin/clamscan` or
-  `/usr/local/bin/clamscan`, never a `PATH` search, and only a regular file another user (root)
-  owns that the user cannot write, in a folder the user cannot write), in one call with fixed
-  arguments, the path after `--` and no shell, on an agent download in the quarantine folder
-  (M13; [vimma-mcp](specs/vimma-mcp.md) decision 31 g). [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
-  [`never starts a process, but clamscan on an agent download`](../tools/security/test/chrome-source.test.mjs)
+  process, with one exception: the system's ClamAV scanners, `clamscan` (only
+  `/usr/bin/clamscan` or `/usr/local/bin/clamscan`) and `clamdscan` (only `/usr/bin/clamdscan`
+  or `/usr/local/bin/clamdscan`), never from a `PATH` search, and only a regular file another
+  user (root) owns that the user cannot write, in a folder the user cannot write. They run in
+  one call with arguments from three fixed builders (the scan, clamd's scan with `--fdpass`, and
+  `--version`), the path after `--` and no shell, on an agent download in the quarantine folder
+  (M13; [vimma-mcp](specs/vimma-mcp.md) decisions 31 g, 43-45). Chrome code **never** calls
+  native code, with one exception: `statx(2)` from libc through js-ctypes, for the owner of
+  clamd's socket (M13). [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
+  [`never starts a process, but ClamAV on an agent download`](../tools/security/test/chrome-source.test.mjs),
+  [`never calls native code, but statx on clamd's socket`](../tools/security/test/chrome-source.test.mjs)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
   - The status bar **must** always show the selected page's real address with its registrable
@@ -680,7 +685,12 @@ control's wording, the audit) enter this section with their tests in the sub-PR 
   (`--alert-encrypted=yes --alert-exceeds-max=yes`), and deleted when ClamAV flags it; when
   ClamAV fails, takes over five minutes, or could not look inside (encrypted, over its limits),
   keeping the file unscanned is asked (y/N, no grant), and a no deletes it. The notice says
-  scanned, not fully scanned or not scanned. Vimma has no download reputation service of its
+  scanned, not fully scanned or not scanned. A clean scan by definitions older than
+  `[mcp] clamav_max_age_days` (7 days by default), or with no date in `--version`, is **never**
+  reported clean: keeping the file is asked the same way, and a yes says "scanned with outdated
+  definitions". `clamdscan` is used only when it passes clamscan's checks, the system's
+  clamd.conf passes them too and sets a local socket, no TCP socket and both alerts, and the
+  socket is owned by root or `clamav`; on any failure the file is scanned by `clamscan`. Vimma has no download reputation service of its
   own: Firefox's Safe Browsing checks downloads only in a build with a Google key (P6), so in a
   keyless build these checks and ClamAV are all there is.
   [`test_a_dangerous_file_needs_bang_for_that_one_file`](../tests/browser/browser_vimma_mcp_downloads.js),
@@ -691,6 +701,10 @@ control's wording, the audit) enter this section with their tests in the sub-PR 
   [`encrypted or over ClamAV's limits: not fully scanned, not infected`](../packages/vimma-core/test/agent-downloads.test.mjs),
   [`the arguments: fixed, alerting on what it cannot open, the path after --`](../packages/vimma-core/test/agent-downloads.test.mjs),
   [`test_clamav_clean_infected_error_and_missing`](../tests/browser/browser_vimma_mcp_downloads.js),
+  [`test_clamav_stale_definitions_and_clamd`](../tests/browser/browser_vimma_mcp_downloads.js),
+  [`stale past the set age, or with no date; never otherwise`](../packages/vimma-core/test/agent-downloads.test.mjs),
+  [`clamd.conf: a local socket, no TCP, alerting as clamscan is asked to`](../packages/vimma-core/test/agent-downloads.test.mjs),
+  [`the socket: a socket owned by root or clamav, never by the user or anyone else`](../packages/vimma-core/test/agent-downloads.test.mjs),
   [`a grant of the tool does not run it: it waits`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`! allows a dangerous one; y, a and counts do nothing there`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a dangerous name inside makes the zip dangerous, and says which`](../packages/vimma-core/test/agent-downloads.test.mjs),

@@ -343,6 +343,9 @@ notify = true
 # folder itself), never opened, and refused over download_max_mb (1 to 4096).
 download_dir = "~/Downloads/vimma-agent"
 download_max_mb = 200
+# A ClamAV scan with definitions older than this many days (1 to 90) is never reported
+# clean: keeping the file is asked, as for one ClamAV could not fully scan.
+clamav_max_age_days = 7
 
 # Per-site insert mode: auto (detect text fields), never (keys stay vimma's), always.
 # A host also covers its subdomains. None by default.

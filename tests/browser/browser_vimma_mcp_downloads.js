@@ -96,10 +96,12 @@ function configure(extra = {}) {
  * that list and, unless `owned` is asked for, lets a file of ours count as not ours. `clean`
  * exits 0, `infected` 1 with a signature, `partial` 1 with Heuristics.Encrypted, `error` 2,
  * `hang` sleeps past the timeout; `missing` leaves none.
+ * `--version` prints definitions dated now, `defs` days ago, or (`"none"`) none at all.
  * @param {"clean" | "infected" | "partial" | "error" | "hang" | "missing"} mode
- * @param {{ owned?: boolean }} [options]  `owned`: check ownership for real (the fake is ours)
+ * @param {{ owned?: boolean, defs?: number | "none" }} [options]  `owned`: check ownership for
+ *   real (the fake is ours)
  */
-async function fakeClam(mode, { owned = false } = {}) {
+async function fakeClam(mode, { owned = false, defs = 0 } = {}) {
   const script = PathUtils.join(clamDir, "clamscan");
   if (mode === "missing") {
     await IOUtils.remove(script, { ignoreAbsent: true });
@@ -115,6 +117,7 @@ async function fakeClam(mode, { owned = false } = {}) {
       script,
       [
         "#!/bin/sh",
+        version(defs),
         // Every argument, one per line, then a blank line; the file is the last one.
         'for a; do echo "$a"; done >> "$(dirname "$0")/args"; echo >> "$(dirname "$0")/args"',
         'for f; do :; done; echo "$f" >> "$(dirname "$0")/scanned"',
@@ -125,6 +128,65 @@ async function fakeClam(mode, { owned = false } = {}) {
     await IOUtils.setPermissions(script, 0o755);
   }
   AgentDownloads._clamForTests = { paths: [script], trusted: !owned };
+}
+
+/**
+ * The fake's answer to `--version` (decisions 43-44): ClamAV prints the definitions' date with
+ * ctime(3), in local time.
+ * @param {number | "none"} defs  days old, or no date
+ */
+function version(defs) {
+  const date =
+    defs === "none" ? "" : `/28156/$(date -d '${defs} days ago' '+%a %b %e %H:%M:%S %Y')`;
+  return `for a; do [ "$a" = --version ] && { echo "ClamAV 1.5.4${date}"; exit 0; }; done`;
+}
+
+/**
+ * A fake `clamdscan` and clamd.conf (decision 45), added to the fake clamscan's hook (call
+ * fakeClam first). `clean` exits 0, `error` 2 (no clamd to connect to); `defs` as in fakeClam.
+ * It logs what it scanned to `dscanned` and its arguments to `dargs`.
+ * @param {"clean" | "error"} mode
+ * @param {{ defs?: number | "none", conf?: string[] }} [options]  `conf`: clamd.conf's lines
+ */
+async function fakeClamd(mode, { defs = 0, conf } = {}) {
+  const dir = PathUtils.join(clamDir, "d");
+  await IOUtils.makeDirectory(dir, { ignoreExisting: true });
+  const script = PathUtils.join(dir, "clamdscan");
+  const confPath = PathUtils.join(dir, "clamd.conf");
+  await IOUtils.writeUTF8(
+    script,
+    [
+      "#!/bin/sh",
+      version(defs),
+      `for a; do echo "$a"; done > "${clamDir}/dargs"`,
+      `for f; do :; done; echo "$f" >> "${clamDir}/dscanned"`,
+      mode === "clean" ? 'echo "$f: OK"; exit 0' : 'echo "ERROR: Could not connect"; exit 2',
+      "",
+    ].join("\n"),
+  );
+  await IOUtils.setPermissions(script, 0o755);
+  await IOUtils.writeUTF8(
+    confPath,
+    (
+      conf ?? [
+        `LocalSocket ${PathUtils.join(dir, "clamd.ctl")}`,
+        "AlertEncrypted yes",
+        "AlertExceedsMax yes",
+      ]
+    ).join("\n"),
+  );
+  const hook = /** @type {any} */ (AgentDownloads._clamForTests);
+  hook.clamd = { paths: [script], conf: confPath };
+  return { conf: confPath };
+}
+
+/** What the fake clamdscan scanned, and clears it. */
+async function dscanned() {
+  const log = PathUtils.join(clamDir, "dscanned");
+  if (!(await IOUtils.exists(log))) return [];
+  const files = (await IOUtils.readUTF8(log)).trim().split("\n").filter(Boolean);
+  await IOUtils.remove(log);
+  return files;
 }
 
 /** The files the fake clamscan was asked to scan. */
@@ -479,25 +541,34 @@ add_task(async function test_the_size_cap() {
   await clean();
 });
 
+/**
+ * Download `name` in `tab`, allowed; if a second question asks to keep it unscanned, answer it.
+ * @param {any} tab @param {string} name
+ * @param {"once" | "deny" | null} [unscanned]  the answer if asked
+ */
+async function scanRun(tab, name, unscanned = null) {
+  const added = nextDownload();
+  await startIn(tab, fileUrl({ name, type: "text/plain" }));
+  const q = await downloadQuestion();
+  AgentGate.answer(q.id, { kind: "once" });
+  let why = "";
+  if (unscanned) {
+    const again = await until(
+      () => AgentGate.waiting.find((w) => /** @type {any} */ (w.what).unscanned),
+      "asks whether to keep it unscanned",
+    ).then(() => /** @type {any} */ (AgentGate.waiting[0]));
+    why = again.what.unscanned;
+    Assert.ok(why, `the question says why: ${why}`);
+    AgentGate.answer(again.id, { kind: unscanned });
+  }
+  const download = await added;
+  return { download, ok: await settled(download), why };
+}
+
 add_task(async function test_clamav_clean_infected_error_and_missing() {
   const tab = await agentTab();
-  /** @param {string} name @param {"once" | "deny" | null} [unscanned]  the answer if asked */
-  const run = async (name, unscanned = null) => {
-    const added = nextDownload();
-    await startIn(tab, fileUrl({ name, type: "text/plain" }));
-    const q = await downloadQuestion();
-    AgentGate.answer(q.id, { kind: "once" });
-    if (unscanned) {
-      const again = await until(
-        () => AgentGate.waiting.find((w) => /** @type {any} */ (w.what).unscanned),
-        "asks whether to keep it unscanned",
-      ).then(() => /** @type {any} */ (AgentGate.waiting[0]));
-      Assert.ok(again.what.unscanned, `the question says why: ${again.what.unscanned}`);
-      AgentGate.answer(again.id, { kind: unscanned });
-    }
-    const download = await added;
-    return { download, ok: await settled(download) };
-  };
+  /** @param {string} name @param {"once" | "deny" | null} [unscanned] */
+  const run = (name, unscanned = null) => scanRun(tab, name, unscanned);
 
   await fakeClam("clean");
   let r = await run("clean.txt");
@@ -565,6 +636,93 @@ add_task(async function test_clamav_clean_infected_error_and_missing() {
   Assert.ok(r.ok, "no ClamAV: released");
   await noticed('"plain.txt" to ');
   Assert.ok(notices.at(-1)?.endsWith(", not scanned"), notices.at(-1));
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_clamav_stale_definitions_and_clamd() {
+  const tab = await agentTab();
+  /** @param {string} name @param {"once" | "deny" | null} [unscanned] */
+  const run = (name, unscanned = null) => scanRun(tab, name, unscanned);
+
+  // Decision 43: clean by old definitions is asked about like a file not fully scanned.
+  await fakeClam("clean", { defs: 30 });
+  let r = await run("old.txt", "deny");
+  Assert.ok(!r.ok, "stale definitions ask; no deletes it");
+  Assert.equal(
+    r.why,
+    "ClamAV's definitions are 30 days old (over [mcp] clamav_max_age_days, 7)",
+    "the question says how old",
+  );
+  Assert.deepEqual(await names(quarantine), [], "deleted");
+  r = await run("old-kept.txt", "once");
+  Assert.ok(r.ok, "yes keeps it");
+  await noticed('"old-kept.txt" to ');
+  Assert.ok(
+    notices.at(-1)?.endsWith(", scanned with outdated definitions (ClamAV)"),
+    notices.at(-1),
+  );
+  // Decision 44: the age is the config's.
+  configure({ clamavMaxAgeDays: 60 });
+  r = await run("old-ok.txt");
+  Assert.ok(r.ok, "within [mcp] clamav_max_age_days: not asked");
+  await noticed('"old-ok.txt" to ');
+  Assert.ok(notices.at(-1)?.endsWith(", scanned (ClamAV)"), notices.at(-1));
+  configure();
+  await fakeClam("clean", { defs: "none" });
+  r = await run("undated.txt", "once");
+  Assert.equal(r.why, "ClamAV's definitions have no date", "no date is stale");
+  // Infected stays infected, however old the definitions.
+  await fakeClam("infected", { defs: 30 });
+  r = await run("old-bad.txt");
+  Assert.ok(!r.ok, "infected by old definitions: refused, not asked");
+
+  // Decision 45: clamdscan when clamd can be used, the file passed open, the checked config.
+  await fakeClam("infected");
+  const { conf } = await fakeClamd("clean");
+  r = await run("fast.txt");
+  Assert.ok(r.ok, "clamd's clean is clean (the fake clamscan would have said infected)");
+  const viaClamd = await dscanned();
+  Assert.equal(viaClamd.length, 1, "clamdscan scanned it");
+  const dargs = (await IOUtils.readUTF8(PathUtils.join(clamDir, "dargs"))).trim().split("\n");
+  Assert.deepEqual(
+    dargs,
+    [`--config-file=${conf}`, "--fdpass", "--no-summary", "--stdout", "--", viaClamd[0]],
+    "the checked config, the file passed open, the path after --",
+  );
+  await noticed('"fast.txt" to ');
+  Assert.ok(notices.at(-1)?.endsWith(", scanned (ClamAV)"), notices.at(-1));
+
+  // Any clamd failure ends in a full clamscan.
+  await IOUtils.remove(PathUtils.join(clamDir, "scanned"), { ignoreAbsent: true });
+  await fakeClam("clean");
+  await fakeClamd("error");
+  r = await run("fallback.txt");
+  Assert.ok(r.ok, "clamd failed: clamscan's clean");
+  Assert.equal((await dscanned()).length, 1, "clamdscan was tried");
+  Assert.equal((await scanned()).length, 1, "then clamscan scanned it");
+
+  await fakeClam("clean");
+  await fakeClamd("clean", { defs: "none" });
+  r = await run("nodate.txt");
+  Assert.ok(r.ok, "clamd with no dated definitions: clamscan instead");
+  Assert.deepEqual(await dscanned(), [], "clamdscan did not scan");
+
+  await fakeClam("clean");
+  await fakeClamd("clean", { conf: ["LocalSocket /run/x.ctl", "AlertEncrypted yes"] });
+  r = await run("noalert.txt");
+  Assert.ok(r.ok, "saved");
+  Assert.deepEqual(await dscanned(), [], "a clamd that does not alert past its limits is not used");
+
+  await fakeClam("clean", { owned: true });
+  await fakeClamd("clean");
+  r = await run("ours.txt");
+  Assert.ok(r.ok, "saved");
+  Assert.deepEqual(await dscanned(), [], "a clamdscan and config of the user's own are not used");
+
+  // The socket's owner, from statx: root's folder is root's and not a socket.
+  Assert.deepEqual(AgentDownloads._socketOwnerForTests("/"), { isSocket: false, uid: 0 });
+  Assert.equal(AgentDownloads._socketOwnerForTests(PathUtils.join(clamDir, "none")), null);
   BrowserTestUtils.removeTab(tab);
   await clean();
 });

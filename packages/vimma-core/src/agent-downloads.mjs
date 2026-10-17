@@ -448,6 +448,125 @@ export function clamVerdict({ exitCode, stdout }) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// ClamAV's definitions and clamd (decisions 43-45).
+
+/**
+ * The arguments that make a scanner print its version and its definitions' version and date.
+ * `clamdscan` asks clamd for them, so it gets the same config file as the scan.
+ * @param {string} [configFile]
+ */
+export function clamVersionArguments(configFile) {
+  return configFile ? [`--config-file=${configFile}`, "--version"] : ["--version"];
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * The definitions' date from `--version` output (`ClamAV 1.5.4/28156/Sat Oct 17 09:25:46 2026`),
+ * in milliseconds. ClamAV prints it with ctime(3), in local time. Null when the output has no
+ * date: `clamdscan` with no clamd to ask prints only its own version.
+ * @param {string} text
+ * @returns {number | null}
+ */
+export function clamDefinitionsDate(text) {
+  const m =
+    /^ClamAV [^/\n]+\/\d+\/\w{3} (\w{3}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})\s*$/m.exec(
+      String(text ?? ""),
+    );
+  if (!m) return null;
+  const month = MONTHS.indexOf(String(m[1]));
+  const [day = 0, h = 0, min = 0, sec = 0, year = 0] = m.slice(2).map(Number);
+  if (month < 0 || day < 1 || day > 31 || h > 23 || min > 59 || sec > 60) return null;
+  const date = new Date(year, month, day, h, min, sec);
+  return date.getDate() === day ? date.getTime() : null;
+}
+
+/**
+ * Why the definitions are too old to call a scan clean, or null when they are not. A date in
+ * the future (a clock behind the mirror's) is not stale.
+ * @param {number | null} definitionsMs
+ * @param {number} nowMs
+ * @param {number} maxDays  `[mcp] clamav_max_age_days`
+ * @returns {string | null}
+ */
+export function staleDefinitions(definitionsMs, nowMs, maxDays) {
+  if (definitionsMs === null) return "ClamAV's definitions have no date";
+  const age = nowMs - definitionsMs;
+  if (age <= maxDays * 86_400_000) return null;
+  const days = Math.floor(age / 86_400_000);
+  return `ClamAV's definitions are ${days} days old (over [mcp] clamav_max_age_days, ${maxDays})`;
+}
+
+/**
+ * `clamdscan`'s arguments: the config file whose socket and alerts were checked, the file
+ * passed as an open descriptor (clamd runs as another user and may not read the quarantine),
+ * and the path after `--`. clamdscan has no `--alert-*` options; `clamdConfig` checks that
+ * clamd.conf turns them on.
+ * @param {string} configFile
+ * @param {string} path
+ */
+export function clamdArguments(configFile, path) {
+  return [`--config-file=${configFile}`, "--fdpass", "--no-summary", "--stdout", "--", path];
+}
+
+/** clamd.conf's booleans (clamd's optparser accepts these spellings for true). */
+const YES = new Set(["yes", "true", "1", "on"]);
+
+/**
+ * What clamd.conf says that matters here: the local socket, or why clamd is not used. clamd
+ * must not listen on TCP (anyone on the network could answer), and must alert on encrypted
+ * files and files over its limits, as `clamscan` is asked to, or such a file would scan clean.
+ * The last setting of a key wins, as in clamd.
+ * @param {string} text
+ * @returns {{ socket: string } | { problem: string }}
+ */
+export function clamdConfig(text) {
+  /** @type {Map<string, string>} */
+  const keys = new Map();
+  for (const raw of String(text ?? "").split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const m = /^(\S+)\s*(.*)$/.exec(line);
+    if (m) keys.set(String(m[1]).toLowerCase(), String(m[2]).trim());
+  }
+  if (keys.has("tcpsocket")) return { problem: "clamd listens on TCP" };
+  const socket = keys.get("localsocket") ?? "";
+  if (!socket.startsWith("/")) return { problem: "no LocalSocket" };
+  if (!YES.has((keys.get("alertencrypted") ?? "").toLowerCase())) {
+    return { problem: "clamd does not alert on encrypted files" };
+  }
+  if (!YES.has((keys.get("alertexceedsmax") ?? "").toLowerCase())) {
+    return { problem: "clamd does not alert on files over its limits" };
+  }
+  return { socket };
+}
+
+/**
+ * A user's uid from /etc/passwd, or null.
+ * @param {string} text
+ * @param {string} name
+ * @returns {number | null}
+ */
+export function passwdUid(text, name) {
+  for (const line of String(text ?? "").split("\n")) {
+    const fields = line.split(":");
+    if (fields[0] !== name) continue;
+    return /^\d+$/.test(fields[2] ?? "") ? Number(fields[2]) : null;
+  }
+  return null;
+}
+
+/**
+ * Whether clamd's socket can be trusted: a socket owned by root or by clamav. One owned by the
+ * user (or anyone else) could be a fake clamd that answers clean.
+ * @param {{ isSocket: boolean, uid: number }} stat
+ * @param {number | null} clamavUid
+ */
+export function clamdSocketTrusted({ isSocket, uid }, clamavUid) {
+  return isSocket && (uid === 0 || (clamavUid !== null && uid === clamavUid));
+}
+
+// ---------------------------------------------------------------------------------------------
 // The quarantine folder (decision 31 b).
 
 /**
@@ -532,18 +651,20 @@ export function formatBytes(n) {
 
 /**
  * The notice once a download is out of quarantine.
- * @param {{ name: string, dir: string, scan: "clean" | "partial" | "none" | "error" }} a
+ * @param {{ name: string, dir: string, scan: "clean" | "stale" | "partial" | "none" | "error" }} a
  *   `dir` as shown
  */
 export function downloadSavedNotice({ name, dir, scan }) {
   const how =
     scan === "clean"
       ? "scanned (ClamAV)"
-      : scan === "partial"
-        ? "not fully scanned (ClamAV)"
-        : scan === "error"
-          ? "not scanned (ClamAV failed)"
-          : "not scanned";
+      : scan === "stale"
+        ? "scanned with outdated definitions (ClamAV)"
+        : scan === "partial"
+          ? "not fully scanned (ClamAV)"
+          : scan === "error"
+            ? "not scanned (ClamAV failed)"
+            : "not scanned";
   return `saved "${oneLine(name, 60)}" to ${oneLine(dir, 60)}, ${how}`;
 }
 
