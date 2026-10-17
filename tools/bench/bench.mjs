@@ -37,7 +37,7 @@ import { cpus, tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { combine, combinePaired, compare, formatTable, median, minOfMedians } from "./compare.mjs";
+import { combinePaired, compare, formatTable, median, minOfMedians } from "./compare.mjs";
 
 const WARMUP_MS = 200;
 const SAMPLE_NS = 100_000;
