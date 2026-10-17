@@ -264,7 +264,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
 
   verify("working tree", (await load(REPO)).CASES);
-  const commit = valueOf("--base") ?? JSON.parse(readFileSync(BASELINE, "utf8")).commit;
+  const stored = JSON.parse(readFileSync(BASELINE, "utf8"));
+  const override = valueOf("--base");
+  const commit = override ?? stored.commit;
+  // Accepted costs are relative to the stored commit; against another commit they mean nothing.
+  const accepted = override ? {} : (stored.accepted ?? {});
   const dir = mkdtempSync(join(tmpdir(), "vimma-bench-base-"));
   /** @type {{ head: import("./compare.mjs").Result, base: import("./compare.mjs").Result }[]} */
   const results = [];
@@ -284,7 +288,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (process.exitCode === 2) process.exit(2);
   const head = combine(results.map((r) => r.head));
   const base = combine(results.map((r) => r.base));
-  const r = compare(head, base);
+  const r = compare(head, base, { accepted });
   const json = valueOf("--json");
   if (json) writeFileSync(json, `${JSON.stringify({ commit, head, base }, null, 2)}\n`);
   console.log(

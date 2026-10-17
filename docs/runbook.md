@@ -553,7 +553,7 @@ triggered. `nightly.yml` and `release.yml` run their full builds on GitHub-hoste
 about 124 min per nightly and 117 min per release, free on a standard runner, and off until
 their variables are set ("Full builds" below). Usage is listed in Settings → Billing → Usage.
 
-The bench step adds about half a minute to each CI run. `mutation.yml` is the largest scheduled
+The bench step adds about 45 seconds to each CI run. `mutation.yml` is the largest scheduled
 cost: a full run (first Sunday of the month) is estimated at 60–90 min on the 2-CPU runner
 (4 916 mutants; 22 min with 12 workers locally, about 0.6 s per mutant per CPU), an incremental
 week a few minutes plus one for the report job: roughly 100 min a month, free now. If the full
@@ -664,35 +664,49 @@ packages/vimma-core/test/fuzz` (about a minute).
 Plan §5, issue #17: key-to-action in core must stay under 50 µs and must not regress by more
 than 10 %. `npm run bench` measures five cases (a single key, the prefix plus a key, a count plus
 a motion, a two-key sequence, and applying a pane-focus action to a 30-tab workspace) from
-`packages/vimma-core/bench/cases.mjs`; `npm run bench -- --check` is the CI step. It fails when:
+`packages/vimma-core/bench/cases.mjs`, twice: as the working tree has them and as the **baseline
+commit** named in `packages/vimma-core/bench/baseline.json` has them, in the same processes,
+sample by sample. `npm run bench -- --check` is the CI step (about 45 s). It fails when:
 
-- any case takes **50 µs or more** (budget; applies on every machine), or
-- on a machine the baseline knows: the **suite**, the geometric mean of the cases' changes, is
-  more than **10 %** slower, or one case is more than **25 %** slower, or a baseline case is gone.
-- on a machine it does not know (a new runner CPU, a Node bump): the same, against the **most
-  demanding entry of the same arch and Node major**, with both limits widened by 40 points (50 %
-  suite, 65 % per case). Ratios do not carry across CPU generations: the Xeon 8573C and EPYC 9V74
-  entries differ by up to 5.5 % per case, but unchanged code on an EPYC 7763 measured +19 %
-  suite and up to +30 % per case against the 9V74 (run 37966135702), so a tighter fallback would
-  fail on hardware, not code. It still catches a gross regression. The step
-  then emits a `::warning::` and a step-summary line naming that entry. Only with no entry of the
-  same arch and Node major does it fall back to the budget alone, also with a warning. It never
-  passes silently.
+- any case of the working tree takes **50 µs or more** (budget), or
+- the **suite**, the geometric mean of the cases' changes against the baseline commit, is more
+  than **10 %** slower, or one case is more than **25 %** slower, or a case of the baseline
+  commit is gone.
+
+The gate is the same on every machine: there are no per-runner numbers to fall back from.
+`--base <commit>` measures against another commit, for example `--base origin/main` to see what
+a branch costs before opening a pull request.
 
 Why it does not flake (plan §5: no retries; flaky means quarantine):
 
+- **The baseline is measured in the same run (issue #342).** Until issue #342 the baseline was
+  numbers, one entry per runner class, recorded by other jobs. Unchanged code then read up to
+  +12.5 % on the suite against them: over 88 CI runs on `main`, the Xeon 8370C entry (two
+  samples) read +11.6 % to +12.5 % every time, the EPYC 9V45 and 9V74 entries +5 % to +9 %, and
+  one Xeon 8573C job +10.7 %. A recorded number carries its job's image, neighbours and load, and
+  the gate's 10 % margin went on that. Now both sides of each case run on the same runner, in the
+  same 15 processes, a few milliseconds apart; in 20 hosted jobs over six CPU models, unchanged
+  code read −1.6 % to +3.4 % on the suite (cases −3.3 % to +8.7 %), and `main` against the
+  baseline commit −0.7 % to +1.6 % (cases −4.3 % to +5.8 %).
+- **Sample by sample, not case after case.** Each sample sweeps over every case in an order that
+  rotates per sample. Measured case after case, each case's 51 samples took their own block of
+  time, and a change in the runner's load between two blocks (another process on the sibling
+  hyperthread slows an allocating case more than the reference) moved one side against the
+  other: in the gate's own test (below), unchanged code read from −21 % to +40 % on one case under
+  the coverage pool; sample by sample, from −14 % to +12 %.
+- **Load order alternates.** Two copies of identical code in one process differ by several per
+  cent on the sub-microsecond cases, one way or the other, from process to process. Loading the
+  working tree first in every process leaned that one way (+6 % to +8 % on the suite for
+  identical code on one machine), so every other process loads and lists the baseline first.
 - **Ratios, not raw times.** Each sample times a case and then a fixed reference workload; the
-  gate compares the case/reference ratio. A faster or slower VM, or a clock change mid-run, moves
-  both. (The AMD EPYC 9V74 runners come in two speeds, about 30 % apart in raw µs; their ratios
-  agree.)
+  gate compares the case/reference ratio. A clock change or a busy neighbour mid-run moves both.
 - **A reference that costs the same in every process.** The reference looks up integer keys in a
   `Map`. V8 hashes strings with a hash seed it picks at random per process, so a string-keyed
   table gets a different bucket layout in each process; the old string-keyed reference was up to
   22 % slower or faster from one process to the next on an AMD EPYC 7763, and every ratio of that
-  process moved with it (issue #125). Integer keys are hashed without the seed: the reference now
-  varies by under 1 % between processes on most runner classes. Each bench prints the spread
-  (`reference 0.480 µs, +0.2 % from fastest to slowest process`); a large one says the reference
-  stopped being steady.
+  process moved with it (issue #125). Integer keys are hashed without the seed. Each bench prints
+  the spread (`reference 0.480 µs, +0.2 % from fastest to slowest process`); a large one says the
+  reference stopped being steady.
 - **The same hash seeds on every run.** The cases do use string keys (the dispatcher's trie), so
   each of the 15 processes runs with its own fixed `--hash-seed` (1 to 15): every run measures the
   same set of table layouts, not 15 new random ones.
@@ -700,57 +714,39 @@ Why it does not flake (plan §5: no retries; flaky means quarantine):
   median over 5 rounds, per process. Over the 15 processes: the **lowest µs** for the budget
   (noise only adds time) and the **median ratio** for the gate. Not the lowest ratio: noise in
   the reference's time lowers a ratio, so the lowest ratio picked whichever process had the
-  slowest reference, and the gate compared one run's outlier with the next run's. That is what
-  failed PR #121 (+10.9 % suite with the same raw µs as main).
-- **One baseline per runner class.** Entries are keyed by `CPU model | arch | node X.Y.Z`;
-  GitHub's pool mixes CPU models (AMD EPYC 7763, 9V74 and 9V45, Intel Xeon Platinum 8573C and
-  8370C, Intel Xeon 6973P-C so far), and ratios do not carry exactly across microarchitectures
-  or V8 versions.
-- **Several samples per entry.** An entry's `cases` are the per-case median of its `samples`, one
-  per CI job, so one unlucky recording does not set the bar. Keep at least three per class
-  where the pool allows: re-recorded for issue #125 from 60 hosted jobs, AMD EPYC 7763 has 30
-  samples, 9V74 12, 9V45 11, Xeon 8573C 5 and Xeon 8370C 2 (rare in the pool); the Xeon 6973P-C
-  did not come up and uses the fallback.
-- **Suite-level 10 %.** Measured with this method, 30 hosted jobs on the same commit: the suite
-  of one runner class stays within about 1 % from job to job (AMD EPYC 7763: 15 jobs, 0.7 %
-  max−min; 9V74: 6 jobs, 1 %); single cases within a few per cent. With the old method the same
-  class moved from −18 % to +11 % against its baseline on unchanged code. So 10 % on the suite
-  and 25 % per case are a wide margin over the noise, and a 20 % slower dispatcher fails the gate
-  (`tools/bench/test/bench.test.mjs`). That test measures the baseline, an unchanged copy and the
-  slowed code as variants of one `measure()` call, sample by sample in rotating order, so all
-  three see the same JIT state and the same load from the parallel test pool, and gates the
-  median of three such runs, as the bench does over its 15 processes (issue #202: measured one
-  after the other, unchanged code read from −16 % to +17 % on the suite under coverage).
+  slowest reference (issue #125, PR #121).
+- **It still catches a real slowdown.** A dispatcher made 20 % slower fails the gate
+  (`tools/bench/test/bench.test.mjs`): the test measures the baseline, an unchanged copy and the
+  slowed code as variants of one `measure()` call, as the bench measures its two sides, and gates
+  the median of three such runs. By hand: a loop of 24 multiply-adds at the top of `dispatch()`
+  read +15.2 % on the suite against `--base HEAD` and the step exited 1.
 - **The budget has headroom.** The slowest case is about 17 µs on CI, the key cases under 1 µs.
 
 If the step does fail without a slowing change, that is a flake: quarantine per plan §5 (open an
 issue with the log; do not re-run to green), and look at the numbers before touching thresholds.
 
 **Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, release-please and claude
-use `node-version-file: .nvmrc`, and so do the nightly and release build jobs. One exception, which
-does not run the bench: release.yml's package job checks out a release tag (tags from before
-`.nvmrc` lack it) and stays on major 22. The baseline is keyed on the exact version because a V8 patch can move these numbers. A
-Node bump is therefore its own PR, by hand (Dependabot has no `.nvmrc` support): its bench
-step falls back to the previous version's entries with a warning, and that PR records the new key.
+use `node-version-file: .nvmrc`, and so do the nightly and release build jobs. One exception:
+release.yml's package job checks out a release tag (tags from before `.nvmrc` lack it) and stays
+on major 22. A Node bump is its own PR, by hand (Dependabot has no `.nvmrc` support). The bench
+needs nothing for it: both sides of the comparison run on the same Node.
 
-Updating the baseline, deliberately (like snapshots: never to make a red run green without
-saying why):
+Moving the baseline, deliberately (like snapshots: never to make a red run green without saying
+why):
 
-1. A change that is meant to cost time (a new feature in the dispatch path), a new or renamed
-   case, a Node bump or a new runner CPU model are the reasons to re-record.
-2. Take the numbers from CI, not a laptop. Every bench step prints `baseline entry:` for the
-   runner it ran on: a new entry, or the existing one with this run added as a sample (medians
-   recomputed). `gh run view <run id> --log | node tools/bench/collect.mjs` adds the sample of
-   every bench job in that run to `packages/vimma-core/bench/baseline.json`; with `--replace` it
-   first drops the earlier samples of those machines (the code or the method changed on purpose),
-   and `--notes "<notes>"` sets the notes. On a machine of the class itself,
-   `npm run bench -- --record "<notes>"` adds a sample in place.
-3. Keep the notes (runner image, why), and at least three samples per class. One CI run lands on
-   one random runner class; to sample several classes at once, push a throwaway branch with a
-   workflow that runs `node tools/bench/bench.mjs` in a matrix of about 30 jobs (as for issue
-   #125: about half land on an AMD EPYC 7763), collect its run, and delete the branch.
+1. A change that is meant to cost time (a new feature in the dispatch path), or removing or
+   renaming a case, is the reason to move it. A new case needs no move: it is measured, noted as
+   having no baseline yet, and held to the budget until the baseline commit has it.
+2. A pull request cannot name its own merge commit, so it states the cost it brings in
+   `baseline.json`'s `accepted`, per case: `"prefix + key": { "change": 0.12, "why": "per-mode
+leader lookup" }`. The gate then compares the case with the baseline commit's time plus 12 %,
+   and prints the accepted cost as a note. `npm run bench` shows the cost to put there.
+3. A later pull request moves `commit` to a commit that has the change and empties `accepted`.
+   Removing or renaming a case needs the same move: the commit must not have the old case.
 4. The commit body carries a changelog line naming the cases and the change, e.g.
    `bench baseline: prefix + key +12 % from per-mode leader lookup (intended)`.
+
+`--base <commit>` ignores `accepted`, which is relative to the stored commit.
 
 ### Key-to-paint timings (`browser_vimma_perf.js`)
 
@@ -792,7 +788,7 @@ ms for all three cases; paint 85 ms for pane-focus, 150 ms for workspace-200-in,
 workspace-200-out. Past one means a doubled action or about two extra frames, not runner noise.
 The floors are not gated. Plan §5's "< 5 ms key-to-paint" cannot be checked as an absolute in
 a headless run whose paints come every ~35 ms; the closest gated reading is the action time,
-8 to 13 ms today, mostly Firefox's own tab selection. Like the bench baseline, re-record from CI
+8 to 13 ms today, mostly Firefox's own tab selection. Re-record from CI
 numbers only, with a changelog line in the commit body; two CI samples back them so far, so add
 later runs' `VIMMA_PERF` lines here before tightening anything.
 

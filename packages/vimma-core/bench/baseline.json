@@ -1,5 +1,6 @@
 {
-  "$comment": "The commit whose key-to-action cases every bench run measures alongside the working tree's, and gates against (tools/bench/bench.mjs, docs/runbook.md \"Bench baseline\"). Move it deliberately, with a changelog line.",
+  "$comment": "The commit whose key-to-action cases every bench run measures alongside the working tree's, and gates against (tools/bench/bench.mjs, docs/runbook.md \"Bench baseline\"). Move it deliberately, with a changelog line. `accepted` maps a case to a cost accepted on top of that commit ({ \"change\": 0.12, \"why\": \"...\" }); empty it when the commit moves past the change.",
   "commit": "011c1dfa815417b1bbd74e32217b1a37041aeadf",
-  "notes": "The code the per-runner baseline numbers were recorded from for issue #125, kept as the reference when the gate moved to measuring the baseline in the same run (issue #342)."
+  "notes": "The code the per-runner baseline numbers were recorded from for issue #125, kept as the reference when the gate moved to measuring the baseline in the same run (issue #342).",
+  "accepted": {}
 }

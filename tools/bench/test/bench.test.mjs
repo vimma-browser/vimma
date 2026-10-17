@@ -107,12 +107,14 @@ describe("the baseline", () => {
 });
 
 describe("the gate on a real measurement", () => {
-  // Issue #202: the unchanged code, the slowed code and the baseline are variants measured in one
-  // measure() call, sample by sample in rotating order, so they share the JIT's state, the
-  // runner's speed and whatever else the parallel test pool is doing at the time. Measured one
-  // after the other, the code measured first ran in a different JIT state from the code measured
-  // after the slowdown, and the pool's load moved between them: unchanged code read from -20 % to
-  // +27 % on a single key against its own baseline on hosted runners.
+  // Issues #202 and #342: the unchanged code, the slowed code and the baseline are variants
+  // measured in one measure() call, sample by sample in rotating order, so they share the JIT's
+  // state, the runner's speed and whatever else the parallel test pool is doing at the time.
+  // Measured one after the other (#202), the code measured first ran in a different JIT state
+  // from the code measured after the slowdown. Measured in one call but case after case (#342),
+  // the pool's load still moved between the variants' blocks of samples: in 60 such checks on
+  // hosted runners under the coverage pool, unchanged code read from -21 % to +40 % on one case;
+  // sample by sample, from -14 % to +12 %.
   /**
    * The cases with the dispatcher slowed by `n` iterations, named `tag` + the case's name. Every
    * variant runs through the same closure, so they differ only in the work the flag injects.
@@ -158,9 +160,9 @@ describe("the gate on a real measurement", () => {
     const perIteration = (keyRatio(pick(sizing, "b|")) / keyRatio(pick(sizing, "a|")) - 1) / SIZING;
     let n = Math.max(1, Math.round(0.25 / perIteration));
 
-    // Under the coverage pool, one A/B in about twenty still reads every case of one variant
-    // 10 % to 18 % off another, even the apply case the slowdown does not touch, and the injected
-    // loop's cost moves as the JIT recompiles it (14 iterations read +19 % in one A/B, +3 % in
+    // Under the coverage pool, an A/B can still read every case of one variant a few per cent
+    // off another, even the apply case the slowdown does not touch, and the injected loop's cost
+    // moves as the JIT recompiles it (14 iterations read +19 % in one A/B, +3 % in
     // the next). The bench takes the median of 15 processes for this; the test takes the median
     // of three A/Bs, and checks the slowdown on that same median: while a single key reads under
     // +20 %, it grows the work towards +25 % and measures again. The work only grows.

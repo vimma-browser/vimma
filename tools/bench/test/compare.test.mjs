@@ -162,6 +162,32 @@ describe("compare", () => {
   });
 });
 
+describe("compare with an accepted cost", () => {
+  it("gates a case against its baseline plus the cost the baseline accepts for it, and says so", () => {
+    const accepted = { a: { change: 0.12, why: "per-mode leader lookup" } };
+    const r = compare(
+      result({ a: { us: 1, ratio: 2.24 }, b: { us: 1, ratio: 4 } }),
+      baseline({ a: { us: 1, ratio: 2 }, b: { us: 1, ratio: 4 } }),
+      { accepted },
+    );
+    expect(r.ok).toBe(true);
+    expect(r.suiteChange).toBeCloseTo(0);
+    expect(r.rows[0]?.change).toBeCloseTo(0);
+    expect(r.notes).toEqual([
+      expect.stringMatching(/^a: \+12\.0 % accepted by the baseline \(per-mode leader lookup\)/),
+    ]);
+  });
+
+  it("still fails a case that costs more than the baseline accepts plus the limit", () => {
+    const accepted = { a: { change: 0.12, why: "w" } };
+    const r = compare(result({ a: { us: 1, ratio: 2.9 } }), baseline({ a: { us: 1, ratio: 2 } }), {
+      accepted,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.failures[0]).toMatch(/^suite: \+29\.5 % /);
+  });
+});
+
 describe("compare: cases that come and go", () => {
   it("notes, without failing, a case the baseline does not have yet", () => {
     const r = compare(result({ fresh: { us: 1, ratio: 2 } }), baseline({}));

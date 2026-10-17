@@ -23,6 +23,10 @@ const EPSILON = 1e-9;
  * @typedef {{ us: number, ratio: number }} CaseResult µs per key-to-action, and that over the
  *   reference workload's µs (min of per-round medians, both)
  * @typedef {{ machine: string, referenceUs: number, cases: Record<string, CaseResult> }} Result
+ * @typedef {Record<string, { change: number, why: string }>} Accepted costs the baseline accepts
+ *   on top of the baseline commit, per case: a change meant to cost time cannot name its own
+ *   commit before it is merged, so it states the cost here and the next move of the commit
+ *   folds it in (docs/runbook.md, "Bench baseline")
  * @typedef {{ name: string, us: number, ratio: number, base: number | null,
  *   change: number | null }} Row
  */
@@ -90,12 +94,18 @@ const pct = (x) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)} %`;
 /**
  * @param {Result} result the working tree's cases
  * @param {Result} base the baseline commit's cases, measured in the same processes
- * @param {{ threshold?: number, caseThreshold?: number, budgetUs?: number }} [opts]
+ * @param {{ threshold?: number, caseThreshold?: number, budgetUs?: number,
+ *   accepted?: Accepted }} [opts]
  */
 export function compare(
   result,
   base,
-  { threshold = THRESHOLD, caseThreshold = CASE_THRESHOLD, budgetUs = BUDGET_US } = {},
+  {
+    threshold = THRESHOLD,
+    caseThreshold = CASE_THRESHOLD,
+    budgetUs = BUDGET_US,
+    accepted = {},
+  } = {},
 ) {
   /** @type {string[]} */
   const failures = [];
@@ -109,12 +119,17 @@ export function compare(
     if (us >= budgetUs) {
       failures.push(`${name}: ${us.toFixed(2)} µs is not under the ${budgetUs} µs budget`);
     }
-    const was = base.cases[name]?.ratio ?? null;
+    const measured = base.cases[name]?.ratio ?? null;
+    const allowance = accepted[name];
+    const was = measured === null ? null : measured * (1 + (allowance?.change ?? 0));
     const change = was === null ? null : ratio / was - 1;
     rows.push({ name, us, ratio, base: was, change });
     if (change === null) {
       notes.push(`${name}: no baseline for this case yet (not in the baseline commit)`);
       continue;
+    }
+    if (allowance) {
+      notes.push(`${name}: ${pct(allowance.change)} accepted by the baseline (${allowance.why})`);
     }
     logSum += Math.log1p(change);
     compared++;
