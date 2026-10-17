@@ -6,7 +6,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
-- Keys: every Firefox shortcut is now a Vimma binding on Firefox's own key (`ctrl+j`, `ctrl+shift+b`, `ctrl+shift+d`, `F7`, `shift+esc` in normal mode, the sidebar keys and more), listed in `ctrl+b ?` and rebindable; `ctrl+f` is a second find key. The `defaults.toml` and help snapshots gain the new rows.
+- Keys: every Firefox shortcut is now a Vimma binding on Firefox's own key (`ctrl+j`, `ctrl+shift+b`, `ctrl+shift+d`, `F7`, `shift+esc` in normal mode, the sidebar keys and more), listed in `ctrl+b ?` and rebindable; `ctrl+f` is a second find key. `[firefox] disable` now defaults to `"all"`, so Firefox's own shortcuts are off and only Vimma's bindings run; `enable` gives one back. The `defaults.toml` and help snapshots gain the new rows and the new `[firefox]` default.
 - Agent downloads: a ClamAV scan with definitions older than `[mcp] clamav_max_age_days` (default 7) is never reported clean, and clamd is used through `clamdscan` when it can be trusted, with `clamscan` as the fallback. The `defaults.toml` snapshot gains the new key.
 
 ## [0.1.4](https://github.com/vimma-browser/vimma/compare/v0.1.3...v0.1.4) · Firefox 158.0 (2026-10-17)

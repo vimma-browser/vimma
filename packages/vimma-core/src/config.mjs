@@ -18,7 +18,7 @@ import { MAIN_SIZE_DEFAULT } from "./layouts.mjs";
 import { APPEARANCES, BUILTIN_THEMES, PALETTE_KEYS, isHexColor, normalizeHex } from "./theme.mjs";
 import { resolveRoutes, validateRoutes } from "./routes.mjs";
 import { formatPath, locateKeys, parsePath, parseToml } from "./toml.mjs";
-import { OVERLAP_CHORDS, canonicalChord, isShortcutChord } from "./firefox-keys.mjs";
+import { canonicalChord, isShortcutChord } from "./firefox-keys.mjs";
 import { KeyNotationError, parseKey } from "./keys.mjs";
 import { BOOKMARKS_ROOTS } from "./bookmarks.mjs";
 import { quarantineProblem, resolveDownloadDir } from "./agent-downloads.mjs";
@@ -748,7 +748,7 @@ function toNumbers(v) {
  * @returns {FirefoxKeySetting}
  */
 function resolveFirefox(firefox) {
-  const disable = firefox?.disable ?? OVERLAP_CHORDS;
+  const disable = firefox?.disable ?? "all";
   return {
     disable: disable === "all" ? "all" : [...new Set(disable.map(canonicalChord))],
     enable: [...new Set((firefox?.enable ?? []).map(canonicalChord))],

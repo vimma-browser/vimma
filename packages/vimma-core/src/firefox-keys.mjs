@@ -761,9 +761,6 @@ export function boundChords(keymap) {
   return out;
 }
 
-/** What `disable = "all"` keeps, as written on Linux and Windows (accel+q: cmd+q on macOS). */
-export const ALL_KEEP = Object.freeze(["ctrl+q"]);
-
 /** XUL `keycode` names (nsIDOMKeyEvent DOM_VK_*) → our named keys. */
 /** @type {Record<string, string>} */
 const KEYCODES = {
@@ -809,6 +806,11 @@ export function xulKeyChord(el, { mac = false } = {}) {
   return makeChordText(key, mods);
 }
 
+/** Chords "all" turns off although they have no ctrl, alt or meta (`f5`, `esc`, `shift+esc`). */
+const INVENTORY_OFF = new Set(FIREFOX_SHORTCUTS.filter((r) => r.fate !== "d").map((r) => r.chord));
+/** Chords that stay Firefox's or the field's (fate d), whatever "all" says. */
+const FATE_D = new Set(FIREFOX_SHORTCUTS.filter((r) => r.fate === "d").map((r) => r.chord));
+
 /** @param {string} chord canonical */
 const isModified = (chord) => {
   const c = /** @type {Chord} */ (parseKey(chord));
@@ -839,7 +841,8 @@ export function canonicalChord(text) {
  */
 
 /**
- * Which keys to turn off. `disable = "all"`: every key with ctrl, alt or meta but accel+q;
+ * Which keys to turn off. `disable = "all"`: every inventory key but fate d, plain and function
+ * keys included, and any other key with ctrl, alt or meta (decision 9; ctrl+q is Vimma's `quit`);
  * a list: the keys with those chords. `enable` keeps its chords on either way. A key Firefox
  * runs elsewhere (`internal`: copy, paste, undo) or without a chord yet is never touched.
  * `unmatched`: chords of a `disable` list that no key has (ctrl+e on Linux), for about:vimma.
@@ -848,18 +851,18 @@ export function canonicalChord(text) {
  * @template {{ chord: string | null, internal?: boolean }} K
  * @param {readonly K[]} keys  in document order
  * @param {{ disable: "all" | readonly string[], enable: readonly string[] }} setting  canonical
- * @param {{ mac?: boolean, bound?: ReadonlySet<string> }} [options]
+ * @param {{ bound?: ReadonlySet<string> }} [options]
  * @returns {FirefoxKeyPlan<K>}
  */
-export function planFirefoxKeys(keys, setting, { mac = false, bound = new Set() } = {}) {
+export function planFirefoxKeys(keys, setting, { bound = new Set() } = {}) {
   const enable = new Set(setting.enable);
-  const keep = new Set(ALL_KEEP.map((c) => (mac ? c.replace(/^ctrl\+/, "meta+") : c)));
   const all = setting.disable === "all";
   const listed = new Set(all ? [] : setting.disable);
   const off = keys.filter((k) => {
     if (!k.chord || k.internal || enable.has(k.chord)) return false;
     if (bound.has(k.chord)) return true;
-    return all ? isModified(k.chord) && !keep.has(k.chord) : listed.has(k.chord);
+    if (!all) return listed.has(k.chord);
+    return !FATE_D.has(k.chord) && (isModified(k.chord) || INVENTORY_OFF.has(k.chord));
   });
   const matched = new Set(
     off

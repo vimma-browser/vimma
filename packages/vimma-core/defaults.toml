@@ -277,11 +277,10 @@ insert_editing = true
 [unbind]
 normal = []
 
-# Firefox's own shortcuts that are off. One on a key Vimma binds is always off (ctrl+b ? lists
-# them); disable = "all" turns off every other one with ctrl, alt or meta but ctrl+q, and
-# enable keeps chords on.
+# Firefox's own shortcuts are off; Vimma binds them on the same keys (ctrl+b ? lists them).
+# enable = ["ctrl+j"] gives one back exactly as Firefox runs it.
 [firefox]
-disable = ["ctrl+b", "ctrl+d", "ctrl+e", "ctrl+h", "ctrl+i", "ctrl+k", "ctrl+o", "ctrl+u", "ctrl+w", "ctrl+y"]
+disable = "all"
 enable = []
 
 # Order here is the order ctrl+b ) goes in; each workspace is a Firefox container. None by default.

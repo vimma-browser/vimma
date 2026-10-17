@@ -2,7 +2,6 @@
 // #mainKeyset Vimma turns off.
 import { describe, test, expect } from "vitest";
 import {
-  ALL_KEEP,
   FIREFOX_SHORTCUTS,
   OVERLAP_CHORDS,
   boundChords,
@@ -112,24 +111,24 @@ describe("planFirefoxKeys", () => {
     expect(ids(plan)).toContain("key_viewSource");
   });
 
-  test('"all" turns off every chord with ctrl, alt or meta but ctrl+q and the text keys', () => {
+  // Decision 9: "all" is the whole inventory but fate d, plain and function keys included, and
+  // ctrl+q is no longer kept (it is Vimma's quit, which asks as Firefox did).
+  test('"all" turns off every inventory key and every chord with ctrl, alt or meta', () => {
     const plan = planFirefoxKeys(KEYS, { disable: "all", enable: [] });
-    expect(ids(plan)).toEqual(
-      KEYS.filter((k) => !["ctrl+q", "ctrl+c", "f5", "esc"].includes(k.chord) && !k.internal).map(
-        (k) => k.id,
-      ),
-    );
+    expect(ids(plan)).toEqual(KEYS.filter((k) => !k.internal).map((k) => k.id));
     expect(plan.unmatched).toEqual([]);
-    expect(ALL_KEEP).toEqual(["ctrl+q"]);
   });
 
-  test('"all" keeps cmd+q on macOS', () => {
+  test('"all" leaves fate d keys and unlisted plain keys alone', () => {
     const keys = [
+      { id: "key_fullScreen", chord: "f6" },
+      { id: "plain", chord: "x" },
+      { id: "key_aboutProcesses", chord: "shift+esc" },
       { id: "key_quitApplication", chord: "meta+q" },
-      { id: "key_close", chord: "meta+w" },
     ];
     expect(ids(planFirefoxKeys(keys, { disable: "all", enable: [] }, { mac: true }))).toEqual([
-      "key_close",
+      "key_aboutProcesses",
+      "key_quitApplication",
     ]);
   });
 

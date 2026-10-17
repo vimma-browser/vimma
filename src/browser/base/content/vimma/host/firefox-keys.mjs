@@ -9,7 +9,7 @@
 // KeyElementIsDisabled), so a disabled shortcut neither runs nor is reserved: the page gets the
 // chord. Core firefox-keys.mjs decides which; this reads the elements and writes the attribute.
 
-import { OVERLAP_CHORDS, planFirefoxKeys, xulKeyChord } from "../core/firefox-keys.mjs";
+import { planFirefoxKeys, xulKeyChord } from "../core/firefox-keys.mjs";
 
 /** @import { FirefoxKeySetting } from "../core/config.mjs" */
 
@@ -26,7 +26,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 /** @type {FirefoxKeySetting} */
-export const DEFAULT_FIREFOX_KEYS = Object.freeze({ disable: [...OVERLAP_CHORDS], enable: [] });
+export const DEFAULT_FIREFOX_KEYS = Object.freeze({
+  disable: /** @type {"all"} */ ("all"),
+  enable: [],
+});
 
 /**
  * One `<key>` as about:vimma lists it.
@@ -162,7 +165,7 @@ export class FirefoxKeys {
     const plan = planFirefoxKeys(
       keys.filter((k) => !k.firefoxOff),
       this.setting,
-      { mac: this.mac, bound: this.bound },
+      { bound: this.bound },
     );
     const off = new Set(plan.off.map((k) => k.el));
     for (const { el } of keys) {

@@ -4,7 +4,6 @@ import fc from "fast-check";
 import { CONFIG_SCHEMA_VERSION, MIGRATIONS, migrate, parseConfig } from "../src/config.mjs";
 import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/defaults.mjs";
 import { DEFAULT_HINT_CHARS } from "../src/hints.mjs";
-import { OVERLAP_CHORDS } from "../src/firefox-keys.mjs";
 import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "../src/panes.mjs";
 
 /** @param {string[]} lines */
@@ -299,13 +298,12 @@ describe("schema 2 keys need schema = 2", () => {
 
 // docs/specs/key-handling-batch.md § 1 and § 2.
 describe("[firefox] disable and enable", () => {
-  test("the default turns off the overlapping chords and enables none", () => {
-    expect(ok(v2()).firefox).toEqual({ disable: [...OVERLAP_CHORDS], enable: [] });
+  // docs/specs/firefox-keys.md decisions 9 and 10: Firefox's own shortcuts are off by default.
+  test('the default is disable = "all" and enables none', () => {
+    expect(ok(v2()).firefox).toEqual({ disable: "all", enable: [] });
     const text = formatDefaultsToml();
-    expect(text).toMatch(
-      /^\[firefox\]\ndisable = \["ctrl\+b", "ctrl\+d", .*"ctrl\+y"\]\nenable = \[\]$/m,
-    );
-    expect(ok(text).firefox).toEqual({ disable: [...OVERLAP_CHORDS], enable: [] });
+    expect(text).toMatch(/^\[firefox\]\ndisable = "all"\nenable = \[\]$/m);
+    expect(ok(text).firefox).toEqual({ disable: "all", enable: [] });
   });
 
   test('"all" and a list with enable are resolved, chords canonical', () => {

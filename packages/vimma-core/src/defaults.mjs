@@ -10,7 +10,6 @@
 import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { PANES_MAX_DEFAULT } from "./panes.mjs";
 import { MAIN_SIZE_DEFAULT } from "./layouts.mjs";
-import { OVERLAP_CHORDS } from "./firefox-keys.mjs";
 import { DEFAULT_THEME_NAME } from "./theme.mjs";
 
 /**
@@ -358,7 +357,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     main_size: MAIN_SIZE_DEFAULT * 100,
   },
   sites: {},
-  firefox: { disable: OVERLAP_CHORDS, enable: [] },
+  firefox: { disable: /** @type {"all"} */ ("all"), enable: [] },
   bookmarks: { root: /** @type {const} */ ("workspace") },
   private: { placement: /** @type {const} */ ("swap") },
   ui: { toolbar: /** @type {const} */ ("shown") },
@@ -422,11 +421,10 @@ export function formatDefaultsToml() {
     "[unbind]",
     "normal = []",
     "",
-    "# Firefox's own shortcuts that are off. One on a key Vimma binds is always off (ctrl+b ? lists",
-    '# them); disable = "all" turns off every other one with ctrl, alt or meta but ctrl+q, and',
-    "# enable keeps chords on.",
+    "# Firefox's own shortcuts are off; Vimma binds them on the same keys (ctrl+b ? lists them).",
+    '# enable = ["ctrl+j"] gives one back exactly as Firefox runs it.',
     "[firefox]",
-    `disable = [${OVERLAP_CHORDS.map(tomlString).join(", ")}]`,
+    'disable = "all"',
     "enable = []",
     "",
     "# Order here is the order ctrl+b ) goes in; each workspace is a Firefox container. None by default.",
