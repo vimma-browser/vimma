@@ -219,7 +219,6 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
   // Decision 16: every Firefox key is a Vimma binding on Firefox's own chord.
   test.each([
     ["ctrl+j", "web_search"],
-    ["shift+esc", "about_processes"],
     ["ctrl+f", "find_forward"],
     ["ctrl+shift+d", "bookmark_all_tabs"],
     ["ctrl+shift+b", "toggle_bookmarks_toolbar"],
@@ -232,6 +231,13 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     expect(keymap.trie("normal").children.get(chord)?.action?.name).toBe(action);
     expect(keymap.trie("insert").children.get(chord)?.action?.name).toBe(action);
     expect(pageFirst(chord)).toBe(true);
+  });
+
+  // Decision 17: shift+esc has no modifier that makes a chord global, so a text field keeps it.
+  test("shift+esc runs about_processes in normal mode only, after the page", () => {
+    expect(keymap.trie("normal").children.get("shift+esc")?.action?.name).toBe("about_processes");
+    expect(keymap.trie("insert").children.get("shift+esc")).toBeUndefined();
+    expect(pageFirst("shift+esc")).toBe(true);
   });
 
   test("the only unbound c keys are the conditional ones, ' and the alt tap", () => {

@@ -2,241 +2,251 @@
 
 exports[`help table > help text for defaults matches the snapshot 1`] = `
 "Help
-  show_keybinds           ctrl+b ?                                          Show all bindings (filter with /)
-  help_close              esc [help], q [help]                              Close the bindings overlay
-  help_filter             / [help]                                          Filter the bindings overlay
+  show_keybinds             ctrl+b ?                                          Show all bindings (filter with /)
+  help_close                esc [help], q [help]                              Close the bindings overlay
+  help_filter               / [help]                                          Filter the bindings overlay
 
 Tabs
-  new_tab                 ctrl+b c, ctrl+t, t                               New tab
-  next_tab                ctrl+b n, ctrl+tab, ctrl+pagedown, gt             Next tab (with a count: go to tab N)
-  previous_tab            ctrl+b p, ctrl+shift+tab, ctrl+pageup, gT         Previous tab
-  select_tab_1            ctrl+b 1, alt+1                                   Jump to tab 1 in this workspace
-  select_tab_2            ctrl+b 2, alt+2                                   Jump to tab 2 in this workspace
-  select_tab_3            ctrl+b 3, alt+3                                   Jump to tab 3 in this workspace
-  select_tab_4            ctrl+b 4, alt+4                                   Jump to tab 4 in this workspace
-  select_tab_5            ctrl+b 5, alt+5                                   Jump to tab 5 in this workspace
-  select_tab_6            ctrl+b 6, alt+6                                   Jump to tab 6 in this workspace
-  select_tab_7            ctrl+b 7, alt+7                                   Jump to tab 7 in this workspace
-  select_tab_8            ctrl+b 8, alt+8                                   Jump to tab 8 in this workspace
-  select_tab_9            ctrl+b 9                                          Jump to tab 9 in this workspace
-  rename_tab              ctrl+b shift+t                                    Rename tab
-  close_tab               ctrl+b shift+x, ctrl+f4, x                        Close tab
-  select_last_tab         alt+9                                             Jump to the last tab in this workspace
-  move_tab_left           ctrl+shift+pageup                                 Move the tab left
-  move_tab_right          ctrl+shift+pagedown                               Move the tab right
-  restore_tab             ctrl+shift+t                                      Reopen the last closed tab
+  new_tab                   ctrl+b c, ctrl+t, t                               New tab
+  next_tab                  ctrl+b n, ctrl+tab, ctrl+pagedown, gt             Next tab (with a count: go to tab N)
+  previous_tab              ctrl+b p, ctrl+shift+tab, ctrl+pageup, gT         Previous tab
+  select_tab_1              ctrl+b 1, alt+1                                   Jump to tab 1 in this workspace
+  select_tab_2              ctrl+b 2, alt+2                                   Jump to tab 2 in this workspace
+  select_tab_3              ctrl+b 3, alt+3                                   Jump to tab 3 in this workspace
+  select_tab_4              ctrl+b 4, alt+4                                   Jump to tab 4 in this workspace
+  select_tab_5              ctrl+b 5, alt+5                                   Jump to tab 5 in this workspace
+  select_tab_6              ctrl+b 6, alt+6                                   Jump to tab 6 in this workspace
+  select_tab_7              ctrl+b 7, alt+7                                   Jump to tab 7 in this workspace
+  select_tab_8              ctrl+b 8, alt+8                                   Jump to tab 8 in this workspace
+  select_tab_9              ctrl+b 9                                          Jump to tab 9 in this workspace
+  rename_tab                ctrl+b shift+t                                    Rename tab
+  close_tab                 ctrl+b shift+x, ctrl+f4, x                        Close tab
+  select_last_tab           alt+9                                             Jump to the last tab in this workspace
+  move_tab_left             ctrl+shift+pageup                                 Move the tab left
+  move_tab_right            ctrl+shift+pagedown                               Move the tab right
+  restore_tab               ctrl+shift+t                                      Reopen the last closed tab
 
 Panes
-  split_vertical          ctrl+b v                                          Split right
-  split_horizontal        ctrl+b -                                          Split down
-  focus_pane_left         ctrl+b h, ctrl+w h                                Focus pane to the left
-  focus_pane_down         ctrl+b j, ctrl+w j                                Focus pane below
-  focus_pane_up           ctrl+b k, ctrl+w k                                Focus pane above
-  focus_pane_right        ctrl+b l, ctrl+w l                                Focus pane to the right
-  swap_pane_left          ctrl+b shift+h, ctrl+w H                          Swap with pane to the left
-  swap_pane_down          ctrl+b shift+j, ctrl+w J                          Swap with pane below
-  swap_pane_up            ctrl+b shift+k, ctrl+w K                          Swap with pane above
-  swap_pane_right         ctrl+b shift+l, ctrl+w L                          Swap with pane to the right
-  zoom                    ctrl+b z, ctrl+w o                                Zoom pane
-  close_pane              ctrl+b x                                          Close pane; the last pane closes the tab
-  resize_mode             ctrl+b r                                          Resize mode
-  resize_exit             esc [resize], enter [resize], q [resize]          Leave resize mode
-  resize_narrower         ctrl+w <, h [resize], left [resize], < [resize]   Make pane narrower
-  resize_wider            ctrl+w >, l [resize], right [resize], > [resize]  Make pane wider
-  resize_taller           ctrl+w +, j [resize], down [resize], + [resize]   Make pane taller
-  resize_shorter          ctrl+w -, k [resize], up [resize], - [resize]     Make pane shorter
-  new_pane                ctrl+b enter                                      New pane, along the longer side
-  next_layout             ctrl+b space                                      Next layout
-  select_layout           (unbound)                                         Apply a layout preset by name (:layout name)
-  layout_even_horizontal  (unbound)                                         Layout: all side by side
-  layout_even_vertical    (unbound)                                         Layout: all stacked
-  layout_main_vertical    (unbound)                                         Layout: main pane left, rest stacked
-  layout_main_horizontal  (unbound)                                         Layout: main pane on top, rest below
-  layout_tiled            (unbound)                                         Layout: a grid
-  layout_dwindle          (unbound)                                         Layout: a spiral (dwindle)
+  split_vertical            ctrl+b v                                          Split right
+  split_horizontal          ctrl+b -                                          Split down
+  focus_pane_left           ctrl+b h, ctrl+w h                                Focus pane to the left
+  focus_pane_down           ctrl+b j, ctrl+w j                                Focus pane below
+  focus_pane_up             ctrl+b k, ctrl+w k                                Focus pane above
+  focus_pane_right          ctrl+b l, ctrl+w l                                Focus pane to the right
+  swap_pane_left            ctrl+b shift+h, ctrl+w H                          Swap with pane to the left
+  swap_pane_down            ctrl+b shift+j, ctrl+w J                          Swap with pane below
+  swap_pane_up              ctrl+b shift+k, ctrl+w K                          Swap with pane above
+  swap_pane_right           ctrl+b shift+l, ctrl+w L                          Swap with pane to the right
+  zoom                      ctrl+b z, ctrl+w o                                Zoom pane
+  close_pane                ctrl+b x                                          Close pane; the last pane closes the tab
+  resize_mode               ctrl+b r                                          Resize mode
+  resize_exit               esc [resize], enter [resize], q [resize]          Leave resize mode
+  resize_narrower           ctrl+w <, h [resize], left [resize], < [resize]   Make pane narrower
+  resize_wider              ctrl+w >, l [resize], right [resize], > [resize]  Make pane wider
+  resize_taller             ctrl+w +, j [resize], down [resize], + [resize]   Make pane taller
+  resize_shorter            ctrl+w -, k [resize], up [resize], - [resize]     Make pane shorter
+  new_pane                  ctrl+b enter                                      New pane, along the longer side
+  next_layout               ctrl+b space                                      Next layout
+  select_layout             (unbound)                                         Apply a layout preset by name (:layout name)
+  layout_even_horizontal    (unbound)                                         Layout: all side by side
+  layout_even_vertical      (unbound)                                         Layout: all stacked
+  layout_main_vertical      (unbound)                                         Layout: main pane left, rest stacked
+  layout_main_horizontal    (unbound)                                         Layout: main pane on top, rest below
+  layout_tiled              (unbound)                                         Layout: a grid
+  layout_dwindle            (unbound)                                         Layout: a spiral (dwindle)
 
 Workspaces
-  next_workspace          ctrl+b ), ]w                                      Next workspace
-  previous_workspace      ctrl+b (, [w                                      Previous workspace
-  last_workspace          ctrl+b ^, ctrl+b ctrl+6, ctrl+^, ctrl+6           Previous workspace you were in; again toggles back (Vim's ctrl+^)
-  switch_workspace        (unbound)                                         Switch to a workspace by name or number
-  workspace_picker        ctrl+b w                                          Workspace picker
-  new_workspace           ctrl+b shift+n                                    New workspace
-  rename_workspace        ctrl+b shift+w                                    Rename workspace
-  close_workspace         ctrl+b shift+d                                    Close workspace
-  move_to_workspace       (unbound)                                         Move the tab to another workspace (reopens it there)
-  route_rules             (unbound)                                         Routing rules: list them; :route add [workspace], :route move
-  private_workspace       ctrl+b shift+p, ctrl+shift+p                      Private workspace (a private window); again goes back
+  next_workspace            ctrl+b ), ]w                                      Next workspace
+  previous_workspace        ctrl+b (, [w                                      Previous workspace
+  last_workspace            ctrl+b ^, ctrl+b ctrl+6, ctrl+^, ctrl+6           Previous workspace you were in; again toggles back (Vim's ctrl+^)
+  switch_workspace          (unbound)                                         Switch to a workspace by name or number
+  workspace_picker          ctrl+b w                                          Workspace picker
+  new_workspace             ctrl+b shift+n                                    New workspace
+  rename_workspace          ctrl+b shift+w                                    Rename workspace
+  close_workspace           ctrl+b shift+d                                    Close workspace
+  move_to_workspace         (unbound)                                         Move the tab to another workspace (reopens it there)
+  route_rules               (unbound)                                         Routing rules: list them; :route add [workspace], :route move
+  private_workspace         ctrl+b shift+p, ctrl+shift+p                      Private workspace (a private window); again goes back
 
 Navigation
-  goto_picker             ctrl+b g, b                                       Tab search: every tab, every window, recently closed
-  toggle_sidebar          ctrl+b b                                          Open / close the side panel
-  toggle_toolbar          ctrl+b u                                          Show / hide the toolbar (URL bar and add-on buttons)
-  show_toolbar            (unbound)                                         Show the toolbar
-  hide_toolbar            (unbound)                                         Hide the toolbar (the address bar shows when focused)
-  scroll_down             j, ctrl+e                                         Scroll down
-  scroll_up               k, ctrl+y                                         Scroll up
-  scroll_left             h                                                 Scroll left
-  scroll_right            l                                                 Scroll right
-  scroll_half_down        d, ctrl+d                                         Scroll half a page down
-  scroll_half_up          u, ctrl+u                                         Scroll half a page up
-  scroll_top              gg                                                Scroll to top
-  scroll_bottom           G                                                 Scroll to bottom
-  history_back            alt+left, H, ctrl+o, ctrl+[                       Go back
-  history_forward         alt+right, L, ctrl+i, ctrl+]                      Go forward
-  reload                  f5, ctrl+r, r                                     Reload page
-  open_url                (unbound)                                         Open a URL or search in this tab
-  url_up                  gu                                                Go up a level in the URL path
-  url_root                gU                                                Go to the site's root
-  focus_urlbar            ctrl+l, alt+d, I, I [visual], I [panel]           Focus the address bar, its text selected
+  goto_picker               ctrl+b g, b                                       Tab search: every tab, every window, recently closed
+  toggle_sidebar            ctrl+b b                                          Open / close the side panel
+  toggle_toolbar            ctrl+b u                                          Show / hide the toolbar (URL bar and add-on buttons)
+  show_toolbar              (unbound)                                         Show the toolbar
+  hide_toolbar              (unbound)                                         Hide the toolbar (the address bar shows when focused)
+  scroll_down               j, ctrl+e                                         Scroll down
+  scroll_up                 k, ctrl+y                                         Scroll up
+  scroll_left               h                                                 Scroll left
+  scroll_right              l                                                 Scroll right
+  scroll_half_down          d, ctrl+d                                         Scroll half a page down
+  scroll_half_up            u, ctrl+u                                         Scroll half a page up
+  scroll_top                gg                                                Scroll to top
+  scroll_bottom             G                                                 Scroll to bottom
+  history_back              alt+left, H, ctrl+o, ctrl+[                       Go back
+  history_forward           alt+right, L, ctrl+i, ctrl+]                      Go forward
+  reload                    f5, ctrl+r, r                                     Reload page
+  open_url                  (unbound)                                         Open a URL or search in this tab
+  url_up                    gu                                                Go up a level in the URL path
+  url_root                  gU                                                Go to the site's root
+  focus_urlbar              ctrl+l, alt+d, I, I [visual], I [panel]           Focus the address bar, its text selected
 
 Page
-  yank_url                yy                                                Copy the page's URL
-  open_clipboard          p                                                 Open the clipboard's URL or search in this tab
-  open_clipboard_tab      P                                                 Open the clipboard's URL or search in a new tab
-  focus_input             gi                                                Focus the first text field (with a count: the Nth)
-  view_source             gf                                                View the page's source in a new tab
+  yank_url                  yy                                                Copy the page's URL
+  open_clipboard            p                                                 Open the clipboard's URL or search in this tab
+  open_clipboard_tab        P                                                 Open the clipboard's URL or search in a new tab
+  focus_input               gi                                                Focus the first text field (with a count: the Nth)
+  view_source               gf                                                View the page's source in a new tab
 
 Browser
-  new_window              ctrl+n                                            New window
-  close_window            ctrl+shift+w                                      Close the window
-  restore_window          ctrl+shift+n                                      Reopen the last closed window
-  quit                    ctrl+q                                            Quit (asks first)
-  check_updates           (unbound)                                         Check for a newer Vimma
-  reload_hard             ctrl+f5, ctrl+shift+r                             Reload, bypassing the cache
-  stop_loading            esc                                               Stop loading the page
-  go_home                 alt+home                                          Go to the home page
-  page_zoom_in            ctrl+plus, ctrl+=                                 Zoom the page in
-  page_zoom_out           ctrl+minus, ctrl+_                                Zoom the page out
-  page_zoom_reset         ctrl+0                                            Reset the page's zoom
-  toggle_fullscreen       f11                                               Full screen, or leave it
-  save_page               ctrl+s                                            Save the page
-  print_page              ctrl+p                                            Print the page
-  downloads               ctrl+shift+y                                      Downloads (the Library)
-  addons_manager          ctrl+shift+a                                      Add-ons manager (about:addons)
-  history_library         ctrl+shift+h                                      History (the Library)
-  bookmarks_library       ctrl+shift+o                                      Bookmarks (the Library)
-  mute_tab                ctrl+m                                            Mute or unmute the tab
-  picture_in_picture      ctrl+}                                            Picture-in-Picture
-  reader_view             ctrl+alt+r                                        Reader View
-  screenshot              ctrl+shift+s                                      Take a screenshot
-  clear_history           ctrl+shift+delete                                 Clear recent history
+  new_window                ctrl+n                                            New window
+  close_window              ctrl+shift+w                                      Close the window
+  restore_window            ctrl+shift+n                                      Reopen the last closed window
+  quit                      ctrl+q                                            Quit (asks first)
+  check_updates             (unbound)                                         Check for a newer Vimma
+  reload_hard               ctrl+f5, ctrl+shift+r                             Reload, bypassing the cache
+  stop_loading              esc                                               Stop loading the page
+  go_home                   alt+home                                          Go to the home page
+  page_zoom_in              ctrl+plus, ctrl+=                                 Zoom the page in
+  page_zoom_out             ctrl+minus, ctrl+_                                Zoom the page out
+  page_zoom_reset           ctrl+0                                            Reset the page's zoom
+  toggle_fullscreen         f11                                               Full screen, or leave it
+  save_page                 ctrl+s                                            Save the page
+  print_page                ctrl+p                                            Print the page
+  downloads                 ctrl+shift+y                                      Downloads (the Library)
+  addons_manager            ctrl+shift+a                                      Add-ons manager (about:addons)
+  history_library           ctrl+shift+h                                      History (the Library)
+  bookmarks_library         ctrl+shift+o                                      Bookmarks (the Library)
+  mute_tab                  ctrl+m                                            Mute or unmute the tab
+  picture_in_picture        ctrl+}                                            Picture-in-Picture
+  reader_view               ctrl+alt+r                                        Reader View
+  screenshot                ctrl+shift+s                                      Take a screenshot
+  clear_history             ctrl+shift+delete                                 Clear recent history
+  web_search                ctrl+j                                            Web search (the address bar's search)
+  about_processes           shift+esc                                         Process manager (about:processes)
+  bookmark_all_tabs         ctrl+shift+d                                      Bookmark all tabs
+  toggle_bookmarks_toolbar  ctrl+shift+b                                      Show / hide the bookmarks toolbar
+  ai_chatbot_sidebar        ctrl+alt+x                                        Firefox sidebar: AI chatbot
+  open_tabs_sidebar         ctrl+alt+u                                        Firefox sidebar: tabs from other devices
+  toggle_firefox_sidebar    ctrl+alt+z                                        Show / hide Firefox's sidebar
+  switch_text_direction     ctrl+shift+x                                      Switch a text field's direction
+  caret_browsing            f7                                                Caret browsing (asks first)
 
 Developer tools
-  devtools                ctrl+shift+i, f12                                 Open / close the developer tools
-  browser_toolbox         ctrl+alt+shift+i                                  Browser Toolbox
-  browser_console         ctrl+shift+j                                      Browser Console
-  responsive_design       ctrl+shift+m                                      Responsive Design Mode
-  devtools_inspector      ctrl+shift+c                                      Developer tools: Inspector
-  devtools_console        ctrl+shift+k                                      Developer tools: Web Console
-  devtools_debugger       ctrl+shift+z                                      Developer tools: Debugger
-  devtools_network        ctrl+shift+e                                      Developer tools: Network
-  devtools_style_editor   shift+f7                                          Developer tools: Style Editor
-  devtools_performance    shift+f5                                          Developer tools: Performance
-  devtools_storage        shift+f9                                          Developer tools: Storage
-  devtools_accessibility  shift+f12                                         Developer tools: Accessibility
+  devtools                  ctrl+shift+i, f12                                 Open / close the developer tools
+  browser_toolbox           ctrl+alt+shift+i                                  Browser Toolbox
+  browser_console           ctrl+shift+j                                      Browser Console
+  responsive_design         ctrl+shift+m                                      Responsive Design Mode
+  devtools_inspector        ctrl+shift+c                                      Developer tools: Inspector
+  devtools_console          ctrl+shift+k                                      Developer tools: Web Console
+  devtools_debugger         ctrl+shift+z                                      Developer tools: Debugger
+  devtools_network          ctrl+shift+e                                      Developer tools: Network
+  devtools_style_editor     shift+f7                                          Developer tools: Style Editor
+  devtools_performance      shift+f5                                          Developer tools: Performance
+  devtools_storage          shift+f9                                          Developer tools: Storage
+  devtools_accessibility    shift+f12                                         Developer tools: Accessibility
+  devtools_dom              (unbound)                                         Developer tools: DOM
 
 Hints
-  follow_link             f                                                 Follow link
-  follow_link_new_tab     F                                                 Follow link in new tab
-  hint_cancel             esc [hint]                                        Leave hint mode
+  follow_link               f                                                 Follow link
+  follow_link_new_tab       F                                                 Follow link in new tab
+  hint_cancel               esc [hint]                                        Leave hint mode
 
 Find
-  find_forward            /                                                 Search in page
-  find_backward           ?                                                 Search backwards in page
-  find_next               ctrl+g, f3, n                                     Next match
-  find_previous           ctrl+shift+g, shift+f3, N                         Previous match
-  live_grep               ctrl+b f g                                        Live grep: search the text of the workspace's tabs
-  grep_next               ]q                                                Next result of the last live grep
-  grep_previous           [q                                                Previous result of the last live grep
-  grep_resume             (unbound)                                         Live grep again with the last query (:grep)
+  find_forward              ctrl+f, /                                         Search in page
+  find_backward             ?                                                 Search backwards in page
+  find_next                 ctrl+g, f3, n                                     Next match
+  find_previous             ctrl+shift+g, shift+f3, N                         Previous match
+  live_grep                 ctrl+b f g                                        Live grep: search the text of the workspace's tabs
+  grep_next                 ]q                                                Next result of the last live grep
+  grep_previous             [q                                                Previous result of the last live grep
+  grep_resume               (unbound)                                         Live grep again with the last query (:grep)
 
 Modes
-  normal_mode             esc [insert], esc [visual]                        Back to normal mode
-  insert_mode             i                                                 Insert mode: focus the last-used input
-  copy_mode               ctrl+b [, v                                       Copy mode (caret browsing + selection)
-  command_line            :                                                 Command line
-  command_cancel          esc [command]                                     Close the command line
+  normal_mode               esc [insert], esc [visual]                        Back to normal mode
+  insert_mode               i                                                 Insert mode: focus the last-used input
+  copy_mode                 ctrl+b [, v                                       Copy mode (caret browsing + selection)
+  command_line              :                                                 Command line
+  command_cancel            esc [command]                                     Close the command line
 
 Copy mode
-  caret_left              h [visual]                                        Move caret left
-  caret_down              j [visual]                                        Move caret down
-  caret_up                k [visual]                                        Move caret up
-  caret_right             l [visual]                                        Move caret right
-  caret_word_forward      w [visual]                                        Move caret a word forward
-  caret_word_backward     b [visual]                                        Move caret a word back
-  caret_line_start        0 [visual]                                        Move caret to the start of the line
-  caret_line_end          $ [visual]                                        Move caret to the end of the line
-  caret_top               gg [visual]                                       Move caret to the top of the page
-  caret_bottom            G [visual]                                        Move caret to the bottom of the page
-  caret_word_end          e [visual]                                        Move caret to the end of the word
-  caret_prev_word_end     ge [visual]                                       Move caret to the previous word's end
-  caret_bigword_next      W [visual]                                        Move caret to the next WORD (by spaces)
-  caret_bigword_back      B [visual]                                        Move caret to the WORD's start
-  caret_bigword_end       E [visual]                                        Move caret to the end of the WORD
-  caret_first_char        ^ [visual]                                        Move caret to the line's first non-blank
-  caret_para_back         { [visual]                                        Move caret to the paragraph's start
-  caret_para_next         } [visual]                                        Move caret to the paragraph's end
-  caret_find_forward      f [visual]                                        Find a character forward on the line
-  caret_find_backward     F [visual]                                        Find a character backward on the line
-  caret_till_forward      t [visual]                                        Till a character forward on the line
-  caret_till_backward     T [visual]                                        Till a character backward on the line
-  caret_find_repeat       ; [visual]                                        Repeat the last f, F, t or T
-  caret_find_reverse      , [visual]                                        Repeat the last find, reversed
-  toggle_selection        v [visual]                                        Start or drop a selection at the caret
-  line_selection          V [visual]                                        Start or drop a line-wise selection
-  swap_selection_ends     o [visual]                                        Swap the selection's ends
-  select_inner_word       iw [visual]                                       Select the word at the caret
-  select_a_word           aw [visual]                                       Select the word at the caret and its spaces
-  yank_selection          y [visual]                                        Copy selection and leave copy mode
-  yank_lines              Y [visual]                                        Copy the selection's whole lines and leave
+  caret_left                h [visual]                                        Move caret left
+  caret_down                j [visual]                                        Move caret down
+  caret_up                  k [visual]                                        Move caret up
+  caret_right               l [visual]                                        Move caret right
+  caret_word_forward        w [visual]                                        Move caret a word forward
+  caret_word_backward       b [visual]                                        Move caret a word back
+  caret_line_start          0 [visual]                                        Move caret to the start of the line
+  caret_line_end            $ [visual]                                        Move caret to the end of the line
+  caret_top                 gg [visual]                                       Move caret to the top of the page
+  caret_bottom              G [visual]                                        Move caret to the bottom of the page
+  caret_word_end            e [visual]                                        Move caret to the end of the word
+  caret_prev_word_end       ge [visual]                                       Move caret to the previous word's end
+  caret_bigword_next        W [visual]                                        Move caret to the next WORD (by spaces)
+  caret_bigword_back        B [visual]                                        Move caret to the WORD's start
+  caret_bigword_end         E [visual]                                        Move caret to the end of the WORD
+  caret_first_char          ^ [visual]                                        Move caret to the line's first non-blank
+  caret_para_back           { [visual]                                        Move caret to the paragraph's start
+  caret_para_next           } [visual]                                        Move caret to the paragraph's end
+  caret_find_forward        f [visual]                                        Find a character forward on the line
+  caret_find_backward       F [visual]                                        Find a character backward on the line
+  caret_till_forward        t [visual]                                        Till a character forward on the line
+  caret_till_backward       T [visual]                                        Till a character backward on the line
+  caret_find_repeat         ; [visual]                                        Repeat the last f, F, t or T
+  caret_find_reverse        , [visual]                                        Repeat the last find, reversed
+  toggle_selection          v [visual]                                        Start or drop a selection at the caret
+  line_selection            V [visual]                                        Start or drop a line-wise selection
+  swap_selection_ends       o [visual]                                        Swap the selection's ends
+  select_inner_word         iw [visual]                                       Select the word at the caret
+  select_a_word             aw [visual]                                       Select the word at the caret and its spaces
+  yank_selection            y [visual]                                        Copy selection and leave copy mode
+  yank_lines                Y [visual]                                        Copy the selection's whole lines and leave
 
 Side panel
-  panel_select_1          1 [panel]                                         Select row 1
-  panel_select_2          2 [panel]                                         Select row 2
-  panel_select_3          3 [panel]                                         Select row 3
-  panel_select_4          4 [panel]                                         Select row 4
-  panel_select_5          5 [panel]                                         Select row 5
-  panel_select_6          6 [panel]                                         Select row 6
-  panel_select_7          7 [panel]                                         Select row 7
-  panel_select_8          8 [panel]                                         Select row 8
-  panel_select_9          9 [panel]                                         Select row 9
-  panel_down              j [panel]                                         Next row
-  panel_up                k [panel]                                         Previous row
-  panel_open              enter [panel]                                     Apply the marks (the marked tabs become the panes), then go to the selected row
-  panel_close             esc [panel]                                       End the range, clear or restore the marks, or close the side panel
-  panel_close_tab         x [panel]                                         Close the selected tab; the panel stays open
-  panel_mark              space [panel]                                     Mark or unmark the selected tab
-  panel_visual            V [panel]                                         Start a range of rows to mark, or mark it
+  panel_select_1            1 [panel]                                         Select row 1
+  panel_select_2            2 [panel]                                         Select row 2
+  panel_select_3            3 [panel]                                         Select row 3
+  panel_select_4            4 [panel]                                         Select row 4
+  panel_select_5            5 [panel]                                         Select row 5
+  panel_select_6            6 [panel]                                         Select row 6
+  panel_select_7            7 [panel]                                         Select row 7
+  panel_select_8            8 [panel]                                         Select row 8
+  panel_select_9            9 [panel]                                         Select row 9
+  panel_down                j [panel]                                         Next row
+  panel_up                  k [panel]                                         Previous row
+  panel_open                enter [panel]                                     Apply the marks (the marked tabs become the panes), then go to the selected row
+  panel_close               esc [panel]                                       End the range, clear or restore the marks, or close the side panel
+  panel_close_tab           x [panel]                                         Close the selected tab; the panel stays open
+  panel_mark                space [panel]                                     Mark or unmark the selected tab
+  panel_visual              V [panel]                                         Start a range of rows to mark, or mark it
 
 Bookmarks
-  toggle_bookmarks        ctrl+b shift+b                                    Open / close the bookmarks panel
-  add_bookmark            ctrl+b a                                          Bookmark this page (folders/title files it in folders)
-  bookmarks_collapse      h [panel]                                         Bookmarks: close the folder, or go to its parent
-  bookmarks_expand        l [panel]                                         Bookmarks: open the folder or the bookmark
-  bookmarks_open_tab      t [panel]                                         Bookmarks: open in a new background tab
-  bookmarks_vsplit        s [panel]                                         Bookmarks: open in a split right
-  bookmarks_hsplit        S [panel]                                         Bookmarks: open in a split below
-  bookmarks_add           a [panel]                                         Bookmarks: add this page here (a/b/ makes folders)
-  bookmarks_folder        A [panel]                                         Bookmarks: add a folder here
-  bookmarks_rename        r [panel]                                         Bookmarks: rename
-  bookmarks_move          m [panel]                                         Bookmarks: move to a folder
-  bookmarks_delete        d [panel]                                         Bookmarks: delete (asks y/N)
-  bookmarks_yank          y [panel]                                         Bookmarks: copy the URL
-  bookmarks_filter        / [panel]                                         Bookmarks: filter
+  toggle_bookmarks          ctrl+b shift+b                                    Open / close the bookmarks panel
+  add_bookmark              ctrl+b a                                          Bookmark this page (folders/title files it in folders)
+  bookmarks_collapse        h [panel]                                         Bookmarks: close the folder, or go to its parent
+  bookmarks_expand          l [panel]                                         Bookmarks: open the folder or the bookmark
+  bookmarks_open_tab        t [panel]                                         Bookmarks: open in a new background tab
+  bookmarks_vsplit          s [panel]                                         Bookmarks: open in a split right
+  bookmarks_hsplit          S [panel]                                         Bookmarks: open in a split below
+  bookmarks_add             a [panel]                                         Bookmarks: add this page here (a/b/ makes folders)
+  bookmarks_folder          A [panel]                                         Bookmarks: add a folder here
+  bookmarks_rename          r [panel]                                         Bookmarks: rename
+  bookmarks_move            m [panel]                                         Bookmarks: move to a folder
+  bookmarks_delete          d [panel]                                         Bookmarks: delete (asks y/N)
+  bookmarks_yank            y [panel]                                         Bookmarks: copy the URL
+  bookmarks_filter          / [panel]                                         Bookmarks: filter
 
 Config
-  reload_config           (unbound)                                         Reload config
-  edit_config             (unbound)                                         Open config.toml in a tab
-  theme_appearance        (unbound)                                         Built-in theme: dark, light or the system's (:theme)
+  reload_config             (unbound)                                         Reload config
+  edit_config               (unbound)                                         Open config.toml in a tab
+  theme_appearance          (unbound)                                         Built-in theme: dark, light or the system's (:theme)
 
 Agents
-  mcp_command             (unbound)                                         Agents (MCP): :mcp on, off or forget
-  agent_prompt            ctrl+b shift+a                                    Answer the waiting agent request (none: revoke grants)
-  control_command         (unbound)                                         Full control for a while: :control on <minutes>, off
+  mcp_command               (unbound)                                         Agents (MCP): :mcp on, off or forget
+  agent_prompt              ctrl+b shift+a                                    Answer the waiting agent request (none: revoke grants)
+  control_command           (unbound)                                         Full control for a while: :control on <minutes>, off
 
 Add-ons
-  addon_picker            ctrl+b e                                          Add-on picker: popup, options, on/off, remove, update
-  addon_popup             (unbound)                                         Open an add-on's popup by name (:addon name)
+  addon_picker              ctrl+b e                                          Add-on picker: popup, options, on/off, remove, update
+  addon_popup               (unbound)                                         Open an add-on's popup by name (:addon name)
 "
 `;
