@@ -61,6 +61,9 @@ Two rows of plan §5 and issue #17:
   `CPU model | arch | Node major`. The relative gate applies only on a recorded machine; elsewhere
   only the 50 µs budget applies and the run prints the entry to record. GitHub's hosted pool mixes
   CPU models, and a ratio measured on one microarchitecture is not comparable with another.
+  (Since changed: issue [#342](https://github.com/vimma-browser/vimma/issues/342) replaced the
+  stored numbers with a baseline _commit_, whose cases every run measures in the same 15 processes
+  as the working tree's, sample by sample; see docs/runbook.md, "Bench baseline".)
 - **A step in ci.yml, not nightly.** Nightly runs on the self-hosted build runner (not enabled
   yet, and a different machine class); the plan wants the gate on PRs. The step costs seconds and
   no extra job minute. (Since changed: no self-hosted runner is planned; the nightly moves
@@ -74,11 +77,16 @@ Two rows of plan §5 and issue #17:
   only when no such entry exists. Budget is now strict: 50.0 µs fails (plan: < 50 µs). The
   margin was 6 points first; CI then drew a third CPU (EPYC 7763) on which unchanged code
   measured +19 % suite, +30 % per case against the 9V74 entry, and failed. Recorded it too.
+  (Since changed: with the baseline measured in the same run (#342) every runner is "recorded";
+  the fallback and its wider limits are gone.)
 - **Node pinned exactly** in `.nvmrc` (22.23.3, what CI recorded on); the baseline key carries
   the exact version; no Dependabot ecosystem covers `.nvmrc`, so it is bumped by hand
-  (docs/runbook.md, "Bench baseline").
+  (docs/runbook.md, "Bench baseline"). (Since changed: the bench no longer keys on Node (#342);
+  the pin stays for reproducible CI.)
 - **Samples per entry:** `cases` is the per-case median of `samples` (in `baseline.json` now:
-  EPYC 7763 30, EPYC 9V74 12, EPYC 9V45 11, Xeon 8573C 5, Xeon 8370C 2).
+  EPYC 7763 30, EPYC 9V74 12, EPYC 9V45 11, Xeon 8573C 5, Xeon 8370C 2). (Since changed: no
+  entries since #342; unchanged code read +11.6 % to +12.5 % on every 8370C run against its
+  two-sample entry, which is what made the gate flake.)
 - mutation.yml reuses results only from main's scheduled or manual runs; `GH_TOKEN` is scoped to
   the download step.
 
