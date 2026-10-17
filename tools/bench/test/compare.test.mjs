@@ -4,6 +4,7 @@ import {
   CASE_THRESHOLD,
   THRESHOLD,
   combine,
+  combinePaired,
   compare,
   median,
   minOfMedians,
@@ -82,6 +83,28 @@ describe("combine", () => {
     );
     expect(() => combine([result({ a: { us: 1, ratio: 1 } }), result({})])).toThrow(/cases/);
     expect(() => combine([])).toThrow(/no results/);
+  });
+});
+
+describe("combinePaired", () => {
+  it("cancels a load-order shift that differs between processes", () => {
+    // Process p loads the working tree first when p is even (bench.mjs, childArgs); whichever side
+    // a process loads first reads 7 % slower here, and the code is otherwise the same.
+    const heads = [];
+    const bases = [];
+    for (let p = 0; p < 15; p++) {
+      const noise = 1 + ((p * 7) % 5) / 500;
+      heads.push(result({ a: { us: 1, ratio: 2 * noise * (p % 2 ? 1 : 1.07) } }));
+      bases.push(result({ a: { us: 1, ratio: 2 * noise * (p % 2 ? 1.07 : 1) } }));
+    }
+    const order = heads.map((_, p) => p % 2 === 0);
+    const { head, base } = combinePaired(heads, bases, order);
+    expect(Math.abs(compare(head, base).suiteChange ?? 1)).toBeLessThan(0.01);
+    expect(head.cases.a?.ratio).toBeCloseTo(combine(heads).cases.a?.ratio ?? 0);
+  });
+
+  it("refuses results from different processes on each side", () => {
+    expect(() => combinePaired([result({})], [], [true])).toThrow(/same processes/);
   });
 });
 

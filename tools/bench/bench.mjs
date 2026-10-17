@@ -22,7 +22,9 @@
  *     the 50 µs budget; the ratio is the median of the round medians, gated against the baseline
  *     commit's;
  *   - PROCESSES fresh processes, each with its own fixed V8 hash seed (childArgs), combined by
- *     compare.mjs: the lowest µs and the median ratio. The seed decides the bucket layout of every
+ *     compare.mjs: the lowest µs, and the median of the processes' own changes against the baseline
+ *     per load order, and the mean of the two orders (combinePaired), which cancels the load
+ *     order's lean. The seed decides the bucket layout of every
  *     string-keyed Map (the dispatcher's trie), which moves a case by a few per cent from one
  *     process to the next; fixed seeds measure the same layouts on every run (issue #125).
  *
@@ -35,7 +37,7 @@ import { cpus, tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { combine, compare, formatTable, median, minOfMedians } from "./compare.mjs";
+import { combine, combinePaired, compare, formatTable, median, minOfMedians } from "./compare.mjs";
 
 const WARMUP_MS = 200;
 const SAMPLE_NS = 100_000;
@@ -286,8 +288,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     rmSync(dir, { recursive: true, force: true });
   }
   if (process.exitCode === 2) process.exit(2);
-  const head = combine(results.map((r) => r.head));
-  const base = combine(results.map((r) => r.base));
+  const { head, base } = combinePaired(
+    results.map((r) => r.head),
+    results.map((r) => r.base),
+    results.map((_, p) => childArgs(p, dir).includes("--head-first")),
+  );
   const r = compare(head, base, { accepted });
   const json = valueOf("--json");
   if (json) writeFileSync(json, `${JSON.stringify({ commit, head, base }, null, 2)}\n`);

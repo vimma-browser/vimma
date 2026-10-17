@@ -697,7 +697,11 @@ Why it does not flake (plan §5: no retries; flaky means quarantine):
 - **Load order alternates.** Two copies of identical code in one process differ by several per
   cent on the sub-microsecond cases, one way or the other, from process to process. Loading the
   working tree first in every process leaned that one way (+6 % to +8 % on the suite for
-  identical code on one machine), so every other process loads and lists the baseline first.
+  identical code on one machine), so every other process loads and lists the baseline first,
+  and the gate takes each process's own change (working tree over baseline), the median of
+  those per load order, and the geometric mean of the two orders. A median of each side alone,
+  or of all the changes, would keep the lean: with 8 processes of one order and 7 of the other, a
+  7 % lean read identical code at +6.2 % and +7.0 %.
 - **Ratios, not raw times.** Each sample times a case and then a fixed reference workload; the
   gate compares the case/reference ratio. A clock change or a busy neighbour mid-run moves both.
 - **A reference that costs the same in every process.** The reference looks up integer keys in a
@@ -712,7 +716,7 @@ Why it does not flake (plan §5: no retries; flaky means quarantine):
   same set of table layouts, not 15 new random ones.
 - **Robust statistics.** Warm-up, batches of ≥ 100 µs, the median of 51 samples per round, the
   median over 5 rounds, per process. Over the 15 processes: the **lowest µs** for the budget
-  (noise only adds time) and the **median ratio** for the gate. Not the lowest ratio: noise in
+  (noise only adds time) and the **median change** for the gate. Not the lowest ratio: noise in
   the reference's time lowers a ratio, so the lowest ratio picked whichever process had the
   slowest reference (issue #125, PR #121).
 - **It still catches a real slowdown.** A dispatcher made 20 % slower fails the gate

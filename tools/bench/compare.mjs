@@ -88,6 +88,50 @@ export function combine(results) {
   };
 }
 
+/**
+ * The working tree's and the baseline commit's results from the same processes, combined so that
+ * loading one side first cannot lean the gate. Loading first moves a sub-microsecond case by
+ * several per cent, so half of the processes load the baseline first (bench.mjs, childArgs). A
+ * median of each side alone keeps the lean whenever one order has more processes (8 to 7 of 15),
+ * and so does a median of the processes' own changes, which then all read the lean one way or
+ * the other. So: per case, each process's own change (working tree over baseline), the median of
+ * those per load order, and the geometric mean of the two orders' medians, in which a lean of the
+ * same size either way cancels. `base`'s ratio is the working tree's combined ratio over that
+ * change, so compare() reads it; its µs is the baseline's own (budget only).
+ * @param {Result[]} heads the working tree's results, one per process
+ * @param {Result[]} bases the baseline commit's, in the same order
+ * @param {boolean[]} headFirst per process, whether it loaded the working tree first
+ */
+export function combinePaired(heads, bases, headFirst) {
+  if (heads.length !== bases.length || heads.length !== headFirst.length) {
+    throw new Error("combinePaired: both sides must come from the same processes");
+  }
+  const head = combine(heads);
+  const base = combine(bases);
+  /** @param {string} name @param {boolean} first */
+  const changes = (name, first) =>
+    heads.flatMap((h, p) =>
+      headFirst[p] === first
+        ? [Number(h.cases[name]?.ratio) / Number(bases[p]?.cases[name]?.ratio)]
+        : [],
+    );
+  /** @type {Record<string, CaseResult>} */
+  const cases = {};
+  for (const [name, c] of Object.entries(base.cases)) {
+    const own = head.cases[name];
+    if (!own) {
+      cases[name] = c;
+      continue;
+    }
+    const groups = [changes(name, true), changes(name, false)].filter((g) => g.length > 0);
+    const change = Math.exp(
+      groups.reduce((sum, g) => sum + Math.log(median(g)), 0) / groups.length,
+    );
+    cases[name] = { us: c.us, ratio: own.ratio / change };
+  }
+  return { head, base: { ...base, cases } };
+}
+
 /** @param {number} x */
 const pct = (x) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)} %`;
 
