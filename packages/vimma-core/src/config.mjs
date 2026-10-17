@@ -81,7 +81,7 @@ import { resolveSearch, validateSearch } from "./search.mjs";
  * over `:mcp on|off` (the pref), as `[theme] appearance` wins over `:theme`.
  * @typedef {{ enabled?: boolean, workspace: string, askTimeout: number, grantMinutes: number,
  *   grantMaxMinutes: number, maxReadChars: number, notify: boolean, downloadDir: string,
- *   downloadMaxMb: number }} McpConfig  `downloadDir` as written (`~` not expanded yet)
+ *   downloadMaxMb: number, clamavMaxAgeDays: number }} McpConfig  `downloadDir` as written (`~` not expanded yet)
  */
 
 /** @typedef {"swap" | "window"} PrivatePlacement */
@@ -235,12 +235,14 @@ const MCP_KEYS = [
   "notify",
   "download_dir",
   "download_max_mb",
+  "clamav_max_age_days",
 ];
 export const MCP_BOUNDS = Object.freeze({
   askTimeout: Object.freeze({ min: 10, max: 300 }),
   grantMaxMinutes: Object.freeze({ min: 1, max: 1440 }),
   maxReadChars: Object.freeze({ min: 1000, max: 500000 }),
   downloadMaxMb: Object.freeze({ min: 1, max: 4096 }),
+  clamavMaxAgeDays: Object.freeze({ min: 1, max: 90 }),
 });
 
 /** The private workspace's name (privatews.mjs): never the agent workspace's. */
@@ -671,6 +673,9 @@ function validateMcp(mcp, { fail, typeError, unknownKey }) {
     } else if (key === "download_max_mb") {
       const { min, max: top } = MCP_BOUNDS.downloadMaxMb;
       integer(path, v, min, top, " (MB)");
+    } else if (key === "clamav_max_age_days") {
+      const { min, max: top } = MCP_BOUNDS.clamavMaxAgeDays;
+      integer(path, v, min, top, " (days)");
     } else if (key === "download_dir") {
       const problem = downloadDirProblem(v);
       if (problem === "type") typeError(path, v, "a string");
@@ -716,6 +721,7 @@ function resolveMcp(mcp) {
     notify: mcp?.notify ?? d.notify,
     downloadDir: mcp?.download_dir ?? d.download_dir,
     downloadMaxMb: mcp?.download_max_mb ?? d.download_max_mb,
+    clamavMaxAgeDays: mcp?.clamav_max_age_days ?? d.clamav_max_age_days,
   };
 }
 

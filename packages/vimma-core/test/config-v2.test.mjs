@@ -608,6 +608,7 @@ describe("[mcp]", () => {
       notify: true,
       downloadDir: "~/Downloads/vimma-agent",
       downloadMaxMb: 200,
+      clamavMaxAgeDays: 7,
     });
     expect(ok(toml()).mcp.workspace).toBe("agent");
     expect(DEFAULT_CONFIG.mcp).toEqual({
@@ -619,6 +620,7 @@ describe("[mcp]", () => {
       notify: true,
       download_dir: "~/Downloads/vimma-agent",
       download_max_mb: 200,
+      clamav_max_age_days: 7,
     });
     const text = formatDefaultsToml();
     expect(text).toMatch(/^\[mcp\]\n# enabled = false\nworkspace = "agent"\nask_timeout = 50$/m);
@@ -626,6 +628,7 @@ describe("[mcp]", () => {
       /^grant_minutes = 10\ngrant_max_minutes = 480\nmax_read_chars = 200000\nnotify = true$/m,
     );
     expect(text).toMatch(/^download_dir = "~\/Downloads\/vimma-agent"\ndownload_max_mb = 200$/m);
+    expect(text).toMatch(/^clamav_max_age_days = 7$/m);
   });
 
   test("every key as written; enabled only when the file sets it", () => {
@@ -641,6 +644,7 @@ describe("[mcp]", () => {
         "notify = false",
         'download_dir = "/srv/agent-files"',
         "download_max_mb = 4096",
+        "clamav_max_age_days = 90",
       ),
     ).mcp;
     expect(mcp).toEqual({
@@ -653,6 +657,7 @@ describe("[mcp]", () => {
       notify: false,
       downloadDir: "/srv/agent-files",
       downloadMaxMb: 4096,
+      clamavMaxAgeDays: 90,
     });
     expect(ok(v2("[mcp]", "enabled = false")).mcp.enabled).toBe(false);
     expect("enabled" in ok(v2("[mcp]", "notify = true")).mcp).toBe(false);
@@ -735,6 +740,19 @@ describe("[mcp]", () => {
     });
     expect(at("download_max_mb = 4097")?.path).toBe("mcp.download_max_mb");
     expect(at('download_max_mb = "200"')?.message).toBe("expected an integer, got a string");
+  });
+
+  test("clamav_max_age_days is 1 to 90, 7 by default", () => {
+    const at = (/** @type {string} */ line) => errors(v2("[mcp]", line))[0];
+    expect(ok(v2("[mcp]", "notify = true")).mcp.clamavMaxAgeDays).toBe(7);
+    expect(ok(v2("[mcp]", "clamav_max_age_days = 1")).mcp.clamavMaxAgeDays).toBe(1);
+    expect(at("clamav_max_age_days = 0")).toEqual({
+      line: 3,
+      path: "mcp.clamav_max_age_days",
+      message: "must be an integer between 1 and 90 (days)",
+    });
+    expect(at("clamav_max_age_days = 91")?.path).toBe("mcp.clamav_max_age_days");
+    expect(at('clamav_max_age_days = "7"')?.message).toBe("expected an integer, got a string");
   });
 
   test('workspace follows the workspace-name rules and is never "private"', () => {

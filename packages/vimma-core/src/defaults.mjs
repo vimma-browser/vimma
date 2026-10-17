@@ -35,7 +35,8 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  *   (docs/specs/toolbar-toggle.md)
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
- *   notify?: boolean, download_dir?: string, download_max_mb?: number }} [mcp]  local AI agents and the agent workspace (docs/specs/vimma-mcp.md)
+ *   notify?: boolean, download_dir?: string, download_max_mb?: number,
+ *   clamav_max_age_days?: number }} [mcp]  local AI agents and the agent workspace (docs/specs/vimma-mcp.md)
  * @property {{ default?: string, aliases?: Record<string, string> }} [search]  the default
  *   search engine and `@alias` keywords (docs/specs/search-engines.md)
  */
@@ -372,6 +373,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     notify: true,
     download_dir: "~/Downloads/vimma-agent",
     download_max_mb: 200,
+    clamav_max_age_days: 7,
   },
 });
 
@@ -525,6 +527,9 @@ function mcpLines() {
     "# folder itself), never opened, and refused over download_max_mb (1 to 4096).",
     `download_dir = ${tomlString(m.download_dir)}`,
     `download_max_mb = ${m.download_max_mb}`,
+    "# A ClamAV scan with definitions older than this many days (1 to 90) is never reported",
+    "# clean: keeping the file is asked, as for one ClamAV could not fully scan.",
+    `clamav_max_age_days = ${m.clamav_max_age_days}`,
   ];
 }
 

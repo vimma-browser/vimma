@@ -9,7 +9,14 @@ import {
   SCRIPT_EXTENSIONS,
   ZIP_TAIL_BYTES,
   clamVerdict,
+  clamDefinitionsDate,
+  clamVersionArguments,
+  clamdArguments,
+  clamdConfig,
+  clamdSocketTrusted,
   dangerousContent,
+  passwdUid,
+  staleDefinitions,
   dangerousName,
   dangerousType,
   displayDir,
@@ -335,6 +342,100 @@ function zipEntries(zip) {
   );
 }
 
+describe("ClamAV's definitions and clamd (decision 31 g, decisions 43-45)", () => {
+  test("the definitions date comes from --version, in local time; none without it", () => {
+    expect(clamVersionArguments()).toEqual(["--version"]);
+    expect(clamVersionArguments("/etc/clamav/clamd.conf")).toEqual([
+      "--config-file=/etc/clamav/clamd.conf",
+      "--version",
+    ]);
+    expect(clamDefinitionsDate("ClamAV 1.5.4/28156/Sat Oct 17 09:25:46 2026\n")).toBe(
+      new Date(2026, 9, 17, 9, 25, 46).getTime(),
+    );
+    expect(clamDefinitionsDate("ClamAV 0.103.12/27500/Mon Jan  1 00:00:01 2024")).toBe(
+      new Date(2024, 0, 1, 0, 0, 1).getTime(),
+    );
+    // clamdscan with no clamd to ask prints only its own version.
+    expect(clamDefinitionsDate("ClamAV 1.5.4\n")).toBeNull();
+    expect(clamDefinitionsDate("")).toBeNull();
+    expect(clamDefinitionsDate("ClamAV 1.5.4/1/Xyz Foo 99 99:99:99 2026")).toBeNull();
+  });
+
+  test("stale past the set age, or with no date; never otherwise", () => {
+    const day = 86_400_000;
+    const now = new Date(2026, 9, 17, 12).getTime();
+    expect(staleDefinitions(now - 2 * day, now, 7)).toBeNull();
+    expect(staleDefinitions(now - 7 * day, now, 7)).toBeNull();
+    expect(staleDefinitions(now - 7 * day - 1, now, 7)).toBe(
+      "ClamAV's definitions are 7 days old (over [mcp] clamav_max_age_days, 7)",
+    );
+    expect(staleDefinitions(now - 30 * day, now, 7)).toBe(
+      "ClamAV's definitions are 30 days old (over [mcp] clamav_max_age_days, 7)",
+    );
+    expect(staleDefinitions(now - 30 * day, now, 60)).toBeNull();
+    expect(staleDefinitions(null, now, 7)).toBe("ClamAV's definitions have no date");
+    // A clock behind the mirror's is not stale.
+    expect(staleDefinitions(now + day, now, 7)).toBeNull();
+  });
+
+  test("clamdscan's arguments: the checked config, the file passed open, the path after --", () => {
+    expect(clamdArguments("/etc/clamav/clamd.conf", "/q/-x.part")).toEqual([
+      "--config-file=/etc/clamav/clamd.conf",
+      "--fdpass",
+      "--no-summary",
+      "--stdout",
+      "--",
+      "/q/-x.part",
+    ]);
+  });
+
+  test("clamd.conf: a local socket, no TCP, alerting as clamscan is asked to", () => {
+    const conf = (/** @type {string[]} */ ...lines) => clamdConfig(lines.join("\n"));
+    const good = [
+      "# comment",
+      "LocalSocket /run/clamav/clamd.ctl",
+      "AlertEncrypted yes",
+      "AlertExceedsMax true",
+    ];
+    expect(conf(...good)).toEqual({ socket: "/run/clamav/clamd.ctl" });
+    expect(conf(...good, "LocalSocket /run/other.ctl")).toEqual({ socket: "/run/other.ctl" });
+    expect(conf("  localsocket   /run/c.ctl  ", "alertencrypted YES", "AlertExceedsMax 1")).toEqual(
+      {
+        socket: "/run/c.ctl",
+      },
+    );
+    expect(conf(...good, "TCPSocket 3310")).toEqual({ problem: "clamd listens on TCP" });
+    expect(conf(...good.slice(2))).toEqual({ problem: "no LocalSocket" });
+    expect(conf("LocalSocket clamd.ctl", ...good.slice(2))).toEqual({ problem: "no LocalSocket" });
+    expect(conf(...good.slice(0, 2), "AlertExceedsMax yes")).toEqual({
+      problem: "clamd does not alert on encrypted files",
+    });
+    expect(conf(...good.slice(0, 2), "AlertEncrypted yes", "#AlertExceedsMax yes")).toEqual({
+      problem: "clamd does not alert on files over its limits",
+    });
+    expect(conf(...good, "AlertEncrypted no")).toEqual({
+      problem: "clamd does not alert on encrypted files",
+    });
+  });
+
+  test("clamav's uid from /etc/passwd", () => {
+    const passwd =
+      "root:x:0:0::/root:/bin/bash\nclamav:x:64:64::/var/lib/clamav:/usr/bin/nologin\n";
+    expect(passwdUid(passwd, "clamav")).toBe(64);
+    expect(passwdUid(passwd, "root")).toBe(0);
+    expect(passwdUid(passwd, "clam")).toBeNull();
+    expect(passwdUid("clamav:x:abc:64::/:/bin/false", "clamav")).toBeNull();
+  });
+
+  test("the socket: a socket owned by root or clamav, never by the user or anyone else", () => {
+    expect(clamdSocketTrusted({ isSocket: true, uid: 0 }, 64)).toBe(true);
+    expect(clamdSocketTrusted({ isSocket: true, uid: 64 }, 64)).toBe(true);
+    expect(clamdSocketTrusted({ isSocket: true, uid: 1000 }, 64)).toBe(false);
+    expect(clamdSocketTrusted({ isSocket: true, uid: 64 }, null)).toBe(false);
+    expect(clamdSocketTrusted({ isSocket: false, uid: 0 }, 64)).toBe(false);
+  });
+});
+
 describe("ClamAV's answer (decision 31 g)", () => {
   // What ClamAV could not open is "not fully scanned" (security.md M13).
   test("encrypted or over ClamAV's limits: not fully scanned, not infected", () => {
@@ -450,6 +551,9 @@ describe("the question and the notices (decision 31 a, g)", () => {
     );
     expect(downloadSavedNotice({ name: "a.zip", dir: "/q", scan: "error" })).toBe(
       'saved "a.zip" to /q, not scanned (ClamAV failed)',
+    );
+    expect(downloadSavedNotice({ name: "a.zip", dir: "/q", scan: "stale" })).toBe(
+      'saved "a.zip" to /q, scanned with outdated definitions (ClamAV)',
     );
     expect(downloadRefusedNotice("a.bin", { kind: "folder", text: "it is not yours" })).toBe(
       'refused download "a.bin": the quarantine folder is not usable: it is not yours',
