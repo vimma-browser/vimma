@@ -182,7 +182,7 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     /** @type {Map<string, string>} */
     const seen = new Map();
     for (const r of rows) {
-      if (!r.action) continue;
+      if (!r.action || r.unbound) continue;
       const prev = seen.get(r.chord);
       if (prev) expect(r.action, r.chord).toBe(prev);
       seen.set(r.chord, r.action);
@@ -199,16 +199,51 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
       first: "V",
     });
     expect(byId.get("key_toggleToolboxF12")).toMatchObject({ chord: "f12", action: "devtools" });
-    expect(byId.get("key_dom")).toMatchObject({ chord: "ctrl+shift+w", fate: "c" });
-    expect(byId.get("key_find")).toMatchObject({ chord: "ctrl+f", fate: "c" });
+    expect(byId.get("key_dom")).toMatchObject({
+      chord: "ctrl+shift+w",
+      fate: "b",
+      action: "devtools_dom",
+    });
+    expect(byId.get("key_find")).toMatchObject({
+      chord: "ctrl+f",
+      fate: "a",
+      action: "find_forward",
+      first: "P",
+    });
     expect(rows.filter((r) => r.source === "devtools" && !r.conditional)).toHaveLength(14);
     expect(rows.filter((r) => /^alt\+[1-9]$/.test(r.chord))).toHaveLength(9);
     expect(rows.filter((r) => r.source === "menubar")).toHaveLength(7);
+    for (const r of rows.filter((r) => r.source === "menubar")) expect(r.fate, r.chord).toBe("d");
+  });
+
+  // Decision 16: every Firefox key is a Vimma binding on Firefox's own chord.
+  test.each([
+    ["ctrl+j", "web_search"],
+    ["shift+esc", "about_processes"],
+    ["ctrl+f", "find_forward"],
+    ["ctrl+shift+d", "bookmark_all_tabs"],
+    ["ctrl+shift+b", "toggle_bookmarks_toolbar"],
+    ["ctrl+alt+x", "ai_chatbot_sidebar"],
+    ["ctrl+alt+u", "open_tabs_sidebar"],
+    ["ctrl+alt+z", "toggle_firefox_sidebar"],
+    ["ctrl+shift+x", "switch_text_direction"],
+    ["f7", "caret_browsing"],
+  ])("%s runs %s by default, after the page", (chord, action) => {
+    expect(keymap.trie("normal").children.get(chord)?.action?.name).toBe(action);
+    expect(keymap.trie("insert").children.get(chord)?.action?.name).toBe(action);
+    expect(pageFirst(chord)).toBe(true);
+  });
+
+  test("the only unbound c keys are the conditional ones, ' and the alt tap", () => {
+    const left = rows.filter((r) => r.fate === "c" && !r.conditional).map((r) => r.chord);
+    expect(left).toEqual(["'"]);
+    expect(getAction("devtools_dom")).toBeDefined();
+    expect(keymap.trie("normal").children.get("ctrl+shift+w")?.action?.name).toBe("close_window");
   });
 
   test("every a/b row with an action is bound to it by the default keymap, in its modes", () => {
     for (const r of rows) {
-      if (!r.action) continue;
+      if (!r.action || r.unbound) continue;
       const modes =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
@@ -237,9 +272,9 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     }
   });
 
-  test("the 37 new actions are bound, and firefox_command is not there yet", () => {
+  test("the 47 new actions are named, and firefox_command is not there yet", () => {
     const actions = new Set(rows.filter((r) => r.fate === "b").map((r) => r.action));
-    expect(actions.size).toBe(37);
+    expect(actions.size).toBe(47);
     expect(getAction("firefox_command")).toBeUndefined();
     expect(getAction("new_private_window")).toBeUndefined();
   });
@@ -261,7 +296,7 @@ describe("pageFirst (who goes first: decision 6)", () => {
     ["ctrl+w", false],
     ["ctrl+o", false],
     ["alt+j", false],
-    ["ctrl+f", false],
+    ["ctrl+f", true],
   ])("%s: page first %s", (chord, want) => {
     expect(pageFirst(chord)).toBe(want);
   });
@@ -296,6 +331,9 @@ describe("bound means off (decision 2)", () => {
       expect(bound.has(chord), chord).toBe(true);
     }
     for (const chord of ["ctrl+f", "ctrl+j", "f7", "ctrl+shift+b"]) {
+      expect(bound.has(chord), chord).toBe(true);
+    }
+    for (const chord of ["'", "alt+f", "alt+h"]) {
       expect(bound.has(chord), chord).toBe(false);
     }
   });

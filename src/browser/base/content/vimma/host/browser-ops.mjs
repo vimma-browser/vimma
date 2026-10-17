@@ -33,6 +33,9 @@ export const BROWSER_COMMANDS = Object.freeze({
   "page.reader_view": "View:ReaderView",
   "page.screenshot": "Browser:Screenshot",
   "browser.clear_history": "Tools:Sanitize",
+  "browser.search": "Tools:Search",
+  "browser.processes": "View:AboutProcesses",
+  "browser.text_direction": "cmd_switchTextDirection",
 });
 
 /** Action id → the `<key>` id whose own command listener Firefox's key runs. */
@@ -50,6 +53,13 @@ export const BROWSER_KEYS = Object.freeze({
   "devtools.performance": "key_performance",
   "devtools.storage": "key_storage",
   "devtools.accessibility": "key_accessibility",
+  "devtools.dom": "key_dom",
+  // No <command>: browser-sets.js handles these by the key's id.
+  "browser.bookmark_all_tabs": "bookmarkAllTabsKb",
+  "browser.bookmarks_toolbar": "viewBookmarksToolbarKb",
+  "browser.sidebar_chatbot": "viewGenaiChatSidebarKb",
+  "browser.sidebar_tabs": "viewOpenTabsSidebarKb",
+  "browser.sidebar": "toggleSidebarKb",
 });
 
 /** What a DevTools action says when the window has no DevTools keys (a policy turned them off). */
@@ -98,6 +108,60 @@ export function quit(win) {
   /** @type {any} */ (win).goQuitApplication({ ctrlKey: true, metaKey: true });
 }
 
+/** Prompts in flight per window: a second F7 while one is open does nothing, as in Firefox. */
+const caretPrompts = new WeakSet();
+
+/**
+ * Firefox's F7. Its handler is the private Tabbrowser#toggleCaretBrowsing
+ * (browser/components/tabbrowser/Tabbrowser.sys.mjs:9197, Firefox 157), which no command or key
+ * reaches, so this repeats its steps: the shortcut pref, the same confirmation, then the toggle.
+ * @param {Window} win
+ */
+export function toggleCaretBrowsing(win) {
+  const SHORTCUT = "accessibility.browsewithcaret_shortcut.enabled";
+  const WARN = "accessibility.warn_on_browsewithcaret";
+  const ON = "accessibility.browsewithcaret";
+  const { Services } = /** @type {any} */ (globalThis);
+  if (!Services.prefs.getBoolPref(SHORTCUT, true) || caretPrompts.has(win)) return;
+  const on = Services.prefs.getBoolPref(ON, false);
+  if (Services.prefs.getBoolPref(WARN, true) && !on) {
+    const check = { value: false };
+    const prompt = Services.prompt;
+    let pressed;
+    try {
+      caretPrompts.add(win);
+      const [title, message, checkbox] = /** @type {any} */ (
+        win
+      ).gBrowser.tabLocalization.formatValuesSync([
+        "tabbrowser-confirm-caretbrowsing-title",
+        "tabbrowser-confirm-caretbrowsing-message",
+        "tabbrowser-confirm-caretbrowsing-checkbox",
+      ]);
+      pressed = prompt.confirmEx(
+        win,
+        title,
+        message,
+        prompt.STD_YES_NO_BUTTONS | prompt.BUTTON_POS_1_DEFAULT,
+        null,
+        null,
+        null,
+        checkbox,
+        check,
+      );
+    } catch {
+      return;
+    } finally {
+      caretPrompts.delete(win);
+    }
+    if (pressed !== 0) {
+      if (check.value) Services.prefs.setBoolPref(SHORTCUT, false);
+      return;
+    }
+    if (check.value) Services.prefs.setBoolPref(WARN, false);
+  }
+  Services.prefs.setBoolPref(ON, !on);
+}
+
 /**
  * Firefox's ctrl+shift+pageup / pagedown: moves the selected tab past the next visible one
  * (another workspace's hidden tabs are skipped), as Tabbrowser's keydown handler does.
@@ -130,6 +194,7 @@ export function browserRunners(say) {
     };
   }
   out["app.quit"] = (s) => quit(s.win);
+  out["browser.caret_browsing"] = (s) => toggleCaretBrowsing(s.win);
   out["tab.move_left"] = (s) => moveTab(s.win, "left");
   out["tab.move_right"] = (s) => moveTab(s.win, "right");
   return out;
