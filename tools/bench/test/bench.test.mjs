@@ -39,12 +39,20 @@ const KEY_CASE = "single key: j → scroll.down";
 
 describe("bench processes", () => {
   it("run each child with its own fixed hash seed, the same set on every run (issue #125)", () => {
-    const args = Array.from({ length: PROCESSES }, (_, p) => childArgs(p));
+    const args = Array.from({ length: PROCESSES }, (_, p) => childArgs(p, "/base"));
     const seeds = args.map((a) => a.find((x) => x.startsWith("--hash-seed=")));
     expect(seeds.every(Boolean)).toBe(true);
     expect(new Set(seeds).size).toBe(PROCESSES);
-    expect(Array.from({ length: PROCESSES }, (_, p) => childArgs(p))).toEqual(args);
-    for (const a of args) expect(a).toContain("--child");
+    expect(Array.from({ length: PROCESSES }, (_, p) => childArgs(p, "/base"))).toEqual(args);
+    for (const a of args) expect(a.slice(a.indexOf("--child"))).toContain("/base");
+  });
+
+  it("load the baseline first in half of the processes, so load order cannot lean the median (issue #342)", () => {
+    const args = Array.from({ length: PROCESSES }, (_, p) => childArgs(p, "/base"));
+    const baseFirst = args.filter((a) => a.includes("--base-first")).length;
+    const headFirst = args.filter((a) => a.includes("--head-first")).length;
+    expect(baseFirst + headFirst).toBe(PROCESSES);
+    expect(Math.abs(baseFirst - headFirst)).toBeLessThanOrEqual(1);
   });
 });
 

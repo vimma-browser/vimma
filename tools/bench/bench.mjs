@@ -35,7 +35,6 @@ import { cpus, tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { CASES, reference } from "../../packages/vimma-core/bench/cases.mjs";
 import { combine, compare, formatTable, median, minOfMedians } from "./compare.mjs";
 
 const WARMUP_MS = 200;
@@ -46,6 +45,7 @@ export const ROUNDS = 5;
 export const PROCESSES = 15;
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 export const BASELINE = join(REPO, "packages/vimma-core/bench/baseline.json");
+const CASES_PATH = "packages/vimma-core/bench/cases.mjs";
 // What a baseline commit needs to run its cases: the pure core and the cases themselves.
 const CORE_PATHS = ["packages/vimma-core/src", "packages/vimma-core/bench"];
 
@@ -54,12 +54,16 @@ let sink;
 
 /**
  * Node arguments for bench process `p` (0-based): this script as a child, with hash seed p + 1,
- * measuring the baseline cases extracted to `baseDir` alongside the working tree's.
+ * measuring the baseline cases extracted to `baseDir` alongside the working tree's. Every other
+ * process loads and lists the baseline first: two copies of identical code in one process differ
+ * by several per cent on the sub-microsecond cases, and which one was loaded first leaned that
+ * difference one way on a given machine (unchanged code read +6 % to +8 % on the suite).
  * @param {number} p
  * @param {string} baseDir
  */
 export function childArgs(p, baseDir) {
-  return [`--hash-seed=${p + 1}`, fileURLToPath(import.meta.url), "--child", baseDir];
+  const order = p % 2 ? "--base-first" : "--head-first";
+  return [`--hash-seed=${p + 1}`, fileURLToPath(import.meta.url), "--child", baseDir, order];
 }
 
 /**
@@ -193,18 +197,21 @@ export function measure(cases, ref) {
 const HEAD = "head|";
 const BASE = "base|";
 
+/** @typedef {typeof import("../../packages/vimma-core/bench/cases.mjs")} CasesModule */
+
 /**
  * One child's measurement: the working tree's cases and the baseline commit's, interleaved.
- * @param {{ name: string, run: () => unknown }[]} baseCases
+ * @param {CasesModule} head
+ * @param {CasesModule} base
+ * @param {boolean} headFirst which side comes first in the list of cases
  * @returns {{ head: import("./compare.mjs").Result, base: import("./compare.mjs").Result }}
  */
-export function run(baseCases) {
-  const tagged = (/** @type {string} */ tag, /** @type {typeof baseCases} */ cs) =>
-    cs.map((c) => ({ name: tag + c.name, run: c.run }));
-  const { referenceUs, cases } = measure(
-    [...tagged(HEAD, CASES), ...tagged(BASE, baseCases)],
-    reference,
-  );
+export function run(head, base, headFirst) {
+  const tagged = (/** @type {string} */ tag, /** @type {CasesModule} */ m) =>
+    m.CASES.map((c) => ({ name: tag + c.name, run: c.run }));
+  const sides = [tagged(HEAD, head), tagged(BASE, base)];
+  if (!headFirst) sides.reverse();
+  const { referenceUs, cases } = measure(sides.flat(), head.reference);
   const side = (/** @type {string} */ tag) => ({
     machine: machineKey(),
     referenceUs,
@@ -238,19 +245,25 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const v = i < 0 ? undefined : args[i + 1];
     return v && !v.startsWith("--") ? v : undefined;
   };
-  verify("working tree", CASES);
+  /** @param {string} root @returns {Promise<CasesModule>} */
+  const load = (root) => import(pathToFileURL(join(root, CASES_PATH)).href);
   if (args.includes("--child")) {
     const dir = valueOf("--child");
     if (!dir) process.exit(2);
-    /** @type {typeof import("../../packages/vimma-core/bench/cases.mjs")} */
-    const base = await import(pathToFileURL(join(dir, "packages/vimma-core/bench/cases.mjs")).href);
+    const headFirst = args.includes("--head-first");
+    /** @type {CasesModule[]} */
+    const loaded = [];
+    for (const root of headFirst ? [REPO, dir] : [dir, REPO]) loaded.push(await load(root));
+    const [head, base] = /** @type {CasesModule[]} */ (headFirst ? loaded : loaded.reverse());
+    verify("working tree", head.CASES);
     verify("baseline", base.CASES);
-    const result = run(base.CASES);
+    const result = run(head, base, headFirst);
     if (sink === undefined) process.exit(2); // keeps `sink` observable: no run is optimised away
     process.stdout.write(JSON.stringify(result));
     process.exit(0);
   }
 
+  verify("working tree", (await load(REPO)).CASES);
   const commit = valueOf("--base") ?? JSON.parse(readFileSync(BASELINE, "utf8")).commit;
   const dir = mkdtempSync(join(tmpdir(), "vimma-bench-base-"));
   /** @type {{ head: import("./compare.mjs").Result, base: import("./compare.mjs").Result }[]} */
