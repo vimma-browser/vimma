@@ -14,8 +14,7 @@ Status: accepted · Area: `tools/vimma-ctl` (`src/mcp.rs`, `src/mcp_serve.rs`, `
 
 Issues: [#229](https://github.com/vimma-browser/vimma/issues/229),
 [#230](https://github.com/vimma-browser/vimma/issues/230),
-[#231](https://github.com/vimma-browser/vimma/issues/231),
-[#232](https://github.com/vimma-browser/vimma/issues/232)
+[#231](https://github.com/vimma-browser/vimma/issues/231)
 
 Builds on [m0-control-protocol-and-vimma-ctl](m0-control-protocol-and-vimma-ctl.md),
 [m0-control-server](m0-control-server.md), [m3-workspaces](m3-workspaces.md),
@@ -549,6 +548,7 @@ grant_max_minutes` (default 480, at most 1440) caps both the count and the confi
     notify = true            # desktop notification when Vimma is not in front
     download_dir = "~/Downloads/vimma-agent"  # decision 31 b
     download_max_mb = 200    # decision 31 f; 1..4096
+    clamav_max_age_days = 7  # decision 44; 1..90
     ```
 
     Validated like every value (security.md F2), with suggestions for misspelt keys.
@@ -673,7 +673,8 @@ grant_max_minutes` (default 480, at most 1440) caps both the count and the confi
     encrypted or over-the-limits verdict is "not fully scanned"; on that, an error, or five
     minutes without an answer (the process is killed and not waited for), keeping the file is
     asked: y/N, no grant, a no deletes it. This is chrome code's one process start (security.md
-    C2's one exception), confined to `ctl/AgentDownloads.sys.mjs`.
+    C2's one exception), confined to `ctl/AgentDownloads.sys.mjs`. (Since changed: decisions
+    43-45 add the definitions' age, `clamdscan` and a `statx` call.)
     **Whose download it is.** A download is a connection's when its tab was opened or loaded by
     that connection's `agent-open`, it is that load (its URL before redirects, within 60 s,
     once), and the connection is still open; the record is dropped as soon as the tab shows a
@@ -879,6 +880,46 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     and `:open` are unchanged, so a rule naming the agent workspace still applies to what the user
     types.
 
+### K. ClamAV's definitions and clamd
+
+Checked against ClamAV 1.5.4 (Arch Linux package): `clamscan --version` prints
+`ClamAV 1.5.4/28156/Sat Oct 17 09:25:46 2026`, the engine version, the definitions' version and
+their date in ctime(3) form, local time. `clamdscan --version` asks clamd for the same line; with
+no clamd to connect to it prints only `ClamAV 1.5.4` and exits 0. `clamdscan` has `--fdpass`,
+`--config-file`, `--no-summary` and `--stdout` but no `--alert-*` options; clamd takes those from
+`AlertEncrypted` and `AlertExceedsMax` in clamd.conf, both off by default. Firefox's IOUtils and
+nsIFile give no file owner (Firefox 158.0).
+
+43. **A scan with stale definitions is never reported clean.** When the scanner's definitions
+    are older than `[mcp] clamav_max_age_days`, or `--version` gives no date, a clean verdict
+    asks the same y/N question as "not fully scanned" (no grant, a no deletes the file), with
+    the reason `ClamAV's definitions are N days old (over [mcp] clamav_max_age_days, M)` or
+    `ClamAV's definitions have no date`. A yes keeps the file with the notice `scanned with
+outdated definitions (ClamAV)`. An infected verdict is refused however old the definitions
+    are, and a date in the future is not stale. This is so because a scan by stale definitions
+    reported clean is false confidence: the file was checked only against old threats.
+44. **The age limit is a config key, `[mcp] clamav_max_age_days`** (default 7, an integer from 1
+    to 90), and the date is read from the scanner's `--version` output (`clamdscan` with the
+    same `--config-file` as its scan). A key, because mirrors and distributions update at
+    different speeds, and a slower one can then be accommodated without a code change. Seven
+    days covers a missed weekly update; 90 is the bound past which a scan says little.
+45. **clamdscan when clamd can be used, clamscan otherwise.** clamd is used only when all hold:
+    `/usr/bin/clamdscan` or `/usr/local/bin/clamdscan` passes the same checks as clamscan
+    (decision 31 g); `/etc/clamav/clamd.conf` passes them too (bar the executable bit), has an
+    absolute `LocalSocket`, no `TCPSocket`, and `AlertEncrypted` and `AlertExceedsMax` on, so
+    clamd reports what clamscan's `--alert-*` options would; and the socket is a socket owned by
+    root or by `clamav` (its uid from /etc/passwd). The owner is read with `statx(2)` through
+    js-ctypes, not following a symlink, because no Firefox file API gives it and the no-op chmod
+    proves only "not the user's"; statx, not stat, because struct statx has one layout on every
+    Linux architecture. clamdscan runs with `--config-file=<that file> --fdpass --no-summary
+--stdout --` and the path; `--fdpass` because clamd runs as another user and may not be able
+    to open the quarantine. Its exit codes read as clamscan's. On any failure (no clamd, an
+    error, a timeout, stale or undated definitions) the file is scanned by clamscan, with
+    decision 43 applied to clamscan's own definitions. This is so because every failure path
+    still ends in a full clamscan, so clamd can only make a scan faster, never weaker; the
+    socket owner check is there because a socket the user (or a process of theirs) owns could
+    be a fake clamd that answers clean.
+
 ## Security and privacy
 
 ### Threat model
@@ -952,7 +993,8 @@ m7-a11y.
   another prompt open: no auto-open, `◇ agent 1?`); a 300-character title
   `<img src=x onerror=…>` is the literal text cut at 60 columns; the keys, counts, `x`, `!`.
 - `agent-downloads.test.mjs`: the dangerous-type rule, the zip lister, the quarantine folder
-  rule, the question text; fuzz `agent-downloads.fuzz.test.mjs` (any bytes: the zip lister and
+  rule, the question text; the definitions' date and age, clamd.conf, the passwd lookup and the
+  socket rule (decisions 43-45); fuzz `agent-downloads.fuzz.test.mjs` (any bytes: the zip lister and
   the magic check never throw), `agent.fuzz.test.mjs`, `control.fuzz.test.mjs` (the role and
   agent commands), `config.fuzz.test.mjs` (`[mcp]` values).
 - `workspacedefs.test.mjs`, `workspaces.test.mjs`: the agent workspace appended last (cyan,
@@ -1027,7 +1069,10 @@ m7-a11y.
 - `browser_vimma_mcp_downloads.js` (served by `file_vimma_agent_download.sjs`): the question
   shows name, size, type and host and no URL; `y` saves to the quarantine, mode 0600, not
   opened; `n` saves nothing; `.sh`, ELF and zip-with-ELF need `!`; `http:` refused; over the
-  cap cancelled and removed; a fake `clamscan` (exit 0, 1, 2) releases, deletes, or asks; a
+  cap cancelled and removed; a fake `clamscan` (exit 0, 1, 2) releases, deletes, or asks; stale
+  or undated definitions ask, `clamav_max_age_days` moves the limit, infected stays refused; a
+  fake `clamdscan` is used with its arguments, and on its error, undated definitions, a config
+  without the alerts, or a copy of the user's own, clamscan scans instead; statx's owner; a
   download from a `work` tab is untouched; "always ask", "always open similar files", a frame's
   and a `blob:` download.
 - `browser_vimma_security_invariants.js`: the agent role never reaches `send-keys` or `state`.
@@ -1080,6 +1125,7 @@ One sub-PR at a time, after firefox-keys sub-PR 2 (both change the keymap; this 
 | 2a  | `feat(ctl): agent role with a confirmation for every request`      | Protocol 2 (role, `role-off`, `denied`, agent commands, v2 fixtures); server roles and switches; `AgentGate.sys.mjs`; `agent.mjs` in core; `:mcp revoke`; `PageExtractor` reads; ADR-019; security.md §1 and §12.                                                     | merged (#176) |
 | 2b  | `feat(mcp): the agent question line and status, full control asks` | Decisions 13-15 and 23-25 (the question line, `◇ agent`, `ctrl+b shift+a`, attention and notifications, grant notices), 29 (full control asks while MCP is on; `:control on <minutes>`), 30 (the agent workspace's pages).                                            | merged (#177) |
 | 2c  | `feat(mcp): agent downloads, asked and quarantined`                | Decision 31.                                                                                                                                                                                                                                                          | merged (#182) |
+| 2d  | `feat(mcp): ClamAV definitions age and clamdscan`                  | Decisions 43-45: `[mcp] clamav_max_age_days`, the stale-definitions question, clamdscan with its config and socket checks, the clamscan fallback.                                                                                                                     | this PR       |
 | 3   | `feat(vimma-ctl): vimma-ctl mcp, an MCP server over stdio`         | Decisions 35-41: `src/mcp.rs` and `src/mcp_serve.rs` (dual-era server, tool table and fixture, protocol-2 client, keep-alive, error texts), `agent-cancel`; Rust unit, integration and property tests; the e2e harness's `mcp` steps and the `m0-mcp-stdio` scenario. | merged (#243) |
 | 4   | `docs(guide): set up Claude Code, Codex, opencode and Copilot`     | The guide's "Agents (MCP)" in full: the threat model in plain words, each tool's setup run against a real install with the version tested, timeouts, grants, sharing a tab, revoking, why `vimma.control.enabled` stays off; README feature line; limits.md.          | to do         |
 
