@@ -1276,8 +1276,8 @@ script` (or what it is). `y` and grants do nothing there: only `!` allows that o
 "a.zip": ClamAV found …`). Sometimes ClamAV fails, takes over five minutes, or cannot look
   inside a file (encrypted, or over its limits). Then the line asks `— ⚠ not scanned: ClamAV
 failed; keep it?`: `y` keeps it unscanned, anything else deletes it. The notice says
-  `saved "report.pdf" to ~/Downloads/vimma-agent, scanned (ClamAV)`, `not fully scanned (ClamAV)`
-  or `not scanned`. Vimma has no download reputation service of its own: Firefox's Safe Browsing
+  `saved "report.pdf" to ~/Downloads/vimma-agent, scanned (ClamAV)`, `not fully scanned (ClamAV)`,
+  `scanned with outdated definitions (ClamAV)` or `not scanned`. Vimma has no download reputation service of its own: Firefox's Safe Browsing
   checks downloads only in a build with a Google key.
 - **Your own saves are yours.** Save Page (`ctrl+s`), Save Link As and Save Image As in an agent
   tab ask nothing and save where you choose, as in any workspace: an agent cannot press them.
@@ -1286,6 +1286,7 @@ failed; keep it?`: `y` keeps it unscanned, anything else deletes it. The notice 
 [mcp]
 download_dir = "~/Downloads/vimma-agent"  # ~/… or /…; never ~ or your Downloads folder itself
 download_max_mb = 200
+clamav_max_age_days = 7   # 1 to 90
 ```
 
 #### Virus scanning with ClamAV
@@ -1306,12 +1307,20 @@ sudo systemctl enable --now clamav-freshclam     # keeps them up to date
 On Debian and Ubuntu, install `clamav`; the `clamav-freshclam` service keeps the definitions
 current. On Fedora, install `clamav clamav-update` and run `sudo freshclam`.
 
-Two limits:
+Vimma checks how old the definitions are. When they are older than
+`[mcp] clamav_max_age_days` (7 days by default), a clean scan is not called clean: the line asks
+`— ⚠ not scanned: ClamAV's definitions are 30 days old (over [mcp] clamav_max_age_days, 7);
+keep it?`, and `y` keeps it with the notice `scanned with outdated definitions (ClamAV)`. If your
+mirror updates slowly, raise the key (up to 90). A file ClamAV flags is deleted however old the
+definitions are.
 
-- Vimma does not notice stale definitions. Keep `freshclam` running, or scans use whatever
-  definitions you last downloaded.
-- `clamscan` loads its whole database for each file. A scan takes a while and about 1 GB of
-  memory.
+`clamscan` loads its whole database for each file, so a scan takes a while and about 1 GB of
+memory. If the clamd daemon runs (`sudo systemctl enable --now clamav-daemon` on Debian and
+Ubuntu, `clamav-daemon` or `clamd` on others), Vimma asks it through `clamdscan` instead, which
+is fast. It does so only when `/etc/clamav/clamd.conf` is root's, clamd listens on a local socket
+(`LocalSocket`, no `TCPSocket`) owned by root or `clamav`, and the config has
+`AlertEncrypted yes` and `AlertExceedsMax yes`, so clamd reports what it cannot look inside.
+Otherwise, or if clamd fails or its definitions are old, Vimma uses `clamscan`.
 
 ### Side panel
 
@@ -1943,7 +1952,7 @@ accent = "#ff9e64"
   name, default `"agent"`, never `"private"`; `ask_timeout`, 10 to 300 seconds, default 50;
   `grant_minutes`, default 10, at most `grant_max_minutes`, 1 to 1440, default 480;
   `max_read_chars`, 1,000 to 500,000, default 200,000; `notify`, default `true`;
-  `download_dir` and `download_max_mb`, [above](#downloads-from-the-agent-workspace)); `[search]`
+  `download_dir`, `download_max_mb` and `clamav_max_age_days`, [above](#downloads-from-the-agent-workspace)); `[search]`
   (the default engine and `@aliases`, [below](#search-engines)); `[ui] toolbar` (`"shown"`, the
   default, or `"hidden"`: [Firefox's toolbar](#hiding-the-toolbar) in every window; applied at
   startup and when the line changes, so `ctrl+b u` lasts until then); `[updates] check`

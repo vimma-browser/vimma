@@ -58,11 +58,11 @@ describe("chrome code", () => {
     expect(hits(/\beval\(|new Function\b|\bFunction\(|evalInSandbox|loadSubScript/)).toEqual([]);
   });
 
-  // C2's one exception (docs/specs/vimma-mcp.md decision 31 g; security.md
-  // M13): an agent download is scanned with the system's clamscan.
-  // One file, one call, a fixed program list, fixed arguments with the path after `--`, no
-  // shell, no PATH search, and no other way to reach Subprocess.
-  test("never starts a process, but clamscan on an agent download", () => {
+  // C2's one exception (docs/specs/vimma-mcp.md decisions 31 g, 43-45; security.md M13): an
+  // agent download is scanned with the system's clamscan, or clamdscan when clamd can be used.
+  // One file, one call, fixed program lists, arguments only from the three fixed builders with
+  // the path after `--`, no shell, no PATH search, and no other way to reach Subprocess.
+  test("never starts a process, but ClamAV on an agent download", () => {
     const CLAM = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
     const all = hits(/Subprocess|nsIProcess|@mozilla\.org\/process\/|\.launch\(\)|\.reveal\(\)/);
     expect(all.filter((h) => !h.startsWith(`${CLAM}:`))).toEqual([]);
@@ -72,11 +72,28 @@ describe("chrome code", () => {
     expect(text).toContain('  Subprocess: "resource://gre/modules/Subprocess.sys.mjs",');
     expect(text.match(/Subprocess\.call\(/g)).toHaveLength(1);
     expect(text).toMatch(
-      /lazy\.Subprocess\.call\(\{\s*command: clam,\s*arguments: clamArguments\(path\),\s*stderr: "pipe",?\s*\}\)/,
+      /lazy\.Subprocess\.call\(\{\s*command: program,\s*arguments: args,\s*stderr: "pipe",?\s*\}\)/,
     );
+    // runProgram is the call's only way in: each caller passes a found scanner and a builder's
+    // fixed arguments.
+    expect([...text.matchAll(/runProgram\((?:[^()]|\([^()]*\))*\)/g)].map((m) => m[0])).toEqual([
+      "runProgram(program, args)",
+      "runProgram(program, args)",
+      "runProgram(clamd.path, clamdArguments(clamd.conf, path))",
+      "runProgram(clam, clamArguments(path))",
+    ]);
+    expect(text.match(/definitionsProblem\((?:[^()]|\([^()]*\))*\)/g)).toEqual([
+      "definitionsProblem(program, args)",
+      "definitionsProblem(clamd.path, clamVersionArguments(clamd.conf))",
+      "definitionsProblem(clam, clamVersionArguments())",
+    ]);
     expect(text).toContain(
       'const CLAM_PATHS = Object.freeze(["/usr/bin/clamscan", "/usr/local/bin/clamscan"]);',
     );
+    expect(text).toContain(
+      'const CLAMD_PATHS = Object.freeze(["/usr/bin/clamdscan", "/usr/local/bin/clamdscan"]);',
+    );
+    expect(text).toContain('const CLAMD_CONF = "/etc/clamav/clamd.conf";');
     // No PATH search, no aliasing, no bracket access, no shell.
     expect(text).not.toMatch(
       /pathSearch|Subprocess\s*\[|=\s*(lazy\.)?Subprocess\b|\}\s*=\s*lazy\b/,
@@ -85,6 +102,23 @@ describe("chrome code", () => {
     // clamArguments: fixed, with the path last, after `--`.
     const core = readFileSync(join(ROOT, "packages/vimma-core/src/agent-downloads.mjs"), "utf8");
     expect(core).toMatch(/"--alert-exceeds-max=yes",\s*"--",\s*path,\s*\]/);
+    expect(core).toContain(
+      'return [`--config-file=${configFile}`, "--fdpass", "--no-summary", "--stdout", "--", path];',
+    );
+    expect(core).toContain(
+      'return configFile ? [`--config-file=${configFile}`, "--version"] : ["--version"];',
+    );
+  });
+
+  // js-ctypes reaches any native function. Its one use is statx(2) on clamd's socket, for its
+  // owner (security.md C2, M13): nothing else may load a library or declare a function.
+  test("never calls native code, but statx on clamd's socket", () => {
+    const CLAM = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
+    const all = hits(/ctypes/);
+    expect(all.filter((h) => !h.startsWith(`${CLAM}:`))).toEqual([]);
+    const text = readFileSync(join(ROOT, CLAM), "utf8");
+    expect(text.match(/ctypes\.open\([^)]*\)/g)).toEqual(['ctypes.open("libc.so.6")']);
+    expect(text.match(/\.declare\(\s*"?\w*/g)).toEqual(['.declare(\n      "statx']);
   });
 
   test("never installs an add-on", () => {
