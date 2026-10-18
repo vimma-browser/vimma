@@ -259,6 +259,9 @@ describe("workflow wiring", () => {
     // Informational by branch protection, not by hiding a failure.
     expect(mac).not.toContain("continue-on-error");
     const names = steps(mac).map((s) => s.text);
+    // npm test includes tools/bench's baseline test, which needs the branch's whole history.
+    const checkout = names.find((t) => t.includes("actions/checkout@")) ?? "";
+    expect(checkout).toMatch(/^ +fetch-depth: 0\b/m);
     const at = (/** @type {string} */ s) => names.findIndex((t) => t.includes(s));
     const order = [
       "run: npm ci",
