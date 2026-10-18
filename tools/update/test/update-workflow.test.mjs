@@ -278,7 +278,9 @@ describe("update-publish.yml", () => {
   });
 });
 
-describe("the signing job's steps, run", () => {
+// The sign job runs on ubuntu-24.04 only, and its steps rely on GNU coreutils (`date -d`, an
+// unpadded `wc -c`): under BSD tools every step fails, so the refusals would pass for nothing.
+describe.skipIf(process.platform !== "linux")("the signing job's steps, run", () => {
   /**
    * A directory holding the prepare job's artifact and a stand-in `gcloud` that signs the way
    * RSA_SIGN_RAW_PKCS1_4096 does: PKCS#1 v1.5 type-1 padding over the bytes it is sent.

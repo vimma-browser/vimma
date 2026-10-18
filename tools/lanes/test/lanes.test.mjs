@@ -14,6 +14,7 @@ import {
   assertLane,
   copyEngine,
   copyEntries,
+  cpArgs,
   foreignLinks,
   laneLinks,
   mainWorktree,
@@ -123,11 +124,25 @@ describe("copyEntries", () => {
   });
 });
 
+describe("cpArgs", () => {
+  it("spells the reflink flags as BSD cp does on macOS, and leaves GNU cp's alone", () => {
+    expect(cpArgs(["-a", "--reflink=always", "s", "d"], "darwin")).toEqual(["-a", "-c", "s", "d"]);
+    expect(cpArgs(["-a", "--reflink=auto", "s", "d"], "darwin")).toEqual(["-a", "s", "d"]);
+    expect(cpArgs(["-a", "--reflink=always", "s", "d"], "linux")).toEqual([
+      "-a",
+      "--reflink=always",
+      "s",
+      "d",
+    ]);
+  });
+});
+
 describe("copyEngine", () => {
   it("copies everything but the objdirs, with .git, permissions and symlinks as they are", async () => {
     const { main, lane, engine } = fakeCheckouts();
     const dest = join(lane, "engine");
-    // tmpfs has no reflinks: this exercises the --allow-copy path with the real cp.
+    // tmpfs has no reflinks: this exercises the --allow-copy path with the real cp (on macOS,
+    // APFS clones).
     await copyEngine(engine, dest, { allowCopy: true });
     expect(existsSync(join(dest, ".git", "HEAD"))).toBe(true);
     expect(statSync(join(dest, "mach")).mode & 0o777).toBe(0o755);
