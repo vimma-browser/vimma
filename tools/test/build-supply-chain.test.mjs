@@ -53,7 +53,7 @@ function fetchingRunners(text) {
 
 /**
  * Runs dependabot-automerge.yml's "Decide" step as GitHub would, with the given metadata.
- * @param {{ title: string, update: string, ecosystem?: string, deps: string }} pr
+ * @param {{ title: string, update: string, ecosystem?: string, deps: string, releasePath?: string }} pr
  * @returns {string} the decision it writes to GITHUB_OUTPUT
  */
 function decide(pr) {
@@ -74,6 +74,7 @@ function decide(pr) {
         UPDATE_TYPE: pr.update,
         ECOSYSTEM: pr.ecosystem ?? "npm_and_yarn",
         DEPENDENCIES: pr.deps,
+        RELEASE_PATH: pr.releasePath ?? "merge",
       },
       stdio: ["ignore", "ignore", "inherit"],
     });
@@ -161,6 +162,55 @@ describe("build supply chain: npm", () => {
 });
 
 describe("build supply chain: Dependabot", () => {
+  it("dependabot-automerge classifies on base-branch code with a read-only token", () => {
+    const all = jobs(workflow("dependabot-automerge.yml"));
+    const classify = all.get("classify");
+    expect(classify).toBeDefined();
+    expect(classify?.permissions).toEqual({ contents: "read" });
+    const text = JSON.stringify(classify);
+    expect(text).not.toMatch(/secrets\./);
+    expect(text).not.toContain("pull_request_target");
+    const steps = /** @type {Record<string, any>[]} */ (classify?.steps);
+    const checkout = steps.find((s) => String(s.uses ?? "").startsWith("actions/checkout@"));
+    expect(checkout?.with).toMatchObject({
+      ref: "${{ github.event.pull_request.base.sha }}",
+      "persist-credentials": false,
+    });
+    // No other step checks out code, and the head commit is only read as data.
+    expect(steps.filter((s) => String(s.uses ?? "").startsWith("actions/checkout@"))).toHaveLength(
+      1,
+    );
+    const run = steps.map((s) => String(s.run ?? "")).join("\n");
+    expect(run).toMatch(/git show "\$HEAD_SHA:package-lock\.json"/);
+    expect(run).toMatch(/node tools\/deps\/release-path\.mjs --diff package-lock\.json /);
+    expect(run).not.toMatch(/\bnpm (?:ci|install|i)\b|\bnpx\b|git (?:checkout|switch)/);
+    const upload = steps.find((s) => String(s.uses ?? "").startsWith("actions/upload-artifact@"));
+    expect(upload?.with).toMatchObject({ name: "release-path-diff", "retention-days": 30 });
+
+    // The job that can write holds no checkout and acts on classify's decision.
+    const automerge = all.get("automerge");
+    expect(automerge?.needs).toBe("classify");
+    const automergeSteps = /** @type {Record<string, any>[]} */ (automerge?.steps);
+    expect(automergeSteps.some((s) => String(s.uses ?? "").startsWith("actions/checkout@"))).toBe(
+      false,
+    );
+    const decideStep = automergeSteps.find((s) => s.name === "Decide");
+    expect(decideStep?.env?.RELEASE_PATH).toBe("${{ needs.classify.outputs.decision }}");
+  });
+
+  it("a release-path change is never auto-merged, security updates included", () => {
+    for (const update of ["version-update:semver-patch", "version-update:semver-minor", ""]) {
+      for (const title of ["bump vitest", "bump vitest [security]"]) {
+        for (const releasePath of ["review", "", "merge\n", "Merge"]) {
+          expect(
+            decide({ title, update, deps: "vitest", releasePath }),
+            `${title} ${update} ${JSON.stringify(releasePath)}`,
+          ).toBe("review");
+        }
+      }
+    }
+  });
+
   it("the release-path group comes before the minor and patch group", () => {
     const text = read(".github/dependabot.yml");
     const npm = text.slice(

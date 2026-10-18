@@ -1,6 +1,6 @@
 # Spec: build-supply-chain
 
-Status: accepted (sub-PRs 1, 2, 4 and 5 implemented, #280, #289, #286 and #350; sub-PR 3: [#223](https://github.com/vimma-browser/vimma/issues/223)) · Area: `package.json`, `package-lock.json`, `.npmrc` (new),
+Status: implemented · Area: `package.json`, `package-lock.json`, `.npmrc` (new),
 `.github/dependabot.yml`, `.github/workflows/dependabot-automerge.yml`,
 `.github/workflows/release.yml`, `.github/workflows/nightly.yml`, `.github/workflows/e2e.yml`,
 `.github/workflows/sites.yml`, `.github/workflows/upstream.yml`,
@@ -12,8 +12,6 @@ Status: accepted (sub-PRs 1, 2, 4 and 5 implemented, #280, #289, #286 and #350; 
 `CONTRIBUTING.md` · Upstream patches:
 none · ADR: ADR-021 (new, "Mozilla's release key is the trust anchor for the Firefox source");
 [ADR-001](../adr/001-engine-firefox-surfer.md) gains one paragraph on how Surfer is pinned
-
-Issues: [#223](https://github.com/vimma-browser/vimma/issues/223)
 
 ## Summary
 

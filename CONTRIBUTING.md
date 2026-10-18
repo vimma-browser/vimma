@@ -230,11 +230,18 @@ its Rust toolchain and the GitHub Actions current:
   with a licence exception fails `npm run license-check` until a person reviews it.
 - **Majors need review.** Major updates and every GitHub Actions update (workflows hold write
   tokens) get a comment and wait for a person to read the changelog, fix what breaks and merge.
-- **Surfer is always reviewed.** `@zen-browser/surfer` drives the Firefox build, so it is pinned
-  to an exact version and no update of it auto-merges, security updates included. It comes in
-  its own `release-path` group with `ajv`; review it with
-  `npm diff --diff=@zen-browser/surfer@<old> --diff=@zen-browser/surfer@<new>`, which shows the
-  published code that will run.
+- **The release path is always reviewed.** The release build runs `@zen-browser/surfer` and
+  `ajv`, and with them every package they depend on (about 220, listed by
+  `node tools/deps/release-path.mjs`). Surfer is pinned to an exact version, and no change to any
+  release-path package auto-merges, security updates and transitive bumps in grouped updates
+  included: the workflow's `classify` job compares the two lockfiles and holds the PR. Surfer and
+  `ajv` come in their own `release-path` group, so a held update does not hold the others.
+- **Reading the held PR.** Its comment links the run. The `classify` job's summary lists each
+  changed release-path package with its old and new version, then the published diff
+  (`npm diff --diff=<name>@<old> --diff=<name>@<new>`), the code that will run in the build. A
+  summary is cut at about 1 MB; the full diff is the run's `release-path-diff` artifact (30
+  days). Read it for new network calls, `child_process`, obfuscated code and files unrelated to
+  the release notes, then merge.
 - **No install scripts.** `.npmrc` sets `ignore-scripts=true`, so `npm ci` and `npm install` run
   no package's install scripts (`npm run` still runs ours). A new dependency that needs one is a
   security decision for its PR, not a reason to drop the setting.
