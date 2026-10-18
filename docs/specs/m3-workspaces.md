@@ -1,7 +1,6 @@
 # Spec: m3-workspaces
 
-Status: implemented, except the leftover in [#260](https://github.com/vimma-browser/vimma/issues/260)
-(a key to move a background tab); split into sub-specs (see Breakdown). Sub-specs 1 (store), 2a (routing), 2b
+Status: implemented; split into sub-specs (see Breakdown). Sub-specs 1 (store), 2a (routing), 2b
 (switching), 3 (persistence), 4a (lifecycle), 4b (move), 5 (picker), 6 (side panel), 7 (e2e
 restart scenario) and the 4a/4b/5 leftovers are merged; the 200-tab measurement is in
 `browser_vimma_perf.js` (runbook, "Key-to-paint timings") ·
@@ -1074,7 +1073,35 @@ dependency for 4b, 5 and parts of 4a.
   stays in its workspace, a notice says so, and it is hidden in another workspace),
   `browser_vimma_workspace_edges.js` (the lost-containers alert persists past Esc and goes with
   the list); vitest for both texts. Red before (2 vitest, 2 mochitest failures), green after.
-- **Left:** a default key to move a background tab from a list; the spec names none.
+- **Left:** a default key to move a background tab from a list; the spec names none. (Since
+  changed: `m` in the side panel; see "Settled: moving a background tab from the side panel".)
+
+## Settled: moving a background tab from the side panel (2026-10-18)
+
+- **Decision:** `m` on a side-panel row opens the workspace picker, and the workspace chosen there
+  gets that row's tab, because panel-mode keys never reach the page, the row names the tab
+  without selecting it (so a lazy tab stays lazy), and it mirrors `m` in the workspace picker.
+  Rejected: `m` in the goto (tab-list) picker followed by a second prompt for the workspace,
+  because `m` there is a search character and the second prompt would add a step; and only a
+  `:wsmove <tab> <workspace>` command, because typing a tab reference is slower than pointing at
+  a row.
+- **Keys:** `[modal.panel] m = "panel.move"` (action `panel_move_tab`). The bookmarks panel
+  shares `panel` mode and keeps `m` as its move to a folder, because both panels are never open
+  at once: core `bookmarksKey` treats `panel.move` as `bookmarks.move`, and the host sends the
+  action to whichever panel is open. `bookmarks_move` is unbound by default and still rebindable.
+- **Core** (`sidepanel.mjs`): `panel.move` gives `{ type: "move", id }` for the highlighted row,
+  refuses a pinned row (`PINNED_MOVE_TEXT`), and does nothing in an empty workspace.
+- **Host:** the panel closes, then `WorkspacePicker.openFor(tab, title)` opens the picker with
+  the heading `Move "<title>" to`; there Enter means `m`, because Enter must not switch
+  workspace. The choice runs `pickerMove` and `moveTabFromPicker` with the row's tab instead of
+  the selected one, so the private workspace's move and decision 6's warning are the same code.
+  The stale-answer guard keeps the workspace-name check and the tab's `isConnected`, but not
+  "still selected", because the row's tab was never selected.
+- **Tests:** vitest (the `move` effect for the highlighted row, the pinned refusal, the empty
+  workspace, `m` in panel mode, `panel.move` in the bookmarks panel); mochitest
+  `browser_vimma_side_panel.js` (Esc moves nothing, the own workspace is refused unasked, `y`
+  moves a background tab to another workspace while the window and its selected tab stay, a tab
+  closed before the `y` moves nothing). Red before (5 vitest, 2 mochitest failures), green after.
 
 ## Settled: sub-spec 7, m3-e2e (restart part, 2026-10-10)
 

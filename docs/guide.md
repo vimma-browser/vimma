@@ -1490,6 +1490,7 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 | `space`                 | Mark the highlighted tab (or unmark it). The highlight stays on it.                                                                                                                                        |
 | `V`                     | Start a range: `j` / `k` stretch it, and `V` or `space` marks every row in it.                                                                                                                             |
 | `x`                     | Close the highlighted tab; the highlight moves to the next row and the panel stays open, so `x x x` closes three.                                                                                          |
+| `m`                     | Move the highlighted tab to another workspace: the workspace picker opens, `Enter` (or `m`) on a workspace asks first, then moves it ([below](#moving-a-tab-from-the-side-panel)).                         |
 | `ctrl+shift+t`          | Reopen the last closed tab, as in Firefox.                                                                                                                                                                 |
 | `ctrl+b )` / `ctrl+b (` | Switch workspace; the panel stays open and lists that one (its marks are dropped).                                                                                                                         |
 | `I`                     | Close the panel and focus the address bar.                                                                                                                                                                 |
@@ -1508,6 +1509,17 @@ follows the theme as the status bar does, scrollbar included (the theme's muted
 colour on the panel's background), and recolours the moment the theme changes. Change its keys under `[modal.panel]` in
 `config.toml`; `[keys] toggle_sidebar` changes the keys that open it, and a `<leader>` binding
 you add there (`toggle_sidebar = ["prefix+b", "<leader>n"]`) closes it too.
+
+#### Moving a tab from the side panel
+
+`m` moves the highlighted tab, which need not be the one you are on: a tab in the background,
+even one not loaded since a restart, moves without being selected first. The panel closes and the
+workspace picker opens with the tab's title in its heading (`Move "Docs" to`); `j` / `k` or `/`
+choose a workspace and `Enter` or `m` picks it, then the same `Move this tab to "work"? … y/N`
+question as the picker's own `m` asks, because the tab is reopened there without its
+back/forward history. `Esc` in the picker moves nothing. You stay in the workspace you are in, on
+the tab you were on. If the tab closes before your `y`, nothing is moved; on its own workspace,
+`m` says so and asks nothing. In the bookmarks panel `m` moves a bookmark to a folder instead.
 
 #### Showing tabs together
 

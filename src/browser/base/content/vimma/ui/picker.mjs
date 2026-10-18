@@ -198,8 +198,9 @@ export class GotoPicker {
       this.host.reopen?.(effect.id);
     }
     if (effect?.type === "move") {
+      const moving = this.moving();
       this.close();
-      this.host.move?.(effect.id);
+      moving(effect.id);
     }
     if (effect?.type === "addon") this.host.addon?.(effect.op, effect.id);
   }
@@ -230,6 +231,14 @@ export class GotoPicker {
         /** @type {unknown} */ (this.win)
       ).gBrowser?.selectedBrowser.focus();
     }
+  }
+
+  /**
+   * What `m` on a workspace row runs, taken before close() resets the picker.
+   * @returns {(id: string) => void}
+   */
+  moving() {
+    return (id) => this.host.move?.(id);
   }
 
   /** Close and remove the dialog (VimmaHost.uninit). */
@@ -429,14 +438,67 @@ export class GotoPicker {
   }
 }
 
-/** `prefix+w`: the workspaces, Enter switches, `m` moves the current tab (m3-workspaces 5). */
+/**
+ * `prefix+w`: the workspaces, Enter switches, `m` moves the current tab (m3-workspaces 5).
+ * `openFor` (`m` on a side-panel row): Enter or `m` moves that row's tab instead.
+ */
 export class WorkspacePicker extends GotoPicker {
   /**
    * @param {Window} win  a browser window
-   * @param {PickerHost} host
+   * @param {PickerHost & { moveRow?: (tab: Element, id: string) => void }} host
    */
   constructor(win, host) {
     super(win, host, WORKSPACES);
+    /** @type {Element | null} the side-panel row's tab while opened for one */
+    this.row = null;
+  }
+
+  /**
+   * @param {Element} tab  the tab to move
+   * @param {string} title  its title, for the heading
+   */
+  openFor(tab, title) {
+    if (this.isOpen) return;
+    this.open();
+    this.row = tab;
+    this.#heading(`Move "${title}" to`, "j/k move · / search · Enter move here · Esc close");
+  }
+
+  /**
+   * Opened for a row, Enter and `m` both mean "move it here": Enter must not switch workspace.
+   * @param {string} key
+   */
+  key(key) {
+    super.key(this.row && key === "enter" ? "m" : key);
+  }
+
+  /** @returns {(id: string) => void} */
+  moving() {
+    const row = this.row;
+    if (!row) return super.moving();
+    const host = /** @type {{ moveRow?: (tab: Element, id: string) => void }} */ (this.host);
+    return (id) => host.moveRow?.(row, id);
+  }
+
+  /** @param {{ tabChanged?: boolean }} [options] */
+  close(options) {
+    if (this.row) {
+      this.row = null;
+      this.#heading(WORKSPACES.title, WORKSPACES.hint);
+    }
+    super.close(options);
+  }
+
+  /**
+   * @param {string} title
+   * @param {string} hint
+   */
+  #heading(title, hint) {
+    const h1 = this.dialog?.querySelector("h1");
+    const hintEl = this.dialog?.querySelector(".vimma-picker-hint");
+    if (h1) h1.textContent = title;
+    if (hintEl) hintEl.textContent = hint;
+    this.dialog?.setAttribute("aria-label", title);
   }
 }
 

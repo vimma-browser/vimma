@@ -329,6 +329,11 @@ group("Side panel", [
   ["panel_close_tab", "panel.close_tab", "Close the selected tab; the panel stays open"],
   ["panel_mark", "panel.mark", "Mark or unmark the selected tab"],
   ["panel_visual", "panel.visual", "Start a range of rows to mark, or mark it"],
+  [
+    "panel_move_tab",
+    "panel.move",
+    "Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder",
+  ],
 ]);
 
 group("Bookmarks", [

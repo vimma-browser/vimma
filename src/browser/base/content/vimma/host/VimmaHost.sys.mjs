@@ -731,6 +731,8 @@ export const RUNNERS = Object.freeze({
   "panel.visual": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
     if (!s.bookmarks.isOpen) s.panel.action(a);
   },
+  // `m`: the bookmarks panel's move to a folder, or the side panel's move to a workspace.
+  "panel.move": panelAction,
   // Firefox's ctrl+shift+t, in every mode (docs/specs/firefox-keys.md decision 7).
   "tab.restore": (/** @type {WindowState} */ s) => restoreTab(s.win),
   // docs/specs/firefox-keys.md decision 4: the Browser and Developer tools actions, each what
@@ -1212,6 +1214,15 @@ export const VimmaHost = {
           );
           if (refused) state.notice.show(refused);
         },
+        // `m` on a side-panel row: that tab, which may be in the background (and lazy).
+        moveRow: (tab, id) => {
+          const ask = (/** @type {string} */ q, /** @type {() => void} */ yes) =>
+            state.rename.ask(q, yes);
+          const say = (/** @type {string} */ text) => state.notice.show(text);
+          const said = pickerMove(win, id, ask, say, tab);
+          const refused = said === undefined ? moveTabFromPicker(win, id, ask, say, tab) : said;
+          if (refused) state.notice.show(refused);
+        },
       }),
       addonPicker: new AddonPicker(win, {
         load: addonPickerItems,
@@ -1266,6 +1277,10 @@ export const VimmaHost = {
         closeTab: (tabId) => {
           const tab = tabById(win, tabId);
           if (tab) closeTabById(win, tab);
+        },
+        move: (tabId) => {
+          const tab = /** @type {any} */ (tabById(win, tabId));
+          if (tab) state.wsPicker.openFor(tab, tab.linkedBrowser?.contentTitle || tab.label);
         },
         color: () => WindowWorkspaces.get(win)?.status()?.color,
         select: (tabId) => {
