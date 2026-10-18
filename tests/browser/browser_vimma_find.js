@@ -459,3 +459,20 @@ add_task(async function the_text_field_a_find_matched_still_takes_i_and_a_click(
     );
   }, FIELD_PAGE);
 });
+
+add_task(async function a_tab_closed_while_finding_leaves_no_find_behind() {
+  // The find bar sends no findbarclose when its tab goes away, so the session has to end with it.
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  await focusContent(tab.linkedBrowser);
+  await TestUtils.waitForCondition(
+    () => VimmaHost._browserMode(tab.linkedBrowser) === "normal",
+    "the tab is in normal mode",
+  );
+  EventUtils.synthesizeKey("/");
+  await TestUtils.waitForCondition(() => !findBarHidden(), "/ opens the find bar");
+  BrowserTestUtils.removeTab(tab);
+  await withPage(async () => {
+    EventUtils.synthesizeKey("/");
+    await TestUtils.waitForCondition(() => !findBarHidden(), "/ opens the next tab's find bar");
+  });
+});

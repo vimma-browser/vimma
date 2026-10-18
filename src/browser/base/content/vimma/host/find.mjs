@@ -144,6 +144,8 @@ export class Find {
    * @param {boolean} backward
    */
   start(browser, backward) {
+    // A tab closed mid-find takes its find bar without a findbarclose event.
+    if (this.session && !this.session.browser.isConnected) this.#closedElsewhere(this.session);
     if (this.session) return;
     const gBrowser = this.#gBrowser();
     const tab = gBrowser.getTabForBrowser(browser);
