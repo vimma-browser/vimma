@@ -464,7 +464,9 @@ describe("release-please.yml", () => {
       "firefox-notes",
       "release-title",
       "release-build",
+      "security-release",
     ]);
+    expect(job("security-release")).toMatch(/^ {4}needs: \[release-please, firefox-notes\]$/m);
     expect(job("release-build")).toMatch(/^ {4}needs: release-please$/m);
     expect(job("firefox-notes")).toMatch(/^ {4}needs: release-please$/m);
     expect(job("release-title")).toMatch(/^ {4}needs: release-please$/m);
@@ -480,6 +482,23 @@ describe("release-please.yml", () => {
     expect(permissions("firefox-notes")).toEqual(["contents: read", "pull-requests: read"]);
     expect(permissions("release-title")).toEqual(["contents: write"]);
     expect(permissions("release-build")).toEqual(["actions: write"]);
+    // reads and writes go through RELEASE_PLEASE_TOKEN; GITHUB_TOKEN only checks out main
+    expect(permissions("security-release")).toEqual(["contents: read"]);
+  });
+
+  // Spec firefox-versions, decisions 11 to 15; docs/security.md G9 and G10.
+  it("security-release runs only on a push to main of vimma-browser/vimma", () => {
+    const release = job("security-release");
+    expect(condition(release)).toBe(
+      "github.repository == 'vimma-browser/vimma' && github.event_name == 'push' && " +
+        "github.ref == 'refs/heads/main' && vars.AUTO_SECURITY_RELEASE == 'true'",
+    );
+    // decide() checks the same again from the step's environment
+    expect(release).toContain("AUTO_SECURITY_RELEASE: ${{ vars.AUTO_SECURITY_RELEASE }}");
+    expect(release).toContain("run: node tools/release/security-release.mjs");
+    // main's code runs, never the release branch's
+    expect(release).not.toMatch(/^ {10}ref:/m);
+    expect(release).not.toMatch(/gh pr merge|--admin/);
   });
 
   // GITHUB_TOKEN's events start no workflow, except workflow_dispatch: the draft's build starts
@@ -521,7 +540,7 @@ describe("release-please.yml", () => {
   });
 
   it("no checkout keeps a token in .git/config", () => {
-    for (const id of ["firefox-notes", "release-title"]) {
+    for (const id of ["firefox-notes", "release-title", "security-release"]) {
       const checkouts = job(id).split("uses: actions/checkout@").slice(1);
       expect(checkouts, id).toHaveLength(1);
       expect(checkouts[0], id).toMatch(
@@ -530,7 +549,10 @@ describe("release-please.yml", () => {
     }
   });
 
-  it("RELEASE_PLEASE_TOKEN reaches only release-please and the changelog push", () => {
+  it("RELEASE_PLEASE_TOKEN reaches only release-please, the changelog push and the auto-merge", () => {
+    const release = job("security-release");
+    expect(release.match(/secrets\.RELEASE_PLEASE_TOKEN/g)).toHaveLength(1);
+    expect(release).toMatch(/^ {10}RELEASE_TOKEN: \$\{\{ secrets\.RELEASE_PLEASE_TOKEN \}\}$/m);
     expect(job("release-title")).not.toContain("RELEASE_PLEASE_TOKEN");
     expect(job("release-build")).not.toContain("RELEASE_PLEASE_TOKEN");
     const notes = job("firefox-notes");

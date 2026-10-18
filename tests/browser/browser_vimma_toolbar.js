@@ -580,6 +580,54 @@ add_task(async function prompt_keys_arm_on_firefoxs_own_delay() {
   await show();
 });
 
+// 5c: the add-on install prompt ("Add <name>?") takes the same keys. Firefox opens it with focus
+// on the panel itself (ExtensionsUI's `autofocus`), not on the page, and still guards it with
+// its delay.
+add_task(async function the_addon_install_prompt_answers_y_and_n() {
+  const DELAY = 400;
+  await SpecialPowers.pushPrefEnv({ set: [["security.notification_enable_delay", DELAY]] });
+  const { ExtensionsUI } = ChromeUtils.importESModule("resource:///modules/ExtensionsUI.sys.mjs");
+  const tab = await openPage();
+  const browser = tab.linkedBrowser;
+  const panel = PopupNotifications.panel;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const hintOf = (n) => n.querySelector(".vimma-prompt-keys");
+  /** Shows the prompt; resolves with it and the answer to come. */
+  const ask = async () => {
+    const strings = ExtensionsUI._buildStrings({
+      addon: { name: "Vimma Test Add-on" },
+      permissions: { permissions: ["tabs"], origins: [] },
+    });
+    const shown = BrowserTestUtils.waitForEvent(panel, "popupshown");
+    const answer = ExtensionsUI.showPermissionsPrompt(browser, strings, null);
+    await shown;
+    const n = /** @type {any} */ (panel.firstElementChild);
+    Assert.equal(n.id, "addon-webext-permissions-notification", "the add-on install prompt");
+    return { n, answer };
+  };
+
+  let { n, answer } = await ask();
+  let settled = false;
+  answer.then(() => (settled = true));
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 4);
+  Assert.equal(panel.state, "open", "y before the prompt is armed answers nothing");
+  Assert.ok(!settled, "and installs nothing");
+  await until(() => shows(hintOf(n)), "the keys hint shows once armed");
+  Assert.ok(hintOf(n).textContent.startsWith("y add · n cancel"), hintOf(n).textContent);
+  EventUtils.synthesizeKey("n");
+  Assert.equal(await answer, false, "n cancels the install");
+
+  ({ n, answer } = await ask());
+  await until(() => shows(hintOf(n)), "armed");
+  EventUtils.synthesizeKey("y");
+  Assert.equal(await answer, true, "y adds it");
+  await until(() => panel.state === "closed", "the prompt is gone");
+
+  await SpecialPowers.popPrefEnv();
+  gBrowser.removeTab(tab);
+});
+
 // 6: the site's identity panel (Firefox's trust panel, or the identity panel where that is
 // off) opens with a click on the site's identity in the prompt bar, hangs from it and keeps the
 // prompt bar up while open. The minimal bar has no identity to click; the full toolbar has.

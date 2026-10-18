@@ -24,6 +24,9 @@ and workspaces, and your hands never leave the keyboard.
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
   `config.toml`, Firefox's own keys too: `ctrl+t`, `alt+left` and `F12` are Vimma bindings
   with Firefox's meaning, listed in `ctrl+b ?`.
+- **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through
+  MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies, and every request asks
+  you first.
 
 ## Install
 
