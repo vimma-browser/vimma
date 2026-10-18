@@ -576,6 +576,9 @@ Numbered decisions, each with its reason and the alternatives rejected.
       `host/prompt-keys.mjs` and docs/security.md.)
     - **Never from a field.** In insert mode (focus in a page's or the chrome's text field) the
       keys are the field's.
+      (Since changed: a prompt Firefox opens with focus on its own panel, the add-on install
+      prompt with ExtensionsUI's `autofocus`, takes the keys from there, because no field has
+      focus then and the keys were otherwise lost; see `host/prompt-keys.mjs`.)
     - **`Tab`** (focus in the page, not in a field) moves focus onto the prompt's first button,
       the secondary one, with Vimma's focus ring (`--vimma-focus`, focus.css). From there
       Firefox's own keys work: the arrow keys move between the buttons, `Enter` and `Space` run

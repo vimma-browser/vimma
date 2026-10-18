@@ -530,8 +530,9 @@ from the address bar. Whether the toolbar is shown or hidden, you can answer it 
 these buttons) with no key pressed in between; the line `y allow · n block · Tab buttons` in the
 prompt shows when they do. Any key you press meanwhile starts the wait again, so typing that was
 meant for the page never answers a prompt. While you type in a text field, `y` and `n` are text.
-The prompt never takes focus by itself. The same keys answer Firefox's other prompts in that
-panel, such as adding an add-on or saving a password.
+Vimma never moves focus onto the prompt. The same keys answer Firefox's other prompts in that
+panel, such as saving a password, and the "Add <name>?" prompt for installing an add-on, which
+Firefox opens with focus on the prompt itself.
 
 ### Colours and themes
 
