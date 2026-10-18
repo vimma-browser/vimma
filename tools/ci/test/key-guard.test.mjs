@@ -381,6 +381,16 @@ describe("workflow wiring", () => {
     expect(text).toMatch(/^ {4}name: Mozilla release key unchanged or approved$/m);
   });
 
+  it("skips the whole job once the pull request is merged, and still runs on a closed unmerged one", () => {
+    // release-please swaps `autorelease: pending` for `autorelease: tagged` on a merged release
+    // pull request, which fires unlabeled and labeled after the head branch is gone; the job
+    // must not start, since no step could then find the head commit (#357).
+    const job = /^ {2}key-guard:\n([\s\S]*?)^ {4}steps:/m.exec(text)?.[1] ?? "";
+    expect(job).toMatch(/^ {4}if: github\.event\.pull_request\.merged != true$/m);
+    expect(job).not.toMatch(/state == 'open'/);
+    expect(text).not.toMatch(/^ {6}- if:|^ {8}if:/m);
+  });
+
   it("passes event values to run: through env only", () => {
     expect(text).toContain("PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}");
     expect(text).toContain("BASE: ${{ github.event.pull_request.base.sha }}");

@@ -855,7 +855,12 @@ release path held for review, with its published diff,
   the `key-rotation-approved` label, which needs triage access to the repository. No automation
   or agent adds that label; a maintainer adds it only after the checks in `docs/runbook.md`,
   "Mozilla's release key", and removes it if a later push changes the key again, since the label
-  stays on the pull request across pushes. The check runs the base branch's copy of the script.
+  stays on the pull request across pushes. The check runs the base branch's copy of the script,
+  and is skipped only on a merged pull request: release-please relabels a merged release pull
+  request after its branch is deleted. A skipped job reports success, which is safe only once
+  merged, because the head is already in `main`. A label change on a closed, unmerged pull
+  request still runs the check, so its head commit cannot gain a passing check that a later pull
+  request with the same head would inherit.
   A pull request that changes the guard itself (`.github/workflows/key-guard.yml`,
   `tools/ci/key-guard.mjs` or its tests) needs the same label, because under `pull_request` such
   a pull request still runs its own copy of the workflow and could rewrite it to pass; the
@@ -885,6 +890,7 @@ release path held for review, with its published diff,
   [`passes the pull request that first adds the guard to a base without one`](../tools/ci/test/key-guard.test.mjs),
   [`fails a changed fingerprint without the label, and passes it with`](../tools/ci/test/key-guard.test.mjs),
   [`passes event values to run: through env only`](../tools/ci/test/key-guard.test.mjs),
+  [`skips the whole job once the pull request is merged, and still runs on a closed unmerged one`](../tools/ci/test/key-guard.test.mjs),
   [`still judges when started through a symlinked path`](../tools/ci/test/key-guard.test.mjs)
 - B2. A nightly or release build **never** builds from an `engine/` it did not extract in the
   same job from the tarball it verified, and **never** restores a tree, an objdir or a compiler
