@@ -1,7 +1,6 @@
 # Spec: m3-workspaces
 
-Status: implemented, except the leftover in [#260](https://github.com/vimma-browser/vimma/issues/260)
-(a key to move a background tab); split into sub-specs (see Breakdown). Sub-specs 1 (store), 2a (routing), 2b
+Status: implemented; split into sub-specs (see Breakdown). Sub-specs 1 (store), 2a (routing), 2b
 (switching), 3 (persistence), 4a (lifecycle), 4b (move), 5 (picker), 6 (side panel), 7 (e2e
 restart scenario) and the 4a/4b/5 leftovers are merged; the 200-tab measurement is in
 `browser_vimma_perf.js` (runbook, "Key-to-paint timings") ·
