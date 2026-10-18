@@ -297,6 +297,9 @@ const modal = {
     // Marks for Enter to show together (m4-side-panel-multiselect), ranger's keys.
     "<Space>": "panel.mark",
     V: "panel.visual",
+    // The row's tab to a workspace chosen in the workspace picker, as `m` there moves the
+    // selected tab (m3-workspaces); in the bookmarks panel the bookmark to a folder.
+    m: "panel.move",
     // Closes the panel, then focuses the address bar (as I does in normal mode).
     I: "urlbar.focus",
     // The bookmarks panel (docs/specs/bookmarks.md), neo-tree's keys; nothing in the tabs panel.
@@ -308,7 +311,6 @@ const modal = {
     a: "bookmarks.add",
     A: "bookmarks.add_folder",
     r: "bookmarks.rename",
-    m: "bookmarks.move",
     d: "bookmarks.delete",
     y: "bookmarks.yank",
     "/": "bookmarks.filter",

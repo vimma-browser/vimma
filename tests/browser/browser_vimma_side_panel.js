@@ -308,6 +308,91 @@ add_task(async function x_closes_the_selected_tab_and_the_panel_stays_open_on_th
   BrowserTestUtils.removeTab(opened[0]);
 });
 
+// "Settled: moving a background tab from the side panel": m on a row opens the workspace
+// picker; the workspace chosen there gets the row's tab, not the selected one.
+const PICKER_ID = "vimma-workspace-picker";
+const PROMPT_ID = "vimma-rename";
+const picker = () => document.getElementById(PICKER_ID);
+const pickerOpen = () => !!picker()?.open;
+const pickerSelected = () =>
+  picker().querySelector("[role=option][aria-selected=true] .vimma-picker-title")?.textContent;
+const promptOpen = () => document.getElementById(PROMPT_ID)?.hidden === false;
+const promptText = () =>
+  document.getElementById(PROMPT_ID)?.querySelector(".vimma-cmdline-prompt")?.textContent ?? "";
+
+/** m on the row titled `title`: the panel closes and the workspace picker opens. */
+async function moveFromPanel(title) {
+  await openPanel();
+  while (text(selected(), "title") !== title) {
+    const before = text(selected(), "title");
+    EventUtils.synthesizeKey("k");
+    await until(() => text(selected(), "title") !== before, `up from ${before}`);
+  }
+  EventUtils.synthesizeKey("m");
+  await until(pickerOpen, "m opens the workspace picker");
+  Assert.ok(!isOpen(), "the side panel has closed");
+  Assert.stringContains(picker().querySelector("h1").textContent, title, "naming the tab");
+}
+
+add_task(async function m_moves_the_highlighted_background_tab_to_the_workspace_picked() {
+  const bg = await openPage("m-background");
+  const front = await openPage("m-front");
+  const main = active();
+
+  // Esc in the picker moves nothing.
+  await moveFromPanel("m-background");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !pickerOpen(), "Esc closes the picker");
+  Assert.ok(bg.isConnected, "the tab stays");
+  Assert.ok(tabsIn("main").includes(ww().idOf(bg)), "in main");
+
+  // The tab's own workspace is refused without asking.
+  await moveFromPanel("m-background");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => /already in "main"/.test(noticeText()), "already there");
+  Assert.ok(!promptOpen(), "nothing to confirm");
+
+  await moveFromPanel("m-background");
+  while (pickerSelected() !== "alpha") EventUtils.synthesizeKey("j");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(promptOpen, "Enter asks first");
+  Assert.ok(/"alpha"/.test(promptText()), "naming the target");
+  Assert.ok(/history/.test(promptText()), "warning that the history stays behind");
+  EventUtils.synthesizeKey("y");
+  await until(() => !bg.isConnected, "y moves it: the original closes");
+  await until(
+    () =>
+      tabsIn("alpha").some(
+        (id) => ww().tabOf(id)?.linkedBrowser.currentURI.spec === `${PAGE}?m-background`,
+      ),
+    "the page reopens in alpha",
+  );
+  Assert.equal(active(), main, "the window stays in main");
+  Assert.equal(gBrowser.selectedTab, front, "the selected tab stays selected");
+  await until(() => /moved to "alpha"/.test(noticeText()), "the notice says where");
+  BrowserTestUtils.removeTab(front);
+});
+
+add_task(async function a_stale_answer_moves_nothing_from_the_side_panel() {
+  const bg = await openPage("m-stale");
+  await openPage("m-stale-front");
+  await moveFromPanel("m-stale");
+  while (pickerSelected() !== "alpha") EventUtils.synthesizeKey("j");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(promptOpen, "Enter asks");
+  // The tab goes before the answer: the y stood for it.
+  BrowserTestUtils.removeTab(bg);
+  EventUtils.synthesizeKey("y");
+  await until(() => /nothing was moved/.test(noticeText()), "the answer is refused");
+  Assert.ok(
+    !tabsIn("alpha").some(
+      (id) => ww().tabOf(id)?.linkedBrowser.currentURI.spec === `${PAGE}?m-stale`,
+    ),
+    "nothing reopened in alpha",
+  );
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+});
+
 add_task(async function x_never_closes_a_pinned_tab() {
   // Pinned tabs belong to no workspace (docs/guide.md, "Workspaces"), so the panel never lists them.
   const pinned = await openPage("x-pinned");

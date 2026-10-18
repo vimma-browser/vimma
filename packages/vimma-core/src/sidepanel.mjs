@@ -41,13 +41,15 @@ import { displayLabel } from "./tablabels.mjs";
  * `closeTab`: close that tab and keep the panel open (`x`, docs/specs/key-handling-batch.md).
  * `together`: show `ids` (row order) as the workspace's panes, focus on `focus`
  * (docs/specs/m4-side-panel-multiselect.md).
+ * `move`: ask which workspace gets that tab (`m`, m3-workspaces "Settled: moving a background
+ * tab from the side panel").
  * `alone`: end the workspace's split and show `id` alone (docs/specs/side-panel-unsplit.md).
  * `together` with `alone`: make `ids` the view, then show the `alone` tab by itself with the view
  * kept hidden (side-panel-unsplit decision 25).
  * @typedef {{ type: "select", id: string } | { type: "close" }
  *   | { type: "refuse", text: string } | { type: "closeTab", id: string }
  *   | { type: "together", ids: string[], focus: string, alone?: string }
- *   | { type: "alone", id: string }} PanelEffect
+ *   | { type: "alone", id: string } | { type: "move", id: string }} PanelEffect
  */
 
 /**
@@ -64,6 +66,8 @@ import { displayLabel } from "./tablabels.mjs";
 
 /** What `x` says on a pinned tab. */
 export const PINNED_TEXT = "pinned tab: unpin it to close it";
+/** What `m` says on a pinned tab. */
+export const PINNED_MOVE_TEXT = "pinned tab: unpin it to move it";
 /** What `space` says on a pinned tab. */
 export const PINNED_MARK_TEXT = "pinned tab: unpin it to show it in a split";
 
@@ -356,6 +360,14 @@ export function panelKey(state, action) {
         state: Object.freeze({ ...state, selected: next }),
         effect: { type: "closeTab", id: row.tabId },
       };
+    }
+    // The highlighted row's tab, which need not be the selected one: a background tab moves
+    // without being selected first. The panel closes for the picker that asks where.
+    case "panel.move": {
+      const row = state.rows[state.selected];
+      if (!row) return { state, effect: null };
+      if (row.pinned) return { state, effect: { type: "refuse", text: PINNED_MOVE_TEXT } };
+      return { state, effect: { type: "move", id: row.tabId } };
     }
     default:
       return { state, effect: null };

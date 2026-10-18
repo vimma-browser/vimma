@@ -39,6 +39,8 @@ const TAB_EVENTS = ["TabOpen", "TabClose", "TabSelect", "TabAttrModified", "TabM
  * @property {(tabId: string) => void} select  a row was picked; the panel closes right after
  * @property {(text: string) => void} say  a refusal for the notice
  * @property {(tabId: string) => void} closeTab  `x`: close that tab; the panel stays open
+ * @property {(tabId: string) => void} [move]  `m`: ask which workspace gets that tab; the panel
+ *   has closed already
  * @property {(tabIds: string[], focus: string, alone?: string) => string | null} together
  *   `Enter` with marks: show those tabs as the workspace's panes
  *   (docs/specs/m4-side-panel-multiselect.md), or with `alone` keep them as a hidden view and show
@@ -126,7 +128,7 @@ export class SidePanel {
 
   /**
    * One `[modal.panel]` action (panel.down, panel.up, panel.open, panel.select, panel.close,
-   * panel.close_tab, panel.mark, panel.visual).
+   * panel.close_tab, panel.mark, panel.visual, panel.move).
    * @param {{ id: string, arg?: number }} action
    */
   action(action) {
@@ -140,6 +142,11 @@ export class SidePanel {
     if (effect?.type === "refuse") this.host.say(effect.text);
     // The highlight is on the next row already: the TabClose refresh keeps it there.
     if (effect?.type === "closeTab") this.host.closeTab(effect.id);
+    // Closed first, so the picker that asks where takes focus from the page, not the panel.
+    if (effect?.type === "move") {
+      this.close();
+      this.host.move?.(effect.id);
+    }
     // Select first, so closing focuses the new page, not the one being left.
     if (effect?.type === "select") {
       this.host.select(effect.id);
@@ -289,7 +296,7 @@ export class SidePanel {
     const { box, header, list } = buildPanelBox(this.win, {
       id: PANEL_ID,
       label: "Side panel",
-      hint: "j/k move · 1-9 or Enter go · space V mark, Enter splits or unsplits · x close tab · Esc close",
+      hint: "j/k move · 1-9 or Enter go · space V mark, Enter splits or unsplits · x close tab · m move tab · Esc close",
     });
     const count = panelElement(this.win.document, "div", "vimma-panel-count");
     count.setAttribute("role", "status");

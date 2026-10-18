@@ -697,6 +697,7 @@ export function bookmarksKey(state, action) {
         title: index(state.tree).get(row.guid)?.node.title ?? "",
       });
     case "bookmarks.move":
+    case "panel.move": // `m`, shared with the side panel
       if (row.root) return say(refuseRoot(row));
       return say({ type: "move", guid: row.guid, from: row.parent });
     case "bookmarks.delete": {

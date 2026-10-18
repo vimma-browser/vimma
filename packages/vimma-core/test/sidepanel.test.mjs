@@ -249,6 +249,34 @@ describe("panelKey", () => {
     const empty = openPanel({ ...model, active: "w3" }, info);
     expect(press(empty, [{ id: "panel.close_tab" }]).effect).toBeNull();
   });
+
+  // docs/specs/m3-workspaces.md, "Settled: moving a background tab from the side panel"
+  test("m moves the highlighted tab, not the selected one: the host asks where", () => {
+    const { state, effect } = press(s, [{ id: "panel.up" }, { id: "panel.move" }]);
+    expect(effect).toEqual({ type: "move", id: "t2" });
+    expect(state.rows[state.selected].tabId).toBe("t2");
+  });
+
+  test("m on a pinned tab refuses", () => {
+    const pinned = openPanel(model, (id) => ({ ...tabs[id], pinned: id === "t3" }));
+    expect(press(pinned, [{ id: "panel.move" }]).effect).toEqual({
+      type: "refuse",
+      text: "pinned tab: unpin it to move it",
+    });
+  });
+
+  test("m in an empty workspace does nothing", () => {
+    const empty = openPanel({ ...model, active: "w3" }, info);
+    expect(press(empty, [{ id: "panel.move" }]).effect).toBeNull();
+  });
+
+  test("m is panel.move in panel mode", () => {
+    const d = createDispatcher(compileKeymap());
+    expect(d.dispatch("panel", parseKey("m"))).toEqual({
+      kind: "action",
+      action: { id: "panel.move" },
+    });
+  });
 });
 
 describe("refreshPanel", () => {

@@ -361,6 +361,12 @@ describe("bookmarksKey", () => {
       guid: "jira",
       from: "work",
     });
+    // `m` reaches both panels as panel.move: here it is the bookmark's move.
+    expect(press(s, [{ id: "panel.move" }]).effect).toEqual({
+      type: "move",
+      guid: "jira",
+      from: "work",
+    });
     expect(press(at("work"), [{ id: "bookmarks.delete" }]).effect).toEqual({
       type: "delete",
       guid: "work",
@@ -458,7 +464,8 @@ describe("keymap and command line", () => {
       a: "bookmarks.add",
       "shift+a": "bookmarks.add_folder",
       r: "bookmarks.rename",
-      m: "bookmarks.move",
+      // Shared with the side panel, where it moves a tab to a workspace (m3-workspaces).
+      m: "panel.move",
       d: "bookmarks.delete",
       y: "bookmarks.yank",
       "/": "bookmarks.filter",

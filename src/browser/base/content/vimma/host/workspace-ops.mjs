@@ -324,23 +324,26 @@ export function workspacePickerItems(win) {
  * @param {string} id
  * @param {(question: string, yes: () => void) => void} ask
  * @param {(text: string) => void} say  the notice, after the answer
+ * @param {any} [row]  a side-panel row's tab (`m` there) instead of the selected one; it need
+ *   not stay selected until the answer, only open
  * @returns {string | null} why not, before asking
  */
-export function moveTabFromPicker(win, id, ask, say) {
+export function moveTabFromPicker(win, id, ask, say, row) {
   const ww = WindowWorkspaces.get(win);
   const model = ww?.model;
   if (!ww || !model) return NO_WORKSPACES;
   const target = model.workspaces.find((w) => w.id === id);
   if (!target) return "that workspace is gone";
   const gBrowser = /** @type {any} */ (win).gBrowser;
-  const tab = gBrowser.selectedTab;
+  const tab = row ?? gBrowser.selectedTab;
   if (target.tabs.includes(ww.idOf(tab)) && !ww.isForeign(tab)) {
     return `already in "${target.name}"`;
   }
   const name = target.name;
   ask(moveTabQuestion(name, { agent: WorkspaceStore.agentName }), () => {
     const now = ww.model?.workspaces.find((w) => w.id === id);
-    if (now?.name !== name || !tab.isConnected || gBrowser.selectedTab !== tab) {
+    const moved = !tab.isConnected || (!row && gBrowser.selectedTab !== tab);
+    if (now?.name !== name || moved) {
       say(`move: the tab or "${name}" changed since you were asked; nothing was moved`);
       return;
     }

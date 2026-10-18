@@ -219,6 +219,7 @@ Side panel
   panel_close_tab           x [panel]                                         Close the selected tab; the panel stays open
   panel_mark                space [panel]                                     Mark or unmark the selected tab
   panel_visual              V [panel]                                         Start a range of rows to mark, or mark it
+  panel_move_tab            m [panel]                                         Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder
 
 Bookmarks
   toggle_bookmarks          ctrl+b shift+b                                    Open / close the bookmarks panel
@@ -231,7 +232,7 @@ Bookmarks
   bookmarks_add             a [panel]                                         Bookmarks: add this page here (a/b/ makes folders)
   bookmarks_folder          A [panel]                                         Bookmarks: add a folder here
   bookmarks_rename          r [panel]                                         Bookmarks: rename
-  bookmarks_move            m [panel]                                         Bookmarks: move to a folder
+  bookmarks_move            (unbound)                                         Bookmarks: move to a folder
   bookmarks_delete          d [panel]                                         Bookmarks: delete (asks y/N)
   bookmarks_yank            y [panel]                                         Bookmarks: copy the URL
   bookmarks_filter          / [panel]                                         Bookmarks: filter

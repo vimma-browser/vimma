@@ -2287,6 +2287,17 @@
               "mode": "panel"
             }
           ]
+        },
+        {
+          "name": "panel_move_tab",
+          "description": "Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder",
+          "keys": [
+            {
+              "keys": "m",
+              "chords": ["m"],
+              "mode": "panel"
+            }
+          ]
         }
       ]
     },
@@ -2404,13 +2415,7 @@
         {
           "name": "bookmarks_move",
           "description": "Bookmarks: move to a folder",
-          "keys": [
-            {
-              "keys": "m",
-              "chords": ["m"],
-              "mode": "panel"
-            }
-          ]
+          "keys": []
         },
         {
           "name": "bookmarks_delete",

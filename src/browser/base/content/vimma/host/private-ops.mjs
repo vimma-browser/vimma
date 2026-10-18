@@ -330,9 +330,10 @@ export function pickerSelect(win, id) {
  * @param {string} id
  * @param {(question: string, yes: () => void) => void} ask
  * @param {(text: string) => void} say
+ * @param {any} [row]  a side-panel row's tab instead of the selected one (moveTabFromPicker)
  * @returns {string | null | undefined} a refusal; undefined for a normal move (the caller's)
  */
-export function pickerMove(win, id, ask, say) {
+export function pickerMove(win, id, ask, say, row) {
   if (isPrivateWorkspace(win)) {
     return id === PRIVATE_WORKSPACE_ID
       ? `already in "${PRIVATE_NAME}"`
@@ -342,9 +343,9 @@ export function pickerMove(win, id, ask, say) {
   const refused = refusal();
   if (refused) return refused;
   const gBrowser = /** @type {any} */ (win).gBrowser;
-  const tab = gBrowser.selectedTab;
+  const tab = row ?? gBrowser.selectedTab;
   ask(movePrivateQuestion(), () => {
-    if (!tab.isConnected || gBrowser.selectedTab !== tab) {
+    if (!tab.isConnected || (!row && gBrowser.selectedTab !== tab)) {
       say("move: the tab changed since you were asked; nothing was moved");
       return;
     }
