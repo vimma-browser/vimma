@@ -5,12 +5,7 @@
     "With toolbar-toggle.",
     "Theme and keyboard when shown."
   ],
-  "build-supply-chain.md": [
-    "The tarball Vimma verifies is the one Surfer extracts.",
-    "Firefox's toolchains are part of the trusted base, as Mozilla ships them.",
-    "Action SHA pinning becomes a repository setting too.",
-    "The trust boundary."
-  ],
+  "build-supply-chain.md": [],
   "element-focus.md": [
     "The start key is chosen when implementation starts, not in this spec.",
     "Focus: the `ELEMENT` mode.",
