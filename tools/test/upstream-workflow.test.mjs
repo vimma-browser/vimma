@@ -517,3 +517,54 @@ describe("fuzz re-export in the upstream autopilot", () => {
     expect(block).toContain('--reexport "$pc/reexport/reexport.json"');
   });
 });
+
+// Spec upstream-bump-automation, decisions 6 to 13 (docs/security.md, G13 and G14).
+describe("auto-merge in the upstream autopilot", () => {
+  it("auto-merge only with the variable, the token, a ready PR and the allowlist", () => {
+    const decide = step(upstream, "pr");
+    expect(decide).toContain("AUTO_MERGE: ${{ vars.AUTO_MERGE_UPSTREAM }}");
+    const decideRun = script(decide);
+    expect(decideRun).toContain("node tools/upstream/bump-diff.mjs");
+    expect(decideRun).toContain('--bump-diff "$RUNNER_TEMP/bump-diff.json"');
+    // step() stops at the first blank line; the outputs are written further down the step.
+    expect(job(upstream, "publish")).toContain('echo "auto-merge=$(body pr --auto-merge-only)"');
+    const block = step(upstream, "automerge");
+    // Only the fine-grained token: a GITHUB_TOKEN merge would start no push workflow on main.
+    expect(block).toContain("GH_TOKEN: ${{ secrets.UPSTREAM_PR_TOKEN }}");
+    expect(block).not.toContain("github.token");
+    expect(block).toContain(
+      "if: steps.pr.outputs.number != '' && steps.pr.outputs.auto-merge == 'true'",
+    );
+    const run = script(block);
+    expect(run).toContain("--json isDraft,headRefOid");
+    expect(run).toContain('[ "$draft" = false ] && [ "$pr_head" = "$head" ]');
+    expect(upstream.indexOf("bump-diff.mjs")).toBeLessThan(upstream.indexOf("--auto --squash"));
+  });
+
+  it("auto-merge uses --match-head-commit and the bump's subject", () => {
+    const run = script(step(upstream, "automerge"));
+    expect(run).toContain('gh pr merge "$number" --auto --squash --match-head-commit "$head"');
+    expect(run).toContain('--subject "$TITLE (#$number)"');
+  });
+
+  it("the allowlist reads the branch as pushed", () => {
+    const run = script(step(upstream, "pr"));
+    expect(run).toContain('git diff --unified=0 "origin/main...$head"');
+    expect(run.indexOf("head=$(git rev-parse HEAD)")).toBeLessThan(run.indexOf("git diff"));
+  });
+
+  it("rebuild disables auto-merge before the push", () => {
+    const block = job(upstream, "publish");
+    const disable = block.indexOf('gh pr merge "$n" --disable-auto');
+    const push = block.indexOf('git push --force origin "HEAD:refs/heads/$branch"');
+    expect(disable).toBeGreaterThan(0);
+    expect(disable).toBeLessThan(push);
+  });
+
+  it("the token reaches only publish", () => {
+    const at = upstream.split("\n").filter((l) => l.includes("secrets.UPSTREAM_PR_TOKEN"));
+    expect(at.length).toBeGreaterThan(0);
+    const publish = job(upstream, "publish");
+    for (const l of at) expect(publish).toContain(l);
+  });
+});

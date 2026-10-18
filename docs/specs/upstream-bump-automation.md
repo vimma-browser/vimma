@@ -1,7 +1,7 @@
 # Spec: upstream-bump-automation
 
-Status: accepted (sub-PRs 1 and 3 implemented; sub-PRs 2 and 4: #259) · Area: `.github/workflows/upstream.yml`, `.github/workflows/e2e.yml`,
-`.github/workflows/upstream-resolve.yml` (new), `tools/upstream/source-check.sh`,
+Status: accepted (sub-PRs 1-3 implemented; sub-PR 4: #259) · Area: `.github/workflows/upstream.yml`, `.github/workflows/e2e.yml`,
+`tools/upstream/source-check.sh`,
 `tools/upstream/patch-check.py`, `tools/upstream/upstream-prefs.mjs`,
 `tools/upstream/autopilot-body.mjs`, `tools/upstream/bump-diff.mjs` (new),
 `tools/upstream/reexport.py` (new), `docs/rebase.md`, `docs/runbook.md`, `docs/security.md`,
@@ -16,8 +16,8 @@ The upstream autopilot (spec [m7-upstream-autopilot](m7-upstream-autopilot.md), 
 a Firefox release into a tested bump pull request, but a person still merges it, pastes refreshed
 pref copies into it and re-exports any patch that no longer applies. This spec closes those three
 gaps: the autopilot writes refreshed pref copies into the bump itself, re-exports patches that
-only lost context, asks Claude to re-export patches whose lines changed (at most three attempts),
-and sets a green bump whose diff is limited to the expected lines to merge through GitHub's
+only lost context, opens a triage issue that lists the hunks of patches whose lines changed, and
+sets a green bump whose diff is limited to the expected lines to merge through GitHub's
 auto-merge, behind the same required checks as every other pull request. Releasing the merged
 bump is out of scope ([#220](https://github.com/vimma-browser/vimma/issues/220)).
 
@@ -58,12 +58,11 @@ drift check (docs/security.md, G2) fails the scheduled run after 3 days.
    second commit, `upstream: re-export <patch> for firefox X.Y.Z`, with each such patch
    re-exported against the new release. Its added and removed lines are unchanged; only context
    and line numbers move. The PR body lists each re-exported patch.
-4. **Conflict resolution.** When a patch fails, the autopilot asks Claude to re-export it. Each
-   attempt that produces a patch set that applies is pushed to the bump branch as one commit; the
-   PR's own CI then runs. A failed attempt (no change, a patch that still does not apply, or
-   failed required checks after the push) starts the next one. After the third attempt, or when no
-   Claude secret is set, the PR stays a draft and a comment mentions the owner with the hunks that
-   still fail.
+4. **Failing patches.** When a patch fails, the PR stays a draft as before, and the autopilot
+   opens a GitHub issue titled `Firefox X.Y.Z: patches do not apply`, labelled `upstream` and
+   `triage`, that lists each failing patch with its failing hunks and links the bump PR and the
+   run. A later run for the same version updates that issue instead of opening another. A person,
+   or GitHub Copilot coding agent assigned to the issue, re-exports the patches on the bump branch.
 5. **Auto-merge.** A bump PR is set to auto-merge (squash, the subject `upstream: firefox X.Y.Z
 (#N)`) only when all of these hold: the repository variable `AUTO_MERGE_UPSTREAM` allows the
    release kind (`dot` allows dot releases, `all` also majors; unset or anything else allows none);
@@ -72,8 +71,8 @@ drift check (docs/security.md, G2) fails the scheduled run after 3 days.
    changes only the `version.version` value in `surfer.json` and copied-pref lines in
    `firefox-branding.js`. GitHub then merges it once every check the `main` ruleset requires is
    green.
-6. **No auto-merge with changed patches.** A bump with re-exported patches (3 or 4) is never set to
-   auto-merge; it is marked ready for review and mentions the owner.
+6. **No auto-merge with changed patches.** A bump with re-exported (3) or failing (4) patches is
+   never set to auto-merge; it is marked ready for review and mentions the owner.
 7. **Explained outcome.** The PR body's table gains a row "Auto-merge" that says "on" or names the
    first condition of 5 that did not hold.
 8. **Rebuilds.** `gh workflow run upstream.yml -f rebuild=true` turns auto-merge off on the open
@@ -126,9 +125,8 @@ GitHub's documentation as published that day.
   merge with the fine-grained `RELEASE_PLEASE_TOKEN`, so the push to `main` starts release-please.
 - **Claude in Actions.** `claude.yml` runs `anthropics/claude-code-action` v1.0.248 (pinned by SHA)
   with `github_token: github.token`, so the job's `permissions:` block is all Claude gets, and
-  skips every step when neither Claude secret is set. Its `spec` job shows the pattern this spec
-  reuses: Claude commits with a read-only token, the commits leave the job as a patch artifact,
-  and a separate job without Claude pushes them.
+  skips every step when neither Claude secret is set. Its `spec` job commits with a read-only token
+  and a separate job without Claude pushes the commits. This spec does not use it (decision 16).
 
 ## Design
 
@@ -224,63 +222,43 @@ differ from the original patch's. `source-check.sh` runs it after the SHA-512 ch
     build of [#224](https://github.com/vimma-browser/vimma/issues/224) can run on a pull request, this
     decision is revisited in that spec.
 
-### Conflict resolution with Claude (sub-PR 4)
+### Issue for failing patches (sub-PR 4)
 
-A new workflow, `upstream-resolve.yml`, runs on `workflow_dispatch` with the inputs `version` and
-`attempt`. `publish` dispatches it (a `GITHUB_TOKEN` `workflow_dispatch` creates a run) when a
-patch failed. It has two jobs:
+A job `patch-issue` in `upstream.yml` runs after `publish` when the patch check's result is
+`fail`. It renders the issue body with `autopilot-body.mjs patch-issue` from the `patch-check`
+artifact (the same conflicts list the PR body carries), finds an open issue with the exact title
+`Firefox X.Y.Z: patches do not apply`, and edits its body, or creates it with the labels
+`upstream` and `triage`.
 
-- `resolve` (`contents: read`; the Claude secret; no other secret): checks out the bump branch,
-  downloads the `patch-check` artifact of the run that produced it (the pristine upstream copies of
-  the patched files and the failing hunks), and runs `anthropics/claude-code-action` with
-  `github_token: github.token` and a fixed prompt: re-export each failing patch so it applies to
-  the pristine files and keeps the change's intent, edit only `src/**/*.patch`, and check the
-  result with `patch-check.py --tree <pristine files>`. The tool allowlist is `Read`, `Edit`,
-  `Write`, `Glob`, `Grep`, the patch check and `git diff`/`git add`/`git commit`. The commits leave
-  as a patch artifact.
-- `push` (`contents: write` with `UPSTREAM_PR_TOKEN`; no Claude): applies the patch, refuses it
-  unless every changed path is one of the failing `src/**/*.patch` files and `patch-check.py`
-  reports every patch `clean` or `offset`, commits `upstream: re-export <patches> for firefox
-X.Y.Z (attempt N of 3)` and pushes, so PR CI runs.
-
-A later attempt starts from a `workflow_run` trigger on `e2e.yml` and `ci.yml` completing with a
-failure on an `upstream/firefox-*` branch of this repository whose head commit is an attempt
-commit, or from `resolve` itself when its result still does not apply. The attempt number is
-read from the branch's commits, not from an input, so a rerun cannot exceed three.
-
-16. **At most three attempts, each one push**, because plan §4 bounds conflict resolution at three
-    pushes, and each push costs a full PR CI run.
-17. **Claude never holds a write token**, so that a prompt that went wrong, or text in Firefox's
-    source that reads as instructions, can at worst produce a patch that the `push` job checks
-    and refuses. The `push` job runs no model and accepts only the failing patch files.
-18. **Only patches that fail go to Claude**, not failing suites, because a suite failure on a clean
-    rebase is a change in Firefox's behaviour that needs a decision about Vimma, not a mechanical
-    re-export.
-19. **Without a Claude secret the workflow is skipped** and the PR keeps today's instructions, as
-    `claude.yml` does, so the autopilot works in a fork or before the secret is set.
-20. **`workflow_run` only for this repository's own branches** (`head_repository.full_name ==
-github.repository` and `head_branch` starting with `upstream/firefox-`), because
-    `workflow_run` runs with the base repository's secrets and must never act on a fork's branch.
-21. **A resolved bump waits for the maintainer**, because it changes patches (decision 15) and a
-    model wrote the change; the PR body names each patch Claude changed with a link to its diff.
+16. **No model runs in CI**, because the re-export of a patch whose lines changed needs a
+    judgement about Vimma's change, and an issue lets a person or GitHub Copilot coding agent make
+    it outside the autopilot, with the same review as any other pull request. No AI secret is
+    added to the repository. Rejected: running Claude in a workflow on the failing patches,
+    because it adds a secret, sends source to a third-party API from CI, and needs a second job
+    to validate and push what the model wrote.
+17. **`GITHUB_TOKEN` with `issues: write` only, on that job alone**, because opening or editing
+    an issue is all it does; `UPSTREAM_PR_TOKEN` and every other secret stay out of it.
+18. **One issue per Firefox version, found by its exact title**, so that a rebuild or a later
+    run updates the list instead of adding a duplicate.
+19. **Hunks come only from the verified tarball's patch check**, rendered by the code that
+    renders the PR body: every outside string is escaped or fenced (G4), and none reaches a shell
+    command, because the body is written to a file and passed with `--body-file`.
+20. **Labelled `triage`**, so that the issue appears in the maintainer's triage queue and can be
+    assigned to a person or to Copilot coding agent from there.
+21. **A bump with failing patches never auto-merges**, because the PR is a draft (decision 11)
+    and its fix changes patches (decision 15).
 
 ### Rollout
 
-22. **Auto-merge starts with dot releases only**: `AUTO_MERGE_UPSTREAM` is set to `dot` once
-    sub-PR 2 merges, and to `all` once Vimma has been daily-driven, because security dot releases
-    then reach `main` within hours while majors, which change more of Firefox, still get the
-    maintainer's review (the Firefox 158.0 bump, #186, needed a patch re-export and four
-    front-end fixes beyond the version). Merging to `main` publishes nothing, since releases are
-    gated separately (spec release-versioning). Rejected: `all` at once, because a major would
-    land on the maintainer's dev build unreviewed; leaving the variable unset until daily-driving,
-    because nothing would change in practice until then.
-23. **CI gives patches that fail to Claude, authenticated with `CLAUDE_CODE_OAUTH_TOKEN`** (the
-    maintainer's subscription, from `claude setup-token`), and sub-PR 4 is built last, so that the
-    earlier sub-PRs do not wait for it. The run sends Vimma's patches and the affected Firefox
-    source to Anthropic's API; both are public. Rejected: an `ANTHROPIC_API_KEY` with a spend
-    limit, because it adds per-use billing for a job that runs a few times a year; no Claude in
-    CI, because a failing patch would then always wait for a person even when its re-export is
-    mechanical.
+22. **Auto-merge covers dot and major releases once `AUTO_MERGE_UPSTREAM` is `all`**, because
+    Vimma is daily-driven on `main`, so a major that passes every required check is reviewed in
+    use, and a held-back major would delay the M7 exit criterion. The variable stays the switch
+    (unset means off), so auto-merge starts only when it is set deliberately; `dot` remains
+    available to hold majors back again. Merging to `main` publishes nothing, since releases are
+    gated separately (spec release-versioning). Rejected: `dot` first, because it keeps a manual
+    step for every major with no check a person adds that the required checks lack.
+23. **Failing patches go to an issue, not to a model in CI** (decision 16). Rejected: Claude in
+    CI with `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`, for the reasons in decision 16.
 
 ## Security and privacy
 
@@ -290,15 +268,13 @@ the existing G1 to G10) with their tests:
 - Auto-merge is enabled only by `publish` on `main`'s code, only for a non-draft PR whose diff
   passes `bump-diff.mjs`, only with `--match-head-commit`, and only when `AUTO_MERGE_UPSTREAM`
   allows it. The `main` ruleset's required checks and code-scanning gate still decide the merge.
-- `UPSTREAM_PR_TOKEN` reaches only `publish` and `upstream-resolve.yml`'s `push` job; it is
+- `UPSTREAM_PR_TOKEN` reaches only `publish`; it is
   fine-grained (this repository, Contents and Pull requests), so it cannot edit workflows. A
   leaked token could open and merge PRs that pass the required checks, the same reach as the
   maintainer's own account minus workflows; it is revoked in the token settings.
-- The Claude secret reaches only the `resolve` job, which has a read-only `GITHUB_TOKEN` and no
-  other secret. Its input is Vimma's repository and Firefox source whose SHA-512 matched Mozilla's
-  `SHA512SUMS` (G4). Its output is checked by a job without a model before anything is pushed.
-- No job runs on `pull_request_target`; `workflow_run` acts only on this repository's
-  `upstream/firefox-*` branches. Every action stays pinned by a full commit SHA.
+- The failing-patches issue is written by `patch-issue` with `GITHUB_TOKEN` and `issues: write`
+  only; no secret reaches it, and no model runs in any job.
+- No job runs on `pull_request_target` or `workflow_run`. Every action stays pinned by a full commit SHA.
 - `SAFEBROWSING_API_KEY` reaches no job of the autopilot, as before.
 
 These workflows hold write tokens and secrets, so sub-PRs 1, 2 and 4 get an independent security
@@ -323,11 +299,10 @@ another line in firefox-branding.js`; `refuses a re-exported patch`.
 - `tools/test/upstream-workflow.test.mjs`: `auto-merge only with the variable, the token, a ready
 PR and the allowlist`; `auto-merge uses --match-head-commit`; `rebuild disables auto-merge
 before the push`; `the e2e call passes the prefs patch and no secret`.
-- `tools/test/upstream-resolve-workflow.test.mjs` (new): `grants nothing by default`; `only the
-resolve job sees the Claude secret, with contents: read`; `only the push job writes, without
-Claude`; `workflow_run acts only on this repository's upstream/firefox-* branches`; `at most
-three attempts, counted from the branch`; `no pull_request_target`; `every action pinned by
-SHA`.
+- `tools/upstream/test/autopilot.test.mjs`: the failing-patches issue lists each failing hunk and
+  links the PR and run.
+- `tools/test/upstream-workflow.test.mjs`: `patch-issue runs only on a failed patch check, with
+issues: write and no secret`; `patch-issue updates the open issue with the same title`.
 - `tools/test/upstream-workflow.test.mjs` also covers `e2e.yml`: `a pull request run never writes
 prefs`.
 - actionlint (with shellcheck) on every changed workflow.
@@ -340,8 +315,7 @@ prefs`.
 
 - `docs/rebase.md`: section 1 (the new commits and the auto-merge step), the "Decide" list, and the
   "At a glance" table, where step 8 becomes automatic for an allowlisted bump.
-- `docs/runbook.md`: owner setup (the token's exact permissions, `AUTO_MERGE_UPSTREAM`, the Claude
-  secret), and how to turn auto-merge off (unset the variable, or `gh pr merge --disable-auto`).
+- `docs/runbook.md`: owner setup (the token's exact permissions, `AUTO_MERGE_UPSTREAM`), and how to turn auto-merge off (unset the variable, or `gh pr merge --disable-auto`).
 - `docs/security.md` section 10: the guarantees above.
 - `docs/limits.md` ("Build and CI"): the gaps this closes come out; what remains (patch changes wait
   for a person until #224) stays.
@@ -356,8 +330,8 @@ prefs`.
 2. **Auto-merge** (Behaviour 5, 7, 8): `bump-diff.mjs`, the `publish` step, ADR-022,
    `docs/security.md`, runbook setup. Needs `UPSTREAM_PR_TOKEN` for its dry run.
 3. **Fuzz re-export** (Behaviour 3, 6): `reexport.py`, `source-check.sh`, `publish`.
-4. **Conflict resolution with Claude** (Behaviour 4): `upstream-resolve.yml`, its tests and
-   `docs/security.md`. Needs a Claude secret for its dry run.
+4. **Issue for failing patches** (Behaviour 4): the `patch-issue` job, its texts and tests,
+   `docs/security.md`.
 
 Each sub-PR is merged before the next starts. Sub-PRs 1, 2 and 4 change workflows that hold write
 tokens or secrets and get a fresh security review.
