@@ -897,7 +897,8 @@ not a routine update: stop, and review ADR-021.
 
 The pull request fails the required check "Mozilla release key unchanged or approved"
 (`.github/workflows/key-guard.yml`) until a maintainer, after the checks above, adds the
-`key-rotation-approved` label; adding it re-runs the check. Any change to
+`key-rotation-approved` label; adding it re-runs the check while the pull request is open (a
+label change on a merged pull request skips it). Any change to
 `mozilla-release-key.asc`, or to a line of `verify-sha512.py` that names `PINNED_FINGERPRINT` or
 `KEY_FILE` (a comment included), needs the label, and so does any change to the guard itself
 (`.github/workflows/key-guard.yml`, `tools/ci/key-guard.mjs`, `tools/ci/test/key-guard.test.mjs`):

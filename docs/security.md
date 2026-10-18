@@ -830,7 +830,10 @@ release path held for review, with its published diff,
   the `key-rotation-approved` label, which needs triage access to the repository. No automation
   or agent adds that label; a maintainer adds it only after the checks in `docs/runbook.md`,
   "Mozilla's release key", and removes it if a later push changes the key again, since the label
-  stays on the pull request across pushes. The check runs the base branch's copy of the script.
+  stays on the pull request across pushes. The check runs the base branch's copy of the script,
+  and only while the pull request is open: a label change on a merged pull request (release-please
+  relabels a merged release pull request after its branch is deleted) skips the job, which the
+  ruleset no longer reads at that point.
   A pull request that changes the guard itself (`.github/workflows/key-guard.yml`,
   `tools/ci/key-guard.mjs` or its tests) needs the same label, because under `pull_request` such
   a pull request still runs its own copy of the workflow and could rewrite it to pass; the
