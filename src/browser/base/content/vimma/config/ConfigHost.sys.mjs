@@ -534,6 +534,11 @@ export const ConfigHost = {
     return sourced ?? configPath();
   },
 
+  /** config.toml, or the file `vimma.config.path` names; never a `:source <path>` one. */
+  get configFile() {
+    return configPath();
+  },
+
   /** The file `errors` are about (about:vimma). */
   get errorsPath() {
     return errorsPath || configPath();

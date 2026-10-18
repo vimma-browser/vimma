@@ -127,6 +127,12 @@ export default [
     languageOptions: { globals: { BrowsingContext: "readonly", Components: "readonly" } },
   },
   {
+    // about:vimma-setup registers its nsIAboutModule through the component registrar, and is
+    // never offered under a test harness: Cu.isInAutomation (docs/specs/first-run-setup.md).
+    files: ["src/**/vimma/setup/SetupHost.sys.mjs"],
+    languageOptions: { globals: { Components: "readonly", Cu: "readonly" } },
+  },
+  {
     // The -vimma-from command-line handler: the component registrar (workspace-routing).
     files: ["src/**/vimma/workspaces/WorkspaceRouter.sys.mjs"],
     languageOptions: { globals: { Components: "readonly" } },

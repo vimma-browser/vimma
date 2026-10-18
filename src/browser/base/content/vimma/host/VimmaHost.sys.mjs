@@ -790,6 +790,8 @@ export const RUNNERS = Object.freeze({
   // `:source <path>` passes the path as typed, which ConfigHost expands.
   "config.reload": (_s, _a, /** @type {string | undefined} */ text) =>
     Services.obs.notifyObservers(null, CONFIG_RELOAD_TOPIC, text ?? ""),
+  // `:setup` (first-run-setup decision 14): the setup page in a new tab, at the welcome screen.
+  "setup.open": (/** @type {WindowState} */ s) => openOrSay(s, "about:vimma-setup", "tab"),
   // `:config`: ConfigHost opens config.toml in a tab of this window (creating it if missing).
   "config.edit": (/** @type {WindowState} */ s) =>
     Services.obs.notifyObservers(/** @type {any} */ (s.win), CONFIG_EDIT_TOPIC),
@@ -1794,6 +1796,16 @@ export const VimmaHost = {
     state.pageFirst = state.pageFirst.filter((p) => p.awaiting);
     // Focus left the page the hints are on (URL bar, another pane): they no longer apply.
     if (state.hint && state.hint.browser !== this._focusedBrowser(win)) this._cancelHints(state);
+    // The setup page draws its own j/k/space/enter/esc (first-run-setup behaviour 3): the scroll,
+    // hint and mode bindings would take them first. Chords with a modifier stay ours.
+    if (
+      !chord.ctrl &&
+      !chord.alt &&
+      !chord.meta &&
+      /** @type {any} */ (this._focusedBrowser(win))?.currentURI?.spec === "about:vimma-setup"
+    ) {
+      return;
+    }
     const mode = this._mode(state);
     // Keys typed in a private window are never kept (private-workspace decision 8b).
     if (!state.private) {
