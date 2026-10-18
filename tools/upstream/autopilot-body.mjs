@@ -12,9 +12,10 @@
  *     [--patch-check FILE --patch-markdown FILE --patch-result ok|fail|norun --audit FILE
  *      --artifacts yes|no|unknown --artifacts-note TEXT --tests RESULT --has-token true|false
  *      --issue N --branch NAME --repo OWNER/NAME --run-url URL --owner LOGIN --error FILE
- *      --beta-issues JSON]
+ *      --beta-issues JSON --auto-merge VALUE --ref REF --bump-diff FILE]
  *
- * Writes Markdown to stdout (`pr --draft-only` prints "true" or "false"). Node built-ins only.
+ * Writes Markdown to stdout (`pr --draft-only` and `pr --auto-merge-only` print "true" or
+ * "false"). Node built-ins only.
  * Every string from outside (a hunk, an advisory, an error) is constrained by a regexp in
  * releases.mjs, inside a code fence that patch-check.py sized for it, or escaped for where it
  * goes: oneLine for Markdown text, codeLine for a code span.
@@ -39,7 +40,8 @@ export const BODY_LIMIT = 64000;
  *   patchResult: string, audit: string, artifacts: string, artifactsNote: string,
  *   tests: string, hasToken: boolean, issue: string, branch: string, repo: string,
  *   runUrl: string, owner: string, error: string, betaIssues: BetaIssue[],
- *   prefs?: PrefRefresh | null, reexport?: Reexport | null }} Context
+ *   prefs?: PrefRefresh | null, reexport?: Reexport | null, autoMerge?: string, ref?: string,
+ *   bumpDiff?: { ok: boolean, reason: string } | null }} Context
  * @typedef {{ state: string, reexported: string[],
  *   refused: { patch: string, reason: string }[] }} Reexport
  * @typedef {{ state: string, refreshed: { pref: string, old: string, new: string }[],
@@ -103,6 +105,35 @@ export function draftDecision({ patchResult, tests, hasToken, prefs, reexport })
     return { draft: true, reason: "opened with GITHUB_TOKEN: mark it ready to start CI" };
   }
   return { draft: false, reason: "all green" };
+}
+
+/**
+ * Whether the bump PR is set to auto-merge (spec upstream-bump-automation, Behaviour 5): "on",
+ * or the first condition that did not hold. `AUTO_MERGE_UPSTREAM` is matched exactly, so a typo
+ * leaves auto-merge off.
+ * @param {Context} c
+ * @returns {{ on: boolean, reason: string }}
+ */
+export function autoMergeDecision(c) {
+  const kind = c.detection.release.kind === "major" ? "major" : "dot";
+  /** @param {string} why */
+  const off = (why) => ({ on: false, reason: `off: ${why}` });
+  const allowed = c.autoMerge === "all" || (c.autoMerge === "dot" && kind === "dot");
+  if (!allowed) return off(`AUTO_MERGE_UPSTREAM does not allow a ${kind} release`);
+  if (c.ref !== "refs/heads/main") return off("the run is not on main");
+  if (!c.hasToken) return off("UPSTREAM_PR_TOKEN is not set");
+  // Decision 15: a changed patch waits for a full build and a person.
+  if (c.reexport?.state === "reexported") return off("patches were re-exported");
+  const { draft, reason } = draftDecision(c);
+  if (draft) return off(`the PR is a draft (${reason})`);
+  const patches = c.patchReport?.patches ?? [];
+  if (!c.patchReport?.ran || patches.some((p) => p.status !== "clean" && p.status !== "offset")) {
+    return off("a patch did not apply clean or with an offset");
+  }
+  if (c.artifacts !== "yes") return off("Mozilla's artifacts were not found");
+  if (!c.bumpDiff) return off("the diff was not checked");
+  if (!c.bumpDiff.ok) return off(`the diff is not a plain bump (${oneLine(c.bumpDiff.reason)})`);
+  return { on: true, reason: "on" };
 }
 
 /**
@@ -324,6 +355,7 @@ export function prBody(c) {
   const d = c.detection;
   const r = d.release;
   const { draft, reason } = draftDecision(c);
+  const autoMerge = autoMergeDecision(c);
   const out = [
     `## Firefox ${d.current} → ${r.version} (${describe(r)})`,
     "",
@@ -340,6 +372,7 @@ export function prBody(c) {
     `| Copied upstream prefs | ${prefsLine(c.prefs)} |`,
     `| Fuzz re-export | ${reexportLine(c.reexport)} |`,
     `| Mochitests + e2e on the artifact build | ${testsLine(c.tests, c)} |`,
+    `| Auto-merge | ${autoMerge.reason} |`,
     "",
     ...refreshedLines(c.prefs),
     ...reexportLines(c.reexport, c.owner),
@@ -355,6 +388,11 @@ export function prBody(c) {
     out.push(
       "PR CI runs the suites on the re-exported patches. Review the second commit and merge " +
         "when green.",
+    );
+  } else if (autoMerge.on) {
+    out.push(
+      "Everything passed and the diff is only the version and copied prefs. GitHub merges this " +
+        "PR once every required check is green; `gh pr merge --disable-auto` stops it.",
     );
   } else if (!draft) {
     out.push(
@@ -535,6 +573,10 @@ function main() {
       prefs: { type: "string" },
       reexport: { type: "string" },
       "draft-only": { type: "boolean", default: false },
+      "auto-merge": { type: "string", default: "" },
+      ref: { type: "string", default: "" },
+      "bump-diff": { type: "string" },
+      "auto-merge-only": { type: "boolean", default: false },
     },
   });
   const what = positionals[0];
@@ -561,6 +603,9 @@ function main() {
     betaIssues: betaIssues(values["beta-issues"] ?? ""),
     prefs: readMaybe(values.prefs) ? JSON.parse(readMaybe(values.prefs)) : null,
     reexport: readMaybe(values.reexport) ? JSON.parse(readMaybe(values.reexport)) : null,
+    autoMerge: values["auto-merge"] ?? "",
+    ref: values.ref ?? "",
+    bumpDiff: readMaybe(values["bump-diff"]) ? JSON.parse(readMaybe(values["bump-diff"])) : null,
   };
   const v = detection.release.version;
   /** @type {Record<string, () => string>} */
@@ -568,7 +613,12 @@ function main() {
     issue: () => issueBody(c),
     "issue-title": () => issueTitle(v),
     title: () => prTitle(v, detection.release.advisories),
-    pr: () => (values["draft-only"] ? String(draftDecision(c).draft) : prBody(c)),
+    pr: () =>
+      values["auto-merge-only"]
+        ? String(autoMergeDecision(c).on)
+        : values["draft-only"]
+          ? String(draftDecision(c).draft)
+          : prBody(c),
     fallback: () => fallbackBody(c),
     drift: () => driftBody(c),
     "drift-title": () => driftTitle(detection.current),

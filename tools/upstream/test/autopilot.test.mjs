@@ -10,6 +10,7 @@ import {
   auditLine,
   betaIssues,
   branchName,
+  autoMergeDecision,
   conflictLines,
   draftDecision,
   driftBody,
@@ -698,5 +699,108 @@ describe("the bump PR and re-exported patches", () => {
     );
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout.trim()).toBe("false");
+  });
+});
+
+// Spec upstream-bump-automation, Behaviour 5 and 7: auto-merge only when every condition holds;
+// the PR body's "Auto-merge" row says "on" or names the first condition that did not.
+describe("the bump PR and auto-merge", () => {
+  const green = {
+    patchResult: "ok",
+    tests: "success",
+    hasToken: true,
+    artifacts: "yes",
+    autoMerge: "all",
+    ref: "refs/heads/main",
+    bumpDiff: { ok: true, reason: "only the version and copied prefs change" },
+  };
+
+  it("is on for a green dot or major bump when AUTO_MERGE_UPSTREAM is all", () => {
+    expect(autoMergeDecision(context(green))).toEqual({ on: true, reason: "on" });
+    const major = { ...securityRelease, release: { ...securityRelease.release, kind: "major" } };
+    expect(autoMergeDecision(context({ ...green, detection: major })).on).toBe(true);
+  });
+
+  it("dot allows dot releases only; unset or anything else allows none", () => {
+    expect(autoMergeDecision(context({ ...green, autoMerge: "dot" })).on).toBe(true);
+    const major = { ...securityRelease, release: { ...securityRelease.release, kind: "major" } };
+    expect(autoMergeDecision(context({ ...green, autoMerge: "dot", detection: major }))).toEqual({
+      on: false,
+      reason: "off: AUTO_MERGE_UPSTREAM does not allow a major release",
+    });
+    for (const v of ["", "ALL", "yes", " all"]) {
+      expect(autoMergeDecision(context({ ...green, autoMerge: v })).on, v).toBe(false);
+    }
+  });
+
+  it("names the first condition that did not hold", () => {
+    const off = (/** @type {object} */ over) => autoMergeDecision(context({ ...green, ...over }));
+    expect(off({ ref: "refs/heads/x" }).reason).toBe("off: the run is not on main");
+    expect(off({ hasToken: false }).reason).toBe("off: UPSTREAM_PR_TOKEN is not set");
+    expect(off({ tests: "failure" }).reason).toBe(
+      "off: the PR is a draft (the suites did not pass)",
+    );
+    expect(off({ patchResult: "fail" }).reason).toMatch(/^off: the PR is a draft/);
+    expect(off({ artifacts: "no" }).reason).toBe("off: Mozilla's artifacts were not found");
+    expect(off({ bumpDiff: { ok: false, reason: "changes README.md" } }).reason).toBe(
+      "off: the diff is not a plain bump (changes README.md)",
+    );
+    expect(off({ bumpDiff: null }).reason).toBe("off: the diff was not checked");
+  });
+
+  it("never with patches that needed fuzz, were re-exported or are applied already", () => {
+    const fuzz = {
+      ...cleanReport,
+      patches: [{ ...cleanReport.patches[0], status: "applied", imports: true }],
+    };
+    expect(autoMergeDecision(context({ ...green, patchReport: fuzz })).reason).toBe(
+      "off: a patch did not apply clean or with an offset",
+    );
+    const reexport = { state: "reexported", reexported: ["src/a.patch"], refused: [] };
+    expect(autoMergeDecision(context({ ...green, patchResult: "fail", reexport })).reason).toBe(
+      "off: patches were re-exported",
+    );
+  });
+
+  it("the PR body has an Auto-merge row and says GitHub merges it", () => {
+    const body = prBody(context(green));
+    expect(body).toContain("| Auto-merge | on |");
+    expect(body).toContain("GitHub merges this PR once every required check is green");
+    expect(prBody(context({ ...green, autoMerge: "" }))).toContain(
+      "| Auto-merge | off: AUTO_MERGE_UPSTREAM does not allow a dot release |",
+    );
+  });
+
+  it("the CLI prints the decision with --auto-merge-only", () => {
+    const dir = tempDir("autopilot-automerge-");
+    writeFileSync(join(dir, "detection.json"), JSON.stringify(securityRelease));
+    writeFileSync(join(dir, "patch.json"), JSON.stringify(cleanReport));
+    writeFileSync(join(dir, "diff.json"), JSON.stringify(green.bumpDiff));
+    const args = [
+      bodyScript,
+      "pr",
+      "--auto-merge-only",
+      "--detection",
+      join(dir, "detection.json"),
+      "--patch-check",
+      join(dir, "patch.json"),
+      "--patch-result",
+      "ok",
+      "--tests",
+      "success",
+      "--artifacts",
+      "yes",
+      "--has-token",
+      "true",
+      "--ref",
+      "refs/heads/main",
+      "--bump-diff",
+      join(dir, "diff.json"),
+    ];
+    const on = spawnSync(process.execPath, [...args, "--auto-merge", "all"], { encoding: "utf8" });
+    expect(on.stderr).toBe("");
+    expect(on.stdout).toBe("true\n");
+    const off = spawnSync(process.execPath, args, { encoding: "utf8" });
+    expect(off.stdout).toBe("false\n");
   });
 });

@@ -1,6 +1,6 @@
 # ADR-015: The upstream autopilot rebases, tests and opens the bump PR
 
-- Status: Accepted
+- Status: Accepted (amended by [ADR-022](022-green-bump-merges-itself.md): a green bump can merge itself)
 - Date: 2026-10-10
 
 ## Context
