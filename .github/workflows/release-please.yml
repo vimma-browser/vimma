@@ -191,3 +191,31 @@ jobs:
             -f ref=main -f "inputs[tag]=$TAG"
           url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml"
           echo "Started release.yml for $TAG: $url" >> "$GITHUB_STEP_SUMMARY"
+
+  # Decisions 11 to 15 (ADR-020): after a merged upstream bump labelled `security`, the open
+  # release PR is set to auto-merge, pinned to its head commit, so GitHub merges it once the main
+  # ruleset is satisfied and no person stands between the bump and the release. It runs after
+  # firefox-notes so the pinned head already carries that job's changelog commit. Every check is
+  # in tools/release/security-release.mjs decide(); off until AUTO_SECURITY_RELEASE is `true`
+  # (docs/runbook.md, Releases). Reads and the merge go through the release-please token: a merge
+  # made with GITHUB_TOKEN would push to main without starting release-please.yml, so no release
+  # would follow. GITHUB_TOKEN only checks out main's code; the release branch is read as data.
+  security-release:
+    needs: [release-please, firefox-notes]
+    if: github.repository == 'vimma-browser/vimma' && github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AUTO_SECURITY_RELEASE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # check out main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Set the release PR to auto-merge after a security bump
+        env:
+          AUTO_SECURITY_RELEASE: ${{ vars.AUTO_SECURITY_RELEASE }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: node tools/release/security-release.mjs

@@ -430,7 +430,9 @@ Spec: [m0-mozilla-services](specs/m0-mozilla-services.md),
 ## 10. Firefox updates (the upstream autopilot, `upstream.yml`; the Beta canary, `upstream-beta.yml`)
 
 Vimma is only as safe as the Firefox release under it. The autopilot finds each new release,
-rebases our patches onto it, runs the suites and opens the PR; a person reviews and merges. Spec:
+rebases our patches onto it, runs the suites and opens the PR; a person reviews and merges every
+bump. A merged bump labelled `security` then releases on its own when `AUTO_SECURITY_RELEASE` is
+on ([ADR-020](adr/020-security-release-without-a-person.md), G11 and G12). Spec:
 [m7-upstream-autopilot](specs/m7-upstream-autopilot.md), [ADR-015](adr/015-upstream-autopilot.md),
 playbook: [docs/rebase.md](rebase.md). The Beta canary tests `main` on each Firefox Beta build and
 reports in an issue, so a release's breakage is known before its deadline (spec
@@ -522,6 +524,26 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`nothing is built from a tarball whose SHA-512 Mozilla did not publish`](../tools/test/upstream-beta-workflow.test.mjs),
   [`test_good_signature_but_a_different_hash_fails_naming_expected_and_actual`](../tools/upstream/test_verify_sha512.py),
   [`a report on a tarball that failed verification is never uploaded`](../tools/test/upstream-workflow.test.mjs)
+- G11. A merged `upstream` PR labelled `security` **must** set the release PR to auto-merge in the
+  same `release-please.yml` run when `AUTO_SECURITY_RELEASE` is on, pinned to the release PR's
+  head commit, and **never** any other PR. The merge goes through `RELEASE_PLEASE_TOKEN` and
+  GitHub's auto-merge, so the `main` ruleset's required checks still gate it.
+  [`auto-merges the release PR after a merged security bump`](../tools/release/test/security-release.test.mjs),
+  [`does nothing for an upstream bump without the security label`](../tools/release/test/security-release.test.mjs),
+  [`does nothing for a security-labelled PR from another branch or a fork`](../tools/release/test/security-release.test.mjs),
+  [`does nothing for a commit whose subject is not an upstream bump`](../tools/release/test/security-release.test.mjs),
+  [`refuses a release PR with another author, branch, base, label or title`](../tools/release/test/security-release.test.mjs),
+  [`refuses when the release PR does not contain the bump commit`](../tools/release/test/security-release.test.mjs),
+  [`pins the merge to the release PR's head commit`](../tools/release/test/security-release.test.mjs),
+  [`security-release runs only on a push to main of vimma-browser/vimma`](../tools/package/test/release-workflow.test.mjs),
+  [`RELEASE_PLEASE_TOKEN reaches only release-please, the changelog push and the auto-merge`](../tools/package/test/release-workflow.test.mjs),
+  [`release-please.yml grants nothing by default and each job only what it needs`](../tools/package/test/release-workflow.test.mjs)
+- G12. The automatic path **must never** merge the first release PR, and **must** stop when the
+  variable is unset; with the variable on and no `RELEASE_PLEASE_TOKEN` it fails the run.
+  [`refuses before the first release exists`](../tools/release/test/security-release.test.mjs),
+  [`does nothing when AUTO_SECURITY_RELEASE is off`](../tools/release/test/security-release.test.mjs),
+  [`asks the API nothing while the variable is off or outside main`](../tools/release/test/security-release.test.mjs),
+  [`fails when the variable is on and RELEASE_PLEASE_TOKEN is missing`](../tools/release/test/security-release.test.mjs)
 
 ## 11. Out of scope and trust boundaries
 

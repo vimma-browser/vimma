@@ -1204,6 +1204,17 @@ maintainer's one click.
   `BREAKING CHANGE:`). release-please rewrites the branch on every push to `main`, so make the
   edit last, on top of the `firefox-notes` commit (pull the branch first; keep the
   `· Firefox <version>` in the `0.1.1` heading). From then on every entry is generated.
+- **A merged security bump releases itself** (`security-release`, spec firefox-versions,
+  ADR-020), once `AUTO_SECURITY_RELEASE` is `true`. After a push to `main` that is the squash
+  merge of the autopilot's `upstream/firefox-<version>` PR labelled `upstream` and `security`,
+  `tools/release/security-release.mjs` sets the open release PR to auto-merge with
+  `RELEASE_PLEASE_TOKEN`, pinned to its head commit (`--match-head-commit`), and comments on the
+  bump PR. GitHub merges it when the required checks pass; that merge's push starts this workflow
+  again, which tags and creates the draft release and starts `release.yml`. Publishing the draft
+  stays a click. Any other push logs a notice naming the check that did not hold (the run's
+  summary), and the job never merges the first release PR (it requires an existing release).
+  Commits merged after the bump and before the checks finish ship in the same release.
+  `RELEASE_PLEASE_TOKEN` is required: with the variable on and no token, the job fails.
 - **Names.** `include-component-in-tag` is off, so tags are `vX.Y.Z`, the branch is
   `release-please--branches--main` and the PR title `chore(main): release X.Y.Z`.
 
@@ -1226,9 +1237,29 @@ through the issues API); it runs no repository code. `firefox-notes` reads with 
 `pull-requests: read` and writes only through `RELEASE_PLEASE_TOKEN`; `release-title` has
 `contents: write` and nothing else. Both run only `main`'s `tools/release/` (the tag is a commit
 on `main`), never code from the release branch, and keep no token in their checkout.
+`security-release` has `contents: read` (it checks out `main`) and reads and merges only through
+`RELEASE_PLEASE_TOKEN`.
 `release-build` has `actions: write` and nothing else, runs no repository code, and only sends
 the `workflow_dispatch` for `release.yml` on `main` with the new tag; it runs only when a release
 was created and `RELEASE_ENABLED` is `true`.
+
+Turning on security releases (`AUTO_SECURITY_RELEASE`), once, while releases are still drafts:
+
+1. Check that `RELEASE_PLEASE_TOKEN` is set and unexpired (`gh secret list`), and that
+   Settings → General → "Allow auto-merge" is on (`gh api repos/vimma-browser/vimma --jq
+.allow_auto_merge` prints `true`).
+2. `gh variable set AUTO_SECURITY_RELEASE --body true`.
+3. Dry run, while `"draft": true` keeps everything private: open a PR from a branch named
+   `upstream/firefox-<the version on main>` that changes only a comment, titled
+   `upstream: firefox <that version>`, labelled `upstream` and `security`, and merge it. In that
+   merge's `release-please` run, `security-release` should report the release PR set to
+   auto-merge and comment on the PR; the release PR should then merge on its own once green,
+   and a draft titled `Vimma 0.1.x · Firefox <version>` should appear. If the release PR waits
+   for an approval instead (the ruleset's `require_extra_approval_for_unattributed_changes`),
+   record it and turn the variable off until that is resolved. Afterwards delete the draft and
+   its tag (`gh release delete v0.1.x --cleanup-tag`); the version moves on.
+4. To stop the chain: `gh variable delete AUTO_SECURITY_RELEASE`, or for one release PR
+   `gh pr merge --disable-auto <n>`.
 
 ### Release packages (`release.yml`, spec m6-packaging)
 

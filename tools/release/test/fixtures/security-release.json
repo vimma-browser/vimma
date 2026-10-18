@@ -1,0 +1,71 @@
+{
+  "_source": "GitHub REST API responses for vimma-browser/vimma, trimmed to the fields decide() reads. bumpPulls: GET /repos/{repo}/commits/d481400/pulls (PR #186, upstream: firefox 158.0). releasePulls: GET /repos/{repo}/pulls?head=vimma-browser:release-please--branches--main for PR #347 while it was open. user: GET /user with RELEASE_PLEASE_TOKEN. compare: GET /repos/{repo}/compare/{bump}...{release head}. releases: GET /repos/{repo}/releases?per_page=1.",
+  "sha": "d48140015506729f9097fd51031c9ba231cdff20",
+  "commit": {
+    "commit": {
+      "message": "upstream: firefox 158.0 (MFSA 2026-106) (#186)\n\nFirefox 158.0 is a security release (MFSA 2026-106, high), due by 2026-10-20.\n"
+    }
+  },
+  "bumpPulls": [
+    {
+      "base": {
+        "ref": "main"
+      },
+      "head": {
+        "ref": "upstream/firefox-158.0",
+        "repo": {
+          "full_name": "vimma-browser/vimma"
+        }
+      },
+      "labels": [
+        {
+          "name": "upstream"
+        },
+        {
+          "name": "security"
+        }
+      ],
+      "merge_commit_sha": "d48140015506729f9097fd51031c9ba231cdff20",
+      "merged_at": "2026-10-14T13:42:40Z",
+      "number": 186,
+      "state": "closed"
+    }
+  ],
+  "releasePulls": [
+    {
+      "base": {
+        "ref": "main"
+      },
+      "head": {
+        "ref": "release-please--branches--main",
+        "repo": {
+          "full_name": "vimma-browser/vimma"
+        },
+        "sha": "cec9a520593c407d909a4a9352865dddb1805496"
+      },
+      "labels": [
+        {
+          "name": "autorelease: pending"
+        }
+      ],
+      "number": 347,
+      "state": "open",
+      "title": "chore(main): release 0.1.5",
+      "user": {
+        "login": "JRanne"
+      }
+    }
+  ],
+  "user": {
+    "login": "JRanne"
+  },
+  "compare": {
+    "status": "ahead"
+  },
+  "releases": [
+    {
+      "draft": true,
+      "tag_name": "v0.1.5"
+    }
+  ]
+}
