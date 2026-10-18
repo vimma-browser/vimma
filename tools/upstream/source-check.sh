@@ -17,7 +17,8 @@
 # patch-audit.txt in the current directory, and to $GITHUB_OUTPUT (when set) result=ok|fail|norun
 # and, after the preflight, artifacts and artifacts-note. Once the tarball is verified it also
 # writes the pref refresh (upstream-prefs.mjs --write-diff, spec upstream-bump-automation):
-# prefs-refresh.patch and prefs-refresh.json, and prefs=current|refreshed|unresolved. $GITHUB_STEP_SUMMARY gets the summary.
+# prefs-refresh.patch and prefs-refresh.json, and prefs=current|refreshed|unresolved; and the fuzz
+# re-export (reexport.py, sub-PR 3): reexport/reexport.json and the re-exported patches. $GITHUB_STEP_SUMMARY gets the summary.
 #
 # Exit status: 0 the check ran or reported that it could not (result says which), 1 SHA512SUMS is
 # not signed by Mozilla's release key, it or its signature cannot be fetched, or the SHA-512 does
@@ -43,11 +44,14 @@ mkfifo "$scratch/tarball.fifo"
 sha512sum < "$scratch/tarball.fifo" > "$scratch/tarball.sha512" &
 hasher=$!
 # patch-check's status is the verdict: 0 all apply, 1 some do not, 2 did not run.
+# The pristine copies of the patched files, for the fuzz re-export.
+patched=()
+while read -r f; do patched+=(--extract "$f"); done < <(python3 "$here/patch-check.py" --list-files)
 set +e
 curl -fsSL --retry 3 "$base/$name" | tee "$scratch/tarball.fifo" |
   python3 "$here/patch-check.py" --tarball - --drain \
     --json patch-check.json --markdown patch-check.md \
-    --extract browser/app/profile/firefox.js --extract modules/libpref/init/all.js \
+    --extract browser/app/profile/firefox.js --extract modules/libpref/init/all.js "${patched[@]}" \
     --extract-to "$scratch/upstream"
 status=${PIPESTATUS[2]}
 wait "$hasher"
@@ -74,6 +78,9 @@ case "$status" in
     node "$here/upstream-prefs.mjs" --firefox-js "$scratch/upstream/browser/app/profile/firefox.js" \
       --all-js "$scratch/upstream/modules/libpref/init/all.js" \
       --write-diff prefs-refresh.patch --json prefs-refresh.json --github-output "$output"
+    # Exit 1 (a failed patch, or a refused re-export) is reported in reexport.json, not here.
+    python3 "$here/reexport.py" --report patch-check.json --tree "$scratch/upstream" \
+      --out reexport || true
     ;;
   *)
     result=norun

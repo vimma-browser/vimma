@@ -495,6 +495,12 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   lines, and only through the `workflow_call` input of `e2e.yml`, so a pull request run never
   rewrites prefs; a pref gone upstream is never guessed and keeps the PR a draft. No new token or
   secret: `publish` commits the refresh with its existing `contents: write`.
+  Patches that need only fuzz are re-exported (`reexport.py`) from the same verified files;
+  a result whose added or removed lines differ is refused, `publish` copies in only
+  `src/**/*.patch` paths as a second commit, and such a PR waits for the owner.
+  [`test_reexport_keeps_added_and_removed_lines`](../tools/upstream/test_reexport.py),
+  [`test_a_report_label_outside_src_is_refused`](../tools/upstream/test_reexport.py),
+  [`publish commits re-exported patches as a second commit, only under src/`](../tools/test/upstream-workflow.test.mjs),
   [`writes the derived cfr line when upstream adds a field`](../tools/upstream/test/upstream-prefs.test.mjs),
   [`the diff touches only the three copied pref lines`](../tools/upstream/test/upstream-prefs.test.mjs),
   [`reports unresolved and writes nothing for a pref missing upstream`](../tools/upstream/test/upstream-prefs.test.mjs),

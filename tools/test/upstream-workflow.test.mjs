@@ -490,3 +490,30 @@ describe("pref refresh in the upstream autopilot", () => {
     expect(block).toContain('--prefs "$pc/prefs-refresh.json"');
   });
 });
+
+// Spec upstream-bump-automation, sub-PR 3 (decisions 14 and 15).
+describe("fuzz re-export in the upstream autopilot", () => {
+  it("source-check re-exports only after the SHA-512 check, from the extracted patched files", () => {
+    const verify = source.indexOf('python3 "$here/verify-sha512.py"');
+    const reexport = source.indexOf('python3 "$here/reexport.py"');
+    expect(reexport).toBeGreaterThan(verify);
+    expect(source).toContain('python3 "$here/patch-check.py" --list-files');
+    expect(source).toContain("--out reexport");
+  });
+
+  it("the patch-check artifact carries the re-export", () => {
+    const upload = job(upstream, "patch-check");
+    expect(upload.slice(upload.indexOf("name: patch-check")).split("\n")).toContain(
+      "            reexport/",
+    );
+  });
+
+  it("publish commits re-exported patches as a second commit, only under src/", () => {
+    const block = job(upstream, "publish");
+    const bump = block.indexOf('git commit -am "upstream: firefox $VERSION"');
+    const second = block.indexOf('git commit -m "upstream: re-export $names for firefox $VERSION"');
+    expect(second).toBeGreaterThan(bump);
+    expect(block).toContain("^src/[A-Za-z0-9._/-]+\\.patch$");
+    expect(block).toContain('--reexport "$pc/reexport/reexport.json"');
+  });
+});

@@ -133,6 +133,10 @@ Each `fuzz` or `failed` hunk is listed under the table, collapsed, as the hunk f
 
 - **Green, ready for review** (a token is set) → review the diff (`surfer.json` only) and merge.
 - **Green draft** ("mark it ready") → `gh pr ready <n>`: CI and e2e run as you; merge when green.
+- **Ready, "Re-exported patches"** → every patch that failed only needed fuzz; the autopilot
+  re-exported it (`tools/upstream/reexport.py`, same added and removed lines) in a second commit,
+  and PR CI runs the suites on it. Review that commit; a C++ or build patch needs the full build
+  (docs/limits.md). Such a bump is never set to auto-merge.
 - **Draft, "some patches do not apply"** → steps 2–3 on the PR's branch (`gh pr checkout <n>`),
   push the re-exported patches; PR CI runs the suites. Or hand it to Claude: comment `@claude`
   on the PR with the Conflicts section.
