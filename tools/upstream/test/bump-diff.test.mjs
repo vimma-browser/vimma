@@ -100,4 +100,19 @@ describe("bump-diff", () => {
       expect(checkBumpDiff({ diff, baseSurfer: base, headSurfer: head }).ok, extra).toBe(false);
     }
   });
+
+  it("refuses a file header it does not recognise instead of folding it into the last file", () => {
+    for (const header of [
+      "diff --git a/tools/evil x.mjs b/tools/evil x.mjs",
+      'diff --git "a/tools/\\303\\244.sh" "b/tools/\\303\\244.sh"',
+    ]) {
+      const diff = `${surferHunk}\n${header}\nnew file mode 100755\n--- /dev/null\n+++ b/x\n@@ -0,0 +1 @@\n+anything`;
+      expect(checkBumpDiff({ diff, baseSurfer: base, headSurfer: head }).ok, header).toBe(false);
+    }
+  });
+
+  it("refuses a line inside a hunk that is not an added or removed line", () => {
+    const diff = `${surferHunk}\n context line`;
+    expect(checkBumpDiff({ diff, baseSurfer: base, headSurfer: head }).ok).toBe(false);
+  });
 });

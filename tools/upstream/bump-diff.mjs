@@ -39,8 +39,11 @@ export function checkBumpDiff({ diff, baseSurfer, headSurfer }) {
   let lines = null;
   let inHunk = false;
   for (const line of diff.split("\n")) {
-    const start = /^diff --git a\/(\S+) b\/(\S+)$/.exec(line);
-    if (start) {
+    // Every file header must parse: an unparsed one (a path with a space, a quoted path) would
+    // otherwise fold the next file's lines into the previous file's hunk.
+    if (line.startsWith("diff ")) {
+      const start = /^diff --git a\/(\S+) b\/(\S+)$/.exec(line);
+      if (!start) return { ok: false, reason: "a file header that is not a plain path" };
       if (start[1] !== start[2]) return { ok: false, reason: `renames ${start[1]}` };
       const path = start[1] ?? "";
       if (path !== SURFER && path !== OURS) return { ok: false, reason: `changes ${path}` };
@@ -60,6 +63,9 @@ export function checkBumpDiff({ diff, baseSurfer, headSurfer }) {
         return { ok: false, reason: "adds, deletes, renames or re-modes a file" };
       continue;
     }
+    // --unified=0 writes no context: anything but an added or removed line (or git's "\ No
+    // newline" note) is a header this parser does not know.
+    if (!/^[+\-\\]/.test(line)) return { ok: false, reason: "a line outside any known hunk form" };
     lines.push(line);
   }
   if (!files.has(SURFER)) return { ok: false, reason: "surfer.json is not changed" };

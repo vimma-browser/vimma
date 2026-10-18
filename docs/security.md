@@ -579,7 +579,8 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`never with patches that needed fuzz, were re-exported or are applied already`](../tools/upstream/test/autopilot.test.mjs),
   [`refuses another line in firefox-branding.js`](../tools/upstream/test/bump-diff.test.mjs),
   [`refuses a re-exported patch`](../tools/upstream/test/bump-diff.test.mjs),
-  [`refuses a new, deleted, renamed or mode-changed file`](../tools/upstream/test/bump-diff.test.mjs)
+  [`refuses a new, deleted, renamed or mode-changed file`](../tools/upstream/test/bump-diff.test.mjs),
+  [`refuses a file header it does not recognise instead of folding it into the last file`](../tools/upstream/test/bump-diff.test.mjs)
 - G14. `UPSTREAM_PR_TOKEN` **must** reach only the `publish` job. It is fine-grained: this
   repository only, Contents and Pull requests read and write, no Workflows, so it cannot change a
   workflow file. Without it, bumps open as drafts and are never set to auto-merge.
