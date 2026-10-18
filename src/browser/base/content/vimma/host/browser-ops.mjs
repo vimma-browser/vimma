@@ -178,12 +178,38 @@ export function moveTab(win, way) {
 }
 
 /**
+ * `:firefox <id>` (docs/specs/firefox-keys.md decision 5): a `<key>` id runs as that key, even
+ * one Vimma turned off; any other id runs as a `<command>`, which does nothing while Firefox has
+ * it disabled (Stop with nothing loading), as Firefox's own key would.
+ * @param {Window} win
+ * @param {string} id
+ * @returns {boolean} false when the window has no element with that id
+ */
+export function runFirefoxById(win, id) {
+  const el = win.document.getElementById(id);
+  if (!el) return false;
+  if (el.localName === "key") return runKey(win, id);
+  runCommand(win, id);
+  return true;
+}
+
+/**
+ * The ids `:firefox` completes: the window's commands and keys, once each, in document order.
+ * @param {Window} win
+ * @returns {string[]}
+ */
+export function firefoxIds(win) {
+  const els = win.document.querySelectorAll("command[id], keyset key[id]");
+  return [...new Set([...els].map((el) => el.id))];
+}
+
+/**
  * The runners for the Browser and Developer tools actions, keyed by action id.
  * @param {(win: Window, text: string) => void} say  shows a notice
- * @returns {Record<string, (s: { win: Window }, a: Action) => void>}
+ * @returns {Record<string, (s: { win: Window }, a: Action, text?: string) => void>}
  */
 export function browserRunners(say) {
-  /** @type {Record<string, (s: { win: Window }, a: Action) => void>} */
+  /** @type {Record<string, (s: { win: Window }, a: Action, text?: string) => void>} */
   const out = {};
   for (const [action, command] of Object.entries(BROWSER_COMMANDS)) {
     out[action] = (s) => void runCommand(s.win, command);
@@ -194,6 +220,10 @@ export function browserRunners(say) {
     };
   }
   out["app.quit"] = (s) => quit(s.win);
+  out["firefox.command"] = (s, _a, text) => {
+    if (!text) return;
+    if (!runFirefoxById(s.win, text)) say(s.win, `:firefox: no Firefox command or key "${text}"`);
+  };
   out["browser.caret_browsing"] = (s) => toggleCaretBrowsing(s.win);
   out["tab.move_left"] = (s) => moveTab(s.win, "left");
   out["tab.move_right"] = (s) => moveTab(s.win, "right");

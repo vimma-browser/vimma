@@ -855,9 +855,24 @@ keys (`ctrl+tab`, `ctrl+pagedown`, `ctrl+F4`) and Vimma's own keys (`ctrl+b`). A
 none of them first. The rule belongs to the key, not the action: bind `ctrl+s` to something
 else and the page still has it first.
 
-A Firefox shortcut on a key Vimma binds is always off, so the two never both run. Keys Vimma
-does not bind, such as `ctrl+f` (find bar), `ctrl+j` (web search), `F7` (caret browsing) and
-`ctrl+shift+b` (bookmarks toolbar), are still Firefox's, unless the list below turns them off.
+A Firefox shortcut on a key Vimma binds is always off, so the two never both run. Every other
+Firefox key is a Vimma binding on Firefox's own key too: `ctrl+f` (a second find key, as `/`),
+`ctrl+j` (web search), `F7` (caret browsing), `ctrl+shift+b` (bookmarks toolbar) and the rest.
+An unbound key does nothing, including the tab keys Firefox handles outside its shortcut lists
+(`ctrl+pagedown`, `ctrl+tab`, `ctrl+F4`, `F7`). `shift+esc` (stop loading) works in normal mode
+only. Three are left alone: the `alt+letter` keys that open the menu bar's menus stay Firefox's,
+and a bare `alt` tap and `'` (quick find for links) do nothing (the `ui.key.menuAccessKeyFocuses`
+and `accessibility.typeaheadfind.manual` prefs are `false` in Vimma's defaults).
+
+**Any Firefox command from a key.** `:firefox <id>` runs one of the window's commands or keys by
+its id (Tab completes them): `:firefox Tools:Downloads`, `:firefox key_search2`. A value that
+starts with `:` in a `[modal.<mode>]` table binds a key to a command line; such bindings are
+listed in `ctrl+b ?` under "Commands":
+
+```toml
+[modal.normal]
+"<C-S-y>" = ":firefox Tools:Downloads"
+```
 
 ### Firefox's shortcuts on Vim's keys
 
@@ -884,8 +899,8 @@ window on every press.
 
 Vimma turns them off at startup by disabling Firefox's own `<key>` elements (in every keyset of
 the window, the developer tools' too), with no change to Firefox's code; `about:vimma` lists
-each one that is off (key, Firefox's id and command) under "Firefox shortcuts off", and the
-chords on the list that Firefox does not bind. Change the list in `config.toml`:
+the ones that are on (key, Firefox's id, what it does) under "Firefox shortcuts on", and the
+chords on a `disable` list that Firefox does not bind. Change the list in `config.toml`:
 
 ```toml
 schema = 2
@@ -895,20 +910,19 @@ disable = ["ctrl+b", "ctrl+d", "ctrl+e", "ctrl+h", "ctrl+i", "ctrl+k", "ctrl+o",
 enable = []
 ```
 
-- **`disable`** is a list of keys, which replaces the default list, or `"all"`: every Firefox
-  shortcut with `ctrl`, `alt` or `meta` except `ctrl+q`. A Firefox shortcut on a key Vimma binds
+- **`disable`** is `"all"` by default: every Firefox shortcut, function and plain keys (`F5`,
+  `Esc`) included. A list replaces it: then only the keys on the list are off. A Firefox shortcut on a key Vimma binds
   is off whatever the list says (`disable = []` gives back only the ones Vimma does not bind).
-  `"all"` leaves plain keys (`F7`) and the text keys the field itself runs (`ctrl+c`, `ctrl+v`,
-  `ctrl+z`, `ctrl+a`). It also leaves what is not one of the window's shortcuts: the menu bar
-  (`alt`, `F10`).
-- **`enable`** is a list of keys that stay Firefox's whatever `disable` says, even one Vimma
-  binds: there Vimma's binding takes the key first where it has one, and Firefox's runs where
-  Vimma has none. `enable = ["ctrl+u"]` gives view source back in text fields (`ctrl+u` is still
-  half a page up in normal mode). A Firefox shortcut you enable on a text-field key wins over
-  it: `enable = ["ctrl+w"]` closes the tab from a text field again. An enabled key is never the
-  page's first.
-- A key must have `ctrl`, `alt` or `meta`, or be a function key (`f5`); anything else, or a key
-  that does not parse, is an error at its line.
+  `"all"` leaves the text keys the field itself runs (`ctrl+c`, `ctrl+v`, `ctrl+z`, `ctrl+a`)
+  and the menu bar (`alt+letter`, `F10`).
+- **`enable`** gives a key back to Firefox exactly as Firefox runs it: Vimma's default bindings
+  on that key go, in every mode (`enable = ["ctrl+j"]`: Firefox's web search; `ctrl+t` keeps
+  its other keys). If your own `[keys]` or `[modal.*]` binds the key, that is an error at the
+  `enable` line: unbind it or drop it from the list. Enabled keys are listed in `ctrl+b ?` under
+  "Firefox (on in config.toml)", and `about:vimma` lists them under "Firefox shortcuts on". An
+  enabled key is never the page's first.
+- A key must have `ctrl`, `alt` or `meta`, be a function key (`f5`), or be `esc` or `shift+esc`;
+  anything else, or a key that does not parse, is an error at its line.
 
 ## Workspaces
 

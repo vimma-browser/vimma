@@ -134,9 +134,9 @@ add_task(async function the_overlapping_and_the_bound_keys_are_disabled_the_othe
     () => document.getElementById("key_toggleToolbox").getAttribute("disabled") === "true",
     "the DevTools' keyset is watched too: ctrl+shift+i is Vimma's devtools",
   );
-  // Not bound by Vimma, not on the default list: still Firefox's.
+  // Decision 16: these are Vimma bindings on Firefox's own keys now, so Firefox's are off.
   for (const id of ["key_find", "key_search2", "viewBookmarksToolbarKb"]) {
-    Assert.ok(!document.getElementById(id).hasAttribute("disabled"), `#${id} stays on`);
+    Assert.equal(document.getElementById(id).getAttribute("disabled"), "true", `#${id} is off`);
   }
 });
 
@@ -209,13 +209,16 @@ add_task(async function ctrl_t_ctrl_l_and_ctrl_tab_are_vimmas_with_firefoxs_mean
 });
 
 add_task(async function about_vimma_lists_what_is_off() {
+  // A list names chords no key has (ctrl+e, ctrl+y on Linux); "all", the default, names none.
+  const list = [...Object.keys(OVERLAP), "e", "y"].map((l) => `"ctrl+${l}"`).join(", ");
+  await useConfig(`[firefox]\ndisable = [${list}]`);
   const data = await AboutVimma.collect(window);
   const off = Object.fromEntries(data.firefoxKeys.off.map((k) => [k.chord, k.id]));
   for (const [letter, id] of Object.entries(OVERLAP)) {
     Assert.equal(off[`ctrl+${letter}`], id, `about:vimma lists ctrl+${letter} (#${id})`);
   }
   Assert.deepEqual(data.firefoxKeys.unmatched, ["ctrl+e", "ctrl+y"], "no Firefox key on these");
-  Assert.stringContains(AboutVimma.report(data), "Firefox shortcuts off: ", "the report says so");
+  Assert.stringContains(AboutVimma.report(data), "Firefox shortcuts on: ", "the report says so");
 });
 
 add_task(async function disable_all_turns_off_the_unbound_ones_and_enable_keeps_one() {
@@ -248,9 +251,10 @@ add_task(async function disable_all_turns_off_the_unbound_ones_and_enable_keeps_
 });
 
 add_task(async function enable_gives_one_back_and_a_list_replaces_the_default() {
-  await useConfig(`[firefox]\ndisable = ["ctrl+u"]\nenable = []`);
-  Assert.ok(!document.getElementById("key_find").hasAttribute("disabled"), "all is undone");
-  Assert.ok(!document.getElementById("key_search2").hasAttribute("disabled"), "ctrl+j too");
+  // ctrl+j unbound and not on the list: Firefox's again, as the list replaces "all".
+  await useConfig(`[keys]\nweb_search = []\n[firefox]\ndisable = ["ctrl+u"]\nenable = []`);
+  Assert.ok(!document.getElementById("key_search2").hasAttribute("disabled"), "all is undone");
+  Assert.equal(document.getElementById("key_find").getAttribute("disabled"), "true", "bound");
   Assert.equal(
     document.getElementById("key_close").getAttribute("disabled"),
     "true",

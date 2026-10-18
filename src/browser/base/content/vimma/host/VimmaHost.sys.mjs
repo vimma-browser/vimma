@@ -21,7 +21,7 @@ import { HintError, hintKey, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { compileKeymap } from "../core/keymap.mjs";
 import { describeAction, notImplementedText } from "../core/actions.mjs";
-import { PENDING_ACTIONS, parseToolbarCommand } from "../core/cmdline.mjs";
+import { PENDING_ACTIONS, parseCommandLine, parseToolbarCommand } from "../core/cmdline.mjs";
 import { CommandLine } from "../ui/cmdline.mjs";
 import { HelpOverlay } from "../ui/help-overlay.mjs";
 import { HintOverlay } from "../ui/hint-overlay.mjs";
@@ -56,8 +56,8 @@ import {
   selectTab,
 } from "./tab-ops.mjs";
 import { DEFAULT_FIREFOX_KEYS, FirefoxKeys } from "./firefox-keys.mjs";
-import { boundChords, pageFirst } from "../core/firefox-keys.mjs";
-import { browserRunners } from "./browser-ops.mjs";
+import { FIREFOX_SHORTCUTS, boundChords, pageFirst } from "../core/firefox-keys.mjs";
+import { browserRunners, firefoxIds } from "./browser-ops.mjs";
 import { focusedChromeField, runChromeEdit } from "./edit-keys.mjs";
 import { runRoute } from "./route-ops.mjs";
 import {
@@ -736,6 +736,12 @@ export const RUNNERS = Object.freeze({
   // docs/specs/firefox-keys.md decision 4: the Browser and Developer tools actions, each what
   // Firefox's key ran (browser-ops.mjs).
   ...browserRunners((win, text) => states.get(win)?.notice.show(text)),
+  // A `:` binding in config.toml (docs/specs/firefox-keys.md decision 5): its line, as typed.
+  "cmdline.run": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
+    const result = parseCommandLine(a.line ?? "");
+    if (result.kind === "run") VimmaHost._runCommand(s, result);
+    else if (result.kind === "error") s.notice.show(result.error.message, { error: true });
+  },
   "app.update_check": (/** @type {WindowState} */ s) => {
     checkUpdates(s).catch((e) => {
       console.error("vimma: :update failed", e);
@@ -1065,6 +1071,11 @@ function paneStatus(win) {
   };
 }
 
+/** The inventory's chords Firefox handles in chrome code, outside its keysets. */
+const CHROME_HANDLED = new Set(
+  FIREFOX_SHORTCUTS.filter((r) => r.source === "chrome").map((r) => r.chord),
+);
+
 /** @param {Event} e */
 function consume(e) {
   e.preventDefault();
@@ -1138,13 +1149,14 @@ export const VimmaHost = {
         state.rename.close({ tabChanged: true });
       },
       dispatcher: createDispatcher(keymap),
-      help: new HelpOverlay(win, keymap, RUNNABLE),
+      help: new HelpOverlay(win, keymap, RUNNABLE, () => state.firefoxKeys?.status().on ?? []),
       notice: new Notice(win),
       cmdline: new CommandLine(win, {
         run: (result) => this._runCommand(state, result),
         changed: () => this._emit(state),
         args: () => ({
           addon: addonNames(),
+          firefox: firefoxIds(win),
           workspace: workspaceNames(win),
           search: SearchHost.completions,
         }),
@@ -1501,7 +1513,7 @@ export const VimmaHost = {
    * @param {Window} win
    */
   firefoxKeys(win) {
-    return states.get(win)?.firefoxKeys?.status() ?? { off: [], unmatched: [] };
+    return states.get(win)?.firefoxKeys?.status() ?? { on: [], off: [], unmatched: [] };
   },
 
   /**
@@ -1829,6 +1841,16 @@ export const VimmaHost = {
       case "pass":
         if (this._editKey(state, e, mode, chord)) return;
         if (modal) consume(e);
+        // Firefox runs these outside its keysets (tabbox.js, browser-ctrlTab.js, Tabbrowser's
+        // on_keydown, Firefox 158), where a disabled <key> cannot stop them; each skips a keydown
+        // that is defaultPrevented. Unbound and not enabled, the chord does nothing, as `all`
+        // says (docs/specs/firefox-keys.md decision 16). Not stopped: the page still sees it.
+        else if (
+          CHROME_HANDLED.has(formatKey(chord)) &&
+          !settings.firefox.enable.includes(formatKey(chord))
+        ) {
+          e.preventDefault();
+        }
         // Copy mode keeps plain keys from the page (m1-copy-mode); chords stay Firefox's (ctrl+c).
         else if (mode === "visual" && !chord.ctrl && !chord.alt && !chord.meta) consume(e);
         if (mode === "hint") this._hintKey(state, chord);

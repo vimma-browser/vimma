@@ -9,7 +9,7 @@
 // KeyElementIsDisabled), so a disabled shortcut neither runs nor is reserved: the page gets the
 // chord. Core firefox-keys.mjs decides which; this reads the elements and writes the attribute.
 
-import { planFirefoxKeys, xulKeyChord } from "../core/firefox-keys.mjs";
+import { FIREFOX_SHORTCUTS, planFirefoxKeys, xulKeyChord } from "../core/firefox-keys.mjs";
 
 /** @import { FirefoxKeySetting } from "../core/config.mjs" */
 
@@ -34,6 +34,7 @@ export const DEFAULT_FIREFOX_KEYS = Object.freeze({
 /**
  * One `<key>` as about:vimma lists it.
  * @typedef {{ chord: string, id: string, command: string }} FirefoxKeyRow
+ * @typedef {{ chord: string, id: string, label: string }} FirefoxOnRow
  */
 
 export class FirefoxKeys {
@@ -181,18 +182,30 @@ export class FirefoxKeys {
   }
 
   /**
-   * What about:vimma shows: the keys off, in keyset order, and the chords that match none.
-   * @returns {{ off: FirefoxKeyRow[], unmatched: string[] }}
+   * What about:vimma and the help overlay show: the keys `[firefox] enable` keeps on, each with
+   * what it does (the inventory's words, else its command); the keys off, in keyset order; and
+   * the chords of the setting that match none.
+   * @returns {{ on: FirefoxOnRow[], off: FirefoxKeyRow[], unmatched: string[] }}
    */
   status() {
-    const off = this.keys()
+    const keys = this.keys();
+    const off = keys
       .filter((k) => k.el.hasAttribute(MARK))
       .map((k) => ({
         chord: /** @type {string} */ (k.chord),
         id: k.el.id,
         command: k.el.getAttribute("command") ?? "",
       }));
-    return { off, unmatched: [...this.unmatched] };
+    const enabled = new Set(this.setting.enable);
+    const on = keys
+      .filter((k) => k.chord && enabled.has(k.chord) && !k.firefoxOff && !k.internal)
+      .map((k) => {
+        const chord = /** @type {string} */ (k.chord);
+        const row = FIREFOX_SHORTCUTS.find((r) => r.chord === chord && r.id === k.el.id);
+        const label = row?.does ?? k.el.getAttribute("command") ?? k.el.id;
+        return { chord, id: k.el.id, label };
+      });
+    return { on, off, unmatched: [...this.unmatched] };
   }
 
   /**
