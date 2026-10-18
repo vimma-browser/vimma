@@ -1,7 +1,7 @@
 # Spec: first-run-setup
 
-Status: draft · Area: core (`packages/vimma-core/src/setup.mjs`, new; `actions.mjs`,
-`cmdline.mjs`), chrome (`src/browser/base/content/vimma/setup/`, new: `setup.html`,
+Status: accepted · Area: core (`packages/vimma-core/src/setup.mjs`, new; `toml.mjs`,
+`actions.mjs`, `cmdline.mjs`), chrome (`src/browser/base/content/vimma/setup/`, new: `setup.html`,
 `setup.mjs`, `SetupHost.sys.mjs`; `config/ConfigHost.sys.mjs`, `about/AboutVimma.sys.mjs`,
 `jar.mn`), theme (`src/browser/themes/shared/vimma/setup.css`, new) · Upstream patches: none ·
 ADR: none
@@ -12,7 +12,8 @@ Issue: [#378](https://github.com/vimma-browser/vimma/issues/378)
 
 On the first run of a new profile, Vimma shows a short welcome screen with its logo that asks
 whether to set things up now. `enter` starts a setup with two steps: add the add-ons the user
-usually runs, and choose the default search engine. `esc` skips and leaves nothing configured.
+usually runs, and choose the default search engine. `esc` skips and leaves nothing configured. The chosen engine is written to
+`config.toml`, which stays the source of truth for Vimma's settings.
 Every step is optional and driven from the keyboard, and the setup can be opened again later.
 
 ## Problem
@@ -33,18 +34,21 @@ section of `config.toml` before the browser is usable. Vimma disables Firefox's 
 2. **Skip**, `esc` or `q` on the welcome screen closes it and leaves the start page; nothing is
    configured. The setup steps start only after **Set up**. On any later step, `esc` or `q`
    (outside a text field) or the **Skip** button leaves the same way. Skipping **must not**
-   change any pref, engine or add-on, apart from recording that the setup was offered.
+   change any pref, engine, add-on or `config.toml`, apart from recording that the setup was
+   offered.
 3. Step 1, add-ons. The curated list is shown first; each add-on has its name, author, a
    one-line summary and its user count. `/` focuses the search field and `enter` in it searches
    AMO; the results replace the list, and an empty search brings the curated list back. `j`/`k`
    move, `space` marks or unmarks, `esc` in the field returns to the list. `enter` on the list
    goes to step 2. Marking installs nothing.
-4. Step 2, search engine. The engines installed in the profile, the current default marked.
+4. Step 2, search engine. The engines installed in the profile, the current default marked
+   (the `[search] default` of `config.toml` when it names one).
    `j`/`k` move, `enter` chooses and goes to the summary.
 5. Summary. What will happen: the add-ons to install, the engine to set. `enter` applies,
-   `esc` goes back. Each add-on then shows Firefox's standard permission prompt; declining it
+   `esc` goes back. `config.toml` is written first (decision 9), then each add-on then shows Firefox's standard permission prompt; declining it
    skips that add-on only. The page reports each result (installed, declined, failed) and
-   closes with `enter`.
+   closes with `enter`. When `config.toml` does not parse, the summary shows a notice naming the
+   file and line, writes nothing to it and still installs the add-ons.
 6. Nothing is applied before the summary is confirmed. Closing the tab or the window at any
    earlier point **must** leave the profile as it was.
 7. Offline, or when AMO does not answer within 10 s, step 1 shows the curated list with a
@@ -149,8 +153,51 @@ curated table, validating and filtering AMO results, and the summary plan.
    before the user has agreed to make any; showing nothing and naming `:setup` on the start
    page, because most users would never find it.
 
-Pending the answers in Open questions: where the engine choice is stored (2), where the welcome
-screen is shown (3), the curated list (4) and how the setup is re-run (5).
+8. **A Vimma page in the first tab.** The welcome screen and the steps are one Vimma page,
+   `about:vimma-setup`, opened as the first window's first tab with the start page behind it,
+   because a tab is closed the usual way, gets the page keys users already know, follows Vimma's
+   theme and can be opened again by URL. Rejected: Firefox's about:welcome, because its layout,
+   keys and theme are Firefox's and it would have to be re-enabled (Research); an overlay over
+   the start page, because it needs its own focus and dismissal rules.
+9. **Choices are stored in `config.toml`.** The search engine, and any later setting the setup
+   offers, is written to `config.toml` (`[search] default`), and the change is applied through
+   `ConfigHost.reload()`, the path `:source` and `:route add` use, because the file is the
+   source of truth for Vimma's settings and a default set only through
+   `SearchService.setDefault` would be overridden by a `[search] default` already in the file
+   (Research). Rejected: `SearchService.setDefault` only, because the file and the browser would
+   then disagree; both, because the reload already applies the file.
+10. **`config.toml` is edited in place, key by key.** A pure function in
+    `packages/vimma-core/src/toml.mjs`, `setTomlKeys(text, edits)`, returns the new text or an
+    error, because the edit can then be tested without a browser. smol-toml, vendored for
+    parsing, has no comment-preserving writer, so the edit works on lines: it parses the text
+    first (`parseToml`) and returns an error on a parse error; it finds the key's line with
+    `locateKeys` and replaces only its value; a key that is missing goes after the last key of
+    its table, and a missing table is appended at the end. Every other line, comment, blank
+    line and the order of keys stays byte for byte, and the result is parsed again and must hold
+    the new values and otherwise equal the old parse. A key that is not a plain one-line
+    `key = value` in a `[table]` (a dotted key, an inline table, a multi-line value) is reported
+    as an error, not rewritten, because the line edit cannot place it safely. No new dependency
+    is needed. Rejected: re-serialising the parsed file, because comments and order would be
+    lost.
+11. **The write is atomic and never clobbers.** `SetupHost` reads the file, applies
+    `setTomlKeys`, writes a temporary file created 0600 in the same folder and renames it over
+    `config.toml`, as `VimmaControl`'s `writeDiscovery` does, so a crash leaves the old or the
+    new file and never a partial one. The file's mode is kept. When the file is absent it is
+    created as `createFromTemplate` does (0600 in a 0700 folder) with the setup's keys set in
+    the template. A parse error, a key it cannot place, or a file changed between read and
+    rename (its modification time is compared) writes nothing and shows a notice, because a
+    broken or concurrently edited file is the user's to fix. When `vimma.config.path` names
+    another file, that file is the one edited.
+12. **Add-ons stay profile-wide and are not recorded.** Installed add-ons belong to the
+    profile, as in Firefox, and nothing about them goes into `config.toml` or a pref, because
+    add-ons are not Vimma settings and Firefox already keeps the list; a record would go stale
+    as soon as an add-on is removed in about:addons.
+13. **Curated list: uBlock Origin, AdGuard AdBlocker and Privacy Badger.** The table pins their
+    GUIDs and slugs (Research), because all three are AMO "Recommended" content blockers and
+    anything else is one search away. Rejected: uBlock Origin only, because it leaves no
+    choice; adding password managers, because the list is about content blocking.
+14. **Run again with `:setup` or from about:vimma.** `:setup` opens the page in a new tab and
+    about:vimma links to it; no key is bound, because neither changes the default keys.
 
 ### Welcome screen
 
@@ -176,7 +223,8 @@ screen is shown (3), the curated list (4) and how the setup is re-run (5).
 ### Workspaces, containers and agents
 
 Add-ons are installed per profile, not per workspace or container: an add-on installed here
-runs in every workspace, including the agent workspace. Step 1 says so. The
+runs in every workspace, including the agent workspace. Step 1 says so. The setup records
+nothing about them (decision 12). The
 search engine is likewise one default for the profile.
 
 ## Security and privacy
@@ -200,8 +248,23 @@ search engine is likewise one default for the profile.
   permission prompt. The `never installs an add-on` source test gets one allowed file,
   `setup/SetupHost.sys.mjs`. The implementing PR for installs updates `docs/security.md` and
   gets a review by a fresh agent before merging.
+- **Writing a user file.** `docs/security.md` F1 ("an existing file is never overwritten")
+  becomes: Vimma changes an existing config.toml only from `:route add` (append) and the setup
+  summary (decisions 10 and 11), never on a parse error, atomically and keeping the file's
+  mode. The implementing PR for the config write updates F1 with links to its tests and gets a
+  review by a fresh agent before merging.
 
 ## Tests
+
+vitest, `packages/vimma-core/test/toml.test.mjs` (`setTomlKeys`):
+
+- `replaces only the value of an existing key, keeping comments and order`
+- `adds a missing key after the last key of its table`
+- `appends a missing table at the end`
+- `a parse error returns an error and no text`
+- `a dotted key, inline table or multi-line value is an error`
+- `the result parses to the old file plus the new values`
+- `a trailing comment on the edited line is kept`
 
 vitest, `packages/vimma-core/test/setup.test.mjs`:
 
@@ -222,6 +285,10 @@ Mochitest, `tests/browser/browser_vimma_setup.js`:
 - `esc_changes_no_pref_engine_or_addon`
 - `closing_before_summary_changes_nothing`
 - `summary_sets_the_default_engine`
+- `summary_writes_search_default_and_reloads`
+- `summary_creates_a_private_config_toml_when_absent`
+- `summary_keeps_comments_and_mode_of_config_toml`
+- `summary_writes_nothing_on_a_parse_error`
 - `install_shows_the_permission_prompt` (AMO answered by a local test server, signing in
   automation as Firefox's own add-on tests do)
 - `offline_shows_the_curated_list`
@@ -237,32 +304,19 @@ the fade.
 ## Docs and changelog
 
 - `docs/guide.md`: a "First run" section, `:setup` in the command list, the add-on section.
-- `docs/security.md`: A1 as above.
+- `docs/security.md`: A1 and F1 as above.
 - `CHANGELOG.md`: "Added: a skippable first-run setup for add-ons and the default search engine
   (`:setup`)".
 
 ## Delivery
 
-1. The welcome screen, the page, `vimma.setup.offered`, the search step, the summary and `:setup`; step 1 absent.
-2. Step 1 with the curated list and installs; `docs/security.md` A1; security review.
-3. AMO search in step 1 (decision 6).
+1. `setTomlKeys` in `toml.mjs` with its vitest tests (decision 10); no user-visible change.
+2. The page with the welcome screen, `vimma.setup.offered`, the search step, the summary with
+   the atomic `config.toml` write (decision 11), `:setup` and the about:vimma link; step 1
+   absent; `docs/security.md` F1; security review.
+3. Step 1 with the curated list and installs; `docs/security.md` A1; security review.
+4. AMO search in step 1 (decision 6).
 
 ## Open questions
 
-2. **Where is the search engine choice stored?** (a) `SearchService.setDefault` only, as a
-   choice in Settings would be; `config.toml` is never written, and a `[search] default` in it
-   still wins. (b) Written as `[search] default` into `config.toml`: the file stays the source
-   of truth, but Vimma edits a file the user may manage elsewhere. (c) Both. Recommendation:
-   (a), because Vimma does not edit an existing `config.toml` (`docs/security.md` F1).
-3. **Where is the welcome screen shown?** It is shown on first run and is opt-in (decision 7);
-   where it lives is open. (a) As the first window's first tab, `about:vimma-setup`, with the
-   start page behind it; the steps follow in the same tab. (b) As an overlay in the first
-   window, over the start page; **Set up** then opens the steps in a tab. Recommendation: (a),
-   because a tab is closed the usual way, gets the page keys users already know and can be
-   opened again by URL; an overlay needs its own focus and dismissal rules.
-4. **Which add-ons are on the curated list?** (a) uBlock Origin only. (b) uBlock Origin,
-   AdGuard AdBlocker and Privacy Badger, all AMO "Recommended". (c) (b) plus password managers
-   such as Bitwarden. Recommendation: (b), because the list is about content blocking and
-   anything else is one search away.
-5. **How is the setup run again?** (a) A `:setup` command, no key. (b) A link in about:vimma.
-   (c) Both. Recommendation: (c), because neither changes the default keys.
+None.
