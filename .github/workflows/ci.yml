@@ -1,4 +1,5 @@
-# Spec m0-pipeline. One job: the required check "lint, typecheck, test, commitlint, licences".
+# Spec m0-pipeline. The required check "lint, typecheck, test, commitlint, licences" is one job;
+# a guard job before it skips a push to main whose tree a pull request already passed (#358).
 # Issue #245: on a docs-only pull request (tools/ci/docs-only.mjs) the steps that Markdown cannot
 # affect skip with `if:`, and the job still reports. The steps that read Markdown (prettier,
 # md-wording, spec-lint, security-links, gen-docs, test:py, the Vitest files in
@@ -22,8 +23,66 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Issue #358: did a pull request already pass this workflow on the tree just pushed? A squash
+  # merge usually gives main the pull request head's tree, so tools/ci/tree-covered.mjs looks for
+  # a successful pull_request run of this workflow with that tree and, on a match, skips the
+  # checks below with a notice naming it. When main moved after that run the trees differ and the
+  # checks run: the ruleset does not require up-to-date branches, so this is the only check of the
+  # merged combination. Other events skip this job, and a guard that fails before its verdict
+  # leaves the output empty: both run everything (!cancelled() below, not success()). A commitlint
+  # failure after a cover fails this job alone; the covered checks stay skipped.
+  covered:
+    name: tree already checked on a pull request?
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # this workflow's runs
+      contents: read # a commit's tree
+    outputs:
+      skip: ${{ steps.tree.outputs.skip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the pushed range, for commitlint below
+          persist-credentials: false
+
+      # The workflow file comes from GITHUB_WORKFLOW_REF, which the runner sets, so no workflow
+      # can name another here and skip on its passes.
+      - name: Same tree as a successful pull_request run? (tools/ci/tree-covered.mjs)
+        id: tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tools/ci/tree-covered.mjs
+
+      # The squash commit's message is new on main (release-please builds the changelog from it,
+      # docs/runbook.md "Releases"), so lint it here when the check job below does not run.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.tree.outputs.skip == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: npm ci
+        if: steps.tree.outputs.skip == 'true'
+        run: npm ci
+
+      - name: commitlint (pushed range)
+        if: steps.tree.outputs.skip == 'true'
+        env:
+          FROM: ${{ github.event.before }}
+          TO: ${{ github.sha }}
+        run: |
+          if [ "$FROM" = "0000000000000000000000000000000000000000" ]; then
+            npx --no -- commitlint --last --verbose
+          else
+            npx --no -- commitlint --from "$FROM" --to "$TO" --verbose
+          fi
+
   check:
     name: lint, typecheck, test, commitlint, licences
+    needs: covered
+    if: ${{ !cancelled() && needs.covered.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

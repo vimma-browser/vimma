@@ -153,8 +153,11 @@ security features may offer less protection" when your kernel does not allow unp
 namespaces, which the content sandbox uses. On Ubuntu 24.04 that means the `.deb` and the
 AppImage run with a weaker content sandbox without saying so; the tarball still shows the warning
 ([limits.md](limits.md#platforms-and-packaging)).
-The same package will be on the AUR as `vimma-bin` once it is published there; AUR helpers such
-as `yay -S vimma-bin` will then install and update it.
+There is no AUR package for now. The AUR does not accept new account registrations at the
+moment, and a package needs an account to own it, so `vimma-bin` cannot be published there yet.
+On Arch, the release's `PKGBUILD` above is the way to install and update Vimma, and `:update`
+shows that command. The same package goes to the AUR as `vimma-bin`, for AUR helpers such as
+`yay -S vimma-bin`, once registration opens again.
 
 ### First launch, with its own profile
 
@@ -530,8 +533,9 @@ from the address bar. Whether the toolbar is shown or hidden, you can answer it 
 these buttons) with no key pressed in between; the line `y allow · n block · Tab buttons` in the
 prompt shows when they do. Any key you press meanwhile starts the wait again, so typing that was
 meant for the page never answers a prompt. While you type in a text field, `y` and `n` are text.
-The prompt never takes focus by itself. The same keys answer Firefox's other prompts in that
-panel, such as adding an add-on or saving a password.
+Vimma never moves focus onto the prompt. The same keys answer Firefox's other prompts in that
+panel, such as saving a password, and the "Add <name>?" prompt for installing an add-on, which
+Firefox opens with focus on the prompt itself.
 
 ### Colours and themes
 
@@ -1131,17 +1135,46 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
-2. In Vimma, `:mcp on` and `y`. Full control (`vimma.control.enabled`) can stay off: agents do
-   not need it, and it is safer off.
-3. Add the server to your tool. Claude Code (tested with 2.1.287):
+2. In Vimma, `:mcp on` and `y`. Leave full control (`vimma.control.enabled`) off: agents do not
+   need it ([why](#what-vimma-protects-and-what-it-does-not)).
+3. Add the server to your tool, with one of the commands below. Each was run against the version
+   named, on Linux; each tool's `mcp list` then showed the server.
 
    ```sh
    claude mcp add --transport stdio --scope user vimma -- vimma-ctl mcp
+   codex mcp add vimma -- vimma-ctl mcp
+   copilot mcp add vimma -- vimma-ctl mcp
    ```
 
-   Codex CLI (checked with 0.160.0): `codex mcp add vimma -- vimma-ctl mcp`. Other tools (opencode, GitHub Copilot)
-   take the same command, `vimma-ctl mcp`, in their MCP server settings. For a profile other than
-   your default one: `vimma-ctl --profile DIR mcp`.
+   - **Claude Code** (2.1.287). `--scope user` makes it available in every project; without it,
+     only in the current one. A project can also list it in `.mcp.json`, in the format below.
+   - **Codex CLI** (0.160.0). The command writes this to `~/.codex/config.toml`, which you can
+     also edit by hand:
+
+     ```toml
+     [mcp_servers.vimma]
+     command = "vimma-ctl"
+     args = ["mcp"]
+     ```
+
+   - **GitHub Copilot CLI** (1.0.98). The command writes `~/.copilot/mcp-config.json`; `/mcp add`
+     inside Copilot does the same. Claude Code's `.mcp.json` and Copilot's file take the same
+     entry (Copilot adds `"type": "local"` and `"tools": ["*"]`, which it also accepts missing):
+
+     ```json
+     { "mcpServers": { "vimma": { "command": "vimma-ctl", "args": ["mcp"] } } }
+     ```
+
+   - **opencode** (1.19.0). `opencode mcp add` asks its questions interactively; or add this to
+     `opencode.json` in your project (or `~/.config/opencode/opencode.json` for every project):
+
+     ```json
+     { "mcp": { "vimma": { "type": "local", "command": ["vimma-ctl", "mcp"], "enabled": true } } }
+     ```
+
+   For a profile other than your default one, the command is `vimma-ctl --profile DIR mcp`.
+   `vimma-ctl mcp` takes no other option: it refuses `--timeout` and `--json`, since each call
+   waits for your answer.
 
 4. Ask the agent, for example "open https://example.com in Vimma's agent workspace and tell me
    its heading". Each call waits for your answer on the [question line](#answering-an-agent);
@@ -1161,6 +1194,104 @@ denied.` Codex CLI gives up on a tool call
   session runs; `◇ agent` in the status bar shows it. Grants belong to it: when the session ends
   (or Vimma restarts), they end, and the next session asks again.
 - **Cancelling** a call in the agent (`Esc` in Claude Code) takes its question off the line.
+
+#### Timeouts in agent tools
+
+A call waits for your answer up to `[mcp] ask_timeout` (50 s by default, 10 to 300), and
+`vimma-ctl mcp` itself gives up after 310 s. The agent tool has its own limit on a call:
+
+| Tool        | Its limit on a tool call                                                                                                                                                                                                               | What to do                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | `MCP_TOOL_TIMEOUT` (about 28 hours unless set), or a server's `timeout` in `.mcp.json` (milliseconds); a stdio server that sends nothing for 30 minutes is cut off. A call still running after two minutes moves to a background task. | Nothing: Vimma answers first.                                                                                                |
+| Codex CLI   | `tool_timeout_sec`, 60 s by default.                                                                                                                                                                                                   | If you raise `ask_timeout` past about 55 s, set `tool_timeout_sec` under `[mcp_servers.vimma]` above it (for example `320`). |
+| Copilot CLI | `copilot mcp add` takes `--timeout MS`.                                                                                                                                                                                                | If calls end before you can answer, add the server again with `--timeout` above `ask_timeout` (in milliseconds).             |
+| opencode    | Its `timeout` setting (5000 ms) covers listing the tools, not tool calls.                                                                                                                                                              | Nothing.                                                                                                                     |
+
+When the agent tool gives up first, Vimma's question may still be on the line; answering it then
+does nothing the agent sees.
+
+#### What Vimma protects, and what it does not
+
+Vimma decides what an agent can do **through Vimma**. It does not decide what the agent does
+with the rest of your computer.
+
+**Through Vimma, an agent:**
+
+- reaches only the agent workspace's tabs. It cannot list, read or close tabs of your other
+  workspaces or private windows, and never sees their cookies or logins: the agent workspace's
+  container has its own. A tab you share is reopened there, so the agent gets the page, not
+  your session.
+- cannot press keys in your window, read Vimma's state, or open a page anywhere else. It
+  connects with the agent role only, and `vimma-ctl mcp` never asks for full control.
+- asks you for every request, in a line that pages cannot reach or draw on. Only `y`, or a count
+  and `a`, allows; no answer within `ask_timeout` denies.
+- gets page text and titles marked as untrusted web content, so the model is told that
+  instructions inside them are not yours. This lowers the risk of prompt injection; it does not
+  remove it.
+- is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, and a minute
+  of silence after three noes in a row. Its pages get no permission prompts, pop-ups or other
+  apps, and its downloads ask and are kept apart
+  ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
+
+**What Vimma does not protect:**
+
+- **Grants are wide.** A grant lets that agent use that tool without asking until it ends. A
+  `vimma_open` grant means "let it fetch any address", and an address can carry what the agent
+  has read elsewhere. Grant reads; answer opens one at a time.
+- **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.
+  Grants belong to the connection, not the name, and `:mcp` shows the program that started it.
+- **The rest of your computer is the agent tool's matter.** An agent with a shell or file tools
+  runs as you. It can read your files, Vimma's profile included (cookies, saved passwords, and
+  the control socket's token in `vimma-control.json`), unless its tool stops it. With the token
+  and MCP on, it still reaches only the agent role, where every request asks. With full control
+  on, the same token would give it your keyboard and every workspace; while MCP is on, each
+  full-control connection asks you first, but the safe setting is off. Turn it on only for a
+  while (`:control on 15`) when you script Vimma yourself.
+- **Malware running as you** can do the same, with or without agents
+  ([security model](security.md)).
+
+#### Keeping agents out of your Vimma profile
+
+Vimma's profiles are in `~/.config/vimma/vimma/` (`~/.vimma/vimma/` on older installs). Nothing
+an agent needs is there: `vimma-ctl mcp` reads the one file it needs itself. Use your agent
+tool's settings so its own tools cannot read the folder:
+
+- **Claude Code.** Deny its file tools the folder, and turn on its sandbox for shell commands
+  with the same folder denied, in `~/.claude/settings.json`. MCP servers run outside Claude
+  Code's sandbox, so `vimma-ctl mcp` still reaches Vimma.
+
+  ```json
+  {
+    "permissions": { "deny": ["Read(~/.config/vimma/**)", "Read(~/.vimma/**)"] },
+    "sandbox": {
+      "enabled": true,
+      "filesystem": { "denyRead": ["~/.config/vimma", "~/.vimma"] }
+    }
+  }
+  ```
+
+- **Codex CLI, Copilot CLI and opencode.** Their documented sandboxes and approval settings
+  limit writes, network use and which commands run without asking, not which folders a command
+  may read. Keep shell commands on approval (do not let them run unasked), and read the commands
+  you approve. Running the agent tool as another user, or in a container without your
+  home folder, keeps the profile out of reach entirely; `vimma-ctl mcp` then needs the
+  `vimma-control.json` file and the socket's port, so this suits only a setup you build for it.
+
+Claude Code's per-tool permission prompt (and the other tools' approval prompts) may also ask
+before an MCP call. That prompt is the agent tool's; Vimma asks either way, and does not count
+on it.
+
+#### Ending an agent's access
+
+- `:mcp revoke`, or `ctrl+b shift+a` with nothing waiting and then `y`: ends every grant now.
+  The agents stay connected, and their next requests ask.
+- `x` on a question: denies everything that agent asked and ignores it until it reconnects.
+- `:mcp off`: disconnects every agent and ends their grants; `vimma-ctl mcp` then answers each
+  call with `MCP is off in Vimma`.
+- `:mcp forget`: deletes the agent workspace's cookies and site data, so any login an agent used
+  there is gone. `ctrl+b shift+d` in the workspace closes its tabs.
+- Removing the server from your tool (`claude mcp remove vimma`, `codex mcp remove vimma`,
+  `copilot mcp remove vimma`, or deleting the entry from `opencode.json`) stops it from starting.
 
 #### Answering an agent
 
@@ -2022,6 +2153,7 @@ is **off by default**.
    vimma-ctl send-keys esc
    vimma-ctl open https://example.com # a new tab; only http, https, file and about URLs
    vimma-ctl reload-theme             # read the Omarchy theme now (the hook's fallback)
+   vimma-ctl mcp                      # an MCP server for an agent tool (Connecting an agent's tool)
    ```
 
    It finds your default profile itself; pass `--profile DIR` (or set `VIMMA_PROFILE`) for
@@ -2110,7 +2242,7 @@ It installs nothing; it tells you.
   | Installed with           | `:update` shows                                                                                                                                                 |
   | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
   | The release's `PKGBUILD` | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si` |
-  | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent)                                                                                                          |
+  | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                  |
   | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                     |
   | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                              |
   | AppImage                 | download the new AppImage next to yours, check it, and rename it over yours; the next start runs it                                                             |

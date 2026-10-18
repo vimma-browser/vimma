@@ -21,12 +21,6 @@
     "Accessibility"
   ],
   "firefox-keys.md": ["Must never be lost", "No upstream patch."],
-  "firefox-versions.md": [
-    "One function writes the line for scripts.",
-    "release-please cannot do this through configuration",
-    "One pure module, two callers.",
-    "Bump subjects carry the advisories."
-  ],
   "m6a-updater.md": [
     "Downgrade",
     "Complete MARs only",

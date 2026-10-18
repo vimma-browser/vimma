@@ -2,7 +2,9 @@
 # LGPL-2.1, run from its container image pinned by digest; not linked into or shipped with
 # Vimma. Rules: the public registry rulesets under the Semgrep Rules License v1.0, which allows
 # use for internal purposes; we only run them in our CI and neither redistribute nor offer them
-# as a service. No semgrep.dev login, token or upload: results stay in the run as SARIF.
+# as a service. No semgrep.dev login, token or upload: results stay in the run as SARIF, so a
+# push to main whose tree a pull request already scanned has nothing to add (#358, the guard job
+# below); CodeQL differs (codeql.yml).
 name: Semgrep
 
 on:
@@ -22,8 +24,42 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Issue #358: did a pull request already pass this workflow on the tree just pushed? A squash
+  # merge usually gives main the pull request head's tree, so tools/ci/tree-covered.mjs looks for
+  # a successful pull_request run of this workflow with that tree and, on a match, skips the
+  # checks below with a notice naming it. When main moved after that run the trees differ and the
+  # checks run: the ruleset does not require up-to-date branches, so this is the only check of the
+  # merged combination. Other events skip this job, and a guard that fails before its verdict
+  # leaves the output empty: both run everything (!cancelled() below, not success()).
+  covered:
+    name: tree already checked on a pull request?
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # this workflow's runs
+      contents: read # a commit's tree
+    outputs:
+      skip: ${{ steps.tree.outputs.skip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: tools/ci/tree-covered.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      # The workflow file comes from GITHUB_WORKFLOW_REF, which the runner sets, so no workflow
+      # can name another here and skip on its passes.
+      - name: Same tree as a successful pull_request run? (tools/ci/tree-covered.mjs)
+        id: tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tools/ci/tree-covered.mjs
+
   scan:
     name: semgrep (javascript, typescript, rust, secrets, github-actions)
+    needs: covered
+    if: ${{ !cancelled() && needs.covered.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

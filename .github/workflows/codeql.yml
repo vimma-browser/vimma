@@ -5,6 +5,10 @@
 name: CodeQL
 
 on:
+  # Not deduplicated like ci.yml and semgrep.yml (#358): code scanning keeps the alerts of main
+  # from analyses uploaded for commits of main, and compares a pull request's analysis against
+  # the latest one of its base. A push whose tree a pull request already analyzed still needs
+  # its own upload, or main's alerts and that baseline would stop at the previous merge.
   push:
     branches: [main]
   # Every pull request, docs-only ones too (unlike e2e.yml, issue #245): the ruleset's code

@@ -1,6 +1,6 @@
 # Spec: vimma-mcp
 
-Status: accepted · Area: `tools/vimma-ctl` (`src/mcp.rs`, `src/mcp_serve.rs`, `src/client.rs`,
+Status: accepted (sub-PRs 1-4 implemented; agents act on pages: #231) · Area: `tools/vimma-ctl` (`src/mcp.rs`, `src/mcp_serve.rs`, `src/client.rs`,
 `src/protocol.rs`, `src/cli.rs`); `packages/vimma-core/src/` (`control.mjs`, `agent.mjs`,
 `agent-prompt.mjs`, `agent-downloads.mjs`, `config.mjs`, `defaults.mjs`, `actions.mjs`,
 `cmdline.mjs`, `statusbar.mjs`, `workspacedefs.mjs`, `workspaces.mjs`); `ctl/VimmaControl.sys.mjs`,
@@ -1125,9 +1125,9 @@ One sub-PR at a time, after firefox-keys sub-PR 2 (both change the keymap; this 
 | 2a  | `feat(ctl): agent role with a confirmation for every request`      | Protocol 2 (role, `role-off`, `denied`, agent commands, v2 fixtures); server roles and switches; `AgentGate.sys.mjs`; `agent.mjs` in core; `:mcp revoke`; `PageExtractor` reads; ADR-019; security.md §1 and §12.                                                     | merged (#176) |
 | 2b  | `feat(mcp): the agent question line and status, full control asks` | Decisions 13-15 and 23-25 (the question line, `◇ agent`, `ctrl+b shift+a`, attention and notifications, grant notices), 29 (full control asks while MCP is on; `:control on <minutes>`), 30 (the agent workspace's pages).                                            | merged (#177) |
 | 2c  | `feat(mcp): agent downloads, asked and quarantined`                | Decision 31.                                                                                                                                                                                                                                                          | merged (#182) |
-| 2d  | `feat(mcp): ClamAV definitions age and clamdscan`                  | Decisions 43-45: `[mcp] clamav_max_age_days`, the stale-definitions question, clamdscan with its config and socket checks, the clamscan fallback.                                                                                                                     | this PR       |
+| 2d  | `feat(mcp): ClamAV definitions age and clamdscan`                  | Decisions 43-45: `[mcp] clamav_max_age_days`, the stale-definitions question, clamdscan with its config and socket checks, the clamscan fallback.                                                                                                                     | merged (#355) |
 | 3   | `feat(vimma-ctl): vimma-ctl mcp, an MCP server over stdio`         | Decisions 35-41: `src/mcp.rs` and `src/mcp_serve.rs` (dual-era server, tool table and fixture, protocol-2 client, keep-alive, error texts), `agent-cancel`; Rust unit, integration and property tests; the e2e harness's `mcp` steps and the `m0-mcp-stdio` scenario. | merged (#243) |
-| 4   | `docs(guide): set up Claude Code, Codex, opencode and Copilot`     | The guide's "Agents (MCP)" in full: the threat model in plain words, each tool's setup run against a real install with the version tested, timeouts, grants, sharing a tab, revoking, why `vimma.control.enabled` stays off; README feature line; limits.md.          | to do         |
+| 4   | `docs(guide): set up Claude Code, Codex, opencode and Copilot`     | The guide's "Agents (MCP)" in full: the threat model in plain words, each tool's setup run against a real install with the version tested, timeouts, grants, sharing a tab, revoking, why `vimma.control.enabled` stays off; README feature line; limits.md.          | this PR       |
 
 Out of scope: Agent `send-keys`, clicks, form filling and screenshots (later specs, decision 6;
 showing pages and page keys are [mcp-drive](mcp-drive.md)); `:pipe <cmd>` sending page context to a local tool; MCP over HTTP or a listener inside the browser;

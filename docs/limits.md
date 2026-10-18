@@ -84,6 +84,16 @@ the [user guide](guide.md); planned work is on the
   key, so "Block dangerous downloads" adds nothing beyond the Safe Browsing site lists.
 - No crash reporter: a crash leaves only the system's local core dump.
 
+## Agents (MCP)
+
+- Agents can list, read, open and close tabs of the agent workspace, and download through it.
+  They cannot press keys, click, fill forms or take screenshots.
+- The agent's name in a question (`claude-code`) is what the agent says it is; Vimma cannot check
+  it. Grants belong to the connection, and `:mcp` shows the program that started it.
+- Each agent tool's own approvals, sandbox and timeouts are its own; Vimma neither reads nor
+  changes them. What an agent does outside Vimma, with its shell and files, is up to that tool
+  ([what Vimma protects](guide.md#what-vimma-protects-and-what-it-does-not)).
+
 ## Compatibility and versions
 
 - Add-ons see the browser name `Vimma` (`runtime.getBrowserInfo().name`), not `Firefox`.

@@ -387,22 +387,22 @@ Limits:
 
 ## CI and automation (spec m0-pipeline)
 
-| Workflow                   | Trigger                            | Runner                    | Needs from you                             |
-| -------------------------- | ---------------------------------- | ------------------------- | ------------------------------------------ |
-| `ci.yml`                   | push to `main`, PRs, manual        | `ubuntu-latest`           | nothing                                    |
-| `e2e.yml`                  | PRs, manual, upstream.yml          | `ubuntu-24.04`            | nothing (ADR-010)                          |
-| `nightly.yml`              | 03:00 UTC, manual                  | `ubuntu-24.04`            | the `NIGHTLY_ENABLED` variable             |
-| `upstream.yml`             | every 4 h (`:17`), manual          | `ubuntu-latest` + e2e.yml | allow Actions to open PRs; optional token  |
-| `claude.yml`               | `@claude`, `spec`+`claude:go`      | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
-| `release-please.yml`       | push to `main`, manual             | `ubuntu-latest`           | Actions may open PRs; optional token       |
-| `release.yml`              | release published, manual          | `ubuntu-24.04`            | see "Release packages" (gated off)         |
-| `pkgbuild.yml`             | `tools/package/` on PRs and `main` | `ubuntu-24.04`            | nothing (Arch Linux in docker)             |
-| `mutation.yml`             | Sundays 04:23 UTC, manual          | `ubuntu-latest`           | nothing (creates its `mutation` label)     |
-| `semgrep.yml`              | push to `main`, PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
-| `codeql.yml`               | push to `main`, PRs, Mon, manual   | `ubuntu-latest`           | nothing; skipped while the repo is private |
-| `dependabot-automerge.yml` | Dependabot's PRs                   | `ubuntu-latest`           | nothing (Dependabot, below)                |
-| `site-dispatch.yml`        | `docs/bindings.json` on `main`     | `ubuntu-latest`           | a token secret (vimma.dev, below)          |
-| `spec-status.yml`          | daily, issue closed, specs, manual | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
+| Workflow                   | Trigger                                            | Runner                    | Needs from you                             |
+| -------------------------- | -------------------------------------------------- | ------------------------- | ------------------------------------------ |
+| `ci.yml`                   | push to `main` (once per tree), PRs, manual        | `ubuntu-latest`           | nothing                                    |
+| `e2e.yml`                  | PRs, manual, upstream.yml                          | `ubuntu-24.04`            | nothing (ADR-010)                          |
+| `nightly.yml`              | 03:00 UTC, manual                                  | `ubuntu-24.04`            | the `NIGHTLY_ENABLED` variable             |
+| `upstream.yml`             | every 4 h (`:17`), manual                          | `ubuntu-latest` + e2e.yml | allow Actions to open PRs; optional token  |
+| `claude.yml`               | `@claude`, `spec`+`claude:go`                      | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
+| `release-please.yml`       | push to `main`, manual                             | `ubuntu-latest`           | Actions may open PRs; optional token       |
+| `release.yml`              | release published, manual                          | `ubuntu-24.04`            | see "Release packages" (gated off)         |
+| `pkgbuild.yml`             | `tools/package/` on PRs and `main` (once per tree) | `ubuntu-24.04`            | nothing (Arch Linux in docker)             |
+| `mutation.yml`             | Sundays 04:23 UTC, manual                          | `ubuntu-latest`           | nothing (creates its `mutation` label)     |
+| `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
+| `codeql.yml`               | push to `main`, PRs, Mon, manual                   | `ubuntu-latest`           | nothing; skipped while the repo is private |
+| `dependabot-automerge.yml` | Dependabot's PRs                                   | `ubuntu-latest`           | nothing (Dependabot, below)                |
+| `site-dispatch.yml`        | `docs/bindings.json` on `main`                     | `ubuntu-latest`           | a token secret (vimma.dev, below)          |
+| `spec-status.yml`          | daily, issue closed, specs, manual                 | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
 
 Locally, before pushing: `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:py`,
 `npm run license-check`, `npx surfer license-check`, `npx commitlint --from main`.
@@ -472,8 +472,8 @@ request cannot change the classifier that judges it.
 
 **Docs-only** means all of these hold:
 
-- the event is `pull_request` (a push to `main`, a schedule, a manual run and `workflow_call`
-  always run everything);
+- the event is `pull_request` (a schedule, a manual run and `workflow_call` always run
+  everything; so does a push to `main`, unless "Once per tree" below skips it);
 - every changed path ends in `.md`;
 - none is generated (`GENERATED_MARKDOWN`: `docs/bindings.md`);
 - none is under `.github/`, `packages/`, `src/`, `tests/` or `tools/`, where Markdown can be a
@@ -506,6 +506,37 @@ Markdown file of the repo through `new URL("../…/x.md", import.meta.url)` mean
 The gen-docs freshness step runs on every pull request: `npm run gen-docs`, then `git diff
 --exit-code` on `docs/bindings.md`, `docs/bindings.json` and `packages/vimma-core/defaults.toml`.
 A hand edit of a generated file fails there with the command to run.
+
+### Once per tree (issue #358)
+
+`ci.yml`, `semgrep.yml` and `pkgbuild.yml` run on pull requests and on pushes to `main`. A
+squash merge usually gives `main` a commit whose tree is the pull request head's tree, so the
+push run would check the same files again. Their first job on a push, `covered`, runs
+`tools/ci/tree-covered.mjs`: it reads the pushed commit's tree and the last 50 successful
+`pull_request` runs of the same workflow from the Actions API (both public; the job token holds
+`actions: read` and `contents: read`, nothing more), and compares each run's head tree. On a
+match it outputs `skip=true` and a notice on the run's summary names the covering run; the other
+jobs then skip by `if:`. Equal trees include `.github/workflows`, so the covering run used the
+same workflow definition. When `main` moved after the pull request's last run, the trees differ
+and the checks run as before: the ruleset does not require up-to-date branches
+(`strict_required_status_checks_policy: false`), so that run is the only check of the merged
+combination. Requiring up-to-date branches instead would re-run every open pull request's
+checks after each merge, more than the one push run it saves. A guard that cannot reach the API
+warns and lets the checks run; a guard without its variables fails before its verdict, which
+leaves the output empty, runs the checks and shows a workflow bug. A docs-only pull request's
+run counts as a cover although it skipped the code checks: its tree's code equals its base's,
+which an earlier run of `main` checked in full or by the same rule.
+
+`ci.yml` still lints the squash commit's message when it skips: that message is new on `main`
+and release-please builds the changelog from it ("Releases" below). `codeql.yml` is not
+deduplicated: code scanning keeps `main`'s alerts from analyses uploaded for commits of `main`
+and compares a pull request's analysis against the latest one of its base, so a push without an
+upload would leave both at the previous merge. Semgrep uploads nothing (its SARIF stays an
+artifact of the run), so its push run has nothing to add. `e2e.yml` runs on pull requests only,
+and `release.yml` builds once per release, so neither was duplicated.
+
+To check a commit by hand:
+`GH_TOKEN=$(gh auth token) GITHUB_REPOSITORY=vimma-browser/vimma GITHUB_SHA=<sha> node tools/ci/tree-covered.mjs --workflow ci.yml`.
 
 ### PR mochitests (`e2e.yml`, ADR-010)
 
@@ -545,6 +576,8 @@ no monthly cap: minutes are no longer a reason to skip a job. What still matters
 (a PR waits for its slowest required check) and the concurrency limit on hosted runners (20
 jobs at once on the free plan), so keep jobs lean all the same. Rough use per PR push: CI ≈ 2
 min, e2e ≈ 6 min (5.5 min wall, ADR-010), Semgrep ≈ 1 min, CodeQL a few minutes per language.
+A push to `main` repeats only CodeQL and, when the merged tree differs from the pull request
+head's, the rest ("Once per tree" above).
 
 e2e.yml has no paths filter: "mochitest (artifact build)" is a required check, so the workflow
 starts on every PR, and on a docs-only one the job skips by `if:` in seconds (above). The upstream autopilot runs 6 × 1 min a day, plus ≈ 16 min (issue, patch check, the
@@ -1205,6 +1238,17 @@ maintainer's one click.
   `BREAKING CHANGE:`). release-please rewrites the branch on every push to `main`, so make the
   edit last, on top of the `firefox-notes` commit (pull the branch first; keep the
   `· Firefox <version>` in the `0.1.1` heading). From then on every entry is generated.
+- **A merged security bump releases itself** (`security-release`, spec firefox-versions,
+  ADR-020), once `AUTO_SECURITY_RELEASE` is `true`. After a push to `main` that is the squash
+  merge of the autopilot's `upstream/firefox-<version>` PR labelled `upstream` and `security`,
+  `tools/release/security-release.mjs` sets the open release PR to auto-merge with
+  `RELEASE_PLEASE_TOKEN`, pinned to its head commit (`--match-head-commit`), and comments on the
+  bump PR. GitHub merges it when the required checks pass; that merge's push starts this workflow
+  again, which tags and creates the draft release and starts `release.yml`. Publishing the draft
+  stays a click. Any other push logs a notice naming the check that did not hold (the run's
+  summary), and the job never merges the first release PR (it requires an existing release).
+  Commits merged after the bump and before the checks finish ship in the same release.
+  `RELEASE_PLEASE_TOKEN` is required: with the variable on and no token, the job fails.
 - **Names.** `include-component-in-tag` is off, so tags are `vX.Y.Z`, the branch is
   `release-please--branches--main` and the PR title `chore(main): release X.Y.Z`.
 
@@ -1227,9 +1271,29 @@ through the issues API); it runs no repository code. `firefox-notes` reads with 
 `pull-requests: read` and writes only through `RELEASE_PLEASE_TOKEN`; `release-title` has
 `contents: write` and nothing else. Both run only `main`'s `tools/release/` (the tag is a commit
 on `main`), never code from the release branch, and keep no token in their checkout.
+`security-release` has `contents: read` (it checks out `main`) and reads and merges only through
+`RELEASE_PLEASE_TOKEN`.
 `release-build` has `actions: write` and nothing else, runs no repository code, and only sends
 the `workflow_dispatch` for `release.yml` on `main` with the new tag; it runs only when a release
 was created and `RELEASE_ENABLED` is `true`.
+
+Turning on security releases (`AUTO_SECURITY_RELEASE`), once, while releases are still drafts:
+
+1. Check that `RELEASE_PLEASE_TOKEN` is set and unexpired (`gh secret list`), and that
+   Settings → General → "Allow auto-merge" is on (`gh api repos/vimma-browser/vimma --jq
+.allow_auto_merge` prints `true`).
+2. `gh variable set AUTO_SECURITY_RELEASE --body true`.
+3. Dry run, while `"draft": true` keeps everything private: open a PR from a branch named
+   `upstream/firefox-<the version on main>` that changes only a comment, titled
+   `upstream: firefox <that version>`, labelled `upstream` and `security`, and merge it. In that
+   merge's `release-please` run, `security-release` should report the release PR set to
+   auto-merge and comment on the PR; the release PR should then merge on its own once green,
+   and a draft titled `Vimma 0.1.x · Firefox <version>` should appear. If the release PR waits
+   for an approval instead (the ruleset's `require_extra_approval_for_unattributed_changes`),
+   record it and turn the variable off until that is resolved. Afterwards delete the draft and
+   its tag (`gh release delete v0.1.x --cleanup-tag`); the version moves on.
+4. To stop the chain: `gh variable delete AUTO_SECURITY_RELEASE`, or for one release PR
+   `gh pr merge --disable-auto <n>`.
 
 ### Release packages (`release.yml`, spec m6-packaging)
 
@@ -1311,7 +1375,8 @@ neither needs another file.
    Without the variable, `sign` is skipped and the assets go up unsigned.
 6. AUR (optional; `aur.yml` is skipped with a notice until the secret exists). Arch users do
    not need it: the release's `PKGBUILD` installs Vimma without the AUR, and the `aur` job stays
-   dormant until an AUR account and its key exist:
+   dormant until an AUR account and its key exist. The AUR does not accept new account
+   registrations at the moment, so this step waits until it does; the setup below is for then:
    - Check the name is free: `curl -s 'https://aur.archlinux.org/rpc/v5/info?arg[]=vimma-bin'`
      must say `"resultcount":0` (and look at `vimma` too, which `vimma-bin` provides).
    - Create an account at <https://aur.archlinux.org/register>.
@@ -1720,7 +1785,7 @@ fine-grained token with access to vimma-browser/vimma-site only and "Contents: r
 
 ### Security scanning (`semgrep.yml`, `codeql.yml`)
 
-**Semgrep CE** runs on every PR, push to `main` and on Mondays. It scans the repo with the public
+**Semgrep CE** runs on every PR, on pushes to `main` whose tree no pull request run scanned ("Once per tree" above) and on Mondays. It scans the repo with the public
 registry rulesets `p/javascript`, `p/typescript`, `p/rust`, `p/secrets` and `p/github-actions`,
 from the `semgrep/semgrep` image pinned by digest (bump the digest and the version comment
 together). It does not log in to semgrep.dev and uploads nothing: `--metrics=off`, no token.
