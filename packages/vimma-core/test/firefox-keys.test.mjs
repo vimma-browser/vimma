@@ -24,6 +24,8 @@ describe("xulKeyChord", () => {
     [{ key: "+", modifiers: "accel" }, "ctrl+plus"],
     [{ key: "-", modifiers: "accel" }, "ctrl+minus"],
     [{ key: "[", modifiers: "accel" }, "ctrl+["],
+    [{ key: "]", modifiers: "accel,shift" }, "ctrl+}"],
+    [{ key: "4", modifiers: "control,shift" }, "ctrl+$"],
     [{ keycode: "VK_F5" }, "f5"],
     [{ keycode: "VK_F5", modifiers: "accel" }, "ctrl+f5"],
     [{ keycode: "VK_LEFT", modifiers: "alt" }, "alt+left"],
@@ -211,7 +213,7 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     });
     expect(rows.filter((r) => r.source === "devtools" && !r.conditional)).toHaveLength(14);
     expect(rows.filter((r) => /^alt\+[1-9]$/.test(r.chord))).toHaveLength(9);
-    expect(rows.filter((r) => r.source === "menubar")).toHaveLength(7);
+    expect(rows.filter((r) => r.source === "menubar")).toHaveLength(8);
     for (const r of rows.filter((r) => r.source === "menubar")) expect(r.fate, r.chord).toBe("d");
   });
 
@@ -241,7 +243,16 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
 
   test("the only unbound c keys are the conditional ones, ' and the alt tap", () => {
     const left = rows.filter((r) => r.fate === "c" && !r.conditional).map((r) => r.chord);
-    expect(left).toEqual(["'"]);
+    expect(left).toEqual([
+      "ctrl+f7",
+      "alt+f7",
+      "ctrl+alt+f7",
+      "meta+f7",
+      "ctrl+meta+f7",
+      "alt+meta+f7",
+      "ctrl+alt+meta+f7",
+      "'",
+    ]);
     expect(getAction("devtools_dom")).toBeDefined();
     expect(keymap.trie("normal").children.get("ctrl+shift+w")?.action?.name).toBe("close_window");
   });

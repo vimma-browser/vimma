@@ -426,6 +426,13 @@ unchanged.
 | `ctrl+shift+pageup`   | move the tab left                           | `move_tab_left`                             |
 | `ctrl+f4`             | close the tab                               | `close_tab`                                 |
 | `f7`                  | caret browsing (asks first)                 | `caret_browsing`, page first                |
+| `ctrl+f7`             | caret browsing (asks first)                 | unbound                                     |
+| `alt+f7`              | caret browsing (asks first)                 | unbound                                     |
+| `ctrl+alt+f7`         | caret browsing (asks first)                 | unbound                                     |
+| `meta+f7`             | caret browsing (asks first)                 | unbound                                     |
+| `ctrl+meta+f7`        | caret browsing (asks first)                 | unbound                                     |
+| `alt+meta+f7`         | caret browsing (asks first)                 | unbound                                     |
+| `ctrl+alt+meta+f7`    | caret browsing (asks first)                 | unbound                                     |
 | `alt+f`               | open a menu                                 | unchanged                                   |
 | `alt+e`               | open a menu                                 | unchanged                                   |
 | `alt+v`               | open a menu                                 | unchanged                                   |
@@ -433,6 +440,7 @@ unchanged.
 | `alt+b`               | open a menu                                 | unchanged                                   |
 | `alt+t`               | open a menu                                 | unchanged                                   |
 | `alt+h`               | open a menu                                 | unchanged                                   |
+| `alt+p`               | open the Profiles menu                      | unchanged                                   |
 | `'`                   | quick find, links only                      | unbound                                     |
 | `/`                   | quick find                                  | `find_forward` (normal mode)                |
 | `f10`                 | the menu bar                                | unchanged                                   |
