@@ -28,8 +28,9 @@ jobs:
   # a successful pull_request run of this workflow with that tree and, on a match, skips the
   # checks below with a notice naming it. When main moved after that run the trees differ and the
   # checks run: the ruleset does not require up-to-date branches, so this is the only check of the
-  # merged combination. Other events skip this job; its empty output runs everything, and so does
-  # a failed guard (!cancelled() below, not success()).
+  # merged combination. Other events skip this job, and a guard that fails before its verdict
+  # leaves the output empty: both run everything (!cancelled() below, not success()). A commitlint
+  # failure after a cover fails this job alone; the covered checks stay skipped.
   covered:
     name: tree already checked on a pull request?
     if: github.event_name == 'push'

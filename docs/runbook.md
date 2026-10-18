@@ -472,8 +472,8 @@ request cannot change the classifier that judges it.
 
 **Docs-only** means all of these hold:
 
-- the event is `pull_request` (a push to `main`, a schedule, a manual run and `workflow_call`
-  always run everything);
+- the event is `pull_request` (a schedule, a manual run and `workflow_call` always run
+  everything; so does a push to `main`, unless "Once per tree" below skips it);
 - every changed path ends in `.md`;
 - none is generated (`GENERATED_MARKDOWN`: `docs/bindings.md`);
 - none is under `.github/`, `packages/`, `src/`, `tests/` or `tools/`, where Markdown can be a
@@ -522,7 +522,10 @@ and the checks run as before: the ruleset does not require up-to-date branches
 (`strict_required_status_checks_policy: false`), so that run is the only check of the merged
 combination. Requiring up-to-date branches instead would re-run every open pull request's
 checks after each merge, more than the one push run it saves. A guard that cannot reach the API
-warns and lets the checks run; a guard without its variables fails, which shows a workflow bug.
+warns and lets the checks run; a guard without its variables fails before its verdict, which
+leaves the output empty, runs the checks and shows a workflow bug. A docs-only pull request's
+run counts as a cover although it skipped the code checks: its tree's code equals its base's,
+which an earlier run of `main` checked in full or by the same rule.
 
 `ci.yml` still lints the squash commit's message when it skips: that message is new on `main`
 and release-please builds the changelog from it ("Releases" below). `codeql.yml` is not
@@ -574,7 +577,7 @@ no monthly cap: minutes are no longer a reason to skip a job. What still matters
 jobs at once on the free plan), so keep jobs lean all the same. Rough use per PR push: CI ≈ 2
 min, e2e ≈ 6 min (5.5 min wall, ADR-010), Semgrep ≈ 1 min, CodeQL a few minutes per language.
 A push to `main` repeats only CodeQL and, when the merged tree differs from the pull request
-head's, the rest ("Once per tree" below).
+head's, the rest ("Once per tree" above).
 
 e2e.yml has no paths filter: "mochitest (artifact build)" is a required check, so the workflow
 starts on every PR, and on a docs-only one the job skips by `if:` in seconds (above). The upstream autopilot runs 6 × 1 min a day, plus ≈ 16 min (issue, patch check, the
