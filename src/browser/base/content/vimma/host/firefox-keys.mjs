@@ -142,7 +142,11 @@ export class FirefoxKeys {
   /** Every `<key>` of the window's keysets with its chord, as the plan reads them. */
   keys() {
     const els = /** @type {Element[]} */ (
-      this.keyset ? [...this.win.document.querySelectorAll("keyset key")] : []
+      // Add-on shortcuts are the add-on's, set in about:addons; ExtensionShortcuts.sys.mjs gives
+      // each add-on a keyset with the id ext-keyset-id-<add-on id>.
+      this.keyset
+        ? [...this.win.document.querySelectorAll('keyset:not([id^="ext-keyset-id-"]) key')]
+        : []
     );
     return els.map((el) => ({
       el,

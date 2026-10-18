@@ -368,3 +368,22 @@ add_task(async function an_unbound_tab_key_firefox_handles_outside_its_keysets_d
   await IOUtils.remove(file);
   await ConfigHost.reload();
 });
+
+add_task(async function an_add_ons_own_shortcut_stays_on() {
+  // Extension shortcuts are the add-on's, set in about:addons (docs/specs/firefox-keys.md,
+  // out of scope): ExtensionShortcuts puts them in a keyset of their own.
+  const ext = ExtensionTestUtils.loadExtension({
+    useAddonManager: "temporary",
+    manifest: {
+      browser_specific_settings: { gecko: { id: "fk-shortcut@vimma.test" } },
+      browser_action: {},
+      commands: { _execute_browser_action: { suggested_key: { default: "Alt+Shift+U" } } },
+    },
+  });
+  await ext.startup();
+  await ConfigHost.reload();
+  const keys = [...document.querySelectorAll('keyset[id^="ext-keyset-id-"] key')];
+  Assert.ok(keys.length, "the add-on's keyset is there");
+  for (const key of keys) Assert.ok(!key.hasAttribute("disabled"), "its shortcut is on");
+  await ext.unload();
+});
