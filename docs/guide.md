@@ -153,8 +153,11 @@ security features may offer less protection" when your kernel does not allow unp
 namespaces, which the content sandbox uses. On Ubuntu 24.04 that means the `.deb` and the
 AppImage run with a weaker content sandbox without saying so; the tarball still shows the warning
 ([limits.md](limits.md#platforms-and-packaging)).
-The same package will be on the AUR as `vimma-bin` once it is published there; AUR helpers such
-as `yay -S vimma-bin` will then install and update it.
+There is no AUR package for now. The AUR does not accept new account registrations at the
+moment, and a package needs an account to own it, so `vimma-bin` cannot be published there yet.
+On Arch, the release's `PKGBUILD` above is the way to install and update Vimma, and `:update`
+shows that command. The same package goes to the AUR as `vimma-bin`, for AUR helpers such as
+`yay -S vimma-bin`, once registration opens again.
 
 ### First launch, with its own profile
 
@@ -2253,7 +2256,7 @@ It installs nothing; it tells you.
   | Installed with           | `:update` shows                                                                                                                                                 |
   | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
   | The release's `PKGBUILD` | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si` |
-  | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent)                                                                                                          |
+  | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                  |
   | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                     |
   | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                              |
   | AppImage                 | download the new AppImage next to yours, check it, and rename it over yours; the next start runs it                                                             |
