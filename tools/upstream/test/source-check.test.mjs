@@ -27,7 +27,17 @@ function archive(version, opts = {}) {
   const top = `firefox-${version.replace(/b\d+$/, "")}`;
   const tar = spawnSync(
     "tar",
-    ["-cJf", join(dir, name), "--transform", `s,^\\.,${top},`, "-C", TREE, "."],
+    [
+      "-cJf",
+      join(dir, name),
+      // bsdtar (macOS) has no --transform; its -s takes the same substitution without the "s".
+      ...(process.platform === "darwin"
+        ? ["-s", `,^\\.,${top},`]
+        : ["--transform", `s,^\\.,${top},`]),
+      "-C",
+      TREE,
+      ".",
+    ],
     { encoding: "utf8" },
   );
   if (tar.status !== 0) throw new Error(tar.stderr);

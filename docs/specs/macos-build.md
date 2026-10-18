@@ -1,11 +1,12 @@
 # Spec: macos-build
 
-Status: draft · Area: `configs/macos/mozconfig`, `configs/macos/entitlements/` (new),
-`configs/branding/vimma/`, `tools/artifact-build/`, `tools/e2e/`, `tools/mochitest.mjs`,
-`tools/start.mjs`, `tools/vimma-ctl/src/discovery.rs`, `.github/workflows/ci.yml`, `e2e.yml`,
-`macos.yml` (new); `docs/guide.md`, `docs/limits.md`, `CONTRIBUTING.md`, `docs/runbook.md` ·
-Upstream patches: none (decision 7) · ADR: ADR-018 (planned, "macOS: cross-compiled on Linux, arm64
-first"; written with sub-PR 3)
+Status: draft (sub-PR 1, front-end tests on a hosted Mac, in progress) · Area:
+`configs/macos/mozconfig`, `configs/macos/entitlements/` (new), `configs/branding/vimma/`,
+`tools/artifact-build/`, `tools/e2e/`, `tools/mochitest.mjs`, `tools/start.mjs`,
+`tools/vimma-ctl/src/discovery.rs`, `.github/workflows/ci.yml`, `e2e.yml`, `macos.yml` (new);
+`docs/guide.md`, `docs/limits.md`, `CONTRIBUTING.md`, `docs/runbook.md` · Upstream patches: none
+(decision 7) · ADR: ADR-018 (planned, "macOS: cross-compiled on Linux, arm64 first"; written with
+sub-PR 3)
 
 Issue: [#238](https://github.com/vimma-browser/vimma/issues/238)
 
