@@ -568,3 +568,35 @@ describe("auto-merge in the upstream autopilot", () => {
     for (const l of at) expect(publish).toContain(l);
   });
 });
+
+// Spec upstream-bump-automation, decisions 16 to 21 (docs/security.md, G15).
+describe("the failing-patches issue in the upstream autopilot", () => {
+  it("patch-issue runs only on a failed patch check, with issues: write and no secret", () => {
+    const block = job(upstream, "patch-issue");
+    expect(block).toContain("needs.patch-check.outputs.result == 'fail'");
+    expect(permissions(block)).toEqual(["contents: read", "issues: write"]);
+    expect(block).not.toContain("secrets.");
+    expect(block).toContain("GH_TOKEN: ${{ github.token }}");
+    expect(block).toContain("persist-credentials: false");
+  });
+
+  it("patch-issue updates the open issue with the same title", () => {
+    const run = script(step(upstream, "patch-issue"));
+    expect(run).toContain("select(.title == $t)");
+    expect(run).toContain('gh issue edit "$n" --body-file');
+    expect(run).toContain('gh issue create --title "$title" --label upstream --label triage');
+    // Outside text only through files, never in a command line.
+    expect(run).not.toMatch(/--body "/);
+  });
+
+  it("publish hands the bump PR's number to patch-issue", () => {
+    expect(job(upstream, "publish")).toContain("pr: ${{ steps.pr.outputs.number }}");
+    expect(job(upstream, "patch-issue")).toContain("PR: ${{ needs.publish.outputs.pr }}");
+  });
+
+  it("no workflow holds an AI secret", () => {
+    for (const f of readdirSync(dir).filter((x) => x !== "claude.yml")) {
+      expect(workflow(f), f).not.toMatch(/ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN/);
+    }
+  });
+});

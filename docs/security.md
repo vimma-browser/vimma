@@ -586,6 +586,13 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   workflow file. Without it, bumps open as drafts and are never set to auto-merge.
   [`the token reaches only publish`](../tools/test/upstream-workflow.test.mjs),
   [`grants nothing by default and each job only what it needs`](../tools/test/upstream-workflow.test.mjs)
+- G15. The `patch-issue` job (patches that do not apply) **must** use only `GITHUB_TOKEN` with
+  `contents: read` and `issues: write`, check out without persisted credentials, and pass the
+  issue text to `gh` only through `--body-file`. No workflow holds an AI secret: no model runs in
+  CI on a failing bump.
+  [`patch-issue runs only on a failed patch check, with issues: write and no secret`](../tools/test/upstream-workflow.test.mjs),
+  [`patch-issue updates the open issue with the same title`](../tools/test/upstream-workflow.test.mjs),
+  [`no workflow holds an AI secret`](../tools/test/upstream-workflow.test.mjs)
 
 ## 11. Out of scope and trust boundaries
 
