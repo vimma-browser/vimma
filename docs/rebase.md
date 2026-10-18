@@ -25,9 +25,9 @@ Background: [ADR-002](adr/002-upstream-release-channel.md),
 | 7   | Split-view contract (M4 canary)           | both builds                                      | part of the suite                        |
 | 8   | Mark ready, CI, merge                     | GitHub                                           | CI ≈ 8 min                               |
 
-**When the autopilot's PR is green (the common case) you do only step 8**, until auto-merge of
-a green bump is built ([#259](https://github.com/vimma-browser/vimma/issues/259)), which removes that
-step too. Steps 2–7 are for a
+**When the autopilot's PR is green (the common case) you do only step 8**, and with
+`AUTO_MERGE_UPSTREAM` set (docs/runbook.md) not even that: GitHub merges a green bump whose diff
+is only the version and copied prefs. Steps 2–7 are for a
 draft: a patch that does not apply, a failing suite, or a release without Mozilla artifacts.
 Decision points are marked **Decide**.
 
@@ -96,7 +96,8 @@ bump PR names the canary's issues for that version.
 4. **`test`** (read-only). Only when every patch applies and the artifacts exist: `e2e.yml`, called
    with the new version. It bumps `surfer.json` in its own checkout and does what PR CI does:
    `firefox-source.sh` (signature and SHA-512 checked again), `npm run import`, the branding
-   prefs test, the upstream-prefs check (cfr provider and Safe Browsing lists, step 6), the artifact build,
+   prefs test, the upstream-prefs check (cfr provider and Safe Browsing lists, step 6, run on the
+   copies `patch-check` refreshed), the artifact build,
    `tests/browser/` and `tests/e2e/`. Without artifacts the suites are skipped and the PR says
    so: run steps 2–4 on your machine (the full-build path).
 5. **`publish`** (the only job that can push). Pushes `upstream/firefox-X.Y.Z` with one commit,
@@ -132,11 +133,17 @@ Each `fuzz` or `failed` hunk is listed under the table, collapsed, as the hunk f
 
 - **Green, ready for review** (a token is set) → review the diff (`surfer.json` only) and merge.
 - **Green draft** ("mark it ready") → `gh pr ready <n>`: CI and e2e run as you; merge when green.
+- **Ready, "Re-exported patches"** → every patch that failed only needed fuzz; the autopilot
+  re-exported it (`tools/upstream/reexport.py`, same added and removed lines) in a second commit,
+  and PR CI runs the suites on it. Review that commit; a C++ or build patch needs the full build
+  (docs/limits.md). Such a bump is never set to auto-merge.
 - **Draft, "some patches do not apply"** → steps 2–3 on the PR's branch (`gh pr checkout <n>`),
   push the re-exported patches; PR CI runs the suites. Or hand it to Claude: comment `@claude`
   on the PR with the Conflicts section.
 - **Draft, "the suites did not pass"** → read the run's `mochitest (artifact build)` job.
-  `upstream-prefs` failing prints the pref line to paste (step 6); anything else is a real
+  The autopilot already refreshed copied prefs whose upstream value changed (the PR's "Refreshed
+  prefs"); `upstream-prefs` failing on PR CI prints the pref line to paste (step 6); anything else
+  is a real
   regression: hold the bump, fix it on the branch.
 - **"No Mozilla artifacts for this revision"** → steps 2–4 on your machine; e2e.yml on the PR
   will stay red until Mozilla indexes the build (it never has not, so far; check `surfer.json`).
@@ -336,7 +343,11 @@ checkout that has the new `engine/`.
 
 **Upstream pref copies, checked.** `node tools/upstream/upstream-prefs.mjs` (after the import)
 compares both copies below with the engine's and prints the line to paste for a stale one; exit
-1 then. `e2e.yml` runs it, so the autopilot's suites and PR CI catch a stale copy. The details:
+1 then. `e2e.yml` runs it, so the autopilot's suites and PR CI catch a stale copy. The autopilot
+refreshes stale copies itself: `source-check.sh` runs `upstream-prefs.mjs --write-diff` on the
+verified tarball's prefs files, the suites run on the result, and the bump commit carries the new
+lines (the PR body lists old and new values). A pref gone upstream is never guessed: the PR is a
+draft that names it, and a person finds its new name. The details:
 
 **cfr provider (spec m0-mozilla-services).** We carry a full copy of upstream's
 `browser.newtabpage.activity-stream.asrouter.providers.cfr` with `"enabled":false`. A stale copy
@@ -421,8 +432,8 @@ fixes; our front-end patches nearly always stay `clean`. Mozilla's advisories:
 If the PR is a draft, steps 2–7 as usual, but there is no need to wait for a nightly: the local
 full-build suite is the same test. Releases skipped in between need nothing extra: the autopilot
 bumps straight to the latest and closes the older PR and issue as superseded; the drift check
-still counts from the oldest unshipped security release. Auto-merge of `security` bumps (plan §4)
-is deliberately not built; a person merges.
+still counts from the oldest unshipped security release. With `AUTO_MERGE_UPSTREAM` set, a green
+bump merges itself once its required checks pass; otherwise a person merges.
 
 ## Rolling back
 

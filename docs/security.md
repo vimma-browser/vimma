@@ -433,8 +433,8 @@ Spec: [m0-mozilla-services](specs/m0-mozilla-services.md),
 ## 10. Firefox updates (the upstream autopilot, `upstream.yml`; the Beta canary, `upstream-beta.yml`)
 
 Vimma is only as safe as the Firefox release under it. The autopilot finds each new release,
-rebases our patches onto it, runs the suites and opens the PR; a person reviews and merges every
-bump. A merged bump labelled `security` then releases on its own when `AUTO_SECURITY_RELEASE` is
+rebases our patches onto it, runs the suites and opens the PR; a person reviews and merges a
+bump unless `AUTO_MERGE_UPSTREAM` lets GitHub's auto-merge take a green, version-only bump (G13). A merged bump labelled `security` then releases on its own when `AUTO_SECURITY_RELEASE` is
 on ([ADR-020](adr/020-security-release-without-a-person.md), G11 and G12). Spec:
 [m7-upstream-autopilot](specs/m7-upstream-autopilot.md), [ADR-015](adr/015-upstream-autopilot.md),
 playbook: [docs/rebase.md](rebase.md). The Beta canary tests `main` on each Firefox Beta build and
@@ -490,7 +490,23 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`no workflow runs on pull_request_target`](../tools/test/upstream-workflow.test.mjs),
   [`every action it uses is pinned by a full commit SHA`](../tools/test/upstream-workflow.test.mjs)
 - G7. The prefs we copy from upstream (the cfr provider, the Safe Browsing lists) **must** match
-  the release under test, or the suites fail with the line to paste.
+  the release under test, or the suites fail with the line to paste. The autopilot refreshes a
+  stale copy only from the verified tarball (G4), only in `firefox-branding.js`'s three copied
+  lines, and only through the `workflow_call` input of `e2e.yml`, so a pull request run never
+  rewrites prefs; a pref gone upstream is never guessed and keeps the PR a draft. No new token or
+  secret: `publish` commits the refresh with its existing `contents: write`.
+  Patches that need only fuzz are re-exported (`reexport.py`) from the same verified files;
+  a result whose added or removed lines differ is refused, `publish` copies in only
+  `src/**/*.patch` paths as a second commit, and such a PR waits for the owner.
+  [`test_reexport_keeps_added_and_removed_lines`](../tools/upstream/test_reexport.py),
+  [`test_a_report_label_outside_src_is_refused`](../tools/upstream/test_reexport.py),
+  [`publish commits re-exported patches as a second commit, only under src/`](../tools/test/upstream-workflow.test.mjs),
+  [`writes the derived cfr line when upstream adds a field`](../tools/upstream/test/upstream-prefs.test.mjs),
+  [`the diff touches only the three copied pref lines`](../tools/upstream/test/upstream-prefs.test.mjs),
+  [`reports unresolved and writes nothing for a pref missing upstream`](../tools/upstream/test/upstream-prefs.test.mjs),
+  [`source-check computes the refresh only after the SHA-512 check passed`](../tools/test/upstream-workflow.test.mjs),
+  [`a pull request run never writes prefs`](../tools/test/upstream-workflow.test.mjs),
+  [`a pref gone upstream makes the PR a draft that names it`](../tools/upstream/test/autopilot.test.mjs),
   [`our branding prefs match Firefox 157.0.1's`](../tools/upstream/test/upstream-prefs.test.mjs),
   [`a new upstream cfr field is reported with the line to paste`](../tools/upstream/test/upstream-prefs.test.mjs),
   [`a pref upstream renamed or removed is its own problem, not a silent pass`](../tools/upstream/test/upstream-prefs.test.mjs)
@@ -547,6 +563,29 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`does nothing when AUTO_SECURITY_RELEASE is off`](../tools/release/test/security-release.test.mjs),
   [`asks the API nothing while the variable is off or outside main`](../tools/release/test/security-release.test.mjs),
   [`fails when the variable is on and RELEASE_PLEASE_TOKEN is missing`](../tools/release/test/security-release.test.mjs)
+
+- G13. An upstream bump PR **must** be set to auto-merge only by `publish` run on `main`, only
+  when `AUTO_MERGE_UPSTREAM` allows its release kind, only for a non-draft PR whose every patch
+  applied clean or with an offset and whose diff changes nothing but `version.version` in
+  `surfer.json` and the copied pref lines, and only pinned to the head commit that diff was read
+  from. GitHub's auto-merge then waits for every required check of the `main` ruleset (spec
+  [upstream-bump-automation](specs/upstream-bump-automation.md), ADR-022).
+  [`auto-merge only with the variable, the token, a ready PR and the allowlist`](../tools/test/upstream-workflow.test.mjs),
+  [`auto-merge uses --match-head-commit and the bump's subject`](../tools/test/upstream-workflow.test.mjs),
+  [`the allowlist reads the branch as pushed`](../tools/test/upstream-workflow.test.mjs),
+  [`rebuild disables auto-merge before the push`](../tools/test/upstream-workflow.test.mjs),
+  [`dot allows dot releases only; unset or anything else allows none`](../tools/upstream/test/autopilot.test.mjs),
+  [`names the first condition that did not hold`](../tools/upstream/test/autopilot.test.mjs),
+  [`never with patches that needed fuzz, were re-exported or are applied already`](../tools/upstream/test/autopilot.test.mjs),
+  [`refuses another line in firefox-branding.js`](../tools/upstream/test/bump-diff.test.mjs),
+  [`refuses a re-exported patch`](../tools/upstream/test/bump-diff.test.mjs),
+  [`refuses a new, deleted, renamed or mode-changed file`](../tools/upstream/test/bump-diff.test.mjs),
+  [`refuses a file header it does not recognise instead of folding it into the last file`](../tools/upstream/test/bump-diff.test.mjs)
+- G14. `UPSTREAM_PR_TOKEN` **must** reach only the `publish` job. It is fine-grained: this
+  repository only, Contents and Pull requests read and write, no Workflows, so it cannot change a
+  workflow file. Without it, bumps open as drafts and are never set to auto-merge.
+  [`the token reaches only publish`](../tools/test/upstream-workflow.test.mjs),
+  [`grants nothing by default and each job only what it needs`](../tools/test/upstream-workflow.test.mjs)
 
 ## 11. Out of scope and trust boundaries
 

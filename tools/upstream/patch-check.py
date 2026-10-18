@@ -20,6 +20,9 @@ The tree is one of:
                            files are extracted, to a temporary directory; `-` reads stdin, so a
                            download can be piped in without touching the disk (upstream.yml).
                            --drain reads the stream to its end (for a `tee | sha512sum` beside).
+                           --extract PATH (repeatable) with --extract-to DIR also copies these
+                           files out of the same stream (source-check.sh: upstream's prefs files
+                           for the pref refresh); a path absent from the tarball is skipped.
 
 Writes a text summary to stdout, and with --json/--markdown a machine-readable report and a
 summary for a PR body. Exit status: 0 every patch imports, 1 at least one does not, 2 the check
@@ -457,6 +460,10 @@ def main(argv=None):
     parser.add_argument(
         "--drain", action="store_true", help="with --tarball: read the stream to its end"
     )
+    parser.add_argument(
+        "--extract", action="append", default=[], help="with --tarball: also extract this file"
+    )
+    parser.add_argument("--extract-to", help="with --extract: directory to write the files to")
     args = parser.parse_args(argv)
 
     source = f"tarball {args.tarball}" if args.tarball else str(args.engine or "engine/")
@@ -510,7 +517,11 @@ def run_check(args):
     tarball_bytes = None
     with tempfile.TemporaryDirectory(prefix="patch-check-tree-") as tmp:
         if args.tarball:
-            wanted = set(patched_files(args.src)) | {MILESTONE, SOURCESTAMP}
+            extra = set(args.extract)
+            bad = [p for p in extra if not safe_relpath(p)]
+            if bad or (extra and not args.extract_to):
+                raise CheckError(f"--extract needs --extract-to and paths inside the tree: {bad}")
+            wanted = set(patched_files(args.src)) | {MILESTONE, SOURCESTAMP} | extra
             try:
                 with open_tarball(args.tarball) as raw:
                     stream = CountingReader(raw)
@@ -522,6 +533,10 @@ def run_check(args):
                 raise CheckError(f"cannot read tarball {args.tarball}: {err}") from err
             if SOURCESTAMP not in found:
                 raise CheckError(f"{args.tarball}: no {SOURCESTAMP}; not a Firefox source tarball")
+            for rel in sorted(extra & found):
+                target = Path(args.extract_to) / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(Path(tmp) / rel, target)
             read = worktree_reader(tmp)
             source = f"tarball {Path(args.tarball).name if args.tarball != '-' else '(stdin)'}"
         else:

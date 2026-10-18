@@ -10,6 +10,7 @@ import {
   auditLine,
   betaIssues,
   branchName,
+  autoMergeDecision,
   conflictLines,
   draftDecision,
   driftBody,
@@ -587,5 +588,219 @@ describe("autopilot body", () => {
     );
     expect(pr.stdout).toContain("Firefox 157's Betas were reported in #230 (open)");
     expect(run(["nope"]).status).toBe(2);
+  });
+});
+
+// Spec upstream-bump-automation, Behaviour 1 and 2: refreshed pref copies are listed in the PR.
+describe("the bump PR and refreshed pref copies", () => {
+  const cfr = "browser.newtabpage.activity-stream.asrouter.providers.cfr";
+  const refreshed = {
+    state: "refreshed",
+    refreshed: [{ pref: cfr, old: '{"id":"cfr"}', new: '{"id":"cfr","frequency":2}' }],
+    unresolved: [],
+  };
+
+  it("lists refreshed prefs with old and new values", () => {
+    const body = prBody(context({ prefs: refreshed }));
+    expect(body).toContain("| Copied upstream prefs | refreshed 1 in this commit (below) |");
+    expect(body).toContain(`- \`${cfr}\`: \`{"id":"cfr"}\` → \`{"id":"cfr","frequency":2}\``);
+    expect(draftDecision(context({ prefs: refreshed, hasToken: true })).draft).toBe(false);
+  });
+
+  it("a current copy says so and lists nothing", () => {
+    const body = prBody(context({ prefs: { state: "current", refreshed: [], unresolved: [] } }));
+    expect(body).toContain("| Copied upstream prefs | current |");
+    expect(body).not.toContain("### Refreshed prefs");
+  });
+
+  it("a pref gone upstream makes the PR a draft that names it", () => {
+    const prefs = { state: "unresolved", refreshed: [], unresolved: [cfr] };
+    expect(draftDecision(context({ prefs }))).toEqual({
+      draft: true,
+      reason: "a copied pref is gone upstream (renamed or removed)",
+    });
+    expect(prBody(context({ prefs }))).toContain(`**gone upstream**: \`${cfr}\``);
+  });
+
+  it("the CLI reads the refresh from --prefs", () => {
+    const dir = tempDir("autopilot-prefs-");
+    writeFileSync(join(dir, "detection.json"), JSON.stringify(securityRelease));
+    writeFileSync(join(dir, "prefs.json"), JSON.stringify(refreshed));
+    const r = spawnSync(
+      process.execPath,
+      [
+        bodyScript,
+        "pr",
+        "--detection",
+        join(dir, "detection.json"),
+        "--prefs",
+        join(dir, "prefs.json"),
+      ],
+      { encoding: "utf8" },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("refreshed 1 in this commit");
+  });
+});
+
+// Spec upstream-bump-automation, Behaviour 3 and 6: fuzz-only patches re-exported in a second
+// commit; the PR is ready for review, mentions the owner, and is never set to auto-merge.
+describe("the bump PR and re-exported patches", () => {
+  const reexport = {
+    state: "reexported",
+    reexported: ["src/browser/modules/URILoadingHelper-sys-mjs.patch"],
+    refused: [],
+  };
+  const fuzzOnly = { patchResult: "fail", tests: "skipped", hasToken: true, reexport };
+
+  it("lists re-exported patches", () => {
+    const body = prBody(context(fuzzOnly));
+    expect(body).toContain("| Fuzz re-export | 1 patch re-exported in a second commit (below) |");
+    expect(body).toContain("- `src/browser/modules/URILoadingHelper-sys-mjs.patch`");
+    expect(body).toContain("@JRanne");
+    expect(body).toMatch(/never set to auto-merge/);
+  });
+
+  it("a fuzz-only bump with its patches re-exported is ready for review", () => {
+    expect(draftDecision(context(fuzzOnly))).toEqual({
+      draft: false,
+      reason: "patches re-exported",
+    });
+    expect(draftDecision(context({ ...fuzzOnly, hasToken: false })).draft).toBe(true);
+  });
+
+  it("a refused or skipped re-export stays a draft", () => {
+    for (const state of ["refused", "skipped", "none"]) {
+      const c = context({ ...fuzzOnly, reexport: { ...reexport, state, reexported: [] } });
+      expect(draftDecision(c)).toEqual({ draft: true, reason: "some patches do not apply" });
+    }
+  });
+
+  it("the CLI reads the re-export from --reexport", () => {
+    const dir = tempDir("autopilot-reexport-");
+    writeFileSync(join(dir, "detection.json"), JSON.stringify(securityRelease));
+    writeFileSync(join(dir, "reexport.json"), JSON.stringify(reexport));
+    const r = spawnSync(
+      process.execPath,
+      [
+        bodyScript,
+        "pr",
+        "--detection",
+        join(dir, "detection.json"),
+        "--patch-result",
+        "fail",
+        "--has-token",
+        "true",
+        "--reexport",
+        join(dir, "reexport.json"),
+        "--draft-only",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.trim()).toBe("false");
+  });
+});
+
+// Spec upstream-bump-automation, Behaviour 5 and 7: auto-merge only when every condition holds;
+// the PR body's "Auto-merge" row says "on" or names the first condition that did not.
+describe("the bump PR and auto-merge", () => {
+  const green = {
+    patchResult: "ok",
+    tests: "success",
+    hasToken: true,
+    artifacts: "yes",
+    autoMerge: "all",
+    ref: "refs/heads/main",
+    bumpDiff: { ok: true, reason: "only the version and copied prefs change" },
+  };
+
+  it("is on for a green dot or major bump when AUTO_MERGE_UPSTREAM is all", () => {
+    expect(autoMergeDecision(context(green))).toEqual({ on: true, reason: "on" });
+    const major = { ...securityRelease, release: { ...securityRelease.release, kind: "major" } };
+    expect(autoMergeDecision(context({ ...green, detection: major })).on).toBe(true);
+  });
+
+  it("dot allows dot releases only; unset or anything else allows none", () => {
+    expect(autoMergeDecision(context({ ...green, autoMerge: "dot" })).on).toBe(true);
+    const major = { ...securityRelease, release: { ...securityRelease.release, kind: "major" } };
+    expect(autoMergeDecision(context({ ...green, autoMerge: "dot", detection: major }))).toEqual({
+      on: false,
+      reason: "off: AUTO_MERGE_UPSTREAM does not allow a major release",
+    });
+    for (const v of ["", "ALL", "yes", " all"]) {
+      expect(autoMergeDecision(context({ ...green, autoMerge: v })).on, v).toBe(false);
+    }
+  });
+
+  it("names the first condition that did not hold", () => {
+    const off = (/** @type {object} */ over) => autoMergeDecision(context({ ...green, ...over }));
+    expect(off({ ref: "refs/heads/x" }).reason).toBe("off: the run is not on main");
+    expect(off({ hasToken: false }).reason).toBe("off: UPSTREAM_PR_TOKEN is not set");
+    expect(off({ tests: "failure" }).reason).toBe(
+      "off: the PR is a draft (the suites did not pass)",
+    );
+    expect(off({ patchResult: "fail" }).reason).toMatch(/^off: the PR is a draft/);
+    expect(off({ artifacts: "no" }).reason).toBe("off: Mozilla's artifacts were not found");
+    expect(off({ bumpDiff: { ok: false, reason: "changes README.md" } }).reason).toBe(
+      "off: the diff is not a plain bump (changes README.md)",
+    );
+    expect(off({ bumpDiff: null }).reason).toBe("off: the diff was not checked");
+  });
+
+  it("never with patches that needed fuzz, were re-exported or are applied already", () => {
+    const fuzz = {
+      ...cleanReport,
+      patches: [{ ...cleanReport.patches[0], status: "applied", imports: true }],
+    };
+    expect(autoMergeDecision(context({ ...green, patchReport: fuzz })).reason).toBe(
+      "off: a patch did not apply clean or with an offset",
+    );
+    const reexport = { state: "reexported", reexported: ["src/a.patch"], refused: [] };
+    expect(autoMergeDecision(context({ ...green, patchResult: "fail", reexport })).reason).toBe(
+      "off: patches were re-exported",
+    );
+  });
+
+  it("the PR body has an Auto-merge row and says GitHub merges it", () => {
+    const body = prBody(context(green));
+    expect(body).toContain("| Auto-merge | on |");
+    expect(body).toContain("GitHub merges this PR once every required check is green");
+    expect(prBody(context({ ...green, autoMerge: "" }))).toContain(
+      "| Auto-merge | off: AUTO_MERGE_UPSTREAM does not allow a dot release |",
+    );
+  });
+
+  it("the CLI prints the decision with --auto-merge-only", () => {
+    const dir = tempDir("autopilot-automerge-");
+    writeFileSync(join(dir, "detection.json"), JSON.stringify(securityRelease));
+    writeFileSync(join(dir, "patch.json"), JSON.stringify(cleanReport));
+    writeFileSync(join(dir, "diff.json"), JSON.stringify(green.bumpDiff));
+    const args = [
+      bodyScript,
+      "pr",
+      "--auto-merge-only",
+      "--detection",
+      join(dir, "detection.json"),
+      "--patch-check",
+      join(dir, "patch.json"),
+      "--patch-result",
+      "ok",
+      "--tests",
+      "success",
+      "--artifacts",
+      "yes",
+      "--has-token",
+      "true",
+      "--ref",
+      "refs/heads/main",
+      "--bump-diff",
+      join(dir, "diff.json"),
+    ];
+    const on = spawnSync(process.execPath, [...args, "--auto-merge", "all"], { encoding: "utf8" });
+    expect(on.stderr).toBe("");
+    expect(on.stdout).toBe("true\n");
+    const off = spawnSync(process.execPath, args, { encoding: "utf8" });
+    expect(off.stdout).toBe("false\n");
   });
 });

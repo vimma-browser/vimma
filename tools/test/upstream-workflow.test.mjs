@@ -439,3 +439,132 @@ describe("e2e.yml concurrency", () => {
     expect(e2e).toContain("cancel-in-progress: true");
   });
 });
+
+// Spec upstream-bump-automation, sub-PR 1 (decisions 1 to 4).
+describe("pref refresh in the upstream autopilot", () => {
+  it("source-check computes the refresh only after the SHA-512 check passed", () => {
+    expect(source).toContain("--extract browser/app/profile/firefox.js");
+    expect(source).toContain("--extract modules/libpref/init/all.js");
+    const verify = source.indexOf('python3 "$here/verify-sha512.py"');
+    const refresh = source.indexOf('node "$here/upstream-prefs.mjs"');
+    expect(refresh).toBeGreaterThan(verify);
+    expect(source).toContain("--write-diff prefs-refresh.patch");
+  });
+
+  it("the patch-check artifact carries the refresh and the job exports its state", () => {
+    const block = job(upstream, "patch-check");
+    expect(block).toContain("prefs: ${{ steps.check.outputs.prefs }}");
+    // A path line of the upload step's `path: |` list (12 spaces), not a regex over the block.
+    const upload = block.slice(block.indexOf("name: patch-check"));
+    expect(upload.split("\n")).toContain("            prefs-refresh.*");
+  });
+
+  it("the e2e call passes the prefs patch and no secret", () => {
+    const block = job(upstream, "test");
+    expect(block).toContain("prefs-patch-artifact: patch-check");
+    expect(block).not.toContain("secrets");
+    expect(e2e).toMatch(/workflow_call:\n(?:.*\n)*?\s+prefs-patch-artifact:\n/);
+  });
+
+  it("a pull request run never writes prefs", () => {
+    // Only workflow_call declares the input; on a pull request it is empty and the step skips.
+    const head = e2e.slice(0, e2e.indexOf("\njobs:\n"));
+    const dispatch = head.slice(head.indexOf("workflow_dispatch:"), head.indexOf("workflow_call:"));
+    expect(dispatch).not.toContain("prefs-patch-artifact");
+    const apply = step(e2e, "prefs-refresh");
+    expect(apply).toContain("if: inputs.prefs-patch-artifact != ''");
+    expect(apply).not.toContain("secrets");
+    // The refresh lands before the import and the strict check, which still runs.
+    expect(e2e.indexOf("id: prefs-refresh")).toBeLessThan(e2e.indexOf("run: npm run import"));
+    expect(e2e).toContain("run: node tools/upstream/upstream-prefs.mjs\n");
+  });
+
+  it("publish commits the refreshed lines with the bump and lists them in the body", () => {
+    const block = job(upstream, "publish");
+    // --include: the refresh can only ever touch the branding file.
+    const apply = block.search(
+      /git apply --include=src\/browser\/branding\/vimma\/pref\/firefox-branding\.js \\\n\s+"\$pc\/prefs-refresh\.patch"/,
+    );
+    expect(apply).toBeGreaterThan(0);
+    expect(apply).toBeLessThan(block.indexOf('git commit -am "upstream: firefox $VERSION"'));
+    expect(block).toContain('--prefs "$pc/prefs-refresh.json"');
+  });
+});
+
+// Spec upstream-bump-automation, sub-PR 3 (decisions 14 and 15).
+describe("fuzz re-export in the upstream autopilot", () => {
+  it("source-check re-exports only after the SHA-512 check, from the extracted patched files", () => {
+    const verify = source.indexOf('python3 "$here/verify-sha512.py"');
+    const reexport = source.indexOf('python3 "$here/reexport.py"');
+    expect(reexport).toBeGreaterThan(verify);
+    expect(source).toContain('python3 "$here/patch-check.py" --list-files');
+    expect(source).toContain("--out reexport");
+  });
+
+  it("the patch-check artifact carries the re-export", () => {
+    const upload = job(upstream, "patch-check");
+    expect(upload.slice(upload.indexOf("name: patch-check")).split("\n")).toContain(
+      "            reexport/",
+    );
+  });
+
+  it("publish commits re-exported patches as a second commit, only under src/", () => {
+    const block = job(upstream, "publish");
+    const bump = block.indexOf('git commit -am "upstream: firefox $VERSION"');
+    const second = block.indexOf('git commit -m "upstream: re-export $names for firefox $VERSION"');
+    expect(second).toBeGreaterThan(bump);
+    expect(block).toContain("^src/[A-Za-z0-9._/-]+\\.patch$");
+    expect(block).toContain('--reexport "$pc/reexport/reexport.json"');
+  });
+});
+
+// Spec upstream-bump-automation, decisions 6 to 13 (docs/security.md, G13 and G14).
+describe("auto-merge in the upstream autopilot", () => {
+  it("auto-merge only with the variable, the token, a ready PR and the allowlist", () => {
+    const decide = step(upstream, "pr");
+    expect(decide).toContain("AUTO_MERGE: ${{ vars.AUTO_MERGE_UPSTREAM }}");
+    const decideRun = script(decide);
+    expect(decideRun).toContain("node tools/upstream/bump-diff.mjs");
+    expect(decideRun).toContain('--bump-diff "$RUNNER_TEMP/bump-diff.json"');
+    // step() stops at the first blank line; the outputs are written further down the step.
+    expect(job(upstream, "publish")).toContain('echo "auto-merge=$(body pr --auto-merge-only)"');
+    const block = step(upstream, "automerge");
+    // Only the fine-grained token: a GITHUB_TOKEN merge would start no push workflow on main.
+    expect(block).toContain("GH_TOKEN: ${{ secrets.UPSTREAM_PR_TOKEN }}");
+    expect(block).not.toContain("github.token");
+    expect(block).toContain(
+      "if: steps.pr.outputs.number != '' && steps.pr.outputs.auto-merge == 'true'",
+    );
+    const run = script(block);
+    expect(run).toContain("--json isDraft,headRefOid");
+    expect(run).toContain('[ "$draft" = false ] && [ "$pr_head" = "$head" ]');
+    expect(upstream.indexOf("bump-diff.mjs")).toBeLessThan(upstream.indexOf("--auto --squash"));
+  });
+
+  it("auto-merge uses --match-head-commit and the bump's subject", () => {
+    const run = script(step(upstream, "automerge"));
+    expect(run).toContain('gh pr merge "$number" --auto --squash --match-head-commit "$head"');
+    expect(run).toContain('--subject "$TITLE (#$number)"');
+  });
+
+  it("the allowlist reads the branch as pushed", () => {
+    const run = script(step(upstream, "pr"));
+    expect(run).toContain('git diff --unified=0 "origin/main...$head"');
+    expect(run.indexOf("head=$(git rev-parse HEAD)")).toBeLessThan(run.indexOf("git diff"));
+  });
+
+  it("rebuild disables auto-merge before the push", () => {
+    const block = job(upstream, "publish");
+    const disable = block.indexOf('gh pr merge "$n" --disable-auto');
+    const push = block.indexOf('git push --force origin "HEAD:refs/heads/$branch"');
+    expect(disable).toBeGreaterThan(0);
+    expect(disable).toBeLessThan(push);
+  });
+
+  it("the token reaches only publish", () => {
+    const at = upstream.split("\n").filter((l) => l.includes("secrets.UPSTREAM_PR_TOKEN"));
+    expect(at.length).toBeGreaterThan(0);
+    const publish = job(upstream, "publish");
+    for (const l of at) expect(publish).toContain(l);
+  });
+});
