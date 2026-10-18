@@ -12,10 +12,44 @@
  * "Recommended". An AMO answer for one of these slugs with another GUID is dropped.
  */
 export const CURATED = Object.freeze([
-  { slug: "ublock-origin", guid: "uBlock0@raymondhill.net" },
-  { slug: "adguard-adblocker", guid: "adguardadblocker@adguard.com" },
-  { slug: "privacy-badger17", guid: "jid1-MnnxcxisBPnSXQ@jetpack" },
+  {
+    slug: "ublock-origin",
+    guid: "uBlock0@raymondhill.net",
+    name: "uBlock Origin",
+    author: "Raymond Hill",
+    summary: "An efficient wide-spectrum content blocker, easy on CPU and memory.",
+  },
+  {
+    slug: "adguard-adblocker",
+    guid: "adguardadblocker@adguard.com",
+    name: "AdGuard AdBlocker",
+    author: "AdGuard",
+    summary: "Blocks ads, pop-ups and trackers on every site.",
+  },
+  {
+    slug: "privacy-badger17",
+    guid: "jid1-MnnxcxisBPnSXQ@jetpack",
+    name: "Privacy Badger",
+    author: "EFF Technologists",
+    summary: "Learns to block invisible trackers as you browse.",
+  },
 ]);
+
+/**
+ * The curated list before AMO answers, or offline (behaviour 7): shown, but with no file to
+ * install, so it cannot be marked.
+ * @param {Set<string>} [installed]
+ * @returns {AddonEntry[]}
+ */
+export function curatedOffline(installed = new Set()) {
+  return CURATED.map((c) => ({
+    ...c,
+    users: 0,
+    url: "",
+    hash: "",
+    installed: installed.has(c.guid),
+  }));
+}
 
 /** The AMO request timeout (behaviour 7). */
 export const AMO_TIMEOUT_MS = 10_000;
@@ -23,16 +57,16 @@ export const AMO_TIMEOUT_MS = 10_000;
 /** AMO's public search: no key, no account (Research). */
 export const AMO_API = "https://addons.mozilla.org/api/v5/addons/";
 
-/** @param {string} terms */
-export function amoSearchUrl(terms) {
+/** @param {string} terms @param {string} [base] */
+export function amoSearchUrl(terms, base = AMO_API) {
   const q = new URLSearchParams({ q: terms, app: "firefox", type: "extension", sort: "users" });
-  return `${AMO_API}search/?${q}`;
+  return `${base}search/?${q}`;
 }
 
 /** The curated entries in one request: AMO's search takes a comma-separated `guid` list. */
-export function amoCuratedUrl() {
+export function amoCuratedUrl(base = AMO_API) {
   const q = new URLSearchParams({ guid: CURATED.map((c) => c.guid).join(","), app: "firefox" });
-  return `${AMO_API}search/?${q}`;
+  return `${base}search/?${q}`;
 }
 
 /**
@@ -164,7 +198,7 @@ export function setupKey(s, key) {
       if (key === "/") return { state: s, effect: { type: "search" } };
       if (key === "space") {
         const a = s.addons[s.cursor];
-        if (!a || a.installed) return stay;
+        if (!a || a.installed || !a.url) return stay;
         const marked = new Map(s.marked);
         if (marked.has(a.guid)) marked.delete(a.guid);
         else marked.set(a.guid, a);

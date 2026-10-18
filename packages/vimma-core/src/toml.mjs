@@ -358,6 +358,7 @@ function tomlLiteral(/** @type {string | boolean | number} */ value) {
 }
 
 /** Structural equality of two parsed TOML values (key order ignored). */
+/** @returns {boolean} */
 function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   if (a instanceof Date || b instanceof Date) return String(a) === String(b);
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
