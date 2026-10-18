@@ -1,8 +1,7 @@
 # Spec: m3-workspaces
 
-Status: implemented, except the leftovers in [#260](https://github.com/vimma-browser/vimma/issues/260)
-(the pinned-tab notice of decision 11, `lostContainers` in the status bar, a key to move a
-background tab); split into sub-specs (see Breakdown). Sub-specs 1 (store), 2a (routing), 2b
+Status: implemented, except the leftover in [#260](https://github.com/vimma-browser/vimma/issues/260)
+(a key to move a background tab); split into sub-specs (see Breakdown). Sub-specs 1 (store), 2a (routing), 2b
 (switching), 3 (persistence), 4a (lifecycle), 4b (move), 5 (picker), 6 (side panel), 7 (e2e
 restart scenario) and the 4a/4b/5 leftovers are merged; the 200-tab measurement is in
 `browser_vimma_perf.js` (runbook, "Key-to-paint timings") ·
@@ -801,7 +800,8 @@ dependency for 4b, 5 and parts of 4a.
   a removed workspace's live tabs go to the active one (never closed).
 - **Pinned tabs** stay out of the model and visible in every workspace (the planner never hides
   them). Unpinning them on `TabPinned` (decision 11) is deferred: with no Vimma key to pin it
-  needs the restore path of 3 to be worth it.
+  needs the restore path of 3 to be worth it. (Since changed: unpinned on `TabPinned` with a notice; see "Settled: pinned tabs and lost
+  containers".)
 - **Tab keys and picker:** `selectableTabs` is already `visibleTabs`, now the workspace's.
   `pickerWorkspaces` returns the window model, tabs in DOM order; Enter on another workspace's
   tab selects it, and `TabSelect` switches.
@@ -1053,7 +1053,28 @@ dependency for 4b, 5 and parts of 4a.
   `setWorkspaceContainer`, `workspaceRefFor`, the `alert` segment (3 red, then green). Mutation
   check: not marking the old container's tabs foreign fails "marked foreign".
 - **Left:** a key to move a background (possibly lazy) tab from a list; `lostContainers` from
-  the startup check is still not shown in the status bar.
+  the startup check is still not shown in the status bar. (Since changed: `lostContainers` is shown; see "Settled: pinned tabs and lost
+  containers".)
+
+## Settled: pinned tabs and lost containers (2026-10-18)
+
+- **Pinned tabs (decision 11).** `TabPinned` drops the tab from the model and, after the event
+  (tabbrowser is still inside `pinTab` while it dispatches `TabPinned`), `unpinTab`s it; its
+  `TabUnpinned` puts it back in the workspace of its container, and the notice reads
+  `unpinned "<label>": a pinned tab would show in every workspace` (core `unpinnedNotice`). The
+  pinned-tab guards in the tab keys, `:q`, the side panel and the agent's tab list stay, because
+  windows without workspaces (private windows, popups, containers off) still have pinned tabs;
+  their tests set `WindowWorkspaces.unpinsPinnedTabs = false` to reach them in a window with
+  workspaces.
+- **Lost containers.** `WorkspaceStore.alerts` adds core's `lostContainersAlert(lostContainers)`
+  after the containers-off alert; `VimmaHost.status` passes it to the bar as an `alert` segment,
+  persistent for the session, because the lost sign-ins are a lasting condition that a timed
+  notice could hide before it is read.
+- **Tests:** `browser_vimma_workspace_switching.js` (a tab pinned outside Vimma is unpinned,
+  stays in its workspace, a notice says so, and it is hidden in another workspace),
+  `browser_vimma_workspace_edges.js` (the lost-containers alert persists past Esc and goes with
+  the list); vitest for both texts. Red before (2 vitest, 2 mochitest failures), green after.
+- **Left:** a default key to move a background tab from a list; the spec names none.
 
 ## Settled: sub-spec 7, m3-e2e (restart part, 2026-10-10)
 

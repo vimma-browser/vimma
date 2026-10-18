@@ -1051,6 +1051,12 @@ If you think of a workspace as a Vim buffer, the keys are the ones your fingers 
   startup: the status bar shows a lasting error, and Vimma runs without workspaces (tabs open as
   in Firefox, without containers) until you set it back to `true` and restart. Vimma does not
   turn it back on for you.
+- **A workspace's container gone at startup** (deleted while Vimma was closed, or its id taken
+  by another container) is replaced by a new, empty one, and the status bar shows a lasting
+  error naming the workspace until the next start: its sites need a new sign-in.
+- **Pinned tabs:** Vimma has no key to pin a tab, and a pinned tab would show in every
+  workspace, so a tab pinned by an extension or an imported session is unpinned at once and
+  stays in its workspace; the status bar says `unpinned "<title>"`.
 
 ### Workspace picker
 

@@ -9,7 +9,9 @@ import {
   canWriteDefinitions,
   closeWorkspaceQuestion,
   emptyDefinitions,
+  lostContainersAlert,
   moveTabQuestion,
+  unpinnedNotice,
   newWorkspaceLooks,
   planContainers,
   readDefinitions,
@@ -435,6 +437,25 @@ describe("workspace lifecycle", () => {
       'Move this tab to "beta"? It is reopened there; its back/forward history and form data ' +
         "are lost. y/N",
     );
+  });
+
+  test("lost containers at startup are one persistent alert naming them (sub-spec 4a)", () => {
+    expect(lostContainersAlert([])).toBeNull();
+    expect(lostContainersAlert(["work"])).toBe(
+      '"work" lost its container since the last run; it has a new, empty one, so its sites need ' +
+        "a new sign-in",
+    );
+    expect(lostContainersAlert(["work", "shop"])).toBe(
+      '"work", "shop" lost their containers since the last run; they have new, empty ones, so ' +
+        "their sites need a new sign-in",
+    );
+  });
+
+  test("a pinned tab is unpinned with a notice naming it (decision 11)", () => {
+    expect(unpinnedNotice("Inbox")).toBe(
+      'unpinned "Inbox": a pinned tab would show in every workspace',
+    );
+    expect(unpinnedNotice("")).toBe("unpinned a tab: a pinned tab would show in every workspace");
   });
 
   test("a new workspace takes the first colour no workspace uses, and a circle", () => {

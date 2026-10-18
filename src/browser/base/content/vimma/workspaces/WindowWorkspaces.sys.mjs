@@ -39,6 +39,7 @@ import {
 } from "../core/workspaces.mjs";
 import { getTabLabel, LABEL_EVENT, setTabLabel, TAB_LABEL_KEY } from "../host/tab-labels.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
+import { unpinnedNotice } from "../core/workspacedefs.mjs";
 import { CHANGED_TOPIC, WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 
 /** @import { Workspaces, WorkspaceRef, WorkspaceState } from "../core/workspaces.mjs" */
@@ -151,6 +152,12 @@ export class WindowWorkspacesImpl {
   #written = "";
   #onChange;
   #notify;
+  /**
+   * Whether a pinned tab is unpinned (decision 11). The guards for pinned tabs in the tab keys,
+   * the side panel and the agent's tab list stay, since windows without workspaces (private
+   * windows, popups, containers off) keep them; their tests turn this off to reach them here.
+   */
+  unpinsPinnedTabs = true;
   /** Resolves once the model is built (or the window has none). */
   ready;
 
@@ -450,8 +457,11 @@ export class WindowWorkspacesImpl {
         this.#onOpen(tab);
         break;
       case "TabClose":
+        this.#onClose(tab);
+        break;
       case "TabPinned":
         this.#onClose(tab);
+        this.#unpin(tab);
         break;
       case "TabSelect":
         this.#onSelect(tab);
@@ -785,6 +795,22 @@ export class WindowWorkspacesImpl {
       });
     }
     this.#changed();
+  }
+
+  /**
+   * Decision 11: `hideTab` refuses pinned tabs, so a tab pinned outside Vimma (an extension, an
+   * imported session) would show in every workspace. It is unpinned after the event, since
+   * tabbrowser is still inside `pinTab` while `TabPinned` is dispatched; its `TabUnpinned` puts
+   * it back in the workspace of its container.
+   * @param {Tab} tab
+   */
+  #unpin(tab) {
+    this.#win.queueMicrotask(() => {
+      if (!this.unpinsPinnedTabs || !tab.pinned || tab.closing || !tab.isConnected || !this.#model)
+        return;
+      /** @type {any} */ (this.#gBrowser).unpinTab(tab);
+      this.#notify(unpinnedNotice(getTabLabel(tab) || /** @type {any} */ (tab).label || ""));
+    });
   }
 
   /** @param {Tab} tab */

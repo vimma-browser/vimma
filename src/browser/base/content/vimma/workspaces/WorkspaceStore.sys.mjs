@@ -14,6 +14,7 @@ import {
   addRuntimeWorkspace,
   canWriteDefinitions,
   emptyDefinitions,
+  lostContainersAlert,
   newWorkspaceLooks,
   planContainers,
   readDefinitions,
@@ -82,6 +83,12 @@ export class WorkspaceStoreImpl {
   /** The status bar's persistent error, or null: containers off at startup. */
   get alert() {
     return this.disabled ? CONTAINERS_OFF_ALERT : null;
+  }
+
+  /** Every persistent status-bar error: containers off, then containers lost at startup. */
+  get alerts() {
+    const lost = lostContainersAlert(this.lostContainers);
+    return [this.alert, lost].filter((a) => a !== null);
   }
 
   #path;

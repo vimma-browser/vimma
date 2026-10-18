@@ -7,6 +7,10 @@
 
 "use strict";
 
+const { WindowWorkspaces } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
+);
+
 /* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
 
 const { PaneViews } = ChromeUtils.importESModule(
@@ -232,6 +236,8 @@ add_task(async function x_closes_the_pane_then_the_last_pane_closes_the_tab() {
 add_task(async function x_on_the_last_pane_of_a_pinned_tab_follows_tab_close() {
   const a = await openPage("a");
   const pinned = await openPage("pinned");
+  // Decision 11 unpins it in a window with workspaces; this checks the guard other windows keep.
+  WindowWorkspaces.get(window).unpinsPinnedTabs = false;
   gBrowser.pinTab(pinned);
   Assert.equal(gBrowser.selectedTab, pinned, "sanity: the pinned tab is selected");
   await focusContent(pinned.linkedBrowser);
@@ -244,6 +250,7 @@ add_task(async function x_on_the_last_pane_of_a_pinned_tab_follows_tab_close() {
     "and selects the first unpinned tab, as tab.close does",
   );
   gBrowser.unpinTab(pinned);
+  WindowWorkspaces.get(window).unpinsPinnedTabs = true;
   Assert.ok(a.isConnected, "sanity");
   await reset();
 });
