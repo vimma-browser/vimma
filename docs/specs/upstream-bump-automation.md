@@ -1,6 +1,6 @@
 # Spec: upstream-bump-automation
 
-Status: accepted (sub-PRs 1-3 implemented; sub-PR 4: #259) · Area: `.github/workflows/upstream.yml`, `.github/workflows/e2e.yml`,
+Status: implemented · Area: `.github/workflows/upstream.yml`, `.github/workflows/e2e.yml`,
 `tools/upstream/source-check.sh`,
 `tools/upstream/patch-check.py`, `tools/upstream/upstream-prefs.mjs`,
 `tools/upstream/autopilot-body.mjs`, `tools/upstream/bump-diff.mjs` (new),
@@ -236,8 +236,8 @@ artifact (the same conflicts list the PR body carries), finds an open issue with
     added to the repository. Rejected: running Claude in a workflow on the failing patches,
     because it adds a secret, sends source to a third-party API from CI, and needs a second job
     to validate and push what the model wrote.
-17. **`GITHUB_TOKEN` with `issues: write` only, on that job alone**, because opening or editing
-    an issue is all it does; `UPSTREAM_PR_TOKEN` and every other secret stay out of it.
+17. **`GITHUB_TOKEN` with `issues: write` (and `contents: read` for a credential-free checkout
+    of `tools/upstream`), on that job alone**, because opening or editing an issue is all it does; `UPSTREAM_PR_TOKEN` and every other secret stay out of it.
 18. **One issue per Firefox version, found by its exact title**, so that a rebuild or a later
     run updates the list instead of adding a duplicate.
 19. **Hunks come only from the verified tarball's patch check**, rendered by the code that

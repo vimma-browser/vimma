@@ -1073,6 +1073,12 @@ AUTO_MERGE_UPSTREAM -b all -R vimma-browser/vimma` lets GitHub merge a bump whos
    `gh pr merge <N> --disable-auto` on a PR already set. Repository auto-merge must stay allowed
    (Settings → General → Allow auto-merge).
 
+When patches do not apply, the `patch-issue` job opens (or, on a rerun, updates) one issue per
+Firefox version titled `Firefox X.Y.Z: patches do not apply`, labelled `upstream` and `triage`,
+with the failing patches and hunks and links to the bump PR and the run. Assign it to a person
+or to GitHub Copilot coding agent; rebase the patches on the bump branch (docs/rebase.md, step
+3). Such a bump stays a draft and never merges itself. Close the issue when the bump merges.
+
 Every bump: the copies of `browser.newtabpage.activity-stream.asrouter.providers.cfr` and
 `browser.safebrowsing.provider.google{4,5}.lists` in
 `src/browser/branding/vimma/pref/firefox-branding.js` must match the new engine's (specs
