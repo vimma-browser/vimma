@@ -340,11 +340,14 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     lists macOS manifests as out of scope and decides the rest.
 17. **Branding.** `configs/branding/vimma/firefox.icns`, generated from `logo-mac.png`, and a Vimma
     DMG background are committed, replacing the `unofficial` copies, because Surfer generates the
-    `.icns` only on a Mac host.
+    `.icns` only on a Mac host. [macos-homebrew](macos-homebrew.md) decisions 12-14 extend this: macOS
+    takes the app icon from `Assets.car`, which is also the `unofficial` copy, so a Vimma
+    `Assets.car` and document and volume icons are committed too.
 
 ### Not in this spec
 
-A public macOS release, a Homebrew cask or tap, a vimma.dev download (decision 12); x86_64 and
+A public macOS release, a vimma.dev download (decision 12); the Homebrew cask and tap
+([macos-homebrew](macos-homebrew.md)); x86_64 and
 universal builds (decision 3); PGO and LTO tuning; the macOS updater beyond decision 16; Mac App
 Store distribution; the Firefox Beta canary on macOS (upstream-beta-canary tests Linux only);
 Mac-native integrations such as Handoff, the Services menu or a global hotkey.
