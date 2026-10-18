@@ -454,7 +454,9 @@ describe("pref refresh in the upstream autopilot", () => {
   it("the patch-check artifact carries the refresh and the job exports its state", () => {
     const block = job(upstream, "patch-check");
     expect(block).toContain("prefs: ${{ steps.check.outputs.prefs }}");
-    expect(block).toMatch(/path: \|\n(?:\s+.*\n)*?\s+prefs-refresh\.\*/);
+    // A path line of the upload step's `path: |` list (12 spaces), not a regex over the block.
+    const upload = block.slice(block.indexOf("name: patch-check"));
+    expect(upload.split("\n")).toContain("            prefs-refresh.*");
   });
 
   it("the e2e call passes the prefs patch and no secret", () => {
