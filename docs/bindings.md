@@ -123,31 +123,41 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Browser
 
-| Action                         | Config name          | Bindings                  |
-| ------------------------------ | -------------------- | ------------------------- |
-| New window                     | `new_window`         | `ctrl+n`                  |
-| Close the window               | `close_window`       | `ctrl+shift+w`            |
-| Reopen the last closed window  | `restore_window`     | `ctrl+shift+n`            |
-| Quit (asks first)              | `quit`               | `ctrl+q`                  |
-| Check for a newer Vimma        | `check_updates`      | —                         |
-| Reload, bypassing the cache    | `reload_hard`        | `ctrl+f5`, `ctrl+shift+r` |
-| Stop loading the page          | `stop_loading`       | `esc`                     |
-| Go to the home page            | `go_home`            | `alt+home`                |
-| Zoom the page in               | `page_zoom_in`       | `ctrl+plus`, `ctrl+=`     |
-| Zoom the page out              | `page_zoom_out`      | `ctrl+minus`, `ctrl+_`    |
-| Reset the page's zoom          | `page_zoom_reset`    | `ctrl+0`                  |
-| Full screen, or leave it       | `toggle_fullscreen`  | `f11`                     |
-| Save the page                  | `save_page`          | `ctrl+s`                  |
-| Print the page                 | `print_page`         | `ctrl+p`                  |
-| Downloads (the Library)        | `downloads`          | `ctrl+shift+y`            |
-| Add-ons manager (about:addons) | `addons_manager`     | `ctrl+shift+a`            |
-| History (the Library)          | `history_library`    | `ctrl+shift+h`            |
-| Bookmarks (the Library)        | `bookmarks_library`  | `ctrl+shift+o`            |
-| Mute or unmute the tab         | `mute_tab`           | `ctrl+m`                  |
-| Picture-in-Picture             | `picture_in_picture` | `ctrl+}`                  |
-| Reader View                    | `reader_view`        | `ctrl+alt+r`              |
-| Take a screenshot              | `screenshot`         | `ctrl+shift+s`            |
-| Clear recent history           | `clear_history`      | `ctrl+shift+delete`       |
+| Action                                            | Config name                | Bindings                  |
+| ------------------------------------------------- | -------------------------- | ------------------------- |
+| New window                                        | `new_window`               | `ctrl+n`                  |
+| Close the window                                  | `close_window`             | `ctrl+shift+w`            |
+| Reopen the last closed window                     | `restore_window`           | `ctrl+shift+n`            |
+| Quit (asks first)                                 | `quit`                     | `ctrl+q`                  |
+| Check for a newer Vimma                           | `check_updates`            | —                         |
+| Reload, bypassing the cache                       | `reload_hard`              | `ctrl+f5`, `ctrl+shift+r` |
+| Stop loading the page                             | `stop_loading`             | `esc`                     |
+| Run a Firefox command or key by its id (:firefox) | `firefox_command`          | —                         |
+| Go to the home page                               | `go_home`                  | `alt+home`                |
+| Zoom the page in                                  | `page_zoom_in`             | `ctrl+plus`, `ctrl+=`     |
+| Zoom the page out                                 | `page_zoom_out`            | `ctrl+minus`, `ctrl+_`    |
+| Reset the page's zoom                             | `page_zoom_reset`          | `ctrl+0`                  |
+| Full screen, or leave it                          | `toggle_fullscreen`        | `f11`                     |
+| Save the page                                     | `save_page`                | `ctrl+s`                  |
+| Print the page                                    | `print_page`               | `ctrl+p`                  |
+| Downloads (the Library)                           | `downloads`                | `ctrl+shift+y`            |
+| Add-ons manager (about:addons)                    | `addons_manager`           | `ctrl+shift+a`            |
+| History (the Library)                             | `history_library`          | `ctrl+shift+h`            |
+| Bookmarks (the Library)                           | `bookmarks_library`        | `ctrl+shift+o`            |
+| Mute or unmute the tab                            | `mute_tab`                 | `ctrl+m`                  |
+| Picture-in-Picture                                | `picture_in_picture`       | `ctrl+}`                  |
+| Reader View                                       | `reader_view`              | `ctrl+alt+r`              |
+| Take a screenshot                                 | `screenshot`               | `ctrl+shift+s`            |
+| Clear recent history                              | `clear_history`            | `ctrl+shift+delete`       |
+| Web search (the address bar's search)             | `web_search`               | `ctrl+j`                  |
+| Process manager (about:processes)                 | `about_processes`          | `shift+esc`               |
+| Bookmark all tabs                                 | `bookmark_all_tabs`        | `ctrl+shift+d`            |
+| Show / hide the bookmarks toolbar                 | `toggle_bookmarks_toolbar` | `ctrl+shift+b`            |
+| Firefox sidebar: AI chatbot                       | `ai_chatbot_sidebar`       | `ctrl+alt+x`              |
+| Firefox sidebar: tabs from other devices          | `open_tabs_sidebar`        | `ctrl+alt+u`              |
+| Show / hide Firefox's sidebar                     | `toggle_firefox_sidebar`   | `ctrl+alt+z`              |
+| Switch a text field's direction                   | `switch_text_direction`    | `ctrl+shift+x`            |
+| Caret browsing (asks first)                       | `caret_browsing`           | `f7`                      |
 
 ## Developer tools
 
@@ -165,6 +175,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Developer tools: Performance     | `devtools_performance`   | `shift+f5`            |
 | Developer tools: Storage         | `devtools_storage`       | `shift+f9`            |
 | Developer tools: Accessibility   | `devtools_accessibility` | `shift+f12`           |
+| Developer tools: DOM             | `devtools_dom`           | —                     |
 
 ## Hints
 
@@ -178,7 +189,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 | Action                                             | Config name     | Bindings                        |
 | -------------------------------------------------- | --------------- | ------------------------------- |
-| Search in page                                     | `find_forward`  | `/`                             |
+| Search in page                                     | `find_forward`  | `ctrl+f`, `/`                   |
 | Search backwards in page                           | `find_backward` | `?`                             |
 | Next match                                         | `find_next`     | `ctrl+g`, `f3`, `n`             |
 | Previous match                                     | `find_previous` | `ctrl+shift+g`, `shift+f3`, `N` |
@@ -312,7 +323,7 @@ unchanged.
 | `ctrl+l`              | focus the address bar                       | `focus_urlbar`, page first                  |
 | `alt+d`               | focus the address bar                       | `focus_urlbar`, page first                  |
 | `ctrl+k`              | web search                                  | Vimma's own key                             |
-| `ctrl+j`              | web search                                  | unbound                                     |
+| `ctrl+j`              | web search                                  | `web_search`, page first                    |
 | `ctrl+shift+y`        | Library: downloads                          | `downloads`, page first                     |
 | `ctrl+shift+a`        | add-ons manager                             | `addons_manager`, page first                |
 | `ctrl+o`              | open a file                                 | `history_back` (normal mode)                |
@@ -345,23 +356,23 @@ unchanged.
 | `ctrl+}`              | Picture-in-Picture (where } is another key) | `picture_in_picture`, page first            |
 | `ctrl+r`              | reload                                      | `reload`, page first                        |
 | `ctrl+shift+r`        | reload, bypassing the cache                 | `reload_hard`, page first                   |
-| `shift+esc`           | about:processes                             | unbound                                     |
+| `shift+esc`           | about:processes                             | `about_processes` (normal mode), page first |
 | `ctrl+u`              | view source                                 | `scroll_half_up` (normal mode)              |
 | `ctrl+i`              | Page Info                                   | `history_forward` (normal mode)             |
-| `ctrl+f`              | find in page                                | unbound                                     |
+| `ctrl+f`              | find in page                                | `find_forward`, page first                  |
 | `ctrl+g`              | next match                                  | `find_next`, page first                     |
 | `ctrl+shift+g`        | previous match                              | `find_previous`, page first                 |
 | `f3`                  | next match                                  | `find_next`, page first                     |
 | `shift+f3`            | previous match                              | `find_previous`, page first                 |
 | `ctrl+d`              | bookmark the page                           | `scroll_half_down` (normal mode)            |
-| `ctrl+shift+d`        | bookmark all tabs                           | unbound                                     |
+| `ctrl+shift+d`        | bookmark all tabs                           | `bookmark_all_tabs`, page first             |
 | `ctrl+shift+o`        | Library: bookmarks                          | `bookmarks_library`, page first             |
 | `ctrl+b`              | bookmarks sidebar                           | Vimma's own key                             |
-| `ctrl+shift+b`        | show or hide the bookmarks toolbar          | unbound                                     |
+| `ctrl+shift+b`        | show or hide the bookmarks toolbar          | `toggle_bookmarks_toolbar`, page first      |
 | `esc`                 | stop loading                                | `stop_loading` (normal mode), page first    |
-| `ctrl+alt+x`          | AI chatbot sidebar                          | unbound                                     |
-| `ctrl+alt+u`          | open-tabs sidebar                           | unbound                                     |
-| `ctrl+alt+z`          | toggle the sidebar                          | unbound                                     |
+| `ctrl+alt+x`          | AI chatbot sidebar                          | `ai_chatbot_sidebar`, page first            |
+| `ctrl+alt+u`          | open-tabs sidebar                           | `open_tabs_sidebar`, page first             |
+| `ctrl+alt+z`          | toggle the sidebar                          | `toggle_firefox_sidebar`, page first        |
 | `ctrl+h`              | history sidebar                             | Vimma's own key                             |
 | `ctrl+minus`          | zoom out                                    | `page_zoom_out`, page first                 |
 | `ctrl+_`              | zoom out                                    | `page_zoom_out`, page first                 |
@@ -369,7 +380,7 @@ unchanged.
 | `ctrl+=`              | zoom in                                     | `page_zoom_in`, page first                  |
 | `ctrl+0`              | reset zoom                                  | `page_zoom_reset`, page first               |
 | `ctrl+shift+tab`      | previous tab                                | `previous_tab`                              |
-| `ctrl+shift+x`        | flip a field's text direction               | unbound                                     |
+| `ctrl+shift+x`        | flip a field's text direction               | `switch_text_direction`, page first         |
 | `ctrl+shift+p`        | new private window                          | `private_workspace`                         |
 | `ctrl+shift+s`        | screenshot                                  | `screenshot`, page first                    |
 | `ctrl+shift+delete`   | clear recent history                        | `clear_history`, page first                 |
@@ -401,7 +412,7 @@ unchanged.
 | `shift+f7`            | Style Editor                                | `devtools_style_editor`, page first         |
 | `shift+f5`            | Performance                                 | `devtools_performance`, page first          |
 | `shift+f9`            | Storage                                     | `devtools_storage`, page first              |
-| `ctrl+shift+w`        | DOM panel (close window wins)               | unbound                                     |
+| `ctrl+shift+w`        | DOM panel (close window wins)               | `devtools_dom`, page first                  |
 | `shift+f12`           | Accessibility panel                         | `devtools_accessibility`, page first        |
 | `ctrl+!`              | start or stop the profiler                  | unbound (only in some builds)               |
 | `ctrl+@`              | capture a profile                           | unbound (only in some builds)               |
@@ -414,14 +425,14 @@ unchanged.
 | `ctrl+shift+pagedown` | move the tab right                          | `move_tab_right`                            |
 | `ctrl+shift+pageup`   | move the tab left                           | `move_tab_left`                             |
 | `ctrl+f4`             | close the tab                               | `close_tab`                                 |
-| `f7`                  | caret browsing (asks first)                 | unbound                                     |
-| `alt+f`               | open a menu                                 | unbound                                     |
-| `alt+e`               | open a menu                                 | unbound                                     |
-| `alt+v`               | open a menu                                 | unbound                                     |
-| `alt+s`               | open a menu                                 | unbound                                     |
-| `alt+b`               | open a menu                                 | unbound                                     |
-| `alt+t`               | open a menu                                 | unbound                                     |
-| `alt+h`               | open a menu                                 | unbound                                     |
+| `f7`                  | caret browsing (asks first)                 | `caret_browsing`, page first                |
+| `alt+f`               | open a menu                                 | unchanged                                   |
+| `alt+e`               | open a menu                                 | unchanged                                   |
+| `alt+v`               | open a menu                                 | unchanged                                   |
+| `alt+s`               | open a menu                                 | unchanged                                   |
+| `alt+b`               | open a menu                                 | unchanged                                   |
+| `alt+t`               | open a menu                                 | unchanged                                   |
+| `alt+h`               | open a menu                                 | unchanged                                   |
 | `'`                   | quick find, links only                      | unbound                                     |
 | `/`                   | quick find                                  | `find_forward` (normal mode)                |
 | `f10`                 | the menu bar                                | unchanged                                   |

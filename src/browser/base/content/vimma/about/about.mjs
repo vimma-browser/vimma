@@ -374,7 +374,8 @@ function render(d) {
   const fk = d.firefoxKeys;
   fill(
     "firefox-keys",
-    fk.off.length
+    // docs/specs/firefox-keys.md decision 9: with `disable = "all"` the short list is the keys on.
+    fk.on.length
       ? el(
           "table",
           {},
@@ -386,30 +387,24 @@ function render(d) {
               {},
               el("th", {}, "Keys"),
               el("th", {}, "Firefox's key"),
-              el("th", {}, "Command"),
+              el("th", {}, "What it does"),
             ),
           ),
           el(
             "tbody",
             {},
-            ...fk.off.map((k) =>
-              el(
-                "tr",
-                {},
-                el("td", {}, k.chord),
-                el("td", {}, k.id || "-"),
-                el("td", {}, k.command),
-              ),
+            ...fk.on.map((k) =>
+              el("tr", {}, el("td", {}, k.chord), el("td", {}, k.id), el("td", {}, k.label)),
             ),
           ),
         )
-      : el("p", { class: "muted" }, "None: every Firefox shortcut is on."),
+      : el("p", { class: "muted" }, `None: ${fk.off.length} Firefox shortcuts are off.`),
     el(
       "p",
       { class: "muted", id: "firefox-keys-unmatched" },
       fk.unmatched.length
         ? `No Firefox shortcut on: ${fk.unmatched.join(", ")}.`
-        : "[firefox] in config.toml says which are off.",
+        : "[firefox] enable in config.toml gives one back.",
     ),
   );
 

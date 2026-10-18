@@ -1163,6 +1163,11 @@
           ]
         },
         {
+          "name": "firefox_command",
+          "description": "Run a Firefox command or key by its id (:firefox)",
+          "keys": []
+        },
+        {
           "name": "go_home",
           "description": "Go to the home page",
           "keys": [
@@ -1329,6 +1334,96 @@
               "chords": ["ctrl+shift+delete"]
             }
           ]
+        },
+        {
+          "name": "web_search",
+          "description": "Web search (the address bar's search)",
+          "keys": [
+            {
+              "keys": "ctrl+j",
+              "chords": ["ctrl+j"]
+            }
+          ]
+        },
+        {
+          "name": "about_processes",
+          "description": "Process manager (about:processes)",
+          "keys": [
+            {
+              "keys": "shift+esc",
+              "chords": ["shift+esc"]
+            }
+          ]
+        },
+        {
+          "name": "bookmark_all_tabs",
+          "description": "Bookmark all tabs",
+          "keys": [
+            {
+              "keys": "ctrl+shift+d",
+              "chords": ["ctrl+shift+d"]
+            }
+          ]
+        },
+        {
+          "name": "toggle_bookmarks_toolbar",
+          "description": "Show / hide the bookmarks toolbar",
+          "keys": [
+            {
+              "keys": "ctrl+shift+b",
+              "chords": ["ctrl+shift+b"]
+            }
+          ]
+        },
+        {
+          "name": "ai_chatbot_sidebar",
+          "description": "Firefox sidebar: AI chatbot",
+          "keys": [
+            {
+              "keys": "ctrl+alt+x",
+              "chords": ["ctrl+alt+x"]
+            }
+          ]
+        },
+        {
+          "name": "open_tabs_sidebar",
+          "description": "Firefox sidebar: tabs from other devices",
+          "keys": [
+            {
+              "keys": "ctrl+alt+u",
+              "chords": ["ctrl+alt+u"]
+            }
+          ]
+        },
+        {
+          "name": "toggle_firefox_sidebar",
+          "description": "Show / hide Firefox's sidebar",
+          "keys": [
+            {
+              "keys": "ctrl+alt+z",
+              "chords": ["ctrl+alt+z"]
+            }
+          ]
+        },
+        {
+          "name": "switch_text_direction",
+          "description": "Switch a text field's direction",
+          "keys": [
+            {
+              "keys": "ctrl+shift+x",
+              "chords": ["ctrl+shift+x"]
+            }
+          ]
+        },
+        {
+          "name": "caret_browsing",
+          "description": "Caret browsing (asks first)",
+          "keys": [
+            {
+              "keys": "f7",
+              "chords": ["f7"]
+            }
+          ]
         }
       ]
     },
@@ -1458,6 +1553,11 @@
               "chords": ["shift+f12"]
             }
           ]
+        },
+        {
+          "name": "devtools_dom",
+          "description": "Developer tools: DOM",
+          "keys": []
         }
       ]
     },
@@ -1504,6 +1604,10 @@
           "name": "find_forward",
           "description": "Search in page",
           "keys": [
+            {
+              "keys": "ctrl+f",
+              "chords": ["ctrl+f"]
+            },
             {
               "keys": "/",
               "chords": ["/"]

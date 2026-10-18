@@ -1,6 +1,6 @@
 # Spec: firefox-keys
 
-Status: accepted (sub-PR 1 implemented; sub-PRs 2 and 3: [#234](https://github.com/vimma-browser/vimma/issues/234), [#235](https://github.com/vimma-browser/vimma/issues/235)) · Milestone: after M5 (builds on
+Status: accepted (sub-PRs 1-2 implemented; sub-PR 3: [#235](https://github.com/vimma-browser/vimma/issues/235)) · Milestone: after M5 (builds on
 [key-handling-batch](key-handling-batch.md) § 1, [m0-help-overlay](m0-help-overlay.md),
 [m5-config-load](m5-config-load.md) and [m1-cmdline](m1-cmdline.md)) · Area:
 `packages/vimma-core/src/firefox-keys.mjs`, `actions.mjs`, `defaults.mjs`, `keymap.mjs`,
@@ -217,7 +217,7 @@ Chords are written as Vimma canonicalises them: `shift` folds into the character
 | `ctrl+}` (alt letter)      | unnamed → `View:PictureInPicture`                      | the same on layouts where `}` differs    | b    | `picture_in_picture` (all)                                                | P     |
 | `ctrl+r`                   | `key_reload` → `Browser:Reload`                        | reload                                   | a    | `reload` (all)                                                            | P     |
 | `ctrl+shift+r`             | `key_reload_skip_cache` → `Browser:ReloadSkipCache`    | reload, bypass cache                     | b    | `reload_hard` (all)                                                       | P     |
-| `shift+esc`                | `key_aboutProcesses` → `View:AboutProcesses`           | about:processes                          | b    | `about_processes` (all)                                                   | P     |
+| `shift+esc`                | `key_aboutProcesses` → `View:AboutProcesses`           | about:processes                          | b    | `about_processes` (normal)                                                | P     |
 | `ctrl+u`                   | `key_viewSource` → `View:PageSource`                   | view source                              | a    | half page up (n) / delete to line start (i); source is `gf`               | V     |
 | `ctrl+i`                   | `key_viewInfo` → `View:PageInfo`                       | Page Info                                | a    | `history_forward` (n)                                                     | V     |
 | `ctrl+f`                   | `key_find` → `cmd_find`                                | find in page                             | a    | `find_forward` (all)                                                      | P     |
@@ -537,6 +537,12 @@ keys (ctrl+b ? lists them). enable = ["ctrl+j"] gives one back exactly as Firefo
     settings Vimma does not change, and two of their chords (`ctrl+alt+r`, `ctrl+^`) are already
     Vimma's. Fate d is unchanged apart from the menu access keys. Sub-PR 1 left these keys
     unbound; sub-PR 2 binds them.
+
+17. **`shift+esc` is a normal-mode key.** `about_processes` keeps Firefox's `shift+esc`, but only
+    in normal mode, because the chord has no `ctrl`, `alt` or `meta` and Vimma's keymap makes
+    only such chords and the F-keys global (`keymap.mjs`). In a text field `shift+esc` stays with
+    the field, as every other unmodified key there does, and leaving the field with `esc` first
+    still gives the process manager.
 
 ## Sub-PRs
 

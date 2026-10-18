@@ -2,7 +2,6 @@
 // #mainKeyset Vimma turns off.
 import { describe, test, expect } from "vitest";
 import {
-  ALL_KEEP,
   FIREFOX_SHORTCUTS,
   OVERLAP_CHORDS,
   boundChords,
@@ -112,24 +111,24 @@ describe("planFirefoxKeys", () => {
     expect(ids(plan)).toContain("key_viewSource");
   });
 
-  test('"all" turns off every chord with ctrl, alt or meta but ctrl+q and the text keys', () => {
+  // Decision 9: "all" is the whole inventory but fate d, plain and function keys included, and
+  // ctrl+q is no longer kept (it is Vimma's quit, which asks as Firefox did).
+  test('"all" turns off every inventory key and every chord with ctrl, alt or meta', () => {
     const plan = planFirefoxKeys(KEYS, { disable: "all", enable: [] });
-    expect(ids(plan)).toEqual(
-      KEYS.filter((k) => !["ctrl+q", "ctrl+c", "f5", "esc"].includes(k.chord) && !k.internal).map(
-        (k) => k.id,
-      ),
-    );
+    expect(ids(plan)).toEqual(KEYS.filter((k) => !k.internal).map((k) => k.id));
     expect(plan.unmatched).toEqual([]);
-    expect(ALL_KEEP).toEqual(["ctrl+q"]);
   });
 
-  test('"all" keeps cmd+q on macOS', () => {
+  test('"all" leaves fate d keys and unlisted plain keys alone', () => {
     const keys = [
+      { id: "key_fullScreen", chord: "f6" },
+      { id: "plain", chord: "x" },
+      { id: "key_aboutProcesses", chord: "shift+esc" },
       { id: "key_quitApplication", chord: "meta+q" },
-      { id: "key_close", chord: "meta+w" },
     ];
     expect(ids(planFirefoxKeys(keys, { disable: "all", enable: [] }, { mac: true }))).toEqual([
-      "key_close",
+      "key_aboutProcesses",
+      "key_quitApplication",
     ]);
   });
 
@@ -182,7 +181,7 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     /** @type {Map<string, string>} */
     const seen = new Map();
     for (const r of rows) {
-      if (!r.action) continue;
+      if (!r.action || r.unbound) continue;
       const prev = seen.get(r.chord);
       if (prev) expect(r.action, r.chord).toBe(prev);
       seen.set(r.chord, r.action);
@@ -199,16 +198,57 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
       first: "V",
     });
     expect(byId.get("key_toggleToolboxF12")).toMatchObject({ chord: "f12", action: "devtools" });
-    expect(byId.get("key_dom")).toMatchObject({ chord: "ctrl+shift+w", fate: "c" });
-    expect(byId.get("key_find")).toMatchObject({ chord: "ctrl+f", fate: "c" });
+    expect(byId.get("key_dom")).toMatchObject({
+      chord: "ctrl+shift+w",
+      fate: "b",
+      action: "devtools_dom",
+    });
+    expect(byId.get("key_find")).toMatchObject({
+      chord: "ctrl+f",
+      fate: "a",
+      action: "find_forward",
+      first: "P",
+    });
     expect(rows.filter((r) => r.source === "devtools" && !r.conditional)).toHaveLength(14);
     expect(rows.filter((r) => /^alt\+[1-9]$/.test(r.chord))).toHaveLength(9);
     expect(rows.filter((r) => r.source === "menubar")).toHaveLength(7);
+    for (const r of rows.filter((r) => r.source === "menubar")) expect(r.fate, r.chord).toBe("d");
+  });
+
+  // Decision 16: every Firefox key is a Vimma binding on Firefox's own chord.
+  test.each([
+    ["ctrl+j", "web_search"],
+    ["ctrl+f", "find_forward"],
+    ["ctrl+shift+d", "bookmark_all_tabs"],
+    ["ctrl+shift+b", "toggle_bookmarks_toolbar"],
+    ["ctrl+alt+x", "ai_chatbot_sidebar"],
+    ["ctrl+alt+u", "open_tabs_sidebar"],
+    ["ctrl+alt+z", "toggle_firefox_sidebar"],
+    ["ctrl+shift+x", "switch_text_direction"],
+    ["f7", "caret_browsing"],
+  ])("%s runs %s by default, after the page", (chord, action) => {
+    expect(keymap.trie("normal").children.get(chord)?.action?.name).toBe(action);
+    expect(keymap.trie("insert").children.get(chord)?.action?.name).toBe(action);
+    expect(pageFirst(chord)).toBe(true);
+  });
+
+  // Decision 17: shift+esc has no modifier that makes a chord global, so a text field keeps it.
+  test("shift+esc runs about_processes in normal mode only, after the page", () => {
+    expect(keymap.trie("normal").children.get("shift+esc")?.action?.name).toBe("about_processes");
+    expect(keymap.trie("insert").children.get("shift+esc")).toBeUndefined();
+    expect(pageFirst("shift+esc")).toBe(true);
+  });
+
+  test("the only unbound c keys are the conditional ones, ' and the alt tap", () => {
+    const left = rows.filter((r) => r.fate === "c" && !r.conditional).map((r) => r.chord);
+    expect(left).toEqual(["'"]);
+    expect(getAction("devtools_dom")).toBeDefined();
+    expect(keymap.trie("normal").children.get("ctrl+shift+w")?.action?.name).toBe("close_window");
   });
 
   test("every a/b row with an action is bound to it by the default keymap, in its modes", () => {
     for (const r of rows) {
-      if (!r.action) continue;
+      if (!r.action || r.unbound) continue;
       const modes =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
@@ -237,10 +277,10 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     }
   });
 
-  test("the 37 new actions are bound, and firefox_command is not there yet", () => {
+  test("the 47 new actions are named, and firefox_command runs any other (sub-PR 2)", () => {
     const actions = new Set(rows.filter((r) => r.fate === "b").map((r) => r.action));
-    expect(actions.size).toBe(37);
-    expect(getAction("firefox_command")).toBeUndefined();
+    expect(actions.size).toBe(47);
+    expect(getAction("firefox_command")).toMatchObject({ id: "firefox.command", group: "Browser" });
     expect(getAction("new_private_window")).toBeUndefined();
   });
 });
@@ -261,7 +301,7 @@ describe("pageFirst (who goes first: decision 6)", () => {
     ["ctrl+w", false],
     ["ctrl+o", false],
     ["alt+j", false],
-    ["ctrl+f", false],
+    ["ctrl+f", true],
   ])("%s: page first %s", (chord, want) => {
     expect(pageFirst(chord)).toBe(want);
   });
@@ -296,6 +336,9 @@ describe("bound means off (decision 2)", () => {
       expect(bound.has(chord), chord).toBe(true);
     }
     for (const chord of ["ctrl+f", "ctrl+j", "f7", "ctrl+shift+b"]) {
+      expect(bound.has(chord), chord).toBe(true);
+    }
+    for (const chord of ["'", "alt+f", "alt+h"]) {
       expect(bound.has(chord), chord).toBe(false);
     }
   });

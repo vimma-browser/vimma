@@ -78,6 +78,16 @@ picture_in_picture = ["ctrl+}"]
 reader_view = ["ctrl+alt+r"]
 screenshot = ["ctrl+shift+s"]
 clear_history = ["ctrl+shift+delete"]
+web_search = ["ctrl+j"]
+about_processes = ["shift+esc"]
+bookmark_all_tabs = ["ctrl+shift+d"]
+toggle_bookmarks_toolbar = ["ctrl+shift+b"]
+ai_chatbot_sidebar = ["ctrl+alt+x"]
+open_tabs_sidebar = ["ctrl+alt+u"]
+toggle_firefox_sidebar = ["ctrl+alt+z"]
+switch_text_direction = ["ctrl+shift+x"]
+caret_browsing = ["f7"]
+find_forward = ["ctrl+f"]
 devtools = ["ctrl+shift+i", "f12"]
 browser_toolbox = ["ctrl+alt+shift+i"]
 browser_console = ["ctrl+shift+j"]
@@ -267,11 +277,10 @@ insert_editing = true
 [unbind]
 normal = []
 
-# Firefox's own shortcuts that are off. One on a key Vimma binds is always off (ctrl+b ? lists
-# them); disable = "all" turns off every other one with ctrl, alt or meta but ctrl+q, and
-# enable keeps chords on.
+# Firefox's own shortcuts are off; Vimma binds them on the same keys (ctrl+b ? lists them).
+# enable = ["ctrl+j"] gives one back exactly as Firefox runs it.
 [firefox]
-disable = ["ctrl+b", "ctrl+d", "ctrl+e", "ctrl+h", "ctrl+i", "ctrl+k", "ctrl+o", "ctrl+u", "ctrl+w", "ctrl+y"]
+disable = "all"
 enable = []
 
 # Order here is the order ctrl+b ) goes in; each workspace is a Firefox container. None by default.

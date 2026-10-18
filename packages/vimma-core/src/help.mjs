@@ -22,13 +22,48 @@ import { MODES, isMode } from "./modes.mjs";
  * @property {boolean} runnable     false greys the row out (see isRunnable)
  */
 
+/** The overlay group of the Firefox keys `[firefox] enable` keeps on. */
+export const FIREFOX_ON_GROUP = "Firefox (on in config.toml)";
+
 /**
  * @param {Keymap} keymap
- * @param {{ runnable?: ReadonlySet<string> }} [options] action ids the host implements;
- *   undefined marks every row runnable (isRunnable's default)
+ * @param {{ runnable?: ReadonlySet<string>,
+ *   firefox?: readonly { chord: string, id: string, label: string }[] }} [options]
+ *   runnable: action ids the host implements, undefined marks every row runnable (isRunnable's
+ *   default); firefox: the window's Firefox keys that are on, from the host, last
+ *   (docs/specs/firefox-keys.md decision 9)
  * @returns {BindingRow[]}
  */
-export function bindingTable(keymap, { runnable } = {}) {
+export function bindingTable(keymap, { runnable, firefox = [] } = {}) {
+  /** @type {BindingRow[]} */
+  const commands = keymap.commands().map((c) => ({
+    id: "cmdline.run",
+    name: c.name,
+    group: "Commands",
+    description: c.line,
+    bindings: c.bindings,
+    overridden: false,
+    runnable: isRunnable("cmdline.run", runnable),
+  }));
+  /** @type {BindingRow[]} */
+  const on = firefox.map((k) => ({
+    id: k.id,
+    name: k.id,
+    group: FIREFOX_ON_GROUP,
+    description: k.label,
+    bindings: [k.chord],
+    overridden: false,
+    runnable: true,
+  }));
+  return [...actionRows(keymap, runnable), ...commands, ...on];
+}
+
+/**
+ * @param {Keymap} keymap
+ * @param {ReadonlySet<string> | undefined} runnable
+ * @returns {BindingRow[]}
+ */
+function actionRows(keymap, runnable) {
   return ACTIONS.map((a) => ({
     id: a.id,
     name: a.name,

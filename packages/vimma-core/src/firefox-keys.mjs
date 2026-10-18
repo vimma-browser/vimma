@@ -49,6 +49,8 @@ export const OVERLAP_CHORDS = Object.freeze([
  * @property {"all" | "normal"} [modes]  where that binding works
  * @property {"P" | "V"} [first]  a and b: who has the key first, the page (P) or Vimma (V)
  * @property {boolean} [conditional]  only in some builds or settings
+ * @property {boolean} [unbound]  the action has no default key on this chord (another row's
+ *   action owns it)
  * @property {"fullscreen"} [when]  only then (Firefox's reserved F11 that leaves full screen)
  */
 
@@ -110,7 +112,7 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "P",
     ],
     ["ctrl+k", "key_search", "Tools:Search", "web search", "a", null, null, "V"],
-    ["ctrl+j", "key_search2", "Tools:Search", "web search", "c"],
+    ["ctrl+j", "key_search2", "Tools:Search", "web search", "b", "web_search", "all", "P"],
     [
       "ctrl+shift+y",
       "key_openDownloads",
@@ -249,7 +251,18 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "all",
       "P",
     ],
-    ["shift+esc", "key_aboutProcesses", "View:AboutProcesses", "about:processes", "c"],
+    [
+      "shift+esc",
+      "key_aboutProcesses",
+      "View:AboutProcesses",
+      "about:processes",
+      "b",
+      "about_processes",
+      // Bare shift+esc has no ctrl/alt/meta, so it is a normal-mode key: in a text field it stays
+      // with the field (docs/specs/firefox-keys.md decision 17).
+      "normal",
+      "P",
+    ],
     [
       "ctrl+u",
       "key_viewSource",
@@ -261,7 +274,7 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "V",
     ],
     ["ctrl+i", "key_viewInfo", "View:PageInfo", "Page Info", "a", "history_forward", "normal", "V"],
-    ["ctrl+f", "key_find", "cmd_find", "find in page", "c"],
+    ["ctrl+f", "key_find", "cmd_find", "find in page", "a", "find_forward", "all", "P"],
     ["ctrl+g", "key_findAgain", "cmd_findAgain", "next match", "a", "find_next", "all", "P"],
     [
       "ctrl+shift+g",
@@ -294,7 +307,16 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "normal",
       "V",
     ],
-    ["ctrl+shift+d", "bookmarkAllTabsKb", "", "bookmark all tabs", "c"],
+    [
+      "ctrl+shift+d",
+      "bookmarkAllTabsKb",
+      "",
+      "bookmark all tabs",
+      "b",
+      "bookmark_all_tabs",
+      "all",
+      "P",
+    ],
     [
       "ctrl+shift+o",
       "manBookmarkKb",
@@ -306,11 +328,47 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "P",
     ],
     ["ctrl+b", "viewBookmarksSidebarKb", "", "bookmarks sidebar", "a", null, null, "V"],
-    ["ctrl+shift+b", "viewBookmarksToolbarKb", "", "show or hide the bookmarks toolbar", "c"],
+    [
+      "ctrl+shift+b",
+      "viewBookmarksToolbarKb",
+      "",
+      "show or hide the bookmarks toolbar",
+      "b",
+      "toggle_bookmarks_toolbar",
+      "all",
+      "P",
+    ],
     ["esc", "key_stop", "Browser:Stop", "stop loading", "b", "stop_loading", "normal", "P"],
-    ["ctrl+alt+x", "viewGenaiChatSidebarKb", "", "AI chatbot sidebar", "c"],
-    ["ctrl+alt+u", "viewOpenTabsSidebarKb", "", "open-tabs sidebar", "c"],
-    ["ctrl+alt+z", "toggleSidebarKb", "", "toggle the sidebar", "c"],
+    [
+      "ctrl+alt+x",
+      "viewGenaiChatSidebarKb",
+      "",
+      "AI chatbot sidebar",
+      "b",
+      "ai_chatbot_sidebar",
+      "all",
+      "P",
+    ],
+    [
+      "ctrl+alt+u",
+      "viewOpenTabsSidebarKb",
+      "",
+      "open-tabs sidebar",
+      "b",
+      "open_tabs_sidebar",
+      "all",
+      "P",
+    ],
+    [
+      "ctrl+alt+z",
+      "toggleSidebarKb",
+      "",
+      "toggle the sidebar",
+      "b",
+      "toggle_firefox_sidebar",
+      "all",
+      "P",
+    ],
     ["ctrl+h", "key_gotoHistory", "", "history sidebar", "a", null, null, "V"],
     [
       "ctrl+minus",
@@ -350,7 +408,10 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "key_switchTextDirection",
       "cmd_switchTextDirection",
       "flip a field's text direction",
-      "c",
+      "b",
+      "switch_text_direction",
+      "all",
+      "P",
     ],
     [
       "ctrl+shift+p",
@@ -521,7 +582,18 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
     ["shift+f7", "key_styleeditor", "", "Style Editor", "b", "devtools_style_editor", "all", "P"],
     ["shift+f5", "key_performance", "", "Performance", "b", "devtools_performance", "all", "P"],
     ["shift+f9", "key_storage", "", "Storage", "b", "devtools_storage", "all", "P"],
-    ["ctrl+shift+w", "key_dom", "", "DOM panel (close window wins)", "c"],
+    // Firefox's reserved close-window key wins on this chord, so devtools_dom has no default key.
+    [
+      "ctrl+shift+w",
+      "key_dom",
+      "",
+      "DOM panel (close window wins)",
+      "b",
+      "devtools_dom",
+      "all",
+      "P",
+      { unbound: true },
+    ],
     [
       "shift+f12",
       "key_accessibility",
@@ -613,11 +685,11 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
     ],
     ["ctrl+shift+pageup", "Tabbrowser", "", "move the tab left", "b", "move_tab_left", "all", "V"],
     ["ctrl+f4", "Tabbrowser", "", "close the tab", "a", "close_tab", "all", "V"],
-    ["f7", "Tabbrowser", "", "caret browsing (asks first)", "c"],
+    ["f7", "Tabbrowser", "", "caret browsing (asks first)", "b", "caret_browsing", "all", "P"],
   ]),
   ...rowsOf(
     "menubar",
-    [..."fevsbth"].map((letter) => [`alt+${letter}`, "#main-menubar", "", "open a menu", "c"]),
+    [..."fevsbth"].map((letter) => [`alt+${letter}`, "#main-menubar", "", "open a menu", "d"]),
   ),
   ...rowsOf("page", [
     ["'", "FindBarChild", "", "quick find, links only", "c"],
@@ -689,9 +761,6 @@ export function boundChords(keymap) {
   return out;
 }
 
-/** What `disable = "all"` keeps, as written on Linux and Windows (accel+q: cmd+q on macOS). */
-export const ALL_KEEP = Object.freeze(["ctrl+q"]);
-
 /** XUL `keycode` names (nsIDOMKeyEvent DOM_VK_*) → our named keys. */
 /** @type {Record<string, string>} */
 const KEYCODES = {
@@ -737,6 +806,11 @@ export function xulKeyChord(el, { mac = false } = {}) {
   return makeChordText(key, mods);
 }
 
+/** Chords "all" turns off although they have no ctrl, alt or meta (`f5`, `esc`, `shift+esc`). */
+const INVENTORY_OFF = new Set(FIREFOX_SHORTCUTS.filter((r) => r.fate !== "d").map((r) => r.chord));
+/** Chords that stay Firefox's or the field's (fate d), whatever "all" says. */
+const FATE_D = new Set(FIREFOX_SHORTCUTS.filter((r) => r.fate === "d").map((r) => r.chord));
+
 /** @param {string} chord canonical */
 const isModified = (chord) => {
   const c = /** @type {Chord} */ (parseKey(chord));
@@ -767,7 +841,8 @@ export function canonicalChord(text) {
  */
 
 /**
- * Which keys to turn off. `disable = "all"`: every key with ctrl, alt or meta but accel+q;
+ * Which keys to turn off. `disable = "all"`: every inventory key but fate d, plain and function
+ * keys included, and any other key with ctrl, alt or meta (decision 9; ctrl+q is Vimma's `quit`);
  * a list: the keys with those chords. `enable` keeps its chords on either way. A key Firefox
  * runs elsewhere (`internal`: copy, paste, undo) or without a chord yet is never touched.
  * `unmatched`: chords of a `disable` list that no key has (ctrl+e on Linux), for about:vimma.
@@ -776,18 +851,18 @@ export function canonicalChord(text) {
  * @template {{ chord: string | null, internal?: boolean }} K
  * @param {readonly K[]} keys  in document order
  * @param {{ disable: "all" | readonly string[], enable: readonly string[] }} setting  canonical
- * @param {{ mac?: boolean, bound?: ReadonlySet<string> }} [options]
+ * @param {{ bound?: ReadonlySet<string> }} [options]
  * @returns {FirefoxKeyPlan<K>}
  */
-export function planFirefoxKeys(keys, setting, { mac = false, bound = new Set() } = {}) {
+export function planFirefoxKeys(keys, setting, { bound = new Set() } = {}) {
   const enable = new Set(setting.enable);
-  const keep = new Set(ALL_KEEP.map((c) => (mac ? c.replace(/^ctrl\+/, "meta+") : c)));
   const all = setting.disable === "all";
   const listed = new Set(all ? [] : setting.disable);
   const off = keys.filter((k) => {
     if (!k.chord || k.internal || enable.has(k.chord)) return false;
     if (bound.has(k.chord)) return true;
-    return all ? isModified(k.chord) && !keep.has(k.chord) : listed.has(k.chord);
+    if (!all) return listed.has(k.chord);
+    return !FATE_D.has(k.chord) && (isModified(k.chord) || INVENTORY_OFF.has(k.chord));
   });
   const matched = new Set(
     off

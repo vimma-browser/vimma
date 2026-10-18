@@ -24,9 +24,16 @@ export class HelpOverlay {
    * @param {ReadonlySet<string>} [runnable]  action ids the host runs (VimmaHost's RUNNABLE);
    *   the others are dimmed, under a legend (core's isRunnable).
    *   Without it every row counts as runnable and there is no legend.
+   * @param {() => readonly { chord: string, id: string, label: string }[]} [firefoxOn]  the
+   *   Firefox keys `[firefox] enable` keeps on, read at each open: Firefox adds keys late
+   *   (DevTools), so the list can change without a new keymap
    */
-  constructor(win, keymap, runnable) {
+  constructor(win, keymap, runnable, firefoxOn = () => []) {
     this.win = win;
+    this.keymap = keymap;
+    this.firefoxOn = firefoxOn;
+    /** @type {string} the Firefox rows the dialog was built with, to rebuild when they change */
+    this.firefoxBuilt = "";
     /** @type {BindingRow[]} */
     this.rows = bindingTable(keymap, { runnable });
     /** What prefix and leader stand for in the rows: `prefix = ctrl+b · leader = space`. */
@@ -47,6 +54,8 @@ export class HelpOverlay {
    */
   setKeymap(keymap) {
     this.destroy(); // the dialog is built from the rows once; the next open builds it anew
+    this.keymap = keymap;
+    this.firefoxBuilt = ""; // open() adds the Firefox rows again
     this.rows = bindingTable(keymap, { runnable: this.runnable });
     this.legend = keyLegend(keymap);
   }
@@ -67,6 +76,12 @@ export class HelpOverlay {
   open() {
     if (this.isOpen) return;
     this.opener = Services.focus.focusedElement;
+    const firefox = this.firefoxOn();
+    if (JSON.stringify(firefox) !== this.firefoxBuilt) {
+      this.destroy();
+      this.firefoxBuilt = JSON.stringify(firefox);
+      this.rows = bindingTable(this.keymap, { runnable: this.runnable, firefox });
+    }
     const dialog = this.dialog ?? this.build();
     /** @type {HTMLInputElement} */ (this.input).value = "";
     this.applyFilter();

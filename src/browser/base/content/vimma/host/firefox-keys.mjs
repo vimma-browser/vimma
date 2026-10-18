@@ -9,7 +9,7 @@
 // KeyElementIsDisabled), so a disabled shortcut neither runs nor is reserved: the page gets the
 // chord. Core firefox-keys.mjs decides which; this reads the elements and writes the attribute.
 
-import { OVERLAP_CHORDS, planFirefoxKeys, xulKeyChord } from "../core/firefox-keys.mjs";
+import { FIREFOX_SHORTCUTS, planFirefoxKeys, xulKeyChord } from "../core/firefox-keys.mjs";
 
 /** @import { FirefoxKeySetting } from "../core/config.mjs" */
 
@@ -26,11 +26,15 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 /** @type {FirefoxKeySetting} */
-export const DEFAULT_FIREFOX_KEYS = Object.freeze({ disable: [...OVERLAP_CHORDS], enable: [] });
+export const DEFAULT_FIREFOX_KEYS = Object.freeze({
+  disable: /** @type {"all"} */ ("all"),
+  enable: [],
+});
 
 /**
  * One `<key>` as about:vimma lists it.
  * @typedef {{ chord: string, id: string, command: string }} FirefoxKeyRow
+ * @typedef {{ chord: string, id: string, label: string }} FirefoxOnRow
  */
 
 export class FirefoxKeys {
@@ -138,7 +142,11 @@ export class FirefoxKeys {
   /** Every `<key>` of the window's keysets with its chord, as the plan reads them. */
   keys() {
     const els = /** @type {Element[]} */ (
-      this.keyset ? [...this.win.document.querySelectorAll("keyset key")] : []
+      // Add-on shortcuts are the add-on's, set in about:addons; ExtensionShortcuts.sys.mjs gives
+      // each add-on a keyset with the id ext-keyset-id-<add-on id>.
+      this.keyset
+        ? [...this.win.document.querySelectorAll('keyset:not([id^="ext-keyset-id-"]) key')]
+        : []
     );
     return els.map((el) => ({
       el,
@@ -162,7 +170,7 @@ export class FirefoxKeys {
     const plan = planFirefoxKeys(
       keys.filter((k) => !k.firefoxOff),
       this.setting,
-      { mac: this.mac, bound: this.bound },
+      { bound: this.bound },
     );
     const off = new Set(plan.off.map((k) => k.el));
     for (const { el } of keys) {
@@ -178,18 +186,30 @@ export class FirefoxKeys {
   }
 
   /**
-   * What about:vimma shows: the keys off, in keyset order, and the chords that match none.
-   * @returns {{ off: FirefoxKeyRow[], unmatched: string[] }}
+   * What about:vimma and the help overlay show: the keys `[firefox] enable` keeps on, each with
+   * what it does (the inventory's words, else its command); the keys off, in keyset order; and
+   * the chords of the setting that match none.
+   * @returns {{ on: FirefoxOnRow[], off: FirefoxKeyRow[], unmatched: string[] }}
    */
   status() {
-    const off = this.keys()
+    const keys = this.keys();
+    const off = keys
       .filter((k) => k.el.hasAttribute(MARK))
       .map((k) => ({
         chord: /** @type {string} */ (k.chord),
         id: k.el.id,
         command: k.el.getAttribute("command") ?? "",
       }));
-    return { off, unmatched: [...this.unmatched] };
+    const enabled = new Set(this.setting.enable);
+    const on = keys
+      .filter((k) => k.chord && enabled.has(k.chord) && !k.firefoxOff && !k.internal)
+      .map((k) => {
+        const chord = /** @type {string} */ (k.chord);
+        const row = FIREFOX_SHORTCUTS.find((r) => r.chord === chord && r.id === k.el.id);
+        const label = row?.does ?? k.el.getAttribute("command") ?? k.el.id;
+        return { chord, id: k.el.id, label };
+      });
+    return { on, off, unmatched: [...this.unmatched] };
   }
 
   /**

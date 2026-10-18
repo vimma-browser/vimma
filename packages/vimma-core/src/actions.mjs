@@ -20,6 +20,7 @@
  * @property {number} [arg]
  * @property {readonly string[]} [aliases]
  * @property {boolean} [takesChar]  the key after it is its character (`f x`), not a binding
+ * @property {string} [line]  a `:` binding's command line (docs/specs/firefox-keys.md decision 5)
  */
 
 /** @type {ActionDef[]} */
@@ -185,6 +186,7 @@ group("Browser", [
   ["check_updates", "app.update_check", "Check for a newer Vimma"],
   ["reload_hard", "page.reload_hard", "Reload, bypassing the cache"],
   ["stop_loading", "page.stop", "Stop loading the page"],
+  ["firefox_command", "firefox.command", "Run a Firefox command or key by its id (:firefox)"],
   ["go_home", "page.home", "Go to the home page"],
   ["page_zoom_in", "page.zoom_in", "Zoom the page in"],
   ["page_zoom_out", "page.zoom_out", "Zoom the page out"],
@@ -201,6 +203,16 @@ group("Browser", [
   ["reader_view", "page.reader_view", "Reader View"],
   ["screenshot", "page.screenshot", "Take a screenshot"],
   ["clear_history", "browser.clear_history", "Clear recent history"],
+  // docs/specs/firefox-keys.md decision 16: the rest of Firefox's keys, on Firefox's chords.
+  ["web_search", "browser.search", "Web search (the address bar's search)"],
+  ["about_processes", "browser.processes", "Process manager (about:processes)"],
+  ["bookmark_all_tabs", "browser.bookmark_all_tabs", "Bookmark all tabs"],
+  ["toggle_bookmarks_toolbar", "browser.bookmarks_toolbar", "Show / hide the bookmarks toolbar"],
+  ["ai_chatbot_sidebar", "browser.sidebar_chatbot", "Firefox sidebar: AI chatbot"],
+  ["open_tabs_sidebar", "browser.sidebar_tabs", "Firefox sidebar: tabs from other devices"],
+  ["toggle_firefox_sidebar", "browser.sidebar", "Show / hide Firefox's sidebar"],
+  ["switch_text_direction", "browser.text_direction", "Switch a text field's direction"],
+  ["caret_browsing", "browser.caret_browsing", "Caret browsing (asks first)"],
 ]);
 
 // The DevTools keys, exactly as in Firefox (docs/specs/firefox-keys.md, open question 5).
@@ -217,6 +229,7 @@ group("Developer tools", [
   ["devtools_performance", "devtools.performance", "Developer tools: Performance"],
   ["devtools_storage", "devtools.storage", "Developer tools: Storage"],
   ["devtools_accessibility", "devtools.accessibility", "Developer tools: Accessibility"],
+  ["devtools_dom", "devtools.dom", "Developer tools: DOM"],
 ]);
 
 group("Hints", [

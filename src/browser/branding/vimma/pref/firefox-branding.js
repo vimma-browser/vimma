@@ -171,3 +171,8 @@ pref("privacy.exposeContentTitleInWindow.pbm", false);
 pref("browser.startup.page", 3);
 pref("services.sync.prefs.sync.browser.startup.page", false);
 pref("services.sync.prefs.sync.privacy.userContext.enabled", false);
+// docs/specs/firefox-keys.md decision 16: a bare alt tap does not focus the menu bar, and `'`
+// does not start quick find. Both are Firefox keys a keyboard-first browser takes over; the
+// alt+letter menu keys still open their menus.
+pref("ui.key.menuAccessKeyFocuses", false);
+pref("accessibility.typeaheadfind.manual", false);

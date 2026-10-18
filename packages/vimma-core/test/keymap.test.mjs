@@ -216,3 +216,73 @@ describe("function keys in [keys]", () => {
     expect(km.trie("insert").children.get("q")).toBeUndefined();
   });
 });
+
+// docs/specs/firefox-keys.md decision 9: `[firefox] enable` gives a chord back to Firefox.
+describe("[firefox] enable in the keymap", () => {
+  test("drops the chord's default bindings, in every mode", () => {
+    const km = compileKeymap({ firefox: { enable: ["ctrl+t", "esc"] } });
+    for (const mode of /** @type {const} */ (["normal", "insert", "panel"])) {
+      expect(km.trie(mode).children.get("ctrl+t"), mode).toBeUndefined();
+    }
+    expect(km.keysFor("new_tab")).toEqual(["ctrl+b c", "t"]);
+    expect(km.keysFor("stop_loading")).toEqual([]);
+    expect(km.trie("panel").children.get("esc")).toBeDefined();
+  });
+
+  test("a chord the user binds is an error at the enable line", () => {
+    let err;
+    try {
+      compileKeymap({
+        keys: { new_tab: ["ctrl+t"] },
+        firefox: { enable: ["ctrl+j", "ctrl+t"] },
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(KeymapError);
+    expect(err.path).toBe("firefox.enable[1]");
+    expect(err.detail).toBe("ctrl+t is bound to new_tab in [keys]; unbind it or drop it here");
+  });
+
+  test("a [modal.*] binding of the user names its table", () => {
+    expect(() =>
+      compileKeymap({
+        modal: { normal: { "<C-j>": "new_tab" } },
+        firefox: { enable: ["ctrl+j"] },
+      }),
+    ).toThrow("ctrl+j is bound to new_tab in [modal.normal]; unbind it or drop it here");
+  });
+});
+
+// docs/specs/firefox-keys.md decision 5: a `:` value runs a command line.
+describe(": bindings in [modal.*]", () => {
+  test("compile to a command binding with its line", () => {
+    const km = compileKeymap({
+      modal: { normal: { "<C-S-y>": ":firefox Tools:Downloads" } },
+    });
+    const action = km.trie("normal").children.get("ctrl+shift+y")?.action;
+    expect(action).toMatchObject({ id: "cmdline.run", line: "firefox Tools:Downloads" });
+    expect(km.commands()).toEqual([
+      { line: ":firefox Tools:Downloads", bindings: ["ctrl+shift+y"], name: action?.name },
+    ]);
+    // Only normal mode has it: insert mode keeps the default downloads binding.
+    expect(km.trie("insert").children.get("ctrl+shift+y")?.action?.name).toBe("downloads");
+  });
+
+  test("an unknown command word is an error at its line, with a suggestion", () => {
+    let err;
+    try {
+      compileKeymap({ modal: { normal: { x: ":firfox Tools:Downloads" } } });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(KeymapError);
+    expect(err.path).toBe('modal.normal."x"');
+    expect(err.detail).toBe('not a command: "firfox"');
+    expect(err.suggestion).toBe("firefox");
+  });
+
+  test("the defaults have no command bindings", () => {
+    expect(compileKeymap().commands()).toEqual([]);
+  });
+});

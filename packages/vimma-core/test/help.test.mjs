@@ -206,3 +206,35 @@ describe("Firefox's keys in the overlay", () => {
     expect(row("stop_loading")).toMatchObject({ group: "Browser", bindings: ["esc"] });
   });
 });
+
+describe("the Commands and Firefox (on in config.toml) groups", () => {
+  test("a : binding is a row of Commands, its line the description", () => {
+    const km = compileKeymap({ modal: { normal: { "<C-S-y>": ":firefox Tools:Downloads" } } });
+    const rows = bindingTable(km).filter((r) => r.group === "Commands");
+    expect(rows).toEqual([
+      expect.objectContaining({
+        description: ":firefox Tools:Downloads",
+        bindings: ["ctrl+shift+y"],
+        runnable: true,
+      }),
+    ]);
+  });
+
+  test("Firefox keys that are on come from the host, after every action", () => {
+    const rows = bindingTable(compileKeymap(), {
+      firefox: [{ chord: "ctrl+j", id: "key_search2", label: "Search" }],
+    });
+    expect(rows.at(-1)).toMatchObject({
+      group: "Firefox (on in config.toml)",
+      name: "key_search2",
+      description: "Search",
+      bindings: ["ctrl+j"],
+    });
+  });
+
+  test("both groups are empty, so not shown, with the defaults", () => {
+    const groups = new Set(bindingTable(compileKeymap()).map((r) => r.group));
+    expect(groups.has("Commands")).toBe(false);
+    expect(groups.has("Firefox (on in config.toml)")).toBe(false);
+  });
+});

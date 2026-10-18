@@ -4,7 +4,6 @@ import fc from "fast-check";
 import { CONFIG_SCHEMA_VERSION, MIGRATIONS, migrate, parseConfig } from "../src/config.mjs";
 import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/defaults.mjs";
 import { DEFAULT_HINT_CHARS } from "../src/hints.mjs";
-import { OVERLAP_CHORDS } from "../src/firefox-keys.mjs";
 import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "../src/panes.mjs";
 
 /** @param {string[]} lines */
@@ -299,13 +298,12 @@ describe("schema 2 keys need schema = 2", () => {
 
 // docs/specs/key-handling-batch.md § 1 and § 2.
 describe("[firefox] disable and enable", () => {
-  test("the default turns off the overlapping chords and enables none", () => {
-    expect(ok(v2()).firefox).toEqual({ disable: [...OVERLAP_CHORDS], enable: [] });
+  // docs/specs/firefox-keys.md decisions 9 and 10: Firefox's own shortcuts are off by default.
+  test('the default is disable = "all" and enables none', () => {
+    expect(ok(v2()).firefox).toEqual({ disable: "all", enable: [] });
     const text = formatDefaultsToml();
-    expect(text).toMatch(
-      /^\[firefox\]\ndisable = \["ctrl\+b", "ctrl\+d", .*"ctrl\+y"\]\nenable = \[\]$/m,
-    );
-    expect(ok(text).firefox).toEqual({ disable: [...OVERLAP_CHORDS], enable: [] });
+    expect(text).toMatch(/^\[firefox\]\ndisable = "all"\nenable = \[\]$/m);
+    expect(ok(text).firefox).toEqual({ disable: "all", enable: [] });
   });
 
   test('"all" and a list with enable are resolved, chords canonical', () => {
@@ -320,6 +318,26 @@ describe("[firefox] disable and enable", () => {
     expect(ok(v2("[firefox]", "disable = []")).firefox).toEqual({ disable: [], enable: [] });
   });
 
+  // Decision 9: an inventory chord without ctrl, alt or meta (Firefox's stop) can be enabled.
+  test('enable = ["esc", "shift+esc"] is valid', () => {
+    expect(ok(v2("[firefox]", 'enable = ["esc", "shift+esc"]')).firefox.enable).toEqual([
+      "esc",
+      "shift+esc",
+    ]);
+  });
+
+  test("an enabled chord the user binds is an error at the enable line", () => {
+    expect(
+      errors(v2("[keys]", 'new_tab = ["ctrl+t"]', "[firefox]", 'enable = ["ctrl+t"]')),
+    ).toEqual([
+      {
+        line: 5,
+        path: "firefox.enable[0]",
+        message: "ctrl+t is bound to new_tab in [keys]; unbind it or drop it here",
+      },
+    ]);
+  });
+
   test.each([
     ['disable = "none"', "firefox.disable", 'must be "all" or a list of keys like "ctrl+w"'],
     ["disable = 3", "firefox.disable", 'must be "all" or a list of keys like "ctrl+w"'],
@@ -327,7 +345,7 @@ describe("[firefox] disable and enable", () => {
     [
       'enable = ["w"]',
       "firefox.enable[0]",
-      "Firefox's shortcuts have ctrl, alt or meta, or are function keys",
+      "Firefox's shortcuts have ctrl, alt or meta, are function keys, or are esc or shift+esc",
     ],
     ["enable = [1]", "firefox.enable[0]", "expected a key string, got an integer"],
     ['enable = "all"', "firefox.enable", "expected a list of key strings, got a string"],

@@ -110,6 +110,13 @@ export const COMMANDS = Object.freeze([
   cmd("private", "optional", "workspace.private", "Private workspace; again goes back (close)", {
     aliases: ["priv"],
   }),
+  // docs/specs/firefox-keys.md decision 5: any command or key of the window, by its id.
+  cmd(
+    "firefox",
+    "required",
+    "firefox.command",
+    "Run a Firefox command or key by id (Tab completes)",
+  ),
   cmd("ls", "none", "goto.picker", "Tab search: every tab, every window, recently closed"),
   // docs/specs/tab-search.md decision 2: the same picker, the text as its query.
   cmd("tabsearch", "optional", "goto.picker", "Tab search, with the text as its query", {
@@ -357,6 +364,7 @@ const CANDIDATES = [
  */
 const ARGUMENT_KINDS = Object.freeze({
   addon: { names: "addon", kind: "add-on" },
+  firefox: { names: "firefox", kind: "Firefox command" },
   // docs/specs/search-engines.md, decision 11: `@alias`, while it is the only word.
   open: { names: "search", kind: "search engine" },
   tabnew: { names: "search", kind: "search engine" },

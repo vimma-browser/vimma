@@ -33,6 +33,9 @@ export const BROWSER_COMMANDS = Object.freeze({
   "page.reader_view": "View:ReaderView",
   "page.screenshot": "Browser:Screenshot",
   "browser.clear_history": "Tools:Sanitize",
+  "browser.search": "Tools:Search",
+  "browser.processes": "View:AboutProcesses",
+  "browser.text_direction": "cmd_switchTextDirection",
 });
 
 /** Action id → the `<key>` id whose own command listener Firefox's key runs. */
@@ -50,6 +53,13 @@ export const BROWSER_KEYS = Object.freeze({
   "devtools.performance": "key_performance",
   "devtools.storage": "key_storage",
   "devtools.accessibility": "key_accessibility",
+  "devtools.dom": "key_dom",
+  // No <command>: browser-sets.js handles these by the key's id.
+  "browser.bookmark_all_tabs": "bookmarkAllTabsKb",
+  "browser.bookmarks_toolbar": "viewBookmarksToolbarKb",
+  "browser.sidebar_chatbot": "viewGenaiChatSidebarKb",
+  "browser.sidebar_tabs": "viewOpenTabsSidebarKb",
+  "browser.sidebar": "toggleSidebarKb",
 });
 
 /** What a DevTools action says when the window has no DevTools keys (a policy turned them off). */
@@ -98,6 +108,60 @@ export function quit(win) {
   /** @type {any} */ (win).goQuitApplication({ ctrlKey: true, metaKey: true });
 }
 
+/** Prompts in flight per window: a second F7 while one is open does nothing, as in Firefox. */
+const caretPrompts = new WeakSet();
+
+/**
+ * Firefox's F7. Its handler is the private Tabbrowser#toggleCaretBrowsing
+ * (browser/components/tabbrowser/Tabbrowser.sys.mjs:9197, Firefox 157), which no command or key
+ * reaches, so this repeats its steps: the shortcut pref, the same confirmation, then the toggle.
+ * @param {Window} win
+ */
+export function toggleCaretBrowsing(win) {
+  const SHORTCUT = "accessibility.browsewithcaret_shortcut.enabled";
+  const WARN = "accessibility.warn_on_browsewithcaret";
+  const ON = "accessibility.browsewithcaret";
+  const { Services } = /** @type {any} */ (globalThis);
+  if (!Services.prefs.getBoolPref(SHORTCUT, true) || caretPrompts.has(win)) return;
+  const on = Services.prefs.getBoolPref(ON, false);
+  if (Services.prefs.getBoolPref(WARN, true) && !on) {
+    const check = { value: false };
+    const prompt = Services.prompt;
+    let pressed;
+    try {
+      caretPrompts.add(win);
+      const [title, message, checkbox] = /** @type {any} */ (
+        win
+      ).gBrowser.tabLocalization.formatValuesSync([
+        "tabbrowser-confirm-caretbrowsing-title",
+        "tabbrowser-confirm-caretbrowsing-message",
+        "tabbrowser-confirm-caretbrowsing-checkbox",
+      ]);
+      pressed = prompt.confirmEx(
+        win,
+        title,
+        message,
+        prompt.STD_YES_NO_BUTTONS | prompt.BUTTON_POS_1_DEFAULT,
+        null,
+        null,
+        null,
+        checkbox,
+        check,
+      );
+    } catch {
+      return;
+    } finally {
+      caretPrompts.delete(win);
+    }
+    if (pressed !== 0) {
+      if (check.value) Services.prefs.setBoolPref(SHORTCUT, false);
+      return;
+    }
+    if (check.value) Services.prefs.setBoolPref(WARN, false);
+  }
+  Services.prefs.setBoolPref(ON, !on);
+}
+
 /**
  * Firefox's ctrl+shift+pageup / pagedown: moves the selected tab past the next visible one
  * (another workspace's hidden tabs are skipped), as Tabbrowser's keydown handler does.
@@ -114,12 +178,38 @@ export function moveTab(win, way) {
 }
 
 /**
+ * `:firefox <id>` (docs/specs/firefox-keys.md decision 5): a `<key>` id runs as that key, even
+ * one Vimma turned off; any other id runs as a `<command>`, which does nothing while Firefox has
+ * it disabled (Stop with nothing loading), as Firefox's own key would.
+ * @param {Window} win
+ * @param {string} id
+ * @returns {boolean} false when the window has no element with that id
+ */
+export function runFirefoxById(win, id) {
+  const el = win.document.getElementById(id);
+  if (!el) return false;
+  if (el.localName === "key") return runKey(win, id);
+  runCommand(win, id);
+  return true;
+}
+
+/**
+ * The ids `:firefox` completes: the window's commands and keys, once each, in document order.
+ * @param {Window} win
+ * @returns {string[]}
+ */
+export function firefoxIds(win) {
+  const els = win.document.querySelectorAll("command[id], keyset key[id]");
+  return [...new Set([...els].map((el) => el.id))];
+}
+
+/**
  * The runners for the Browser and Developer tools actions, keyed by action id.
  * @param {(win: Window, text: string) => void} say  shows a notice
- * @returns {Record<string, (s: { win: Window }, a: Action) => void>}
+ * @returns {Record<string, (s: { win: Window }, a: Action, text?: string) => void>}
  */
 export function browserRunners(say) {
-  /** @type {Record<string, (s: { win: Window }, a: Action) => void>} */
+  /** @type {Record<string, (s: { win: Window }, a: Action, text?: string) => void>} */
   const out = {};
   for (const [action, command] of Object.entries(BROWSER_COMMANDS)) {
     out[action] = (s) => void runCommand(s.win, command);
@@ -130,6 +220,11 @@ export function browserRunners(say) {
     };
   }
   out["app.quit"] = (s) => quit(s.win);
+  out["firefox.command"] = (s, _a, text) => {
+    if (!text) return;
+    if (!runFirefoxById(s.win, text)) say(s.win, `:firefox: no Firefox command or key "${text}"`);
+  };
+  out["browser.caret_browsing"] = (s) => toggleCaretBrowsing(s.win);
   out["tab.move_left"] = (s) => moveTab(s.win, "left");
   out["tab.move_right"] = (s) => moveTab(s.win, "right");
   return out;

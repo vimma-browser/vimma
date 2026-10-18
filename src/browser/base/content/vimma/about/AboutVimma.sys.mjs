@@ -70,8 +70,9 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  *   adopted: boolean, tabs: number }} mcp  agents (docs/specs/vimma-mcp.md): the switch and the
  *   agent workspace, with its tab count; never its URLs or titles
  * @property {string} windowManager  Hyprland and the private placement (private-swap)
- * @property {{ off: { chord: string, id: string, command: string }[], unmatched: string[] }}
- *   firefoxKeys  Firefox's own shortcuts that are off (docs/specs/key-handling-batch.md)
+ * @property {{ on: { chord: string, id: string, label: string }[],
+ *   off: { chord: string, id: string, command: string }[], unmatched: string[] }}
+ *   firefoxKeys  Firefox's own shortcuts that are on and off (docs/specs/firefox-keys.md)
  * @property {RoutesData} routes
  * @property {Awaited<ReturnType<typeof VimmaUpdates.describe>>} updates  the last update check
  *   and how to update (docs/specs/m6a-updater.md)
@@ -365,7 +366,7 @@ export const AboutVimma = {
       `Agents (MCP): ${data.mcp.enabled ? "on" : "off"} (${data.mcp.from}), workspace ` +
         `${data.mcp.workspace ?? "none"}${data.mcp.adopted ? " (adopted)" : ""}, ${data.mcp.tabs}t`,
       `Window manager: ${data.windowManager}`,
-      `Firefox shortcuts off: ${data.firefoxKeys.off.map((k) => k.chord).join(" ") || "none"}`,
+      `Firefox shortcuts on: ${data.firefoxKeys.on.map((k) => k.chord).join(" ") || "none"}`,
     ];
     const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
     return redactReport(`${lines.join("\n")}\n`, home);

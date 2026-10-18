@@ -15,7 +15,10 @@ import { COUNT_MODES, isMode } from "./modes.mjs";
 /** @import { TrieNode } from "./keymap.mjs" */
 /** @import { ActionDef } from "./actions.mjs" */
 
-/** @typedef {{ id: string, count?: number, arg?: number, char?: string }} Action */
+/**
+ * `line`: the command line a `:` binding runs (docs/specs/firefox-keys.md decision 5).
+ * @typedef {{ id: string, count?: number, arg?: number, char?: string, line?: string }} Action
+ */
 /**
  * @typedef {{ kind: "action", action: Action, replay?: true }
  *   | { kind: "pending" }
@@ -73,6 +76,7 @@ export function createDispatcher(keymap) {
     /** @type {Action} */
     const action = { id: def.id };
     if (def.arg !== undefined) action.arg = def.arg;
+    if (def.line !== undefined) action.line = def.line;
     if (count) action.count = Number(count);
     if (char !== undefined) action.char = char;
     reset();

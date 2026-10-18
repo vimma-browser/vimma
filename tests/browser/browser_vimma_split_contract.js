@@ -315,8 +315,10 @@ add_task(async function the_focus_outline_find_bar_and_notifications_belong_to_t
     }
   }
 
-  // Find bar: accel+f with n3's page focused opens n3's find bar inside n3's panel.
-  EventUtils.synthesizeKey("f", { accelKey: true });
+  // Find bar: the selected tab's find bar, as Firefox's accel+f opens it, is inside n3's panel.
+  // Not the key itself: [firefox] disable = "all" turns accel+f off in insert mode
+  // (docs/specs/firefox-keys.md decision 16).
+  (await gBrowser.getFindBar()).open();
   await TestUtils.waitForCondition(
     () => gBrowser.isFindBarInitialized(n3) && !gBrowser.getCachedFindBar(n3).hidden,
     "n3's find bar opens",
