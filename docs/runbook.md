@@ -1067,7 +1067,9 @@ Every bump: the copies of `browser.newtabpage.activity-stream.asrouter.providers
 `browser.safebrowsing.provider.google{4,5}.lists` in
 `src/browser/branding/vimma/pref/firefox-branding.js` must match the new engine's (specs
 m0-mozilla-services, m0-safebrowsing-key). `tools/upstream/upstream-prefs.mjs` checks both in
-`e2e.yml` and prints the line to paste. Before a release, run
+`e2e.yml` and prints the line to paste; the autopilot's bump PR already carries refreshed lines
+and lists them, so check only that the old and new values in its "Refreshed prefs" look right. A
+pref gone upstream leaves the PR a draft that names it. Before a release, run
 `tools/safebrowsing-smoke/safebrowsing-smoke.sh` on a keyed full build. Patch-size review
 (plan §4, Sunday): `python3 tools/upstream/patch-audit.py`.
 

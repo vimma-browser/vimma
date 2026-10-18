@@ -1,6 +1,6 @@
 # Spec: upstream-bump-automation
 
-Status: accepted · Area: `.github/workflows/upstream.yml`, `.github/workflows/e2e.yml`,
+Status: accepted (sub-PR 1 implemented; sub-PRs 2-4: #259) · Area: `.github/workflows/upstream.yml`, `.github/workflows/e2e.yml`,
 `.github/workflows/upstream-resolve.yml` (new), `tools/upstream/source-check.sh`,
 `tools/upstream/patch-check.py`, `tools/upstream/upstream-prefs.mjs`,
 `tools/upstream/autopilot-body.mjs`, `tools/upstream/bump-diff.mjs` (new),

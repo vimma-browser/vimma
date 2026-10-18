@@ -589,3 +589,55 @@ describe("autopilot body", () => {
     expect(run(["nope"]).status).toBe(2);
   });
 });
+
+// Spec upstream-bump-automation, Behaviour 1 and 2: refreshed pref copies are listed in the PR.
+describe("the bump PR and refreshed pref copies", () => {
+  const cfr = "browser.newtabpage.activity-stream.asrouter.providers.cfr";
+  const refreshed = {
+    state: "refreshed",
+    refreshed: [{ pref: cfr, old: '{"id":"cfr"}', new: '{"id":"cfr","frequency":2}' }],
+    unresolved: [],
+  };
+
+  it("lists refreshed prefs with old and new values", () => {
+    const body = prBody(context({ prefs: refreshed }));
+    expect(body).toContain("| Copied upstream prefs | refreshed 1 in this commit (below) |");
+    expect(body).toContain(`- \`${cfr}\`: \`{"id":"cfr"}\` → \`{"id":"cfr","frequency":2}\``);
+    expect(draftDecision(context({ prefs: refreshed, hasToken: true })).draft).toBe(false);
+  });
+
+  it("a current copy says so and lists nothing", () => {
+    const body = prBody(context({ prefs: { state: "current", refreshed: [], unresolved: [] } }));
+    expect(body).toContain("| Copied upstream prefs | current |");
+    expect(body).not.toContain("### Refreshed prefs");
+  });
+
+  it("a pref gone upstream makes the PR a draft that names it", () => {
+    const prefs = { state: "unresolved", refreshed: [], unresolved: [cfr] };
+    expect(draftDecision(context({ prefs }))).toEqual({
+      draft: true,
+      reason: "a copied pref is gone upstream (renamed or removed)",
+    });
+    expect(prBody(context({ prefs }))).toContain(`**gone upstream**: \`${cfr}\``);
+  });
+
+  it("the CLI reads the refresh from --prefs", () => {
+    const dir = tempDir("autopilot-prefs-");
+    writeFileSync(join(dir, "detection.json"), JSON.stringify(securityRelease));
+    writeFileSync(join(dir, "prefs.json"), JSON.stringify(refreshed));
+    const r = spawnSync(
+      process.execPath,
+      [
+        bodyScript,
+        "pr",
+        "--detection",
+        join(dir, "detection.json"),
+        "--prefs",
+        join(dir, "prefs.json"),
+      ],
+      { encoding: "utf8" },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("refreshed 1 in this commit");
+  });
+});

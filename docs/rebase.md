@@ -96,7 +96,8 @@ bump PR names the canary's issues for that version.
 4. **`test`** (read-only). Only when every patch applies and the artifacts exist: `e2e.yml`, called
    with the new version. It bumps `surfer.json` in its own checkout and does what PR CI does:
    `firefox-source.sh` (signature and SHA-512 checked again), `npm run import`, the branding
-   prefs test, the upstream-prefs check (cfr provider and Safe Browsing lists, step 6), the artifact build,
+   prefs test, the upstream-prefs check (cfr provider and Safe Browsing lists, step 6, run on the
+   copies `patch-check` refreshed), the artifact build,
    `tests/browser/` and `tests/e2e/`. Without artifacts the suites are skipped and the PR says
    so: run steps 2–4 on your machine (the full-build path).
 5. **`publish`** (the only job that can push). Pushes `upstream/firefox-X.Y.Z` with one commit,
@@ -136,7 +137,9 @@ Each `fuzz` or `failed` hunk is listed under the table, collapsed, as the hunk f
   push the re-exported patches; PR CI runs the suites. Or hand it to Claude: comment `@claude`
   on the PR with the Conflicts section.
 - **Draft, "the suites did not pass"** → read the run's `mochitest (artifact build)` job.
-  `upstream-prefs` failing prints the pref line to paste (step 6); anything else is a real
+  The autopilot already refreshed copied prefs whose upstream value changed (the PR's "Refreshed
+  prefs"); `upstream-prefs` failing on PR CI prints the pref line to paste (step 6); anything else
+  is a real
   regression: hold the bump, fix it on the branch.
 - **"No Mozilla artifacts for this revision"** → steps 2–4 on your machine; e2e.yml on the PR
   will stay red until Mozilla indexes the build (it never has not, so far; check `surfer.json`).
@@ -336,7 +339,11 @@ checkout that has the new `engine/`.
 
 **Upstream pref copies, checked.** `node tools/upstream/upstream-prefs.mjs` (after the import)
 compares both copies below with the engine's and prints the line to paste for a stale one; exit
-1 then. `e2e.yml` runs it, so the autopilot's suites and PR CI catch a stale copy. The details:
+1 then. `e2e.yml` runs it, so the autopilot's suites and PR CI catch a stale copy. The autopilot
+refreshes stale copies itself: `source-check.sh` runs `upstream-prefs.mjs --write-diff` on the
+verified tarball's prefs files, the suites run on the result, and the bump commit carries the new
+lines (the PR body lists old and new values). A pref gone upstream is never guessed: the PR is a
+draft that names it, and a person finds its new name. The details:
 
 **cfr provider (spec m0-mozilla-services).** We carry a full copy of upstream's
 `browser.newtabpage.activity-stream.asrouter.providers.cfr` with `"enabled":false`. A stale copy

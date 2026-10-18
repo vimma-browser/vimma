@@ -15,7 +15,9 @@
 # (verify-sha512.py, pinned release key, ADR-021), runs the patch-size audit and, when every
 # patch applies, the artifact preflight. Writes patch-check.json, patch-check.md and
 # patch-audit.txt in the current directory, and to $GITHUB_OUTPUT (when set) result=ok|fail|norun
-# and, after the preflight, artifacts and artifacts-note. $GITHUB_STEP_SUMMARY gets the summary.
+# and, after the preflight, artifacts and artifacts-note. Once the tarball is verified it also
+# writes the pref refresh (upstream-prefs.mjs --write-diff, spec upstream-bump-automation):
+# prefs-refresh.patch and prefs-refresh.json, and prefs=current|refreshed|unresolved. $GITHUB_STEP_SUMMARY gets the summary.
 #
 # Exit status: 0 the check ran or reported that it could not (result says which), 1 SHA512SUMS is
 # not signed by Mozilla's release key, it or its signature cannot be fetched, or the SHA-512 does
@@ -44,7 +46,9 @@ hasher=$!
 set +e
 curl -fsSL --retry 3 "$base/$name" | tee "$scratch/tarball.fifo" |
   python3 "$here/patch-check.py" --tarball - --drain \
-    --json patch-check.json --markdown patch-check.md
+    --json patch-check.json --markdown patch-check.md \
+    --extract browser/app/profile/firefox.js --extract modules/libpref/init/all.js \
+    --extract-to "$scratch/upstream"
 status=${PIPESTATUS[2]}
 wait "$hasher"
 set -e
@@ -66,6 +70,10 @@ case "$status" in
       exit 1
     }
     if [ "$status" -eq 0 ]; then result=ok; else result=fail; fi
+    # Only from a verified tarball (G4). An absent file reads as empty: unresolved, not guessed.
+    node "$here/upstream-prefs.mjs" --firefox-js "$scratch/upstream/browser/app/profile/firefox.js" \
+      --all-js "$scratch/upstream/modules/libpref/init/all.js" \
+      --write-diff prefs-refresh.patch --json prefs-refresh.json --github-output "$output"
     ;;
   *)
     result=norun

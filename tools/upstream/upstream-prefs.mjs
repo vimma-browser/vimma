@@ -11,12 +11,21 @@
  *   the two that only Mozilla's key may fetch.
  *
  *   node tools/upstream/upstream-prefs.mjs [--engine engine] [--ours FILE]
+ *   node tools/upstream/upstream-prefs.mjs --firefox-js F --all-js F --write-diff PATCH
+ *     [--json FILE] [--github-output FILE] [--ours FILE]
  *
- * Exit status: 0 up to date, 1 stale or missing (each with the line to paste), 2 unreadable.
- * e2e.yml runs it after `npm run import`, so the upstream autopilot's suites catch a stale copy.
+ * Check mode exits 0 up to date, 1 stale or missing (each with the line to paste), 2 unreadable.
+ * e2e.yml runs it after `npm run import`, so PR CI fails on a stale copy.
+ *
+ * Refresh mode (--write-diff, spec upstream-bump-automation, sub-PR 1) reads upstream's two
+ * prefs files as extracted from the verified tarball by source-check.sh, and writes a `git diff`
+ * of firefox-branding.js with each stale line replaced (empty when nothing changes), the refresh
+ * as JSON, and `prefs=current|refreshed|unresolved` to the GitHub output. A pref missing
+ * upstream or in ours is unresolved and nothing is written for any pref: a rename needs a person.
+ * An absent upstream file reads as empty. Exits 0 unless a file cannot be written (2).
  */
 
-import { readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -103,12 +112,114 @@ export function checkPrefs({ firefoxJs, allJs, ours }) {
   return problems;
 }
 
+/**
+ * @typedef {{ state: "current" | "refreshed" | "unresolved", text: string,
+ *   refreshed: { pref: string, old: string, new: string }[], unresolved: string[] }} Refresh
+ */
+
+/**
+ * Our branding file with every stale copy replaced by the value derived from upstream's.
+ * @param {{ firefoxJs: string, allJs: string, ours: string }} files
+ * @returns {Refresh}
+ */
+export function refreshPrefs(files) {
+  const problems = checkPrefs(files);
+  const unresolved = problems.filter((p) => p.missing).map((p) => p.pref);
+  if (unresolved.length)
+    return { state: "unresolved", text: files.ours, refreshed: [], unresolved };
+  let text = files.ours;
+  /** @type {Refresh["refreshed"]} */
+  const refreshed = [];
+  for (const p of problems) {
+    const want = p.want ?? "";
+    const re = new RegExp(`^\\s*pref\\("${escapeRe(p.pref)}",.*$`, "m");
+    text = text.replace(re, () => prefLine(p.pref, want));
+    refreshed.push({ pref: p.pref, old: p.ours ?? "", new: want });
+  }
+  return { state: refreshed.length ? "refreshed" : "current", text, refreshed, unresolved: [] };
+}
+
+/**
+ * A `git diff` of two versions of a file that differ only in replaced lines (what refreshPrefs
+ * makes), with three lines of context like `surfer export`; "" when they are equal.
+ * @param {string} path repository-relative
+ * @param {string} before
+ * @param {string} after
+ */
+export function unifiedDiff(path, before, after) {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  if (a.length !== b.length) throw new Error("unifiedDiff: only line replacements are supported");
+  const changed = a.flatMap((l, i) => (l === b[i] ? [] : [i]));
+  if (!changed.length) return "";
+  // A trailing newline leaves an empty last element, which is not a line.
+  const n = before.endsWith("\n") ? a.length - 1 : a.length;
+  /** @type {[number, number][]} */
+  const hunks = [];
+  for (const i of changed) {
+    const lo = Math.max(0, i - 3);
+    const hi = Math.min(n - 1, i + 3);
+    const last = hunks.at(-1);
+    if (last && lo <= last[1] + 1) last[1] = hi;
+    else hunks.push([lo, hi]);
+  }
+  const out = [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`];
+  for (const [lo, hi] of hunks) {
+    const len = hi - lo + 1;
+    out.push(`@@ -${lo + 1},${len} +${lo + 1},${len} @@`);
+    for (let i = lo; i <= hi; i++) {
+      if (a[i] === b[i]) out.push(` ${a[i]}`);
+      else out.push(`-${a[i]}`, `+${b[i]}`);
+    }
+  }
+  return out.join("\n") + "\n";
+}
+
+/** @param {string | undefined} path */
+const readOrEmpty = (path) => (path && existsSync(path) ? readFileSync(path, "utf8") : "");
+
+/**
+ * Refresh mode: see the header.
+ * @param {Record<string, string | undefined>} values
+ * @param {string} oursPath
+ */
+function refreshMain(values, oursPath) {
+  const r = refreshPrefs({
+    firefoxJs: readOrEmpty(values["firefox-js"]),
+    allJs: readOrEmpty(values["all-js"]),
+    ours: readFileSync(oursPath, "utf8"),
+  });
+  const before = readFileSync(oursPath, "utf8");
+  writeFileSync(values["write-diff"] ?? "", unifiedDiff(OURS, before, r.text));
+  const report = { state: r.state, refreshed: r.refreshed, unresolved: r.unresolved };
+  if (values.json) writeFileSync(values.json, JSON.stringify(report, null, 2) + "\n");
+  if (values["github-output"]) appendFileSync(values["github-output"], `prefs=${r.state}\n`);
+  for (const pref of r.unresolved) {
+    console.log(
+      `upstream-prefs: ${pref} is gone upstream (renamed or removed) or missing in ${OURS}: ` +
+        "nothing refreshed; a person decides (docs/rebase.md, step 6)",
+    );
+  }
+  for (const p of r.refreshed) console.log(`upstream-prefs: refreshed ${p.pref}`);
+  if (r.state === "current") console.log("upstream-prefs: copied prefs are current");
+  return 0;
+}
+
 function main() {
   const { values } = parseArgs({
-    options: { engine: { type: "string", default: "engine" }, ours: { type: "string" } },
+    options: {
+      engine: { type: "string", default: "engine" },
+      ours: { type: "string" },
+      "firefox-js": { type: "string" },
+      "all-js": { type: "string" },
+      "write-diff": { type: "string" },
+      json: { type: "string" },
+      "github-output": { type: "string" },
+    },
   });
   const engine = values.engine ?? "engine";
   const root = fileURLToPath(new URL("../../", import.meta.url));
+  if (values["write-diff"]) return refreshMain(values, values.ours ?? join(root, OURS));
   const problems = checkPrefs({
     firefoxJs: readFileSync(join(engine, "browser/app/profile/firefox.js"), "utf8"),
     allJs: readFileSync(join(engine, "modules/libpref/init/all.js"), "utf8"),
