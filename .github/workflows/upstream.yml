@@ -237,6 +237,7 @@ jobs:
       result: ${{ steps.check.outputs.result }}
       artifacts: ${{ steps.check.outputs.artifacts }}
       artifacts-note: ${{ steps.check.outputs.artifacts-note }}
+      prefs: ${{ steps.check.outputs.prefs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -260,6 +261,7 @@ jobs:
           path: |
             patch-check.*
             patch-audit.txt
+            prefs-refresh.*
           if-no-files-found: ignore
           retention-days: 30
 
@@ -271,6 +273,7 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       firefox-version: ${{ needs.detect.outputs.version }}
+      prefs-patch-artifact: patch-check
 
   publish:
     needs: [detect, track, patch-check, test]
@@ -308,9 +311,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -C "$branch"
+          # The pref refresh the suites ran with (spec upstream-bump-automation, decision 4).
+          pc="$RUNNER_TEMP/patch-check"
+          prefs=()
+          if [ -s "$pc/prefs-refresh.patch" ]; then
+            git apply --include=src/browser/branding/vimma/pref/firefox-branding.js \
+              "$pc/prefs-refresh.patch"
+            prefs=(-m "Refresh the copied upstream prefs: $(jq -r '[.refreshed[].pref] | join(", ")' \
+              "$pc/prefs-refresh.json").")
+          fi
           git commit -am "upstream: firefox $VERSION" \
             -m "Bump surfer.json from Firefox $old to $VERSION. Opened by the upstream autopilot" \
-            -m "(upstream.yml, ADR-015): patches checked, suites run, see the PR."
+            -m "(upstream.yml, ADR-015): patches checked, suites run, see the PR." "${prefs[@]}"
           # Only this job writes upstream/*; a rebuild replaces the branch.
           git push --force origin "HEAD:refs/heads/$branch"
 
@@ -333,7 +345,7 @@ jobs:
               --artifacts "$ARTIFACTS" --artifacts-note "$ARTIFACTS_NOTE" --tests "$TESTS" \
               --has-token "$HAS_TOKEN" --issue "$ISSUE" --branch "$branch" \
               --repo "$GITHUB_REPOSITORY" --run-url "$RUN_URL" --error "$RUNNER_TEMP/pr-error.txt" \
-              --beta-issues "$BETA_ISSUES"
+              --beta-issues "$BETA_ISSUES" --prefs "$pc/prefs-refresh.json"
           }
           body pr > "$RUNNER_TEMP/pr.md"
           title=$(body title)

@@ -490,7 +490,17 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`no workflow runs on pull_request_target`](../tools/test/upstream-workflow.test.mjs),
   [`every action it uses is pinned by a full commit SHA`](../tools/test/upstream-workflow.test.mjs)
 - G7. The prefs we copy from upstream (the cfr provider, the Safe Browsing lists) **must** match
-  the release under test, or the suites fail with the line to paste.
+  the release under test, or the suites fail with the line to paste. The autopilot refreshes a
+  stale copy only from the verified tarball (G4), only in `firefox-branding.js`'s three copied
+  lines, and only through the `workflow_call` input of `e2e.yml`, so a pull request run never
+  rewrites prefs; a pref gone upstream is never guessed and keeps the PR a draft. No new token or
+  secret: `publish` commits the refresh with its existing `contents: write`.
+  [`writes the derived cfr line when upstream adds a field`](../tools/upstream/test/upstream-prefs.test.mjs),
+  [`the diff touches only the three copied pref lines`](../tools/upstream/test/upstream-prefs.test.mjs),
+  [`reports unresolved and writes nothing for a pref missing upstream`](../tools/upstream/test/upstream-prefs.test.mjs),
+  [`source-check computes the refresh only after the SHA-512 check passed`](../tools/test/upstream-workflow.test.mjs),
+  [`a pull request run never writes prefs`](../tools/test/upstream-workflow.test.mjs),
+  [`a pref gone upstream makes the PR a draft that names it`](../tools/upstream/test/autopilot.test.mjs),
   [`our branding prefs match Firefox 157.0.1's`](../tools/upstream/test/upstream-prefs.test.mjs),
   [`a new upstream cfr field is reported with the line to paste`](../tools/upstream/test/upstream-prefs.test.mjs),
   [`a pref upstream renamed or removed is its own problem, not a silent pass`](../tools/upstream/test/upstream-prefs.test.mjs)

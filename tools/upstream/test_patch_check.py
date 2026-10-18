@@ -263,6 +263,31 @@ class PatchCheckFromTarball(unittest.TestCase):
         self.assertFalse(evil.exists())
         self.assertEqual(sorted(p.name for p in dest.rglob("*") if p.is_file()), ["clean.txt"])
 
+    def test_extract_writes_requested_files_from_the_stream(self):
+        # Spec upstream-bump-automation, sub-PR 1: the pref refresh reads upstream's prefs files
+        # from the same verified stream as the patched files.
+        out = self.dir / "extracted"
+        r, report = self.check(
+            "--tarball", "-", "--extract", "browser/clean.txt", "--extract", "sourcestamp.txt",
+            "--extract", "no/such/file.js", "--extract-to", str(out),
+            stdin=self.tarball.read_bytes(),
+        )  # fmt: skip
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertEqual(
+            (out / "browser" / "clean.txt").read_bytes(), (TREE / "browser" / "clean.txt").read_bytes()
+        )
+        self.assertTrue((out / "sourcestamp.txt").is_file())
+        self.assertFalse((out / "no").exists())
+        self.assertEqual(by_name(report)["fuzz-txt.patch"]["status"], "fuzz")
+
+    def test_extract_refuses_a_path_outside_the_tree(self):
+        r, _ = self.check(
+            "--tarball", str(self.tarball), "--extract", "../evil.txt",
+            "--extract-to", str(self.dir / "x"),
+        )  # fmt: skip
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("--extract", r.stderr)
+
     def test_unreadable_tarball_exits_two(self):
         junk = self.dir / "junk.tar.xz"
         junk.write_bytes(b"not a tarball")

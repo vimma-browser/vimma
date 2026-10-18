@@ -439,3 +439,52 @@ describe("e2e.yml concurrency", () => {
     expect(e2e).toContain("cancel-in-progress: true");
   });
 });
+
+// Spec upstream-bump-automation, sub-PR 1 (decisions 1 to 4).
+describe("pref refresh in the upstream autopilot", () => {
+  it("source-check computes the refresh only after the SHA-512 check passed", () => {
+    expect(source).toContain("--extract browser/app/profile/firefox.js");
+    expect(source).toContain("--extract modules/libpref/init/all.js");
+    const verify = source.indexOf('python3 "$here/verify-sha512.py"');
+    const refresh = source.indexOf('node "$here/upstream-prefs.mjs"');
+    expect(refresh).toBeGreaterThan(verify);
+    expect(source).toContain("--write-diff prefs-refresh.patch");
+  });
+
+  it("the patch-check artifact carries the refresh and the job exports its state", () => {
+    const block = job(upstream, "patch-check");
+    expect(block).toContain("prefs: ${{ steps.check.outputs.prefs }}");
+    expect(block).toMatch(/path: \|\n(?:\s+.*\n)*?\s+prefs-refresh\.\*/);
+  });
+
+  it("the e2e call passes the prefs patch and no secret", () => {
+    const block = job(upstream, "test");
+    expect(block).toContain("prefs-patch-artifact: patch-check");
+    expect(block).not.toContain("secrets");
+    expect(e2e).toMatch(/workflow_call:\n(?:.*\n)*?\s+prefs-patch-artifact:\n/);
+  });
+
+  it("a pull request run never writes prefs", () => {
+    // Only workflow_call declares the input; on a pull request it is empty and the step skips.
+    const head = e2e.slice(0, e2e.indexOf("\njobs:\n"));
+    const dispatch = head.slice(head.indexOf("workflow_dispatch:"), head.indexOf("workflow_call:"));
+    expect(dispatch).not.toContain("prefs-patch-artifact");
+    const apply = step(e2e, "prefs-refresh");
+    expect(apply).toContain("if: inputs.prefs-patch-artifact != ''");
+    expect(apply).not.toContain("secrets");
+    // The refresh lands before the import and the strict check, which still runs.
+    expect(e2e.indexOf("id: prefs-refresh")).toBeLessThan(e2e.indexOf("run: npm run import"));
+    expect(e2e).toContain("run: node tools/upstream/upstream-prefs.mjs\n");
+  });
+
+  it("publish commits the refreshed lines with the bump and lists them in the body", () => {
+    const block = job(upstream, "publish");
+    // --include: the refresh can only ever touch the branding file.
+    const apply = block.search(
+      /git apply --include=src\/browser\/branding\/vimma\/pref\/firefox-branding\.js \\\n\s+"\$pc\/prefs-refresh\.patch"/,
+    );
+    expect(apply).toBeGreaterThan(0);
+    expect(apply).toBeLessThan(block.indexOf('git commit -am "upstream: firefox $VERSION"'));
+    expect(block).toContain('--prefs "$pc/prefs-refresh.json"');
+  });
+});

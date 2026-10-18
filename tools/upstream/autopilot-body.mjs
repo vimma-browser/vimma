@@ -38,7 +38,10 @@ export const BODY_LIMIT = 64000;
  * @typedef {{ detection: Detection, patchReport: PatchReport | null, patchMarkdown: string,
  *   patchResult: string, audit: string, artifacts: string, artifactsNote: string,
  *   tests: string, hasToken: boolean, issue: string, branch: string, repo: string,
- *   runUrl: string, owner: string, error: string, betaIssues: BetaIssue[] }} Context
+ *   runUrl: string, owner: string, error: string, betaIssues: BetaIssue[],
+ *   prefs?: PrefRefresh | null }} Context
+ * @typedef {{ state: string, refreshed: { pref: string, old: string, new: string }[],
+ *   unresolved: string[] }} PrefRefresh
  * @typedef {{ number: number, state: "OPEN" | "CLOSED" }} BetaIssue
  */
 
@@ -74,11 +77,15 @@ export function driftTitle(current) {
  * Open the PR as a draft unless it can be merged as it stands: every patch imports, the suites
  * passed, and a token is set so that the PR's own CI runs (a PR opened with GITHUB_TOKEN
  * starts no workflows; marking it ready for review does).
- * @param {{ patchResult: string, tests: string, hasToken: boolean }} c
+ * @param {{ patchResult: string, tests: string, hasToken: boolean,
+ *   prefs?: PrefRefresh | null }} c
  * @returns {{ draft: boolean, reason: string }}
  */
-export function draftDecision({ patchResult, tests, hasToken }) {
+export function draftDecision({ patchResult, tests, hasToken, prefs }) {
   if (patchResult !== "ok") return { draft: true, reason: "some patches do not apply" };
+  if (prefs?.state === "unresolved") {
+    return { draft: true, reason: "a copied pref is gone upstream (renamed or removed)" };
+  }
   if (tests !== "success") return { draft: true, reason: "the suites did not pass" };
   if (!hasToken) {
     return { draft: true, reason: "opened with GITHUB_TOKEN: mark it ready to start CI" };
@@ -139,6 +146,37 @@ export function conflictLines(report) {
     "",
   );
   return out;
+}
+
+/**
+ * The "Copied upstream prefs" row (spec upstream-bump-automation, Behaviour 1 and 2).
+ * @param {PrefRefresh | null | undefined} prefs
+ */
+export function prefsLine(prefs) {
+  if (!prefs) return "not checked";
+  if (prefs.state === "refreshed") {
+    return `refreshed ${prefs.refreshed.length} in this commit (below)`;
+  }
+  if (prefs.state === "unresolved") {
+    return `**gone upstream**: ${prefs.unresolved.map((p) => `\`${codeLine(p)}\``).join(", ")}`;
+  }
+  return "current";
+}
+
+/** @param {PrefRefresh | null | undefined} prefs */
+function refreshedLines(prefs) {
+  if (prefs?.state !== "refreshed") return [];
+  return [
+    "### Refreshed prefs",
+    "",
+    "Upstream changed these values; the bump commit carries the derived lines in " +
+      "`firefox-branding.js` (docs/rebase.md, step 6):",
+    "",
+    ...prefs.refreshed.map(
+      (p) => `- \`${codeLine(p.pref)}\`: \`${codeLine(p.old)}\` → \`${codeLine(p.new)}\``,
+    ),
+    "",
+  ];
 }
 
 /** @param {string} tests @param {Context} c */
@@ -246,8 +284,10 @@ export function prBody(c) {
     `| Patches (\`surfer import\`) | ${patchLine(c.patchReport, c.patchResult)} |`,
     `| Patch register (ADR-003) | ${c.audit || "not run"} |`,
     `| Artifact build | ${artifactsLine(c)} |`,
+    `| Copied upstream prefs | ${prefsLine(c.prefs)} |`,
     `| Mochitests + e2e on the artifact build | ${testsLine(c.tests, c)} |`,
     "",
+    ...refreshedLines(c.prefs),
     "### Advisories",
     "",
     ...advisoryLines(d),
@@ -432,6 +472,7 @@ function main() {
       owner: { type: "string", default: "" },
       error: { type: "string" },
       "beta-issues": { type: "string", default: "" },
+      prefs: { type: "string" },
       "draft-only": { type: "boolean", default: false },
     },
   });
@@ -457,6 +498,7 @@ function main() {
     owner: values.owner ?? "",
     error: readMaybe(values.error),
     betaIssues: betaIssues(values["beta-issues"] ?? ""),
+    prefs: readMaybe(values.prefs) ? JSON.parse(readMaybe(values.prefs)) : null,
   };
   const v = detection.release.version;
   /** @type {Record<string, () => string>} */
