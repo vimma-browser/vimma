@@ -6,13 +6,13 @@
 # pull_request, never pull_request_target: nothing here needs a token that can write, and the
 # label is in the event payload for fork pull requests too. labeled and unlabeled re-run the
 # check when the label is added or removed; the newest run for the head commit is the one the
-# ruleset reads. The job runs only while the pull request is open: release-please relabels a
+# ruleset reads. The job is skipped only on a merged pull request: release-please relabels a
 # merged release pull request (`autorelease: pending` to `autorelease: tagged`) after its head
 # branch is deleted, and a run started then cannot find the head commit (#357). A skipped job
-# reports success, which is safe here only because the pull request is closed: every event that
-# puts its head commit back on the path to a merge (reopened, synchronize, a new pull request on
-# that head) starts a fresh run. The detection runs from the base branch's copy of
-# tools/ci/key-guard.mjs; the pull request's own copy runs only while the base has none.
+# reports success, which is safe only once merged, because the head is already in main. A closed,
+# unmerged pull request still runs on a label change, so its head commit cannot gain a passing
+# check that a later pull request with the same head would inherit. The detection runs from the
+# base branch's copy of tools/ci/key-guard.mjs; the pull request's own copy runs only while the base has none.
 name: key-guard
 
 on:
@@ -29,7 +29,7 @@ concurrency:
 jobs:
   key-guard:
     name: Mozilla release key unchanged or approved
-    if: github.event.pull_request.state == 'open'
+    if: github.event.pull_request.merged != true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
