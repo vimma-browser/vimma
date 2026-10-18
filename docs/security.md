@@ -226,10 +226,14 @@ The add-on picker lists, enables, disables and removes extensions. Spec:
 
 **Reach:** you only (keys and `:addon`); nothing in it is reachable from pages.
 
-- A1. Vimma **never** installs an add-on or an add-on update; an update goes through
-  about:addons, where Firefox asks about new permissions.
+- A1. Vimma installs an add-on **only** from the setup page (about:vimma-setup), from
+  addons.mozilla.org (an https file there with a sha256 hash), after the user marked it,
+  confirmed the summary and accepted Firefox's own permission prompt, which Vimma never answers
+  (spec [first-run-setup](specs/first-run-setup.md)). It never installs an add-on update; an
+  update goes through about:addons, where Firefox asks about new permissions.
   [`u_reports_the_update_check`](../tests/browser/browser_vimma_addons.js),
-  [`never installs an add-on`](../tools/security/test/chrome-source.test.mjs)
+  [`installs an add-on only from the setup page`](../tools/security/test/chrome-source.test.mjs),
+  [`an AMO result off addons.mozilla.org or without a sha256 hash is dropped`](../packages/vimma-core/test/setup.test.mjs)
 - A2. Removal **must** ask y/N, and a y stands only for the add-on and version asked about.
   [`d_removes_after_yes_and_keeps_after_no`](../tests/browser/browser_vimma_addons.js),
   [`a_stale_yes_removes_nothing`](../tests/browser/browser_vimma_addons.js)
@@ -364,11 +368,15 @@ its own flags could run `vimma` with them directly.
 A local file you trust and edit. Spec: [m5-config-load](specs/m5-config-load.md),
 [ADR-008](adr/008-config-toml.md).
 
-- F1. A config.toml Vimma creates **must** be mode 0600 in a 0700 folder, and an existing file is
-  never overwritten.
+- F1. A config.toml Vimma creates **must** be mode 0600 in a 0700 folder. Vimma changes an
+  existing file only from `:route add` (an append) and the setup summary (`[search] default`,
+  edited in place by `setTomlKeys`), never on a parse error, atomically through a renamed
+  temporary file, keeping the file's mode.
   [`a_missing_folder_is_created_private`](../tests/browser/browser_vimma_config_first_run.js),
   [`an_existing_file_is_never_touched`](../tests/browser/browser_vimma_config_first_run.js),
-  [`route_add_creates_a_private_config_toml`](../tests/browser/browser_vimma_security_invariants.js)
+  [`route_add_creates_a_private_config_toml`](../tests/browser/browser_vimma_security_invariants.js),
+  [`summary_keeps_comments_and_mode_of_config_toml`](../tests/browser/browser_vimma_setup.js),
+  [`summary_writes_nothing_on_a_parse_error`](../tests/browser/browser_vimma_setup.js)
 - F2. Every value **must** be validated; a broken file keeps the last good config and a bad
   value (such as a `javascript:` home page) is an error.
   [`broken text keeps the previous config active, unchanged`](../packages/vimma-core/test/config.test.mjs),
