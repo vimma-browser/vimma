@@ -262,6 +262,7 @@ jobs:
             patch-check.*
             patch-audit.txt
             prefs-refresh.*
+            reexport/
           if-no-files-found: ignore
           retention-days: 30
 
@@ -323,6 +324,22 @@ jobs:
           git commit -am "upstream: firefox $VERSION" \
             -m "Bump surfer.json from Firefox $old to $VERSION. Opened by the upstream autopilot" \
             -m "(upstream.yml, ADR-015): patches checked, suites run, see the PR." "${prefs[@]}"
+          # Fuzz-only patches re-exported from the verified tarball (spec upstream-bump-automation,
+          # decision 14), as a second commit. Only src/**/*.patch paths are copied in.
+          rx="$pc/reexport"
+          if [ "$(jq -r .state "$rx/reexport.json" 2>/dev/null)" = reexported ]; then
+            jq -r '.reexported[]' "$rx/reexport.json" | while read -r p; do
+              [[ $p =~ ^src/[A-Za-z0-9._/-]+\.patch$ && $p != *..* && -f $p ]] || {
+                echo "::error::refusing re-exported path '$p'"
+                exit 1
+              }
+              cp "$rx/$p" "$p"
+            done
+            names=$(jq -r '[.reexported[] | sub(".*/"; "")] | join(", ")' "$rx/reexport.json")
+            git commit -m "upstream: re-export $names for firefox $VERSION" \
+              -m "These patches applied only with fuzz; re-exported against Firefox $VERSION with" \
+              -m "the same added and removed lines (tools/upstream/reexport.py)." -- src
+          fi
           # Only this job writes upstream/*; a rebuild replaces the branch.
           git push --force origin "HEAD:refs/heads/$branch"
 
@@ -345,7 +362,8 @@ jobs:
               --artifacts "$ARTIFACTS" --artifacts-note "$ARTIFACTS_NOTE" --tests "$TESTS" \
               --has-token "$HAS_TOKEN" --issue "$ISSUE" --branch "$branch" \
               --repo "$GITHUB_REPOSITORY" --run-url "$RUN_URL" --error "$RUNNER_TEMP/pr-error.txt" \
-              --beta-issues "$BETA_ISSUES" --prefs "$pc/prefs-refresh.json"
+              --beta-issues "$BETA_ISSUES" --prefs "$pc/prefs-refresh.json" \
+              --reexport "$pc/reexport/reexport.json"
           }
           body pr > "$RUNNER_TEMP/pr.md"
           title=$(body title)

@@ -641,3 +641,62 @@ describe("the bump PR and refreshed pref copies", () => {
     expect(r.stdout).toContain("refreshed 1 in this commit");
   });
 });
+
+// Spec upstream-bump-automation, Behaviour 3 and 6: fuzz-only patches re-exported in a second
+// commit; the PR is ready for review, mentions the owner, and is never set to auto-merge.
+describe("the bump PR and re-exported patches", () => {
+  const reexport = {
+    state: "reexported",
+    reexported: ["src/browser/modules/URILoadingHelper-sys-mjs.patch"],
+    refused: [],
+  };
+  const fuzzOnly = { patchResult: "fail", tests: "skipped", hasToken: true, reexport };
+
+  it("lists re-exported patches", () => {
+    const body = prBody(context(fuzzOnly));
+    expect(body).toContain("| Fuzz re-export | 1 patch re-exported in a second commit (below) |");
+    expect(body).toContain("- `src/browser/modules/URILoadingHelper-sys-mjs.patch`");
+    expect(body).toContain("@JRanne");
+    expect(body).toMatch(/never set to auto-merge/);
+  });
+
+  it("a fuzz-only bump with its patches re-exported is ready for review", () => {
+    expect(draftDecision(context(fuzzOnly))).toEqual({
+      draft: false,
+      reason: "patches re-exported",
+    });
+    expect(draftDecision(context({ ...fuzzOnly, hasToken: false })).draft).toBe(true);
+  });
+
+  it("a refused or skipped re-export stays a draft", () => {
+    for (const state of ["refused", "skipped", "none"]) {
+      const c = context({ ...fuzzOnly, reexport: { ...reexport, state, reexported: [] } });
+      expect(draftDecision(c)).toEqual({ draft: true, reason: "some patches do not apply" });
+    }
+  });
+
+  it("the CLI reads the re-export from --reexport", () => {
+    const dir = tempDir("autopilot-reexport-");
+    writeFileSync(join(dir, "detection.json"), JSON.stringify(securityRelease));
+    writeFileSync(join(dir, "reexport.json"), JSON.stringify(reexport));
+    const r = spawnSync(
+      process.execPath,
+      [
+        bodyScript,
+        "pr",
+        "--detection",
+        join(dir, "detection.json"),
+        "--patch-result",
+        "fail",
+        "--has-token",
+        "true",
+        "--reexport",
+        join(dir, "reexport.json"),
+        "--draft-only",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.trim()).toBe("false");
+  });
+});

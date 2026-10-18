@@ -39,7 +39,9 @@ export const BODY_LIMIT = 64000;
  *   patchResult: string, audit: string, artifacts: string, artifactsNote: string,
  *   tests: string, hasToken: boolean, issue: string, branch: string, repo: string,
  *   runUrl: string, owner: string, error: string, betaIssues: BetaIssue[],
- *   prefs?: PrefRefresh | null }} Context
+ *   prefs?: PrefRefresh | null, reexport?: Reexport | null }} Context
+ * @typedef {{ state: string, reexported: string[],
+ *   refused: { patch: string, reason: string }[] }} Reexport
  * @typedef {{ state: string, refreshed: { pref: string, old: string, new: string }[],
  *   unresolved: string[] }} PrefRefresh
  * @typedef {{ number: number, state: "OPEN" | "CLOSED" }} BetaIssue
@@ -78,10 +80,20 @@ export function driftTitle(current) {
  * passed, and a token is set so that the PR's own CI runs (a PR opened with GITHUB_TOKEN
  * starts no workflows; marking it ready for review does).
  * @param {{ patchResult: string, tests: string, hasToken: boolean,
- *   prefs?: PrefRefresh | null }} c
+ *   prefs?: PrefRefresh | null, reexport?: Reexport | null }} c
  * @returns {{ draft: boolean, reason: string }}
  */
-export function draftDecision({ patchResult, tests, hasToken, prefs }) {
+export function draftDecision({ patchResult, tests, hasToken, prefs, reexport }) {
+  // Fuzz-only patches re-exported by the autopilot (spec upstream-bump-automation, Behaviour 3
+  // and 6): the suites did not run on the old patches, so PR CI runs them on the re-export; the
+  // PR waits for the owner, never for auto-merge, because the artifact build cannot test every
+  // patch (decision 15).
+  if (patchResult !== "ok" && reexport?.state === "reexported") {
+    if (!hasToken) {
+      return { draft: true, reason: "opened with GITHUB_TOKEN: mark it ready to start CI" };
+    }
+    return { draft: false, reason: "patches re-exported" };
+  }
   if (patchResult !== "ok") return { draft: true, reason: "some patches do not apply" };
   if (prefs?.state === "unresolved") {
     return { draft: true, reason: "a copied pref is gone upstream (renamed or removed)" };
@@ -161,6 +173,47 @@ export function prefsLine(prefs) {
     return `**gone upstream**: ${prefs.unresolved.map((p) => `\`${codeLine(p)}\``).join(", ")}`;
   }
   return "current";
+}
+
+/**
+ * The "Fuzz re-export" row and list (spec upstream-bump-automation, Behaviour 3).
+ * @param {Reexport | null | undefined} r
+ */
+export function reexportLine(r) {
+  if (!r || r.state === "none") return "none needed";
+  if (r.state === "reexported") {
+    const n = r.reexported.length;
+    return `${n} patch${n === 1 ? "" : "es"} re-exported in a second commit (below)`;
+  }
+  if (r.state === "refused") return "**refused** (added or removed lines would change): see below";
+  return "not attempted: a patch fails";
+}
+
+/** @param {Reexport | null | undefined} r @param {string} owner */
+function reexportLines(r, owner) {
+  if (r?.state === "reexported") {
+    return [
+      "### Re-exported patches",
+      "",
+      (owner ? `@${owner}: ` : "") +
+        "these patches applied only with fuzz; the second commit re-exports them against this " +
+        "release with the same added and removed lines. A bump that changes patches is never " +
+        "set to auto-merge: review it, and run the full build for C++ or build patches " +
+        "(docs/limits.md).",
+      "",
+      ...r.reexported.map((p) => `- \`${codeLine(p)}\``),
+      "",
+    ];
+  }
+  if (r?.state === "refused") {
+    return [
+      "### Re-export refused",
+      "",
+      ...r.refused.map((x) => `- \`${codeLine(x.patch)}\`: ${codeLine(x.reason)}`),
+      "",
+    ];
+  }
+  return [];
 }
 
 /** @param {PrefRefresh | null | undefined} prefs */
@@ -285,9 +338,11 @@ export function prBody(c) {
     `| Patch register (ADR-003) | ${c.audit || "not run"} |`,
     `| Artifact build | ${artifactsLine(c)} |`,
     `| Copied upstream prefs | ${prefsLine(c.prefs)} |`,
+    `| Fuzz re-export | ${reexportLine(c.reexport)} |`,
     `| Mochitests + e2e on the artifact build | ${testsLine(c.tests, c)} |`,
     "",
     ...refreshedLines(c.prefs),
+    ...reexportLines(c.reexport, c.owner),
     "### Advisories",
     "",
     ...advisoryLines(d),
@@ -296,7 +351,12 @@ export function prBody(c) {
     "### What you do",
     "",
   ];
-  if (!draft) {
+  if (!draft && reason === "patches re-exported") {
+    out.push(
+      "PR CI runs the suites on the re-exported patches. Review the second commit and merge " +
+        "when green.",
+    );
+  } else if (!draft) {
     out.push(
       "Everything passed and CI runs on this PR. Review the diff (`surfer.json`) and merge.",
     );
@@ -473,6 +533,7 @@ function main() {
       error: { type: "string" },
       "beta-issues": { type: "string", default: "" },
       prefs: { type: "string" },
+      reexport: { type: "string" },
       "draft-only": { type: "boolean", default: false },
     },
   });
@@ -499,6 +560,7 @@ function main() {
     error: readMaybe(values.error),
     betaIssues: betaIssues(values["beta-issues"] ?? ""),
     prefs: readMaybe(values.prefs) ? JSON.parse(readMaybe(values.prefs)) : null,
+    reexport: readMaybe(values.reexport) ? JSON.parse(readMaybe(values.reexport)) : null,
   };
   const v = detection.release.version;
   /** @type {Record<string, () => string>} */
