@@ -1374,7 +1374,8 @@ neither needs another file.
    Without the variable, `sign` is skipped and the assets go up unsigned.
 6. AUR (optional; `aur.yml` is skipped with a notice until the secret exists). Arch users do
    not need it: the release's `PKGBUILD` installs Vimma without the AUR, and the `aur` job stays
-   dormant until an AUR account and its key exist:
+   dormant until an AUR account and its key exist. The AUR does not accept new account
+   registrations at the moment, so this step waits until it does; the setup below is for then:
    - Check the name is free: `curl -s 'https://aur.archlinux.org/rpc/v5/info?arg[]=vimma-bin'`
      must say `"resultcount":0` (and look at `vimma` too, which `vimma-bin` provides).
    - Create an account at <https://aur.archlinux.org/register>.
