@@ -8,10 +8,11 @@
 # check when the label is added or removed; the newest run for the head commit is the one the
 # ruleset reads. The job runs only while the pull request is open: release-please relabels a
 # merged release pull request (`autorelease: pending` to `autorelease: tagged`) after its head
-# branch is deleted, and a run started then cannot find the head commit (#357). The ruleset
-# reads the check only before the merge, so a skipped run on a closed pull request changes
-# nothing it enforces. The detection runs from the base branch's copy of tools/ci/key-guard.mjs;
-# the pull request's own copy runs only while the base has none.
+# branch is deleted, and a run started then cannot find the head commit (#357). A skipped job
+# reports success, which is safe here only because the pull request is closed: every event that
+# puts its head commit back on the path to a merge (reopened, synchronize, a new pull request on
+# that head) starts a fresh run. The detection runs from the base branch's copy of
+# tools/ci/key-guard.mjs; the pull request's own copy runs only while the base has none.
 name: key-guard
 
 on:
