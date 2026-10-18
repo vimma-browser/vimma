@@ -63,7 +63,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+      - uses: anthropics/claude-code-action@374f254f5efaf968abfe15d399fd90972e8138b9 # v1.0.251
         if: env.HAS_CLAUDE_AUTH == 'true'
         with:
           github_token: ${{ github.token }}
@@ -112,7 +112,7 @@ jobs:
           npm ci
           git switch -c "claude/spec-$ISSUE"
 
-      - uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+      - uses: anthropics/claude-code-action@374f254f5efaf968abfe15d399fd90972e8138b9 # v1.0.251
         if: env.HAS_CLAUDE_AUTH == 'true'
         with:
           github_token: ${{ github.token }}
