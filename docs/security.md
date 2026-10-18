@@ -828,10 +828,6 @@ Spec: [build-supply-chain](specs/build-supply-chain.md), [ADR-001](adr/001-engin
 **Reach:** Mozilla's archive and Taskcluster, the npm registry, this repository, and GitHub's
 hosted runners. Dependabot pull requests run and auto-merge today, whether or not a build runs.
 
-**Planned:** the spec's last delivery adds the rest of B3 (every package in the
-release path held for review, with its published diff,
-[#223](https://github.com/vimma-browser/vimma/issues/223)).
-
 - B1. Nothing is **ever** built from, or reported on, a Firefox source tarball unless its SHA-512
   is listed in a `SHA512SUMS` carrying exactly one good signature by a valid signing subkey of
   Mozilla's release key `14F26682D0916CDD81E37B6D61B7B526D98F0353`, pinned in
@@ -901,16 +897,26 @@ release path held for review, with its published diff,
   [`the build jobs check out clean and restore nothing from the Actions cache`](../tools/test/full-build-workflows.test.mjs),
   [`a release builds in a fresh objdir with an empty compiler cache`](../tools/test/full-build-workflows.test.mjs)
 - B3. Surfer **must** be pinned to one exact version, locked by its integrity hash, and a
-  Dependabot update of Surfer **never** merges without a person, security updates and grouped
-  updates included, whatever the format of Dependabot's metadata; an update whose dependency
-  names are missing waits for a person too. **⚠ gap:** `ajv` itself still auto-merges its
-  patch, minor and security updates, and so do the packages Surfer and `ajv` depend on, until
-  [#223](https://github.com/vimma-browser/vimma/issues/223) holds the whole release path.
+  Dependabot change to any package on the release path (Surfer, `ajv` and every package they
+  depend on, computed from `package-lock.json` by `tools/deps/release-path.mjs`) **never** merges
+  without a person, security updates and grouped updates included. The `classify` job decides
+  from the lockfile diff, running the base commit's code on the head commit's lockfile read as
+  data, with a read-only token and no secrets, and shows the published diff (`npm diff`) in its
+  summary and the `release-path-diff` artifact. A failed classification, an update whose
+  dependency names are missing, and a Surfer name in Dependabot's metadata wait for a person too.
   [`package.json pins Surfer to an exact version, locked by integrity`](../tools/test/build-supply-chain.test.mjs),
   [`a Surfer update is never auto-merged, security updates included`](../tools/test/build-supply-chain.test.mjs),
   [`Surfer is held whatever the separator, quoting or case, or when only the title names it`](../tools/test/build-supply-chain.test.mjs),
   [`an update whose dependency list is empty waits for a person`](../tools/test/build-supply-chain.test.mjs),
-  [`the release-path group comes before the minor and patch group`](../tools/test/build-supply-chain.test.mjs)
+  [`the release-path group comes before the minor and patch group`](../tools/test/build-supply-chain.test.mjs),
+  [`dependabot-automerge classifies on base-branch code with a read-only token`](../tools/test/build-supply-chain.test.mjs),
+  [`a release-path change is never auto-merged, security updates included`](../tools/test/build-supply-chain.test.mjs),
+  [`the release path is Surfer, ajv and everything they depend on`](../tools/deps/test/release-path.test.mjs),
+  [`the roots cover every package the release build job imports`](../tools/deps/test/release-path.test.mjs),
+  [`a changed release-path package needs review, security updates included`](../tools/deps/test/release-path.test.mjs),
+  [`a change only outside the release path may auto-merge`](../tools/deps/test/release-path.test.mjs),
+  [`a transitive release-path package bumped in a grouped update needs review`](../tools/deps/test/release-path.test.mjs),
+  [`only registry names and exact versions are handed to npm diff`](../tools/deps/test/release-path.test.mjs)
 - B4. An npm install **never** runs install scripts, and the build **must** run Surfer only from
   `node_modules`, never a package `npx` fetches, and **never** lets Surfer fetch an add-on.
   [`.npmrc turns install scripts off for every install`](../tools/test/build-supply-chain.test.mjs),

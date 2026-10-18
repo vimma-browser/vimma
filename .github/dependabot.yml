@@ -1,6 +1,6 @@
 # Dependency updates (CONTRIBUTING.md, "Dependency updates"). Weekly, minor and patch grouped into
 # one PR per ecosystem, majors one PR each. dependabot-automerge.yml turns on auto-merge for
-# security, patch and minor updates (never GitHub Actions or Surfer); GitHub merges once every
+# security, patch and minor updates (never GitHub Actions or the release path); GitHub merges once every
 # required check is green. Security updates ignore the schedule and the cooldown.
 # Commit and PR titles: `build(deps): Bump …` / `build(deps-dev): Bump …` (`ci(deps)` for
 # Actions). Dependabot capitalises `Bump` and writes release notes over 100 columns, and neither
@@ -28,9 +28,8 @@ updates:
     groups:
       # The packages the release build runs (docs/specs/build-supply-chain.md, decision 16), in a
       # pull request of their own so a held update does not hold back the other minor and patch
-      # updates. Every Surfer update waits for a person; `ajv` itself still auto-merges like any
-      # other package until #223 holds the whole release path. Groups match in order: this one
-      # comes first.
+      # updates. Every change on the release path waits for a person (dependabot-automerge.yml,
+      # `classify`). Groups match in order: this one comes first.
       release-path:
         patterns:
           - "@zen-browser/surfer"

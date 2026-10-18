@@ -2,12 +2,13 @@
 # Security updates, and patch and minor version updates, get GitHub's auto-merge (squash): GitHub
 # merges them only once every check the main ruleset requires is green, so nothing here skips CI.
 # Majors stay open with a comment for a person to review. GitHub Actions updates never merge
-# themselves (workflows hold write tokens and the model API secret), and neither does any update
-# of @zen-browser/surfer, security updates included: it drives the Firefox build, and a person
-# reads its published diff first (docs/security.md, B3; spec build-supply-chain, decision 14).
-# pull_request, never pull_request_target: no checkout, nothing from the PR runs; the job only reads
-# Dependabot's signed commit metadata and calls the API. On Dependabot's PRs GITHUB_TOKEN gets the
-# permissions below and no secrets.
+# themselves (workflows hold write tokens and the model API secret), and neither does any change to
+# a package the release build runs (Surfer, ajv and their dependencies), security updates included:
+# `classify` finds them in the lockfile diff and puts their published diff in its job summary
+# (docs/security.md, B3; spec build-supply-chain, decisions 14 and 15).
+# pull_request, never pull_request_target: on Dependabot's PRs GITHUB_TOKEN gets the permissions
+# below and no secrets. `classify` runs the base commit's code and reads the head commit's lockfile
+# as data; `automerge`, which can write, checks nothing out.
 name: Dependabot auto-merge
 
 on:
@@ -21,9 +22,92 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  automerge:
+  classify:
     # Both: the PR is Dependabot's and so is this event (not a person pushing to its branch).
     if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      decision: ${{ steps.classify.outputs.decision }}
+    steps:
+      # The base commit: the code that runs here is what main already reviewed, never the PR's.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Classify the lockfile change
+        id: classify
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # The head commit is fetched as objects only; its lockfile is read as text, never run.
+          git fetch --no-tags --depth=1 origin "$HEAD_SHA"
+          git show "$HEAD_SHA:package-lock.json" > "$RUNNER_TEMP/head-lock.json"
+          node tools/deps/release-path.mjs --diff package-lock.json "$RUNNER_TEMP/head-lock.json" \
+            > "$RUNNER_TEMP/release-path.json"
+          cat "$RUNNER_TEMP/release-path.json"
+          decision=$(node -p 'require(process.argv[1]).decision' "$RUNNER_TEMP/release-path.json")
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
+
+      # npm diff downloads both tarballs from the registry and runs no package code. Names and
+      # versions reach it only after release-path.mjs checked them against npm's name and exact
+      # semver forms (`diff: true`), so lockfile text cannot become an npm option; every field is
+      # printed with characters outside [\w@./+-] replaced, so a newline in a lockfile field cannot
+      # forge a "diff" line. --ignore-scripts as well as .npmrc: a git spec would run `prepare`.
+      - name: Published diff of each release-path package
+        if: steps.classify.outputs.decision == 'review'
+        run: |
+          out="$RUNNER_TEMP/release-path-diff"
+          mkdir -p "$out"
+          node -e '
+            for (const p of require(process.argv[1]).packages)
+              console.log([p.diff ? "diff" : "skip", p.name, p.old ?? "-", p.new ?? "-"]
+                .map((f) => String(f).replace(/[^\w@./+-]/g, "?")).join(" "));
+          ' "$RUNNER_TEMP/release-path.json" > "$out/packages.txt"
+          : > "$out/release-path.diff"
+          while read -r kind name old new; do
+            if [ "$kind" = diff ]; then
+              npm diff --ignore-scripts --diff="$name@$old" --diff="$name@$new" \
+                >> "$out/release-path.diff"
+            else
+              echo "# $name $old -> $new: not a registry version pair; read it in the lockfile" \
+                >> "$out/release-path.diff"
+            fi
+          done < "$out/packages.txt"
+          size=$(wc -c < "$out/release-path.diff")
+          {
+            echo "## Release-path packages changed: a person reviews this PR"
+            echo
+            sed 's/^\(\S*\) \(\S*\) \(\S*\) \(\S*\)$/- `\2` \3 → \4 (\1)/' "$out/packages.txt"
+            echo
+            echo "Full diff ($size bytes): the \`release-path-diff\` artifact of this run."
+            echo
+            echo '````diff'
+            # GitHub drops a step summary over 1 MiB; the cut leaves room for the lines around it.
+            head -c 1000000 "$out/release-path.diff"
+            echo
+            echo '````'
+            if [ "$size" -gt 1000000 ]; then echo; echo "Cut at 1,000,000 bytes; see the artifact."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the full diff
+        if: steps.classify.outputs.decision == 'review'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-path-diff
+          path: ${{ runner.temp }}/release-path-diff
+          retention-days: 30
+
+  automerge:
+    needs: classify
+    # always(): a classify that failed still reaches "Decide", which then holds the PR for a person
+    # with a comment instead of leaving it silently open.
+    if: >-
+      always() && github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -42,6 +126,7 @@ jobs:
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
           ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
           DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
+          RELEASE_PATH: ${{ needs.classify.outputs.decision }}
         run: |
           # Dependabot puts "[security]" in the title of a security update.
           security=false
@@ -55,8 +140,13 @@ jobs:
           # No names means the metadata could not be read as expected: a person decides.
           named=true
           [ -n "${DEPENDENCIES//[[:space:]]/}" ] || named=false
+          # classify's verdict on the lockfile; anything but an exact "merge" (a failed or skipped
+          # classify included) holds the PR.
+          release_path=review
+          [ "$RELEASE_PATH" = merge ] && release_path=merge
           decision=review
-          if [ "$ECOSYSTEM" = github_actions ] || [ "$surfer" = true ] || [ "$named" = false ]; then
+          if [ "$ECOSYSTEM" = github_actions ] || [ "$surfer" = true ] || [ "$named" = false ] \
+            || [ "$release_path" != merge ]; then
             decision=review
           elif [ "$security" = true ]; then
             decision=merge
@@ -64,7 +154,7 @@ jobs:
             || [ "$UPDATE_TYPE" = version-update:semver-minor ]; then
             decision=merge
           fi
-          echo "security=$security surfer=$surfer named=$named ecosystem=$ECOSYSTEM update=$UPDATE_TYPE -> $decision"
+          echo "security=$security surfer=$surfer named=$named release_path=$release_path ecosystem=$ECOSYSTEM update=$UPDATE_TYPE -> $decision"
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
 
       - name: Enable auto-merge (squash, after the required checks)
@@ -80,8 +170,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          body="Not auto-merged (\`$UPDATE_TYPE\`): a major, GitHub Actions or Surfer update"
+          body="Not auto-merged (\`$UPDATE_TYPE\`): a major, GitHub Actions or release-path update"
           body="$body needs a person to read the changelog and merge it"
-          body="$body (CONTRIBUTING.md, \"Dependency updates\")."
+          body="$body (CONTRIBUTING.md, \"Dependency updates\"). Release-path packages and their"
+          body="$body published diff: $RUN_URL (the classify job's summary)."
           gh pr comment "$PR_URL" --body "$body"
