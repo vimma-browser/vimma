@@ -1486,8 +1486,8 @@ export const VimmaHost = {
       workspace: privateStatus(win) ?? WindowWorkspaces.get(win)?.status() ?? null,
       configErrors: settings.configErrors,
       configFile: settings.configFile,
-      // Persistent, unlike a notice: containers off at startup (m3-workspaces).
-      alerts: WorkspaceStore.alert ? [WorkspaceStore.alert] : [],
+      // Persistent, unlike a notice: containers off or lost at startup (m3-workspaces).
+      alerts: WorkspaceStore.alerts,
       // docs/specs/vimma-mcp.md decision 24: `◇ agent`, `◇ agent 2?`, `◇ agent 14m`.
       agent: AgentUi.status(),
       // docs/specs/m6a-updater.md §5: `⇡ 0.3.1 available`, or an update problem.

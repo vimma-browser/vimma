@@ -285,19 +285,29 @@ add_task(async function a_split_hides_as_a_whole_and_comes_back_laid_out() {
   await press("(", main());
 });
 
-add_task(async function pinned_tabs_stay_visible_in_every_workspace() {
+add_task(async function a_tab_pinned_outside_vimma_is_unpinned_with_a_notice() {
+  // Decision 11: hideTab refuses pinned tabs, so a tab pinned by an extension or an imported
+  // session would show in every workspace; the host unpins it and says so.
   const A = def("sw-a");
-  const pinned = BrowserTestUtils.addTab(gBrowser, `${PAGE}?pinned`);
-  gBrowser.pinTab(pinned);
-  Assert.equal(workspaceOf(pinned), null, "a pinned tab is out of the model");
+  const tab = await openPage(`${PAGE}?pinned`);
+  const home = workspaceOf(tab);
+  gBrowser.pinTab(tab);
+  await until(() => !tab.pinned, "the tab is unpinned again");
+  Assert.equal(workspaceOf(tab), home, "it stays in its workspace");
+  await until(
+    () => document.getElementById(NOTICE_ID)?.textContent.startsWith("unpinned "),
+    "a notice says it was unpinned",
+  );
+  Assert.stringContains(
+    document.getElementById(NOTICE_ID).textContent,
+    "every workspace",
+    "and why",
+  );
   await press(")", A);
-  const a0 = await startTab();
-  Assert.ok(!pinned.hidden, "the pinned tab is visible in A");
-  Assert.deepEqual(gBrowser.visibleTabs, [pinned, a0], "beside A's tab");
+  await startTab();
+  Assert.ok(tab.hidden, "it is hidden in A like any other tab of its workspace");
   await press("(", main());
-  Assert.ok(!pinned.hidden, "and in main");
-  BrowserTestUtils.removeTab(a0);
-  BrowserTestUtils.removeTab(pinned);
+  BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function the_goto_picker_lists_every_workspace_and_switches() {

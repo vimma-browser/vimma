@@ -566,6 +566,33 @@ export function moveTabQuestion(name, { agent = null } = {}) {
   );
 }
 
+/**
+ * The status bar's persistent alert for workspaces whose container was gone (or reused by
+ * someone else) at startup and was replaced by a new, empty one: their sign-ins are gone, which
+ * a notice that times out could hide (sub-spec 4a). Null when none was lost.
+ * @param {readonly string[]} names
+ * @returns {string | null}
+ */
+export function lostContainersAlert(names) {
+  if (!names.length) return null;
+  const list = names.map((n) => `"${n}"`).join(", ");
+  return names.length === 1
+    ? `${list} lost its container since the last run; it has a new, empty one, so its sites ` +
+        "need a new sign-in"
+    : `${list} lost their containers since the last run; they have new, empty ones, so their ` +
+        "sites need a new sign-in";
+}
+
+/**
+ * The notice after a tab pinned outside Vimma (an extension, an imported session) is unpinned:
+ * `hideTab` refuses pinned tabs, so it would show in every workspace (decision 11).
+ * @param {string} label  the tab's label, or "" when it has none
+ */
+export function unpinnedNotice(label) {
+  const what = label ? `"${label}"` : "a tab";
+  return `unpinned ${what}: a pinned tab would show in every workspace`;
+}
+
 /** The order new workspaces take colours in: distinct ones first, gray never. */
 const NEW_COLORS = ["blue", "green", "orange", "purple", "red", "yellow", "pink", "cyan", "violet"];
 

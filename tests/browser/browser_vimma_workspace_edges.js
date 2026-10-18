@@ -203,6 +203,24 @@ add_task(async function containers_off_at_startup_is_a_persistent_status_bar_err
   Assert.ok(Services.prefs.getBoolPref("privacy.userContext.enabled"), "the pref is untouched");
 });
 
+add_task(async function containers_lost_at_startup_are_a_persistent_status_bar_error() {
+  // The startup check fills lostContainers once, before any window; set it as that check would.
+  Assert.deepEqual(WorkspaceStore.lostContainers, [], "sanity: none lost in this profile");
+  WorkspaceStore.lostContainers.push("work");
+  try {
+    VimmaHost.configure({});
+    await until(() => segment("alert") !== null, "the bar shows an error");
+    Assert.stringContains(segment("alert"), '"work" lost its container', "naming the workspace");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await new Promise((r) => setTimeout(r, 300));
+    Assert.notEqual(segment("alert"), null, "it stays (not a notice)");
+  } finally {
+    WorkspaceStore.lostContainers.length = 0;
+    VimmaHost.configure({});
+  }
+  await until(() => segment("alert") === null, "and goes with the list");
+});
+
 add_task(async function a_lazy_background_tab_moves_without_loading() {
   const a = await workspace("lazyA");
   const b = await workspace("lazyB");

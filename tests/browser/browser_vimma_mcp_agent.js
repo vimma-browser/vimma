@@ -617,6 +617,8 @@ add_task(async function test_confinement_edges() {
 
   // A pinned agent tab: out of every workspace.
   const pinned = await openAgentTab();
+  // Decision 11 unpins it in a window with workspaces; this checks the guard other windows keep.
+  WindowWorkspaces.get(window).unpinsPinnedTabs = false;
   gBrowser.pinTab(pinned);
   Assert.ok(!(await listed()).includes(idOf(pinned)), "a pinned tab is not the agent's");
 
@@ -636,6 +638,7 @@ add_task(async function test_confinement_edges() {
 
   c.close();
   gBrowser.unpinTab(pinned);
+  WindowWorkspaces.get(window).unpinsPinnedTabs = true;
   // Showing the empty agent workspace opened its home tab too: leave one tab, as found.
   ww().switchTo({ name: "main" });
   while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));

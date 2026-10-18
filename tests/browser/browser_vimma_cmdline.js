@@ -6,6 +6,10 @@
 
 "use strict";
 
+const { WindowWorkspaces } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
+);
+
 /* global focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey -- from head.js */
 
 // ctrl+b o: a key under the prefix the host has not built (head.js).
@@ -199,6 +203,8 @@ add_task(async function q_closes_the_tab_but_not_a_pinned_one() {
   Assert.equal(gBrowser.tabs.length, count - 1, "and only that one");
   Assert.ok(!isOpen(), "the command line closed");
 
+  // Decision 11 unpins it in a window with workspaces; this checks the guard other windows keep.
+  WindowWorkspaces.get(window).unpinsPinnedTabs = false;
   gBrowser.pinTab(tabs[2]);
   await select(tabs[2]);
   await focusContent(tabs[2].linkedBrowser);
@@ -210,6 +216,7 @@ add_task(async function q_closes_the_tab_but_not_a_pinned_one() {
     "and selects the first unpinned tab, as tab.close does",
   );
   gBrowser.unpinTab(tabs[2]);
+  WindowWorkspaces.get(window).unpinsPinnedTabs = true;
   Assert.deepEqual(await pageKeysThenZ(tabs[1]), ["z"], "no page saw the keys");
   closeTabs(tabs);
 });

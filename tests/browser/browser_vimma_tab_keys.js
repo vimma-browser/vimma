@@ -6,6 +6,10 @@
 
 "use strict";
 
+const { WindowWorkspaces } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
+);
+
 /* global focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey -- from head.js */
 
 // ctrl+b o: a key under the prefix the host has not built (head.js).
@@ -303,6 +307,8 @@ add_task(async function tab_keys_work_from_the_pdf_viewer() {
 
 add_task(async function pinned_tabs_count_first_and_are_not_closed() {
   const tabs = await openTabs(3);
+  // Decision 11 unpins it in a window with workspaces; this checks the guard other windows keep.
+  WindowWorkspaces.get(window).unpinsPinnedTabs = false;
   gBrowser.pinTab(tabs[2]);
   Assert.equal(gBrowser.visibleTabs[0], tabs[2], "sanity: a pinned tab moves to the front");
   prefix("1");
@@ -327,6 +333,7 @@ add_task(async function pinned_tabs_count_first_and_are_not_closed() {
   Assert.equal(gBrowser.tabs.length, count, "x on a pinned tab closes nothing either");
   Assert.equal(gBrowser.selectedTab, gBrowser.tabs[gBrowser.pinnedTabCount], "it moves on");
   gBrowser.unpinTab(tabs[2]);
+  WindowWorkspaces.get(window).unpinsPinnedTabs = true;
   closeTabs(tabs);
 });
 
