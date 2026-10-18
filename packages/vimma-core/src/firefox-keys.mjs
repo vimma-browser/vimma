@@ -686,11 +686,36 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
     ["ctrl+shift+pageup", "Tabbrowser", "", "move the tab left", "b", "move_tab_left", "all", "V"],
     ["ctrl+f4", "Tabbrowser", "", "close the tab", "a", "close_tab", "all", "V"],
     ["f7", "Tabbrowser", "", "caret browsing (asks first)", "b", "caret_browsing", "all", "P"],
+    // ShortcutUtils.getSystemActionForEvent rejects only shift on F7, so ctrl, alt and meta
+    // toggle caret browsing too; Vimma binds F7 alone.
+    ...["ctrl", "alt", "ctrl+alt", "meta", "ctrl+meta", "alt+meta", "ctrl+alt+meta"].map(
+      (m) =>
+        /** @type {[string, string, string, string, string]} */ ([
+          `${m}+f7`,
+          "Tabbrowser",
+          "",
+          "caret browsing (asks first)",
+          "c",
+        ]),
+    ),
   ]),
   ...rowsOf(
     "menubar",
     [..."fevsbth"].map((letter) => [`alt+${letter}`, "#main-menubar", "", "open a menu", "d"]),
   ),
+  ...rowsOf("menubar", [
+    [
+      "alt+p",
+      "#profiles-menu",
+      "",
+      "open the Profiles menu",
+      "d",
+      null,
+      null,
+      null,
+      { conditional: true },
+    ],
+  ]),
   ...rowsOf("page", [
     ["'", "FindBarChild", "", "quick find, links only", "c"],
     ["/", "FindBarChild", "", "quick find", "a", "find_forward", "normal", "V"],
@@ -783,6 +808,14 @@ const KEYCODES = {
 };
 
 /**
+ * A US keyboard's shifted digits and symbols, as Firefox's en-US keys assume.
+ * @type {Record<string, string>}
+ */
+const US_SHIFTED = Object.fromEntries(
+  [..."1234567890-=[]\\;',./`"].map((k, i) => [k, [...'!@#$%^&*()_+{}|:"<>?~'][i] ?? k]),
+);
+
+/**
  * The chord a `<key>` element answers to, from its own attributes, or null when it has none
  * yet (Fluent fills `key` in after load) or none we can name.
  * @param {{ key?: string | null, keycode?: string | null, modifiers?: string | null }} el
@@ -801,7 +834,12 @@ export function xulKeyChord(el, { mac = false } = {}) {
   }
   let key = null;
   if (el.key && [...el.key].length === 1) key = el.key.toLowerCase();
-  else if (!el.key && el.keycode) key = KEYCODES[el.keycode] ?? null;
+  // GlobalKeyListener matches a shifted key by the character the keyboard types (a US layout
+  // gives `}` for shift+`]`), and Vimma's notation folds shift into that character.
+  if (key && mods.shift && key in US_SHIFTED) {
+    key = US_SHIFTED[key];
+    delete mods.shift;
+  } else if (!el.key && el.keycode) key = KEYCODES[el.keycode] ?? null;
   if (!key) return null;
   return makeChordText(key, mods);
 }

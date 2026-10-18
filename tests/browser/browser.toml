@@ -213,6 +213,9 @@ support-files = ["file_vimma_title.html"]
 ["browser_vimma_firefox_keys.js"]
 support-files = ["file_vimma_plain.html"]
 
+["browser_vimma_firefox_coverage.js"]
+support-files = ["file_vimma_plain.html"]
+
 ["browser_vimma_edit_keys.js"]
 support-files = ["file_vimma_insert_scroll.html", "file_vimma_frame.html"]
 

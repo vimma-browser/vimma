@@ -1,6 +1,6 @@
 # Spec: firefox-keys
 
-Status: accepted (sub-PRs 1-2 implemented; sub-PR 3: [#235](https://github.com/vimma-browser/vimma/issues/235)) · Milestone: after M5 (builds on
+Status: implemented · Milestone: after M5 (builds on
 [key-handling-batch](key-handling-batch.md) § 1, [m0-help-overlay](m0-help-overlay.md),
 [m5-config-load](m5-config-load.md) and [m1-cmdline](m1-cmdline.md)) · Area:
 `packages/vimma-core/src/firefox-keys.mjs`, `actions.mjs`, `defaults.mjs`, `keymap.mjs`,
@@ -497,6 +497,15 @@ keys (ctrl+b ? lists them). enable = ["ctrl+j"] gives one back exactly as Firefo
     - the menu bar's access keys (`#main-menubar > menu`) keep their `accesskey` (fate d);
     - real key events (`EventUtils.synthesizeKey`) for each a/b chord run Vimma's action, so the
       shift-folding between XUL `modifiers` and Vimma's notation is checked, not assumed.
+      (Since changed: decision 16 binds every keyset key, so the c rows are the conditional
+      keys, `'` and the out-of-keyset `ctrl`/`alt`/`meta`+`f7` variants, which
+      `getSystemActionForEvent` also maps to caret browsing in Firefox 158 and which stay
+      unbound because Vimma binds `f7` alone. The first run also added the conditional
+      `alt+p` row for Firefox 158's `#profiles-menu`, and made `xulKeyChord` fold shift into a
+      digit or symbol's US shifted character (`]` with `accel,shift` is `ctrl+}`), because
+      Firefox matches the typed character. A chord whose real key event cannot reach its
+      action yet is a `todo` naming its issue: `ctrl+shift+z`, prevented by content's native
+      `cmd_redo` handler, [#371](https://github.com/vimma-browser/vimma/issues/371).)
       The upstream autopilot ([m7-upstream-autopilot](m7-upstream-autopilot.md)) already runs
       `npm run mochitest -- tests/browser/` on its bump branch; the sub-PR names this test in
       `docs/rebase.md` step 4 as the one to read first when a bump fails, and its failure message

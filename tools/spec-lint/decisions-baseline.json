@@ -15,7 +15,6 @@
     "Performance",
     "Accessibility"
   ],
-  "firefox-keys.md": ["Must never be lost", "No upstream patch."],
   "m6a-updater.md": [
     "Downgrade",
     "Complete MARs only",
