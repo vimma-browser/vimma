@@ -342,3 +342,148 @@ export function locateKeys(text) {
     return undefined;
   };
 }
+
+/**
+ * @typedef {object} TomlEdit
+ * @property {string} table  a top-level `[table]`
+ * @property {string} key    a bare key in it
+ * @property {string | boolean | number} value
+ */
+
+/** A TOML literal for `value`: a basic string, a boolean or an integer. */
+function tomlLiteral(/** @type {string | boolean | number} */ value) {
+  if (typeof value !== "string") return String(value);
+  // JSON's escapes are valid TOML except that TOML also requires DEL to be escaped.
+  return JSON.stringify(value).replace(/\x7f/g, "\\u007F");
+}
+
+/** Structural equality of two parsed TOML values (key order ignored). */
+function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
+  if (a instanceof Date || b instanceof Date) return String(a) === String(b);
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+    return Object.is(a, b);
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  return (
+    ka.length === kb.length &&
+    ka.every((k) => same(/** @type {any} */ (a)[k], /** @type {any} */ (b)[k]))
+  );
+}
+
+/**
+ * The end of a one-line value starting at `line[i]`, or -1 when it is not one: a multi-line
+ * string, an array or an inline table, which a line edit cannot replace safely.
+ * @param {string} line @param {number} i
+ */
+function valueEnd(line, i) {
+  if (line.startsWith('"""', i) || line.startsWith("'''", i)) return -1;
+  const c = line[i];
+  if (c === "[" || c === "{") return -1;
+  if (c === '"') {
+    for (let k = i + 1; k < line.length; k++) {
+      if (line[k] === "\\") k++;
+      else if (line[k] === '"') return k + 1;
+    }
+    return -1;
+  }
+  if (c === "'") {
+    const k = line.indexOf("'", i + 1);
+    return k < 0 ? -1 : k + 1;
+  }
+  let k = i;
+  while (k < line.length && !"#\r".includes(/** @type {string} */ (line[k]))) k++;
+  while (k > i && /[ \t]/.test(/** @type {string} */ (line[k - 1]))) k--;
+  return k;
+}
+
+/**
+ * One edit on parsed `text`.
+ * @param {string} text @param {Record<string, any>} doc @param {TomlEdit} edit
+ * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
+ */
+function setKey(text, doc, { table, key, value }) {
+  const fail = (/** @type {number} */ line, /** @type {string} */ message) => ({
+    ok: /** @type {const} */ (false),
+    error: { line, column: 1, message },
+  });
+  const where = locateKeys(text);
+  const name = formatPath([table, key]);
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.split("\n");
+  const literal = tomlLiteral(value);
+  const headerAt = lines.findIndex((l) => {
+    const m = /^[ \t]*\[[ \t]*([^\][]+?)[ \t]*\][ \t]*(#.*)?\r?$/.exec(l);
+    return m !== null && m[1] === table;
+  });
+  if (headerAt < 0) {
+    if (table in doc) return fail(where([table]) ?? 1, `${table} is not a plain [${table}] table`);
+    const body = `[${table}]${eol}${key} = ${literal}${eol}`;
+    if (text === "") return { ok: true, text: body };
+    return { ok: true, text: `${text}${text.endsWith("\n") ? "" : eol}${eol}${body}` };
+  }
+  let end = lines.length;
+  for (let n = headerAt + 1; n < lines.length; n++) {
+    if (/^[ \t]*\[/.test(/** @type {string} */ (lines[n]))) {
+      end = n;
+      break;
+    }
+  }
+  const keyRe = new RegExp(`^([ \\t]*${key}[ \\t]*=[ \\t]*)`);
+  for (let n = headerAt + 1; n < end; n++) {
+    const line = /** @type {string} */ (lines[n]);
+    const m = keyRe.exec(line);
+    if (!m || where([table, key]) !== n + 1) continue;
+    const stop = valueEnd(line, m[0].length);
+    if (stop < 0) return fail(n + 1, `${name} is not a one-line value`);
+    lines[n] = `${m[0]}${literal}${line.slice(stop)}`;
+    return { ok: true, text: lines.join("\n") };
+  }
+  if (key in doc[table]) {
+    return fail(where([table, key]) ?? headerAt + 1, `${name} is not a plain key = value line`);
+  }
+  let last = headerAt;
+  for (let n = headerAt + 1; n < end; n++) {
+    if (!/^[ \t]*(#.*)?\r?$/.test(/** @type {string} */ (lines[n]))) last = n;
+  }
+  lines.splice(last + 1, 0, `${key} = ${literal}${eol === "\r\n" ? "\r" : ""}`);
+  return { ok: true, text: lines.join("\n") };
+}
+
+/**
+ * Sets keys in config.toml text by editing their lines only (spec first-run-setup, decision 10):
+ * every other line, comment and the key order stay byte for byte. smol-toml has no writer that
+ * keeps comments, hence the line edit; the result is parsed again and must equal the old file
+ * plus the new values, so an edit the line scan got wrong is an error, never a changed file.
+ * @param {string} text  the file; "" for a new one
+ * @param {TomlEdit[]} edits
+ * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
+ */
+export function setTomlKeys(text, edits) {
+  const before = parseToml(text);
+  if (!before.ok) return before;
+  /** @type {Record<string, any>} */
+  const want = structuredClone(before.value);
+  let out = text;
+  for (const edit of edits) {
+    if (!BARE.test(edit.table) || !BARE.test(edit.key)) {
+      return { ok: false, error: { line: 1, column: 1, message: "not a bare key" } };
+    }
+    const now = parseToml(out);
+    if (!now.ok) return now;
+    const r = setKey(out, now.value, edit);
+    if (!r.ok) return r;
+    out = r.text;
+    want[edit.table] = { ...want[edit.table], [edit.key]: edit.value };
+  }
+  const after = parseToml(out);
+  if (!after.ok) return after;
+  if (!same(after.value, want)) {
+    return {
+      ok: false,
+      error: { line: 1, column: 1, message: "the edit would change other keys" },
+    };
+  }
+  return { ok: true, text: out };
+}
