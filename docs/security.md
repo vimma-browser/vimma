@@ -310,11 +310,14 @@ text that pages, add-ons and bookmarks choose.
     own buttons, so Firefox's click delay still applies. The wait counts from Firefox's own time
     for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
     moves or resizes, the window is activated or another prompt takes the panel), so an armed key
-    never meets a button Firefox's delay still refuses. The prompt **never** takes focus by
-    itself; `Tab` focuses the secondary (Block) button first.
+    never meets a button Firefox's delay still refuses. Vimma **never** gives the prompt focus;
+    `Tab` focuses the secondary (Block) button first. A prompt Firefox itself opens with focus on
+    its panel (the add-on install prompt, `autofocus` in ExtensionsUI) takes the keys from there,
+    under the same delay; no text field has focus then.
     [`doorhangerKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
     [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
-    [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js)
+    [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
+    [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.

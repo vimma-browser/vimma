@@ -191,11 +191,15 @@ export class PromptKeys {
     this.arm(n);
     if (this.host.otherOpen()) return false;
     const focused = /** @type {any} */ (this.win.document).commandDispatcher?.focusedElement;
-    const inPrompt = hostChain(focused).includes(n);
+    // A prompt opened with `autofocus` (the add-on install prompt, ExtensionsUI) focuses the
+    // panel itself and no element in it, so no field has focus; PopupNotifications sets
+    // `noautofocus` back on the panel when it closes.
+    const panelFocused = !focused && !n.parentNode?.hasAttribute("noautofocus");
+    const inPrompt = panelFocused || hostChain(focused).includes(n);
     const result = doorhangerKey(formatKey(chord), {
       open: true,
       armed,
-      inField: this.host.inField(),
+      inField: !panelFocused && this.host.inField(),
       inPrompt,
       pending: this.host.pending(),
       repeat: e.repeat,
