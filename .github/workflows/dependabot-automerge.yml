@@ -54,7 +54,9 @@ jobs:
 
       # npm diff downloads both tarballs from the registry and runs no package code. Names and
       # versions reach it only after release-path.mjs checked them against npm's name and exact
-      # semver forms (`diff: true`), so lockfile text cannot become an npm option.
+      # semver forms (`diff: true`), so lockfile text cannot become an npm option; every field is
+      # printed with characters outside [\w@./+-] replaced, so a newline in a lockfile field cannot
+      # forge a "diff" line. --ignore-scripts as well as .npmrc: a git spec would run `prepare`.
       - name: Published diff of each release-path package
         if: steps.classify.outputs.decision == 'review'
         run: |
@@ -62,12 +64,14 @@ jobs:
           mkdir -p "$out"
           node -e '
             for (const p of require(process.argv[1]).packages)
-              console.log([p.diff ? "diff" : "skip", p.name, p.old ?? "-", p.new ?? "-"].join(" "));
+              console.log([p.diff ? "diff" : "skip", p.name, p.old ?? "-", p.new ?? "-"]
+                .map((f) => String(f).replace(/[^\w@./+-]/g, "?")).join(" "));
           ' "$RUNNER_TEMP/release-path.json" > "$out/packages.txt"
           : > "$out/release-path.diff"
           while read -r kind name old new; do
             if [ "$kind" = diff ]; then
-              npm diff --diff="$name@$old" --diff="$name@$new" >> "$out/release-path.diff"
+              npm diff --ignore-scripts --diff="$name@$old" --diff="$name@$new" \
+                >> "$out/release-path.diff"
             else
               echo "# $name $old -> $new: not a registry version pair; read it in the lockfile" \
                 >> "$out/release-path.diff"

@@ -184,6 +184,11 @@ describe("build supply chain: Dependabot", () => {
     expect(run).toMatch(/git show "\$HEAD_SHA:package-lock\.json"/);
     expect(run).toMatch(/node tools\/deps\/release-path\.mjs --diff package-lock\.json /);
     expect(run).not.toMatch(/\bnpm (?:ci|install|i)\b|\bnpx\b|git (?:checkout|switch)/);
+    // Only names and versions release-path.mjs checked reach npm diff, which runs no scripts;
+    // an unchecked entry is printed with anything but [\w@./+-] replaced, so no newline in a
+    // lockfile field can forge a line of the loop's input.
+    expect(run).toMatch(/npm diff --ignore-scripts --diff="\$name@\$old" --diff="\$name@\$new"/);
+    expect(run).toContain('replace(/[^\\w@./+-]/g, "?")');
     const upload = steps.find((s) => String(s.uses ?? "").startsWith("actions/upload-artifact@"));
     expect(upload?.with).toMatchObject({ name: "release-path-diff", "retention-days": 30 });
 
