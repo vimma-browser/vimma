@@ -318,6 +318,26 @@ describe("[firefox] disable and enable", () => {
     expect(ok(v2("[firefox]", "disable = []")).firefox).toEqual({ disable: [], enable: [] });
   });
 
+  // Decision 9: an inventory chord without ctrl, alt or meta (Firefox's stop) can be enabled.
+  test('enable = ["esc", "shift+esc"] is valid', () => {
+    expect(ok(v2("[firefox]", 'enable = ["esc", "shift+esc"]')).firefox.enable).toEqual([
+      "esc",
+      "shift+esc",
+    ]);
+  });
+
+  test("an enabled chord the user binds is an error at the enable line", () => {
+    expect(
+      errors(v2("[keys]", 'new_tab = ["ctrl+t"]', "[firefox]", 'enable = ["ctrl+t"]')),
+    ).toEqual([
+      {
+        line: 5,
+        path: "firefox.enable[0]",
+        message: "ctrl+t is bound to new_tab in [keys]; unbind it or drop it here",
+      },
+    ]);
+  });
+
   test.each([
     ['disable = "none"', "firefox.disable", 'must be "all" or a list of keys like "ctrl+w"'],
     ["disable = 3", "firefox.disable", 'must be "all" or a list of keys like "ctrl+w"'],
@@ -325,7 +345,7 @@ describe("[firefox] disable and enable", () => {
     [
       'enable = ["w"]',
       "firefox.enable[0]",
-      "Firefox's shortcuts have ctrl, alt or meta, or are function keys",
+      "Firefox's shortcuts have ctrl, alt or meta, are function keys, or are esc or shift+esc",
     ],
     ["enable = [1]", "firefox.enable[0]", "expected a key string, got an integer"],
     ['enable = "all"', "firefox.enable", "expected a list of key strings, got a string"],

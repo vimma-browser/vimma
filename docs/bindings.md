@@ -123,40 +123,41 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Browser
 
-| Action                                   | Config name                | Bindings                  |
-| ---------------------------------------- | -------------------------- | ------------------------- |
-| New window                               | `new_window`               | `ctrl+n`                  |
-| Close the window                         | `close_window`             | `ctrl+shift+w`            |
-| Reopen the last closed window            | `restore_window`           | `ctrl+shift+n`            |
-| Quit (asks first)                        | `quit`                     | `ctrl+q`                  |
-| Check for a newer Vimma                  | `check_updates`            | —                         |
-| Reload, bypassing the cache              | `reload_hard`              | `ctrl+f5`, `ctrl+shift+r` |
-| Stop loading the page                    | `stop_loading`             | `esc`                     |
-| Go to the home page                      | `go_home`                  | `alt+home`                |
-| Zoom the page in                         | `page_zoom_in`             | `ctrl+plus`, `ctrl+=`     |
-| Zoom the page out                        | `page_zoom_out`            | `ctrl+minus`, `ctrl+_`    |
-| Reset the page's zoom                    | `page_zoom_reset`          | `ctrl+0`                  |
-| Full screen, or leave it                 | `toggle_fullscreen`        | `f11`                     |
-| Save the page                            | `save_page`                | `ctrl+s`                  |
-| Print the page                           | `print_page`               | `ctrl+p`                  |
-| Downloads (the Library)                  | `downloads`                | `ctrl+shift+y`            |
-| Add-ons manager (about:addons)           | `addons_manager`           | `ctrl+shift+a`            |
-| History (the Library)                    | `history_library`          | `ctrl+shift+h`            |
-| Bookmarks (the Library)                  | `bookmarks_library`        | `ctrl+shift+o`            |
-| Mute or unmute the tab                   | `mute_tab`                 | `ctrl+m`                  |
-| Picture-in-Picture                       | `picture_in_picture`       | `ctrl+}`                  |
-| Reader View                              | `reader_view`              | `ctrl+alt+r`              |
-| Take a screenshot                        | `screenshot`               | `ctrl+shift+s`            |
-| Clear recent history                     | `clear_history`            | `ctrl+shift+delete`       |
-| Web search (the address bar's search)    | `web_search`               | `ctrl+j`                  |
-| Process manager (about:processes)        | `about_processes`          | `shift+esc`               |
-| Bookmark all tabs                        | `bookmark_all_tabs`        | `ctrl+shift+d`            |
-| Show / hide the bookmarks toolbar        | `toggle_bookmarks_toolbar` | `ctrl+shift+b`            |
-| Firefox sidebar: AI chatbot              | `ai_chatbot_sidebar`       | `ctrl+alt+x`              |
-| Firefox sidebar: tabs from other devices | `open_tabs_sidebar`        | `ctrl+alt+u`              |
-| Show / hide Firefox's sidebar            | `toggle_firefox_sidebar`   | `ctrl+alt+z`              |
-| Switch a text field's direction          | `switch_text_direction`    | `ctrl+shift+x`            |
-| Caret browsing (asks first)              | `caret_browsing`           | `f7`                      |
+| Action                                            | Config name                | Bindings                  |
+| ------------------------------------------------- | -------------------------- | ------------------------- |
+| New window                                        | `new_window`               | `ctrl+n`                  |
+| Close the window                                  | `close_window`             | `ctrl+shift+w`            |
+| Reopen the last closed window                     | `restore_window`           | `ctrl+shift+n`            |
+| Quit (asks first)                                 | `quit`                     | `ctrl+q`                  |
+| Check for a newer Vimma                           | `check_updates`            | —                         |
+| Reload, bypassing the cache                       | `reload_hard`              | `ctrl+f5`, `ctrl+shift+r` |
+| Stop loading the page                             | `stop_loading`             | `esc`                     |
+| Run a Firefox command or key by its id (:firefox) | `firefox_command`          | —                         |
+| Go to the home page                               | `go_home`                  | `alt+home`                |
+| Zoom the page in                                  | `page_zoom_in`             | `ctrl+plus`, `ctrl+=`     |
+| Zoom the page out                                 | `page_zoom_out`            | `ctrl+minus`, `ctrl+_`    |
+| Reset the page's zoom                             | `page_zoom_reset`          | `ctrl+0`                  |
+| Full screen, or leave it                          | `toggle_fullscreen`        | `f11`                     |
+| Save the page                                     | `save_page`                | `ctrl+s`                  |
+| Print the page                                    | `print_page`               | `ctrl+p`                  |
+| Downloads (the Library)                           | `downloads`                | `ctrl+shift+y`            |
+| Add-ons manager (about:addons)                    | `addons_manager`           | `ctrl+shift+a`            |
+| History (the Library)                             | `history_library`          | `ctrl+shift+h`            |
+| Bookmarks (the Library)                           | `bookmarks_library`        | `ctrl+shift+o`            |
+| Mute or unmute the tab                            | `mute_tab`                 | `ctrl+m`                  |
+| Picture-in-Picture                                | `picture_in_picture`       | `ctrl+}`                  |
+| Reader View                                       | `reader_view`              | `ctrl+alt+r`              |
+| Take a screenshot                                 | `screenshot`               | `ctrl+shift+s`            |
+| Clear recent history                              | `clear_history`            | `ctrl+shift+delete`       |
+| Web search (the address bar's search)             | `web_search`               | `ctrl+j`                  |
+| Process manager (about:processes)                 | `about_processes`          | `shift+esc`               |
+| Bookmark all tabs                                 | `bookmark_all_tabs`        | `ctrl+shift+d`            |
+| Show / hide the bookmarks toolbar                 | `toggle_bookmarks_toolbar` | `ctrl+shift+b`            |
+| Firefox sidebar: AI chatbot                       | `ai_chatbot_sidebar`       | `ctrl+alt+x`              |
+| Firefox sidebar: tabs from other devices          | `open_tabs_sidebar`        | `ctrl+alt+u`              |
+| Show / hide Firefox's sidebar                     | `toggle_firefox_sidebar`   | `ctrl+alt+z`              |
+| Switch a text field's direction                   | `switch_text_direction`    | `ctrl+shift+x`            |
+| Caret browsing (asks first)                       | `caret_browsing`           | `f7`                      |
 
 ## Developer tools
 

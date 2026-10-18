@@ -454,3 +454,26 @@ describe("workspace commands like Vim's buffer commands", () => {
     expect(completeCommandLine(":addon wo", { args: { workspace: names } }).candidates).toEqual([]);
   });
 });
+
+describe(":firefox (docs/specs/firefox-keys.md decision 5)", () => {
+  test("runs firefox.command with the id as its text", () => {
+    expect(parseCommandLine(":firefox Tools:Downloads")).toEqual(
+      run("firefox", "firefox.command", { text: "Tools:Downloads" }),
+    );
+  });
+
+  test("needs an id", () => {
+    expect(parseCommandLine(":firefox")).toMatchObject({
+      kind: "error",
+      error: { code: "missing-argument" },
+    });
+  });
+
+  test("Tab completes the window's ids the host supplies", () => {
+    const { candidates } = completeCommandLine(":firefox down", {
+      args: { firefox: ["Browser:Reload", "Tools:Downloads"] },
+    });
+    expect(candidates.map((c) => c.value)).toEqual(["firefox Tools:Downloads"]);
+    expect(candidates[0]?.description).toBe("Firefox command");
+  });
+});

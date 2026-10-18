@@ -7,7 +7,9 @@
  * See docs/specs/m0-core-dispatcher.md § Dispatcher contract, § Config input.
  */
 import { resolveActionName, suggestAction } from "./actions.mjs";
+import { parseCommandLine } from "./cmdline.mjs";
 import { DEFAULT_CONFIG } from "./defaults.mjs";
+import { FIREFOX_SHORTCUTS } from "./firefox-keys.mjs";
 import {
   KeyNotationError,
   displayBinding,
@@ -41,6 +43,7 @@ import { formatPath } from "./toml.mjs";
  * @property {string[]} labels
  * @property {"keys" | "modal"} layer
  * @property {Set<Mode>} modes
+ * @property {boolean} user       written in the user's config, not a default
  */
 
 export class KeymapError extends Error {
@@ -68,6 +71,30 @@ function resolveOrThrow(text, path) {
   const a = resolveActionName(text);
   if (!a) throw new KeymapError(`unknown action "${text}"`, path, suggestAction(text));
   return a;
+}
+
+/**
+ * The binding a `:` value stands for (docs/specs/firefox-keys.md decision 5): it runs the rest
+ * as a command line. One definition per line, so the same line bound in two modes is one row.
+ * @param {string} text   as written, `:firefox Tools:Downloads`
+ * @param {string} path
+ * @param {Map<string, ActionDef>} cache
+ * @returns {ActionDef}
+ */
+function commandOrThrow(text, path, cache) {
+  const line = text.replace(/^[\s:]+/, "").trim();
+  const parsed = parseCommandLine(line);
+  if (parsed.kind === "empty") throw new KeymapError("expected a command after :", path);
+  if (parsed.kind === "error") {
+    throw new KeymapError(parsed.error.message, path, parsed.error.suggestions[0]);
+  }
+  const shown = `:${line}`;
+  let def = cache.get(shown);
+  if (!def) {
+    def = { name: shown, id: "cmdline.run", line, group: "Commands", description: shown };
+    cache.set(shown, def);
+  }
+  return def;
 }
 
 /**
@@ -105,6 +132,9 @@ export function compileKeymap(user = {}) {
   const defModal = /** @type {Record<string, unknown>} */ (DEFAULT_CONFIG.modal);
   const userKeys = user.keys ?? {};
   const userModal = /** @type {Record<string, unknown>} */ (user.modal ?? {});
+  const userKeyNames = new Set(Object.keys(userKeys));
+  /** @type {Map<string, ActionDef>} */
+  const commandDefs = new Map();
   /** @type {Set<string>} */
   const overridden = new Set();
 
@@ -174,6 +204,7 @@ export function compileKeymap(user = {}) {
         labels,
         layer: "keys",
         modes: new Set(modes),
+        user: userKeyNames.has(name),
       });
     });
   }
@@ -200,7 +231,9 @@ export function compileKeymap(user = {}) {
       for (const [text, value] of Object.entries(table)) {
         const path = `modal.${mode}.${JSON.stringify(text)}`;
         if (typeof value !== "string") throw new KeymapError("expected an action name", path);
-        const action = resolveOrThrow(value, path);
+        const action = value.startsWith(":")
+          ? commandOrThrow(value, path, commandDefs)
+          : resolveOrThrow(value, path);
         const { chords, labels } = concretise(notation(() => parseBinding(text), path));
         const seq = chords.map(formatKey).join(" ");
         const prev = bySeq.get(seq);
@@ -218,6 +251,7 @@ export function compileKeymap(user = {}) {
           labels,
           layer: "modal",
           modes: new Set([mode]),
+          user: isUser,
         });
       }
     }
@@ -240,6 +274,29 @@ export function compileKeymap(user = {}) {
       }
     });
   }
+
+  // [firefox] enable gives a chord back to Firefox (docs/specs/firefox-keys.md decision 9): the
+  // default bindings on it go, in every mode. A modal default goes only when it is that Firefox
+  // key's own action (normal-mode esc is stop_loading); the side panel's esc stays the panel's.
+  // A binding the user wrote cannot be dropped silently, so it is an error at the enable line.
+  asList(user.firefox?.enable ?? [], "firefox.enable").forEach((text, i) => {
+    const path = formatPath(["firefox", "enable", i]);
+    const chord = formatKey(notation(() => parseKey(text), path));
+    const firefoxActions = new Set(
+      FIREFOX_SHORTCUTS.filter((r) => r.chord === chord && r.action).map((r) => r.action),
+    );
+    for (const e of entries) {
+      if (e.modes.size === 0 || formatKey(/** @type {Chord} */ (e.chords[0])) !== chord) continue;
+      if (e.user) {
+        const table = e.layer === "keys" ? "keys" : `modal.${[...e.modes][0]}`;
+        throw new KeymapError(
+          `${chord} is bound to ${e.action.name} in [${table}]; unbind it or drop it here`,
+          path,
+        );
+      }
+      if (e.layer === "keys" || firefoxActions.has(e.action.name)) e.modes.clear();
+    }
+  });
 
   // Build one trie per mode; detect conflicts within a mode.
   /** @type {Record<string, TrieNode>} */
@@ -328,6 +385,18 @@ export function compileKeymap(user = {}) {
         : `prefix = ${displayKey(prefix)}`,
     /** @param {string} name */
     isOverridden: (name) => overridden.has(name),
+    /**
+     * The `:` bindings, one per command line, in config order: the overlay's Commands group.
+     * @returns {{ line: string, bindings: string[], name: string }[]}
+     */
+    commands: () =>
+      [...commandDefs.values()]
+        .map((d) => ({
+          line: d.description,
+          bindings: listBindings(d.name, (t) => displayBinding(t, { prefix, leader })),
+          name: d.name,
+        }))
+        .filter((c) => c.bindings.length > 0),
   };
 }
 

@@ -20,6 +20,7 @@
  * @property {number} [arg]
  * @property {readonly string[]} [aliases]
  * @property {boolean} [takesChar]  the key after it is its character (`f x`), not a binding
+ * @property {string} [line]  a `:` binding's command line (docs/specs/firefox-keys.md decision 5)
  */
 
 /** @type {ActionDef[]} */
@@ -185,6 +186,7 @@ group("Browser", [
   ["check_updates", "app.update_check", "Check for a newer Vimma"],
   ["reload_hard", "page.reload_hard", "Reload, bypassing the cache"],
   ["stop_loading", "page.stop", "Stop loading the page"],
+  ["firefox_command", "firefox.command", "Run a Firefox command or key by its id (:firefox)"],
   ["go_home", "page.home", "Go to the home page"],
   ["page_zoom_in", "page.zoom_in", "Zoom the page in"],
   ["page_zoom_out", "page.zoom_out", "Zoom the page out"],

@@ -19,7 +19,7 @@ import { APPEARANCES, BUILTIN_THEMES, PALETTE_KEYS, isHexColor, normalizeHex } f
 import { resolveRoutes, validateRoutes } from "./routes.mjs";
 import { formatPath, locateKeys, parsePath, parseToml } from "./toml.mjs";
 import { canonicalChord, isShortcutChord } from "./firefox-keys.mjs";
-import { KeyNotationError, parseKey } from "./keys.mjs";
+import { KeyNotationError, formatKey, parseKey } from "./keys.mjs";
 import { BOOKMARKS_ROOTS } from "./bookmarks.mjs";
 import { quarantineProblem, resolveDownloadDir } from "./agent-downloads.mjs";
 import { resolveSearch, validateSearch } from "./search.mjs";
@@ -178,7 +178,7 @@ const TOP_KEYS = [
   "search",
   "updates",
 ];
-const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind"]);
+const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
 const THEME_KEYS = ["source", "name", "appearance", "font", "colors"];
 const THEME_NAMES = Object.keys(BUILTIN_THEMES);
@@ -423,8 +423,14 @@ function validate(raw, declared) {
           return;
         }
         try {
-          if (!isShortcutChord(parseKey(chord))) {
-            fail(at, "Firefox's shortcuts have ctrl, alt or meta, or are function keys");
+          const c = parseKey(chord);
+          // Firefox's stop (esc, shift+esc) is the inventory's only key without ctrl, alt or meta
+          // that `all` turns off and a user can want back (docs/specs/firefox-keys.md decision 9).
+          if (!isShortcutChord(c) && !["esc", "shift+esc"].includes(formatKey(c))) {
+            fail(
+              at,
+              "Firefox's shortcuts have ctrl, alt or meta, are function keys, or are esc or shift+esc",
+            );
           }
         } catch (e) {
           /* c8 ignore next */
@@ -870,7 +876,12 @@ export function parseConfig(text) {
   let keymap = null;
   if (!problems.some((p) => KEYMAP_SECTIONS.has(/** @type {string} */ (p.path[0])))) {
     try {
-      keymap = compileKeymap({ keys: user.keys, modal: user.modal, unbind: user.unbind });
+      keymap = compileKeymap({
+        keys: user.keys,
+        modal: user.modal,
+        unbind: user.unbind,
+        firefox: user.firefox,
+      });
     } catch (e) {
       /* c8 ignore next */
       if (!(e instanceof KeymapError)) throw e;

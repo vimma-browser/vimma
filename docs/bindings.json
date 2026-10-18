@@ -1163,6 +1163,11 @@
           ]
         },
         {
+          "name": "firefox_command",
+          "description": "Run a Firefox command or key by its id (:firefox)",
+          "keys": []
+        },
+        {
           "name": "go_home",
           "description": "Go to the home page",
           "keys": [

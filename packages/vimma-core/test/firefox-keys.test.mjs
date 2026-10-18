@@ -277,10 +277,10 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     }
   });
 
-  test("the 47 new actions are named, and firefox_command is not there yet", () => {
+  test("the 47 new actions are named, and firefox_command runs any other (sub-PR 2)", () => {
     const actions = new Set(rows.filter((r) => r.fate === "b").map((r) => r.action));
     expect(actions.size).toBe(47);
-    expect(getAction("firefox_command")).toBeUndefined();
+    expect(getAction("firefox_command")).toMatchObject({ id: "firefox.command", group: "Browser" });
     expect(getAction("new_private_window")).toBeUndefined();
   });
 });
