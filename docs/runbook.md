@@ -387,22 +387,22 @@ Limits:
 
 ## CI and automation (spec m0-pipeline)
 
-| Workflow                   | Trigger                            | Runner                    | Needs from you                             |
-| -------------------------- | ---------------------------------- | ------------------------- | ------------------------------------------ |
-| `ci.yml`                   | push to `main`, PRs, manual        | `ubuntu-latest`           | nothing                                    |
-| `e2e.yml`                  | PRs, manual, upstream.yml          | `ubuntu-24.04`            | nothing (ADR-010)                          |
-| `nightly.yml`              | 03:00 UTC, manual                  | `ubuntu-24.04`            | the `NIGHTLY_ENABLED` variable             |
-| `upstream.yml`             | every 4 h (`:17`), manual          | `ubuntu-latest` + e2e.yml | allow Actions to open PRs; optional token  |
-| `claude.yml`               | `@claude`, `spec`+`claude:go`      | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
-| `release-please.yml`       | push to `main`, manual             | `ubuntu-latest`           | Actions may open PRs; optional token       |
-| `release.yml`              | release published, manual          | `ubuntu-24.04`            | see "Release packages" (gated off)         |
-| `pkgbuild.yml`             | `tools/package/` on PRs and `main` | `ubuntu-24.04`            | nothing (Arch Linux in docker)             |
-| `mutation.yml`             | Sundays 04:23 UTC, manual          | `ubuntu-latest`           | nothing (creates its `mutation` label)     |
-| `semgrep.yml`              | push to `main`, PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
-| `codeql.yml`               | push to `main`, PRs, Mon, manual   | `ubuntu-latest`           | nothing; skipped while the repo is private |
-| `dependabot-automerge.yml` | Dependabot's PRs                   | `ubuntu-latest`           | nothing (Dependabot, below)                |
-| `site-dispatch.yml`        | `docs/bindings.json` on `main`     | `ubuntu-latest`           | a token secret (vimma.dev, below)          |
-| `spec-status.yml`          | daily, issue closed, specs, manual | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
+| Workflow                   | Trigger                                            | Runner                    | Needs from you                             |
+| -------------------------- | -------------------------------------------------- | ------------------------- | ------------------------------------------ |
+| `ci.yml`                   | push to `main` (once per tree), PRs, manual        | `ubuntu-latest`           | nothing                                    |
+| `e2e.yml`                  | PRs, manual, upstream.yml                          | `ubuntu-24.04`            | nothing (ADR-010)                          |
+| `nightly.yml`              | 03:00 UTC, manual                                  | `ubuntu-24.04`            | the `NIGHTLY_ENABLED` variable             |
+| `upstream.yml`             | every 4 h (`:17`), manual                          | `ubuntu-latest` + e2e.yml | allow Actions to open PRs; optional token  |
+| `claude.yml`               | `@claude`, `spec`+`claude:go`                      | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
+| `release-please.yml`       | push to `main`, manual                             | `ubuntu-latest`           | Actions may open PRs; optional token       |
+| `release.yml`              | release published, manual                          | `ubuntu-24.04`            | see "Release packages" (gated off)         |
+| `pkgbuild.yml`             | `tools/package/` on PRs and `main` (once per tree) | `ubuntu-24.04`            | nothing (Arch Linux in docker)             |
+| `mutation.yml`             | Sundays 04:23 UTC, manual                          | `ubuntu-latest`           | nothing (creates its `mutation` label)     |
+| `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
+| `codeql.yml`               | push to `main`, PRs, Mon, manual                   | `ubuntu-latest`           | nothing; skipped while the repo is private |
+| `dependabot-automerge.yml` | Dependabot's PRs                                   | `ubuntu-latest`           | nothing (Dependabot, below)                |
+| `site-dispatch.yml`        | `docs/bindings.json` on `main`                     | `ubuntu-latest`           | a token secret (vimma.dev, below)          |
+| `spec-status.yml`          | daily, issue closed, specs, manual                 | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
 
 Locally, before pushing: `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:py`,
 `npm run license-check`, `npx surfer license-check`, `npx commitlint --from main`.
@@ -507,6 +507,34 @@ The gen-docs freshness step runs on every pull request: `npm run gen-docs`, then
 --exit-code` on `docs/bindings.md`, `docs/bindings.json` and `packages/vimma-core/defaults.toml`.
 A hand edit of a generated file fails there with the command to run.
 
+### Once per tree (issue #358)
+
+`ci.yml`, `semgrep.yml` and `pkgbuild.yml` run on pull requests and on pushes to `main`. A
+squash merge usually gives `main` a commit whose tree is the pull request head's tree, so the
+push run would check the same files again. Their first job on a push, `covered`, runs
+`tools/ci/tree-covered.mjs`: it reads the pushed commit's tree and the last 50 successful
+`pull_request` runs of the same workflow from the Actions API (both public; the job token holds
+`actions: read` and `contents: read`, nothing more), and compares each run's head tree. On a
+match it outputs `skip=true` and a notice on the run's summary names the covering run; the other
+jobs then skip by `if:`. Equal trees include `.github/workflows`, so the covering run used the
+same workflow definition. When `main` moved after the pull request's last run, the trees differ
+and the checks run as before: the ruleset does not require up-to-date branches
+(`strict_required_status_checks_policy: false`), so that run is the only check of the merged
+combination. Requiring up-to-date branches instead would re-run every open pull request's
+checks after each merge, more than the one push run it saves. A guard that cannot reach the API
+warns and lets the checks run; a guard without its variables fails, which shows a workflow bug.
+
+`ci.yml` still lints the squash commit's message when it skips: that message is new on `main`
+and release-please builds the changelog from it ("Releases" below). `codeql.yml` is not
+deduplicated: code scanning keeps `main`'s alerts from analyses uploaded for commits of `main`
+and compares a pull request's analysis against the latest one of its base, so a push without an
+upload would leave both at the previous merge. Semgrep uploads nothing (its SARIF stays an
+artifact of the run), so its push run has nothing to add. `e2e.yml` runs on pull requests only,
+and `release.yml` builds once per release, so neither was duplicated.
+
+To check a commit by hand:
+`GH_TOKEN=$(gh auth token) GITHUB_REPOSITORY=vimma-browser/vimma GITHUB_SHA=<sha> node tools/ci/tree-covered.mjs --workflow ci.yml`.
+
 ### PR mochitests (`e2e.yml`, ADR-010)
 
 PRs run `tests/browser/` on an **artifact build**: our front end built on Mozilla's compiled
@@ -545,6 +573,8 @@ no monthly cap: minutes are no longer a reason to skip a job. What still matters
 (a PR waits for its slowest required check) and the concurrency limit on hosted runners (20
 jobs at once on the free plan), so keep jobs lean all the same. Rough use per PR push: CI ≈ 2
 min, e2e ≈ 6 min (5.5 min wall, ADR-010), Semgrep ≈ 1 min, CodeQL a few minutes per language.
+A push to `main` repeats only CodeQL and, when the merged tree differs from the pull request
+head's, the rest ("Once per tree" below).
 
 e2e.yml has no paths filter: "mochitest (artifact build)" is a required check, so the workflow
 starts on every PR, and on a docs-only one the job skips by `if:` in seconds (above). The upstream autopilot runs 6 × 1 min a day, plus ≈ 16 min (issue, patch check, the
@@ -1719,7 +1749,7 @@ fine-grained token with access to vimma-browser/vimma-site only and "Contents: r
 
 ### Security scanning (`semgrep.yml`, `codeql.yml`)
 
-**Semgrep CE** runs on every PR, push to `main` and on Mondays. It scans the repo with the public
+**Semgrep CE** runs on every PR, on pushes to `main` whose tree no pull request run scanned ("Once per tree" above) and on Mondays. It scans the repo with the public
 registry rulesets `p/javascript`, `p/typescript`, `p/rust`, `p/secrets` and `p/github-actions`,
 from the `semgrep/semgrep` image pinned by digest (bump the digest and the version comment
 together). It does not log in to semgrep.dev and uploads nothing: `--metrics=off`, no token.
