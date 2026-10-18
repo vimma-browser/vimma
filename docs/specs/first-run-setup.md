@@ -10,10 +10,10 @@ Issue: [#378](https://github.com/vimma-browser/vimma/issues/378)
 
 ## Summary
 
-On the first run of a new profile, Vimma offers a short setup page with two steps: add the
-add-ons the user usually runs, and choose the default search engine. Every step is optional and
-driven from the keyboard; `esc` leaves at once and changes nothing. The same page can be opened
-again later.
+On the first run of a new profile, Vimma shows a short welcome screen with its logo that asks
+whether to set things up now. `enter` starts a setup with two steps: add the add-ons the user
+usually runs, and choose the default search engine. `esc` skips and leaves nothing configured.
+Every step is optional and driven from the keyboard, and the setup can be opened again later.
 
 ## Problem
 
@@ -26,16 +26,19 @@ section of `config.toml` before the browser is usable. Vimma disables Firefox's 
 
 ## Behaviour
 
-1. On the first start of a profile, the first window opens the setup page in its first tab. A
-   later start of the same profile **must not** open it again, whether the user finished or
-   skipped it.
-2. The page **must** be skippable at once: `esc` or `q` on any step, or the **Skip** button,
-   closes the tab and leaves the start page. Skipping **must not** change any pref, engine or
-   add-on, apart from recording that the setup was offered.
-3. Step 1, add-ons. A list of add-ons, each with its name, author, a one-line summary and its
-   user count. `j`/`k` move, `space` marks or unmarks, `/` focuses the search field, `enter`
-   in the field searches, `esc` in the field returns to the list. `enter` on the list goes to
-   step 2. Marking installs nothing.
+1. On the first start of a profile, the first window shows the welcome screen: the Vimma logo,
+   a one-line tagline and two buttons, **Set up** (`enter`, focused) and **Skip** (`esc`). A
+   later start of the same profile **must not** show it again, whether the user set up,
+   skipped or closed it.
+2. **Skip**, `esc` or `q` on the welcome screen closes it and leaves the start page; nothing is
+   configured. The setup steps start only after **Set up**. On any later step, `esc` or `q`
+   (outside a text field) or the **Skip** button leaves the same way. Skipping **must not**
+   change any pref, engine or add-on, apart from recording that the setup was offered.
+3. Step 1, add-ons. The curated list is shown first; each add-on has its name, author, a
+   one-line summary and its user count. `/` focuses the search field and `enter` in it searches
+   AMO; the results replace the list, and an empty search brings the curated list back. `j`/`k`
+   move, `space` marks or unmarks, `esc` in the field returns to the list. `enter` on the list
+   goes to step 2. Marking installs nothing.
 4. Step 2, search engine. The engines installed in the profile, the current default marked.
    `j`/`k` move, `enter` chooses and goes to the summary.
 5. Summary. What will happen: the add-ons to install, the engine to set. `enter` applies,
@@ -45,10 +48,11 @@ section of `config.toml` before the browser is usable. Vimma disables Firefox's 
 6. Nothing is applied before the summary is confirmed. Closing the tab or the window at any
    earlier point **must** leave the profile as it was.
 7. Offline, or when AMO does not answer within 10 s, step 1 shows the curated list with a
-   one-line notice, and step 2 works as usual.
-8. `:setup` opens the page again in a new tab, with the same steps; about:vimma links to it.
+   one-line notice that search is unavailable, and step 2 works as usual.
+8. `:setup` opens the setup again in a new tab, starting at the welcome screen; about:vimma
+   links to it.
    No key is bound by default.
-9. The page follows Vimma's theme (Omarchy colours when `vimma.theme.source` is `omarchy`,
+9. The welcome screen and the steps follow Vimma's theme (Omarchy colours when `vimma.theme.source` is `omarchy`,
    otherwise the light or dark built-in theme), like the start page.
 10. Neither the control socket nor an MCP agent can open, read or drive the page.
 
@@ -131,13 +135,48 @@ curated table, validating and filtering AMO results, and the summary plan.
    the user's region first, because those are the engines the build ships and the user can
    pick without adding anything.
 
-Pending the answers in Open questions: where add-ons come from (1), where the engine choice is
-stored (2), how the page appears (3), the curated list (4) and how the setup is re-run (5).
+6. **Add-ons come from a live AMO search, with the curated list first.** Step 1 opens on the
+   curated list and searches AMO's public API on `enter`; offline or after a 10 s timeout it
+   keeps the curated list. Because the API needs no key and returns the signed file's URL and
+   hash, any AMO add-on is reachable at the cost of one request per search, and the curated list
+   keeps the step useful before anything is typed and without a network. Rejected: the curated
+   list only, because any other add-on would still need AMO in a tab; AMO search only, because
+   the step would be an empty screen until something is typed.
+7. **A welcome screen asks first; the setup is opt-in.** The first run shows only the welcome
+   screen, and the steps start after **Set up**, so that a user who wants to browse at once
+   leaves with one key and nothing changed, and the first thing a new profile shows is Vimma
+   itself rather than a form. Rejected: opening step 1 directly, because it asks for choices
+   before the user has agreed to make any; showing nothing and naming `:setup` on the start
+   page, because most users would never find it.
+
+Pending the answers in Open questions: where the engine choice is stored (2), where the welcome
+screen is shown (3), the curated list (4) and how the setup is re-run (5).
+
+### Welcome screen
+
+- **Layout.** One centred column on the page background: the logo mark and wordmark from the
+  start page (`src/browser/base/content/vimma/start/vimma-logo-mark.png` and
+  `vimma-logo-wordmark.png`, drawn as CSS masks by `src/browser/themes/shared/vimma/logo.css`
+  so they take the theme's foreground colour), a one-line tagline under it, then the two
+  buttons side by side with their keys shown (`enter` **Set up**, `esc` **Skip**). Reusing
+  the start page's assets and mask keeps the logo identical across Vimma's pages and
+  correctly coloured in every theme without new image files.
+- **Logo size.** The mark at 96 px high, the wordmark beside it at the same height, because the
+  screen holds nothing else to compete with and the start page's smaller logo would look lost
+  in an empty window; it scales down with the window below 480 px wide.
+- **Typography and colour.** Theme variables only (`setup.css` uses the same custom properties
+  as `start.css`), so Omarchy, light and dark need no per-theme rules. The tagline is muted
+  text; the focused button uses the accent colour.
+- **Motion.** At most one short fade-in (150 ms) of the column on open, and none under
+  `prefers-reduced-motion: reduce`, because the screen should feel calm and nothing on it moves
+  afterwards.
+- **Keyboard first.** **Set up** has focus on open, so `enter` and `esc` work without a click;
+  both buttons are also reachable with `tab` and the mouse.
 
 ### Workspaces, containers and agents
 
 Add-ons are installed per profile, not per workspace or container: an add-on installed here
-runs in every workspace, including the agent workspace. The setup page says so on step 1. The
+runs in every workspace, including the agent workspace. Step 1 says so. The
 search engine is likewise one default for the profile.
 
 ## Security and privacy
@@ -148,8 +187,9 @@ search engine is likewise one default for the profile.
   dropped.
 - **Explicit consent, twice.** Nothing installs without the user marking it, confirming the
   summary and accepting Firefox's permission prompt. Vimma **must not** answer the prompt.
-- **Network.** Opening step 1 sends one request to `addons.mozilla.org` for the curated
-  entries' current files (option (a) of question 1 adds one per search). The request carries
+- **Network.** The welcome screen sends nothing. Opening step 1 sends one request to
+  `addons.mozilla.org` for the curated entries' current files, and each search sends one more
+  (decision 6). The request carries
   the search terms and nothing about the profile. The page says so before the first search.
   Offline, step 1 falls back as in behaviour 7 and nothing is retried in the background.
 - **No agent or socket reach.** The control socket gets no command for the setup, the agent
@@ -174,7 +214,10 @@ vitest, `packages/vimma-core/test/setup.test.mjs`:
 
 Mochitest, `tests/browser/browser_vimma_setup.js`:
 
-- `first_run_opens_setup_once`
+- `first_run_shows_welcome_once`
+- `welcome_skip_changes_nothing`
+- `welcome_enter_starts_the_setup`
+- `search_results_replace_the_curated_list`
 - `automation_and_config_path_skip_setup`
 - `esc_changes_no_pref_engine_or_addon`
 - `closing_before_summary_changes_nothing`
@@ -185,7 +228,11 @@ Mochitest, `tests/browser/browser_vimma_setup.js`:
 - `agent_role_cannot_open_setup`
 - `colon_setup_opens_the_page`
 
-e2e: `setup-page` scenario, screenshots of each step with the Omarchy and light themes.
+e2e: `setup-page` scenario, screenshots of the welcome screen and of each step with the Omarchy
+and light themes. The welcome screenshots are checked by eye for the logo's colour and size, the
+tagline, the focused **Set up** button and the key hints in both themes before the baselines
+are accepted; a run with `prefers-reduced-motion: reduce` checks that the screen appears without
+the fade.
 
 ## Docs and changelog
 
@@ -196,27 +243,23 @@ e2e: `setup-page` scenario, screenshots of each step with the Omarchy and light 
 
 ## Delivery
 
-1. The page, `vimma.setup.offered`, the search step, the summary and `:setup`; step 1 absent.
+1. The welcome screen, the page, `vimma.setup.offered`, the search step, the summary and `:setup`; step 1 absent.
 2. Step 1 with the curated list and installs; `docs/security.md` A1; security review.
-3. AMO search in step 1 (if question 1 keeps it).
+3. AMO search in step 1 (decision 6).
 
 ## Open questions
 
-1. **Where do add-ons come from?** (a) A live AMO search, with the curated list shown before
-   anything is typed and as the offline fallback: any add-on is reachable; one request per
-   search. (b) The curated list only: no search requests; anything else still needs AMO in a
-   tab. (c) AMO search only: no list to maintain; an empty screen until something is typed.
-   Recommendation: (a), because the public API needs no key and returns the signed file's URL
-   and hash, so the search is feasible and costs little.
 2. **Where is the search engine choice stored?** (a) `SearchService.setDefault` only, as a
    choice in Settings would be; `config.toml` is never written, and a `[search] default` in it
    still wins. (b) Written as `[search] default` into `config.toml`: the file stays the source
    of truth, but Vimma edits a file the user may manage elsewhere. (c) Both. Recommendation:
    (a), because Vimma does not edit an existing `config.toml` (`docs/security.md` F1).
-3. **How does the setup appear on first run?** (a) As the first window's first tab, with the
-   start page behind it. (b) As an overlay on the start page. (c) Not shown; the start page
-   names `:setup`. Recommendation: (a), because a tab is closed the usual way, gets the page keys users
-   already know and can be opened again by URL; an overlay needs its own focus and dismissal rules.
+3. **Where is the welcome screen shown?** It is shown on first run and is opt-in (decision 7);
+   where it lives is open. (a) As the first window's first tab, `about:vimma-setup`, with the
+   start page behind it; the steps follow in the same tab. (b) As an overlay in the first
+   window, over the start page; **Set up** then opens the steps in a tab. Recommendation: (a),
+   because a tab is closed the usual way, gets the page keys users already know and can be
+   opened again by URL; an overlay needs its own focus and dismissal rules.
 4. **Which add-ons are on the curated list?** (a) uBlock Origin only. (b) uBlock Origin,
    AdGuard AdBlocker and Privacy Badger, all AMO "Recommended". (c) (b) plus password managers
    such as Bitwarden. Recommendation: (b), because the list is about content blocking and
