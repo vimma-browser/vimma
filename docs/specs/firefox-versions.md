@@ -1,6 +1,6 @@
 # Spec: firefox-versions
 
-Status: accepted (sub-PRs 1 to 3 implemented, #194, #199 and #283; sub-PR 4: [#220](https://github.com/vimma-browser/vimma/issues/220)) · Area: `tools/release/` (new: `version-line.mjs`, `firefox-notes.mjs`,
+Status: implemented · Area: `tools/release/` (new: `version-line.mjs`, `firefox-notes.mjs`,
 `security-release.mjs`), `.github/workflows/release-please.yml`, `nightly.yml`, `release.yml`,
 `tools/upstream/autopilot-body.mjs`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `docs/runbook.md`, `docs/security.md`, `docs/review-checklist.md`, `CONTRIBUTING.md` · Upstream
@@ -342,7 +342,8 @@ MOZ_APP_VERSION)` and keeps the copyright suffix. Both macros are already define
   unchanged.
 - **Privacy.** No new data leaves anyone's machine. `--version` reads compiled-in constants.
 
-New guarantees for `docs/security.md` §10:
+New guarantees for `docs/security.md` §10 (Since changed: numbered G11 and G12 there, because
+G9 and G10 were taken by the Beta canary before this spec's sub-PR 4 merged):
 
 - G9. A merged `upstream` PR labelled `security` **must** set the release PR to auto-merge in the
   same `release-please.yml` run when `AUTO_SECURITY_RELEASE` is on, and **never** any other PR.

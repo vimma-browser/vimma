@@ -46,4 +46,5 @@ red run. Reusing `e2e.yml` keeps one definition of "the suites pass".
 
 About 270 Actions minutes a month while the repo was private (spec); free since it is public. The owner enables "Allow
 GitHub Actions to create and approve pull requests" (runbook). Bumps use the `upstream` commit
-type so release-please lists them and cuts a release PR.
+type so release-please lists them and cuts a release PR. A merged bump labelled `security` sets
+that release PR to auto-merge when `AUTO_SECURITY_RELEASE` is on ([ADR-020](020-security-release-without-a-person.md)).
