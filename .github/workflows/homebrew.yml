@@ -1,0 +1,167 @@
+# Spec macos-homebrew, decisions 9 and 10: push the Homebrew cask (Casks/vimma.rb) to
+# vimma-browser/homebrew-tap for a published release, as aur.yml pushes vimma-bin to the AUR.
+# The tap is public the moment a push lands, so this runs only once a release is published. It
+# runs nothing from the repository. Its only input is the published release's own vimma.rb,
+# fetched from releases/download/<tag>/, which serves a published release only (a draft's files
+# are a 404 there), checked against the release's SHA256SUMS-macos and, with signing on,
+# SHA256SUMS-macos against release.yml's signature. The macOS files usually reach a release after
+# it is published: then the run for the publish ends with a notice, and release.yml's macos-tap
+# job starts this again once vimma.rb is on the published release.
+# Nothing runs until RELEASE_ENABLED and MACOS_RELEASE_ENABLED are `true`; skipped (green, with a
+# notice) until the HOMEBREW_TAP_SSH_KEY secret exists. Retry: gh workflow run homebrew.yml
+# -f tag=vX.Y.Z (docs/runbook.md, "Release packages").
+name: homebrew
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published release tag to push to the Homebrew tap (vX.Y.Z)"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: homebrew-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  # No GitHub token at all: the files come from public download URLs, and the push uses the tap's
+  # deploy key alone.
+  homebrew:
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      (github.event_name == 'release' || github.ref == 'refs/heads/main') &&
+      vars.MACOS_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    # Holds HOMEBREW_TAP_SSH_KEY; its deployment refs are main and v* tags (docs/runbook.md,
+    # "Release packages", step 7), so no workflow on another branch can read the key.
+    environment: homebrew
+    env:
+      KEY_SET: ${{ secrets.HOMEBREW_TAP_SSH_KEY != '' }}
+    steps:
+      - name: Without HOMEBREW_TAP_SSH_KEY, skip
+        if: env.KEY_SET != 'true'
+        run: echo "::notice::HOMEBREW_TAP_SSH_KEY is not set; the cask was not pushed (docs/runbook.md, Releases)"
+
+      - name: Check the tag's form
+        if: env.KEY_SET == 'true'
+        run: |
+          echo "$TAG" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+' \
+            || { echo "::error::'$TAG' is not a vX.Y.Z release tag"; exit 1; }
+
+      # Sets ready=true once the cask is downloaded and checked; the steps below run only then.
+      - name: Download the published release's cask
+        id: cask
+        if: env.KEY_SET == 'true'
+        run: |
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          curl -fsSL -o vimma.rb "$base/vimma.rb" || {
+            if [ "$GITHUB_EVENT_NAME" = release ]; then
+              echo "::notice::$TAG has no vimma.rb yet; release.yml's macos-tap job starts this once it has"
+              exit 0
+            fi
+            echo "::error::$base/vimma.rb: not found; is $TAG published, with its macOS assets?"
+            exit 1
+          }
+          for f in SHA256SUMS-macos SHA256SUMS-macos.sigstore.json; do
+            # The bundle exists only when the release was signed; the next step needs it then.
+            curl -fsSL -o "$f" "$base/$f" || {
+              [ "$f" = SHA256SUMS-macos.sigstore.json ] && continue
+              echo "::error::$base/$f: not found; is $TAG published, with its macOS assets?"
+              exit 1
+            }
+          done
+          [ "$(grep -cE '  vimma\.rb$' SHA256SUMS-macos || true)" = 1 ] \
+            || { echo "::error::SHA256SUMS-macos does not list vimma.rb once"; exit 1; }
+          grep -E '  vimma\.rb$' SHA256SUMS-macos | sha256sum -c -
+          # A signed SHA256SUMS-macos is not bound to its tag; the cask must be this release's.
+          grep -qx "  version \"${TAG#v}\"" vimma.rb \
+            || { echo "::error::vimma.rb is not version ${TAG#v}"; exit 1; }
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: steps.cask.outputs.ready == 'true' && vars.SIGNING_ENABLED == 'true'
+
+      # The identity users verify (IDENTITY_REGEXP in tools/package/package.mjs; a test keeps
+      # the two equal), so the tap gets only what release.yml built and signed.
+      - name: Verify the release's signature
+        if: steps.cask.outputs.ready == 'true' && vars.SIGNING_ENABLED == 'true'
+        run: |
+          cosign verify-blob --bundle SHA256SUMS-macos.sigstore.json \
+            --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            SHA256SUMS-macos
+
+      # The tap's ruleset lets only this deploy key push to main without a pull request.
+      - name: Push Casks/vimma.rb
+        if: steps.cask.outputs.ready == 'true'
+        env:
+          HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
+          MAINTAINER: ${{ vars.PACKAGE_MAINTAINER }}
+          # github.com's Ed25519 host key; fingerprint
+          # SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU as GitHub publishes it
+          # (https://api.github.com/meta, ssh_keys)
+          GITHUB_HOST_KEY: github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$HOMEBREW_TAP_SSH_KEY" > ~/.ssh/homebrew-tap
+          chmod 600 ~/.ssh/homebrew-tap
+          printf '%s\n' "$GITHUB_HOST_KEY" > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/homebrew-tap -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          git clone git@github.com:vimma-browser/homebrew-tap.git tap
+          # A re-run for an older release, after a newer one reached the tap, keeps the newer.
+          old=$(sed -nE 's/^  version "(.*)"$/\1/p' tap/Casks/vimma.rb 2> /dev/null || true)
+          if [ -n "$old" ] && [ "$old" != "${TAG#v}" ] \
+            && [ "$(printf '%s\n%s\n' "$old" "${TAG#v}" | sort -V | tail -n 1)" = "$old" ]; then
+            echo "::notice::the tap has vimma $old, newer than ${TAG#v}; nothing pushed"
+            exit 0
+          fi
+          mkdir -p tap/Casks
+          cp vimma.rb tap/Casks/vimma.rb
+          cd tap
+          name=$(printf '%s' "$MAINTAINER" | sed -E 's/ *<.*//')
+          email=$(printf '%s' "$MAINTAINER" | sed -E 's/.*<(.*)>.*/\1/')
+          git add Casks/vimma.rb
+          if git diff --cached --quiet; then
+            echo "::notice::the tap already has vimma ${TAG#v}"
+          else
+            git -c user.name="$name" -c user.email="$email" commit -m "vimma ${TAG#v}"
+            git push origin HEAD:main
+          fi
+
+  failure:
+    needs: homebrew
+    if: >-
+      failure() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      (github.event_name == 'release' || github.ref == 'refs/heads/main') &&
+      vars.MACOS_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write # open or comment on the release-failure issue
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open or update the failure issue
+        run: |
+          gh label create release-failure --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "release.yml, aur.yml or homebrew.yml failed" --force
+          body="Homebrew tap push for $TAG failed: $RUN_URL. Fix, then re-run: \`gh workflow run homebrew.yml -f tag=$TAG\`."
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label release-failure --state open \
+            --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Homebrew tap push for $TAG failed" \
+              --label release-failure --body "$body"
+          fi
