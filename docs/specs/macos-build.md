@@ -277,8 +277,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
      less than 40 GB is free (build-supply-chain decision 9). Freeing disk (`jlumbroso/free-disk-space`, as Zen
      does) is the fallback if the image shrinks; it is not needed today.
    - A cold cross build on 4 CPUs is estimated at 1.5 to 3 hours (from build-supply-chain's estimate of at least
-     116 minutes for a Linux build on 4 CPUs, and Zen's 28-53 minutes on 8 vCPU); not measured.
-     Sub-PR 3 measures it. If it exceeds build-supply-chain's 4-hour threshold, the macOS build follows the
+     116 minutes for a Linux build on 4 CPUs, and Zen's 28-53 minutes on 8 vCPU); sub-PR 3
+     measured 133 minutes for the whole job, 44 GB of disk with the swap file. If it exceeds build-supply-chain's 4-hour threshold, the macOS build follows the
      Linux release to a larger hosted Linux runner, which needs an organisation on the GitHub Team
      plan (paid, about $0.042 per minute for 16 cores).
    - Rejected: building on a hosted Mac. The documented 14 GB SSD is under half of what a build
@@ -488,7 +488,7 @@ Time and cost per run:
 | ------------------------------------------------- | ------------------------------------------------- | ----------------------------- |
 | Sub-PR 1 job (Vitest, artifact build, mochitests) | 20-30 min (estimate; the Linux job's limit is 45) | $0 (public repo)              |
 | Sub-PR 2 cargo job on macOS                       | about 3 min                                       | $0                            |
-| Sub-PR 3 cold cross build on `ubuntu-24.04`       | 1.5-3 h (estimate; measured in sub-PR 3)          | $0                            |
+| Sub-PR 3 cold cross build on `ubuntu-24.04`       | 133 min (measured)                                | $0                            |
 | Same on a 16-core larger Linux runner (fallback)  | about 40 min (estimate)                           | about $1.70, plus a Team plan |
 | Sub-PR 4 smoke on `macos-15`                      | about 10 min                                      | $0                            |
 | Sub-PR 7 signing and notarisation                 | about 7 min more (Zen: 29 s and 6.5 min)          | 99 USD a year                 |

@@ -928,8 +928,10 @@ run=$(gh run list -w macos.yml -s success -L 1 --json databaseId --jq '.[0].data
 gh run download "$run" -D ~/Downloads/vimma-macos
 ```
 
-The cross build has not been timed yet; `timeout-minutes` is 330 until the first green run
-sets it to about 1.5 times the measured job, as for the Linux builds.
+The first green run (run 39205860770, Firefox 158.0 for Vimma 0.1.5, cold, no compiler cache)
+took 133 minutes for `build`, 129 of them in `surfer build`, and 45 seconds for `smoke`. The
+build used 44 GB of the runner's disk, the 16 GB swap file included, and left 42 GB free; the
+`.dmg` is 109 MB. `timeout-minutes` is 200, about 1.5 times the job, as for the Linux builds.
 
 #### macOS in a release
 

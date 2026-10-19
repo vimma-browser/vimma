@@ -252,9 +252,10 @@ describe("macos.yml", () => {
     expect(run).toContain("--screenshot");
   });
 
-  it("stops itself before GitHub's 6-hour job limit", () => {
-    expect(build["timeout-minutes"]).toBeGreaterThan(0);
-    expect(build["timeout-minutes"]).toBeLessThanOrEqual(345);
+  // The first green cross build's job took 133 minutes (docs/runbook.md, "macOS build").
+  it("stops itself at about 1.5 times the measured build, before GitHub's 6-hour job limit", () => {
+    expect(build["timeout-minutes"]).toBeGreaterThanOrEqual(133 * 1.4);
+    expect(build["timeout-minutes"]).toBeLessThanOrEqual(133 * 1.6);
     expect(smoke["timeout-minutes"]).toBeLessThanOrEqual(30);
   });
 });
