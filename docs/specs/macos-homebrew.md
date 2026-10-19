@@ -380,6 +380,16 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     file, because macOS builds have no Firefox updater (Research) and an update that rewrote the
     ad hoc signed bundle would break its signature (macos-build decision 16). The manifest
     carries no `<patch>` and no MAR. Rejected: a macOS MAR, until Developer ID signing exists.
+21. **Vimma 0.1.6 on a Mac gets the notice with Linux steps, and the guide says so.** 0.1.6 is
+    the only release with a `.dmg`; it reads the macOS manifest (its parser skips the
+    `<vimmaDmg>` it does not know), shows the notice, and, finding `omni.ja` and no marker,
+    calls itself `tarball`, so `:update` shows the Linux tarball command. The macOS manifest is
+    published anyway, because the notice is the only way those installs learn of a newer
+    release, and the guide's Updates section tells 0.1.6 Mac users to ignore the command and
+    update with `brew upgrade --cask vimma` or the new `.dmg`; the release after it shows the
+    right steps. Rejected: holding the macOS manifest back, because 0.1.6 would then never hear
+    of an update; a different manifest path for newer builds, because it departs from Firefox's
+    URL template and would hide every update from 0.1.6.
 
 ### Not in this spec
 
@@ -499,7 +509,7 @@ joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
    ruleset, deploy key and the `homebrew` environment already exist and are documented in the
    runbook. Runs only while `MACOS_RELEASE_ENABLED` is `true`. Needs sub-PR 1 first, because the
    cask's `uninstall quit:` and `zap` name the bundle identifier it sets.
-3. **`feat(updates): update notices on macos`.** Decisions 8 and 16 to 20: the `homebrew` and
+3. **`feat(updates): update notices on macos`.** Decisions 8 and 16 to 21: the `homebrew` and
    `dmg` install types and their steps in `packages/vimma-core`, `<vimmaDmg>`, the host's
    Caskroom check, the macOS manifest in `tools/update/manifest.mjs` and `update-publish.yml`,
    its start from `release.yml`'s `macos-tap`, and the guide, runbook and `docs/security.md`.

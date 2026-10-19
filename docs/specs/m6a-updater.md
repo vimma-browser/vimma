@@ -674,7 +674,7 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
 7. **One manifest per channel and target**, because the client refuses a manifest for another
    channel or target (§4 rule 2), so each build reads only its own file; aarch64 and macOS add
    files later. (Since changed: the macOS notice manifest is
-   [macos-homebrew](macos-homebrew.md) decisions 16 to 20.)
+   [macos-homebrew](macos-homebrew.md) decisions 16 to 21.)
 8. **The m0-updater mochitests change**: on a build with `VIMMA_UPDATES=1`, `MOZ_UPDATER` is true
    and the URL is updates.vimma.dev; "no request to aus5" stays a test in both builds.
 9. **Settings' "Updates are managed by your operating system"** is accurate for `.deb` and AUR;
