@@ -242,6 +242,8 @@ describe("release.yml", () => {
       expect(block).toContain("codesign --verify --deep --strict");
       expect(block).toContain('case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;;');
       expect(block).toContain("--screenshot");
+      // Vimma's icon and bundle identifier, as macos.yml's smoke checks them
+      expect(block).toContain('tools/package/macos-app-check.sh "$APP"');
     });
 
     it("macos-sign signs the dmg and its checksums, and runs no repository code", () => {

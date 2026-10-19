@@ -107,6 +107,8 @@ the [user guide](guide.md); planned work is on the
 - The macOS `.dmg` is ad hoc signed, not notarised, until Vimma has an Apple Developer ID:
   macOS asks once, under Privacy & Security, before it first opens, and passkeys do not work.
   It has no update notices (no update manifest exists for macOS): install a newer `.dmg` by hand.
+- The mounted macOS `.dmg` is a plain Finder window, without a background or a volume icon
+  (spec macos-homebrew, decision 14).
 - On macOS, Omarchy theming, the Omarchy hook and the Hyprland private-window swap do nothing.
 - The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
 - The `.deb`, the AppImage and the Arch package mark themselves as package-manager installs, so,

@@ -52,6 +52,6 @@ tools for such a build.
 - An ad hoc app proves nothing about who built it. Gatekeeper refuses it at first start until the
   user allows it under System Settings → Privacy & Security → Open Anyway. Passkeys, which need
   the production entitlements, do not work in these builds.
-- Surfer generates the macOS icon only on a Mac host, so a Linux-built app shows Firefox's
-  unofficial icon until Vimma's own icon assets are committed (spec macos-build, decision 17;
-  [#393](https://github.com/vimma-browser/vimma/issues/393)).
+- Surfer generates the macOS icon only on a Mac host, and `actool`, which compiles the
+  `Assets.car` macOS reads it from, runs only on a Mac with Xcode. The icon files are therefore
+  committed and a Mac job checks they match their sources (spec macos-homebrew, decision 13).

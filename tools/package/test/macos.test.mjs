@@ -6,12 +6,14 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { jobs, parseWorkflow } from "../../test/workflow-runners.mjs";
+import { catalogSummary } from "../macos-icons.mjs";
 
 // Spec macos-build, sub-PRs 3 and 4: an arm64 macOS build cross-compiled on a GitHub-hosted Linux
 // runner, ad hoc signed with rcodesign, packed as a .dmg and checked on a hosted Mac.
@@ -163,8 +165,8 @@ describe("macos.yml", () => {
     return i;
   };
 
-  it("has a build job and a smoke job", () => {
-    expect([...all.keys()]).toEqual(["build", "smoke"]);
+  it("has a build job, a smoke job and an icons job", () => {
+    expect([...all.keys()]).toEqual(["build", "smoke", "icons"]);
   });
 
   // Decision 13: its own workflow, weekly, by hand, and on pull requests that touch it.
@@ -174,9 +176,14 @@ describe("macos.yml", () => {
     expect(on.schedule).toHaveLength(1);
     expect(on.pull_request.paths.sort()).toEqual([
       ".github/workflows/macos.yml",
+      "configs/branding/vimma/**",
       "configs/macos/**",
+      "src/browser/branding/vimma/**",
       "tools/package/fetch-rcodesign.sh",
+      "tools/package/macos-app-check.sh",
       "tools/package/macos-dmg.sh",
+      "tools/package/macos-icons.mjs",
+      "tools/package/render-icon.swift",
     ]);
   });
 
@@ -252,10 +259,193 @@ describe("macos.yml", () => {
     expect(run).toContain("--screenshot");
   });
 
+  // Spec macos-homebrew, decision 13, and the bundle id (its decision 15): the built app
+  // carries Vimma's asset catalog, not Firefox's, under Vimma's own identifier.
+  it("checks the built app's icon catalog and bundle identifier", () => {
+    const run = steps(smoke)
+      .map((s) => s.run ?? "")
+      .join("\n");
+    expect(run).toContain('tools/package/macos-app-check.sh "$APP"');
+  });
+
+  // Decision 13: actool runs only on a Mac with Xcode, so a Mac regenerates the committed icon
+  // files from their sources and fails if they drift. Xcode is pinned, as its actool writes the
+  // catalog.
+  it("regenerates the icon files on a Mac with a pinned Xcode and fails on drift", () => {
+    const icons = all.get("icons") ?? {};
+    expect(icons["runs-on"]).toBe("macos-26");
+    expect(icons.env?.DEVELOPER_DIR).toMatch(
+      /^\/Applications\/Xcode_26\.\d+(\.\d+)?\.app\/Contents\/Developer$/,
+    );
+    expect(icons["timeout-minutes"]).toBeLessThanOrEqual(15);
+    const run = steps(icons)
+      .map((s) => s.run ?? "")
+      .join("\n");
+    expect(run).toContain("node tools/package/macos-icons.mjs --check");
+  });
+
   // The first green cross build's job took 133 minutes (docs/runbook.md, "macOS build").
   it("stops itself at about 1.5 times the measured build, before GitHub's 6-hour job limit", () => {
     expect(build["timeout-minutes"]).toBeGreaterThanOrEqual(133 * 1.4);
     expect(build["timeout-minutes"]).toBeLessThanOrEqual(133 * 1.6);
     expect(smoke["timeout-minutes"]).toBeLessThanOrEqual(30);
+  });
+});
+
+// Spec macos-homebrew, decisions 12 and 13: macOS shows the Linux artwork. macOS takes the app's
+// icon from Assets.car before CFBundleIconFile, and Surfer copies Firefox's unofficial Assets.car
+// unless src/ overrides it.
+describe("macOS icons", () => {
+  const branding = "configs/branding/vimma";
+  /** @param {string} path */
+  const bytes = (path) => readFileSync(join(repo, path));
+  const surfer = JSON.parse(read("surfer.json"));
+
+  it("logo-mac.png is byte-identical to logo.png", () => {
+    expect(
+      bytes("configs/branding/vimma/logo-mac.png").equals(bytes("configs/branding/vimma/logo.png")),
+    ).toBe(true);
+  });
+
+  // Surfer's branding step copies each entry of configs/branding/vimma as a file, apart from
+  // content/, so any other directory there fails the import on every platform.
+  it("keeps configs/branding/vimma flat apart from content/", () => {
+    const dir = join(repo, "configs/branding/vimma");
+    const dirs = readdirSync(dir).filter((name) => statSync(join(dir, name)).isDirectory());
+    expect(dirs).toEqual(["content"]);
+  });
+
+  it("the Icon Composer source lays the Vimma mark on the brand background, for macOS", () => {
+    const icon = JSON.parse(read("configs/macos/AppIcon.icon/icon.json"));
+    const layers = icon.groups.flatMap((/** @type {any} */ g) => g.layers);
+    expect(layers.map((/** @type {any} */ l) => l["image-name"])).toEqual(["vimma-mark.png"]);
+    const [r, g, b] = (surfer.brands.vimma.backgroundColor.match(/[0-9a-f]{2}/gi) ?? []).map(
+      (/** @type {string} */ h) => (parseInt(h, 16) / 255).toFixed(5),
+    );
+    expect(icon.fill).toEqual({ solid: `srgb:${r},${g},${b},1.00000` });
+    expect(icon["supported-platforms"].squares).toEqual(["macOS"]);
+  });
+
+  it("commits the compiled Assets.car with an AppIcon and no Firefox asset", () => {
+    const car = bytes(`${branding}/Assets.car`);
+    expect(car.subarray(0, 8).toString("latin1")).toBe("BOMStore");
+    expect(car.includes("AppIcon")).toBe(true);
+    expect(car.includes("unofficial")).toBe(false);
+  });
+
+  it("commits firefox.icns and document.icns with a 1024 px image", () => {
+    for (const name of ["firefox.icns", "document.icns"]) {
+      const icns = bytes(`${branding}/${name}`);
+      expect(icns.subarray(0, 4).toString("latin1"), name).toBe("icns");
+      expect(icns.readUInt32BE(4), name).toBe(icns.length);
+      expect(icns.includes("ic10"), name).toBe(true);
+    }
+  });
+
+  // Firefox names the bundle <distribution id>.<MOZ_MACBUNDLE_ID> (toolkit/moz.configure); with
+  // Surfer's defaults that is org.mozilla.dev.vimma.browser. The distribution id is set for macOS
+  // only, so Services.appinfo.distributionID on Linux is unchanged.
+  it("names the macOS app surfer.json's appId, without changing Linux", () => {
+    const dist = /^ac_add_options --with-distribution-id=(\S+)$/m.exec(
+      read("configs/macos/mozconfig"),
+    )?.[1];
+    const configure = read("src/browser/branding/vimma/configure.sh");
+    const id = /^MOZ_MACBUNDLE_ID="([^"]+)"$/m.exec(configure)?.[1];
+    expect(`${dist}.${id}`).toBe(surfer.appId);
+    expect(configure).toMatch(
+      new RegExp(`^MOZ_APP_DISPLAYNAME="${surfer.brands.vimma.brandFullName}"$`, "m"),
+    );
+    for (const file of ["configs/linux/mozconfig", "configs/common/mozconfig"]) {
+      expect(read(file), file).not.toContain("--with-distribution-id");
+    }
+  });
+});
+
+// Both smoke jobs (macos.yml and release.yml) run it on the app from the dmg, so a release cannot
+// publish a dmg that shows Firefox's icon or carries Surfer's bundle identifier.
+describe("macos-app-check.sh", () => {
+  const CHECK = join(repo, "tools/package/macos-app-check.sh");
+  /**
+   * @param {{ names: string[], id: string }} app
+   */
+  function check({ names, id }) {
+    const dir = tempDir("vimma-app-check-");
+    const assets = [{ AssetStorageVersion: "Xcode" }, ...names.map((Name) => ({ Name }))];
+    const assetutil = join(dir, "assetutil");
+    writeFileSync(assetutil, `#!/bin/sh\ncat <<'EOF'\n${JSON.stringify(assets)}\nEOF\n`);
+    const plistbuddy = join(dir, "PlistBuddy");
+    writeFileSync(plistbuddy, `#!/bin/sh\necho "$*" > "${dir}/plist-args"\necho ${id}\n`);
+    chmodSync(assetutil, 0o755);
+    chmodSync(plistbuddy, 0o755);
+    const app = join(dir, "Vimma.app");
+    mkdirSync(join(app, "Contents/Resources"), { recursive: true });
+    const result = spawnSync(CHECK, [app], {
+      cwd: repo,
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, ASSETUTIL: assetutil, PLISTBUDDY: plistbuddy },
+    });
+    return { ...result, dir };
+  }
+
+  it("passes an app with Vimma's AppIcon and surfer.json's appId", () => {
+    const result = check({ names: ["AppIcon", "AppIcon/Group"], id: "dev.vimma.browser" });
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(result.dir, "plist-args"), "utf8")).toContain(
+      "Print :CFBundleIdentifier",
+    );
+  });
+
+  it("fails an app that still carries Firefox's unofficial icon", () => {
+    const result = check({
+      names: ["AppIcon", "AppIcon_Assets/unofficial-1"],
+      id: "dev.vimma.browser",
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("unofficial");
+  });
+
+  it("fails an app without an AppIcon", () => {
+    const result = check({ names: ["Icon"], id: "dev.vimma.browser" });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("AppIcon");
+  });
+
+  it("fails an app under Surfer's default bundle identifier", () => {
+    const result = check({ names: ["AppIcon"], id: "org.mozilla.dev.vimma.browser" });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("org.mozilla.dev.vimma.browser");
+  });
+});
+
+// actool names each flattened fallback image with a fresh UUID and renders it to different bytes
+// on every run; the layer image, colours and icon stack it compiles from are stable.
+describe("macos-icons.mjs catalogSummary", () => {
+  /** @param {string} uuid @param {string} digest @param {string} mark */
+  const catalog = (uuid, digest, mark) => [
+    { AssetStorageVersion: "Xcode 26.6", Timestamp: Number(uuid.length) },
+    {
+      AssetType: "Icon Image",
+      Name: "AppIcon",
+      RenditionName: `AppIcon16x16_${uuid}.png`,
+      SHA1Digest: digest,
+      PixelWidth: 16,
+    },
+    { AssetType: "Image", Name: "AppIcon_Assets/vimma-mark", SHA1Digest: mark },
+  ];
+
+  it("ignores the header and the fallback images' generated names and bytes", () => {
+    expect(catalogSummary(catalog("A-1", "AA", "M"))).toBe(
+      catalogSummary(catalog("B-22", "BB", "M")),
+    );
+  });
+
+  it("tells a changed layer image or fallback size apart", () => {
+    expect(catalogSummary(catalog("A", "AA", "M"))).not.toBe(
+      catalogSummary(catalog("A", "AA", "N")),
+    );
+    const resized = catalog("A", "AA", "M");
+    resized[1].PixelWidth = 32;
+    expect(catalogSummary(resized)).not.toBe(catalogSummary(catalog("A", "AA", "M")));
   });
 });

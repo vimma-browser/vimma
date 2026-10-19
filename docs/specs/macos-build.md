@@ -92,8 +92,8 @@ release gate opens. Windows is not a target platform.
   `Darwin_aarch64-gcc3` (`S/dist/commands/updates/browser.js:22-31, 54`).
 - **Icons.** Surfer converts `configs/branding/<brand>/logo-mac.png` into `firefox.icns` only
   when `process.platform` is `darwin` (`S/dist/commands/patches/branding-patch.js:68-81`), so a
-  Linux cross build needs the `.icns` committed. Vimma's `.icns` and DMG background are still
-  Surfer's `unofficial` copies (`docs/limits.md`, "Branding").
+  Linux cross build needs the `.icns` committed. macOS takes the app icon from `Assets.car`
+  first, so that is committed too (spec [macos-homebrew](macos-homebrew.md), decision 13).
 - **Download on a Mac.** `surfer download` requires GNU tar (`gtar`) on macOS
   (`S/dist/commands/download/firefox.js:49-52`).
 
@@ -355,9 +355,11 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     hoc app would break its signature (**unverified**, to confirm in M6a). Unsigned macOS builds
     therefore get no updater: testers reinstall the `.dmg`. The updater spec (PR #143, pending)
     lists macOS manifests as out of scope and decides the rest.
-17. **Branding.** `configs/branding/vimma/firefox.icns`, generated from `logo-mac.png`, and a Vimma
-    DMG background are committed, replacing the `unofficial` copies, because Surfer generates the
-    `.icns` only on a Mac host.
+17. **Branding.** Superseded by spec [macos-homebrew](macos-homebrew.md), decisions 12 to 14:
+    `configs/branding/vimma/` holds the compiled `Assets.car`, `firefox.icns` and
+    `document.icns`, generated from `logo-mac.png` by `tools/package/macos-icons.mjs`, because
+    macOS reads the icon from `Assets.car` and the Linux cross build cannot compile it. The DMG
+    window art is decision 14 there.
 
 ### Not in this spec
 

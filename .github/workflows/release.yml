@@ -607,6 +607,8 @@ jobs:
           ( sleep 240; kill "$pid" 2> /dev/null ) &
           wait "$pid"
           test -s "$shot"
+          # Vimma's icon and bundle identifier (spec macos-homebrew), as the weekly smoke checks
+          tools/package/macos-app-check.sh "$APP"
 
   # As sign: cosign keyless, the same identity (release.yml at refs/heads/main); no repository code.
   macos-sign:

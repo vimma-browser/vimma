@@ -906,7 +906,7 @@ before this change stays until `gh release delete nightly --cleanup-tag --yes` r
 `macos.yml` cross-compiles the Apple Silicon build on a GitHub-hosted `ubuntu-24.04` runner and
 checks it on a hosted `macos-15` runner ([ADR-018](adr/018-macos-cross-build.md), spec
 [macos-build](specs/macos-build.md)). It runs every Monday at 05:00 UTC, by hand, and on pull
-requests that touch `configs/macos/`, the workflow or its two scripts. It is keyless (Safe
+requests that touch `configs/macos/`, the Vimma branding, the workflow or its scripts. It is keyless (Safe
 Browsing is off by default in its builds), holds no secret and has a read-only token. Nothing in
 the Linux nightly or the Linux release jobs depends on it.
 
@@ -918,7 +918,32 @@ disk-image tools from Mozilla. After `./mach package`, `tools/package/macos-dmg.
 SHA-256) and packs it again. The run's artifact is
 `vimma-<vimma>-firefox-<firefox>-macos-aarch64`, kept 90 days. The `smoke` job mounts it on a
 Mac, runs `codesign --verify --deep --strict`, checks the binary is arm64 and the version line,
-and renders a page headless.
+and renders a page headless; `tools/package/macos-app-check.sh` checks its `Assets.car` has
+Vimma's `AppIcon` and none of Firefox's, and that its bundle identifier is `surfer.json`'s
+`appId`. The rendered icon and the page are the run's `macos-smoke` artifact.
+
+The `icons` job, on a hosted `macos-26` runner with Xcode 26.6 pinned, regenerates the committed
+macOS icon files (`Assets.car`, `firefox.icns`, `document.icns` in `configs/branding/vimma/`)
+from `configs/branding/vimma/logo-mac.png` and the Icon Composer source
+`configs/macos/AppIcon.icon/icon.json`, and fails if they differ
+(spec [macos-homebrew](specs/macos-homebrew.md), decision 13). `actool`, which compiles
+`Assets.car`, ships only with Xcode, not the Command Line Tools. After changing the logo or the
+icon source, either run `node tools/package/macos-icons.mjs` on a Mac with Xcode, or push and
+copy the files from the run's `macos-icons` artifact, which also holds their renderings:
+
+```sh
+gh run download "$run" -n macos-icons -D /tmp/macos-icons
+cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns} configs/branding/vimma/
+```
+
+`actool` names the catalog's flattened fallback images with a fresh UUID and writes them anew on
+every run, so the check compares `assetutil --info` without those names and digests, and
+without the header. A new Xcode can change the catalog: bump `DEVELOPER_DIR` and commit the
+regenerated files in the same PR. The files live in `configs/branding/vimma/`, whose top-level
+files Surfer's branding step copies over Firefox's, not in `src/`, whose license check needs an
+MPL header in every file. On a Mac host `npm run import` overwrites `firefox.icns` there with
+Surfer's own 512 px version; restore it with `git checkout configs/branding/vimma/firefox.icns`
+(the package tests fail on the 512 px file).
 
 To run it and fetch the `.dmg`:
 
