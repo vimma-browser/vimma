@@ -554,6 +554,46 @@ add_task(async function the_preview_shows_the_lines_around_and_hides_when_narrow
   EventUtils.synthesizeKey("KEY_Escape");
 });
 
+add_task(async function a_jump_that_ends_after_grep_reopens_keeps_the_new_search_frames() {
+  await reset();
+  await openFixture({ title: "Other", t: "second line" });
+  await openFixture({ title: "Jump", t: "first needle" });
+  await openGrep();
+  const session = VimmaHost._grep(window);
+  const { ask, preview: show } = session;
+  /** @type {(() => void)[]} */
+  const held = [];
+  let jumped = false;
+  // The jump's frame answers only after grep is open again on the other tab's results, and
+  // that search's preview waits for the jump to end: the order a slow content process gives.
+  session.ask = (/** @type {any[]} */ ...args) => {
+    const reply = ask.apply(session, args);
+    if (args[2] !== "Vimma:GrepJump") return reply;
+    return new Promise((resolve) => held.push(() => resolve(reply.finally(() => (jumped = true)))));
+  };
+  type("needle");
+  await resultsSettle(1);
+  session.preview = async (/** @type {any} */ row) => {
+    await TestUtils.waitForCondition(() => jumped, "the jump ends", 10, 500);
+    await new Promise((r) => setTimeout(r, 0));
+    return show.call(session, row);
+  };
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => held.length > 0, "the jump is asked");
+  session.ask = ask;
+  await openGrep();
+  type("second");
+  await resultsSettle(1);
+  for (const release of held) release();
+  const preview = dialog().querySelector(".vimma-grep-preview");
+  await until(
+    () => preview.querySelector(".vimma-grep-preview-match")?.textContent === "second line",
+    "the reopened grep's match is previewed",
+  );
+  session.preview = show;
+  EventUtils.synthesizeKey("KEY_Escape");
+});
+
 add_task(async function replies_to_an_older_query_never_replace_newer_results() {
   await reset();
   await openFixture({ title: "Gen", t: "older match|newer match" });

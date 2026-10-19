@@ -653,6 +653,9 @@ export class GrepSession {
     const rows = (state?.all ?? []).filter((r) => r.kind === "match");
     this.setList({ query: state?.query ?? "", rows, index: Math.max(0, rows.indexOf(row)) });
     await this.jump(row, state?.query ?? "");
+    // Grep opened again while the frame answered: its search now owns the frame map, and
+    // pruning it here would leave that search's preview with no frame to ask.
+    if (this.isOpen) return;
     this.endFrames();
     // Only the frames the grep list can go back to are kept.
     const kept = new Set(rows.map((r) => `${r.tabId}:${/** @type {GrepMatchRow} */ (r).frameKey}`));
