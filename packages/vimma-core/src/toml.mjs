@@ -399,6 +399,32 @@ function valueEnd(line, i) {
   return k;
 }
 
+/** @param {string} s @returns {string} `s` without spaces and tabs at either end */
+function trimBlank(s) {
+  let a = 0;
+  let b = s.length;
+  while (a < b && (s[a] === " " || s[a] === "\t")) a++;
+  while (b > a && (s[b - 1] === " " || s[b - 1] === "\t")) b--;
+  return s.slice(a, b);
+}
+
+/**
+ * The name in a `[table]` header line, or null. Scanned by hand rather than with a regex,
+ * because a pattern with blank runs on both sides of the name backtracks quadratically on a long
+ * line of blanks (CodeQL js/polynomial-redos).
+ * @param {string} line
+ */
+function headerName(line) {
+  const s = trimBlank(line.endsWith("\r") ? line.slice(0, -1) : line);
+  if (s[0] !== "[") return null;
+  const close = s.indexOf("]");
+  if (close < 0) return null;
+  const name = trimBlank(s.slice(1, close));
+  if (!name || name.includes("[")) return null;
+  const rest = trimBlank(s.slice(close + 1));
+  return rest === "" || rest[0] === "#" ? name : null;
+}
+
 /**
  * One edit on parsed `text`.
  * @param {string} text @param {Record<string, any>} doc @param {TomlEdit} edit
@@ -414,10 +440,7 @@ function setKey(text, doc, { table, key, value }) {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split("\n");
   const literal = tomlLiteral(value);
-  const headerAt = lines.findIndex((l) => {
-    const m = /^[ \t]*\[[ \t]*([^\][]+?)[ \t]*\][ \t]*(#.*)?\r?$/.exec(l);
-    return m !== null && m[1] === table;
-  });
+  const headerAt = lines.findIndex((l) => headerName(l) === table);
   if (headerAt < 0) {
     if (table in doc) return fail(where([table]) ?? 1, `${table} is not a plain [${table}] table`);
     const body = `[${table}]${eol}${key} = ${literal}${eol}`;

@@ -194,6 +194,14 @@ describe("setTomlKeys", () => {
     expect(r).toEqual({ ok: true, text: FILE.replace('"Google"', '"DuckDuckGo"') });
   });
 
+  test("a long line of spaces after an open bracket takes linear time", () => {
+    // CodeQL js/polynomial-redos: the table-header match must not backtrack per start position.
+    const text = `x = """\n[a${" ".repeat(200_000)}\n"""\n`;
+    const start = performance.now();
+    expect(setTomlKeys(text, [{ table: "search", key: "default", value: "x" }]).ok).toBe(true);
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
   test("a trailing comment on the edited line is kept", () => {
     const r = setTomlKeys(FILE, [{ table: "search", key: "default", value: "Bing" }]);
     expect(r.ok && r.text.split("\n")[5]).toBe('default = "Bing" # picked by hand');
