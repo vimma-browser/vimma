@@ -119,14 +119,24 @@ async function generate(out, work) {
 }
 
 /**
- * What --check compares for Assets.car: `assetutil --info` without the header, which records
- * when and with which tools the catalog was compiled.
- * @param {string} car
+ * What --check compares for Assets.car, from its `assetutil --info`: every asset without the
+ * header, which records when and with which tools the catalog was compiled, and without the
+ * flattened fallback images' names and digests, which actool generates afresh on every run
+ * (a UUID in the name, different bytes). Their sizes and the layer image they are drawn from
+ * are compared.
+ * @param {Array<Record<string, unknown>>} info
  */
-export function catalogSummary(car) {
-  const [, ...assets] = JSON.parse(run("assetutil", ["--info", car]));
+export function catalogSummary(info) {
+  const assets = info
+    .slice(1)
+    .map(({ RenditionName, SHA1Digest, ...asset }) =>
+      asset.AssetType === "Icon Image" ? asset : { RenditionName, SHA1Digest, ...asset },
+    );
   return JSON.stringify(assets, null, 1);
 }
+
+/** @param {string} car */
+const catalog = (car) => catalogSummary(JSON.parse(run("assetutil", ["--info", car])));
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -142,7 +152,7 @@ async function main() {
     const drift = FILES.filter((name) => {
       const [fresh, committed] = [join(out, name), join(BRANDING, name)];
       return name.endsWith(".car")
-        ? catalogSummary(fresh) !== catalogSummary(committed)
+        ? catalog(fresh) !== catalog(committed)
         : !readFileSync(fresh).equals(readFileSync(committed));
     });
     if (drift.length) {

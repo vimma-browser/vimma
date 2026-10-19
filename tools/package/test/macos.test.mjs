@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { jobs, parseWorkflow } from "../../test/workflow-runners.mjs";
+import { catalogSummary } from "../macos-icons.mjs";
 
 // Spec macos-build, sub-PRs 3 and 4: an arm64 macOS build cross-compiled on a GitHub-hosted Linux
 // runner, ad hoc signed with rcodesign, packed as a .dmg and checked on a hosted Mac.
@@ -405,5 +406,37 @@ describe("macos-app-check.sh", () => {
     const result = check({ names: ["AppIcon"], id: "org.mozilla.dev.vimma.browser" });
     expect(result.status).not.toBe(0);
     expect(result.stdout + result.stderr).toContain("org.mozilla.dev.vimma.browser");
+  });
+});
+
+// actool names each flattened fallback image with a fresh UUID and renders it to different bytes
+// on every run; the layer image, colours and icon stack it compiles from are stable.
+describe("macos-icons.mjs catalogSummary", () => {
+  /** @param {string} uuid @param {string} digest @param {string} mark */
+  const catalog = (uuid, digest, mark) => [
+    { AssetStorageVersion: "Xcode 26.6", Timestamp: Number(uuid.length) },
+    {
+      AssetType: "Icon Image",
+      Name: "AppIcon",
+      RenditionName: `AppIcon16x16_${uuid}.png`,
+      SHA1Digest: digest,
+      PixelWidth: 16,
+    },
+    { AssetType: "Image", Name: "AppIcon_Assets/vimma-mark", SHA1Digest: mark },
+  ];
+
+  it("ignores the header and the fallback images' generated names and bytes", () => {
+    expect(catalogSummary(catalog("A-1", "AA", "M"))).toBe(
+      catalogSummary(catalog("B-22", "BB", "M")),
+    );
+  });
+
+  it("tells a changed layer image or fallback size apart", () => {
+    expect(catalogSummary(catalog("A", "AA", "M"))).not.toBe(
+      catalogSummary(catalog("A", "AA", "N")),
+    );
+    const resized = catalog("A", "AA", "M");
+    resized[1].PixelWidth = 32;
+    expect(catalogSummary(resized)).not.toBe(catalogSummary(catalog("A", "AA", "M")));
   });
 });

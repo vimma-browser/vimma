@@ -20,7 +20,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
-- Releases: a macOS `.dmg` for Apple Silicon, ad hoc signed, with its own `SHA256SUMS-macos` and cosign signatures, joins a release when the repository variable `MACOS_RELEASE_ENABLED` is set. It is not notarised yet, so macOS asks once before it first opens; the guide's macOS section says how.
+- Releases: a macOS `.dmg` for Apple Silicon, ad hoc signed, with its own `SHA256SUMS-macos` and cosign signatures, joins a release when the repository variable `MACOS_RELEASE_ENABLED` is set. It shows Vimma's icon, as do the documents it opens, and its bundle identifier is `dev.vimma.browser`. It is not notarised yet, so macOS asks once before it first opens; the guide's macOS section says how.
 - Keys: every Firefox shortcut is now a Vimma binding on Firefox's own key (`ctrl+j`, `ctrl+shift+b`, `ctrl+shift+d`, `F7`, `shift+esc` in normal mode, the sidebar keys and more), listed in `ctrl+b ?` and rebindable; `ctrl+f` is a second find key. `[firefox] disable` now defaults to `"all"`, so Firefox's own shortcuts are off and only Vimma's bindings run; `enable` gives one back. The `defaults.toml` and help snapshots gain the new rows and the new `[firefox]` default.
 - Agent downloads: a ClamAV scan with definitions older than `[mcp] clamav_max_age_days` (default 7) is never reported clean, and clamd is used through `clamdscan` when it can be trusted, with `clamscan` as the fallback. The `defaults.toml` snapshot gains the new key.
 

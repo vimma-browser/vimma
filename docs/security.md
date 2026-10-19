@@ -1063,11 +1063,16 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   `publish` uploads the assets and `SHA256SUMS` unsigned. The macOS `.dmg` is listed in its own
   `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the update manifest read, never
   changes when it is added; `macos-sign` signs both with the same identity, after a hosted Mac
-  has checked the checksum, the signature and the version line.
+  has checked the checksum, the signature, the version line, Vimma's icon catalog and the bundle
+  identifier. The macOS icon files in `src/browser/branding/vimma/` are binaries in the tree;
+  `macos.yml` regenerates them from their sources and fails if they differ, so a changed binary
+  without a changed source fails CI.
   [`writes SHA256SUMS that sha256sum -c accepts, for every release file`](../tools/package/test/package.test.mjs),
   [`signs and uploads the PKGBUILD and SRCINFO with the other assets`](../tools/package/test/release-workflow.test.mjs),
   [`macos-smoke runs the dmg on a hosted Mac and ties its version line to the tag`](../tools/package/test/release-workflow.test.mjs),
   [`macos-sign signs the dmg and its checksums, and runs no repository code`](../tools/package/test/release-workflow.test.mjs),
+  [`regenerates the icon files on a Mac with a pinned Xcode and fails on drift`](../tools/package/test/macos.test.mjs),
+  [`fails an app that still carries Firefox's unofficial icon`](../tools/package/test/macos.test.mjs),
   [`builds and installs the release PKGBUILD on Arch Linux before anything is signed`](../tools/package/test/release-workflow.test.mjs),
   [`needs nothing but itself: the tarball is its only source`](../tools/package/test/package.test.mjs),
   [`refuses repo %j`](../tools/package/test/package.test.mjs),
