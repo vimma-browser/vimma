@@ -249,9 +249,12 @@ jobs:
           out="$RUNNER_TEMP/icons"
           node tools/package/macos-icons.mjs --out "$out"
           app="$RUNNER_TEMP/Preview.app"
-          mkdir -p "$app/Contents/Resources"
+          mkdir -p "$app/Contents/Resources" "$app/Contents/MacOS"
           cp "$out/Assets.car" "$out/firefox.icns" "$app/Contents/Resources/"
+          # an executable, or Finder draws the app as one that cannot open
+          cp /usr/bin/true "$app/Contents/MacOS/preview"
           plutil -create xml1 "$app/Contents/Info.plist"
+          plutil -insert CFBundleExecutable -string preview "$app/Contents/Info.plist"
           plutil -insert CFBundleIdentifier -string dev.vimma.icon-preview "$app/Contents/Info.plist"
           plutil -insert CFBundlePackageType -string APPL "$app/Contents/Info.plist"
           plutil -insert CFBundleIconName -string AppIcon "$app/Contents/Info.plist"

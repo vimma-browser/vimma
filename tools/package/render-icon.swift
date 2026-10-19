@@ -1,4 +1,4 @@
-// Renders the icon macOS shows for a file or app bundle into a 512 px PNG, as Finder and the Dock
+// Renders the icon macOS shows for an app bundle, or an .icns file's image, into a 512 px PNG, as Finder and the Dock
 // draw it (spec macos-homebrew, "Tests"): `swift tools/package/render-icon.swift PATH OUT.png`.
 import AppKit
 
@@ -7,7 +7,10 @@ guard args.count == 3 else {
   FileHandle.standardError.write("usage: render-icon.swift PATH OUT.png\n".data(using: .utf8)!)
   exit(2)
 }
-let icon = NSWorkspace.shared.icon(forFile: args[1])
+// An .icns file is drawn as its own image; anything else as Finder shows it.
+let icon =
+  args[1].hasSuffix(".icns")
+  ? NSImage(contentsOfFile: args[1])! : NSWorkspace.shared.icon(forFile: args[1])
 let size = 512
 let rep = NSBitmapImageRep(
   bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,

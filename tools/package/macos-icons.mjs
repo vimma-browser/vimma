@@ -5,7 +5,8 @@
 //
 //   Assets.car     the app icon macOS draws: actool compiles the Icon Composer source
 //                  configs/branding/vimma/macos/AppIcon.icon with the mark as its one layer
-//   firefox.icns   CFBundleIconFile, for systems that do not read Assets.car (actool's AppIcon.icns)
+//   firefox.icns   CFBundleIconFile, for tools that do not read Assets.car: the mark, as on Linux
+//                  (actool's own AppIcon.icns stops at 256 px)
 //   document.icns  the icon of HTML and other documents Vimma opens: the mark on a page
 //
 // Needs macOS with Xcode (actool is not in the Command Line Tools); macos.yml runs it with
@@ -52,6 +53,24 @@ export function pageSvg(background) {
 }
 
 /**
+ * An .icns with every size iconutil knows, up to 1024 px, from one square image.
+ * @param {any} sharp
+ * @param {Buffer} image
+ * @param {string} file
+ * @param {string} iconset
+ */
+async function icns(sharp, image, file, iconset) {
+  mkdirSync(iconset);
+  for (const [name, size] of ICONSET) {
+    await sharp(image)
+      .resize(Number(size), Number(size))
+      .png()
+      .toFile(join(iconset, String(name)));
+  }
+  run("iconutil", ["--convert", "icns", "--output", file, iconset]);
+}
+
+/**
  * @param {string} out
  * @param {string} work
  */
@@ -88,7 +107,7 @@ async function generate(out, work) {
     ]),
   );
   copyFileSync(join(compiled, "Assets.car"), join(out, "Assets.car"));
-  copyFileSync(join(compiled, "AppIcon.icns"), join(out, "firefox.icns"));
+  await icns(sharp, readFileSync(MARK), join(out, "firefox.icns"), join(work, "firefox.iconset"));
 
   const page = await sharp(Buffer.from(pageSvg(surfer.brands.vimma.backgroundColor)))
     .composite([
@@ -96,15 +115,7 @@ async function generate(out, work) {
     ])
     .png()
     .toBuffer();
-  const iconset = join(work, "document.iconset");
-  mkdirSync(iconset);
-  for (const [name, size] of ICONSET) {
-    await sharp(page)
-      .resize(Number(size), Number(size))
-      .png()
-      .toFile(join(iconset, String(name)));
-  }
-  run("iconutil", ["--convert", "icns", "--output", join(out, "document.icns"), iconset]);
+  await icns(sharp, page, join(out, "document.icns"), join(work, "document.iconset"));
 }
 
 /**
