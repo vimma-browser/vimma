@@ -923,9 +923,9 @@ Vimma's `AppIcon` and none of Firefox's, and that its bundle identifier is `surf
 `appId`. The rendered icon and the page are the run's `macos-smoke` artifact.
 
 The `icons` job, on a hosted `macos-26` runner with Xcode 26.6 pinned, regenerates the committed
-macOS icon files (`Assets.car`, `firefox.icns`, `document.icns` in `src/browser/branding/vimma/`)
+macOS icon files (`Assets.car`, `firefox.icns`, `document.icns` in `configs/branding/vimma/`)
 from `configs/branding/vimma/logo-mac.png` and the Icon Composer source
-`configs/branding/vimma/macos/AppIcon.icon/icon.json`, and fails if they differ
+`configs/macos/AppIcon.icon/icon.json`, and fails if they differ
 (spec [macos-homebrew](specs/macos-homebrew.md), decision 13). `actool`, which compiles
 `Assets.car`, ships only with Xcode, not the Command Line Tools. After changing the logo or the
 icon source, either run `node tools/package/macos-icons.mjs` on a Mac with Xcode, or push and
@@ -933,13 +933,17 @@ copy the files from the run's `macos-icons` artifact, which also holds their ren
 
 ```sh
 gh run download "$run" -n macos-icons -D /tmp/macos-icons
-cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns} src/browser/branding/vimma/
+cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns} configs/branding/vimma/
 ```
 
 `actool` names the catalog's flattened fallback images with a fresh UUID and writes them anew on
 every run, so the check compares `assetutil --info` without those names and digests, and
 without the header. A new Xcode can change the catalog: bump `DEVELOPER_DIR` and commit the
-regenerated files in the same PR.
+regenerated files in the same PR. The files live in `configs/branding/vimma/`, whose top-level
+files Surfer's branding step copies over Firefox's, not in `src/`, whose license check needs an
+MPL header in every file. On a Mac host `npm run import` overwrites `firefox.icns` there with
+Surfer's own 512 px version; restore it with `git checkout configs/branding/vimma/firefox.icns`
+(the package tests fail on the 512 px file).
 
 To run it and fetch the `.dmg`:
 

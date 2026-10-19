@@ -1064,7 +1064,7 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the update manifest read, never
   changes when it is added; `macos-sign` signs both with the same identity, after a hosted Mac
   has checked the checksum, the signature, the version line, Vimma's icon catalog and the bundle
-  identifier. The macOS icon files in `src/browser/branding/vimma/` are binaries in the tree;
+  identifier. The macOS icon files in `configs/branding/vimma/` are binaries in the tree;
   `macos.yml` regenerates them from their sources and fails if they differ. `firefox.icns`,
   `document.icns` and the layer image inside `Assets.car` are compared byte for byte. The
   flattened fallback images inside `Assets.car`, which macOS 15 and earlier draw, differ on

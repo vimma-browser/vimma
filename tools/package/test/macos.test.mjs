@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -295,7 +296,7 @@ describe("macos.yml", () => {
 // icon from Assets.car before CFBundleIconFile, and Surfer copies Firefox's unofficial Assets.car
 // unless src/ overrides it.
 describe("macOS icons", () => {
-  const branding = "src/browser/branding/vimma";
+  const branding = "configs/branding/vimma";
   /** @param {string} path */
   const bytes = (path) => readFileSync(join(repo, path));
   const surfer = JSON.parse(read("surfer.json"));
@@ -306,8 +307,16 @@ describe("macOS icons", () => {
     ).toBe(true);
   });
 
+  // Surfer's branding step copies each entry of configs/branding/vimma as a file, apart from
+  // content/, so any other directory there fails the import on every platform.
+  it("keeps configs/branding/vimma flat apart from content/", () => {
+    const dir = join(repo, "configs/branding/vimma");
+    const dirs = readdirSync(dir).filter((name) => statSync(join(dir, name)).isDirectory());
+    expect(dirs).toEqual(["content"]);
+  });
+
   it("the Icon Composer source lays the Vimma mark on the brand background, for macOS", () => {
-    const icon = JSON.parse(read("configs/branding/vimma/macos/AppIcon.icon/icon.json"));
+    const icon = JSON.parse(read("configs/macos/AppIcon.icon/icon.json"));
     const layers = icon.groups.flatMap((/** @type {any} */ g) => g.layers);
     expect(layers.map((/** @type {any} */ l) => l["image-name"])).toEqual(["vimma-mark.png"]);
     const [r, g, b] = (surfer.brands.vimma.backgroundColor.match(/[0-9a-f]{2}/gi) ?? []).map(
@@ -340,7 +349,7 @@ describe("macOS icons", () => {
     const dist = /^ac_add_options --with-distribution-id=(\S+)$/m.exec(
       read("configs/macos/mozconfig"),
     )?.[1];
-    const configure = read(`${branding}/configure.sh`);
+    const configure = read("src/browser/branding/vimma/configure.sh");
     const id = /^MOZ_MACBUNDLE_ID="([^"]+)"$/m.exec(configure)?.[1];
     expect(`${dist}.${id}`).toBe(surfer.appId);
     expect(configure).toMatch(

@@ -356,7 +356,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     therefore get no updater: testers reinstall the `.dmg`. The updater spec (PR #143, pending)
     lists macOS manifests as out of scope and decides the rest.
 17. **Branding.** Superseded by spec [macos-homebrew](macos-homebrew.md), decisions 12 to 14:
-    `src/browser/branding/vimma/` holds the compiled `Assets.car`, `firefox.icns` and
+    `configs/branding/vimma/` holds the compiled `Assets.car`, `firefox.icns` and
     `document.icns`, generated from `logo-mac.png` by `tools/package/macos-icons.mjs`, because
     macOS reads the icon from `Assets.car` and the Linux cross build cannot compile it. The DMG
     window art is decision 14 there.

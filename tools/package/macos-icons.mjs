@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Spec macos-homebrew, decisions 12 and 13: the macOS app, document and fallback icons, generated
-// from configs/branding/vimma/logo-mac.png (byte-identical to the Linux logo.png) and committed to
-// src/browser/branding/vimma/, which Surfer links over Firefox's unofficial branding.
+// from configs/branding/vimma/logo-mac.png (byte-identical to the Linux logo.png) and committed
+// beside it: Surfer's branding step copies the top-level files of configs/branding/vimma/ over
+// Firefox's unofficial branding. Not src/, whose license check reads every file for an MPL header.
 //
 //   Assets.car     the app icon macOS draws: actool compiles the Icon Composer source
-//                  configs/branding/vimma/macos/AppIcon.icon with the mark as its one layer
+//                  configs/macos/AppIcon.icon with the mark as its one layer
 //   firefox.icns   CFBundleIconFile, for tools that do not read Assets.car: the mark, as on Linux
 //                  (actool's own AppIcon.icns stops at 256 px)
 //   document.icns  the icon of HTML and other documents Vimma opens: the mark on a page
@@ -12,7 +13,7 @@
 // Needs macOS with Xcode (actool is not in the Command Line Tools); macos.yml runs it with
 // `--check`, which regenerates the files and fails if the committed ones differ.
 //
-//   node tools/package/macos-icons.mjs            write the files into src/browser/branding/vimma
+//   node tools/package/macos-icons.mjs            write the files into configs/branding/vimma
 //   node tools/package/macos-icons.mjs --out DIR  write them into DIR instead
 //   node tools/package/macos-icons.mjs --check    regenerate and compare with the committed files
 import { execFileSync } from "node:child_process";
@@ -23,8 +24,8 @@ import { fileURLToPath } from "node:url";
 
 const repo = fileURLToPath(new URL("../../", import.meta.url));
 const MARK = join(repo, "configs/branding/vimma/logo-mac.png");
-const ICON_SOURCE = join(repo, "configs/branding/vimma/macos/AppIcon.icon");
-const BRANDING = join(repo, "src/browser/branding/vimma");
+const ICON_SOURCE = join(repo, "configs/macos/AppIcon.icon");
+const BRANDING = join(repo, "configs/branding/vimma");
 export const FILES = ["Assets.car", "firefox.icns", "document.icns"];
 // Firefox's minimum for aarch64 (build/moz.configure/toolchain.configure).
 const MINIMUM_MACOS = "11.0";
