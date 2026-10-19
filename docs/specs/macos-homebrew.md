@@ -1,8 +1,9 @@
 # Spec: macos-homebrew
 
-Status: draft · Area: `src/browser/branding/vimma/` (macOS icon files, new),
-`configs/branding/vimma/macos/` (icon sources, new), `configs/macos/mozconfig`,
-`tools/package/` (cask generator, new), `packages/vimma-core/src/updates.mjs`,
+Status: draft · Area: `configs/branding/vimma/` (macOS icon files, new),
+`configs/macos/AppIcon.icon/` (icon source, new), `configs/macos/mozconfig`,
+`src/browser/branding/vimma/configure.sh`, `tools/package/` (cask generator and icon
+generator, new), `packages/vimma-core/src/updates.mjs`,
 `.github/workflows/release.yml`, `homebrew.yml` (new), `macos.yml`; the
 `vimma-browser/homebrew-tap` repository (new); `docs/guide.md`, `docs/security.md`,
 `docs/runbook.md`, `README.md` · Upstream patches: none (decision 9) · ADR: none
@@ -43,12 +44,13 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    notes and Linux packages the AUR and the download page point to. `vimma --version` prints the
    same `Vimma <vimma> · Firefox <firefox>` line as the Linux build of that release.
 3. Homebrew verifies the download against the SHA-256 in the cask, which equals the `.dmg`'s line
-   in the release's `SHA256SUMS`; the `.dmg` also has a cosign bundle, as every Linux asset does.
+   in the release's `SHA256SUMS-macos`; the `.dmg` also has a cosign bundle, as every Linux asset
+   does.
 4. `brew upgrade --cask vimma` (and a plain `brew upgrade`) installs a newer release; the tap
    receives each release with no step beyond publishing it.
 5. `brew uninstall --cask vimma` quits Vimma and removes the app and the `vimma` command;
    profiles, config and caches stay. `brew uninstall --zap --cask vimma` also removes the
-   profiles and caches (open question 3).
+   profiles and caches (decision 5).
 6. The cask refuses to install on an Intel Mac and on a macOS older than the minimum (decision 6).
 7. Before Vimma is notarised, the cask's caveats tell the user how to open it the first time
    (decision 7); after notarisation, it opens like any app.
@@ -56,8 +58,8 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    `brew upgrade --cask vimma` (decision 8).
 9. The app icon in the Dock, Finder, Launchpad, the app switcher and Get Info is the Vimma logo,
    rendered at every size from the same artwork as the Linux icons, with no grey plate around
-   it. Documents Vimma opens (`.html`, `.pdf`) show a Vimma document icon, and the mounted `.dmg`
-   shows a Vimma volume icon.
+   it. Documents Vimma opens (`.html`, `.pdf`) show a Vimma document icon. The mounted `.dmg`
+   keeps the default volume icon for now (decision 14).
 10. Nothing in a Linux build, package or release asset changes: the icon files are macOS-only
     build inputs, and the Linux jobs neither read nor produce them.
 
@@ -145,7 +147,13 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
   window background or volume icon. Whether `mk_add_options MOZ_PACKAGE_EXTRA_ARGS=…` in a
   mozconfig reaches it is **unverified**.
 - The dev build's bundle identifier is `org.mozilla.dev.vimma.browser` (its `Info.plist`, from
-  `appId` `dev.vimma.browser` in `surfer.json`); a release build's is **unverified**.
+  `appId` `dev.vimma.browser` in `surfer.json`): macOS names the bundle
+  `<distribution id>.<MOZ_MACBUNDLE_ID>`, and Firefox's default distribution id is `org.mozilla`.
+- `brew style` rejects `depends_on macos: ">= :sequoia"` and accepts `depends_on macos: :sequoia`,
+  which means the same minimum. `brew audit --cask` without `--online`, `--signing` or `--new`
+  downloads nothing (`Library/Homebrew/cask/audit.rb`), and `brew style` checks a cask outside a
+  tap against a stricter rule set, so both run on a throwaway local tap (`brew tap-new --no-git`).
+  Checked with Homebrew 7.0.9.
 
 ## Design
 
@@ -159,7 +167,9 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    cask that fails Gatekeeper and requires notability, and a tap lets Vimma ship each release
    the moment it is published. Rejected: submitting to homebrew-cask first, because an unsigned
    build is refused and a new browser is not yet notable; it can follow once Vimma is notarised
-   and known (open question 5).
+   and known (open question 1). The name follows Homebrew's common convention and leaves room for
+   `vimma-ctl` or nightlies later. Rejected: `vimma-browser/homebrew-vimma`, because its command
+   `vimma-browser/vimma/vimma` repeats the name.
 3. **The documented install command is fully qualified,**
    `brew install --cask vimma-browser/tap/vimma`, so that one command taps the repository and
    trusts only this cask under Homebrew 6's tap trust. Rejected: `brew tap` then `brew install`,
@@ -167,33 +177,42 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
 4. **The cask installs the release's `.dmg`,** `vimma-V-macos-aarch64.dmg`, from
    `https://github.com/vimma-browser/vimma/releases/download/vV/`, with its SHA-256, so that Mac
    and Linux users get the same version from the same release, with the same notes, checksums
-   and cosign bundles. `release.yml` gains a macOS job that adds the `.dmg` to the release, its
-   line to `SHA256SUMS` and its `.sigstore.json`, under macos-build's decisions 12 and 13: the job
-   exists only once the release gate opens, and a macOS failure must not hold back the Linux
-   assets. The name carries Vimma's version only, as the Linux assets do (m6-packaging,
+   and cosign bundles. `release.yml`'s macOS jobs add the `.dmg` to the release with its own
+   `SHA256SUMS-macos` and `.sigstore.json` bundles, under macos-build's decisions 12 and 13: the
+   jobs run only while `MACOS_RELEASE_ENABLED` is `true`, and a macOS failure does not hold back
+   the Linux assets. A separate checksum file keeps `SHA256SUMS`, which `aur.yml` and the update
+   manifest read, unchanged when the macOS files arrive hours after the Linux ones. The name carries Vimma's version only, as the Linux assets do (m6-packaging,
    "Artifacts and names"); macos-build decision 15's two-version name stays for workflow
    artifacts. Releases only: a pre-release gets no cask update, as the AUR gets none.
 5. **The cask's contents.** `app "Vimma.app"`; `binary "#{appdir}/Vimma.app/Contents/MacOS/vimma"`
    so that `vimma --version` and the `vimma-ctl` workflow work from a terminal as on Linux;
    `uninstall quit:` with the bundle identifier, so that an uninstall does not delete a running
    app; `zap trash:` with `~/Library/Application Support/Vimma`, `~/Library/Caches/Vimma`, the
-   preferences plist and the saved application state of the bundle identifier;
+   preferences plist and the saved application state of the bundle identifier (decision 15);
    `livecheck { url :url; strategy :github_latest }` so that `brew livecheck` finds new releases.
    No `preflight` or `postflight` block, because Homebrew 7 deprecates them and nothing needs one.
    `~/.config/vimma/` is not zapped, because it is the user's config and often a dotfiles symlink.
+   `--zap` removes the profiles too, as `zen` and `firefox` do, because that is what users expect
+   from it and keeping them would leave the largest data behind; it runs only when the user types
+   `--zap`, and the guide says what it deletes. Rejected: zapping caches and state only.
 6. **Apple Silicon, macOS 15 or later.** `depends_on arch: :arm64`, because macos-build builds
-   arm64 only (its decision 3); `depends_on macos: ">= :sequoia"`, because the release is tested
+   arm64 only (its decision 3); `depends_on macos: :sequoia` (macOS 15 or later), because the
+   release is tested
    on `macos-15` runners and Homebrew 7 moved macOS 14 to tier 3. Firefox's own minimum
    (`LSMinimumSystemVersion` 10.15.0, `browser/app/macbuild/Contents/Info.plist.in:257-258`) is
    lower, but an untested version is not offered.
-7. **`auto_updates false`, and unsigned builds wait for the release gate.** Vimma has no macOS
+7. **`auto_updates false`, and the tap is published before notarisation.** Vimma has no macOS
    updater (macos-build decision 16), so Homebrew is the updater, and `brew upgrade` must replace
    the app. Before a Developer ID exists, the app is ad hoc signed and quarantined on download, so
    macOS refuses the first open; the cask's `caveats` explain Open Anyway in System Settings →
    Privacy & Security, and say nothing about `xattr` or `--no-quarantine`, which Homebrew
-   deprecates as a circumvention. Whether the tap is published before notarisation is open
-   question 1. When the macOS updater ships for signed builds, the cask switches to
-   `auto_updates true`, as `zen` and `firefox` do, so that Homebrew and the updater do not fight.
+   deprecates as a circumvention. The tap ships with the macOS release, as the AUR ships with the
+   Linux one, so that Mac users can try Vimma as soon as the release carries a `.dmg`; the
+   caveat is the cost, and the `.dmg` downloaded by hand has the same one. Rejected: waiting for
+   notarisation (macos-build sub-PR 6), because it would hold the tap back behind a yearly
+   Developer ID cost while the `.dmg` itself is already public. When the macOS updater ships for
+   signed builds, the cask switches to `auto_updates true`, as `zen` and `firefox` do, so that
+   Homebrew and the updater do not fight.
 8. **A Homebrew install is recognised by the Caskroom, not by a marker in the app.** The update
    check reports `homebrew` when the running app is `/Applications/Vimma.app` and
    `/opt/homebrew/Caskroom/vimma/` exists, and `updateSteps` gives `brew upgrade --cask vimma`.
@@ -206,14 +225,19 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
 
 9. **The cask is a release asset, and `homebrew.yml` pushes it,** as the `PKGBUILD` and
    `aur.yml` do, so that Mac users get a security release without a person and the tap only
-   ever receives a file the signed release contains. `release.yml`'s macOS job renders
-   `vimma.rb` with `tools/package/` from the `.dmg`'s SHA-256, checks it with `brew style` and
-   `brew audit --cask --strict` on `macos-15`, and adds it to `SHA256SUMS` and the signatures.
-   `homebrew.yml` runs on `release: published` and on `workflow_dispatch` with a tag, checks the
-   tag is `vX.Y.Z`, fetches the published `vimma.rb`, checks it against `SHA256SUMS` and
-   `SHA256SUMS` against `release.yml`'s signature, and pushes it to the tap as `Casks/vimma.rb`.
-   It runs nothing from the repository, and it is its own workflow, so a tap failure cannot fail
-   the release. Rejected: rendering the cask in `homebrew.yml`, because the job holding the
+   ever receives a file the signed release contains. `release.yml`'s `macos-build` job renders
+   `vimma.rb` with `tools/package/cask.mjs` from the `.dmg`'s SHA-256 and lists it in
+   `SHA256SUMS-macos`; `macos-smoke` checks it with `brew style` and an offline
+   `brew audit --cask --strict` on `macos-15` and installs the `.dmg` through it; `macos-sign`
+   signs it. `homebrew.yml` runs on `release: published` and on `workflow_dispatch` with a tag,
+   checks the tag is `vX.Y.Z`, fetches the published `vimma.rb`, checks it against
+   `SHA256SUMS-macos`, its version against the tag, and `SHA256SUMS-macos` against
+   `release.yml`'s signature, and pushes it to the tap as `Casks/vimma.rb`, never replacing a
+   newer cask with an older one. It runs nothing from the repository, and it is its own
+   workflow, so a tap failure cannot fail the release. The `.dmg` usually reaches the release
+   hours after it is published, so the publish's own run then finds no cask and ends with a
+   notice; `release.yml`'s `macos-tap` job, holding only `actions: write`, starts `homebrew.yml`
+   for the tag once the cask is downloadable from the published release. Rejected: rendering the cask in `homebrew.yml`, because the job holding the
    tap's key would then run repository code; a step in `release.yml`, because it would put the
    tap's key in the build job.
 10. **The tap's credential is a deploy key held by a `homebrew` environment,** limited to `main`
@@ -227,42 +251,57 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
 
 ### Icon parity
 
-12. **The macOS icon comes from the Linux artwork.** `configs/branding/vimma/macos/` holds an
-    `AppIcon` asset catalog (`Vimma.xcassets`) whose images are generated from `logo-mac.png`,
-    which is byte-identical to `logo.png`, so that every platform shows the same logo. A test
-    fails if `logo-mac.png` and `logo.png` differ.
-13. **A compiled `Assets.car` is committed to `src/browser/branding/vimma/`,** with
-    `document.icns` and `disk.icns`, because Surfer's `src/` overlay replaces the unofficial
-    copies after the branding step (Research) and the Linux cross-build cannot run `actool`.
-    `tools/package/macos-icons.mjs` regenerates all three on a Mac with Xcode, and a `macos.yml`
-    job regenerates them and fails if they differ from the committed files, so the binaries
-    cannot drift from their source. The files are inputs of cocoa builds only
-    (`browser/app/moz.build:45`), so Linux builds and packages are unchanged. This supersedes
-    macos-build decision 17's committed `firefox.icns`, which Surfer already generates on a Mac
-    and which macOS ignores while `Assets.car` provides `AppIcon`; the committed `.icns` stays as
-    the fallback for systems that read it. Rejected: compiling `Assets.car` during every build,
-    because the release build runs on Linux; patching `Info.plist.in` to drop `CFBundleIconName`,
-    because macOS 26 and later then draw the icon on a grey plate.
-14. **The `.dmg` has a Vimma window.** `background.png` (from the Vimma artwork, the app on the
-    left, an arrow to `/Applications` on the right), its `dsstore`, and the volume icon
-    `disk.icns`, passed to `mach package` through `MOZ_PACKAGE_EXTRA_ARGS` in
-    `configs/macos/mozconfig`, so that the mounted image looks like Vimma rather than a bare
-    Firefox volume. If `MOZ_PACKAGE_EXTRA_ARGS` cannot be set from a mozconfig (**unverified**),
-    the release job runs `package.py`'s DMG step itself with these arguments; no upstream patch is
-    needed either way.
+12. **The macOS icon comes from the Linux artwork.** `configs/macos/AppIcon.icon/icon.json` is
+    an Icon Composer document whose single layer is the Vimma logo, so that every platform shows
+    the same logo and macOS 26 and later draw it with their own shape and lighting rather than on
+    a grey plate. Rejected: an `.xcassets` catalog of pre-rendered sizes, because Icon Composer's
+    format is what current macOS renders natively and it holds one source instead of a set of
+    bitmaps.
+13. **The compiled icon files are committed to `configs/branding/vimma/`:** `Assets.car`,
+    `firefox.icns` and `document.icns`, because Surfer's branding step copies that directory's
+    top-level files into the engine's branding directory and the Linux cross-build cannot run
+    `actool`. They live there rather than under `src/`, because every file under `src/` must
+    carry an MPL header, which a binary cannot. `tools/package/macos-icons.mjs` compiles them
+    with `actool`, and `macos.yml`'s `icons` job, on a Mac with a pinned Xcode, regenerates them
+    and fails if they differ from the committed files, so the binaries cannot drift from their
+    source. The drift check normalises the fallback renditions `actool` writes into `Assets.car`
+    under a fresh UUID name on every run, comparing their sizes and source layer rather than
+    their names and bytes. The files are inputs of cocoa builds only (`browser/app/moz.build:45`),
+    so Linux builds and packages are unchanged. This supersedes macos-build decision 17's
+    committed `firefox.icns` generated by Surfer, which macOS ignores while `Assets.car` provides
+    `AppIcon`; the committed `firefox.icns` stays as the fallback for systems that read it.
+    Rejected: compiling `Assets.car` during every build, because the release build runs on Linux;
+    patching `Info.plist.in` to drop `CFBundleIconName`, because macOS 26 and later then draw the
+    icon on a grey plate.
+14. **The `.dmg` window and volume icon come later,** so that the app icon ships without waiting
+    for them. A `background.png`, its `dsstore` and a `disk.icns` volume icon would be passed to
+    `mach package` through `MOZ_PACKAGE_EXTRA_ARGS`, which no in-tree file sets and whose reach
+    from a mozconfig is **unverified**; until then the mounted image shows the default volume
+    icon and no window art, and no `disk.icns` is committed. Rejected: running `package.py`'s DMG
+    step by hand in the release job now, because the dmg is repacked by
+    `tools/package/macos-dmg.sh` (macos-build) and a second packaging path would need its own
+    checks.
+15. **The bundle identifier is `dev.vimma.browser`,** `surfer.json`'s `appId`, because macOS
+    keeps preferences and window state under it, the cask's `uninstall quit:` and `zap` name it,
+    and changing it after the first public build would strand every user's settings.
+    `configs/macos/mozconfig` sets the distribution id to `dev.vimma` and
+    `src/browser/branding/vimma/configure.sh` sets `MOZ_MACBUNDLE_ID` to `browser`, so the bundle
+    is `dev.vimma.browser`; both are macOS only, so Linux keeps Firefox's `org.mozilla`.
+    `tools/package/cask.mjs` reads `appId` from `surfer.json`, so the cask follows it. Rejected:
+    Surfer's default `org.mozilla.dev.vimma.browser`, because it carries "mozilla" and "dev".
 
 ### Not in this spec
 
-Submitting to Homebrew/homebrew-cask (open question 5); Developer ID signing and notarisation
+Submitting to Homebrew/homebrew-cask (open question 1); Developer ID signing and notarisation
 (macos-build sub-PR 6); the macOS updater (macos-build decision 16); Intel builds; a formula for
 `vimma-ctl` alone (it ships inside the app); MacPorts and Nix.
 
 ## Security and privacy
 
 - **Supply chain.** The cask pins the `.dmg`'s SHA-256 and is itself a signed release asset;
-  `homebrew.yml` pushes it only after checking it against `SHA256SUMS` and `SHA256SUMS` against
-  `release.yml`'s signature at `refs/heads/main`, so a tap commit cannot point at a file the
-  release did not build.
+  `homebrew.yml` pushes it only after checking it against `SHA256SUMS-macos` and
+  `SHA256SUMS-macos` against `release.yml`'s signature at `refs/heads/main`, so a tap commit
+  cannot point at a file the release did not build.
   `docs/security.md` gets a "Homebrew tap" entry covering this, the deploy key and its
   environment, and a test link for each claim (`npm run security-links`).
 - **The tap's write credential** is a deploy key scoped to one repository, held by an environment
@@ -273,7 +312,7 @@ Submitting to Homebrew/homebrew-cask (open question 5); Developer ID signing and
 - **Gatekeeper.** The caveats never tell a user to remove quarantine or disable Gatekeeper; they
   point to the per-app Open Anyway that macOS offers. A notarised build needs no caveat.
 - **Tap trust.** The documented command trusts one cask, not the whole tap.
-- **Icons.** The committed `Assets.car`, `.icns` and DMG files are binaries in the tree; the
+- **Icons.** The committed `Assets.car` and `.icns` files are binaries in the tree; the
   regeneration check in `macos.yml` makes them reproducible from the committed sources, so a
   changed binary without a changed source fails CI.
 - **Uninstall.** `zap` removes the profile directory, which holds history, cookies and saved
@@ -286,7 +325,7 @@ agent before merging.
 
 **Vitest (`tools/package/test/`, `packages/vimma-core/test/`):**
 
-- `cask names the release dmg for the tag and pins its sha256 from SHA256SUMS`
+- `cask names the release dmg for the tag and pins its sha256`
 - `cask refuses a tag that is not vX.Y.Z and a pre-release`
 - `cask declares arm64, the minimum macOS, auto_updates false, the vimma binary and no flight blocks`
 - `cask zaps Application Support, Caches, the plist and saved state, and not ~/.config/vimma`
@@ -294,22 +333,25 @@ agent before merging.
 - `installTypeFrom reports homebrew for /Applications/Vimma.app with a vimma Caskroom`
 - `installTypeFrom ignores a Caskroom on Linux paths` (Linux types unchanged)
 - `updateSteps for homebrew is brew upgrade --cask vimma`
-- `homebrew.yml runs on release and dispatch, verifies the cask against the signed SHA256SUMS
-before pushing, runs no repository code, and holds the key only in the homebrew environment`
-  (workflow wiring, as `release-workflow.test.mjs` does for `aur.yml`)
-- `logo-mac.png is byte-identical to logo.png`
-- `the macOS icon files exist in src/browser/branding/vimma and nowhere in the Linux package
+- `homebrew.yml runs on release and dispatch, verifies the cask against the signed
+SHA256SUMS-macos before pushing, runs no repository code, and holds the key only in the
+homebrew environment` (workflow wiring, as `release-workflow.test.mjs` does for `aur.yml`)
+- `macos-tap starts homebrew.yml on main once the cask is on a published release`
+- `the macOS icon files exist in configs/branding/vimma and nowhere in the Linux package
 inputs`
 
 **macOS CI (`macos.yml`, `macos-15`):**
 
-- The icon files regenerate from `configs/branding/vimma/macos/` to the committed bytes.
+- The icon files regenerate from `configs/macos/AppIcon.icon/` to the committed files, with
+  `actool`'s UUID-named fallback renditions normalised.
 - `assetutil --info` on the built app's `Assets.car` lists `AppIcon` and no `unofficial` asset.
 - The rendered app icon (`NSWorkspace iconForFile:`) matches a reference rendered from
   `logo-mac.png` within a tolerance, and is not the unofficial globe.
 - `brew style` and `brew audit --cask --strict` pass on the generated cask; `brew install --cask`
-  from a local tap with the workflow's `.dmg` installs, `vimma --version` prints the expected
-  line, `brew uninstall --zap --cask vimma` removes the app and the zap paths.
+  from a local tap with the release's `.dmg` installs the app, keeps its signature and links
+  `vimma`, and `brew uninstall --zap --cask vimma` removes the app and the zap paths and leaves
+  `~/.config/vimma`. `release.yml`'s `macos-smoke` runs this on the real `.dmg`, and
+  `pkgbuild.yml`'s `cask` job on a stub `.dmg` for every packaging change.
 
 **Hand checks on a real Mac:** the Dock, Finder, the app switcher and the mounted `.dmg` show the
 Vimma logo with no grey plate; `brew install --cask vimma-browser/tap/vimma` from a clean
@@ -329,47 +371,33 @@ Homebrew; first open per the caveats; `brew upgrade` to the next release.
 
 ## Delivery
 
-Each sub-PR is independently mergeable and leaves Linux unchanged.
+Each sub-PR is independently mergeable and leaves Linux unchanged. The macOS `.dmg` already
+joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
 
-1. **`feat(macos): vimma app, document and disk icons`.** The asset catalog source,
-   `macos-icons.mjs`, the committed `Assets.car`, `document.icns` and `disk.icns`, the
-   regeneration and `assetutil` checks in `macos.yml`, and the `logo-mac.png` test. Can merge
-   before macos-build sub-PR 3: the artifact build on a Mac already shows the icon.
-2. **`build(macos): dmg window art`.** `background.png`, `dsstore`, `MOZ_PACKAGE_EXTRA_ARGS`.
-   After macos-build sub-PR 3 (the cross-built `.dmg`).
-3. **`feat(package): homebrew cask generator`.** `tools/package/` cask rendering and its Vitest
-   tests, and the `homebrew` install type. No workflow, no publication.
-4. **Gated: `ci(release): macos dmg and the homebrew tap`.** The `release.yml` macOS job,
-   `homebrew.yml`, the tap repository, its deploy key and environment, `docs/security.md`, the
-   guide and the runbook. Only after the release gate opens (macos-build decision 12) and open
-   question 1 is answered. Closes the feature's issue.
+1. **`feat(macos): vimma app, document and fallback icons`** (#403). The Icon Composer source,
+   `macos-icons.mjs`, the committed `Assets.car`, `firefox.icns` and `document.icns`, the
+   regeneration check in `macos.yml`'s `icons` job, and the bundle identifier (decision 15).
+2. **`feat(release): publish the homebrew cask to vimma-browser/homebrew-tap`** (#404). The cask
+   generator `tools/package/cask.mjs` and its Vitest tests, `tools/package/cask-check.sh`, the
+   cask in `release.yml`'s macOS jobs and the `macos-tap` job, `homebrew.yml`, the `cask` job in
+   `pkgbuild.yml`, and the guide, runbook and `docs/security.md`. The tap repository, its
+   ruleset, deploy key and the `homebrew` environment already exist and are documented in the
+   runbook. Runs only while `MACOS_RELEASE_ENABLED` is `true`. Needs sub-PR 1 first, because the
+   cask's `uninstall quit:` and `zap` name the bundle identifier it sets.
+3. **`feat(updates): homebrew install type`.** Decision 8: `installTypeFrom` and `updateSteps`
+   in `packages/vimma-core`, and the host's Caskroom check. Waits for update notices on macOS,
+   because before then the result is shown nowhere. Closes the feature's issue.
+4. **`build(macos): dmg window art`.** Decision 14: `background.png`, `dsstore`, `disk.icns`
+   and `MOZ_PACKAGE_EXTRA_ARGS`.
+5. **The tap's own CI** (decision 11), in `vimma-browser/homebrew-tap`: `brew style` and
+   `brew audit` on its pull requests.
 
 ## Open questions
 
-1. **Publish the tap before notarisation?** (a) yes, with the Open Anyway caveat: Mac users can
-   try Vimma as soon as the gate opens, but the first open needs a trip to System Settings, and
-   each update may ask again (**unverified** for an ad hoc signed app replaced in place).
-   (b) only once Vimma is notarised (macos-build sub-PR 6): a clean first impression, a yearly
-   Developer ID cost before the first Mac user. **Recommendation: (b)** for the public
-   announcement, with (a) as an unannounced tap for testers, because a browser that macOS calls
-   unverifiable is a poor first impression.
-2. **Tap repository name.** (a) `vimma-browser/homebrew-tap`, command
-   `vimma-browser/tap/vimma`: the common convention, room for `vimma-ctl` or nightlies later.
-   (b) `vimma-browser/homebrew-vimma`, command `vimma-browser/vimma/vimma`: names the project
-   but repeats it. **Recommendation: (a).**
-3. **What does `--zap` remove?** (a) the profiles, caches, plist and saved state, as `zen` and
-   `firefox` do: what users expect from `--zap`. (b) caches and state only, keeping profiles:
-   safer, but `--zap` would then leave the largest data behind. **Recommendation: (a)**, with the
-   guide stating it; `~/.config/vimma/` is never zapped (decision 5).
-4. **The release bundle identifier.** (a) keep Surfer's `org.mozilla.dev.vimma.browser`: no
-   change, but it carries "mozilla" and "dev". (b) set `MOZ_MACBUNDLE_ID` so the identifier is
-   `dev.vimma.browser`: clean, matches `appId`, but changes where macOS stores preferences and
-   state, so it must be fixed before the first public build. **Recommendation: (b)**, decided
-   before sub-PR 4 because the cask's `uninstall quit:` and `zap` depend on it.
-5. **Submit to Homebrew/homebrew-cask later?** (a) never: the tap is enough. (b) once notarised
+1. **Submit to Homebrew/homebrew-cask later?** (a) never: the tap is enough. (b) once notarised
    and notable: `brew install --cask vimma` with no tap, and Homebrew's own CI audits each bump,
    but each release waits for Homebrew's review. **Recommendation: (b)**, keeping the tap until
    the official cask is accepted.
-6. **Intel Macs.** (a) none, as macos-build decides: Homebrew 7 already puts Intel at tier 3.
+2. **Intel Macs.** (a) none, as macos-build decides: Homebrew 7 already puts Intel at tier 3.
    (b) an x86_64 `.dmg` and `on_intel` in the cask, if macos-build's open question 1 adds one.
    **Recommendation: (a).**
