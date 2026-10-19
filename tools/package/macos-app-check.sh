@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks a built Vimma.app shows Vimma's icon and carries Vimma's bundle identifier (spec
-# macos-homebrew, decision 13 and open question 4). macOS draws the AppIcon from Assets.car; a
+# macos-homebrew, decisions 13 and 15). macOS draws the AppIcon from Assets.car; a
 # build that kept Firefox's unofficial catalog would show its globe. Run from the repository root
 # on macOS; ASSETUTIL and PLISTBUDDY replace the system tools in tests.
 #

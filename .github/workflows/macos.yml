@@ -201,7 +201,7 @@ jobs:
           [ -s "$shot" ] || { echo "::error::no screenshot"; exit 1; }
           ls -l "$shot"
 
-      # Spec macos-homebrew, decision 13 and open question 4: Vimma's icon, not Firefox's globe,
+      # Spec macos-homebrew, decisions 13 and 15: Vimma's icon, not Firefox's globe,
       # under Vimma's own bundle identifier. The rendered icon is uploaded for a look.
       - name: Vimma's icon and bundle identifier
         run: |

@@ -259,7 +259,7 @@ describe("macos.yml", () => {
     expect(run).toContain("--screenshot");
   });
 
-  // Spec macos-homebrew, decision 13, and the bundle id (its open question 4): the built app
+  // Spec macos-homebrew, decision 13, and the bundle id (its decision 15): the built app
   // carries Vimma's asset catalog, not Firefox's, under Vimma's own identifier.
   it("checks the built app's icon catalog and bundle identifier", () => {
     const run = steps(smoke)
