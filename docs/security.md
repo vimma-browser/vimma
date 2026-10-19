@@ -1065,8 +1065,12 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   changes when it is added; `macos-sign` signs both with the same identity, after a hosted Mac
   has checked the checksum, the signature, the version line, Vimma's icon catalog and the bundle
   identifier. The macOS icon files in `src/browser/branding/vimma/` are binaries in the tree;
-  `macos.yml` regenerates them from their sources and fails if they differ, so a changed binary
-  without a changed source fails CI.
+  `macos.yml` regenerates them from their sources and fails if they differ. `firefox.icns`,
+  `document.icns` and the layer image inside `Assets.car` are compared byte for byte. The
+  flattened fallback images inside `Assets.car`, which macOS 15 and earlier draw, differ on
+  every `actool` run, so the check compares only their names, pixel sizes and sizes on disk; a
+  change to their pixels that keeps the size is left to review, which reads `Assets.car` as a
+  binary to be regenerated, never edited.
   [`writes SHA256SUMS that sha256sum -c accepts, for every release file`](../tools/package/test/package.test.mjs),
   [`signs and uploads the PKGBUILD and SRCINFO with the other assets`](../tools/package/test/release-workflow.test.mjs),
   [`macos-smoke runs the dmg on a hosted Mac and ties its version line to the tag`](../tools/package/test/release-workflow.test.mjs),
