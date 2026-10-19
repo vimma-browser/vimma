@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. From the first release on, release-please writes each release's entry from the Conventional Commits on `main` ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.6](https://github.com/vimma-browser/vimma/compare/v0.1.5...v0.1.6) · Firefox 158.0 (2026-10-19)
+
+
+### Added
+
+* **keymap:** bind the rest of Firefox's keys on Firefox's chords ([#352](https://github.com/vimma-browser/vimma/issues/352)) ([256c52c](https://github.com/vimma-browser/vimma/commit/256c52c85162eb9b4be3d4db4ae6745ff4a53016)), closes [#234](https://github.com/vimma-browser/vimma/issues/234)
+* **macos:** vimma's app icon and the dev.vimma.browser bundle id ([783c0ed](https://github.com/vimma-browser/vimma/commit/783c0ed6d439fbddf320d6bea9a6ed9cc15ec449))
+* **release:** publish the homebrew cask to vimma-browser/homebrew-tap ([bbceb78](https://github.com/vimma-browser/vimma/commit/bbceb7852fe78d724d9a4dbe968906f0e014bcb9))
+* **setup:** add a skippable first-run setup for add-ons and search ([#392](https://github.com/vimma-browser/vimma/issues/392)) ([e0a0e2b](https://github.com/vimma-browser/vimma/commit/e0a0e2b9127a4f8da5c8da568902b9216f1bdc04)), closes [#378](https://github.com/vimma-browser/vimma/issues/378)
+* **upstream:** auto-merge a green version-only firefox bump ([#383](https://github.com/vimma-browser/vimma/issues/383)) ([8cdc0d2](https://github.com/vimma-browser/vimma/commit/8cdc0d21c8da2dc3c247dc848615829c52a22f84))
+* **upstream:** open a triage issue when patches do not apply ([#390](https://github.com/vimma-browser/vimma/issues/390)) ([4d2212a](https://github.com/vimma-browser/vimma/commit/4d2212a78e41e5b2e7aa6b4cd1e43a554e3dcb1f)), closes [#259](https://github.com/vimma-browser/vimma/issues/259)
+* **upstream:** re-export patches that need only fuzz in the bump ([#380](https://github.com/vimma-browser/vimma/issues/380)) ([35085f0](https://github.com/vimma-browser/vimma/commit/35085f0e63736b9389ddda53fe2f303bfe1db5b8))
+* **upstream:** refresh copied upstream prefs in the bump commit ([#377](https://github.com/vimma-browser/vimma/issues/377)) ([507582f](https://github.com/vimma-browser/vimma/commit/507582f0ef0800d1ed8fa66154ab1a9bcae645e3))
+* **workspaces:** m in the side panel moves that row's tab to a workspace ([#376](https://github.com/vimma-browser/vimma/issues/376)) ([dc2d40d](https://github.com/vimma-browser/vimma/commit/dc2d40d304b0808316c128e20bd922f4e7f3a49a)), closes [#260](https://github.com/vimma-browser/vimma/issues/260)
+* **workspaces:** unpin pinned tabs and show lost containers in the status bar ([#370](https://github.com/vimma-browser/vimma/issues/370)) ([25314f2](https://github.com/vimma-browser/vimma/commit/25314f2c989340ebc9e64fb93784ac1bf1f44b7c))
+
+
+### Fixed
+
+* **ci:** skip key-guard on a merged pull request ([#359](https://github.com/vimma-browser/vimma/issues/359)) ([be72ef7](https://github.com/vimma-browser/vimma/commit/be72ef765f532837f1bee56cf234808e495b16c7)), closes [#357](https://github.com/vimma-browser/vimma/issues/357)
+* **grep:** keep a reopened grep's frames when an earlier jump ends late ([#402](https://github.com/vimma-browser/vimma/issues/402)) ([a6197ce](https://github.com/vimma-browser/vimma/commit/a6197ce2ef3399a711c0d448314bcf94c0dfa457)), closes [#401](https://github.com/vimma-browser/vimma/issues/401)
+* **keys:** ctrl+shift+z opens the debugger on a plain page ([#400](https://github.com/vimma-browser/vimma/issues/400)) ([5b01dfe](https://github.com/vimma-browser/vimma/commit/5b01dfe23461758d42e83fd5baaf3593ef4f7d91)), closes [#371](https://github.com/vimma-browser/vimma/issues/371)
+* **prompt-keys:** answer the add-on install prompt with y and n ([#365](https://github.com/vimma-browser/vimma/issues/365)) ([83b6049](https://github.com/vimma-browser/vimma/commit/83b6049b60b9c4ef4e4c676ecfafbfe46a72d6a2)), closes [#323](https://github.com/vimma-browser/vimma/issues/323)
+
 ## [0.1.5](https://github.com/vimma-browser/vimma/compare/v0.1.4...v0.1.5) · Firefox 158.0 (2026-10-17)
 
 
