@@ -105,11 +105,28 @@ A release may also carry, for Macs with Apple Silicon (M1 or later), `vimma-X.Y.
 with its checksum file `SHA256SUMS-macos`. There is no build for Intel Macs. Open the `.dmg` and
 drag Vimma into Applications.
 
-The app is not yet notarised by Apple, so the first time you open it macOS says it cannot check
-it for malicious software. Open it once, then go to System Settings → Privacy & Security, choose
-**Open Anyway** next to Vimma, and confirm. macOS remembers that for this copy of Vimma; a newer
-`.dmg` asks again. If macOS instead says the app "is damaged", the download's quarantine flag is
-the cause: `xattr -dr com.apple.quarantine /Applications/Vimma.app` clears it.
+**The first open.** The app is not yet notarised by Apple, so the first time you open it macOS
+says "Apple could not verify “Vimma” is free of malware". To open it:
+
+1. Choose **Done** in that dialog, not **Move to Trash**.
+2. Open System Settings → Privacy & Security and scroll down to Security.
+3. Next to the line saying Vimma was blocked, choose **Open Anyway**, then confirm with your
+   password or Touch ID, and choose **Open**.
+
+Since macOS 15, Control-clicking the app and choosing Open no longer gets past this dialog; the
+button in System Settings does. macOS remembers the choice for this copy of Vimma; a newer
+`.dmg`, or a `brew upgrade`, may ask again.
+
+From a terminal, the same result in one step: this removes the quarantine flag the download
+carries, which also switches off macOS's check of this copy, so use it only on a `.dmg` you
+downloaded from the release (or verified as below).
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Vimma.app && open -a Vimma
+```
+
+If macOS says the app "is damaged" rather than unverified, the quarantine flag is also the cause,
+and the same `xattr` command clears it.
 
 On a Mac, Vimma has no update notices yet: install the newer `.dmg` over the old one. Passkeys
 do not work in these builds. Your profile lives in `~/Library/Application Support/Vimma/`, and
@@ -125,10 +142,10 @@ brew install --cask vimma-browser/tap/vimma
 ```
 
 Homebrew checks the download against the SHA-256 the cask pins, puts Vimma in Applications and
-`vimma` on your `PATH`. The first open still needs **Open Anyway** as above; `brew info vimma`
-shows that note again. The cask comes from the release itself: each release carries it as
-`vimma.rb`, listed and signed in `SHA256SUMS-macos`, and the tap gets that file once the release
-is published.
+`vimma` on your `PATH`. The first open still needs **Open Anyway**, as in "The first open"
+above; `brew info vimma` shows that note again. The cask comes from the release itself: each
+release carries it as `vimma.rb`, listed and signed in `SHA256SUMS-macos`, and the tap gets that
+file once the release is published.
 
 | To                                             | Run                                 |
 | ---------------------------------------------- | ----------------------------------- |

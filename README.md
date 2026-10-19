@@ -46,9 +46,11 @@ mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://gi
 brew install --cask vimma-browser/tap/vimma
 ```
 
-Vimma is not yet notarised, so macOS blocks the first open: in System Settings → Privacy &
-Security, choose **Open Anyway** next to Vimma. Without Homebrew, open
-`vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma to Applications ([macOS](docs/guide.md#macos)).
+Vimma is not yet notarised, so macOS blocks the first open ("Apple could not verify “Vimma”"):
+choose **Done**, then in System Settings → Privacy & Security choose **Open Anyway** next to
+Vimma. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma to Applications.
+The guide's [macOS](docs/guide.md#macos) section has the steps and a one-line terminal
+alternative.
 
 **Debian 12+, Ubuntu 22.04+:** download `vimma_X.Y.Z_amd64.deb`, then
 `sudo apt install ./vimma_X.Y.Z_amd64.deb`.
