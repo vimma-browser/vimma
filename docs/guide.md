@@ -112,7 +112,8 @@ it for malicious software. Open it once, then go to System Settings → Privacy 
 the cause: `xattr -dr com.apple.quarantine /Applications/Vimma.app` clears it.
 
 On a Mac, Vimma has no update notices yet: install the newer `.dmg` over the old one. Passkeys
-do not work in these builds. Your profile lives in `~/Library/Application Support/Vimma/`. To
+do not work in these builds. Your profile lives in `~/Library/Application Support/Vimma/`, and
+macOS keeps Vimma's window state under its bundle identifier, `dev.vimma.browser`. To
 check the `.dmg` before you open it, verify `SHA256SUMS-macos` with cosign as in "Arch Linux"
 below (same identity), then run `shasum -a 256 -c --ignore-missing SHA256SUMS-macos`.
 
