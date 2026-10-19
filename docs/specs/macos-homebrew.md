@@ -1,10 +1,12 @@
 # Spec: macos-homebrew
 
-Status: draft · Area: `configs/branding/vimma/` (macOS icon files, new),
-`configs/macos/AppIcon.icon/` (icon source, new), `configs/macos/mozconfig`,
+Status: draft (sub-PRs 1 and 2 implemented) · Area: `configs/branding/vimma/` (macOS icon
+files, new), `configs/macos/AppIcon.icon/` (icon source, new), `configs/macos/mozconfig`,
 `src/browser/branding/vimma/configure.sh`, `tools/package/` (cask generator and icon
 generator, new), `packages/vimma-core/src/updates.mjs`,
-`.github/workflows/release.yml`, `homebrew.yml` (new), `macos.yml`; the
+`src/browser/base/content/vimma/updates/VimmaUpdates.sys.mjs`, `vimma/about/`,
+`tools/update/manifest.mjs`, `.github/workflows/release.yml`, `update-publish.yml`,
+`homebrew.yml` (new), `macos.yml`; the
 `vimma-browser/homebrew-tap` repository (new); `docs/guide.md`, `docs/security.md`,
 `docs/runbook.md`, `README.md` · Upstream patches: none (decision 9) · ADR: none
 
@@ -54,8 +56,11 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
 6. The cask refuses to install on an Intel Mac and on a macOS older than the minimum (decision 6).
 7. Before Vimma is notarised, the cask's caveats tell the user how to open it the first time
    (decision 7); after notarisation, it opens like any app.
-8. Vimma's update notice, when it runs on macOS, recognises a Homebrew install and suggests
-   `brew upgrade --cask vimma` (decision 8).
+8. Vimma on macOS shows the same update notices as on Linux when a newer release carries a
+   `.dmg` (decisions 16 to 18). `:update` and `about:vimma` then suggest
+   `brew upgrade --cask vimma` for a Homebrew install (decision 8), and for a `.dmg` installed by
+   hand, the release page to download the new `.dmg` from and drag over the old app
+   (decision 19). Vimma downloads and installs nothing itself (decision 20).
 9. The app icon in the Dock, Finder, Launchpad, the app switcher and Get Info is the Vimma logo,
    rendered at every size from the same artwork as the Linux icons, with no grey plate around
    it. Documents Vimma opens (`.html`, `.pdf`) show a Vimma document icon. The mounted `.dmg`
@@ -115,6 +120,37 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
 - The update check tells installs apart with `vimma-package=<type>` in the `is-packaged-app`
   marker beside `omni.ja` (`installTypeFrom`, `packages/vimma-core/src/updates.mjs:529-539`) and
   gives each type its update commands (`updateSteps`, same file).
+
+### The update check on macOS (Firefox 158.0, Vimma 0.1.6)
+
+- The manifest URL is `vimma.update.url`,
+  `https://updates.vimma.dev/updates/browser/%BUILD_TARGET%/%CHANNEL%/update.xml`
+  (`src/browser/branding/vimma/pref/firefox-branding.js`). Vimma fills `%BUILD_TARGET%` as
+  Firefox does, `Services.appinfo.OS + "_" + UpdateUtils.ABI` (`target()` in
+  `src/browser/base/content/vimma/updates/VimmaUpdates.sys.mjs`;
+  `toolkit/modules/UpdateUtils.sys.mjs:87-88`). `OS` is the build's `OS_TARGET`
+  (`toolkit/xre/nsAppRunner.cpp:1200-1202`), `Darwin` for a macOS build; `ABI` is
+  `Services.appinfo.XPCOMABI` (`UpdateUtils.sys.mjs:1073-1092`), which is `TARGET_XPCOM_ABI`,
+  `<target cpu>-gcc3` (`build/moz.configure/toolchain.configure:2524-2531`), with the cpu
+  `aarch64` for `--target=aarch64-apple-darwin` (`TARGET_CPU` in an Apple Silicon objdir's
+  `config/autoconf.mk`). So an Apple Silicon build asks for
+  `updates/browser/Darwin_aarch64-gcc3/vimma/update.xml`, which updates.vimma.dev answers with
+  404: `update-publish.yml` writes only `Linux_x86_64-gcc3`.
+- The client refuses a manifest whose `vimmaTarget` is not its own target (`judgeManifest`,
+  `packages/vimma-core/src/updates.mjs`), and, when the Firefox version is equal, offers an
+  update only for a later build ID. The Linux and macOS builds of one release are separate
+  builds with their own build IDs: in v0.1.6, `application.ini` says `BuildID=20261019130931`
+  in the tarball (its published manifest) and `BuildID=20261019132138` in
+  `Vimma.app/Contents/Resources/application.ini` of the `.dmg`.
+- The v0.1.6 `.dmg` has `omni.ja` in `Vimma.app/Contents/Resources/`, which is `GreD`, and no
+  `is-packaged-app` marker, so the Linux rules of `installTypeFrom` read it as a tarball. Its
+  `AppConstants.MOZ_UPDATER` is `false` (from `--disable-updater` in
+  `configs/common/mozconfig`) and its `application.ini` has no `[AppUpdate]` section, so no
+  Firefox updater runs on macOS.
+- A file that `curl` downloads carries no `com.apple.quarantine` attribute (`xattr -l` on a
+  release file fetched with the system's curl 8.7.1, macOS 27.0.1), so Gatekeeper does not
+  check an app copied out of it on first open; a Homebrew cask's download does carry it
+  (Homebrew 5.0.0's release notes, above), as a browser's download does.
 
 ### Icons in a macOS build (Firefox 158.0, Surfer 1.14.9)
 
@@ -219,7 +255,8 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    A `vimma-package=homebrew` marker inside the bundle was rejected, because the same `.dmg`
    serves the download and the cask, and writing into a signed bundle after the build breaks its
    signature. The check is in `packages/vimma-core` as a pure function of the two facts, so it is
-   tested in Vitest and cannot change a Linux result: on Linux neither path exists.
+   tested in Vitest and cannot change a Linux result: on Linux neither path exists. Decisions 16
+   to 20 make the notice that shows this command reach macOS.
 
 ### Tap updates
 
@@ -293,6 +330,57 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     `tools/package/cask.mjs` reads `appId` from `surfer.json`, so the cask follows it. Rejected:
     Surfer's default `org.mozilla.dev.vimma.browser`, because it carries "mozilla" and "dev".
 
+### Update notices
+
+16. **A second manifest, for the macOS target.** `update-publish.yml` signs and publishes
+    `updates/browser/Darwin_aarch64-gcc3/vimma/update.xml` for a release whose `.dmg` is
+    published, because that is the path an Apple Silicon build asks for (Research, "The update
+    check on macOS") and the client refuses a manifest for another target. It takes a `target`
+    input, `linux` (the default, unchanged) or `macos`, and each run writes the one file of its
+    target. A `macos` run is started by `release.yml`'s `macos-tap` job once the `.dmg` is on a
+    published release, and by `update-publish.yml`'s own `start` job when a release is
+    published with its `.dmg` already there, since the `.dmg` usually arrives hours after the
+    publish, and sometimes before it. A release without a `.dmg` (`MACOS_RELEASE_ENABLED` off,
+    or a failed macOS build) starts no `macos` run, so the previous macOS manifest stands
+    rather than one that names a file the release lacks. Both runs use the same key, the same
+    `sign` job and checks, with the expected target taken from the input, the same verification
+    before the push and the same `update-publish` environment, so the macOS file adds no
+    secret, permission or trust beyond the Linux one. `offer=nothing` with `target=macos` pulls
+    a macOS update as it does a Linux one. Rejected: one run writing both files at publish,
+    because the `.dmg` is rarely there yet; listing the `.dmg` in the Linux manifest, because a
+    manifest names one target and the Linux serial would move whenever macOS files arrive.
+17. **The macOS manifest carries the macOS build's Firefox version and build ID.** For the
+    `macos` target, `prepare` runs on a `macos-15` runner, checks the `.dmg` against
+    `SHA256SUMS-macos` after verifying that file's cosign signature (the identity of
+    `release.yml` on `main`, as for `SHA256SUMS`), mounts it read-only, and reads
+    `Vimma.app/Contents/Resources/application.ini`, because the client compares build IDs when
+    the Firefox version is equal and the two builds' IDs differ (Research): a Linux build ID
+    later than the Mac's would offer Mac users the version they already run. Rejected: the
+    Linux build ID; unpacking the `.dmg` on Linux with mach's `unpack_dmg`, because it needs the
+    Firefox source and bootstrapped tools in a job meant to hold only public files.
+18. **`<vimmaDmg>` names the `.dmg` in the manifest,** with the same attributes and rules as
+    `<vimmaTarball>`, `<vimmaAppImage>` and `<vimmaDeb>` (m6a-updater §2): at most one, a
+    whole-number size, a lower-case SHA-512 and an https URL, so that the client reads and
+    refuses it exactly as the others. The macOS manifest carries only `<vimmaDmg>`, and the
+    Linux manifest is unchanged, because each target downloads only its own files. Firefox's
+    own manifest parser ignores the element, as it ignores the others.
+19. **Install types on macOS: `homebrew` and `dmg`.** `installTypeFrom` takes the platform, the
+    app bundle's path and whether `/opt/homebrew/Caskroom/vimma/` exists, as plain facts the
+    host gathers. On macOS a build without `omni.ja` is `source`, the cask's app is `homebrew`
+    (decision 8), and anything else with `omni.ja` is `dmg`; the `is-packaged-app` marker is not
+    read, because no macOS build writes one and one written into the bundle would break its
+    signature. For `dmg`, `updateSteps` says to quit Vimma, download the new `.dmg` from the
+    release page and drag Vimma over the copy in Applications, notes that macOS asks again on
+    the first open (the guide's "The first open"), links the release page and gives no
+    command, because a `.dmg` that `curl` fetches carries no quarantine attribute (Research), so
+    a command would skip the Gatekeeper check that decision 7 never tells users to bypass.
+    Rejected: a `curl`, `hdiutil` and `ditto` command, for that reason; reporting `tarball`, whose
+    steps do not apply to a Mac.
+20. **A notice, never an update.** Vimma on macOS shows the notice and the steps and changes no
+    file, because macOS builds have no Firefox updater (Research) and an update that rewrote the
+    ad hoc signed bundle would break its signature (macos-build decision 16). The manifest
+    carries no `<patch>` and no MAR. Rejected: a macOS MAR, until Developer ID signing exists.
+
 ### Not in this spec
 
 Submitting to Homebrew/homebrew-cask (open question 1); Developer ID signing and notarisation
@@ -318,6 +406,13 @@ Submitting to Homebrew/homebrew-cask (open question 1); Developer ID signing and
 - **Icons.** The committed `Assets.car` and `.icns` files are binaries in the tree; the
   regeneration check in `macos.yml` makes them reproducible from the committed sources, so a
   changed binary without a changed source fails CI.
+- **Update manifest.** The macOS manifest is signed by the same Cloud KMS key, in the same
+  `sign` job, checked by the same verifier and the browser's pinned keys before the push, and
+  pushed with the same deploy key (decision 16); the client applies the same rules to it as to
+  the Linux one. It names a `.dmg` only after the `.dmg` matched `SHA256SUMS-macos` and that
+  file matched `release.yml`'s signature, so a manifest cannot point at a file the release did
+  not build. `docs/security.md`'s update manifest entries say so. The macOS `prepare` job holds
+  no secret, as the Linux one, and mounts only a `.dmg` whose checksum it has verified.
 - **Uninstall.** `zap` removes the profile directory, which holds history, cookies and saved
   passwords; it runs only with `--zap`, which the user types, and the guide says so.
 
@@ -336,6 +431,16 @@ agent before merging.
 - `installTypeFrom reports homebrew for /Applications/Vimma.app with a vimma Caskroom`
 - `installTypeFrom ignores a Caskroom on Linux paths` (Linux types unchanged)
 - `updateSteps for homebrew is brew upgrade --cask vimma`
+- `installTypeFrom reports dmg for any other packaged app on macOS, and source without omni.ja`
+- `installTypeFrom on macOS ignores an is-packaged-app marker`
+- `updateSteps for dmg links the release page and gives no command`
+- `parseManifest reads <vimmaDmg>, and refuses a second one, a bad hash or an http URL`
+- `manifest.mjs builds the Darwin_aarch64-gcc3 manifest from the dmg, SHA256SUMS-macos and the
+app's application.ini` (`tools/update/test/`)
+- `update-publish.yml signs and publishes the macOS manifest at its own path, checks the
+Darwin target before signing, and runs prepare on macos-15 for it`
+- `macos-tap and start start update-publish.yml for the macOS target once the dmg is on a
+published release`
 - `homebrew.yml runs on release and dispatch, verifies the cask against the signed
 SHA256SUMS-macos before pushing, runs no repository code, and holds the key only in the
 homebrew environment` (workflow wiring, as `release-workflow.test.mjs` does for `aur.yml`)
@@ -356,6 +461,10 @@ inputs`
   `~/.config/vimma`. `release.yml`'s `macos-smoke` runs this on the real `.dmg`, and
   `pkgbuild.yml`'s `cask` job on a stub `.dmg` for every packaging change.
 
+**Mochitest (`tests/browser/browser_vimma_update_check.js`):** with the install type set to
+`homebrew`, `:update` shows `brew upgrade --cask vimma`; with `dmg`, the release page and no
+command.
+
 **Hand checks on a real Mac:** the Dock, Finder, the app switcher and the mounted `.dmg` show the
 Vimma logo with no grey plate; `brew install --cask vimma-browser/tap/vimma` from a clean
 Homebrew; first open per the caveats; `brew upgrade` to the next release.
@@ -367,7 +476,10 @@ Homebrew; first open per the caveats; `brew upgrade` to the next release.
 - `README.md`: the install line for macOS, once the release gate opens.
 - `docs/runbook.md`, "Releases": the tap, `homebrew.yml`, retrying it with
   `gh workflow run homebrew.yml -f tag=vX.Y.Z`, and rotating the deploy key.
-- `docs/security.md`: "Homebrew tap" (above).
+- `docs/security.md`: "Homebrew tap" (above), and the update manifest entries for the macOS
+  file (decision 16).
+- `docs/guide.md`, "Updates": macOS is checked; the rows for a Homebrew and a `.dmg` install.
+- `docs/runbook.md`, "Update signing keys and the update host": the `target` input.
 - `CHANGELOG.md`: "Vimma on macOS shows its own icon" with the icon sub-PR; "Install on macOS
   with Homebrew" with the tap sub-PR.
 - `macos-build.md`: decision 17 and "Not in this spec" point here.
@@ -387,9 +499,11 @@ joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
    ruleset, deploy key and the `homebrew` environment already exist and are documented in the
    runbook. Runs only while `MACOS_RELEASE_ENABLED` is `true`. Needs sub-PR 1 first, because the
    cask's `uninstall quit:` and `zap` name the bundle identifier it sets.
-3. **`feat(updates): homebrew install type`.** Decision 8: `installTypeFrom` and `updateSteps`
-   in `packages/vimma-core`, and the host's Caskroom check. Waits for update notices on macOS,
-   because before then the result is shown nowhere. Closes the feature's issue.
+3. **`feat(updates): update notices on macos`.** Decisions 8 and 16 to 20: the `homebrew` and
+   `dmg` install types and their steps in `packages/vimma-core`, `<vimmaDmg>`, the host's
+   Caskroom check, the macOS manifest in `tools/update/manifest.mjs` and `update-publish.yml`,
+   its start from `release.yml`'s `macos-tap`, and the guide, runbook and `docs/security.md`.
+   Closes the feature's issue; sub-PRs 4 and 5 then have issues of their own.
 4. **`build(macos): dmg window art`.** Decision 14: `background.png`, `dsstore`, `disk.icns`
    and `MOZ_PACKAGE_EXTRA_ARGS`.
 5. **The tap's own CI** (decision 11), in `vimma-browser/homebrew-tap`: `brew style` and
