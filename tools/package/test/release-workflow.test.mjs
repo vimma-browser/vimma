@@ -197,6 +197,17 @@ describe("release.yml", () => {
       }
     });
 
+    it("macos-build stops at the same measured limit as macos.yml's build", () => {
+      const limit = (/** @type {string} */ block) =>
+        /^ {4}timeout-minutes: (\d+)$/m.exec(block)?.[1];
+      const weekly = readFileSync(
+        new URL("../../../.github/workflows/macos.yml", import.meta.url),
+        "utf8",
+      );
+      expect(limit(all.get("macos-build") ?? "")).toBe(limit(weekly));
+      expect(limit(weekly)).toBeDefined();
+    });
+
     it("macos-build checks the tag like build, then cross-builds with the key", () => {
       const block = all.get("macos-build") ?? "";
       expect(runOf(block, "Check the tag's form")).toBe(

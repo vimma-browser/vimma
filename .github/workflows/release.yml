@@ -413,8 +413,9 @@ jobs:
       vars.MACOS_RELEASE_ENABLED == 'true'
     environment: build
     runs-on: ubuntu-24.04
-    # Not measured yet (docs/runbook.md, "macOS build"); under GitHub's 6 hours.
-    timeout-minutes: 330
+    # As the weekly macOS build: about 1.5 times its measured 133 min (docs/runbook.md, "macOS
+    # build").
+    timeout-minutes: 200
     permissions:
       contents: read
     outputs:
