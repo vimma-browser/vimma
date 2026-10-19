@@ -229,20 +229,23 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    `vimma.rb` with `tools/package/cask.mjs` from the `.dmg`'s SHA-256 and lists it in
    `SHA256SUMS-macos`; `macos-smoke` checks it with `brew style` and an offline
    `brew audit --cask --strict` on `macos-15` and installs the `.dmg` through it; `macos-sign`
-   signs it. `homebrew.yml` runs on `release: published` and on `workflow_dispatch` with a tag,
+   signs it. `homebrew.yml` runs only by `workflow_dispatch` with a tag, from `main`, and
    checks the tag is `vX.Y.Z`, fetches the published `vimma.rb`, checks it against
    `SHA256SUMS-macos`, its version against the tag, and `SHA256SUMS-macos` against
    `release.yml`'s signature, and pushes it to the tap as `Casks/vimma.rb`, never replacing a
    newer cask with an older one. It runs nothing from the repository, and it is its own
-   workflow, so a tap failure cannot fail the release. The `.dmg` usually reaches the release
-   hours after it is published, so the publish's own run then finds no cask and ends with a
-   notice; `release.yml`'s `macos-tap` job, holding only `actions: write`, starts `homebrew.yml`
-   for the tag once the cask is downloadable from the published release. Rejected: rendering the cask in `homebrew.yml`, because the job holding the
+   workflow, so a tap failure cannot fail the release. `release.yml`'s `macos-tap` job, holding
+   only `actions: write`, starts `homebrew.yml` on `main` for the tag once the cask is
+   downloadable from the published release, since the `.dmg` usually arrives hours after the
+   publish. Rejected: a `release: published` trigger, because a release event runs the tag's
+   copy of the workflow, and anyone with write access can create a tag on an unmerged commit whose
+   copy skips every check; rendering the cask in `homebrew.yml`, because the job holding the
    tap's key would then run repository code; a step in `release.yml`, because it would put the
    tap's key in the build job.
-10. **The tap's credential is a deploy key held by a `homebrew` environment,** limited to `main`
-    and `v*` tags as `aur` is, so that only a released tag on `main` can write to the tap, and a
-    missing key skips the job instead of failing it. Rejected: a personal access token, because a
+10. **The tap's credential is a deploy key held by a `homebrew` environment,** limited to `main`,
+    so that only a workflow file reviewed onto `main` can write to the tap, and a missing key
+    skips the job instead of failing it. No tag may deploy to it, because a tag ruleset restricts
+    moving a tag, not creating one (`docs/security.md`, B6). Rejected: a personal access token, because a
     deploy key reaches only the one repository. The tap repository's branch rules allow pushes by
     the deploy key and pull requests by others.
 11. **The tap holds only generated files and a README,** so that every cask change is visible in
@@ -305,7 +308,7 @@ Submitting to Homebrew/homebrew-cask (open question 1); Developer ID signing and
   `docs/security.md` gets a "Homebrew tap" entry covering this, the deploy key and its
   environment, and a test link for each claim (`npm run security-links`).
 - **The tap's write credential** is a deploy key scoped to one repository, held by an environment
-  restricted to `main` and `v*` tags, and used only in `homebrew.yml`, whose permissions are
+  restricted to `main`, and used only in `homebrew.yml`, whose permissions are
   empty; the key is never printed and is removed from the runner after the push. A stolen key
   can change the tap but not the release, and Homebrew still checks the pinned SHA-256 against
   the GitHub download.
