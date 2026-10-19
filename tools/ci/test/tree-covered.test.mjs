@@ -279,6 +279,7 @@ describe("workflow wiring", () => {
     ["ci.yml", "check"],
     ["semgrep.yml", "scan"],
     ["pkgbuild.yml", "arch"],
+    ["pkgbuild.yml", "cask"],
   ]);
 
   it.each(GATED)(

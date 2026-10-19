@@ -115,7 +115,32 @@ On a Mac, Vimma has no update notices yet: install the newer `.dmg` over the old
 do not work in these builds. Your profile lives in `~/Library/Application Support/Vimma/`, and
 macOS keeps Vimma's window state under its bundle identifier, `dev.vimma.browser`. To
 check the `.dmg` before you open it, verify `SHA256SUMS-macos` with cosign as in "Arch Linux"
-below (same identity), then run `shasum -a 256 -c SHA256SUMS-macos`.
+below (same identity), then run `shasum -a 256 -c --ignore-missing SHA256SUMS-macos`.
+
+**With Homebrew.** The same `.dmg` installs as a cask from Vimma's own tap,
+[vimma-browser/homebrew-tap](https://github.com/vimma-browser/homebrew-tap):
+
+```sh
+brew install --cask vimma-browser/tap/vimma
+```
+
+Homebrew checks the download against the SHA-256 the cask pins, puts Vimma in Applications and
+`vimma` on your `PATH`. The first open still needs **Open Anyway** as above; `brew info vimma`
+shows that note again. The cask comes from the release itself: each release carries it as
+`vimma.rb`, listed and signed in `SHA256SUMS-macos`, and the tap gets that file once the release
+is published.
+
+| To                                             | Run                                 |
+| ---------------------------------------------- | ----------------------------------- |
+| Update to the latest release                   | `brew upgrade --cask vimma`         |
+| Remove Vimma, keeping your profile             | `brew uninstall --cask vimma`       |
+| Remove Vimma and its profile, caches and prefs | `brew uninstall --zap --cask vimma` |
+
+Vimma does not update itself, so `brew upgrade` (or `brew upgrade --cask vimma`) is how a
+Homebrew install gets a new release; after an upgrade macOS may ask for **Open Anyway** again.
+`--zap` deletes `~/Library/Application Support/Vimma/` (every profile), `~/Library/Caches/Vimma/`,
+and Vimma's preferences and saved window state in `~/Library`; it leaves your configuration in
+`~/.config/vimma/` alone.
 
 #### Arch Linux
 
@@ -159,8 +184,8 @@ makepkg -si
 ```
 
 The `PKGBUILD` pins the SHA-256 of the tarball it downloads, so checking the `PKGBUILD` covers
-what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` in
-`SHA256SUMS-macos` ("Verify a release" in
+what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` and
+Homebrew cask in `SHA256SUMS-macos` ("Verify a release" in
 [runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging)).
 
 The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as

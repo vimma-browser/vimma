@@ -405,6 +405,8 @@ jobs:
   # on Linux, run on a hosted Mac, signed and added to the same release. No Linux job needs these,
   # so a macOS failure never holds back a Linux release; the failure job still reports it. Off
   # until the repository variable MACOS_RELEASE_ENABLED is `true` (docs/runbook.md, "macOS build").
+  # The Homebrew cask, vimma.rb, is rendered beside the dmg and travels with it (spec
+  # macos-homebrew, decision 9); homebrew.yml pushes the published release's copy to the tap.
   # As build: the same tag checks, verified source, no cache, the Safe Browsing key (B6).
   macos-build:
     if: >-
@@ -520,8 +522,9 @@ jobs:
       - name: rcodesign (pinned)
         run: tools/package/fetch-rcodesign.sh "$RUNNER_TEMP/rcodesign"
 
-      # mach package, then tools/package/macos-dmg.sh: unpack, ad hoc sign, pack (ADR-018). The
-      # dmg's own SHA256SUMS-macos keeps SHA256SUMS, which the AUR and the updater read, as it is.
+      # mach package, then tools/package/macos-dmg.sh: unpack, ad hoc sign, pack (ADR-018), then
+      # the Homebrew cask for that dmg. Their own SHA256SUMS-macos keeps SHA256SUMS, which the AUR
+      # and the updater read, as it is.
       - name: Package, ad hoc sign and checksum the dmg
         env:
           RCODESIGN: ${{ runner.temp }}/rcodesign/rcodesign
@@ -530,7 +533,8 @@ jobs:
           rm -rf release-macos && mkdir release-macos
           dmg="vimma-${TAG#v}-macos-aarch64.dmg"
           tools/package/macos-dmg.sh "$MOZ_OBJDIR"/dist/vimma-*.en-US.mac.dmg "release-macos/$dmg"
-          (cd release-macos && sha256sum "$dmg" > SHA256SUMS-macos && cat SHA256SUMS-macos)
+          node tools/package/cask.mjs --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb
+          (cd release-macos && sha256sum "$dmg" vimma.rb > SHA256SUMS-macos && cat SHA256SUMS-macos)
 
       - name: Delete the Safe Browsing key file
         if: always()
@@ -550,7 +554,7 @@ jobs:
           if-no-files-found: error
 
   # A hosted Mac runs what was built: checksum, signature, arm64, the version line against the
-  # tag, the Safe Browsing key, and a page rendered headless.
+  # tag, the Safe Browsing key, a page rendered headless, and the Homebrew cask installing the dmg.
   macos-smoke:
     needs: macos-build
     if: >-
@@ -610,6 +614,12 @@ jobs:
           # Vimma's icon and bundle identifier (spec macos-homebrew), as the weekly smoke checks
           tools/package/macos-app-check.sh "$APP"
 
+      # brew style, an offline brew audit, then brew install --cask from the dmg in Homebrew's
+      # download cache and brew uninstall --zap (spec macos-homebrew, decision 9).
+      - name: The Homebrew cask installs the dmg
+        run: |
+          tools/package/cask-check.sh release-macos/vimma.rb "release-macos/vimma-${TAG#v}-macos-aarch64.dmg"
+
   # As sign: cosign keyless, the same identity (release.yml at refs/heads/main); no repository code.
   macos-sign:
     needs: [macos-build, macos-smoke]
@@ -630,9 +640,9 @@ jobs:
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
-      - name: Sign the dmg and its checksums
+      - name: Sign the dmg, the cask and their checksums
         run: |
-          for f in dist/vimma-*-macos-aarch64.dmg dist/SHA256SUMS-macos; do
+          for f in dist/vimma-*-macos-aarch64.dmg dist/vimma.rb dist/SHA256SUMS-macos; do
             cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
           done
 
@@ -680,7 +690,7 @@ jobs:
             || { echo "::error::no GitHub Release for $TAG (release-please creates it)"; exit 1; }
           if [ "$draft" != true ] && [ "$REPLACE_PUBLISHED" != true ]; then
             present=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
-              --jq '[.assets[].name | select(test("-macos-aarch64\\.dmg|^SHA256SUMS-macos"))] | length')
+              --jq '[.assets[].name | select(test("-macos-aarch64\\.dmg|^vimma\\.rb|^SHA256SUMS-macos"))] | length')
             if [ "$present" != 0 ]; then
               echo "::error::$TAG is published with macOS files; re-run with -f replace_published=true to replace them"
               exit 1
@@ -688,10 +698,47 @@ jobs:
           fi
           [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)" = "$SHA" ] \
             || { echo "::error::$TAG no longer points to $SHA, the commit that was built"; exit 1; }
-          gh release upload "$TAG" dist/vimma-*-macos-aarch64.dmg* dist/SHA256SUMS-macos* --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$TAG" dist/vimma-*-macos-aarch64.dmg* dist/vimma.rb* dist/SHA256SUMS-macos* --clobber --repo "$GITHUB_REPOSITORY"
+
+  # homebrew.yml has no release trigger, since a tag must not reach the tap's key, and the macOS
+  # files usually reach a release after it is published. Once vimma.rb is on a published release
+  # (releases/download/ serves nothing for a draft), this starts homebrew.yml on main for the
+  # tag; a draft published after its macOS files needs it started by hand.
+  # No repository code, and no token beyond starting a workflow.
+  macos-tap:
+    needs: macos-publish
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' &&
+      vars.MACOS_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write # start homebrew.yml (workflow_dispatch)
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Start homebrew.yml for a published release
+        run: |
+          if curl -fsSL -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma.rb"; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/homebrew.yml/dispatches" \
+              -f ref=main -f "inputs[tag]=$TAG"
+            echo "Started homebrew.yml for $TAG" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice::$TAG is a draft; once it is published, run: gh workflow run homebrew.yml -f tag=$TAG"
+          fi
 
   failure:
-    needs: [build, package, sign, publish, macos-build, macos-smoke, macos-sign, macos-publish]
+    needs:
+      - build
+      - package
+      - sign
+      - publish
+      - macos-build
+      - macos-smoke
+      - macos-sign
+      - macos-publish
+      - macos-tap
     if: >-
       failure() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main'

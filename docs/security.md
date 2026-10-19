@@ -873,7 +873,7 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
   [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
 
-## 14. Build and release supply chain (`release.yml`, `aur.yml`, `nightly.yml`, `macos.yml`)
+## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`)
 
 Vimma's binaries are built from Mozilla's Firefox source, this repository, and the npm packages
 that drive the build, chiefly Surfer. These rules keep what reaches a build pinned and reviewed.
@@ -1060,11 +1060,12 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   `[A-Za-z0-9._-]` for the desktop file ID, the two values it places in shell words. It is built
   and installed with `makepkg -si` on Arch Linux before anything is signed. **⚠ setting:**
   signatures exist only while the repository variable `SIGNING_ENABLED` is `true`; without it
-  `publish` uploads the assets and `SHA256SUMS` unsigned. The macOS `.dmg` is listed in its own
-  `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the update manifest read, never
-  changes when it is added; `macos-sign` signs both with the same identity, after a hosted Mac
-  has checked the checksum, the signature, the version line, Vimma's icon catalog and the bundle
-  identifier. The macOS icon files in `configs/branding/vimma/` are binaries in the tree;
+  `publish` uploads the assets and `SHA256SUMS` unsigned. The macOS `.dmg` and its Homebrew cask
+  `vimma.rb` are listed in their own `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the
+  update manifest read, never changes when they are added; `macos-sign` signs all three with the
+  same identity, after a hosted Mac has checked the checksum, the signature, the version line,
+  Vimma's icon catalog and the bundle identifier, and has installed the `.dmg` through the cask.
+  The macOS icon files in `configs/branding/vimma/` are binaries in the tree;
   `macos.yml` regenerates them from their sources and fails if they differ. `firefox.icns`,
   `document.icns` and the layer image inside `Assets.car` are compared byte for byte. The
   flattened fallback images inside `Assets.car`, which macOS 15 and earlier draw, differ on
@@ -1075,6 +1076,7 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`signs and uploads the PKGBUILD and SRCINFO with the other assets`](../tools/package/test/release-workflow.test.mjs),
   [`macos-smoke runs the dmg on a hosted Mac and ties its version line to the tag`](../tools/package/test/release-workflow.test.mjs),
   [`macos-sign signs the dmg and its checksums, and runs no repository code`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-publish adds only the macOS files, and replaces them only when told`](../tools/package/test/release-workflow.test.mjs),
   [`regenerates the icon files on a Mac with a pinned Xcode and fails on drift`](../tools/package/test/macos.test.mjs),
   [`fails an app that still carries Firefox's unofficial icon`](../tools/package/test/macos.test.mjs),
   [`builds and installs the release PKGBUILD on Arch Linux before anything is signed`](../tools/package/test/release-workflow.test.mjs),
@@ -1097,7 +1099,7 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   to a published release that has none, since that changes no file a user or the AUR already
   has; it re-checks the tag's commit and replaces existing macOS files only with
   `replace_published`. **⚠ setting:** a tag ruleset on `refs/tags/v*` that restricts
-  updates and deletions (docs/runbook.md, "Release packages", step 8) keeps a release tag from
+  updates and deletions (docs/runbook.md, "Release packages", step 9) keeps a release tag from
   being moved at all. The AUR, public the moment a push lands, **never** gets a package for
   a draft: `aur.yml` runs when a release is published (or by hand), holds no GitHub token,
   takes the `PKGBUILD` and `SRCINFO` only from the release's public download URLs, which answer
@@ -1121,6 +1123,57 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`builds, packages and publishes the one commit it checked`](../tools/package/test/release-workflow.test.mjs),
   [`uploads only to a draft unless told to replace a published release`](../tools/package/test/release-workflow.test.mjs),
   [`takes the AUR key from the aur environment`](../tools/package/test/release-workflow.test.mjs)
+
+- B11. The Homebrew tap, `vimma-browser/homebrew-tap`, is public the moment a push lands, and
+  `brew` runs a cask's Ruby on the user's Mac, so it **must** get only a cask that `release.yml`
+  built for a published release, as the AUR does (B10). `tools/package/cask.mjs` renders the cask
+  in `macos-build` from the `.dmg`'s SHA-256, and accepts only an `X.Y.Z` release version, a
+  lowercase SHA-256 and an `owner/name` repository, the values it places in Ruby strings. The
+  cask has no `preflight`, `postflight`, `installer` or `script` stanza, runs nothing at install,
+  pins the `.dmg`'s SHA-256, and zaps only Vimma's own paths under `~/Library`, never
+  `~/.config/vimma`. `macos-smoke` runs `brew style`, an offline `brew audit --cask --strict`, and
+  installs the `.dmg` through the cask before anything is signed; `pkgbuild.yml` does the same with
+  a stub `.dmg` on every pull request that changes `tools/package/`. `homebrew.yml` runs only by
+  `workflow_dispatch` from `main`, and only while `MACOS_RELEASE_ENABLED` is `true`; it holds no
+  GitHub token, runs no repository code, and takes `vimma.rb` only from the release's public
+  download URLs, which answer 404 for a draft. It checks the cask against `SHA256SUMS-macos` and
+  its version against the tag, and with signing on checks `SHA256SUMS-macos` against
+  `IDENTITY_REGEXP` before it pushes over SSH to github.com, whose host key is pinned. It pushes
+  only `Casks/vimma.rb`, never with `--force`, and never replaces a newer cask with an older one.
+  `release.yml`'s `macos-tap` job, which holds only `actions: write` and runs no repository code,
+  starts `homebrew.yml` on `main` once the cask is on a published release, since the macOS files
+  usually arrive after the publish. The tap's key is a write deploy key of the tap alone, a secret
+  of the `homebrew` environment, which only `main` may use. No tag may deploy to it (as in B6): a
+  tag ruleset restricts moving a tag, not creating one, and a run's workflow file and its `if:`
+  come from its ref, so a tag on an unmerged commit could carry a `homebrew.yml` that skips every
+  check and pushes any Ruby to the tap. `homebrew.yml` has no `release` trigger for the same
+  reason, since a release event runs the tag's copy of the file. **⚠ setting:** the `homebrew`
+  environment's only deployment policy is the branch `main`. **⚠ setting:** the tap's
+  ruleset on `main` forbids deletion and force pushes and requires a pull request; deploy keys
+  bypass it, so the workflow pushes directly, and admins bypass it only through a pull request
+  (docs/runbook.md, "Release packages", step 7). **⚠ limit:** the `.dmg` is ad hoc signed and not
+  notarised, so Gatekeeper cannot vouch for it; the cask's caveats tell users to choose Open Anyway
+  in System Settings, and never to remove the quarantine flag.
+  [`names the release dmg for the version and pins its sha256`](../tools/package/test/cask.test.mjs),
+  [`refuses a pre-release, a version that is not SemVer, and a bad sha256`](../tools/package/test/cask.test.mjs),
+  [`refuses repo %j`](../tools/package/test/cask.test.mjs),
+  [`declares arm64, the minimum macOS, the app and the vimma binary, and no flight blocks`](../tools/package/test/cask.test.mjs),
+  [`zaps Application Support and Caches, never ~/.config/vimma`](../tools/package/test/cask.test.mjs),
+  [`caveats point to Open Anyway, never to xattr or --no-quarantine`](../tools/package/test/cask.test.mjs),
+  [`checks the cask with brew style and an offline brew audit --cask --strict`](../tools/package/test/cask.test.mjs),
+  [`refuses to install outside GitHub Actions`](../tools/package/test/cask.test.mjs),
+  [`macos-smoke checks the cask with brew and installs the dmg through it`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-tap starts homebrew.yml on main once the cask is on a published release`](../tools/package/test/release-workflow.test.mjs),
+  [`takes the cask from the published release only, with no GitHub token`](../tools/package/test/release-workflow.test.mjs),
+  [`runs only by dispatch with a tag, never for a release event or a tag ref`](../tools/package/test/release-workflow.test.mjs),
+  [`job %s runs only when the macOS release is enabled, here, from main`](../tools/package/test/release-workflow.test.mjs),
+  [`a release without the cask is an error`](../tools/package/test/release-workflow.test.mjs),
+  [`the download step refuses %s`](../tools/package/test/release-workflow.test.mjs),
+  [`checks SHA256SUMS-macos's signature against the documented identity when signing is on`](../tools/package/test/release-workflow.test.mjs),
+  [`takes the tap key from the homebrew environment`](../tools/package/test/release-workflow.test.mjs),
+  [`the tap key reaches only the push step`](../tools/package/test/release-workflow.test.mjs),
+  [`pushes Casks/vimma.rb to the tap over SSH with github.com's pinned host key`](../tools/package/test/release-workflow.test.mjs),
+  [`never replaces a newer cask with an older one`](../tools/package/test/release-workflow.test.mjs)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 
