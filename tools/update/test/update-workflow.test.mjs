@@ -92,7 +92,85 @@ describe("update-publish.yml", () => {
     expect(on).toMatch(/^ {2}release:\n {4}types: \[released\]$/m);
     expect(on).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(on).not.toMatch(/pull_request|push:|schedule|workflow_run/);
-    for (const input of ["tag", "offer", "dry_run"]) expect(on).toContain(`\n      ${input}:\n`);
+    for (const input of ["tag", "offer", "target", "dry_run"]) {
+      expect(on).toContain(`\n      ${input}:\n`);
+    }
+  });
+
+  // Spec macos-homebrew, decision 16: one manifest per build target, the same jobs for each.
+  it("takes the target as a choice, linux unless asked, and derives every per-target name", () => {
+    const on = text.slice(text.indexOf("\n      target:\n"), text.indexOf("\n      dry_run:\n"));
+    expect(on).toContain("type: choice");
+    expect(on).toContain("options: [linux, macos]");
+    expect(on).toContain("default: linux");
+    expect(text).toContain("\n  TARGET_OS: ${{ inputs.target || 'linux' }}\n");
+    expect(text).toContain(
+      "\n  BUILD_TARGET: ${{ inputs.target == 'macos' && 'Darwin_aarch64-gcc3' || 'Linux_x86_64-gcc3' }}\n",
+    );
+    expect(text).toContain(
+      "\n  SUMS: ${{ inputs.target == 'macos' && 'SHA256SUMS-macos' || 'SHA256SUMS' }}\n",
+    );
+    // Every path and check reads BUILD_TARGET; no step names a target of its own.
+    expect(text.split("Linux_x86_64-gcc3").length - 1).toBe(1);
+    expect(text.split("Darwin_aarch64-gcc3").length - 1).toBe(1);
+    const check = runOf(job("prepare"), "Check the inputs");
+    expect(check).toContain('case "$TARGET_OS" in');
+    expect(check).toContain("linux|macos) ;;");
+  });
+
+  it("builds a macOS manifest on macOS (hdiutil reads the app's build ID), signs on Linux", () => {
+    // A one-leg matrix, so that the runner check (docs/security.md, B5) sees every runner it
+    // can take; the exclude drops the other target's.
+    expect(job("prepare")).toContain(
+      "\n    runs-on: ${{ matrix.os }}\n    strategy:\n      matrix:\n" +
+        "        os: [ubuntu-24.04, macos-15]\n        exclude:\n" +
+        "          - os: ${{ inputs.target == 'macos' && 'ubuntu-24.04' || 'macos-15' }}\n",
+    );
+    expect(job("sign")).toContain("\n    runs-on: ubuntu-24.04\n");
+    expect(job("publish")).toContain("\n    runs-on: ubuntu-24.04\n");
+  });
+
+  it("downloads the target's files and sums, and passes the target to manifest.mjs", () => {
+    for (const id of ["prepare", "publish"]) {
+      const run = runOf(job(id), "Download the release's files");
+      expect(run, id).toContain('macos) files=("vimma-$v-macos-aarch64.dmg") ;;');
+      expect(run, id).toContain(
+        'linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb") ;;',
+      );
+    }
+    expect(runOf(job("prepare"), "Download the release's files")).toContain(
+      'for f in "$SUMS" "${files[@]}"; do',
+    );
+    expect(runOf(job("prepare"), "Verify the release's signature")).toContain(
+      '--bundle "assets/$SUMS.sigstore.json"',
+    );
+    expect(runOf(job("prepare"), "The published manifest")).toContain(
+      "path=updates/browser/$BUILD_TARGET/vimma/update.xml",
+    );
+    const build = runOf(job("prepare"), "Build the manifest");
+    expect(build.split('--target "$TARGET_OS"').length - 1).toBe(2);
+    const verify = runOf(job("publish"), "Verify the signed manifest");
+    expect(verify.split('--target "$TARGET_OS"').length - 1).toBe(2);
+    const push = runOf(job("publish"), "Push to vimma-updates");
+    expect(push.split('--target "$TARGET_OS"').length - 1).toBe(2);
+    expect(push).toContain("dest=updates/public/updates/browser/$BUILD_TARGET/vimma/update.xml");
+    expect(push).toContain("git add public/updates/browser/$BUILD_TARGET/vimma/update.xml");
+    expect(runOf(job("publish"), "Wait until the update host serves it")).toContain(
+      "url=https://updates.vimma.dev/updates/browser/$BUILD_TARGET/vimma/update.xml",
+    );
+    expect(runOf(job("sign"), "Check what is about to be signed")).toContain(
+      `grep -Eqx "<updates vimmaChannel=\\"vimma\\" vimmaTarget=\\"$BUILD_TARGET\\" vimmaSerial=\\"[0-9]{14}\\">"`,
+    );
+  });
+
+  it("a published release whose .dmg is already there starts the macOS manifest too", () => {
+    const run = runOf(job("start"), "Start the manifest run on main");
+    expect(run).toContain(
+      'if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma-${TAG#v}-macos-aarch64.dmg"; then',
+    );
+    expect(run).toContain(
+      'gh workflow run update-publish.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG" -f target=macos',
+    );
   });
 
   it("grants nothing by default, and each job only what it needs", () => {
@@ -188,11 +266,12 @@ describe("update-publish.yml", () => {
     );
   });
 
-  it("runs one manifest at a time, never cancelling one half done", () => {
+  it("runs one manifest per target at a time, never cancelling one half done", () => {
     // Per event: the release event's run, which only starts another, never waits behind or
-    // displaces a signing run.
+    // displaces a signing run. Per target: GitHub keeps one pending run per group, so a Linux
+    // and a macOS run started together must not replace each other.
     expect(text).toMatch(
-      /^concurrency:\n {2}group: update-publish-\$\{\{ github\.event_name \}\}\n {2}cancel-in-progress: false$/m,
+      /^concurrency:\n {2}group: update-publish-\$\{\{ github\.event_name \}\}-\$\{\{ inputs\.target \|\| 'linux' \}\}\n {2}cancel-in-progress: false$/m,
     );
   });
 
@@ -220,7 +299,7 @@ describe("update-publish.yml", () => {
     expect(step).not.toContain("SIGNING_ENABLED");
     expect(job("prepare")).not.toMatch(/if: .*SIGNING_ENABLED/);
     const download = runOf(job("prepare"), "Download the release's files");
-    expect(download).toContain("SHA256SUMS.sigstore.json");
+    expect(download).toContain('"$base/$SUMS.sigstore.json"');
     expect(download).not.toContain("SIGNING_ENABLED");
     expect(step).toContain(`--certificate-identity-regexp '${IDENTITY_REGEXP}'`);
     expect(step).toContain("--certificate-oidc-issuer https://token.actions.githubusercontent.com");
@@ -264,7 +343,10 @@ describe("update-publish.yml", () => {
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => /\bpush\b/.test(l) && !l.startsWith("echo"));
-    expect(pushes).toEqual(["git push origin HEAD:main"]);
+    // The other target's run may push between the clone and this push; it changes another
+    // file, so a rebase onto it keeps this commit as it was checked.
+    expect(pushes).toEqual(["if git push origin HEAD:main; then break; fi"]);
+    expect(run).toContain("git pull -q --rebase origin main");
     expect(job("publish")).not.toMatch(/--force|--mirror|\+HEAD|\+refs|push -f/);
     expect(job("publish")).toContain(
       "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl",
@@ -274,7 +356,9 @@ describe("update-publish.yml", () => {
   it("the failure issue says how to re-run", () => {
     const failure = job("failure");
     expect(condition(failure)).toContain("failure()");
-    expect(failure).toContain("gh workflow run update-publish.yml -f tag=$TAG");
+    expect(failure).toContain(
+      "gh workflow run update-publish.yml -f tag=$TAG -f target=$TARGET_OS",
+    );
   });
 });
 
@@ -330,6 +414,7 @@ esac
         KEY_VERSION: "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
         FAKE_KMS_KEY: join(dir, "kms.key"),
         GITHUB_OUTPUT: join(dir, "github-output"),
+        BUILD_TARGET: "Linux_x86_64-gcc3",
         ...env,
       },
     });
@@ -350,6 +435,15 @@ esac
         },
       },
     });
+
+  const macOffer = () => ({
+    appVersion: "158.0",
+    buildId: "20261019132138",
+    displayVersion: "0.3.1",
+    urgency: /** @type {const} */ ("normal"),
+    advisories: [],
+    assets: { dmg: { size: 4, sha512: "d".repeat(128) } },
+  });
 
   it("signs the body so that the browser's verifier accepts it under the KMS key", async () => {
     const body = offerBody();
@@ -407,6 +501,23 @@ esac
     },
     60_000,
   );
+
+  it("checks a macOS body against the macOS target, and refuses a Linux one there", () => {
+    const mac = buildManifest({
+      serial: serialAt(new Date()),
+      update: { ...macOffer(), displayVersion: "0.3.1" },
+      os: "macos",
+    });
+    const env = { TAG: "v0.3.1", OFFER: "release", BUILD_TARGET: "Darwin_aarch64-gcc3" };
+    expect(run(setUp(mac).dir, "Check what is about to be signed", env).status).toBe(0);
+    expect(run(setUp(offerBody()).dir, "Check what is about to be signed", env).status).not.toBe(0);
+    expect(
+      run(setUp(mac).dir, "Check what is about to be signed", {
+        ...env,
+        BUILD_TARGET: "Linux_x86_64-gcc3",
+      }).status,
+    ).not.toBe(0);
+  }, 60_000);
 
   it("signs an empty manifest when nothing is offered", () => {
     const { dir } = setUp(buildManifest({ serial: serialAt(new Date()), update: null }));

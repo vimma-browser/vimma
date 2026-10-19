@@ -13,12 +13,15 @@
  *   manifest.mjs commits --tag vX.Y.Z --repo owner/name  > commits.json
  *       the subjects and pull-request labels since the previous published release (git, gh)
  *   manifest.mjs build --tag vX.Y.Z --assets DIR --commits FILE [--published FILE]... --out FILE
- *       the body for the release's files in DIR (the three packages and SHA256SUMS)
+ *       the body for the release's files in DIR (the three Linux packages and SHA256SUMS, or
+ *       with --target macos the .dmg and SHA256SUMS-macos)
  *   manifest.mjs build --offer nothing [--published FILE]... --out FILE
  *       a body that offers nothing (pulls an update; docs/runbook.md)
  *   manifest.mjs verify --signed FILE (--tag vX.Y.Z --assets DIR | --offer nothing)
  *       [--published FILE]...
  *       checks a signed manifest; prints serial=, version= and key= lines for $GITHUB_OUTPUT
+ *   build and verify take --target linux|macos (linux when absent): the manifest's build
+ *   target, its files and its path (spec macos-homebrew, decisions 16 to 18)
  *   manifest.mjs pem
  *       the pinned primary key as PEM, for openssl
  *
@@ -27,8 +30,8 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -42,14 +45,36 @@ import {
 } from "../../packages/vimma-core/src/updates.mjs";
 import { UPDATE_KEYS } from "../../packages/vimma-core/src/update-keys.mjs";
 
-/** The release channel (`app.update.channel` in channel-prefs.js) and the Linux build target. */
+/** The release channel (`app.update.channel` in channel-prefs.js). */
 export const CHANNEL = "vimma";
-export const TARGET = "Linux_x86_64-gcc3";
 /**
- * Where the manifest lives in vimma-browser/vimma-updates: the Worker serves `public/`, at the
- * path Firefox's update URL template gives (`/updates/browser/%BUILD_TARGET%/%CHANNEL%/…`).
+ * Each build target with a manifest: Firefox's `%BUILD_TARGET%` (`OS_TARGET` + `_` + the XPCOM
+ * ABI), the release files it lists and the sums file they are checked against. The .dmg has its
+ * own sums file because release.yml publishes it in a later job than the Linux packages.
  */
-export const MANIFEST_PATH = `public/updates/browser/${TARGET}/${CHANNEL}/update.xml`;
+export const TARGETS = Object.freeze({
+  linux: {
+    target: "Linux_x86_64-gcc3",
+    kinds: /** @type {AssetKind[]} */ (["tarball", "appimage", "deb"]),
+    sums: "SHA256SUMS",
+  },
+  macos: {
+    target: "Darwin_aarch64-gcc3",
+    kinds: /** @type {AssetKind[]} */ (["dmg"]),
+    sums: "SHA256SUMS-macos",
+  },
+});
+/** @typedef {keyof typeof TARGETS} Os */
+export const TARGET = TARGETS.linux.target;
+/**
+ * Where a target's manifest lives in vimma-browser/vimma-updates: the Worker serves `public/`,
+ * at the path Firefox's update URL template gives (`/updates/browser/%BUILD_TARGET%/%CHANNEL%/…`).
+ * @param {Os} os
+ */
+export function manifestPath(os) {
+  return `public/updates/browser/${targetOf(os).target}/${CHANNEL}/update.xml`;
+}
+export const MANIFEST_PATH = manifestPath("linux");
 /** DER prefix of a SHA-384 DigestInfo (RFC 8017 §9.2, note 1). */
 const SHA384_DIGESTINFO = Buffer.from("3041300d060960864801650304020205000430", "hex");
 
@@ -73,21 +98,37 @@ const SHA512_HEX = /^[0-9a-f]{128}$/;
  * @property {Required<Assets>} assets
  */
 
-/** @type {readonly AssetKind[]} */
-const KINDS = /** @type {AssetKind[]} */ (Object.keys(ASSET_ELEMENTS));
+/**
+ * @param {string} os
+ * @returns {(typeof TARGETS)[Os]}
+ */
+function targetOf(os) {
+  if (!Object.hasOwn(TARGETS, os)) throw new Error(`no target ${os} (linux or macos)`);
+  return TARGETS[/** @type {Os} */ (os)];
+}
 
 /**
- * The release's file names, as tools/package/package.mjs writes them.
+ * A target's release file names, as tools/package/package.mjs and release.yml write them.
  * @param {string} version
- * @returns {Record<AssetKind, string>}
+ * @param {Os} [os]
+ * @returns {Partial<Record<AssetKind, string>>}
  */
-export function assetNames(version) {
-  return {
+export function assetNames(version, os = "linux") {
+  /** @type {Record<AssetKind, string>} */
+  const all = {
     tarball: `vimma-${version}-linux-x86_64.tar.xz`,
     appimage: `vimma-${version}-x86_64.AppImage`,
     deb: `vimma_${version.replace("-", "~")}_amd64.deb`,
+    dmg: `vimma-${version}-macos-aarch64.dmg`,
   };
+  return Object.fromEntries(targetOf(os).kinds.map((k) => [k, all[k]]));
 }
+
+/**
+ * @param {Partial<Record<AssetKind, string>>} names
+ * @param {AssetKind} kind
+ */
+const nameOf = (names, kind) => names[kind] ?? kind;
 
 /**
  * @param {boolean} ok
@@ -101,13 +142,14 @@ function need(ok, why) {
 /**
  * The manifest body: everything the signature covers (spec §2). Every value is checked against
  * the format the client accepts, so none needs escaping and none can add markup.
- * @param {{ serial: string, update: Release | null }} input
+ * @param {{ serial: string, update: Release | null, os?: Os }} input
  */
-export function buildManifest({ serial, update }) {
+export function buildManifest({ serial, update, os = "linux" }) {
   need(SERIAL.test(serial), `serial ${serial} is not a UTC time (YYYYMMDDhhmmss)`);
+  const { target, kinds } = targetOf(os);
   let body =
     '<?xml version="1.0"?>\n' +
-    `<updates vimmaChannel="${CHANNEL}" vimmaTarget="${TARGET}" vimmaSerial="${serial}">\n`;
+    `<updates vimmaChannel="${CHANNEL}" vimmaTarget="${target}" vimmaSerial="${serial}">\n`;
   if (update) {
     const v = update.displayVersion;
     need(VERSION.test(v), `${v} is not a Vimma version (X.Y.Z)`);
@@ -118,7 +160,7 @@ export function buildManifest({ serial, update }) {
       update.advisories.every((a) => ADVISORY.test(a)),
       `advisories ${update.advisories.join(", ")} are not MFSA IDs`,
     );
-    const names = assetNames(v);
+    const names = assetNames(v, os);
     const advisories = update.advisories.length
       ? ` vimmaAdvisories="${update.advisories.join(", ")}"`
       : "";
@@ -127,14 +169,15 @@ export function buildManifest({ serial, update }) {
       ` platformVersion="${update.appVersion}" buildID="${update.buildId}"` +
       ` displayVersion="${v}" detailsURL="${RELEASES_URL}/tag/v${v}"` +
       ` vimmaUrgency="${update.urgency}"${advisories}>\n`;
-    for (const kind of KINDS) {
+    for (const kind of kinds) {
+      const name = nameOf(names, kind);
       const a = update.assets[kind];
-      need(!!a, `no ${names[kind]}`);
-      need(Number.isSafeInteger(a.size) && a.size >= 0, `${names[kind]}: size ${a.size}`);
-      need(SHA512_HEX.test(a.sha512), `${names[kind]}: ${a.sha512} is not a SHA-512`);
+      need(!!a, `no ${name}`);
+      need(Number.isSafeInteger(a.size) && a.size >= 0, `${name}: size ${a.size}`);
+      need(SHA512_HEX.test(a.sha512), `${name}: ${a.sha512} is not a SHA-512`);
       body +=
         `    <${ASSET_ELEMENTS[kind]} size="${a.size}" hashFunction="sha512"` +
-        ` hashValue="${a.sha512}" URL="${RELEASES_URL}/download/v${v}/${names[kind]}"/>\n`;
+        ` hashValue="${a.sha512}" URL="${RELEASES_URL}/download/v${v}/${name}"/>\n`;
     }
     body += "  </update>\n";
   }
@@ -166,36 +209,38 @@ export function nextSerial(now, published) {
 }
 
 /**
- * SHA256SUMS as `sha256sum` writes it.
+ * SHA256SUMS (or SHA256SUMS-macos) as `sha256sum` writes it.
  * @param {string} text
+ * @param {string} [file] the sums file's name, for messages
  * @returns {Map<string, string>} file name -> SHA-256
  */
-export function parseSums(text) {
+export function parseSums(text, file = "SHA256SUMS") {
   /** @type {Map<string, string>} */
   const sums = new Map();
   for (const line of text.split("\n")) {
     if (!line) continue;
     const m = /^([0-9a-f]{64}) [ *]([^/\s]+)$/.exec(line);
-    if (!m) throw new Error(`SHA256SUMS: malformed line ${JSON.stringify(line)}`);
+    if (!m) throw new Error(`${file}: malformed line ${JSON.stringify(line)}`);
     const [, hash = "", name = ""] = m;
-    if (sums.has(name)) throw new Error(`SHA256SUMS: ${name} is listed twice`);
+    if (sums.has(name)) throw new Error(`${file}: ${name} is listed twice`);
     sums.set(name, hash);
   }
   return sums;
 }
 
 /**
- * Every asset must be in SHA256SUMS with the SHA-256 of the file that was downloaded.
+ * Every asset must be in the sums file with the SHA-256 of the file that was downloaded.
  * @param {Map<string, string>} sums
- * @param {Record<AssetKind, { name: string, sha256: string }>} files
+ * @param {Partial<Record<AssetKind, { name: string, sha256: string }>>} files
+ * @param {string} [file] the sums file's name, for messages
  */
-export function checkAssets(sums, files) {
-  for (const kind of KINDS) {
-    const { name, sha256 } = files[kind];
+export function checkAssets(sums, files, file = "SHA256SUMS") {
+  for (const f of Object.values(files)) {
+    const { name, sha256 } = f;
     const listed = sums.get(name);
-    if (!listed) throw new Error(`${name} is not in SHA256SUMS`);
+    if (!listed) throw new Error(`${name} is not in ${file}`);
     if (listed !== sha256) {
-      throw new Error(`${name}: SHA-256 ${sha256} does not match SHA256SUMS (${listed})`);
+      throw new Error(`${name}: SHA-256 ${sha256} does not match ${file} (${listed})`);
     }
   }
 }
@@ -273,10 +318,46 @@ export function pinnedPem() {
  * @param {string} tarball
  */
 export function releaseInfo(tarball) {
-  const ini = execFileSync("tar", ["-xJOf", tarball, "vimma/application.ini"], {
-    encoding: "utf8",
-    maxBuffer: 1 << 20,
-  });
+  return iniInfo(
+    execFileSync("tar", ["-xJOf", tarball, "vimma/application.ini"], {
+      encoding: "utf8",
+      maxBuffer: 1 << 20,
+    }),
+  );
+}
+
+/**
+ * The same from the app inside the .dmg: the Mac build has its own build ID (it is built in
+ * another job), so the Linux tarball's would not match it. hdiutil is macOS's, so this runs on
+ * a macOS runner; the image is mounted read-only and not browsed.
+ * @param {string} dmg
+ */
+export function dmgInfo(dmg) {
+  const mount = mkdtempSync(join(dirname(dmg), ".vimma-dmg-"));
+  execFileSync("hdiutil", [
+    "attach",
+    "-quiet",
+    "-nobrowse",
+    "-readonly",
+    "-mountpoint",
+    mount,
+    dmg,
+  ]);
+  try {
+    return iniInfo(
+      readFileSync(join(mount, "Vimma.app/Contents/Resources/application.ini"), "utf8"),
+    );
+  } finally {
+    execFileSync("hdiutil", ["detach", "-quiet", mount]);
+    rmSync(mount, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Firefox's version and the build ID from application.ini's `[App]` section.
+ * @param {string} ini
+ */
+function iniInfo(ini) {
   const app = /^\[App\]$([\s\S]*?)(?=^\[|(?![\s\S]))/m.exec(ini)?.[1] ?? "";
   const appVersion = /^Version=(.*)$/m.exec(app)?.[1]?.trim() ?? "";
   const buildId = /^BuildID=(.*)$/m.exec(app)?.[1]?.trim() ?? "";
@@ -355,38 +436,43 @@ function noOlderThan(version, floor) {
 }
 
 /**
- * The unsigned manifest for a published release: its files (checked against SHA256SUMS), the
- * Firefox version and build ID inside the tarball, the urgency from its commits, and a serial
- * newer than the published one.
+ * The unsigned manifest for a published release: its files (checked against the target's sums
+ * file), the Firefox version and build ID inside the tarball or the .dmg, the urgency from its
+ * commits, and a serial newer than the published one.
  * @param {{ tag: string, dir: string, commits: readonly { subject: string, labels: readonly string[] }[],
- *   published: string | readonly (string | null)[] | null, now: Date }} input
+ *   published: string | readonly (string | null)[] | null, now: Date, os?: Os,
+ *   appInfo?: (path: string) => { appVersion: string, buildId: string } }} input
+ *   `appInfo` reads the version and build ID from the package (releaseInfo or dmgInfo)
  */
-export function prepareRelease({ tag, dir, commits, published, now }) {
+export function prepareRelease({ tag, dir, commits, published, now, os = "linux", appInfo }) {
   const version = TAG.exec(tag)?.[1];
   if (!version) throw new Error(`${tag} is not a vX.Y.Z release tag`);
+  const { kinds, sums } = targetOf(os);
   const floor = floorOf(Array.isArray(published) ? published : [/** @type {any} */ (published)]);
   noOlderThan(version, floor);
-  const names = assetNames(version);
-  /** @type {Record<string, { name: string, size: number, sha256: string, sha512: string }>} */
+  const names = assetNames(version, os);
+  /** @type {Partial<Record<AssetKind, { name: string, size: number, sha256: string, sha512: string }>>} */
   const files = {};
-  for (const kind of KINDS) {
-    const path = join(dir, names[kind]);
-    if (!existsSync(path)) throw new Error(`${names[kind]} was not downloaded`);
-    files[kind] = { name: names[kind], ...hashFile(path) };
+  for (const kind of kinds) {
+    const name = nameOf(names, kind);
+    const path = join(dir, name);
+    if (!existsSync(path)) throw new Error(`${name} was not downloaded`);
+    files[kind] = { name, ...hashFile(path) };
   }
-  checkAssets(
-    parseSums(readFileSync(join(dir, "SHA256SUMS"), "utf8")),
-    /** @type {Record<AssetKind, { name: string, sha256: string }>} */ (files),
+  checkAssets(parseSums(readFileSync(join(dir, sums), "utf8"), sums), files, sums);
+  const info = appInfo ?? (os === "macos" ? dmgInfo : releaseInfo);
+  const { appVersion, buildId } = info(
+    join(dir, nameOf(names, os === "macos" ? "dmg" : "tarball")),
   );
-  const { appVersion, buildId } = releaseInfo(join(dir, names.tarball));
   const assets = /** @type {Required<Assets>} */ (
     Object.fromEntries(
-      KINDS.map((k) => [k, { size: files[k]?.size ?? 0, sha512: files[k]?.sha512 ?? "" }]),
+      kinds.map((k) => [k, { size: files[k]?.size ?? 0, sha512: files[k]?.sha512 ?? "" }]),
     )
   );
   const body = buildManifest({
     serial: nextSerial(now, floor?.serial ?? null),
     update: { appVersion, buildId, displayVersion: version, ...urgencyOf(commits), assets },
+    os,
   });
   return { body, version };
 }
@@ -399,15 +485,16 @@ export function prepareRelease({ tag, dir, commits, published, now }) {
  * @param {string} text  the signed manifest
  * @param {{ keys: readonly import("../../packages/vimma-core/src/updates.mjs").PinnedKey[],
  *   tag: string | null, dir: string | null, published: string | readonly (string | null)[] | null,
- *   now: Date }} options
+ *   now: Date, os?: Os }} options
  */
-export async function checkSigned(text, { keys, tag, dir, published, now }) {
+export async function checkSigned(text, { keys, tag, dir, published, now, os = "linux" }) {
+  const { target, kinds } = targetOf(os);
   const verified = await verifyManifest(text, keys, globalThis.crypto.subtle);
   if (!verified.ok) throw new Error(verified.reason);
   const parsed = parseManifest(verified.body);
   if (!parsed.ok) throw new Error(parsed.reason);
   const m = parsed.manifest;
-  need(m.channel === CHANNEL && m.target === TARGET, `for ${m.channel} ${m.target}`);
+  need(m.channel === CHANNEL && m.target === target, `for ${m.channel} ${m.target}, not ${target}`);
   const floor = floorOf(Array.isArray(published) ? published : [/** @type {any} */ (published)]);
   if (floor && BigInt(m.serial) <= BigInt(floor.serial)) {
     throw new Error(`serial ${m.serial} is not newer than the published ${floor.serial}`);
@@ -429,14 +516,15 @@ export async function checkSigned(text, { keys, tag, dir, published, now }) {
   need(u.detailsUrl === `${RELEASES_URL}/tag/${tag}`, `details page ${u.detailsUrl}`);
   noOlderThan(version, floor);
   need(dir !== null, "no directory with the release's files");
-  const names = assetNames(version);
-  for (const kind of KINDS) {
+  const names = assetNames(version, os);
+  for (const kind of kinds) {
+    const name = nameOf(names, kind);
     const a = u.assets[kind];
-    need(!!a, `the manifest has no ${names[kind]}`);
-    const path = join(dir, names[kind]);
-    need(existsSync(path), `${names[kind]} was not downloaded`);
+    need(!!a, `the manifest has no ${name}`);
+    const path = join(dir, name);
+    need(existsSync(path), `${name} was not downloaded`);
     const f = hashFile(path);
-    need(f.size === a.size && f.sha512 === a.sha512, `${names[kind]} does not match the manifest`);
+    need(f.size === a.size && f.sha512 === a.sha512, `${name} does not match the manifest`);
   }
   return out;
 }
@@ -497,8 +585,11 @@ async function main() {
       offer: { type: "string" },
       out: { type: "string" },
       signed: { type: "string" },
+      target: { type: "string", default: "linux" },
     },
   });
+  const os = /** @type {Os} */ (values.target ?? "linux");
+  targetOf(os);
   const published = (values.published ?? []).map(readOrNull);
   const nothing = values.offer === "nothing";
   if (values.offer !== undefined && !nothing) throw new Error("--offer takes only `nothing`");
@@ -514,7 +605,11 @@ async function main() {
         const floor = floorOf(published);
         writeFileSync(
           values.out,
-          buildManifest({ serial: nextSerial(new Date(), floor?.serial ?? null), update: null }),
+          buildManifest({
+            serial: nextSerial(new Date(), floor?.serial ?? null),
+            update: null,
+            os,
+          }),
         );
         return;
       }
@@ -529,6 +624,7 @@ async function main() {
         commits,
         published,
         now: new Date(),
+        os,
       });
       writeFileSync(values.out, body);
       const offer = /** @type {any} */ (parseManifest(body)).manifest.update;
@@ -550,6 +646,7 @@ async function main() {
         dir: values.assets ?? null,
         published,
         now: new Date(),
+        os,
       });
       process.stdout.write(`serial=${r.serial}\nversion=${r.version}\nkey=${r.key}\n`);
       return;

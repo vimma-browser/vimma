@@ -332,6 +332,41 @@ add_task(async function update_command_opens_the_steps() {
   });
 });
 
+// Spec macos-homebrew, decisions 8 and 19: the cask upgrades with brew; a .dmg copy is replaced
+// by hand, with no command, since a .dmg that curl fetches would skip Gatekeeper's check.
+add_task(async function macos_installs_get_their_own_steps() {
+  const dmg = "vimma-9.9.9-macos-aarch64.dmg";
+  const children =
+    `    <vimmaDmg size="1" hashFunction="sha512" hashValue="${"6".repeat(128)}"` +
+    ` URL="https://github.com/vimma-browser/vimma/releases/download/v9.9.9/${dmg}"/>\n`;
+  for (const [type, label, expected] of [
+    ["homebrew", "Homebrew cask", "brew upgrade --cask vimma"],
+    ["dmg", ".dmg", "drag Vimma over the copy in Applications"],
+  ]) {
+    await SpecialPowers.pushPrefEnv({ set: [["vimma.update.installType", type]] });
+    VimmaUpdates._reset();
+    await serve(await manifest({ children }));
+    await BrowserTestUtils.withNewTab("https://example.com/", async () => {
+      const opened = BrowserTestUtils.waitForNewTab(gBrowser, "about:vimma#updates", true);
+      runCommand("update");
+      const tab = await opened;
+      const browser = tab.linkedBrowser;
+      await until(
+        () => browser.contentDocument?.documentElement?.dataset.ready === "true",
+        "rendered",
+      );
+      const text = browser.contentDocument.getElementById("updates").textContent;
+      Assert.ok(text.includes("Vimma 9.9.9 · Firefox 999.0"), `${type}: the version line`);
+      Assert.ok(text.includes(label), `${type}: the install type`);
+      Assert.ok(text.includes(expected), `${type}: its steps`);
+      Assert.ok(!text.includes("curl "), `${type}: no download command`);
+      BrowserTestUtils.removeTab(tab);
+    });
+    await SpecialPowers.popPrefEnv();
+    VimmaUpdates._reset();
+  }
+});
+
 add_task(async function update_command_says_up_to_date() {
   await serve(await manifest({ update: null }));
   await BrowserTestUtils.withNewTab("https://example.com/", async () => {

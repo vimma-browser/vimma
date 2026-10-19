@@ -128,7 +128,8 @@ xattr -dr com.apple.quarantine /Applications/Vimma.app && open -a Vimma
 If macOS says the app "is damaged" rather than unverified, the quarantine flag is also the cause,
 and the same `xattr` command clears it.
 
-On a Mac, Vimma has no update notices yet: install the newer `.dmg` over the old one. Passkeys
+Vimma on a Mac tells you when a newer release is out, as on Linux ([Updates](#updates)); to
+update, install the newer `.dmg` over the old one, or run `brew upgrade --cask vimma`. Passkeys
 do not work in these builds. Your profile lives in `~/Library/Application Support/Vimma/`, and
 macOS keeps Vimma's window state under its bundle identifier, `dev.vimma.browser`. To
 check the `.dmg` before you open it, verify `SHA256SUMS-macos` with cosign as in "Arch Linux"
@@ -155,6 +156,9 @@ file once the release is published.
 
 Vimma does not update itself, so `brew upgrade` (or `brew upgrade --cask vimma`) is how a
 Homebrew install gets a new release; after an upgrade macOS may ask for **Open Anyway** again.
+When a newer release is out, Vimma's [update notice](#updates) says so, and `:update` shows that
+command; Vimma counts as a Homebrew install when it runs from `/Applications/Vimma.app` and
+`/opt/homebrew/Caskroom/vimma/` exists.
 `--zap` deletes `~/Library/Application Support/Vimma/` (every profile), `~/Library/Caches/Vimma/`,
 and Vimma's preferences and saved window state in `~/Library`; it leaves your configuration in
 `~/.config/vimma/` alone.
@@ -2316,9 +2320,12 @@ slots busy. Turn the pref off to stop either.
 
 ## Updates
 
-Vimma 0.1.2 and later tell you when a newer release is out; Linux x86_64 builds are the only
-ones checked, since they are the only ones released. Vimma notifies you and shows the command; it
-does not install the update itself.
+Vimma 0.1.2 and later tell you when a newer release is out, on Linux x86_64 and on Macs with
+Apple Silicon. Vimma notifies you and shows the command; it does not install the update itself.
+
+**Vimma 0.1.6 on a Mac** shows the notice, but its `:update` shows the Linux tarball command,
+which does not apply to a Mac: do not run it. Update with `brew upgrade --cask vimma`, or install
+the new `.dmg` over the old one ([macOS](#macos)). Later versions show the right steps.
 
 **Coming from 0.1.1?** Vimma 0.1.1 has no signing key built in, so it refuses every update file
 and never shows a notice. Update it once by hand, the way you installed it: the commands are in
@@ -2350,17 +2357,20 @@ It installs nothing; it tells you.
   and is checked against the SHA-512 the signed file gives for it (`sha512sum -c`) before
   anything is installed or replaced, so a file changed on the release page stops the command.
 
-  | Installed with           | `:update` shows                                                                                                                                                 |
-  | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | The release's `PKGBUILD` | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si` |
-  | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                  |
-  | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                     |
-  | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                              |
-  | AppImage                 | download the new AppImage next to yours, check it, and rename it over yours; the next start runs it                                                             |
-  | A build from source      | nothing: source builds never check (pull and rebuild)                                                                                                           |
+  | Installed with           | `:update` shows                                                                                                                                                  |
+  | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | The release's `PKGBUILD` | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`  |
+  | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
+  | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
+  | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                               |
+  | AppImage                 | download the new AppImage next to yours, check it, and rename it over yours; the next start runs it                                                              |
+  | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |
+  | `.dmg` (macOS)           | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
+  | A build from source      | nothing: source builds never check (pull and rebuild)                                                                                                            |
 
 - **What a check sends:** a GET for
-  `https://updates.vimma.dev/updates/browser/Linux_x86_64-gcc3/<channel>/update.xml`, with no
+  `https://updates.vimma.dev/updates/browser/<target>/<channel>/update.xml`, where the target is
+  `Linux_x86_64-gcc3` or, on a Mac, `Darwin_aarch64-gcc3`, with no
   cookies, no referrer, an empty `Accept-Language` and no cache, and follows no redirect. It names
   your platform and update channel and nothing else: no Vimma version, build, language or
   identifier, so every install on a channel asks for the same

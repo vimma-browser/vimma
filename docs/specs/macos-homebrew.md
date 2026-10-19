@@ -1,6 +1,6 @@
 # Spec: macos-homebrew
 
-Status: draft (sub-PRs 1 and 2 implemented) · Area: `configs/branding/vimma/` (macOS icon
+Status: draft (sub-PRs 1 to 3 implemented; sub-PR 4 in #408, sub-PR 5 in #409) · Area: `configs/branding/vimma/` (macOS icon
 files, new), `configs/macos/AppIcon.icon/` (icon source, new), `configs/macos/mozconfig`,
 `src/browser/branding/vimma/configure.sh`, `tools/package/` (cask generator and icon
 generator, new), `packages/vimma-core/src/updates.mjs`,
@@ -10,7 +10,9 @@ generator, new), `packages/vimma-core/src/updates.mjs`,
 `vimma-browser/homebrew-tap` repository (new); `docs/guide.md`, `docs/security.md`,
 `docs/runbook.md`, `README.md` · Upstream patches: none (decision 9) · ADR: none
 
-Issue: [#393](https://github.com/vimma-browser/vimma/issues/393)
+Issues: [#393](https://github.com/vimma-browser/vimma/issues/393),
+[#408](https://github.com/vimma-browser/vimma/issues/408),
+[#409](https://github.com/vimma-browser/vimma/issues/409)
 
 Engine paths are relative to `engine/` and were checked against Firefox 158.0. Surfer paths
 (`S/`) are relative to `node_modules/@zen-browser/surfer`, version 1.14.9. Homebrew facts were
@@ -514,9 +516,9 @@ joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
    Caskroom check, the macOS manifest in `tools/update/manifest.mjs` and `update-publish.yml`,
    its start from `release.yml`'s `macos-tap`, and the guide, runbook and `docs/security.md`.
    Closes the feature's issue; sub-PRs 4 and 5 then have issues of their own.
-4. **`build(macos): dmg window art`.** Decision 14: `background.png`, `dsstore`, `disk.icns`
+4. **`build(macos): dmg window art`** (#408). Decision 14: `background.png`, `dsstore`, `disk.icns`
    and `MOZ_PACKAGE_EXTRA_ARGS`.
-5. **The tap's own CI** (decision 11), in `vimma-browser/homebrew-tap`: `brew style` and
+5. **The tap's own CI** (decision 11, #409), in `vimma-browser/homebrew-tap`: `brew style` and
    `brew audit` on its pull requests.
 
 ## Open questions

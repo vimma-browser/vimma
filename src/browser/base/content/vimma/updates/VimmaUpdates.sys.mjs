@@ -13,7 +13,9 @@
 // shown. Pure rules live in core/updates.mjs.
 
 import {
+  HOMEBREW_CASKROOM,
   MAX_RESPONSE_BYTES,
+  appBundleOf,
   installTypeFrom,
   judgeManifest,
   offerAssets,
@@ -164,10 +166,17 @@ async function detectInstall() {
     return { type: /** @type {InstallType} */ (forced), installDir: gre, appImage };
   }
   // A build run from its objdir has no omni.ja: the chrome files are loose links into the
-  // source tree. Every packaged build (tarball, AppImage, .deb, AUR) has one.
+  // source tree. Every packaged build (tarball, AppImage, .deb, AUR, the .dmg) has one.
   const packaged = await IOUtils.exists(PathUtils.join(gre, "omni.ja"));
   const marker = await IOUtils.readUTF8(PathUtils.join(gre, MARKER)).catch(() => null);
-  return { type: installTypeFrom({ packaged, marker, appImage }), installDir: gre, appImage };
+  const platform = /** @type {string} */ (lazy.AppConstants.platform);
+  // On macOS GreD is Vimma.app/Contents/Resources; the cask is the app it installs beside its
+  // Caskroom folder (spec macos-homebrew, decision 8). Nothing is written into the bundle.
+  const mac = platform === "macosx";
+  const appPath = mac ? appBundleOf(gre) : null;
+  const caskroom = mac ? await IOUtils.exists(HOMEBREW_CASKROOM).catch(() => false) : false;
+  const type = installTypeFrom({ packaged, marker, appImage, platform, appPath, caskroom });
+  return { type, installDir: gre, appImage };
 }
 
 /** @returns {PinnedKey[]} */

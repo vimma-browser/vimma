@@ -1663,8 +1663,8 @@ never replaces a newer cask in the tap with an older one, so ship a fixed releas
 
 ### Update signing keys and the update host (spec m6a-updater)
 
-Vimma checks `https://updates.vimma.dev/updates/browser/Linux_x86_64-gcc3/<channel>/update.xml`
-every 12 hours and accepts only a manifest signed by a key pinned in
+Vimma checks `https://updates.vimma.dev/updates/browser/<target>/<channel>/update.xml`
+(`Linux_x86_64-gcc3`, or `Darwin_aarch64-gcc3` on Apple Silicon) every 12 hours and accepts only a manifest signed by a key pinned in
 `packages/vimma-core/src/update-keys.mjs` (step 5; a build with no pinned key refuses every
 manifest and shows nothing). These steps need the maintainer's accounts; do them once, in order.
 All steps but 4 (the offline secondary key) are done. Step 7 sets up `update-publish.yml`, which
@@ -1866,6 +1866,15 @@ per manifest, `vimma X.Y.Z: update manifest, serial S`), and waits up to 10 minu
 `updates.vimma.dev` serves the new serial. A failure opens or comments on the
 `release-failure` issue.
 
+The macOS manifest (spec macos-homebrew, decisions 16 to 18) comes from the same workflow with
+`-f target=macos`: `release.yml`'s `macos-tap` job starts it once the `.dmg` is on the published
+release (and `start` does too, when the release already has a `.dmg`). Its `prepare` runs on a
+macOS runner, checks the `.dmg` against `SHA256SUMS-macos` and that file's cosign signature, and
+reads the build ID from the `.dmg`'s `application.ini`; `sign` and `publish` are the same jobs,
+key and environments, writing `updates/browser/Darwin_aarch64-gcc3/vimma/update.xml`. A release
+without a `.dmg` (`MACOS_RELEASE_ENABLED` off) gets no macOS run, and the Mac copy keeps the
+previous offer.
+
 The urgency is `security` when a commit since the previous published release is a Firefox bump
 (`upstream: firefox …`) whose subject names advisories (they go into `vimmaAdvisories`) or whose
 pull request has the `security` label (the autopilot puts it on a bump whose advisories it could
@@ -1934,7 +1943,8 @@ workflow (the `released` event).
 `aur.yml` and `update-publish.yml`; a second `update-publish` run on `main` follows within a
 minute and finishes in about 5 minutes. Then `vimma-updates` has a commit `vimma X.Y.Z: update
 manifest, serial …`, `curl -s https://updates.vimma.dev/updates/browser/Linux_x86_64-gcc3/vimma/update.xml`
-shows it, and an install of an older version (0.1.2 or later; earlier ones pin no key) shows
+shows it (and, a few minutes after `macos-tap`, the same under `Darwin_aarch64-gcc3`), and an
+install of an older version (0.1.2 or later; earlier ones pin no key) shows
 `⇡ X.Y.Z available` within 12 hours, or at once on `:update`; about:vimma shows the commands,
 each with the file's SHA-512.
 
@@ -1942,12 +1952,13 @@ each with the file's SHA-512.
 
 - Re-publish a release's manifest (after a failure, or after `release.yml -f
 replace_published=true` changed its files, whose hashes the old manifest no longer matches):
-  `gh workflow run update-publish.yml -f tag=vX.Y.Z`. Every run gets a new, newer serial.
+  `gh workflow run update-publish.yml -f tag=vX.Y.Z`, and `-f target=macos` for the Mac
+  manifest. Every run gets a new, newer serial.
 - After two releases in quick succession, check `gh run list --workflow update-publish.yml`:
-  GitHub keeps one waiting run per concurrency group, so a third run started meanwhile replaces
+  GitHub keeps one waiting run per concurrency group (one per target), so a third run started meanwhile replaces
   the waiting one, which ends cancelled without a `release-failure` issue; start it again by hand.
 - Pull a bad update (decision 22): `gh workflow run update-publish.yml -f offer=nothing`
-  publishes a signed manifest that offers nothing. Installs that have not taken the release stop
+  publishes a signed manifest that offers nothing; run it again with `-f target=macos` for Macs. Installs that have not taken the release stop
   offering it at their next check; then ship a fixed release, whose manifest offers it.
 - Committing an older `update.xml` again does not undo a manifest: every install remembers the
   newest serial it accepted and refuses an older one (spec §4 rule 3), and the workflow refuses to

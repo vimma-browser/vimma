@@ -57,6 +57,8 @@ const INSTALL_TYPES = /** @type {Record<string, string>} */ ({
   aur: "AUR vimma-bin",
   "pkgbuild-release": "the release's PKGBUILD",
   packaged: "a package this version does not know",
+  homebrew: "Homebrew cask",
+  dmg: ".dmg",
 });
 
 const OUTCOMES = /** @type {Record<string, string>} */ ({
