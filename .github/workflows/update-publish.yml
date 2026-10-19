@@ -9,8 +9,9 @@
 # another commit, or a run started on another branch, cannot reach the key or the deploy key.
 #
 #   prepare  no secret; reads only public data: checks the release is published and on main,
-#            downloads its files, checks them against SHA256SUMS (and its cosign signature),
-#            and builds the unsigned manifest with tools/update/manifest.mjs.
+#            downloads the target's files, checks them against SHA256SUMS or SHA256SUMS-macos
+#            (and its cosign signature), and builds the unsigned manifest with
+#            tools/update/manifest.mjs.
 #   sign     environment update-signing, id-token: write and nothing else; runs no repository
 #            code: checks the body's shape, signs it with Cloud KMS (raw PKCS#1 over a SHA-384
 #            DigestInfo) and checks the signature with openssl against KMS's public key.
@@ -18,10 +19,16 @@
 #            only): downloads the files again, checks the signed file with the verifier and the
 #            key the browser pins and with openssl, then commits it and pushes, never forced.
 #
+# One manifest per build target (spec macos-homebrew, decision 16): `target` linux (the tarball,
+# AppImage and .deb, SHA256SUMS) or macos (the .dmg, SHA256SUMS-macos; prepare runs on macOS,
+# where hdiutil reads the build ID of the app inside it). The Linux run starts when the release
+# is published; the macOS run when its .dmg is on the published release, which is usually
+# later, from release.yml's macos-tap job, or here when the .dmg was there first.
+#
 # Nothing is pushed until the repository variable UPDATES_ENABLED is `true` and the deploy key
 # exists. A dry run (-f dry_run=true) signs and checks everything and pushes nothing. By hand:
-#   gh workflow run update-publish.yml -f tag=vX.Y.Z         re-publish a release's manifest
-#   gh workflow run update-publish.yml -f offer=nothing      pull an update (offer nothing)
+#   gh workflow run update-publish.yml -f tag=vX.Y.Z [-f target=macos]      re-publish a manifest
+#   gh workflow run update-publish.yml -f offer=nothing [-f target=macos]   pull an update
 name: update-publish
 
 on:
@@ -39,6 +46,12 @@ on:
         type: choice
         options: [release, nothing]
         default: release
+      target:
+        description: "linux: the Linux packages' manifest; macos: the .dmg's"
+        required: false
+        type: choice
+        options: [linux, macos]
+        default: linux
       dry_run:
         description: "Sign and check everything, push nothing"
         required: false
@@ -47,16 +60,21 @@ on:
 
 permissions: {}
 
-# One signing run at a time (workflow_dispatch), so serials only grow; the release event's run,
-# which only starts one, has a group of its own. GitHub keeps one pending run per group: a third
-# dispatch while one runs and one waits replaces the waiting one.
+# One signing run per target at a time (workflow_dispatch), so each manifest's serials only
+# grow; the release event's run, which only starts them, has a group of its own. GitHub keeps
+# one pending run per group: a third dispatch while one runs and one waits replaces the waiting
+# one, so the targets have a group each and a Linux and a macOS run never replace each other.
 concurrency:
-  group: update-publish-${{ github.event_name }}
+  group: update-publish-${{ github.event_name }}-${{ inputs.target || 'linux' }}
   cancel-in-progress: false
 
 env:
   TAG: ${{ github.event.release.tag_name || inputs.tag }}
   OFFER: ${{ inputs.offer || 'release' }}
+  TARGET_OS: ${{ inputs.target || 'linux' }}
+  # Firefox's %BUILD_TARGET% for the target (UpdateUtils: OS_TARGET, then the XPCOM ABI).
+  BUILD_TARGET: ${{ inputs.target == 'macos' && 'Darwin_aarch64-gcc3' || 'Linux_x86_64-gcc3' }}
+  SUMS: ${{ inputs.target == 'macos' && 'SHA256SUMS-macos' || 'SHA256SUMS' }}
 
 jobs:
   # The run a published release starts executes this file as the release's tag has it, which a
@@ -80,12 +98,24 @@ jobs:
           [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
             || { echo "::error::'$TAG' is not a vX.Y.Z release tag"; exit 1; }
           gh workflow run update-publish.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
+          # The macOS manifest needs the .dmg, which usually reaches the release after this, and
+          # then release.yml's macos-tap starts it; a draft published after its .dmg has it now.
+          if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma-${TAG#v}-macos-aarch64.dmg"; then
+            gh workflow run update-publish.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG" -f target=macos
+          fi
 
   prepare:
     if: >-
       github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run)
-    runs-on: ubuntu-24.04
+    # macOS reads the build ID from the .dmg with hdiutil. A one-leg matrix rather than a
+    # conditional runs-on, so that the runner check (docs/security.md, B5) sees both runners.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+        exclude:
+          - os: ${{ inputs.target == 'macos' && 'ubuntu-24.04' || 'macos-15' }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -102,6 +132,10 @@ jobs:
             nothing)
               [ -z "$TAG" ] || { echo "::error::offer=nothing takes no tag"; exit 1; } ;;
             *) echo "::error::offer must be release or nothing"; exit 1 ;;
+          esac
+          case "$TARGET_OS" in
+            linux|macos) ;;
+            *) echo "::error::target must be linux or macos"; exit 1 ;;
           esac
 
       # All history and tags: the urgency reads the commits since the previous release.
@@ -138,29 +172,33 @@ jobs:
         run: |
           v=${TAG#v}
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          case "$TARGET_OS" in
+            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb") ;;
+            macos) files=("vimma-$v-macos-aarch64.dmg") ;;
+          esac
           mkdir -p assets && cd assets
-          for f in SHA256SUMS "vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb"; do
+          for f in "$SUMS" "${files[@]}"; do
             curl -fsSL --proto =https --retry 3 -o "$f" "$base/$f" \
               || { echo "::error::$base/$f: not found; is $TAG published, with its assets?"; exit 1; }
           done
-          # An unsigned release never gets a signed manifest: SHA256SUMS is only as good as
+          # An unsigned release never gets a signed manifest: the sums file is only as good as
           # release.yml's signature on it (docs/security.md UP7).
-          curl -fsSL --proto =https --retry 3 -o SHA256SUMS.sigstore.json "$base/SHA256SUMS.sigstore.json" \
-            || { echo "::error::$TAG has no SHA256SUMS.sigstore.json; an unsigned release gets no update manifest"; exit 1; }
+          curl -fsSL --proto =https --retry 3 -o "$SUMS.sigstore.json" "$base/$SUMS.sigstore.json" \
+            || { echo "::error::$TAG has no $SUMS.sigstore.json; an unsigned release gets no update manifest"; exit 1; }
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         if: env.OFFER == 'release'
 
       # The identity users verify (IDENTITY_REGEXP in tools/package/package.mjs), so the
       # manifest names only files release.yml built and signed; manifest.mjs then checks each
-      # file against this SHA256SUMS.
+      # file against these sums, and the .dmg before it mounts it.
       - name: Verify the release's signature
         if: env.OFFER == 'release'
         run: |
-          cosign verify-blob --bundle assets/SHA256SUMS.sigstore.json \
+          cosign verify-blob --bundle "assets/$SUMS.sigstore.json" \
             --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            assets/SHA256SUMS
+            "assets/$SUMS"
 
       - name: Commits since the previous release
         if: env.OFFER == 'release'
@@ -178,7 +216,7 @@ jobs:
               *) echo "::error::$1 answered $code"; exit 1 ;;
             esac
           }
-          path=updates/browser/Linux_x86_64-gcc3/vimma/update.xml
+          path=updates/browser/$BUILD_TARGET/vimma/update.xml
           fetch "https://updates.vimma.dev/$path" served.xml
           fetch "https://raw.githubusercontent.com/vimma-browser/vimma-updates/main/public/$path" repo.xml
 
@@ -186,11 +224,11 @@ jobs:
         run: |
           mkdir -p out
           if [ "$OFFER" = nothing ]; then
-            node tools/update/manifest.mjs build --offer nothing \
+            node tools/update/manifest.mjs build --offer nothing --target "$TARGET_OS" \
               --published served.xml --published repo.xml --out out/update.xml.body
           else
             node tools/update/manifest.mjs build --tag "$TAG" --assets assets --commits commits.json \
-              --published served.xml --published repo.xml --out out/update.xml.body
+              --target "$TARGET_OS" --published served.xml --published repo.xml --out out/update.xml.body
           fi
           cat out/update.xml.body
 
@@ -222,16 +260,17 @@ jobs:
           path: out
 
       # The body comes from a job with no secret; before it is signed, its shape is checked
-      # here with the shell alone: one small manifest for the release channel, no signature yet,
-      # and the version that was asked for (or no offer when nothing was asked for).
+      # here with the shell alone: one small manifest for the release channel and the target
+      # that was asked for, no signature yet, and the version that was asked for (or no offer
+      # when nothing was asked for).
       - name: Check what is about to be signed
         id: body
         run: |
           body=out/update.xml.body
           [ "$(wc -c < "$body")" -le 65536 ] || { echo "::error::the body is over 64 KiB"; exit 1; }
           [ "$(sed -n 1p "$body")" = '<?xml version="1.0"?>' ] || { echo "::error::no XML declaration"; exit 1; }
-          sed -n 2p "$body" | grep -Eqx '<updates vimmaChannel="vimma" vimmaTarget="Linux_x86_64-gcc3" vimmaSerial="[0-9]{14}">' \
-            || { echo "::error::not a release-channel manifest"; exit 1; }
+          sed -n 2p "$body" | grep -Eqx "<updates vimmaChannel=\"vimma\" vimmaTarget=\"$BUILD_TARGET\" vimmaSerial=\"[0-9]{14}\">" \
+            || { echo "::error::not a release-channel manifest for $BUILD_TARGET"; exit 1; }
           # The serial is the time prepare built the body, minutes ago: a serial far ahead would
           # lock clients out of later manifests, one far behind could not be published anyway.
           serial=$(sed -n 2p "$body" | sed 's/.*vimmaSerial="\([0-9]*\)">$/\1/')
@@ -317,8 +356,12 @@ jobs:
         run: |
           v=${TAG#v}
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          case "$TARGET_OS" in
+            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb") ;;
+            macos) files=("vimma-$v-macos-aarch64.dmg") ;;
+          esac
           mkdir -p assets && cd assets
-          for f in "vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb"; do
+          for f in "${files[@]}"; do
             curl -fsSL --proto =https --retry 3 -o "$f" "$base/$f" \
               || { echo "::error::$base/$f: not found"; exit 1; }
           done
@@ -329,9 +372,11 @@ jobs:
         id: verify
         run: |
           if [ "$OFFER" = nothing ]; then
-            node tools/update/manifest.mjs verify --signed signed/update.xml --offer nothing >> "$GITHUB_OUTPUT"
+            node tools/update/manifest.mjs verify --signed signed/update.xml --offer nothing \
+              --target "$TARGET_OS" >> "$GITHUB_OUTPUT"
           else
-            node tools/update/manifest.mjs verify --signed signed/update.xml --tag "$TAG" --assets assets >> "$GITHUB_OUTPUT"
+            node tools/update/manifest.mjs verify --signed signed/update.xml --tag "$TAG" --assets assets \
+              --target "$TARGET_OS" >> "$GITHUB_OUTPUT"
           fi
           node tools/update/manifest.mjs pem > pinned.pem
           head -n -1 signed/update.xml > body
@@ -371,11 +416,13 @@ jobs:
           printf '%s\n' "$GITHUB_HOST_KEY" > ~/.ssh/known_hosts
           export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/updates -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
           git clone -q --depth 1 --branch main git@github.com:vimma-browser/vimma-updates.git updates
-          dest=updates/public/updates/browser/Linux_x86_64-gcc3/vimma/update.xml
+          dest=updates/public/updates/browser/$BUILD_TARGET/vimma/update.xml
           if [ "$OFFER" = nothing ]; then
-            node tools/update/manifest.mjs verify --signed signed/update.xml --offer nothing --published "$dest"
+            node tools/update/manifest.mjs verify --signed signed/update.xml --offer nothing \
+              --target "$TARGET_OS" --published "$dest"
           else
-            node tools/update/manifest.mjs verify --signed signed/update.xml --tag "$TAG" --assets assets --published "$dest"
+            node tools/update/manifest.mjs verify --signed signed/update.xml --tag "$TAG" --assets assets \
+              --target "$TARGET_OS" --published "$dest"
           fi
           mkdir -p "$(dirname "$dest")"
           cp signed/update.xml "$dest"
@@ -387,11 +434,17 @@ jobs:
             message="vimma $version: update manifest, serial $serial"
           fi
           cd updates
-          git add public/updates/browser/Linux_x86_64-gcc3/vimma/update.xml
+          git add public/updates/browser/$BUILD_TARGET/vimma/update.xml
           git -c user.name="github-actions[bot]" \
             -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -q -m "$message"
-          git push origin HEAD:main
+          # The other target's run may have pushed since the clone; its commit changes another
+          # file, so this one rebases onto it unchanged.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then break; fi
+            [ "$attempt" -lt 3 ] || { echo "::error::vimma-updates rejected the commit three times"; exit 1; }
+            git pull -q --rebase origin main
+          done
           rm -f ~/.ssh/updates
           echo "pushed: $message"
 
@@ -400,7 +453,7 @@ jobs:
         env:
           SERIAL: ${{ steps.verify.outputs.serial }}
         run: |
-          url=https://updates.vimma.dev/updates/browser/Linux_x86_64-gcc3/vimma/update.xml
+          url=https://updates.vimma.dev/updates/browser/$BUILD_TARGET/vimma/update.xml
           for _ in $(seq 60); do
             if curl -fsS --proto =https "$url" 2>/dev/null | grep -q "vimmaSerial=\"$SERIAL\""; then
               echo "updates.vimma.dev serves serial $SERIAL"
@@ -426,12 +479,12 @@ jobs:
         run: |
           gh label create release-failure --repo "$GITHUB_REPOSITORY" --color B60205 \
             --description "release.yml, aur.yml or update-publish.yml failed" --force
-          body="Update manifest for ${TAG:-offer=nothing} failed: $RUN_URL. Fix, then re-run: \`gh workflow run update-publish.yml -f tag=$TAG\` (or \`-f offer=nothing\`)."
+          body="Update manifest ($TARGET_OS) for ${TAG:-offer=nothing} failed: $RUN_URL. Fix, then re-run: \`gh workflow run update-publish.yml -f tag=$TAG -f target=$TARGET_OS\` (or \`-f offer=nothing\`)."
           open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label release-failure --state open \
             --json number --jq '.[0].number')
           if [ -n "$open" ]; then
             gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "$body"
           else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "Update manifest for ${TAG:-offer=nothing} failed" \
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Update manifest ($TARGET_OS) for ${TAG:-offer=nothing} failed" \
               --label release-failure --body "$body"
           fi

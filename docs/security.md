@@ -1360,6 +1360,18 @@ _Pages_ and _extensions_ cannot reach it.
   [`gives each package type its own update hint, and only the tarball an untar`](../tools/package/test/package.test.mjs),
   [`a tarball that already carries an install-source marker`](../tools/package/test/package.test.mjs),
   [`the .deb and AppImage smoke test checks each install type, and the tarball's lack of one`](../tools/package/test/release-workflow.test.mjs)
+  On macOS ([macos-homebrew](specs/macos-homebrew.md) decisions 8 and 19) no install is told to
+  download or unpack anything: the app at `/Applications/Vimma.app` with
+  `/opt/homebrew/Caskroom/vimma/` present gets `brew upgrade --cask vimma`, and any other copy
+  gets no command, only the release page, since a `.dmg` that `curl` fetches carries no
+  quarantine flag and so would skip Gatekeeper's check. Nothing is written into the bundle.
+  **⚠ limit:** Vimma 0.1.6 on a Mac calls itself a tarball install and shows the Linux tarball
+  command for a macOS offer, without a hash (the macOS manifest names no tarball); the guide
+  tells those users not to run it (decision 21).
+  [`homebrew: brew upgrade --cask vimma (macos-homebrew decision 8)`](../packages/vimma-core/test/updates.test.mjs),
+  [`dmg: the release page and the drag, with no command (macos-homebrew decision 19)`](../packages/vimma-core/test/updates.test.mjs),
+  [`a Caskroom and an /Applications path change nothing on Linux`](../packages/vimma-core/test/updates.test.mjs),
+  [`macos_installs_get_their_own_steps`](../tests/browser/browser_vimma_update_check.js)
 
 - UP7. A manifest is **only** signed by `update-publish.yml` run from `main`, and **only** for a
   release that is published (not a draft or a pre-release) and whose tag is on `main`, or as an
@@ -1384,6 +1396,13 @@ _Pages_ and _extensions_ cannot reach it.
   workflow's own `refs/heads/main` guard only stops accidental runs. The signing job also
   refuses a serial outside the last hour, and a dry run's real signature is kept one day, as a
   workflow artifact any signed-in GitHub user can download.
+  The macOS manifest (`Darwin_aarch64-gcc3`, [macos-homebrew](specs/macos-homebrew.md) decisions
+  16 to 18) is signed by the same jobs, key and environments, from the workflow's `target` input:
+  its one file, the `.dmg`, **must** match `SHA256SUMS-macos`, which **must** carry release.yml's
+  cosign signature, and is checked against it before the secretless `prepare` job (on a macOS
+  runner) mounts it read-only to read its build ID; the signing job refuses a body for another
+  target than the one asked for. Each target has its own concurrency group, so its serials only
+  grow; a push that the other target's push beat is rebased onto it (another file), never forced.
   **⚠ limit:** without a required reviewer on `update-signing`, anyone with write access can
   start a run on `main` that re-signs a published release or offers nothing (withholding
   updates).
@@ -1402,7 +1421,13 @@ _Pages_ and _extensions_ cannot reach it.
   [`every asset must be listed with the hash of the file that was downloaded`](../tools/update/test/manifest.test.mjs),
   [`must be newer than the published manifest's; equal or older is refused`](../tools/update/test/manifest.test.mjs),
   [`checkSigned refuses another key, a changed file, an older serial and another version`](../tools/update/test/manifest.test.mjs),
-  [`refuses to offer an older version than the published manifest does`](../tools/update/test/manifest.test.mjs)
+  [`refuses to offer an older version than the published manifest does`](../tools/update/test/manifest.test.mjs),
+  [`downloads the target's files and sums, and passes the target to manifest.mjs`](../tools/update/test/update-workflow.test.mjs),
+  [`checks a macOS body against the macOS target, and refuses a Linux one there`](../tools/update/test/update-workflow.test.mjs),
+  [`runs one manifest per target at a time, never cancelling one half done`](../tools/update/test/update-workflow.test.mjs),
+  [`refuses a .dmg that does not match SHA256SUMS-macos`](../tools/update/test/manifest.test.mjs),
+  [`checkSigned takes the target: a Linux manifest is refused for macOS and back`](../tools/update/test/manifest.test.mjs),
+  [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../tools/package/test/release-workflow.test.mjs)
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
   the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `tar` or

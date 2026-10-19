@@ -317,6 +317,24 @@ describe("release.yml", () => {
       expect(start).not.toMatch(/publishing it starts/);
     });
 
+    // Spec macos-homebrew, decision 16: the macOS update manifest needs the .dmg on a published
+    // release, which, like the cask, usually comes after the release is published.
+    it("macos-tap starts the macOS update manifest once the .dmg is on a published release", () => {
+      const block = all.get("macos-tap") ?? "";
+      const step = block.slice(
+        block.indexOf("- name: Start update-publish.yml for the macOS manifest"),
+      );
+      expect(step).toMatch(/^ {8}if: vars\.UPDATES_ENABLED == 'true'$/m);
+      const start = runOf(block, "Start update-publish.yml for the macOS manifest");
+      expect(start).toContain(
+        'if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma-${TAG#v}-macos-aarch64.dmg"; then',
+      );
+      expect(start).toContain(
+        'gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/update-publish.yml/dispatches" \\',
+      );
+      expect(start).toContain('-f ref=main -f "inputs[tag]=$TAG" -f "inputs[target]=macos"');
+    });
+
     it("a macOS failure opens the release-failure issue too", () => {
       const needs = /^ {4}needs:\n((?: {6}- .*\n)+)/m.exec(all.get("failure") ?? "")?.[1] ?? "";
       expect(

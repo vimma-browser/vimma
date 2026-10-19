@@ -703,7 +703,9 @@ jobs:
   # homebrew.yml has no release trigger, since a tag must not reach the tap's key, and the macOS
   # files usually reach a release after it is published. Once vimma.rb is on a published release
   # (releases/download/ serves nothing for a draft), this starts homebrew.yml on main for the
-  # tag; a draft published after its macOS files needs it started by hand.
+  # tag; a draft published after its macOS files needs it started by hand. Likewise the macOS
+  # update manifest (spec macos-homebrew, decision 16): update-publish.yml for target macos,
+  # which update-publish.yml itself starts when a draft is published after its .dmg.
   # No repository code, and no token beyond starting a workflow.
   macos-tap:
     needs: macos-publish
@@ -714,7 +716,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      actions: write # start homebrew.yml (workflow_dispatch)
+      actions: write # start homebrew.yml and update-publish.yml (workflow_dispatch)
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -726,6 +728,17 @@ jobs:
             echo "Started homebrew.yml for $TAG" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::notice::$TAG is a draft; once it is published, run: gh workflow run homebrew.yml -f tag=$TAG"
+          fi
+
+      - name: Start update-publish.yml for the macOS manifest
+        if: vars.UPDATES_ENABLED == 'true'
+        run: |
+          if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma-${TAG#v}-macos-aarch64.dmg"; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/update-publish.yml/dispatches" \
+              -f ref=main -f "inputs[tag]=$TAG" -f "inputs[target]=macos"
+            echo "Started update-publish.yml (macos) for $TAG" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice::$TAG is a draft; publishing it starts update-publish.yml, which adds the macOS manifest"
           fi
 
   failure:
