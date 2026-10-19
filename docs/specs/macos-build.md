@@ -363,8 +363,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 
 ### Not in this spec
 
-A notarised macOS release, a Homebrew cask or tap, a vimma.dev download (decision 12; the
-homebrew-cask spec, issue #393); x86_64 and
+A notarised macOS release, a vimma.dev download (decision 12); the Homebrew cask and tap
+([macos-homebrew](macos-homebrew.md)); x86_64 and
 universal builds (decision 3); PGO and LTO tuning; the macOS updater beyond decision 16; Mac App
 Store distribution; the Firefox Beta canary on macOS (upstream-beta-canary tests Linux only);
 Mac-native integrations such as Handoff, the Services menu or a global hotkey.
