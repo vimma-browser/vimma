@@ -28,6 +28,7 @@ const BUILDS = [
   { name: "nightly.yml", block: job(workflow("nightly.yml"), "build") },
   { name: "release.yml", block: job(workflow("release.yml"), "build") },
   { name: "macos.yml", block: job(workflow("macos.yml"), "build") },
+  { name: "release.yml macos-build", block: job(workflow("release.yml"), "macos-build") },
 ];
 
 /**

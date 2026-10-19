@@ -44,6 +44,8 @@ function runOf(block, name) {
   const end = rest.search(/\n {6}- (?:name|uses):/);
   const step = end === -1 ? rest : rest.slice(0, end);
   const lines = step.slice(step.indexOf("run: |\n") + 8).split("\n");
+  // the next step's comment lines are not part of this run
+  while (lines.length > 0 && /^ {6}#|^\s*$/.test(lines.at(-1) ?? "")) lines.pop();
   return lines.map((l) => l.replace(/^ {10}/, "")).join("\n");
 }
 
@@ -57,7 +59,17 @@ describe("release.yml", () => {
   const all = jobs();
 
   it("has the jobs the spec lists", () => {
-    expect([...all.keys()]).toEqual(["build", "package", "sign", "publish", "failure"]);
+    expect([...all.keys()]).toEqual([
+      "build",
+      "package",
+      "sign",
+      "publish",
+      "macos-build",
+      "macos-smoke",
+      "macos-sign",
+      "macos-publish",
+      "failure",
+    ]);
   });
 
   it.each([...jobs().keys()])("job %s runs only when enabled, here, from main", (id) => {
@@ -69,10 +81,10 @@ describe("release.yml", () => {
     expect(cond).not.toContain("event_name");
   });
 
-  it("only sign mints an OIDC token, only publish writes contents", () => {
+  it("only the sign jobs mint an OIDC token, only the publish jobs write contents", () => {
     for (const [id, block] of all) {
-      expect(block.includes("id-token: write"), id).toBe(id === "sign");
-      expect(block.includes("contents: write"), id).toBe(id === "publish");
+      expect(block.includes("id-token: write"), id).toBe(["sign", "macos-sign"].includes(id));
+      expect(block.includes("contents: write"), id).toBe(["publish", "macos-publish"].includes(id));
     }
     expect(text).toMatch(/^permissions: \{\}$/m);
   });
@@ -167,6 +179,106 @@ describe("release.yml", () => {
     expect(publish).not.toMatch(/tag_name|--draft|--tag|--method/);
     // its only API call reads the tag's commit
     expect(publish.match(/gh api/g)).toHaveLength(1);
+  });
+
+  // Spec macos-build, decisions 12 and 13: the macOS .dmg joins the release through jobs of its
+  // own, which no Linux job waits for, so a macOS failure cannot hold back a Linux release.
+  describe("the macOS jobs", () => {
+    const MACOS = ["macos-build", "macos-smoke", "macos-sign", "macos-publish"];
+
+    it.each(MACOS)("%s also needs MACOS_RELEASE_ENABLED", (id) => {
+      expect(condition(all.get(id) ?? "")).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
+    });
+
+    it("no Linux job needs a macOS job", () => {
+      for (const id of ["build", "package", "sign", "publish"]) {
+        const needs = /^ {4}needs: (.*)$/m.exec(all.get(id) ?? "")?.[1] ?? "";
+        expect(needs, id).not.toContain("macos");
+      }
+    });
+
+    it("macos-build stops at the same measured limit as macos.yml's build", () => {
+      const limit = (/** @type {string} */ block) =>
+        /^ {4}timeout-minutes: (\d+)$/m.exec(block)?.[1];
+      const weekly = readFileSync(
+        new URL("../../../.github/workflows/macos.yml", import.meta.url),
+        "utf8",
+      );
+      expect(limit(all.get("macos-build") ?? "")).toBe(limit(weekly));
+      expect(limit(weekly)).toBeDefined();
+    });
+
+    it("macos-build checks the tag like build, then cross-builds with the key", () => {
+      const block = all.get("macos-build") ?? "";
+      expect(runOf(block, "Check the tag's form")).toBe(
+        runOf(all.get("build") ?? "", "Check the tag's form"),
+      );
+      expect(runOf(block, "The tag is on main")).toBe(
+        runOf(all.get("build") ?? "", "The tag is on main"),
+      );
+      expect(block.indexOf("- name: The tag is on main")).toBeLessThan(
+        block.indexOf("uses: actions/checkout@"),
+      );
+      expect(block).toContain("ref: ${{ steps.tag.outputs.sha }}");
+      expect(block).toMatch(/^ {4}outputs:\n {6}sha: \$\{\{ steps\.tag\.outputs\.sha \}\}$/m);
+      expect(block).toMatch(/^ {4}environment: build$/m);
+      expect(block).toMatch(/^ {10}SURFER_PLATFORM: darwin$/m);
+      // as macos.yml: the runner's rustc has only the host's standard library
+      expect(block).toMatch(/^ {8}run: rustup target add aarch64-apple-darwin$/m);
+      expect(block.indexOf("rustup target add")).toBeLessThan(block.indexOf("surfer build"));
+      const pack = runOf(block, "Package, ad hoc sign and checksum the dmg");
+      expect(pack).toContain("tools/package/macos-dmg.sh");
+      expect(pack).toContain('dmg="vimma-${TAG#v}-macos-aarch64.dmg"');
+      expect(pack).toContain('sha256sum "$dmg" > SHA256SUMS-macos');
+      expect(block.match(/GH_TOKEN: \$\{\{ github\.token \}\}/g)).toHaveLength(1);
+    });
+
+    it("macos-smoke runs the dmg on a hosted Mac and ties its version line to the tag", () => {
+      const block = all.get("macos-smoke") ?? "";
+      expect(block).toMatch(/^ {4}needs: macos-build$/m);
+      expect(block).toMatch(/^ {4}runs-on: macos-15$/m);
+      expect(block).toContain("ref: ${{ needs.macos-build.outputs.sha }}");
+      expect(block).toContain("shasum -a 256 -c SHA256SUMS-macos");
+      expect(block).toContain("codesign --verify --deep --strict");
+      expect(block).toContain('case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;;');
+      expect(block).toContain("--screenshot");
+    });
+
+    it("macos-sign signs the dmg and its checksums, and runs no repository code", () => {
+      const block = all.get("macos-sign") ?? "";
+      expect(block).toMatch(/^ {4}needs: \[macos-build, macos-smoke\]$/m);
+      expect(condition(block)).toContain("vars.SIGNING_ENABLED == 'true'");
+      expect(block).not.toContain("actions/checkout@");
+      expect(block).toMatch(
+        /for f in dist\/vimma-\*-macos-aarch64\.dmg dist\/SHA256SUMS-macos; do/,
+      );
+    });
+
+    // A Linux release is often published before the slower macOS build ends. Adding the macOS
+    // files to it changes nothing users or the AUR already have; replacing them needs the flag.
+    it("macos-publish adds only the macOS files, and replaces them only when told", () => {
+      const block = all.get("macos-publish") ?? "";
+      expect(block).toMatch(/^ {4}needs: \[macos-build, macos-smoke, macos-sign\]$/m);
+      expect(block).toContain("SHA: ${{ needs.macos-build.outputs.sha }}");
+      expect(block).toContain("REPLACE_PUBLISHED: ${{ inputs.replace_published }}");
+      expect(block).not.toContain("actions/checkout@");
+      const upload = runOf(block, "Add the dmg to the GitHub Release");
+      expect(upload).toContain(
+        '[ "$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)" = "$SHA" ]',
+      );
+      expect(upload).toContain('if [ "$draft" != true ] && [ "$REPLACE_PUBLISHED" != true ]; then');
+      expect(upload).toMatch(
+        /gh release upload "\$TAG" dist\/vimma-\*-macos-aarch64\.dmg\* dist\/SHA256SUMS-macos\* --clobber/,
+      );
+      expect(upload.indexOf("REPLACE_PUBLISHED")).toBeLessThan(upload.indexOf("gh release upload"));
+      expect(block).not.toMatch(/gh release edit|--notes/);
+    });
+
+    it("a macOS failure opens the release-failure issue too", () => {
+      expect(all.get("failure")).toMatch(
+        /^ {4}needs: \[build, package, sign, publish, macos-build, macos-smoke, macos-sign, macos-publish\]$/m,
+      );
+    });
   });
 
   it("the failure issue tells how to re-run the same tag", () => {

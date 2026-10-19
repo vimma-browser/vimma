@@ -933,6 +933,29 @@ took 133 minutes for `build`, 129 of them in `surfer build`, and 45 seconds for 
 build used 44 GB of the runner's disk, the 16 GB swap file included, and left 42 GB free; the
 `.dmg` is 109 MB. `timeout-minutes` is 200, about 1.5 times the job, as for the Linux builds.
 
+#### macOS in a release
+
+`release.yml` has four macOS jobs, which run only while the repository variable
+`MACOS_RELEASE_ENABLED` is `true` (spec [macos-build](specs/macos-build.md), decision 12):
+`macos-build` builds as `macos.yml` does, from the release tag's commit and with the Safe
+Browsing key; `macos-smoke` checks the `.dmg` on a hosted Mac against the tag; `macos-sign`
+signs it and `SHA256SUMS-macos` with cosign while `SIGNING_ENABLED` is `true`; `macos-publish`
+uploads them to the tag's release. No Linux job waits for them, so the Linux files reach the
+draft first, and the `.dmg` follows hours later, usually after the draft has been published.
+`macos-publish` adds the macOS files to a published release that has none; if it already has
+them, a re-run needs `-f replace_published=true`. A macOS failure opens the same
+`release-failure` issue as a Linux one; re-running the failed jobs of the run retries only
+macOS.
+
+```sh
+gh variable set MACOS_RELEASE_ENABLED --body true      # on
+gh variable delete MACOS_RELEASE_ENABLED               # off
+```
+
+The `.dmg` is ad hoc signed until the Developer ID exists (spec macos-build, open question 2),
+so Gatekeeper asks once before it first opens (docs/guide.md, "macOS"). Homebrew and vimma.dev
+are not affected (issue #393).
+
 To bump rcodesign: take the new release's SHA-256 for
 `apple-codesign-<version>-x86_64-unknown-linux-musl.tar.gz` from
 `gh release view apple-codesign/<version> -R indygreg/apple-platform-rs --json assets`, and change
@@ -1458,7 +1481,8 @@ neither needs another file.
 
      Then delete `aur_key`. The first push creates `vimma-bin`; its maintainer is that account.
 7. Enable: `gh variable set RELEASE_ENABLED --body true` (disable: `gh variable delete
-RELEASE_ENABLED`). Try it on the next release.
+RELEASE_ENABLED`). Try it on the next release. For the macOS `.dmg` as well:
+   `gh variable set MACOS_RELEASE_ENABLED --body true` ("macOS in a release", below).
 8. Recommended: a tag ruleset (Settings → Rules → Rulesets → New tag ruleset, target
    `refs/tags/v*`, rules "Restrict updates" and "Restrict deletions", no bypass), so a release
    tag cannot be moved once release-please has created it. `release.yml` builds the commit the
@@ -1484,6 +1508,10 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   SHA256SUMS                         # "Verified OK"
 ```
+
+A release with the macOS `.dmg` lists it in `SHA256SUMS-macos`, signed the same way: run the
+two checks again with `SHA256SUMS-macos` in place of `SHA256SUMS` (on a Mac,
+`shasum -a 256 -c SHA256SUMS-macos`).
 
 The identity accepts only this repository's `release.yml` run from `main`: `release.yml` starts
 only by `workflow_dispatch` and refuses any other branch, and every signed release, `v0.1.1`
