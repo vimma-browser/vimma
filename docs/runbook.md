@@ -396,12 +396,13 @@ Limits:
 | `claude.yml`               | `@claude`, `spec`+`claude:go`                      | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
 | `release-please.yml`       | push to `main`, manual                             | `ubuntu-latest`           | Actions may open PRs; optional token       |
 | `release.yml`              | release published, manual                          | `ubuntu-24.04`            | see "Release packages" (gated off)         |
-| `pkgbuild.yml`             | `tools/package/` on PRs and `main` (once per tree) | `ubuntu-24.04`            | nothing (Arch Linux in docker)             |
+| `homebrew.yml`             | `macos-tap` in `release.yml`, manual (`main` only) | `ubuntu-24.04`            | see "Release packages" (gated off)         |
+| `pkgbuild.yml`             | `tools/package/` on PRs and `main` (once per tree) | `ubuntu-24.04` + macOS    | nothing (Arch Linux in docker; brew)       |
 | `mutation.yml`             | Sundays 04:23 UTC, manual                          | `ubuntu-latest`           | nothing (creates its `mutation` label)     |
 | `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
 | `codeql.yml`               | push to `main`, PRs, Mon, manual                   | `ubuntu-latest`           | nothing; skipped while the repo is private |
 | `dependabot-automerge.yml` | Dependabot's PRs                                   | `ubuntu-latest`           | nothing (Dependabot, below)                |
-| `site-dispatch.yml`        | `docs/bindings.json` on `main`                     | `ubuntu-latest`           | a token secret (vimma.dev, below)          |
+| `site-dispatch.yml`        | `docs/bindings.json` on `main`, release published  | `ubuntu-latest`           | a token secret (vimma.dev, below)          |
 | `spec-status.yml`          | daily, issue closed, specs, manual                 | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
 
 Locally, before pushing: `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:py`,
@@ -901,6 +902,95 @@ redacted log. No job can write contents. Publishing nightlies as a release again
 change, reviewed in its own PR, when the release gate lifts. A `nightly` release published
 before this change stays until `gh release delete nightly --cleanup-tag --yes` removes it.
 
+### macOS build (`macos.yml`)
+
+`macos.yml` cross-compiles the Apple Silicon build on a GitHub-hosted `ubuntu-24.04` runner and
+checks it on a hosted `macos-15` runner ([ADR-018](adr/018-macos-cross-build.md), spec
+[macos-build](specs/macos-build.md)). It runs every Monday at 05:00 UTC, by hand, and on pull
+requests that touch `configs/macos/`, the Vimma branding, the workflow or its scripts. It is keyless (Safe
+Browsing is off by default in its builds), holds no secret and has a read-only token. Nothing in
+the Linux nightly or the Linux release jobs depends on it.
+
+The `build` job follows the release build's steps ("Full builds" above), with
+`SURFER_PLATFORM=darwin` for `surfer build`, so Surfer reads `configs/macos/mozconfig`
+(`--target=aarch64-apple-darwin`) and `--enable-bootstrap` fetches the macOS SDK, clang and the
+disk-image tools from Mozilla. After `./mach package`, `tools/package/macos-dmg.sh` unpacks the
+`.dmg`, ad hoc signs `Vimma.app` with rcodesign (`tools/package/fetch-rcodesign.sh`, pinned by
+SHA-256) and packs it again. The run's artifact is
+`vimma-<vimma>-firefox-<firefox>-macos-aarch64`, kept 90 days. The `smoke` job mounts it on a
+Mac, runs `codesign --verify --deep --strict`, checks the binary is arm64 and the version line,
+and renders a page headless; `tools/package/macos-app-check.sh` checks its `Assets.car` has
+Vimma's `AppIcon` and none of Firefox's, and that its bundle identifier is `surfer.json`'s
+`appId`. The rendered icon and the page are the run's `macos-smoke` artifact.
+
+The `icons` job, on a hosted `macos-26` runner with Xcode 26.6 pinned, regenerates the committed
+macOS icon files (`Assets.car`, `firefox.icns`, `document.icns` in `configs/branding/vimma/`)
+from `configs/branding/vimma/logo-mac.png` and the Icon Composer source
+`configs/macos/AppIcon.icon/icon.json`, and fails if they differ
+(spec [macos-homebrew](specs/macos-homebrew.md), decision 13). `actool`, which compiles
+`Assets.car`, ships only with Xcode, not the Command Line Tools. After changing the logo or the
+icon source, either run `node tools/package/macos-icons.mjs` on a Mac with Xcode, or push and
+copy the files from the run's `macos-icons` artifact, which also holds their renderings:
+
+```sh
+gh run download "$run" -n macos-icons -D /tmp/macos-icons
+cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns} configs/branding/vimma/
+```
+
+`actool` names the catalog's flattened fallback images with a fresh UUID and writes them anew on
+every run, so the check compares `assetutil --info` without those names and digests, and
+without the header. A new Xcode can change the catalog: bump `DEVELOPER_DIR` and commit the
+regenerated files in the same PR. The files live in `configs/branding/vimma/`, whose top-level
+files Surfer's branding step copies over Firefox's, not in `src/`, whose license check needs an
+MPL header in every file. On a Mac host `npm run import` overwrites `firefox.icns` there with
+Surfer's own 512 px version; restore it with `git checkout configs/branding/vimma/firefox.icns`
+(the package tests fail on the 512 px file).
+
+To run it and fetch the `.dmg`:
+
+```sh
+gh workflow run macos.yml --ref main
+run=$(gh run list -w macos.yml -s success -L 1 --json databaseId --jq '.[0].databaseId')
+gh run download "$run" -D ~/Downloads/vimma-macos
+```
+
+The first green run (run 39205860770, Firefox 158.0 for Vimma 0.1.5, cold, no compiler cache)
+took 133 minutes for `build`, 129 of them in `surfer build`, and 45 seconds for `smoke`. The
+build used 44 GB of the runner's disk, the 16 GB swap file included, and left 42 GB free; the
+`.dmg` is 109 MB. `timeout-minutes` is 200, about 1.5 times the job, as for the Linux builds.
+
+#### macOS in a release
+
+`release.yml` has five macOS jobs, which run only while the repository variable
+`MACOS_RELEASE_ENABLED` is `true` (spec [macos-build](specs/macos-build.md), decision 12):
+`macos-build` builds as `macos.yml` does, from the release tag's commit and with the Safe
+Browsing key, and renders the Homebrew cask `vimma.rb` for the `.dmg`
+(`tools/package/cask.mjs`); `macos-smoke` checks the `.dmg` on a hosted Mac against the tag, and
+installs it through the cask (`tools/package/cask-check.sh`); `macos-sign` signs both and
+`SHA256SUMS-macos` with cosign while `SIGNING_ENABLED` is `true`; `macos-publish` uploads them
+to the tag's release; `macos-tap` starts `homebrew.yml` on `main` for the tag once the release
+is published. `homebrew.yml` has no `release` trigger, because that would run it from the tag
+(step 7 of "Release packages"). No Linux job waits for them, so the Linux files reach the
+draft first, and the `.dmg` follows hours later, usually after the draft has been published.
+`macos-publish` adds the macOS files to a published release that has none; if it already has
+them, a re-run needs `-f replace_published=true`. A macOS failure opens the same
+`release-failure` issue as a Linux one; re-running the failed jobs of the run retries only
+macOS.
+
+```sh
+gh variable set MACOS_RELEASE_ENABLED --body true      # on
+gh variable delete MACOS_RELEASE_ENABLED               # off
+```
+
+The `.dmg` is ad hoc signed until the Developer ID exists (spec macos-build, open question 2),
+so Gatekeeper asks once before it first opens (docs/guide.md, "macOS"); the Homebrew cask says
+so in its caveats (spec macos-homebrew). vimma.dev is not affected (issue #393).
+
+To bump rcodesign: take the new release's SHA-256 for
+`apple-codesign-<version>-x86_64-unknown-linux-musl.tar.gz` from
+`gh release view apple-codesign/<version> -R indygreg/apple-platform-rs --json assets`, and change
+`RCODESIGN_RELEASE` and `RCODESIGN_SHA256` in `fetch-rcodesign.sh` together.
+
 ### Mozilla's release key (ADR-021)
 
 Every path that gets Firefox source (`firefox-source.sh`, `source-check.sh`,
@@ -1325,8 +1415,10 @@ When release-please creates a draft release (above), its `release-build` job sta
 on `main` with the new tag (`workflow_dispatch`). `release.yml` builds Vimma, packages it on a
 hosted runner, signs, and uploads to that draft. Its `build` job builds on `ubuntu-24.04` from
 freshly verified source in about 2 hours ("Full builds" above). When the maintainer publishes
-the draft, `aur.yml` pushes AUR `vimma-bin`; publishing builds nothing. **Every job of both
-workflows is off until `RELEASE_ENABLED` is `true`**, manual runs included.
+the draft, `aur.yml` pushes AUR `vimma-bin`, and once the macOS files are on the published
+release, `release.yml`'s `macos-tap` job starts `homebrew.yml`, which pushes the Homebrew cask;
+publishing builds nothing. **Every job of these workflows is off until `RELEASE_ENABLED` is `true`**, manual
+runs included, and `homebrew.yml` also needs `MACOS_RELEASE_ENABLED`.
 
 `release.yml` starts only by `workflow_dispatch` and only from `main`, because the alternatives
 are weaker. A draft fires no `release` event, and a tag pushed with `GITHUB_TOKEN` starts no
@@ -1355,7 +1447,8 @@ the `PKGBUILD` in an Arch Linux container with `tools/package/arch-smoke.sh`) �
 `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
 `release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
-`failure`. Locally, from a mach tarball:
+`failure`. `homebrew.yml`, from `main` when `macos-tap` starts it or by hand: `homebrew` (no GitHub
+token; the tap's deploy key only) → `failure`. Locally, from a mach tarball:
 
 ```sh
 tools/package/fetch-appimagetool.sh /tmp/ait
@@ -1367,7 +1460,12 @@ tools/package/arch-smoke.sh dist "$(node tools/release/version-line.mjs)"   # ne
 ```
 
 `tools/package/arch-smoke.sh --stub` runs the same Arch Linux check on a stub tarball in about
-half a minute; the `pkgbuild.yml` workflow runs it on every change to `tools/package/`.
+half a minute; the `pkgbuild.yml` workflow runs it on every change to `tools/package/`. Its
+`cask` job does the same for the Homebrew cask on a hosted Mac with
+`tools/package/cask-check.sh --stub`: `brew style`, `brew audit --cask --strict`, then
+`brew install --cask` of a stub `.dmg` and `brew uninstall --zap`. The install check refuses to
+run outside GitHub Actions, because `--zap` deletes `~/Library/Application Support/Vimma`; on a
+Mac, `tools/package/cask-check.sh <vimma.rb>` runs only the style and audit checks.
 
 **The two `PKGBUILD`s.** `package.mjs` writes one `vimma-bin` PKGBUILD in two variants that
 differ in one line, the install source it records in `/opt/vimma/is-packaged-app`:
@@ -1420,9 +1518,63 @@ neither needs another file.
      ```
 
      Then delete `aur_key`. The first push creates `vimma-bin`; its maintainer is that account.
-7. Enable: `gh variable set RELEASE_ENABLED --body true` (disable: `gh variable delete
-RELEASE_ENABLED`). Try it on the next release.
-8. Recommended: a tag ruleset (Settings → Rules → Rulesets → New tag ruleset, target
+7. Homebrew tap (optional; `homebrew.yml` is skipped with a notice until the secret exists, and
+   runs only while `MACOS_RELEASE_ENABLED` is `true`). Mac users can install the release's `.dmg`
+   without it. `homebrew.yml` pushes the published release's `vimma.rb` to
+   [vimma-browser/homebrew-tap](https://github.com/vimma-browser/homebrew-tap) as
+   `Casks/vimma.rb`, so `brew install --cask vimma-browser/tap/vimma` finds it. The tap is set
+   up; to recreate it, or to rotate its key:
+   - The repository: `gh repo create vimma-browser/homebrew-tap --public --add-readme`. Homebrew
+     maps `vimma-browser/tap` to this name.
+   - A ruleset on `main`: no deletion, no force push, changes only by pull request. Deploy keys
+     bypass it, so the workflow's key pushes directly; admins bypass it only through a pull
+     request, so nobody else changes a cask unreviewed:
+
+     ```sh
+     gh api -X POST repos/vimma-browser/homebrew-tap/rulesets --input - <<'JSON'
+     { "name": "main", "target": "branch", "enforcement": "active",
+       "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+       "rules": [ { "type": "deletion" }, { "type": "non_fast_forward" },
+         { "type": "pull_request", "parameters": { "required_approving_review_count": 0,
+           "dismiss_stale_reviews_on_push": false, "require_code_owner_review": false,
+           "require_last_push_approval": false, "required_review_thread_resolution": false } } ],
+       "bypass_actors": [ { "actor_type": "DeployKey", "bypass_mode": "always" },
+         { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request" } ] }
+     JSON
+     ```
+
+   - A key for the workflow only, with write access to the tap and nothing else:
+
+     ```sh
+     ssh-keygen -t ed25519 -N '' -C vimma-homebrew-tap -f tap_key
+     gh repo deploy-key add tap_key.pub -R vimma-browser/homebrew-tap --allow-write \
+       --title 'vimma release (homebrew.yml)'
+     ```
+
+   - The `homebrew` environment, which only `main` may use, holds the key (the `homebrew` job
+     names that environment). No tag may deploy to it, by the rule in docs/security.md (B6): a
+     tag ruleset restricts moving a tag, not creating one, so anyone with write access could tag
+     an unmerged commit whose `homebrew.yml` skips every check and pushes any cask. For the same
+     reason `homebrew.yml` has no `release` trigger, whose runs use the tag's copy of the file:
+
+     ```sh
+     R=repos/vimma-browser/vimma
+     gh api -X PUT $R/environments/homebrew --input - <<'JSON'
+     { "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
+     JSON
+     gh api -X POST $R/environments/homebrew/deployment-branch-policies -f name=main -f type=branch
+     gh secret set HOMEBREW_TAP_SSH_KEY --env homebrew < tap_key
+     ```
+
+     Then delete `tap_key`. To rotate: make a new key, add it as above, set the secret again,
+     then remove the old key (`gh repo deploy-key list -R vimma-browser/homebrew-tap`, then
+     `gh repo deploy-key delete <id> -R vimma-browser/homebrew-tap`). Each push is a commit
+     `vimma X.Y.Z` by `PACKAGE_MAINTAINER`. Retry for a published release:
+     `gh workflow run homebrew.yml -f tag=vX.Y.Z`.
+8. Enable: `gh variable set RELEASE_ENABLED --body true` (disable: `gh variable delete
+RELEASE_ENABLED`). Try it on the next release. For the macOS `.dmg` as well:
+   `gh variable set MACOS_RELEASE_ENABLED --body true` ("macOS in a release", below).
+9. Recommended: a tag ruleset (Settings → Rules → Rulesets → New tag ruleset, target
    `refs/tags/v*`, rules "Restrict updates" and "Restrict deletions", no bypass), so a release
    tag cannot be moved once release-please has created it. `release.yml` builds the commit the
    tag named when its build started and refuses to publish if the tag has moved since; the
@@ -1433,7 +1585,7 @@ unless started from `main`, nor for a tag whose commit is not on `main`. It uplo
 draft: builds are not bit-for-bit reproducible, so new files under a published release would no
 longer match the `PKGBUILD` the AUR has or a `SHA256SUMS` users saved. To replace a published
 release's files anyway, run it with `-f replace_published=true`, then re-run `aur.yml` for that
-tag. The release build uses its own fresh objdir (`engine/obj-release`) and an empty sccache
+tag (and `homebrew.yml`, when the macOS files were replaced). The release build uses its own fresh objdir (`engine/obj-release`) and an empty sccache
 directory, so nothing left by a nightly or another job reaches signed binaries.
 
 **Verify a release** (the user guide's "Installing" points here):
@@ -1447,6 +1599,10 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   SHA256SUMS                         # "Verified OK"
 ```
+
+A release with the macOS `.dmg` lists it and the Homebrew cask `vimma.rb` in
+`SHA256SUMS-macos`, signed the same way: run the two checks again with `SHA256SUMS-macos` in place of `SHA256SUMS` (on a Mac,
+`shasum -a 256 -c SHA256SUMS-macos`).
 
 The identity accepts only this repository's `release.yml` run from `main`: `release.yml` starts
 only by `workflow_dispatch` and refuses any other branch, and every signed release, `v0.1.1`
@@ -1469,6 +1625,9 @@ The regexp is `IDENTITY_REGEXP` in `tools/package/package.mjs`, and a test keeps
    them as in "Verify a release" (above), with `gh release download v0.1.2` (it finds drafts).
 4. Publish: Releases → the draft → Edit → "Publish release". Nothing is rebuilt; `aur.yml` runs
    for a minute and pushes `vimma-bin` (or logs a notice while `AUR_SSH_KEY` is unset).
+   When the macOS files reach the published release, `release.yml`'s `macos-tap` job starts
+   `homebrew.yml` on `main`. If they were already on the draft, start it by hand:
+   `gh workflow run homebrew.yml -f tag=v0.1.2`.
 
 Publish only after `release` is green: a draft published earlier is public without its files
 until the build finishes, and `aur.yml` fails on the missing files (re-run it afterwards).
@@ -1496,9 +1655,11 @@ script under `tools/` does not, and needs a patch release (leave the failed draf
 delete it once the patch release is out). An `aur.yml` failure also opens the issue; re-run it
 with `gh workflow run aur.yml -f tag=vX.Y.Z`. That manual run uses `main`'s `aur.yml`, while the
 run started by publishing uses the `aur.yml` at the release's tag, so a fix to `aur.yml` reaches
-an already tagged release only through the manual run. To pull a bad release: `gh release edit vX.Y.Z --draft`
-(hides it); the AUR package cannot go back a version without an `epoch`, so ship a fixed
-release instead.
+an already tagged release only through the manual run. A `homebrew.yml` failure opens it as
+well; re-run it with `gh workflow run homebrew.yml -f tag=vX.Y.Z`, which, like every run of it,
+uses `main`'s `homebrew.yml`. To pull a bad release: `gh release edit vX.Y.Z --draft`
+(hides it); the AUR package cannot go back a version without an `epoch`, and `homebrew.yml`
+never replaces a newer cask in the tap with an older one, so ship a fixed release instead.
 
 ### Update signing keys and the update host (spec m6a-updater)
 
@@ -1803,9 +1964,12 @@ replace_published=true` changed its files, whose hashes the old manifest no long
 `npm run gen-docs` writes `docs/bindings.json`, which vimma.dev mirrors on its keys page and in
 its `?` overlay. A push to `main` that changes it sends a `repository_dispatch`
 (`vimma-bindings`) to vimma-browser/vimma-site, whose workflow fetches the file at that commit and opens
-a pull request. Until the secret exists the job skips with a notice. To set it up: create a
+a pull request. Publishing a release (not a pre-release) sends `vimma-release`, and the site's
+`release-sync.yml` syncs the latest published release at once instead of at its daily run.
+Until the secret exists the job skips with a notice. To set it up: create a
 fine-grained token with access to vimma-browser/vimma-site only and "Contents: read and write", then
-`gh secret set SITE_DISPATCH_TOKEN`. Re-send by hand with `gh workflow run site-dispatch.yml`.
+`gh secret set SITE_DISPATCH_TOKEN`. Re-send by hand with `gh workflow run site-dispatch.yml`
+(`-f release=true` for a release).
 
 ### Security scanning (`semgrep.yml`, `codeql.yml`)
 

@@ -173,7 +173,8 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * A binding on a chord Firefox let the page override (docs/specs/firefox-keys.md decision 6):
  * its keydown went to the page, and it runs on the keypress after the page had it, unless the
  * page called preventDefault. `awaiting`: its keypress went to a remote page, whose reply runs it.
- * @typedef {{ key: string, result: DispatchResult, pressed: boolean, awaiting: boolean }} PageFirst
+ * @typedef {{ key: string, result: DispatchResult, pressed: boolean, awaiting: boolean,
+ *   mode: Mode }} PageFirst
  */
 
 /** The most page-first keys kept waiting (a page that never replies cannot grow the queue). */
@@ -790,6 +791,8 @@ export const RUNNERS = Object.freeze({
   // `:source <path>` passes the path as typed, which ConfigHost expands.
   "config.reload": (_s, _a, /** @type {string | undefined} */ text) =>
     Services.obs.notifyObservers(null, CONFIG_RELOAD_TOPIC, text ?? ""),
+  // `:setup` (first-run-setup decision 14): the setup page in a new tab, at the welcome screen.
+  "setup.open": (/** @type {WindowState} */ s) => openOrSay(s, "about:vimma-setup", "tab"),
   // `:config`: ConfigHost opens config.toml in a tab of this window (creating it if missing).
   "config.edit": (/** @type {WindowState} */ s) =>
     Services.obs.notifyObservers(/** @type {any} */ (s.win), CONFIG_EDIT_TOPIC),
@@ -1794,6 +1797,16 @@ export const VimmaHost = {
     state.pageFirst = state.pageFirst.filter((p) => p.awaiting);
     // Focus left the page the hints are on (URL bar, another pane): they no longer apply.
     if (state.hint && state.hint.browser !== this._focusedBrowser(win)) this._cancelHints(state);
+    // The setup page draws its own j/k/space/enter/esc (first-run-setup behaviour 3): the scroll,
+    // hint and mode bindings would take them first. Chords with a modifier stay ours.
+    if (
+      !chord.ctrl &&
+      !chord.alt &&
+      !chord.meta &&
+      /** @type {any} */ (this._focusedBrowser(win))?.currentURI?.spec === "about:vimma-setup"
+    ) {
+      return;
+    }
     const mode = this._mode(state);
     // Keys typed in a private window are never kept (private-workspace decision 8b).
     if (!state.private) {
@@ -1905,7 +1918,13 @@ export const VimmaHost = {
         // Firefox let the page have this chord first: so does Vimma (firefox-keys decision 6).
         // The keydown goes on; the keypress after the page runs the action (_onKeyPress).
         if (first && !modal && this._pageFirst(state, chord, mode)) {
-          state.pageFirst.push({ key: formatKey(chord), result, pressed: false, awaiting: false });
+          state.pageFirst.push({
+            key: formatKey(chord),
+            result,
+            pressed: false,
+            awaiting: false,
+            mode,
+          });
           if (state.pageFirst.length > PAGE_FIRST_MAX) state.pageFirst.shift();
           return;
         }
@@ -1973,10 +1992,15 @@ export const VimmaHost = {
     const key = chord && formatKey(chord);
     const ev = /** @type {ChromeKeyEvent} */ (e);
     if (ev.isReplyEventFromRemoteContent) {
-      const at = state.pageFirst.findIndex((p) => p.awaiting && p.key === key);
+      // A chord with a native shortcut in Firefox's root key listener (cmd_redo on ctrl+shift+z,
+      // ShortcutKeyDefinitions.cpp) never reaches `_onKeyPress` before the page:
+      // GlobalKeyListener::HandleEventOnCaptureInSystemEventGroup stops it and waits for this
+      // reply itself, so its entry is still unpressed here.
+      let at = state.pageFirst.findIndex((p) => p.awaiting && p.key === key);
+      if (at === -1) at = state.pageFirst.findIndex((p) => !p.pressed && p.key === key);
       if (at === -1) return;
       const [pending] = state.pageFirst.splice(at, 1);
-      if (e.defaultPrevented || !pending) return;
+      if (!pending || this._pageTookKey(e, pending)) return;
       consume(e);
       this._run(state, pending.result);
       this._emit(state);
@@ -1990,6 +2014,22 @@ export const VimmaHost = {
       e.stopPropagation();
       ev.requestReplyFromRemoteContent();
     }
+  },
+
+  /**
+   * Whether a remote page took a page-first key, from its reply event. Page script counts
+   * (defaultPreventedByContent). A native handler in the content process counts only when a field
+   * has focus (insert mode): the content's root key listener walks ShortcutKeyDefinitions.cpp's
+   * sBrowserHandlers even with nothing focused, and KeyEventHandler::DispatchXBLCommand calls
+   * PreventDefault before it looks for a controller, so ctrl+shift+z (cmd_redo) comes back
+   * prevented by chrome on every plain page.
+   * @param {KeyboardEvent} e
+   * @param {PageFirst} pending
+   */
+  _pageTookKey(e, pending) {
+    if (!e.defaultPrevented) return false;
+    if (/** @type {any} */ (e).defaultPreventedByContent) return true;
+    return pending.mode === "insert";
   },
 
   /**

@@ -136,6 +136,7 @@ export const COMMANDS = Object.freeze([
   cmd("help", "none", "help.show", "Show all bindings", { aliases: ["h"] }),
   // m5-config-load: with a path, that file replaces the config in force (all or nothing).
   cmd("source", "optional", "config.reload", "Reload config (or load the given file)"),
+  cmd("setup", "none", "setup.open", "Set up add-ons and the search engine again"),
   cmd("config", "none", "config.edit", "Open config.toml in a tab (created if missing)"),
   // docs/specs/theme-appearance.md: without a word, the other of dark and light.
   cmd("theme", "optional", "theme.appearance", "Built-in theme: dark, light or system (Tab)"),

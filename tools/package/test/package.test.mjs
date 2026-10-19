@@ -62,6 +62,10 @@ const DOCS = {
   "docs/specs/m6-packaging.md": new URL("../../../docs/specs/m6-packaging.md", import.meta.url),
   "docs/specs/m6a-updater.md": new URL("../../../docs/specs/m6a-updater.md", import.meta.url),
   ".github/workflows/aur.yml": new URL("../../../.github/workflows/aur.yml", import.meta.url),
+  ".github/workflows/homebrew.yml": new URL(
+    "../../../.github/workflows/homebrew.yml",
+    import.meta.url,
+  ),
 };
 
 /** @param {string} cmd */
@@ -878,16 +882,16 @@ describe("cosign identity", () => {
     expect(re.test(identity)).toBe(false);
   });
 
-  it.each(["docs/runbook.md", "docs/guide.md", ".github/workflows/aur.yml"])(
-    "is the regexp %s tells users to verify with",
-    (path) => {
-      const text = readFileSync(DOCS[path], "utf8");
-      expect(text).toContain(`--certificate-identity-regexp '${IDENTITY_REGEXP}'`);
-      expect(text).toContain(
-        "--certificate-oidc-issuer https://token.actions.githubusercontent.com",
-      );
-    },
-  );
+  it.each([
+    "docs/runbook.md",
+    "docs/guide.md",
+    ".github/workflows/aur.yml",
+    ".github/workflows/homebrew.yml",
+  ])("is the regexp %s tells users to verify with", (path) => {
+    const text = readFileSync(DOCS[path], "utf8");
+    expect(text).toContain(`--certificate-identity-regexp '${IDENTITY_REGEXP}'`);
+    expect(text).toContain("--certificate-oidc-issuer https://token.actions.githubusercontent.com");
+  });
 });
 
 describe("the documented Arch Linux command", () => {

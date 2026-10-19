@@ -121,11 +121,17 @@ describe("chrome code", () => {
     expect(text.match(/\.declare\(\s*"?\w*/g)).toEqual(['.declare(\n      "statx']);
   });
 
-  test("never installs an add-on", () => {
-    expect(
-      hits(
-        /getInstallForURL|getInstallForFile|installAddonFromWebpage|installAddonFromAOM|installTemporaryAddon|installBuiltinAddon|\.install\(\)/,
-      ),
-    ).toEqual([]);
+  // Only the setup page's summary installs, through Firefox's AMO path (security.md A1).
+  test("installs an add-on only from the setup page", () => {
+    const SETUP = "src/browser/base/content/vimma/setup/SetupHost.sys.mjs";
+    const all = hits(
+      /getInstallForURL|getInstallForFile|installAddonFromWebpage|installAddonFromAOM|installTemporaryAddon|installBuiltinAddon|\.install\(\)/,
+    );
+    expect(all.filter((h) => !h.startsWith(`${SETUP}:`))).toEqual([]);
+    const text = readFileSync(join(ROOT, SETUP), "utf8");
+    expect(text.match(/getInstallForURL|installAddonFrom\w+/g)).toEqual([
+      "getInstallForURL",
+      "installAddonFromAOM",
+    ]);
   });
 });

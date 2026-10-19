@@ -1,5 +1,12 @@
 import { describe, test, expect } from "vitest";
-import { MAX_DEPTH, formatPath, locateKeys, parsePath, parseToml } from "../src/toml.mjs";
+import {
+  MAX_DEPTH,
+  formatPath,
+  locateKeys,
+  parsePath,
+  parseToml,
+  setTomlKeys,
+} from "../src/toml.mjs";
 
 describe("parseToml", () => {
   test("parses a TOML 1.0 document into plain values", () => {
@@ -160,5 +167,95 @@ describe("config paths", () => {
   ])("formatPath(%j)", (segs, text) => {
     expect(formatPath(segs)).toBe(text);
     expect(parsePath(text)).toEqual(segs);
+  });
+});
+const FILE = `# Vimma config
+schema = 1
+
+[search]
+# the engine new searches use
+default = "Google" # picked by hand
+suggest = true
+
+[keys]
+new_tab = ["prefix+c"]
+`;
+
+/** @param {string} text */
+const parsed = (text) => {
+  const r = parseToml(text);
+  if (!r.ok) throw new Error(r.error.message);
+  return r.value;
+};
+
+describe("setTomlKeys", () => {
+  test("replaces only the value of an existing key, keeping comments and order", () => {
+    const r = setTomlKeys(FILE, [{ table: "search", key: "default", value: "DuckDuckGo" }]);
+    expect(r).toEqual({ ok: true, text: FILE.replace('"Google"', '"DuckDuckGo"') });
+  });
+
+  test("a long line of spaces after an open bracket takes linear time", () => {
+    // CodeQL js/polynomial-redos: the table-header match must not backtrack per start position.
+    const text = `x = """\n[a${" ".repeat(200_000)}\n"""\n`;
+    const start = performance.now();
+    expect(setTomlKeys(text, [{ table: "search", key: "default", value: "x" }]).ok).toBe(true);
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
+  test("a trailing comment on the edited line is kept", () => {
+    const r = setTomlKeys(FILE, [{ table: "search", key: "default", value: "Bing" }]);
+    expect(r.ok && r.text.split("\n")[5]).toBe('default = "Bing" # picked by hand');
+  });
+
+  test("adds a missing key after the last key of its table", () => {
+    const r = setTomlKeys(FILE, [{ table: "search", key: "region", value: "FI" }]);
+    expect(r.ok && r.text).toBe(
+      FILE.replace("suggest = true\n", 'suggest = true\nregion = "FI"\n'),
+    );
+  });
+
+  test("appends a missing table at the end", () => {
+    const text = "schema = 1\n[keys]\nnew_tab = []";
+    const r = setTomlKeys(text, [{ table: "search", key: "default", value: "DuckDuckGo" }]);
+    expect(r.ok && r.text).toBe(`${text}\n\n[search]\ndefault = "DuckDuckGo"\n`);
+  });
+
+  test("a parse error returns an error and no text", () => {
+    const r = setTomlKeys("[search\ndefault = 1\n", [
+      { table: "search", key: "default", value: "X" },
+    ]);
+    expect(r.ok).toBe(false);
+    expect("text" in r).toBe(false);
+    expect(!r.ok && r.error.line).toBe(1);
+  });
+
+  test("a dotted key, inline table or multi-line value is an error", () => {
+    const edit = [{ table: "search", key: "default", value: "X" }];
+    for (const text of [
+      'search.default = "Google"\n',
+      'search = { default = "Google" }\n',
+      '[search]\ndefault = """\nGoogle"""\n',
+      '[search]\ndefault.name = "Google"\n',
+    ]) {
+      const r = setTomlKeys(text, edit);
+      expect(r.ok, text).toBe(false);
+    }
+  });
+
+  test("the result parses to the old file plus the new values", () => {
+    const edits = [
+      { table: "search", key: "default", value: 'Duck "Go"\\' },
+      { table: "search", key: "added", value: "x" },
+      { table: "ui", key: "flag", value: "y" },
+    ];
+    const r = setTomlKeys(FILE, edits);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const before = /** @type {any} */ (parsed(FILE));
+    expect(parsed(r.text)).toEqual({
+      ...before,
+      search: { ...before.search, default: 'Duck "Go"\\', added: "x" },
+      ui: { flag: "y" },
+    });
   });
 });

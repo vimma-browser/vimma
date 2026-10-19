@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,6 +45,8 @@ function runOf(block, name) {
   const end = rest.search(/\n {6}- (?:name|uses):/);
   const step = end === -1 ? rest : rest.slice(0, end);
   const lines = step.slice(step.indexOf("run: |\n") + 8).split("\n");
+  // the next step's comment lines are not part of this run
+  while (lines.length > 0 && /^ {6}#|^\s*$/.test(lines.at(-1) ?? "")) lines.pop();
   return lines.map((l) => l.replace(/^ {10}/, "")).join("\n");
 }
 
@@ -57,7 +60,18 @@ describe("release.yml", () => {
   const all = jobs();
 
   it("has the jobs the spec lists", () => {
-    expect([...all.keys()]).toEqual(["build", "package", "sign", "publish", "failure"]);
+    expect([...all.keys()]).toEqual([
+      "build",
+      "package",
+      "sign",
+      "publish",
+      "macos-build",
+      "macos-smoke",
+      "macos-sign",
+      "macos-publish",
+      "macos-tap",
+      "failure",
+    ]);
   });
 
   it.each([...jobs().keys()])("job %s runs only when enabled, here, from main", (id) => {
@@ -69,10 +83,11 @@ describe("release.yml", () => {
     expect(cond).not.toContain("event_name");
   });
 
-  it("only sign mints an OIDC token, only publish writes contents", () => {
+  it("only the sign jobs mint an OIDC token, only the publish jobs write contents", () => {
     for (const [id, block] of all) {
-      expect(block.includes("id-token: write"), id).toBe(id === "sign");
-      expect(block.includes("contents: write"), id).toBe(id === "publish");
+      expect(block.includes("id-token: write"), id).toBe(["sign", "macos-sign"].includes(id));
+      expect(block.includes("contents: write"), id).toBe(["publish", "macos-publish"].includes(id));
+      expect(block.includes("actions: write"), id).toBe(id === "macos-tap");
     }
     expect(text).toMatch(/^permissions: \{\}$/m);
   });
@@ -167,6 +182,160 @@ describe("release.yml", () => {
     expect(publish).not.toMatch(/tag_name|--draft|--tag|--method/);
     // its only API call reads the tag's commit
     expect(publish.match(/gh api/g)).toHaveLength(1);
+  });
+
+  // Spec macos-build, decisions 12 and 13: the macOS .dmg joins the release through jobs of its
+  // own, which no Linux job waits for, so a macOS failure cannot hold back a Linux release.
+  describe("the macOS jobs", () => {
+    const MACOS = ["macos-build", "macos-smoke", "macos-sign", "macos-publish", "macos-tap"];
+
+    it.each(MACOS)("%s also needs MACOS_RELEASE_ENABLED", (id) => {
+      expect(condition(all.get(id) ?? "")).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
+    });
+
+    it("no Linux job needs a macOS job", () => {
+      for (const id of ["build", "package", "sign", "publish"]) {
+        const needs = /^ {4}needs: (.*)$/m.exec(all.get(id) ?? "")?.[1] ?? "";
+        expect(needs, id).not.toContain("macos");
+      }
+    });
+
+    it("macos-build stops at the same measured limit as macos.yml's build", () => {
+      const limit = (/** @type {string} */ block) =>
+        /^ {4}timeout-minutes: (\d+)$/m.exec(block)?.[1];
+      const weekly = readFileSync(
+        new URL("../../../.github/workflows/macos.yml", import.meta.url),
+        "utf8",
+      );
+      expect(limit(all.get("macos-build") ?? "")).toBe(limit(weekly));
+      expect(limit(weekly)).toBeDefined();
+    });
+
+    it("macos-build checks the tag like build, then cross-builds with the key", () => {
+      const block = all.get("macos-build") ?? "";
+      expect(runOf(block, "Check the tag's form")).toBe(
+        runOf(all.get("build") ?? "", "Check the tag's form"),
+      );
+      expect(runOf(block, "The tag is on main")).toBe(
+        runOf(all.get("build") ?? "", "The tag is on main"),
+      );
+      expect(block.indexOf("- name: The tag is on main")).toBeLessThan(
+        block.indexOf("uses: actions/checkout@"),
+      );
+      expect(block).toContain("ref: ${{ steps.tag.outputs.sha }}");
+      expect(block).toMatch(/^ {4}outputs:\n {6}sha: \$\{\{ steps\.tag\.outputs\.sha \}\}$/m);
+      expect(block).toMatch(/^ {4}environment: build$/m);
+      expect(block).toMatch(/^ {10}SURFER_PLATFORM: darwin$/m);
+      // as macos.yml: the runner's rustc has only the host's standard library
+      expect(block).toMatch(/^ {8}run: rustup target add aarch64-apple-darwin$/m);
+      expect(block.indexOf("rustup target add")).toBeLessThan(block.indexOf("surfer build"));
+      const pack = runOf(block, "Package, ad hoc sign and checksum the dmg");
+      expect(pack).toContain("tools/package/macos-dmg.sh");
+      expect(pack).toContain('dmg="vimma-${TAG#v}-macos-aarch64.dmg"');
+      // the Homebrew cask pins the dmg's SHA-256 and is listed beside it (spec macos-homebrew)
+      expect(pack).toContain(
+        'node tools/package/cask.mjs --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb',
+      );
+      expect(pack).toContain('sha256sum "$dmg" vimma.rb > SHA256SUMS-macos');
+      expect(block.match(/GH_TOKEN: \$\{\{ github\.token \}\}/g)).toHaveLength(1);
+    });
+
+    it("macos-smoke runs the dmg on a hosted Mac and ties its version line to the tag", () => {
+      const block = all.get("macos-smoke") ?? "";
+      expect(block).toMatch(/^ {4}needs: macos-build$/m);
+      expect(block).toMatch(/^ {4}runs-on: macos-15$/m);
+      expect(block).toContain("ref: ${{ needs.macos-build.outputs.sha }}");
+      expect(block).toContain("shasum -a 256 -c SHA256SUMS-macos");
+      expect(block).toContain("codesign --verify --deep --strict");
+      expect(block).toContain('case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;;');
+      expect(block).toContain("--screenshot");
+      // Vimma's icon and bundle identifier, as macos.yml's smoke checks them
+      expect(block).toContain('tools/package/macos-app-check.sh "$APP"');
+    });
+
+    // Spec macos-homebrew, decision 9: Homebrew lints the cask and installs the release's dmg
+    // through it before anything is signed.
+    it("macos-smoke checks the cask with brew and installs the dmg through it", () => {
+      const check = runOf(all.get("macos-smoke") ?? "", "The Homebrew cask installs the dmg");
+      expect(check).toContain(
+        'tools/package/cask-check.sh release-macos/vimma.rb "release-macos/vimma-${TAG#v}-macos-aarch64.dmg"',
+      );
+    });
+
+    it("macos-sign signs the dmg and its checksums, and runs no repository code", () => {
+      const block = all.get("macos-sign") ?? "";
+      expect(block).toMatch(/^ {4}needs: \[macos-build, macos-smoke\]$/m);
+      expect(condition(block)).toContain("vars.SIGNING_ENABLED == 'true'");
+      expect(block).not.toContain("actions/checkout@");
+      expect(block).toMatch(
+        /for f in dist\/vimma-\*-macos-aarch64\.dmg dist\/vimma\.rb dist\/SHA256SUMS-macos; do/,
+      );
+    });
+
+    // A Linux release is often published before the slower macOS build ends. Adding the macOS
+    // files to it changes nothing users or the AUR already have; replacing them needs the flag.
+    it("macos-publish adds only the macOS files, and replaces them only when told", () => {
+      const block = all.get("macos-publish") ?? "";
+      expect(block).toMatch(/^ {4}needs: \[macos-build, macos-smoke, macos-sign\]$/m);
+      expect(block).toContain("SHA: ${{ needs.macos-build.outputs.sha }}");
+      expect(block).toContain("REPLACE_PUBLISHED: ${{ inputs.replace_published }}");
+      expect(block).not.toContain("actions/checkout@");
+      const upload = runOf(block, "Add the dmg to the GitHub Release");
+      expect(upload).toContain(
+        '[ "$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)" = "$SHA" ]',
+      );
+      expect(upload).toContain('if [ "$draft" != true ] && [ "$REPLACE_PUBLISHED" != true ]; then');
+      expect(upload).toMatch(
+        /gh release upload "\$TAG" dist\/vimma-\*-macos-aarch64\.dmg\* dist\/vimma\.rb\* dist\/SHA256SUMS-macos\* --clobber/,
+      );
+      expect(upload).toContain(
+        'select(test("-macos-aarch64\\\\.dmg|^vimma\\\\.rb|^SHA256SUMS-macos"))',
+      );
+      expect(upload.indexOf("REPLACE_PUBLISHED")).toBeLessThan(upload.indexOf("gh release upload"));
+      expect(block).not.toMatch(/gh release edit|--notes/);
+    });
+
+    // homebrew.yml reads only a published release; publishing usually comes before the macOS
+    // files, and that run finds no cask. GITHUB_TOKEN may dispatch a workflow, so macos-tap starts
+    // homebrew.yml again once the files are on a published release.
+    it("macos-tap starts homebrew.yml on main once the cask is on a published release", () => {
+      const block = all.get("macos-tap") ?? "";
+      expect(block).toMatch(/^ {4}needs: macos-publish$/m);
+      expect(block).toMatch(/^ {4}permissions:\n {6}actions: write(?: #.*)?\n {4}[a-z]/m);
+      expect(block).not.toMatch(/actions\/checkout|setup-node|node /);
+      const start = runOf(block, "Start homebrew.yml for a published release");
+      expect(start).toContain(
+        'curl -fsSL -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma.rb"',
+      );
+      expect(start).toContain(
+        'gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/homebrew.yml/dispatches" \\',
+      );
+      expect(start).toContain('-f ref=main -f "inputs[tag]=$TAG"');
+      // homebrew.yml has no release trigger (a tag must not reach its key): a draft published
+      // after its macOS files is started by hand, from main
+      expect(start).toContain("gh workflow run homebrew.yml -f tag=$TAG");
+      expect(start).not.toMatch(/publishing it starts/);
+    });
+
+    it("a macOS failure opens the release-failure issue too", () => {
+      const needs = /^ {4}needs:\n((?: {6}- .*\n)+)/m.exec(all.get("failure") ?? "")?.[1] ?? "";
+      expect(
+        needs
+          .split("\n")
+          .filter(Boolean)
+          .map((n) => n.replace(/^ {6}- /, "")),
+      ).toEqual([
+        "build",
+        "package",
+        "sign",
+        "publish",
+        "macos-build",
+        "macos-smoke",
+        "macos-sign",
+        "macos-publish",
+        "macos-tap",
+      ]);
+    });
   });
 
   it("the failure issue tells how to re-run the same tag", () => {
@@ -337,6 +506,296 @@ describe("aur.yml", () => {
   it("the failure issue tells how to re-run the AUR push", () => {
     expect(job("failure")).toContain("gh workflow run aur.yml -f tag=$TAG");
     expect(job("failure")).toMatch(/^ {6}issues: write/m);
+  });
+});
+
+// homebrew.yml: pushes the Homebrew cask to vimma-browser/homebrew-tap, which Homebrew users read
+// at once, so only for a published release, as aur.yml does for the AUR (spec macos-homebrew,
+// decisions 9 and 10). Its only source is the published release's own files.
+describe("homebrew.yml", () => {
+  const file = readFileSync(
+    new URL("../../../.github/workflows/homebrew.yml", import.meta.url),
+    "utf8",
+  );
+  const all = new Map();
+  {
+    const body = file.slice(file.indexOf("\njobs:\n") + 7);
+    const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
+    for (let i = 0; i < parts.length; i += 2) all.set(parts[i] ?? "", parts[i + 1] ?? "");
+  }
+  /** @param {string} id */
+  const job = (id) => /** @type {string} */ (all.get(id) ?? "");
+  const FETCH = "Download the published release's cask";
+
+  it("has the homebrew job and its failure report", () => {
+    expect([...all.keys()]).toEqual(["homebrew", "failure"]);
+    expect(job("failure")).toMatch(/^ {4}needs: homebrew$/m);
+  });
+
+  // A release event's ref is its tag, and anyone with write access can create a tag on an
+  // unmerged commit with an edited copy of this file: only main may reach the homebrew
+  // environment's key (docs/security.md, B6 and B11).
+  it("runs only by dispatch with a tag, never for a release event or a tag ref", () => {
+    const on = triggersOf(file);
+    expect(on).toMatch(/^on:\n {2}workflow_dispatch:\n {4}inputs:\n {6}tag:\n/m);
+    expect(on).not.toMatch(
+      /release:|pull_request|push:|schedule:|workflow_run:|repository_dispatch/,
+    );
+    expect(file).not.toMatch(/github\.event\.release|GITHUB_EVENT_NAME|event_name/);
+    expect(file).toMatch(/^env:\n {2}TAG: \$\{\{ inputs\.tag \}\}$/m);
+    expect(file).toMatch(/^permissions: \{\}$/m);
+  });
+
+  it.each(["homebrew", "failure"])(
+    "job %s runs only when the macOS release is enabled, here, from main",
+    (id) => {
+      const cond = condition(job(id));
+      expect(cond).toContain(
+        "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
+          "github.ref == 'refs/heads/main'",
+      );
+      expect(cond).not.toMatch(/refs\/tags|event_name/);
+      expect(cond).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
+    },
+  );
+
+  // releases/download/<tag>/ serves a published release's assets only: a draft's are a 404, so
+  // the job cannot push a draft's cask even when started by hand for its tag.
+  it("takes the cask from the published release only, with no GitHub token", () => {
+    const brew = job("homebrew");
+    expect(brew).toMatch(/^ {4}permissions: \{\}$/m);
+    expect(brew).not.toMatch(/github\.token|GH_TOKEN|gh release|gh api|actions\/checkout|node /);
+    const fetch = runOf(brew, FETCH);
+    expect(fetch).toContain('base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"');
+    expect(fetch).toMatch(/curl -fsSL/);
+    expect(fetch).toContain("for f in SHA256SUMS-macos SHA256SUMS-macos.sigstore.json; do");
+    expect(fetch).toMatch(/grep -E ' {2}vimma\\\.rb\$' SHA256SUMS-macos/);
+    expect(fetch).toContain("sha256sum -c -");
+    // a signed SHA256SUMS-macos is not bound to its tag: the cask must be this release's version
+    expect(fetch).toContain(`grep -qx "  version \\"\${TAG#v}\\"" vimma.rb`);
+  });
+
+  /**
+   * Runs the download step against a stub `curl` that serves `files` (name -> content) and 404s
+   * the rest.
+   * @param {Record<string, string>} files
+   */
+  const fetchWith = (files) => {
+    const dir = mkdtempSync(join(tmpdir(), "homebrew-fetch-"));
+    try {
+      const served = join(dir, "served");
+      execFileSync("mkdir", ["-p", served, join(dir, "bin"), join(dir, "work")]);
+      for (const [name, content] of Object.entries(files)) {
+        writeFileSync(join(served, name), content);
+      }
+      // curl -fsSL -o <file> <url>: copies the served file named by the URL's last segment
+      writeFileSync(
+        join(dir, "bin", "curl"),
+        `#!/bin/sh\nout=$3; name=\${4##*/}\n[ -f "${served}/$name" ] || exit 22\ncp "${served}/$name" "$out"\n`,
+        { mode: 0o755 },
+      );
+      const output = join(dir, "output");
+      writeFileSync(output, "");
+      const result = spawnSync("bash", ["-e", "-c", runOf(job("homebrew"), FETCH)], {
+        cwd: join(dir, "work"),
+        encoding: "utf8",
+        env: {
+          PATH: `${join(dir, "bin")}:${process.env.PATH}`,
+          HOME: dir,
+          TAG: "v0.1.6",
+          GITHUB_REPOSITORY: "vimma-browser/vimma",
+          GITHUB_OUTPUT: output,
+        },
+      });
+      return { ...result, outputs: readFileSync(output, "utf8") };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const rb = 'cask "vimma" do\n  version "0.1.6"\nend\n';
+  const sums = `${createHash("sha256").update(rb).digest("hex")}  vimma.rb\n`;
+
+  it("the download step accepts the release's cask listed in SHA256SUMS-macos", () => {
+    const result = fetchWith({ "vimma.rb": rb, "SHA256SUMS-macos": sums });
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(result.outputs).toBe("ready=true\n");
+  });
+
+  // release.yml's macos-tap dispatches this only once the cask is on the published release.
+  it("a release without the cask is an error", () => {
+    const result = fetchWith({});
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("::error::");
+    expect(result.outputs).toBe("");
+  });
+
+  it.each([
+    [
+      "a cask that does not match its checksum",
+      { "vimma.rb": `${rb}#\n`, "SHA256SUMS-macos": sums },
+    ],
+    [
+      "a cask of another version",
+      {
+        "vimma.rb": rb.replace("0.1.6", "0.1.5"),
+        "SHA256SUMS-macos": `${createHash("sha256").update(rb.replace("0.1.6", "0.1.5")).digest("hex")}  vimma.rb\n`,
+      },
+    ],
+    [
+      "a SHA256SUMS-macos without the cask",
+      { "vimma.rb": rb, "SHA256SUMS-macos": `${"0".repeat(64)}  vimma-0.1.6-macos-aarch64.dmg\n` },
+    ],
+    ["a missing SHA256SUMS-macos", { "vimma.rb": rb }],
+  ])("the download step refuses %s", (_, files) => {
+    const result = fetchWith(files);
+    expect(result.status).not.toBe(0);
+    expect(result.outputs).toBe("");
+  });
+
+  // An environment limited to main and v* tags holds the tap's deploy key, so a workflow on
+  // another branch cannot read it.
+  it("takes the tap key from the homebrew environment", () => {
+    expect(job("homebrew")).toMatch(/^ {4}environment: homebrew$/m);
+    expect(job("failure")).not.toContain("environment:");
+  });
+
+  it("checks SHA256SUMS-macos's signature against the documented identity when signing is on", () => {
+    const brew = job("homebrew");
+    expect(brew).toContain(`--certificate-identity-regexp '${IDENTITY_REGEXP}'`);
+    expect(brew).toContain("--certificate-oidc-issuer https://token.actions.githubusercontent.com");
+    expect(brew).toContain("cosign verify-blob --bundle SHA256SUMS-macos.sigstore.json");
+    expect(brew).toMatch(
+      /if: steps\.cask\.outputs\.ready == 'true' && vars\.SIGNING_ENABLED == 'true'/,
+    );
+  });
+
+  it("checks the tag's form before anything is fetched", () => {
+    const brew = job("homebrew");
+    expect(brew).toContain("grep -Eqx 'v[0-9]+\\.[0-9]+\\.[0-9]+'");
+    expect(brew.indexOf("Check the tag's form")).toBeLessThan(brew.indexOf("curl -fsSL"));
+  });
+
+  it("the tap key reaches only the push step", () => {
+    expect(file.match(/secrets\.HOMEBREW_TAP_SSH_KEY/g)).toHaveLength(2);
+    expect(job("homebrew")).toMatch(
+      /^ {6}KEY_SET: \$\{\{ secrets\.HOMEBREW_TAP_SSH_KEY != '' \}\}$/m,
+    );
+    const push = job("homebrew").slice(job("homebrew").indexOf("- name: Push Casks/vimma.rb"));
+    expect(push).toMatch(/^ {10}HOMEBREW_TAP_SSH_KEY: \$\{\{ secrets\.HOMEBREW_TAP_SSH_KEY \}\}$/m);
+  });
+
+  // github.com's Ed25519 host key, as GitHub publishes it (api.github.com/meta, ssh_keys; the
+  // fingerprint SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU in GitHub's documentation).
+  it("pushes Casks/vimma.rb to the tap over SSH with github.com's pinned host key", () => {
+    const push = runOf(job("homebrew"), "Push Casks/vimma.rb");
+    expect(job("homebrew")).toContain(
+      "GITHUB_HOST_KEY: github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl",
+    );
+    expect(push).toContain("-o StrictHostKeyChecking=yes");
+    expect(push).toContain("git clone git@github.com:vimma-browser/homebrew-tap.git tap");
+    expect(push).toContain("cp vimma.rb tap/Casks/vimma.rb");
+    expect(push).toContain("git add Casks/vimma.rb\n");
+    expect(push).toContain('commit -m "vimma ${TAG#v}"');
+    expect(push).toContain("git push origin HEAD:main");
+    expect(push).not.toMatch(/--force|-f origin|\+HEAD/);
+  });
+
+  describe("the push step", () => {
+    /**
+     * Runs the push step against a bare repository standing in for the tap: `git clone` of the
+     * tap's URL is redirected to it.
+     * @param {string | null} tapCask the tap's Casks/vimma.rb before the push, null for none
+     * @param {string} tag
+     */
+    const push = (tapCask, tag) => {
+      const dir = mkdtempSync(join(tmpdir(), "homebrew-push-"));
+      try {
+        const bare = join(dir, "tap.git");
+        const git = (/** @type {string[]} */ ...args) =>
+          execFileSync("git", args, { cwd: dir, stdio: "pipe", encoding: "utf8" });
+        git("init", "-q", "--bare", "-b", "main", bare);
+        git("clone", "-q", bare, "seed");
+        const seed = join(dir, "seed");
+        writeFileSync(join(seed, "README.md"), "tap\n");
+        if (tapCask !== null) {
+          execFileSync("mkdir", ["-p", join(seed, "Casks")]);
+          writeFileSync(join(seed, "Casks/vimma.rb"), tapCask);
+        }
+        const id = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
+        execFileSync("git", ["add", "-A"], { cwd: seed });
+        execFileSync("git", [...id, "commit", "-qm", "seed"], { cwd: seed });
+        execFileSync("git", ["push", "-q", "origin", "HEAD:main"], { cwd: seed });
+        const work = join(dir, "work");
+        execFileSync("mkdir", ["-p", work]);
+        writeFileSync(
+          join(work, "vimma.rb"),
+          `cask "vimma" do\n  version "${tag.slice(1)}"\nend\n`,
+        );
+        const gitconfig = join(dir, "gitconfig");
+        writeFileSync(
+          gitconfig,
+          `[url "${bare}"]\n\tinsteadOf = git@github.com:vimma-browser/homebrew-tap.git\n`,
+        );
+        const result = spawnSync(
+          "bash",
+          ["-e", "-c", runOf(job("homebrew"), "Push Casks/vimma.rb")],
+          {
+            cwd: work,
+            encoding: "utf8",
+            env: {
+              PATH: process.env.PATH ?? "",
+              HOME: dir,
+              GIT_CONFIG_GLOBAL: gitconfig,
+              TAG: tag,
+              HOMEBREW_TAP_SSH_KEY: "not a key",
+              GITHUB_HOST_KEY: "github.com ssh-ed25519 AAAA",
+              MAINTAINER: "A Maintainer <a@example.org>",
+            },
+          },
+        );
+        const log = git("--git-dir", bare, "log", "--format=%s", "main");
+        const now = git("--git-dir", bare, "show", "main:Casks/vimma.rb");
+        return { ...result, log, now };
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    it("commits the cask as vimma X.Y.Z", () => {
+      const result = push(null, "v0.1.6");
+      expect(result.stderr).not.toMatch(/error|fatal/i);
+      expect(result.status).toBe(0);
+      expect(result.log).toBe("vimma 0.1.6\nseed\n");
+      expect(result.now).toContain('version "0.1.6"');
+    });
+
+    it("pushes nothing when the tap already has this cask", () => {
+      const result = push('cask "vimma" do\n  version "0.1.6"\nend\n', "v0.1.6");
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("::notice::");
+      expect(result.log).toBe("seed\n");
+    });
+
+    // A re-run for an older release, after a newer one reached the tap, must not take users back.
+    it("never replaces a newer cask with an older one", () => {
+      const result = push('cask "vimma" do\n  version "0.1.10"\nend\n', "v0.1.9");
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("::notice::");
+      expect(result.log).toBe("seed\n");
+      expect(result.now).toContain('version "0.1.10"');
+    });
+  });
+
+  it("the failure issue tells how to re-run the tap push", () => {
+    expect(job("failure")).toContain("gh workflow run homebrew.yml -f tag=$TAG");
+    expect(job("failure")).toMatch(/^ {6}issues: write/m);
+  });
+
+  it("every action is pinned by a full commit SHA", () => {
+    const uses = [...file.matchAll(/^\s+(?:- )?uses: (\S+)/gm)].map((m) => m[1] ?? "");
+    expect(uses.length).toBeGreaterThan(0);
+    for (const u of uses) expect(u, u).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
   });
 });
 

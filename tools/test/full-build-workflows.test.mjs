@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 
-// Spec build-supply-chain, decisions 3 to 10 and rules B1 (builds) and B2: the nightly and the
-// release build on GitHub-hosted runners from Firefox source that firefox-source.sh verified and
+// Spec build-supply-chain, decisions 3 to 10 and rules B1 (builds) and B2: the nightly, the
+// release and the macOS cross build (spec macos-build, decision 6) build on GitHub-hosted runners from Firefox source that firefox-source.sh verified and
 // extracted in the same job, and restore nothing from the Actions cache. Text checks, like
 // release-workflow.test.mjs: no YAML dependency.
 const DIR = new URL("../../.github/workflows/", import.meta.url);
@@ -27,6 +27,8 @@ function job(text, id) {
 const BUILDS = [
   { name: "nightly.yml", block: job(workflow("nightly.yml"), "build") },
   { name: "release.yml", block: job(workflow("release.yml"), "build") },
+  { name: "macos.yml", block: job(workflow("macos.yml"), "build") },
+  { name: "release.yml macos-build", block: job(workflow("release.yml"), "macos-build") },
 ];
 
 /**
@@ -40,7 +42,7 @@ function at(block, needle) {
   return i;
 }
 
-describe("full builds (nightly.yml, release.yml)", () => {
+describe("full builds (nightly.yml, release.yml, macos.yml)", () => {
   it.each(BUILDS)("$name gets Firefox source only through firefox-source.sh", ({ block }) => {
     const source = at(block, "run: tools/upstream/firefox-source.sh");
     expect(at(block, "npm run import")).toBeGreaterThan(source);

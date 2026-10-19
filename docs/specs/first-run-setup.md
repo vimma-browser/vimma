@@ -1,6 +1,6 @@
 # Spec: first-run-setup
 
-Status: accepted · Area: core (`packages/vimma-core/src/setup.mjs`, new; `toml.mjs`,
+Status: implemented · Area: core (`packages/vimma-core/src/setup.mjs`, new; `toml.mjs`,
 `actions.mjs`, `cmdline.mjs`), chrome (`src/browser/base/content/vimma/setup/`, new: `setup.html`,
 `setup.mjs`, `SetupHost.sys.mjs`; `config/ConfigHost.sys.mjs`, `about/AboutVimma.sys.mjs`,
 `jar.mn`), theme (`src/browser/themes/shared/vimma/setup.css`, new) · Upstream patches: none ·
@@ -124,6 +124,12 @@ curated table, validating and filtering AMO results, and the summary plan.
    opened, before any step, so a crash or a closed window never shows it twice. It is skipped
    under `Cu.isInAutomation` and when `vimma.config.path` is set, as `ConfigHost`'s first run
    is, so that tests and managed setups start clean.
+   (Since changed: the pref is also written to `prefs.js` at that moment with
+   `savePrefFile`, because Firefox otherwise writes a changed pref about 500 ms later
+   (`Preferences::HandleDirty`, `modules/libpref/Preferences.cpp`, Firefox 158) and a crash in
+   that window would offer the setup again. Skip, finishing the setup and closing the welcome
+   tab therefore all leave the profile marked; only `:setup` and the about:vimma link reopen
+   the page.)
 2. **Nothing applies before the summary.** Steps only collect choices; the summary applies them,
    so that skipping or closing at any point leaves nothing half-configured. Rejected: applying
    each step as it is left, because a later `esc` would then leave part of the setup done.
@@ -198,6 +204,9 @@ curated table, validating and filtering AMO results, and the summary plan.
     choice; adding password managers, because the list is about content blocking.
 14. **Run again with `:setup` or from about:vimma.** `:setup` opens the page in a new tab and
     about:vimma links to it; no key is bound, because neither changes the default keys.
+    (Since changed: while the page has focus it owns the plain keys `j`, `k`, `space`,
+    `enter`, `esc` and `q`, because Vimma's scroll, hint and mode bindings would otherwise take
+    them first; chords with a modifier stay Vimma's.)
 
 ### Welcome screen
 
@@ -216,7 +225,8 @@ curated table, validating and filtering AMO results, and the summary plan.
   text; the focused button uses the accent colour.
 - **Motion.** At most one short fade-in (150 ms) of the column on open, and none under
   `prefers-reduced-motion: reduce`, because the screen should feel calm and nothing on it moves
-  afterwards.
+  afterwards. (Since changed: no fade-in, because Vimma's chrome CSS tests forbid
+  animations and transitions; the screen appears at once.)
 - **Keyboard first.** **Set up** has focus on open, so `enter` and `esc` work without a click;
   both buttons are also reachable with `tab` and the mouse.
 

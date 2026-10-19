@@ -849,11 +849,11 @@ the cryptography is tested by `test_verify_sha512.py` alone.
 
 **vitest, `tools/test/build-supply-chain.test.mjs`** (reads the workflow and config files):
 
-- `release and nightly install with npm ci --ignore-scripts and run Surfer with npx --no`
+- `the full builds install with npm ci --ignore-scripts and run Surfer with npx --no`
 - `.npmrc turns install scripts off for every install`
 - `package.json pins Surfer to an exact version`
 - `surfer.json lists no add-ons`
-- `the Safe Browsing key comes only from the build environment, in the two build jobs`
+- `the Safe Browsing key comes only from the build environment, in the release and nightly builds`
 - `dependabot-automerge classifies on base-branch code with a read-only token`
 - `the release-path group comes before the minor and patch group`
 
