@@ -213,6 +213,11 @@ describe("macos.yml", () => {
     const surfer = step(build, "Build");
     expect(surfer.env).toEqual({ SURFER_PLATFORM: "darwin" });
     expect(surfer.run).toContain("npx --no -- surfer build");
+    // the runner's rustc has only its own target's std; configure fails without this one
+    expect(index(build, "rustup target add aarch64-apple-darwin")).toBeGreaterThan(-1);
+    expect(index(build, "rustup target add aarch64-apple-darwin")).toBeLessThan(
+      index(build, "npx --no -- surfer build"),
+    );
     const pack = index(build, "./mach package");
     expect(index(build, "tools/package/fetch-rcodesign.sh")).toBeLessThan(pack + 2);
     expect(index(build, "tools/package/macos-dmg.sh")).toBeGreaterThan(pack);

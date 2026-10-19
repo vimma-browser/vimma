@@ -94,6 +94,11 @@ jobs:
       - name: Import patches and our sources
         run: npm run import
 
+      # The build uses the runner's rustup toolchain, whose standard library is only for the host;
+      # configure stops with "can't find crate for `std`" without the target's.
+      - name: Rust standard library for aarch64-apple-darwin
+        run: rustup target add aarch64-apple-darwin
+
       # SURFER_PLATFORM picks configs/macos/mozconfig (--target=aarch64-apple-darwin) and names the
       # bundle Vimma.app. As release.yml: mach must not see engine/'s empty repository, or
       # --enable-bootstrap finds none of Mozilla's toolchains.
