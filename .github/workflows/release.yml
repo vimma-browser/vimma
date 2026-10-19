@@ -698,9 +698,10 @@ jobs:
             || { echo "::error::$TAG no longer points to $SHA, the commit that was built"; exit 1; }
           gh release upload "$TAG" dist/vimma-*-macos-aarch64.dmg* dist/vimma.rb* dist/SHA256SUMS-macos* --clobber --repo "$GITHUB_REPOSITORY"
 
-  # homebrew.yml runs when a release is published, usually before the macOS files are on it: it
-  # then ends with a notice. Once vimma.rb is on a published release (releases/download/ serves
-  # nothing for a draft), this starts homebrew.yml for the tag; for a draft, publishing it does.
+  # homebrew.yml has no release trigger, since a tag must not reach the tap's key, and the macOS
+  # files usually reach a release after it is published. Once vimma.rb is on a published release
+  # (releases/download/ serves nothing for a draft), this starts homebrew.yml on main for the
+  # tag; a draft published after its macOS files needs it started by hand.
   # No repository code, and no token beyond starting a workflow.
   macos-tap:
     needs: macos-publish
@@ -722,7 +723,7 @@ jobs:
               -f ref=main -f "inputs[tag]=$TAG"
             echo "Started homebrew.yml for $TAG" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::notice::$TAG is a draft; publishing it starts homebrew.yml"
+            echo "::notice::$TAG is a draft; once it is published, run: gh workflow run homebrew.yml -f tag=$TAG"
           fi
 
   failure:

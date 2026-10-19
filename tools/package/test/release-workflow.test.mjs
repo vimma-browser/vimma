@@ -309,6 +309,10 @@ describe("release.yml", () => {
         'gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/homebrew.yml/dispatches" \\',
       );
       expect(start).toContain('-f ref=main -f "inputs[tag]=$TAG"');
+      // homebrew.yml has no release trigger (a tag must not reach its key): a draft published
+      // after its macOS files is started by hand, from main
+      expect(start).toContain("gh workflow run homebrew.yml -f tag=$TAG");
+      expect(start).not.toMatch(/publishing it starts/);
     });
 
     it("a macOS failure opens the release-failure issue too", () => {
@@ -526,22 +530,29 @@ describe("homebrew.yml", () => {
     expect(job("failure")).toMatch(/^ {4}needs: homebrew$/m);
   });
 
-  it("runs when a release is published, or by hand with a tag; never for a draft", () => {
+  // A release event's ref is its tag, and anyone with write access can create a tag on an
+  // unmerged commit with an edited copy of this file: only main may reach the homebrew
+  // environment's key (docs/security.md, B6 and B11).
+  it("runs only by dispatch with a tag, never for a release event or a tag ref", () => {
     const on = triggersOf(file);
-    expect(on).toMatch(/^ {2}release:\n {4}types: \[published\]\n/m);
-    expect(on).toMatch(/^ {2}workflow_dispatch:\n {4}inputs:\n {6}tag:\n/m);
-    expect(on).not.toMatch(/pull_request|push:|created|prereleased/);
+    expect(on).toMatch(/^on:\n {2}workflow_dispatch:\n {4}inputs:\n {6}tag:\n/m);
+    expect(on).not.toMatch(
+      /release:|pull_request|push:|schedule:|workflow_run:|repository_dispatch/,
+    );
+    expect(file).not.toMatch(/github\.event\.release|GITHUB_EVENT_NAME|event_name/);
+    expect(file).toMatch(/^env:\n {2}TAG: \$\{\{ inputs\.tag \}\}$/m);
     expect(file).toMatch(/^permissions: \{\}$/m);
   });
 
   it.each(["homebrew", "failure"])(
-    "job %s runs only when the macOS release is enabled, here, for a release or main",
+    "job %s runs only when the macOS release is enabled, here, from main",
     (id) => {
       const cond = condition(job(id));
       expect(cond).toContain(
         "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
-          "(github.event_name == 'release' || github.ref == 'refs/heads/main')",
+          "github.ref == 'refs/heads/main'",
       );
+      expect(cond).not.toMatch(/refs\/tags|event_name/);
       expect(cond).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
     },
   );
@@ -566,9 +577,8 @@ describe("homebrew.yml", () => {
    * Runs the download step against a stub `curl` that serves `files` (name -> content) and 404s
    * the rest.
    * @param {Record<string, string>} files
-   * @param {string} event
    */
-  const fetchWith = (files, event) => {
+  const fetchWith = (files) => {
     const dir = mkdtempSync(join(tmpdir(), "homebrew-fetch-"));
     try {
       const served = join(dir, "served");
@@ -592,7 +602,6 @@ describe("homebrew.yml", () => {
           HOME: dir,
           TAG: "v0.1.6",
           GITHUB_REPOSITORY: "vimma-browser/vimma",
-          GITHUB_EVENT_NAME: event,
           GITHUB_OUTPUT: output,
         },
       });
@@ -605,21 +614,18 @@ describe("homebrew.yml", () => {
   const sums = `${createHash("sha256").update(rb).digest("hex")}  vimma.rb\n`;
 
   it("the download step accepts the release's cask listed in SHA256SUMS-macos", () => {
-    const result = fetchWith({ "vimma.rb": rb, "SHA256SUMS-macos": sums }, "release");
+    const result = fetchWith({ "vimma.rb": rb, "SHA256SUMS-macos": sums });
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(result.outputs).toBe("ready=true\n");
   });
 
-  // Publishing usually comes before the macOS files: release.yml's macos-tap starts this again.
-  it("a published release without the cask yet is a notice, a manual run for it an error", () => {
-    const early = fetchWith({}, "release");
-    expect(early.status).toBe(0);
-    expect(early.stdout).toContain("::notice::");
-    expect(early.outputs).toBe("");
-    const manual = fetchWith({}, "workflow_dispatch");
-    expect(manual.status).not.toBe(0);
-    expect(manual.stdout).toContain("::error::");
+  // release.yml's macos-tap dispatches this only once the cask is on the published release.
+  it("a release without the cask is an error", () => {
+    const result = fetchWith({});
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("::error::");
+    expect(result.outputs).toBe("");
   });
 
   it.each([
@@ -640,7 +646,7 @@ describe("homebrew.yml", () => {
     ],
     ["a missing SHA256SUMS-macos", { "vimma.rb": rb }],
   ])("the download step refuses %s", (_, files) => {
-    const result = fetchWith(files, "release");
+    const result = fetchWith(files);
     expect(result.status).not.toBe(0);
     expect(result.outputs).toBe("");
   });

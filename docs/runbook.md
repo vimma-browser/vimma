@@ -396,7 +396,7 @@ Limits:
 | `claude.yml`               | `@claude`, `spec`+`claude:go`                      | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
 | `release-please.yml`       | push to `main`, manual                             | `ubuntu-latest`           | Actions may open PRs; optional token       |
 | `release.yml`              | release published, manual                          | `ubuntu-24.04`            | see "Release packages" (gated off)         |
-| `homebrew.yml`             | release published, manual                          | `ubuntu-24.04`            | see "Release packages" (gated off)         |
+| `homebrew.yml`             | `macos-tap` in `release.yml`, manual (`main` only) | `ubuntu-24.04`            | see "Release packages" (gated off)         |
 | `pkgbuild.yml`             | `tools/package/` on PRs and `main` (once per tree) | `ubuntu-24.04` + macOS    | nothing (Arch Linux in docker; brew)       |
 | `mutation.yml`             | Sundays 04:23 UTC, manual                          | `ubuntu-latest`           | nothing (creates its `mutation` label)     |
 | `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
@@ -943,9 +943,9 @@ Browsing key, and renders the Homebrew cask `vimma.rb` for the `.dmg`
 (`tools/package/cask.mjs`); `macos-smoke` checks the `.dmg` on a hosted Mac against the tag, and
 installs it through the cask (`tools/package/cask-check.sh`); `macos-sign` signs both and
 `SHA256SUMS-macos` with cosign while `SIGNING_ENABLED` is `true`; `macos-publish` uploads them
-to the tag's release; `macos-tap` starts `homebrew.yml` for the tag once the release is
-published, since the publish's own `homebrew.yml` run usually comes before the macOS files and
-ends with a notice. No Linux job waits for them, so the Linux files reach the
+to the tag's release; `macos-tap` starts `homebrew.yml` on `main` for the tag once the release
+is published. `homebrew.yml` has no `release` trigger, because that would run it from the tag
+(step 7 of "Release packages"). No Linux job waits for them, so the Linux files reach the
 draft first, and the `.dmg` follows hours later, usually after the draft has been published.
 `macos-publish` adds the macOS files to a published release that has none; if it already has
 them, a re-run needs `-f replace_published=true`. A macOS failure opens the same
@@ -1390,8 +1390,9 @@ When release-please creates a draft release (above), its `release-build` job sta
 on `main` with the new tag (`workflow_dispatch`). `release.yml` builds Vimma, packages it on a
 hosted runner, signs, and uploads to that draft. Its `build` job builds on `ubuntu-24.04` from
 freshly verified source in about 2 hours ("Full builds" above). When the maintainer publishes
-the draft, `aur.yml` pushes AUR `vimma-bin` and `homebrew.yml` the Homebrew cask; publishing
-builds nothing. **Every job of these workflows is off until `RELEASE_ENABLED` is `true`**, manual
+the draft, `aur.yml` pushes AUR `vimma-bin`, and once the macOS files are on the published
+release, `release.yml`'s `macos-tap` job starts `homebrew.yml`, which pushes the Homebrew cask;
+publishing builds nothing. **Every job of these workflows is off until `RELEASE_ENABLED` is `true`**, manual
 runs included, and `homebrew.yml` also needs `MACOS_RELEASE_ENABLED`.
 
 `release.yml` starts only by `workflow_dispatch` and only from `main`, because the alternatives
@@ -1421,7 +1422,7 @@ the `PKGBUILD` in an Arch Linux container with `tools/package/arch-smoke.sh`) �
 `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
 `release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
-`failure`. `homebrew.yml`, on publish and when `macos-tap` starts it: `homebrew` (no GitHub
+`failure`. `homebrew.yml`, from `main` when `macos-tap` starts it or by hand: `homebrew` (no GitHub
 token; the tap's deploy key only) → `failure`. Locally, from a mach tarball:
 
 ```sh
@@ -1525,8 +1526,11 @@ neither needs another file.
        --title 'vimma release (homebrew.yml)'
      ```
 
-   - The `homebrew` environment, which only `main` and `v*` tags may use, holds the key (the
-     `homebrew` job names that environment):
+   - The `homebrew` environment, which only `main` may use, holds the key (the `homebrew` job
+     names that environment). No tag may deploy to it, by the rule in docs/security.md (B6): a
+     tag ruleset restricts moving a tag, not creating one, so anyone with write access could tag
+     an unmerged commit whose `homebrew.yml` skips every check and pushes any cask. For the same
+     reason `homebrew.yml` has no `release` trigger, whose runs use the tag's copy of the file:
 
      ```sh
      R=repos/vimma-browser/vimma
@@ -1534,7 +1538,6 @@ neither needs another file.
      { "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
      JSON
      gh api -X POST $R/environments/homebrew/deployment-branch-policies -f name=main -f type=branch
-     gh api -X POST $R/environments/homebrew/deployment-branch-policies -f name='v*' -f type=tag
      gh secret set HOMEBREW_TAP_SSH_KEY --env homebrew < tap_key
      ```
 
@@ -1597,8 +1600,9 @@ The regexp is `IDENTITY_REGEXP` in `tools/package/package.mjs`, and a test keeps
    them as in "Verify a release" (above), with `gh release download v0.1.2` (it finds drafts).
 4. Publish: Releases → the draft → Edit → "Publish release". Nothing is rebuilt; `aur.yml` runs
    for a minute and pushes `vimma-bin` (or logs a notice while `AUR_SSH_KEY` is unset).
-   `homebrew.yml` runs too; until the macOS files reach the release it ends with a notice, and
-   `release.yml`'s `macos-tap` job starts it again once they have.
+   When the macOS files reach the published release, `release.yml`'s `macos-tap` job starts
+   `homebrew.yml` on `main`. If they were already on the draft, start it by hand:
+   `gh workflow run homebrew.yml -f tag=v0.1.2`.
 
 Publish only after `release` is green: a draft published earlier is public without its files
 until the build finishes, and `aur.yml` fails on the missing files (re-run it afterwards).
@@ -1627,8 +1631,8 @@ delete it once the patch release is out). An `aur.yml` failure also opens the is
 with `gh workflow run aur.yml -f tag=vX.Y.Z`. That manual run uses `main`'s `aur.yml`, while the
 run started by publishing uses the `aur.yml` at the release's tag, so a fix to `aur.yml` reaches
 an already tagged release only through the manual run. A `homebrew.yml` failure opens it as
-well; re-run it with `gh workflow run homebrew.yml -f tag=vX.Y.Z` (`macos-tap` starts it on
-`main` too). To pull a bad release: `gh release edit vX.Y.Z --draft`
+well; re-run it with `gh workflow run homebrew.yml -f tag=vX.Y.Z`, which, like every run of it,
+uses `main`'s `homebrew.yml`. To pull a bad release: `gh release edit vX.Y.Z --draft`
 (hides it); the AUR package cannot go back a version without an `epoch`, and `homebrew.yml`
 never replaces a newer cask in the tap with an older one, so ship a fixed release instead.
 
