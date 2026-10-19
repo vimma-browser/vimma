@@ -288,6 +288,8 @@ jobs:
       contents: write # push upstream/firefox-X.Y.Z
       pull-requests: write # open the PR, close superseded ones
       issues: write # labels, the fallback comment, superseded tracking issues
+    outputs:
+      pr: ${{ steps.pr.outputs.number }}
     env:
       GH_TOKEN: ${{ secrets.UPSTREAM_PR_TOKEN || github.token }}
       VERSION: ${{ needs.detect.outputs.version }}
@@ -340,10 +342,16 @@ jobs:
               -m "These patches applied only with fuzz; re-exported against Firefox $VERSION with" \
               -m "the same added and removed lines (tools/upstream/reexport.py)." -- src
           fi
-          # Only this job writes upstream/*; a rebuild replaces the branch.
+          # A rebuild replaces the branch: auto-merge decided for the old head goes first (spec
+          # upstream-bump-automation, decision 13), and is decided again for the new one.
+          gh pr list --head "$branch" --state open --json number,autoMergeRequest \
+            --jq '.[] | select(.autoMergeRequest != null) | .number' |
+            while read -r n; do gh pr merge "$n" --disable-auto; done
+          # Only this job writes upstream/*.
           git push --force origin "HEAD:refs/heads/$branch"
 
       - name: Open the PR, or comment a compare link when Actions may not
+        id: pr
         env:
           DETECTION: ${{ needs.detect.outputs.detection }}
           PATCH_RESULT: ${{ needs.patch-check.outputs.result }}
@@ -351,10 +359,28 @@ jobs:
           ARTIFACTS_NOTE: ${{ needs.patch-check.outputs.artifacts-note }}
           TESTS: ${{ needs.test.result }}
           HAS_TOKEN: ${{ secrets.UPSTREAM_PR_TOKEN != '' }}
+          AUTO_MERGE: ${{ vars.AUTO_MERGE_UPSTREAM }}
         run: |
           branch="upstream/firefox-$VERSION"
           pc="$RUNNER_TEMP/patch-check"
           printf '%s' "$DETECTION" > "$RUNNER_TEMP/detection.json"
+          # The auto-merge allowlist reads the branch as pushed (decision 8), at merge-base with
+          # main, so a later push by someone else is never what was checked.
+          # Any failure here leaves no verdict, which keeps auto-merge off, never the PR closed.
+          head=$(git rev-parse HEAD)
+          if git fetch --no-tags --depth=50 origin main &&
+            base=$(git merge-base origin/main "$head") &&
+            git diff --unified=0 "origin/main...$head" > "$RUNNER_TEMP/bump.diff" &&
+            git show "$base:surfer.json" > "$RUNNER_TEMP/base-surfer.json" &&
+            git show "$head:surfer.json" > "$RUNNER_TEMP/head-surfer.json" &&
+            node tools/upstream/bump-diff.mjs --diff "$RUNNER_TEMP/bump.diff" \
+              --base-surfer "$RUNNER_TEMP/base-surfer.json" \
+              --head-surfer "$RUNNER_TEMP/head-surfer.json" > "$RUNNER_TEMP/bump-diff.json"; then
+            :
+          else
+            echo "::warning::the bump diff could not be checked; auto-merge stays off"
+            rm -f "$RUNNER_TEMP/bump-diff.json"
+          fi
           body() {
             node tools/upstream/autopilot-body.mjs "$@" --detection "$RUNNER_TEMP/detection.json" \
               --patch-check "$pc/patch-check.json" --patch-markdown "$pc/patch-check.md" \
@@ -363,7 +389,8 @@ jobs:
               --has-token "$HAS_TOKEN" --issue "$ISSUE" --branch "$branch" \
               --repo "$GITHUB_REPOSITORY" --run-url "$RUN_URL" --error "$RUNNER_TEMP/pr-error.txt" \
               --beta-issues "$BETA_ISSUES" --prefs "$pc/prefs-refresh.json" \
-              --reexport "$pc/reexport/reexport.json"
+              --reexport "$pc/reexport/reexport.json" --auto-merge "$AUTO_MERGE" \
+              --ref "$GITHUB_REF" --bump-diff "$RUNNER_TEMP/bump-diff.json"
           }
           body pr > "$RUNNER_TEMP/pr.md"
           title=$(body title)
@@ -399,6 +426,12 @@ jobs:
             exit 1
           fi
           echo "Opened or updated $pr for $branch" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "number=${pr#\#}"
+            echo "head=$head"
+            echo "title=$title"
+            echo "auto-merge=$(body pr --auto-merge-only)"
+          } >> "$GITHUB_OUTPUT"
           [ -n "$ISSUE" ] && gh issue comment "$ISSUE" --body "The autopilot opened $pr ([run]($RUN_URL))."
 
           # A newer release supersedes the bump PRs and tracking issues of older ones.
@@ -412,6 +445,82 @@ jobs:
             while read -r n; do
               gh issue close "$n" --comment "Superseded by Firefox $VERSION ($pr)."
             done
+
+      # Spec upstream-bump-automation, Behaviour 5 (docs/security.md, G13): GitHub's auto-merge, so
+      # the main ruleset's required checks decide the merge. Only UPSTREAM_PR_TOKEN: a merge made
+      # with GITHUB_TOKEN would start no push workflow on main (decision 7).
+      - name: Set the bump PR to auto-merge when allowed
+        id: automerge
+        if: steps.pr.outputs.number != '' && steps.pr.outputs.auto-merge == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_PR_TOKEN }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD: ${{ steps.pr.outputs.head }}
+          TITLE: ${{ steps.pr.outputs.title }}
+        run: |
+          number="$NUMBER"
+          head="$HEAD"
+          # A draft marks a bump that needs a person (decision 11); the head must be the commit
+          # the allowlist checked (decision 9).
+          state=$(gh pr view "$number" --json isDraft,headRefOid --jq '"\(.isDraft) \(.headRefOid)"')
+          read -r draft pr_head <<< "$state"
+          if [ "$draft" = false ] && [ "$pr_head" = "$head" ]; then
+            gh pr merge "$number" --auto --squash --match-head-commit "$head" \
+              --subject "$TITLE (#$number)" --body "$(git log -1 --format=%b "$head")"
+            echo "Auto-merge on for #$number at $head" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::#$number not set to auto-merge: draft=$draft, head $pr_head != $head"
+          fi
+
+  # Patches that do not apply: one triage issue per Firefox version for a person or a coding
+  # agent; no model runs in CI (spec upstream-bump-automation, decisions 16 to 21 and 23).
+  patch-issue:
+    needs: [detect, patch-check, publish]
+    if: always() && needs.patch-check.outputs.result == 'fail'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write # open or update the triage issue
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/upstream
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: patch-check
+          path: ${{ runner.temp }}/patch-check
+
+      - name: Open or update the triage issue
+        id: patch-issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DETECTION: ${{ needs.detect.outputs.detection }}
+          PR: ${{ needs.publish.outputs.pr }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s' "$DETECTION" > "$RUNNER_TEMP/detection.json"
+          args=(--detection "$RUNNER_TEMP/detection.json"
+            --patch-check "$RUNNER_TEMP/patch-check/patch-check.json" --patch-result fail)
+          pr=""
+          if [[ "$PR" =~ ^[0-9]+$ ]]; then pr="#$PR"; fi
+          node tools/upstream/autopilot-body.mjs patch-issue "${args[@]}" --pr "$pr" \
+            --run-url "$RUN_URL" > "$RUNNER_TEMP/patch-issue.md"
+          title=$(node tools/upstream/autopilot-body.mjs patch-issue-title "${args[@]}")
+          # Search is fuzzy; the exact title picks the one issue for this version.
+          n=$(gh issue list --state open --label upstream --search "$title in:title" \
+            --json number,title | jq -r --arg t "$title" \
+            'map(select(.title == $t)) | first | .number // empty')
+          if [ -n "$n" ]; then
+            gh issue edit "$n" --body-file "$RUNNER_TEMP/patch-issue.md"
+          else
+            gh label create upstream --color 1D76DB --description "Firefox upstream release" --force
+            gh label create triage --color FBCA04 --description "Needs a person or agent" --force
+            gh issue create --title "$title" --label upstream --label triage \
+              --body-file "$RUNNER_TEMP/patch-issue.md"
+          fi
 
   drift:
     needs: detect

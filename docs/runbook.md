@@ -1057,11 +1057,27 @@ One-time setup:
    permitted to create or approve pull requests"; the autopilot detects that message, keeps the
    pushed branch, and comments the full summary and a prefilled compare link on the tracking
    issue instead (open the PR from there). The same setting serves release-please and claude.yml.
-2. Optional: a PR opened with the default `GITHUB_TOKEN` starts no workflows, so the autopilot
-   opens it as a draft: mark it ready for review (that event is yours, so `ci.yml` and `e2e.yml`
-   run). With a fine-grained token for this repo only (Contents + Pull requests: read/write)
-   stored as `gh secret set UPSTREAM_PR_TOKEN`, a bump that passed everything opens ready for
-   review and its CI runs at once.
+2. **`UPSTREAM_PR_TOKEN`.** Without it a PR opened with the default `GITHUB_TOKEN` starts no
+   workflows, so the autopilot opens it as a draft (mark it ready for review to start `ci.yml`
+   and `e2e.yml`) and never sets auto-merge. Create a fine-grained personal access token
+   (Settings → Developer settings → Fine-grained tokens): resource owner `vimma-browser`,
+   **Only select repositories → vimma**, repository permissions **Contents: Read and write** and
+   **Pull requests: Read and write** (Metadata: read is added automatically), nothing else and
+   **no Workflows**. Store it with `gh secret set UPSTREAM_PR_TOKEN -R vimma-browser/vimma`.
+   Renew it before it expires; when it lapses, bumps fall back to drafts.
+3. **Auto-merge** (spec upstream-bump-automation, ADR-022): `gh variable set
+AUTO_MERGE_UPSTREAM -b all -R vimma-browser/vimma` lets GitHub merge a bump whose patches
+   applied clean, whose suites passed and whose diff is only the version and copied prefs, once
+   every required check is green (the PR's "Auto-merge" row says why when it does not). `dot`
+   limits it to dot releases. To stop: `gh variable delete AUTO_MERGE_UPSTREAM`, and
+   `gh pr merge <N> --disable-auto` on a PR already set. Repository auto-merge must stay allowed
+   (Settings → General → Allow auto-merge).
+
+When patches do not apply, the `patch-issue` job opens (or, on a rerun, updates) one issue per
+Firefox version titled `Firefox X.Y.Z: patches do not apply`, labelled `upstream` and `triage`,
+with the failing patches and hunks and links to the bump PR and the run. Assign it to a person
+or to GitHub Copilot coding agent; rebase the patches on the bump branch (docs/rebase.md, step
+3). Such a bump stays a draft and never merges itself. Close the issue when the bump merges.
 
 Every bump: the copies of `browser.newtabpage.activity-stream.asrouter.providers.cfr` and
 `browser.safebrowsing.provider.google{4,5}.lists` in

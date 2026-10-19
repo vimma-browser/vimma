@@ -25,9 +25,9 @@ Background: [ADR-002](adr/002-upstream-release-channel.md),
 | 7   | Split-view contract (M4 canary)           | both builds                                      | part of the suite                        |
 | 8   | Mark ready, CI, merge                     | GitHub                                           | CI ≈ 8 min                               |
 
-**When the autopilot's PR is green (the common case) you do only step 8**, until auto-merge of
-a green bump is built ([#259](https://github.com/vimma-browser/vimma/issues/259)), which removes that
-step too. Steps 2–7 are for a
+**When the autopilot's PR is green (the common case) you do only step 8**, and with
+`AUTO_MERGE_UPSTREAM` set (docs/runbook.md) not even that: GitHub merges a green bump whose diff
+is only the version and copied prefs. Steps 2–7 are for a
 draft: a patch that does not apply, a failing suite, or a release without Mozilla artifacts.
 Decision points are marked **Decide**.
 
@@ -432,8 +432,8 @@ fixes; our front-end patches nearly always stay `clean`. Mozilla's advisories:
 If the PR is a draft, steps 2–7 as usual, but there is no need to wait for a nightly: the local
 full-build suite is the same test. Releases skipped in between need nothing extra: the autopilot
 bumps straight to the latest and closes the older PR and issue as superseded; the drift check
-still counts from the oldest unshipped security release. Auto-merge of `security` bumps (plan §4)
-is deliberately not built; a person merges.
+still counts from the oldest unshipped security release. With `AUTO_MERGE_UPSTREAM` set, a green
+bump merges itself once its required checks pass; otherwise a person merges.
 
 ## Rolling back
 

@@ -441,8 +441,8 @@ Spec: [m0-mozilla-services](specs/m0-mozilla-services.md),
 ## 10. Firefox updates (the upstream autopilot, `upstream.yml`; the Beta canary, `upstream-beta.yml`)
 
 Vimma is only as safe as the Firefox release under it. The autopilot finds each new release,
-rebases our patches onto it, runs the suites and opens the PR; a person reviews and merges every
-bump. A merged bump labelled `security` then releases on its own when `AUTO_SECURITY_RELEASE` is
+rebases our patches onto it, runs the suites and opens the PR; a person reviews and merges a
+bump unless `AUTO_MERGE_UPSTREAM` lets GitHub's auto-merge take a green, version-only bump (G13). A merged bump labelled `security` then releases on its own when `AUTO_SECURITY_RELEASE` is
 on ([ADR-020](adr/020-security-release-without-a-person.md), G11 and G12). Spec:
 [m7-upstream-autopilot](specs/m7-upstream-autopilot.md), [ADR-015](adr/015-upstream-autopilot.md),
 playbook: [docs/rebase.md](rebase.md). The Beta canary tests `main` on each Firefox Beta build and
@@ -571,6 +571,36 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`does nothing when AUTO_SECURITY_RELEASE is off`](../tools/release/test/security-release.test.mjs),
   [`asks the API nothing while the variable is off or outside main`](../tools/release/test/security-release.test.mjs),
   [`fails when the variable is on and RELEASE_PLEASE_TOKEN is missing`](../tools/release/test/security-release.test.mjs)
+
+- G13. An upstream bump PR **must** be set to auto-merge only by `publish` run on `main`, only
+  when `AUTO_MERGE_UPSTREAM` allows its release kind, only for a non-draft PR whose every patch
+  applied clean or with an offset and whose diff changes nothing but `version.version` in
+  `surfer.json` and the copied pref lines, and only pinned to the head commit that diff was read
+  from. GitHub's auto-merge then waits for every required check of the `main` ruleset (spec
+  [upstream-bump-automation](specs/upstream-bump-automation.md), ADR-022).
+  [`auto-merge only with the variable, the token, a ready PR and the allowlist`](../tools/test/upstream-workflow.test.mjs),
+  [`auto-merge uses --match-head-commit and the bump's subject`](../tools/test/upstream-workflow.test.mjs),
+  [`the allowlist reads the branch as pushed`](../tools/test/upstream-workflow.test.mjs),
+  [`rebuild disables auto-merge before the push`](../tools/test/upstream-workflow.test.mjs),
+  [`dot allows dot releases only; unset or anything else allows none`](../tools/upstream/test/autopilot.test.mjs),
+  [`names the first condition that did not hold`](../tools/upstream/test/autopilot.test.mjs),
+  [`never with patches that needed fuzz, were re-exported or are applied already`](../tools/upstream/test/autopilot.test.mjs),
+  [`refuses another line in firefox-branding.js`](../tools/upstream/test/bump-diff.test.mjs),
+  [`refuses a re-exported patch`](../tools/upstream/test/bump-diff.test.mjs),
+  [`refuses a new, deleted, renamed or mode-changed file`](../tools/upstream/test/bump-diff.test.mjs),
+  [`refuses a file header it does not recognise instead of folding it into the last file`](../tools/upstream/test/bump-diff.test.mjs)
+- G14. `UPSTREAM_PR_TOKEN` **must** reach only the `publish` job. It is fine-grained: this
+  repository only, Contents and Pull requests read and write, no Workflows, so it cannot change a
+  workflow file. Without it, bumps open as drafts and are never set to auto-merge.
+  [`the token reaches only publish`](../tools/test/upstream-workflow.test.mjs),
+  [`grants nothing by default and each job only what it needs`](../tools/test/upstream-workflow.test.mjs)
+- G15. The `patch-issue` job (patches that do not apply) **must** use only `GITHUB_TOKEN` with
+  `contents: read` and `issues: write`, check out without persisted credentials, and pass the
+  issue text to `gh` only through `--body-file`. No workflow holds an AI secret: no model runs in
+  CI on a failing bump.
+  [`patch-issue runs only on a failed patch check, with issues: write and no secret`](../tools/test/upstream-workflow.test.mjs),
+  [`patch-issue updates the open issue with the same title`](../tools/test/upstream-workflow.test.mjs),
+  [`no workflow holds an AI secret`](../tools/test/upstream-workflow.test.mjs)
 
 ## 11. Out of scope and trust boundaries
 

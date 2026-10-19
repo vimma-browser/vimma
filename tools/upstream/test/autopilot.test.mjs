@@ -10,12 +10,15 @@ import {
   auditLine,
   betaIssues,
   branchName,
+  autoMergeDecision,
   conflictLines,
   draftDecision,
   driftBody,
   fallbackBody,
   issueBody,
   issueTitle,
+  patchIssueBody,
+  patchIssueTitle,
   patchLine,
   prBody,
   prTitle,
@@ -698,5 +701,157 @@ describe("the bump PR and re-exported patches", () => {
     );
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout.trim()).toBe("false");
+  });
+});
+
+// Spec upstream-bump-automation, Behaviour 5 and 7: auto-merge only when every condition holds;
+// the PR body's "Auto-merge" row says "on" or names the first condition that did not.
+describe("the bump PR and auto-merge", () => {
+  const green = {
+    patchResult: "ok",
+    tests: "success",
+    hasToken: true,
+    artifacts: "yes",
+    autoMerge: "all",
+    ref: "refs/heads/main",
+    bumpDiff: { ok: true, reason: "only the version and copied prefs change" },
+  };
+
+  it("is on for a green dot or major bump when AUTO_MERGE_UPSTREAM is all", () => {
+    expect(autoMergeDecision(context(green))).toEqual({ on: true, reason: "on" });
+    const major = { ...securityRelease, release: { ...securityRelease.release, kind: "major" } };
+    expect(autoMergeDecision(context({ ...green, detection: major })).on).toBe(true);
+  });
+
+  it("dot allows dot releases only; unset or anything else allows none", () => {
+    expect(autoMergeDecision(context({ ...green, autoMerge: "dot" })).on).toBe(true);
+    const major = { ...securityRelease, release: { ...securityRelease.release, kind: "major" } };
+    expect(autoMergeDecision(context({ ...green, autoMerge: "dot", detection: major }))).toEqual({
+      on: false,
+      reason: "off: AUTO_MERGE_UPSTREAM does not allow a major release",
+    });
+    for (const v of ["", "ALL", "yes", " all"]) {
+      expect(autoMergeDecision(context({ ...green, autoMerge: v })).on, v).toBe(false);
+    }
+  });
+
+  it("names the first condition that did not hold", () => {
+    const off = (/** @type {object} */ over) => autoMergeDecision(context({ ...green, ...over }));
+    expect(off({ ref: "refs/heads/x" }).reason).toBe("off: the run is not on main");
+    expect(off({ hasToken: false }).reason).toBe("off: UPSTREAM_PR_TOKEN is not set");
+    expect(off({ tests: "failure" }).reason).toBe(
+      "off: the PR is a draft (the suites did not pass)",
+    );
+    expect(off({ patchResult: "fail" }).reason).toMatch(/^off: the PR is a draft/);
+    expect(off({ artifacts: "no" }).reason).toBe("off: Mozilla's artifacts were not found");
+    expect(off({ bumpDiff: { ok: false, reason: "changes README.md" } }).reason).toBe(
+      "off: the diff is not a plain bump (changes README.md)",
+    );
+    expect(off({ bumpDiff: null }).reason).toBe("off: the diff was not checked");
+  });
+
+  it("never with patches that needed fuzz, were re-exported or are applied already", () => {
+    const fuzz = {
+      ...cleanReport,
+      patches: [{ ...cleanReport.patches[0], status: "applied", imports: true }],
+    };
+    expect(autoMergeDecision(context({ ...green, patchReport: fuzz })).reason).toBe(
+      "off: a patch did not apply clean or with an offset",
+    );
+    const reexport = { state: "reexported", reexported: ["src/a.patch"], refused: [] };
+    expect(autoMergeDecision(context({ ...green, patchResult: "fail", reexport })).reason).toBe(
+      "off: patches were re-exported",
+    );
+  });
+
+  it("the PR body has an Auto-merge row and says GitHub merges it", () => {
+    const body = prBody(context(green));
+    expect(body).toContain("| Auto-merge | on |");
+    expect(body).toContain("GitHub merges this PR once every required check is green");
+    expect(prBody(context({ ...green, autoMerge: "" }))).toContain(
+      "| Auto-merge | off: AUTO_MERGE_UPSTREAM does not allow a dot release |",
+    );
+  });
+
+  it("the CLI prints the decision with --auto-merge-only", () => {
+    const dir = tempDir("autopilot-automerge-");
+    writeFileSync(join(dir, "detection.json"), JSON.stringify(securityRelease));
+    writeFileSync(join(dir, "patch.json"), JSON.stringify(cleanReport));
+    writeFileSync(join(dir, "diff.json"), JSON.stringify(green.bumpDiff));
+    const args = [
+      bodyScript,
+      "pr",
+      "--auto-merge-only",
+      "--detection",
+      join(dir, "detection.json"),
+      "--patch-check",
+      join(dir, "patch.json"),
+      "--patch-result",
+      "ok",
+      "--tests",
+      "success",
+      "--artifacts",
+      "yes",
+      "--has-token",
+      "true",
+      "--ref",
+      "refs/heads/main",
+      "--bump-diff",
+      join(dir, "diff.json"),
+    ];
+    const on = spawnSync(process.execPath, [...args, "--auto-merge", "all"], { encoding: "utf8" });
+    expect(on.stderr).toBe("");
+    expect(on.stdout).toBe("true\n");
+    const off = spawnSync(process.execPath, args, { encoding: "utf8" });
+    expect(off.stdout).toBe("false\n");
+  });
+});
+
+// Spec upstream-bump-automation, Behaviour 4 and decisions 16 to 21: failing patches open one
+// triage issue per Firefox version; no model runs in CI.
+describe("the failing-patches issue", () => {
+  it("has one exact title per version", () => {
+    expect(patchIssueTitle("157.0.2")).toBe("Firefox 157.0.2: patches do not apply");
+  });
+
+  it("lists each failing hunk and links the PR, the branch and the run", () => {
+    const body = patchIssueBody(
+      context({ patchReport: failingReport, patchResult: "fail" }),
+      "#77",
+    );
+    expect(body).toContain("`src/browser/base/content/browser-xhtml.patch`");
+    expect(body).toMatch(
+      /hunk 1\/2 of `browser\/base\/content\/browser\.xhtml` .* applies only with fuzz/,
+    );
+    expect(body).toMatch(/hunk 2\/2 of `browser\/base\/content\/browser\.xhtml` .* fails/);
+    expect(body).toContain("Bump PR: #77");
+    expect(body).toContain("`upstream/firefox-157.0.2`");
+    expect(body).toContain("https://github.com/vimma-browser/vimma/actions/runs/1");
+    expect(body).not.toContain("moz-build.patch");
+  });
+
+  it("says when no PR was opened", () => {
+    const body = patchIssueBody(context({ patchReport: failingReport, patchResult: "fail" }), "");
+    expect(body).toContain("Bump PR: none opened (see the run)");
+  });
+
+  it("the CLI renders it with --pr", () => {
+    const dir = tempDir("autopilot-patch-issue-");
+    writeFileSync(join(dir, "detection.json"), JSON.stringify(securityRelease));
+    writeFileSync(join(dir, "patch.json"), JSON.stringify(failingReport));
+    const args = [
+      "--detection",
+      join(dir, "detection.json"),
+      "--patch-check",
+      join(dir, "patch.json"),
+    ];
+    const run = (/** @type {string[]} */ a) =>
+      spawnSync(process.execPath, [bodyScript, ...a], { encoding: "utf8" });
+    const body = run(["patch-issue", ...args, "--patch-result", "fail", "--pr", "#9"]);
+    expect(body.stderr).toBe("");
+    expect(body.stdout).toContain("Bump PR: #9");
+    expect(run(["patch-issue-title", ...args]).stdout).toBe(
+      "Firefox 157.0.2: patches do not apply\n",
+    );
   });
 });

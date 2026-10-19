@@ -8,13 +8,15 @@
  * title and body (what applied, what conflicts, what the tests said), the fallback comment when
  * Actions may not open PRs, and the drift issue.
  *
- *   node tools/upstream/autopilot-body.mjs <issue|title|pr|fallback|drift> --detection FILE
+ *   node tools/upstream/autopilot-body.mjs <issue|title|pr|fallback|drift|patch-issue> --detection FILE
  *     [--patch-check FILE --patch-markdown FILE --patch-result ok|fail|norun --audit FILE
  *      --artifacts yes|no|unknown --artifacts-note TEXT --tests RESULT --has-token true|false
  *      --issue N --branch NAME --repo OWNER/NAME --run-url URL --owner LOGIN --error FILE
- *      --beta-issues JSON]
+ *      --pr '#N' (patch-issue)
+ *      --beta-issues JSON --auto-merge VALUE --ref REF --bump-diff FILE]
  *
- * Writes Markdown to stdout (`pr --draft-only` prints "true" or "false"). Node built-ins only.
+ * Writes Markdown to stdout (`pr --draft-only` and `pr --auto-merge-only` print "true" or
+ * "false"). Node built-ins only.
  * Every string from outside (a hunk, an advisory, an error) is constrained by a regexp in
  * releases.mjs, inside a code fence that patch-check.py sized for it, or escaped for where it
  * goes: oneLine for Markdown text, codeLine for a code span.
@@ -39,7 +41,8 @@ export const BODY_LIMIT = 64000;
  *   patchResult: string, audit: string, artifacts: string, artifactsNote: string,
  *   tests: string, hasToken: boolean, issue: string, branch: string, repo: string,
  *   runUrl: string, owner: string, error: string, betaIssues: BetaIssue[],
- *   prefs?: PrefRefresh | null, reexport?: Reexport | null }} Context
+ *   prefs?: PrefRefresh | null, reexport?: Reexport | null, autoMerge?: string, ref?: string,
+ *   bumpDiff?: { ok: boolean, reason: string } | null }} Context
  * @typedef {{ state: string, reexported: string[],
  *   refused: { patch: string, reason: string }[] }} Reexport
  * @typedef {{ state: string, refreshed: { pref: string, old: string, new: string }[],
@@ -106,6 +109,35 @@ export function draftDecision({ patchResult, tests, hasToken, prefs, reexport })
 }
 
 /**
+ * Whether the bump PR is set to auto-merge (spec upstream-bump-automation, Behaviour 5): "on",
+ * or the first condition that did not hold. `AUTO_MERGE_UPSTREAM` is matched exactly, so a typo
+ * leaves auto-merge off.
+ * @param {Context} c
+ * @returns {{ on: boolean, reason: string }}
+ */
+export function autoMergeDecision(c) {
+  const kind = c.detection.release.kind === "major" ? "major" : "dot";
+  /** @param {string} why */
+  const off = (why) => ({ on: false, reason: `off: ${why}` });
+  const allowed = c.autoMerge === "all" || (c.autoMerge === "dot" && kind === "dot");
+  if (!allowed) return off(`AUTO_MERGE_UPSTREAM does not allow a ${kind} release`);
+  if (c.ref !== "refs/heads/main") return off("the run is not on main");
+  if (!c.hasToken) return off("UPSTREAM_PR_TOKEN is not set");
+  // Decision 15: a changed patch waits for a full build and a person.
+  if (c.reexport?.state === "reexported") return off("patches were re-exported");
+  const { draft, reason } = draftDecision(c);
+  if (draft) return off(`the PR is a draft (${reason})`);
+  const patches = c.patchReport?.patches ?? [];
+  if (!c.patchReport?.ran || patches.some((p) => p.status !== "clean" && p.status !== "offset")) {
+    return off("a patch did not apply clean or with an offset");
+  }
+  if (c.artifacts !== "yes") return off("Mozilla's artifacts were not found");
+  if (!c.bumpDiff) return off("the diff was not checked");
+  if (!c.bumpDiff.ok) return off(`the diff is not a plain bump (${oneLine(c.bumpDiff.reason)})`);
+  return { on: true, reason: "on" };
+}
+
+/**
  * @param {PatchReport | null} report
  * @param {string} result ok, fail or norun (upstream.yml's patch-check step)
  */
@@ -158,6 +190,39 @@ export function conflictLines(report) {
     "",
   );
   return out;
+}
+
+/**
+ * The title of the triage issue for patches that do not apply, one per Firefox version so a
+ * rerun updates the same issue (spec upstream-bump-automation, decision 18).
+ * @param {string} version
+ */
+export function patchIssueTitle(version) {
+  return `Firefox ${version}: patches do not apply`;
+}
+
+/**
+ * The body of that triage issue: the failing patches and hunks, the bump branch, its PR and the
+ * run, so a person or a coding agent can rebase the patches without CI running a model
+ * (spec upstream-bump-automation, decisions 16 to 21 and 23).
+ * @param {Context} c
+ * @param {string} pr "#N", or "" when no PR was opened
+ */
+export function patchIssueBody(c, pr) {
+  const v = c.detection.release.version;
+  return [
+    `Our patches do not apply cleanly to Firefox ${v}, so the bump stays a draft and never ` +
+      "merges itself.",
+    "",
+    `- Bump PR: ${pr || "none opened (see the run)"}`,
+    `- Branch: \`${branchName(v)}\``,
+    `- Run: ${c.runUrl}`,
+    `- ${patchLine(c.patchReport, c.patchResult)}`,
+    "",
+    ...conflictLines(c.patchReport),
+    "The upstream autopilot opened this issue and updates it on each run for this version. " +
+      "Close it when the bump PR merges.",
+  ].join("\n");
 }
 
 /**
@@ -324,6 +389,7 @@ export function prBody(c) {
   const d = c.detection;
   const r = d.release;
   const { draft, reason } = draftDecision(c);
+  const autoMerge = autoMergeDecision(c);
   const out = [
     `## Firefox ${d.current} → ${r.version} (${describe(r)})`,
     "",
@@ -340,6 +406,7 @@ export function prBody(c) {
     `| Copied upstream prefs | ${prefsLine(c.prefs)} |`,
     `| Fuzz re-export | ${reexportLine(c.reexport)} |`,
     `| Mochitests + e2e on the artifact build | ${testsLine(c.tests, c)} |`,
+    `| Auto-merge | ${autoMerge.reason} |`,
     "",
     ...refreshedLines(c.prefs),
     ...reexportLines(c.reexport, c.owner),
@@ -355,6 +422,11 @@ export function prBody(c) {
     out.push(
       "PR CI runs the suites on the re-exported patches. Review the second commit and merge " +
         "when green.",
+    );
+  } else if (autoMerge.on) {
+    out.push(
+      "Everything passed and the diff is only the version and copied prefs. GitHub merges this " +
+        "PR once every required check is green; `gh pr merge --disable-auto` stops it.",
     );
   } else if (!draft) {
     out.push(
@@ -535,6 +607,11 @@ function main() {
       prefs: { type: "string" },
       reexport: { type: "string" },
       "draft-only": { type: "boolean", default: false },
+      "auto-merge": { type: "string", default: "" },
+      ref: { type: "string", default: "" },
+      "bump-diff": { type: "string" },
+      "auto-merge-only": { type: "boolean", default: false },
+      pr: { type: "string", default: "" },
     },
   });
   const what = positionals[0];
@@ -561,6 +638,9 @@ function main() {
     betaIssues: betaIssues(values["beta-issues"] ?? ""),
     prefs: readMaybe(values.prefs) ? JSON.parse(readMaybe(values.prefs)) : null,
     reexport: readMaybe(values.reexport) ? JSON.parse(readMaybe(values.reexport)) : null,
+    autoMerge: values["auto-merge"] ?? "",
+    ref: values.ref ?? "",
+    bumpDiff: readMaybe(values["bump-diff"]) ? JSON.parse(readMaybe(values["bump-diff"])) : null,
   };
   const v = detection.release.version;
   /** @type {Record<string, () => string>} */
@@ -568,7 +648,14 @@ function main() {
     issue: () => issueBody(c),
     "issue-title": () => issueTitle(v),
     title: () => prTitle(v, detection.release.advisories),
-    pr: () => (values["draft-only"] ? String(draftDecision(c).draft) : prBody(c)),
+    pr: () =>
+      values["auto-merge-only"]
+        ? String(autoMergeDecision(c).on)
+        : values["draft-only"]
+          ? String(draftDecision(c).draft)
+          : prBody(c),
+    "patch-issue": () => patchIssueBody(c, values.pr ?? ""),
+    "patch-issue-title": () => patchIssueTitle(v),
     fallback: () => fallbackBody(c),
     drift: () => driftBody(c),
     "drift-title": () => driftTitle(detection.current),
