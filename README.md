@@ -30,7 +30,7 @@ and workspaces, and your hands never leave the keyboard.
 
 ## Install
 
-Vimma runs on Linux x86_64. Download the files from the
+Vimma runs on Linux x86_64 and on macOS 15 or later with Apple Silicon. Download the files from the
 [latest release](https://github.com/vimma-browser/vimma/releases/latest).
 
 **Arch Linux:** run this as your normal user (not root), from any directory. It builds in
@@ -39,6 +39,16 @@ Vimma runs on Linux x86_64. Download the files from the
 ```sh
 mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
 ```
+
+**macOS, with Homebrew:** install from Vimma's own tap; `brew upgrade --cask vimma` updates it.
+
+```sh
+brew install --cask vimma-browser/tap/vimma
+```
+
+Vimma is not yet notarised, so macOS blocks the first open: in System Settings → Privacy &
+Security, choose **Open Anyway** next to Vimma. Without Homebrew, open
+`vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma to Applications ([macOS](docs/guide.md#macos)).
 
 **Debian 12+, Ubuntu 22.04+:** download `vimma_X.Y.Z_amd64.deb`, then
 `sudo apt install ./vimma_X.Y.Z_amd64.deb`.
@@ -66,9 +76,10 @@ the hours slip by. It also happens to start with _Vim_.
 
 ## Status
 
-Early, Linux x86_64 only (macOS next). Releases are on
+Early, for Linux x86_64 and macOS on Apple Silicon. Releases are on
 [GitHub Releases](https://github.com/vimma-browser/vimma/releases), with a tarball, an AppImage, a
-`.deb` and an Arch Linux `PKGBUILD` ([Install](#install)); you can also
+`.deb` and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
+([Install](#install)); you can also
 [build it from source](CONTRIBUTING.md#build-and-run). Update notices are live: Vimma 0.1.2 and
 later check a signed update file every 12 hours and show a newer release in the status bar. They
 notify only; installing the update is up to you.
