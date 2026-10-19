@@ -12,3 +12,8 @@ mk_add_options MOZ_MAKE_FLAGS="-j4"
 # Linux; --enable-bootstrap fetches the macOS SDK, clang and the DMG tools. On an Apple Silicon
 # Mac the target is the host, so a native build is unchanged.
 ac_add_options --target=aarch64-apple-darwin
+
+# Names the app bundle dev.vimma.browser with MOZ_MACBUNDLE_ID in
+# src/browser/branding/vimma/configure.sh; Firefox's default distribution id would make it
+# org.mozilla.dev.vimma.browser. macOS only, so Linux keeps org.mozilla.
+ac_add_options --with-distribution-id=dev.vimma
