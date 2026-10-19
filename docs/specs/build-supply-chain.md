@@ -849,7 +849,7 @@ the cryptography is tested by `test_verify_sha512.py` alone.
 
 **vitest, `tools/test/build-supply-chain.test.mjs`** (reads the workflow and config files):
 
-- `release and nightly install with npm ci --ignore-scripts and run Surfer with npx --no`
+- `the full builds install with npm ci --ignore-scripts and run Surfer with npx --no`
 - `.npmrc turns install scripts off for every install`
 - `package.json pins Surfer to an exact version`
 - `surfer.json lists no add-ons`

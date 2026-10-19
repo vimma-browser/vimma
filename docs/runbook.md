@@ -901,6 +901,41 @@ redacted log. No job can write contents. Publishing nightlies as a release again
 change, reviewed in its own PR, when the release gate lifts. A `nightly` release published
 before this change stays until `gh release delete nightly --cleanup-tag --yes` removes it.
 
+### macOS build (`macos.yml`)
+
+`macos.yml` cross-compiles the Apple Silicon build on a GitHub-hosted `ubuntu-24.04` runner and
+checks it on a hosted `macos-15` runner ([ADR-018](adr/018-macos-cross-build.md), spec
+[macos-build](specs/macos-build.md)). It runs every Monday at 05:00 UTC, by hand, and on pull
+requests that touch `configs/macos/`, the workflow or its two scripts. It is keyless (Safe
+Browsing is off by default in its builds), holds no secret and has a read-only token. Nothing in
+the Linux nightly or the Linux release jobs depends on it.
+
+The `build` job follows the release build's steps ("Full builds" above), with
+`SURFER_PLATFORM=darwin` for `surfer build`, so Surfer reads `configs/macos/mozconfig`
+(`--target=aarch64-apple-darwin`) and `--enable-bootstrap` fetches the macOS SDK, clang and the
+disk-image tools from Mozilla. After `./mach package`, `tools/package/macos-dmg.sh` unpacks the
+`.dmg`, ad hoc signs `Vimma.app` with rcodesign (`tools/package/fetch-rcodesign.sh`, pinned by
+SHA-256) and packs it again. The run's artifact is
+`vimma-<vimma>-firefox-<firefox>-macos-aarch64`, kept 90 days. The `smoke` job mounts it on a
+Mac, runs `codesign --verify --deep --strict`, checks the binary is arm64 and the version line,
+and renders a page headless.
+
+To run it and fetch the `.dmg`:
+
+```sh
+gh workflow run macos.yml --ref main
+run=$(gh run list -w macos.yml -s success -L 1 --json databaseId --jq '.[0].databaseId')
+gh run download "$run" -D ~/Downloads/vimma-macos
+```
+
+The cross build has not been timed yet; `timeout-minutes` is 330 until the first green run
+sets it to about 1.5 times the measured job, as for the Linux builds.
+
+To bump rcodesign: take the new release's SHA-256 for
+`apple-codesign-<version>-x86_64-unknown-linux-musl.tar.gz` from
+`gh release view apple-codesign/<version> -R indygreg/apple-platform-rs --json assets`, and change
+`RCODESIGN_RELEASE` and `RCODESIGN_SHA256` in `fetch-rcodesign.sh` together.
+
 ### Mozilla's release key (ADR-021)
 
 Every path that gets Firefox source (`firefox-source.sh`, `source-check.sh`,

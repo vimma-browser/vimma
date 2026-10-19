@@ -865,7 +865,7 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
   [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
 
-## 14. Build and release supply chain (`release.yml`, `aur.yml`, `nightly.yml`)
+## 14. Build and release supply chain (`release.yml`, `aur.yml`, `nightly.yml`, `macos.yml`)
 
 Vimma's binaries are built from Mozilla's Firefox source, this repository, and the npm packages
 that drive the build, chiefly Surfer. These rules keep what reaches a build pinned and reviewed.
@@ -873,6 +873,14 @@ Spec: [build-supply-chain](specs/build-supply-chain.md), [ADR-001](adr/001-engin
 
 **Reach:** Mozilla's archive and Taskcluster, the npm registry, this repository, and GitHub's
 hosted runners. Dependabot pull requests run and auto-merge today, whether or not a build runs.
+
+The macOS build, `macos.yml` ([ADR-018](adr/018-macos-cross-build.md)), also runs on pull
+requests that touch it. It holds no secret and only a read-only token, builds on hosted runners
+under B1, B2 and B5 like the release build, and adds one download, rcodesign, pinned by SHA-256.
+Its ad hoc signature proves nothing about who built the app.
+[`the build jobs check out clean and restore nothing from the Actions cache`](../tools/test/full-build-workflows.test.mjs),
+[`reads no secret, deploys to no environment and only reads the repository`](../tools/package/test/macos.test.mjs),
+[`pins one rcodesign release and its SHA-256, checked before the file is used`](../tools/package/test/macos.test.mjs)
 
 - B1. Nothing is **ever** built from, or reported on, a Firefox source tarball unless its SHA-512
   is listed in a `SHA512SUMS` carrying exactly one good signature by a valid signing subkey of
@@ -966,7 +974,7 @@ hosted runners. Dependabot pull requests run and auto-merge today, whether or no
 - B4. An npm install **never** runs install scripts, and the build **must** run Surfer only from
   `node_modules`, never a package `npx` fetches, and **never** lets Surfer fetch an add-on.
   [`.npmrc turns install scripts off for every install`](../tools/test/build-supply-chain.test.mjs),
-  [`release and nightly install with npm ci --ignore-scripts and run Surfer with npx --no`](../tools/test/build-supply-chain.test.mjs),
+  [`the full builds install with npm ci --ignore-scripts and run Surfer with npx --no`](../tools/test/build-supply-chain.test.mjs),
   [`no workflow lets npx fetch a package`](../tools/test/build-supply-chain.test.mjs),
   [`surfer.json lists no add-ons`](../tools/test/build-supply-chain.test.mjs)
 - B5. A workflow **never** targets a self-hosted runner: every job runs on a standard

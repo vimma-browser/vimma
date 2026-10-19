@@ -1,11 +1,11 @@
 # Spec: macos-build
 
-Status: draft · Area: `configs/macos/mozconfig`, `configs/macos/entitlements/` (new),
+Status: draft · Area: `configs/macos/mozconfig`, `tools/package/macos-dmg.sh` (new),
 `configs/branding/vimma/`, `tools/artifact-build/`, `tools/e2e/`, `tools/mochitest.mjs`,
 `tools/start.mjs`, `tools/vimma-ctl/src/discovery.rs`, `.github/workflows/ci.yml`, `e2e.yml`,
 `macos.yml` (new); `docs/guide.md`, `docs/limits.md`, `CONTRIBUTING.md`, `docs/runbook.md` ·
-Upstream patches: none (decision 7) · ADR: ADR-018 (planned, "macOS: cross-compiled on Linux, arm64
-first"; written with sub-PR 3)
+Upstream patches: none (decision 7) · ADR:
+[ADR-018](../adr/018-macos-cross-build.md) ("macOS is cross-compiled on Linux, arm64 first")
 
 Issue: [#238](https://github.com/vimma-browser/vimma/issues/238)
 
@@ -292,9 +292,11 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 ### Testing on Macs without building on them
 
 7. **No upstream patch for signing.** Instead of patching `conditions.is_firefox` out of
-   `mach macos-sign` (Zen's approach), the workflow runs `rcodesign sign` directly (ad hoc now, a
-   p12 later) with Vimma's own entitlements files in `configs/macos/entitlements/`. If that proves
-   unworkable in sub-PR 3, the patch gets its line in the ADR-003 register and ADR-018.
+   `mach macos-sign` (Zen's approach), `tools/package/macos-dmg.sh` unpacks the `.dmg` from
+   `mach package` with mach's `unpack_dmg`, runs `rcodesign sign` on the app (ad hoc now, a p12
+   later) and packs it again with `make_dmg`. rcodesign 0.29.0 is a pinned download
+   (`tools/package/fetch-rcodesign.sh`, MPL-2.0). Vimma's own production entitlements come with
+   the Developer ID (sub-PR 6).
 8. **Hosted Macs run what was built.** A `macos-15` job downloads the `.dmg` artifact, mounts it,
    verifies the signature, launches Vimma headless and runs a smoke e2e through `vimma-ctl`. It is
    free on a public repository.
@@ -307,8 +309,11 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 ### Signing, publishing and updates
 
 10. **Ad hoc signed until a Developer ID exists** (open question 2). The build is ad hoc signed
-    with the `developer` entitlements, which is enough to run on Apple Silicon (`mach macos-sign`
-    refuses ad hoc with `production`). `docs/guide.md` tells testers about Open Anyway and
+    with no entitlements and no hardened runtime. Entitlements take effect only under the
+    hardened runtime, and an ad hoc app on Apple Silicon starts without it: checked in sub-PR 3,
+    where the ad hoc app passes `codesign --verify --deep --strict` and renders pages with its
+    content processes. Rejected: the `developer` entitlements, which would only matter under a
+    hardened runtime this build does not use. `docs/guide.md` tells testers about Open Anyway and
     `xattr`. Passkeys need the production entitlements and do not work in these builds.
 11. **Linux-only features stay Linux-only and fail quietly.** Omarchy theming, the Omarchy hook and
     the Hyprland private swap are inactive on macOS, as the table above shows, without warnings.
@@ -361,9 +366,9 @@ Mac-native integrations such as Handoff, the Services menu or a global hotkey.
   maintainer as required reviewer. With rcodesign the p12 never enters a keychain.
 - **Ad hoc builds.** An ad hoc signature proves nothing about who built the app. Testers get the
   `.dmg` from a workflow run of this repository, and the guide says so. Open Anyway lowers Gatekeeper for that one app only.
-- **Entitlements.** The `developer` entitlements allow loading unsigned libraries (Firefox's
-  developer set, `security/mac/hardenedruntime/developer/`). They are acceptable for test builds
-  and replaced by Vimma's own production set before anything is published.
+- **Entitlements.** Ad hoc builds carry none and run without the hardened runtime (decision
+  10), so they get none of its protections against injected libraries and unsigned code. The
+  Developer ID build turns the hardened runtime on with Vimma's own production entitlements.
 - **Privacy.** No new data leaves the machine. Keyless test builds have Safe Browsing off by
   default, which the guide's macOS section states.
 
@@ -443,14 +448,15 @@ full build.
    swap-gate and keys tests on macOS.
 3. **`build(macos): an arm64 cross build`.** ADR-018. `configs/macos/mozconfig` for the cross
    build; `macos.yml` on `ubuntu-24.04` (decision 5) with build-supply-chain's source verification and disk
-   guard; `npm run import`, `surfer build`, `./mach package`, ad hoc `rcodesign` with the
-   developer entitlements, upload as an artifact. Measures the cold build time and sets
-   `timeout-minutes`. Branding `.icns` and DMG background. After the build-supply-chain
-   source-verification sub-PR.
-4. **`test(macos): smoke the dmg on a mac`.** A `macos-15` job after the build: mount, verify,
-   launch with `MOZ_HEADLESS=1`, `vimma --version`, the two smoke scenarios through `vimma-ctl`.
-   The e2e launcher learns `MOZ_HEADLESS` instead of Xvfb on macOS, the `.app` binary path and
-   "no screenshots".
+   guard; `npm run import`, `surfer build`, `./mach package`, ad hoc `rcodesign` (decision 10),
+   upload as an artifact. Measures the cold build time and sets `timeout-minutes`. It also
+   carries the first `macos-15` smoke job (mount, `codesign --verify --deep --strict`, arm64,
+   `vimma --version`, a page rendered headless), so no `.dmg` is uploaded untested. The branding
+   `.icns` and DMG background (decision 17) follow separately (issue #393). After the
+   build-supply-chain source-verification sub-PR.
+4. **`test(macos): smoke the dmg on a mac`.** The smoke job gains the two smoke scenarios through
+   `vimma-ctl`, launched with `MOZ_HEADLESS=1`. The e2e launcher learns `MOZ_HEADLESS` instead of
+   Xvfb on macOS, the `.app` binary path and "no screenshots".
 5. **`docs(macos): keys inventory`.** The macOS column of the firefox-keys inventory, the native
    menu bar check, and Option/alt behaviour in `docs/guide.md`.
 6. **Gated: `build(macos): developer id and notarisation`.** Only after enrolment (open question
