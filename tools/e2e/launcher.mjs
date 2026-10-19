@@ -41,6 +41,9 @@ export const DEFAULT_DISCOVERY_TIMEOUT_MS = 30_000;
  */
 export const PROFILE_PREFS = Object.freeze([
   ["vimma.control.enabled", true],
+  // The browser runs outside a test harness here, so the first-run setup would open a tab of
+  // its own in every scenario (docs/specs/first-run-setup.md decision 1).
+  ["vimma.setup.offered", true],
   // Screenshots in Vimma's built-in colours, whatever Omarchy theme the machine has (HOME is
   // already inside the profile; this keeps baselines stable if that ever changes).
   ["vimma.theme.source", "builtin"],

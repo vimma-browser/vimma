@@ -192,6 +192,24 @@ On first launch you see a calm window: no tab strip, the navigation bar and addr
 and Vimma's status bar at the bottom, telling you where you are. Press `ctrl+b`, then `?`, to see
 every binding.
 
+### First-run setup
+
+The first start of a new profile shows a welcome screen with two buttons: **Set up** (`enter`)
+and **Skip** (`esc` or `q`). Skipping changes nothing. Setting up has two steps:
+
+1. **Add-ons.** A short list of content blockers (uBlock Origin, AdGuard AdBlocker, Privacy
+   Badger). `/` searches addons.mozilla.org (the request carries only the search terms), `j`/`k`
+   move, `space` marks, `enter` goes on. Add-ons run in every workspace, the agent workspace
+   too.
+2. **Search engine.** `j`/`k` and `enter` choose the default engine.
+
+The summary lists what will happen; `enter` applies it, `esc` goes back. The engine is written
+to `config.toml` as `[search] default`, keeping your comments; a file that does not parse is
+left alone. Each add-on then shows Firefox's own permission prompt. Nothing changes before the
+summary, so closing the tab earlier leaves the profile as it was. The welcome screen appears
+only once per profile: after **Skip**, after finishing, or after closing its tab, later starts
+never show it again. `:setup` (or the link on about:vimma) opens the setup again.
+
 ### The start page
 
 New windows and new tabs open Vimma's start page: the logo, and under it the three keys to start

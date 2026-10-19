@@ -356,6 +356,8 @@ group("Bookmarks", [
 group("Config", [
   ["reload_config", "config.reload", "Reload config"],
   ["edit_config", "config.edit", "Open config.toml in a tab"],
+  // docs/specs/first-run-setup.md decision 14: no default key; `:setup`.
+  ["setup", "setup.open", "Open the first-run setup (add-ons, search engine)"],
   // docs/specs/theme-appearance.md: no default key; `:theme dark|light|system`.
   ["theme_appearance", "theme.appearance", "Built-in theme: dark, light or the system's (:theme)"],
 ]);

@@ -240,6 +240,7 @@ Bookmarks
 Config
   reload_config             (unbound)                                         Reload config
   edit_config               (unbound)                                         Open config.toml in a tab
+  setup                     (unbound)                                         Open the first-run setup (add-ons, search engine)
   theme_appearance          (unbound)                                         Built-in theme: dark, light or the system's (:theme)
 
 Agents

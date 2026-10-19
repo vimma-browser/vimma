@@ -81,6 +81,16 @@
   );
   ConfigHost.init(window);
 
+  // The first-run setup (docs/specs/first-run-setup.md): about:vimma-setup once per process, and
+  // the welcome screen in front on a profile's first start, after the window's own first tab.
+  const { SetupHost } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
+  );
+  SetupHost.register();
+  if (!SetupHost.offerBlocked) {
+    window.delayedStartupPromise.then(() => SetupHost.offer(window));
+  }
+
   // Update checks (spec m6a-updater), once per process: one a few seconds after the first
   // window is ready when due (spec update-notices), then every 12 hours. config.toml's
   // [updates] check comes with ConfigHost above.
