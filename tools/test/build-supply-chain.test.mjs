@@ -108,8 +108,8 @@ describe("build supply chain: npm", () => {
     expect(value).toBe("true");
   });
 
-  it("release and nightly install with npm ci --ignore-scripts and run Surfer with npx --no", () => {
-    for (const name of ["release.yml", "nightly.yml"]) {
+  it("the full builds install with npm ci --ignore-scripts and run Surfer with npx --no", () => {
+    for (const name of ["release.yml", "nightly.yml", "macos.yml"]) {
       const block = buildJob(name);
       const installs = [...block.matchAll(/\bnpm (?:ci|install|i)\b[^\n]*/g)].map((m) => m[0]);
       expect(installs, name).not.toEqual([]);
