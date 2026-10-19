@@ -29,9 +29,9 @@ jobs:
   build:
     if: github.event_name != 'schedule' || github.repository == 'vimma-browser/vimma'
     runs-on: ubuntu-24.04
-    # Not measured yet: the spec estimates 1.5 to 3 hours. Under GitHub's 6 hours, so a hung
-    # build fails here with its own log.
-    timeout-minutes: 330
+    # About 1.5 times the measured job, 133 min (docs/runbook.md, "macOS build"), well under
+    # GitHub's 6 hours, so a hung build fails here with its own log.
+    timeout-minutes: 200
     permissions:
       contents: read
     outputs:
