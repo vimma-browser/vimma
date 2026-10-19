@@ -291,6 +291,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | ---------------------------------------------------- | ------------------ | -------- |
 | Reload config                                        | `reload_config`    | —        |
 | Open config.toml in a tab                            | `edit_config`      | —        |
+| Open the first-run setup (add-ons, search engine)    | `setup`            | —        |
 | Built-in theme: dark, light or the system's (:theme) | `theme_appearance` | —        |
 
 ## Agents

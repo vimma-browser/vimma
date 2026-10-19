@@ -401,7 +401,7 @@ Limits:
 | `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
 | `codeql.yml`               | push to `main`, PRs, Mon, manual                   | `ubuntu-latest`           | nothing; skipped while the repo is private |
 | `dependabot-automerge.yml` | Dependabot's PRs                                   | `ubuntu-latest`           | nothing (Dependabot, below)                |
-| `site-dispatch.yml`        | `docs/bindings.json` on `main`                     | `ubuntu-latest`           | a token secret (vimma.dev, below)          |
+| `site-dispatch.yml`        | `docs/bindings.json` on `main`, release published  | `ubuntu-latest`           | a token secret (vimma.dev, below)          |
 | `spec-status.yml`          | daily, issue closed, specs, manual                 | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
 
 Locally, before pushing: `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:py`,
@@ -1868,9 +1868,12 @@ replace_published=true` changed its files, whose hashes the old manifest no long
 `npm run gen-docs` writes `docs/bindings.json`, which vimma.dev mirrors on its keys page and in
 its `?` overlay. A push to `main` that changes it sends a `repository_dispatch`
 (`vimma-bindings`) to vimma-browser/vimma-site, whose workflow fetches the file at that commit and opens
-a pull request. Until the secret exists the job skips with a notice. To set it up: create a
+a pull request. Publishing a release (not a pre-release) sends `vimma-release`, and the site's
+`release-sync.yml` syncs the latest published release at once instead of at its daily run.
+Until the secret exists the job skips with a notice. To set it up: create a
 fine-grained token with access to vimma-browser/vimma-site only and "Contents: read and write", then
-`gh secret set SITE_DISPATCH_TOKEN`. Re-send by hand with `gh workflow run site-dispatch.yml`.
+`gh secret set SITE_DISPATCH_TOKEN`. Re-send by hand with `gh workflow run site-dispatch.yml`
+(`-f release=true` for a release).
 
 ### Security scanning (`semgrep.yml`, `codeql.yml`)
 

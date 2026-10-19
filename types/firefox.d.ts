@@ -11,6 +11,7 @@ declare const Services: {
     setStringPref(name: string, value: string): void;
     prefHasUserValue(name: string): boolean;
     clearUserPref(name: string): void;
+    savePrefFile(file: null): void;
     getDefaultBranch(root: string): {
       setBoolPref(name: string, value: boolean): void;
     };

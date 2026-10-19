@@ -505,7 +505,11 @@ keys (ctrl+b ? lists them). enable = ["ctrl+j"] gives one back exactly as Firefo
       digit or symbol's US shifted character (`]` with `accel,shift` is `ctrl+}`), because
       Firefox matches the typed character. A chord whose real key event cannot reach its
       action yet is a `todo` naming its issue: `ctrl+shift+z`, prevented by content's native
-      `cmd_redo` handler, [#371](https://github.com/vimma-browser/vimma/issues/371).)
+      `cmd_redo` handler, [#371](https://github.com/vimma-browser/vimma/issues/371).
+      Since #371: a remote page's reply counts as taking a page-first key only when page script
+      prevented it, or a field has focus, because Firefox 158's root key listener runs
+      `cmd_redo` (`KeyEventHandler::DispatchXBLCommand` prevents the event before it looks for
+      a controller) on every page, so no `todo` remains.)
       The upstream autopilot ([m7-upstream-autopilot](m7-upstream-autopilot.md)) already runs
       `npm run mochitest -- tests/browser/` on its bump branch; the sub-PR names this test in
       `docs/rebase.md` step 4 as the one to read first when a bump fails, and its failure message
