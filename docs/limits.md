@@ -102,7 +102,12 @@ the [user guide](guide.md); planned work is on the
 
 ## Platforms and packaging
 
-- Vimma is released for Linux x86_64 only.
+- Vimma is released for Linux x86_64, and for macOS on Apple Silicon once the macOS release jobs
+  are switched on. There is no Intel Mac, universal or Windows build.
+- The macOS `.dmg` is ad hoc signed, not notarised, until Vimma has an Apple Developer ID:
+  macOS asks once, under Privacy & Security, before it first opens, and passkeys do not work.
+  It has no update notices (no update manifest exists for macOS): install a newer `.dmg` by hand.
+- On macOS, Omarchy theming, the Omarchy hook and the Hyprland private-window swap do nothing.
 - The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
 - The `.deb`, the AppImage and the Arch package mark themselves as package-manager installs, so,
   like Firefox's own packages, they do not warn when the kernel blocks the unprivileged user

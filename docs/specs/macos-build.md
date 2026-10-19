@@ -62,8 +62,10 @@ release gate opens. Windows is not a target platform.
 10. `vimma --version` prints the same line as on Linux, `Vimma <vimma> · Firefox <firefox>`
     (firefox-versions).
 11. A pull request that breaks Vimma's front end on macOS shows a failing check from a hosted Mac.
-12. Nothing macOS-related is published: no GitHub Release asset, no Homebrew cask, no download on
-    vimma.dev, until the release gate opens.
+12. Once the maintainer sets the repository variable `MACOS_RELEASE_ENABLED`, every release has an
+    ad hoc signed `vimma-<vimma>-macos-aarch64.dmg`, its `SHA256SUMS-macos` and their Sigstore
+    bundles beside the Linux files. Before that, and always for Homebrew and vimma.dev, nothing
+    macOS-related is published.
 
 ## Research
 
@@ -296,7 +298,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
    `mach package` with mach's `unpack_dmg`, runs `rcodesign sign` on the app (ad hoc now, a p12
    later) and packs it again with `make_dmg`. rcodesign 0.29.0 is a pinned download
    (`tools/package/fetch-rcodesign.sh`, MPL-2.0). Vimma's own production entitlements come with
-   the Developer ID (sub-PR 6).
+   the Developer ID (sub-PR 7).
 8. **Hosted Macs run what was built.** A `macos-15` job downloads the `.dmg` artifact, mounts it,
    verifies the signature, launches Vimma headless and runs a smoke e2e through `vimma-ctl`. It is
    free on a public repository.
@@ -319,20 +321,30 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     the Hyprland private swap are inactive on macOS, as the table above shows, without warnings.
     No Omarchy wording appears where Omarchy is absent (theme-appearance), so `about:vimma` adds no
     "Omarchy theme: not found" line; this supersedes the earlier idea of one.
-12. **Release gate.** No macOS build is published until the maintainer has daily-driven Vimma.
-    Before that, the `.dmg` is a `macos.yml` workflow artifact (90-day retention); once the Linux
-    nightly is switched on (`NIGHTLY_ENABLED`), the `.dmg` may join the same nightly. `release.yml`
-    gets no macOS job in this spec; when it does (sub-PR 6), the job must run with no manual step,
-    because a Firefox security release ships without a person (firefox-versions; ADR-020, planned with its sub-PR 4).
+12. **Release gate: a variable, opened before the Developer ID.** `release.yml` has four macOS
+    jobs (`macos-build`, `macos-smoke`, `macos-sign`, `macos-publish`) that run only when the
+    repository variable `MACOS_RELEASE_ENABLED` is `true`, on top of the Linux release's own
+    conditions. They need no manual step, because a Firefox security release ships without a
+    person (firefox-versions; ADR-020, planned with its sub-PR 4). The gate opens with ad hoc
+    builds, before the Developer ID (open question 2): a tester who presses Open Anyway once gets
+    every release from the same page as Linux users, checksummed and signed with the same
+    Sigstore identity, instead of a 90-day workflow artifact found through a run's page.
+    Rejected: waiting for notarisation, which costs 99 USD a year before anyone outside has run
+    the build. The `.dmg` has its own checksum file, `SHA256SUMS-macos`, so `SHA256SUMS`, which the
+    AUR package and the updater read, stays exactly the Linux files. The macOS build ends hours
+    after the Linux one, usually after the maintainer has published the draft, so `macos-publish`
+    adds its files to a published release when it has none yet, and replaces them only with
+    `replace_published`, as `publish` does.
 13. **macOS never blocks a Linux release.** `macos.yml` is its own workflow, not a step of
-    `nightly.yml`, `release.yml` or the Firefox bump, so a macOS-only breakage cannot hold back a
-    Linux security release. It runs weekly, on `workflow_dispatch`, and on pull requests that touch
+    `nightly.yml`, `release.yml` or the Firefox bump, and no Linux job in `release.yml` needs a
+    macOS job, so a macOS-only breakage cannot hold back a Linux security release; it opens the
+    same failure issue. It runs weekly, on `workflow_dispatch`, and on pull requests that touch
     `configs/macos/` or the workflow itself. A Firefox bump that breaks macOS (for example a new
     SDK minimum) shows within a week.
 14. **Test builds are keyless.** `macos.yml` builds without the Safe Browsing key, so Safe
     Browsing is off by default in those builds (`configs/common/mozconfig:46-59`). The key stays in
-    as few jobs as possible; a macOS build that joins the nightly or the release uses the key as
-    build-supply-chain prescribes for those.
+    as few jobs as possible. `release.yml`'s `macos-build` uses the key as `build` does, from the
+    `build` environment (docs/security.md, B6), so released `.dmg` files have Safe Browsing on.
 15. **Artifact names carry both versions.** `mach package` names the file
     `vimma-<firefox>.en-US.mac.dmg`; the workflow uploads it as
     `vimma-<vimma>-firefox-<firefox>-macos-aarch64`, matching the version line of
@@ -349,7 +361,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 
 ### Not in this spec
 
-A public macOS release, a Homebrew cask or tap, a vimma.dev download (decision 12); x86_64 and
+A notarised macOS release, a Homebrew cask or tap, a vimma.dev download (decision 12; the
+homebrew-cask spec, issue #393); x86_64 and
 universal builds (decision 3); PGO and LTO tuning; the macOS updater beyond decision 16; Mac App
 Store distribution; the Firefox Beta canary on macOS (upstream-beta-canary tests Linux only);
 Mac-native integrations such as Handoff, the Services menu or a global hotkey.
@@ -361,11 +374,12 @@ Mac-native integrations such as Handoff, the Services menu or a global hotkey.
   Taskcluster through `mach` as trusted inputs. No self-hosted runner exists for pull request
   code to reach.
 - **Secrets.** The unsigned sub-PRs need none: no Safe Browsing key (decision 14), no Apple
-  credentials. Sub-PR 6 adds the Developer ID p12, its password and the notarisation credentials
+  credentials. Sub-PR 7 adds the Developer ID p12, its password and the notarisation credentials
   to a protected `macos-signing` environment, limited to `main` and release tags, with the
   maintainer as required reviewer. With rcodesign the p12 never enters a keychain.
 - **Ad hoc builds.** An ad hoc signature proves nothing about who built the app. Testers get the
-  `.dmg` from a workflow run of this repository, and the guide says so. Open Anyway lowers Gatekeeper for that one app only.
+  `.dmg` from this repository's GitHub Release, and check it with cosign against the same identity
+  as the Linux files, `release.yml` at `refs/heads/main`; the guide says how. Open Anyway lowers Gatekeeper for that one app only.
 - **Entitlements.** Ad hoc builds carry none and run without the hardened runtime (decision
   10), so they get none of its protections against injected libraries and unsigned code. The
   Developer ID build turns the hardened runtime on with Vimma's own production entitlements.
@@ -430,7 +444,7 @@ With the sub-PRs:
   certificate and the signing environment.
 - ADR-018 with sub-PR 3.
 - `CHANGELOG.md` `[Unreleased]`: one line per sub-PR that changes what a user can run (sub-PRs 2,
-  3 and 6); CI-only sub-PRs need none.
+  3, 6 and 7); CI-only sub-PRs need none.
 
 ## Delivery
 
@@ -459,10 +473,14 @@ full build.
    Xvfb on macOS, the `.app` binary path and "no screenshots".
 5. **`docs(macos): keys inventory`.** The macOS column of the firefox-keys inventory, the native
    menu bar check, and Option/alt behaviour in `docs/guide.md`.
-6. **Gated: `build(macos): developer id and notarisation`.** Only after enrolment (open question
+6. **`build(macos): a dmg in every release`.** The four macOS jobs in `release.yml` behind
+   `MACOS_RELEASE_ENABLED` (decision 12): the cross build with the Safe Browsing key, the
+   `macos-15` smoke check against the tag, cosign, and an add-only upload. The guide's macOS
+   install section.
+7. **Gated: `build(macos): developer id and notarisation`.** Only after enrolment (open question
    2). Secrets in the `macos-signing` environment; `rcodesign sign` with Vimma's production
    entitlements (own team ID, provisioning profile for passkeys); `notarytool submit --wait`;
-   `stapler staple`. A release `.dmg` in `release.yml` only when the release gate opens.
+   `stapler staple`, replacing the ad hoc signature in `macos-build`.
 
 Time and cost per run:
 
@@ -473,7 +491,7 @@ Time and cost per run:
 | Sub-PR 3 cold cross build on `ubuntu-24.04`       | 1.5-3 h (estimate; measured in sub-PR 3)          | $0                            |
 | Same on a 16-core larger Linux runner (fallback)  | about 40 min (estimate)                           | about $1.70, plus a Team plan |
 | Sub-PR 4 smoke on `macos-15`                      | about 10 min                                      | $0                            |
-| Sub-PR 6 signing and notarisation                 | about 7 min more (Zen: 29 s and 6.5 min)          | 99 USD a year                 |
+| Sub-PR 7 signing and notarisation                 | about 7 min more (Zen: 29 s and 6.5 min)          | 99 USD a year                 |
 
 ## Open questions
 
@@ -493,7 +511,7 @@ Time and cost per run:
    and the daily-driver work. (b) sub-PRs 1 and 2 now, as a parallel lane, the rest after M6a:
    they cost nothing, need no full build and find Linux assumptions while the code is fresh.
    (c) all of it now: earliest Mac build, but competes with M6a. **Recommendation: (b)**, so the
-   updater's MAR and manifest work is designed with a second platform in view; sub-PR 6 when the
+   updater's MAR and manifest work is designed with a second platform in view; sub-PR 7 when the
    gate nears.
 4. **`config.toml` on macOS: `~/.config/vimma/config.toml` or
    `~/Library/Application Support/Vimma/config.toml`?** (a) `~/.config`, honouring

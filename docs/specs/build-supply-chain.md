@@ -853,7 +853,7 @@ the cryptography is tested by `test_verify_sha512.py` alone.
 - `.npmrc turns install scripts off for every install`
 - `package.json pins Surfer to an exact version`
 - `surfer.json lists no add-ons`
-- `the Safe Browsing key comes only from the build environment, in the two build jobs`
+- `the Safe Browsing key comes only from the build environment, in the release and nightly builds`
 - `dependabot-automerge classifies on base-branch code with a read-only token`
 - `the release-path group comes before the minor and patch group`
 

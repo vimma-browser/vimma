@@ -74,7 +74,7 @@ details, and [bindings.md](bindings.md) lists every action's config name with it
 Each [GitHub Release](https://github.com/vimma-browser/vimma/releases) is titled with both
 versions, such as `Vimma 0.5.2 · Firefox 158.0`, and its notes link the Mozilla security
 advisories of the Firefox it moves to. It carries, for Linux x86_64 (`X.Y.Z` is the Vimma
-version):
+version; for a Mac, see [macOS](#macos) below):
 
 | File                              | Install                                                                 |
 | --------------------------------- | ----------------------------------------------------------------------- |
@@ -98,6 +98,23 @@ command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so updat
 `npx surfer download`, `npx surfer bootstrap`, `npm run import`, `npx surfer build`. The first
 build takes about 40 minutes on a 16-thread machine and needs about 35 GB of disk space
 (`engine/` 27 GB, the sccache compiler cache 6.8 GB, `~/.mozbuild` 3.1 GB, `.surfer/` 0.8 GB).
+
+#### macOS
+
+A release may also carry, for Macs with Apple Silicon (M1 or later), `vimma-X.Y.Z-macos-aarch64.dmg`
+with its checksum file `SHA256SUMS-macos`. There is no build for Intel Macs. Open the `.dmg` and
+drag Vimma into Applications.
+
+The app is not yet notarised by Apple, so the first time you open it macOS says it cannot check
+it for malicious software. Open it once, then go to System Settings → Privacy & Security, choose
+**Open Anyway** next to Vimma, and confirm. macOS remembers that for this copy of Vimma; a newer
+`.dmg` asks again. If macOS instead says the app "is damaged", the download's quarantine flag is
+the cause: `xattr -dr com.apple.quarantine /Applications/Vimma.app` clears it.
+
+On a Mac, Vimma has no update notices yet: install the newer `.dmg` over the old one. Passkeys
+do not work in these builds. Your profile lives in `~/Library/Application Support/Vimma/`. To
+check the `.dmg` before you open it, verify `SHA256SUMS-macos` with cosign as in "Arch Linux"
+below (same identity), then run `shasum -a 256 -c SHA256SUMS-macos`.
 
 #### Arch Linux
 
@@ -141,7 +158,8 @@ makepkg -si
 ```
 
 The `PKGBUILD` pins the SHA-256 of the tarball it downloads, so checking the `PKGBUILD` covers
-what it installs. Every file of the release is in `SHA256SUMS` ("Verify a release" in
+what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` in
+`SHA256SUMS-macos` ("Verify a release" in
 [runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging)).
 
 The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as

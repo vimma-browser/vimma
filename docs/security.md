@@ -878,6 +878,12 @@ The macOS build, `macos.yml` ([ADR-018](adr/018-macos-cross-build.md)), also run
 requests that touch it. It holds no secret and only a read-only token, builds on hosted runners
 under B1, B2 and B5 like the release build, and adds one download, rcodesign, pinned by SHA-256.
 Its ad hoc signature proves nothing about who built the app.
+`release.yml`'s macOS jobs, which run only while the variable `MACOS_RELEASE_ENABLED` is `true`,
+hold every rule below that the Linux jobs hold: the same tag checks, the `build` environment for
+the key, cosign under the same identity, and the same refusal to replace a published release's
+files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no Linux release.
+[`no Linux job needs a macOS job`](../tools/package/test/release-workflow.test.mjs),
+[`macos-build checks the tag like build, then cross-builds with the key`](../tools/package/test/release-workflow.test.mjs),
 [`the build jobs check out clean and restore nothing from the Actions cache`](../tools/test/full-build-workflows.test.mjs),
 [`reads no secret, deploys to no environment and only reads the repository`](../tools/package/test/macos.test.mjs),
 [`pins one rcodesign release and its SHA-256, checked before the file is used`](../tools/package/test/macos.test.mjs)
@@ -999,8 +1005,8 @@ Its ad hoc signature proves nothing about who built the app.
   [`no workflow names a self-hosted runner, and both build jobs run on ubuntu-24.04`](../tools/test/self-hosted-runner.test.mjs),
   [`each build job runs only from main`](../tools/test/self-hosted-runner.test.mjs)
 - B6. The Safe Browsing key **must** be available only to jobs in the `build` environment,
-  deployable only from `main`, and only the two build jobs (`nightly.yml` and
-  `release.yml`) use it. The environment's deployment rule is enforced by GitHub, outside any
+  deployable only from `main`, and only the build jobs of `nightly.yml` and `release.yml`
+  (`build` and, for the macOS `.dmg`, `macos-build`) use it. The environment's deployment rule is enforced by GitHub, outside any
   workflow file, so a branch's or tag's edited workflow cannot read the key by dropping an
   `if:`. No tag may deploy: a tag ruleset restricts moving a tag, not creating one. The key
   still ships inside every keyed binary (spec m0-safebrowsing-key): this limits who can use it
@@ -1008,7 +1014,7 @@ Its ad hoc signature proves nothing about who built the app.
   deployment rule, holds `SAFEBROWSING_API_KEY`, and no repository secret of that name exists
   (`gh api repos/vimma-browser/vimma/actions/secrets`; docs/runbook.md, "Google Safe Browsing
   key"). While a repository secret of that name remains, any job of any branch can read it.
-  [`the Safe Browsing key comes only from the build environment, in the two build jobs`](../tools/test/build-supply-chain.test.mjs)
+  [`the Safe Browsing key comes only from the build environment, in the release and nightly builds`](../tools/test/build-supply-chain.test.mjs)
 - B7. A change to Mozilla's release key **must** open a `security` issue within 4 hours of
   appearing in Mozilla's `KEY` file, and 60 days before the pinned signing subkey expires.
   `upstream.yml`'s `detect` job (every 4 hours) downloads
@@ -1046,9 +1052,14 @@ Its ad hoc signature proves nothing about who built the app.
   `[A-Za-z0-9._-]` for the desktop file ID, the two values it places in shell words. It is built
   and installed with `makepkg -si` on Arch Linux before anything is signed. **⚠ setting:**
   signatures exist only while the repository variable `SIGNING_ENABLED` is `true`; without it
-  `publish` uploads the assets and `SHA256SUMS` unsigned.
+  `publish` uploads the assets and `SHA256SUMS` unsigned. The macOS `.dmg` is listed in its own
+  `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the update manifest read, never
+  changes when it is added; `macos-sign` signs both with the same identity, after a hosted Mac
+  has checked the checksum, the signature and the version line.
   [`writes SHA256SUMS that sha256sum -c accepts, for every release file`](../tools/package/test/package.test.mjs),
   [`signs and uploads the PKGBUILD and SRCINFO with the other assets`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-smoke runs the dmg on a hosted Mac and ties its version line to the tag`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-sign signs the dmg and its checksums, and runs no repository code`](../tools/package/test/release-workflow.test.mjs),
   [`builds and installs the release PKGBUILD on Arch Linux before anything is signed`](../tools/package/test/release-workflow.test.mjs),
   [`needs nothing but itself: the tarball is its only source`](../tools/package/test/package.test.mjs),
   [`refuses repo %j`](../tools/package/test/package.test.mjs),
@@ -1065,7 +1076,10 @@ Its ad hoc signature proves nothing about who built the app.
   reached `main` through review is signed; `publish` refuses to upload if the tag has moved
   since. The assets go to the release while it is still a draft, which only collaborators see;
   publishing it **never** starts a build, and `publish` refuses a published release unless the
-  run sets `replace_published`. **⚠ setting:** a tag ruleset on `refs/tags/v*` that restricts
+  run sets `replace_published`. `macos-publish`, which ends hours later, may add the macOS files
+  to a published release that has none, since that changes no file a user or the AUR already
+  has; it re-checks the tag's commit and replaces existing macOS files only with
+  `replace_published`. **⚠ setting:** a tag ruleset on `refs/tags/v*` that restricts
   updates and deletions (docs/runbook.md, "Release packages", step 8) keeps a release tag from
   being moved at all. The AUR, public the moment a push lands, **never** gets a package for
   a draft: `aur.yml` runs when a release is published (or by hand), holds no GitHub token,
@@ -1078,6 +1092,7 @@ Its ad hoc signature proves nothing about who built the app.
   [`starts only by workflow_dispatch with a tag, so publishing a release rebuilds nothing`](../tools/package/test/release-workflow.test.mjs),
   [`job %s runs only when enabled, here, from main`](../tools/package/test/release-workflow.test.mjs),
   [`builds only a vX.Y.Z tag whose commit is on main`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-publish adds only the macOS files, and replaces them only when told`](../tools/package/test/release-workflow.test.mjs),
   [`release-build starts release.yml on main for the tag release-please just created`](../tools/package/test/release-workflow.test.mjs),
   [`accepts release.yml at refs/heads/main`](../tools/package/test/package.test.mjs),
   [`refuses %s`](../tools/package/test/package.test.mjs),
