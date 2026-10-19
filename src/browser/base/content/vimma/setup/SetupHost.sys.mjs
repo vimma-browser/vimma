@@ -141,6 +141,9 @@ export const SetupHost = {
   offer(win) {
     if (Services.prefs.getBoolPref(OFFERED_PREF, false)) return false;
     Services.prefs.setBoolPref(OFFERED_PREF, true);
+    // Firefox writes a changed pref about 500 ms later (Preferences::HandleDirty in
+    // modules/libpref/Preferences.cpp); a crash in that window would offer the setup again.
+    Services.prefs.savePrefFile(null);
     const tab = win.gBrowser.addTrustedTab(SETUP_URL);
     win.gBrowser.selectedTab = tab;
     return true;
@@ -243,6 +246,15 @@ export const SetupHost = {
   },
 
   /**
+   * The AddonInstall for an offered entry: AMO's file, checked against AMO's hash. Separate so
+   * that tests can supply a local XPI, because AddonManager's own methods are read-only.
+   * @param {import("../core/setup.mjs").AddonEntry} entry
+   */
+  installFor(entry) {
+    return lazy.AddonManager.getInstallForURL(entry.url, { hash: entry.hash, name: entry.name });
+  },
+
+  /**
    * One add-on through Firefox's AMO path (decision 3): signature checks, enterprise policy and
    * the standard permission prompt are Firefox's own; Vimma never answers the prompt.
    * @param {any} browser  the setup page's browser, which the prompt anchors to
@@ -253,7 +265,7 @@ export const SetupHost = {
     const entry = offered.get(guid);
     if (!entry) return "failed";
     const AM = lazy.AddonManager;
-    const install = await AM.getInstallForURL(entry.url, { hash: entry.hash, name: entry.name });
+    const install = await this.installFor(entry);
     return new Promise((resolve) => {
       /** @param {"installed" | "declined" | "failed"} r */
       const done = (r) => {

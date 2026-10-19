@@ -206,8 +206,9 @@ and **Skip** (`esc` or `q`). Skipping changes nothing. Setting up has two steps:
 The summary lists what will happen; `enter` applies it, `esc` goes back. The engine is written
 to `config.toml` as `[search] default`, keeping your comments; a file that does not parse is
 left alone. Each add-on then shows Firefox's own permission prompt. Nothing changes before the
-summary, so closing the tab earlier leaves the profile as it was. `:setup` (or the link on
-about:vimma) opens the setup again.
+summary, so closing the tab earlier leaves the profile as it was. The welcome screen appears
+only once per profile: after **Skip**, after finishing, or after closing its tab, later starts
+never show it again. `:setup` (or the link on about:vimma) opens the setup again.
 
 ### The start page
 
