@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. From the first release on, release-please writes each release's entry from the Conventional Commits on `main` ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.6](https://github.com/vimma-browser/vimma/compare/v0.1.5...v0.1.6) (2026-10-19)
+## [0.1.6](https://github.com/vimma-browser/vimma/compare/v0.1.5...v0.1.6) · Firefox 158.0 (2026-10-19)
 
 
 ### Added
