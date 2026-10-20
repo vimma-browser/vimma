@@ -11,7 +11,7 @@ new Firefox releases arrive as PRs.
 
 - `ci.yml` (push + PR): `npm ci`, `npm run lint`, `npm run typecheck`, `npm run coverage`
   (90 % gate in `vitest.config.mjs`), commitlint over the PR range, licence check of
-  `package-lock.json` (allowlist: MIT, ISC, BSD-2/3, Apache-2.0, MPL-2.0), and a custom
+  `package-lock.json` (allowlist: MIT, ISC, BSD-2/3, Apache-2.0, MPL-2.0, PSF-2.0), and a custom
   commitlint rule: `feat`/`fix` require a non-empty body.
 - `e2e.yml` (PR): skeleton job that runs only once the M0 build-strategy ADR picks
   UI-only vs artifact build; until then it is a no-op with a TODO naming the ADR. (ADR-010 and
@@ -84,6 +84,10 @@ status`, `gh issue view`); no `Bash(git:*)`, `Bash(node:*)`, `Bash(npm:*)`. Its 
   `name@version`: argparse (Python-2.0), minimatch (BlueOak-1.0.0), os-shim (MIT in its LICENSE,
   none in the lockfile), pako (MIT AND Zlib); later dependencies added more. Stale exceptions
   fail the check.
+- **PSF-2.0 joined the allowlist**, under both its SPDX ids (`PSF-2.0`, and `Python-2.0`, the id
+  SPDX retired in its favour). It is a permissive licence with no copyleft: it asks only for the
+  copyright notice and a summary of changes in redistributed copies. Every argparse release had
+  needed its own exception, although each was the same licence.
 - **commitlint rule** `body-required-for-types` lives in `tools/commitlint/body-required.mjs` as
   a local plugin; every commit on `main` passes it. It applies to `feat`, `fix` and `revert`.
   Footers and trailers (`Closes #3`, `BREAKING CHANGE: …`, `Co-Authored-By: …`) do not count as
