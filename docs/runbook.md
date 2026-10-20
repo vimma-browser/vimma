@@ -1619,7 +1619,11 @@ The regexp is `IDENTITY_REGEXP` in `tools/package/package.mjs`, and a test keeps
    in its summary.
 2. Actions → `release` has a new `workflow_dispatch` run on `main`, titled `release`. It takes
    a little over two hours (2 h 12 min for `v0.1.1`). The draft has no files until its `publish` job, near the end,
-   uploads them all and appends the third-party notice to the notes.
+   uploads them all and edits the notes: an "Updating" section goes above the changelog and the
+   third-party notice below it, each once (a re-run finds the heading). Both come from
+   `tools/package/package.mjs` (`dist/notes/`). The update steps are there on every release,
+   with or without macOS: the Mac update notice of 0.1.6 shows a Linux command and links to these
+   notes, and the macOS jobs upload the `.dmg` after this edit.
 3. When the run is green, the draft lists the tarball, AppImage, `.deb`, SBOM, `PKGBUILD`,
    `SRCINFO`, `SHA256SUMS` and, with signing on, a `.sigstore.json` for each. Optionally check
    them as in "Verify a release" (above), with `gh release download v0.1.2` (it finds drafts).

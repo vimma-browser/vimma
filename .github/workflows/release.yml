@@ -388,12 +388,24 @@ jobs:
           # --clobber: a re-run replaces the assets of a failed one.
           gh release upload "$TAG" dist/vimma* dist/PKGBUILD* dist/SRCINFO* dist/SHA256SUMS* --clobber --repo "$GITHUB_REPOSITORY"
 
-      - name: Append the third-party notice to the release notes
+      # The update steps go above release-please's changelog: Vimma 0.1.6 on a Mac shows the
+      # Linux tarball command, and links to these notes. They are added whether or not macOS
+      # releases are on, since the macOS jobs upload the .dmg after this step.
+      - name: Add the update steps and the third-party notice to the release notes
         run: |
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
-          # Once per release: a re-run finds the heading and leaves the notes alone.
+          # Each part once per release: a re-run finds its heading and leaves it alone.
+          changed=false
+          if ! grep -q '^### Updating$' notes.md; then
+            { cat dist/notes/updating.md; echo; cat notes.md; } > notes.new
+            mv notes.new notes.md
+            changed=true
+          fi
           if ! grep -q '^### Third-party notice$' notes.md; then
             { echo; cat dist/notes/third-party.md; } >> notes.md
+            changed=true
+          fi
+          if [ "$changed" = true ]; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
           fi
           # An edit that leaves the tag out detaches a draft from it, and publishing it
