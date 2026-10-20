@@ -175,8 +175,9 @@ add_task(async function summary_writes_nothing_on_a_parse_error() {
   await IOUtils.writeUTF8(file, "[search\n");
   const { tab, doc } = await openSetup();
   await chooseEngine(doc, 0);
-  Assert.ok(
-    doc.querySelector("#setup-config-error:not([hidden])")?.textContent.includes(":1"),
+  // The summary reads config.toml asynchronously; the notice can land after the step changes.
+  await TestUtils.waitForCondition(
+    () => doc.querySelector("#setup-config-error:not([hidden])")?.textContent.includes(":1"),
     "names the line",
   );
   await press(doc, "KEY_Enter");
