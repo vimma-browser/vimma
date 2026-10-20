@@ -597,7 +597,7 @@ on macOS`). The e2e scenarios follow with the spec's sub-PR 4.
 
 **Informational, not required.** The job is new and its runner type has no history in this
 repository, so a flaky macOS run would otherwise block every pull request (spec macos-build, open
-question 7). It fails visibly, with no `continue-on-error`, and the ruleset "main" must not list
+question 6). It fails visibly, with no `continue-on-error`, and the ruleset "main" must not list
 it among the required checks ("Merging and branch protection" above). It becomes a candidate for
 a required check once it has been green and not flaky for about two weeks, as the Linux job was.
 
