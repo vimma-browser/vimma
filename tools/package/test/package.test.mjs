@@ -39,6 +39,7 @@ import {
   IDENTITY_REGEXP,
   RUNTIME_RELEASE,
   thirdPartyNotes,
+  updatingNotes,
   readAppIni,
   releaseVersion,
   sha256sums,
@@ -593,6 +594,17 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     expect(notes).toBe(thirdPartyNotes());
     expect(notes).toContain(RUNTIME_RELEASE);
     expect(notes).toMatch(/LGPL-2\.1/);
+  });
+
+  // 0.1.6 on a Mac shows the Linux tarball command; the release notes are what it links to.
+  it("writes update steps for the release notes: Homebrew, the release's .dmg, the guide", () => {
+    const notes = readFileSync(join(out, "notes/updating.md"), "utf8");
+    expect(notes).toBe(updatingNotes("0.1.0", REPO));
+    expect(notes.split("\n")[0]).toBe("### Updating");
+    expect(notes).toContain("`brew upgrade --cask vimma`");
+    expect(notes).toContain("`vimma-0.1.0-macos-aarch64.dmg`");
+    expect(notes).toContain(`https://github.com/${REPO}/blob/main/docs/guide.md#updates`);
+    expect(readFileSync(DOCS["docs/guide.md"], "utf8")).toMatch(/^## Updates$/m);
   });
 
   it("runs appimagetool with the pinned runtime, no AppStream and ARCH=x86_64", () => {

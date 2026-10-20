@@ -56,6 +56,8 @@ function condition(block) {
   return (match?.[1] ?? "").replace(/^>-\n/, "").replace(/\s+/g, " ").trim();
 }
 
+const NOTES_STEP = "Add the update steps and the third-party notice to the release notes";
+
 describe("release.yml", () => {
   const all = jobs();
 
@@ -172,7 +174,7 @@ describe("release.yml", () => {
   // gh release edit resends the tag of a draft (#311); the job checks the draft is still on it.
   it("uploads to the release by its tag and leaves the draft on that tag", () => {
     const publish = all.get("publish") ?? "";
-    const notes = runOf(publish, "Append the third-party notice to the release notes");
+    const notes = runOf(publish, NOTES_STEP);
     expect(notes).toContain(
       'gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md',
     );
@@ -182,6 +184,84 @@ describe("release.yml", () => {
     expect(publish).not.toMatch(/tag_name|--draft|--tag|--method/);
     // its only API call reads the tag's commit
     expect(publish.match(/gh api/g)).toHaveLength(1);
+  });
+
+  /**
+   * Runs the publish job's notes step against a stub `gh` that keeps the release body in a file,
+   * with `dist/notes/` as tools/package/package.mjs writes it.
+   * @param {string} body the release notes before the step
+   * @param {number} [runs] how many times the step runs, as re-runs of the job do
+   */
+  const editNotes = (body, runs = 1) => {
+    const dir = mkdtempSync(join(tmpdir(), "release-notes-"));
+    try {
+      const work = join(dir, "work");
+      execFileSync("mkdir", ["-p", join(dir, "bin"), join(work, "dist/notes")]);
+      writeFileSync(join(work, "dist/notes/updating.md"), "### Updating\n\nsteps\n");
+      writeFileSync(join(work, "dist/notes/third-party.md"), "### Third-party notice\n\nnotice\n");
+      const stored = join(dir, "body");
+      const edits = join(dir, "edits");
+      writeFileSync(stored, body);
+      writeFileSync(edits, "");
+      // gh release view <tag> --repo <r> --json body|tagName --jq …; gh release edit … --notes-file f
+      writeFileSync(
+        join(dir, "bin", "gh"),
+        `#!/bin/sh
+case "$2 $6 $7" in
+  "view --json body") cat "${stored}"; echo ;;
+  "view --json tagName") echo "$TAG" ;;
+  "edit --notes-file "*) cp "$7" "${stored}"; echo "$3" >> "${edits}" ;;
+  *) echo "unexpected gh $*" >&2; exit 1 ;;
+esac
+`,
+        { mode: 0o755 },
+      );
+      const script = runOf(all.get("publish") ?? "", NOTES_STEP);
+      for (let i = 0; i < runs; i++) {
+        execFileSync("bash", ["-e", "-c", script], {
+          cwd: work,
+          encoding: "utf8",
+          stdio: "pipe",
+          env: {
+            PATH: `${join(dir, "bin")}:${process.env.PATH}`,
+            HOME: dir,
+            TAG: "v0.1.7",
+            GITHUB_REPOSITORY: "vimma-browser/vimma",
+          },
+        });
+      }
+      return {
+        body: readFileSync(stored, "utf8"),
+        edits: readFileSync(edits, "utf8").split("\n").filter(Boolean),
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const changelog = "## [0.1.7](https://example.invalid) (2026-10-20)\n\n### Features\n\n* x";
+
+  // Vimma 0.1.6 on a Mac shows the Linux tarball command and links to these notes (#410).
+  it("the notes start with the update steps and end with the third-party notice", () => {
+    const { body, edits } = editNotes(changelog);
+    expect(edits).toEqual(["v0.1.7"]);
+    expect(body).toBe(
+      `### Updating\n\nsteps\n\n${changelog}\n\n### Third-party notice\n\nnotice\n`,
+    );
+  });
+
+  it("a re-run adds neither part again and does not edit the release", () => {
+    const once = editNotes(changelog).body;
+    const { body, edits } = editNotes(changelog, 2);
+    expect(body).toBe(once);
+    expect(edits).toEqual(["v0.1.7"]);
+  });
+
+  // a release whose notes an older release.yml already gave the third-party notice
+  it("notes with only the third-party notice get the update steps alone", () => {
+    const { body } = editNotes(`${changelog}\n\n### Third-party notice\n\nnotice`);
+    expect(body.match(/^### Updating$/gm)).toHaveLength(1);
+    expect(body.match(/^### Third-party notice$/gm)).toHaveLength(1);
+    expect(body.startsWith("### Updating\n")).toBe(true);
   });
 
   // Spec macos-build, decisions 12 and 13: the macOS .dmg joins the release through jobs of its
