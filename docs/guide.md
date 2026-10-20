@@ -246,6 +246,10 @@ Where Vimma keeps its files on Linux:
 | `~/.config/vimma/config.toml` | Your config (see [config.toml](#configtoml)). Vimma reads only this file there and never scans the folder. |
 | `~/.config/vimma/vimma/`      | Profiles and `profiles.ini`. If `~/.vimma/vimma/` already exists, Firefox's legacy rule uses that instead. |
 
+On macOS, `config.toml` is in the same place, and the profiles and `profiles.ini` are in
+`~/Library/Application Support/Vimma/`, where Firefox keeps them on a Mac; `XDG_CONFIG_HOME`
+does not move them there.
+
 On a profile's first launch, if `~/.config/vimma/config.toml` does not exist, Vimma creates it
 from the same commented template `:config` writes, so it changes nothing until you uncomment a
 line, and the status bar says `created ~/.config/vimma/config.toml` once. An existing file, even an
@@ -1355,13 +1359,15 @@ with the rest of your computer.
 
 #### Keeping agents out of your Vimma profile
 
-Vimma's profiles are in `~/.config/vimma/vimma/` (`~/.vimma/vimma/` on older installs). Nothing
+Vimma's profiles are in `~/.config/vimma/vimma/` (`~/.vimma/vimma/` on older installs;
+`~/Library/Application Support/Vimma/` on macOS). Nothing
 an agent needs is there: `vimma-ctl mcp` reads the one file it needs itself. Use your agent
 tool's settings so its own tools cannot read the folder:
 
 - **Claude Code.** Deny its file tools the folder, and turn on its sandbox for shell commands
   with the same folder denied, in `~/.claude/settings.json`. MCP servers run outside Claude
-  Code's sandbox, so `vimma-ctl mcp` still reaches Vimma.
+  Code's sandbox, so `vimma-ctl mcp` still reaches Vimma. On macOS, deny
+  `~/Library/Application Support/Vimma` in both lists as well.
 
   ```json
   {
@@ -2271,8 +2277,9 @@ is **off by default**.
    vimma-ctl mcp                      # an MCP server for an agent tool (Connecting an agent's tool)
    ```
 
-   It finds your default profile itself; pass `--profile DIR` (or set `VIMMA_PROFILE`) for
-   another one. In Hyprland: `bind = SUPER, slash, exec, vimma-ctl send-keys "ctrl+b ?"`.
+   It finds your default profile itself, in `~/.config/vimma/vimma/` on Linux and in
+   `~/Library/Application Support/Vimma/` on macOS; pass `--profile DIR` (or set
+   `VIMMA_PROFILE`) for another one. In Hyprland: `bind = SUPER, slash, exec, vimma-ctl send-keys "ctrl+b ?"`.
 
    The socket also starts when only agents are on ([`:mcp on`](#agent-workspace)); that side
    is for agents only, so `vimma-ctl` then says the control socket is off until you set
