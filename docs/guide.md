@@ -74,7 +74,7 @@ details, and [bindings.md](bindings.md) lists every action's config name with it
 Each [GitHub Release](https://github.com/vimma-browser/vimma/releases) is titled with both
 versions, such as `Vimma 0.5.2 · Firefox 158.0`, and its notes link the Mozilla security
 advisories of the Firefox it moves to. It carries, for Linux x86_64 (`X.Y.Z` is the Vimma
-version):
+version; for a Mac, see [macOS](#macos) below):
 
 | File                              | Install                                                                 |
 | --------------------------------- | ----------------------------------------------------------------------- |
@@ -98,6 +98,70 @@ command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so updat
 `npx surfer download`, `npx surfer bootstrap`, `npm run import`, `npx surfer build`. The first
 build takes about 40 minutes on a 16-thread machine and needs about 35 GB of disk space
 (`engine/` 27 GB, the sccache compiler cache 6.8 GB, `~/.mozbuild` 3.1 GB, `.surfer/` 0.8 GB).
+
+#### macOS
+
+A release may also carry, for Macs with Apple Silicon (M1 or later), `vimma-X.Y.Z-macos-aarch64.dmg`
+with its checksum file `SHA256SUMS-macos`. There is no build for Intel Macs. Open the `.dmg` and
+drag Vimma into Applications.
+
+**The first open.** The app is not yet notarised by Apple, so the first time you open it macOS
+says "Apple could not verify “Vimma” is free of malware". To open it:
+
+1. Choose **Done** in that dialog, not **Move to Trash**.
+2. Open System Settings → Privacy & Security and scroll down to Security.
+3. Next to the line saying Vimma was blocked, choose **Open Anyway**, then confirm with your
+   password or Touch ID, and choose **Open**.
+
+Since macOS 15, Control-clicking the app and choosing Open no longer gets past this dialog; the
+button in System Settings does. macOS remembers the choice for this copy of Vimma; a newer
+`.dmg`, or a `brew upgrade`, may ask again.
+
+From a terminal, the same result in one step: this removes the quarantine flag the download
+carries, which also switches off macOS's check of this copy, so use it only on a `.dmg` you
+downloaded from the release (or verified as below).
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Vimma.app && open -a Vimma
+```
+
+If macOS says the app "is damaged" rather than unverified, the quarantine flag is also the cause,
+and the same `xattr` command clears it.
+
+Vimma on a Mac tells you when a newer release is out, as on Linux ([Updates](#updates)); to
+update, install the newer `.dmg` over the old one, or run `brew upgrade --cask vimma`. Passkeys
+do not work in these builds. Your profile lives in `~/Library/Application Support/Vimma/`, and
+macOS keeps Vimma's window state under its bundle identifier, `dev.vimma.browser`. To
+check the `.dmg` before you open it, verify `SHA256SUMS-macos` with cosign as in "Arch Linux"
+below (same identity), then run `shasum -a 256 -c --ignore-missing SHA256SUMS-macos`.
+
+**With Homebrew.** The same `.dmg` installs as a cask from Vimma's own tap,
+[vimma-browser/homebrew-tap](https://github.com/vimma-browser/homebrew-tap):
+
+```sh
+brew install --cask vimma-browser/tap/vimma
+```
+
+Homebrew checks the download against the SHA-256 the cask pins, puts Vimma in Applications and
+`vimma` on your `PATH`. The first open still needs **Open Anyway**, as in "The first open"
+above; `brew info vimma` shows that note again. The cask comes from the release itself: each
+release carries it as `vimma.rb`, listed and signed in `SHA256SUMS-macos`, and the tap gets that
+file once the release is published.
+
+| To                                             | Run                                 |
+| ---------------------------------------------- | ----------------------------------- |
+| Update to the latest release                   | `brew upgrade --cask vimma`         |
+| Remove Vimma, keeping your profile             | `brew uninstall --cask vimma`       |
+| Remove Vimma and its profile, caches and prefs | `brew uninstall --zap --cask vimma` |
+
+Vimma does not update itself, so `brew upgrade` (or `brew upgrade --cask vimma`) is how a
+Homebrew install gets a new release; after an upgrade macOS may ask for **Open Anyway** again.
+When a newer release is out, Vimma's [update notice](#updates) says so, and `:update` shows that
+command; Vimma counts as a Homebrew install when it runs from `/Applications/Vimma.app` and
+`/opt/homebrew/Caskroom/vimma/` exists.
+`--zap` deletes `~/Library/Application Support/Vimma/` (every profile), `~/Library/Caches/Vimma/`,
+and Vimma's preferences and saved window state in `~/Library`; it leaves your configuration in
+`~/.config/vimma/` alone.
 
 #### Arch Linux
 
@@ -141,7 +205,8 @@ makepkg -si
 ```
 
 The `PKGBUILD` pins the SHA-256 of the tarball it downloads, so checking the `PKGBUILD` covers
-what it installs. Every file of the release is in `SHA256SUMS` ("Verify a release" in
+what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` and
+Homebrew cask in `SHA256SUMS-macos` ("Verify a release" in
 [runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging)).
 
 The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as
@@ -191,6 +256,24 @@ launch. Nothing is created when `vimma.config.path` points Vimma at another file
 On first launch you see a calm window: no tab strip, the navigation bar and address bar at the top,
 and Vimma's status bar at the bottom, telling you where you are. Press `ctrl+b`, then `?`, to see
 every binding.
+
+### First-run setup
+
+The first start of a new profile shows a welcome screen with two buttons: **Set up** (`enter`)
+and **Skip** (`esc` or `q`). Skipping changes nothing. Setting up has two steps:
+
+1. **Add-ons.** A short list of content blockers (uBlock Origin, AdGuard AdBlocker, Privacy
+   Badger). `/` searches addons.mozilla.org (the request carries only the search terms), `j`/`k`
+   move, `space` marks, `enter` goes on. Add-ons run in every workspace, the agent workspace
+   too.
+2. **Search engine.** `j`/`k` and `enter` choose the default engine.
+
+The summary lists what will happen; `enter` applies it, `esc` goes back. The engine is written
+to `config.toml` as `[search] default`, keeping your comments; a file that does not parse is
+left alone. Each add-on then shows Firefox's own permission prompt. Nothing changes before the
+summary, so closing the tab earlier leaves the profile as it was. The welcome screen appears
+only once per profile: after **Skip**, after finishing, or after closing its tab, later starts
+never show it again. `:setup` (or the link on about:vimma) opens the setup again.
 
 ### The start page
 
@@ -2237,9 +2320,12 @@ slots busy. Turn the pref off to stop either.
 
 ## Updates
 
-Vimma 0.1.2 and later tell you when a newer release is out; Linux x86_64 builds are the only
-ones checked, since they are the only ones released. Vimma notifies you and shows the command; it
-does not install the update itself.
+Vimma 0.1.2 and later tell you when a newer release is out, on Linux x86_64 and on Macs with
+Apple Silicon. Vimma notifies you and shows the command; it does not install the update itself.
+
+**Vimma 0.1.6 on a Mac** shows the notice, but its `:update` shows the Linux tarball command,
+which does not apply to a Mac: do not run it. Update with `brew upgrade --cask vimma`, or install
+the new `.dmg` over the old one ([macOS](#macos)). Later versions show the right steps.
 
 **Coming from 0.1.1?** Vimma 0.1.1 has no signing key built in, so it refuses every update file
 and never shows a notice. Update it once by hand, the way you installed it: the commands are in
@@ -2271,17 +2357,20 @@ It installs nothing; it tells you.
   and is checked against the SHA-512 the signed file gives for it (`sha512sum -c`) before
   anything is installed or replaced, so a file changed on the release page stops the command.
 
-  | Installed with           | `:update` shows                                                                                                                                                 |
-  | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | The release's `PKGBUILD` | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si` |
-  | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                  |
-  | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                     |
-  | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                              |
-  | AppImage                 | download the new AppImage next to yours, check it, and rename it over yours; the next start runs it                                                             |
-  | A build from source      | nothing: source builds never check (pull and rebuild)                                                                                                           |
+  | Installed with           | `:update` shows                                                                                                                                                  |
+  | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | The release's `PKGBUILD` | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`  |
+  | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
+  | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
+  | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                               |
+  | AppImage                 | download the new AppImage next to yours, check it, and rename it over yours; the next start runs it                                                              |
+  | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |
+  | `.dmg` (macOS)           | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
+  | A build from source      | nothing: source builds never check (pull and rebuild)                                                                                                            |
 
 - **What a check sends:** a GET for
-  `https://updates.vimma.dev/updates/browser/Linux_x86_64-gcc3/<channel>/update.xml`, with no
+  `https://updates.vimma.dev/updates/browser/<target>/<channel>/update.xml`, where the target is
+  `Linux_x86_64-gcc3` or, on a Mac, `Darwin_aarch64-gcc3`, with no
   cookies, no referrer, an empty `Accept-Language` and no cache, and follows no redirect. It names
   your platform and update channel and nothing else: no Vimma version, build, language or
   identifier, so every install on a channel asks for the same

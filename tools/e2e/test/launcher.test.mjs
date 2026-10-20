@@ -111,6 +111,8 @@ describe("profile", () => {
   it("turns the control socket on and first run, telemetry and updates off", () => {
     const prefs = Object.fromEntries(PROFILE_PREFS);
     expect(prefs["vimma.control.enabled"]).toBe(true);
+    // The first-run setup tab would add a tab every scenario counts (first-run-setup decision 1).
+    expect(prefs["vimma.setup.offered"]).toBe(true);
     expect(prefs["browser.shell.checkDefaultBrowser"]).toBe(false);
     expect(prefs["browser.startup.homepage_override.mstone"]).toBe("ignore");
     expect(prefs["datareporting.policy.dataSubmissionEnabled"]).toBe(false);

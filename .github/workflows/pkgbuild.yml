@@ -1,7 +1,9 @@
 # Spec m6-packaging, "Arch Linux without the AUR": the vimma-bin PKGBUILD that release.yml
 # publishes is built and installed with makepkg -si in an Arch Linux container, from a stub
 # tarball served on localhost, whenever the packaging code changes. release.yml's package job
-# runs the same script on the real release build.
+# runs the same script on the real release build. Spec macos-homebrew, decision 9: the Homebrew
+# cask is checked the same way, with brew style, brew audit and an install of a stub dmg on a
+# hosted Mac; release.yml's macos-smoke job runs the same script on the real dmg.
 name: pkgbuild
 
 on:
@@ -82,3 +84,22 @@ jobs:
 
       - name: Build and install the PKGBUILD from a stub tarball
         run: tools/package/arch-smoke.sh --stub
+
+  cask:
+    name: Homebrew cask on macOS (brew install --cask)
+    needs: covered
+    if: ${{ !cancelled() && needs.covered.outputs.skip != 'true' }}
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # cask.mjs uses Node's built-in modules only: no npm install.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Check the cask and install a stub dmg through it
+        run: tools/package/cask-check.sh --stub

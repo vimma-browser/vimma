@@ -9,6 +9,7 @@ import { join } from "node:path";
 import {
   MANIFEST_PREFIX,
   MAX_MANIFEST_CHARS,
+  appBundleOf,
   base64Decode,
   base64Encode,
   installTypeFrom,
@@ -395,6 +396,23 @@ describe("parseManifest", () => {
     expect(/** @type {any} */ (r).reason).toMatch(/^manifest: /);
   });
 
+  const dmg = `    <vimmaDmg size="110809760" hashFunction="sha512" hashValue="${H("e")}" URL="${DL}/vimma-0.3.1-macos-aarch64.dmg"/>\n`;
+
+  test("reads the macOS manifest's <vimmaDmg> (macos-homebrew decision 18)", () => {
+    const r = /** @type {any} */ (parseManifest(withAssets(dmg)));
+    expect(r.manifest.update.assets).toEqual({ dmg: { size: 110809760, sha512: H("e") } });
+  });
+
+  test.each([
+    ["a hash that is not SHA-512", dmg.replace(H("e"), "e".repeat(64))],
+    ["a download on plain http", dmg.replace("https://", "http://")],
+    ["two of them", dmg + dmg],
+  ])("refuses a <vimmaDmg> with %s", (_name, children) => {
+    const r = parseManifest(withAssets(children));
+    expect(r.ok).toBe(false);
+    expect(/** @type {any} */ (r).reason).toMatch(/^manifest: .*<vimmaDmg>/);
+  });
+
   test("offerAssets keeps only well-formed entries (a saved result read back)", () => {
     const good = { size: 1, sha512: H("d") };
     expect(offerAssets({ deb: good, tarball: { size: "1", sha512: H("d") }, x: good })).toEqual({
@@ -403,6 +421,7 @@ describe("parseManifest", () => {
     expect(offerAssets({ appimage: { size: 1, sha512: "d".repeat(64) } })).toEqual({});
     expect(offerAssets(null)).toEqual({});
     expect(offerAssets([good])).toEqual({});
+    expect(offerAssets({ dmg: good, x: good })).toEqual({ dmg: good });
   });
 
   test("entities in attributes are decoded", () => {
@@ -674,6 +693,55 @@ describe("install type (§3)", () => {
   });
 });
 
+describe("install type on macOS (macos-homebrew decisions 8 and 19)", () => {
+  const mac = { marker: null, appImage: null, platform: "macosx" };
+  test.each([
+    [{ ...mac, packaged: false, appPath: "/Applications/Vimma.app", caskroom: true }, "source"],
+    [{ ...mac, packaged: true, appPath: "/Applications/Vimma.app", caskroom: true }, "homebrew"],
+    [{ ...mac, packaged: true, appPath: "/Applications/Vimma.app", caskroom: false }, "dmg"],
+    [{ ...mac, packaged: true, appPath: "/Users/u/Applications/Vimma.app", caskroom: true }, "dmg"],
+    [{ ...mac, packaged: true, appPath: null, caskroom: true }, "dmg"],
+    [
+      { ...mac, packaged: true, marker: "vimma-package=deb\n", appPath: null, caskroom: false },
+      "dmg",
+    ],
+  ])("%j → %s", (input, type) => {
+    expect(installTypeFrom(input)).toBe(type);
+  });
+
+  test("a Caskroom and an /Applications path change nothing on Linux", () => {
+    const facts = { appPath: "/Applications/Vimma.app", caskroom: true };
+    expect(
+      installTypeFrom({
+        packaged: true,
+        marker: null,
+        appImage: null,
+        platform: "linux",
+        ...facts,
+      }),
+    ).toBe("tarball");
+    expect(
+      installTypeFrom({
+        packaged: true,
+        marker: "vimma-package=deb\n",
+        appImage: null,
+        platform: "linux",
+        ...facts,
+      }),
+    ).toBe("deb");
+  });
+
+  test.each([
+    ["/Applications/Vimma.app/Contents/Resources", "/Applications/Vimma.app"],
+    ["/Applications/Vimma.app/Contents/Resources/", "/Applications/Vimma.app"],
+    ["/Users/u/My Apps/Vimma.app/Contents/Resources", "/Users/u/My Apps/Vimma.app"],
+    ["/usr/lib/vimma", null],
+    ["/Applications/Vimma.app/Contents/MacOS", null],
+  ])("appBundleOf(%j) → %j", (gre, app) => {
+    expect(appBundleOf(gre)).toBe(app);
+  });
+});
+
 describe("updateSteps (:update and about:vimma)", () => {
   /** @type {import("../src/updates.mjs").Offer} */
   const offer = {
@@ -794,6 +862,28 @@ describe("updateSteps (:update and about:vimma)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("homebrew: brew upgrade --cask vimma (macos-homebrew decision 8)", () => {
+    const s = updateSteps("homebrew", hashed, where);
+    expect(s.commands).toEqual(["brew upgrade --cask vimma"]);
+    expect(s.text).toMatch(/Homebrew/);
+    expect(s.link).toBe(offer.detailsUrl);
+  });
+
+  test("dmg: the release page and the drag, with no command (macos-homebrew decision 19)", () => {
+    const s = updateSteps(
+      "dmg",
+      { ...hashed, assets: { dmg: { size: 6, sha512: H("e") } } },
+      where,
+    );
+    expect(s.commands).toEqual([]);
+    expect(s.text).toMatch(/^Quit Vimma/);
+    expect(s.text).toMatch(/\.dmg/);
+    expect(s.text).toMatch(/Applications/);
+    expect(s.text).toMatch(/first open/);
+    expect(s.text).not.toMatch(/xattr|quarantine|curl/);
+    expect(s.link).toBe(offer.detailsUrl);
   });
 
   test("an unknown package and a source build: words and the release page only", () => {

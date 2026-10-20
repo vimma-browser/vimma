@@ -1,0 +1,253 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* about:vimma-setup (vimma/setup/setup.html, spec first-run-setup "Welcome screen"). Theme
+   tokens only, the fallbacks the built-in dark theme's as in start.css, so Omarchy, light and
+   dark need no rules of their own. Nothing moves (the spec allows one fade; Vimma's chrome CSS
+   animates nothing, tools/test/chrome-css.test.mjs), so reduced motion has nothing to turn off. */
+
+:root {
+  min-height: 100%;
+  background: var(--vimma-bg, #0a0f12);
+  color: var(--vimma-fg, #c4cec8);
+  color-scheme: var(--vimma-color-scheme, dark);
+  font-family: var(--vimma-font, monospace);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Welcome: the logo 96 px high, scaled down with narrow windows. */
+#welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+#welcome .vimma-logo {
+  height: min(96px, 20vw);
+  width: auto;
+}
+
+.tagline {
+  margin: 0;
+  color: var(--vimma-fg-dim, #9197b2);
+}
+
+.buttons {
+  display: flex;
+  gap: 1rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.55rem 1.3rem;
+  border-radius: 6px;
+  border: 1px solid var(--vimma-muted, #3b4252);
+  background: transparent;
+  color: var(--vimma-fg, #c4cec8);
+  cursor: pointer;
+}
+
+button:focus-visible,
+button:focus {
+  outline: none;
+  border-color: var(--vimma-text-accent, #1bf587);
+  background: var(--vimma-mode-normal, #1bf587);
+  color: var(--vimma-mode-normal-fg, #0a0f12);
+}
+
+button:focus kbd {
+  color: var(--vimma-mode-normal-fg, #0a0f12);
+}
+
+kbd {
+  font: inherit;
+  color: var(--vimma-text-accent, #1bf587);
+}
+
+button kbd {
+  margin-inline-end: 0.4em;
+}
+
+/* The steps: one column, at most 44rem wide. */
+.step {
+  width: min(44rem, calc(100vw - 4rem));
+  padding: 3rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.progress {
+  margin: 0;
+  color: var(--vimma-text-accent, #1bf587);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0.2rem 0 0.4rem;
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.lede,
+.note {
+  margin: 0;
+  color: var(--vimma-fg-dim, #9197b2);
+}
+
+.note {
+  font-size: 0.8rem;
+}
+
+.notice {
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  border-inline-start: 3px solid var(--vimma-text-error, #e06c75);
+  background: var(--vimma-bg-dark, #05080a);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--vimma-muted, #3b4252);
+  border-radius: 6px;
+}
+
+.search:focus-within {
+  border-color: var(--vimma-text-accent, #1bf587);
+}
+
+.search input {
+  flex: 1;
+  font: inherit;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+}
+
+:root[data-searching] .search {
+  border-style: dashed;
+}
+
+.list,
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list li {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  border-inline-start: 3px solid transparent;
+}
+
+.list li[aria-current] {
+  background: var(--vimma-selection, #1c2a2f);
+  border-inline-start-color: var(--vimma-text-accent, #1bf587);
+}
+
+.list .mark {
+  color: var(--vimma-text-accent, #1bf587);
+}
+
+.list li.disabled .mark {
+  color: var(--vimma-fg-dim, #9197b2);
+}
+
+.list .body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.list .name {
+  font-weight: 600;
+}
+
+.list .by,
+.list .summary,
+.list .meta {
+  color: var(--vimma-fg-dim, #9197b2);
+  font-weight: normal;
+}
+
+.list .summary {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list .meta {
+  font-size: 0.8rem;
+}
+
+.plan {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1.5rem;
+  margin: 0;
+}
+
+.plan dt {
+  color: var(--vimma-fg-dim, #9197b2);
+}
+
+.plan dd {
+  margin: 0;
+}
+
+.results li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.3rem 0;
+}
+
+.results .installed,
+.results .saved {
+  color: var(--vimma-text-green, #a3be8c);
+}
+
+.results .failed,
+.results .declined,
+.results [class="not saved"] {
+  color: var(--vimma-text-error, #e06c75);
+}
+
+#summary #setup-engines {
+  display: none;
+}
+
+.keys {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--vimma-muted, #3b4252);
+  color: var(--vimma-fg-dim, #9197b2);
+  font-size: 0.85rem;
+}

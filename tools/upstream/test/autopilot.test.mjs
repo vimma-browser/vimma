@@ -17,6 +17,8 @@ import {
   fallbackBody,
   issueBody,
   issueTitle,
+  patchIssueBody,
+  patchIssueTitle,
   patchLine,
   prBody,
   prTitle,
@@ -802,5 +804,54 @@ describe("the bump PR and auto-merge", () => {
     expect(on.stdout).toBe("true\n");
     const off = spawnSync(process.execPath, args, { encoding: "utf8" });
     expect(off.stdout).toBe("false\n");
+  });
+});
+
+// Spec upstream-bump-automation, Behaviour 4 and decisions 16 to 21: failing patches open one
+// triage issue per Firefox version; no model runs in CI.
+describe("the failing-patches issue", () => {
+  it("has one exact title per version", () => {
+    expect(patchIssueTitle("157.0.2")).toBe("Firefox 157.0.2: patches do not apply");
+  });
+
+  it("lists each failing hunk and links the PR, the branch and the run", () => {
+    const body = patchIssueBody(
+      context({ patchReport: failingReport, patchResult: "fail" }),
+      "#77",
+    );
+    expect(body).toContain("`src/browser/base/content/browser-xhtml.patch`");
+    expect(body).toMatch(
+      /hunk 1\/2 of `browser\/base\/content\/browser\.xhtml` .* applies only with fuzz/,
+    );
+    expect(body).toMatch(/hunk 2\/2 of `browser\/base\/content\/browser\.xhtml` .* fails/);
+    expect(body).toContain("Bump PR: #77");
+    expect(body).toContain("`upstream/firefox-157.0.2`");
+    expect(body).toContain("https://github.com/vimma-browser/vimma/actions/runs/1");
+    expect(body).not.toContain("moz-build.patch");
+  });
+
+  it("says when no PR was opened", () => {
+    const body = patchIssueBody(context({ patchReport: failingReport, patchResult: "fail" }), "");
+    expect(body).toContain("Bump PR: none opened (see the run)");
+  });
+
+  it("the CLI renders it with --pr", () => {
+    const dir = tempDir("autopilot-patch-issue-");
+    writeFileSync(join(dir, "detection.json"), JSON.stringify(securityRelease));
+    writeFileSync(join(dir, "patch.json"), JSON.stringify(failingReport));
+    const args = [
+      "--detection",
+      join(dir, "detection.json"),
+      "--patch-check",
+      join(dir, "patch.json"),
+    ];
+    const run = (/** @type {string[]} */ a) =>
+      spawnSync(process.execPath, [bodyScript, ...a], { encoding: "utf8" });
+    const body = run(["patch-issue", ...args, "--patch-result", "fail", "--pr", "#9"]);
+    expect(body.stderr).toBe("");
+    expect(body.stdout).toContain("Bump PR: #9");
+    expect(run(["patch-issue-title", ...args]).stdout).toBe(
+      "Firefox 157.0.2: patches do not apply\n",
+    );
   });
 });

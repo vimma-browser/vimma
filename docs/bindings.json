@@ -2466,6 +2466,11 @@
           "keys": []
         },
         {
+          "name": "setup",
+          "description": "Open the first-run setup (add-ons, search engine)",
+          "keys": []
+        },
+        {
           "name": "theme_appearance",
           "description": "Built-in theme: dark, light or the system's (:theme)",
           "keys": []

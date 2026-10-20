@@ -280,10 +280,7 @@ add_task(async function the_menu_bars_access_keys_stay() {
  * as an unexpected pass once the issue is fixed, so the entry cannot outlive the bug.
  * @type {Record<string, string>}
  */
-const KNOWN_GAPS = {
-  // Content's native cmd_redo handler (ShortcutKeyDefinitions.cpp) prevents the keypress.
-  "ctrl+shift+z": "https://github.com/vimma-browser/vimma/issues/371",
-};
+const KNOWN_GAPS = {};
 
 add_task(async function real_key_events_for_each_firefox_chord_run_vimmas_action() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);

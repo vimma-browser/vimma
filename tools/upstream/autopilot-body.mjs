@@ -8,10 +8,11 @@
  * title and body (what applied, what conflicts, what the tests said), the fallback comment when
  * Actions may not open PRs, and the drift issue.
  *
- *   node tools/upstream/autopilot-body.mjs <issue|title|pr|fallback|drift> --detection FILE
+ *   node tools/upstream/autopilot-body.mjs <issue|title|pr|fallback|drift|patch-issue> --detection FILE
  *     [--patch-check FILE --patch-markdown FILE --patch-result ok|fail|norun --audit FILE
  *      --artifacts yes|no|unknown --artifacts-note TEXT --tests RESULT --has-token true|false
  *      --issue N --branch NAME --repo OWNER/NAME --run-url URL --owner LOGIN --error FILE
+ *      --pr '#N' (patch-issue)
  *      --beta-issues JSON --auto-merge VALUE --ref REF --bump-diff FILE]
  *
  * Writes Markdown to stdout (`pr --draft-only` and `pr --auto-merge-only` print "true" or
@@ -189,6 +190,39 @@ export function conflictLines(report) {
     "",
   );
   return out;
+}
+
+/**
+ * The title of the triage issue for patches that do not apply, one per Firefox version so a
+ * rerun updates the same issue (spec upstream-bump-automation, decision 18).
+ * @param {string} version
+ */
+export function patchIssueTitle(version) {
+  return `Firefox ${version}: patches do not apply`;
+}
+
+/**
+ * The body of that triage issue: the failing patches and hunks, the bump branch, its PR and the
+ * run, so a person or a coding agent can rebase the patches without CI running a model
+ * (spec upstream-bump-automation, decisions 16 to 21 and 23).
+ * @param {Context} c
+ * @param {string} pr "#N", or "" when no PR was opened
+ */
+export function patchIssueBody(c, pr) {
+  const v = c.detection.release.version;
+  return [
+    `Our patches do not apply cleanly to Firefox ${v}, so the bump stays a draft and never ` +
+      "merges itself.",
+    "",
+    `- Bump PR: ${pr || "none opened (see the run)"}`,
+    `- Branch: \`${branchName(v)}\``,
+    `- Run: ${c.runUrl}`,
+    `- ${patchLine(c.patchReport, c.patchResult)}`,
+    "",
+    ...conflictLines(c.patchReport),
+    "The upstream autopilot opened this issue and updates it on each run for this version. " +
+      "Close it when the bump PR merges.",
+  ].join("\n");
 }
 
 /**
@@ -577,6 +611,7 @@ function main() {
       ref: { type: "string", default: "" },
       "bump-diff": { type: "string" },
       "auto-merge-only": { type: "boolean", default: false },
+      pr: { type: "string", default: "" },
     },
   });
   const what = positionals[0];
@@ -619,6 +654,8 @@ function main() {
         : values["draft-only"]
           ? String(draftDecision(c).draft)
           : prBody(c),
+    "patch-issue": () => patchIssueBody(c, values.pr ?? ""),
+    "patch-issue-title": () => patchIssueTitle(v),
     fallback: () => fallbackBody(c),
     drift: () => driftBody(c),
     "drift-title": () => driftTitle(detection.current),

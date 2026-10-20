@@ -209,6 +209,22 @@ CycloneDX SBOM lists the other components.
 `;
 }
 
+/**
+ * The update steps release.yml puts at the top of the release notes. Vimma 0.1.6 on a Mac shows
+ * the Linux tarball command in its update notice; the notes are the one page it links to.
+ * @param {string} version
+ * @param {string} repo
+ */
+export function updatingNotes(version, repo) {
+  return `### Updating
+
+- **macOS:** \`brew upgrade --cask vimma\`, or download \`${APP}-${version}-macos-aarch64.dmg\`
+  below and drag Vimma over the copy in Applications.
+- **Linux:** \`:update\` shows the command for how you installed Vimma; the user guide's
+  [Updates](https://github.com/${repo}/blob/main/docs/guide.md#updates) section lists them all.
+`;
+}
+
 /** @param {string} version */
 export function artifactNames(version) {
   return {
@@ -836,7 +852,8 @@ function packageIn(work, options) {
     writeFile(join(aurDir, ".SRCINFO"), info);
   }
 
-  // Not an asset either: release.yml appends it to the release notes.
+  // Not assets either: release.yml puts them at the top and the end of the release notes.
+  writeFile(join(out, "notes/updating.md"), updatingNotes(version, options.repo));
   writeFile(join(out, "notes/third-party.md"), thirdPartyNotes());
 
   writeFile(join(out, names.checksums), sha256sums(files));

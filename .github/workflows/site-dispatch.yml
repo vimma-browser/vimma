@@ -1,5 +1,8 @@
-# Spec site-keys-mirror. When the default bindings change on main, tell vimma-browser/vimma-site, whose
-# own workflow fetches docs/bindings.json at this commit and opens a pull request with it.
+# Spec site-keys-mirror. Tells vimma-browser/vimma-site when something it mirrors changes:
+# - a push to main that changes the default bindings sends `vimma-bindings` with the commit;
+# - a published release (not a pre-release) sends `vimma-release` with its tag, and the site's
+#   release-sync.yml then syncs the latest published release and opens a pull request, so the
+#   site does not wait for its daily run.
 # Needs the secret SITE_DISPATCH_TOKEN: a fine-grained token for vimma-browser/vimma-site only, with
 # "Contents: read and write" (what the repository_dispatch endpoint requires). Without it the job
 # logs a notice and succeeds, so main stays green until the secret is set.
@@ -10,7 +13,14 @@ on:
   push:
     branches: [main]
     paths: [docs/bindings.json]
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Send vimma-release (the site syncs the latest release) instead of vimma-bindings"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -20,20 +30,32 @@ concurrency:
 
 jobs:
   dispatch:
-    name: tell vimma.dev the bindings changed
-    if: github.repository == 'vimma-browser/vimma'
+    name: tell vimma.dev what changed
+    if: github.repository == 'vimma-browser/vimma' && !github.event.release.prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: repository_dispatch to vimma-browser/vimma-site
         env:
           GH_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          RELEASE: ${{ inputs.release }}
           SHA: ${{ github.sha }}
+          TAG: ${{ github.event.release.tag_name }}
         run: |
+          if [ "$EVENT" = release ] || [ "$RELEASE" = true ]; then
+            type=vimma-release
+            what=${TAG:-the latest release}
+            payload=(-f "client_payload[tag]=$TAG")
+          else
+            type=vimma-bindings
+            what=$SHA
+            payload=(-f "client_payload[sha]=$SHA")
+          fi
           if [ -z "$GH_TOKEN" ]; then
-            echo "::notice::SITE_DISPATCH_TOKEN is not set; vimma.dev was not told about $SHA"
+            echo "::notice::SITE_DISPATCH_TOKEN is not set; vimma.dev was not told about $what ($type)"
             exit 0
           fi
           gh api --method POST repos/vimma-browser/vimma-site/dispatches \
-            -f event_type=vimma-bindings -f "client_payload[sha]=$SHA"
-          echo "dispatched vimma-bindings for $SHA"
+            -f "event_type=$type" "${payload[@]}"
+          echo "dispatched $type for $what"

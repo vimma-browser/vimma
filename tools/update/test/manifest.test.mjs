@@ -27,6 +27,8 @@ import {
   checkAssets,
   checkSigned,
   digestInfo,
+  dmgInfo,
+  manifestPath,
   nextSerial,
   parseSums,
   pinnedPem,
@@ -503,6 +505,136 @@ describe("prepareRelease and checkSigned (the jobs' checks)", () => {
       checkSigned(text, { keys: [key.pin], tag: null, dir: null, published: null, now }),
     ).rejects.toThrow(/ahead/);
   }, 30_000);
+});
+
+/**
+ * A macOS release directory as the download step leaves it: the .dmg and SHA256SUMS-macos, which
+ * also lists the cask (release.yml's macos-package job).
+ * @param {string} version
+ */
+function fakeMacRelease(version) {
+  const dir = tempDir("vimma-release-macos-");
+  const dmg = assetNames(version, "macos").dmg;
+  writeFileSync(join(dir, dmg), `dmg ${version}`);
+  writeFileSync(join(dir, "vimma.rb"), "cask");
+  const sha = (/** @type {string} */ n) =>
+    createHash("sha256")
+      .update(readFileSync(join(dir, n)))
+      .digest("hex");
+  writeFileSync(
+    join(dir, "SHA256SUMS-macos"),
+    `${sha(dmg)}  ${dmg}\n${sha("vimma.rb")}  vimma.rb\n`,
+  );
+  return dir;
+}
+
+describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
+  const now = new Date(Date.UTC(2026, 9, 28, 4, 12, 7));
+  const macInfo = () => ({ appVersion: "158.0", buildId: "20261019132138" });
+  const macOffer = () => ({ ...offer(), assets: { dmg: { size: 90000000, sha512: HASH("d") } } });
+
+  it("names the .dmg as release.yml does and publishes at the Darwin target's path", () => {
+    expect(assetNames("0.3.1", "macos")).toEqual({ dmg: "vimma-0.3.1-macos-aarch64.dmg" });
+    expect(manifestPath("macos")).toBe(
+      "public/updates/browser/Darwin_aarch64-gcc3/vimma/update.xml",
+    );
+    expect(manifestPath("linux")).toBe(MANIFEST_PATH);
+  });
+
+  it("writes the Darwin target and only the <vimmaDmg> element", () => {
+    const body = buildManifest({ serial: "20261028041207", update: macOffer(), os: "macos" });
+    expect(body).toBe(
+      '<?xml version="1.0"?>\n' +
+        '<updates vimmaChannel="vimma" vimmaTarget="Darwin_aarch64-gcc3" vimmaSerial="20261028041207">\n' +
+        '  <update type="minor" appVersion="158.0.1" platformVersion="158.0.1"' +
+        ' buildID="20261028031500" displayVersion="0.3.1"' +
+        ` detailsURL="${RELEASES}/tag/v0.3.1" vimmaUrgency="normal">\n` +
+        `    <vimmaDmg size="90000000" hashFunction="sha512" hashValue="${HASH("d")}"` +
+        ` URL="${RELEASES}/download/v0.3.1/vimma-0.3.1-macos-aarch64.dmg"/>\n` +
+        "  </update>\n" +
+        "</updates>\n",
+    );
+    expect(parseManifest(body)).toMatchObject({
+      ok: true,
+      manifest: { target: "Darwin_aarch64-gcc3", update: { assets: macOffer().assets } },
+    });
+    expect(() => buildManifest({ serial: "20261028041207", update: offer(), os: "macos" })).toThrow(
+      /macos-aarch64\.dmg/,
+    );
+  });
+
+  it("builds from the .dmg, SHA256SUMS-macos and the Mac build's own application.ini", () => {
+    const dir = fakeMacRelease("0.3.1");
+    const { body } = prepareRelease({
+      tag: "v0.3.1",
+      dir,
+      commits: [],
+      published: null,
+      now,
+      os: "macos",
+      appInfo: macInfo,
+    });
+    const m = /** @type {any} */ (parseManifest(body)).manifest;
+    expect(m.target).toBe("Darwin_aarch64-gcc3");
+    expect(m.update).toMatchObject({ appVersion: "158.0", buildId: "20261019132138" });
+    expect(Object.keys(m.update.assets)).toEqual(["dmg"]);
+  });
+
+  it("refuses a .dmg that does not match SHA256SUMS-macos", () => {
+    const dir = fakeMacRelease("0.3.1");
+    writeFileSync(join(dir, "vimma-0.3.1-macos-aarch64.dmg"), "swapped");
+    expect(() =>
+      prepareRelease({
+        tag: "v0.3.1",
+        dir,
+        commits: [],
+        published: null,
+        now,
+        os: "macos",
+        appInfo: macInfo,
+      }),
+    ).toThrow(/SHA256SUMS-macos/);
+  });
+
+  it("checkSigned takes the target: a Linux manifest is refused for macOS and back", async () => {
+    const dir = fakeMacRelease("0.3.1");
+    const { body } = prepareRelease({
+      tag: "v0.3.1",
+      dir,
+      commits: [],
+      published: null,
+      now,
+      os: "macos",
+      appInfo: macInfo,
+    });
+    const text = kmsSign(body, key);
+    const opts = { keys: [key.pin], tag: "v0.3.1", dir, published: null, now };
+    await expect(checkSigned(text, { ...opts, os: "macos" })).resolves.toMatchObject({
+      serial: "20261028041207",
+    });
+    await expect(checkSigned(text, opts)).rejects.toThrow(/Darwin_aarch64-gcc3/);
+    const linux = kmsSign(buildManifest({ serial: "20261028041207", update: null }), key);
+    await expect(
+      checkSigned(linux, { ...opts, tag: null, dir: null, os: "macos" }),
+    ).rejects.toThrow(/Linux_x86_64-gcc3/);
+  }, 30_000);
+
+  it.runIf(process.platform === "darwin")(
+    "reads the version and build ID from the app inside a real .dmg (hdiutil)",
+    () => {
+      const dir = tempDir("vimma-dmg-");
+      const res = join(dir, "src", "Vimma.app", "Contents", "Resources");
+      mkdirSync(res, { recursive: true });
+      writeFileSync(
+        join(res, "application.ini"),
+        "[App]\nName=Vimma\nVersion=158.0\nBuildID=20261019132138\n",
+      );
+      const dmg = join(dir, "v.dmg");
+      execFileSync("hdiutil", ["create", "-quiet", "-srcfolder", join(dir, "src"), dmg]);
+      expect(dmgInfo(dmg)).toEqual({ appVersion: "158.0", buildId: "20261019132138" });
+    },
+    60_000,
+  );
 });
 
 const REAL = process.env.VIMMA_UPDATE_ASSETS;

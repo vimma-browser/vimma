@@ -108,8 +108,8 @@ describe("build supply chain: npm", () => {
     expect(value).toBe("true");
   });
 
-  it("release and nightly install with npm ci --ignore-scripts and run Surfer with npx --no", () => {
-    for (const name of ["release.yml", "nightly.yml"]) {
+  it("the full builds install with npm ci --ignore-scripts and run Surfer with npx --no", () => {
+    for (const name of ["release.yml", "nightly.yml", "macos.yml"]) {
       const block = buildJob(name);
       const installs = [...block.matchAll(/\bnpm (?:ci|install|i)\b[^\n]*/g)].map((m) => m[0]);
       expect(installs, name).not.toEqual([]);
@@ -289,7 +289,7 @@ describe("build supply chain: Dependabot", () => {
 });
 
 describe("the Safe Browsing key (decision 18, B6)", () => {
-  it("the Safe Browsing key comes only from the build environment, in the two build jobs", () => {
+  it("the Safe Browsing key comes only from the build environment, in the release and nightly builds", () => {
     const dir = new URL(".github/workflows/", root);
     /** @type {string[]} */
     const users = [];
@@ -305,7 +305,8 @@ describe("the Safe Browsing key (decision 18, B6)", () => {
         }
       }
     }
-    expect(users.sort()).toEqual(["nightly.yml:build", "release.yml:build"]);
-    expect(inBuild.sort()).toEqual(["nightly.yml:build", "release.yml:build"]);
+    const builds = ["nightly.yml:build", "release.yml:build", "release.yml:macos-build"];
+    expect(users.sort()).toEqual(builds);
+    expect(inBuild.sort()).toEqual(builds);
   });
 });

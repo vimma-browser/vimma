@@ -1,0 +1,85 @@
+<!doctype html>
+
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- about:vimma-setup (spec: docs/specs/first-run-setup.md): the welcome screen and the two
+   - setup steps. setup.mjs draws the lists and takes the keys; SetupHost applies the summary. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome:; object-src 'none'"
+    />
+    <title>Vimma setup</title>
+    <link rel="stylesheet" href="chrome://browser/skin/vimma/logo.css" />
+    <link rel="stylesheet" href="chrome://browser/skin/vimma/setup.css" />
+    <script type="module" src="chrome://browser/content/vimma/setup/setup.mjs"></script>
+  </head>
+  <body>
+    <main id="welcome" class="screen">
+      <div class="vimma-logo" role="img" aria-label="Vimma">
+        <span class="vimma-logo-mark" aria-hidden="true"></span>
+        <span class="vimma-logo-wordmark" aria-hidden="true"></span>
+      </div>
+      <p class="tagline">A keyboard-first browser. Set up add-ons and search now?</p>
+      <div class="buttons">
+        <button id="setup-start" type="button"><kbd>enter</kbd> Set up</button>
+        <button id="setup-skip" type="button" class="quiet"><kbd>esc</kbd> Skip</button>
+      </div>
+    </main>
+
+    <main id="addons" class="screen step" hidden>
+      <header>
+        <p class="progress">Step 1 of 2</p>
+        <h1>Add-ons</h1>
+        <p class="lede">
+          Mark the add-ons you use. Nothing is installed until you confirm the summary, and Firefox
+          asks for each add-on's permissions. Add-ons run in every workspace, including the agent
+          workspace.
+        </p>
+      </header>
+      <label class="search">
+        <kbd>/</kbd>
+        <input id="setup-search" type="search" placeholder="Search addons.mozilla.org" />
+      </label>
+      <p class="note">A search sends its terms to addons.mozilla.org and nothing else.</p>
+      <p id="setup-offline" class="notice" hidden>
+        addons.mozilla.org is not answering; search is unavailable.
+      </p>
+      <ul id="setup-addons" class="list" role="listbox" aria-multiselectable="true"></ul>
+      <footer class="keys">
+        <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>space</kbd> mark · <kbd>/</kbd> search ·
+        <kbd>enter</kbd> next · <kbd>esc</kbd> skip
+      </footer>
+    </main>
+
+    <main id="engine" class="screen step" hidden>
+      <header>
+        <p class="progress">Step 2 of 2</p>
+        <h1>Search engine</h1>
+        <p class="lede">The engine the address bar searches with. Saved in config.toml.</p>
+      </header>
+      <ul id="setup-engines" class="list" role="listbox"></ul>
+      <footer class="keys">
+        <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>enter</kbd> choose · <kbd>esc</kbd> skip
+      </footer>
+    </main>
+
+    <main id="summary" class="screen step" hidden>
+      <header>
+        <p class="progress">Summary</p>
+        <h1>Ready to apply</h1>
+      </header>
+      <dl id="setup-plan" class="plan"></dl>
+      <p id="setup-config-error" class="notice" hidden></p>
+      <ul id="setup-results" class="results" aria-live="polite"></ul>
+      <footer class="keys" id="setup-summary-keys">
+        <kbd>enter</kbd> apply · <kbd>esc</kbd> back
+      </footer>
+    </main>
+  </body>
+</html>

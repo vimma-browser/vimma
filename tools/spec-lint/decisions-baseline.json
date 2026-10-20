@@ -19,7 +19,6 @@
     "Downgrade",
     "Complete MARs only",
     "`type=\"minor\"`",
-    "One manifest per channel and target",
     "The m0-updater mochitests change",
     "Settings' \"Updates are managed by your operating system\""
   ],

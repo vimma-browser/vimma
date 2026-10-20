@@ -43,10 +43,18 @@ export const RELEASES_URL = "https://github.com/vimma-browser/vimma/releases";
 export const PKGBUILD_INSTALL_COMMAND = `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO ${RELEASES_URL}/latest/download/PKGBUILD && makepkg -si`;
 
 /**
+ * Where the Homebrew cask installs Vimma, and the Caskroom folder it keeps beside it (spec
+ * macos-homebrew, decision 8; Apple Silicon's Homebrew prefix).
+ */
+export const HOMEBREW_APP = "/Applications/Vimma.app";
+export const HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/vimma";
+
+/**
  * How Vimma was installed (spec §3): `source` is a build run from its objdir, `packaged` an
- * `is-packaged-app` marker this version does not know.
- * @typedef {"source" | "tarball" | "appimage" | "deb" | "aur" | "pkgbuild-release" | "packaged"}
- *   InstallType
+ * `is-packaged-app` marker this version does not know; on macOS, `homebrew` is the cask and `dmg`
+ * any other copy of the app (spec macos-homebrew, decision 19).
+ * @typedef {"source" | "tarball" | "appimage" | "deb" | "aur" | "pkgbuild-release" | "packaged"
+ *   | "homebrew" | "dmg"} InstallType
  */
 /** @typedef {{ id: string, slot: "primary" | "secondary", spki: string }} PinnedKey */
 /**
@@ -60,7 +68,7 @@ export const PKGBUILD_INSTALL_COMMAND = `mkdir -p ~/.cache/vimma-build && cd ~/.
  * @property {Assets} assets          each package's size and SHA-512, as the manifest signs them
  */
 /** @typedef {{ size: number, sha512: string }} Asset */
-/** @typedef {{ tarball?: Asset, appimage?: Asset, deb?: Asset }} Assets */
+/** @typedef {{ tarball?: Asset, appimage?: Asset, deb?: Asset, dmg?: Asset }} Assets */
 /**
  * @typedef {{ channel: string, target: string, serial: string, update: Offer | null }} Manifest
  */
@@ -294,6 +302,7 @@ export const ASSET_ELEMENTS = Object.freeze({
   tarball: "vimmaTarball",
   appimage: "vimmaAppImage",
   deb: "vimmaDeb",
+  dmg: "vimmaDmg",
 });
 
 /**
@@ -522,13 +531,20 @@ export function updateNotice(state) {
 
 /**
  * `vimma-package=<type>` in the `is-packaged-app` marker (spec §3), with `$APPIMAGE`; `packaged`
- * is false for a build that runs from its objdir (no omni.ja).
- * @param {{ packaged: boolean, marker: string | null, appImage: string | null }} input
- *   `marker`: the file's text, null when there is none
+ * is false for a build that runs from its objdir (no omni.ja). On macOS no build has a marker:
+ * the cask's app beside its Caskroom is `homebrew`, any other `dmg` (spec macos-homebrew,
+ * decisions 8 and 19).
+ * @param {{ packaged: boolean, marker: string | null, appImage: string | null,
+ *   platform?: string, appPath?: string | null, caskroom?: boolean }} input
+ *   `marker`: the file's text, null when there is none; `platform`: AppConstants.platform;
+ *   `appPath`: the running app bundle (appBundleOf); `caskroom`: HOMEBREW_CASKROOM exists
  * @returns {InstallType}
  */
-export function installTypeFrom({ packaged, marker, appImage }) {
+export function installTypeFrom({ packaged, marker, appImage, platform, appPath, caskroom }) {
   if (!packaged) return "source";
+  if (platform === "macosx") {
+    return appPath === HOMEBREW_APP && caskroom === true ? "homebrew" : "dmg";
+  }
   if (marker === null) return appImage ? "appimage" : "tarball";
   const m = /^vimma-package=([a-z-]+)\s*$/m.exec(marker);
   const name = m?.[1];
@@ -536,6 +552,15 @@ export function installTypeFrom({ packaged, marker, appImage }) {
     return name;
   }
   return appImage ? "appimage" : "packaged";
+}
+
+/**
+ * The `.app` bundle whose `Contents/Resources` is `greDir` (GreD on macOS), or null.
+ * @param {string} greDir
+ */
+export function appBundleOf(greDir) {
+  const m = /^(\/.*\.app)\/Contents\/Resources\/?$/.exec(greDir);
+  return m?.[1] ?? null;
 }
 
 /**
@@ -618,6 +643,23 @@ export function updateSteps(type, offer, where) {
         link,
       };
     }
+    case "homebrew":
+      return {
+        text: "Upgrade the Homebrew cask:",
+        commands: ["brew upgrade --cask vimma"],
+        link,
+      };
+    case "dmg":
+      // No command: a .dmg that curl fetches has no quarantine flag, so Gatekeeper would never
+      // check it (spec macos-homebrew, decision 19).
+      return {
+        text:
+          "Quit Vimma, download the new .dmg from the release page and drag Vimma over the copy " +
+          "in Applications. macOS asks again on the first open; the guide's “The first open” " +
+          "shows how.",
+        commands: [],
+        link,
+      };
     case "source":
       return { text: "A source build: pull and rebuild to update.", commands: [], link };
     default:

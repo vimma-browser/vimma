@@ -1,0 +1,38 @@
+#!/bin/sh
+# Ad hoc signs the app in a .dmg from `mach package` and packs it again (spec macos-build,
+# decisions 7 and 10). `rcodesign sign` with no certificate, entitlements or hardened runtime:
+# entitlements apply only under the hardened runtime, which an ad hoc build does not need; the
+# Developer ID build brings both. mach's own unpack_dmg and make_dmg do the disk images, with the
+# tools --enable-bootstrap fetched, so this runs the same on Linux and on a Mac.
+# Usage: tools/package/macos-dmg.sh <in.dmg> <out.dmg>
+#   MACH       mach to run (default: engine/mach); MOZ_OBJDIR as for the build
+#   RCODESIGN  rcodesign to run (default: rcodesign on PATH)
+set -eu
+
+in=${1:?usage: macos-dmg.sh <in.dmg> <out.dmg>}
+out=${2:?usage: macos-dmg.sh <in.dmg> <out.dmg>}
+mach=${MACH:-$(dirname "$0")/../../engine/mach}
+rcodesign=${RCODESIGN:-rcodesign}
+
+absolute() { case "$1" in /*) echo "$1" ;; *) echo "$PWD/$1" ;; esac; }
+in=$(absolute "$in")
+out=$(absolute "$out")
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+staged="$work/dmg"
+
+"$mach" python -m mozbuild.action.unpack_dmg "$in" "$staged"
+
+set -- "$staged"/*.app
+if [ "$#" -ne 1 ] || [ ! -d "$1" ]; then
+  echo "macos-dmg.sh: $in must hold exactly one .app" >&2
+  exit 1
+fi
+app=$1
+
+# A disk image mounted on a Mac leaves Finder attributes that a strict verify rejects.
+if command -v xattr > /dev/null 2>&1; then xattr -cr "$app"; fi
+
+"$rcodesign" sign "$app"
+"$mach" python -m mozbuild.action.make_dmg --volume-name Vimma "$staged" "$out"

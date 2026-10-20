@@ -282,6 +282,13 @@ its Rust toolchain and the GitHub Actions current:
 User-facing limits are in [docs/limits.md](docs/limits.md); these concern building and testing
 Vimma.
 
+- The macOS build (Apple Silicon) is cross-compiled on Linux by `macos.yml`, weekly, by hand and
+  on pull requests that touch `configs/macos/` or its scripts; a hosted Mac only runs the result
+  ([ADR-018](docs/adr/018-macos-cross-build.md),
+  [runbook](docs/runbook.md#macos-build-macosyml)). To try it locally, run
+  `SURFER_PLATFORM=darwin npx surfer build` on Linux, then `tools/package/macos-dmg.sh` on the
+  `.dmg` from `./mach package`.
+
 - PR CI runs the mochitests on an artifact build, which cannot see compiled-in config: the C++
   `--version` string, `MOZ_APP_NAME` and the crash-reporter flag
   ([ADR-010](docs/adr/010-pr-artifact-builds.md), Known gaps). PR CI's builds also have no Google

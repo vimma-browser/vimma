@@ -671,7 +671,10 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
    builds run somewhere, so this spec's pipeline sub-PR lands after build-supply-chain.
 5. **Complete MARs only**; partial MARs later (they need the previous build in the pipeline).
 6. **`type="minor"`** always (Firefox's "major" UI is for unsupported operating systems).
-7. **One manifest per channel and target**; aarch64 and macOS add files later.
+7. **One manifest per channel and target**, because the client refuses a manifest for another
+   channel or target (§4 rule 2), so each build reads only its own file; aarch64 and macOS add
+   files later. (Since changed: the macOS notice manifest is
+   [macos-homebrew](macos-homebrew.md) decisions 16 to 21.)
 8. **The m0-updater mochitests change**: on a build with `VIMMA_UPDATES=1`, `MOZ_UPDATER` is true
    and the URL is updates.vimma.dev; "no request to aus5" stays a test in both builds.
 9. **Settings' "Updates are managed by your operating system"** is accurate for `.deb` and AUR;
@@ -844,7 +847,7 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
 
 ### 9. Not in this spec
 
-Partial MARs; macOS, Windows and aarch64 manifests; an apt repository (decision 20); Flatpak;
+Partial MARs; macOS (now [macos-homebrew](macos-homebrew.md)), Windows and aarch64 manifests; an apt repository (decision 20); Flatpak;
 a cookie-less download mirror; changing the remoting name or compile-time channel; a "Vimma does
 not update itself" Fluent patch (no longer needed for tarballs); background updates while Vimma is
 closed (Linux has no update agent).
