@@ -432,10 +432,13 @@ add_task(async function zoom_hides_the_other_panes_visually_and_unzoom_restores_
   applyLayout(window, rects);
   await scrollPage(z1.linkedBrowser, SCROLL_Y);
   await scrollPage(z2.linkedBrowser, SCROLL_Y);
-  // The CSS is checked on z1: content-area.css gives column 0 (z1) z-index 1, so it paints, and
-  // hit-tests, on top of a full-size z3 unless hidden (the control). getComputedStyle does not
-  // expose -moz-subtree-hidden-only-visually, so the hit test is the check. z2 is the selected
-  // panel here; it is not on top of z3 even unhidden, so the hit test cannot tell for z2.
+  // The CSS is checked on z1: with z-index 1 it paints, and hit-tests, on top of a full-size z3
+  // unless hidden (the control). content-area.css gives column 0 that z-index only outside
+  // macOS, so the test sets it on z1 itself, the same value, to hold on every platform.
+  // getComputedStyle does not expose -moz-subtree-hidden-only-visually, so the hit test is the
+  // check. z2 is the selected panel here; it is not on top of z3 even unhidden, so the hit test
+  // cannot tell for z2.
+  panelOf(z1).style.zIndex = "1";
   gBrowser.selectedTab = z2;
   /** The element at the centre of a tab's unzoomed rect. */
   const hitAt = (tab) => {
@@ -466,6 +469,7 @@ add_task(async function zoom_hides_the_other_panes_visually_and_unzoom_restores_
   assertRects(new Map([[z3, full]]), "zoomed, z3 selected");
 
   for (const tab of [z1, z2]) setHidden(window, tab, false);
+  panelOf(z1).style.removeProperty("z-index");
   applyLayout(window, rects);
   await nextFrame();
   assertRects(rects, "unzoomed");
