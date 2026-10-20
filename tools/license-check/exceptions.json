@@ -61,6 +61,10 @@
       "license": "Python-2.0",
       "reason": "PSF licence, permissive; dev-only, via @zen-browser/surfer > xmlbuilder2 > js-yaml"
     },
+    "argparse@3.0.3": {
+      "license": "PSF-2.0",
+      "reason": "PSF licence (the SPDX id that replaced Python-2.0), permissive; dev-only, via js-yaml 5, the YAML parser of the workflow runner tests (tools/test/workflow-runners.mjs)"
+    },
     "caniuse-lite@1.0.30001815": {
       "license": "CC-BY-4.0",
       "reason": "browser-support data under an attribution-only licence; dev-only and never shipped, via @stryker-mutator/core > instrumenter > @babel/core > browserslist"
