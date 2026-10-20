@@ -274,6 +274,54 @@ add_task(async function keys_reach_vimma_while_a_restored_start_page_pane_loads(
   await BrowserTestUtils.closeWindow(w2);
 });
 
+// Issue #388: the same holds for a start page that is new, not restored. Switching to a
+// workspace with no tabs opens its start page, and Firefox's tab switch focuses it while it is
+// still loading in the parent process; a key typed then was lost, so ctrl+b shift+p pressed
+// right after a switch did nothing.
+add_task(async function keys_reach_vimma_while_a_new_start_page_loads() {
+  const E = workspace("rs-e");
+  const win = await openWindow();
+  await SimpleTest.promiseFocus(win);
+  const ww = WindowWorkspaces.get(win);
+
+  /** @type {string[]} */
+  const seen = [];
+  const onKey = (/** @type {KeyboardEvent} */ e) => seen.push(e.key);
+  win.addEventListener("keydown", onKey, true);
+  const tip = Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
+  Assert.ok(
+    tip.beginInputTransaction(win, () => true),
+    "keys can be typed into the window",
+  );
+  // F20 is bound to nothing: what matters is whether the window's capture phase sees it.
+  const key = new win.KeyboardEvent("", { key: "F20", code: "F20" });
+  let pressed = 0;
+  let lost = 0;
+  ww.switchTo({ id: E.id });
+  const page = win.gBrowser.selectedTab;
+  Assert.equal(page.userContextId, E.userContextId, "the switch selects E's new start page");
+  for (let i = 0; i < 200; i++) {
+    const doc = page.linkedBrowser.contentDocument;
+    if (doc?.documentURI === START && doc.readyState !== "loading") break;
+    if (doc?.documentURI === START) {
+      seen.length = 0;
+      tip.keydown(key);
+      tip.keyup(key);
+      pressed++;
+      if (!seen.length) lost++;
+    }
+    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+  }
+  win.removeEventListener("keydown", onKey, true);
+  Assert.greater(pressed, 0, "keys were typed while the start page was loading");
+  Assert.equal(lost, 0, "none of them was lost");
+  await until(
+    () => Services.focus.focusedWindow === page.linkedBrowser.contentWindow,
+    "the start page has focus once it has loaded",
+  );
+  await BrowserTestUtils.closeWindow(win);
+});
+
 add_task(async function a_newer_window_value_is_left_untouched() {
   for (const id of created.splice(0)) await WorkspaceStore.deleteWorkspace(id, { confirmed: true });
   const main = WorkspaceStore.definitions.workspaces.find((d) => d.name === "main");
