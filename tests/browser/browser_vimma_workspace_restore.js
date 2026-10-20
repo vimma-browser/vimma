@@ -297,12 +297,20 @@ add_task(async function keys_reach_vimma_while_a_new_start_page_loads() {
   const key = new win.KeyboardEvent("", { key: "F20", code: "F20" });
   let pressed = 0;
   let lost = 0;
+  let back = false;
+  const home = ww.model.active;
   ww.switchTo({ id: E.id });
   const page = win.gBrowser.selectedTab;
   Assert.equal(page.userContextId, E.userContextId, "the switch selects E's new start page");
   for (let i = 0; i < 200; i++) {
     const doc = page.linkedBrowser.contentDocument;
     if (doc?.documentURI === START && doc.readyState !== "loading") break;
+    if (doc?.documentURI === START && !back) {
+      // Back to the page while it still loads, and a key in the same task as that switch.
+      ww.switchTo({ id: home });
+      ww.switchTo({ id: E.id });
+      back = true;
+    }
     if (doc?.documentURI === START) {
       seen.length = 0;
       tip.keydown(key);
@@ -314,6 +322,7 @@ add_task(async function keys_reach_vimma_while_a_new_start_page_loads() {
   }
   win.removeEventListener("keydown", onKey, true);
   Assert.greater(pressed, 0, "keys were typed while the start page was loading");
+  Assert.ok(back, "and right after switching back to it");
   Assert.equal(lost, 0, "none of them was lost");
   await until(
     () => Services.focus.focusedWindow === page.linkedBrowser.contentWindow,
