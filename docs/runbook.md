@@ -591,8 +591,9 @@ GitHub documents only 14 GB for hosted Macs. On a failure the run uploads `mochi
 It runs on every pull request except a docs-only one, gated by the same `changes` job as the
 Linux job, and on a manual run without a `firefox-version`. It does not run when `upstream.yml` or
 `upstream-beta.yml` call `e2e.yml` with a version, because a macOS failure must never block a
-Linux release (spec macos-build, decision 13). It does not build `vimma-ctl` or run the e2e
-scenarios: those follow with the spec's sub-PRs 2 and 4.
+Linux release (spec macos-build, decision 13). It does not build `vimma-ctl`, so
+`browser_vimma_control.js` skips there; vimma-ctl's own macOS tests run in `ci.yml` (`vimma-ctl
+on macOS`). The e2e scenarios follow with the spec's sub-PR 4.
 
 **Informational, not required.** The job is new and its runner type has no history in this
 repository, so a flaky macOS run would otherwise block every pull request (spec macos-build, open

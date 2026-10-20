@@ -302,7 +302,8 @@ jobs:
   # a hosted Apple Silicon Mac. Informational: not a required check (open question 7), so a red
   # run here shows a macOS break without blocking the merge; branch protection must not list it.
   # Not on a version run (upstream autopilot, Beta canary): macOS never blocks a Linux release
-  # (decision 13). No vimma-ctl, no e2e scenarios: they follow with sub-PRs 2 and 4.
+  # (decision 13). No vimma-ctl build (its macOS tests are in ci.yml) and no e2e scenarios
+  # (sub-PR 4).
   mochitest-macos:
     name: mochitest (artifact build, macOS)
     needs: changes
@@ -353,7 +354,7 @@ jobs:
       - name: Artifact build (tools/artifact-build)
         run: node tools/artifact-build/artifact-build.mjs
 
-      # Headless. browser_vimma_control.js skips without a vimma-ctl build (sub-PR 2 adds one).
+      # Headless. browser_vimma_control.js skips here: this job builds no vimma-ctl.
       # Tests that cannot pass on macOS carry skip-if = ["os == 'mac'"] with an issue in
       # tests/browser/browser.toml.
       - name: Mochitests (npm run mochitest -- --artifact tests/browser/)
