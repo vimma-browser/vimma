@@ -52,6 +52,17 @@ const tempDir = () => {
   return d;
 };
 
+/** @param {number} pid @returns {string} ps's state letters, "" once the pid is gone */
+const psState = (pid) => {
+  try {
+    return execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim();
+  } catch (err) {
+    // ps exits 1 with no output for a pid that does not exist; anything else is a real error.
+    if (/** @type {{ status?: number }} */ (err).status === 1) return "";
+    throw err;
+  }
+};
+
 /** @param {number} pid */
 const alive = (pid) => {
   try {
@@ -61,12 +72,8 @@ const alive = (pid) => {
   }
   // An orphan that has exited still answers signal 0 until init reaps it, which launchd on
   // macOS may do only after the process group already looks empty.
-  try {
-    const state = execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
-    return !state.trim().startsWith("Z");
-  } catch {
-    return false;
-  }
+  const state = psState(pid);
+  return state !== "" && !state.startsWith("Z");
 };
 
 describe("alive", () => {
@@ -79,7 +86,8 @@ describe("alive", () => {
     const zombie = Number(
       await new Promise((resolve) => parent.stdout.once("data", (d) => resolve(String(d).trim()))),
     );
-    await sleep(200);
+    for (let i = 0; i < 200 && !psState(zombie).startsWith("Z"); i++) await sleep(25);
+    expect(psState(zombie)).toMatch(/^Z/);
     expect(() => process.kill(zombie, 0)).not.toThrow();
     expect(alive(zombie)).toBe(false);
     expect(alive(/** @type {number} */ (parent.pid))).toBe(true);
