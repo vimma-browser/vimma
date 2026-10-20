@@ -279,8 +279,8 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
    | `agent-cancel` | `{ "id" }`                                                              | `{ "cancelled": true \| false }`, no question (decision 17)                      |
    - `agent-hello` must be the connection's first command, and only once. It records the
      client's self-reported name (from MCP `clientInfo`, at most 64 printable characters) and
-     `vimma-ctl`'s parent process name (`/proc/<ppid>/comm` on Linux, at most 32 printable
-     characters). Both are labels for the question, never proof of anything.
+     `vimma-ctl`'s parent process name (`/proc/<ppid>/comm` on Linux, the last component of
+     `ps -o comm=` on macOS, at most 32 printable characters). Both are labels for the question, never proof of anything.
    - `tab` is an id from `agent-tabs` (`browserId`, as in `state`): digits. `url` is http or
      https, at most 65,536 characters, with no spaces or control characters. `file:`,
      `about:`, `javascript:` and `data:` are `invalid-args`: an agent has no reason to load
@@ -803,8 +803,8 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     that its protocol is 2 and its `roles` list `agent` before connecting, connects as the
     `agent` role only (vimma-ctl never asks for `full` on an agent's behalf), and sends
     `agent-hello` with the `clientInfo` name and version (cleaned to 64 printable characters;
-    else the parent process name, else `an agent`) and `via`, the parent process's
-    `/proc/<ppid>/comm` (32 printable characters). The connection is kept for the process's
+    else the parent process name, else `an agent`) and `via`, the parent process's name
+    (`/proc/<ppid>/comm` on Linux, `ps -o comm=` on macOS; 32 printable characters). The connection is kept for the process's
     life, so a grant lasts as long as the agent session: an `agent-ping` goes out after 30 s
     without a request (Vimma closes an agent connection after 60 s without a line). A dropped
     connection fails every waiting call (decision 39) and the next call connects again, as a new

@@ -435,7 +435,12 @@ fn refuses_an_insecure_discovery_file() {
 fn finds_the_default_profile_through_profiles_ini() {
     let server = Server::answering(r#"{"type":"response","id":1,"ok":true,"result":{"sent":1}}"#);
     let config = temp_profile();
-    let root = config.join("vimma/vimma");
+    // Where Firefox puts profiles.ini; XDG_CONFIG_HOME, set below, moves it on Linux only.
+    let root = if cfg!(target_os = "macos") {
+        config.join("Library/Application Support/Vimma")
+    } else {
+        config.join("vimma/vimma")
+    };
     fs::create_dir_all(&root).unwrap();
     fs::write(
         root.join("profiles.ini"),
