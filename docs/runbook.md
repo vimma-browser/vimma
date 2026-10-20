@@ -2025,7 +2025,7 @@ scanning.
 ### Licences
 
 `npm run license-check` checks every package in `package-lock.json` against MIT, ISC,
-BSD-2/3-Clause, Apache-2.0, MPL-2.0. Reviewed exceptions live in
+BSD-2/3-Clause, Apache-2.0, MPL-2.0 and PSF-2.0 (also under its former id, Python-2.0). Reviewed exceptions live in
 `tools/license-check/exceptions.json`, keyed by exact `name@version`, so an upgrade must be
 re-reviewed; stale exceptions fail the check too.
 

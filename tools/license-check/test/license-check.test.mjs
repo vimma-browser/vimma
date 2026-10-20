@@ -114,8 +114,27 @@ describe("checkLock", () => {
 
   it("defaults to the spec allowlist", () => {
     expect([...ALLOWED].sort()).toEqual(
-      ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT", "MPL-2.0"].sort(),
+      [
+        "Apache-2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "ISC",
+        "MIT",
+        "MPL-2.0",
+        "PSF-2.0",
+        "Python-2.0",
+      ].sort(),
     );
+  });
+
+  it("accepts the PSF licence under its current and former SPDX ids without an exception", () => {
+    const { violations } = checkLock(
+      lock({
+        "node_modules/argparse": { version: "2.0.1", license: "Python-2.0" },
+        "node_modules/js-yaml/node_modules/argparse": { version: "3.0.3", license: "PSF-2.0" },
+      }),
+    );
+    expect(violations).toEqual([]);
   });
 });
 
