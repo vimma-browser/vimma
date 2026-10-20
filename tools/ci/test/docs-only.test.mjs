@@ -322,4 +322,22 @@ describe("workflow wiring", () => {
     ])
       expect(step(re).cond).toBe(SKIP);
   });
+
+  it("ci.yml: vimma-ctl's clippy and tests also run on macOS, unless docs-only", () => {
+    const text = workflow("ci.yml");
+    const mac = job(text, "vimma-ctl-macos");
+    expect(mac).toMatch(/^ {4}runs-on: macos-15$/m);
+    expect(mac).toMatch(/^ {4}needs: covered$/m);
+    expect(jobIf(mac)).toBe("${{ !cancelled() && needs.covered.outputs.skip != 'true' }}");
+    expect(mac).toMatch(/^ {4}permissions:\n {6}contents: read\n(?! {6})/m);
+    expect(mac).toContain("persist-credentials: false");
+    expectClassifyStep(mac);
+    const SKIP = "steps.classify.outputs.docs-only != 'true'";
+    const all = steps(mac);
+    for (const re of [/rustup toolchain install/, /cargo clippy --locked/, /cargo test --locked/]) {
+      const found = all.find((s) => re.test(s.text));
+      expect(found?.cond, String(re)).toBe(SKIP);
+      expect(found?.text).toContain("working-directory: tools/vimma-ctl");
+    }
+  });
 });

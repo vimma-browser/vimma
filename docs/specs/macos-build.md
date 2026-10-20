@@ -1,10 +1,11 @@
 # Spec: macos-build
 
-Status: draft (sub-PRs 1, 3 and 6 built) · Area: `configs/macos/mozconfig`,
-`tools/package/macos-dmg.sh` (new), `configs/branding/vimma/`, `tools/artifact-build/`,
-`tools/e2e/`, `tools/mochitest.mjs`, `tools/start.mjs`, `tools/vimma-ctl/src/discovery.rs`,
-`.github/workflows/ci.yml`, `e2e.yml`, `macos.yml` (new); `docs/guide.md`, `docs/limits.md`,
-`CONTRIBUTING.md`, `docs/runbook.md` · Upstream patches: none (decision 7) · ADR:
+Status: draft (sub-PRs 1, 3 and 6 built; sub-PR 2 built except its two macOS mochitests) ·
+Area: `configs/macos/mozconfig`, `tools/package/macos-dmg.sh` (new), `configs/branding/vimma/`,
+`tools/artifact-build/`, `tools/e2e/`, `tools/mochitest.mjs`, `tools/start.mjs`,
+`tools/vimma-ctl/src/discovery.rs`, `tools/vimma-ctl/src/mcp_serve.rs`, `.github/workflows/ci.yml`,
+`e2e.yml`, `macos.yml` (new); `docs/guide.md`, `docs/limits.md`, `CONTRIBUTING.md`,
+`docs/runbook.md` · Upstream patches: none (decision 7) · ADR:
 [ADR-018](../adr/018-macos-cross-build.md) ("macOS is cross-compiled on Linux, arm64 first")
 
 Issue: [#238](https://github.com/vimma-browser/vimma/issues/238)
@@ -50,7 +51,7 @@ release gate opens. Windows is not a target platform.
    `[firefox] disable = "all"` keeps `cmd+q` (`ALL_KEEP`, firefox-keys).
 5. A character typed with Option matches a binding for that character: Option+shift+8 on a Finnish
    layout types `{` and fires a `{` binding. An `alt+<letter>` binding does not fire on a Mac
-   (open question 6).
+   (open question 5).
 6. Without Omarchy, Vimma uses its built-in palette and follows the system's light or dark
    setting live. Nothing mentions Omarchy or Hyprland, and no Omarchy path is polled.
 7. The private workspace opens as its own window, as on any non-Hyprland system.
@@ -58,7 +59,7 @@ release gate opens. Windows is not a target platform.
    live in `~/Library/Application Support/Vimma/`. A discovery file left by a crashed Vimma is
    reported as stale, as on Linux.
 9. `config.toml` is read from `$XDG_CONFIG_HOME/vimma/config.toml`, else
-   `~/.config/vimma/config.toml`, as on Linux (open question 4).
+   `~/.config/vimma/config.toml`, as on Linux (decision 18).
 10. `vimma --version` prints the same line as on Linux, `Vimma <vimma> · Firefox <firefox>`
     (firefox-versions).
 11. A pull request that breaks Vimma's front end on macOS shows a failing check from a hosted Mac.
@@ -221,23 +222,23 @@ From GitHub's "GitHub-hosted runners" reference
 
 Paths under `vimma/` are `src/browser/base/content/vimma/`.
 
-| Part                    | Where                                                                                                     | On macOS today                                                                                                                                                                                                   | Needed                                              |
+| Part                    | Where                                                                                                     | On macOS before this spec                                                                                                                                                                                        | Needed                                              |
 | ----------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | Omarchy theme           | `vimma/ui/theme-host.mjs`: `lookForOmarchy` 102-107, `syncTimer` 286-293                                  | Omarchy is looked for once per process; without it no poll timer runs and the built-in palette follows the system appearance (theme-appearance, implemented). `about:vimma` shows no Omarchy rows                | Nothing                                             |
 | Omarchy hook            | `vimma/omarchy/OmarchyHook.sys.mjs:108-109, 134-140`                                                      | Runs only where Omarchy was found; otherwise returns `"no-omarchy"` without looking                                                                                                                              | Nothing                                             |
 | Hyprland private swap   | `vimma/host/private-swap.mjs:138-141` (gate), `vimma/host/hypr/HyprIpc.sys.mjs:104-110`                   | `isWayland` is false, so the gate answers "not on Wayland" (or "headless" under `MOZ_HEADLESS`); the private workspace opens as its own window, with nothing logged (158)                                        | A test that the gate holds on macOS                 |
 | Private window position | `vimma/host/private-ops.mjs:155-156`                                                                      | Not Wayland, so `screenX` and `screenY` are passed and the window opens over the normal one                                                                                                                      | Nothing                                             |
 | Wake lock               | `vimma/services/WakeLock.sys.mjs:27-33`                                                                   | Returns unless the platform is `linux`; macOS uses Firefox's `IOPMAssertion` wake lock (`widget/cocoa/nsAppShell.mm:74-80`)                                                                                      | Nothing                                             |
-| `config.toml` path      | `vimma/config/ConfigHost.sys.mjs:5-6, 57`                                                                 | `$XDG_CONFIG_HOME/vimma/config.toml`, else `~/.config/vimma/config.toml`; works as is                                                                                                                            | Decision per open question 4                        |
+| `config.toml` path      | `vimma/config/ConfigHost.sys.mjs:5-6, 57`                                                                 | `$XDG_CONFIG_HOME/vimma/config.toml`, else `~/.config/vimma/config.toml`; works as is                                                                                                                            | Nothing (decision 18)                               |
 | Profile directory       | Firefox: `toolkit/xre/nsXREDirProvider.cpp:1122-1134` (Application Support), 1591-1594 (vendor ignored)   | Profiles live in `~/Library/Application Support/Vimma/`, beside `profiles.ini`                                                                                                                                   | `vimma-ctl` must look there                         |
-| vimma-ctl discovery     | `tools/vimma-ctl/src/discovery.rs:58-73`                                                                  | Looks only in `$XDG_CONFIG_HOME/vimma/vimma` (default `~/.config/vimma/vimma`) and `~/.vimma/vimma`: **cannot find the profile** without `--profile` or `VIMMA_PROFILE`                                          | The macOS root under `cfg(target_os = "macos")`     |
-| vimma-ctl stale check   | `discovery.rs:209-229`                                                                                    | `/proc/<pid>` on Linux only; elsewhere every discovery file counts as live. The handshake still protects the token (211-213)                                                                                     | `kill(pid, 0)` on every Unix                        |
+| vimma-ctl discovery     | `tools/vimma-ctl/src/discovery.rs:58-73`                                                                  | Looks only in `$XDG_CONFIG_HOME/vimma/vimma` (default `~/.config/vimma/vimma`) and `~/.vimma/vimma`: **cannot find the profile** without `--profile` or `VIMMA_PROFILE`                                          | The macOS root (decision 19)                        |
+| vimma-ctl stale check   | `discovery.rs:209-229`                                                                                    | `/proc/<pid>` on Linux only; elsewhere every discovery file counts as live. The handshake still protects the token (211-213)                                                                                     | `ps -p <pid>` on macOS (decision 20)                |
 | Control socket          | `vimma/ctl/VimmaControl.sys.mjs:8, 815-817`                                                               | TCP on 127.0.0.1 with a discovery file in the profile: portable                                                                                                                                                  | Nothing                                             |
 | vimma-ctl in CI         | `.github/workflows/ci.yml:110-130`                                                                        | Built and tested on `ubuntu-latest` only                                                                                                                                                                         | A macOS cargo job                                   |
 | Agent attention         | `vimma/host/agent-ui.mjs:180-188` (vimma-mcp)                                                             | `getAttention()` bounces the Dock icon (`widget/cocoa/nsCocoaWindow.mm:7338-7341`); `nsIAlertsService` posts through `widget/cocoa/MacOSNotificationCenter.mm`. Whether an ad hoc app may post is **unverified** | A hand check                                        |
-| `vimma-ctl mcp` caller  | `tools/vimma-ctl/src/mcp_serve.rs:508-519` (`parent_name`): `/proc/<ppid>/comm` on Linux only             | No `/proc` on macOS; the caller gets no name label                                                                                                                                                               | The macOS process name (`proc_name` in libproc)     |
+| `vimma-ctl mcp` caller  | `tools/vimma-ctl/src/mcp_serve.rs:508-519` (`parent_name`): `/proc/<ppid>/comm` on Linux only             | No `/proc` on macOS; the caller gets no name label                                                                                                                                                               | The macOS process name (decision 21)                |
 | Keys: accel             | `vimma/host/firefox-keys.mjs:55-57`; `packages/vimma-core/src/firefox-keys.mjs:692-693, 720-731, 784`     | `accel` is meta; `disable = "all"` keeps `cmd+q`                                                                                                                                                                 | Nothing in core; a macOS key inventory              |
-| Keys: Option characters | `packages/vimma-core/src/keys.mjs:376-406`; `widget/cocoa/nsCocoaUtils.mm:725-731` (Option sets AltGraph) | Option+shift+8 is `{` and matches a `{` binding (key-handling-batch). Option+j types `∆`, so an `alt+j` binding never fires                                                                                      | Open question 6                                     |
+| Keys: Option characters | `packages/vimma-core/src/keys.mjs:376-406`; `widget/cocoa/nsCocoaUtils.mm:725-731` (Option sets AltGraph) | Option+shift+8 is `{` and matches a `{` binding (key-handling-batch). Option+j types `∆`, so an `alt+j` binding never fires                                                                                      | Open question 5                                     |
 | Keys: text bindings     | `packages/vimma-core/src/editable.mjs:119-121`; `vimma/host/VimmaHost.sys.mjs:144, 1691-1696`             | On macOS Vimma leaves `ctrl+h` to Cocoa, which already deletes backward (`widget/cocoa/NativeKeyBindings.mm:87`)                                                                                                 | Nothing                                             |
 | Keys: native menu bar   | `widget/cocoa/nsMenuItemX.mm:316-357`                                                                     | Each menu item takes its key equivalent from its `<key>` element. Whether turning a `<key>` off (firefox-keys) also clears the menu's equivalent is **unverified**                                               | A hand check; the macOS key inventory               |
 | Dev tools               | `tools/start.mjs:40` (Linux objdir), 197 (`/proc/locks`); `tools/mochitest.mjs:53` (`dist/bin/…`)         | Wrong paths on a Mac                                                                                                                                                                                             | Platform paths                                      |
@@ -271,7 +272,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
    clang (lld) and the DMG tools come through `--enable-bootstrap` and `bootstrap_toolchain`, and
    sub-PR 3 adds an explicit `mach artifact toolchain` fetch of cctools, libdmg and hfsplus only if
    bootstrap proves insufficient. The file stays usable on a Mac host for a contributor who builds
-   natively. The runner type follows build-supply-chain decision 6 (open question 8 confirms it for macOS):
+   natively. The runner type follows build-supply-chain decision 6 (open question 7 confirms it for macOS):
    - The standard `ubuntu-24.04` runner first: free, 16 GB RAM, and about 85 GB free disk
      measured against the 30 GB a build needs. A disk guard fails the job before the download when
      less than 40 GB is free (build-supply-chain decision 9). Freeing disk (`jlumbroso/free-disk-space`, as Zen
@@ -361,6 +362,38 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     macOS reads the icon from `Assets.car` and the Linux cross build cannot compile it. The DMG
     window art is decision 14 there.
 
+### Files and processes on macOS
+
+18. **`config.toml` stays in `~/.config/vimma/` on macOS.** Vimma reads
+    `$XDG_CONFIG_HOME/vimma/config.toml`, else `~/.config/vimma/config.toml`, on macOS as on
+    Linux (`vimma/config/ConfigHost.sys.mjs`). This follows the existing behaviour, so a Mac
+    user's file stays where it is, and it is where developers keep their Neovim, tmux, Ghostty
+    and Alacritty configs on a Mac, so one dotfiles repository works on both platforms.
+    Rejected: `~/Library/Application Support/Vimma/config.toml`, the Apple convention beside the
+    profile, because it is hidden from most dotfiles setups and would move every existing file.
+    The profile stays where Firefox puts it (decision 19).
+19. **`vimma-ctl` looks for the profile where Firefox puts it.** On macOS, Firefox keeps
+    `profiles.ini` and the profiles in `~/Library/Application Support/Vimma/`: the app's name
+    under Application Support, with the vendor ignored (`toolkit/xre/nsXREDirProvider.cpp:1122-1134,
+1591-1594`). It reads `XDG_CONFIG_HOME` and the legacy dot directory only on GTK
+    (`nsXREDirProvider.cpp:1311-1560`, inside `MOZ_WIDGET_GTK`). So `vimma-ctl` on macOS uses
+    that folder and ignores both, since following them would send a Mac user who sets
+    `XDG_CONFIG_HOME` for other tools to a folder with no profiles. Linux is unchanged. Rejected:
+    honouring `XDG_CONFIG_HOME` for the profile on macOS as `config.toml` does, because Firefox
+    does not.
+20. **The stale check asks `ps` on macOS.** `vimma-ctl` forbids `unsafe` and has no
+    dependencies (ADR-011), so it cannot call `kill(2)` itself. On macOS it runs
+    `/bin/ps -o pid= -p <pid>`, which, like `/proc/<pid>` on Linux, finds a running process
+    whoever owns it; pid 0 and pids past `i32::MAX` count as exited. When `/bin/ps` cannot run,
+    the file counts as live and the handshake decides, as before. Linux keeps `/proc`, because it
+    needs no child process. Rejected: `/bin/kill -0`, because it fails for another user's process
+    as for an exited one, and only its localised message tells them apart.
+21. **The MCP caller's name on macOS comes from `ps`.** `vimma-ctl mcp` sends its parent
+    process's name as a label for Vimma's question (vimma-mcp). With no `/proc` on macOS, it runs
+    `/bin/ps -o comm= -p <ppid>`, which prints the executable's path, and keeps the last component,
+    cleaned to 32 printable characters as on Linux. The label is never proof of anything
+    (vimma-mcp decision 4). Rejected: `proc_name` from libproc, because it needs `unsafe` FFI.
+
 ### Not in this spec
 
 A notarised macOS release, a vimma.dev download (decision 12); the Homebrew cask and tap
@@ -398,9 +431,12 @@ any failure is a test that assumes Linux.
 
 **cargo test (`tools/vimma-ctl`), on Linux and macOS (sub-PR 2):**
 
-- `profiles_root finds Application Support/Vimma on macOS`
-- `an explicit XDG_CONFIG_HOME profile root still wins on macOS` (if open question 4 keeps XDG)
-- `a discovery file whose pid has exited is stale on every unix`
+- `profiles_root_finds_application_support_vimma_on_macos`
+- `xdg_config_home_does_not_move_the_macos_profile_root`
+- `finds_the_default_profile_through_profiles_ini` (`tests/cli.rs`, the host's own layout)
+- `a_discovery_file_whose_pid_has_exited_is_stale_on_every_unix`
+- `ps_tells_a_running_pid_from_an_exited_one`
+- `parent_name_names_the_parent_process`, `name_from_ps_keeps_the_executable_name`
 
 **Mochitests, headless, artifact build, on `macos-15` (sub-PRs 1 and 2):**
 
@@ -419,7 +455,7 @@ any failure is a test that assumes Linux.
 - e2e `m0-happy-path` and `m0-content-actor` under `MOZ_HEADLESS=1`; no screenshot baselines on
   macOS
 
-**Hand checks on a real Mac (open question 5):** Open Anyway on the current macOS; `ctrl+b` and
+**Hand checks on a real Mac (open question 4):** Open Anyway on the current macOS; `ctrl+b` and
 every `ctrl+b` key; Option-composed `{` `}` `[` `]` `@` `|` `~` on a Finnish layout; `cmd+q`,
 `cmd+w`, `cmd+t`, `cmd+l` with `[firefox] disable = "all"` and with the defaults; the native menu
 bar's key equivalents after firefox-keys turns keys off; fullscreen and split panes; system dark
@@ -457,11 +493,11 @@ full build.
    `.app` layout by platform; `mochitest.mjs` and `start.mjs` learn the macOS paths and skip
    `/proc/locks` on macOS. A new `macos-15` job in `e2e.yml`: `npm ci`, Vitest, artifact build,
    the mochitests headless, and a `df` line recording the free disk. Not required at first (open
-   question 7).
+   question 6).
 2. **`fix(macos): platform fallbacks`.** vimma-ctl's macOS profile root and `kill(pid, 0)` stale
-   check, with tests; a macOS cargo job in `ci.yml` (the file's one-job note dates from the
-   private-repository billing and no longer applies); the config path per open question 4; the
-   swap-gate and keys tests on macOS.
+   check, with tests (decisions 19 and 20); the MCP caller's name (decision 21); a macOS cargo
+   job in `ci.yml`, informational like sub-PR 1's; the config path stays (decision 18). The
+   swap-gate and keys mochitests on macOS run in sub-PR 1's Mac job, so they follow it.
 3. **`build(macos): an arm64 cross build`.** ADR-018. `configs/macos/mozconfig` for the cross
    build; `macos.yml` on `ubuntu-24.04` (decision 5) with build-supply-chain's source verification and disk
    guard; `npm run import`, `surfer build`, `./mach package`, ad hoc `rcodesign` (decision 10),
@@ -515,26 +551,20 @@ Time and cost per run:
    (c) all of it now: earliest Mac build, but competes with M6a. **Recommendation: (b)**, so the
    updater's MAR and manifest work is designed with a second platform in view; sub-PR 7 when the
    gate nears.
-4. **`config.toml` on macOS: `~/.config/vimma/config.toml` or
-   `~/Library/Application Support/Vimma/config.toml`?** (a) `~/.config`, honouring
-   `XDG_CONFIG_HOME`: where developers' Neovim, tmux, Ghostty and Alacritty configs already live
-   on a Mac, one dotfiles repository works on both platforms, no code change. (b) Application
-   Support: the Apple convention, beside the profile, but hidden from most dotfiles setups.
-   **Recommendation: (a)**; the profile stays where Firefox puts it.
-5. **Is a Mac available for the hand checks?** (a) the maintainer's Apple Silicon Mac: enough.
+4. **Is a Mac available for the hand checks?** (a) the maintainer's Apple Silicon Mac: enough.
    (b) none: CI covers launch and smoke, but keys, Gatekeeper and the menu bar need a person, so a
    trusted tester runs the list. (c) a rented cloud Mac: last resort, slow for interactive key
    testing. **Recommendation: (a) if available, else (b)**, before a macOS build is called
    working.
-6. **`alt+<letter>` bindings on a Mac.** Option+j types `∆`, so a user's `alt+j` never fires.
+5. **`alt+<letter>` bindings on a Mac.** Option+j types `∆`, so a user's `alt+j` never fires.
    (a) document it: Option is for characters on a Mac, as in Mac terminals by default. (b) an
    "Option as alt" setting matching the physical key: more code and a second matching rule.
    **Recommendation: (a)** now; no default binding uses alt, and (b) can follow if users ask.
-7. **Is the macOS front-end job required for merging?** (a) required at once: catches every
+6. **Is the macOS front-end job required for merging?** (a) required at once: catches every
    macOS break, but a new and possibly flaky job blocks all pull requests. (b) informational,
    then required once green and not flaky for two weeks, as the Linux e2e job was.
    **Recommendation: (b).**
-8. **Which hosted runner runs the cross build?** No self-hosted machine is planned (decision 4).
+7. **Which hosted runner runs the cross build?** No self-hosted machine is planned (decision 4).
    (a) the standard `ubuntu-24.04` runner: free, 85 GB measured free disk, 1.5-3 hours estimated,
    within the 6-hour limit. (b) a larger hosted Linux runner: about 40 minutes, but paid and only
    for organisations on the Team plan. (c) a hosted Mac, natively: documented 14 GB disk, too
