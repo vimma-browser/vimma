@@ -143,6 +143,8 @@ support-files = [
 ["browser_vimma_tab_search.js"]
 
 ["browser_vimma_live_grep.js"]
+# macOS: on the hosted runner the list does not settle after a quick reopen (#419)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_grep.html"]
 
 ["browser_vimma_rename.js"]
