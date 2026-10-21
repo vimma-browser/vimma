@@ -1,6 +1,6 @@
 # Spec: mcp-drive
 
-Status: accepted · Area: `packages/vimma-core/src/` (`agent-keys.mjs` new, `agent.mjs`,
+Status: accepted (sub-PR 1 implemented) · Area: `packages/vimma-core/src/` (`agent-keys.mjs` new, `agent.mjs`,
 `agent-prompt.mjs`, `control.mjs`, `cmdline.mjs`); `src/browser/base/content/vimma/`
 (`ctl/agent-commands.mjs`, `ctl/AgentDrive.sys.mjs` new, `actors/VimmaActors.sys.mjs`,
 `host/agent-ui.mjs`, `host/control-ops.mjs`, `host/workspace-ops.mjs`); `tools/vimma-ctl`
@@ -73,7 +73,8 @@ The user is asked once, for minutes, and after that nothing confines what the ke
    says why. Nothing is ever typed into a page.
 8. While MCP is on, `:control on 15` asks
    `Turn on full control for 15 min? It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use it. y/N`,
-   and each new full-control connection's question ends with `(every workspace, not only "agent")`.
+   and each new full-control connection's question says
+   `◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N`.
 9. Under a grant, each `vimma_keys` call shows a notice such as
    `claude-code pressed /"pricing"⏎ in "Pricing · Example" (grant, 12m left)`, and `:mcp log`
    lists the last 100 agent calls, asked or granted (D14).
@@ -394,7 +395,10 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
 21. **The server's instructions** (`mcp.rs:50-55`) gain one sentence: to show the user a page,
     call `vimma_show`; to move around a page, call `vimma_keys`; never ask the user to turn on
     full control or to run `vimma-ctl send-keys`, which reach beyond the agent workspace. The
-    model's route of least effort is then the confined one.
+    model's route of least effort is then the confined one. The advice against full control
+    ships with sub-PR 1, and each tool's name joins the sentence in the sub-PR that adds the
+    tool, because instructions that name a tool `tools/list` does not offer would send the model
+    looking for it.
 
 ### E. Full control while MCP is on
 
@@ -406,8 +410,10 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     agent. `:control` stays the user's tool: no agent command can turn it on, and the agent role
     never reaches `send-keys` (security.md S12).
 23. **Each full connection says it too.** While MCP is on, the question a new full connection
-    asks (vimma-mcp decision 29) ends with `(every workspace, not only "agent")`, in the line's
-    text and its accessible name, and the desktop notification says
+    asks (vimma-mcp decision 29) says `wants full control (every workspace, not only "agent")`,
+    naming the agent workspace as `[mcp] workspace` sets it, in the line's text and its
+    accessible name, before the `— y/N` that ends every such line, and the desktop notification
+    says
     `vimma-ctl asks for full control of Vimma (every workspace)`.
 
 ## Security and privacy

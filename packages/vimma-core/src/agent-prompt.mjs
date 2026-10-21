@@ -55,6 +55,11 @@ const clean = (s) =>
     .replace(/ {2,}/g, " ")
     .trim();
 
+/** `[mcp] workspace`'s default. */
+const AGENT_WORKSPACE = "agent";
+/** The agent workspace's name as a question shows it: one line, never empty. @param {string} s */
+const workspaceName = (s) => clean(s) || AGENT_WORKSPACE;
+
 /**
  * What the question calls the agent: its self-reported name, else its parent process, else
  * "an agent". Labels, never proof (decision 4).
@@ -134,10 +139,11 @@ export const isPage = (q) => q.tool === DOWNLOAD_TOOL && q.label?.client === PAG
  * The question line: its text in parts (the host of an open in bold), the hint shown once the
  * line is armed, and the accessible name (the whole question).
  * @param {Asked} q
- * @param {{ grantMinutes: number }} config
+ * @param {{ grantMinutes: number, agentWorkspace?: string }} config  `agentWorkspace`: the agent
+ *   workspace's name, which full control's question says it reaches beyond (mcp-drive D23)
  * @returns {{ parts: Part[], hint: string, label: string }}
  */
-export function questionLine(q, { grantMinutes }) {
+export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE }) {
   const who = clientName(q.label);
   /** @type {Part[]} */
   let parts;
@@ -147,15 +153,23 @@ export function questionLine(q, { grantMinutes }) {
     // The code the client printed on its own terminal (security.md S13): the user answers
     // the question of the vimma-ctl they ran, not one a racing client slipped in.
     const code = typeof w.code === "string" && FULL_CODE.test(w.code) ? w.code : null;
+    // Asked only while MCP is on (decision 29 C), when an agent with a shell could be the one
+    // asking: the line says that a yes reaches past the agent workspace (mcp-drive D23).
+    /** @type {Part[]} */
+    const reach = [
+      { text: ' wants full control (every workspace, not only "' },
+      { text: workspaceName(agentWorkspace), isolate: "auto" },
+      { text: '") — y/N' },
+    ];
     if (code) {
       parts = [
         { text: `${AGENT_GLYPH} vimma-ctl with code ` },
         { text: code, strong: true },
-        { text: " wants full control — y/N" },
+        ...reach,
       ];
       hint = "y if the code is the one vimma-ctl printed · n deny";
     } else {
-      parts = [{ text: `${AGENT_GLYPH} a client with no code wants full control — y/N` }];
+      parts = [{ text: `${AGENT_GLYPH} a client with no code` }, ...reach];
       hint = "y allow · n deny";
     }
   } else {
@@ -286,7 +300,7 @@ const ASKS = Object.freeze({
  */
 export function agentAlertText(q) {
   const who = clientName(q.label);
-  if (q.tool === FULL_CONTROL) return `${who} asks for full control of Vimma`;
+  if (q.tool === FULL_CONTROL) return `${who} asks for full control of Vimma (every workspace)`;
   const what = /** @type {Record<string, string>} */ (ASKS)[q.tool] ?? "use a tool";
   return `${who} asks to use Vimma's agent workspace (${what})`;
 }
@@ -336,8 +350,19 @@ export function parseControlCommand(text) {
   };
 }
 
-/** `:control on <minutes>`'s question. @param {number} minutes */
-export function controlOnQuestion(minutes) {
+/**
+ * `:control on <minutes>`'s question. While MCP is on, an agent with a shell can use full control
+ * too, so the question says that it reaches past the agent workspace (mcp-drive D22).
+ * @param {number} minutes
+ * @param {string | null} [agentWorkspace]  the agent workspace's name while MCP is on, else null
+ */
+export function controlOnQuestion(minutes, agentWorkspace = null) {
+  if (agentWorkspace !== null) {
+    return (
+      `Turn on full control for ${minutes} min? It reaches every workspace and tab, not only ` +
+      `"${workspaceName(agentWorkspace)}", and any local AI agent with a shell can use it. y/N`
+    );
+  }
   return (
     "Turn on full control (vimma-ctl: keys in this window, every workspace) for " +
     `${minutes} min? y/N`

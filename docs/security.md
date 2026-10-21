@@ -101,7 +101,7 @@ only the agent workspace, and every request asks you first (§12).
   and only then prints it, so a process reading your terminal learns it too late to race it in,
   and the question shows it (`vimma-ctl with code 7F3K wants full control`; a client
   without one is "a client with no code"), so a racing client's question is told from the one
-  the user ran. `:control on <minutes>` **must** turn full control off when its time is up, also
+  the user ran; the question also says what it reaches (M22). `:control on <minutes>` **must** turn full control off when its time is up, also
   across a restart, and **must** fail closed: an end time that is not a time ahead within 1441
   minutes turns it off.
   [`test_full_control_asks_only_while_mcp_is_on`](../tests/browser/browser_vimma_mcp_control.js),
@@ -656,10 +656,10 @@ while MCP is on (`:mcp on`). Every check runs in the browser, never in the clien
 a shell can run `vimma-ctl` itself, or speak the protocol directly.
 
 **Planned:** [mcp-drive](specs/mcp-drive.md) adds `vimma_show` and `vimma_keys` (the agent shows
-a page, and runs Vimma's own page keys in an agent tab) and makes full control's questions say
-that it reaches beyond the agent workspace while MCP is on. Its rules M16-M23 (key whitelist,
-background-only, follows as loads, show always asked, limits, delimited link lists, full
-control's wording, the audit) enter this section with their tests in the sub-PR that builds each.
+a page, and runs Vimma's own page keys in an agent tab). Its rules M16-M21 and M23 (key
+whitelist, background-only, follows as loads, show always asked, limits, delimited link lists,
+the audit) enter this section with their tests in the sub-PR that builds each. M22 (full
+control's wording while MCP is on) is in force.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
@@ -831,6 +831,19 @@ control's wording, the audit) enter this section with their tests in the sub-PR 
   [`the_token_never_leaves_the_handshake`](../tools/vimma-ctl/tests/mcp.rs),
   [`bad_arguments_never_reach_vimma`](../tools/vimma-ctl/tests/mcp.rs),
   [`bad_arguments_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
+- M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
+  workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
+  use it; each new full connection's question (S13) **must** end its text and accessible name
+  with `(every workspace, not only "agent")`, naming the agent workspace, and its desktop
+  notification **must** say `(every workspace)`. `vimma-ctl mcp`'s instructions **must** tell the
+  model never to ask for full control or `vimma-ctl send-keys`. An agent that wants keys in the
+  user's window has to talk the user into full control, so the questions state what a yes gives
+  away. [`test_control_on_says_it_reaches_beyond_agent_while_mcp_is_on`](../tests/browser/browser_vimma_mcp_control.js),
+  [`test_full_control_asks_only_while_mcp_is_on`](../tests/browser/browser_vimma_mcp_control.js),
+  [`while MCP is on, the question says full control reaches beyond the agent workspace`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`full control names the agent workspace it reaches beyond`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`the desktop notification names the client and the kind of request, never a URL`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`the_instructions_advise_against_full_control`](../tools/vimma-ctl/src/mcp.rs)
 - M24. A tab you did not open inside the agent workspace **never** takes its container: a link from
   another app (the remote command line, `vimma-open`, Firefox's container guess, a `[[routes]]`
   rule), the control socket's `open`, a tab sent from another device, a new window's first tab, the

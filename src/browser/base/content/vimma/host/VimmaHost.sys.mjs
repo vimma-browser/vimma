@@ -819,6 +819,7 @@ export const RUNNERS = Object.freeze({
       t,
       (question, yes) => s.rename.ask(question, yes),
       (text) => s.notice.show(text),
+      McpHost.state.enabled ? McpHost.workspaceName : null,
     );
     if (said) s.notice.show(said);
   },

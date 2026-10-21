@@ -1461,7 +1461,8 @@ number of agent tabs for the tab list.
 
 An agent with a shell can read the control socket's token like any program of yours. So while
 agents are on (`:mcp on`), each new `vimma-ctl` connection with full control (keys in your
-window, every workspace) asks in the same line: `◇ vimma-ctl wants full control — y/N`. `y` lets
+window, every workspace) asks in the same line:
+`◇ vimma-ctl wants full control (every workspace, not only "agent") — y/N`. `y` lets
 that one connection in, `n`, `Esc`, `Enter`, `x` or any other key refuses it, and nothing is
 remembered: the next one asks again. The line shows the code `vimma-ctl` printed in your terminal
 (`vimma-ctl with code 7F3K wants full control`): answer `y` only if it is the same, since
@@ -1471,6 +1472,11 @@ prints `full control refused` and exits 4. With agents off, nothing asks.
 `:control on 15` turns full control (the pref `vimma.control.enabled`) on for 15 minutes after a
 `y/N`, and then off again, even across a restart; `:control off` turns it off now, and `:control`
 says whether it is on and how long is left. Turning it on in `about:config` sets no end time.
+While agents are on, its question says what a yes gives away: `Turn on full control for 15 min?
+It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use
+it. y/N`. Agents do not need full control, and `vimma-ctl mcp` tells them never to ask for it;
+an agent that asks you to turn it on, or to run `vimma-ctl send-keys`, is asking for keys in
+every workspace.
 
 #### What pages in the agent workspace may do
 
