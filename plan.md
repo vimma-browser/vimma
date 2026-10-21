@@ -159,7 +159,8 @@ Repository layout (Surfer convention: `src/` mirrors the Firefox tree; `.patch` 
 ```
 vimma/
   surfer.json                     # upstream Firefox version, branding, build options
-  CLAUDE.md                       # rules coding agents read every session
+  AGENTS.md                       # rules coding agents read every session
+  CLAUDE.md                       # loads AGENTS.md for Claude Code
   CHANGELOG.md
   package.json                    # surfer, vitest, tsc, eslint, prettier, commitlint
   tsconfig.json                   # checkJs over src/**/vimma/** and packages/**
@@ -365,5 +366,5 @@ Open questions to settle in M0 (each becomes an ADR or a line in `docs/limits.md
 
 ## 10. Where the rest went
 
-The first-session checklist that was here is done (M0), and the starter `CLAUDE.md` that was appendix A grew into the repository's [`CLAUDE.md`](CLAUDE.md), which is the version to read.
+The first-session checklist that was here is done (M0), and the starter `CLAUDE.md` that was appendix A grew into the repository's [`AGENTS.md`](AGENTS.md) (loaded by `CLAUDE.md`), which is the version to read.
 <!-- process-wording: points at the coding agents' rules file that replaced the appendix -->

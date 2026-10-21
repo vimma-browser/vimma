@@ -38,6 +38,7 @@ describe("findProcessWording", () => {
     ["### Follow-up (PR #148 review, screenshots)", "pr #148 review"],
     ["TDD as CLAUDE.md: each test is written first", "claude.md"],
     ["added by the maintainer at merge time (CLAUDE.md), not in the PR", "claude.md"],
+    ["kept, as AGENTS.md says, for one release", "agents.md"],
   ])("flags %j", (md, phrase) => {
     expect(phrases(md)).toEqual([phrase]);
   });

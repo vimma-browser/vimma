@@ -18,12 +18,10 @@ maintainer). Plan §4, step 5. Each item is ticked, or answered "n/a" with a rea
 - [ ] No new upstream `.patch` without a line in ADR-003's patch register. Boundary changes have
       an ADR.
 - [ ] No new dependency without a licence check and a PR line (`npm run license-check`).
-- [ ] No snapshot or screenshot baseline changed without a changelog line explaining why.
+- [ ] No snapshot or screenshot baseline changed without a commit body explaining why.
 - [ ] Touches `*.patch`, `configs/`, `moz.configure` or branding → a full-build mochitest run is
       reported (ADR-010).
 - [ ] User-visible change → update `docs/guide.md` (and its "Features at a glance" or the README status if it changes what works).
-- [ ] User-visible change → a line in `CHANGELOG.md` `[Unreleased]` (the maintainer adds it at merge time, so
-      parallel PRs do not conflict).
 - [ ] A change to `tools/upstream/mozilla-release-key.asc` or `PINNED_FINGERPRINT` in
       `tools/upstream/verify-sha512.py` cites Mozilla's announcement and keeps every revocation
       (ADR-021; `docs/runbook.md`, "Mozilla's release key"), and gets the
