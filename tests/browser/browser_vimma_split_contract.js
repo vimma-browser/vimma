@@ -659,6 +659,8 @@ add_task(async function one_pane_zoom_hidden_split_and_fullscreen_show_no_border
   await nextFrame();
   Assert.ok(hasBorder(h2), "split back: the focused h2 has the border");
 
+  // changeFullscreen waits for the page's document to have focus, as a user's click gives it.
+  await focusContent(h2.linkedBrowser);
   await DOMFullscreenTestUtils.changeFullscreen(h2.linkedBrowser, true);
   await nextFrame();
   for (const tab of tabs) Assert.ok(!hasBorder(tab), `fullscreen: ${tab.label} has no border`);
