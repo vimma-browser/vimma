@@ -40,7 +40,7 @@ import { Toolbar } from "../ui/toolbar.mjs";
 import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
 import { bookmarksToolbarNotice } from "../core/bookmarks-toolbar.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
-import { AddonPicker, GotoPicker, WorkspacePicker } from "../ui/picker.mjs";
+import { AddonPicker, GotoPicker, MCP_LOG, WorkspacePicker } from "../ui/picker.mjs";
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
 import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
@@ -115,6 +115,8 @@ import {
 import { McpHost } from "./mcp-ops.mjs";
 import { ControlHost } from "./control-ops.mjs";
 import { AgentUi } from "./agent-ui.mjs";
+import { AgentGate } from "../ctl/AgentGate.sys.mjs";
+import { logCells } from "../core/agent-prompt.mjs";
 import { PromptKeys } from "./prompt-keys.mjs";
 import { AgentPrompt } from "../ui/agent-prompt.mjs";
 import { ANNOUNCE_MS, UpdateUi } from "./update-ui.mjs";
@@ -216,6 +218,7 @@ const PAGE_FIRST_MAX = 16;
  * @property {StatusBar | null} statusBar  m2-statusbar-whichkey (the bar; no which-key strip)
  * @property {GotoPicker} picker  the prefix+g overlay (m2-picker-rename)
  * @property {WorkspacePicker} wsPicker  the prefix+w overlay (m3-workspaces 5)
+ * @property {GotoPicker} mcpLog  `:mcp log`, the agents' last calls (docs/specs/mcp-drive.md D14)
  * @property {AddonPicker} addonPicker  the prefix+e overlay (docs/specs/addon-manager.md)
  * @property {GrepSession} grep  prefix+f g, `:grep`, `]q`/`[q` (docs/specs/live-grep.md)
  * @property {RenamePrompt} rename  the prefix+shift+t prompt (m2-picker-rename)
@@ -836,6 +839,7 @@ export const RUNNERS = Object.freeze({
       text,
       (question, yes) => s.rename.ask(question, yes),
       (t) => s.notice.show(t),
+      () => s.mcpLog.open(),
     );
     if (said) s.notice.show(said);
   },
@@ -1184,6 +1188,7 @@ export const VimmaHost = {
         state.picker.close({ tabChanged: true });
         state.wsPicker.close({ tabChanged: true });
         state.addonPicker.close({ tabChanged: true });
+        state.mcpLog.close({ tabChanged: true });
         state.grep.close({ tabChanged: true });
         state.rename.close({ tabChanged: true });
       },
@@ -1261,6 +1266,26 @@ export const VimmaHost = {
           if (refused) state.notice.show(refused);
         },
       }),
+      mcpLog: new GotoPicker(
+        win,
+        {
+          items: () =>
+            AgentGate.log.map((e, i) => {
+              const { time, text, outcome } = logCells(e);
+              return {
+                kind: /** @type {const} */ ("log"),
+                logId: String(i),
+                display: text,
+                time,
+                outcome,
+                active: false,
+              };
+            }),
+          activeId: () => null,
+          select: () => {},
+        },
+        MCP_LOG,
+      ),
       addonPicker: new AddonPicker(win, {
         load: addonPickerItems,
         select: (id) => void sayAddon(state, openAddonById(win, id)),
@@ -1353,6 +1378,7 @@ export const VimmaHost = {
         state.picker.isOpen ||
         state.wsPicker.isOpen ||
         state.addonPicker.isOpen ||
+        state.mcpLog.isOpen ||
         state.grep.isOpen ||
         state.cmdline.isOpen ||
         state.rename.isOpen ||
@@ -1375,6 +1401,7 @@ export const VimmaHost = {
         state.picker.isOpen ||
         state.wsPicker.isOpen ||
         state.addonPicker.isOpen ||
+        state.mcpLog.isOpen ||
         state.grep.isOpen ||
         state.cmdline.isOpen ||
         state.rename.isOpen ||
@@ -1438,6 +1465,7 @@ export const VimmaHost = {
           state.picker.isOpen ||
           state.wsPicker.isOpen ||
           state.addonPicker.isOpen ||
+          state.mcpLog.isOpen ||
           state.cmdline.isOpen ||
           state.rename.isOpen ||
           state.panel.isOpen ||
@@ -1512,6 +1540,7 @@ export const VimmaHost = {
     state.picker.destroy();
     state.wsPicker.destroy();
     state.addonPicker.destroy();
+    state.mcpLog.destroy();
     state.grep.destroy();
     state.rename.destroy();
     state.panel.destroy();
@@ -1559,6 +1588,27 @@ export const VimmaHost = {
       // docs/specs/m6a-updater.md §5: `⇡ 0.3.1 available`, or an update problem.
       update: VimmaUpdates.notice(),
     };
+  },
+
+  /**
+   * Whether the user is using `browser`'s page (docs/specs/mcp-drive.md D13): it is shown in the
+   * focused window, and that page is in insert or copy mode, in hint mode or in a `/` search,
+   * or a key sequence is under way in the window. An agent's keys wait for none of these: they
+   * are denied, so an agent never moves a page under the user's cursor while they type in it.
+   * @param {any} browser XULBrowserElement
+   */
+  inUse(browser) {
+    const win = browser?.ownerDocument?.defaultView;
+    const state = win && states.get(win);
+    if (!state || /** @type {any} */ (Services.focus).activeWindow !== win) return false;
+    if (!browser.docShellIsActive) return false;
+    // A page without our actor takes every key itself: in use while shown.
+    return (
+      this._browserMode(browser) !== "normal" ||
+      state.hint?.browser === browser ||
+      state.find.session?.browser === browser ||
+      state.dispatcher.pending().length > 0
+    );
   },
 
   /**
@@ -1749,7 +1799,7 @@ export const VimmaHost = {
    */
   _mode(state) {
     if (state.help.isOpen || state.picker.isOpen || state.wsPicker.isOpen) return "help";
-    if (state.addonPicker.isOpen || state.grep.isOpen) return "help";
+    if (state.addonPicker.isOpen || state.mcpLog.isOpen || state.grep.isOpen) return "help";
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
@@ -1855,7 +1905,7 @@ export const VimmaHost = {
     }
     // A picker takes every key, bare ones too, before any binding: nothing reaches the page or
     // Firefox underneath (ctrl+w would close a tab), and its j / q are not keymap keys.
-    const picker = [state.picker, state.wsPicker, state.addonPicker, state.grep].find(
+    const picker = [state.picker, state.wsPicker, state.addonPicker, state.mcpLog, state.grep].find(
       (p) => p.isOpen,
     );
     if (picker) {

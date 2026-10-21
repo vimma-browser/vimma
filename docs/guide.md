@@ -44,8 +44,8 @@ What works today, each with the section that explains it:
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
   uploads; Safe Browsing on.
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
-  local AI agents reach one [agent workspace](#agent-workspace) through MCP, and every request
-  asks you first.
+  local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
+  open, scroll and search pages, and every request asks you first.
 
 ## Every key is yours
 
@@ -1232,6 +1232,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 | `:mcp off`       | Turns agents off, without a question. Connected agents are disconnected and their grants end.                       |
 | `:mcp revoke`    | Ends every time-limited grant you gave agents, at once.                                                             |
 | `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                   |
+| `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.      |
 | `ctrl+b shift+a` | Answers the waiting agent request; with none, offers to end every grant.                                            |
 | `:control on 15` | Turns full control (`vimma-ctl`) on for 15 minutes, after a `y/N`; `:control off` ends it now.                      |
 
@@ -1245,14 +1246,15 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers four tools:
+and output, connects to Vimma as an agent (never with full control), and offers five tools:
 
-| Tool              | What the agent can do                                                               |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.         |
-| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.      |
-| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs. |
-| `vimma_close_tab` | Close one of its tabs.                                                              |
+| Tool              | What the agent can do                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.               |
+| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.            |
+| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs.       |
+| `vimma_close_tab` | Close one of its tabs.                                                                    |
+| `vimma_keys`      | Scroll, find text, go back and forward or up a level in one of its tabs, with Vimma keys. |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1344,6 +1346,8 @@ with the rest of your computer.
   your session.
 - cannot press keys in your window, read Vimma's state, or open a page anywhere else. It
   connects with the agent role only, and `vimma-ctl mcp` never asks for full control.
+  `vimma_keys` runs a fixed set of Vimma's page keys in an agent tab
+  ([Moving around a page](#moving-around-a-page)), never keys of the page itself.
 - asks you for every request, in a line that pages cannot reach or draw on. Only `y`, or a count
   and `a`, allows; no answer within `ask_timeout` denies.
 - gets page text and titles marked as untrusted web content, so the model is told that
@@ -1370,6 +1374,36 @@ with the rest of your computer.
   while (`:control on 15`) when you script Vimma yourself.
 - **Malware running as you** can do the same, with or without agents
   ([security model](security.md)).
+
+#### Moving around a page
+
+`vimma_keys` lets an agent scroll an agent tab, search it for a word, go back and forward in it,
+or go up a level of its address, without you switching to it. The question shows the keys as
+they will run, `◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys:
+3j /"pricing"⏎`, and on `y` they run in that tab, in the background: your window keeps its
+workspace, tab, focus, find bar and hint mode.
+
+- **The keys it may press** are Vimma's own defaults, whatever your `config.toml` binds: `j`
+  `k` `h` `l`, `d` `u` (`ctrl+d` `ctrl+u`, `ctrl+e` `ctrl+y`), `gg` `G`, `H` `L` (`ctrl+o`
+  `ctrl+i`), `gu` `gU`, `/word⏎` `?word⏎` and `n` `N`, with counts up to 99, at most 32 a
+  call. A match becomes the page's selection, which a `vimma_read_page` then returns.
+- **The keys it never presses:** `ctrl+b` and every binding after it, `:`, tab, workspace,
+  window and split keys, `i` and every way into a text field, copy mode, `yy` and `p` (your
+  clipboard), `F` and `gf` (they open tabs), `r` (a reload can send a form again), and every key
+  of the Browser, Developer tools, Bookmarks and Agents groups, `ctrl+b shift+a` included, so an
+  agent never answers its own question. Such a call is refused before anything asks you.
+- **Nothing reaches the page as a key press.** Each key runs as a Vimma action on the tab, so the
+  page sees no keydown, and nothing is ever typed, clicked or submitted. Following links by hint
+  label comes later.
+- **Not while you type there.** A request for the tab in front of you while you are in insert,
+  copy or hint mode in it, or halfway through a key sequence, is denied (`in-use`) without a
+  question. Watching is fine: in normal mode you see the agent scroll.
+- **A grant covers it:** `15a` lets that agent run keys for 15 minutes, and each call then shows
+  `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`. A `vimma_keys` grant is not
+  a read or open grant. At most 30 calls a minute; `gu` and `gU` count towards the 10 opens a
+  minute.
+- **`:mcp log`** lists what agents did, asked or under a grant, so you can check afterwards what
+  a grant let through. It is kept in memory only and cleared by `:mcp off`.
 
 #### Keeping agents out of your Vimma profile
 

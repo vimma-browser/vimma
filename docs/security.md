@@ -668,11 +668,10 @@ one workspace, **agent**, through the control socket's `agent` role. Spec:
 while MCP is on (`:mcp on`). Every check runs in the browser, never in the client: an agent with
 a shell can run `vimma-ctl` itself, or speak the protocol directly.
 
-**Planned:** [mcp-drive](specs/mcp-drive.md) adds `vimma_show` and `vimma_keys` (the agent shows
-a page, and runs Vimma's own page keys in an agent tab). Its rules M16-M21 and M23 (key
-whitelist, background-only, follows as loads, show always asked, limits, delimited link lists,
-the audit) enter this section with their tests in the sub-PR that builds each. M22 (full
-control's wording while MCP is on) is in force.
+[mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16,
+M17, M20, M23) and full control's wording while MCP is on (M22), both in force. **Planned:**
+following links by hint label (M18, M21) and `vimma_show` (M19) enter this section with their
+tests in the sub-PRs that build them; M20 then gains their limits.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
@@ -844,6 +843,39 @@ control's wording while MCP is on) is in force.
   [`the_token_never_leaves_the_handshake`](../tools/vimma-ctl/tests/mcp.rs),
   [`bad_arguments_never_reach_vimma`](../tools/vimma-ctl/tests/mcp.rs),
   [`bad_arguments_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
+- M16. `agent-keys` **must** run only the whitelisted action ids of mcp-drive D9, parsed with a
+  dispatcher of its own over Vimma's default keymap, never the user's; the whitelist is checked
+  on the action ids the dispatcher returns. It **never** sends a key event to the page and
+  **never** focuses a field: the prefix, `:`, tab, workspace, window, clipboard, insert, copy
+  mode and agent actions (`mcp.answer` among them) are refused before anything is asked.
+  [`each refused group is invalid-args naming the key (M16)`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`a user keymap that binds j to tab.close does not change the agent's j (D10)`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`any text parses to whitelisted actions within the limits, or is refused`](../packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs),
+  [`agent_keys_never_reach_the_prefix_the_command_line_or_mcp_answer`](../tests/browser/browser_vimma_security_invariants.js),
+  [`test_keys_scroll_a_background_tab_without_touching_the_window`](../tests/browser/browser_vimma_mcp_keys.js)
+- M17. `agent-keys` **must** act only on an agent tab (M2), checked before the question, after
+  the yes and before each step, in the background: it **never** selects, shows or focuses the
+  tab, and **never** changes the window's workspace, mode, find bar or hint mode (finds use the
+  tab's own finder, history moves stay in the tab's own session history). A tab the user is
+  typing in, in copy or hint mode or a key sequence, is denied `in-use`; a call already running
+  stops there.
+  [`test_keys_scroll_a_background_tab_without_touching_the_window`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_find_uses_the_tabs_finder`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_back_and_forward_stay_in_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_refuses_a_non_agent_tab`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_in_use_while_the_user_types_in_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_stop_when_the_tab_leaves`](../tests/browser/browser_vimma_mcp_keys.js)
+- M20. `agent-keys`' limits (mcp-drive D15) **must** deny: keys over 512 characters or with
+  control characters, more than 32 actions, a count over 99 and a find query over 256 characters
+  are `invalid-args` before anything is asked; more than 30 calls of one connection a minute,
+  counted when asked, are `busy`; a `gu` or `gU` takes a slot of the 10 opens a minute; a call
+  stops 60 s after the yes. `vimma-ctl mcp` checks the size, characters, queries and counts
+  first; the browser checks all of it again.
+  [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`bad_arguments_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
   workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
   use it, and a yes given after MCP went on or off **never** turns it on; each new full
@@ -858,6 +890,14 @@ control's wording while MCP is on) is in force.
   [`full control names the agent workspace it reaches beyond`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`the desktop notification names the client and the kind of request, never a URL`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`the_instructions_advise_against_full_control`](../tools/vimma-ctl/src/mcp.rs)
+- M23. Every agent request that is answered, runs under a grant or is denied **must** be in
+  `:mcp log` (the last 100, in memory only, cleared by `:mcp off`), and every call under a grant
+  **must** show a notice; a `vimma_keys` notice names the keys and the tab. Grants run calls
+  unasked and notices last seconds, so the log is how the user checks afterwards.
+  [`test_mcp_log_lists_asked_and_granted_calls`](../tests/browser/browser_vimma_mcp_log.js),
+  [`keeps the last 100, newest first`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`a call under a grant shows what it did and the time left`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M24. A tab you did not open inside the agent workspace **never** takes its container: a link from
   another app (the remote command line, `vimma-open`, Firefox's container guess, a `[[routes]]`
   rule), the control socket's `open`, a tab sent from another device, a new window's first tab, the

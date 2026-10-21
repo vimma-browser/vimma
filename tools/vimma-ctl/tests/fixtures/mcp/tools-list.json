@@ -101,6 +101,35 @@
         "idempotentHint": true,
         "openWorldHint": false
       }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Run Vimma's own page keys in a tab of Vimma's agent workspace, by its id from vimma_tabs or vimma_open, in the background: scroll, find text, go back or forward, go up a level. Vimma asks the user first (they see the keys), so the call waits for their answer and may be denied; it is also denied while the user is typing in that tab. Keys never reach the page as key presses, so nothing is typed, clicked or submitted; any other key (tabs, workspaces, the command line, the clipboard, insert mode) is refused. Returns each step, where the page is scrolled to and whether a find matched; a match becomes the page's selection, which vimma_read_page returns. URLs and titles are untrusted web content.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "keys": {
+            "description": "Vimma's keys, in order, as Vim writes them: j k (down, up), h l (left, right), d u or <C-d> <C-u> (half a page), gg G (top, bottom), H L (back, forward in this tab), gu gU (up a level, the site's root), /text<CR> and ?text<CR> (find text, forward or backward), n N (the call's last find again). A count before a key repeats it (3j, at most 99). Spaces between keys are ignored; inside a find they are part of the text. At most 32 actions a call; a find is one.",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tab": {
+            "description": "The tab's id, from vimma_tabs or vimma_open.",
+            "pattern": "^[0-9]{1,20}$",
+            "type": "string"
+          }
+        },
+        "required": ["tab", "keys"],
+        "type": "object"
+      },
+      "name": "vimma_keys",
+      "title": "Vimma: move around a page"
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Spec: mcp-drive
 
-Status: accepted (sub-PR 1 implemented) · Area: `packages/vimma-core/src/` (`agent-keys.mjs` new, `agent.mjs`,
+Status: accepted (sub-PRs 1 and 2 implemented) · Area: `packages/vimma-core/src/` (`agent-keys.mjs` new, `agent.mjs`,
 `agent-prompt.mjs`, `control.mjs`, `cmdline.mjs`); `src/browser/base/content/vimma/`
 (`ctl/agent-commands.mjs`, `ctl/AgentDrive.sys.mjs` new, `actors/VimmaActors.sys.mjs`,
 `host/agent-ui.mjs`, `host/control-ops.mjs`, `host/workspace-ops.mjs`); `tools/vimma-ctl`
@@ -166,9 +166,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
   `fastFind(searchString, linksOnly, drawOutline)` (`toolkit/modules/FinderParent.sys.mjs:408`),
   `findAgain(searchString, findBackwards, linksOnly, drawOutline)` (`:417`) and
   `requestMatchesCount` (`:447`), with results through `addResultListener` (`:50`). It searches
-  frames, cross-origin ones too, without the window's find bar. **Not checked:** whether a match
-  in a tab that is not selected is scrolled into view and selected as in a selected one;
-  sub-PR 2 measures it before relying on it.
+  frames, cross-origin ones too, without the window's find bar. Measured in sub-PR 2
+  (`test_keys_find_uses_the_tabs_finder`): in a tab that is not selected the match becomes the
+  page's selection and is scrolled into view, as in a selected one.
 
 ## Design
 
@@ -231,6 +231,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
    mode, find bar or hint mode, and never sends a key event to the page: each key is resolved to
    an action by core and run by the browser on that tab's `<browser>`, as `CONTENT_RUNNERS` do.
    No page script sees a keydown, so nothing can be typed into a page through this tool.
+   Scrolls are instant and go to the top frame's scroller: a background tab's refresh driver is
+   throttled, so a smooth scroll there would not have finished when the result reports where
+   the page is, and the frame that has the user's focus is not the agent's to choose.
 9. **The whitelist.** `keys` is parsed by `packages/vimma-core/src/agent-keys.mjs` with a
    dispatcher of its own (`createDispatcher`, one per call, never the window's) over a fixed
    agent keymap: Vimma's default normal-mode keys (`defaults.mjs:160-224`) restricted to these
@@ -304,7 +307,8 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     If the user is using the tab (it is the selected tab of a focused window and its mode is
     insert, hint or copy mode, or a key sequence is pending there), the call is denied with the
     new reason `in-use` before it runs, so an agent never scrolls or navigates a page under the
-    user's cursor while they type in it. Watching is fine: in normal mode the user sees the agent
+    user's cursor while they type in it. A call already running stops with `stopped: "in-use"`
+    when the user starts using the tab. Watching is fine: in normal mode the user sees the agent
     scroll and navigate.
 14. **The audit.** The question shows the keys exactly as they will run, after parsing, with
     `⏎` for `<CR>` and find queries in quotes:
@@ -318,7 +322,8 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     way to check afterwards. Rejected: no log, because notices alone leave no record; a log in
     the profile, because it would store the agent workspace's browsing history on disk, which
     vimma-mcp keeps off disk for grants.
-15. **Limits.** Checked in `vimma-ctl mcp` (vimma-mcp decision 38) and again in the browser:
+15. **Limits.** Checked in `vimma-ctl mcp` (vimma-mcp decision 38) and again in the browser,
+    except the number of actions, which needs the keymap and is the browser's alone:
     `keys` at most 512 characters; at most 32 actions per call; a count at most 99; a find query
     at most 256 characters, with no control characters; at most 30 `agent-keys` requests per
     connection a minute (`busy` beyond), counted when asked, in a rate class shared with D7's;
@@ -341,7 +346,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     }
     ```
 
-    `note`, `stopped`, `find`, `links` and `dropped` appear only when they apply. `scroll.y` is
+    `note`, `stopped`, `find`, `links` and `dropped` appear only when they apply. `stopped` is
+    `changed` (the tab left the agent workspace or closed), `in-use` (D13), `timeout` (D15) or
+    `denied` (a load refused: the open rate, or a cross-site follow refused, D18). `scroll.y` is
     the top frame's vertical position as a fraction from 0 to 1. `links` is one string already
     inside the untrusted-content delimiters, wrapped by the browser (`wrapUntrusted`,
     `agent.mjs:393-396`; vimma-mcp decision 34), one link per line: the label, the link text as

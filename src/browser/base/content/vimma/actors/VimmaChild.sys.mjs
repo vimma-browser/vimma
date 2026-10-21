@@ -444,7 +444,15 @@ export class VimmaChild extends JSWindowActorChild {
   receiveMessage(msg) {
     switch (msg.name) {
       case "Vimma:Scroll":
-        return this.#scroll(msg.data.kind, msg.data.count);
+        return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+      case "Vimma:ScrollFraction": {
+        // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16): the element `j`
+        // scrolls, as a fraction of how far it can go.
+        const el = this.#scrollTarget(true);
+        if (!el) return 0;
+        const max = el.scrollHeight - el.clientHeight;
+        return max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
+      }
       case "Vimma:Blur": {
         if (isIndex(msg.data?.gen)) this.#blurGen = msg.data.gen;
         const el = deepActiveElement(this.document);
@@ -841,15 +849,16 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * @param {ScrollKind} kind
    * @param {number} count
+   * @param {boolean} [instant]  no smooth scroll: an agent's tab in the background, whose
+   *   refresh driver is throttled (docs/specs/mcp-drive.md D8)
    * @returns {boolean} whether this frame had something to scroll
    */
-  #scroll(kind, count) {
+  #scroll(kind, count, instant = false) {
     const vertical = kind !== "left" && kind !== "right";
     const el = this.#scrollTarget(vertical);
     if (!el) return false;
-    const behavior = Services.prefs.getBoolPref("general.smoothScroll", true)
-      ? "smooth"
-      : "instant";
+    const behavior =
+      !instant && Services.prefs.getBoolPref("general.smoothScroll", true) ? "smooth" : "instant";
     const n = Math.max(1, Number(count) || 1);
     // Whole pixels, so d then u returns to the same place.
     const half = Math.round(el.clientHeight / 2) * n;

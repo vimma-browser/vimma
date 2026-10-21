@@ -176,6 +176,16 @@ support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 ["browser_vimma_mcp_control.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
+["browser_vimma_mcp_keys.js"]
+support-files = [
+  "file_vimma_agent_long.html",
+  "file_vimma_agent_page.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_log.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
+
 ["browser_vimma_agent_outside_opens.js"]
 
 ["browser_vimma_mcp_agent_pages.js"]
@@ -261,6 +271,7 @@ run-if = ["os == 'linux'"] # ln -s for the omarchy-theme-set symlink swap
 support-files = ["file_vimma_addon_updates.json"]
 
 ["browser_vimma_security_invariants.js"]
+support-files = ["head_vimma_control.js"]
 
 ["browser_vimma_perf.js"]
 
