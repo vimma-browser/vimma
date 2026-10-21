@@ -590,7 +590,7 @@ They share three pieces, built once in this spec's sub-PRs: the agent-tab confin
 `in-use` rule (D13), the per-tab hint session keyed by browser with labels bound to their
 document (D12), and the whitelist in `agent-keys.mjs`, which #231 does not widen: its actions are
 separate tools with separate questions and grants, so a `vimma_keys` grant never lets an agent
-click or type. #231's spec builds on this one rather than adding to vimma-mcp.md.
+click or type. #231's spec, [mcp-forms](mcp-forms.md), builds on this one rather than adding to vimma-mcp.md.
 
 Out of scope: clicks, typing and form filling (#231); screenshots of agent tabs; page keys of
 the site itself (an agent cannot press GitHub's `t`, since keys never reach the page); several

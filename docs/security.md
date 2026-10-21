@@ -696,7 +696,9 @@ a shell can run `vimma-ctl` itself, or speak the protocol directly.
 [mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16,
 M17, M20, M23), following its links by hint label (M18, M21), `vimma_show` (the agent workspace
 brought to the front with one agent tab selected: M19, M20) and full control's wording while MCP
-is on (M22), all in force.
+is on (M22), all in force. [mcp-forms](specs/mcp-forms.md), a draft, plans clicks, form filling,
+screenshots and console output for agents; its rules enter this page with the sub-PRs that
+build them.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
