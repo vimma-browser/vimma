@@ -619,10 +619,16 @@ from the address bar. Whether the toolbar is shown or hidden, you can answer it 
 `y` and `n` count only once the prompt has been up for half a second (Firefox's own delay for
 these buttons) with no key pressed in between; the line `y allow · n block · Tab buttons` in the
 prompt shows when they do. Any key you press meanwhile starts the wait again, so typing that was
-meant for the page never answers a prompt. While you type in a text field, `y` and `n` are text.
-Vimma never moves focus onto the prompt. The same keys answer Firefox's other prompts in that
-panel, such as saving a password, and the "Add <name>?" prompt for installing an add-on, which
-Firefox opens with focus on the prompt itself.
+meant for the page never answers a prompt. While you type in a text field of the page or the
+address bar, `y` and `n` are text, and the line starts with `Esc, then`: `Esc` leaves the field
+and keeps the prompt open, and then `y` and `n` answer it. Vimma never moves focus onto the prompt. The same keys answer Firefox's
+other prompts in that panel, such as "Save password?" (`y` saves, `n` is Not now), and the "Add
+<name>?" prompt for installing an add-on, which Firefox opens with focus on the prompt itself.
+
+A site whose login keeps you on the same page leaves focus in its password field, so the "Save
+password?" prompt opens with the `Esc, then` line. In the prompt's own username and password
+fields, every key is the field's: a `y` or an `n` there is typed, and `Tab` is Firefox's, as
+everywhere inside the prompt.
 
 ### Colours and themes
 

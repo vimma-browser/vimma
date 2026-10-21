@@ -578,7 +578,9 @@ Numbered decisions, each with its reason and the alternatives rejected.
       keys are the field's.
       (Since changed: a prompt Firefox opens with focus on its own panel, the add-on install
       prompt with ExtensionsUI's `autofocus`, takes the keys from there, because no field has
-      focus then and the keys were otherwise lost; see `host/prompt-keys.mjs`.)
+      focus then and the keys were otherwise lost; see `host/prompt-keys.mjs`. The fields inside
+      a prompt, the password prompt's username and password, are fields too: their keys are
+      theirs, because a username with a `y` in it could not be typed otherwise; issue #423.)
     - **`Tab`** (focus in the page, not in a field) moves focus onto the prompt's first button,
       the secondary one, with Vimma's focus ring (`--vimma-focus`, focus.css). From there
       Firefox's own keys work: the arrow keys move between the buttons, `Enter` and `Space` run
@@ -588,6 +590,10 @@ Numbered decisions, each with its reason and the alternatives rejected.
     - **A keys line** in the prompt, built from its own button labels (`y allow · n block · Tab
 buttons`), shows once the prompt is armed and hides while it is not, as the agent line's
       hint does. It is `aria-hidden`, because the buttons are the accessible controls.
+      (Since changed: with focus in a field outside the prompt, the line starts with
+      `Esc, then`, because a login form that keeps the page leaves focus in its password field,
+      where `y` and `n` are text, and `Esc` leaves the field with the prompt still open; issue
+      #423 and the user guide.)
     - It applies to every prompt in Firefox's doorhanger panel (permissions, add-on installs,
       saving a password), because they share the panel and its buttons; the topmost prompt is the
       one answered, as for Firefox's `Esc`.
