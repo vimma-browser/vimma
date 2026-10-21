@@ -1,10 +1,4 @@
 {
-  "bookmarks-toolbar-hidden.md": [
-    "Config: `[ui] bookmarks_toolbar = \"hidden\" | \"shown\" | \"newtab\"`.",
-    "Import does not show it while it is `\"never\"`.",
-    "With toolbar-toggle.",
-    "Theme and keyboard when shown."
-  ],
   "build-supply-chain.md": [],
   "element-focus.md": [
     "Focus: the `ELEMENT` mode.",
@@ -36,16 +30,6 @@
     "Grants.",
     "The server's instructions",
     "Each full connection says it too."
-  ],
-  "site-compat.md": [
-    "A separate workflow, `sites.yml`, on `ubuntu-24.04`.",
-    "Drive with `vimma-ctl`, observe with RDP",
-    "One fresh profile and browser per site",
-    "Firefox's normal user agent",
-    "Latency",
-    "Statuses per site",
-    "Output",
-    "The list is data"
   ],
   "vimma-mcp.md": [
     "`vimma-ctl mcp`",

@@ -281,8 +281,9 @@ never show it again. `:setup` (or the link on about:vimma) opens the setup again
 
 ### The start page
 
-New windows and new tabs open Vimma's start page: the logo, and under it the three keys to start
-from (`ctrl+b ?` keys, `:` commands, `f` hints), and, unless the colours are your Omarchy
+New windows and new tabs open Vimma's start page: the logo, and under it the keys to start
+from (`ctrl+b ?` keys, `:` commands, `f` hints, `ctrl+b shift+b` [bookmarks](#bookmarks)) and,
+unless the colours are your Omarchy
 theme's, `:theme light/dark` to [switch the colours](#colours-and-themes). The address bar is empty and focused, so you can type an
 address straight away; click the page to use `:` and the other keys there. At the bottom, a small
 line shows which Vimma you run and the Firefox release it is built on (`Vimma X.Y.Z · Firefox
@@ -437,7 +438,8 @@ is on screen), as Vim's starts at the cursor.
   last match before where you were. After `?`, `n` goes on backward and `N` forward.
 - **A match in a text field** (a site's search box that holds your query) is selected there,
   but the field does not keep the focus: you stay in normal mode and `n` / `N` go on to the
-  next match. `i` or a click puts you in the field.
+  next match. `i`, a click, or the page itself focusing the field puts you in it, in insert
+  mode.
 
 `ctrl+f` still opens Firefox's own find bar, where `Enter` goes to the next match.
 
@@ -1946,6 +1948,30 @@ Library, Sync, another window) show in the panel at once. With `root = "all"`, t
 folders cannot be renamed, moved or deleted. The panel remembers which folders you opened until
 Vimma quits.
 
+### Firefox's Bookmarks Toolbar
+
+Firefox's Bookmarks Toolbar, the row of bookmarks under the address bar, is hidden by default,
+on the start page and new tabs too, and stays hidden when you import bookmarks from another
+browser. Your bookmarks are in the panel (`ctrl+b shift+b`) and in the Bookmarks Toolbar folder
+either way: hiding the toolbar hides a view, not a bookmark. A profile that showed the toolbar
+before this default has it hidden once, with a notice that says how to bring it back.
+
+- **`:bookmarkstoolbar`** shows or hides it in every window, as Firefox's `ctrl+shift+b` does
+  (also a Vimma binding: [Firefox's own shortcuts](#firefoxs-own-shortcuts)).
+  `:bookmarkstoolbar show`, `hide` and `newtab` set it either way; `newtab` shows it only on the
+  start page and new tabs. `Tab` completes the three words. The notice says
+  `bookmarks toolbar shown`, `hidden` or `shown on new tabs`.
+- **Firefox's View → Toolbars → Bookmarks Toolbar** menu and the toolbar's context menu work as
+  in Firefox. Any of these choices lasts across restarts.
+- **[config.toml](#configtoml):** `[ui] bookmarks_toolbar = "shown"`, `"hidden"` or `"newtab"`
+  sets it in every window at startup and when you change that line; another change lasts until
+  then, and its notice adds `(config.toml sets "…"; until restart)`. Left out, the choices above
+  decide.
+- **Customize → Restore Defaults** sets Firefox's own default, the toolbar on new tabs;
+  `:bookmarkstoolbar hide` hides it again.
+- With the [toolbar hidden](#hiding-the-toolbar) (`ctrl+b u`), the bookmarks toolbar hides with
+  it.
+
 ## Tab search and tab rename
 
 `ctrl+b g` (or `b` in normal mode, or `:ls`) opens tab search over the page, ready to type. It
@@ -2235,7 +2261,9 @@ accent = "#ff9e64"
   `download_dir`, `download_max_mb` and `clamav_max_age_days`, [above](#downloads-from-the-agent-workspace)); `[search]`
   (the default engine and `@aliases`, [below](#search-engines)); `[ui] toolbar` (`"shown"`, the
   default, or `"hidden"`: [Firefox's toolbar](#hiding-the-toolbar) in every window; applied at
-  startup and when the line changes, so `ctrl+b u` lasts until then); `[updates] check`
+  startup and when the line changes, so `ctrl+b u` lasts until then); `[ui] bookmarks_toolbar`
+  (`"shown"`, `"hidden"` or `"newtab"`, unset by default: [Firefox's Bookmarks
+  Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[updates] check`
   (`true`, the default, or `false`: no [update check](#updates) at all).
 - **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[firefox]`,
   `[bookmarks]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`,

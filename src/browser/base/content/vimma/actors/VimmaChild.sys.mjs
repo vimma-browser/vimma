@@ -187,6 +187,12 @@ export class VimmaChild extends JSWindowActorChild {
   #blurGen = 0;
   /** @type {WeakRef<HTMLInputElement> | null} the text field a find focused and we blurred */
   #findMatchField = null;
+  /**
+   * @type {WeakRef<Element> | null} the text field whose focus the current find step gave back
+   * (#442): the finder still names it as its match, but it focuses it only once per step, so a
+   * later focus there (the page's script) is not the find's. Vimma:FindStep starts a step.
+   */
+  #findGaveBack = null;
   /** Tells the parent about a selection the user made with the mouse (spec m1-copy-mode). */
   #selectionListener = {
     QueryInterface: ChromeUtils.generateQI(["nsISelectionListener"]),
@@ -303,7 +309,7 @@ export class VimmaChild extends JSWindowActorChild {
    */
   #focusedByFind(el) {
     if (this.#focusing || this.contentWindow?.windowUtils.isHandlingUserInput) return false;
-    return this.#foundEditable() === el;
+    return this.#foundEditable() === el && this.#findGaveBack?.deref() !== el;
   }
 
   /** The text field the finder's last match is in, if this frame has searched. */
@@ -334,6 +340,9 @@ export class VimmaChild extends JSWindowActorChild {
         el.setSelectionRange(start, end);
       }
       el.blur();
+      // Only from the blur on: until then the step's focus can still reach the field again (the
+      // close's Finder.focusContent, and the window's activation when the page gets focus back).
+      this.#findGaveBack = new WeakRef(el);
       this.#findMatchField = new WeakRef(el);
       this.#showFindMatch(el);
     });
@@ -462,6 +471,9 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#findAnchor();
       case "Vimma:FindClosed":
         return this.#findClosed();
+      case "Vimma:FindStep":
+        this.#findGaveBack = null;
+        return undefined;
       case "Vimma:Selection": {
         // An agent's read (docs/specs/vimma-mcp.md, decision 4): the page's selected text, if
         // any, cut at `max` characters; a copy, nothing in the page changes.

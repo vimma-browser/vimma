@@ -421,6 +421,19 @@ export const VimmaActors = {
   },
 
   /**
+   * Tells every frame of `browser` that a find step starts (a search, `n` or `N`): the finder
+   * may focus a text field it matches in again, even one whose focus an earlier step gave back
+   * (VimmaChild #focusedByFind, #442). Sent before the step's own Finder messages, on the same
+   * channel per frame, so each frame gets it first.
+   * @param {any} browser XULBrowserElement
+   */
+  findStep(browser) {
+    for (const bc of browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []) {
+      actorFor(bc)?.sendAsyncMessage("Vimma:FindStep");
+    }
+  },
+
+  /**
    * Tells the frame a find bar closed on that the close is through (VimmaChild #findClosed).
    * Sent after the find bar's close(), so the frame gets it after the finder's own messages.
    * @param {any} bc BrowsingContext the finder sent its close to

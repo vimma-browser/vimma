@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. From the first release on, release-please writes each release's entry from the Conventional Commits on `main` ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [Unreleased]
+
+### Changed
+
+- Firefox's Bookmarks Toolbar is hidden by default, also on the start page and after an import; `ctrl+b shift+b` opens your bookmarks, the start page names it, and `:bookmarkstoolbar [show|hide|newtab]`, `ctrl+shift+b` or `[ui] bookmarks_toolbar` brings the toolbar back. A profile that showed it has it hidden once, with a notice. The `defaults.toml` snapshot gains the commented `[ui] bookmarks_toolbar` line.
+
 ## [0.1.6](https://github.com/vimma-browser/vimma/compare/v0.1.5...v0.1.6) · Firefox 158.0 (2026-10-19)
 
 

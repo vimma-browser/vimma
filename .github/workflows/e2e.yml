@@ -258,6 +258,23 @@ jobs:
           if [ "$BETA" = true ]; then report=(--report-json "$RUNNER_TEMP/e2e-report.json"); fi
           npm run e2e -- --artifact "${report[@]}"
 
+      # Spec site-compat, "Snapshot layer": the recorded pages in tests/e2e/fixtures/sites/ replayed
+      # offline (every host but 127.0.0.1 unreachable) with the site suite's checks. Fails when a
+      # check that passed on the recording does not pass now. Never a live site from here.
+      - name: Site snapshot gate (npm run sites -- --offline)
+        id: sites-offline
+        continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}
+        run: npm run sites -- --offline --artifact --out site-compat-offline/
+
+      - name: Upload site-compat-offline/ (the snapshot gate's report and screenshots)
+        if: failure() || (steps.mode.outputs.beta == 'true' && steps.sites-offline.outcome == 'failure')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-compat-offline
+          path: site-compat-offline/
+          if-no-files-found: ignore
+          retention-days: 7
+
       # The actual and diff screenshots of a failed comparison (tools/e2e/screenshot.mjs), for
       # judging a regression or taking a new baseline from the runner's fonts (runbook).
       - name: Upload e2e-output/ (screenshots of failed comparisons)

@@ -19,7 +19,15 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 /** The step ids e2e.yml gives the build, the checks and the suites, in order. */
-export const STEPS = ["import", "branding", "upstream-prefs", "artifact-build", "mochitest", "e2e"];
+export const STEPS = [
+  "import",
+  "branding",
+  "upstream-prefs",
+  "artifact-build",
+  "mochitest",
+  "e2e",
+  "sites-offline",
+];
 
 /** @typedef {{ status: string, test: string, message: string }} MochitestFailure */
 /**

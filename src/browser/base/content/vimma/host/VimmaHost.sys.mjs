@@ -21,7 +21,12 @@ import { HintError, hintKey, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { compileKeymap } from "../core/keymap.mjs";
 import { describeAction, notImplementedText } from "../core/actions.mjs";
-import { PENDING_ACTIONS, parseCommandLine, parseToolbarCommand } from "../core/cmdline.mjs";
+import {
+  PENDING_ACTIONS,
+  parseBookmarksToolbarCommand,
+  parseCommandLine,
+  parseToolbarCommand,
+} from "../core/cmdline.mjs";
 import { CommandLine } from "../ui/cmdline.mjs";
 import { HelpOverlay } from "../ui/help-overlay.mjs";
 import { HintOverlay } from "../ui/hint-overlay.mjs";
@@ -32,6 +37,8 @@ import { pageRunners } from "./page-ops.mjs";
 import { Notice } from "../ui/notice.mjs";
 import { TabStrip } from "../ui/tabstrip.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
+import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
+import { bookmarksToolbarNotice } from "../core/bookmarks-toolbar.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import { AddonPicker, GotoPicker, WorkspacePicker } from "../ui/picker.mjs";
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
@@ -57,7 +64,7 @@ import {
 } from "./tab-ops.mjs";
 import { DEFAULT_FIREFOX_KEYS, FirefoxKeys } from "./firefox-keys.mjs";
 import { FIREFOX_SHORTCUTS, boundChords, pageFirst } from "../core/firefox-keys.mjs";
-import { browserRunners, firefoxIds } from "./browser-ops.mjs";
+import { BROWSER_KEYS, browserRunners, firefoxIds, runKey } from "./browser-ops.mjs";
 import { focusedChromeField, runChromeEdit } from "./edit-keys.mjs";
 import { runRoute } from "./route-ops.mjs";
 import {
@@ -433,6 +440,25 @@ function setToolbar(s, command) {
 }
 
 /**
+ * Firefox's Bookmarks Toolbar (docs/specs/bookmarks-toolbar-hidden.md): one state for every
+ * window. Without a word, Firefox's own toggle (its ctrl+shift+b handler, between "always" and
+ * "never"); a word sets that state. The notice says which, and "until restart" while
+ * config.toml sets the key (decision 4).
+ * @param {WindowState} s
+ * @param {ReturnType<typeof parseBookmarksToolbarCommand>} command
+ */
+function setBookmarksToolbar(s, command) {
+  s.notice.hide();
+  if (command.kind === "refuse") {
+    s.notice.show(command.text, { error: true });
+    return;
+  }
+  if (command.kind === "set") BookmarksToolbar.set(command.setting);
+  else if (!runKey(s.win, BROWSER_KEYS["browser.bookmarks_toolbar"])) return;
+  s.notice.show(bookmarksToolbarNotice(BookmarksToolbar.visibility, BookmarksToolbar.configured));
+}
+
+/**
  * Shows an add-on op's answer, if any, as the notice; a failure too.
  * @param {WindowState} s
  * @param {Promise<string | null>} op
@@ -741,6 +767,13 @@ export const RUNNERS = Object.freeze({
   // docs/specs/firefox-keys.md decision 4: the Browser and Developer tools actions, each what
   // Firefox's key ran (browser-ops.mjs).
   ...browserRunners((win, text) => states.get(win)?.notice.show(text)),
+  // ctrl+shift+b and `:bookmarkstoolbar [show|hide|newtab]` (bookmarks-toolbar-hidden decision
+  // 5): Firefox's own toggle, or a known state, with a notice.
+  "browser.bookmarks_toolbar": (
+    /** @type {WindowState} */ s,
+    /** @type {Action} */ _a,
+    /** @type {string | undefined} */ text,
+  ) => setBookmarksToolbar(s, parseBookmarksToolbarCommand(text)),
   // A `:` binding in config.toml (docs/specs/firefox-keys.md decision 5): its line, as typed.
   "cmdline.run": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
     const result = parseCommandLine(a.line ?? "");

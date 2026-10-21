@@ -82,6 +82,8 @@ support-files = ["file_vimma_plain.html", "file_vimma_mixed.js"]
 ["browser_vimma_toolbar_theme.js"]
 support-files = ["file_vimma_plain.html"]
 
+["browser_vimma_bookmarks_toolbar.js"]
+
 ["browser_vimma_firefox_surfaces_theme.js"]
 support-files = ["file_vimma_plain.html"]
 
@@ -138,6 +140,7 @@ support-files = ["file_vimma_search_post.sjs"]
 support-files = [
   "file_vimma_find.html",
   "file_vimma_find_field.html",
+  "file_vimma_find_site_fields.html",
   "file_vimma_find_frame.html",
   "file_vimma_test.pdf",
 ]
