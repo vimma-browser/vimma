@@ -1,0 +1,115 @@
+{
+  "name": "issue-213-element-focus",
+  "issue": 213,
+  "description": "Spec element-focus: F labels the text blocks of fixture:article.html (element-hints); the label d focuses its second paragraph, outlined in the browser, with the ELEMENT badge and 'paragraph · 191 chars' in the status bar (element-focus); v selects the paragraph in copy mode (element-visual) and y copies it. Then F, la and y copy the code block, and pasting it into the page's text field gives its exact text without the line-number gutter: the page titles itself 'pasted code exact'. The status bar shows the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "timeoutSeconds": 60,
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:article.html"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "article",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "F"
+    },
+    {
+      "wait-for-state": {
+        "mode": "hint"
+      }
+    },
+    {
+      "screenshot": "element-hints"
+    },
+    {
+      "keys": "d"
+    },
+    {
+      "wait-for-state": {
+        "mode": "element"
+      }
+    },
+    {
+      "screenshot": "element-focus"
+    },
+    {
+      "keys": "v"
+    },
+    {
+      "wait-for-state": {
+        "mode": "visual"
+      }
+    },
+    {
+      "screenshot": "element-visual"
+    },
+    {
+      "keys": "y"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal"
+      }
+    },
+    {
+      "keys": "F"
+    },
+    {
+      "wait-for-state": {
+        "mode": "hint"
+      }
+    },
+    {
+      "keys": "l a"
+    },
+    {
+      "wait-for-state": {
+        "mode": "element"
+      }
+    },
+    {
+      "keys": "y"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal"
+      }
+    },
+    {
+      "keys": "g i"
+    },
+    {
+      "wait-for-state": {
+        "mode": "insert"
+      }
+    },
+    {
+      "keys": "ctrl+v"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "pasted code exact",
+            "selected": true
+          }
+        ]
+      }
+    }
+  ]
+}

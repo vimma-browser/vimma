@@ -2386,7 +2386,7 @@ export const VimmaHost = {
   },
 
   /**
-   * `f` / `F`: collects the targets, then enters hint mode with a label on each. With none,
+   * `f` / `gF` / `F`: collects the targets, then enters hint mode with a label on each. With none,
    * the tab stays in normal (the status bar will say so, M2).
    * @param {any} browser
    * @param {Action} action

@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- issue-213-element-focus: a short article of text blocks for element focus (F): a heading,
+     paragraphs, a list whose second item holds two paragraphs, a quote, a code block drawn as a
+     highlighter draws it (one div per line, a blank line as a newline, line numbers in a
+     user-select: none gutter) and a paragraph of links. The text field at the end reports what is pasted into it in the title
+     ("pasted code exact" when it is the code block without its line numbers, else "pasted N
+     chars"), so a scenario can check what `y` put on the clipboard. -->
+<meta charset="utf-8" />
+<title>article</title>
+<style>
+  body {
+    margin: 24px 48px;
+    font: 16px/1.5 sans-serif;
+    color: #222;
+    background: #fafafa;
+    max-width: 900px;
+  }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 12px;
+  }
+  p,
+  li {
+    margin: 0 0 10px;
+  }
+  blockquote {
+    margin: 0 0 12px;
+    padding-left: 12px;
+    border-left: 4px solid #bbb;
+    color: #555;
+  }
+  pre {
+    margin: 0 0 12px;
+    padding: 8px;
+    background: #eee;
+    font: 14px/1.4 monospace;
+  }
+  .ln {
+    display: inline-block;
+    width: 2.5em;
+    color: #999;
+    user-select: none;
+  }
+  textarea {
+    width: 100%;
+    height: 80px;
+  }
+</style>
+<h1 id="title">Reading on the web</h1>
+<p id="p1">
+  Most of what people copy from a web page is one block of text: a paragraph to quote, a list item
+  to keep, a code sample to run.
+</p>
+<p id="p2">
+  Element focus puts a label on every block on screen. Typing a label outlines the block; y copies
+  it at once, and v selects it in copy mode, where the usual motions adjust the selection first.
+</p>
+<ul id="list">
+  <li id="li1">Paragraphs, headings and list items.</li>
+  <li id="li2">
+    <p id="li2a">Quotes and table cells.</p>
+    <p id="li2b">Code blocks, copied exactly as shown.</p>
+  </li>
+  <li id="li3">Captions and summaries.</li>
+</ul>
+<blockquote id="quote">A block is what the page's own elements say it is.</blockquote>
+<pre
+  id="code"
+><div><span class="ln">1</span>function greet(name) {</div><div><span class="ln">2</span>	const words = ["hello", name];</div><div><span class="ln">3</span>
+</div><div><span class="ln">4</span>    return words.join(" ");</div><div><span class="ln">5</span>}</div></pre>
+<p id="links">
+  Links stay on f: <a id="l1" href="long.html">a long page</a> and
+  <a id="l2" href="pane.html#linked">a pane page</a>.
+</p>
+<textarea id="paste" aria-label="paste here"></textarea>
+<script>
+  const CODE =
+    'function greet(name) {\n\tconst words = ["hello", name];\n\n    return words.join(" ");\n}';
+  const box = document.getElementById("paste");
+  box.addEventListener("input", () => {
+    const text = box.value.replace(/\n$/, "");
+    document.title = text === CODE ? "pasted code exact" : `pasted ${text.length} chars`;
+  });
+</script>

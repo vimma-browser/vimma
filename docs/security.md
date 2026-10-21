@@ -229,7 +229,7 @@ link targets for hints, which chrome must treat as untrusted.
   [`a well-formed reply → a fresh copy with only the known fields`](../packages/vimma-core/test/hints.test.mjs)
   A text block target ([element-focus](specs/element-focus.md)) **must** carry a kind from the
   closed list and a finite, bounded, non-empty box, and no link. A reply **must** hold only the
-  kind of target its collection asked for: a block in an `f` or `F` reply, or a link or control in
+  kind of target its collection asked for: a block in an `f` or `gF` reply, or a link or control in
   an element-focus reply, refuses the whole reply, so a block is never followed.
   [`a block target needs a kind from the closed list and a finite box`](../packages/vimma-core/test/hints.test.mjs),
   [`only a block target carries a blockKind or a box`](../packages/vimma-core/test/hints.test.mjs),

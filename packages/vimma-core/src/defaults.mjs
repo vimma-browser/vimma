@@ -203,7 +203,10 @@ const modal = {
     "<Esc>": "page.stop",
     r: "page.reload",
     f: "hint.follow",
-    F: "hint.follow_new_tab",
+    // f follows links and F focuses text blocks; background-tab hints sit beside gf
+    // (element-focus decision 2).
+    F: "hint.element",
+    gF: "hint.follow_new_tab",
     "/": "find.forward",
     "?": "find.backward",
     n: "find.next",

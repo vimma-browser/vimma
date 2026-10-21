@@ -30,11 +30,8 @@ const PARAGRAPHS = DIR + "file_vimma_element_paragraphs.html";
 
 const FRAME_TIMEOUT_PREF = "vimma.hints.frameTimeoutMs";
 
-/**
- * hint.element has no default key until its keymap sub-PR; the tests bind it to `e`, free in
- * normal mode, as a config.toml would.
- */
-const KEY = "e";
+/** hint.element's default key in normal mode (decision 2). */
+const KEY = "F";
 
 /** The blocks of file_vimma_element.html that get a label, with their kinds. */
 const BLOCKS = {
@@ -62,9 +59,8 @@ const BLOCKS = {
 /** A bare key with no binding in normal mode: it reaches the page and flushes earlier events. */
 const UNBOUND = "z";
 
-add_task(function bind_element_focus_to_a_key() {
-  VimmaHost.configure({ keymap: compileKeymap({ modal: { normal: { [KEY]: "hint.element" } } }) });
-  registerCleanupFunction(() => VimmaHost.configure({ keymap: compileKeymap() }));
+add_task(function use_the_default_keymap() {
+  VimmaHost.configure({ keymap: compileKeymap() });
 });
 
 /**

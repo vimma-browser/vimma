@@ -205,7 +205,7 @@ const narrow = (state) => Object.freeze({ kind: "narrow", visible: visibleHints(
 export const HINT_REPLY_MAX_TARGETS = 5000;
 /** Most subframes one frame may report. */
 export const HINT_REPLY_MAX_FRAMES = 64;
-/** Longest href a link target may carry (for `F`). */
+/** Longest href a link target may carry (for `gF`). */
 export const HINT_REPLY_MAX_HREF = 8192;
 /** Coordinates beyond this are not on any screen. */
 const MAX_COORD = 1e6;
@@ -246,7 +246,7 @@ function parseRect(value) {
  * with only the known fields, each of its exact type and within the caps, or null if anything
  * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs). A
  * collection gets only the kind of target it asked for: text blocks for element focus, never
- * a block for `f` or `F`, so a block is never followed and a link never outlined.
+ * a block for `f` or `gF`, so a block is never followed and a link never outlined.
  * @param {unknown} value
  * @param {{ blocks?: boolean }} [options]  the collection asked for text blocks
  * @returns {HintReply | null}
