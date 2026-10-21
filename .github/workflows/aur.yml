@@ -6,6 +6,11 @@
 # only (a draft's files are a 404 there), checked against the release's SHA256SUMS and, with
 # signing on, SHA256SUMS against release.yml's signature. Then the one install-source line is
 # switched to `aur` (the variant package.mjs writes to dist/aur/; a test keeps the two equal).
+# Trigger: a release event runs this file as it is at the tag, and anyone with write access can
+# create a tag on an unmerged commit with an edited copy (docs/security.md, B6 and B10). So the
+# release event runs only `start`, which holds no secret and starts main's copy by
+# workflow_dispatch; the `aur` job runs only in that dispatch, and the aur environment admits
+# main alone.
 # Nothing runs until RELEASE_ENABLED is `true`; skipped (green, with a notice) until the
 # AUR_SSH_KEY secret exists. Retry: gh workflow run aur.yml -f tag=vX.Y.Z (docs/runbook.md,
 # "Release packages").
@@ -23,27 +28,49 @@ on:
 
 permissions: {}
 
+# The release event's run, which only starts the dispatch, has a group of its own, so the
+# dispatched run never waits behind it.
 concurrency:
-  group: aur-${{ github.event.release.tag_name || inputs.tag }}
+  group: aur-${{ github.event_name }}-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 env:
   TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
+  # Runs the tag's copy of this file, so it does nothing but start main's copy.
+  start:
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && github.event_name == 'release' &&
+      github.repository == 'vimma-browser/vimma'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write # start this workflow on main
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Start the AUR push on main
+        run: |
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::'$TAG' is not a vX.Y.Z release tag"; exit 1; }
+          gh workflow run aur.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
+          echo "Started aur.yml on main for $TAG" >> "$GITHUB_STEP_SUMMARY"
+
   # No GitHub token at all: the files come from public download URLs, and the push uses the AUR
   # key alone.
   aur:
     if: >-
       vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
-      (github.event_name == 'release' || github.ref == 'refs/heads/main')
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions: {}
-    # Holds AUR_SSH_KEY; its deployment refs are main and v* tags (docs/runbook.md, "Release
-    # packages", step 6), so no workflow on another branch can read the key.
+    # Holds AUR_SSH_KEY; its only deployment ref is main (docs/runbook.md, "Release packages",
+    # step 6), so no tag and no other branch can read the key, whatever its copy of this file says.
     environment: aur
     env:
+      TAG: ${{ inputs.tag }}
       AUR_KEY_SET: ${{ secrets.AUR_SSH_KEY != '' }}
     steps:
       - name: Without AUR_SSH_KEY, skip
@@ -131,7 +158,7 @@ jobs:
           fi
 
   failure:
-    needs: aur
+    needs: [start, aur]
     if: >-
       failure() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       (github.event_name == 'release' || github.ref == 'refs/heads/main')

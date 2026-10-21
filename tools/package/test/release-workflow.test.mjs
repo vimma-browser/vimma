@@ -479,9 +479,10 @@ describe("aur.yml", () => {
   /** @param {string} id */
   const job = (id) => /** @type {string} */ (all.get(id) ?? "");
 
-  it("has the aur job and its failure report", () => {
-    expect([...all.keys()]).toEqual(["aur", "failure"]);
-    expect(job("failure")).toMatch(/^ {4}needs: aur$/m);
+  it("has the start job, the aur job and its failure report", () => {
+    expect([...all.keys()]).toEqual(["start", "aur", "failure"]);
+    expect(job("aur")).not.toContain("needs:");
+    expect(job("failure")).toMatch(/^ {4}needs: \[start, aur\]$/m);
   });
 
   it("runs when a release is published, or by hand with a tag; never for a draft", () => {
@@ -492,15 +493,40 @@ describe("aur.yml", () => {
     expect(file).toMatch(/^permissions: \{\}$/m);
   });
 
-  it.each(["aur", "failure"])(
-    "job %s runs only when enabled, here, for a release or main",
-    (id) => {
-      expect(condition(job(id))).toContain(
-        "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
-          "(github.event_name == 'release' || github.ref == 'refs/heads/main')",
-      );
-    },
-  );
+  // A release event runs this file as the release's tag has it, and anyone with write access can
+  // create a tag on an unmerged commit with an edited copy (docs/security.md, B6 and B10). So the
+  // release event only starts main's copy, and only a dispatch on main reaches the AUR key.
+  it("a published release only starts the run on main, with no secret and no environment", () => {
+    const start = job("start");
+    expect(condition(start)).toBe(
+      "vars.RELEASE_ENABLED == 'true' && github.event_name == 'release' && " +
+        "github.repository == 'vimma-browser/vimma'",
+    );
+    expect(start).toMatch(/^ {4}permissions:\n {6}actions: write # [^\n]+\n {4}env:\n/m);
+    const run = runOf(start, "Start the AUR push on main");
+    expect(run).toContain("[[ $TAG =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]");
+    expect(run).toContain(
+      'gh workflow run aur.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"',
+    );
+    expect(start).not.toMatch(/secrets\.|environment:|actions\/checkout|uses:/);
+  });
+
+  it("the aur job runs only when enabled, here, by dispatch on main; never for a tag", () => {
+    const cond = condition(job("aur"));
+    expect(cond).toBe(
+      "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
+        "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'",
+    );
+    expect(job("aur")).not.toMatch(/github\.event\.release|refs\/tags/);
+    expect(job("aur")).toMatch(/^ {6}TAG: \$\{\{ inputs\.tag \}\}$/m);
+  });
+
+  it("the failure report runs only when enabled, here, for a release or main", () => {
+    expect(condition(job("failure"))).toContain(
+      "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
+        "(github.event_name == 'release' || github.ref == 'refs/heads/main')",
+    );
+  });
 
   // releases/download/<tag>/ serves a published release's assets only: a draft's are a 404, so
   // the job cannot push a draft's PKGBUILD even when started by hand for its tag.
@@ -517,11 +543,13 @@ describe("aur.yml", () => {
     expect(fetch).toContain('grep -qx "pkgver=${TAG#v}" PKGBUILD');
   });
 
-  // An environment limited to main and v* tags holds the AUR key, so a workflow on another
-  // branch cannot read it.
+  // An environment limited to main holds the AUR key, so no tag and no other branch can read it.
   it("takes the AUR key from the aur environment", () => {
     expect(job("aur")).toMatch(/^ {4}environment: aur$/m);
-    expect(job("failure")).not.toContain("environment:");
+    for (const [id, block] of all) {
+      expect(block.includes("environment:"), id).toBe(id === "aur");
+      expect(block.includes("AUR_SSH_KEY"), id).toBe(id === "aur");
+    }
   });
 
   it("checks the release's signature against the documented identity when signing is on", () => {

@@ -1418,8 +1418,9 @@ When release-please creates a draft release (above), its `release-build` job sta
 on `main` with the new tag (`workflow_dispatch`). `release.yml` builds Vimma, packages it on a
 hosted runner, signs, and uploads to that draft. Its `build` job builds on `ubuntu-24.04` from
 freshly verified source in about 2 hours ("Full builds" above). When the maintainer publishes
-the draft, `aur.yml` pushes AUR `vimma-bin`, and once the macOS files are on the published
-release, `release.yml`'s `macos-tap` job starts `homebrew.yml`, which pushes the Homebrew cask;
+the draft, `aur.yml` starts its own copy on `main`, which pushes AUR `vimma-bin`, and once the
+macOS files are on the published release, `release.yml`'s `macos-tap` job starts
+`homebrew.yml`, which pushes the Homebrew cask;
 publishing builds nothing. **Every job of these workflows is off until `RELEASE_ENABLED` is `true`**, manual
 runs included, and `homebrew.yml` also needs `MACOS_RELEASE_ENABLED`.
 
@@ -1449,7 +1450,8 @@ AUR variant, checksums; installs the `.deb` and starts it headless, and runs `ma
 the `PKGBUILD` in an Arch Linux container with `tools/package/arch-smoke.sh`) → `sign` (only job with
 `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
-`release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
+`release-failure` issue). `aur.yml`, on publish: `start` (only `actions: write`; starts
+`aur.yml` on `main` with the tag), then in that run `aur` (no GitHub token; the SSH key only) →
 `failure`. `homebrew.yml`, from `main` when `macos-tap` starts it or by hand: `homebrew` (no GitHub
 token; the tap's deploy key only) → `failure`. Locally, from a mach tarball:
 
@@ -1507,8 +1509,11 @@ neither needs another file.
    - Create an account at <https://aur.archlinux.org/register>.
    - Make a key for the workflow only: `ssh-keygen -t ed25519 -N '' -C vimma-release -f aur_key`;
      paste `aur_key.pub` into My Account → SSH Public Key.
-   - Store the key in the `aur` environment, which only `main` and `v*` tags may use, so no
-     workflow on another branch can read it (the `aur` job names that environment):
+   - Store the key in the `aur` environment, which only `main` may use. No tag may: a tag
+     ruleset restricts moving a tag, not creating one, and a run's workflow file comes from its
+     ref, so a tag on an unmerged commit could carry an `aur.yml` that pushes any `PKGBUILD`.
+     Publishing a release runs only `aur.yml`'s `start` job, which holds no secret and starts
+     `aur.yml` on `main` (the `aur` job names that environment):
 
      ```sh
      R=repos/vimma-browser/vimma
@@ -1516,7 +1521,6 @@ neither needs another file.
      { "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
      JSON
      gh api -X POST $R/environments/aur/deployment-branch-policies -f name=main -f type=branch
-     gh api -X POST $R/environments/aur/deployment-branch-policies -f name='v*' -f type=tag
      gh secret set AUR_SSH_KEY --env aur < aur_key
      ```
 
@@ -1660,11 +1664,11 @@ runs the workflow file from `main` (the jobs refuse any other branch) but checks
 the tag's source: a fix to the workflow file reaches the re-run, while a fix to the source or to a
 script under `tools/` does not, and needs a patch release (leave the failed draft unpublished;
 delete it once the patch release is out). An `aur.yml` failure also opens the issue; re-run it
-with `gh workflow run aur.yml -f tag=vX.Y.Z`. That manual run uses `main`'s `aur.yml`, while the
-run started by publishing uses the `aur.yml` at the release's tag, so a fix to `aur.yml` reaches
-an already tagged release only through the manual run. A `homebrew.yml` failure opens it as
-well; re-run it with `gh workflow run homebrew.yml -f tag=vX.Y.Z`, which, like every run of it,
-uses `main`'s `homebrew.yml`. To pull a bad release: `gh release edit vX.Y.Z --draft`
+with `gh workflow run aur.yml -f tag=vX.Y.Z`. Every push to the AUR uses `main`'s `aur.yml`:
+publishing runs the tag's copy only to start `main`'s, so a fix to `aur.yml` on `main` reaches
+an already tagged release. A `homebrew.yml` failure opens it as well; re-run it with
+`gh workflow run homebrew.yml -f tag=vX.Y.Z`, which, like every run of it, uses `main`'s
+`homebrew.yml`. To pull a bad release: `gh release edit vX.Y.Z --draft`
 (hides it); the AUR package cannot go back a version without an `epoch`, and `homebrew.yml`
 never replaces a newer cask in the tap with an older one, so ship a fixed release instead.
 

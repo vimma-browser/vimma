@@ -44,7 +44,8 @@ Releases count up by the patch version: 0.1.1, 0.1.2, 0.1.3 and so on.
 - `release.yml` runs on `release: published` only. GitHub fires no `published` for a draft, and
   no workflow for the `created`/`edited`/`deleted` events of a draft. The tag is created with
   the release-please token through the API; no workflow here runs on tag pushes. (Since changed:
-  `release.yml` starts only by `workflow_dispatch`, and `aur.yml` runs on `release: published`;
+  `release.yml` starts only by `workflow_dispatch`, and `release: published` starts `aur.yml` on
+  `main` by `workflow_dispatch`;
   docs/runbook.md, "Release packages".)
 
 ## Scope

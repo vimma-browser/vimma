@@ -186,7 +186,8 @@ Each file is signed with `cosign sign-blob --yes --bundle <file>.sigstore.json <
 (Since changed: `release.yml` starts only by `workflow_dispatch` on `main`, from
 `release-please.yml`'s `release-build` job for the draft release-please creates, or by hand. It
 uploads to the draft, and publishing rebuilds nothing. The `aur` job moved to `aur.yml`, which
-runs when the release is published; docs/runbook.md, "Release packages".)
+runs when the release is published, through a dispatch on `main`; docs/runbook.md, "Release
+packages".)
 
 **Trigger: `release: types: [published]`**, plus `workflow_dispatch` with a `tag` input.
 

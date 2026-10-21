@@ -1114,11 +1114,18 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   `replace_published`. **⚠ setting:** a tag ruleset on `refs/tags/v*` that restricts
   updates and deletions (docs/runbook.md, "Release packages", step 9) keeps a release tag from
   being moved at all. The AUR, public the moment a push lands, **never** gets a package for
-  a draft: `aur.yml` runs when a release is published (or by hand), holds no GitHub token,
-  takes the `PKGBUILD` and `SRCINFO` only from the release's public download URLs, which answer
-  404 for a draft, checks them against `SHA256SUMS` and the `PKGBUILD`'s version against the
-  tag, and with signing on checks `SHA256SUMS` against `IDENTITY_REGEXP` before it pushes. The
-  AUR key is a secret of the `aur` environment, which only `main` and `v*` tags may use. **⚠ limit:** a collaborator can publish a draft
+  a draft: `aur.yml`'s `aur` job runs only by `workflow_dispatch` from `main`, holds no GitHub
+  token, takes the `PKGBUILD` and `SRCINFO` only from the release's public download URLs, which
+  answer 404 for a draft, checks them against `SHA256SUMS` and the `PKGBUILD`'s version against
+  the tag, and with signing on checks `SHA256SUMS` against `IDENTITY_REGEXP` before it pushes.
+  Publishing a release runs only `aur.yml`'s `start` job, which holds only `actions: write`, no
+  secret and no environment, and starts `aur.yml` on `main` with the tag. The AUR key is a
+  secret of the `aur` environment, which only `main` may use. No tag may deploy to it (as in B6
+  and B11): a tag ruleset restricts moving a tag, not creating one, and a release event runs the
+  workflow file and its `if:` as they are at the tag, so a tag on an unmerged commit could carry
+  an `aur.yml` that skips every check and pushes any `PKGBUILD` to the AUR. **⚠ setting:** the
+  `aur` environment's only deployment policy is the branch `main` (docs/runbook.md, "Release
+  packages", step 6). **⚠ limit:** a collaborator can publish a draft
   before its build has finished; the release is then public without its assets for that time,
   and `aur.yml` fails and opens a `release-failure` issue instead of pushing.
   [`starts only by workflow_dispatch with a tag, so publishing a release rebuilds nothing`](../tools/package/test/release-workflow.test.mjs),
@@ -1130,6 +1137,8 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`refuses %s`](../tools/package/test/package.test.mjs),
   [`never pushes to the AUR`](../tools/package/test/release-workflow.test.mjs),
   [`runs when a release is published, or by hand with a tag; never for a draft`](../tools/package/test/release-workflow.test.mjs),
+  [`a published release only starts the run on main, with no secret and no environment`](../tools/package/test/release-workflow.test.mjs),
+  [`the aur job runs only when enabled, here, by dispatch on main; never for a tag`](../tools/package/test/release-workflow.test.mjs),
   [`takes the PKGBUILD from the published release only, with no GitHub token`](../tools/package/test/release-workflow.test.mjs),
   [`checks the release's signature against the documented identity when signing is on`](../tools/package/test/release-workflow.test.mjs),
   [`uploads to the release by its tag and leaves the draft on that tag`](../tools/package/test/release-workflow.test.mjs),
