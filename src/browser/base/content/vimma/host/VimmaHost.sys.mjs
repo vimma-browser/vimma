@@ -524,6 +524,16 @@ async function checkUpdates(s) {
   switch (r.outcome) {
     case "offer": {
       const offer = /** @type {NonNullable<typeof r.offer>} */ (r.offer);
+      // The AppImage replaces its own file (decision 19): say how far it got.
+      const stage = VimmaUpdates.status().stage;
+      if (stage === "staged") {
+        s.notice.show(`Vimma ${offer.displayVersion} is installed · restart Vimma to use it`);
+        return;
+      }
+      if (stage === "pending") {
+        s.notice.show(`Vimma ${offer.displayVersion} is downloading; it replaces this AppImage`);
+        return;
+      }
       s.notice.show(`Vimma ${offer.displayVersion} is available`);
       openOrSay(s, "about:vimma#updates", "tab");
       return;

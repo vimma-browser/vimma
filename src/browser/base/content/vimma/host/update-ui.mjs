@@ -94,7 +94,12 @@ function focusedWindow() {
 
 function offerState() {
   const status = VimmaUpdates.status();
-  return { enabled: status.enabled, offer: status.offer, installType: VimmaUpdates.installType };
+  return {
+    enabled: status.enabled,
+    offer: status.offer,
+    installType: VimmaUpdates.installType,
+    stage: status.stage,
+  };
 }
 
 /** The last message shown, so the question hides that one and no other notice. */
@@ -102,10 +107,10 @@ let lastMessage = "";
 
 /** The message for a version not announced yet, in the focused window; true while one waits. */
 function announce() {
-  const { enabled, offer, installType } = offerState();
+  const { enabled, offer, installType, stage } = offerState();
   if (!installType || !offer) return false;
   const announced = Services.prefs.getStringPref(ANNOUNCED_PREF, "");
-  const text = announcement({ enabled, installType, offer, announced });
+  const text = announcement({ enabled, installType, offer, announced, stage });
   if (!text) return false;
   const win = focusedWindow();
   const w = win && windows.get(win);
@@ -135,10 +140,10 @@ function close() {
 
 /** The question when it is due and may open; true while it waits. */
 function ask() {
-  const { enabled, offer, installType } = offerState();
+  const { enabled, offer, installType, stage } = offerState();
   /** @param {boolean} privateWindow */
   const due = (privateWindow) =>
-    !!installType && shouldAsk({ enabled, installType, offer, asked, privateWindow });
+    !!installType && shouldAsk({ enabled, installType, offer, asked, privateWindow, stage });
   if (!due(false) || !offer) {
     close();
     return false;

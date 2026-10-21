@@ -39,7 +39,8 @@ What works today, each with the section that explains it:
 - **[Update checks](#updates)** (from 0.1.2): the status bar says when a newer Vimma exists (red
   for a security release), a short message announces each new version once, a security release
   asks once per session whether to show the update command, and `:update` shows the exact
-  commands for how you installed it.
+  commands for how you installed it. The AppImage replaces its own file with a newer release
+  checked against the signed update file, and runs it from the next start.
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
   uploads; Safe Browsing on.
@@ -93,6 +94,8 @@ vimma-vimma.desktop` does that. Next to the files are `SHA256SUMS`, a CycloneDX 
 install command again; otherwise, install the newer `.deb`, AppImage or
 tarball over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
 command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so update it this way once.
+An AppImage from a release that includes the self-update replaces its own file when a newer
+release is out; the next start runs it.
 
 **Building from source.** Follow [CONTRIBUTING.md](../CONTRIBUTING.md#build-and-run): `npm ci`,
 `npx surfer download`, `npx surfer bootstrap`, `npm run import`, `npx surfer build`. The first
@@ -2390,7 +2393,8 @@ slots busy. Turn the pref off to stop either.
 ## Updates
 
 Vimma 0.1.2 and later tell you when a newer release is out, on Linux x86_64 and on Macs with
-Apple Silicon. Vimma notifies you and shows the command; it does not install the update itself.
+Apple Silicon. Vimma notifies you and shows the command; it does not install the update itself,
+except as an AppImage, which replaces its own file (below).
 
 **Vimma 0.1.6 on a Mac** shows the notice, but its `:update` shows the Linux tarball command,
 which does not apply to a Mac: do not run it. Update with `brew upgrade --cask vimma`, or install
@@ -2405,7 +2409,7 @@ fetches one small signed file from `updates.vimma.dev` that names the newest rel
 update channel. A check that fails is tried again every hour while Vimma runs. Vimma checks the
 file's signature against the keys built into Vimma and refuses anything else: a file signed by
 another key, one for another channel or platform, or one older than a file it already accepted.
-It installs nothing; it tells you.
+Except for the AppImage, it installs nothing; it tells you.
 
 - **A newer version:** the status bar's right side shows `⇡ 0.3.1 available`, dim. A release that
   carries a Firefox security fix shows `⇡ 0.3.1 security: :update` in the error colour.
@@ -2419,6 +2423,16 @@ It installs nothing; it tells you.
   waits until you are not typing in a field and have not pressed a key for a moment, never takes
   focus, and is not asked in a private window. Keys pressed in its first second are ignored, so a
   key you were already typing, or one a page asked you to press, cannot answer it.
+- **The AppImage updates itself.** When a newer release is offered, Vimma downloads the new
+  AppImage from the project's GitHub release into a hidden file next to yours, checks its size
+  and SHA-512 against the signed file, makes it executable and renames it over yours. The Vimma
+  you are running carries on; the next start runs the new version. The status bar then shows
+  `⇡ 0.3.1 on restart` (`⇡ 0.3.1 security: restart` in the error colour for a security
+  release), and a message says `Vimma 0.3.1 is installed · restart Vimma to use it`. Vimma
+  never restarts by itself. Your file keeps its name, so `vimma-0.1.0-x86_64.AppImage` can hold
+  0.3.1; `about:vimma` shows the version that runs. If the AppImage's directory is not writable,
+  the download does not match, or it fails, your file stays as it was, `about:vimma` says why,
+  `:update` shows the manual steps, and the next check tries again.
 - **`:update`** checks at once. When a newer version exists it opens `about:vimma` at its
   Updates section, with the exact commands for how you installed Vimma; otherwise it says
   `Vimma 0.1.0 is up to date`, or why the check failed.
@@ -2432,7 +2446,7 @@ It installs nothing; it tells you.
   | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
   | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
   | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                               |
-  | AppImage                 | download the new AppImage next to yours, check it, and rename it over yours; the next start runs it                                                              |
+  | AppImage                 | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
   | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |
   | `.dmg` (macOS)           | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
   | A build from source      | nothing: source builds never check (pull and rebuild)                                                                                                            |

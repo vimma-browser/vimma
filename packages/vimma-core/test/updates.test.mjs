@@ -374,12 +374,14 @@ describe("parseManifest", () => {
   test("reads each package's size and SHA-512 (the release pipeline's asset elements)", () => {
     const r = /** @type {any} */ (parseManifest(withAssets(tarball + appimage + deb)));
     expect(r.manifest.update.assets).toEqual({
-      tarball: { size: 86804240, sha512: H("a") },
-      appimage: { size: 111966712, sha512: H("b") },
-      deb: { size: 87718612, sha512: H("c") },
+      tarball: { size: 86804240, sha512: H("a"), url: `${DL}/vimma-0.3.1-linux-x86_64.tar.xz` },
+      appimage: { size: 111966712, sha512: H("b"), url: `${DL}/vimma-0.3.1-x86_64.AppImage` },
+      deb: { size: 87718612, sha512: H("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
     });
     const one = /** @type {any} */ (parseManifest(withAssets(deb)));
-    expect(one.manifest.update.assets).toEqual({ deb: { size: 87718612, sha512: H("c") } });
+    expect(one.manifest.update.assets).toEqual({
+      deb: { size: 87718612, sha512: H("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
+    });
   });
 
   test.each([
@@ -400,7 +402,9 @@ describe("parseManifest", () => {
 
   test("reads the macOS manifest's <vimmaDmg> (macos-homebrew decision 18)", () => {
     const r = /** @type {any} */ (parseManifest(withAssets(dmg)));
-    expect(r.manifest.update.assets).toEqual({ dmg: { size: 110809760, sha512: H("e") } });
+    expect(r.manifest.update.assets).toEqual({
+      dmg: { size: 110809760, sha512: H("e"), url: `${DL}/vimma-0.3.1-macos-aarch64.dmg` },
+    });
   });
 
   test.each([
@@ -422,6 +426,18 @@ describe("parseManifest", () => {
     expect(offerAssets(null)).toEqual({});
     expect(offerAssets([good])).toEqual({});
     expect(offerAssets({ dmg: good, x: good })).toEqual({ dmg: good });
+  });
+
+  test("offerAssets keeps a saved download URL only when it is https (decision 19)", () => {
+    const url = `${DL}/vimma-0.3.1-x86_64.AppImage`;
+    expect(offerAssets({ appimage: { size: 1, sha512: H("d"), url } })).toEqual({
+      appimage: { size: 1, sha512: H("d"), url },
+    });
+    for (const bad of ["http://example.com/x", 7, "", "javascript:x"]) {
+      expect(offerAssets({ appimage: { size: 1, sha512: H("d"), url: bad } })).toEqual({
+        appimage: { size: 1, sha512: H("d") },
+      });
+    }
   });
 
   test("entities in attributes are decoded", () => {
@@ -611,6 +627,21 @@ describe("updateNotice (§5, the rows delivery 1 has)", () => {
       tone: "warn",
     });
     expect(updateNotice({ ...state, staleDays: 46, offer })?.text).toBe("⇡ 0.3.1 available");
+  });
+
+  test("an AppImage already replaced: ⇡ 0.3.1 on restart, dim; urgent: red (§5)", () => {
+    expect(updateNotice({ ...state, installType: "appimage", offer, staged: true })).toEqual({
+      text: "⇡ 0.3.1 on restart",
+      tone: "info",
+    });
+    expect(
+      updateNotice({
+        ...state,
+        installType: "appimage",
+        offer: { ...offer, urgent: true },
+        staged: true,
+      }),
+    ).toEqual({ text: "⇡ 0.3.1 security: restart", tone: "urgent" });
   });
 
   test("checks off or a source build: nothing, offer or not (decision 14)", () => {
