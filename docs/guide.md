@@ -592,7 +592,11 @@ with `F11` keeps it. From the left:
 - the **mode** badge in the mode's colour: `NORMAL` on a page, `INSERT` while a text field has
   focus (or after `i`), `COMMAND` while you type a `:` command or a `/` search, `HELP` while
   the `ctrl+b ?` overlay or tab search is open, `HINT` while link hints are up,
-  `VISUAL` in copy mode;
+  `VISUAL` in copy mode. Each mode keeps a colour of its own: when a theme gives two modes the
+  same colour or nearly (Catppuccin's bright magenta is its magenta, so `ELEMENT` would look like
+  `VISUAL`), the later of the two in the order `NORMAL`, `INSERT`, `VISUAL`, `COMMAND`, `HINT`,
+  `ELEMENT`, `HELP`, `PANEL`, `RESIZE`, prefix takes a lighter or darker shade of its colour, and
+  its text stays readable;
 - the **pending keys**, e.g. `prefix` after `ctrl+b`;
 - the **workspace**: `● 2:work`, its number in workspace order and its name;
 - `tab 2/5`: the selected tab and how many the workspace shows;
