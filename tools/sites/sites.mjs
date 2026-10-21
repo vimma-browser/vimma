@@ -95,6 +95,8 @@ export const OFFLINE_PREFS = Object.freeze({
   "network.dns.disablePrefetch": true,
   "network.prefetch-next": false,
   "network.predictor.enabled": false,
+  // WebRTC's UDP traffic does not go through the proxy.
+  "media.peerconnection.enabled": false,
 });
 
 const OPTIONS = /** @type {const} */ ({

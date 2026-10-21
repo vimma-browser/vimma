@@ -97,10 +97,23 @@ const URL_ATTRIBUTES = new Set([
   "codebase",
   "xlink:href",
 ]);
-/** Elements whose content is text, not markup, up to their end tag. */
-const RAW_TEXT = new Set(["style", "script", "textarea", "title", "xmp", "noembed", "noframes"]);
-/** CSS that fetches something. */
+/** CSS that fetches something, once its escapes and comments are read (cssText). */
 const CSS_LOADS = /url\s*\(|@import|image-set\s*\(|\bsrc\s*\(/i;
+
+/**
+ * CSS as the engine reads it for what CSS_LOADS looks for: comments removed and escapes
+ * decoded (`u\72l(` is `url(`).
+ * @param {string} css
+ */
+export function cssText(css) {
+  return css
+    .replace(/\/\*[^]*?(\*\/|$)/g, "")
+    .replace(/\\([0-9a-fA-F]{1,6})\s?|\\([^\n0-9a-fA-F])/g, (_, hex, ch) =>
+      hex ? String.fromCodePoint(Math.min(Number.parseInt(hex, 16), 0x10ffff) || 0xfffd) : ch,
+    );
+}
+/** @param {string} css */
+const loads = (css) => CSS_LOADS.test(cssText(css));
 
 /**
  * @typedef {{ name: string, attributes: Array<[string, string]> }} Tag
@@ -124,8 +137,19 @@ function tokenize(html) {
     if (lt < 0) break;
     i = lt;
     if (html.startsWith("<!--", i)) {
-      const end = html.indexOf("-->", i + 4);
-      i = end < 0 ? n : end + 3;
+      // As the parser ends a comment: "<!-->" and "<!--->" are whole ones, and "--!>" ends one.
+      if (html.startsWith("<!-->", i)) {
+        i += 5;
+        continue;
+      }
+      if (html.startsWith("<!--->", i)) {
+        i += 6;
+        continue;
+      }
+      const ends = [html.indexOf("-->", i + 4), html.indexOf("--!>", i + 4)].filter((e) => e >= 0);
+      if (!ends.length) break;
+      const end = Math.min(...ends);
+      i = end + (html.startsWith("-->", end) ? 3 : 4);
       continue;
     }
     if (html[i + 1] === "!" || html[i + 1] === "?" || html[i + 1] === "/") {
@@ -173,11 +197,11 @@ function tokenize(html) {
       attributes.push([attr, value]);
     }
     tags.push({ name, attributes });
-    if (RAW_TEXT.has(name)) {
-      const close = html.toLowerCase().indexOf(`</${name}`, i);
-      const end = close < 0 ? n : close;
-      if (name === "style") styles.push(html.slice(i, end));
-      i = end;
+    // The content of raw-text elements is read as markup too: inside <svg> or <math> they are
+    // not raw text, and reading more than the parser makes elements of never hides one.
+    if (name === "style") {
+      const close = /<\/style[\s/>]/i.exec(html.slice(i));
+      styles.push(html.slice(i, close ? i + close.index : n));
     }
   }
   return { tags, styles };
@@ -198,7 +222,9 @@ export function verifySnapshot(html) {
   if (!html.startsWith("<!doctype html>\n")) add("does not start with <!doctype html>");
   const { tags, styles } = tokenize(html);
   const head = tags.findIndex((t) => t.name === "head");
-  const first = head < 0 ? undefined : tags[head + 1];
+  // <html>, <head>, the policy: anything before them would put the <meta> in the body (a <head>
+  // after <body> is ignored), where Firefox applies no policy.
+  const first = head === 1 && tags[0]?.name === "html" ? tags[2] : undefined;
   const attr = (/** @type {Tag | undefined} */ t, /** @type {string} */ name) =>
     t?.attributes.find(([a]) => a === name)?.[1];
   const cspFirst =
@@ -220,11 +246,10 @@ export function verifySnapshot(html) {
         if (!value.startsWith("#") && value !== FOLLOW_TARGET)
           add(`href ${JSON.stringify(value)} on ${at} is not a fragment or ${FOLLOW_TARGET}`);
       } else if (URL_ATTRIBUTES.has(name)) add(`${name} on ${at} is not allowed`);
-      else if (name === "style" && CSS_LOADS.test(value))
-        add(`style attribute on ${at} loads something`);
+      else if (name === "style" && loads(value)) add(`style attribute on ${at} loads something`);
     }
   });
-  for (const css of styles) if (CSS_LOADS.test(css)) add("a <style> element loads something");
+  for (const css of styles) if (loads(css)) add("a <style> element loads something");
   return problems;
 }
 

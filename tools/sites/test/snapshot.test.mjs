@@ -55,6 +55,12 @@ describe("verifySnapshot", () => {
     expect(verifySnapshot(page("x", CSP_META.replace(SNAPSHOT_CSP, "script-src *")))).toContain(
       "<meta http-equiv> other than the first Content-Security-Policy",
     );
+    // A <head> after <body> is ignored by the parser: the meta would land in the body, where
+    // Firefox does not apply a policy.
+    const late2 = finishSnapshot(`<html><body><head>${CSP_META}</head><p>x</p></body></html>`);
+    expect(verifySnapshot(late2)).toContain(
+      "the first element in <head> is not the snapshot's Content-Security-Policy meta",
+    );
   });
 
   it("rejects scripts and every element that loads or embeds something", () => {
@@ -144,13 +150,47 @@ describe("verifySnapshot", () => {
     );
   });
 
-  it("is not fooled by markup inside comments, text or <style>", () => {
+  it("skips comments and escaped text", () => {
     expect(verifySnapshot(page(`<!-- <script>x</script> -->&lt;script&gt;`))).toEqual([]);
-    expect(verifySnapshot(page("t", `<style>b::after { content: "<script>" }</style>`))).toEqual(
-      [],
+  });
+
+  // Where the checker and the browser's parser could disagree, the checker reads more markup,
+  // never less: the browser may make an element of what the checker took for text, never the
+  // reverse.
+  it("ends a comment where the parser does: <!-->, <!--->, --!>", () => {
+    for (const c of ["<!-->", "<!--->", "<!-- x --!>"])
+      expect(verifySnapshot(page(`${c}<script>x</script> -->`)), c).toContain(
+        "<script> is not allowed",
+      );
+  });
+
+  it("reads markup inside raw-text elements too, as in <svg>, where they are not raw", () => {
+    for (const body of [
+      `<svg><style><script>x</script></style></svg>`,
+      `<svg><title><img src=x></title></svg>`,
+      `<textarea><img src=x onerror=y></textarea>`,
+    ])
+      expect(verifySnapshot(page(body)).join("\n"), body).toMatch(/<(script|img)> is not allowed/);
+  });
+
+  it("ends a <style> only at its own end tag", () => {
+    expect(
+      verifySnapshot(page("t", `<style>b {}</stylex>i { background: url(x) }</style>`)),
+    ).toContain("a <style> element loads something");
+  });
+
+  it("reads CSS escapes and comments before looking for loads", () => {
+    for (const css of ["u\\72l(http://x)", "u/**/rl(x)", "\\75 rl(x)"])
+      expect(verifySnapshot(page("t", `<style>b { background: ${css} }</style>`)), css).toContain(
+        "a <style> element loads something",
+      );
+    expect(verifySnapshot(page("t", `<style>@\\69mport "x.css";</style>`))).toContain(
+      "a <style> element loads something",
     );
-    // A <textarea>'s content is text: no element inside it is ever made.
-    expect(verifySnapshot(page(`<textarea><img src=x onerror=y></textarea>`))).toEqual([]);
+    expect(verifySnapshot(page(`<b style="background: u\\rl(x)">t</b>`)).join("\n")).toMatch(
+      /loads something/,
+    );
+    expect(verifySnapshot(page("t", `<style>b::after { content: "\\2014" }</style>`))).toEqual([]);
   });
 });
 
