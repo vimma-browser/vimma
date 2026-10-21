@@ -56,5 +56,9 @@
     box-shadow:
       0 0 0 1px var(--vimma-bg, #0a0f12),
       inset 0 0 0 1px var(--vimma-bg, #0a0f12);
+
+    &[hidden] {
+      display: none;
+    }
   }
 }

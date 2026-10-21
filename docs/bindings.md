@@ -179,12 +179,24 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Hints
 
-| Action                 | Config name           | Bindings     |
-| ---------------------- | --------------------- | ------------ |
-| Follow link            | `follow_link`         | `f`          |
-| Follow link in new tab | `follow_link_new_tab` | `F`          |
-| Focus a text block     | `focus_element`       | —            |
-| Leave hint mode        | `hint_cancel`         | `esc [hint]` |
+| Action                                        | Config name           | Bindings      |
+| --------------------------------------------- | --------------------- | ------------- |
+| Follow link                                   | `follow_link`         | `f`           |
+| Follow link in new tab                        | `follow_link_new_tab` | `F`           |
+| Focus a text block: v selects it, y copies it | `focus_element`       | `F [element]` |
+| Leave hint mode                               | `hint_cancel`         | `esc [hint]`  |
+
+## Element focus
+
+| Action                                        | Config name           | Bindings      |
+| --------------------------------------------- | --------------------- | ------------- |
+| Select the focused block in copy mode         | `element_visual`      | `v [element]` |
+| Select the focused block's lines in copy mode | `element_visual_line` | `V [element]` |
+| Copy the focused block's text                 | `element_yank`        | `y [element]` |
+| Focus the block around this one               | `element_parent`      | `+ [element]` |
+| Focus back down, or the first block inside    | `element_child`       | `- [element]` |
+| Focus the next block                          | `element_next`        | `j [element]` |
+| Focus the previous block                      | `element_prev`        | `k [element]` |
 
 ## Find
 
@@ -201,13 +213,13 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Modes
 
-| Action                                 | Config name      | Bindings                       |
-| -------------------------------------- | ---------------- | ------------------------------ |
-| Back to normal mode                    | `normal_mode`    | `esc [insert]`, `esc [visual]` |
-| Insert mode: focus the last-used input | `insert_mode`    | `i`                            |
-| Copy mode (caret browsing + selection) | `copy_mode`      | `ctrl+b [`, `v`                |
-| Command line                           | `command_line`   | `:`                            |
-| Close the command line                 | `command_cancel` | `esc [command]`                |
+| Action                                 | Config name      | Bindings                                        |
+| -------------------------------------- | ---------------- | ----------------------------------------------- |
+| Back to normal mode                    | `normal_mode`    | `esc [insert]`, `esc [visual]`, `esc [element]` |
+| Insert mode: focus the last-used input | `insert_mode`    | `i`                                             |
+| Copy mode (caret browsing + selection) | `copy_mode`      | `ctrl+b [`, `v`                                 |
+| Command line                           | `command_line`   | `:`                                             |
+| Close the command line                 | `command_cancel` | `esc [command]`                                 |
 
 ## Copy mode
 

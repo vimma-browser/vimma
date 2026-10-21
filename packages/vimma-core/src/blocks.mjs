@@ -258,3 +258,30 @@ function within(descs, i, ancestor) {
   }
   return false;
 }
+
+/**
+ * `j` / `k`: the block `step` labelled blocks after (`step` > 0) or before `index`, in document
+ * order, as `pickBlocks` picks them from a list describing the whole document (`onScreen` then
+ * meaning rendered). A block reached with `+` is left whole: `j` goes past its end, `k` never
+ * lands inside it or on one around it. Past the last block it stops there; -1 for none.
+ * @param {readonly BlockDescriptor[]} descs
+ * @param {number} index
+ * @param {number} step  a count, negative for `k`
+ * @returns {number} the block's index, or -1
+ */
+export function adjacentBlock(descs, index, step) {
+  if (!descs[index] || !Number.isInteger(step) || step === 0) return -1;
+  const picked = pickBlocks(descs).map((b) => b.index);
+  const forward = step > 0;
+  const order = forward ? picked : picked.reverse();
+  let found = -1;
+  let left = Math.abs(step);
+  for (const i of order) {
+    if (forward ? i <= index : i >= index) continue;
+    // Inside the current block (j), or around it (k).
+    if (forward ? within(descs, i, index) : within(descs, index, i)) continue;
+    found = i;
+    if (--left === 0) break;
+  }
+  return found;
+}

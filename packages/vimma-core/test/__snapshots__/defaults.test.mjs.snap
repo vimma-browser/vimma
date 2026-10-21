@@ -224,6 +224,17 @@ insert_editing = true
 [modal.hint]
 "<Esc>" = "hint.cancel"
 
+[modal.element]
+"<Esc>" = "mode.normal"
+"v" = "element.visual"
+"V" = "element.visual_line"
+"y" = "element.yank"
+"+" = "element.parent"
+"-" = "element.child"
+"j" = "element.next"
+"k" = "element.prev"
+"F" = "hint.element"
+
 [modal.help]
 "<Esc>" = "help.close"
 "/" = "help.filter"

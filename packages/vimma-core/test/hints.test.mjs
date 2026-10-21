@@ -10,6 +10,8 @@ import {
   visibleHints,
   HintError,
   parseHintReply,
+  parseBlockReply,
+  BLOCK_REPLY_MAX_TEXT,
   HINT_REPLY_MAX_TARGETS,
   HINT_REPLY_MAX_FRAMES,
   HINT_REPLY_MAX_HREF,
@@ -488,5 +490,79 @@ describe("parseHintReply: untrusted Vimma:CollectHints replies from a content pr
       },
     };
     expect(parseHintReply(hostile)).toBeNull();
+  });
+});
+
+describe("parseBlockReply: untrusted Vimma:Block replies from a content process", () => {
+  const box = { x: 8, y: -40, width: 300, height: 120 };
+  const moved = { kind: "paragraph", length: 412, box };
+
+  test.each(["focus", "parent", "child", "next", "prev"])(
+    "%s: a kind from the closed list, a length and a box",
+    (op) => {
+      expect(parseBlockReply(moved, op)).toEqual(moved);
+      expect(parseBlockReply({ ...moved, extra: "dropped", box: { ...box, z: 1 } }, op)).toEqual(
+        moved,
+      );
+    },
+  );
+
+  test.each([
+    ["an unknown kind", { ...moved, kind: "script" }],
+    ["no kind", { ...moved, kind: undefined }],
+    ["a negative length", { ...moved, length: -1 }],
+    ["a fractional length", { ...moved, length: 1.5 }],
+    ["a length past the cap", { ...moved, length: BLOCK_REPLY_MAX_TEXT + 1 }],
+    ["a non-finite box", { ...moved, box: { ...box, x: Infinity } }],
+    ["a box far off any screen", { ...moved, box: { ...box, y: 1e7 } }],
+    ["an empty box", { ...moved, box: { ...box, width: 0 } }],
+    ["no box", { ...moved, box: undefined }],
+    ["a string", "paragraph"],
+    ["an array", [moved]],
+    ["null", null],
+  ])("a move with %s → null", (_, value) => {
+    expect(parseBlockReply(value, "focus")).toBeNull();
+  });
+
+  test("rect: the block's box; frame: a subframe's viewport", () => {
+    expect(parseBlockReply({ box, kind: "x" }, "rect")).toEqual({ box });
+    expect(parseBlockReply({ rect: box }, "frame")).toEqual({ rect: box });
+    expect(parseBlockReply({ box: { ...box, height: NaN } }, "rect")).toBeNull();
+    expect(parseBlockReply({ rect: null }, "frame")).toBeNull();
+  });
+
+  test("yank: the text, and whether the page marks it unselectable", () => {
+    expect(parseBlockReply({ text: "a\tb", unselectable: false, x: 1 }, "yank")).toEqual({
+      text: "a\tb",
+      unselectable: false,
+    });
+    expect(parseBlockReply({ text: "", unselectable: true }, "yank")).toEqual({
+      text: "",
+      unselectable: true,
+    });
+    expect(parseBlockReply({ text: 3, unselectable: false }, "yank")).toBeNull();
+    expect(parseBlockReply({ text: "a", unselectable: "no" }, "yank")).toBeNull();
+    const long = "x".repeat(BLOCK_REPLY_MAX_TEXT + 1);
+    expect(parseBlockReply({ text: long, unselectable: false }, "yank")).toBeNull();
+  });
+
+  test("select: whether the page marks the block unselectable", () => {
+    expect(parseBlockReply({ unselectable: true }, "select")).toEqual({ unselectable: true });
+    expect(parseBlockReply({ unselectable: 1 }, "select")).toBeNull();
+  });
+
+  test("an unknown op → null", () => {
+    expect(parseBlockReply(moved, "click")).toBeNull();
+    expect(parseBlockReply(moved, "__proto__")).toBeNull();
+  });
+
+  test("a throwing getter → null, not an exception", () => {
+    const hostile = {
+      ...moved,
+      get kind() {
+        throw new Error("boom");
+      },
+    };
+    expect(parseBlockReply(hostile, "next")).toBeNull();
   });
 });

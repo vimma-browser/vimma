@@ -308,3 +308,67 @@ export function parseHintReply(value, { blocks = false } = {}) {
     return null;
   }
 }
+
+/** Longest text a `Vimma:Block` yank may carry (code units): far past any block's. */
+export const BLOCK_REPLY_MAX_TEXT = 1 << 24;
+
+/** The `Vimma:Block` ops that focus a block, and so reply its kind, length and box. */
+const BLOCK_MOVES = new Set(["focus", "parent", "child", "next", "prev"]);
+
+/**
+ * @typedef {{ kind: BlockKind, length: number, box: Rect }} BlockMoved  a block was focused:
+ *   its border box in its frame's CSS pixels, unclipped, and its text's length in characters
+ * @typedef {BlockMoved | { box: Rect } | { rect: Rect } | { text: string, unselectable: boolean }
+ *   | { unselectable: boolean }} BlockReply
+ */
+
+/**
+ * A `Vimma:Block` reply (docs/specs/element-focus.md) from a content process, which may be
+ * compromised: a fresh copy with only the fields `op` replies, each of its exact type and within
+ * the caps, or null. Never throws. `focus`, `parent`, `child`, `next` and `prev` reply the block
+ * now focused; `rect` its box; `frame` a subframe's viewport; `yank` the block's text; `select`
+ * whether the page marks it unselectable.
+ * @param {unknown} value
+ * @param {string} op
+ * @returns {BlockReply | null}
+ */
+export function parseBlockReply(value, op) {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const v = /** @type {Record<string, unknown>} */ (value);
+    if (BLOCK_MOVES.has(op)) {
+      const { kind, length, box } = v;
+      const b = parseRect(box);
+      if (typeof kind !== "string" || !BLOCK_KIND_SET.has(kind) || !b) return null;
+      if (!isIndex(length) || /** @type {number} */ (length) > BLOCK_REPLY_MAX_TEXT) return null;
+      return {
+        kind: /** @type {BlockKind} */ (kind),
+        length: /** @type {number} */ (length),
+        box: b,
+      };
+    }
+    switch (op) {
+      case "rect": {
+        const b = parseRect(v.box);
+        return b ? { box: b } : null;
+      }
+      case "frame": {
+        const r = parseRect(v.rect);
+        return r ? { rect: r } : null;
+      }
+      case "yank": {
+        const { text, unselectable } = v;
+        if (typeof text !== "string" || text.length > BLOCK_REPLY_MAX_TEXT) return null;
+        if (typeof unselectable !== "boolean") return null;
+        return { text, unselectable };
+      }
+      case "select": {
+        const { unselectable } = v;
+        return typeof unselectable === "boolean" ? { unselectable } : null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

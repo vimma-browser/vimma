@@ -149,8 +149,17 @@ declare const IOUtils: {
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
 };
 
-// engine/js/xpconnect/idl/xpccomponents.idl (nsIXPCComponents_Utils)
-declare const Cu: { readonly isInAutomation: boolean };
+// engine/js/xpconnect/idl/xpccomponents.idl (nsIXPCComponents_Utils); the encoder is
+// engine/dom/serializers/nsIDocumentEncoder.idl.
+declare const Cu: {
+  readonly isInAutomation: boolean;
+  createDocumentEncoder(type: string): {
+    init(doc: Document, type: string, flags: number): void;
+    setRange(range: Range): void;
+    setContainerNode(node: Node): void;
+    encodeToString(): string;
+  };
+};
 
 // XPCOM in system modules: interface constants and component constructors.
 declare const Ci: any;

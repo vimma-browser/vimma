@@ -33,6 +33,7 @@ import { HintOverlay } from "../ui/hint-overlay.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
 import { Find } from "./find.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
+import { ElementFocus } from "./element-focus.mjs";
 import { pageRunners } from "./page-ops.mjs";
 import { Notice } from "../ui/notice.mjs";
 import { TabStrip } from "../ui/tabstrip.mjs";
@@ -156,9 +157,11 @@ import {
  * @property {HintAction} action
  * @property {HintState<HintTarget> | null} hs  null while collecting
  * @property {Chord[]} buffered  keys typed while collecting
- * @property {HintTarget | null} [focused]  element focus: the block a label chose, outlined
- *   until Esc (docs/specs/element-focus.md)
  */
+
+/** Element focus with no text block on screen, and in the PDF viewer (element-focus 14). */
+export const NO_BLOCKS = "no text blocks on screen";
+export const NO_BLOCKS_PDF = "no text blocks here (PDF: use v)";
 
 const DEBUG_PREF = "vimma.debug.keys";
 const MAX_RECORDED = 50;
@@ -212,7 +215,9 @@ const PAGE_FIRST_MAX = 16;
  * @property {PromptKeys | null} promptKeys  y and n for Firefox's permission prompts
  * @property {number | null} timer   pending-sequence timeout (dispatcher.flush)
  * @property {() => void} onCancelHints  resize, a mouse click in chrome
+ * @property {() => void} onMouseDown  a mouse click: hint mode and element focus end
  * @property {HintSession | null} hint
+ * @property {ElementFocus} element  the focused text block (docs/specs/element-focus.md)
  * @property {HintOverlay} hintOverlay
  * @property {Set<() => void>} listeners  told after mode or pending keys may have changed
  * @property {StatusBar | null} statusBar  m2-statusbar-whichkey (the bar; no which-key strip)
@@ -943,6 +948,17 @@ function noticeFor(browser, text) {
 }
 
 /**
+ * The element focus of the window that owns `browser`, while that browser is in ELEMENT mode.
+ * @param {any} browser
+ * @returns {ElementFocus | null}
+ */
+function elementOf(browser) {
+  const win = browser?.ownerDocument?.defaultView;
+  const element = (win && states.get(win))?.element;
+  return element?.browser === browser ? element : null;
+}
+
+/**
  * Actions on the focused page (m1-actor-insert-scroll). Runnable only while a content browser
  * with our actor has focus; elsewhere (the URL bar) they count as not runnable, so Esc there
  * still reaches Firefox. Every runnable id is a key of RUNNERS or CONTENT_RUNNERS; whether one
@@ -976,6 +992,14 @@ export const CONTENT_RUNNERS = Object.freeze({
   "hint.follow": (b, a) => VimmaHost._startHints(b, a),
   "hint.follow_new_tab": (b, a) => VimmaHost._startHints(b, a),
   "hint.element": (b, a) => VimmaHost._startHints(b, a),
+  // The ELEMENT mode's keys (docs/specs/element-focus.md decision 7).
+  "element.visual": (b) => elementOf(b)?.visual(false),
+  "element.visual_line": (b) => elementOf(b)?.visual(true),
+  "element.yank": (b) => elementOf(b)?.yank(),
+  "element.parent": (b, a) => elementOf(b)?.move("parent", a.count),
+  "element.child": (b, a) => elementOf(b)?.move("child", a.count),
+  "element.next": (b, a) => elementOf(b)?.move("next", a.count),
+  "element.prev": (b, a) => elementOf(b)?.move("prev", a.count),
   // Explicit insert, even with no text field to focus (pass-through for pages that take keys).
   // The field the user was last in comes first, then the page's first one (insert-focus).
   "mode.insert": (b) => {
@@ -1182,6 +1206,7 @@ export const VimmaHost = {
       onTabSelect: () => {
         this._cancelPending(win, state);
         this._cancelHints(state);
+        state.element.leave();
         state.help.close({ tabChanged: true });
         state.cmdline.close({ tabChanged: true });
         state.picker.close({ tabChanged: true });
@@ -1208,7 +1233,13 @@ export const VimmaHost = {
       promptKeys: null,
       timer: null,
       onCancelHints: () => this._cancelHints(state),
+      onMouseDown: () => {
+        this._cancelHints(state);
+        state.element.leave();
+      },
       hint: null,
+      // Set below, once the overlay it draws in exists.
+      element: /** @type {any} */ (null),
       resize: false,
       hintOverlay: new HintOverlay(win),
       listeners: new Set(),
@@ -1342,6 +1373,12 @@ export const VimmaHost = {
         effect: (effect) => runBookmarkEffect(bookmarkContext(state), effect),
       }),
     };
+    state.element = new ElementFocus({
+      overlay: state.hintOverlay,
+      notify: (text) => state.notice.show(text),
+      changed: () => this._emit(state),
+      setMode: setBrowserMode,
+    });
     states.set(win, state);
     windows.add(win);
     win.addEventListener("keydown", state.onKeyDown, true);
@@ -1410,9 +1447,10 @@ export const VimmaHost = {
     } catch (e) {
       console.error("vimma: Firefox's shortcuts left on", e);
     }
-    // The labels are drawn for one layout of the page: a resize or a click moves on.
+    // The labels are drawn for one layout of the page: a resize or a click moves on. A focused
+    // block's outline follows a resize; a click ends the focus.
     win.addEventListener("resize", state.onCancelHints);
-    win.addEventListener("mousedown", state.onCancelHints, true);
+    win.addEventListener("mousedown", state.onMouseDown, true);
     // After the keys: an upstream change in tab code must not cost us ctrl+b.
     try {
       const tabStrip = new TabStrip(win);
@@ -1507,8 +1545,9 @@ export const VimmaHost = {
     win.removeEventListener("TabSelect", state.onTabSelect, true);
     state.firefoxKeys?.destroy();
     win.removeEventListener("resize", state.onCancelHints);
-    win.removeEventListener("mousedown", state.onCancelHints, true);
+    win.removeEventListener("mousedown", state.onMouseDown, true);
     this._cancelHints(state);
+    state.element.leave();
     state.help.destroy();
     state.notice.destroy();
     state.cmdline.destroy();
@@ -1541,7 +1580,8 @@ export const VimmaHost = {
    *   configFile?: string, alerts?: readonly string[],
    *   workspace?: { name: string, index: number, color?: string, private?: boolean } | null,
    *   agent?: { waiting: number, minutes: number | null, ran: boolean } | null,
-   *   update?: import("../core/updates.mjs").UpdateNotice | null }}
+   *   update?: import("../core/updates.mjs").UpdateNotice | null,
+   *   element?: import("../core/statusbar.mjs").ElementStatus | null }}
    */
   status(win) {
     const state = states.get(win);
@@ -1561,6 +1601,8 @@ export const VimmaHost = {
       agent: AgentUi.status(),
       // docs/specs/m6a-updater.md §5: `⇡ 0.3.1 available`, or an update problem.
       update: VimmaUpdates.notice(),
+      // docs/specs/element-focus.md decision 5: `paragraph · 412 chars`.
+      element: state.element.status(),
     };
   },
 
@@ -1707,14 +1749,18 @@ export const VimmaHost = {
   /**
    * Called after a tab's page mode changes (normal ↔ insert), whatever caused it (a focus
    * report, `i`, `Esc`): tells the owning window's state listeners (the status bar).
-   * The listeners read the mode back through `status(win)`, so the mode argument is unused.
+   * The listeners read the mode back through `status(win)`; the mode itself only ends element
+   * focus when it is insert.
    * @type {(browser: any, mode: PageMode) => void}
    */
-  onModeChange: (browser) => {
+  onModeChange: (browser, mode) => {
     // defaultView is the WindowProxy init() was given; ownerGlobal is the inner window, a
     // different object as a WeakMap key.
     const win = browser?.ownerDocument?.defaultView;
     const state = win && states.get(win);
+    // A text field took focus (the page's script, a click): its keys are the field's, so a
+    // focused block's ELEMENT mode ends, as copy mode does.
+    if (state && mode === "insert" && state.element.browser === browser) state.element.leave();
     if (state) VimmaHost._emit(state);
     // Into a field: the agent question goes back to waiting (vimma-mcp decision 14), and so
     // does the update question.
@@ -1762,6 +1808,7 @@ export const VimmaHost = {
     if (state.resize) return "resize";
     const browser = this._focusedBrowser(state.win);
     if (state.hint && state.hint.browser === browser) return "hint";
+    if (browser && state.element.browser === browser) return "element";
     return browser ? this._browserMode(browser) : "insert";
   },
 
@@ -1836,6 +1883,9 @@ export const VimmaHost = {
     state.pageFirst = state.pageFirst.filter((p) => p.awaiting);
     // Focus left the page the hints are on (URL bar, another pane): they no longer apply.
     if (state.hint && state.hint.browser !== this._focusedBrowser(win)) this._cancelHints(state);
+    if (state.element.browser && state.element.browser !== this._focusedBrowser(win)) {
+      state.element.leave();
+    }
     // The setup page draws its own j/k/space/enter/esc (first-run-setup behaviour 3): the scroll,
     // hint and mode bindings would take them first. Chords with a modifier stay ours.
     if (
@@ -1918,8 +1968,16 @@ export const VimmaHost = {
         ) {
           e.preventDefault();
         }
-        // Copy mode keeps plain keys from the page (m1-copy-mode); chords stay Firefox's (ctrl+c).
-        else if (mode === "visual" && !chord.ctrl && !chord.alt && !chord.meta) consume(e);
+        // Copy mode and element focus keep plain keys from the page (m1-copy-mode,
+        // element-focus decision 7); chords stay Firefox's (ctrl+c).
+        else if (
+          (mode === "visual" || mode === "element") &&
+          !chord.ctrl &&
+          !chord.alt &&
+          !chord.meta
+        ) {
+          consume(e);
+        }
         if (mode === "hint") this._hintKey(state, chord);
         return;
       case "cancel":
@@ -1970,6 +2028,12 @@ export const VimmaHost = {
         consume(e);
         // Another binding in hint mode (a ctrl+b sequence) leaves hint mode first.
         if (mode === "hint" && result.action.id !== "hint.cancel") this._cancelHints(state);
+        // So does one in ELEMENT mode; its Esc (mode.normal) only leaves, so it neither blurs
+        // the page nor stops it loading (element-focus decision 7).
+        if (mode === "element" && !result.action.id.startsWith("element.")) {
+          state.element.leave();
+          if (result.action.id === "mode.normal") return;
+        }
         this._run(state, result);
       }
     }
@@ -2213,12 +2277,37 @@ export const VimmaHost = {
   _hints(win) {
     const hint = states.get(win)?.hint;
     if (!hint) return null;
-    return {
-      action: hint.action,
-      typed: hint.hs?.typed ?? "",
-      hints: hint.hs?.hints ?? [],
-      focused: hint.focused ?? null,
-    };
+    return { action: hint.action, typed: hint.hs?.typed ?? "", hints: hint.hs?.hints ?? [] };
+  },
+
+  /**
+   * Test-only: the window's focused text block, or null.
+   * @param {Window} win
+   */
+  _element(win) {
+    const s = states.get(win)?.element.session;
+    return s ? { kind: s.kind, length: s.length, target: s.target, browser: s.browser } : null;
+  },
+
+  /**
+   * A frame of a focused block reported a scroll or resize, or that its page went away
+   * (VimmaParent, `Vimma:BlockMoved` / `Vimma:BlockGone`). From a content process: the window
+   * whose block it is checks that the frame is one of its block's, with the same document.
+   * @param {"moved" | "gone"} what
+   * @param {any} bc
+   * @param {any} wg
+   * @param {unknown} gen
+   */
+  onBlockReport(what, bc, wg, gen) {
+    for (const win of windows) states.get(win)?.element.onReport(what, bc, wg, gen);
+  },
+
+  /**
+   * A frame's document went away (VimmaParent): element focus in it ends.
+   * @param {any} wg  its WindowGlobalParent
+   */
+  onFrameGone(wg) {
+    for (const win of windows) states.get(win)?.element.onFrameGone(wg);
   },
 
   /**
@@ -2232,7 +2321,13 @@ export const VimmaHost = {
     const state = states.get(browser.ownerDocument.defaultView);
     if (!state) return;
     this._cancelHints(state);
+    state.element.leave();
     const id = /** @type {HintAction} */ (action.id);
+    // pdf.js draws lines, not paragraphs: copy mode is the way to copy there (decision 14).
+    if (id === "hint.element" && browser.documentContentType === "application/pdf") {
+      state.notice.show(NO_BLOCKS_PDF);
+      return;
+    }
     /** @type {HintSession} */
     const session = { browser, action: id, hs: null, buffered: [] };
     state.hint = session;
@@ -2246,6 +2341,7 @@ export const VimmaHost = {
           if (!(e instanceof HintError && e.code === "no-targets")) throw e;
           state.hint = null;
           this._emit(state);
+          if (id === "hint.element") state.notice.show(NO_BLOCKS);
           console.info("vimma: no hint targets");
           return;
         }
@@ -2270,8 +2366,6 @@ export const VimmaHost = {
   _hintKey(state, chord) {
     const session = state.hint;
     if (!session) return;
-    // A focused block takes no label keys; Esc ([modal.hint]) ends the focus.
-    if (session.focused) return;
     if (!session.hs) {
       session.buffered.push(chord);
       return;
@@ -2286,18 +2380,13 @@ export const VimmaHost = {
         state.hintOverlay.filter(next.typed);
         return;
       case "select":
+        this._cancelHints(state);
         if (result.action === "hint.element") {
-          // Never followed: a block is outlined, in chrome, where the page sees nothing.
-          if (!result.target.box) {
-            this._cancelHints(state);
-            return;
-          }
-          session.focused = result.target;
-          state.hintOverlay.hide();
-          state.hintOverlay.outline(session.browser, result.target.box);
+          // Never followed: the block is focused in its frame and outlined in chrome, where
+          // the page sees nothing (element-focus decision 5).
+          if (result.target.kind === "block") state.element.start(session.browser, result.target);
           return;
         }
-        this._cancelHints(state);
         if (result.action === "hint.follow_new_tab") {
           VimmaActors.openInBackground(session.browser, result.target);
         } else {

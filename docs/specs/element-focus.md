@@ -1,6 +1,6 @@
 # Spec: element-focus
 
-Status: accepted (sub-PR 1, text blocks as hint targets, built; sub-PRs 2 to 4 open) · Area: `packages/vimma-core/src/hints.mjs`, `blocks.mjs` (new), `actions.mjs`,
+Status: accepted (sub-PR 1, text blocks as hint targets, and sub-PR 2, the ELEMENT mode, built; sub-PRs 3 and 4 open) · Area: `packages/vimma-core/src/hints.mjs`, `blocks.mjs` (new), `actions.mjs`,
 `defaults.mjs`, `modes.mjs`, `theme.mjs`, `statusbar.mjs`; `actors/hint-collect.mjs`,
 `actors/block.mjs` (new), `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`,
 `actors/caret.mjs`; `host/VimmaHost.sys.mjs`, `host/copy-mode.mjs`; `ui/hint-overlay.mjs`;
@@ -279,8 +279,10 @@ solve "point at something on screen in two keys" for links; text blocks have no 
    - 2 px outside the block's border box, clipped to the browser;
    - it follows the block: the child reports a new rect on `scroll` and `resize` of the block's
      window, at most once per animation frame, through a system-group listener
-     (`Services.els.addSystemEventListener`), so the page cannot see or stop it;
-   - in a frame, the rect is offset by the frame chain as hint rects are;
+     (`addEventListener` with `mozSystemGroup`), so the page cannot see or stop it;
+   - in a frame, the rect is offset by the frame chain as hint rects are, and each frame around
+     the block reports its own scrolls the same way, because scrolling the page around a frame
+     moves the block too (`j` and `k` scroll every frame up to the top to show it);
    - a block that scrolls fully out of view keeps its focus (the outline is clipped away; `j` /
      `k` or `v` still work).
 
@@ -319,10 +321,12 @@ solve "point at something on screen in two keys" for links; text blocks have no 
      copy mode.
 
 9. **`y` from `ELEMENT` copies without selecting.** The child serializes the block with the
-   plain-text document encoder (`Cu.createDocumentEncoder("text/plain")`, `setContainerNode`,
-   flags `SkipInvisibleContent | OutputLFLineBreak`), the serializer `Selection.toString` uses, so
-   the text is what `v` then `y` gives, but the page's selection is untouched and no
-   `selectionchange` fires. The parent writes it with `copyString` and says "yanked N chars" (or
+   plain-text document encoder (`Cu.createDocumentEncoder("text/plain")`, `setRange` with the
+   range `v` would select, flags `SkipInvisibleContent | OutputLFLineBreak`), the serializer
+   `Selection.toString` uses, so the text is what `v` then `y` gives, but the page's selection is
+   untouched and no `selectionchange` fires. That range's ends lie in text the page lets be
+   selected: the encoder writes a boundary text node whole, so a range starting in a
+   `user-select: none` gutter would copy its first number. The parent writes it with `copyString` and says "yanked N chars" (or
    "nothing to yank").
    - `pre` / code: the encoder keeps preformatted white space as rendered; nothing is trimmed
      inside the block, only one trailing newline is dropped. Tested against a fixture with tabs,

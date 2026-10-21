@@ -12,8 +12,15 @@ the [user guide](guide.md); planned work is on the
   the prefix and chords such as `ctrl+t` still work.
 - Link hints label only real elements: canvas apps (Google Docs, Figma, maps, games) get no
   hints.
-- Text block hints follow the page's elements: a page that draws several paragraphs as one
-  element with line breaks gets one label for all of them, and text drawn on a canvas gets none.
+- Element focus follows the page's elements: a page that draws several paragraphs as one
+  element with line breaks gets one label for all of them (focus it, then `v` and copy-mode
+  motions narrow the selection), and text drawn on a canvas gets none. The PDF viewer gets no
+  labels: copy mode copies from a PDF.
+- Element focus holds one block at a time; several blocks are one copy-mode selection (`v` on the
+  first, then `}`).
+- A focused block's outline follows scrolls and resizes, in the page and in the frames around
+  it. When the page moves the block some other way (content loading above it, an animation), the
+  outline stays where it was until the next `+`, `-`, `j` or `k`.
 - The command line has no `:set`, ranges or counts, and does not complete URLs. Its history lasts
   until Vimma quits.
 - Firefox's shortcuts on keys Vimma uses (`ctrl+w`, `ctrl+u`, `ctrl+h`, `ctrl+d`, `ctrl+o`,

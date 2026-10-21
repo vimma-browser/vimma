@@ -115,6 +115,13 @@ export default [
     languageOptions: { globals: { Cu: "readonly" } },
   },
   {
+    // Element focus (docs/specs/element-focus.md): `y` serializes a block with the plain-text
+    // document encoder (Cu.createDocumentEncoder), and a frame finds its subframe's element by
+    // its browsing context.
+    files: ["src/**/vimma/actors/block.mjs"],
+    languageOptions: { globals: { BrowsingContext: "readonly", Cu: "readonly" } },
+  },
+  {
     // Agent pages launch no app: the component registrar wraps the external-protocol chooser
     // (docs/security.md M10).
     files: ["src/**/vimma/ctl/AgentPages.sys.mjs"],

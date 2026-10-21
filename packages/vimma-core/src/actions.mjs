@@ -235,8 +235,19 @@ group("Developer tools", [
 group("Hints", [
   ["follow_link", "hint.follow", "Follow link"],
   ["follow_link_new_tab", "hint.follow_new_tab", "Follow link in new tab"],
-  ["focus_element", "hint.element", "Focus a text block"],
+  ["focus_element", "hint.element", "Focus a text block: v selects it, y copies it"],
   ["hint_cancel", "hint.cancel", "Leave hint mode"],
+]);
+
+// docs/specs/element-focus.md decision 7: the keys of the ELEMENT mode a chosen block is in.
+group("Element focus", [
+  ["element_visual", "element.visual", "Select the focused block in copy mode"],
+  ["element_visual_line", "element.visual_line", "Select the focused block's lines in copy mode"],
+  ["element_yank", "element.yank", "Copy the focused block's text"],
+  ["element_parent", "element.parent", "Focus the block around this one"],
+  ["element_child", "element.child", "Focus back down, or the first block inside"],
+  ["element_next", "element.next", "Focus the next block"],
+  ["element_prev", "element.prev", "Focus the previous block"],
 ]);
 
 group("Find", [
