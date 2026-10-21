@@ -379,7 +379,7 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     number of fields it sends:
     `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)`.
     A submission sends data to a server and is where sign-ups, messages and purchases happen,
-    so one question per submission is the price of keeping them the user's decision; the grant
+    so one question per submission is the price of keeping them in the hands of the person at the keyboard; the grant
     for `vimma_fill` or `vimma_activate` covers only what does not submit. The open question 1
     decides whether those two tools are grantable at all.
 16. **Submissions the agent did not ask for are stopped.** `VimmaChild` listens for the chrome-only
