@@ -12,6 +12,8 @@ the [user guide](guide.md); planned work is on the
   the prefix and chords such as `ctrl+t` still work.
 - Link hints label only real elements: canvas apps (Google Docs, Figma, maps, games) get no
   hints.
+- Text block hints follow the page's elements: a page that draws several paragraphs as one
+  element with line breaks gets one label for all of them, and text drawn on a canvas gets none.
 - The command line has no `:set`, ranges or counts, and does not complete URLs. Its history lasts
   until Vimma quits.
 - Firefox's shortcuts on keys Vimma uses (`ctrl+w`, `ctrl+u`, `ctrl+h`, `ctrl+d`, `ctrl+o`,

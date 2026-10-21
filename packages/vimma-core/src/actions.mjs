@@ -235,6 +235,7 @@ group("Developer tools", [
 group("Hints", [
   ["follow_link", "hint.follow", "Follow link"],
   ["follow_link_new_tab", "hint.follow_new_tab", "Follow link in new tab"],
+  ["focus_element", "hint.element", "Focus a text block"],
   ["hint_cancel", "hint.cancel", "Leave hint mode"],
 ]);
 

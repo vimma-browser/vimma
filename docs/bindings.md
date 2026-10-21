@@ -183,6 +183,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | ---------------------- | --------------------- | ------------ |
 | Follow link            | `follow_link`         | `f`          |
 | Follow link in new tab | `follow_link_new_tab` | `F`          |
+| Focus a text block     | `focus_element`       | —            |
 | Leave hint mode        | `hint_cancel`         | `esc [hint]` |
 
 ## Find

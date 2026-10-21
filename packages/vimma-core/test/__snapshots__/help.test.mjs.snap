@@ -150,6 +150,7 @@ Developer tools
 Hints
   follow_link               f                                                 Follow link
   follow_link_new_tab       F                                                 Follow link in new tab
+  focus_element             (unbound)                                         Focus a text block
   hint_cancel               esc [hint]                                        Leave hint mode
 
 Find

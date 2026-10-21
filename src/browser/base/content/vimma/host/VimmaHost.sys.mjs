@@ -156,6 +156,8 @@ import {
  * @property {HintAction} action
  * @property {HintState<HintTarget> | null} hs  null while collecting
  * @property {Chord[]} buffered  keys typed while collecting
+ * @property {HintTarget | null} [focused]  element focus: the block a label chose, outlined
+ *   until Esc (docs/specs/element-focus.md)
  */
 
 const DEBUG_PREF = "vimma.debug.keys";
@@ -973,6 +975,7 @@ export const CONTENT_RUNNERS = Object.freeze({
   },
   "hint.follow": (b, a) => VimmaHost._startHints(b, a),
   "hint.follow_new_tab": (b, a) => VimmaHost._startHints(b, a),
+  "hint.element": (b, a) => VimmaHost._startHints(b, a),
   // Explicit insert, even with no text field to focus (pass-through for pages that take keys).
   // The field the user was last in comes first, then the page's first one (insert-focus).
   "mode.insert": (b) => {
@@ -2210,7 +2213,12 @@ export const VimmaHost = {
   _hints(win) {
     const hint = states.get(win)?.hint;
     if (!hint) return null;
-    return { action: hint.action, typed: hint.hs?.typed ?? "", hints: hint.hs?.hints ?? [] };
+    return {
+      action: hint.action,
+      typed: hint.hs?.typed ?? "",
+      hints: hint.hs?.hints ?? [],
+      focused: hint.focused ?? null,
+    };
   },
 
   /**
@@ -2262,6 +2270,8 @@ export const VimmaHost = {
   _hintKey(state, chord) {
     const session = state.hint;
     if (!session) return;
+    // A focused block takes no label keys; Esc ([modal.hint]) ends the focus.
+    if (session.focused) return;
     if (!session.hs) {
       session.buffered.push(chord);
       return;
@@ -2276,6 +2286,17 @@ export const VimmaHost = {
         state.hintOverlay.filter(next.typed);
         return;
       case "select":
+        if (result.action === "hint.element") {
+          // Never followed: a block is outlined, in chrome, where the page sees nothing.
+          if (!result.target.box) {
+            this._cancelHints(state);
+            return;
+          }
+          session.focused = result.target;
+          state.hintOverlay.hide();
+          state.hintOverlay.outline(session.browser, result.target.box);
+          return;
+        }
         this._cancelHints(state);
         if (result.action === "hint.follow_new_tab") {
           VimmaActors.openInBackground(session.browser, result.target);

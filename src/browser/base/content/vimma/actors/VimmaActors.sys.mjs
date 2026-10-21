@@ -24,8 +24,10 @@ const START_PAGE_MATCH = "chrome://browser/content/vimma/start/start.html";
  * A hint target in the parent: where to draw it and how to reach its element again.
  * @typedef {object} HintTarget
  * @property {Rect} rect  in the top frame's CSS pixels
- * @property {"link" | "input" | "click"} kind
+ * @property {"link" | "input" | "click" | "block"} kind
  * @property {string} [href]  links only
+ * @property {import("../core/blocks.mjs").BlockKind} [blockKind]  text blocks only
+ * @property {Rect} [box]  text blocks only: the border box, for the outline
  * @property {number} gen  the collection it came from
  * @property {number} id  the element's index in its frame's collection
  * @property {any} bc  its frame's BrowsingContext
@@ -219,7 +221,8 @@ export const VimmaActors = {
    * reported and clipped to them. Replies are from content processes and checked like any
    * other message: a malformed one drops that frame.
    * @param {any} browser XULBrowserElement
-   * @param {string} action "hint.follow" or "hint.follow_new_tab" (links only)
+   * @param {string} action "hint.follow", "hint.follow_new_tab" (links only) or "hint.element"
+   *   (text blocks, docs/specs/element-focus.md)
    * @returns {Promise<HintTarget[]>}
    */
   async collectHints(browser, action) {
@@ -231,6 +234,7 @@ export const VimmaActors = {
     /** Each frame at most once, whatever its embedder reports. */
     const visited = new Set();
     const linksOnly = action === "hint.follow_new_tab";
+    const blocks = action === "hint.element";
     /** @type {HintTarget[]} */
     const out = [];
     let ms = 0;
@@ -253,7 +257,7 @@ export const VimmaActors = {
         const late = new Promise((resolve) => {
           timer = setTimeout(resolve, depth === 0 ? TOP_TIMEOUT_MS : frameTimeout, null);
         });
-        const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", { gen, linksOnly });
+        const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", { gen, linksOnly, blocks });
         raw = await Promise.race([query, late]);
       } catch {
         return; // the frame navigated or its process went away
@@ -261,14 +265,22 @@ export const VimmaActors = {
         clearTimeout(timer);
       }
       // From a content process, which may be compromised: a fresh, checked copy or nothing.
-      const reply = parseHintReply(raw);
+      const reply = parseHintReply(raw, { blocks });
       if (!reply || !live()) return;
       ms += reply.ms;
       for (const t of reply.targets) {
         if (out.length >= MAX_HINTS) break;
         const rect = intersect(offset(t.rect, origin), frame);
         if (!rect) continue;
-        out.push({ gen, bc, wg, id: t.id, kind: t.kind, href: t.href, rect });
+        /** @type {HintTarget} */
+        const target = { gen, bc, wg, id: t.id, kind: t.kind, href: t.href, rect };
+        if (t.box) {
+          const box = intersect(offset(t.box, origin), frame);
+          if (!box) continue;
+          target.blockKind = t.blockKind;
+          target.box = box;
+        }
+        out.push(target);
       }
       if (depth >= MAX_FRAME_DEPTH) return;
       const children = reply.frames.map((f) => {
