@@ -1778,6 +1778,59 @@ uses `main`'s `homebrew.yml`. To pull a bad release: `gh release edit vX.Y.Z --d
 (hides it); the AUR package cannot go back a version without an `epoch`, and `homebrew.yml`
 never replaces a newer cask in the tap with an older one, so ship a fixed release instead.
 
+### Flatpak (`flatpak.yml`, spec flatpak)
+
+`tools/package/flatpak.mjs` writes the Flatpak manifest `dev.vimma.browser.json` and the four
+files it names (launcher, desktop file, metainfo, icon); the manifest repackages a release
+tarball on `org.freedesktop.Platform` 25.08. `tools/package/flatpak-smoke.sh` builds it with
+flatpak-builder in a privileged Fedora container, installs it, and checks the version line,
+the `vimma-package=flatpak` marker, the desktop file and the metainfo. Nothing is published:
+Vimma is not on Flathub yet (issue #465).
+
+- **Pull requests** that change `tools/package/`, the branding, `surfer.json` or the workflow
+  run the `stub` job: a stub tarball, a few minutes, most of them downloading the runtime and
+  SDK (about 870 MB).
+- **A published release** runs the `release` job, which builds from the release's download URL
+  pinned to the SHA-256 in its `SHA256SUMS` (signature checked with signing on), and also starts
+  Vimma headless and takes a screenshot. It is not a release check: a failure leaves the
+  release as it is, and only the run is red. Re-run with
+  `gh workflow run flatpak.yml -f tag=vX.Y.Z`, which uses `main`'s workflow; the run a publish
+  starts uses the tag's copy.
+- **Locally:** `tools/package/flatpak-smoke.sh --stub`, or
+  `tools/package/flatpak-smoke.sh --release vX.Y.Z <sha256> "<version line>"` with the
+  tarball's line from the release's `SHA256SUMS`. Needs docker.
+- **Pins:** the Fedora image digest and the runtime and SDK commits are at the top of
+  `flatpak-smoke.sh`. Flathub prunes old commits in time; when `flatpak update --commit` cannot
+  find one, take the current ones from
+  `flatpak remote-info flathub runtime/org.freedesktop.Platform/x86_64/25.08` (and `…Sdk…`) and
+  update the script in a pull request. A new runtime branch (26.08) changes `RUNTIME_VERSION` in
+  `flatpak.mjs` and `RUNTIME` in the script together; a test keeps them equal.
+
+**Submitting to Flathub** (issue #465; only once its other items are done, and only when the
+maintainer decides to list Vimma):
+
+1. Generate the files for the release to submit, with the tarball's SHA-256 from its
+   `SHA256SUMS` and the release's date:
+   `node tools/package/flatpak.mjs --out flathub --version X.Y.Z --date YYYY-MM-DD --sha256 <hex>`.
+2. Build and lint them as Flathub does, on a machine with Flatpak:
+   `flatpak install flathub org.flatpak.Builder`, then
+   `flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir flathub/dev.vimma.browser.json`,
+   `flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flathub/dev.vimma.browser.json`
+   and `flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo`. Fix every
+   error in `flatpak.mjs`, not in the generated files.
+3. Fork `flathub/flathub`, branch from its `new-pr` branch, add the generated files at the top
+   level, and open a pull request against `new-pr` titled `Add dev.vimma.browser`. The
+   description explains the D-Bus names outside the app id (`org.mozilla.vimma.*` for Firefox's
+   remoting, `org.mpris.MediaPlayer2.firefox.*` for media keys) and the `~/.local/state/omarchy`
+   read-only grant (the theme).
+4. Answer the reviewers; `bot, build` in a comment starts a test build. Once merged, Flathub
+   creates `flathub/dev.vimma.browser`, and you get write access to it.
+5. Verify the app: on flathub.org, sign in, open the app's developer settings, choose
+   "Verify" for `vimma.dev`, and publish the token Flathub gives at
+   `https://vimma.dev/.well-known/org.flathub.VerifiedApps.txt` (the vimma-site repository).
+6. Each later release: a pull request to `flathub/dev.vimma.browser` with the new tarball URL,
+   SHA-256 and `<release>` line, generated as in step 1.
+
 ### Update signing keys and the update host (spec m6a-updater)
 
 Vimma checks `https://updates.vimma.dev/updates/browser/<target>/<channel>/update.xml`
