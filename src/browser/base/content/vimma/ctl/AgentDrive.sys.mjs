@@ -43,11 +43,27 @@ const FIND_WRAPPED = 2;
  *   each step
  * @property {(url: string) => boolean} load  loads `url` in the tab as the agent's (its
  *   principal, its downloads, a slot of the open rate); false when the rate is used up
+ * @property {(url: string) => boolean} countLoad  a history load of `url`: a slot of the open
+ *   rate, its downloads the agent's; false when the rate is used up
  * @property {number} deadline  ms since the epoch: the call stops here (D15)
  */
 
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
+
+/** How long one query to the page's child may take: a hung content process must not hold a call. */
+const ACTOR_TIMEOUT_MS = 5000;
+
+/**
+ * `promise`, or `fallback` after ACTOR_TIMEOUT_MS or once `deadline` passed, whichever is first.
+ * @template T
+ * @param {Promise<T>} promise @param {T} fallback @param {number} deadline
+ * @returns {Promise<T>}
+ */
+function bounded(promise, fallback, deadline) {
+  const ms = Math.max(0, Math.min(ACTOR_TIMEOUT_MS, deadline - Date.now()));
+  return Promise.race([promise, sleep(ms).then(() => fallback)]);
+}
 
 /** @param {unknown} s  well-formed, so the reply is one line vimma-ctl's parser takes */
 const wf = (s) => /** @type {string} */ (/** @type {any} */ (String(s ?? "")).toWellFormed());
@@ -129,14 +145,14 @@ function findOnce(browser, query, again, backward) {
 
 export const AgentDrive = {
   /** Test-only: called after each step with the number of steps done. */
-  _onStep: /** @type {((n: number) => void) | null} */ (null),
+  _onStep: /** @type {((n: number) => void | Promise<void>) | null} */ (null),
 
   /**
    * Runs `steps` on `tab`, in order, in the background.
    * @param {Tab} tab @param {AgentStep[]} steps @param {DriveContext} ctx
    * @returns {Promise<KeysResult>}
    */
-  async run(tab, steps, { stillAgent, load, deadline }) {
+  async run(tab, steps, { stillAgent, load, countLoad, deadline }) {
     const browser = tab.linkedBrowser;
     /** @type {StepResult[]} */
     const done = [];
@@ -147,17 +163,20 @@ export const AgentDrive = {
     /** @type {FindResult | undefined} */
     let find;
 
+    /** Why the call must stop now, or null. @returns {KeysResult["stopped"] | null} */
+    const halt = () =>
+      Date.now() > deadline
+        ? "timeout"
+        : !stillAgent()
+          ? "changed"
+          : VimmaHost.inUse(browser)
+            ? "in-use"
+            : null;
+
     for (const step of steps) {
-      if (Date.now() > deadline) {
-        stopped = "timeout";
-        break;
-      }
-      if (!stillAgent()) {
-        stopped = "changed";
-        break;
-      }
-      if (VimmaHost.inUse(browser)) {
-        stopped = "in-use";
+      const why = halt();
+      if (why) {
+        stopped = why;
         break;
       }
       /** @type {StepResult} */
@@ -167,10 +186,11 @@ export const AgentDrive = {
         const id = step.action;
         if (id in SCROLLS) {
           const kind = /** @type {any} */ (SCROLLS)[id];
-          const moved = await VimmaActors.scroll(browser, kind, count, {
-            instant: true,
-            top: true,
-          });
+          const moved = await bounded(
+            VimmaActors.scroll(browser, kind, count, { instant: true, top: true }),
+            false,
+            deadline,
+          );
           if (!moved) Object.assign(result, { ok: false, note: "nothing on the page scrolls" });
         } else if (id === "history.back" || id === "history.forward") {
           const history = browser.browsingContext?.sessionHistory;
@@ -180,6 +200,17 @@ export const AgentDrive = {
           if (!history || target === index) {
             const where = delta < 0 ? "back to" : "forward to";
             Object.assign(result, { ok: false, note: `no page to go ${where} in this tab` });
+          } else if (!/^https?:/i.test(String(history.getEntryAtIndex(target)?.URI?.spec ?? ""))) {
+            // An entry the user reached in this tab before it was the agent's (about:, file:).
+            Object.assign(result, { ok: false, note: "that history entry is not a web page" });
+          } else if (!countLoad(String(history.getEntryAtIndex(target).URI.spec))) {
+            Object.assign(result, {
+              ok: false,
+              note: "too many loads from this agent in the last minute",
+            });
+            done.push(result);
+            stopped = "denied";
+            break;
           } else {
             const mark = pageMark(browser);
             browser.gotoIndex(target);
@@ -214,10 +245,19 @@ export const AgentDrive = {
             last = { query: /** @type {string} */ (step.query), backward: id === "find.backward" };
           if (!last) {
             Object.assign(result, { ok: false, note: "no search to repeat in this call" });
+          } else if (VimmaHost.isFocusedPage(browser)) {
+            // The finder focuses a text field its match is in when the page has the user's focus
+            // (nsTypeAheadFind), and the page's focus handlers would run (M16): a find runs only
+            // in a tab the user's focus is not in.
+            Object.assign(result, {
+              ok: false,
+              note: "the user's focus is in this tab; a find runs only in the background",
+            });
           } else {
             const backward = id === "find.previous" ? !last.backward : last.backward;
             let outcome = null;
             for (let i = 0; i < count; i++) {
+              if (i > 0 && halt()) break;
               outcome = await findOnce(browser, last.query, !fresh || i > 0 || backward, backward);
               if (outcome === null || outcome === FIND_NOTFOUND) break;
             }
@@ -232,13 +272,12 @@ export const AgentDrive = {
           }
         }
       } catch (e) {
-        Object.assign(result, {
-          ok: false,
-          note: `failed: ${wf(/** @type {Error} */ (e)?.message ?? e)}`,
-        });
+        // Fixed text: an error's message could carry the page's words past the untrusted header.
+        console.error("vimma agent-keys:", step.action, e);
+        Object.assign(result, { ok: false, note: "Vimma could not run this step" });
       }
       done.push(result);
-      this._onStep?.(done.length);
+      await this._onStep?.(done.length);
     }
 
     // The tab left the agent workspace on the last step: nothing of it is said (M2).
@@ -257,7 +296,13 @@ export const AgentDrive = {
       url: wf(browser.currentURI?.spec ?? ""),
       title: wf(tab.label ?? ""),
       loading: !!browser.webProgress?.isLoadingDocument || tab.hasAttribute("busy"),
-      scroll: { y: Math.round((await VimmaActors.scrollFraction(browser)) * 1000) / 1000 },
+      scroll: {
+        y:
+          Math.round(
+            (await bounded(VimmaActors.scrollFraction(browser), 0, Date.now() + ACTOR_TIMEOUT_MS)) *
+              1000,
+          ) / 1000,
+      },
       steps: done,
     };
     if (stopped) out.stopped = stopped;

@@ -277,7 +277,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     `packages/vimma-core/src/find.mjs:24`). The window's find bar, its `Find` state and the
     user's last search are never touched. The match becomes the page's selection, which
     `vimma_read_page` already returns (vimma-mcp decision 4), so "find, then read the
-    selection" works without a new tool.
+    selection" works without a new tool. A find does not run in a tab that has the user's focus
+    (shown and focused in the focused window): there the finder focuses a text field its match
+    is in, and the page's focus handlers would run; the step says so and the call goes on.
 12. **Following links.** `f` at the end of `keys` collects the visible links of the agent tab
     (links only, as `hint.follow_new_tab` collects) and returns them with labels; `f<label>`
     follows one. The labels are kept in a hint session per agent tab and connection, tied to the
@@ -298,8 +300,10 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     - **Labels.** `DEFAULT_HINT_CHARS`, not the user's `hint_chars`, for the same reason as D10.
       At most 200 links are returned, in the reading order `orderTargets` gives; the rest are
       dropped and the result says how many.
-    - **Counting.** Every follow, and every `gu`/`gU`, takes a slot of the connection's open rate
-      (10 a minute, `OPEN_RATE`), shared with `vimma_open`, because each one loads a URL.
+    - **Counting.** Every follow, every `gu`/`gU` and every history step that loads a page takes
+      a slot of the connection's open rate (10 a minute, `OPEN_RATE`), shared with `vimma_open`,
+      because each one loads a URL; a history step to an entry that is not http or https (one
+      the user reached in that tab before) is refused.
 13. **Within one call.** Actions run in order. After an action that loads a page (a follow,
     back, forward, `gu`, `gU`), the next one waits for that load, up to 20 s (`LOAD_TIMEOUT_MS`,
     `agent-commands.mjs:33`). Before each action the tab must still be an agent tab; if it has
@@ -355,7 +359,10 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     a JSON string cut at 80 characters, and the href cut at 2,048 characters. The URL and title
     are untrusted too, and `vimma-ctl mcp` puts them under `untrustedHeader`'s wording as it
     does for reads. No page text is returned beyond link texts; reading stays `vimma_read_page`,
-    with its own question and grant, so that a `vimma_keys` grant is never a read grant. Find's
+    with its own question and grant, so that a `vimma_keys` grant is never a read grant. A
+    find's yes or no, with the scroll position, still tells whether a word is on the page: at 30
+    calls of 32 steps a minute that is a slow way to learn a page's text, which is accepted,
+    since the agent tab's text is one `vimma_read_page` away for an agent the user lets read. Find's
     match already lands in the selection that `vimma_read_page` returns, so "find, then read"
     needs no text here. Rejected: up to 2,000 characters of the viewport's text, because it would
     make a keys grant a partial read grant; that text only while a `vimma_read_page` grant is

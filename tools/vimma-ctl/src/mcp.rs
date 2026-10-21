@@ -608,9 +608,15 @@ fn open_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall, String> {
     })
 }
 
-/// C0 but the tab, DEL and C1 (vimma-core's `agent-keys` check).
+/// C0 but the tab, DEL, C1, and the bidirectional and invisible characters (vimma-core's
+/// `agent-keys` check): the question in Vimma must show the keys that run.
 fn keys_control(c: char) -> bool {
-    (c <= '\u{1f}' && c != '\t') || ('\u{7f}'..='\u{9f}').contains(&c)
+    (c <= '\u{1f}' && c != '\t')
+        || ('\u{7f}'..='\u{9f}').contains(&c)
+        || matches!(c, '\u{ad}' | '\u{61c}' | '\u{feff}')
+        || ('\u{200b}'..='\u{200f}').contains(&c)
+        || ('\u{2028}'..='\u{202e}').contains(&c)
+        || ('\u{2060}'..='\u{2069}').contains(&c)
 }
 
 /// `vimma_keys`'s arguments (mcp-drive D15): the size and characters of the keys, each find
@@ -632,7 +638,11 @@ fn keys_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall, String> {
         ));
     }
     if chars.iter().any(|c| keys_control(*c)) {
-        return Err("keys must not contain control characters".into());
+        return Err(
+            "keys must not contain control characters, bidirectional controls or invisible \
+                    characters"
+                .into(),
+        );
     }
     let mut i = 0;
     let mut digits = String::new();
@@ -649,7 +659,11 @@ fn keys_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall, String> {
         digits.clear();
         if c == '<' {
             // A key in Vim's brackets (`<C-d>`): its insides are no count and no query.
-            if let Some(close) = chars[i..].iter().position(|c| *c == '>') {
+            if let Some(close) = chars[i..]
+                .iter()
+                .take_while(|c| !c.is_whitespace())
+                .position(|c| *c == '>')
+            {
                 i += close + 1;
                 continue;
             }
@@ -1794,15 +1808,26 @@ mod tests {
                 r#"{"tab":"1","url":"x"}"#,
                 "unknown argument \"url\"",
             ),
-            // mcp-drive D15 (security.md M20): the keys' limits, checked before Vimma is asked.
+        ] {
+            let r = reply(&mut p, &call_line(5, name, arguments));
+            assert_eq!(at(&r, &["id"]), &Value::Number(5.0));
+            let text = tool_error_text(&r);
+            assert!(text.contains(says), "{name} {arguments}: {text}");
+        }
+    }
+
+    // mcp-drive D15 (security.md M20): the keys' limits, checked before Vimma is asked.
+    #[test]
+    fn bad_keys_are_tool_errors_and_never_reach_vimma() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        let long = format!(r#"{{"tab":"1","keys":"{}"}}"#, "j".repeat(513));
+        let query = format!(r#"{{"tab":"1","keys":"/{}<CR>"}}"#, "a".repeat(257));
+        for (name, arguments, says) in [
             ("vimma_keys", r#"{"tab":"1"}"#, "keys must be"),
             ("vimma_keys", r#"{"keys":"j"}"#, "tab"),
             ("vimma_keys", r#"{"tab":"1","keys":""}"#, "1 to 512"),
-            (
-                "vimma_keys",
-                &format!(r#"{{"tab":"1","keys":"{}"}}"#, "j".repeat(513)),
-                "1 to 512",
-            ),
+            ("vimma_keys", &long, "1 to 512"),
             (
                 "vimma_keys",
                 r#"{"tab":"1","keys":"j\u0007"}"#,
@@ -1810,12 +1835,14 @@ mod tests {
             ),
             ("vimma_keys", r#"{"tab":"1","keys":"/foo"}"#, "<CR>"),
             ("vimma_keys", r#"{"tab":"1","keys":"/<CR>"}"#, "empty"),
+            ("vimma_keys", &query, "256"),
+            ("vimma_keys", r#"{"tab":"1","keys":"100j"}"#, "99"),
             (
                 "vimma_keys",
-                &format!(r#"{{"tab":"1","keys":"/{}<CR>"}}"#, "a".repeat(257)),
-                "256",
+                r#"{"tab":"1","keys":"/a\u202eb<CR>"}"#,
+                "control characters",
             ),
-            ("vimma_keys", r#"{"tab":"1","keys":"100j"}"#, "99"),
+            ("vimma_keys", r#"{"tab":"1","keys":"<C-d /x"}"#, "<CR>"),
             (
                 "vimma_keys",
                 r#"{"tab":"1","keys":"j","show":true}"#,
@@ -1823,7 +1850,6 @@ mod tests {
             ),
         ] {
             let r = reply(&mut p, &call_line(5, name, arguments));
-            assert_eq!(at(&r, &["id"]), &Value::Number(5.0));
             let text = tool_error_text(&r);
             assert!(text.contains(says), "{name} {arguments}: {text}");
         }

@@ -372,3 +372,83 @@ add_task(async function test_keys_under_a_grant_notice_and_rate() {
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });
+
+add_task(async function test_keys_stop_when_the_user_starts_using_the_tab() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  // After the first step the user switches to the tab and types in its field.
+  AgentDrive._onStep = async (/** @type {number} */ n) => {
+    if (n !== 1) return;
+    ww().switchTo({ id: agent().id });
+    await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
+    await focusContent(tab.linkedBrowser);
+    await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
+      content.document.getElementById("field").focus(),
+    );
+    await until(() => VimmaHost.status(window).mode === "insert", "the user types there");
+  };
+  const r = await keys(c, tab, "j j j");
+  AgentDrive._onStep = null;
+  Assert.equal(r.result.stopped, "in-use", "the call stops with in-use");
+  Assert.equal(r.result.steps.length, 1, "after the step done");
+  EventUtils.synthesizeKey("KEY_Escape");
+  ww().switchTo({ id: mainId() });
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+add_task(async function test_a_find_never_focuses_a_field_of_the_tab_the_user_is_in() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const field = content.document.getElementById("field");
+    field.value = "a pricing field";
+    content.wrappedJSObject.focused = 0;
+    field.addEventListener("focus", () => content.wrappedJSObject.focused++);
+  });
+  const c = await agentClient();
+  ww().switchTo({ id: agent().id });
+  await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
+  await focusContent(tab.linkedBrowser);
+  await until(() => VimmaHost.status(window).mode === "normal", "the user watches in normal mode");
+  const r = await keys(c, tab, "/field<CR>");
+  Assert.equal(r.result.steps[0].ok, false, "a find in the tab the user is in does not run");
+  Assert.ok(r.result.steps[0].note.includes("focus"), "and says why");
+  const seen = await SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
+    focused: content.wrappedJSObject.focused,
+    active: content.document.activeElement?.localName,
+  }));
+  Assert.deepEqual(seen, { focused: 0, active: "body" }, "the field never had focus (M16)");
+  ww().switchTo({ id: mainId() });
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+add_task(async function test_loads_count_towards_the_open_rate() {
+  await mcp(true);
+  const tab = await openAgentTab(`${PAGE}?a`);
+  const b = `${PAGE}?b`;
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, b);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, b);
+  const c = await agentClient();
+  // Ten opens, the most a minute (M3), under a grant.
+  let id = c.request("agent-open", { url: `${PAGE}?1`, tab: idOf(tab) });
+  AgentGate.answer((await question()).id, { kind: "grant", minutes: 5 });
+  await c.response(id);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, `${PAGE}?1`);
+  for (let i = 2; i <= 10; i++) {
+    Assert.ok((await c.call("agent-open", { url: `${PAGE}?x${i}` })).ok, `open ${i}`);
+  }
+  let r = await keys(c, tab, "gu");
+  Assert.equal(r.result.stopped, "denied", "gu needs a slot of the open rate (M20)");
+  Assert.equal(r.result.url, `${PAGE}?1`, "and loads nothing");
+  r = await keys(c, tab, "H");
+  Assert.equal(r.result.stopped, "denied", "so does a history load");
+  Assert.equal(r.result.url, `${PAGE}?1`, "which does not run");
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  await mcp(false);
+});

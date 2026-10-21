@@ -1400,8 +1400,9 @@ workspace, tab, focus, find bar and hint mode.
   question. Watching is fine: in normal mode you see the agent scroll.
 - **A grant covers it:** `15a` lets that agent run keys for 15 minutes, and each call then shows
   `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`. A `vimma_keys` grant is not
-  a read or open grant. At most 30 calls a minute; `gu` and `gU` count towards the 10 opens a
-  minute.
+  a read or open grant. At most 30 calls a minute; `gu`, `gU`, `H` and `L` count towards the
+  10 opens a minute. A find does not run in the tab you are in, since the browser's find would
+  put your focus in a text field it matched.
 - **`:mcp log`** lists what agents did, asked or under a grant, so you can check afterwards what
   a grant let through. It is kept in memory only and cleared by `:mcp off`.
 

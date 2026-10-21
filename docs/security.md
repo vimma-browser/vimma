@@ -847,35 +847,42 @@ tests in the sub-PRs that build them; M20 then gains their limits.
   dispatcher of its own over Vimma's default keymap, never the user's; the whitelist is checked
   on the action ids the dispatcher returns. It **never** sends a key event to the page and
   **never** focuses a field: the prefix, `:`, tab, workspace, window, clipboard, insert, copy
-  mode and agent actions (`mcp.answer` among them) are refused before anything is asked.
+  mode and agent actions (`mcp.answer` among them) are refused before anything is asked. A find
+  does not run in a tab that has the user's focus, where the finder would focus a text field.
+  Keys with control, bidirectional or invisible characters are refused, so the question shows
+  what runs.
   [`each refused group is invalid-args naming the key (M16)`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`a user keymap that binds j to tab.close does not change the agent's j (D10)`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`any text parses to whitelisted actions within the limits, or is refused`](../packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs),
   [`agent_keys_never_reach_the_prefix_the_command_line_or_mcp_answer`](../tests/browser/browser_vimma_security_invariants.js),
-  [`test_keys_scroll_a_background_tab_without_touching_the_window`](../tests/browser/browser_vimma_mcp_keys.js)
+  [`test_keys_scroll_a_background_tab_without_touching_the_window`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_a_find_never_focuses_a_field_of_the_tab_the_user_is_in`](../tests/browser/browser_vimma_mcp_keys.js)
 - M17. `agent-keys` **must** act only on an agent tab (M2), checked before the question, after
   the yes and before each step, in the background: it **never** selects, shows or focuses the
   tab, and **never** changes the window's workspace, mode, find bar or hint mode (finds use the
   tab's own finder, history moves stay in the tab's own session history). A tab the user is
-  typing in, in copy or hint mode or a key sequence, is denied `in-use`; a call already running
-  stops there.
+  typing in, in copy or hint mode, a key sequence or its own find bar, is denied `in-use`; a call
+  already running stops there.
   [`test_keys_scroll_a_background_tab_without_touching_the_window`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_find_uses_the_tabs_finder`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_back_and_forward_stay_in_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_refuses_a_non_agent_tab`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_in_use_while_the_user_types_in_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
-  [`test_keys_stop_when_the_tab_leaves`](../tests/browser/browser_vimma_mcp_keys.js)
+  [`test_keys_stop_when_the_tab_leaves`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_stop_when_the_user_starts_using_the_tab`](../tests/browser/browser_vimma_mcp_keys.js)
 - M20. `agent-keys`' limits (mcp-drive D15) **must** deny: keys over 512 characters or with
   control characters, more than 32 actions, a count over 99 and a find query over 256 characters
   are `invalid-args` before anything is asked; more than 30 calls of one connection a minute,
-  counted when asked, are `busy`; a `gu` or `gU` takes a slot of the 10 opens a minute; a call
-  stops 60 s after the yes. `vimma-ctl mcp` checks the size, characters, queries and counts
-  first; the browser checks all of it again.
+  counted when asked and before anything else, are `busy`; a `gu`, `gU` or history step that
+  loads a page takes a slot of the 10 opens a minute; a call stops 60 s after the yes, and no
+  query to the page holds it longer than 5 s. `vimma-ctl mcp` checks the size and characters,
+  the find queries and the counts it can see first; the browser checks all of it again.
   [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
   [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
-  [`bad_arguments_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
+  [`test_loads_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`bad_keys_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
   workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
   use it, and a yes given after MCP went on or off **never** turns it on; each new full
@@ -890,8 +897,10 @@ tests in the sub-PRs that build them; M20 then gains their limits.
   [`full control names the agent workspace it reaches beyond`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`the desktop notification names the client and the kind of request, never a URL`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`the_instructions_advise_against_full_control`](../tools/vimma-ctl/src/mcp.rs)
-- M23. Every agent request that is answered, runs under a grant or is denied **must** be in
-  `:mcp log` (the last 100, in memory only, cleared by `:mcp off`), and every call under a grant
+- M23. Every agent request that is answered, runs under a grant or is denied (by the gate, or
+  after it: `in-use`, `changed`, the keys rate) **must** be in `:mcp log`, as must a `vimma_keys`
+  call that stopped early (the last 100, in memory only, cleared by `:mcp off`). Each row's
+  agent name, title and keys or URL is its own bidi run. Every call under a grant
   **must** show a notice; a `vimma_keys` notice names the keys and the tab. Grants run calls
   unasked and notices last seconds, so the log is how the user checks afterwards.
   [`test_mcp_log_lists_asked_and_granted_calls`](../tests/browser/browser_vimma_mcp_log.js),

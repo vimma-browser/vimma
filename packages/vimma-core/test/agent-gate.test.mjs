@@ -306,11 +306,12 @@ describe(":mcp log (mcp-drive D14)", () => {
   });
 
   test("a row: time, client, tool, tab title, keys or URL, outcome", () => {
-    expect(logRow(entry())).toBe(
+    const plain = (/** @type {string} */ t) => t.replace(/[\u2068\u2069]/g, "");
+    expect(plain(logRow(entry()))).toBe(
       '17:05:09 claude-code vimma_keys "Pricing · Example" 3j /"pricing"⏎ · ran under a grant',
     );
     const open = { ...entry(), tool: "vimma_open", title: "", detail: "https://a.example/x" };
-    expect(logRow({ ...open, outcome: "yes" })).toBe(
+    expect(plain(logRow({ ...open, outcome: "yes" }))).toBe(
       "17:05:09 claude-code vimma_open https://a.example/x · allowed",
     );
     for (const [outcome, said] of [
@@ -319,6 +320,8 @@ describe(":mcp log (mcp-drive D14)", () => {
       ["busy", "denied (busy)"],
       ["muted", "denied (muted)"],
       ["cancelled", "cancelled"],
+      ["in-use", "denied (the user was using the tab)"],
+      ["changed", "denied (the tab changed)"],
     ]) {
       expect(logRow({ ...entry(), outcome: /** @type {any} */ (outcome) })).toMatch(
         new RegExp(` · ${said.replace(/[()]/g, "\\$&")}$`),
@@ -327,11 +330,16 @@ describe(":mcp log (mcp-drive D14)", () => {
   });
 
   test("the log picker's cells: the time, what was called, the outcome", () => {
+    // Text an agent or a page chose is its own bidi run (FSI…PDI), as in the question line.
+    const iso = (/** @type {string} */ t) => `\u2068${t}\u2069`;
     expect(logCells(entry())).toEqual({
       time: "17:05:09",
-      text: 'claude-code vimma_keys "Pricing · Example" 3j /"pricing"⏎',
+      text: `${iso("claude-code")} vimma_keys "${iso("Pricing · Example")}" ${iso('3j /"pricing"⏎')}`,
       outcome: "ran under a grant",
     });
+    expect(logCells({ ...entry(), outcome: "stopped", why: "in-use" }).outcome).toBe(
+      "stopped (in-use)",
+    );
   });
 
   test("control characters and long titles are cut to one readable line", () => {
@@ -339,6 +347,7 @@ describe(":mcp log (mcp-drive D14)", () => {
     const row = logRow(hostile);
     expect([...row].some((c) => /\p{Cc}/u.test(c) || c === "\u202e")).toBe(false);
     expect(row).toContain("c d");
+    expect(row.match(/\u2068/g)?.length).toBe(3);
     expect(row.length).toBeLessThan(200);
   });
 });

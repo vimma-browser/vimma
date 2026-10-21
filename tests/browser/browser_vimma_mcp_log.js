@@ -51,7 +51,9 @@ const rows = () =>
     [...r.children]
       .map((c) => c.textContent)
       .join(" · ")
-      .replace(" · ", " "),
+      .replace(" · ", " ")
+      // Without the bidi isolates around agent- and page-chosen text.
+      .replace(/[\u2068\u2069]/g, ""),
   );
 const emptyRow = () => logPicker()?.querySelector(".vimma-picker-empty")?.textContent ?? null;
 
@@ -95,6 +97,17 @@ add_task(async function test_mcp_log_lists_asked_and_granted_calls() {
   id = c.request("agent-keys", { tab: idOf(tab), keys: "3j" });
   await answer("deny");
   await c.response(id);
+  // A tab that closed after the question: allowed, then denied outside the gate (M23).
+  const gone = gBrowser.addTab(PAGE, {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.browserLoaded(gone.linkedBrowser, false, PAGE);
+  id = c.request("agent-keys", { tab: idOf(gone), keys: "k" });
+  await until(() => AgentGate.waiting.length > 0, "a question waits");
+  BrowserTestUtils.removeTab(gone);
+  await answer("once");
+  Assert.equal((await c.response(id)).error?.reason, "changed", "denied as changed");
   id = c.request("agent-keys", { tab: idOf(tab), keys: "j" });
   await answer("grant", { minutes: 5 });
   await c.response(id);
@@ -102,8 +115,11 @@ add_task(async function test_mcp_log_lists_asked_and_granted_calls() {
 
   await runCommand("mcp log");
   await until(() => logPicker()?.open, ":mcp log opens the log");
-  const shown = rows();
-  Assert.equal(shown.length, 4, "the four calls");
+  const all = rows();
+  Assert.equal(all.length, 6, "the four calls, and the closed tab's yes and denial");
+  Assert.ok(all[2].endsWith("denied (the tab changed)"), "the denial after the yes is listed");
+  Assert.ok(all[3].endsWith("allowed"), "after its yes");
+  const shown = [all[0], all[1], all[4], all[5]];
   Assert.ok(shown[0].includes("claude-code vimma_keys"), "newest first: the client and tool");
   Assert.ok(shown[0].includes('"Agent fixture"'), "the tab's title");
   Assert.ok(shown[0].includes("gg"), "the keys");

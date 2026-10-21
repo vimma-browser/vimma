@@ -132,8 +132,10 @@ function shownChord(c) {
 
 /** The end of a `/` or `?` query, in any case. */
 const QUERY_END = /<cr>/i;
-// eslint-disable-next-line no-control-regex -- the control characters are what it refuses
-const CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+/** Control, bidirectional and invisible characters: the question must show what runs. */
+const CONTROL =
+  // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+  /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/;
 /** The default prefix (ctrl+b): it and every binding after it are the user's. */
 const PREFIX = formatKey(parseKey(/** @type {string} */ (DEFAULT_CONFIG.keys?.prefix)));
 const PREFIX_WHY = "the prefix, the leader and their bindings are the user's";
@@ -167,7 +169,9 @@ export function parseAgentKeys(text) {
     return refused(`keys must be at most ${AGENT_KEY_LIMITS.chars} characters`);
   }
   if (CONTROL.test(text))
-    return refused("keys must not contain control characters or bidirectional controls");
+    return refused(
+      "keys must not contain control characters, bidirectional controls or invisible characters",
+    );
   keymap ??= compileKeymap();
   const dispatcher = createDispatcher(keymap);
   /** @type {AgentStep[]} */

@@ -325,7 +325,15 @@ const OUTCOMES = Object.freeze({
   busy: "denied (busy)",
   muted: "denied (muted)",
   cancelled: "cancelled",
+  "in-use": "denied (the user was using the tab)",
+  changed: "denied (the tab changed)",
 });
+
+/** @type {Readonly<Record<string, string>>} */
+const OUTCOME_TEXT = OUTCOMES;
+
+/** FSI…PDI: text an agent or a page chose, as its own bidi run (security.md M4). */
+const isolate = (/** @type {string} */ t) => (t ? `\u2068${t}\u2069` : "");
 
 /**
  * One row of `:mcp log` (mcp-drive D14) in its three cells: the time; the client, the tool, the
@@ -340,10 +348,19 @@ export function logCells(e) {
     .join(":");
   const title = cutTitle(e.title);
   const detail = truncate(clean(e.detail), 120, "end");
-  const text = [clientName({ client: e.client }), clean(e.tool), title ? `"${title}"` : "", detail]
+  const text = [
+    isolate(clientName({ client: e.client })),
+    clean(e.tool),
+    title ? `"${isolate(title)}"` : "",
+    isolate(detail),
+  ]
     .filter(Boolean)
     .join(" ");
-  return { time, text, outcome: OUTCOMES[e.outcome] ?? clean(e.outcome) };
+  const outcome =
+    e.outcome === "stopped"
+      ? `stopped (${clean(e.why) || "early"})`
+      : (OUTCOME_TEXT[e.outcome] ?? clean(e.outcome));
+  return { time, text, outcome };
 }
 
 /**

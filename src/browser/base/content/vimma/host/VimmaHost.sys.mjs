@@ -1602,13 +1602,28 @@ export const VimmaHost = {
     const state = win && states.get(win);
     if (!state || /** @type {any} */ (Services.focus).activeWindow !== win) return false;
     if (!browser.docShellIsActive) return false;
+    // The tab's own find bar open (the user's ctrl+f or `/` there): its finder is the agent's.
+    const tab = /** @type {any} */ (win).gBrowser?.getTabForBrowser(browser);
+    const findbar = tab && /** @type {any} */ (win).gBrowser.getCachedFindBar(tab);
     // A page without our actor takes every key itself: in use while shown.
     return (
+      (!!findbar && !findbar.hidden) ||
       this._browserMode(browser) !== "normal" ||
       state.hint?.browser === browser ||
       state.find.session?.browser === browser ||
       state.dispatcher.pending().length > 0
     );
+  },
+
+  /**
+   * Whether `browser` is the page with the user's focus, in the focused window: a find there
+   * would focus a text field its match is in (docs/specs/mcp-drive.md D11, security.md M16).
+   * @param {any} browser XULBrowserElement
+   */
+  isFocusedPage(browser) {
+    const win = browser?.ownerDocument?.defaultView;
+    if (!win || /** @type {any} */ (Services.focus).activeWindow !== win) return false;
+    return this._focusedBrowser(win) === browser;
   },
 
   /**

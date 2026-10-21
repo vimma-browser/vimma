@@ -194,7 +194,17 @@ describe("the limits (D15, M20)", () => {
     expect(refusal("/a\nb<CR>")).toContain("control characters");
     expect(refusal("   ")).toContain("no keys");
     // A bidi control would make the question show the keys in another order (security.md M4).
-    for (const c of ["\u202e", "\u2066", "\u200f"]) {
+    // So would an invisible character: the query shown would not be the one that runs.
+    for (const c of [
+      "\u202e",
+      "\u2066",
+      "\u200f",
+      "\u061c",
+      "\u2028",
+      "\u200b",
+      "\ufeff",
+      "\u00ad",
+    ]) {
       expect(refusal(`/a${c}b<CR>`)).toContain("control characters");
     }
   });

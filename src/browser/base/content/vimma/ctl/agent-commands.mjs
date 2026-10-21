@@ -475,26 +475,44 @@ const COMMANDS = {
     const parsed = parseAgentKeys(keys);
     if (!parsed.ok) throw new AgentError("invalid-args", parsed.error);
     const asked = findAgentTab(agent, id);
-    if (VimmaHost.inUse(asked.tab.linkedBrowser)) throw denied("in-use");
-    // Counted when asked, so a refused call cannot be retried in a loop (D15).
-    if (!keyCalls.take(conn, Date.now())) {
-      throw new AgentError(
-        "denied",
-        "too many vimma_keys calls from this agent in the last minute",
-        "busy",
-      );
-    }
     const what = { ...describeTab(asked.tab), index: asked.index, keys: shownKeys(parsed.steps) };
+    /**
+     * A denial outside the gate goes into `:mcp log` too (D14, M23).
+     * @param {any} outcome @param {unknown} [error]
+     */
+    const refuse = (outcome, error = denied(outcome)) => {
+      AgentGate.note(conn, "vimma_keys", what, outcome);
+      return error;
+    };
+    // Counted when asked, before anything else is learnt, so a refused call cannot be retried
+    // in a loop, nor used to watch unasked whether the user is typing in a tab (D15).
+    if (!keyCalls.take(conn, Date.now())) {
+      const message = "too many vimma_keys calls from this agent in the last minute";
+      throw refuse("busy", new AgentError("denied", message, "busy"));
+    }
+    if (VimmaHost.inUse(asked.tab.linkedBrowser)) throw refuse("in-use");
     await ask(conn, "agent-keys", what, state, rid);
-    const { win, tab } = stillAsAsked(agent, id, what.url);
-    if (VimmaHost.inUse(tab.linkedBrowser)) throw denied("in-use");
+    let found;
+    try {
+      found = stillAsAsked(agent, id, what.url);
+    } catch (e) {
+      throw refuse("changed", e);
+    }
+    const { win, tab } = found;
+    if (VimmaHost.inUse(tab.linkedBrowser)) throw refuse("in-use");
     const deadline = Date.now() + KEYS_CALL_MS;
     // A lazy tab (restored, or unloaded under memory pressure) loads first, in the background.
     if (!tab.linkedPanel || tab.hasAttribute("pending")) {
       await loadedPage(win, tab, what.url, agent.userContextId);
     }
     const principal = agentPrincipal(agent.userContextId);
-    return AgentDrive.run(tab, parsed.steps, {
+    /** Each load is an open of this connection's: the open rate, its downloads (D12). */
+    const countLoad = (/** @type {string} */ url) => {
+      if (!opens.take(conn, Date.now())) return false;
+      AgentDownloads.openedBy(tab.linkedBrowser, conn, url);
+      return true;
+    };
+    const result = await AgentDrive.run(tab, parsed.steps, {
       stillAgent: () => {
         const now = WorkspaceStore.agent;
         return (
@@ -506,15 +524,17 @@ const COMMANDS = {
         );
       },
       load: (url) => {
-        // Each load is an open of this connection's: it counts towards the open rate (D12).
-        if (!opens.take(conn, Date.now())) return false;
         const uri = agentUri(url);
-        AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
+        if (!countLoad(uri.spec)) return false;
         tab.linkedBrowser.loadURI(uri, { triggeringPrincipal: principal });
         return true;
       },
+      countLoad,
       deadline,
     });
+    // A call that stopped early says so in the log, after its yes or grant (M23).
+    if (result.stopped) AgentGate.note(conn, "vimma_keys", what, "stopped", result.stopped);
+    return result;
   },
 
   /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */

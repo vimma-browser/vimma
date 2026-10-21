@@ -75,8 +75,9 @@ const log = new AgentLog();
  * Full control's questions are not an agent's calls (it has `:control` and its own notices).
  * @param {ConnId} conn @param {string} tool @param {any} what
  * @param {import("../core/agent.mjs").LogOutcome} outcome
+ * @param {string} [why]  what stopped a call that ran (`stopped`)
  */
-function record(conn, tool, what, outcome) {
+function record(conn, tool, what, outcome, why) {
   if (conn === FULL_CONN) return;
   const w = what ?? {};
   const detail =
@@ -96,6 +97,7 @@ function record(conn, tool, what, outcome) {
     title: typeof w.title === "string" ? w.title : "",
     detail,
     outcome,
+    ...(why ? { why } : {}),
   });
 }
 
@@ -361,6 +363,16 @@ export const AgentGate = {
   /** `:mcp log`'s rows, newest first (mcp-drive D14). */
   get log() {
     return log.entries();
+  },
+
+  /**
+   * A call's outcome decided outside the gate, for `:mcp log` (mcp-drive D14, M23): denied
+   * before or after the question (`busy`, `in-use`, `changed`), or stopped while it ran.
+   * @param {ConnId} conn @param {string} tool @param {object} what
+   * @param {import("../core/agent.mjs").LogOutcome} outcome @param {string} [why]
+   */
+  note(conn, tool, what, outcome, why) {
+    record(conn, tool, what, outcome, why);
   },
 
   /** `:mcp off`: the log goes with the agents. */
