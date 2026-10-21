@@ -211,6 +211,13 @@ describe("toolbar toggle", () => {
     expect(km.bindingsFor("hide_toolbar")).toEqual([]);
   });
 
+  test("focus_element (hint.element) is a Hints action, unbound until its keymap sub-PR", () => {
+    const a = getAction("focus_element");
+    expect(a).toMatchObject({ id: "hint.element", group: "Hints" });
+    expect(resolveActionName("hint.element")?.name).toBe("focus_element");
+    expect(compileKeymap().bindingsFor("focus_element")).toEqual([]);
+  });
+
   test("prefix+u is the only default binding of toggle_toolbar, and no other action has it", () => {
     // compileKeymap throws on a conflict between default bindings.
     const km = compileKeymap();

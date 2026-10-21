@@ -38,6 +38,13 @@ support-files = [
   "file_vimma_hints_menu.html",
 ]
 
+["browser_vimma_element.js"]
+support-files = [
+  "file_vimma_element.html",
+  "file_vimma_element_frame.html",
+  "file_vimma_element_many.html",
+]
+
 ["browser_vimma_copy_mode.js"]
 support-files = ["file_vimma_copy.html", "file_vimma_copy_frame.html"]
 

@@ -544,7 +544,7 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * The hint targets of this frame (m1-hints). Rects are in this frame's CSS pixels; the parent
    * offsets them by the frame rects the embedding frame's child reports.
-   * @param {{ gen: number, linksOnly: boolean }} data
+   * @param {{ gen: number, linksOnly: boolean, blocks?: boolean }} data
    */
   #collectHints(data) {
     const gen = data?.gen;
@@ -553,10 +553,18 @@ export class VimmaChild extends JSWindowActorChild {
     const t0 = ChromeUtils.now();
     const { targets, frames } = collectTargets(win, {
       linksOnly: data.linksOnly === true,
+      blocks: data.blocks === true,
     });
     this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
     return {
-      targets: targets.map((t, id) => ({ id, rect: t.rect, kind: t.kind, href: t.href })),
+      targets: targets.map((t, id) => ({
+        id,
+        rect: t.rect,
+        kind: t.kind,
+        href: t.href,
+        blockKind: t.blockKind,
+        box: t.box,
+      })),
       frames: frames.map((f) => ({ id: f.bc.id, rect: f.rect })),
       ms: ChromeUtils.now() - t0,
     };

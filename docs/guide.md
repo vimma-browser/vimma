@@ -401,6 +401,22 @@ The labels are drawn by the browser, over the page, not inside it: the page cann
 restyle them or hide them. Apps that draw their own controls on a canvas (Google Docs, Figma,
 maps, games) have nothing to label.
 
+### Text block hints
+
+Text block hints put the same labels on the text on screen instead of on what you could click:
+paragraphs, headings, list items, quotes, code blocks, table cells and captions, also inside web
+components and in frames from other sites. Each block gets one label, on its first line on screen:
+a list item made of two paragraphs gets a label on each paragraph, and a code block gets one label
+however its lines are built. Hidden blocks, text fields and blocks covered by something else get
+none. Typing a label outlines its block; `Esc` removes the outline. Typing, `Backspace` and `Esc`
+work as they do for link hints, and the outline is drawn by the browser, so the page cannot see
+it.
+
+Text block hints have no key of their own yet. Run them as `:focus_element`, or bind
+`focus_element` to a key in [config.toml](#configtoml), for example `e = "hint.element"` under
+`[modal.normal]`. Copying the outlined block with `y`, or selecting it with `v`, comes in a later
+release.
+
 ### Find
 
 Find works as it does in Vim. `/` opens Firefox's find bar at the foot of the page, empty, and
