@@ -502,8 +502,9 @@ fn failure_of(e: client::Error, waited: Duration) -> Failure {
     }
 }
 
-/// The parent process's name (`/proc/<ppid>/comm`), a label for Vimma's question: at most 32
-/// printable characters. Never proof of anything (decision 4).
+/// The parent process's name, a label for Vimma's question: at most 32 printable characters.
+/// Linux reads `/proc/<ppid>/comm`; macOS has no `/proc` and asks `/bin/ps`. Never proof of
+/// anything (decision 4).
 #[must_use]
 pub fn parent_name() -> Option<String> {
     #[cfg(target_os = "linux")]
@@ -512,8 +513,57 @@ pub fn parent_name() -> Option<String> {
         let comm = std::fs::read_to_string(format!("/proc/{ppid}/comm")).ok()?;
         mcp::clean_label(comm.trim_end_matches('\n'), 32)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        let ppid = std::os::unix::process::parent_id();
+        let output = std::process::Command::new("/bin/ps")
+            .args(["-o", "comm=", "-p", &ppid.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        name_from_ps(&String::from_utf8_lossy(&output.stdout))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         None
+    }
+}
+
+/// `ps -o comm=` on macOS prints the executable's path; the label is its last component.
+#[cfg(any(test, target_os = "macos"))]
+fn name_from_ps(output: &str) -> Option<String> {
+    let path = output.trim_end_matches('\n');
+    mcp::clean_label(path.rsplit('/').next()?, 32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn parent_name_names_the_parent_process() {
+        let name = parent_name().expect("the test runner has a name");
+        assert!(!name.is_empty() && !name.contains('/'), "{name}");
+    }
+
+    #[test]
+    fn name_from_ps_keeps_the_executable_name() {
+        assert_eq!(
+            name_from_ps("/Applications/Claude.app/Contents/MacOS/claude\n"),
+            Some("claude".into())
+        );
+        assert_eq!(name_from_ps("-zsh\n"), Some("-zsh".into()));
+        assert_eq!(
+            name_from_ps(&format!("/bin/{}\n", "a".repeat(40))),
+            Some("a".repeat(32))
+        );
+        assert_eq!(name_from_ps("/bin/x\u{202e}y\n"), Some("xy".into()));
+        assert_eq!(name_from_ps("\n"), None);
+        assert_eq!(name_from_ps("/usr/bin/\n"), None);
     }
 }

@@ -89,7 +89,12 @@ reverted.
     (nsIEventListenerService, as devtools' event collector does), so nothing is injected into
     the page. `html` and `body` are never targets (React and jQuery delegate there). A
     behaviour target inside another target is dropped (a link's inner span), and a label whose
-    control is itself shown is dropped (one hint per control).
+    control is itself shown is dropped (one hint per control). (Since changed: an element that
+    is a target only by a listener or a non-negative `tabindex` no longer hides the targets its
+    markup declares (a role, `label`, `onclick` or `onmousedown`), and gets no label of its own
+    when it holds a menu, list, tree or tab entry, so a menu's item list with a click listener
+    no longer swallows its entries, and a row that opens on click keeps its label next to its
+    checkbox's (#329); described in `actors/hint-collect.mjs`.)
   - Not used: `cursor: pointer`. It needs a computed style for every element on screen, which
     is a large share of the budget with 2,000 on screen; left out of the prototype, so
     delegated click handlers without a role stay unhinted (Limits).

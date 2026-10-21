@@ -111,6 +111,19 @@ only the agent workspace, and every request asks you first (§12).
   [`test_control_on_minutes_turns_itself_off`](../tests/browser/browser_vimma_mcp_control.js),
   [`waits_for_the_users_answer_while_mcp_is_on`](../tools/vimma-ctl/tests/cli.rs),
   [`reports_refused_full_control_with_exit_4`](../tools/vimma-ctl/tests/cli.rs)
+- S14. Without `--profile` or `VIMMA_PROFILE`, `vimma-ctl` **must** read the discovery file only
+  from the default profile in the `profiles.ini` where Firefox keeps it on that platform:
+  `~/Library/Application Support/Vimma/` on macOS, where `XDG_CONFIG_HOME` does not move it, and
+  `$XDG_CONFIG_HOME/vimma/vimma/` (or `~/.config/vimma/vimma/`, or the legacy `~/.vimma/vimma/`)
+  on Linux. Its check that the file's pid still runs (`/proc` on Linux, `/bin/ps` on macOS) is
+  only a hint: a reused pid passes it, and S4's handshake is what keeps the token from a process
+  on the port. `vimma-ctl` runs `/bin/ps` by absolute path, never through `PATH`, and the
+  caller's name it takes from it (`vimma-ctl mcp`) is a label, never proof (§12).
+  [`profiles_root_finds_application_support_vimma_on_macos`](../tools/vimma-ctl/src/discovery.rs),
+  [`xdg_config_home_does_not_move_the_macos_profile_root`](../tools/vimma-ctl/src/discovery.rs),
+  [`a_discovery_file_whose_pid_has_exited_is_stale_on_every_unix`](../tools/vimma-ctl/src/discovery.rs),
+  [`ps_tells_a_running_pid_from_an_exited_one`](../tools/vimma-ctl/src/discovery.rs),
+  [`name_from_ps_keeps_the_executable_name`](../tools/vimma-ctl/src/mcp_serve.rs)
 
 ## 2. Workspace routing (`workspaces/WorkspaceRouter.sys.mjs`)
 
@@ -310,7 +323,8 @@ text that pages, add-ons and bookmarks choose.
     [`exclusions`](../tests/browser/browser_vimma_toolbar.js)
   - Vimma's keys for a permission prompt (`y`, `n`, `Tab`; toolbar shown or hidden) **must
     not** answer it before it has shown for `security.notification_enable_delay` with no key in
-    between (any key restarts the wait), **never** from a text field, and go through Firefox's
+    between (any key restarts the wait), **never** from a text field (the page's, the chrome's,
+    or the prompt's own, such as the password prompt's username), and go through Firefox's
     own buttons, so Firefox's click delay still applies. The wait counts from Firefox's own time
     for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
     moves or resizes, the window is activated or another prompt takes the panel), so an armed key
@@ -321,7 +335,8 @@ text that pages, add-ons and bookmarks choose.
     [`doorhangerKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
     [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
-    [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js)
+    [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
+    [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.

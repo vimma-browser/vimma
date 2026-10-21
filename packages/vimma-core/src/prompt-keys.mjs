@@ -14,6 +14,8 @@
  * @property {boolean} armed  it has shown for the arming delay with no key in between
  * @property {boolean} inField  focus is in an editable field (insert mode)
  * @property {boolean} inPrompt  focus is inside the prompt itself
+ * @property {boolean} [promptField]  focus is in a text field of the prompt's own (the password
+ * prompt's username and password)
  * @property {boolean} pending  a key sequence is under way (after ctrl+b)
  * @property {boolean} [repeat]  the key is held down
  */
@@ -34,9 +36,10 @@
  */
 export function doorhangerKey(key, s) {
   if (!s.open || s.pending) return { kind: "pass" };
-  // Typing in a page's or the chrome's field is never an answer; inside the prompt, focus is
-  // on its buttons or its checkbox, where a letter types nothing.
-  if (s.inField && !s.inPrompt) return { kind: "pass" };
+  // Typing in a field is never an answer, in the page, in the chrome or in the prompt's own
+  // fields. Elsewhere in the prompt, focus is on its buttons or its checkbox, where a letter
+  // types nothing.
+  if ((s.inField && !s.inPrompt) || s.promptField) return { kind: "pass" };
   if (key === "tab") return s.inPrompt ? { kind: "pass" } : { kind: "focus" };
   if (key !== "y" && key !== "n") return { kind: "pass" };
   if (!s.armed || s.repeat) return { kind: "wait" };
@@ -53,12 +56,17 @@ function hintLabel(label) {
 }
 
 /**
- * The keys line shown inside an armed prompt, named after its own buttons.
- * @param {{ main: string, secondary: string }} labels
+ * The keys line shown inside an armed prompt, named after its own buttons. With focus in a field
+ * outside the prompt (a login form that keeps the page leaves it in the password field), the keys
+ * are the field's text, so the line starts with the way out: Esc leaves the field and keeps the
+ * prompt open.
+ * @param {{ main: string, secondary: string, inField?: boolean }} labels
  */
-export function doorhangerHint({ main, secondary }) {
+export function doorhangerHint({ main, secondary, inField = false }) {
   const parts = [`y ${hintLabel(main)}`];
   if (secondary.trim()) parts.push(`n ${hintLabel(secondary)}`);
+  // From a field, Tab is the field's; leaving `Tab buttons` out keeps the line on one row.
+  if (inField) return `Esc, then ${parts.join(" · ")}`;
   parts.push("Tab buttons");
   return parts.join(" · ");
 }

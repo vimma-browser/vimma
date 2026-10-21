@@ -219,8 +219,9 @@ its Rust toolchain and the GitHub Actions current:
 
 - **Weekly, grouped.** On Monday mornings (Helsinki) it opens one PR per ecosystem with every
   minor and patch update, and one PR per major update. A release must be three days old first.
-  Titles read `build(deps): Bump …`. Dependabot's casing and long release-note lines are not
-  configurable, so commitlint skips its commits and their squashes (`tools/commitlint`).
+  Titles read `build(deps): bump …` (older Dependabot versions wrote `Bump`). Dependabot's
+  casing, title length and long release-note lines are not configurable, so commitlint skips its
+  commits and their squashes (`tools/commitlint`).
 - **Security fixes come at once.** A Dependabot alert gets its fix PR as soon as there is one,
   outside the schedule. When a parent package pins the vulnerable version, add an `overrides`
   entry to the root `package.json` instead (as for `sharp` and `qs`) and say why in the PR.

@@ -1,0 +1,127 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_hints.js: an account menu in the shape a Radix dropdown renders,
+   - open over a sidebar. The menu is portalled into <body>, positioned by a transform, animates
+   - in, and turns pointer events off on <body> while open (a modal menu). Its items sit in a
+   - wrapper with a click listener of its own, as a React onClick that stops propagation leaves
+   - it, and mix links with listener-only <div role="menuitem">. Ids name the targets the test
+   - expects; `.no-hint` marks elements that must not get a label. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma hints menu</title>
+    <style>
+      body {
+        margin: 0;
+        font: 16px/1.5 sans-serif;
+      }
+      nav {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 260px;
+        background: #eee;
+      }
+      nav a {
+        display: block;
+        padding: 4px 12px;
+      }
+      #account {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        right: 8px;
+      }
+      main {
+        margin-left: 280px;
+      }
+      [data-radix-popper-content-wrapper] {
+        position: fixed;
+        left: 0;
+        top: 0;
+        min-width: max-content;
+        z-index: 50;
+      }
+      [role="menu"] {
+        width: 240px;
+        padding: 6px;
+        background: #fff;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        outline: none;
+      }
+      [role="menu"][data-state="open"] {
+        animation: menu-in 150ms ease-out;
+      }
+      @keyframes menu-in {
+        from {
+          opacity: 0;
+          transform: scale(0.95) translateY(8px);
+        }
+      }
+      [role="menuitem"] {
+        display: block;
+        padding: 6px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        color: inherit;
+        text-decoration: none;
+        user-select: none;
+      }
+      [role="separator"] {
+        height: 1px;
+        margin: 4px 0;
+        background: #ddd;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a id="chats" class="no-hint" href="?to=chats">Chats</a>
+      <a id="projects" class="no-hint" href="?to=projects">Projects</a>
+      <a id="recent" class="no-hint" href="?to=recent">A recent chat</a>
+      <button id="account" type="button" aria-haspopup="menu" aria-expanded="true">Account</button>
+    </nav>
+    <main><p>The page behind the menu.</p></main>
+    <script>
+      // What a Radix DropdownMenu renders when it opens, in a portal at the end of <body>.
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        `<div data-radix-popper-content-wrapper dir="ltr" id="popper">
+          <div role="menu" aria-orientation="vertical" data-state="open" tabindex="-1"
+               id="menu" style="pointer-events: auto">
+            <div id="items">
+              <div class="no-hint" id="email">someone@example.com</div>
+              <div role="menuitem" tabindex="-1" id="settings">Settings</div>
+              <div role="menuitem" tabindex="-1" aria-haspopup="menu" aria-expanded="false"
+                   id="language">Language <svg width="12" height="12"><path d="M4 2l4 4-4 4"/></svg></div>
+              <a role="menuitem" tabindex="-1" href="?to=help" id="help">Get help</a>
+              <div role="separator"></div>
+              <a role="menuitem" tabindex="-1" href="?to=upgrade" id="upgrade">Upgrade plan</a>
+              <div role="menuitem" tabindex="-1" id="learn">Learn more</div>
+              <div role="separator"></div>
+              <div role="menuitem" tabindex="-1" id="logout">Log out</div>
+              <div role="menuitem" tabindex="-1" class="no-hint" id="hidden"
+                   style="visibility: hidden">Hidden entry</div>
+            </div>
+          </div>
+        </div>`,
+      );
+      // A modal menu: the page under it takes no pointer events while it is open.
+      document.body.style.pointerEvents = "none";
+      const account = document.getElementById("account").getBoundingClientRect();
+      const popper = document.getElementById("popper");
+      popper.style.transform = `translate(${account.left}px, ${account.top - popper.offsetHeight - 4}px)`;
+      for (const id of ["settings", "language", "learn", "logout"]) {
+        document.getElementById(id).addEventListener("click", () => {
+          window.clicked = id;
+        });
+      }
+      // React's onClick on the wrapper: a click listener on an element that is no control.
+      document.getElementById("items").addEventListener("click", (e) => e.stopPropagation());
+    </script>
+  </body>
+</html>

@@ -12,10 +12,11 @@
 const GIT_REVERT = /^(Revert|Reapply) "/;
 const TRAILER = /^(BREAKING[ -]CHANGE|[A-Za-z][\w-]*)(: | #)/;
 /**
- * The header Dependabot writes with the prefixes in .github/dependabot.yml. It capitalises `Bump`
- * and fills the body with release notes over 100 columns; neither is configurable.
+ * The header Dependabot writes with the prefixes in .github/dependabot.yml. Its `Bump` is
+ * capitalised or lower-case depending on Dependabot's version, its titles can pass 100 columns,
+ * and its body holds release notes over 100 columns; none of it is configurable.
  */
-const DEPENDABOT_HEADER = /^(build|ci)\(deps(-dev)?\): Bump \S/;
+const DEPENDABOT_HEADER = /^(build|ci)\(deps(-dev)?\): [Bb]ump \S/;
 
 /**
  * @param {{ type?: string | null, header?: string | null, body?: string | null }} parsed

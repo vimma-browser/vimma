@@ -246,6 +246,10 @@ Where Vimma keeps its files on Linux:
 | `~/.config/vimma/config.toml` | Your config (see [config.toml](#configtoml)). Vimma reads only this file there and never scans the folder. |
 | `~/.config/vimma/vimma/`      | Profiles and `profiles.ini`. If `~/.vimma/vimma/` already exists, Firefox's legacy rule uses that instead. |
 
+On macOS, `config.toml` is in the same place, and the profiles and `profiles.ini` are in
+`~/Library/Application Support/Vimma/`, where Firefox keeps them on a Mac; `XDG_CONFIG_HOME`
+does not move them there.
+
 On a profile's first launch, if `~/.config/vimma/config.toml` does not exist, Vimma creates it
 from the same commented template `:config` writes, so it changes nothing until you uncomment a
 line, and the status bar says `created ~/.config/vimma/config.toml` once. An existing file, even an
@@ -380,15 +384,15 @@ message; and the `ctrl+b ?` overlay dims it.
 
 ### Link hints
 
-Link hints let you click without the mouse. `f` puts a short label on everything you could click
-on screen: links, buttons, form fields,
-and elements the page made clickable (ARIA buttons and tabs, elements with a click handler),
-also inside web components and in frames from other sites. Things off screen, hidden or covered
-by something else (a fixed header, a cookie banner) get no label. Type a label to pick its
-target: a link is followed, a button is pressed, a text field gets focus and the tab is in
-insert mode. Labels use the home row (`a s d f g h j k l`), in reading order: targets near the
-top get the shortest. As you type, labels that no longer match disappear. `Backspace` takes
-back a key and `Esc` leaves hints without doing anything.
+Link hints let you click without the mouse. `f` puts a short label on everything you could click on
+screen: links, buttons, form fields, and elements the page made clickable (ARIA buttons, tabs and
+menu entries, elements with a click handler), also inside web components and in frames from other
+sites. Each entry of an open menu gets its own label, also when the page puts a click handler on the
+list around them. Things off screen, hidden or covered by something else (a fixed header, a cookie
+banner) get no label. Type a label to pick its target: a link is followed, a button is pressed, a
+text field gets focus and the tab is in insert mode. Labels use the home row (`a s d f g h j k l`),
+in reading order: targets near the top get the shortest. As you type, labels that no longer match
+disappear. `Backspace` takes back a key and `Esc` leaves hints without doing anything.
 
 `F` labels links only and opens the one you pick in a new tab in the background, so you stay
 on the page and can pick more.
@@ -615,10 +619,16 @@ from the address bar. Whether the toolbar is shown or hidden, you can answer it 
 `y` and `n` count only once the prompt has been up for half a second (Firefox's own delay for
 these buttons) with no key pressed in between; the line `y allow · n block · Tab buttons` in the
 prompt shows when they do. Any key you press meanwhile starts the wait again, so typing that was
-meant for the page never answers a prompt. While you type in a text field, `y` and `n` are text.
-Vimma never moves focus onto the prompt. The same keys answer Firefox's other prompts in that
-panel, such as saving a password, and the "Add <name>?" prompt for installing an add-on, which
-Firefox opens with focus on the prompt itself.
+meant for the page never answers a prompt. While you type in a text field of the page or the
+address bar, `y` and `n` are text, and the line starts with `Esc, then`: `Esc` leaves the field
+and keeps the prompt open, and then `y` and `n` answer it. Vimma never moves focus onto the prompt. The same keys answer Firefox's
+other prompts in that panel, such as "Save password?" (`y` saves, `n` is Not now), and the "Add
+<name>?" prompt for installing an add-on, which Firefox opens with focus on the prompt itself.
+
+A site whose login keeps you on the same page leaves focus in its password field, so the "Save
+password?" prompt opens with the `Esc, then` line. In the prompt's own username and password
+fields, every key is the field's: a `y` or an `n` there is typed, and `Tab` is Firefox's, as
+everywhere inside the prompt.
 
 ### Colours and themes
 
@@ -1355,13 +1365,15 @@ with the rest of your computer.
 
 #### Keeping agents out of your Vimma profile
 
-Vimma's profiles are in `~/.config/vimma/vimma/` (`~/.vimma/vimma/` on older installs). Nothing
+Vimma's profiles are in `~/.config/vimma/vimma/` (`~/.vimma/vimma/` on older installs;
+`~/Library/Application Support/Vimma/` on macOS). Nothing
 an agent needs is there: `vimma-ctl mcp` reads the one file it needs itself. Use your agent
 tool's settings so its own tools cannot read the folder:
 
 - **Claude Code.** Deny its file tools the folder, and turn on its sandbox for shell commands
   with the same folder denied, in `~/.claude/settings.json`. MCP servers run outside Claude
-  Code's sandbox, so `vimma-ctl mcp` still reaches Vimma.
+  Code's sandbox, so `vimma-ctl mcp` still reaches Vimma. On macOS, deny
+  `~/Library/Application Support/Vimma` in both lists as well.
 
   ```json
   {
@@ -2271,8 +2283,9 @@ is **off by default**.
    vimma-ctl mcp                      # an MCP server for an agent tool (Connecting an agent's tool)
    ```
 
-   It finds your default profile itself; pass `--profile DIR` (or set `VIMMA_PROFILE`) for
-   another one. In Hyprland: `bind = SUPER, slash, exec, vimma-ctl send-keys "ctrl+b ?"`.
+   It finds your default profile itself, in `~/.config/vimma/vimma/` on Linux and in
+   `~/Library/Application Support/Vimma/` on macOS; pass `--profile DIR` (or set
+   `VIMMA_PROFILE`) for another one. In Hyprland: `bind = SUPER, slash, exec, vimma-ctl send-keys "ctrl+b ?"`.
 
    The socket also starts when only agents are on ([`:mcp on`](#agent-workspace)); that side
    is for agents only, so `vimma-ctl` then says the control socket is off until you set

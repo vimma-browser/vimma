@@ -52,6 +52,10 @@ the [user guide](guide.md); planned work is on the
   part of the Vimma window. On Hyprland Vimma hides it in `special:vimma` when you are not using
   it, but `hyprctl clients` and other tools still see both windows. Links from other apps never
   open in it.
+- In the private workspace, Firefox does not open its "Save password?" prompt: as in any private
+  window, it shows only the key icon in the address bar, so `y` and `n` have no prompt to
+  answer. With the toolbar hidden the icon is out of sight too; show the toolbar (`ctrl+b u`)
+  and click the key icon to save the password.
 - [Routing rules](guide.md#routing-which-workspace-a-link-opens-in) do not move a page's own
   navigation or the links a page opens. App rules do not recognise links from Flatpak or other
   sandboxed apps, or from apps started through systemd (`uwsm app`).

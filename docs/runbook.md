@@ -389,7 +389,7 @@ Limits:
 
 | Workflow                   | Trigger                                            | Runner                    | Needs from you                             |
 | -------------------------- | -------------------------------------------------- | ------------------------- | ------------------------------------------ |
-| `ci.yml`                   | push to `main` (once per tree), PRs, manual        | `ubuntu-latest`           | nothing                                    |
+| `ci.yml`                   | push to `main` (once per tree), PRs, manual        | `ubuntu-latest` + macOS   | nothing                                    |
 | `e2e.yml`                  | PRs, manual, upstream.yml                          | `ubuntu-24.04`            | nothing (ADR-010)                          |
 | `nightly.yml`              | 03:00 UTC, manual                                  | `ubuntu-24.04`            | the `NIGHTLY_ENABLED` variable             |
 | `upstream.yml`             | every 4 h (`:17`), manual                          | `ubuntu-latest` + e2e.yml | allow Actions to open PRs; optional token  |
@@ -436,6 +436,9 @@ these status checks must pass:
 - `CodeQL (javascript-typescript)` and `CodeQL (rust)` (codeql.yml)
 
 The ruleset also requires CodeQL code scanning results without errors or high-severity alerts.
+`vimma-ctl on macOS` (ci.yml, spec macos-build, sub-PR 2) runs vimma-ctl's clippy and tests on
+`macos-15` and is informational: it is not in the ruleset, so a red run shows on the pull
+request without blocking it.
 A required check whose workflow never starts stays pending and blocks the merge, so none of
 these workflows has a `paths` filter; a job or step skipped by `if:` reports success instead
 (next section).
@@ -2022,7 +2025,7 @@ scanning.
 ### Licences
 
 `npm run license-check` checks every package in `package-lock.json` against MIT, ISC,
-BSD-2/3-Clause, Apache-2.0, MPL-2.0. Reviewed exceptions live in
+BSD-2/3-Clause, Apache-2.0, MPL-2.0 and PSF-2.0 (also under its former id, Python-2.0). Reviewed exceptions live in
 `tools/license-check/exceptions.json`, keyed by exact `name@version`, so an upgrade must be
 re-reviewed; stale exceptions fail the check too.
 
