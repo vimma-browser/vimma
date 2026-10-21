@@ -96,6 +96,7 @@ npm run lint             # eslint + prettier --check + no process wording in Mar
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
 npm run sites -- --filter github                          # live sites, a report (docs/runbook.md)
+npm run sites -- --offline --artifact                     # recorded pages, no network: the PR gate
 ```
 
 `npm run mochitest` runs mach with the first `python3`, then `python3.N`, on `PATH` whose

@@ -62,6 +62,7 @@ export const CHECKS = /** @type {const} */ ([
  * @property {string} build
  * @property {string | null} commit
  * @property {string | null} [filter]  the --filter, when only some sites ran
+ * @property {boolean} [offline]  the snapshots were replayed (--offline), not the live sites
  * @property {SiteResult[]} sites
  * @property {string | null} harnessError
  */

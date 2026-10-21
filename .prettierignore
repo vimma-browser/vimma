@@ -24,3 +24,7 @@ tools/package/vendor/spdx-license-list-*/
 
 # upstream autopilot fixtures: excerpts of Mozilla's live feeds, byte-exact as served (tools/upstream/test)
 tools/upstream/test/fixtures/
+
+# recorded site snapshots: byte-exact as the recorder writes them (tools/sites/snapshot.mjs)
+tests/e2e/fixtures/sites/*.html
+!tests/e2e/fixtures/sites/followed.html

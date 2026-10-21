@@ -28,6 +28,8 @@ tools/vimma-ctl/target/
 e2e-output/
 # site-compat output: results, reports, screenshots (tools/sites, docs/specs/site-compat.md)
 site-compat-output/
+# the offline snapshot gate's output (npm run sites -- --offline)
+site-compat-offline/
 # semgrep.yml output when run locally (docs/runbook.md, "Security scanning")
 semgrep.json
 semgrep.sarif
