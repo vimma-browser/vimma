@@ -323,7 +323,8 @@ text that pages, add-ons and bookmarks choose.
     [`exclusions`](../tests/browser/browser_vimma_toolbar.js)
   - Vimma's keys for a permission prompt (`y`, `n`, `Tab`; toolbar shown or hidden) **must
     not** answer it before it has shown for `security.notification_enable_delay` with no key in
-    between (any key restarts the wait), **never** from a text field, and go through Firefox's
+    between (any key restarts the wait), **never** from a text field (the page's, the chrome's,
+    or the prompt's own, such as the password prompt's username), and go through Firefox's
     own buttons, so Firefox's click delay still applies. The wait counts from Firefox's own time
     for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
     moves or resizes, the window is activated or another prompt takes the panel), so an armed key
@@ -334,7 +335,8 @@ text that pages, add-ons and bookmarks choose.
     [`doorhangerKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
     [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
-    [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js)
+    [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
+    [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.
@@ -567,7 +569,20 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
 - G11. A merged `upstream` PR labelled `security` **must** set the release PR to auto-merge in the
   same `release-please.yml` run when `AUTO_SECURITY_RELEASE` is on, pinned to the release PR's
   head commit, and **never** any other PR. The merge goes through `RELEASE_PLEASE_TOKEN` and
-  GitHub's auto-merge, so the `main` ruleset's required checks still gate it.
+  GitHub's auto-merge, so the `main` ruleset's required checks still gate it. The release PR
+  opens as a draft, whose rebuilds skip the mochitests, Semgrep and CodeQL while still reporting
+  every required check (docs/runbook.md, "Draft pull requests"); the job marks it ready for review
+  through the same token, which starts those checks on the pinned head, and sets auto-merge only
+  once the newest mochitest and Semgrep checks there are not the draft's skips. No CodeQL
+  analysis exists for a draft's head, so the code scanning rule also holds the merge until the
+  run after "ready for review" has uploaded one. Only `opened` and `synchronize` skip, so no
+  skipped success ever replaces a real result on a head, and a run whose checks were skipped
+  never covers a push to `main` (`tools/ci/tree-covered.mjs`).
+  [`sets auto-merge only once the slow checks of the ready run have replaced the draft's`](../tools/release/test/security-release.test.mjs),
+  [`finds no cover in a run whose checks were skipped, such as a draft's`](../tools/ci/test/tree-covered.test.mjs),
+  [`marks a draft release PR ready for review, then sets it to auto-merge`](../tools/release/test/security-release.test.mjs),
+  [`the mochitests, Semgrep and CodeQL skip a draft and still report their required checks`](../tools/test/draft-pull-requests.test.mjs),
+  [`CodeQL still uploads an analysis for every pull request that is not a draft`](../tools/test/draft-pull-requests.test.mjs),
   [`auto-merges the release PR after a merged security bump`](../tools/release/test/security-release.test.mjs),
   [`does nothing for an upstream bump without the security label`](../tools/release/test/security-release.test.mjs),
   [`does nothing for a security-labelled PR from another branch or a fork`](../tools/release/test/security-release.test.mjs),
@@ -1522,3 +1537,58 @@ still name only the project's own release downloads (UP5), and only the AppImage
 anything, and only a release asset of the project (UP10).
 It can also mark such an offer as a security release, and hold back genuine manifests for up to a
 day by signing a serial ahead of the clock (UP2).
+
+## 17. Site compatibility workflow (`sites.yml`, `tools/sites`)
+
+Spec: [site-compat](specs/site-compat.md), decisions 1, 11 and 12. Every night a hosted runner
+loads about 25 live websites in an artifact build, compares the results with the previous
+scheduled run and keeps one issue labelled `site-compat` up to date. Who can reach it: the
+_pages_ it loads, which choose their titles, their text, where they redirect and what the checks
+report about them, and so choose text that ends up in a GitHub issue. Nobody else: the workflow
+runs on `schedule` and `workflow_dispatch` only, never on a pull request.
+
+- SC1. The job that runs the browser on live pages holds **only** `contents: read`, and no step
+  of it keeps or exports a token (checkout uses its read-only token and does not persist it); the workflow reads no secret, and the top-level permissions are empty. The
+  diff and the issue text are made by a second job, on a fresh runner, from that job's
+  `results.json` alone, with read permissions only (`actions` for the artifacts, `issues` to
+  find the open issue), so code that escaped the browser onto its runner could not rewrite the
+  issue text. The suite's step turns workflow commands off while it logs page text, so a page
+  cannot add annotations or masks to the run.
+  [`the browser job only reads the repository, and holds no token in any step`](../tools/test/sites-workflow.test.mjs),
+  [`the compare job only reads, and works from the browser job's results.json alone`](../tools/test/sites-workflow.test.mjs),
+  [`stops workflow commands while the suite logs page text`](../tools/test/sites-workflow.test.mjs),
+  [`has no secrets, and no permission at the top level`](../tools/test/sites-workflow.test.mjs),
+  [`runs nightly and by hand, never on a pull request or a push`](../tools/test/sites-workflow.test.mjs)
+- SC2. `issues: write` is **only** in the report job, which checks out nothing and runs no
+  repository code: it runs `gh` on the `issue.md` the compare job wrote, passed as `--body-file`.
+  The action and issue number reach its script through `env`, never through an expression in the
+  script, and the number must be digits.
+  The report job downloads the compare job's own upload by its artifact id, and runs only when
+  that job succeeded, so an artifact of the same name uploaded from the browser job's runner is
+  never the one posted.
+  [`issues: write is only in the report job, which checks out and runs no repository code`](../tools/test/sites-workflow.test.mjs),
+  [`the report job takes the compare job's own upload, by id, only after it succeeded`](../tools/test/sites-workflow.test.mjs)
+- SC3. Text from a page or a check (titles, failure reasons) **never** reaches the issue body
+  outside an inline code span, so GitHub renders no mention, issue or commit reference, link,
+  image or HTML from it. Each value is put on one line with control and format characters
+  (bidirectional overrides among them) replaced, cut to 160 characters, and fenced with more
+  backticks than it contains. Lists stop at 50 entries and the body at 60 000 characters. The run
+  link is written only when it is a GitHub Actions run URL, and the baseline's commit only when
+  it is hexadecimal.
+  [`puts no untrusted text outside a code span`](../tools/sites/test/diff.test.mjs),
+  [`wraps text in a code span, where GitHub renders no mention, reference, link or HTML`](../tools/sites/test/diff.test.mjs),
+  [`picks a fence longer than any run of backticks inside, padded at a backtick edge`](../tools/sites/test/diff.test.mjs),
+  [`puts everything on one line: newlines, control and bidirectional characters`](../tools/sites/test/diff.test.mjs),
+  [`cuts to MAX_TEXT characters, and says when it is empty`](../tools/sites/test/diff.test.mjs),
+  [`caps the list and the body`](../tools/sites/test/diff.test.mjs),
+  [`drops a run URL that is not GitHub's`](../tools/sites/test/diff.test.mjs)
+- SC4. The previous run's `results.json` and `diff.json` are used **only** when they have the
+  expected shape: site ids of lowercase letters, digits and dashes, statuses and check ids from
+  fixed sets, strings where strings belong. Anything else is reported and compared as no
+  baseline, so a damaged artifact cannot inject names or open an issue. Site names come from the
+  repository's `sites.json`, whose test forbids anything GitHub would turn into a mention,
+  reference or link.
+  [`names nothing GitHub would turn into a mention, reference or link`](../tools/sites/test/sites-data.test.mjs),
+  [`rejects a run of the wrong shape, unknown statuses and check ids, and odd site ids`](../tools/sites/test/diff.test.mjs),
+  [`round-trips the tracked list through diff.json, and rejects one of the wrong shape`](../tools/sites/test/diff.test.mjs),
+  [`reports no baseline when the previous artifact is missing or malformed`](../tools/sites/test/compare.test.mjs)

@@ -9,7 +9,8 @@ How to build, run and test Vimma, and how changes get in. For why Vimma exists, 
 - About 35 GB of free disk space, as measured on one machine: `engine/` 27 GB (source and the
   full build), the sccache compiler cache 6.8 GB, toolchains in `~/.mozbuild` 3.1 GB and the
   Firefox source download in `.surfer/` 0.8 GB.
-- Node.js 20 or later, Python 3, git.
+- Node.js 20 or later, git, and Python 3.10 to 3.14: the range `engine/mach` declares it supports.
+  A newer Python breaks mach in places; Python 3.15 cannot parse the test manifests.
 - Time: the first full build took 39 min on a 16-thread Ryzen with 58 GB RAM. The Firefox source
   download took 12.5 min. See [docs/runbook.md](docs/runbook.md).
 
@@ -96,6 +97,11 @@ npm run mochitest -- tests/browser/                       # browser tests on you
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
 npm run sites -- --filter github                          # live sites, a report (docs/runbook.md)
 ```
+
+`npm run mochitest` runs mach with the first `python3`, then `python3.N`, on `PATH` whose
+version is inside the range `engine/mach` declares, and says which one it chose when it skipped
+another. It stops with the interpreters it found when none fits. Set `VIMMA_MACH_PYTHON` to an
+interpreter's path to choose one yourself.
 
 A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/temp-dir.mjs`,
 which removes it when the test ends, also when it fails. `npm test` runs with a `TMPDIR` of its

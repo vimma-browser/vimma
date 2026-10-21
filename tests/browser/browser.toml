@@ -35,6 +35,7 @@ support-files = [
   "file_vimma_hints.html",
   "file_vimma_hints_frame.html",
   "file_vimma_hints_many.html",
+  "file_vimma_hints_menu.html",
 ]
 
 ["browser_vimma_copy_mode.js"]
@@ -130,6 +131,7 @@ support-files = ["file_vimma_search_post.sjs"]
 support-files = [
   "file_vimma_find.html",
   "file_vimma_find_field.html",
+  "file_vimma_find_site_fields.html",
   "file_vimma_find_frame.html",
   "file_vimma_test.pdf",
 ]
@@ -277,3 +279,6 @@ support-files = ["file_vimma_update_manifest.sjs", "file_vimma_update_appimage.s
 
 ["browser_vimma_update_notices.js"]
 support-files = ["file_vimma_update_manifest.sjs", "file_vimma_plain.html"]
+
+["browser_vimma_password_prompt.js"]
+support-files = ["file_vimma_login.html", "file_vimma_plain.html"]

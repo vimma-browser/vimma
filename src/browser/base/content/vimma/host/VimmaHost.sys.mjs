@@ -1424,6 +1424,8 @@ export const VimmaHost = {
       });
       promptKeys.init();
       state.promptKeys = promptKeys;
+      // Leaving a field (Esc) changes what the keys line says.
+      state.listeners.add(() => promptKeys.refresh());
     } catch (e) {
       console.error("vimma: permission prompt keys unavailable", e);
     }

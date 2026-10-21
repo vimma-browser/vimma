@@ -48,18 +48,35 @@ export function workflowFile(ref) {
   return /** @type {string} */ (match[1]);
 }
 
+/** The guard job's name in every gated workflow; it is skipped on every pull request run. */
+export const GUARD_JOB = "tree already checked on a pull request?";
+
 /**
- * The newest run whose head commit has `tree`. A head commit the API no longer has (null from
- * `treeOf`) is skipped. Each head commit is looked up once: re-runs share one.
- * @param {{ tree: string, runs: readonly Run[], treeOf: (sha: string) => Promise<string | null> }} q
+ * Whether a successful run checked anything: every job but the guard ran. A run also succeeds
+ * when its checks were skipped by `if:`, as a draft pull request's Semgrep scan is (issue #443),
+ * and such a run covers nothing. Steps skipped inside a job that ran, as on a docs-only pull
+ * request, still count (docs/runbook.md, "Once per tree").
+ * @param {any} list the JSON of `actions/runs/{id}/jobs`
+ */
+export function completeRun(list) {
+  const jobs = Array.isArray(list?.jobs) ? list.jobs.filter((j) => j?.name !== GUARD_JOB) : [];
+  return jobs.length > 0 && jobs.every((j) => j?.conclusion !== "skipped");
+}
+
+/**
+ * The newest run whose head commit has `tree` and that `complete` accepts. A head commit the
+ * API no longer has (null from `treeOf`) is skipped. Each head commit is looked up once: re-runs
+ * share one.
+ * @param {{ tree: string, runs: readonly Run[], treeOf: (sha: string) => Promise<string | null>,
+ *   complete?: (run: Run) => Promise<boolean> }} q
  * @returns {Promise<Run | null>}
  */
-export async function coveringRun({ tree, runs, treeOf }) {
+export async function coveringRun({ tree, runs, treeOf, complete = async () => true }) {
   /** @type {Map<string, string | null>} */
   const trees = new Map();
   for (const run of runs) {
     if (!trees.has(run.head_sha)) trees.set(run.head_sha, await treeOf(run.head_sha));
-    if (trees.get(run.head_sha) === tree) return run;
+    if (trees.get(run.head_sha) === tree && (await complete(run))) return run;
   }
   return null;
 }
@@ -85,7 +102,11 @@ export async function findCover({ repo, workflow, sha, api }) {
     `repos/${repo}/actions/workflows/${workflow}/runs?event=pull_request&status=success&per_page=${PER_PAGE}`,
   );
   const runs = Array.isArray(list?.workflow_runs) ? list.workflow_runs : [];
-  return { tree, run: await coveringRun({ tree, runs, treeOf }) };
+  /** @param {Run} run */
+  const complete = async (run) =>
+    Number.isInteger(run.id) &&
+    completeRun(await api(`repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`));
+  return { tree, run: await coveringRun({ tree, runs, treeOf, complete }) };
 }
 
 /**

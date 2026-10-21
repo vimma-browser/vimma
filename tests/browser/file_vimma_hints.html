@@ -2,9 +2,10 @@
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-<!-- Fixture for browser_vimma_hints.js: every kind of hint target, a link hidden under a fixed
-   - header, links below the fold and one in a cross-origin frame. Ids name the targets the
-   - test expects; `.no-hint` marks elements that must not get a label. -->
+<!-- Fixture for browser_vimma_hints.js: every kind of hint target, a row with a click listener
+   - that holds a checkbox, a link hidden under a fixed header, links below the fold and one in
+   - a cross-origin frame. Ids name the targets the test expects; `.no-hint` marks elements that
+   - must not get a label. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -56,6 +57,12 @@
         <span id="plain" class="no-hint">plain text</span>
       </p>
       <p>
+        <span id="row"
+          >a row that opens on click
+          <span id="rowcheck" role="checkbox" aria-checked="false" tabindex="0">[ ]</span></span
+        >
+      </p>
+      <p>
         <span style="visibility: hidden"><a id="invisible" class="no-hint" href="?h">x</a></span>
       </p>
       <div id="host"></div>
@@ -71,6 +78,10 @@
     <script>
       document.getElementById("listener").addEventListener("click", () => {
         window.listenerClicked = true;
+      });
+      // A row with only a listener that holds a control: both keep their labels.
+      document.getElementById("row").addEventListener("click", () => {
+        window.rowClicked = true;
       });
       document.getElementById("button").addEventListener("click", () => {
         window.buttonClicked = true;

@@ -434,9 +434,10 @@ describe("e2e.yml concurrency", () => {
   it("a run cancels only an older run of the same ref and version", () => {
     // A manual Beta run on a branch must not cancel the canary's run of that Beta on main, nor
     // the autopilot's run on main a manual run without a version; a new push to a PR still
-    // cancels that PR's older run.
+    // cancels that PR's older run. Only a PR run cancels: a manual run of the version the
+    // autopilot or the canary is testing waits for that run (workflow-concurrency.test.mjs).
     expect(e2e).toContain("group: e2e-${{ github.ref }}-${{ inputs.firefox-version }}");
-    expect(e2e).toContain("cancel-in-progress: true");
+    expect(e2e).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
   });
 });
 

@@ -387,15 +387,15 @@ message; and the `ctrl+b ?` overlay dims it.
 
 ### Link hints
 
-Link hints let you click without the mouse. `f` puts a short label on everything you could click
-on screen: links, buttons, form fields,
-and elements the page made clickable (ARIA buttons and tabs, elements with a click handler),
-also inside web components and in frames from other sites. Things off screen, hidden or covered
-by something else (a fixed header, a cookie banner) get no label. Type a label to pick its
-target: a link is followed, a button is pressed, a text field gets focus and the tab is in
-insert mode. Labels use the home row (`a s d f g h j k l`), in reading order: targets near the
-top get the shortest. As you type, labels that no longer match disappear. `Backspace` takes
-back a key and `Esc` leaves hints without doing anything.
+Link hints let you click without the mouse. `f` puts a short label on everything you could click on
+screen: links, buttons, form fields, and elements the page made clickable (ARIA buttons, tabs and
+menu entries, elements with a click handler), also inside web components and in frames from other
+sites. Each entry of an open menu gets its own label, also when the page puts a click handler on the
+list around them. Things off screen, hidden or covered by something else (a fixed header, a cookie
+banner) get no label. Type a label to pick its target: a link is followed, a button is pressed, a
+text field gets focus and the tab is in insert mode. Labels use the home row (`a s d f g h j k l`),
+in reading order: targets near the top get the shortest. As you type, labels that no longer match
+disappear. `Backspace` takes back a key and `Esc` leaves hints without doing anything.
 
 `F` labels links only and opens the one you pick in a new tab in the background, so you stay
 on the page and can pick more.
@@ -424,7 +424,8 @@ is on screen), as Vim's starts at the cursor.
   last match before where you were. After `?`, `n` goes on backward and `N` forward.
 - **A match in a text field** (a site's search box that holds your query) is selected there,
   but the field does not keep the focus: you stay in normal mode and `n` / `N` go on to the
-  next match. `i` or a click puts you in the field.
+  next match. `i`, a click, or the page itself focusing the field puts you in it, in insert
+  mode.
 
 `ctrl+f` still opens Firefox's own find bar, where `Enter` goes to the next match.
 
@@ -622,10 +623,16 @@ from the address bar. Whether the toolbar is shown or hidden, you can answer it 
 `y` and `n` count only once the prompt has been up for half a second (Firefox's own delay for
 these buttons) with no key pressed in between; the line `y allow · n block · Tab buttons` in the
 prompt shows when they do. Any key you press meanwhile starts the wait again, so typing that was
-meant for the page never answers a prompt. While you type in a text field, `y` and `n` are text.
-Vimma never moves focus onto the prompt. The same keys answer Firefox's other prompts in that
-panel, such as saving a password, and the "Add <name>?" prompt for installing an add-on, which
-Firefox opens with focus on the prompt itself.
+meant for the page never answers a prompt. While you type in a text field of the page or the
+address bar, `y` and `n` are text, and the line starts with `Esc, then`: `Esc` leaves the field
+and keeps the prompt open, and then `y` and `n` answer it. Vimma never moves focus onto the prompt. The same keys answer Firefox's
+other prompts in that panel, such as "Save password?" (`y` saves, `n` is Not now), and the "Add
+<name>?" prompt for installing an add-on, which Firefox opens with focus on the prompt itself.
+
+A site whose login keeps you on the same page leaves focus in its password field, so the "Save
+password?" prompt opens with the `Esc, then` line. In the prompt's own username and password
+fields, every key is the field's: a `y` or an `n` there is typed, and `Tab` is Firefox's, as
+everywhere inside the prompt.
 
 ### Colours and themes
 
@@ -636,9 +643,10 @@ the palette of [vimma.dev](https://vimma.dev): near-black surfaces, grey-green t
 for the accent, the normal-mode badge and link hints. It has a dark and a light variant, and by
 default it follows your system's or Firefox's light or dark setting (`prefers-color-scheme`),
 switching the moment that changes, without a reload. Firefox's own focus rings follow the theme
-too: the address bar's focus ring and the outline of the focused pane in a split are the theme's
-accent (made a shade darker or lighter if it would not stand out at 3:1 against the colours
-around it), and so are the focus rings of Vimma's own side panel, bookmarks panel, pickers and
+too: the address bar's focus ring and the 3 px border of the focused pane in a split are the
+theme's accent (made a shade darker or lighter if it would not stand out at 3:1 against the
+colours around it; on Omarchy, the accent your theme gives Kitty's active split and Hyprland's
+focused window), and so are the focus rings of Vimma's own side panel, bookmarks panel, pickers and
 help overlay. Firefox's own sidebar (history, bookmarks and synced tabs, opened from the toolbar's
 sidebar button or the View menu) follows the theme as well: its launcher strip and panel
 are on the same surface as Vimma's side panel, with the theme's text, edge and focus colours (the
@@ -783,7 +791,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b shift+b`                                                                        | Opens or closes the bookmarks panel ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b e`                                                                              | Opens the add-on picker: popups, options, enable/disable, remove, updates ([below](#add-ons)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `ctrl+b v` / `ctrl+b -`                                                                 | Splits the pane right / down. The new pane opens a new tab (the start page, address bar focused). At most 4 panes (`[panes] max`); a refused split says why.                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `ctrl+b h j k l`                                                                        | Focuses the pane left / below / above / right; when several touch, the one used last. `ctrl+w h j k l` in normal mode. The page of that pane gets focus.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `ctrl+b h j k l`                                                                        | Focuses the pane left / below / above / right; when several touch, the one used last. `ctrl+w h j k l` in normal mode. The page of that pane gets focus, and the pane a 3 px border in the theme's focus colour.                                                                                                                                                                                                                                                                                                                                                                          |
 | `ctrl+b z`, `ctrl+w o`                                                                  | Zooms the pane to the whole window, or back. The other panes' pages pause. A pane focus key unzooms when it moves.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `ctrl+b x`                                                                              | Closes the pane; its tab stays open. With one pane it closes the tab, as `ctrl+b shift+x`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b shift+h j k l`                                                                  | Swaps the pane with the one left / below / above / right; it keeps focus and its page. `ctrl+w H J K L` in normal mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -810,6 +818,11 @@ page's own digit shortcuts need `i` first.
 Clicking into a pane focuses it, as `ctrl+b h/j/k/l` would. So does selecting a pane's tab any
 other way (tab search, `ctrl+tab`, `alt+1..9`): the status bar's `pane n/m` and the
 address bar follow, and a zoom ends, as it does when a pane key moves.
+
+The focused pane has a 3 px border in the theme's focus colour, drawn over the outer edge of its
+page so the page does not move or resize when focus does; the other panes keep a thin separator
+and are not dimmed. There is no border with one pane, on a zoomed pane, while the split is
+hidden, or on a page in fullscreen.
 
 ### Picking a tab during a split
 
@@ -2503,7 +2516,8 @@ screen reader on top of Firefox's own accessibility support. On Linux that is Or
   Vimma palette, in the built-in Tokyo Night palette and in light themes: secondary and coloured
   text is darkened or lightened just enough on the theme's backgrounds, so a theme keeps its
   colours where they already read. A `[theme.colors]` foreground you set yourself is used as is,
-  with a warning in `about:vimma` when it falls short.
+  with a warning in `about:vimma` when it falls short. Focus rings, and the border of the
+  focused pane in a split, reach 3:1 against the chrome around them.
 - **Motion.** Nothing in Vimma's own UI animates, so there is nothing for
   `prefers-reduced-motion` to turn off.
 - **Every key is remappable** for motor needs: the prefix, the leader and any binding, including

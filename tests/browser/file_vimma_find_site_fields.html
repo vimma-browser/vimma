@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_find.js (#442): search fields built the way large sites build
+   - theirs, each holding its query, as on a results page, before that query in the page's text.
+   - YouTube: an input in a form inside a custom element (light DOM). Google: a textarea with
+   - role=combobox. DuckDuckGo: a plain text input. And an input in an open shadow root. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma site search fields</title>
+    <style>
+      body {
+        margin: 0;
+        font: 16px/1.5 sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <yt-searchbox>
+      <form action="/results" role="search">
+        <input id="yt" name="search_query" type="text" value="kestrel" autocomplete="off" />
+      </form>
+    </yt-searchbox>
+    <form action="/search">
+      <textarea id="g" name="q" role="combobox" rows="1" aria-autocomplete="both">osprey</textarea>
+    </form>
+    <form action="/">
+      <input id="ddg" name="q" type="text" value="plover" />
+    </form>
+    <shadow-search id="host"></shadow-search>
+    <p>kestrel osprey plover merlin</p>
+    <script>
+      customElements.define(
+        "shadow-search",
+        class extends HTMLElement {
+          constructor() {
+            super();
+            const input = document.createElement("input");
+            input.id = "inner";
+            input.type = "search";
+            input.value = "merlin";
+            this.attachShadow({ mode: "open" }).append(input);
+          }
+        },
+      );
+    </script>
+  </body>
+</html>

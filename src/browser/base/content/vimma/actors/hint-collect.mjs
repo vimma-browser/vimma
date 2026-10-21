@@ -41,12 +41,14 @@ const STRONG = [
   "[contenteditable]:not([contenteditable=false])",
 ].join(",");
 
-/** Hintable by a hint of behaviour; dropped inside another target, so a link's span is not. */
-const WEAK = [
+/**
+ * Hintable by a hint of behaviour the markup declares; dropped inside another target, so a
+ * link's span is not.
+ */
+const DECLARED = [
   "label",
   "[onclick]",
   "[onmousedown]",
-  "[tabindex]:not([tabindex^='-'])",
   ...[
     "button",
     "link",
@@ -64,6 +66,20 @@ const WEAK = [
     "searchbox",
   ].map((r) => `[role=${r}]`),
 ].join(",");
+
+/**
+ * Hintable only by inference: focusable, or a listener (below). Such an element that holds an
+ * entry of a list (ENTRIES) is the list's wrapper (a menu's items with a React onClick, a
+ * focusable listbox), not a control: it gets no label. Holding any other control does not make
+ * it yield, so a row that opens on click and holds a checkbox keeps its label, and so does the
+ * checkbox (no inferred target hides a declared one, below).
+ */
+const FOCUSABLE = "[tabindex]:not([tabindex^='-'])";
+
+/** The entries of menus, lists, trees and tab lists. */
+const ENTRIES = ["menuitem", "menuitemcheckbox", "menuitemradio", "option", "treeitem", "tab"]
+  .map((r) => `[role=${r}]`)
+  .join(",");
 
 const LINKS = "a[href]";
 
@@ -205,7 +221,9 @@ export function collectTargets(win, { linksOnly }) {
   /** @type {Set<Element>} */
   const strong = new Set();
   /** @type {Set<Element>} */
-  const weak = new Set();
+  const declared = new Set();
+  /** @type {Set<Element>} */
+  const inferred = new Set();
   /** @type {Element[]} */
   const frameEls = [];
   const strongSelector = linksOnly ? LINKS : STRONG;
@@ -216,14 +234,28 @@ export function collectTargets(win, { linksOnly }) {
     } else if (el.matches(strongSelector)) {
       strong.add(el);
     } else if (!linksOnly && !NEVER.has(name)) {
-      if (el.matches(WEAK) || LISTENER_TYPES.some((type) => els.hasListenersFor(el, type))) {
-        weak.add(el);
+      if (el.matches(DECLARED)) {
+        declared.add(el);
+      } else if (
+        el.matches(FOCUSABLE) ||
+        LISTENER_TYPES.some((type) => els.hasListenersFor(el, type))
+      ) {
+        inferred.add(el);
       }
+    }
+  }
+  if (inferred.size) {
+    for (const el of declared) {
+      if (!el.matches(ENTRIES)) continue;
+      for (let p = parentOf(el); p; p = parentOf(p)) inferred.delete(p);
     }
   }
 
   /** @type {Set<Element>} */
-  const all = new Set([...strong, ...weak]);
+  /** @type {Set<Element>} */
+  const named = new Set([...strong, ...declared]);
+  /** @type {Set<Element>} */
+  const all = new Set([...named, ...inferred]);
   /** @type {Found[]} */
   const targets = [];
   /** @type {Set<Element>} */
@@ -232,8 +264,9 @@ export function collectTargets(win, { linksOnly }) {
   const labels = [];
   for (const el of all) {
     if (targets.length >= MAX_TARGETS) break;
-    const isStrong = strong.has(el);
-    if (!isStrong && insideCandidate(el, all)) continue;
+    // A declared target is dropped only inside a strong or declared one: a row that opens on
+    // click does not hide the checkbox in it.
+    if (!strong.has(el) && insideCandidate(el, declared.has(el) ? named : all)) continue;
     if (
       el.localName !== "a" &&
       /** @type {HTMLElement} */ (el).isContentEditable &&
