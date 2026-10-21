@@ -121,7 +121,9 @@ The `.rpm` is a new release asset under the same rules as the others (docs/secur
 listed in `SHA256SUMS`, signed by the `sign` job, built and installed before anything is signed.
 The spec generator places the staged root's path in a shell command and two values in rpm
 macros unquoted, so it accepts only an absolute path of `[A-Za-z0-9._/-]` and library names of
-`[A-Za-z0-9._+-]`, and the maintainer line only as `Name <email>`. The update command for it is
+`[A-Za-z0-9._+-]`, the output directory only as a path of `[A-Za-z0-9._/-]`, and the maintainer
+line only as `Name <email>` without `%`, since rpm expands macros in tag values and in its
+`--define` values. The update command for it is
 held to UP8: `curl -f --proto =https`, then `sha512sum -c` before dnf or zypper runs. The new
 CI inputs are `rpm` from Ubuntu's archive and the `fedora` and `opensuse/leap` images, pinned by
 digest; none of them runs with a secret or a write token.

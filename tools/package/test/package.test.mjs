@@ -448,6 +448,12 @@ describe("RPM spec", () => {
     },
   );
 
+  it("refuses a maintainer with a %, which rpm would expand as a macro", () => {
+    expect(() =>
+      rpmSpec({ version: "0.1.0", maintainer: "x %(id) <a@b.c>", stage: "/s", bundled }),
+    ).toThrow(/maintainer/);
+  });
+
   it("refuses a bundled library name it could not quote", () => {
     expect(() =>
       rpmSpec({ version: "0.1.0", maintainer: MAINTAINER, stage: "/s", bundled: ["lib(x).so"] }),
@@ -1031,6 +1037,22 @@ describe("packageRelease refuses bad input", () => {
 
   it("a tarball of another brand", () => {
     expect(run(fakeMachTarball({ name: "Firefox" }))).toThrow(/Name=Firefox/);
+  });
+
+  it("an output dir rpm's macro expander would change, before rpmbuild runs", () => {
+    const outDir = join(tempDir("vimma-out-"), "a%{x}b");
+    expect(() =>
+      packageRelease({
+        tarball: fakeMachTarball(),
+        outDir,
+        config: surfer("0.1.0"),
+        maintainer: MAINTAINER,
+        repo: REPO,
+        brandDir: BRAND_DIR,
+        buildDeb: false,
+        buildRpm: true,
+      }),
+    ).toThrow(/rpm output dir/);
   });
 });
 

@@ -27,7 +27,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.mjs";
@@ -464,6 +464,9 @@ License: MPL-2.0
  */
 export function rpmSpec({ version, maintainer, stage, bundled }) {
   checkMaintainer(maintainer);
+  // rpm expands macros in tag values, so a % in Packager could run a command in rpmbuild.
+  if (maintainer.includes("%"))
+    throw new Error(`rpm: maintainer must not contain %: ${maintainer}`);
   // The path goes into a shell command and through rpm's macro expander unquoted.
   if (!/^\/[A-Za-z0-9._/-]+$/.test(stage)) {
     throw new Error(`rpm stage must be an absolute path of [A-Za-z0-9._/-], got: ${stage}`);
@@ -934,6 +937,11 @@ function packageIn(work, options) {
   symlinkSync(`../lib/${APP}/${LAUNCHER_NAME}`, join(rpmRoot, `usr/bin/${LAUNCHER_NAME}`));
   writeFile(join(rpmRoot, `usr/share/doc/${APP}/copyright`), COPYRIGHT);
   if (options.buildRpm !== false) {
+    // rpmbuild macro-expands its --define values too.
+    const rpmOut = resolve(out);
+    if (!/^\/[A-Za-z0-9._/-]+$/.test(rpmOut)) {
+      throw new Error(`rpm output dir must be a path of [A-Za-z0-9._/-], got: ${rpmOut}`);
+    }
     const top = join(work, "rpmbuild");
     rmSync(top, { recursive: true, force: true });
     mkdirSync(top, { recursive: true });
@@ -956,7 +964,7 @@ function packageIn(work, options) {
         "--define",
         `_topdir ${top}`,
         "--define",
-        `_rpmdir ${out}`,
+        `_rpmdir ${rpmOut}`,
         // Straight into the output dir under the release name, not RPMS/x86_64/.
         "--define",
         "_build_name_fmt %{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}.rpm",

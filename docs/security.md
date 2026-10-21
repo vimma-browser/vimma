@@ -1104,9 +1104,10 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   Fedora and openSUSE carries no OpenPGP signature of its own (no key exists to sign it with):
   `SHA256SUMS` and its cosign bundle cover it as they cover the `.deb`, which is why the
   documented zypper command passes `--allow-unsigned-rpm` and dnf skips its OpenPGP check for a
-  local file. Its spec is generated, and its generator accepts only an absolute path of
-  `[A-Za-z0-9._/-]` for the staged root and `[A-Za-z0-9._+-]` for the bundled library names,
-  the values it places in a shell command and an rpm macro unquoted. It is built by `rpmbuild`
+  local file by default. Its spec is generated, and its generator accepts only an absolute path
+  of `[A-Za-z0-9._/-]` for the staged root and the output directory, `[A-Za-z0-9._+-]` for the
+  bundled library names and a maintainer line without `%`, the values it places in a shell
+  command or in text rpm expands as macros. It is built by `rpmbuild`
   from Ubuntu's archive on the hosted runner and installed with dnf and zypper in Fedora and
   openSUSE containers pinned by digest, before anything is signed. **⚠ setting:**
   signatures exist only while the repository variable `SIGNING_ENABLED` is `true`; without it
@@ -1135,6 +1136,8 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`pins a Fedora and an openSUSE image by digest`](../tools/package/test/rpm-smoke.test.mjs),
   [`refuses the stage path %j, which the shell or the macro expander would change`](../tools/package/test/package.test.mjs),
   [`refuses a bundled library name it could not quote`](../tools/package/test/package.test.mjs),
+  [`refuses a maintainer with a %, which rpm would expand as a macro`](../tools/package/test/package.test.mjs),
+  [`an output dir rpm's macro expander would change, before rpmbuild runs`](../tools/package/test/package.test.mjs),
   [`needs nothing but itself: the tarball is its only source`](../tools/package/test/package.test.mjs),
   [`refuses repo %j`](../tools/package/test/package.test.mjs),
   [`refuses desktop id %j`](../tools/package/test/package.test.mjs)
