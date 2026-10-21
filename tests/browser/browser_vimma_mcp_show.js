@@ -167,6 +167,12 @@ add_task(async function test_show_switches_to_the_agent_tab_and_ctrl_caret_retur
   Assert.equal(AgentGate.log[0].tool, "vimma_show", "the show is in :mcp log");
   Assert.equal(AgentGate.log[0].outcome, "yes", "as allowed");
 
+  // A second show while the agent workspace is in front only selects the tab: ctrl+^ still
+  // goes back to main, and the notice does not claim the show is what it undoes.
+  Assert.ok((await show(c, other)).ok, "a show of the other agent tab");
+  Assert.equal(gBrowser.selectedTab, other, "selects it");
+  await until(() => noticeText() === "showing claude-code's tab", "with no ctrl+^ in the notice");
+
   await focusContent(gBrowser.selectedBrowser);
   EventUtils.synthesizeKey("^", { ctrlKey: true, shiftKey: true, code: "Digit6" });
   await until(() => activeName() === "main", "ctrl+^ goes back to main");
@@ -311,6 +317,72 @@ add_task(async function test_show_never_focuses_a_window() {
   await SimpleTest.promiseFocus(window);
   ww().switchTo({ id: mainId() });
   BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// D6 (M19): a pane of a split in the agent workspace, in a window behind another one: that
+// window switches to the split with the pane selected, and stays behind.
+add_task(async function test_show_a_pane_of_an_agent_split_in_a_window_behind() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  ww().switchTo({ id: agent().id });
+  await until(() => gBrowser.selectedTab === tab, "the agent workspace shows its tab");
+  await focusContent(gBrowser.selectedBrowser);
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("v");
+  const view = PaneViews.get(window);
+  await until(() => view.panes && leaves(view.panes).length === 2, "the agent split has two panes");
+  const pane = gBrowser.selectedTab;
+  Assert.notEqual(pane, tab, "the new pane has focus");
+  ww().switchTo({ id: mainId() });
+  await until(() => !view.panes, "main shows one pane");
+
+  const front = await BrowserTestUtils.openNewBrowserWindow();
+  await SimpleTest.promiseFocus(front);
+  const c = await agentClient("claude-code");
+  Assert.ok((await show(c, tab)).ok, "the show ran");
+  Assert.equal(activeName(), agent().name, "the window behind shows the agent workspace");
+  Assert.equal(gBrowser.selectedTab, tab, "with the asked pane selected");
+  Assert.ok(view.panes && leaves(view.panes).length === 2, "in its split");
+  Assert.equal(Services.focus.activeWindow, front, "and the window in front stays active");
+  c.close();
+  await BrowserTestUtils.closeWindow(front);
+  await SimpleTest.promiseFocus(window);
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("x");
+  await until(() => !view.panes, "back to one pane");
+  ww().switchTo({ id: mainId() });
+  for (const t of [tab, pane]) if (!t.closing && t.isConnected) BrowserTestUtils.removeTab(t);
+  await mcp(false);
+});
+
+// D2 (M19): the yes stands for the tab as asked about: one that navigated or closed meanwhile
+// is `changed`, nothing is shown, and :mcp log says so.
+add_task(async function test_show_refuses_a_tab_changed_after_the_question() {
+  await mcp(true);
+  const c = await agentClient();
+  const moved = await openAgentTab();
+  let id = c.request("agent-show", { tab: idOf(moved) });
+  let q = await question();
+  const next = `${PAGE}?moved`;
+  BrowserTestUtils.startLoadingURIString(moved.linkedBrowser, next);
+  await BrowserTestUtils.browserLoaded(moved.linkedBrowser, false, next);
+  AgentGate.answer(q.id, { kind: "once" });
+  let r = await c.response(id);
+  Assert.equal(r.error?.reason, "changed", "a tab that navigated is changed");
+  Assert.equal(activeName(), "main", "and nothing was shown");
+  Assert.equal(AgentGate.log[0].outcome, "changed", ":mcp log says changed");
+
+  const closed = await openAgentTab();
+  id = c.request("agent-show", { tab: idOf(closed) });
+  q = await question();
+  BrowserTestUtils.removeTab(closed);
+  AgentGate.answer(q.id, { kind: "once" });
+  r = await c.response(id);
+  Assert.equal(r.error?.reason, "changed", "a tab that closed is changed");
+  Assert.equal(activeName(), "main", "the window stays on main");
+  c.close();
+  BrowserTestUtils.removeTab(moved);
   await mcp(false);
 });
 

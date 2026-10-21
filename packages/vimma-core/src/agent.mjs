@@ -196,9 +196,10 @@ export const LOG_SIZE = 100;
 
 /**
  * @typedef {"yes" | "grant" | "user" | "timeout" | "busy" | "muted" | "cancelled" | "in-use"
- *   | "changed" | "stopped" | "followed"} LogOutcome  allowed once, run under a grant, why it was denied, or
- *   that it stopped while it ran (`why`: changed, in-use, timeout, denied), or a
- *   follow it made (`detail`: the URL loaded)
+ *   | "changed" | "stopped" | "followed" | "failed"} LogOutcome  allowed once, run under a grant, why it
+ *   was denied, that it stopped while it ran (`why`: changed, in-use, timeout, denied), a
+ *   follow it made (`detail`: the URL loaded), or that it failed after the yes (a show whose
+ *   window could not switch)
  * @typedef {{ at: number, client: string, tool: string, title: string, detail: string,
  *   outcome: LogOutcome, why?: string }} LogEntry  `detail`: the keys or URL, as the question
  *   showed them

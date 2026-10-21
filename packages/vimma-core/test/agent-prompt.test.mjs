@@ -19,6 +19,7 @@ import {
   parseControlCommand,
   promptKey,
   questionLine,
+  logRow,
   ranNotice,
   shownNotice,
 } from "../src/agent-prompt.mjs";
@@ -512,10 +513,14 @@ describe("vimma_show's question and notice (mcp-drive D2-D6)", () => {
   test("it names the tab it would show, and offers only y and n", () => {
     const line = questionLine(show, { grantMinutes: 15 });
     expect(text(line)).toBe(
-      '◇ claude-code wants vimma_show: 2 "Pricing · Example" example.com/pricing',
+      '◇ claude-code wants vimma_show: 2 "Pricing · Example" example.com/pricing ' +
+        '(switches you to "agent")',
     );
     expect(line.hint).toBe("y show it · n deny");
     expect(line.label).toBe(text(line));
+    const named = questionLine(show, { grantMinutes: 15, agentWorkspace: "bots" });
+    expect(text(named)).toMatch(/\(switches you to "bots"\)$/);
+    expect(named.parts.find((p) => p.text === "bots")?.isolate).toBe("auto");
   });
 
   test("no grant: a, counts and x do not grant or mute", () => {
@@ -539,11 +544,29 @@ describe("vimma_show's question and notice (mcp-drive D2-D6)", () => {
     expect(shownNotice({ ...show, label: null }, { otherWindow: false })).toBe(
       "showing an agent's tab · ctrl+^ goes back",
     );
+    // Already on the agent workspace: a plain tab selection, so ctrl+^ would not go back.
+    expect(shownNotice(show, { otherWindow: false, switched: false })).toBe(
+      "showing claude-code's tab",
+    );
   });
 
   test("the desktop notification names no title or URL", () => {
     expect(agentAlertText(show)).toBe(
       "claude-code asks to use Vimma's agent workspace (show you a page)",
     );
+  });
+});
+
+describe(":mcp log of a show that failed after the yes (mcp-drive D14)", () => {
+  test("it reads as failed, not as allowed", () => {
+    const e = {
+      at: 0,
+      client: "claude-code",
+      tool: "vimma_show",
+      title: "A",
+      detail: "",
+      outcome: "failed",
+    };
+    expect(logRow(e)).toMatch(/ · failed$/);
   });
 });

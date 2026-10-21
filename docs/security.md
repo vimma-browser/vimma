@@ -929,8 +929,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   (M2), checked before the question and again after the yes with the URL asked about, and switch
   only the normal window that holds that tab, only to the agent workspace, through the ordinary
   workspace switch, so `ctrl+^` returns to the workspace and split the user was in. It **never**
-  changes a private window and **never** raises or focuses a window: a tab in a window other
-  than the one in front switches that window, and the notice says `shown in the other window`.
+  changes a private window and **never** raises or activates a window (in the window that
+  switches, the shown tab has the keyboard as after any tab switch): a tab in a window other than
+  the one in front switches that window, a pane of an agent split included, and the notice says
+  `shown in the other window`. A yes whose window cannot switch is a `failed` row in `:mcp log`.
   Its question opens by itself only while the user is not typing or in a field (vimma-mcp
   decision 14), so the switch never lands mid-typing. Showing a page changes what the user sees,
   so a grant would let an agent switch the view at any moment.
@@ -939,6 +941,8 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_show_waits_while_the_user_types`](../tests/browser/browser_vimma_mcp_show.js),
   [`test_show_never_touches_a_private_window`](../tests/browser/browser_vimma_mcp_show.js),
   [`test_show_never_focuses_a_window`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_a_pane_of_an_agent_split_in_a_window_behind`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_refuses_a_tab_changed_after_the_question`](../tests/browser/browser_vimma_mcp_show.js),
   [`it waits even when asked without always, and a grant answer allows it once only`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`no grant: a, counts and x do not grant or mute`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`agent-show: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs)

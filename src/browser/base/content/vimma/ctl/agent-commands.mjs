@@ -622,16 +622,21 @@ const COMMANDS = {
     const { win, tab } = found;
     // normalWindows() never lists a private window, so this is a normal one (D5).
     const ww = WindowWorkspaces.get(win);
+    const before = ww?.model?.active;
     const refused = ww ? ww.showTab(tab) : "no workspaces in that window";
-    if (refused) throw new AgentError("failed", refused);
+    if (refused) {
+      // After a yes the log holds `yes`; this row says the show did not happen (M23).
+      AgentGate.note(conn, "vimma_show", what, "failed");
+      throw new AgentError("failed", refused);
+    }
     const label = { client: state.agent?.client, via: state.agent?.via };
     const answered = AgentUi.askingWindow();
-    AgentGate.notify(
-      shownNotice(
-        { tool: "vimma_show", label, what },
-        { otherWindow: !!answered && answered !== win },
-      ),
-    );
+    const where = {
+      otherWindow: !!answered && answered !== win,
+      // Already on the agent workspace: only the tab changed, and ctrl+^ goes elsewhere.
+      switched: before !== ww?.model?.active,
+    };
+    AgentGate.notify(shownNotice({ tool: "vimma_show", label, what }, where));
     return { shown: true };
   },
 

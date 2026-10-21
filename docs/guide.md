@@ -1475,8 +1475,8 @@ workspace, tab, focus, find bar and hint mode.
 #### Showing you a page
 
 `vimma_show` lets an agent show you one of its tabs when it wants you to look at a page. The
-question names the tab, `◇ claude-code wants vimma_show: 2 "Pricing · Example"
-example.com/pricing`, and on `y` your window switches to the agent workspace with that tab
+question names the tab and where it takes you, `◇ claude-code wants vimma_show: 2 "Pricing ·
+Example" example.com/pricing (switches you to "agent")`, and on `y` your window switches to the agent workspace with that tab
 selected, as `:ws agent` would. The notice says `showing claude-code's tab · ctrl+^ goes back`:
 `ctrl+^` returns you to the workspace, tab and split you were in.
 
@@ -1486,8 +1486,9 @@ selected, as `:ws agent` would. The notice says `showing claude-code's tab · ct
   `◇ agent 1?` for `ctrl+b shift+a`.
 - **Only the agent workspace.** It shows one of the agent's own tabs and nothing else, never
   another workspace or a private window.
-- **It never raises a window or takes focus.** If the tab is in another Vimma window, that window
-  switches, and the notice says `shown in the other window`.
+- **It never raises or activates a window.** In the window that switches, the shown tab has the
+  keyboard as after any tab switch. If the tab is in another Vimma window, that window switches
+  behind the one you are in, and the notice says `shown in the other window`.
 - **At most 6 a minute** per agent; it is in `:mcp log` like every other call.
 
 #### Keeping agents out of your Vimma profile
