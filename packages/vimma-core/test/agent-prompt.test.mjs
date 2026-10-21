@@ -40,6 +40,17 @@ const open = {
   what: { url: "https://docs.rs/serde/latest/serde/", host: "docs.rs" },
 };
 const full = { tool: FULL_CONTROL, label: { client: "vimma-ctl" }, what: {} };
+const keys = {
+  tool: "vimma_keys",
+  label: { client: "claude-code" },
+  what: {
+    tab: "7",
+    index: 2,
+    title: "Pricing · Example",
+    url: "https://example.com/pricing",
+    keys: '3j /"pricing"⏎ gg',
+  },
+};
 /** @param {{ parts: { text: string }[] }} line */
 const text = (line) => line.parts.map((p) => p.text).join("");
 
@@ -87,6 +98,18 @@ describe("the question's text (decision 13)", () => {
     expect(text(questionLine(into, { grantMinutes: 10 }))).toBe(
       '◇ example-agent wants vimma_open: https://docs.rs/serde/latest/serde/ in "Old"',
     );
+  });
+
+  // mcp-drive D14: the keys exactly as they will run, after parsing.
+  test("vimma_keys shows the tab and the keys as they will run", () => {
+    const line = questionLine(keys, { grantMinutes: 15 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys: ' +
+        '3j /"pricing"⏎ gg',
+    );
+    expect(line.hint).toBe("y once · 15a for 15 min · n deny · x mute");
+    const shown = line.parts.find((p) => p.text === '3j /"pricing"⏎ gg');
+    expect(shown?.isolate).toBe("ltr");
   });
 
   test("the tab list and a close", () => {
@@ -241,6 +264,9 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(ranNotice({ ...read, tool: "vimma_tabs", what: { count: 2 } }, MIN, 0)).toBe(
       "example-agent listed the agent tabs (grant, 1m left)",
     );
+    expect(ranNotice(keys, 12 * MIN, 0)).toBe(
+      'claude-code pressed 3j /"pricing"⏎ gg in "Pricing · Example" (grant, 12m left)',
+    );
     expect(ranNotice({ ...read, tool: "vimma_close_tab" }, MIN, 0)).toBe(
       'example-agent closed "Pull requests · vimma-browser/vimma" (grant, 1m left)',
     );
@@ -261,6 +287,9 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
     expect(agentAlertText(open)).toBe(
       "example-agent asks to use Vimma's agent workspace (open a page)",
+    );
+    expect(agentAlertText(keys)).toBe(
+      "claude-code asks to use Vimma's agent workspace (move around a page)",
     );
     expect(agentAlertText(full)).toBe("vimma-ctl asks for full control of Vimma (every workspace)");
     for (const q of [read, open]) expect(agentAlertText(q)).not.toMatch(/github|docs\.rs|http/);

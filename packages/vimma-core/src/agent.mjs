@@ -18,21 +18,21 @@ export const MCP_FORGET_QUESTION =
 
 /**
  * @typedef {{ kind: "status" } | { kind: "on" } | { kind: "off" } | { kind: "forget" }
- *   | { kind: "revoke" } | { kind: "refuse", text: string }} McpCommand
+ *   | { kind: "revoke" } | { kind: "log" } | { kind: "refuse", text: string }} McpCommand
  */
 
 /**
- * `:mcp [on|off|revoke|forget]`.
+ * `:mcp [on|off|revoke|forget|log]` (`log`: docs/specs/mcp-drive.md D14).
  * @param {string | undefined} text
  * @returns {McpCommand}
  */
 export function parseMcpCommand(text) {
   const word = (text ?? "").trim().toLowerCase();
   if (!word) return { kind: "status" };
-  if (word === "on" || word === "off" || word === "forget" || word === "revoke") {
-    return { kind: word };
+  if (["on", "off", "forget", "revoke", "log"].includes(word)) {
+    return /** @type {McpCommand} */ ({ kind: word });
   }
-  return { kind: "refuse", text: ":mcp takes on, off, revoke or forget" };
+  return { kind: "refuse", text: ":mcp takes on, off, revoke, forget or log" };
 }
 
 /**
@@ -114,6 +114,7 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-read": "vimma_read_page",
   "agent-open": "vimma_open",
   "agent-close": "vimma_close_tab",
+  "agent-keys": "vimma_keys",
 });
 /** Questions that may wait: per connection and in all (decision 17). */
 export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
@@ -123,20 +124,29 @@ export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
  */
 export const OPEN_RATE = Object.freeze({ max: 10, ms: 60_000 });
 
-/** A sliding window of each connection's opens. */
-export class OpenRate {
-  constructor() {
+/**
+ * `agent-keys` requests per connection in any window of `ms` (mcp-drive D15, security.md M20),
+ * counted when asked: a `vimma_keys` grant runs unasked, and a refused call must not loop.
+ */
+export const KEYS_RATE = Object.freeze({ max: 30, ms: 60_000 });
+
+/** A sliding window of each connection's calls of one kind, at most `max` in any `ms`. */
+export class CallRate {
+  /** @param {{ max: number, ms: number }} limit */
+  constructor(limit) {
+    this.limit = limit;
     /** @type {Map<string | number, number[]>} */
     this.times = new Map();
   }
 
   /**
-   * Whether connection `conn` may open one more now; if so, it is counted.
+   * Whether connection `conn` may make one more call now; if so, it is counted.
    * @param {string | number} conn @param {number} now
    */
   take(conn, now) {
-    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - OPEN_RATE.ms);
-    if (recent.length >= OPEN_RATE.max) {
+    const { max, ms } = this.limit;
+    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
+    if (recent.length >= max) {
       this.times.set(conn, recent);
       return false;
     }
@@ -148,6 +158,53 @@ export class OpenRate {
   /** @param {string | number} conn  closed */
   forget(conn) {
     this.times.delete(conn);
+  }
+}
+
+/** Each connection's opens (security.md M3). */
+export class OpenRate extends CallRate {
+  constructor() {
+    super(OPEN_RATE);
+  }
+}
+
+/** How many calls `:mcp log` keeps (mcp-drive D14). */
+export const LOG_SIZE = 100;
+
+/**
+ * @typedef {"yes" | "grant" | "user" | "timeout" | "busy" | "muted" | "cancelled" | "in-use"
+ *   | "changed" | "stopped"} LogOutcome  allowed once, run under a grant, why it was denied, or
+ *   that it stopped while it ran (`why`: changed, in-use, timeout, denied)
+ * @typedef {{ at: number, client: string, tool: string, title: string, detail: string,
+ *   outcome: LogOutcome, why?: string }} LogEntry  `detail`: the keys or URL, as the question
+ *   showed them
+ */
+
+/**
+ * The last LOG_SIZE agent calls, asked or under a grant (mcp-drive D14, security.md M23). In
+ * memory only, like grants (vimma-mcp decision 22): it would hold the agent workspace's
+ * browsing, which nothing writes to disk.
+ */
+export class AgentLog {
+  constructor() {
+    /** @type {LogEntry[]} oldest first */
+    this.rows = [];
+  }
+
+  /** @param {LogEntry} entry */
+  add(entry) {
+    this.rows.push(entry);
+    if (this.rows.length > LOG_SIZE) this.rows.splice(0, this.rows.length - LOG_SIZE);
+  }
+
+  /** Newest first. */
+  entries() {
+    return [...this.rows].reverse();
+  }
+
+  /** `:mcp off`. */
+  clear() {
+    this.rows = [];
   }
 }
 

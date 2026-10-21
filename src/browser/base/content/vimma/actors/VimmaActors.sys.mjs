@@ -160,10 +160,31 @@ export const VimmaActors = {
    * @param {any} browser XULBrowserElement
    * @param {ScrollKind} kind
    * @param {number} [count]
+   * @param {{ instant?: boolean, top?: boolean }} [options]  `instant`: no smooth scroll;
+   *   `top`: the top frame's scroller only, whatever frame has focus (an agent's tab,
+   *   docs/specs/mcp-drive.md D8)
+   * @returns {Promise<boolean>} whether a frame had something to scroll
    */
-  async scroll(browser, kind, count = 1) {
-    for (const bc of framesFor(browser)) {
-      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count })) return;
+  async scroll(browser, kind, count = 1, { instant = false, top = false } = {}) {
+    const frames = top ? [browser.browsingContext] : framesFor(browser);
+    for (const bc of frames) {
+      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count, instant })) return true;
+    }
+    return false;
+  },
+
+  /**
+   * How far the top frame is scrolled down, from 0 to 1 (docs/specs/mcp-drive.md D16). The
+   * page's child answers, so the number is checked here.
+   * @param {any} browser XULBrowserElement
+   * @returns {Promise<number>}
+   */
+  async scrollFraction(browser) {
+    try {
+      const y = await actorFor(browser.browsingContext)?.sendQuery("Vimma:ScrollFraction");
+      return typeof y === "number" && Number.isFinite(y) ? Math.min(1, Math.max(0, y)) : 0;
+    } catch {
+      return 0;
     }
   },
 

@@ -26,7 +26,8 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
 /**
  * The agent role's commands (protocol 2; vimma-mcp decision 4). No other role runs them.
  * `agent-cancel` withdraws one of the connection's waiting questions (decision 17, MCP's
- * `notifications/cancelled`).
+ * `notifications/cancelled`). `agent-keys` runs Vimma's own page keys in an agent tab
+ * (docs/specs/mcp-drive.md D8, D19).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -36,8 +37,12 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-close",
   "agent-ping",
   "agent-cancel",
+  "agent-keys",
 ]);
-/** Why an agent request was `denied` (vimma-mcp decision 4). */
+/**
+ * Why an agent request was `denied` (vimma-mcp decision 4). `in-use`: the user is typing in that
+ * tab, or a key sequence or hint mode is under way there (mcp-drive D13).
+ */
 export const DENY_REASONS = Object.freeze([
   "user",
   "timeout",
@@ -45,7 +50,12 @@ export const DENY_REASONS = Object.freeze([
   "muted",
   "changed",
   "cancelled",
+  "in-use",
 ]);
+/** Why `agent-keys` stopped before its last step (mcp-drive D13, D15, D18). */
+export const KEYS_STOPS = Object.freeze(["changed", "in-use", "timeout", "denied"]);
+/** `agent-keys`'s keys, in code points (mcp-drive D15). */
+export const MAX_AGENT_KEYS = 512;
 export const ERROR_CODES = Object.freeze([
   "bad-request",
   "unauthorized",
@@ -290,6 +300,24 @@ function checkAgentOpenArgs(args, errors) {
   if ("tab" in args) checkTabArg(args, errors);
 }
 
+/** C0 but the tab, DEL and C1: the keys are one line, with tabs or spaces between keys. */
+// eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+const KEYS_CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f-\u009f]/;
+
+/**
+ * `agent-keys` (mcp-drive D15): which keys run is the browser's parse (core agent-keys.mjs);
+ * this checks only their size and characters.
+ * @param {Obj} args @param {string[]} errors
+ */
+function checkAgentKeysArgs(args, errors) {
+  noExtraFields(args, ["tab", "keys"], errors, "args.");
+  checkTabArg(args, errors);
+  const { keys } = args;
+  if (typeof keys !== "string" || !keys || [...keys].length > MAX_AGENT_KEYS) {
+    errors.push(`keys must be a string of 1 to ${MAX_AGENT_KEYS} characters`);
+  } else if (KEYS_CONTROL.test(keys)) errors.push("keys must not contain control characters");
+}
+
 /** @param {Obj} m @param {string[]} errors */
 function checkRequest(m, errors) {
   noExtraFields(m, ["type", "id", "command", "args"], errors);
@@ -307,6 +335,7 @@ function checkRequest(m, errors) {
   else if (command === "agent-hello") checkAgentHelloArgs(args, errors);
   else if (command === "agent-read") checkAgentReadArgs(args, errors);
   else if (command === "agent-open") checkAgentOpenArgs(args, errors);
+  else if (command === "agent-keys") checkAgentKeysArgs(args, errors);
   else if (command === "agent-close") {
     noExtraFields(args, ["tab"], errors, "args.");
     checkTabArg(args, errors);
@@ -340,6 +369,54 @@ function checkFields(result, prefix, { strings = [], flags = [], nullable = [] }
   }
 }
 
+/**
+ * `agent-keys`'s result (mcp-drive D16): the page after the steps, each step, why it stopped,
+ * the last find's outcome.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkKeysResult(result, errors) {
+  noExtraFields(
+    result,
+    ["url", "title", "loading", "scroll", "steps", "stopped", "find"],
+    errors,
+    "result.",
+  );
+  checkFields(result, "result", { strings: ["url", "title"], flags: ["loading"] }, errors);
+  const y = isObject(result.scroll) ? result.scroll.y : undefined;
+  if (typeof y !== "number" || !(y >= 0 && y <= 1)) {
+    errors.push("result.scroll.y must be a number from 0 to 1");
+  }
+  if (!Array.isArray(result.steps)) errors.push("result.steps must be an array");
+  else {
+    result.steps.forEach((step, i) => {
+      if (!isObject(step)) {
+        errors.push(`result.steps[${i}] must be an object`);
+        return;
+      }
+      noExtraFields(step, ["keys", "action", "ok", "note"], errors, `result.steps[${i}].`);
+      checkFields(
+        step,
+        `result.steps[${i}]`,
+        { strings: ["keys", "action"], flags: ["ok"] },
+        errors,
+      );
+      if ("note" in step && typeof step.note !== "string") {
+        errors.push(`result.steps[${i}].note must be a string`);
+      }
+    });
+  }
+  if ("stopped" in result && !KEYS_STOPS.includes(/** @type {any} */ (result.stopped))) {
+    errors.push(`result.stopped must be one of ${KEYS_STOPS.join(", ")}`);
+  }
+  if ("find" in result) {
+    if (!isObject(result.find)) errors.push("result.find must be an object");
+    else {
+      const shape = { strings: ["query"], flags: ["found", "wrapped"] };
+      checkFields(result.find, "result.find", shape, errors);
+    }
+  }
+}
+
 /** @param {Obj} result @param {string | undefined} command @param {string[]} errors */
 function checkAgentResult(result, command, errors) {
   if (command === "agent-hello") {
@@ -369,6 +446,8 @@ function checkAgentResult(result, command, errors) {
     errors.push("result.closed must be true");
   } else if (command === "agent-cancel") {
     checkFields(result, "result", { flags: ["cancelled"] }, errors);
+  } else if (command === "agent-keys") {
+    checkKeysResult(result, errors);
   }
 }
 

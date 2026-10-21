@@ -39,6 +39,7 @@ fn key() -> impl Strategy<Value = String> {
             "url",
             "format",
             "max_chars",
+            "keys",
             "requestId",
             "protocolVersion",
             "clientInfo",
@@ -75,6 +76,10 @@ fn scalar() -> impl Strategy<Value = Value> {
             "vimma_read_page",
             "vimma_open",
             "vimma_close_tab",
+            "vimma_keys",
+            "3j /pricing<CR> gg",
+            "/x",
+            "100j",
             "2026-07-28",
             "2025-11-25",
             "2025-06-18",
@@ -169,6 +174,7 @@ fn tool() -> impl Strategy<Value = ToolCall> {
         }),
         any::<String>().prop_map(|url| ToolCall::Open { url, tab: None }),
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Close { tab }),
+        ("[0-9]{1,20}", any::<String>()).prop_map(|(tab, keys)| ToolCall::Keys { tab, keys }),
     ]
 }
 
@@ -206,6 +212,13 @@ proptest! {
                     let (command, args) = call.tool.command();
                     prop_assert!(command.starts_with("agent-"));
                     prop_assert!(matches!(args, Value::Object(_)));
+                    // mcp-drive D15 (security.md M20): keys within their limits, or a tool error.
+                    if let ToolCall::Keys { keys, tab } = &call.tool {
+                        let n = keys.chars().count();
+                        prop_assert!((1..=vimma_ctl::mcp::MAX_KEYS).contains(&n));
+                        prop_assert!(!keys.chars().any(|c| c.is_control() && c != '\t'));
+                        prop_assert!(!tab.is_empty() && tab.bytes().all(|b| b.is_ascii_digit()));
+                    }
                     if let ToolCall::Open { url, .. } = &call.tool {
                         prop_assert!(url.encode_utf16().count() <= vimma_ctl::mcp::MAX_URL);
                         let lower = url.to_ascii_lowercase();

@@ -72,11 +72,20 @@ describe("protocol 2 constants", () => {
       "agent-close",
       "agent-ping",
       "agent-cancel",
+      "agent-keys",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
     expect(ERROR_CODES).toContain("denied");
-    expect([...DENY_REASONS]).toEqual(["user", "timeout", "busy", "muted", "changed", "cancelled"]);
+    expect([...DENY_REASONS]).toEqual([
+      "user",
+      "timeout",
+      "busy",
+      "muted",
+      "changed",
+      "cancelled",
+      "in-use",
+    ]);
   });
 });
 
@@ -194,6 +203,27 @@ describe("agent commands: args", () => {
     ]);
   });
 
+  // docs/specs/mcp-drive.md D15: the keys' limits the browser checks again (security.md M20).
+  test("agent-keys: a tab and 1 to 512 characters of keys, no control characters", () => {
+    expect(errorsOf(req("agent-keys", { tab: "12", keys: "3j /pricing<CR> gg" }))).toEqual([]);
+    expect(errorsOf(req("agent-keys", { tab: "12", keys: "j\tk" }))).toEqual([]);
+    expect(errorsOf(req("agent-keys", { tab: "12", keys: "é".repeat(512) }))).toEqual([]);
+    for (const keys of ["", "j".repeat(513), 3, null]) {
+      expect(errorsOf(req("agent-keys", { tab: "12", keys })), String(keys)).toEqual([
+        "keys must be a string of 1 to 512 characters",
+      ]);
+    }
+    for (const keys of ["j\n", "\u0000", "\u007f", "\u009b"]) {
+      expect(errorsOf(req("agent-keys", { tab: "12", keys })), keys).toEqual([
+        "keys must not contain control characters",
+      ]);
+    }
+    expect(errorsOf(req("agent-keys", { keys: "j" }))).toEqual(["tab must be a tab id (digits)"]);
+    expect(errorsOf(req("agent-keys", { tab: "1", keys: "j", show: true }))).toEqual([
+      'unknown field "args.show"',
+    ]);
+  });
+
   test("agent-tabs and agent-ping take no args", () => {
     expect(errorsOf(req("agent-tabs"))).toEqual([]);
     expect(errorsOf(req("agent-ping", { x: 1 }))).toEqual(['unknown field "args.x"']);
@@ -228,6 +258,37 @@ describe("agent commands: results and errors", () => {
     ]);
   });
 
+  test("agent-keys: the page after the steps, and why it stopped", () => {
+    const keys = {
+      url: "https://a/",
+      title: "A",
+      loading: false,
+      scroll: { y: 0.42 },
+      steps: [{ keys: "3j", action: "scroll.down", ok: true }],
+    };
+    const cmd = { command: "agent-keys" };
+    expect(errorsOf(ok(keys), cmd)).toEqual([]);
+    const found = { query: "x", found: true, wrapped: false };
+    const note = [{ keys: "gu", action: "page.url_up", ok: false, note: "already at the top" }];
+    expect(errorsOf(ok({ ...keys, steps: note, stopped: "changed", find: found }), cmd)).toEqual(
+      [],
+    );
+    expect(errorsOf(ok({ ...keys, scroll: { y: 1.5 } }), cmd)).toEqual([
+      "result.scroll.y must be a number from 0 to 1",
+    ]);
+    expect(errorsOf(ok({ ...keys, stopped: "bored" }), cmd)).toEqual([
+      "result.stopped must be one of changed, in-use, timeout, denied",
+    ]);
+    expect(errorsOf(ok({ ...keys, steps: [{ keys: "j", action: "scroll.down" }] }), cmd)).toEqual([
+      "result.steps[0].ok must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...keys, find: { query: "x", found: "yes" } }), cmd)).toEqual([
+      "result.find.found must be a boolean",
+      "result.find.wrapped must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...keys, links: "x" }), cmd)).toEqual(['unknown field "result.links"']);
+  });
+
   test("agent-cancel says whether a question was withdrawn", () => {
     expect(errorsOf(ok({ cancelled: false }), { command: "agent-cancel" })).toEqual([]);
     expect(errorsOf(ok({}), { command: "agent-cancel" })).toEqual([
@@ -244,7 +305,7 @@ describe("agent commands: results and errors", () => {
     });
     for (const reason of DENY_REASONS) expect(errorsOf(denied(reason))).toEqual([]);
     expect(errorsOf(denied())).toEqual([
-      "error.reason must be one of user, timeout, busy, muted, changed, cancelled",
+      "error.reason must be one of user, timeout, busy, muted, changed, cancelled, in-use",
     ]);
     const other = { code: "failed", message: "m", reason: "user" };
     expect(errorsOf({ type: "response", id: 1, ok: false, error: other })).toEqual([
