@@ -639,9 +639,10 @@ the palette of [vimma.dev](https://vimma.dev): near-black surfaces, grey-green t
 for the accent, the normal-mode badge and link hints. It has a dark and a light variant, and by
 default it follows your system's or Firefox's light or dark setting (`prefers-color-scheme`),
 switching the moment that changes, without a reload. Firefox's own focus rings follow the theme
-too: the address bar's focus ring and the outline of the focused pane in a split are the theme's
-accent (made a shade darker or lighter if it would not stand out at 3:1 against the colours
-around it), and so are the focus rings of Vimma's own side panel, bookmarks panel, pickers and
+too: the address bar's focus ring and the 3 px border of the focused pane in a split are the
+theme's accent (made a shade darker or lighter if it would not stand out at 3:1 against the
+colours around it; on Omarchy, the accent your theme gives Kitty's active split and Hyprland's
+focused window), and so are the focus rings of Vimma's own side panel, bookmarks panel, pickers and
 help overlay. Firefox's own sidebar (history, bookmarks and synced tabs, opened from the toolbar's
 sidebar button or the View menu) follows the theme as well: its launcher strip and panel
 are on the same surface as Vimma's side panel, with the theme's text, edge and focus colours (the
@@ -786,7 +787,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b shift+b`                                                                        | Opens or closes the bookmarks panel ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b e`                                                                              | Opens the add-on picker: popups, options, enable/disable, remove, updates ([below](#add-ons)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `ctrl+b v` / `ctrl+b -`                                                                 | Splits the pane right / down. The new pane opens a new tab (the start page, address bar focused). At most 4 panes (`[panes] max`); a refused split says why.                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `ctrl+b h j k l`                                                                        | Focuses the pane left / below / above / right; when several touch, the one used last. `ctrl+w h j k l` in normal mode. The page of that pane gets focus.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `ctrl+b h j k l`                                                                        | Focuses the pane left / below / above / right; when several touch, the one used last. `ctrl+w h j k l` in normal mode. The page of that pane gets focus, and the pane a 3 px border in the theme's focus colour.                                                                                                                                                                                                                                                                                                                                                                          |
 | `ctrl+b z`, `ctrl+w o`                                                                  | Zooms the pane to the whole window, or back. The other panes' pages pause. A pane focus key unzooms when it moves.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `ctrl+b x`                                                                              | Closes the pane; its tab stays open. With one pane it closes the tab, as `ctrl+b shift+x`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b shift+h j k l`                                                                  | Swaps the pane with the one left / below / above / right; it keeps focus and its page. `ctrl+w H J K L` in normal mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -813,6 +814,11 @@ page's own digit shortcuts need `i` first.
 Clicking into a pane focuses it, as `ctrl+b h/j/k/l` would. So does selecting a pane's tab any
 other way (tab search, `ctrl+tab`, `alt+1..9`): the status bar's `pane n/m` and the
 address bar follow, and a zoom ends, as it does when a pane key moves.
+
+The focused pane has a 3 px border in the theme's focus colour, drawn over the outer edge of its
+page so the page does not move or resize when focus does; the other panes keep a thin separator
+and are not dimmed. There is no border with one pane, on a zoomed pane, while the split is
+hidden, or on a page in fullscreen.
 
 ### Picking a tab during a split
 
@@ -2495,7 +2501,8 @@ screen reader on top of Firefox's own accessibility support. On Linux that is Or
   Vimma palette, in the built-in Tokyo Night palette and in light themes: secondary and coloured
   text is darkened or lightened just enough on the theme's backgrounds, so a theme keeps its
   colours where they already read. A `[theme.colors]` foreground you set yourself is used as is,
-  with a warning in `about:vimma` when it falls short.
+  with a warning in `about:vimma` when it falls short. Focus rings, and the border of the
+  focused pane in a split, reach 3:1 against the chrome around them.
 - **Motion.** Nothing in Vimma's own UI animates, so there is nothing for
   `prefers-reduced-motion` to turn off.
 - **Every key is remappable** for motor needs: the prefix, the leader and any binding, including
