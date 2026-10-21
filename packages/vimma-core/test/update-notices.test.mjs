@@ -247,15 +247,23 @@ describe("shouldAskRestart (the restart question for an installed security updat
 
 describe("the restart question", () => {
   test("names the version, says the tabs come back and ends in (y/N) (Behaviour 6)", () => {
-    expect(restartQuestion(offer({ urgent: true }), false)).toBe(
+    expect(restartQuestion(offer({ urgent: true }), { privateTabs: false, tabsKept: true })).toBe(
       "Security update 0.1.3 is ready. Restart now? Tabs come back. (y/N)",
     );
     expect(RESTART_HINT).toBe("y restart · n or Esc: not now");
   });
 
   test("with private tabs open it says they will close", () => {
-    expect(restartQuestion(offer({ urgent: true }), true)).toBe(
+    expect(restartQuestion(offer({ urgent: true }), { privateTabs: true, tabsKept: true })).toBe(
       "Security update 0.1.3 is ready. Restart now? Tabs come back. Private tabs will close. (y/N)",
     );
+  });
+
+  test("when the restart keeps no tab (history cleared on close), it says so", () => {
+    for (const privateTabs of [false, true]) {
+      expect(restartQuestion(offer({ urgent: true }), { privateTabs, tabsKept: false })).toBe(
+        "Security update 0.1.3 is ready. Restart now? Tabs will not come back. (y/N)",
+      );
+    }
   });
 });

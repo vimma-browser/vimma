@@ -105,12 +105,17 @@ export function shouldAskRestart({
 
 /**
  * The restart question. A restart closes the private workspace's tabs, which session restore
- * does not bring back, so it says so when there are any.
- * @param {Offer} offer @param {boolean} privateTabs
+ * does not bring back, so it says so when there are any; when session restore brings no tab back
+ * (core/restart.mjs restartKeepsTabs), it says that instead.
+ * @param {Offer} offer @param {{ privateTabs: boolean, tabsKept: boolean }} loses
  */
-export function restartQuestion(offer, privateTabs) {
-  const closing = privateTabs ? " Private tabs will close." : "";
-  return `Security update ${offer.displayVersion} is ready. Restart now? Tabs come back.${closing} (y/N)`;
+export function restartQuestion(offer, { privateTabs, tabsKept }) {
+  const what = !tabsKept
+    ? "Tabs will not come back."
+    : privateTabs
+      ? "Tabs come back. Private tabs will close."
+      : "Tabs come back.";
+  return `Security update ${offer.displayVersion} is ready. Restart now? ${what} (y/N)`;
 }
 
 /** @param {Offer} offer */

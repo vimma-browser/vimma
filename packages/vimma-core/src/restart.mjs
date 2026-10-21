@@ -63,11 +63,27 @@ export function relaunchCommand({ pid, appImage }) {
 }
 
 /**
- * The y/N `:restart` asks when private tabs are open: a restart closes them, and session restore
- * does not bring them back.
- * @param {number} count  open private tabs, at least 1
+ * Whether session restore brings the tabs back after the restart. Firefox's restart keeps the
+ * session even with history cleared on close (SessionStore stops listening for the purge on a
+ * restart); an AppImage's restart is a quit, so the purge clears the session it would resume.
+ * Permanent private browsing keeps no tab across any restart.
+ * @param {{ appImage: boolean, permanentPrivate: boolean, clearsHistoryOnClose: boolean }} input
+ *   `appImage`: the restart starts the AppImage again (restartPlan's "appimage")
  */
-export function restartPrivateQuestion(count) {
-  const tabs = count === 1 ? "1 private tab" : `${count} private tabs`;
+export function restartKeepsTabs({ appImage, permanentPrivate, clearsHistoryOnClose }) {
+  if (permanentPrivate) return false;
+  return !(appImage && clearsHistoryOnClose);
+}
+
+/**
+ * The y/N `:restart` asks before tabs are lost, or null when none are: all of them when session
+ * restore cannot bring them back, else the private workspace's, which it never does.
+ * @param {{ privateTabs: number, tabsKept: boolean }} input  `privateTabs`: open private tabs
+ * @returns {string | null}
+ */
+export function restartConfirmation({ privateTabs, tabsKept }) {
+  if (!tabsKept) return "Restart Vimma? Tabs will not come back. (y/N)";
+  if (privateTabs <= 0) return null;
+  const tabs = privateTabs === 1 ? "1 private tab" : `${privateTabs} private tabs`;
   return `Restart Vimma? ${tabs} will close. (y/N)`;
 }

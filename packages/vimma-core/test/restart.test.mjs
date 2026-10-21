@@ -9,8 +9,9 @@ import {
   RELAUNCH_SCRIPT,
   RELAUNCH_WAIT_S,
   relaunchCommand,
+  restartConfirmation,
+  restartKeepsTabs,
   restartPlan,
-  restartPrivateQuestion,
 } from "../src/restart.mjs";
 import { parseCommandLine } from "../src/cmdline.mjs";
 import { getAction } from "../src/actions.mjs";
@@ -115,9 +116,43 @@ describe("the relaunch script under /bin/sh", () => {
   });
 });
 
-describe("restartPrivateQuestion (:restart with private tabs open)", () => {
+describe("restartKeepsTabs (whether session restore brings the tabs back)", () => {
+  const base = { appImage: false, permanentPrivate: false, clearsHistoryOnClose: false };
+
+  test("Firefox's restart and an AppImage's both bring them back", () => {
+    expect(restartKeepsTabs(base)).toBe(true);
+    expect(restartKeepsTabs({ ...base, appImage: true })).toBe(true);
+  });
+
+  test("history cleared on close: an AppImage's restart is a quit, so the session is purged", () => {
+    expect(restartKeepsTabs({ ...base, appImage: true, clearsHistoryOnClose: true })).toBe(false);
+    expect(restartKeepsTabs({ ...base, clearsHistoryOnClose: true })).toBe(true);
+  });
+
+  test("permanent private browsing keeps no tab across any restart", () => {
+    expect(restartKeepsTabs({ ...base, permanentPrivate: true })).toBe(false);
+  });
+});
+
+describe("restartConfirmation (the y/N :restart asks before tabs are lost)", () => {
+  test("nothing to lose: no question", () => {
+    expect(restartConfirmation({ privateTabs: 0, tabsKept: true })).toBeNull();
+  });
+
   test("says how many private tabs close and ends in (y/N)", () => {
-    expect(restartPrivateQuestion(1)).toBe("Restart Vimma? 1 private tab will close. (y/N)");
-    expect(restartPrivateQuestion(3)).toBe("Restart Vimma? 3 private tabs will close. (y/N)");
+    expect(restartConfirmation({ privateTabs: 1, tabsKept: true })).toBe(
+      "Restart Vimma? 1 private tab will close. (y/N)",
+    );
+    expect(restartConfirmation({ privateTabs: 3, tabsKept: true })).toBe(
+      "Restart Vimma? 3 private tabs will close. (y/N)",
+    );
+  });
+
+  test("tabs that will not come back are said first, private or not", () => {
+    for (const privateTabs of [0, 2]) {
+      expect(restartConfirmation({ privateTabs, tabsKept: false })).toBe(
+        "Restart Vimma? Tabs will not come back. (y/N)",
+      );
+    }
   });
 });

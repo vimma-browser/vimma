@@ -132,6 +132,8 @@ let configCheck = /** @type {boolean | null} */ (null);
 let running = null;
 /** The install type once installInfo has run; until then no notice can be due anyway. */
 let knownType = /** @type {InstallType | null} */ (null);
+/** The install, once known. @type {Install | null} */
+let knownWhere = null;
 /**
  * @typedef {object} Install
  * @property {InstallType} type
@@ -197,6 +199,7 @@ function installInfo() {
   install ??= detectInstall().then((where) => {
     const first = knownType === null;
     knownType = where.type;
+    knownWhere = where;
     // The status bar and the notices wait for the install type: tell them it is known.
     if (first) notify();
     return where;
@@ -860,7 +863,14 @@ export const VimmaUpdates = {
    * @returns {Promise<string | null>}
    */
   async ownAppImage() {
-    const where = await installInfo();
+    await installInfo();
+    return this.ownAppImageNow;
+  },
+
+  /** ownAppImage, synchronously: null until the install is known. */
+  get ownAppImageNow() {
+    const where = knownWhere;
+    if (!where) return null;
     return ownAppImage({
       installType: where.type,
       marker: where.marker,
@@ -920,6 +930,7 @@ export const VimmaUpdates = {
     verifiedBuildId = null;
     install = null;
     knownType = null;
+    knownWhere = null;
     Services.prefs.clearUserPref(SERIAL_PREF);
     Services.prefs.clearUserPref(LAST_PREF);
     notify();

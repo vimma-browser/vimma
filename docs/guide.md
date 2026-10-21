@@ -2437,7 +2437,8 @@ Except for the AppImage, it installs nothing; it tells you.
   `:update` shows the manual steps, and the next check tries again.
 - **A security update that is installed asks to restart**, once per session:
   `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, with
-  `Private tabs will close.` before `(y/N)` while the private workspace has tabs. `y` restarts
+  `Private tabs will close.` before `(y/N)` while the private workspace has tabs, and
+  `Tabs will not come back.` in place of `Tabs come back.` when they will not (below). `y` restarts
   Vimma at once, as `:restart` does; `n`, Esc or any other key dismisses it, and a session that
   runs on is asked again 24 hours later. It waits and arms as the question above does, and is not
   asked in a private window. Today this is the AppImage, once it has replaced its file.
@@ -2446,8 +2447,11 @@ Except for the AppImage, it installs nothing; it tells you.
   `Restart Vimma? 2 private tabs will close. (y/N)`. A page that asks before it is left (unsaved
   input) can stop the restart; Vimma then says `restart cancelled`. The AppImage starts its own
   file again, so a replaced AppImage restarts into the new version: Vimma quits, and a small
-  `/bin/sh` script waits for it to exit and starts the AppImage on the same profile. `:restart`
-  has no default key; bind the `restart` action in [config.toml](#configtoml) if you want one.
+  `/bin/sh` script waits for it to exit and starts the AppImage on the same profile, without the
+  command-line arguments the old one had. Because that restart is a quit, an AppImage set to
+  clear history when it closes (Settings, Privacy & Security) brings no tab back, and
+  `:restart` asks `Restart Vimma? Tabs will not come back. (y/N)` first. `:restart` has no
+  default key; bind the `restart` action in [config.toml](#configtoml) if you want one.
 - **`:update`** checks at once. When a newer version exists it opens `about:vimma` at its
   Updates section, with the exact commands for how you installed Vimma; otherwise it says
   `Vimma 0.1.0 is up to date`, or why the check failed.

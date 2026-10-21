@@ -12,7 +12,7 @@
 // /bin/sh relaunch script (core/restart.mjs) that waits for this process to exit and then runs
 // `$APPIMAGE`, on the same profile, with the session resumed once, as Firefox's restart would.
 
-import { relaunchCommand, restartPlan } from "../core/restart.mjs";
+import { relaunchCommand, restartKeepsTabs, restartPlan } from "../core/restart.mjs";
 
 /** @import { InstallType } from "../core/updates.mjs" */
 
@@ -50,6 +50,9 @@ let startupOverride = null;
 let spawn = runDetached;
 /** The AppImage to start once the quit is certain; null when no relaunch waits. */
 let relaunchPath = /** @type {string | null} */ (null);
+
+/** The test hooks below work only in automation (`Cu.isInAutomation`), never in a release. */
+const inAutomation = () => /** @type {any} */ (globalThis).Cu?.isInAutomation === true;
 
 /** Services, with the members this module uses that the typings leave out. */
 const services = /** @type {any} */ (Services);
@@ -90,6 +93,33 @@ function startRelaunch() {
 
 /** A function is an nsIObserver to XPCOM. */
 const observer = () => startRelaunch();
+
+/**
+ * Firefox clears history when it closes (Settings, "Delete cookies and site data when Firefox is
+ * closed" with history ticked), which purges the session a quit would resume. The old pref counts
+ * too, until Sanitizer migrates it at the first shutdown that sanitizes.
+ */
+function clearsHistoryOnClose() {
+  const on = (/** @type {string} */ name, /** @type {boolean} */ fallback) =>
+    Services.prefs.getBoolPref(name, fallback);
+  return (
+    on("privacy.sanitize.sanitizeOnShutdown", false) &&
+    (on("privacy.clearOnShutdown_v2.browsingHistoryAndDownloads", true) ||
+      on("privacy.clearOnShutdown.history", true))
+  );
+}
+
+/**
+ * Whether session restore brings the tabs back after restartVimma with this `appImage`.
+ * @param {string | null} appImage  the AppImage it would start again, null for Firefox's restart
+ */
+export function tabsKeptBy(appImage) {
+  return restartKeepsTabs({
+    appImage: !!appImage,
+    permanentPrivate: !!lazy.PrivateBrowsingUtils.permanentPrivateBrowsing,
+    clearsHistoryOnClose: clearsHistoryOnClose(),
+  });
+}
 
 /**
  * Restarts Vimma. Returns false when something cancelled it (an add-on, a page's beforeunload),
@@ -133,12 +163,14 @@ export const Restart = {
    * @param {((program: string, args: string[]) => void) | null} [fakeSpawn]
    */
   _setStartup(fakeStartup, fakeSpawn = null) {
+    if (!inAutomation()) throw new Error("test-only");
     startupOverride = fakeStartup;
     spawn = fakeSpawn ?? runDetached;
   },
 
   /** Test-only: what quit-application does once the quit is certain. */
   _quitApplication() {
+    if (!inAutomation()) throw new Error("test-only");
     startRelaunch();
   },
 

@@ -896,19 +896,25 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     `$APPIMAGE` with no arguments; the process id and the path are positional parameters, never
     script text. The profile goes in `XRE_PROFILE_PATH` and `XRE_PROFILE_LOCAL_PATH`, as
     `AppShutdown::MaybeDoRestart` passes it, and `browser.sessionstore.resume_session_once` is set
-    so the session comes back, as SessionStore sets it for a restart; a quit that a window
-    refused undoes both and starts nothing. Only the AppImage this Vimma is (the marker rule of
+    before the quit so the session comes back, as SessionStore sets it for a restart; a quit that
+    a window refused restores that pref, drops the observer and starts nothing. Only the AppImage this Vimma is (the marker rule of
     decision 34) is started, never one whose `$APPIMAGE` it inherited, and a missing or
     non-executable file falls back to Firefox's restart. It is the second process chrome code may
     start (`docs/security.md` C2, UP11). Rejected: starting the AppImage at once, because the new
     instance would meet the old one's profile lock and remote server; teaching the AppImage's
     `AppRun` to wait, because the replaced file is the new release, so the waiting would depend on
-    what the next release's `AppRun` does. The cost: a restart of the AppImage is a quit, so
-    Firefox's settings that clear data on close apply to it, where Firefox's restart skips them.
+    what the next release's `AppRun` does. The costs: the restart is a quit, so with history
+    cleared on close (`privacy.sanitize.sanitizeOnShutdown`) SessionStore's purge observer stays
+    and the session is cleared (`SessionStore.sys.mjs` `#onQuitApplication` removes it only for a
+    restart), so no tab comes back, which the questions say first (decision 37); and the new
+    process gets none of the old one's command-line arguments, as a launch from the desktop.
 37. **`:restart` asks `Restart Vimma? N private tabs will close. (y/N)` while the private
-    workspace has tabs**, as `:private close` asks before it closes them, because session restore
-    does not bring private tabs back and the command is otherwise one keystroke from losing
-    them. The urgent question already says so, and `y` there restarts without a second question.
+    workspace has tabs, and `Restart Vimma? Tabs will not come back. (y/N)` when session restore
+    will bring none back** (an AppImage with history cleared on close, or permanent private
+    browsing), as `:private close` asks before it closes them, because the command is otherwise
+    one keystroke from losing them. The urgent question says the same in its text, and `y` there
+    restarts without a second question unless a loss appeared while the line was open, which
+    `y` then asks about first.
 
 ### 9. Not in this spec
 

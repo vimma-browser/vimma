@@ -63,9 +63,11 @@ const REARM_EVENTS = ["activate", "deactivate", "focus", "blur"];
  * @property {(text: string) => void} hideNotice  hides the notice if it shows `text`: the
  *   question says what the message said
  * @property {() => void} openSteps  what `:update` opens: about:vimma's Updates section
- * @property {() => void} restart  `y` in the restart question: restarts, without asking about
- *   private tabs again (the question said they close)
- * @property {() => boolean} privateTabs  the private workspace has tabs, which a restart closes
+ * @property {(confirmed: boolean) => void} restart  `y` in the restart question: restarts at
+ *   once when the question said everything a restart now loses (`confirmed`), else asks first as
+ *   `:restart` does
+ * @property {() => { privateTabs: boolean, tabsKept: boolean }} restartLoses  what a restart now
+ *   loses: the private workspace's tabs, or every tab (core restartKeepsTabs)
  */
 
 /** @type {Map<Window, UpdateWindow>} */
@@ -79,8 +81,9 @@ let asked = [];
 /** When each version's restart question was answered in this session.
  * @type {Record<string, number>} */
 let dismissed = {};
-/** The question on screen. @type {{ win: Window, version: string,
- *   kind: "steps" | "restart" } | null} */
+/** The question on screen, and for the restart what it said is lost. @type {{ win: Window,
+ *   version: string, kind: "steps" | "restart",
+ *   said?: { privateTabs: boolean, tabsKept: boolean } } | null} */
 let current = null;
 /** Looks again when an answered restart question is due once more. */
 let reask = /** @type {any} */ (null);
@@ -139,15 +142,17 @@ function announce() {
 /**
  * @param {Window} win @param {string} version @param {"steps" | "restart"} kind
  * @param {string} question
+ * @param {{ privateTabs: boolean, tabsKept: boolean }} [said]  what the restart question says
+ *   is lost
  */
-function open(win, version, kind, question) {
+function open(win, version, kind, question, said) {
   const w = windows.get(win);
   if (!w) return false;
   const hint = kind === "restart" ? RESTART_HINT : QUESTION_HINT;
   const line = { parts: [{ text: question }], hint, label: question };
   if (!w.prompt.show(line, armMs())) return false;
   if (lastMessage) w.hideNotice(lastMessage);
-  current = { win, version, kind };
+  current = { win, version, kind, ...(said ? { said } : {}) };
   return true;
 }
 
@@ -195,9 +200,12 @@ function ask() {
     otherOpen: w.otherOpen(),
     fullscreen: isFullscreen(win),
   });
-  const question =
-    kind === "restart" ? restartQuestion(offer, w.privateTabs()) : securityQuestion(offer);
-  return !(may && open(win, offer.displayVersion, kind, question));
+  if (!may) return true;
+  if (kind === "restart") {
+    const said = w.restartLoses();
+    return !open(win, offer.displayVersion, kind, restartQuestion(offer, said), said);
+  }
+  return !open(win, offer.displayVersion, kind, securityQuestion(offer));
 }
 
 /** Shows what is due and may show; looks again shortly while something waits. */
@@ -306,7 +314,7 @@ export const UpdateUi = {
       return true;
     }
     if (e.repeat) return true;
-    const { version, kind } = current;
+    const { version, kind, said } = current;
     close();
     const yes = questionAnswer(formatKey(chord)) === "yes";
     if (kind === "restart") {
@@ -314,7 +322,15 @@ export const UpdateUi = {
       // A session that runs on is asked again a day later, even with no window event between.
       lazy.clearTimeout(reask);
       reask = lazy.setTimeout(sync, RESTART_REASK_MS);
-      if (yes) w.restart();
+      if (yes) {
+        // Private tabs opened, or history clearing turned on, while the line was open: the
+        // answer did not cover that loss, so `:restart`'s y/N asks about it first.
+        const now = w.restartLoses();
+        const covered =
+          !!said &&
+          (!said.tabsKept || (now.tabsKept && (!now.privateTabs || said.privateTabs)));
+        w.restart(covered);
+      }
       return true;
     }
     asked.push(version);

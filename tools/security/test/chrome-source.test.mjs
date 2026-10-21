@@ -120,12 +120,20 @@ describe("chrome code", () => {
   test("restarts an AppImage through one fixed script, with its path never shell text", () => {
     const RESTART = "src/browser/base/content/vimma/host/restart.mjs";
     const text = readFileSync(join(ROOT, RESTART), "utf8");
-    expect(text).not.toMatch(/Subprocess|\.launch\(\)|\.reveal\(\)|\brun\(/);
+    expect(text).not.toMatch(/Subprocess|\.launch\(\)|\.reveal\(\)|\brun(Async)?\(|\brunwAsync\(/);
     expect(text.match(/@mozilla\.org\/process\/util;1/g)).toHaveLength(1);
     expect(text.match(/nsIProcess/g)).toHaveLength(1);
     expect(text.match(/\.runw\(/g)).toEqual([".runw("]);
     expect(text).toContain("proc.runw(false, args, args.length);");
     expect(text).toContain("proc.noShell = true;");
+    // The process is the program relaunchCommand names, and nothing else.
+    expect(text.match(/initWithPath\(/g)).toHaveLength(2);
+    expect(text).toContain("  file.initWithPath(program);\n");
+    expect(text).toContain("  proc.init(file);\n");
+    // Started only from quit-application (the observer) and the automation-only test hook.
+    expect(text.match(/\bstartRelaunch\(/g)).toHaveLength(3);
+    expect(text).toContain("const observer = () => startRelaunch();");
+    expect(text).toMatch(/if \(!inAutomation\(\)\) throw new Error\("test-only"\);\s*startRelaunch\(\);/);
     // runDetached is reached only through `spawn`, whose one call is relaunchCommand's output.
     expect(text.match(/runDetached\b/g)).toHaveLength(3);
     expect(text.match(/\bspawn\(/g)).toEqual(["spawn("]);
@@ -140,7 +148,7 @@ describe("chrome code", () => {
     // The script: quoted positional parameters only, no eval, and `$2` run with no arguments.
     const start = core.indexOf("export const RELAUNCH_SCRIPT");
     const script = core.slice(start, core.indexOf(";\n\n", start));
-    expect(script).not.toMatch(/\beval\b|\$\{|\$[3-9@*]|\$\(\s*[a-z]/);
+    expect(script).not.toMatch(/\beval\b|\$\{|\$[3-9@*]|\$\(\s*[a-z]|`/);
     expect(script).toContain(`'exec "$2"'`);
   });
 

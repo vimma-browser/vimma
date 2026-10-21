@@ -253,6 +253,82 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
   }
 });
 
+add_task(async function the_restart_question_says_what_a_restart_loses() {
+  await freshInstall();
+  await serve(await manifest({ urgency: "security" }));
+  let restarts = 0;
+  Restart._reset();
+  Restart._setStartup(
+    {
+      quit() {
+        restarts++;
+      },
+      restartInSafeMode() {},
+      get attemptingQuit() {
+        return false;
+      },
+    },
+    () => {},
+  );
+  const line = () => document.getElementById("vimma-update-prompt");
+  const lineShown = () => !!line() && !line().hidden;
+  const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
+  const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
+  const yN = () => document.getElementById("vimma-rename");
+  const yNText = () => yN()?.querySelector(".vimma-cmdline-prompt")?.textContent.trim() ?? "";
+  try {
+    // History cleared on close: an AppImage's restart is a quit, which purges the session.
+    await SpecialPowers.pushPrefEnv({ set: [["privacy.sanitize.sanitizeOnShutdown", true]] });
+    await BrowserTestUtils.withNewTab("https://example.com/", async (browser) => {
+      browser.focus();
+      await checkAndReplace();
+      UpdateUi._sync();
+      await until(lineShown, "the restart question shows");
+      Assert.equal(
+        lineText(),
+        "Security update 9.9.9 is ready. Restart now? Tabs will not come back. (y/N)",
+      );
+      await until(armed, "armed");
+      EventUtils.synthesizeKey("n");
+      await until(() => !lineShown(), "n closes it");
+    });
+    await SpecialPowers.popPrefEnv();
+
+    // A private tab opened while the line is open: y asks about it before anything restarts.
+    UpdateUi._reset();
+    await BrowserTestUtils.withNewTab("https://example.com/", async (browser) => {
+      browser.focus();
+      UpdateUi._sync();
+      await until(lineShown, "asked again in a new session");
+      Assert.equal(
+        lineText(),
+        "Security update 9.9.9 is ready. Restart now? Tabs come back. (y/N)",
+      );
+      const priv2 = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+      await SimpleTest.promiseFocus(window);
+      browser.focus();
+      try {
+        UpdateUi._sync();
+        await until(lineShown, "the line is back once the window is in front");
+        await until(armed, "armed");
+        EventUtils.synthesizeKey("y");
+        await until(() => yN()?.hidden === false, "the y/N about the private tab");
+        Assert.equal(yNText(), "Restart Vimma? 1 private tab will close. (y/N)");
+        Assert.equal(restarts, 0, "nothing restarts before that answer");
+        EventUtils.synthesizeKey("n");
+        await until(() => yN()?.hidden !== false, "n closes it");
+        Assert.equal(restarts, 0, "n keeps the private tab");
+      } finally {
+        await BrowserTestUtils.closeWindow(priv2);
+      }
+    });
+  } finally {
+    Restart._reset();
+    Restart._setStartup(null);
+    UpdateUi._reset();
+  }
+});
+
 add_task(async function an_ordinary_replaced_update_asks_nothing() {
   await freshInstall();
   await serve(await manifest());

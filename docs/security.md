@@ -1556,18 +1556,24 @@ _Pages_ and _extensions_ cannot reach it.
   (`Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`) is asked **only** for a
   security release that is already in place (an AppImage that replaced its file), once per
   session and again 24 hours after an answer, and arms, waits and refuses keys exactly as the
-  question of UP9; while the private workspace has tabs it says they will close, and `:restart`
-  asks a `y/N` first. A restart asks Firefox's `quit-application-requested` observers with
+  question of UP9. It **never** hides a loss: while the private workspace has tabs it says they
+  will close, and when session restore will bring no tab back it says `Tabs will not come back`;
+  a loss that appears while the line is open (a private tab opened since) makes `y` ask
+  `:restart`'s `y/N` before anything restarts. `:restart` asks that `y/N` first whenever tabs
+  would be lost. A restart asks Firefox's `quit-application-requested` observers with
   `restart`, and a page's beforeunload can still keep its window, which cancels it. Every install
   but the AppImage restarts through Firefox (`eAttemptQuit | eRestart`). The AppImage restarts
   only when its install type is the AppImage (UP10's marker rule) and `$APPIMAGE` is an absolute
   path to an executable file: it quits, and **only** in `quit-application`, once no window can
   refuse, it starts the relaunch script of C2 on its own process id, with the profile and its
   local directory in `XRE_PROFILE_PATH` and `XRE_PROFILE_LOCAL_PATH` as Firefox's restart passes
-  them; a quit that a window refused starts nothing. The script gives up after 120 seconds, so a
-  process id reused by another program never keeps it waiting for long. **⚠ limit:** an
-  AppImage's restart is a quit and a new start, so settings that clear data when Vimma closes
-  apply to it as to any quit, where Firefox's restart skips them.
+  them; a quit that a window refused starts nothing. The script gives up after 120 seconds and
+  then starts nothing, so a process id reused by another program never keeps it waiting for
+  long. **⚠ limit:** an AppImage's restart is a quit and a new start: with history cleared on
+  close (`privacy.sanitize.sanitizeOnShutdown`), the session is purged and no tab comes back,
+  where Firefox's restart keeps it (the question and `:restart` say so first); the new process
+  gets none of the old one's command-line arguments; and when Vimma runs as a systemd service
+  unit, not a scope, systemd may stop the script with the unit, so nothing starts.
   [`an_appimage_quits_and_starts_its_file_again`](../tests/browser/browser_vimma_restart.js),
   [`a_refused_quit_starts_nothing_and_leaves_the_session_as_it_was`](../tests/browser/browser_vimma_restart.js),
   [`a_cancelled_request_quits_nothing`](../tests/browser/browser_vimma_restart.js),
@@ -1577,6 +1583,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_replaced_security_update_asks_to_restart`](../tests/browser/browser_vimma_update_appimage.js),
   [`an_ordinary_replaced_update_asks_nothing`](../tests/browser/browser_vimma_update_appimage.js),
   [`answered in this session: asked again 24 hours later, not sooner`](../packages/vimma-core/test/update-notices.test.mjs),
+  [`the_restart_question_says_what_a_restart_loses`](../tests/browser/browser_vimma_update_appimage.js),
+  [`history_cleared_on_close_asks_before_an_appimage_restart`](../tests/browser/browser_vimma_restart.js),
+  [`history cleared on close: an AppImage's restart is a quit, so the session is purged`](../packages/vimma-core/test/restart.test.mjs),
   [`an AppImage without a usable $APPIMAGE falls back to Firefox's restart`](../packages/vimma-core/test/restart.test.mjs),
   [`gives up after RELAUNCH_WAIT_S when the old process never exits`](../packages/vimma-core/test/restart.test.mjs)
 

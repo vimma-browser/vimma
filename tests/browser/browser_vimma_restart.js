@@ -201,6 +201,30 @@ add_task(async function an_appimage_whose_file_cannot_run_restarts_through_firef
   await IOUtils.setPermissions(appImage, 0o755);
 });
 
+add_task(async function history_cleared_on_close_asks_before_an_appimage_restart() {
+  await SpecialPowers.pushPrefEnv({ set: [["privacy.sanitize.sanitizeOnShutdown", true]] });
+  try {
+    // Firefox's restart keeps the session even then: nothing to ask.
+    fresh();
+    await install("tarball");
+    await runCommand("restart");
+    await until(() => quits.length === 1, ":restart quit");
+    Assert.ok(!promptOpen(), "no question for Firefox's restart");
+
+    // The AppImage's restart is a quit, which purges the session: it asks.
+    fresh();
+    await install("appimage");
+    await runCommand("restart");
+    await until(promptOpen, "the y/N question is open");
+    Assert.equal(promptText(), "Restart Vimma? Tabs will not come back. (y/N)");
+    EventUtils.synthesizeKey("y");
+    await until(() => quits.length === 1, "y restarts");
+    Assert.equal(quits[0], Ci.nsIAppStartup.eAttemptQuit);
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
 add_task(async function private_tabs_ask_before_they_close() {
   fresh();
   await install("tarball");
