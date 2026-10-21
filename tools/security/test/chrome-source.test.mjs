@@ -133,7 +133,9 @@ describe("chrome code", () => {
     // Started only from quit-application (the observer) and the automation-only test hook.
     expect(text.match(/\bstartRelaunch\(/g)).toHaveLength(3);
     expect(text).toContain("const observer = () => startRelaunch();");
-    expect(text).toMatch(/if \(!inAutomation\(\)\) throw new Error\("test-only"\);\s*startRelaunch\(\);/);
+    expect(text).toMatch(
+      /if \(!inAutomation\(\)\) throw new Error\("test-only"\);\s*startRelaunch\(\);/,
+    );
     // runDetached is reached only through `spawn`, whose one call is relaunchCommand's output.
     expect(text.match(/runDetached\b/g)).toHaveLength(3);
     expect(text.match(/\bspawn\(/g)).toEqual(["spawn("]);

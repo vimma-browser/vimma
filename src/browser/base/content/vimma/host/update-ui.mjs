@@ -327,8 +327,7 @@ export const UpdateUi = {
         // answer did not cover that loss, so `:restart`'s y/N asks about it first.
         const now = w.restartLoses();
         const covered =
-          !!said &&
-          (!said.tabsKept || (now.tabsKept && (!now.privateTabs || said.privateTabs)));
+          !!said && (!said.tabsKept || (now.tabsKept && (!now.privateTabs || said.privateTabs)));
         w.restart(covered);
       }
       return true;
