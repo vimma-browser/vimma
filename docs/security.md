@@ -1343,6 +1343,29 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`pushes Casks/vimma.rb to the tap over SSH with github.com's pinned host key`](../tools/package/test/release-workflow.test.mjs),
   [`never replaces a newer cask with an older one`](../tools/package/test/release-workflow.test.mjs)
 
+- B12. The Flatpak build, `flatpak.yml` (spec [flatpak](specs/flatpak.md)), publishes nothing,
+  holds no secret and no environment, and each job's token only reads the repository. It
+  **must** build a release only from the release's public download URL, which answers 404 for a
+  draft, pinned to the tarball's SHA-256 in that release's `SHA256SUMS`, and with signing on
+  only after `SHA256SUMS` passes `cosign verify-blob` against `IDENTITY_REGEXP`; flatpak-builder
+  then refuses a tarball with any other hash. Event values reach its scripts only through `env`.
+  The manifest generator accepts only a SemVer version, a lower-case SHA-256 and a bare file
+  name, and its build commands are fixed strings. The build runs in a privileged container from
+  the `fedora:44` image pinned by digest, on Flathub runtimes pinned by commit. A release event
+  runs the tag's copy of the workflow, which has the same read-only token. The app's sandbox
+  grants Firefox's Flatpak permissions and `~/.local/state/omarchy` read-only, never the home
+  directory or `~/.config`, so the Omarchy hook (section 7) is never installed from it. **⚠
+  limit:** Fedora's packages (`flatpak`, `flatpak-builder`) are installed at their current
+  versions from Fedora's signed repositories; the digest fixes only the base image.
+  [`builds a published release from its download URL, checked against SHA256SUMS`](../tools/package/test/flatpak.test.mjs),
+  [`checks the release's signature against the documented identity when signing is on`](../tools/package/test/flatpak.test.mjs),
+  [`holds no secret and only reads the repository`](../tools/package/test/flatpak.test.mjs),
+  [`passes event values to run: through env only`](../tools/package/test/flatpak.test.mjs),
+  [`refuses %s`](../tools/package/test/flatpak.test.mjs),
+  [`puts no input into a build command, so none can change what the build runs`](../tools/package/test/flatpak.test.mjs),
+  [`pins the Fedora image by digest and the runtime and SDK by commit`](../tools/package/test/flatpak.test.mjs),
+  [`grants Firefox's Flatpak permissions and the Omarchy theme read-only, never the home`](../tools/package/test/flatpak.test.mjs)
+
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 
 `ctrl+b f g` searches the text of the tabs in its scope: the parent sends the query to each
