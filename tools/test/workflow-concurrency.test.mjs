@@ -54,13 +54,40 @@ describe("pull request concurrency: the rule", () => {
   });
 
   it("a pull-request-only workflow may cancel with true", () => {
-    for (const key of ["github.ref", "github.event.pull_request.number", "github.head_ref"]) {
+    for (const key of ["github.ref", "github.event.pull_request.number"]) {
       const text = synthetic(
         "  pull_request:\n",
         `concurrency:\n  group: t-\${{ ${key} }}\n  cancel-in-progress: true\n`,
       );
       expect(prConcurrencyProblem(text)).toBeNull();
     }
+  });
+
+  it("a key that is not unique per pull request, or not the bare value, fails", () => {
+    for (const group of [
+      "t-${{ github.head_ref }}", // a branch name: two forks can both use patch-1
+      "t-${{ github.ref == 'x' && 'a' || 'b' }}", // constant per pull request
+      "t-${{ github.ref_name }}",
+    ]) {
+      const text = synthetic(
+        "  pull_request:\n",
+        `concurrency:\n  group: ${JSON.stringify(group)}\n  cancel-in-progress: true\n`,
+      );
+      expect(prConcurrencyProblem(text)).toMatch(/no per-pull-request key/);
+    }
+  });
+
+  it("pull_request_target needs the pull request number: its github.ref is the base branch", () => {
+    const conc = (/** @type {string} */ key) =>
+      `concurrency:\n  group: t-\${{ ${key} }}\n  cancel-in-progress: true\n`;
+    expect(prConcurrencyProblem(synthetic("  pull_request_target:\n", conc("github.ref")))).toMatch(
+      /pull_request_target/,
+    );
+    expect(
+      prConcurrencyProblem(
+        synthetic("  pull_request_target:\n", conc("github.event.pull_request.number")),
+      ),
+    ).toBeNull();
   });
 
   it("a workflow with other triggers cancels pull request runs only", () => {
@@ -111,6 +138,8 @@ describe("pull request concurrency: this repository's workflows", () => {
       expect(prWorkflows.map((w) => w.name)).toContain(name);
   });
 
+  // A heuristic over the literal text before the first expression: it fails closed on two
+  // groups that only differ after it.
   it("no two workflows share a concurrency group", () => {
     /** @param {string} group */
     const prefix = (group) => group.split("${{")[0];

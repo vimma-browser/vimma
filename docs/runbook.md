@@ -545,13 +545,14 @@ To check a commit by hand:
 ### Superseded pull request runs
 
 A new push to a pull request makes the checks still running on its previous head worthless, so
-every workflow a pull request triggers sets a workflow-level `concurrency` group keyed on
+every workflow with a `pull_request` trigger sets a workflow-level `concurrency` group keyed on
 `github.ref` (`refs/pull/<n>/merge`) or the pull request number, and cancels the older run of
 that group. Only pull request runs are cancelled: a workflow that also runs on a push to `main`,
 a schedule, a manual run or `workflow_call` sets `cancel-in-progress: ${{ github.event_name ==
-'pull_request' }}`, so none of those runs is cut short. In a called workflow `github.event_name`
+'pull_request' }}`, so none of those runs is cut short once it runs (GitHub still keeps only
+the newest queued run of a group). In a called workflow `github.event_name`
 is the caller's event, so the upstream autopilot's and the Beta canary's calls of `e2e.yml` are
-never cancelled. `tools/test/workflow-concurrency.test.mjs` holds every workflow with a
+never cancelled while they run. `tools/test/workflow-concurrency.test.mjs` holds every workflow with a
 `pull_request` trigger to this, and keeps concurrency groups distinct across workflows.
 `dependabot-automerge.yml` is the one exception: its runs take seconds and act on the pull
 request's merge state, so they keep their order.
@@ -596,16 +597,17 @@ every run from an external contributor (Settings → Actions → General; the ap
 The repo is public (since 2026-10-10), so standard GitHub-hosted runners cost nothing and have
 no monthly cap: minutes are no longer a reason to skip a job. What still matters is wall time
 (a PR waits for its slowest required check) and the concurrency limit on hosted runners (20
-jobs at once on the free plan), so keep jobs lean all the same. Rough use per PR push: CI ≈ 2.5
-min, e2e ≈ 12 min, Semgrep ≈ 1 min, CodeQL ≈ 1 min (JavaScript) plus 2 min (Rust).
+jobs at once on the free plan), so keep jobs lean all the same. Rough wall time per PR push: CI ≈ 3–4
+min, e2e ≈ 13 min, Semgrep ≈ 1 min, CodeQL ≈ 1 min (JavaScript) plus 2 min (Rust).
 A push to `main` repeats only CodeQL and, when the merged tree differs from the pull request
 head's, the rest ("Once per tree" above).
 
 The release pull request is rebuilt by release-please after each merge to `main` that adds a
 changelog line, and each rebuild runs every pull request check again: the version in
 `surfer.json` changes, so the docs-only path does not apply, and the mochitests check the
-display version the new build carries (`browser_vimma_app_version.js`). Its rebuild pushes twice
-(release-please, then the `firefox-notes` commit), and the second push cancels the first run.
+display version the new build carries (`browser_vimma_app_version.js`). With `RELEASE_PLEASE_TOKEN`
+set, a rebuild pushes twice (release-please, then the `firefox-notes` commit), and the second
+push cancels the first run; without it, the release PR's pushes start no runs.
 
 e2e.yml has no paths filter: "mochitest (artifact build)" is a required check, so the workflow
 starts on every PR, and on a docs-only one the job skips by `if:` in seconds (above). The upstream autopilot runs 6 × 1 min a day, plus ≈ 16 min (issue, patch check, the

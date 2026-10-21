@@ -12,8 +12,15 @@ export const PR_TRIGGERS = new Set(["pull_request", "pull_request_target"]);
 /** The only cancel-in-progress a workflow with other triggers too may use. */
 const PR_ONLY_CANCEL = /^\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}$/;
 
-/** A group key that differs between pull requests (refs/pull/<n>/merge, the number, the head). */
-const PER_PR_KEY = /\$\{\{[^}]*\bgithub\.(?:ref|head_ref|event\.pull_request\.number)\b[^}]*\}\}/;
+/**
+ * A bare group key that differs between pull requests: refs/pull/<n>/merge, or the number. Not
+ * github.head_ref, a branch name that two forks can share, and not an expression built on a key,
+ * which can be constant.
+ */
+const PER_PR_KEY = /\$\{\{\s*github\.(?:ref|event\.pull_request\.number)\s*\}\}/;
+
+/** On pull_request_target github.ref is the base branch, so only the number tells PRs apart. */
+const PR_NUMBER_KEY = /\$\{\{\s*github\.event\.pull_request\.number\s*\}\}/;
 
 /**
  * @param {unknown} v
@@ -45,6 +52,8 @@ export function prConcurrencyProblem(text, { keepsRuns = false } = {}) {
   if (typeof c.group !== "string") return "concurrency has no group";
   if (!PER_PR_KEY.test(c.group))
     return `group ${JSON.stringify(c.group)} has no per-pull-request key (github.ref)`;
+  if (events.includes("pull_request_target") && !PR_NUMBER_KEY.test(c.group))
+    return "a pull_request_target group needs github.event.pull_request.number";
   const cancel = c["cancel-in-progress"];
   if (keepsRuns) return cancel === false ? null : "an allowlisted workflow must keep its runs";
   if (events.every((e) => PR_TRIGGERS.has(e)))

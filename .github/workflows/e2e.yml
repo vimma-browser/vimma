@@ -62,8 +62,8 @@ concurrency:
   # ref, and must never cancel, or be cancelled by, a manual run on main without a version or a
   # manual run of the same version on another branch. A new push to a PR cancels its older run;
   # nothing else cancels a run in progress (tools/test/workflow-concurrency.test.mjs), so a manual
-  # run of the version an upstream or Beta call is testing waits for it. In a call, event_name is
-  # the caller's event.
+  # run of the version an upstream or Beta call is testing waits for it (GitHub still keeps one
+  # queued run per group, the newest). In a call, event_name is the caller's event.
   group: e2e-${{ github.ref }}-${{ inputs.firefox-version }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
