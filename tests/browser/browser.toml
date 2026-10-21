@@ -131,6 +131,7 @@ support-files = ["file_vimma_search_post.sjs"]
 support-files = [
   "file_vimma_find.html",
   "file_vimma_find_field.html",
+  "file_vimma_find_site_fields.html",
   "file_vimma_find_frame.html",
   "file_vimma_test.pdf",
 ]
