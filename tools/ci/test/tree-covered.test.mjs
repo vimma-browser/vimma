@@ -340,6 +340,7 @@ describe("workflow wiring", () => {
     ["semgrep.yml", "scan"],
     ["pkgbuild.yml", "arch"],
     ["pkgbuild.yml", "cask"],
+    ["pkgbuild.yml", "rpm"],
   ]);
 
   it.each(GATED)(

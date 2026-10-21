@@ -55,6 +55,11 @@ alternative.
 **Debian 12+, Ubuntu 22.04+:** download `vimma_X.Y.Z_amd64.deb`, then
 `sudo apt install ./vimma_X.Y.Z_amd64.deb`.
 
+**Fedora, openSUSE:** download `vimma-X.Y.Z-1.x86_64.rpm`, then
+`sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm` on Fedora, or
+`sudo zypper install --allow-unsigned-rpm ./vimma-X.Y.Z-1.x86_64.rpm` on openSUSE. The package
+carries no OpenPGP signature; check it with `SHA256SUMS` and cosign instead, as the guide shows.
+
 **Any other distribution:** download `vimma-X.Y.Z-x86_64.AppImage`, then
 `chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage`.
 
@@ -80,7 +85,7 @@ the hours slip by. It also happens to start with _Vim_.
 
 Early, for Linux x86_64 and macOS on Apple Silicon. Releases are on
 [GitHub Releases](https://github.com/vimma-browser/vimma/releases), with a tarball, an AppImage, a
-`.deb` and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
+`.deb`, an `.rpm` for Fedora and openSUSE and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
 ([Install](#install)); you can also
 [build it from source](CONTRIBUTING.md#build-and-run). Update notices are live: Vimma 0.1.2 and
 later check a signed update file every 12 hours and show a newer release in the status bar. They

@@ -115,7 +115,10 @@ the [user guide](guide.md); planned work is on the
   (spec macos-homebrew, decision 14).
 - On macOS, Omarchy theming, the Omarchy hook and the Hyprland private-window swap do nothing.
 - The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
-- The `.deb`, the AppImage and the Arch package mark themselves as package-manager installs, so,
+- The `.rpm` has no OpenPGP signature and there is no dnf or zypper repository for it: zypper
+  installs it only with `--allow-unsigned-rpm`, `SHA256SUMS` and its cosign signature are what
+  vouch for it, and `dnf upgrade` or `zypper update` never update it.
+- The `.deb`, the `.rpm`, the AppImage and the Arch package mark themselves as package-manager installs, so,
   like Firefox's own packages, they do not warn when the kernel blocks the unprivileged user
   namespaces the content sandbox uses (as Ubuntu 24.04's AppArmor policy does for the AppImage
   and the `.deb`). The sandbox is then weaker without saying so; the tarball still warns.

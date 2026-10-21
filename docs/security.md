@@ -1100,7 +1100,15 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   checked the same way as the binaries. The `PKGBUILD` pins the SHA-256 of the tarball it
   installs, and its generator accepts only `owner/name` for the repository and
   `[A-Za-z0-9._-]` for the desktop file ID, the two values it places in shell words. It is built
-  and installed with `makepkg -si` on Arch Linux before anything is signed. **⚠ setting:**
+  and installed with `makepkg -si` on Arch Linux before anything is signed. The `.rpm` for
+  Fedora and openSUSE carries no OpenPGP signature of its own (no key exists to sign it with):
+  `SHA256SUMS` and its cosign bundle cover it as they cover the `.deb`, which is why the
+  documented zypper command passes `--allow-unsigned-rpm` and dnf skips its OpenPGP check for a
+  local file. Its spec is generated, and its generator accepts only an absolute path of
+  `[A-Za-z0-9._/-]` for the staged root and `[A-Za-z0-9._+-]` for the bundled library names,
+  the values it places in a shell command and an rpm macro unquoted. It is built by `rpmbuild`
+  from Ubuntu's archive on the hosted runner and installed with dnf and zypper in Fedora and
+  openSUSE containers pinned by digest, before anything is signed. **⚠ setting:**
   signatures exist only while the repository variable `SIGNING_ENABLED` is `true`; without it
   `publish` uploads the assets and `SHA256SUMS` unsigned. The macOS `.dmg` and its Homebrew cask
   `vimma.rb` are listed in their own `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the
@@ -1122,6 +1130,11 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`regenerates the icon files on a Mac with a pinned Xcode and fails on drift`](../tools/package/test/macos.test.mjs),
   [`fails an app that still carries Firefox's unofficial icon`](../tools/package/test/macos.test.mjs),
   [`builds and installs the release PKGBUILD on Arch Linux before anything is signed`](../tools/package/test/release-workflow.test.mjs),
+  [`signs and uploads the .rpm with the other vimma* assets`](../tools/package/test/rpm-smoke.test.mjs),
+  [`smoke-tests the .rpm on Fedora and openSUSE before the files are uploaded for signing`](../tools/package/test/rpm-smoke.test.mjs),
+  [`pins a Fedora and an openSUSE image by digest`](../tools/package/test/rpm-smoke.test.mjs),
+  [`refuses the stage path %j, which the shell or the macro expander would change`](../tools/package/test/package.test.mjs),
+  [`refuses a bundled library name it could not quote`](../tools/package/test/package.test.mjs),
   [`needs nothing but itself: the tarball is its only source`](../tools/package/test/package.test.mjs),
   [`refuses repo %j`](../tools/package/test/package.test.mjs),
   [`refuses desktop id %j`](../tools/package/test/package.test.mjs)
@@ -1392,16 +1405,19 @@ _Pages_ and _extensions_ cannot reach it.
   [`tarball: quit, download and check it, then unpack over the install's parent, quoted`](../packages/vimma-core/test/updates.test.mjs),
   [`a pinned key that is not a valid SPKI refuses, never throws`](../packages/vimma-core/test/updates.test.mjs),
   [`a_damaged_saved_result_is_dropped_not_thrown`](../tests/browser/browser_vimma_update_check.js)
-- UP6. A package manager's install (the `.deb`, the release `PKGBUILD`, the AUR's `vimma-bin`)
+- UP6. A package manager's install (the `.deb`, the `.rpm`, the release `PKGBUILD`, the AUR's
+  `vimma-bin`)
   is **never** told to unpack a tarball over its install directory: every package except the
   tarball carries the `is-packaged-app` marker with its package type, the release refuses a
   `./mach package` tarball that already has one, and only an install without a marker gets the
   tarball's command. The release workflow's smoke test checks the type of the installed `.deb`
-  and, without `$APPIMAGE`, of the extracted AppImage, and that the tarball has no marker.
+  and, without `$APPIMAGE`, of the extracted AppImage, the marker of the `.rpm` installed on
+  Fedora and openSUSE, and that the tarball has no marker.
   [`every package type except the tarball carries the marker`](../tools/package/test/package.test.mjs),
   [`gives each package type its own update hint, and only the tarball an untar`](../tools/package/test/package.test.mjs),
   [`a tarball that already carries an install-source marker`](../tools/package/test/package.test.mjs),
-  [`the .deb and AppImage smoke test checks each install type, and the tarball's lack of one`](../tools/package/test/release-workflow.test.mjs)
+  [`the .deb and AppImage smoke test checks each install type, and the tarball's lack of one`](../tools/package/test/release-workflow.test.mjs),
+  [`checks the version line, the marker, the launcher, the desktop file and rpm -V`](../tools/package/test/rpm-smoke.test.mjs)
   On macOS ([macos-homebrew](specs/macos-homebrew.md) decisions 8 and 19) no install is told to
   download or unpack anything: the app at `/Applications/Vimma.app` with
   `/opt/homebrew/Caskroom/vimma/` present gets `brew upgrade --cask vimma`, and any other copy
@@ -1472,13 +1488,15 @@ _Pages_ and _extensions_ cannot reach it.
   [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../tools/package/test/release-workflow.test.mjs)
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
-  the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `tar` or
-  `mv` runs. A tarball is downloaded to a file and checked before it is unpacked, never piped
+  the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `dnf`,
+  `zypper`, `tar` or `mv` runs. The `.rpm`'s zypper command passes `--allow-unsigned-rpm`, so
+  for it that check is the only one, as it is for the `.deb`. A tarball is downloaded to a file and checked before it is unpacked, never piped
   into `tar`. Asset hashes are read only from the signed manifest, only as 128 lower-case hex
   digits, and a saved result keeps only well-formed ones. **⚠ limit:** the release `PKGBUILD`'s
   command still fetches `latest/download/PKGBUILD` without a hash of its own; `makepkg` checks
   the tarball against the SHA-256 that `PKGBUILD` pins.
   [`every download fails on an HTTP error and refuses anything but https (V-07)`](../packages/vimma-core/test/updates.test.mjs),
+  [`rpm: download and check it, then install it with dnf or zypper`](../packages/vimma-core/test/updates.test.mjs),
   [`the checked commands run: a matching file installs, a different one stops before`](../packages/vimma-core/test/updates.test.mjs),
   [`reads each package's size and SHA-512 (the release pipeline's asset elements)`](../packages/vimma-core/test/updates.test.mjs),
   [`offerAssets keeps only well-formed entries (a saved result read back)`](../packages/vimma-core/test/updates.test.mjs),

@@ -370,16 +370,28 @@ describe("parseManifest", () => {
   const tarball = `    <vimmaTarball size="86804240" hashFunction="sha512" hashValue="${H("a")}" URL="${DL}/vimma-0.3.1-linux-x86_64.tar.xz"/>\n`;
   const appimage = `    <vimmaAppImage size="111966712" hashFunction="sha512" hashValue="${H("b")}" URL="${DL}/vimma-0.3.1-x86_64.AppImage"/>\n`;
   const deb = `    <vimmaDeb size="87718612" hashFunction="sha512" hashValue="${H("c")}" URL="${DL}/vimma_0.3.1_amd64.deb"/>\n`;
+  const rpm = `    <vimmaRpm size="87921340" hashFunction="sha512" hashValue="${H("f")}" URL="${DL}/vimma-0.3.1-1.x86_64.rpm"/>\n`;
 
   test("reads each package's size and SHA-512 (the release pipeline's asset elements)", () => {
-    const r = /** @type {any} */ (parseManifest(withAssets(tarball + appimage + deb)));
+    const r = /** @type {any} */ (parseManifest(withAssets(tarball + appimage + deb + rpm)));
     expect(r.manifest.update.assets).toEqual({
       tarball: { size: 86804240, sha512: H("a") },
       appimage: { size: 111966712, sha512: H("b") },
       deb: { size: 87718612, sha512: H("c") },
+      rpm: { size: 87921340, sha512: H("f") },
     });
     const one = /** @type {any} */ (parseManifest(withAssets(deb)));
     expect(one.manifest.update.assets).toEqual({ deb: { size: 87718612, sha512: H("c") } });
+  });
+
+  test.each([
+    ["a hash that is not SHA-512", rpm.replace(H("f"), "f".repeat(64))],
+    ["a download on plain http", rpm.replace("https://", "http://")],
+    ["two of them", rpm + rpm],
+  ])("refuses a <vimmaRpm> with %s", (_name, children) => {
+    const r = parseManifest(withAssets(children));
+    expect(r.ok).toBe(false);
+    expect(/** @type {any} */ (r).reason).toMatch(/^manifest: .*<vimmaRpm>/);
   });
 
   test.each([
@@ -422,6 +434,7 @@ describe("parseManifest", () => {
     expect(offerAssets(null)).toEqual({});
     expect(offerAssets([good])).toEqual({});
     expect(offerAssets({ dmg: good, x: good })).toEqual({ dmg: good });
+    expect(offerAssets({ rpm: good })).toEqual({ rpm: good });
   });
 
   test("entities in attributes are decoded", () => {
@@ -653,6 +666,7 @@ describe("install type (§3)", () => {
     [{ packaged: false, marker: "vimma-package=deb\n", appImage: null }, "source"],
     [{ packaged: true, marker: null, appImage: null }, "tarball"],
     [{ packaged: true, marker: "vimma-package=deb\n", appImage: null }, "deb"],
+    [{ packaged: true, marker: "vimma-package=rpm\n", appImage: null }, "rpm"],
     [{ packaged: true, marker: "vimma-package=aur\n", appImage: null }, "aur"],
     [
       { packaged: true, marker: "vimma-package=pkgbuild-release\n", appImage: null },
@@ -761,6 +775,7 @@ describe("updateSteps (:update and about:vimma)", () => {
       tarball: { size: 3, sha512: H("a") },
       appimage: { size: 4, sha512: H("b") },
       deb: { size: 5, sha512: H("c") },
+      rpm: { size: 6, sha512: H("d") },
     },
   };
   const where = { installDir: "/home/u/apps/vimma", appImage: null };
@@ -787,6 +802,26 @@ describe("updateSteps (:update and about:vimma)", () => {
     ]);
     const pre = { ...offer, displayVersion: "0.4.0-rc.1" };
     expect(updateSteps("deb", pre, where).commands[0]).toContain("vimma_0.4.0~rc.1_amd64.deb");
+  });
+
+  // One .rpm serves Fedora and openSUSE (spec rpm-package): a command for each one's package
+  // manager. zypper refuses an unsigned package unless told; SHA256SUMS' cosign signature and
+  // the signed manifest's SHA-512 are what vouch for it, as for the .deb.
+  test("rpm: download and check it, then install it with dnf or zypper", () => {
+    const s = updateSteps("rpm", hashed, where);
+    expect(s.text).toMatch(/dnf.*Fedora.*zypper.*openSUSE/);
+    const fetch =
+      `${curl} -o vimma-0.3.1-1.x86_64.rpm ${dl}/vimma-0.3.1-1.x86_64.rpm` +
+      ` && echo '${H("d")}  vimma-0.3.1-1.x86_64.rpm' | sha512sum -c -`;
+    expect(s.commands).toEqual([
+      `${fetch} && sudo dnf install ./vimma-0.3.1-1.x86_64.rpm`,
+      `${fetch} && sudo zypper install --allow-unsigned-rpm ./vimma-0.3.1-1.x86_64.rpm`,
+    ]);
+    const pre = { ...offer, displayVersion: "0.4.0-rc.1" };
+    for (const c of updateSteps("rpm", pre, where).commands) {
+      expect(c).toContain("./vimma-0.4.0~rc.1-1.x86_64.rpm");
+      expect(c).not.toContain("sha512sum");
+    }
   });
 
   test("tarball: quit, download and check it, then unpack over the install's parent, quoted", () => {
@@ -816,11 +851,12 @@ describe("updateSteps (:update and about:vimma)", () => {
   });
 
   test("every download fails on an HTTP error and refuses anything but https (V-07)", () => {
-    for (const type of /** @type {const} */ (["deb", "tarball", "appimage"])) {
+    for (const type of /** @type {const} */ (["deb", "rpm", "tarball", "appimage"])) {
       for (const o of [offer, hashed]) {
-        const [command = ""] = updateSteps(type, o, where).commands;
-        expect(command.startsWith(`${curl} -o `), `${type}: ${command}`).toBe(true);
-        expect(command).not.toMatch(/\| *(?:tar|sh|bash)\b/);
+        for (const command of updateSteps(type, o, where).commands) {
+          expect(command.startsWith(`${curl} -o `), `${type}: ${command}`).toBe(true);
+          expect(command).not.toMatch(/\| *(?:tar|sh|bash)\b/);
+        }
       }
     }
   });
