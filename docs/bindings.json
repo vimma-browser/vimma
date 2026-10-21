@@ -2184,6 +2184,28 @@
           ]
         },
         {
+          "name": "select_inner_block",
+          "description": "Select the text block at the caret",
+          "keys": [
+            {
+              "keys": "ip",
+              "chords": ["ip"],
+              "mode": "visual"
+            }
+          ]
+        },
+        {
+          "name": "select_a_block",
+          "description": "Select the block at the caret; again: its parent",
+          "keys": [
+            {
+              "keys": "ap",
+              "chords": ["ap"],
+              "mode": "visual"
+            }
+          ]
+        },
+        {
           "name": "yank_selection",
           "description": "Copy selection and leave copy mode",
           "keys": [

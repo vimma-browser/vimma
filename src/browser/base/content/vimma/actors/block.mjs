@@ -10,6 +10,7 @@
 
 import {
   adjacentBlock,
+  blockObject,
   childBlock,
   classifyBlock,
   needsBlockText,
@@ -26,6 +27,9 @@ const MAX_COUNT = 100;
 const MAX_HIDDEN_RETRIES = 64;
 /** NodeFilter.SHOW_TEXT (a system module has no NodeFilter global). */
 const SHOW_TEXT = 0x4;
+/** Range.START_TO_START and END_TO_END (a system module has no Range global). */
+const START_TO_START = 0;
+const END_TO_END = 2;
 /** Listeners the page cannot see or stop: Gecko's system event group. */
 const SYSTEM = /** @type {AddEventListenerOptions} */ ({ mozSystemGroup: true });
 const SYSTEM_CAPTURE = /** @type {AddEventListenerOptions} */ ({
@@ -281,6 +285,65 @@ export function blockText(range, el, format = "text/plain") {
   return { text: shown, unselectable: shown !== "" };
 }
 
+/**
+ * `el` and its ancestors up to the root, stepping out of shadow roots, described for `+` and
+ * `ip` / `ap`: root first, `el` last.
+ * @param {Element} el
+ * @param {Window} win
+ */
+function ancestry(el, win) {
+  /** @type {Element[]} */
+  const chain = [];
+  for (let e = /** @type {Element | null} */ (el); e; e = parentOf(e)) chain.unshift(e);
+  const descs = descriptors(
+    chain,
+    (e) => {
+      const d = describe(e, win, { display: true });
+      if (e.localName !== "body" && e.localName !== "html") d.textLength = textLength(e);
+      return d;
+    },
+    parentOf,
+  );
+  return { chain, descs };
+}
+
+/**
+ * `ip` / `ap` in copy mode (decision 11): the range `v` from element focus would select for the
+ * block around `node`, the selection's focus; with `around`, grown to the parent block while
+ * `selected` already holds all of it (core blockObject). Null where no block is around it.
+ * @param {Node} node
+ * @param {Window} win
+ * @param {boolean} around
+ * @param {Range | null} selected  the selection's range
+ * @returns {Range | null}
+ */
+export function blockRangeAt(node, win, around, selected) {
+  const el = node.nodeType === 1 ? /** @type {Element} */ (node) : parentOf(node);
+  if (!el) return null;
+  const { chain, descs } = ancestry(el, win);
+  /** @type {Map<number, Range>} */
+  const ranges = new Map();
+  const rangeOf = (/** @type {number} */ i) => {
+    let r = ranges.get(i);
+    if (!r) ranges.set(i, (r = blockRange(/** @type {Element} */ (chain[i]), win)));
+    return r;
+  };
+  const covers = (/** @type {number} */ i) => {
+    if (!selected) return false;
+    const r = rangeOf(i);
+    try {
+      return (
+        selected.compareBoundaryPoints(START_TO_START, r) <= 0 &&
+        selected.compareBoundaryPoints(END_TO_END, r) >= 0
+      );
+    } catch {
+      return false; // the ends are in different trees (a shadow root): not the same block
+    }
+  };
+  const block = blockObject(descs, chain.length - 1, around, covers);
+  return block < 0 ? null : rangeOf(block);
+}
+
 /** @param {Element} el */
 function boxOf(el) {
   const b = el.getBoundingClientRect();
@@ -398,18 +461,7 @@ export class BlockFocus {
    */
   #step(op, el, win, trail) {
     if (op === "parent") {
-      /** @type {Element[]} */
-      const chain = [];
-      for (let e = /** @type {Element | null} */ (el); e; e = parentOf(e)) chain.unshift(e);
-      const descs = descriptors(
-        chain,
-        (e) => {
-          const d = describe(e, win, { display: true });
-          if (e.localName !== "body" && e.localName !== "html") d.textLength = textLength(e);
-          return d;
-        },
-        parentOf,
-      );
+      const { chain, descs } = ancestry(el, win);
       const up = parentBlock(descs, chain.length - 1);
       if (up < 0) return null;
       trail.push(new WeakRef(el));

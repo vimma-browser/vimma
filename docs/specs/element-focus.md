@@ -1,6 +1,6 @@
 # Spec: element-focus
 
-Status: accepted (sub-PR 1, text blocks as hint targets, and sub-PR 2, the ELEMENT mode, built; sub-PRs 3 and 4 open) · Area: `packages/vimma-core/src/hints.mjs`, `blocks.mjs` (new), `actions.mjs`,
+Status: accepted (sub-PR 1, text blocks as hint targets, sub-PR 2, the ELEMENT mode, and sub-PR 3, `ip` / `ap` in copy mode, built; sub-PR 4 open) · Area: `packages/vimma-core/src/hints.mjs`, `blocks.mjs` (new), `actions.mjs`,
 `defaults.mjs`, `modes.mjs`, `theme.mjs`, `statusbar.mjs`; `actors/hint-collect.mjs`,
 `actors/block.mjs` (new), `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`,
 `actors/caret.mjs`; `host/VimmaHost.sys.mjs`, `host/copy-mode.mjs`; `ui/hint-overlay.mjs`;

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Spec: docs/specs/element-focus.md (sub-PR 1: text blocks as hint targets; sub-PR 2: the
-// ELEMENT mode, v, y, +, -, j, k)
+// ELEMENT mode, v, y, +, -, j, k; sub-PR 3: ip and ap in copy mode)
 
 /* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
 /* global docShell -- in SpecialPowers.spawn's content task scope */
@@ -26,6 +26,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const PAGE = DIR + "file_vimma_element.html";
 const MANY = DIR + "file_vimma_element_many.html";
+const PARAGRAPHS = DIR + "file_vimma_element_paragraphs.html";
 
 const FRAME_TIMEOUT_PREF = "vimma.hints.frameTimeoutMs";
 
@@ -900,5 +901,102 @@ add_task(async function j_on_2000_paragraphs_stays_within_budget() {
     times.sort((a, b) => a - b);
     info(`j on 2000 paragraphs: median ${times[2].toFixed(1)} ms`);
     Assert.less(times[2], 1000, "j under 1000 ms");
+  });
+});
+
+/**
+ * Puts the caret in element `id`'s first text node at `offset` and enters copy mode there.
+ * @param {XULBrowserElement} browser
+ * @param {string} id
+ * @param {number} offset
+ */
+async function caretIn(browser, id, offset) {
+  await SpecialPowers.spawn(browser, [id, offset], (i, o) => {
+    content.getSelection().collapse(content.document.getElementById(i).firstChild, o);
+  });
+  EventUtils.synthesizeKey("v");
+  await waitForMode(browser, "visual");
+  await TestUtils.waitForCondition(
+    async () => (await selectionIn(browser)).collapsed,
+    `the caret is in #${id}`,
+  );
+}
+
+/**
+ * The selection's text, and the id of the element its range is the whole of: the nearest
+ * element whose first and last text characters are the range's ends.
+ * @param {XULBrowserElement} browser
+ */
+function selectedBlock(browser) {
+  return SpecialPowers.spawn(browser, [], () => {
+    const sel = content.getSelection();
+    const text = sel.toString();
+    if (!sel.rangeCount) return { text, id: null };
+    let el = sel.getRangeAt(0).commonAncestorContainer;
+    if (el.nodeType !== 1) el = el.parentElement;
+    while (el && !el.id) el = el.parentElement;
+    const whole = el && el.textContent.trim().startsWith(text.split("\n")[0].trim());
+    return { text, id: whole ? el.id : null };
+  });
+}
+
+/**
+ * Types `keys` and waits until the selection is the whole of block `id`.
+ * @param {XULBrowserElement} browser
+ * @param {string} keys
+ * @param {string} id
+ * @param {(text: string) => boolean} check
+ */
+async function selectsBlock(browser, keys, id, check) {
+  type(keys);
+  let last = null;
+  await TestUtils.waitForCondition(async () => {
+    last = await selectedBlock(browser);
+    return last.id === id && check(last.text);
+  }, `${keys} selects #${id}`).catch(() => {});
+  Assert.equal(last?.id, id, `${keys}: the selection is #${id}`);
+  Assert.ok(last && check(last.text), `${keys}: #${id}'s text: ${JSON.stringify(last?.text)}`);
+  return last;
+}
+
+add_task(async function ip_and_ap_select_the_block_around_the_caret() {
+  await withPage(PARAGRAPHS, async (browser) => {
+    const S1 = "The section's first paragraph.";
+    const S2 = "The second paragraph, with emphasis in it.";
+    await caretIn(browser, "em", 3);
+    await selectsBlock(browser, "ip", "s2", (t) => t === S2);
+    Assert.equal(VimmaHost._browserMode(browser), "visual", "still in copy mode");
+    await selectsBlock(
+      browser,
+      "ap",
+      "section",
+      (t) => t.startsWith(S1) && t.includes(S2) && t.endsWith("second line"),
+    );
+    await selectsBlock(
+      browser,
+      "ap",
+      "article",
+      (t) => t.startsWith("An article") && t.endsWith("A paragraph after the section."),
+    );
+    // The article's parent is body: a further ap keeps the article.
+    const article = await selectsBlock(browser, "ap", "article", (t) => t.endsWith("section."));
+    await SimpleTest.promiseClipboardChange(article.text, () => EventUtils.synthesizeKey("y"));
+    await waitForMode(browser, "normal");
+
+    // ap from a caret: the paragraph first, as ip.
+    await caretIn(browser, "s1", 4);
+    await selectsBlock(browser, "ap", "s1", (t) => t === S1);
+    // A motion still extends the block's selection.
+    type("}");
+    await TestUtils.waitForCondition(
+      async () => (await selectionIn(browser)).text.includes("The second"),
+      "} extends the selection",
+    );
+    EventUtils.synthesizeKey("KEY_Escape");
+    await waitForMode(browser, "normal");
+
+    // A code block is one block, from any of its lines.
+    await caretIn(browser, "line2", 2);
+    await selectsBlock(browser, "ip", "code", (t) => t === "first line\nsecond line");
   });
 });

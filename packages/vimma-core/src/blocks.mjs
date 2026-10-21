@@ -285,3 +285,55 @@ export function adjacentBlock(descs, index, step) {
   }
   return found;
 }
+
+/**
+ * `ip` in copy mode (decision 11): the block `v` from element focus would select for the caret
+ * in element `index`, from the element's own descriptor and its ancestors'. The innermost block
+ * wins, as for labels, except that a code block or caption around it is taken whole; inside an
+ * excluded element (a field, an editable region, an `aria-hidden` part) there is none.
+ * @param {readonly BlockDescriptor[]} descs
+ * @param {number} index
+ * @returns {number} the block's index, or -1
+ */
+export function blockAround(descs, index) {
+  /** @type {number[]} */
+  const path = [];
+  // A bound on the steps, and parents earlier in the list: a list from a content process could
+  // link in a circle.
+  for (let i = index; i >= 0 && descs[i] && path.length < descs.length;) {
+    path.unshift(i);
+    const p = /** @type {BlockDescriptor} */ (descs[i]).parent;
+    i = Number.isInteger(p) && p < i ? p : -1;
+  }
+  let found = -1;
+  for (const i of path) {
+    const d = /** @type {BlockDescriptor} */ (descs[i]);
+    if (excludes(d)) return -1;
+    const kind = classifyBlock(d);
+    if (kind === null) continue;
+    if (atomic(d, kind)) return i;
+    found = i;
+  }
+  return found;
+}
+
+/**
+ * `ip` / `ap` (decision 11): `ip` is `blockAround`; `ap` is the same, then, while the selection
+ * already covers that block, the parent block `+` would reach, as Vim's repeated `ap` extends.
+ * At the outermost block `ap` keeps it.
+ * @param {readonly BlockDescriptor[]} descs
+ * @param {number} index  the element holding the caret
+ * @param {boolean} around  `ap`
+ * @param {(block: number) => boolean} covers  whether the selection holds all of that block
+ * @returns {number} the block's index, or -1
+ */
+export function blockObject(descs, index, around, covers) {
+  let block = blockAround(descs, index);
+  if (!around) return block;
+  for (let steps = 0; block >= 0 && steps < descs.length && covers(block); steps++) {
+    const up = parentBlock(descs, block);
+    if (up < 0) break;
+    block = up;
+  }
+  return block;
+}

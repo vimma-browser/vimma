@@ -7,6 +7,8 @@ import {
   childBlock,
   adjacentBlock,
   needsBlockText,
+  blockAround,
+  blockObject,
 } from "../src/blocks.mjs";
 
 /**
@@ -382,5 +384,101 @@ describe("adjacentBlock: the walks of j and k", () => {
     expect(adjacentBlock(t.descs, t.at("p2"), 1)).toBe(-1);
     expect(adjacentBlock(t.descs, t.at("h"), -1)).toBe(-1);
     expect(adjacentBlock(t.descs, 999, 1)).toBe(-1);
+  });
+});
+
+describe("blockAround / blockObject: ip and ap in copy mode", () => {
+  // The chain from body to the element holding the caret, as the child describes it.
+  const chain = (/** @type {any[]} */ ...links) => {
+    let node = links[links.length - 1];
+    for (let i = links.length - 2; i >= 0; i--) node = [...links[i], node];
+    return tree(node);
+  };
+
+  test("ip: the innermost block around the caret, through inline ancestors", () => {
+    const t = chain(
+      ["body", { textLength: 100 }],
+      ["section", { name: "section", textLength: 60 }],
+      ["p", { name: "p", textLength: 20, ...T }],
+      ["em", { name: "em", display: "inline", textLength: 5, ...T }],
+    );
+    expect(blockAround(t.descs, t.at("em"))).toBe(t.at("p"));
+    expect(blockAround(t.descs, t.at("p"))).toBe(t.at("p"));
+  });
+
+  test("ip: a list item's paragraph, not the item", () => {
+    const t = chain(
+      ["body"],
+      ["li", { name: "li", text: true, textLength: 30 }],
+      ["p", { name: "p", textLength: 20, ...T }],
+    );
+    expect(blockAround(t.descs, t.at("p"))).toBe(t.at("p"));
+  });
+
+  test("ip: a generic leaf div with text of its own", () => {
+    const t = chain(["body"], ["div"], ["div", { name: "chat", ...T }]);
+    expect(blockAround(t.descs, t.at("chat"))).toBe(t.at("chat"));
+  });
+
+  test("ip: a code block is one block, whatever line the caret is on", () => {
+    const t = chain(
+      ["body"],
+      ["pre", { name: "pre", text: true }],
+      ["div", { name: "line", ...T }],
+      ["span", { name: "tok", display: "inline", ...T }],
+    );
+    expect(blockAround(t.descs, t.at("tok"))).toBe(t.at("pre"));
+    expect(blockAround(t.descs, t.at("line"))).toBe(t.at("pre"));
+  });
+
+  test("ip: nothing in an editable region, an aria-hidden one or a control", () => {
+    const edit = chain(
+      ["body"],
+      ["div", { editable: true, ...T }],
+      ["p", { name: "p", editable: true, ...T }],
+    );
+    expect(blockAround(edit.descs, edit.at("p"))).toBe(-1);
+    const hidden = chain(["body"], ["div", { ariaHidden: true }], ["p", { name: "p", ...T }]);
+    expect(blockAround(hidden.descs, hidden.at("p"))).toBe(-1);
+    const button = chain(["body"], ["p", T], ["button", { name: "b", ...T }]);
+    expect(blockAround(button.descs, button.at("b"))).toBe(-1);
+  });
+
+  test("ip: no block around text straight in body", () => {
+    const t = chain(["body", { name: "body", ...T }]);
+    expect(blockAround(t.descs, t.at("body"))).toBe(-1);
+    expect(blockAround(t.descs, 5)).toBe(-1);
+  });
+
+  const nested = chain(
+    ["body", { textLength: 200 }],
+    ["article", { name: "article", textLength: 120 }],
+    ["section", { name: "section", textLength: 60 }],
+    ["p", { name: "p", textLength: 20, ...T }],
+  );
+
+  test("ap: the block around the caret when the selection does not cover it", () => {
+    expect(blockObject(nested.descs, nested.at("p"), true, () => false)).toBe(nested.at("p"));
+    expect(blockObject(nested.descs, nested.at("p"), false, () => true)).toBe(nested.at("p"));
+  });
+
+  test("ap again: grows to the parent block while the selection covers the block", () => {
+    const covered = new Set([nested.at("p")]);
+    expect(blockObject(nested.descs, nested.at("p"), true, (i) => covered.has(i))).toBe(
+      nested.at("section"),
+    );
+    covered.add(nested.at("section"));
+    expect(blockObject(nested.descs, nested.at("p"), true, (i) => covered.has(i))).toBe(
+      nested.at("article"),
+    );
+  });
+
+  test("ap at the outermost block keeps it", () => {
+    expect(blockObject(nested.descs, nested.at("p"), true, () => true)).toBe(nested.at("article"));
+  });
+
+  test("ap with no block around the caret: none", () => {
+    const t = chain(["body", { name: "body", ...T }]);
+    expect(blockObject(t.descs, t.at("body"), true, () => true)).toBe(-1);
   });
 });

@@ -37,6 +37,8 @@ const MOTIONS = Object.freeze({
   "selection.swap": "swap",
   "selection.inner_word": "inner_word",
   "selection.a_word": "a_word",
+  "selection.inner_block": "inner_block",
+  "selection.a_block": "a_block",
 });
 
 /** Find actions (`f x`) → their Vim kind; the frame's op is FIND_OPS[kind]. */
