@@ -54,10 +54,30 @@ describe("status bar segments", () => {
       if (s.bg) expect(names.has(s.bg), s.bg).toBe(true);
     }
     for (const t of Object.values(WORKSPACE_COLOR_TOKENS)) expect(names.has(t), t).toBe(true);
-    for (const mode of ["insert", "visual", "command", "hint", "help", "panel"]) {
+    for (const mode of ["insert", "visual", "command", "hint", "element", "help", "panel"]) {
       const m = statusSegments({ mode: /** @type {any} */ (mode) })[0];
       expect(names.has(/** @type {string} */ (m?.bg))).toBe(true);
     }
+  });
+
+  // docs/specs/element-focus.md decision 5: the focused block's kind and length by the badge.
+  test("element focus: the ELEMENT badge, then the block's kind and length", () => {
+    const segs = statusSegments({
+      ...base,
+      mode: "element",
+      element: { kind: "paragraph", length: 412, seq: 1 },
+    });
+    expect(segs[0]).toMatchObject({
+      id: "mode",
+      text: "ELEMENT",
+      fg: "--vimma-mode-element-fg",
+      bg: "--vimma-mode-element",
+    });
+    expect(segs[1]).toMatchObject({ id: "element", text: "paragraph · 412 chars", bg: null });
+    expect(THEME_TOKENS.some((t) => t.name === segs[1]?.fg)).toBe(true);
+    const one = statusSegments({ mode: "element", element: { kind: "code", length: 1, seq: 2 } });
+    expect(one[1]?.text).toBe("code · 1 char");
+    expect(statusSegments({ ...base, mode: "normal" }).some((s) => s.id === "element")).toBe(false);
   });
 
   test("pending keys: prefix colours for a prefix, plain otherwise", () => {

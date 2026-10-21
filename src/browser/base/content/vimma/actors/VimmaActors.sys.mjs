@@ -5,7 +5,9 @@
 // Registers the Vimma JSWindowActor pair and sends it commands (spec:
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
-import { HINT_REPLY_MAX_TARGETS, parseHintReply } from "../core/hints.mjs";
+import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
+
+/** @import { BlockReply } from "../core/hints.mjs" */
 
 // System modules have no timer globals; Firefox's actors import them the same way.
 const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
@@ -158,10 +160,31 @@ export const VimmaActors = {
    * @param {any} browser XULBrowserElement
    * @param {ScrollKind} kind
    * @param {number} [count]
+   * @param {{ instant?: boolean, top?: boolean }} [options]  `instant`: no smooth scroll;
+   *   `top`: the top frame's scroller only, whatever frame has focus (an agent's tab,
+   *   docs/specs/mcp-drive.md D8)
+   * @returns {Promise<boolean>} whether a frame had something to scroll
    */
-  async scroll(browser, kind, count = 1) {
-    for (const bc of framesFor(browser)) {
-      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count })) return;
+  async scroll(browser, kind, count = 1, { instant = false, top = false } = {}) {
+    const frames = top ? [browser.browsingContext] : framesFor(browser);
+    for (const bc of frames) {
+      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count, instant })) return true;
+    }
+    return false;
+  },
+
+  /**
+   * How far the top frame is scrolled down, from 0 to 1 (docs/specs/mcp-drive.md D16). The
+   * page's child answers, so the number is checked here.
+   * @param {any} browser XULBrowserElement
+   * @returns {Promise<number>}
+   */
+  async scrollFraction(browser) {
+    try {
+      const y = await actorFor(browser.browsingContext)?.sendQuery("Vimma:ScrollFraction");
+      return typeof y === "number" && Number.isFinite(y) ? Math.min(1, Math.max(0, y)) : 0;
+    } catch {
+      return 0;
     }
   },
 
@@ -504,6 +527,85 @@ export const VimmaActors = {
     } finally {
       clearTimeout(timer);
     }
+  },
+
+  /**
+   * Element focus (docs/specs/element-focus.md): one `Vimma:Block` op in the frame of a block,
+   * for the collection `gen`. The reply is from a content process and checked (core
+   * parseBlockReply): null for none, a malformed one, or a frame that since shows another
+   * document.
+   * @param {{ bc: any, wg: any }} frame  the frame and its WindowGlobalParent when the block
+   *   was chosen
+   * @param {number} gen
+   * @param {string} op
+   * @param {object} [extra]
+   * @returns {Promise<BlockReply | null>}
+   */
+  async block(frame, gen, op, extra = {}) {
+    if (frame.bc.currentWindowGlobal !== frame.wg) return null;
+    try {
+      const raw = await actorFor(frame.bc)?.sendQuery("Vimma:Block", { ...extra, op, gen });
+      return parseBlockReply(raw, op);
+    } catch {
+      return null; // the frame navigated or its process went away
+    }
+  },
+
+  /**
+   * A `Vimma:Block` op with no reply (`track`, `blur`) to a frame, if it still shows the same
+   * document.
+   * @param {{ bc: any, wg: any }} frame
+   * @param {number} gen
+   * @param {"track" | "blur"} op
+   */
+  blockNotify(frame, gen, op) {
+    if (frame.bc.currentWindowGlobal !== frame.wg) return;
+    try {
+      actorFor(frame.bc)?.sendAsyncMessage("Vimma:Block", { op, gen });
+    } catch {
+      // the frame went away: nothing to tell
+    }
+  },
+
+  /**
+   * A frame and the frames around it up to the top, each with its WindowGlobalParent now.
+   * @param {any} bc BrowsingContext
+   * @returns {{ bc: any, wg: any }[]}  the frame first, the top last
+   */
+  frameChain(bc) {
+    /** @type {{ bc: any, wg: any }[]} */
+    const out = [];
+    for (let c = bc; c && out.length <= MAX_FRAME_DEPTH; c = c.parent) {
+      out.push({ bc: c, wg: c.currentWindowGlobal });
+    }
+    return out;
+  },
+
+  /**
+   * Where a box in the first frame of `chain` is in the top frame's CSS pixels, clipped to
+   * every frame around it, as hint rects are: each frame's embedder is asked for its viewport.
+   * Null when it shows in none of them, or a frame did not answer.
+   * @param {{ bc: any, wg: any }[]} chain  from frameChain
+   * @param {number} gen
+   * @param {Rect} box
+   * @returns {Promise<Rect | null>}
+   */
+  async blockBox(chain, gen, box) {
+    let origin = { x: 0, y: 0 };
+    let clip = /** @type {Rect | null} */ ({ x: 0, y: 0, width: Infinity, height: Infinity });
+    for (let i = chain.length - 1; i > 0; i--) {
+      const outer = /** @type {{ bc: any, wg: any }} */ (chain[i]);
+      const inner = /** @type {{ bc: any, wg: any }} */ (chain[i - 1]);
+      const reply = /** @type {{ rect: Rect } | null} */ (
+        await this.block(outer, gen, "frame", { id: inner.bc.id })
+      );
+      if (!reply || !clip) return null;
+      const rect = offset(reply.rect, origin);
+      clip = intersect(clip, rect);
+      origin = { x: rect.x, y: rect.y };
+    }
+    if (!clip) return null;
+    return chain.length > 1 ? intersect(offset(box, origin), clip) : box;
   },
 
   /**

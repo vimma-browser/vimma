@@ -4,8 +4,10 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!-- Fixture for browser_vimma_element.js: every kind of text block, blocks that must not get a
    - label (hidden, aria-hidden, editable, covered by the fixed header, below the fold), blocks in
-   - an open and a closed shadow root and in a cross-origin frame. Ids name the blocks the test
-   - expects; `.no-block` marks elements that must not get a label. -->
+   - an open and a closed shadow root and in a cross-origin frame. The code block has a tab, an
+   - indented line, a blank line and a user-select: none line-number gutter; one paragraph is
+   - user-select: none as a whole. Ids name the blocks the test expects; `.no-block` marks
+   - elements that must not get a label. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -36,6 +38,10 @@
       figure {
         margin: 0 0 6px;
       }
+      /* A share of the width: a resize moves it (the outline follows). */
+      blockquote {
+        margin-left: 20%;
+      }
       #covered {
         position: absolute;
         top: 4px;
@@ -64,14 +70,18 @@
       <p id="p1">The first paragraph, with <a href="#">a link</a> and <em>emphasis</em> inline.</p>
       <p id="p2">The second paragraph.</p>
       <p id="p3">The third paragraph.</p>
-      <ul>
-        <li><p id="lp1">The first item's paragraph.</p></li>
+      <ul id="ul">
+        <li id="li1">
+          <p id="lp1">The first item's paragraph.</p>
+          And a note after it.
+        </li>
         <li><p id="lp2">The second item's paragraph.</p></li>
       </ul>
       <blockquote id="q">A quote with text of its own.</blockquote>
       <pre
         id="pre"
-      ><div><span class="gutter">1 </span>function f() {</div><div><span class="gutter">2 </span>	return 1;</div><div><span class="gutter">3 </span>}</div></pre>
+      ><div><span class="gutter">1 </span>function f() {</div><div><span class="gutter">2 </span>	return 1;</div><div><span class="gutter">3 </span>
+</div><div><span class="gutter">4 </span>    // four spaces in</div><div><span class="gutter">5 </span>}</div></pre>
       <table>
         <tr>
           <td id="c11">one one</td>
@@ -87,6 +97,7 @@
         <figcaption id="cap">A caption.</figcaption>
       </figure>
       <div><div id="chat">A chat line in a plain div.</div></div>
+      <p id="unsel" style="user-select: none">The page marks this paragraph unselectable.</p>
       <p hidden class="no-block">A hidden paragraph.</p>
       <p id="ariahidden" aria-hidden="true" class="no-block">An aria-hidden paragraph.</p>
       <div id="edit" contenteditable="true" class="no-block"><p>An editable paragraph.</p></div>

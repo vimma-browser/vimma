@@ -67,7 +67,8 @@ const styled = new WeakSet();
  *   configErrors?: readonly ConfigError[], configFile?: string,
  *   alerts?: readonly string[],
  *   agent?: { waiting: number, minutes: number | null, ran: boolean } | null,
- *   update?: import("../core/updates.mjs").UpdateNotice | null }} status
+ *   update?: import("../core/updates.mjs").UpdateNotice | null,
+ *   element?: import("../core/statusbar.mjs").ElementStatus | null }} status
  * @property {(fn: () => void) => () => void} subscribe  host state changes; returns unsubscribe
  * @property {(tab: Element) => string | null} [labelFor]  a user's tab rename (tab rename spec)
  */
@@ -261,6 +262,7 @@ export class StatusBar {
       alerts: status.alerts ?? [],
       agent: status.agent ?? null,
       update: status.update ?? null,
+      element: status.element ?? null,
     };
     // docs/specs/toolbar-toggle.md decision 12: the hidden toolbar's cues; shown, none.
     const root = this.win.document.documentElement;
@@ -303,6 +305,7 @@ export class StatusBar {
       find: input.find,
       url: input.tab?.url ?? null,
       agentWaiting: input.agent?.waiting ?? 0,
+      element: input.element ?? null,
     });
     this.announced = last;
     if (text !== null) /** @type {HTMLElement} */ (this.live).textContent = text;

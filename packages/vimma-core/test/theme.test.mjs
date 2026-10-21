@@ -552,6 +552,27 @@ describe("tokens", () => {
     expect([...BADGES].sort()).toEqual([...MODES, "prefix"].sort());
   });
 
+  // docs/specs/element-focus.md decision 17.
+  test("element focus: an outline token from the accent, a badge apart from VISUAL's", () => {
+    const outline = THEME_TOKENS.find((t) => t.name === "--vimma-element-outline");
+    expect(outline).toMatchObject({ from: "accent" });
+    const r = resolveTheme({ theme: themeCfg() });
+    expect(r.tokens["--vimma-element-outline"]).toBe(r.tokens["--vimma-accent"]);
+    for (const [name, theme] of Object.entries(BUILTIN_THEMES)) {
+      for (const appearance of /** @type {const} */ (["dark", "light"])) {
+        if (!theme[appearance]) continue;
+        const cfg = themeCfg({ name, appearance });
+        const t = resolveTheme({ theme: cfg }).tokens;
+        expect(t["--vimma-mode-element"], `${name} ${appearance}`).not.toBe(
+          t["--vimma-mode-visual"],
+        );
+        const fg = /** @type {string} */ (t["--vimma-mode-element-fg"]);
+        const bg = /** @type {string} */ (t["--vimma-mode-element"]);
+        expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   test("every palette key has a token, and every token has a value", () => {
     const r = resolveTheme({ theme: themeCfg({ source: "file" }) });
     const names = THEME_TOKENS.map((t) => t.name);

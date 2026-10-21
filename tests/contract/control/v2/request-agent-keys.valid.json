@@ -1,0 +1,13 @@
+{
+  "description": "Scroll, then find a word, in an agent tab",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 3,
+    "command": "agent-keys",
+    "args": {
+      "tab": "12",
+      "keys": "3j /pricing<CR>"
+    }
+  }
+}

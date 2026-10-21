@@ -10,6 +10,7 @@ import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
 import { collectTargets } from "./hint-collect.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
+import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
 import { textOfDocument } from "./text-model.mjs";
 import { GrepMatcher } from "./grep-matcher.mjs";
@@ -162,6 +163,8 @@ export class VimmaChild extends JSWindowActorChild {
   #emptySearchAt = 0;
   /** Copy mode in this document (m1-copy-mode). */
   #caret = new Caret();
+  /** Element focus in this document (docs/specs/element-focus.md). */
+  #block = new BlockFocus();
   /**
    * Live grep (docs/specs/live-grep.md decision 14): this document's text model while the
    * picker is open, marked stale by any change to the document until the next query rebuilds it.
@@ -220,6 +223,7 @@ export class VimmaChild extends JSWindowActorChild {
 
   didDestroy() {
     this.#grepEnd();
+    this.#block.destroy();
     try {
       this.#watched?.removeSelectionListener(this.#selectionListener);
     } catch {
@@ -444,7 +448,15 @@ export class VimmaChild extends JSWindowActorChild {
   receiveMessage(msg) {
     switch (msg.name) {
       case "Vimma:Scroll":
-        return this.#scroll(msg.data.kind, msg.data.count);
+        return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+      case "Vimma:ScrollFraction": {
+        // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16): the element `j`
+        // scrolls, as a fraction of how far it can go.
+        const el = this.#scrollTarget(true);
+        if (!el) return 0;
+        const max = el.scrollHeight - el.clientHeight;
+        return max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
+      }
       case "Vimma:Blur": {
         if (isIndex(msg.data?.gen)) this.#blurGen = msg.data.gen;
         const el = deepActiveElement(this.document);
@@ -507,15 +519,40 @@ export class VimmaChild extends JSWindowActorChild {
         // Only the frame with focus has the user's caret (the parent sends to that one).
         const win = this.contentWindow;
         if (!isCaretMessage(msg.data) || !win || !this.document.hasFocus()) return false;
-        // The frame's nsISelectionController, got as ViewSourcePageChild gets it.
-        const selCon = this.docShell
-          .QueryInterface(Ci.nsIInterfaceRequestor)
-          .getInterface(Ci.nsISelectionDisplay)
-          .QueryInterface(Ci.nsISelectionController);
-        return this.#caret.run(win, selCon, msg.data);
+        return this.#caret.run(win, this.#selCon(), msg.data);
+      }
+      case "Vimma:Block": {
+        // Element focus (docs/specs/element-focus.md): the parent sends to the frame whose
+        // block a label chose, and to the frames around it, which only report their scrolls.
+        const win = this.contentWindow;
+        if (!win) return null;
+        return this.#block.run(win, msg.data, {
+          take: (gen, id) => {
+            if (gen !== this.#hints.gen) return null;
+            const el = this.#hints.els[id]?.deref() ?? null;
+            this.#hints = { gen: -1, els: [] };
+            return el;
+          },
+          // `v` on a block: copy mode starts with the block selected, as with a mouse selection.
+          enterCopyMode: (line) => {
+            const selCon = this.#selCon();
+            if (this.#caret.run(win, selCon, { op: "enter" }) !== true) return false;
+            if (line) this.#caret.run(win, selCon, { op: "line" });
+            return true;
+          },
+          send: (name, data) => this.sendAsyncMessage(name, data),
+        });
       }
     }
     return undefined;
+  }
+
+  /** The frame's nsISelectionController, got as ViewSourcePageChild gets it. */
+  #selCon() {
+    return this.docShell
+      .QueryInterface(Ci.nsIInterfaceRequestor)
+      .getInterface(Ci.nsISelectionDisplay)
+      .QueryInterface(Ci.nsISelectionController);
   }
 
   /**
@@ -849,15 +886,16 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * @param {ScrollKind} kind
    * @param {number} count
+   * @param {boolean} [instant]  no smooth scroll: an agent's tab in the background, whose
+   *   refresh driver is throttled (docs/specs/mcp-drive.md D8)
    * @returns {boolean} whether this frame had something to scroll
    */
-  #scroll(kind, count) {
+  #scroll(kind, count, instant = false) {
     const vertical = kind !== "left" && kind !== "right";
     const el = this.#scrollTarget(vertical);
     if (!el) return false;
-    const behavior = Services.prefs.getBoolPref("general.smoothScroll", true)
-      ? "smooth"
-      : "instant";
+    const behavior =
+      !instant && Services.prefs.getBoolPref("general.smoothScroll", true) ? "smooth" : "instant";
     const n = Math.max(1, Number(count) || 1);
     // Whole pixels, so d then u returns to the same place.
     const half = Math.round(el.clientHeight / 2) * n;

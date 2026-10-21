@@ -22,9 +22,11 @@ describe(":mcp words", () => {
     expect(parseMcpCommand(" OFF ")).toEqual({ kind: "off" });
     expect(parseMcpCommand("forget")).toEqual({ kind: "forget" });
     expect(parseMcpCommand("revoke")).toEqual({ kind: "revoke" });
+    // docs/specs/mcp-drive.md D14: the last 100 agent calls.
+    expect(parseMcpCommand("log")).toEqual({ kind: "log" });
     expect(parseMcpCommand("maybe")).toEqual({
       kind: "refuse",
-      text: ":mcp takes on, off, revoke or forget",
+      text: ":mcp takes on, off, revoke, forget or log",
     });
   });
 });

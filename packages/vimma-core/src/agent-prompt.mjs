@@ -199,6 +199,14 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
       }
     } else if (q.tool === "vimma_tabs") {
       parts = [...head, { text: `the list of agent tabs (${Number(w.count) || 0})` }];
+    } else if (q.tool === "vimma_keys") {
+      // mcp-drive D14: the keys exactly as they will run, after parsing.
+      parts = [
+        ...head,
+        ...tabParts(w),
+        { text: "  keys: " },
+        { text: clean(w.keys), isolate: "ltr" },
+      ];
     } else {
       parts = [...head, ...tabParts(w)];
     }
@@ -266,9 +274,11 @@ export function ranNotice(q, until, now) {
           ? `closed "${cutTitle(w.title)}"`
           : q.tool === "vimma_tabs"
             ? "listed the agent tabs"
-            : q.tool === DOWNLOAD_TOOL
-              ? `downloads "${cutTitle(w.name)}"`
-              : `used ${q.tool}`;
+            : q.tool === "vimma_keys"
+              ? `pressed ${clean(w.keys)} in "${cutTitle(w.title)}"`
+              : q.tool === DOWNLOAD_TOOL
+                ? `downloads "${cutTitle(w.name)}"`
+                : `used ${q.tool}`;
   return `${clientName(q.label)} ${did} (grant, ${left}m left)`;
 }
 
@@ -290,6 +300,7 @@ const ASKS = Object.freeze({
   vimma_read_page: "read a page",
   vimma_open: "open a page",
   vimma_close_tab: "close a tab",
+  vimma_keys: "move around a page",
   [DOWNLOAD_TOOL]: "download a file",
 });
 
@@ -303,6 +314,62 @@ export function agentAlertText(q) {
   if (q.tool === FULL_CONTROL) return `${who} asks for full control of Vimma (every workspace)`;
   const what = /** @type {Record<string, string>} */ (ASKS)[q.tool] ?? "use a tool";
   return `${who} asks to use Vimma's agent workspace (${what})`;
+}
+
+/** What `:mcp log` says of each outcome (mcp-drive D14). */
+const OUTCOMES = Object.freeze({
+  yes: "allowed",
+  grant: "ran under a grant",
+  user: "denied",
+  timeout: "no answer (denied)",
+  busy: "denied (busy)",
+  muted: "denied (muted)",
+  cancelled: "cancelled",
+  "in-use": "denied (the user was using the tab)",
+  changed: "denied (the tab changed)",
+});
+
+/** @type {Readonly<Record<string, string>>} */
+const OUTCOME_TEXT = OUTCOMES;
+
+/** FSI…PDI: text an agent or a page chose, as its own bidi run (security.md M4). */
+const isolate = (/** @type {string} */ t) => (t ? `\u2068${t}\u2069` : "");
+
+/**
+ * One row of `:mcp log` (mcp-drive D14) in its three cells: the time; the client, the tool, the
+ * tab's title and the keys or URL; and what came of it. Plain text.
+ * @param {import("./agent.mjs").LogEntry} e
+ * @returns {{ time: string, text: string, outcome: string }}
+ */
+export function logCells(e) {
+  const d = new Date(e.at);
+  const time = [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+  const title = cutTitle(e.title);
+  const detail = truncate(clean(e.detail), 120, "end");
+  const text = [
+    isolate(clientName({ client: e.client })),
+    clean(e.tool),
+    title ? `"${isolate(title)}"` : "",
+    isolate(detail),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const outcome =
+    e.outcome === "stopped"
+      ? `stopped (${clean(e.why) || "early"})`
+      : (OUTCOME_TEXT[e.outcome] ?? clean(e.outcome));
+  return { time, text, outcome };
+}
+
+/**
+ * One row of `:mcp log` as one line: `17:05:09 claude-code vimma_keys "Pricing" 3j · allowed`.
+ * @param {import("./agent.mjs").LogEntry} e
+ */
+export function logRow(e) {
+  const { time, text, outcome } = logCells(e);
+  return `${time} ${text} · ${outcome}`;
 }
 
 /**

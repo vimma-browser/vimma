@@ -68,13 +68,15 @@ export const McpHost = {
   },
 
   /**
-   * `:mcp [on|off|forget]`: returns the notice's text, or null while a y/N question is open.
+   * `:mcp [on|off|forget|revoke|log]`: returns the notice's text, or null while a y/N question
+   * or the log is open.
    * @param {string | undefined} text
    * @param {(question: string, yes: () => void) => void} ask
    * @param {(text: string) => void} say  the notice, after the answer
+   * @param {() => void} [showLog]  opens `:mcp log`'s list (docs/specs/mcp-drive.md D14)
    * @returns {string | null}
    */
-  run(text, ask, say) {
+  run(text, ask, say, showLog) {
     const command = parseMcpCommand(text);
     const agent = WorkspaceStore.agent;
     const name = this.workspaceName;
@@ -100,6 +102,14 @@ export const McpHost = {
       }
       case "forget":
         return forget(ask, say);
+      case "log": {
+        if (showLog) {
+          showLog();
+          return null;
+        }
+        const n = lazy.AgentGate.log.length;
+        return `mcp log: ${n} agent call${n === 1 ? "" : "s"}`;
+      }
       case "on":
       case "off": {
         const plan = planMcpSwitch(command.kind, {

@@ -3,20 +3,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The agent role's commands (docs/specs/vimma-mcp.md, decision 4): list, read, open and close
-// tabs of the agent workspace, and nothing else. What an agent can reach is decided here, in
+// tabs of the agent workspace, and run Vimma's own page keys in one (docs/specs/mcp-drive.md,
+// `agent-keys`), and nothing else. What an agent can reach is decided here, in
 // the browser, when each command runs (decision 7): a tab of the agent workspace **and** of its
 // container, in a normal window (private windows have no workspaces and are never enumerated).
 // Every command but hello and ping asks through AgentGate first (decision 12), and after the
 // yes the tab and URL must still be the ones asked about, or nothing happens (decision 19).
 
-import { AGENT_TOOLS, OpenRate, wrapUntrusted } from "../core/agent.mjs";
+import { AGENT_TOOLS, CallRate, KEYS_RATE, OpenRate, wrapUntrusted } from "../core/agent.mjs";
+import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
 import { MAX_LINE_LENGTH, MAX_READ_CHARS } from "../core/control.mjs";
 import { workspaceOfTab } from "../core/workspaces.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
+import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { AgentDownloads } from "./AgentDownloads.sys.mjs";
+import { AgentDrive } from "./AgentDrive.sys.mjs";
 import { AgentGate } from "./AgentGate.sys.mjs";
 
 /** @import { ConnId } from "../core/agent.mjs" */
@@ -38,6 +42,10 @@ const REPLY_OVERHEAD = 64 * 1024;
 const DEFAULT_MAX_READ = 200000;
 /** Each connection's opens: at most OPEN_RATE a minute, asked or under a grant. */
 const opens = new OpenRate();
+/** Each connection's `agent-keys`: at most KEYS_RATE a minute, counted when asked (D15). */
+const keyCalls = new CallRate(KEYS_RATE);
+/** The longest an `agent-keys` call runs after the yes (mcp-drive D15). */
+const KEYS_CALL_MS = 60000;
 
 /** A refusal with a protocol error code (and, for `denied`, its reason). */
 export class AgentError extends Error {
@@ -57,6 +65,7 @@ const DENIED = /** @type {Record<string, string>} */ ({
   muted: "this agent connection is muted in Vimma after repeated denials",
   changed: "the tab changed after the user was asked; nothing was done",
   cancelled: "the request was cancelled",
+  "in-use": "the user is using this tab in Vimma; nothing was done",
 });
 
 /** @param {string} reason */
@@ -456,6 +465,78 @@ const COMMANDS = {
     return { tab: tabId(tab) };
   },
 
+  /**
+   * Vimma's own page keys in an agent tab, in the background (mcp-drive D8-D17): parsed and
+   * whitelisted in core before anything is asked, refused while the user is using the tab.
+   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   */
+  async "agent-keys"(conn, state, { tab: id, keys }, rid) {
+    const agent = agentWorkspace();
+    const parsed = parseAgentKeys(keys);
+    if (!parsed.ok) throw new AgentError("invalid-args", parsed.error);
+    const asked = findAgentTab(agent, id);
+    const what = { ...describeTab(asked.tab), index: asked.index, keys: shownKeys(parsed.steps) };
+    /**
+     * A denial outside the gate goes into `:mcp log` too (D14, M23).
+     * @param {any} outcome @param {unknown} [error]
+     */
+    const refuse = (outcome, error = denied(outcome)) => {
+      AgentGate.note(conn, "vimma_keys", what, outcome);
+      return error;
+    };
+    // Counted when asked, before anything else is learnt, so a refused call cannot be retried
+    // in a loop, nor used to watch unasked whether the user is typing in a tab (D15).
+    if (!keyCalls.take(conn, Date.now())) {
+      const message = "too many vimma_keys calls from this agent in the last minute";
+      throw refuse("busy", new AgentError("denied", message, "busy"));
+    }
+    if (VimmaHost.inUse(asked.tab.linkedBrowser)) throw refuse("in-use");
+    await ask(conn, "agent-keys", what, state, rid);
+    let found;
+    try {
+      found = stillAsAsked(agent, id, what.url);
+    } catch (e) {
+      throw refuse("changed", e);
+    }
+    const { win, tab } = found;
+    if (VimmaHost.inUse(tab.linkedBrowser)) throw refuse("in-use");
+    const deadline = Date.now() + KEYS_CALL_MS;
+    // A lazy tab (restored, or unloaded under memory pressure) loads first, in the background.
+    if (!tab.linkedPanel || tab.hasAttribute("pending")) {
+      await loadedPage(win, tab, what.url, agent.userContextId);
+    }
+    const principal = agentPrincipal(agent.userContextId);
+    /** Each load is an open of this connection's: the open rate, its downloads (D12). */
+    const countLoad = (/** @type {string} */ url) => {
+      if (!opens.take(conn, Date.now())) return false;
+      AgentDownloads.openedBy(tab.linkedBrowser, conn, url);
+      return true;
+    };
+    const result = await AgentDrive.run(tab, parsed.steps, {
+      stillAgent: () => {
+        const now = WorkspaceStore.agent;
+        return (
+          !!now &&
+          now.id === agent.id &&
+          now.userContextId === agent.userContextId &&
+          !win.closed &&
+          isAgentTab(win, tab, agent)
+        );
+      },
+      load: (url) => {
+        const uri = agentUri(url);
+        if (!countLoad(uri.spec)) return false;
+        tab.linkedBrowser.loadURI(uri, { triggeringPrincipal: principal });
+        return true;
+      },
+      countLoad,
+      deadline,
+    });
+    // A call that stopped early says so in the log, after its yes or grant (M23).
+    if (result.stopped) AgentGate.note(conn, "vimma_keys", what, "stopped", result.stopped);
+    return result;
+  },
+
   /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
   async "agent-close"(conn, state, { tab: id }, rid) {
     const agent = agentWorkspace();
@@ -474,6 +555,7 @@ const COMMANDS = {
  */
 export function forgetAgentConnection(conn) {
   opens.forget(conn);
+  keyCalls.forget(conn);
 }
 
 /**

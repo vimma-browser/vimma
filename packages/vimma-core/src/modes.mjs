@@ -5,7 +5,8 @@
 /**
  * Modes the host can report to the dispatcher. `prefix` is not a mode here: the dispatcher
  * tracks a pending prefix itself and the host shows it in the status bar via `pending()`.
- * @typedef {"normal" | "insert" | "visual" | "command" | "hint" | "help" | "panel"
+ * `element` is a focused text block (docs/specs/element-focus.md): the mode `v` and `y` start from.
+ * @typedef {"normal" | "insert" | "visual" | "command" | "hint" | "element" | "help" | "panel"
  *   | "resize"} Mode
  */
 
@@ -16,6 +17,7 @@ export const MODES = Object.freeze([
   "visual",
   "command",
   "hint",
+  "element",
   "help",
   "panel",
   "resize",
@@ -23,7 +25,7 @@ export const MODES = Object.freeze([
 
 /** Modes in which leading digits are a count (`3gt`). */
 /** @type {ReadonlySet<Mode>} */
-export const COUNT_MODES = new Set(["normal", "visual", "resize"]);
+export const COUNT_MODES = new Set(["normal", "visual", "element", "resize"]);
 
 /**
  * @param {string} mode

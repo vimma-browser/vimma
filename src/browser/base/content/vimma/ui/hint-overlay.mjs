@@ -37,30 +37,44 @@ export class HintOverlay {
   }
 
   /**
-   * Outlines a text block: a ring just outside its border box, in chrome over the page.
+   * Outlines a text block: a ring just outside its border box, in chrome over the page. Called
+   * again as the block moves (a scroll, `j`), it moves the same ring; a null box (the block is
+   * scrolled out of its frame) hides it until the next.
    * @param {any} browser XULBrowserElement
-   * @param {{ x: number, y: number, width: number, height: number }} box  in the top frame's
-   *   CSS pixels
+   * @param {{ x: number, y: number, width: number, height: number } | null} box  in the top
+   *   frame's CSS pixels
    */
   outline(browser, box) {
-    this.ring?.remove();
+    const parent = browser.closest(".browserStack") ?? browser.parentNode;
+    if (this.ring?.parentNode !== parent) this.clearOutline();
     this.#style();
     const doc = this.win.document;
-    const layer = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
-    layer.id = ELEMENT_OUTLINE_ID;
-    // The status bar says what is focused (m7-a11y); the ring is a picture of where.
-    layer.setAttribute("aria-hidden", "true");
+    if (!this.ring) {
+      const layer = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
+      layer.id = ELEMENT_OUTLINE_ID;
+      // The status bar says what is focused (m7-a11y); the ring is a picture of where.
+      layer.setAttribute("aria-hidden", "true");
+      const ring = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
+      ring.className = "vimma-element-ring";
+      layer.append(ring);
+      parent.append(layer);
+      this.ring = layer;
+    }
+    const ring = /** @type {HTMLElement} */ (this.ring.firstElementChild);
+    ring.hidden = !box;
+    if (!box) return;
     const zoom = Number(browser.fullZoom) || 1;
-    const ring = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
-    ring.className = "vimma-element-ring";
     // 2 px outside the border box, which is the ring's own width.
     ring.style.left = `${Math.round(box.x * zoom) - 2}px`;
     ring.style.top = `${Math.round(box.y * zoom) - 2}px`;
     ring.style.width = `${Math.round(box.width * zoom) + 4}px`;
     ring.style.height = `${Math.round(box.height * zoom) + 4}px`;
-    layer.append(ring);
-    (browser.closest(".browserStack") ?? browser.parentNode).append(layer);
-    this.ring = layer;
+  }
+
+  /** Removes the element-focus outline. */
+  clearOutline() {
+    this.ring?.remove();
+    this.ring = null;
   }
 
   /**
@@ -110,13 +124,11 @@ export class HintOverlay {
     }
   }
 
-  /** Removes the labels and the outline. */
+  /** Removes the labels. */
   hide() {
     this.layer?.remove();
     this.layer = null;
     this.labels.clear();
-    this.ring?.remove();
-    this.ring = null;
   }
 
   /**

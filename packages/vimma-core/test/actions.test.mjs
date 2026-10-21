@@ -213,9 +213,30 @@ describe("toolbar toggle", () => {
 
   test("focus_element (hint.element) is a Hints action, unbound until its keymap sub-PR", () => {
     const a = getAction("focus_element");
-    expect(a).toMatchObject({ id: "hint.element", group: "Hints" });
+    expect(a).toMatchObject({
+      id: "hint.element",
+      group: "Hints",
+      description: "Focus a text block: v selects it, y copies it",
+    });
     expect(resolveActionName("hint.element")?.name).toBe("focus_element");
-    expect(compileKeymap().bindingsFor("focus_element")).toEqual([]);
+    // No key in normal mode until then; in ELEMENT mode, F picks another block.
+    expect(compileKeymap().bindingsFor("focus_element")).toEqual(["F [element]"]);
+  });
+
+  test("the ELEMENT mode's actions are grouped, and bound only in [modal.element]", () => {
+    const km = compileKeymap();
+    for (const [name, id, key] of [
+      ["element_visual", "element.visual", "v"],
+      ["element_visual_line", "element.visual_line", "V"],
+      ["element_yank", "element.yank", "y"],
+      ["element_parent", "element.parent", "+"],
+      ["element_child", "element.child", "-"],
+      ["element_next", "element.next", "j"],
+      ["element_prev", "element.prev", "k"],
+    ]) {
+      expect(getAction(name)).toMatchObject({ id, group: "Element focus" });
+      expect(km.bindingsFor(name)).toEqual([`${key} [element]`]);
+    }
   });
 
   test("prefix+u is the only default binding of toggle_toolbar, and no other action has it", () => {

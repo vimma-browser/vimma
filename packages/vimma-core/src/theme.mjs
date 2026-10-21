@@ -259,6 +259,8 @@ const BADGE_COLORS = Object.freeze({
   visual: "magenta",
   command: "yellow",
   hint: "orange",
+  // Beside VISUAL's magenta, the mode `v` leads into, and apart from it (element-focus 17).
+  element: "bright_magenta",
   help: "cyan",
   panel: "blue",
   resize: "brown",
@@ -310,6 +312,11 @@ export const THEME_TOKENS = Object.freeze([
   { name: "--vimma-statusbar-fg", from: "foreground", description: "status bar text" },
   { name: "--vimma-hint-bg", from: "yellow", description: "link hint label" },
   { name: "--vimma-hint-fg", textOn: "--vimma-hint-bg", description: "link hint text" },
+  {
+    name: "--vimma-element-outline",
+    from: "accent",
+    description: "the focused text block's outline (element focus)",
+  },
   ...Object.entries(BADGE_COLORS).flatMap(([badge, from]) => [
     { name: `--vimma-mode-${badge}`, from, description: `${badge} mode badge` },
     {

@@ -160,7 +160,7 @@ function insideCandidate(el, candidates) {
  * @param {Node} node
  * @returns {Element | null}
  */
-function parentOf(node) {
+export function parentOf(node) {
   const p = node.parentNode;
   if (!p) return null;
   if (p.nodeType === 1) return /** @type {Element} */ (p);
@@ -444,18 +444,27 @@ function visibleFrames(win, candidates) {
     if (frames.length >= MAX_FRAMES) break;
     const bc = /** @type {any} */ (el).browsingContext;
     if (!bc) continue;
-    const r = el.getBoundingClientRect();
-    // The frame's viewport starts inside its border and padding.
-    const style = win.getComputedStyle(el);
-    const pl = parseFloat(style.paddingLeft) || 0;
-    const pt = parseFloat(style.paddingTop) || 0;
-    const width = el.clientWidth - pl - (parseFloat(style.paddingRight) || 0);
-    const height = el.clientHeight - pt - (parseFloat(style.paddingBottom) || 0);
-    if (width < 1 || height < 1) continue;
-    frames.push({
-      bc,
-      rect: { x: r.left + el.clientLeft + pl, y: r.top + el.clientTop + pt, width, height },
-    });
+    const rect = frameViewport(win, el);
+    if (rect) frames.push({ bc, rect });
   }
   return frames;
+}
+
+/**
+ * A frame element's viewport in its document's CSS pixels: inside its border and padding.
+ * Null when it has no room to show anything.
+ * @param {Window} win
+ * @param {Element} el  an iframe or frame
+ * @returns {Rect | null}
+ */
+export function frameViewport(win, el) {
+  const r = el.getBoundingClientRect();
+  const style = win.getComputedStyle(el);
+  if (!style) return null;
+  const pl = parseFloat(style.paddingLeft) || 0;
+  const pt = parseFloat(style.paddingTop) || 0;
+  const width = el.clientWidth - pl - (parseFloat(style.paddingRight) || 0);
+  const height = el.clientHeight - pt - (parseFloat(style.paddingBottom) || 0);
+  if (width < 1 || height < 1) return null;
+  return { x: r.left + el.clientLeft + pl, y: r.top + el.clientTop + pt, width, height };
 }

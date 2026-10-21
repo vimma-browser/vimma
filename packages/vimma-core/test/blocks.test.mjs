@@ -5,6 +5,7 @@ import {
   pickBlocks,
   parentBlock,
   childBlock,
+  adjacentBlock,
   needsBlockText,
 } from "../src/blocks.mjs";
 
@@ -333,5 +334,53 @@ describe("parentBlock / childBlock: the walks of + and -", () => {
     expect(childBlock(t.descs, t.at("ul"))).toBe(t.at("li"));
     expect(childBlock(t.descs, t.at("li"))).toBe(t.at("p"));
     expect(childBlock(t.descs, t.at("p"))).toBe(-1);
+  });
+});
+
+describe("adjacentBlock: the walks of j and k", () => {
+  const t = tree([
+    "body",
+    ["h2", { name: "h", ...T }],
+    ["p", { name: "p1", ...T }],
+    [
+      "ul",
+      { name: "ul" },
+      ["li", { name: "li1", text: true }, ["p", { name: "lp1", ...T }]],
+      ["li", { name: "li2", text: true }, ["p", { name: "lp2", ...T }]],
+    ],
+    ["p", { name: "hidden", onScreen: false, ...T }],
+    ["pre", { name: "pre", text: true }, ["div", { name: "line", ...T }]],
+    ["p", { name: "p2", ...T }],
+  ]);
+
+  test("j: the next labelled block in document order, k the previous", () => {
+    expect(adjacentBlock(t.descs, t.at("h"), 1)).toBe(t.at("p1"));
+    expect(adjacentBlock(t.descs, t.at("p1"), 1)).toBe(t.at("lp1"));
+    expect(adjacentBlock(t.descs, t.at("lp2"), 1)).toBe(t.at("pre"));
+    expect(adjacentBlock(t.descs, t.at("p2"), -1)).toBe(t.at("pre"));
+    expect(adjacentBlock(t.descs, t.at("lp1"), -1)).toBe(t.at("p1"));
+  });
+
+  test("hidden blocks and the lines of a code block are stepped over", () => {
+    expect(adjacentBlock(t.descs, t.at("pre"), 1)).toBe(t.at("p2"));
+    expect(adjacentBlock(t.descs, t.at("pre"), -1)).toBe(t.at("lp2"));
+  });
+
+  test("from a block reached with +, j leaves it and k never lands inside or around it", () => {
+    expect(adjacentBlock(t.descs, t.at("ul"), 1)).toBe(t.at("pre"));
+    expect(adjacentBlock(t.descs, t.at("ul"), -1)).toBe(t.at("p1"));
+    expect(adjacentBlock(t.descs, t.at("li2"), -1)).toBe(t.at("lp1"));
+  });
+
+  test("a count steps that many, and stops at the last block there is", () => {
+    expect(adjacentBlock(t.descs, t.at("h"), 3)).toBe(t.at("lp2"));
+    expect(adjacentBlock(t.descs, t.at("h"), 99)).toBe(t.at("p2"));
+    expect(adjacentBlock(t.descs, t.at("p2"), -99)).toBe(t.at("h"));
+  });
+
+  test("no block further: -1", () => {
+    expect(adjacentBlock(t.descs, t.at("p2"), 1)).toBe(-1);
+    expect(adjacentBlock(t.descs, t.at("h"), -1)).toBe(-1);
+    expect(adjacentBlock(t.descs, 999, 1)).toBe(-1);
   });
 });
