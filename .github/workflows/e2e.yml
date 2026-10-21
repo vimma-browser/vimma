@@ -60,9 +60,12 @@ permissions:
 concurrency:
   # Keyed on the ref and the version: a call from upstream.yml or the Beta canary runs on main's
   # ref, and must never cancel, or be cancelled by, a manual run on main without a version or a
-  # manual run of the same version on another branch. A new push to a PR cancels its older run.
+  # manual run of the same version on another branch. A new push to a PR cancels its older run;
+  # nothing else cancels a run in progress (tools/test/workflow-concurrency.test.mjs), so a manual
+  # run of the version an upstream or Beta call is testing waits for it (GitHub still keeps one
+  # queued run per group, the newest). In a call, event_name is the caller's event.
   group: e2e-${{ github.ref }}-${{ inputs.firefox-version }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Issue #245: is this a docs-only pull request? (tools/ci/docs-only.mjs, as the base branch has
