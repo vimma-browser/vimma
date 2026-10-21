@@ -320,6 +320,8 @@ group("Copy mode", [
   ["swap_selection_ends", "selection.swap", "Swap the selection's ends"],
   ["select_inner_word", "selection.inner_word", "Select the word at the caret"],
   ["select_a_word", "selection.a_word", "Select the word at the caret and its spaces"],
+  ["select_inner_block", "selection.inner_block", "Select the text block at the caret"],
+  ["select_a_block", "selection.a_block", "Select the block at the caret; again: its parent"],
   ["yank_selection", "selection.yank", "Copy selection and leave copy mode"],
   ["yank_lines", "selection.yank_lines", "Copy the selection's whole lines and leave"],
 ]);

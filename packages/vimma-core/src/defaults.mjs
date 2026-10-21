@@ -278,6 +278,8 @@ const modal = {
     o: "selection.swap",
     iw: "selection.inner_word",
     aw: "selection.a_word",
+    ip: "selection.inner_block",
+    ap: "selection.a_block",
     y: "selection.yank",
     Y: "selection.yank_lines",
     I: "urlbar.focus",

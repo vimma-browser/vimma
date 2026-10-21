@@ -209,6 +209,8 @@ Copy mode
   swap_selection_ends       o [visual]                                        Swap the selection's ends
   select_inner_word         iw [visual]                                       Select the word at the caret
   select_a_word             aw [visual]                                       Select the word at the caret and its spaces
+  select_inner_block        ip [visual]                                       Select the text block at the caret
+  select_a_block            ap [visual]                                       Select the block at the caret; again: its parent
   yank_selection            y [visual]                                        Copy selection and leave copy mode
   yank_lines                Y [visual]                                        Copy the selection's whole lines and leave
 

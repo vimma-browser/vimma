@@ -350,6 +350,8 @@ describe("copy mode: Vim motions, selection and yank keys", () => {
     ["o", "selection.swap"],
     ["i w", "selection.inner_word"],
     ["a w", "selection.a_word"],
+    ["i p", "selection.inner_block"],
+    ["a p", "selection.a_block"],
     ["Y", "selection.yank_lines"],
   ])("%s in visual mode runs %s", (keys, id) => {
     expect(last(feed(make(), "visual", keys))).toEqual({ kind: "action", action: { id } });

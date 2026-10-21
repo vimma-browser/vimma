@@ -10,6 +10,7 @@
 
 import { findChar, firstNonBlank, textMotion, wordObject } from "../core/motions.mjs";
 import { textAround } from "./text-model.mjs";
+import { blockRangeAt } from "./block.mjs";
 
 /** @import { FindKind } from "../core/motions.mjs" */
 /** @import { Point } from "./text-model.mjs" */
@@ -63,6 +64,8 @@ const OPS = new Set([
   "swap",
   "inner_word",
   "a_word",
+  "inner_block",
+  "a_block",
   "yank_lines",
 ]);
 /** A count above this is cut to it (`9999j`): each step is a layout query. */
@@ -239,6 +242,10 @@ export class Caret {
       case "a_word":
         this.#wordObject(win, sel, op === "a_word");
         break;
+      case "inner_block":
+      case "a_block":
+        this.#blockObject(win, sel, op === "a_block");
+        break;
       case "first_nonblank":
         selCon.intraLineMove(false, this.selecting);
         this.#textMove(win, sel, 1, (text, at) => firstNonBlank(text, at), false);
@@ -410,6 +417,28 @@ export class Caret {
     const end = model.pointAt(range[1], true);
     if (!start || !end) return;
     sel.setBaseAndExtent(start.node, start.offset, end.node, end.offset);
+    this.selecting = true;
+    this.linewise = null;
+  }
+
+  /**
+   * `ip` / `ap` (element-focus decision 11): selects the text block around the caret as `v` from
+   * element focus would, character-wise, anchor at its start; `ap` on a selection that already
+   * holds that block takes its parent block instead.
+   * @param {Window} win
+   * @param {Selection} sel
+   * @param {boolean} around
+   */
+  #blockObject(win, sel, around) {
+    const selected = this.selecting && sel.rangeCount ? sel.getRangeAt(0) : null;
+    const range = blockRangeAt(/** @type {Node} */ (sel.focusNode), win, around, selected);
+    if (!range) return;
+    sel.setBaseAndExtent(
+      range.startContainer,
+      range.startOffset,
+      range.endContainer,
+      range.endOffset,
+    );
     this.selecting = true;
     this.linewise = null;
   }

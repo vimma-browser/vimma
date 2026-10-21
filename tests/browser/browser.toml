@@ -43,6 +43,7 @@ support-files = [
   "file_vimma_element.html",
   "file_vimma_element_frame.html",
   "file_vimma_element_many.html",
+  "file_vimma_element_paragraphs.html",
   "file_vimma_test.pdf",
 ]
 
