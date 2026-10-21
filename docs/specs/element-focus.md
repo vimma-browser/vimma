@@ -390,7 +390,10 @@ solve "point at something on screen in two keys" for links; text blocks have no 
     `element: "bright_magenta"` to `BADGE_COLORS`. `bright_magenta` places `ELEMENT` next to
     `VISUAL` (`magenta`), the mode it leads into, while keeping the two badges distinct; plain
     `magenta` was rejected because `v` would then change the badge text but not its colour. The
-    Omarchy adapter fills the tokens like the others.
+    Omarchy adapter fills the tokens like the others. (Since changed: a theme can give
+    `bright_magenta` and `magenta` one colour, as Catppuccin does; `ELEMENT` then takes a shade of
+    it, lighter or darker, so the two badges stay apart; `badgeColors` in `theme.mjs` describes it
+    now.)
 
 ### Limits
 

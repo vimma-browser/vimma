@@ -9,6 +9,9 @@ import {
   TOKYO_NIGHT,
   VIMMA_DARK,
   VIMMA_LIGHT,
+  MIN_BADGE_DISTANCE,
+  MIN_CONTRAST,
+  colorDistance,
   contrastRatio,
   isHexColor,
   normalizeHex,
@@ -571,6 +574,118 @@ describe("tokens", () => {
         expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
       }
     }
+  });
+
+  // Every theme Vimma ships or is tested with: the built-ins in each variant, and each fixture.
+  const badgeThemes = () => {
+    /** @type {[string, ReturnType<typeof resolveTheme>][]} */
+    const out = [];
+    for (const [name, theme] of Object.entries(BUILTIN_THEMES)) {
+      for (const appearance of /** @type {const} */ (["dark", "light"])) {
+        if (theme[appearance])
+          out.push([
+            `${name} ${appearance}`,
+            resolveTheme({ theme: themeCfg({ name, appearance }) }),
+          ]);
+      }
+    }
+    const omarchy = themeCfg({ source: "omarchy" });
+    for (const file of [
+      "tokyo-night.colors.toml",
+      "light.colors.toml",
+      "event-horizon.colors.toml",
+      "catppuccin.colors.toml",
+    ]) {
+      out.push([file, resolveTheme({ theme: omarchy, omarchy: fixture(file) })]);
+    }
+    return out;
+  };
+
+  test("every badge has a colour of its own, apart from every other badge's", () => {
+    for (const [name, r] of badgeThemes()) {
+      expect(r.errors, name).toEqual([]);
+      const colours = BADGES.map((b) => /** @type {string} */ (r.tokens[`--vimma-mode-${b}`]));
+      for (let i = 0; i < BADGES.length; i++) {
+        for (let j = i + 1; j < BADGES.length; j++) {
+          const d = colorDistance(
+            /** @type {string} */ (colours[i]),
+            /** @type {string} */ (colours[j]),
+          );
+          expect(
+            d,
+            `${name}: ${BADGES[i]} ${colours[i]} vs ${BADGES[j]} ${colours[j]}`,
+          ).toBeGreaterThanOrEqual(MIN_BADGE_DISTANCE);
+        }
+      }
+    }
+  });
+
+  // A theme of nine greys has no room for ten greys MIN_BADGE_DISTANCE apart.
+  test("a monochrome theme still gives every badge a grey of its own", () => {
+    const t = resolveTheme({
+      theme: themeCfg({ source: "omarchy" }),
+      omarchy: fixture("mono.colors.toml"),
+    }).tokens;
+    const colours = BADGES.map((b) => /** @type {string} */ (t[`--vimma-mode-${b}`]));
+    for (let i = 0; i < colours.length; i++) {
+      for (let j = i + 1; j < colours.length; j++) {
+        // Twice the just-noticeable difference (delta E 2.3).
+        const d = colorDistance(
+          /** @type {string} */ (colours[i]),
+          /** @type {string} */ (colours[j]),
+        );
+        expect(d, `${BADGES[i]} vs ${BADGES[j]}`).toBeGreaterThanOrEqual(5);
+      }
+    }
+  });
+
+  test("every badge's text reaches WCAG AA on it", () => {
+    const mono = resolveTheme({
+      theme: themeCfg({ source: "omarchy" }),
+      omarchy: fixture("mono.colors.toml"),
+    });
+    for (const [name, r] of [...badgeThemes(), ["mono.colors.toml", mono]]) {
+      for (const b of BADGES) {
+        const fg = /** @type {string} */ (r.tokens[`--vimma-mode-${b}-fg`]);
+        const bg = /** @type {string} */ (r.tokens[`--vimma-mode-${b}`]);
+        expect(contrastRatio(fg, bg), `${name} ${b}`).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+      expect(
+        r.warnings.filter((w) => w.includes("--vimma-mode-")),
+        name,
+      ).toEqual([]);
+    }
+  });
+
+  test("a badge whose slot repeats an earlier badge's colour takes a shade of it", () => {
+    // catppuccin.colors.toml: color13 is color5, and with no orange, orange is yellow.
+    const t = resolveTheme({
+      theme: themeCfg({ source: "omarchy" }),
+      omarchy: fixture("catppuccin.colors.toml"),
+    }).tokens;
+    // The earlier badge keeps its slot.
+    expect(t["--vimma-mode-visual"]).toBe("#cba6f7");
+    expect(t["--vimma-mode-command"]).toBe("#f9e2af");
+    // The later one is its slot's colour 15% toward black: the first step far enough from both.
+    expect(t["--vimma-mode-element"]).toBe("#ad8dd2");
+    expect(t["--vimma-mode-hint"]).toBe("#d4c095");
+    // No other badge moves to make room.
+    expect(t["--vimma-mode-help"]).toBe("#94e2d5");
+    expect(t["--vimma-mode-panel"]).toBe("#89b4fa");
+    expect(t["--vimma-mode-prefix"]).toBe("#f38ba8");
+  });
+
+  test("badges that keep their slots apart keep the slot's colour", () => {
+    const t = resolveTheme({ theme: themeCfg({ name: "vimma", appearance: "dark" }) }).tokens;
+    expect(t["--vimma-mode-visual"]).toBe(VIMMA_DARK.magenta);
+    expect(t["--vimma-mode-element"]).toBe(VIMMA_DARK.bright_magenta);
+    expect(t["--vimma-mode-hint"]).toBe(VIMMA_DARK.orange);
+    expect(t["--vimma-mode-prefix"]).toBe(VIMMA_DARK.red);
+  });
+
+  test("colorDistance is CIE76 delta E: 0 for one colour, 100 from black to white", () => {
+    expect(colorDistance("#cba6f7", "#CBA6F7")).toBe(0);
+    expect(colorDistance("#000000", "#ffffff")).toBeCloseTo(100, 1);
   });
 
   test("every palette key has a token, and every token has a value", () => {
