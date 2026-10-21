@@ -209,6 +209,117 @@ function collectErrors() {
   };
 }
 
+/** The computed colour of a CSS colour expression in the chrome document. */
+function colourOf(value) {
+  const probe = document.createElement("div");
+  probe.style.color = value;
+  document.documentElement.append(probe);
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  return color;
+}
+
+/** The focused pane's border width, --vimma-pane-focus-width on #tabbrowser-tabpanels. */
+function focusWidth() {
+  return getComputedStyle(tabpanels()).getPropertyValue("--vimma-pane-focus-width").trim();
+}
+
+/** The outline a tab's .browserContainer draws. */
+function outlineOf(tab) {
+  const style = getComputedStyle(panelOf(tab).querySelector(".browserContainer"));
+  return { color: style.outlineColor, width: style.outlineWidth, style: style.outlineStyle };
+}
+
+/** The frame a tab's .browserContainer::after draws over its page, or null when it has none. */
+function frameOf(tab) {
+  const style = getComputedStyle(panelOf(tab).querySelector(".browserContainer"), "::after");
+  if (style.content === "none" || style.borderTopStyle === "none") return null;
+  const sides = ["Top", "Right", "Bottom", "Left"];
+  return {
+    widths: [...new Set(sides.map((s) => style[`border${s}Width`]))].join(" "),
+    style: style.borderTopStyle,
+    color: [...new Set(sides.map((s) => style[`border${s}Color`]))].join(" "),
+    position: style.position,
+    inset: [style.top, style.right, style.bottom, style.left].join(" "),
+    pointerEvents: style.pointerEvents,
+  };
+}
+
+/** Whether a tab's pane draws the focus border: a 3 px frame in the focus colour. */
+function hasBorder(tab) {
+  const f = frameOf(tab);
+  return !!f && f.widths === "3px" && f.color === colourOf("var(--focus-outline-color)");
+}
+
+/**
+ * Asserts `focused` has the focus border (docs/specs/pane-focus-highlight.md: 3 px on all four
+ * edges, inside its rect, in the theme's focus colour) and every other tab keeps the 1 px
+ * separator outline in another colour and no frame.
+ */
+function assertBorders(tabs, focused, what) {
+  const focusColor = colourOf("var(--focus-outline-color)");
+  Assert.equal(focusWidth(), "3px", `${what}: --vimma-pane-focus-width is 3px`);
+  for (const tab of tabs) {
+    const f = frameOf(tab);
+    const o = outlineOf(tab);
+    info(`${what}: ${tab.label} frame ${JSON.stringify(f)} outline ${JSON.stringify(o)}`);
+    if (tab === focused) {
+      Assert.ok(f, `${what}: ${tab.label} has a frame`);
+      Assert.equal(f?.style, "solid", `${what}: ${tab.label}'s border is solid`);
+      Assert.equal(f?.widths, "3px", `${what}: ${tab.label}'s border is 3 px on every edge`);
+      Assert.equal(f?.color, focusColor, `${what}: ${tab.label}'s border is the focus colour`);
+      Assert.equal(f?.position, "absolute", `${what}: ${tab.label}'s frame takes no space`);
+      Assert.equal(f?.inset, "0px 0px 0px 0px", `${what}: ${tab.label}'s frame is inside its rect`);
+      Assert.equal(f?.pointerEvents, "none", `${what}: ${tab.label}'s frame takes no clicks`);
+      Assert.equal(o.style, "none", `${what}: ${tab.label} draws no outline into the gap`);
+    } else {
+      Assert.equal(f, null, `${what}: ${tab.label} has no frame`);
+      Assert.equal(o.width, "1px", `${what}: ${tab.label} keeps the 1 px separator`);
+      Assert.notEqual(
+        o.color,
+        focusColor,
+        `${what}: ${tab.label}'s separator is not the focus colour`,
+      );
+    }
+  }
+}
+
+/**
+ * The colour painted at a point of the window, in client CSS px, with the pages' remote content
+ * composited in: what the user sees, which getComputedStyle cannot tell (a style on the
+ * container can be covered by the page).
+ */
+async function paintedAt(x, y) {
+  const bitmap = await window.browsingContext.currentWindowGlobal.drawSnapshot(
+    new DOMRect(x, y, 1, 1),
+    1,
+    "black",
+  );
+  const canvas = new OffscreenCanvas(1, 1);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/**
+ * Asserts the border is painted: 1 px inside the focused pane's left edge, halfway down, the
+ * window shows the focus colour, and at the same place in every other pane it does not.
+ */
+async function assertPaintedBorder(tabs, focused, what) {
+  const focusColor = colourOf("var(--focus-outline-color)");
+  for (const tab of tabs) {
+    const r = panelOf(tab).getBoundingClientRect();
+    const painted = await paintedAt(r.x + 1, r.y + r.height / 2);
+    info(`${what}: ${tab.label} painted ${painted} at its left edge`);
+    if (tab === focused) {
+      Assert.equal(painted, focusColor, `${what}: ${tab.label}'s border is painted over its page`);
+    } else {
+      Assert.notEqual(painted, focusColor, `${what}: ${tab.label} shows no border`);
+    }
+  }
+}
+
 function nextFrame() {
   return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
@@ -294,26 +405,11 @@ add_task(async function the_focus_outline_find_bar_and_notifications_belong_to_t
   const rects = rectsOf(state, tabs);
   applyLayout(window, rects);
 
-  // Focus outline: only the selected (deck-selected) panel's browserContainer draws
-  // --focus-outline (2 px); the others keep content-area.css's thin separator outline.
+  // Focus border (docs/specs/pane-focus-highlight.md): only the selected (deck-selected)
+  // panel's browserContainer draws the border; the others keep the 1 px separator outline.
   await focusContent(n3.linkedBrowser);
-  const probe = document.createElement("div");
-  probe.style.color = "var(--focus-outline-color)";
-  document.documentElement.append(probe);
-  const focusColor = getComputedStyle(probe).color;
-  probe.remove();
-  for (const tab of tabs) {
-    const container = panelOf(tab).querySelector(".browserContainer");
-    const { outlineColor, outlineWidth } = getComputedStyle(container);
-    info(`${tab.label} outline: ${getComputedStyle(container).outline}`);
-    if (tab === n3) {
-      Assert.ok(panelOf(tab).classList.contains("deck-selected"), "n3's panel is deck-selected");
-      Assert.equal(outlineWidth, "2px", "the focused pane n3 has the 2 px focus outline");
-      Assert.equal(outlineColor, focusColor, "n3's outline has the focus outline colour");
-    } else {
-      Assert.notEqual(outlineColor, focusColor, `${tab.label} has no focus outline`);
-    }
-  }
+  Assert.ok(panelOf(n3).classList.contains("deck-selected"), "n3's panel is deck-selected");
+  assertBorders(tabs, n3, "n3 focused");
 
   // Find bar: the selected tab's find bar, as Firefox's accel+f opens it, is inside n3's panel.
   // Not the key itself: [firefox] disable = "all" turns accel+f off in insert mode
@@ -481,6 +577,101 @@ add_task(async function zoom_hides_the_other_panes_visually_and_unzoom_restores_
     "the zoomed-away z2 keeps its scroll position",
   );
   cleanup(tabs);
+});
+
+add_task(async function the_focused_pane_has_the_focus_border() {
+  await setWindowSize();
+  const tabs = await openTabs("b1", "b2", "b3");
+  const [b1, b2, b3] = tabs;
+  await split(tabs);
+  applyLayout(window, rectsOf(lShape(tabs), tabs));
+  await focusContent(b3.linkedBrowser);
+  await nextFrame();
+  assertBorders(tabs, b3, "b3 focused");
+  await assertPaintedBorder(tabs, b3, "b3 focused");
+
+  // Picking another pane's tab moves the border at once (no transition).
+  gBrowser.selectedTab = b1;
+  await nextFrame();
+  assertBorders(tabs, b1, "b1 picked");
+  await assertPaintedBorder(tabs, b1, "b1 picked");
+  Assert.equal(
+    getComputedStyle(panelOf(b1).querySelector(".browserContainer")).transitionDuration,
+    "0s",
+    "the border does not animate",
+  );
+  await EventUtils.synthesizeMouseAtCenter(b2.linkedBrowser, {});
+  await TestUtils.waitForCondition(() => gBrowser.selectedTab === b2, "click selects b2");
+  await nextFrame();
+  assertBorders(tabs, b2, "b2 clicked");
+  cleanup(tabs);
+});
+
+add_task(async function the_pages_keep_their_size_when_focus_moves() {
+  await setWindowSize();
+  const tabs = await openTabs("k1", "k2", "k3");
+  await split(tabs);
+  const rects = rectsOf(lShape(tabs), tabs);
+  applyLayout(window, rects);
+  for (const tab of tabs) {
+    gBrowser.selectedTab = tab;
+    await nextFrame();
+    Assert.ok(hasBorder(tab), `${tab.label} focused has the border`);
+    assertRects(rects, `${tab.label} focused`);
+  }
+  cleanup(tabs);
+});
+
+add_task(async function one_pane_zoom_hidden_split_and_fullscreen_show_no_border() {
+  await setWindowSize();
+  const [solo] = await openTabs("solo");
+  await BrowserTestUtils.switchTab(gBrowser, solo);
+  await nextFrame();
+  Assert.equal(outlineOf(solo).style, "none", "one pane: no outline");
+  Assert.equal(frameOf(solo), null, "one pane: no frame");
+  Assert.ok(!hasBorder(solo), "one pane: no border");
+
+  const tabs = await openTabs("h1", "h2", "h3");
+  const [h1, h2, h3] = tabs;
+  await split(tabs);
+  const state = lShape(tabs);
+  const rects = rectsOf(state, tabs);
+  applyLayout(window, rects);
+  gBrowser.selectedTab = h3;
+  await nextFrame();
+  Assert.ok(hasBorder(h3), "split: h3 has the border");
+
+  // Zoom h3 as the host does: one full rect, the other panels zoomed away.
+  applyLayout(window, rectsOf(Panes.toggleZoom(Panes.focusPane(state, "p3")), tabs));
+  for (const tab of [h1, h2]) setHidden(window, tab, true);
+  await nextFrame();
+  Assert.ok(!hasBorder(h3), "zoomed: h3 has no border");
+  for (const tab of [h1, h2]) setHidden(window, tab, false);
+  applyLayout(window, rects);
+  await nextFrame();
+  Assert.ok(hasBorder(h3), "unzoomed: h3 has the border again");
+
+  // The hidden split: a tab outside it is selected and shown alone.
+  await BrowserTestUtils.switchTab(gBrowser, solo);
+  await nextFrame();
+  for (const tab of [solo, ...tabs]) Assert.ok(!hasBorder(tab), `hidden split: ${tab.label}`);
+  await BrowserTestUtils.switchTab(gBrowser, h2);
+  await nextFrame();
+  Assert.ok(hasBorder(h2), "split back: the focused h2 has the border");
+
+  await DOMFullscreenTestUtils.changeFullscreen(h2.linkedBrowser, true);
+  await nextFrame();
+  for (const tab of tabs) Assert.ok(!hasBorder(tab), `fullscreen: ${tab.label} has no border`);
+  await DOMFullscreenTestUtils.changeFullscreen(h2.linkedBrowser, false);
+  await TestUtils.waitForCondition(
+    () => !document.documentElement.hasAttribute("inDOMFullscreen"),
+    "out of DOM fullscreen",
+  );
+  await setWindowSize();
+  await nextFrame();
+  Assert.ok(hasBorder(h2), "after fullscreen: h2 has the border again");
+  cleanup(tabs);
+  gBrowser.removeTab(solo);
 });
 
 add_task(async function removeTab_on_a_member_of_a_three_tab_split_does_not_throw_on_TabSelect() {
