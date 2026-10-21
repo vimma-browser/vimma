@@ -205,6 +205,29 @@ add_task(async function braces_move_by_paragraph() {
   });
 });
 
+add_task(async function braces_step_over_a_paragraphs_source_white_space() {
+  await withPage(async (browser) => {
+    // #intro's text node starts and ends with source white space the page does not draw;
+    // Firefox's paragraph edges are the node's edges, past that white space.
+    const first = "\n      ".length;
+    const last = "\n      a paragraph before a list".length;
+    // From the last drawn character, as v leaves it on a focused block: into the list.
+    await caretAt(browser, "intro", 0, last);
+    keys("}");
+    const item = await waitForSelection(browser, { focusId: "item1" }, "}: into the list");
+    Assert.ok(item.text.endsWith("first item"), `} reaches the first item's end: ${item.text}`);
+    keys("{");
+    await waitForSelection(browser, { focusId: "item1", focusOffset: 0 }, "{: the item's start");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await waitForMode(browser, "normal");
+    // From the first drawn character: back to the paragraph before.
+    await caretAt(browser, "intro", 0, first);
+    keys("{");
+    const back = await waitForSelection(browser, { focusId: "para2", focusOffset: 0 }, "{: para2");
+    Assert.equal(back.text.trim(), "second paragraph here.", `{ reaches para2: ${back.text}`);
+  });
+});
+
 add_task(async function V_selects_whole_lines_and_extends_by_lines() {
   await withPage(async (browser) => {
     // #lines: "line one", <br>, "line two", <br>, "line three"
