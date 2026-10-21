@@ -57,6 +57,7 @@ browser.jar:
         content/browser/vimma/ui/tabstrip.mjs             (ui/tabstrip.mjs)
         skin/classic/browser/vimma/tabstrip.css           (/browser/themes/shared/vimma/tabstrip.css)
         content/browser/vimma/ui/toolbar.mjs              (ui/toolbar.mjs)
+        content/browser/vimma/ui/bookmarks-toolbar.mjs    (ui/bookmarks-toolbar.mjs)
         skin/classic/browser/vimma/toolbar.css            (/browser/themes/shared/vimma/toolbar.css)
         content/browser/vimma/ui/statusbar.mjs            (ui/statusbar.mjs)
         content/browser/vimma/ui/theme-host.mjs           (ui/theme-host.mjs)

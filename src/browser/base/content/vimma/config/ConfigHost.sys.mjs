@@ -30,6 +30,7 @@ import { PrivateSwap } from "../host/private-swap.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
+import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
@@ -146,6 +147,11 @@ function apply(next, text) {
     appliedToolbar = config.ui.toolbar;
     Toolbar.setHidden(config.ui.toolbar === "hidden");
   }
+  // docs/specs/bookmarks-toolbar-hidden.md decisions 4 and 7, applied as `[ui] toolbar` is.
+  BookmarksToolbar.configure(config.ui.bookmarksToolbar, (text) => {
+    const [win] = windows;
+    if (win) VimmaHost.say(win, text);
+  });
   // docs/specs/search-engines.md: its problems arrive later and join the file's (showErrors).
   SearchHost.setConfig(config.search, locateKeys(text)).catch((e) =>
     console.error("vimma: [search] not applied", e),

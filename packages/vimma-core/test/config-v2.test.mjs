@@ -577,7 +577,7 @@ describe("[private] placement", () => {
 // docs/specs/toolbar-toggle.md, decision 3: [ui] toolbar, a schema-2 table.
 describe("[ui] toolbar", () => {
   test('defaults to "shown"', () => {
-    expect(ok(v2()).ui).toEqual({ toolbar: "shown" });
+    expect(ok(v2()).ui).toEqual({ toolbar: "shown", bookmarksToolbar: null });
     expect(DEFAULT_CONFIG.ui).toEqual({ toolbar: "shown" });
     expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n)*toolbar = "shown"$/m);
   });
@@ -609,6 +609,55 @@ describe("[ui] toolbar", () => {
       { line: 2, path: "ui", message: "expected a table, got an integer" },
     ]);
     expect(errors(toml("schema = 1", "[ui]", 'toolbar = "hidden"'))).toEqual([
+      { line: 2, path: "ui", message: "is new in schema 2: put schema = 2 at the top of the file" },
+    ]);
+  });
+});
+
+// docs/specs/bookmarks-toolbar-hidden.md, decision 3: [ui] bookmarks_toolbar, unset by default.
+describe("[ui] bookmarks_toolbar", () => {
+  test("left out, the config has none: Firefox's pref decides; the template only comments it", () => {
+    expect(ok(v2()).ui.bookmarksToolbar).toBeNull();
+    expect(DEFAULT_CONFIG.ui).not.toHaveProperty("bookmarks_toolbar");
+    expect(formatDefaultsToml()).toMatch(/^# bookmarks_toolbar = "shown"$/m);
+    expect(formatDefaultsToml()).not.toMatch(/^bookmarks_toolbar/m);
+  });
+
+  test.each([["shown"], ["hidden"], ["newtab"]])('bookmarks_toolbar = "%s" is accepted', (v) => {
+    expect(ok(v2("[ui]", `bookmarks_toolbar = "${v}"`)).ui).toEqual({
+      toolbar: "shown",
+      bookmarksToolbar: v,
+    });
+  });
+
+  test("Firefox's own words and other values are errors, with the Vimma word when one fits", () => {
+    const message = 'must be "shown", "hidden" or "newtab"';
+    const at = { line: 3, path: "ui.bookmarks_toolbar", message };
+    expect(errors(v2("[ui]", 'bookmarks_toolbar = "always"'))).toEqual([
+      { ...at, suggestion: "shown" },
+    ]);
+    expect(errors(v2("[ui]", 'bookmarks_toolbar = "never"'))).toEqual([
+      { ...at, suggestion: "hidden" },
+    ]);
+    expect(errors(v2("[ui]", 'bookmarks_toolbar = "hiden"'))).toEqual([
+      { ...at, suggestion: "hidden" },
+    ]);
+    expect(errors(v2("[ui]", 'bookmarks_toolbar = "blue"'))).toEqual([at]);
+    expect(errors(v2("[ui]", "bookmarks_toolbar = true"))).toEqual([
+      { line: 3, path: "ui.bookmarks_toolbar", message: "expected a string, got a boolean" },
+    ]);
+  });
+
+  test("a near miss of the key name suggests it; schema 1 has no [ui]", () => {
+    expect(errors(v2("[ui]", 'bookmark_toolbar = "shown"'))).toEqual([
+      {
+        line: 3,
+        path: "ui.bookmark_toolbar",
+        message: 'unknown key "bookmark_toolbar"',
+        suggestion: "bookmarks_toolbar",
+      },
+    ]);
+    expect(errors(toml("schema = 1", "[ui]", 'bookmarks_toolbar = "shown"'))).toEqual([
       { line: 2, path: "ui", message: "is new in schema 2: put schema = 2 at the top of the file" },
     ]);
   });

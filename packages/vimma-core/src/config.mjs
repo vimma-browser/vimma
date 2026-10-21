@@ -8,6 +8,7 @@
  * Core does no I/O: the host passes file contents.
  */
 import { closest, resolveActionName } from "./actions.mjs";
+import { BOOKMARKS_TOOLBAR_SETTINGS } from "./bookmarks-toolbar.mjs";
 import { DEFAULT_CONFIG, WORKSPACE_DEFAULTS, formatConfigTemplate } from "./defaults.mjs";
 import { INSERT_SITE_MODES } from "./editable.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "./hints.mjs";
@@ -69,7 +70,9 @@ import { resolveSearch, validateSearch } from "./search.mjs";
  * @property {{ root: BookmarksRoot }} bookmarks          `[bookmarks]` (schema 2)
  * @property {{ placement: PrivatePlacement }} private    `[private]` (schema 2), private-swap
  * @property {McpConfig} mcp                             `[mcp]` (schema 2), docs/specs/vimma-mcp.md
- * @property {{ toolbar: ToolbarSetting }} ui             `[ui]` (schema 2), toolbar-toggle
+ * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null }} ui
+ *   `[ui]` (schema 2): toolbar-toggle; `bookmarksToolbar` is null when unset
+ *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides)
  * @property {ResolvedSearch | null} search              `[search]` (schema 2), null without it;
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]` (schema 2),
@@ -86,6 +89,7 @@ import { resolveSearch, validateSearch } from "./search.mjs";
 
 /** @typedef {"swap" | "window"} PrivatePlacement */
 /** @typedef {"shown" | "hidden"} ToolbarSetting */
+/** @typedef {import("./bookmarks-toolbar.mjs").BookmarksToolbarSetting} BookmarksToolbarSetting */
 
 /**
  * Which of Firefox's own shortcuts are off (docs/specs/key-handling-batch.md § 1).
@@ -221,7 +225,9 @@ const PRIVATE_KEYS = ["placement"];
 export const TOOLBAR_SETTINGS = Object.freeze(
   /** @type {ToolbarSetting[]} */ (["shown", "hidden"]),
 );
-const UI_KEYS = ["toolbar"];
+const UI_KEYS = ["toolbar", "bookmarks_toolbar"];
+/** Firefox's words for the bookmarks toolbar's states, and the Vimma word each means. */
+const FIREFOX_VISIBILITY_WORDS = Object.freeze({ always: "shown", never: "hidden" });
 /** `[updates]` (docs/specs/m6a-updater.md, Security and privacy, "Off"). */
 const UPDATES_KEYS = ["check"];
 /** `[mcp]` (docs/specs/vimma-mcp.md, decision 26) and its bounds. */
@@ -535,9 +541,18 @@ function validate(raw, declared) {
   if (declared >= 2 && isTable(raw.ui)) {
     for (const [key, v] of Object.entries(raw.ui)) {
       const path = ["ui", key];
-      if (key !== "toolbar") unknownKey(path, key, UI_KEYS);
+      if (!UI_KEYS.includes(key)) unknownKey(path, key, UI_KEYS);
       else if (typeof v !== "string") typeError(path, v, "a string");
-      else if (!TOOLBAR_SETTINGS.includes(/** @type {ToolbarSetting} */ (v))) {
+      else if (key === "bookmarks_toolbar") {
+        if (!BOOKMARKS_TOOLBAR_SETTINGS.includes(/** @type {BookmarksToolbarSetting} */ (v))) {
+          const word = /** @type {Record<string, string>} */ (FIREFOX_VISIBILITY_WORDS)[v];
+          fail(
+            path,
+            'must be "shown", "hidden" or "newtab"',
+            word ?? closest(v, BOOKMARKS_TOOLBAR_SETTINGS),
+          );
+        }
+      } else if (!TOOLBAR_SETTINGS.includes(/** @type {ToolbarSetting} */ (v))) {
         fail(path, 'must be "shown" or "hidden"', closest(v, TOOLBAR_SETTINGS));
       }
     }
@@ -816,7 +831,10 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     bookmarks: { root: user.bookmarks?.root ?? "workspace" },
     private: { placement: user.private?.placement ?? "swap" },
     mcp: resolveMcp(user.mcp),
-    ui: { toolbar: user.ui?.toolbar ?? "shown" },
+    ui: {
+      toolbar: user.ui?.toolbar ?? "shown",
+      bookmarksToolbar: user.ui?.bookmarks_toolbar ?? null,
+    },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },
   };
