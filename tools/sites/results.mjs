@@ -52,6 +52,7 @@ export const CHECKS = /** @type {const} */ ([
  * @property {ModeStep[]} [steps]
  * @property {number} durationMs
  * @property {string} [error]
+ * @property {{ status: SiteStatus, block?: Block }} [retry]  the first visit, when this is a retry
  */
 /**
  * @typedef {object} Run
@@ -60,6 +61,7 @@ export const CHECKS = /** @type {const} */ ([
  * @property {"local" | "github-hosted"} network
  * @property {string} build
  * @property {string | null} commit
+ * @property {string | null} [filter]  the --filter, when only some sites ran
  * @property {SiteResult[]} sites
  * @property {string | null} harnessError
  */
@@ -138,4 +140,31 @@ export function summarize(sites) {
  */
 export function exitCode(run) {
   return run.harnessError ? 1 : 0;
+}
+
+/**
+ * The sites to load once more at the end of the run (decision 11): those a bot check blocked.
+ * A consent wall does not go away on its own, and a failure or harness error is a result.
+ * @template {{ status: SiteStatus }} T
+ * @param {T[]} sites
+ * @returns {T[]}
+ */
+export function retryTargets(sites) {
+  return sites.filter((s) => s.status === "blocked");
+}
+
+/**
+ * The retry's result in place of the first visit, which it keeps under `retry`, with both
+ * visits' screenshots and time.
+ * @param {SiteResult} first
+ * @param {SiteResult} second
+ * @returns {SiteResult}
+ */
+export function mergeRetry(first, second) {
+  return {
+    ...second,
+    retry: { status: first.status, ...(first.block ? { block: first.block } : {}) },
+    screenshots: [...first.screenshots, ...second.screenshots],
+    durationMs: first.durationMs + second.durationMs,
+  };
 }

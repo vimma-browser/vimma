@@ -310,6 +310,20 @@ npm run sites -- --pref name=value             # an extra profile pref (repeatab
 - "blocked (bot check)" and "consent" are the site's doing (a Cloudflare or Google check, a
   consent wall it could not reject), not Vimma's. They depend on the network: run it from home
   when the nightly shows many.
+- `--retry-blocked` loads each blocked site once more at the end of the run. The nightly passes
+  it; leave it off at home, where every extra visit makes the next bot check more likely.
+- **The nightly diff and the `site-compat` issue.** After the run, `sites.yml` downloads the
+  previous scheduled run's artifact and runs `tools/sites/compare.mjs`: the changes go into the
+  job summary and `diff.md`, and the regressions it tracks (checks that passed before and fail
+  now) into `diff.json` for the next night. A new regression opens one issue labelled
+  `site-compat`; each scheduled run updates it and closes it once every tracked check passes
+  again. A check that has failed since before it was first compared opens no issue. To see what
+  a run compared with, open the compare job's summary; to start tracking afresh, close the issue
+  (it reopens only on a new regression). If a night could not compare (an expired, missing or
+  damaged artifact), the issue says the tracking was interrupted and is no longer closed
+  automatically: close it by hand once the report shows its checks passing. A night whose
+  harness failed fails the run and is skipped as a baseline; the next night compares with the
+  last successful one.
 - Adding a site: an entry in `sites.json` (`id`, `name`, an https `url`; optional `search`, a CSS
   selector for its search field, and `find`, a word on the page). `npm test` checks the file.
 - Running it from a worktree against the main checkout's build: pass
@@ -625,7 +639,8 @@ run gets too slow, narrow `mutate` in `stryker.config.mjs` or drop the monthly f
 `sites.yml` (spec site-compat) runs one job a night at 04:30 UTC, and by hand: about 3.6 min of
 setup (e2e.yml's steps up to the artifact build) plus the site list, about 15-20 min in all
 (≈ 600 min a month, free on a standard runner). It never runs on pull requests and is not a
-required check. To make it lighter, shorten `tools/sites/sites.json` or move its `cron` to fewer
+required check. A blocked site's retry adds about 30 s each, and the diff and the issue job
+under a minute. To make it lighter, shorten `tools/sites/sites.json` or move its `cron` to fewer
 nights.
 
 `fuzz.yml` runs one job of about 5 min a night (≈ 150 min a month), plus a one-minute report job
