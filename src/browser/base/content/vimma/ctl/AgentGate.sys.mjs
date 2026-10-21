@@ -367,8 +367,10 @@ export const AgentGate = {
    */
   announce(conn, tool, what, until) {
     const label = labels.get(conn);
-    if (!label || until <= Date.now()) return;
-    changed({ kind: "ran", conn, tool, what, label, until });
+    // A grant revoked while the call ran shows no "(grant, …left)".
+    const grant = queue.grants(Date.now()).find((g) => g.conn === conn && g.tool === tool);
+    if (!label || !grant) return;
+    changed({ kind: "ran", conn, tool, what, label, until: Math.min(until, grant.until) });
   },
 
   /** `:mcp log`'s rows, newest first (mcp-drive D14). */

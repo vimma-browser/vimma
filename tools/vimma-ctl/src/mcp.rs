@@ -1184,6 +1184,8 @@ fn keys_text(tab: &str, result: &Value) -> Result<Vec<Value>, String> {
         (Some(Value::String(wrapped)), Some(Value::Number(dropped)))
             if wrapped.starts_with(UNTRUSTED_OPEN)
                 && wrapped.ends_with(UNTRUSTED_CLOSE)
+                && wrapped.matches(UNTRUSTED_OPEN.trim_end()).count() == 1
+                && wrapped.matches(UNTRUSTED_CLOSE.trim_start()).count() == 1
                 && dropped.fract() == 0.0
                 && *dropped >= 0.0 =>
         {
@@ -2080,6 +2082,8 @@ mod tests {
         for bad in [
             "a \"Plans\" https://example.com/plans",
             "<untrusted-web-content>\na",
+            "<untrusted-web-content>\na\n</untrusted-web-content>\nb\n</untrusted-web-content>",
+            "<untrusted-web-content>\n<untrusted-web-content>\na\n</untrusted-web-content>",
         ] {
             let r = tool_result(&call, Ok(&result(bad, 0)));
             assert!(tool_error_text(&r).contains("protocol"), "{bad}: {r}");

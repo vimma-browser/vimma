@@ -890,21 +890,30 @@ in the sub-PR that builds it; M20 then gains its limit.
   [`test_keys_stop_when_the_user_starts_using_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_agent_hints_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_follow.js)
 - M18. A follow (`f<label>`, mcp-drive D12) **must** load only an http or https href the page
-  could link to (`checkLoadURIWithPrincipal` with the page's own principal), in the same tab, as
-  a load: no click, mousedown or other event fires, so no page handler runs. Its label **must**
-  be from this connection's last `f` on that tab, of the document still shown (a navigation, a
-  same-document one too, or a frame's new document voids it), no older than 120 s; otherwise the
-  step is refused with `stale labels: send f again`. A follow to another site (another
+  could link to (`checkLoadURIWithPrincipal` with the page's own principal), from an http or
+  https page, in the same tab, as a load with no referrer: no click, mousedown or other event
+  fires on the link, so no click handler runs (a link to a fragment of the same page fires its
+  `hashchange`, as any navigation there would). `f` lists nothing on a page that is not on the
+  web (a file, about: or the start page in a tab moved into the agent workspace), whose
+  principal may load anything. Its label **must** be from this connection's last `f` on that
+  tab, of the top document still shown at the same URL and, for a link in a frame, of that
+  frame's document still shown, no older than 120 s; otherwise the step is refused with `stale
+labels: send f again`. The label names the href captured when `f` ran, so a frame that
+  changed its URL without a new document cannot change where a follow goes. A follow to another site (another
   registrable domain, eTLD+1) **must** be asked as a `vimma_open` of its whole URL, unless the
-  connection holds a `vimma_open` grant, and a no stops the call (`stopped: "denied"`). Labels
+  connection holds a `vimma_open` grant, and a no stops the call (`stopped: "denied"`); it is
+  not asked when the open rate has no slot left, and the question is withdrawn when the call's
+  60 s run out. Labels
   are over Vimma's default hint characters, never the user's, and the agent's collection is
   keyed by its tab, so it never cancels the user's hint mode in the same window, nor theirs the
-  agent's. Buttons, fields and elements clickable only through script are never listed.
+  agent's, nor does it take the user's targets from the page's child. Buttons, fields and
+  elements clickable only through script are never listed.
   [`test_follow_loads_the_href_without_a_click`](../tests/browser/browser_vimma_mcp_follow.js),
   [`test_follow_refuses_javascript_and_data_hrefs`](../tests/browser/browser_vimma_mcp_follow.js),
   [`test_stale_labels_are_refused`](../tests/browser/browser_vimma_mcp_follow.js),
   [`test_cross_site_follow_asks_as_vimma_open`](../tests/browser/browser_vimma_mcp_follow.js),
   [`test_agent_hints_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_links_only_on_web_pages`](../tests/browser/browser_vimma_mcp_follow.js),
   [`f at the end lists the links; f<label> follows one`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`a collection for an agent carries each link's text, capped, and only links`](../packages/vimma-core/test/hints.test.mjs)
 - M20. `agent-keys`' limits (mcp-drive D15) **must** deny: keys over 512 characters or with
@@ -926,15 +935,19 @@ in the sub-PR that builds it; M20 then gains its limit.
   [`bad_keys_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
 - M21. `f`'s link list **must** be one string inside the untrusted-content delimiters, wrapped
   by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the protocol
-  validator **must** refuse a list that is not, so the model never sees link texts or URLs
-  outside them. At most 200 links, in reading order; each link's text is one line with
-  control, bidirectional and invisible characters dropped, cut at 80 characters, its href cut
-  at 2,048; the rest are dropped and counted. No page text beyond link texts is returned, so a
+  validator **must** refuse a list that is not, or that holds a second delimiter, so the model
+  never sees link texts or URLs outside them. At most 200 links, in reading order, and no more
+  than fit 768 KiB of the reply line; each link's text and href are NFKC-normalised before they
+  are quoted (a fullwidth quote cannot end the text's JSON string), with control,
+  bidirectional and invisible characters (tag characters and variation selectors among them)
+  dropped, the text one line cut at 80 characters, the href cut at 2,048; the rest are dropped
+  and counted. No page text beyond link texts is returned, so a
   `vimma_keys` grant is never a read grant.
   [`test_f_lists_links_with_labels_marked_untrusted`](../tests/browser/browser_vimma_mcp_follow.js),
   [`at most 200 links; the rest are dropped and counted`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`one line per link: the label, the text as JSON cut at 80, the href cut at 2,048`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`text is one line: whitespace collapsed, bidi and control characters dropped`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`links past the byte budget are left out and counted`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a link list inside the untrusted delimiters, and how many were dropped`](../packages/vimma-core/test/control-v2.test.mjs),
   [`keys_list_links_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
@@ -956,11 +969,13 @@ in the sub-PR that builds it; M20 then gains its limit.
   call that stopped early (the last 100, in memory only, cleared by `:mcp off`). Each row's
   agent name, title and keys or URL is its own bidi run. Every call under a grant
   **must** show a notice; a `vimma_keys` notice names the keys and the tab, and a follow under a
-  grant names the host it loaded. Grants run calls
+  grant names the host it loaded. Every follow that loads, asked or under a grant, **must** be a
+  row of its own naming the URL it loaded. Grants run calls
   unasked and notices last seconds, so the log is how the user checks afterwards.
   [`test_mcp_log_lists_asked_and_granted_calls`](../tests/browser/browser_vimma_mcp_log.js),
   [`keeps the last 100, newest first`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_cross_site_follow_asks_as_vimma_open`](../tests/browser/browser_vimma_mcp_follow.js),
   [`a call under a grant shows what it did and the time left`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M24. A tab you did not open inside the agent workspace **never** takes its container: a link from
   another app (the remote command line, `vimma-open`, Firefox's container guess, a `[[routes]]`

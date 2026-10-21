@@ -417,7 +417,9 @@ function checkKeysResult(result, errors) {
     if (
       typeof links !== "string" ||
       !links.startsWith(`${UNTRUSTED_OPEN}\n`) ||
-      !links.endsWith(`\n${UNTRUSTED_CLOSE}`)
+      !links.endsWith(`\n${UNTRUSTED_CLOSE}`) ||
+      links.split(UNTRUSTED_OPEN).length !== 2 ||
+      links.split(UNTRUSTED_CLOSE).length !== 2
     ) {
       errors.push("result.links must be inside the untrusted-content delimiters");
     }

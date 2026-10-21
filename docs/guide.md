@@ -1441,7 +1441,7 @@ workspace, tab, focus, find bar and hint mode.
   cancelled by it, and only links are listed, never buttons or fields.
 - **A follow loads the link's address, it does not click.** The page's own click handlers do
   not run, so a link cannot post a form or start a purchase through `vimma_keys`. Only http and
-  https links are followed. A link to another site (another registrable domain:
+  https links are followed, only on web pages, and without a referrer. A link to another site (another registrable domain:
   `docs.example.com` is the same site as `example.com`, `example.org` is not) asks you again, as
   a `vimma_open` of its whole address, unless you granted that agent `vimma_open`; a no stops
   the call there.
@@ -1461,8 +1461,8 @@ workspace, tab, focus, find bar and hint mode.
   is not a read or open grant. At most 30 calls a minute; a follow, `gu`, `gU`, `H` and `L`
   count towards the 10 opens a minute. A find does not run in the tab you are in, since the browser's find would
   put your focus in a text field it matched.
-- **`:mcp log`** lists what agents did, asked or under a grant, so you can check afterwards what
-  a grant let through. It is kept in memory only and cleared by `:mcp off`.
+- **`:mcp log`** lists what agents did, asked or under a grant, each follow with the address it
+  loaded, so you can check afterwards what a grant let through. It is kept in memory only and cleared by `:mcp off`.
 
 #### Keeping agents out of your Vimma profile
 

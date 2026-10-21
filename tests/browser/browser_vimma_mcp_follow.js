@@ -188,6 +188,12 @@ add_task(async function test_follow_loads_the_href_without_a_click() {
   Assert.equal(tab.linkedBrowser.currentURI.spec, `${PAGE}?href`, "in the same tab");
   Assert.equal(r.result.loading, false, "and the result waited for the page");
   Assert.ok(tab.hidden, "in the background");
+  const referrer = await SpecialPowers.spawn(
+    tab.linkedBrowser,
+    [],
+    () => content.document.referrer,
+  );
+  Assert.equal(referrer, "", "a follow sends no referrer, whatever the page's policy");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
@@ -272,6 +278,14 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   const agents = VimmaActors.collectHints(tab.linkedBrowser, "hint.follow", { agent: true });
   await VimmaActors.collectHints(mine.linkedBrowser, "hint.follow");
   Assert.equal((await agents).length, 6, "the agent's collection is keyed by its own tab");
+
+  // In one tab, an agent's collection never takes the user's targets from the page's child.
+  const users = await VimmaActors.collectHints(mine.linkedBrowser, "hint.follow");
+  await VimmaActors.collectHints(mine.linkedBrowser, "hint.follow", { agent: true });
+  const same = users.find((t) => t.href === `${PAGE}?same`);
+  VimmaActors.activateHint(same);
+  await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, `${PAGE}?same`);
+  Assert.ok(true, "the user's target still follows after an agent's collection there");
   c.close();
   BrowserTestUtils.removeTab(mine);
   BrowserTestUtils.removeTab(tab);
@@ -290,6 +304,9 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
     () => noticeText().startsWith('claude-code followed a link to test1.example.com in "'),
     "its notice names the host it loaded (D14)",
   );
+  const row = AgentGate.log.find((e) => e.outcome === "followed");
+  Assert.equal(row?.detail, `f${LABEL.sub} → ${SUB}`, ":mcp log names the URL it loaded (M23)");
+  Assert.equal(row?.tool, "vimma_keys", "as a vimma_keys row");
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, LINKS);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, LINKS);
 
@@ -320,6 +337,10 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   AgentGate.answer(q.id, { kind: "grant", minutes: 5 });
   r = await c.response(id);
   Assert.equal(r.result.url, OTHER, "after the yes the other site loads");
+  Assert.ok(
+    AgentGate.log.some((e) => e.outcome === "followed" && e.detail.endsWith(OTHER)),
+    "and the log names it too, after a yes",
+  );
 
   // With a vimma_open grant, a cross-site follow runs unasked.
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, LINKS);
@@ -344,11 +365,39 @@ add_task(async function test_follows_count_towards_the_open_rate() {
     Assert.ok((await c.call("agent-open", { url: `${PAGE}?x${i}` })).ok, `open ${i}`);
   }
   await keys(c, tab, "f");
-  const r = await keys(c, tab, `f${LABEL.same}`);
+  let r = await keys(c, tab, `f${LABEL.same}`);
   Assert.equal(r.result.stopped, "denied", "a follow needs a slot of the open rate (M20)");
   Assert.equal(r.result.steps[0].ok, false, "the step did not run");
   Assert.equal(r.result.url, LINKS, "and nothing loaded");
+  // A cross-site follow is not asked when the rate is used up: a yes would load nothing.
+  await keys(c, tab, "f");
+  r = await keys(c, tab, `f${LABEL.other}`);
+  Assert.equal(r.result.stopped, "denied", "a cross-site follow over the rate is denied");
+  Assert.equal(AgentGate.waiting.length, 0, "without a vimma_open question");
   c.close();
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  await mcp(false);
+});
+
+add_task(async function test_links_only_on_web_pages() {
+  await mcp(true);
+  // A tab the user moved into the agent workspace may show a page that is not on the web.
+  const tab = gBrowser.addTab("about:robots", {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, "about:robots");
+  await until(() => tab.hidden, "the agent tab is hidden in its workspace");
+  const c = await agentClient();
+  const r = await keys(c, tab, "f");
+  Assert.equal(r.result.steps[0].ok, false, "f lists nothing there");
+  Assert.equal(
+    r.result.steps[0].note,
+    "links are listed and followed only on http and https pages",
+    "and says why",
+  );
+  Assert.equal(r.result.links, undefined, "no list");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });

@@ -305,6 +305,10 @@ describe("agent commands: results and errors", () => {
     expect(errorsOf(ok({ ...keys, links: "a https://a/b", dropped: 0 }), cmd)).toEqual([
       "result.links must be inside the untrusted-content delimiters",
     ]);
+    const twice = `${links}\n${links}`;
+    expect(errorsOf(ok({ ...keys, links: twice, dropped: 0 }), cmd)).toEqual([
+      "result.links must be inside the untrusted-content delimiters",
+    ]);
     expect(errorsOf(ok({ ...keys, links: 3, dropped: 0 }), cmd)).toEqual([
       "result.links must be inside the untrusted-content delimiters",
     ]);

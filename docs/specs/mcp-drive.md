@@ -306,6 +306,12 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
       `f` without a label is allowed only as the call's last key, because a list made in the
       middle of a call would describe a page that the steps after it may leave. A link's text is
       its rendered text, else its `aria-label`, `title` or an image's `alt`.
+    - **Web pages only, no referrer.** `f` lists and follows links only on an http or https
+      page: a file, about: or start page moved into the agent workspace has a principal that
+      may load anything. A follow sends no referrer, because the browser does not learn the
+      page's referrer policy or the link's `rel` from the collection, and none is the strictest
+      of them. A list takes at most 768 KiB of the reply line; links past that are dropped and
+      counted with the rest, so the line stays within the protocol's 1 MiB.
     - **Counting.** Every follow, every `gu`/`gU` and every history step that loads a page takes
       a slot of the connection's open rate (10 a minute, `OPEN_RATE`), shared with `vimma_open`,
       because each one loads a URL; a history step to an entry that is not http or https (one

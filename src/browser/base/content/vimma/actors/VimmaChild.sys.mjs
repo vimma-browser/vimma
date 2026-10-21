@@ -605,8 +605,10 @@ export class VimmaChild extends JSWindowActorChild {
       linksOnly: data.linksOnly === true,
       blocks: data.blocks === true,
     });
-    this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
     const texts = data.texts === true;
+    // An agent's collection is never followed through here (the parent loads its href): the
+    // user's targets of this frame stay as they were.
+    if (!texts) this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
     return {
       targets: targets.map((t, id) => ({
         id,

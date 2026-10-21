@@ -330,6 +330,7 @@ const OUTCOMES = Object.freeze({
   cancelled: "cancelled",
   "in-use": "denied (the user was using the tab)",
   changed: "denied (the tab changed)",
+  followed: "followed a link",
 });
 
 /** @type {Readonly<Record<string, string>>} */

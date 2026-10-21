@@ -16,7 +16,7 @@
 // of its href with the page's own principal, in the same tab: no click event fires, so no page
 // handler runs (M18). A link to another site is asked as a `vimma_open` of its URL first (D18).
 
-import { AGENT_LINKS, agentLinkLines, labelAgentLinks } from "../core/agent-keys.mjs";
+import { AGENT_LINKS, agentLinkList, labelAgentLinks } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
 import { urlRoot, urlUp } from "../core/pageurl.mjs";
@@ -51,10 +51,12 @@ const FIND_WRAPPED = 2;
  *   one `f`'s labels: the page they were collected on and when (D12)
  * @typedef {object} DriveContext
  * @property {unknown} conn  the agent connection: its labels are its own
- * @property {(url: string) => Promise<boolean>} askOpen  asks a cross-site follow of `url` as a
- *   `vimma_open` (D18), or runs it under a `vimma_open` grant; whether it may load
- * @property {(host: string) => void} followed  a follow loaded a page of `host` (a grant's
- *   notice names it, D14)
+ * @property {(url: string, until: number) => Promise<string | null>} askOpen  asks a cross-site
+ *   follow of `url` as a `vimma_open` (D18), or runs it under a `vimma_open` grant, withdrawn
+ *   at `until`; null when it may load, else the denial's reason
+ * @property {(url: string, keys: string) => void} followed  a follow loaded `url`: into
+ *   `:mcp log`, and a grant's notice names its host (D14, M23)
+ * @property {() => boolean} canLoad  whether the open rate has a slot left, without taking it
  * @property {() => boolean} stillAgent  the tab is still an agent tab (M2), checked before
  *   each step
  * @property {(url: string) => boolean} load  loads `url` in the tab as the agent's (its
@@ -63,6 +65,26 @@ const FIND_WRAPPED = 2;
  *   rate, its downloads the agent's; false when the rate is used up
  * @property {number} deadline  ms since the epoch: the call stops here (D15)
  */
+
+/** The most the link list may take of the 1 MiB reply line (protocol decision 4). */
+const LINKS_BYTES = 768 * 1024;
+
+/** What a step says when a cross-site follow was not allowed, by the denial's reason. */
+const NOT_ALLOWED = /** @type {Record<string, string>} */ ({
+  user: "the user did not allow loading",
+  timeout: "no answer in Vimma to loading",
+  muted: "this agent is muted in Vimma; it did not load",
+  busy: "too many agent requests wait in Vimma; it did not load",
+  cancelled: "the question was withdrawn; it did not load",
+});
+
+/**
+ * A page links are listed and followed on: a web page (D12). A tab moved into the agent
+ * workspace may show a file, about: or the start page, whose principals may load anything.
+ * @param {any} principal nsIPrincipal
+ */
+const onTheWeb = (principal) =>
+  !!principal?.isContentPrincipal && (principal.schemeIs("http") || principal.schemeIs("https"));
 
 /** Each connection's labels, per agent tab (D12). @type {Map<unknown, WeakMap<object, LinkSession>>} */
 const sessions = new Map();
@@ -194,7 +216,11 @@ export const AgentDrive = {
    * @param {Tab} tab @param {AgentStep[]} steps @param {DriveContext} ctx
    * @returns {Promise<KeysResult>}
    */
-  async run(tab, steps, { conn, askOpen, followed, stillAgent, load, countLoad, deadline }) {
+  async run(
+    tab,
+    steps,
+    { conn, askOpen, followed, canLoad, stillAgent, load, countLoad, deadline },
+  ) {
     const browser = tab.linkedBrowser;
     /** @type {StepResult[]} */
     const done = [];
@@ -291,6 +317,11 @@ export const AgentDrive = {
               result.note = "the page is still loading";
             }
           }
+        } else if (id === "hint.follow" && !onTheWeb(browser.contentPrincipal)) {
+          Object.assign(result, {
+            ok: false,
+            note: "links are listed and followed only on http and https pages",
+          });
         } else if (id === "hint.follow" && step.label === undefined) {
           // `f`: the visible links, labelled (D12), as the call's link list (D16).
           const targets = await bounded(
@@ -299,12 +330,15 @@ export const AgentDrive = {
             deadline,
           );
           const { links: labelled, dropped } = labelAgentLinks(targets);
+          // The reply is one line: links past its room are left out, and their labels too.
+          const list = agentLinkList(labelled, LINKS_BYTES);
+          const listed = labelled.slice(0, labelled.length - list.omitted);
           labels.set(browser, {
             mark: pageMark(browser),
             at: Date.now(),
-            byLabel: new Map(labelled.map((l) => [l.label, l.target])),
+            byLabel: new Map(listed.map((l) => [l.label, l.target])),
           });
-          links = { text: wrapUntrusted(wf(agentLinkLines(labelled))), dropped };
+          links = { text: wrapUntrusted(wf(list.text)), dropped: dropped + list.omitted };
           if (!labelled.length) result.note = "no links on screen";
         } else if (id === "hint.follow") {
           // `f<label>`: a load of the link's href, never a click (D12, D18; M18).
@@ -332,14 +366,23 @@ export const AgentDrive = {
               linkable = false;
             }
             const elsewhere = linkable && siteOf(url.URI) !== siteOf(browser.currentURI);
-            if (!linkable) {
+            /** @type {string | null} */
+            let refused = null;
+            if (!linkable || !onTheWeb(principal)) {
               Object.assign(result, { ok: false, note: "the page may not link there" });
-            } else if (elsewhere && !(await askOpen(url.href))) {
-              // D18: another site is a vimma_open of its URL; a no stops the call.
+            } else if (!canLoad()) {
+              // Before any question: a yes must not end in "too many loads".
               Object.assign(result, {
                 ok: false,
-                note: `the user did not allow loading ${wf(url.hostname)}`,
+                note: "too many loads from this agent in the last minute",
               });
+              done.push(result);
+              stopped = "denied";
+              break;
+            } else if (elsewhere && (refused = await askOpen(url.href, deadline)) !== null) {
+              // D18: another site is a vimma_open of its URL; a no stops the call.
+              const why = NOT_ALLOWED[refused] ?? `Vimma did not load (${refused})`;
+              Object.assign(result, { ok: false, note: `${why} ${wf(url.hostname)}` });
               done.push(result);
               stopped = "denied";
               break;
@@ -365,7 +408,7 @@ export const AgentDrive = {
               VimmaActors.loadLink(browser, target, url.URI);
               const until = Math.min(deadline, Date.now() + LOAD_TIMEOUT_MS);
               if (!(await loaded(browser, mark, until))) result.note = "the page is still loading";
-              followed(url.hostname);
+              followed(url.href, step.keys);
             }
           }
         } else {

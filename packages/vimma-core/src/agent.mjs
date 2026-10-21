@@ -155,6 +155,16 @@ export class CallRate {
     return true;
   }
 
+  /**
+   * Whether connection `conn` could make one more call now, without counting it: a step that
+   * asks first checks here, so a yes is not followed by "too many".
+   * @param {string | number} conn @param {number} now
+   */
+  can(conn, now) {
+    const { max, ms } = this.limit;
+    return (this.times.get(conn) ?? []).filter((t) => t > now - ms).length < max;
+  }
+
   /** @param {string | number} conn  closed */
   forget(conn) {
     this.times.delete(conn);
@@ -173,8 +183,9 @@ export const LOG_SIZE = 100;
 
 /**
  * @typedef {"yes" | "grant" | "user" | "timeout" | "busy" | "muted" | "cancelled" | "in-use"
- *   | "changed" | "stopped"} LogOutcome  allowed once, run under a grant, why it was denied, or
- *   that it stopped while it ran (`why`: changed, in-use, timeout, denied)
+ *   | "changed" | "stopped" | "followed"} LogOutcome  allowed once, run under a grant, why it was denied, or
+ *   that it stopped while it ran (`why`: changed, in-use, timeout, denied), or a
+ *   follow it made (`detail`: the URL loaded)
  * @typedef {{ at: number, client: string, tool: string, title: string, detail: string,
  *   outcome: LogOutcome, why?: string }} LogEntry  `detail`: the keys or URL, as the question
  *   showed them

@@ -341,6 +341,21 @@ describe(":mcp log (mcp-drive D14)", () => {
     );
   });
 
+  // mcp-drive D14 (M23): a follow's row names what it loaded, asked or under a grant.
+  test("a follow's row says where it went", () => {
+    expect(logCells({ ...entry(), outcome: "followed" }).outcome).toBe("followed a link");
+  });
+
+  // Review: a cross-site follow checks the open rate before it asks, without taking a slot.
+  test("a rate can be checked without counting", () => {
+    const r = new CallRate({ max: 1, ms: 1000 });
+    expect(r.can("c", 0)).toBe(true);
+    expect(r.can("c", 0)).toBe(true);
+    expect(r.take("c", 0)).toBe(true);
+    expect(r.can("c", 1)).toBe(false);
+    expect(r.can("c", 1001)).toBe(true);
+  });
+
   test("control characters and long titles are cut to one readable line", () => {
     const hostile = { ...entry(), title: `a\u202eb\n${"x".repeat(200)}`, client: "c\u0007d" };
     const row = logRow(hostile);

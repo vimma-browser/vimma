@@ -389,8 +389,9 @@ export const VimmaActors = {
   /**
    * Loads a link target's href in `browser` itself, as the page would load it: the page's
    * principal triggers the load and no event fires on the link, so no page handler runs (an
-   * agent's follow, docs/specs/mcp-drive.md D12). The caller checked the scheme, the document
-   * and checkLoadURIWithPrincipal.
+   * agent's follow, docs/specs/mcp-drive.md D12). It sends no referrer: the child does not
+   * report the page's referrer policy or the link's `rel`, and none is the strictest of them.
+   * The caller checked the scheme, the document and checkLoadURIWithPrincipal.
    * @param {any} browser XULBrowserElement
    * @param {HintTarget} target
    * @param {any} uri nsIURI of the target's href
@@ -399,7 +400,7 @@ export const VimmaActors = {
     const wg = target.wg;
     browser.loadURI(uri, {
       triggeringPrincipal: wg.documentPrincipal,
-      referrerInfo: new ReferrerInfo(Ci.nsIReferrerInfo.EMPTY, true, wg.documentURI),
+      referrerInfo: new ReferrerInfo(Ci.nsIReferrerInfo.NO_REFERRER, false, wg.documentURI),
     });
   },
 

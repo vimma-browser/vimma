@@ -390,10 +390,45 @@ export function labelAgentLinks(targets) {
   };
 }
 
-/** Control, bidirectional and invisible characters: dropped from a link's text. */
-const UNSHOWN =
-  // eslint-disable-next-line no-control-regex -- the control characters are what it drops
-  /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+/**
+ * Control, bidirectional and invisible characters, by code point range, dropped from a link's
+ * text and href: tag characters, variation selectors and fillers among them, which a model
+ * reads and the user cannot see.
+ */
+const UNSHOWN = /** @type {const} */ ([
+  [0x00, 0x08],
+  [0x0e, 0x1f],
+  [0x7f, 0x9f],
+  [0xad, 0xad],
+  [0x34f, 0x34f],
+  [0x61c, 0x61c],
+  [0x115f, 0x1160],
+  [0x17b4, 0x17b5],
+  [0x180b, 0x180f],
+  [0x200b, 0x200f],
+  [0x202a, 0x202e],
+  [0x2060, 0x2069],
+  [0x3164, 0x3164],
+  [0xfe00, 0xfe0f],
+  [0xfeff, 0xfeff],
+  [0xffa0, 0xffa0],
+  [0xe0000, 0xe007f],
+  [0xe0100, 0xe01ef],
+]);
+
+/**
+ * `s` as shown in the list: NFKC first, so a compatibility character (a fullwidth quote) is
+ * what it looks like before the text is quoted and cannot end its JSON string; then without
+ * the invisible characters.
+ * @param {string} s
+ */
+const shown = (s) =>
+  [...s.normalize("NFKC")]
+    .filter((c) => {
+      const cp = /** @type {number} */ (c.codePointAt(0));
+      return !UNSHOWN.some(([lo, hi]) => cp >= lo && cp <= hi);
+    })
+    .join("");
 
 /** @param {string} s @param {number} max  at most `max` code points, `…` the last when cut */
 function cutTo(s, max) {
@@ -408,19 +443,40 @@ function cutTo(s, max) {
  * @param {readonly { label: string, target: AgentLinkTarget }[]} links
  */
 export function agentLinkLines(links) {
-  return links
-    .map(({ label, target }) => {
-      const text = cutTo(
-        String(target.text ?? "")
-          .replace(UNSHOWN, "")
-          .replace(/\s+/g, " ")
-          .trim(),
-        AGENT_LINKS.text,
-      );
-      const href = target.href
-        ? cutTo(target.href.replace(UNSHOWN, "").replace(/\s/g, ""), AGENT_LINKS.href)
-        : "(no URL)";
-      return `${label} ${JSON.stringify(text)} ${href}`;
-    })
-    .join("\n");
+  return links.map(linkLine).join("\n");
+}
+
+/** @param {{ label: string, target: AgentLinkTarget }} link */
+function linkLine({ label, target }) {
+  const text = cutTo(
+    shown(String(target.text ?? ""))
+      .replace(/\s+/g, " ")
+      .trim(),
+    AGENT_LINKS.text,
+  );
+  const href = target.href
+    ? cutTo(shown(target.href).replace(/\s/g, ""), AGENT_LINKS.href)
+    : "(no URL)";
+  return `${label} ${JSON.stringify(text)} ${href}`;
+}
+
+/**
+ * The list's lines as far as they fit `maxBytes` once JSON-encoded (the reply is one line of
+ * at most 1 MiB, protocol decision 4); the links after are left out and counted.
+ * @param {readonly { label: string, target: AgentLinkTarget }[]} links @param {number} maxBytes
+ * @returns {{ text: string, omitted: number }}
+ */
+export function agentLinkList(links, maxBytes) {
+  const encoder = new TextEncoder();
+  const lines = [];
+  // The quotes of the JSON string.
+  let bytes = 2;
+  for (const link of links) {
+    const line = linkLine(link);
+    const cost = encoder.encode(JSON.stringify(line)).length - 2 + (lines.length ? 2 : 0);
+    if (bytes + cost > maxBytes) break;
+    bytes += cost;
+    lines.push(line);
+  }
+  return { text: lines.join("\n"), omitted: links.length - lines.length };
 }
