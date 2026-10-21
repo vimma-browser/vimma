@@ -12,9 +12,27 @@ import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 const TRIGGERS = new Set(["focusin", "recheck"]);
 const MESSAGES = new Set(["Vimma:Focus", "Vimma:MouseSelection", "Vimma:Click"]);
 
+/** Element focus (docs/specs/element-focus.md): from the frames of a focused block. */
+const BLOCK_REPORTS = new Map([
+  ["Vimma:BlockMoved", "moved"],
+  ["Vimma:BlockGone", "gone"],
+]);
+
 export class VimmaParent extends JSWindowActorParent {
   /** @param {{ name: string, data: any }} msg */
   receiveMessage(msg) {
+    // A focused block's frame need not have focus (a block in a frame of the focused page):
+    // the host hears only the frames of its block, with the documents they had (ElementFocus).
+    const report = BLOCK_REPORTS.get(msg.name);
+    if (report) {
+      VimmaHost.onBlockReport(
+        /** @type {"moved" | "gone"} */ (report),
+        this.browsingContext,
+        this.manager,
+        msg.data?.gen,
+      );
+      return;
+    }
     if (!MESSAGES.has(msg.name)) return;
     // From a content process, which may be compromised: only the frame that has focus speaks
     // for the tab (a hidden cross-origin frame must not flip its mode), and only a well-formed
@@ -49,5 +67,14 @@ export class VimmaParent extends JSWindowActorParent {
       user: msg.data?.user === true,
       gen,
     });
+  }
+
+  didDestroy() {
+    // The document went away (a navigation, a closed tab): element focus in it ends.
+    try {
+      VimmaHost.onFrameGone(this.manager);
+    } catch {
+      // no manager left to compare: the next key finds the frame gone instead
+    }
   }
 }

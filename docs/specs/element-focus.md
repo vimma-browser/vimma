@@ -1,6 +1,6 @@
 # Spec: element-focus
 
-Status: accepted (sub-PR 1, text blocks as hint targets, built; sub-PRs 2 to 4 open) · Area: `packages/vimma-core/src/hints.mjs`, `blocks.mjs` (new), `actions.mjs`,
+Status: accepted (sub-PR 1, text blocks as hint targets, and sub-PR 2, the ELEMENT mode, built; sub-PRs 3 and 4 open) · Area: `packages/vimma-core/src/hints.mjs`, `blocks.mjs` (new), `actions.mjs`,
 `defaults.mjs`, `modes.mjs`, `theme.mjs`, `statusbar.mjs`; `actors/hint-collect.mjs`,
 `actors/block.mjs` (new), `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`,
 `actors/caret.mjs`; `host/VimmaHost.sys.mjs`, `host/copy-mode.mjs`; `ui/hint-overlay.mjs`;
@@ -279,8 +279,10 @@ solve "point at something on screen in two keys" for links; text blocks have no 
    - 2 px outside the block's border box, clipped to the browser;
    - it follows the block: the child reports a new rect on `scroll` and `resize` of the block's
      window, at most once per animation frame, through a system-group listener
-     (`Services.els.addSystemEventListener`), so the page cannot see or stop it;
-   - in a frame, the rect is offset by the frame chain as hint rects are;
+     (`addEventListener` with `mozSystemGroup`), so the page cannot see or stop it;
+   - in a frame, the rect is offset by the frame chain as hint rects are, and each frame around
+     the block reports its own scrolls the same way, because scrolling the page around a frame
+     moves the block too (`j` and `k` scroll every frame up to the top to show it);
    - a block that scrolls fully out of view keeps its focus (the outline is clipped away; `j` /
      `k` or `v` still work).
 
@@ -308,7 +310,8 @@ solve "point at something on screen in two keys" for links; text blocks have no 
    `o`, `V` and `y`, so the highlight can be adjusted before copying with nothing new to learn:
    - the child sets the selection from the block's first to its last visible text position (a
      range from `selectNodeContents`, trimmed to text that is rendered, so the caret does not sit
-     in trailing white space), anchor at the start, focus at the end, without scrolling;
+     in trailing white space), anchor at the start, focus at the end, without scrolling unless the
+     block is off screen (copy mode starts from a selection it can see);
    - the host then runs the existing `mode.visual` path: `Caret.run` `enter` keeps an on-screen
      selection and sets `selecting` (`caret.mjs:180-193`), so copy mode starts with the
      highlight, `VISUAL` in the badge, and every motion, `o`, `V` and `y` work on it;
@@ -319,10 +322,12 @@ solve "point at something on screen in two keys" for links; text blocks have no 
      copy mode.
 
 9. **`y` from `ELEMENT` copies without selecting.** The child serializes the block with the
-   plain-text document encoder (`Cu.createDocumentEncoder("text/plain")`, `setContainerNode`,
-   flags `SkipInvisibleContent | OutputLFLineBreak`), the serializer `Selection.toString` uses, so
-   the text is what `v` then `y` gives, but the page's selection is untouched and no
-   `selectionchange` fires. The parent writes it with `copyString` and says "yanked N chars" (or
+   plain-text document encoder (`Cu.createDocumentEncoder("text/plain")`, `setRange` with the
+   range `v` would select, flags `SkipInvisibleContent | OutputLFLineBreak`), the serializer
+   `Selection.toString` uses, so the text is what `v` then `y` gives, but the page's selection is
+   untouched and no `selectionchange` fires. That range's ends lie in text the page lets be
+   selected: the encoder writes a boundary text node whole, so a range starting in a
+   `user-select: none` gutter would copy its first number. The parent writes it with `copyString` and says "yanked N chars" (or
    "nothing to yank").
    - `pre` / code: the encoder keeps preformatted white space as rendered; nothing is trimmed
      inside the block, only one trailing newline is dropped. Tested against a fixture with tabs,
@@ -416,8 +421,10 @@ solve "point at something on screen in two keys" for links; text blocks have no 
   asked; anything else is refused.
 - Text from `y` goes to the clipboard and nowhere else. It is not logged and not sent over the
   control socket.
-- What the page can observe: nothing while a block is focused (the outline is chrome, the scroll
-  listener is in the system group). `v` sets a real selection, so the page sees `selectionchange`
+- What the page can observe while a block is focused: only the scrolls `j` and `k` make to show
+  the next block, in its document and the documents around it (the outline is chrome, the scroll
+  listener is in the system group). `v` scrolls an off-screen block into view and, in a frame,
+  focuses that frame. `v` sets a real selection, so the page sees `selectionchange`
   and can read the selection, as with a mouse selection; it gets no `selectstart` for the initial
   range (Research, Firefox), and copy-mode motions afterwards behave as they do today. `y` from
   `ELEMENT` is not observable by the page.

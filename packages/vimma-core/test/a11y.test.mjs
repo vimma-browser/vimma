@@ -130,6 +130,26 @@ describe("statusAnnouncement: the mode, said once, and only where nothing else s
     ]);
   });
 
+  // docs/specs/element-focus.md decision 16: the focused block's kind and length, on each move.
+  test("element focus says the block's kind and length on focus and on each move", () => {
+    const p = { kind: "paragraph", length: 412, seq: 1 };
+    expect(
+      speak([
+        { mode: "element" },
+        { mode: "element", element: p },
+        { mode: "element", element: p },
+        { mode: "element", element: { kind: "list item", length: 1, seq: 2 } },
+        { mode: "element", element: { kind: "list item", length: 1, seq: 3 } },
+        { mode: "normal" },
+      ]),
+    ).toEqual([
+      "element mode. paragraph, 412 characters",
+      "list item, 1 character",
+      "list item, 1 character",
+      "normal mode",
+    ]);
+  });
+
   test("every mode has an answer and the result is a fresh object", () => {
     for (const mode of MODES) {
       const r = statusAnnouncement(start, { mode });

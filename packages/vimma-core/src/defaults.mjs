@@ -284,6 +284,19 @@ const modal = {
   },
   command: { "<Esc>": "command.cancel" },
   hint: { "<Esc>": "hint.cancel" },
+  // A focused text block (docs/specs/element-focus.md decision 7): v and V select it in copy
+  // mode, y copies it, + and - grow and shrink the focus, j and k move it, F picks another.
+  element: {
+    "<Esc>": "mode.normal",
+    v: "element.visual",
+    V: "element.visual_line",
+    y: "element.yank",
+    "+": "element.parent",
+    "-": "element.child",
+    j: "element.next",
+    k: "element.prev",
+    F: "hint.element",
+  },
   help: { "<Esc>": "help.close", "/": "help.filter", q: "help.close" },
   panel: {
     ...Object.fromEntries(

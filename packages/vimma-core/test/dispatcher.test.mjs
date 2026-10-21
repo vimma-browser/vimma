@@ -443,6 +443,42 @@ describe("copy mode: Vim motions, selection and yank keys", () => {
   });
 });
 
+describe("element focus keys (docs/specs/element-focus.md, decision 7)", () => {
+  test.each([
+    ["v", "element.visual"],
+    ["V", "element.visual_line"],
+    ["y", "element.yank"],
+    ["+", "element.parent"],
+    ["-", "element.child"],
+    ["j", "element.next"],
+    ["k", "element.prev"],
+    ["F", "hint.element"],
+    ["esc", "mode.normal"],
+  ])("%s in element mode runs %s", (keys, id) => {
+    expect(last(feed(make(), "element", keys))).toEqual({ kind: "action", action: { id } });
+  });
+
+  test.each([
+    ["3 j", "element.next", 3],
+    ["2 k", "element.prev", 2],
+    ["2 +", "element.parent", 2],
+    ["4 -", "element.child", 4],
+  ])("a count: %s runs %s %d times", (keys, id, count) => {
+    expect(last(feed(make(), "element", keys))).toEqual({
+      kind: "action",
+      action: { id, count },
+    });
+  });
+
+  test("another plain key is no binding there (the host consumes it); chords keep theirs", () => {
+    expect(last(feed(make(), "element", "x"))).toEqual({ kind: "pass" });
+    expect(last(feed(make(), "element", "ctrl+b ?"))).toEqual({
+      kind: "action",
+      action: { id: "help.show" },
+    });
+  });
+});
+
 // Workspaces as Vim buffers: ctrl+^ (ctrl+6) for the alternate, ]w / [w to step, and the
 // prefix forms that work in every mode.
 describe("workspace keys like Vim's buffer keys", () => {

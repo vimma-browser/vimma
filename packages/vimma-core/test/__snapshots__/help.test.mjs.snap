@@ -150,8 +150,17 @@ Developer tools
 Hints
   follow_link               f                                                 Follow link
   follow_link_new_tab       F                                                 Follow link in new tab
-  focus_element             (unbound)                                         Focus a text block
+  focus_element             F [element]                                       Focus a text block: v selects it, y copies it
   hint_cancel               esc [hint]                                        Leave hint mode
+
+Element focus
+  element_visual            v [element]                                       Select the focused block in copy mode
+  element_visual_line       V [element]                                       Select the focused block's lines in copy mode
+  element_yank              y [element]                                       Copy the focused block's text
+  element_parent            + [element]                                       Focus the block around this one
+  element_child             - [element]                                       Focus back down, or the first block inside
+  element_next              j [element]                                       Focus the next block
+  element_prev              k [element]                                       Focus the previous block
 
 Find
   find_forward              ctrl+f, /                                         Search in page
@@ -164,7 +173,7 @@ Find
   grep_resume               (unbound)                                         Live grep again with the last query (:grep)
 
 Modes
-  normal_mode               esc [insert], esc [visual]                        Back to normal mode
+  normal_mode               esc [insert], esc [visual], esc [element]         Back to normal mode
   insert_mode               i                                                 Insert mode: focus the last-used input
   copy_mode                 ctrl+b [, v                                       Copy mode (caret browsing + selection)
   command_line              :                                                 Command line

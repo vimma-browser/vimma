@@ -234,6 +234,17 @@ link targets for hints, which chrome must treat as untrusted.
   [`a block target needs a kind from the closed list and a finite box`](../packages/vimma-core/test/hints.test.mjs),
   [`only a block target carries a blockKind or a box`](../packages/vimma-core/test/hints.test.mjs),
   [`a reply holds only the kind of target its collection asked for`](../packages/vimma-core/test/hints.test.mjs)
+  A focused block stays in its frame's actor: each `Vimma:Block` op is answered only for the
+  collection the block came from and only by the frame that holds it, except `frame`, which the
+  frames around it answer with the viewport of the next frame in (a rect that only places the
+  outline, which is clipped to the browser). Each reply **must** be
+  checked field by field before chrome uses it (a kind from the closed list, a bounded length and
+  box, at most 16 Mi characters of text for `y`, which goes to the clipboard and nowhere else).
+  The scroll reports that move the outline are heard only from the block's frame and the frames
+  around it, with the documents they had when the block was chosen.
+  [`%s: a kind from the closed list, a length and a box`](../packages/vimma-core/test/hints.test.mjs),
+  [`yank: the text, and whether the page marks it unselectable`](../packages/vimma-core/test/hints.test.mjs),
+  [`malformed_block_messages_are_refused`](../tests/browser/browser_vimma_element.js)
 - U7. Text pasted on the command line **must** be read in bounded time: a megabyte never
   freezes the window.
   [`a pasted megabyte is parsed and completed in bounded time`](../packages/vimma-core/test/fuzz/cmdline.fuzz.test.mjs),

@@ -405,21 +405,48 @@ The labels are drawn by the browser, over the page, not inside it: the page cann
 restyle them or hide them. Apps that draw their own controls on a canvas (Google Docs, Figma,
 maps, games) have nothing to label.
 
-### Text block hints
+### Copying a paragraph (element focus)
 
-Text block hints put the same labels on the text on screen instead of on what you could click:
-paragraphs, headings, list items, quotes, code blocks, table cells and captions, also inside web
-components and in frames from other sites. Each block gets one label, on its first line on screen:
-a list item made of two paragraphs gets a label on each paragraph, and a code block gets one label
-however its lines are built. Hidden blocks, text fields and blocks covered by something else get
-none. Typing a label outlines its block; `Esc` removes the outline. Typing, `Backspace` and `Esc`
-work as they do for link hints, and the outline is drawn by the browser, so the page cannot see
-it.
+Element focus puts the same labels as link hints on the text on screen instead of on what you
+could click: paragraphs, headings, list items, quotes, code blocks, table cells and captions, also
+inside web components and in frames from other sites. Each block gets one label, on its first line
+on screen: a list item made of two paragraphs gets a label on each paragraph, and a code block gets
+one label however its lines are built. Hidden blocks, text fields and blocks covered by something
+else get none. Typing, `Backspace` and `Esc` work as they do for link hints.
 
-Text block hints have no key of their own yet. Run them as `:focus_element`, or bind
-`focus_element` to a key in [config.toml](#configtoml), for example `e = "hint.element"` under
-`[modal.normal]`. Copying the outlined block with `y`, or selecting it with `v`, comes in a later
-release.
+Typing a label **focuses** its block: the browser draws an outline around it, the status bar
+badge says `ELEMENT`, and next to it the bar names the block and its length
+(`paragraph · 412 chars`), which a screen reader hears too. Nothing in the page changes while a
+block is focused: no selection, no focus, and the page cannot see the outline. The outline follows
+the block as the page scrolls.
+
+| Key       | Does                                                                        |
+| --------- | --------------------------------------------------------------------------- |
+| `y`       | copies the block's text and goes back to normal mode                        |
+| `v`       | selects the whole block in [copy mode](#copy-mode), to adjust it before `y` |
+| `V`       | the same, line-wise, so `j` and `k` extend it by lines                      |
+| `+` / `-` | focuses the block around it (the list around a list item) / back down again |
+| `j` / `k` | focuses the next / previous block, scrolling it into view                   |
+| `F`       | labels again, to pick another block                                         |
+| `Esc`     | back to normal mode, nothing selected; a loading page is not stopped        |
+
+Counts work on `+`, `-`, `j` and `k` (`3j`). Any other binding, a tab switch, a navigation or a
+click leaves element focus.
+
+- **Plain text.** `y` copies the block as plain text, as copy mode's `y` copies a selection, and
+  says `yanked N chars`. After `v`, `y` gives the same text.
+- **Code blocks** copy exactly as shown: indentation, tabs, blank lines and line breaks are kept,
+  and line numbers the page marks unselectable are left out.
+- **Unselectable text.** When the page marks a whole block unselectable (`user-select: none`),
+  `y` copies its text anyway and the notice says so; `v` shows no highlight there.
+- **Frames.** Blocks in frames get labels too. `y` copies from a frame without moving focus into
+  it; `v` moves focus into the frame, where copy mode then runs. `+` stops at the frame's edge.
+- **PDFs.** The PDF viewer has lines, not paragraphs: element focus says
+  `no text blocks here (PDF: use v)`, and [copy mode](#copy-mode) copies from a PDF.
+
+Element focus has no key of its own yet. Run it as `:focus_element`, or bind `focus_element` to a
+key in [config.toml](#configtoml), for example `e = "hint.element"` under `[modal.normal]`. The
+keys of the table are `[modal.element]`'s, and can be rebound there.
 
 ### Find
 
