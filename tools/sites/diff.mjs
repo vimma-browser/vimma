@@ -136,57 +136,105 @@ export function parseRun(value, { baseline = true } = {}) {
     : { run: /** @type {Run} */ (/** @type {unknown} */ (value)), problems };
 }
 
+/** @typedef {Record<string, "pass" | "fail">} Known  "site/check" → its last pass or fail */
+
 /**
- * The tracked regressions from a previous run's diff.json; none when it is absent, and none,
- * with the problem, when it has the wrong shape.
+ * A previous run's diff.json: the tracked regressions, the last known status of each check, and
+ * whether its chain of comparisons was unbroken. Absent (an artifact from before diff.json):
+ * nothing tracked, and an unbroken chain. The wrong shape: nothing, and a broken chain. Entries
+ * for checks that no longer exist are dropped.
  * @param {unknown} value
- * @returns {{ tracked: Tracked[], problems: string[] }}
+ * @returns {{ tracked: Tracked[], known: Known, complete: boolean, problems: string[] }}
  */
 export function parseState(value) {
-  if (value === undefined) return { tracked: [], problems: [] };
-  if (!isObject(value) || value.version !== 1 || !Array.isArray(value.tracked))
-    return { tracked: [], problems: ["diff.json is not version 1 with a tracked list"] };
+  if (value === undefined) return { tracked: [], known: {}, complete: true, problems: [] };
+  /** @param {string} problem */
+  const broken = (problem) => ({ tracked: [], known: {}, complete: false, problems: [problem] });
+  if (
+    !isObject(value) ||
+    value.version !== 1 ||
+    !Array.isArray(value.tracked) ||
+    typeof value.complete !== "boolean" ||
+    !isObject(value.known)
+  )
+    return broken("diff.json is not version 1 with tracked, known and complete");
   const ok = value.tracked.every(
     (t) =>
       isObject(t) &&
       typeof t.site === "string" &&
       SITE_ID.test(t.site) &&
-      CHECK_IDS.has(String(t.check)) &&
+      typeof t.check === "string" &&
       typeof t.since === "string" &&
       ISO_TIME.test(t.since) &&
       optionalString(t.reason) &&
       typeof t.checked === "boolean",
   );
-  if (!ok) return { tracked: [], problems: ["diff.json has a tracked entry of the wrong shape"] };
-  return { tracked: /** @type {Tracked[]} */ (value.tracked), problems: [] };
+  if (!ok) return broken("diff.json has a tracked entry of the wrong shape");
+  /** @type {Known} */
+  const known = {};
+  for (const [k, v] of Object.entries(value.known)) {
+    const [site = "", check = "", extra] = k.split("/");
+    if (extra === undefined && SITE_ID.test(site) && CHECK_IDS.has(check))
+      if (v === "pass" || v === "fail") known[k] = v;
+  }
+  const tracked = /** @type {Tracked[]} */ (value.tracked).filter((t) => CHECK_IDS.has(t.check));
+  return { tracked, known, complete: value.complete, problems: [] };
 }
 
 /** @param {SiteResult | undefined} site @param {string} id */
 const checkOf = (site, id) => site?.checks.find((c) => c.id === id);
 /** @param {{ site: string, check: string }} r */
 const keyOf = (r) => `${r.site}/${r.check}`;
+/** A run that did not visit every listed site: filtered, or stopped by a harness error. */
+const isPartial = (/** @type {Run} */ run) => Boolean(run.filter || run.harnessError);
+
+/**
+ * The last pass or fail of each check, `base` updated with `run`'s results. A check that was
+ * skipped (its site blocked, say) keeps its earlier status, so a regression after a blocked night
+ * is still seen.
+ * @param {Run | null} run
+ * @param {Known} base
+ * @returns {Known}
+ */
+function withStatuses(run, base) {
+  /** @type {Known} */
+  const known = { ...base };
+  for (const site of run?.sites ?? [])
+    for (const c of site.checks)
+      if (c.status === "pass" || c.status === "fail") known[`${site.id}/${c.id}`] = c.status;
+  return known;
+}
+
+/**
+ * The known statuses to keep in this run's diff.json. Sites that left the list are forgotten,
+ * unless this run was partial and did not visit them.
+ * @param {Run | null} prev
+ * @param {Run} cur
+ * @param {Known} prevKnown
+ * @returns {Known}
+ */
+export function nextKnown(prev, cur, prevKnown) {
+  const known = withStatuses(cur, withStatuses(prev, prevKnown));
+  if (isPartial(cur)) return known;
+  const listed = new Set(cur.sites.map((s) => s.id));
+  return Object.fromEntries(
+    Object.entries(known).filter(([k]) => listed.has(k.slice(0, k.indexOf("/")))),
+  );
+}
 
 /**
  * @param {Run | null} prev  the previous scheduled run, null when there is none to read
  * @param {Run} cur
  * @param {Tracked[]} prevTracked  the previous run's tracked regressions
+ * @param {Known} [prevKnown]      the previous run's known statuses
  * @returns {Diff}
  */
-export function compareRuns(prev, cur, prevTracked) {
-  if (!prev) {
-    return {
-      baseline: null,
-      regressions: [],
-      tracked: [],
-      fixed: [],
-      changes: [],
-      added: [],
-      removed: [],
-    };
-  }
-  const before = new Map(prev.sites.map((s) => [s.id, s]));
+export function compareRuns(prev, cur, prevTracked, prevKnown = {}) {
+  const before = new Map((prev?.sites ?? []).map((s) => [s.id, s]));
   const now = new Map(cur.sites.map((s) => [s.id, s]));
   const name = (/** @type {string} */ id) => now.get(id)?.name ?? id;
+  const known = withStatuses(prev, prevKnown);
+  const partial = isPartial(cur);
 
   /** @type {Regression[]} */
   const regressions = [];
@@ -196,11 +244,10 @@ export function compareRuns(prev, cur, prevTracked) {
   const changes = [];
   for (const site of cur.sites) {
     const old = before.get(site.id);
-    if (!old) continue;
-    if (old.status !== site.status)
+    if (old && old.status !== site.status)
       changes.push({ site: site.id, name: site.name, from: old.status, to: site.status });
     for (const c of site.checks) {
-      const was = checkOf(old, c.id)?.status;
+      const was = known[`${site.id}/${c.id}`];
       if (c.status === "fail" && was === "pass")
         regressions.push({
           site: site.id,
@@ -209,7 +256,7 @@ export function compareRuns(prev, cur, prevTracked) {
           reason: c.reason,
           title: site.title,
         });
-      else if (c.status === "pass" && was === "fail")
+      else if (old && c.status === "pass" && checkOf(old, c.id)?.status === "fail")
         fixed.push({ site: site.id, name: site.name, check: c.id });
     }
   }
@@ -219,13 +266,14 @@ export function compareRuns(prev, cur, prevTracked) {
   for (const t of prevTracked) {
     const site = now.get(t.site);
     if (!site) {
-      // A filtered run did not visit the site; an unfiltered one no longer lists it.
-      if (cur.filter) tracked.set(keyOf(t), { ...t, checked: false });
+      // A partial run did not visit the site; a full one no longer lists it.
+      if (partial) tracked.set(keyOf(t), { ...t, checked: false });
       continue;
     }
     const c = checkOf(site, t.check);
-    if (c?.status === "fail") tracked.set(keyOf(t), { ...t, reason: c.reason, checked: true });
-    else if (c?.status === "pass") {
+    if (!c) continue; // the site was visited and has no such check any more
+    if (c.status === "fail") tracked.set(keyOf(t), { ...t, reason: c.reason, checked: true });
+    else if (c.status === "pass") {
       if (!fixed.some((f) => keyOf(f) === keyOf(t)))
         fixed.push({ site: t.site, name: name(t.site), check: t.check });
     } else tracked.set(keyOf(t), { ...t, checked: false });
@@ -242,37 +290,44 @@ export function compareRuns(prev, cur, prevTracked) {
   }
 
   return {
-    baseline: { startedAt: prev.startedAt, commit: prev.commit ?? null },
+    baseline: prev ? { startedAt: prev.startedAt, commit: prev.commit ?? null } : null,
     regressions,
     tracked: [...tracked.values()],
     fixed,
     changes,
-    added: cur.sites.filter((s) => !before.has(s.id)).map((s) => s.id),
-    removed: cur.filter ? [] : prev.sites.filter((s) => !now.has(s.id)).map((s) => s.id),
+    added: prev ? cur.sites.filter((s) => !before.has(s.id)).map((s) => s.id) : [],
+    removed: prev && !partial ? prev.sites.filter((s) => !now.has(s.id)).map((s) => s.id) : [],
   };
 }
 
 /**
- * What diff.json keeps for the next night.
+ * What diff.json keeps for the next night. `complete` is false once a night could not compare
+ * (no baseline, a broken diff.json, a partial run) while an issue was open: that issue's list
+ * may then be missing entries, so it is never closed automatically until it is closed by hand.
  * @param {Diff} diff
  * @param {Run} cur
+ * @param {{ known: Known, complete: boolean }} o
  */
-export function diffState(diff, cur) {
-  return { version: 1, startedAt: cur.startedAt, tracked: diff.tracked };
+export function diffState(diff, cur, { known, complete }) {
+  return { version: 1, startedAt: cur.startedAt, complete, known, tracked: diff.tracked };
 }
 
 /**
  * What to do with the rolling issue. Only a scheduled run with a baseline touches it, so the
  * chain stays one run a night. A new regression opens it; it is updated while anything is
- * tracked and closed when nothing is. Closed by hand while something is still tracked, it stays
- * closed until a new regression appears.
+ * tracked and closed when nothing is, but only after a full run on an unbroken chain (else it is
+ * updated, and says why). Closed by hand while something is still tracked, it stays closed until
+ * a new regression appears.
  * @param {Diff} diff
- * @param {{ scheduled: boolean, openIssue: number | null }} o
+ * @param {{ scheduled: boolean, openIssue: number | null, trusted?: boolean, partial?: boolean }} o
  * @returns {IssueAction}
  */
-export function issueAction(diff, { scheduled, openIssue }) {
+export function issueAction(diff, { scheduled, openIssue, trusted = true, partial = false }) {
   if (!scheduled || !diff.baseline) return "none";
-  if (!diff.tracked.length) return openIssue ? "close" : "none";
+  if (!diff.tracked.length) {
+    if (!openIssue) return "none";
+    return trusted && !partial ? "close" : "update";
+  }
   if (openIssue) return "update";
   return diff.regressions.length ? "create" : "none";
 }
@@ -390,9 +445,9 @@ export function renderDiff(diff, cur) {
 /**
  * The rolling issue's body (or, for "close", the closing comment).
  * @param {Diff} diff
- * @param {{ action: IssueAction, runUrl?: string, cur?: Run }} o
+ * @param {{ action: IssueAction, runUrl?: string, cur?: Run, trusted?: boolean }} o
  */
-export function renderIssue(diff, { action, runUrl, cur }) {
+export function renderIssue(diff, { action, runUrl, cur, trusted = true }) {
   const l = lists(diff, namesOf(cur));
   const out = [
     "Checks of the nightly site-compatibility suite (`sites.yml`, spec site-compat, " +
@@ -402,6 +457,15 @@ export function renderIssue(diff, { action, runUrl, cur }) {
   ];
   if (runUrl && RUN_URL.test(runUrl)) out.push(`Run: ${runUrl}`, "");
   if (diff.baseline) out.push(`Compared with ${baselineLine(diff.baseline)}.`, "");
+  if (!trusted)
+    out.push(
+      "**The tracking was interrupted** (a night without a readable baseline or diff.json), so " +
+        "this list may be missing regressions and the issue is not closed automatically. Close " +
+        "it by hand once the report shows the checks passing; tracking then starts afresh.",
+      "",
+    );
+  if (cur && isPartial(cur))
+    out.push("This run did not visit every site (a harness error), so the issue stays open.", "");
   if (action === "close") {
     out.push(
       "No regression is left: every tracked check passes again, or its site left the list.",

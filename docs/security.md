@@ -1498,15 +1498,20 @@ _pages_ it loads, which choose their titles, their text, where they redirect and
 report about them, and so choose text that ends up in a GitHub issue. Nobody else: the workflow
 runs on `schedule` and `workflow_dispatch` only, never on a pull request.
 
-- SC1. The job that runs the browser on live pages **never** holds a token that can write:
-  `contents`, `actions` (to download the previous scheduled run's artifact) and `issues` (to
-  find the open issue) are read only, and the workflow reads no secret. The top-level
-  permissions are empty.
-  [`the browser job only reads: contents, the previous artifact, and the open issue`](../tools/test/sites-workflow.test.mjs),
+- SC1. The job that runs the browser on live pages holds **only** `contents: read`, and no step
+  of it gets a token; the workflow reads no secret, and the top-level permissions are empty. The
+  diff and the issue text are made by a second job, on a fresh runner, from that job's
+  `results.json` alone, with read permissions only (`actions` for the artifacts, `issues` to
+  find the open issue), so code that escaped the browser onto its runner could not rewrite the
+  issue text. The suite's step turns workflow commands off while it logs page text, so a page
+  cannot add annotations or masks to the run.
+  [`the browser job only reads the repository, and holds no token in any step`](../tools/test/sites-workflow.test.mjs),
+  [`the compare job only reads, and works from the browser job's results.json alone`](../tools/test/sites-workflow.test.mjs),
+  [`stops workflow commands while the suite logs page text`](../tools/test/sites-workflow.test.mjs),
   [`has no secrets, and no permission at the top level`](../tools/test/sites-workflow.test.mjs),
   [`runs nightly and by hand, never on a pull request or a push`](../tools/test/sites-workflow.test.mjs)
 - SC2. `issues: write` is **only** in the report job, which checks out nothing and runs no
-  repository code: it runs `gh` on the `issue.md` the first job wrote, passed as `--body-file`.
+  repository code: it runs `gh` on the `issue.md` the compare job wrote, passed as `--body-file`.
   The action and issue number reach its script through `env`, never through an expression in the
   script, and the number must be digits.
   [`issues: write is only in the report job, which checks out and runs no repository code`](../tools/test/sites-workflow.test.mjs)
@@ -1527,7 +1532,10 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
 - SC4. The previous run's `results.json` and `diff.json` are used **only** when they have the
   expected shape: site ids of lowercase letters, digits and dashes, statuses and check ids from
   fixed sets, strings where strings belong. Anything else is reported and compared as no
-  baseline, so a damaged artifact cannot inject names or open an issue.
+  baseline, so a damaged artifact cannot inject names or open an issue. Site names come from the
+  repository's `sites.json`, whose test forbids anything GitHub would turn into a mention,
+  reference or link.
+  [`names nothing GitHub would turn into a mention, reference or link`](../tools/sites/test/sites-data.test.mjs),
   [`rejects a run of the wrong shape, unknown statuses and check ids, and odd site ids`](../tools/sites/test/diff.test.mjs),
   [`round-trips the tracked list through diff.json, and rejects one of the wrong shape`](../tools/sites/test/diff.test.mjs),
   [`reports no baseline when the previous artifact is missing or malformed`](../tools/sites/test/compare.test.mjs)

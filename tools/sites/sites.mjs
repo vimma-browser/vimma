@@ -294,7 +294,7 @@ async function main() {
       for (const first of retryTargets(run.sites)) {
         const site = sites.find((s) => s.id === first.id);
         if (!site) continue;
-        const second = await visit(site, `${site.id}-retry`);
+        const second = await visit(site, `${site.id}.retry`);
         run.sites[run.sites.indexOf(first)] = mergeRetry(first, second);
       }
     }

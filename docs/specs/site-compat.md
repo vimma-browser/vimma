@@ -290,17 +290,18 @@ needs no dependency.
     the previous artifact has expired or cannot be read, the run has no baseline, reports that,
     and tracking starts again from that run.
 
-    Page titles, URLs after redirects and check reasons come from live pages and end up in the
-    issue body, where Markdown would render, `@name` would notify a user and `#123` or a URL
-    would link another issue. Every such value is written as an inline code span (no mentions,
+    Page titles and check reasons come from live pages and end up in the issue body, where
+    Markdown would render, `@name` would notify a user and `#123` or a URL would link another
+    issue. Every such value is written as an inline code span (no mentions,
     references, links or HTML render inside one), with control and bidirectional-override
     characters replaced, and cut to 160 characters; a list stops at 50 entries and the body at
     60 000 characters. The downloaded `results.json` and `diff.json` are checked for shape (site
     ids, statuses and check ids from known sets) and rejected otherwise. The job that runs the
-    browser holds only read permissions (`contents`, `actions` to download the previous
-    artifact, `issues` to find the open issue); `issues: write` belongs to a second job that
-    checks out nothing and runs only `gh` on the files the first job wrote (docs/security.md,
-    "Site compatibility workflow").
+    browser can only read the repository. A second job, on a fresh runner, takes only that
+    job's `results.json`, downloads the previous run's files and writes the diff and the issue
+    text, with read permissions only (`actions` for the artifacts, `issues` to find the open
+    issue). `issues: write` belongs to a third job that checks out nothing and runs only `gh` on
+    that text (docs/security.md, "Site compatibility workflow").
 
 13. **Shortcut conflicts are reported, not acted on.** The `shortcuts` check stays `info`. A
     per-site pass-through list would be a user-facing configuration feature with its own design
@@ -309,9 +310,9 @@ needs no dependency.
 14. **Three more sites:** the Hacker News comments page of a long thread, a crates.io crate page
     and a GitLab project page, for 25 entries, because each adds a page structure the list
     lacked: a deeply nested table of comments with hundreds of links, an Ember app shell, and a
-    large Vue application that is often behind a bot check. GitLab stays only while it loads from the
-    hosted runner on most nights; if it is blocked night after night, it is removed, as decision
-    10 prescribes for bot checks that swamp the results.
+    large Vue application that is often behind a bot check. GitLab stays only while it loads
+    from the hosted runner on most nights; if it is blocked night after night, it is removed, as
+    decision 10 prescribes for bot checks that swamp the results.
 
 ## Sub-PRs
 
@@ -483,8 +484,23 @@ What changed from the plan above, and why:
 - **The open issue is looked up by the browser job** (`issues: read`), so the choice between
   create, update, close and nothing is made in tested code (`issueAction` in
   `tools/sites/diff.mjs`). The report job only carries the choice out.
-- **Retried screenshots** are named `<site>-retry-<n>-<label>.png`, so the first visit's are
-  kept beside them.
+- **Retried screenshots** are named `<site>.retry-<n>-<label>.png`, so the first visit's are
+  kept beside them, and no site id (letters, digits and dashes) can produce the same name.
+- **A broken chain never closes the issue.** A tracked regression must not vanish because one
+  night could not compare: a run that stopped early (a harness error) keeps the sites it did not
+  reach tracked and lists none as removed; a night whose previous `results.json` is missing
+  still carries the tracked list from `diff.json` and checks it against its own results. Each
+  `diff.json` records whether its chain is complete. When it is not and an issue is open (that
+  issue's list may then be missing regressions), the issue is updated with a note and never
+  closed automatically; closing it by hand starts the tracking afresh. A partial run never closes
+  it either.
+- **A regression is measured against each check's last known result**, kept in `diff.json`
+  (`known`), not only the previous night's: a check that passed, was skipped on a blocked night,
+  and then fails is still a regression. A check that no longer exists drops out of the list.
+- **The diff runs in a job of its own** (`compare`), on a fresh runner, from the browser job's
+  `results.json` alone, so code that escaped the browser onto that runner could not rewrite the
+  issue text or the environment of the step that writes it. The suite's step also turns workflow
+  commands off (`::stop-commands::`) while it logs page text.
 - The tests compare three recorded nightly runs (2026-10-19 to 2026-10-21, 22 entries each).
   They show the case the tracking is built for: insert mode and the status bar fail every night
   on YouTube, Google search, DuckDuckGo and regex101 (focusing the search field does not give

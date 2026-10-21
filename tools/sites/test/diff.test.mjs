@@ -8,6 +8,7 @@ import {
   diffState,
   inertCode,
   issueAction,
+  nextKnown,
   parseRun,
   parseState,
   renderDiff,
@@ -207,6 +208,72 @@ describe("compareRuns", () => {
   });
 });
 
+describe("review fixes: partial runs, lost baselines, blocked nights", () => {
+  const failing = withCheck(night("2026-10-20"), "mdn", "find", "fail", "0 matches");
+  const tracked = compareRuns(night("2026-10-19"), failing, []).tracked;
+
+  it("a run the harness stopped early drops no tracked regression and removes no site", () => {
+    const cur = structuredClone(night("2026-10-21"));
+    cur.harnessError = "Xvfb died";
+    cur.sites = cur.sites.slice(0, 5);
+    const diff = compareRuns(failing, cur, tracked);
+    expect(diff.removed).toEqual([]);
+    expect(diff.tracked).toEqual([{ ...tracked[0], checked: false }]);
+  });
+
+  it("with no baseline, still carries the tracked list and checks it against this run", () => {
+    const still = compareRuns(
+      null,
+      withCheck(night("2026-10-21"), "mdn", "find", "fail", "y"),
+      tracked,
+    );
+    expect(still.baseline).toBeNull();
+    expect(still.tracked).toEqual([{ ...tracked[0], reason: "y", checked: true }]);
+    const passed = compareRuns(null, night("2026-10-21"), tracked);
+    expect(passed.tracked).toEqual([]);
+    expect(passed.fixed).toContainEqual({ site: "mdn", name: "MDN", check: "find" });
+  });
+
+  it("a check that passed before a blocked night and fails after it is a regression", () => {
+    const n2 = night("2026-10-19");
+    const n1 = blocked(night("2026-10-20"), "mdn");
+    const known = nextKnown(null, n1, nextKnown(null, n2, {}));
+    expect(known["mdn/find"]).toBe("pass");
+    const n0 = withCheck(night("2026-10-21"), "mdn", "find", "fail", "0 matches");
+    const diff = compareRuns(n1, n0, [], known);
+    expect(diff.regressions.map(key)).toEqual(["mdn/find"]);
+  });
+
+  it("forgets known statuses of sites that left the list, but not in a partial run", () => {
+    const prev = night("2026-10-21");
+    const cur = structuredClone(prev);
+    cur.sites = cur.sites.filter((s) => s.id !== "mdn");
+    expect(nextKnown(prev, cur, {})["mdn/find"]).toBeUndefined();
+    cur.harnessError = "stopped";
+    expect(nextKnown(prev, cur, {})["mdn/find"]).toBe("pass");
+  });
+
+  it("a tracked check missing from a site that was visited is dropped", () => {
+    const cur = structuredClone(night("2026-10-21"));
+    const mdn = cur.sites.find((s) => s.id === "mdn");
+    if (mdn) mdn.checks = mdn.checks.filter((c) => c.id !== "find");
+    expect(compareRuns(failing, cur, tracked).tracked).toEqual([]);
+  });
+
+  it("never closes the issue after a partial run or a broken chain; updates it instead", () => {
+    const clean = compareRuns(night("2026-10-20"), night("2026-10-21"), []);
+    expect(issueAction(clean, { scheduled: true, openIssue: 7, partial: true })).toBe("update");
+    expect(issueAction(clean, { scheduled: true, openIssue: 7, trusted: false })).toBe("update");
+    expect(issueAction(clean, { scheduled: true, openIssue: 7 })).toBe("close");
+  });
+
+  it("says in the issue when the tracking was interrupted", () => {
+    const clean = compareRuns(night("2026-10-20"), night("2026-10-21"), []);
+    expect(renderIssue(clean, { action: "update", trusted: false })).toMatch(/interrupted/);
+    expect(renderIssue(clean, { action: "update" })).not.toMatch(/interrupted/);
+  });
+});
+
 describe("parseRun and parseState", () => {
   it("accepts the recorded nights", () => {
     for (const day of ["2026-10-19", "2026-10-20", "2026-10-21"]) {
@@ -249,13 +316,42 @@ describe("parseRun and parseState", () => {
   it("round-trips the tracked list through diff.json, and rejects one of the wrong shape", () => {
     const cur = withCheck(night("2026-10-21"), "mdn", "find", "fail", "0 matches");
     const diff = compareRuns(night("2026-10-20"), cur, []);
-    const state = JSON.parse(JSON.stringify(diffState(diff, cur)));
-    expect(parseState(state)).toEqual({ tracked: diff.tracked, problems: [] });
-    expect(parseState({ version: 1, tracked: [{ site: "x y", check: "find" }] }).tracked).toEqual(
-      [],
-    );
+    const known = nextKnown(night("2026-10-20"), cur, {});
+    expect(known["mdn/find"]).toBe("fail");
+    expect(known["github-repo/hints"]).toBe("pass");
+    const state = JSON.parse(JSON.stringify(diffState(diff, cur, { known, complete: true })));
+    expect(parseState(state)).toEqual({
+      tracked: diff.tracked,
+      known,
+      complete: true,
+      problems: [],
+    });
+    const badSite = parseState({
+      version: 1,
+      complete: true,
+      known: {},
+      tracked: [{ site: "x y", check: "find", since: cur.startedAt, checked: true }],
+    });
+    expect(badSite.tracked).toEqual([]);
+    expect(badSite.complete).toBe(false);
     expect(parseState({ version: 2, tracked: [] }).problems.length).toBeGreaterThan(0);
-    expect(parseState(undefined)).toEqual({ tracked: [], problems: [] });
+    expect(parseState({ version: 2, tracked: [] }).complete).toBe(false);
+    expect(parseState(undefined)).toEqual({ tracked: [], known: {}, complete: true, problems: [] });
+  });
+
+  it("drops tracked entries and known statuses of checks that no longer exist", () => {
+    const state = parseState({
+      version: 1,
+      complete: true,
+      known: { "mdn/find": "pass", "mdn/gone": "pass", "mdn/hints": "maybe", "@x/find": "pass" },
+      tracked: [{ site: "mdn", check: "gone", since: "2026-10-20T09:35:30.478Z", checked: true }],
+    });
+    expect(state).toEqual({
+      tracked: [],
+      known: { "mdn/find": "pass" },
+      complete: true,
+      problems: [],
+    });
   });
 });
 

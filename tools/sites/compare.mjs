@@ -23,6 +23,7 @@ import {
   compareRuns,
   diffState,
   issueAction,
+  nextKnown,
   parseRun,
   parseState,
   renderDiff,
@@ -49,26 +50,33 @@ function readJson(file) {
   }
 }
 
-/** @param {string} dir */
+/** @typedef {ReturnType<typeof parseState>} State */
+
+/**
+ * The previous run's results.json and diff.json. Either can be missing or damaged on its own:
+ * the tracked list survives a lost results.json, and the chain counts as broken unless both read.
+ * @param {string | undefined} dir
+ * @returns {{ prev: import("./results.mjs").Run | null, state: State }}
+ */
 function readBaseline(dir) {
+  /** @type {State} */
+  const none = { tracked: [], known: {}, complete: false, problems: [] };
+  if (!dir) return { prev: null, state: none };
+  /** @type {import("./results.mjs").Run | null} */
+  let prev = null;
   const results = readJson(join(dir, "results.json"));
-  if (results.problem) {
-    note(`no baseline: ${results.problem}`);
-    return { prev: null, tracked: [] };
-  }
-  const { run, problems } = parseRun(results.value);
-  if (!run) {
-    note(`no baseline: the previous results.json: ${problems.join("; ")}`);
-    return { prev: null, tracked: [] };
+  if (results.problem) note(`no baseline: ${results.problem}`);
+  else {
+    const parsed = parseRun(results.value);
+    if (parsed.run) prev = parsed.run;
+    else note(`no baseline: the previous results.json: ${parsed.problems.join("; ")}`);
   }
   const statePath = join(dir, "diff.json");
-  if (!existsSync(statePath)) return { prev: run, tracked: [] };
-  const state = readJson(statePath);
-  const parsed = state.problem
-    ? { tracked: [], problems: [state.problem] }
-    : parseState(state.value);
-  if (parsed.problems.length) note(`nothing tracked carried over: ${parsed.problems.join("; ")}`);
-  return { prev: run, tracked: parsed.tracked };
+  if (!existsSync(statePath)) return { prev, state: prev ? parseState(undefined) : none };
+  const json = readJson(statePath);
+  const state = json.problem ? { ...none, problems: [json.problem] } : parseState(json.value);
+  if (state.problems.length) note(`nothing tracked carried over: ${state.problems.join("; ")}`);
+  return { prev, state };
 }
 
 function main() {
@@ -105,21 +113,29 @@ function main() {
     process.stderr.write(`compare: the current results: ${problems.join("; ")}\n`);
     return 1;
   }
-  const { prev, tracked } = values.prev ? readBaseline(values.prev) : { prev: null, tracked: [] };
+  const { prev, state } = readBaseline(values.prev);
+  const partial = Boolean(cur.filter || cur.harnessError);
+  // An issue opened on a broken chain is never closed automatically (diffState).
+  const trusted = Boolean(prev) && state.complete;
+  const complete = (trusted && !partial) || openIssue === null;
 
-  const diff = compareRuns(prev, cur, tracked);
-  const action = issueAction(diff, { scheduled: values.scheduled, openIssue });
+  const diff = compareRuns(prev, cur, state.tracked, state.known);
+  const action = issueAction(diff, { scheduled: values.scheduled, openIssue, trusted, partial });
   mkdirSync(values.out, { recursive: true });
   const md = renderDiff(diff, cur);
   writeFileSync(join(values.out, "diff.md"), md);
   writeFileSync(
     join(values.out, "diff.json"),
-    `${JSON.stringify(diffState(diff, cur), null, 2)}\n`,
+    `${JSON.stringify(
+      diffState(diff, cur, { known: nextKnown(prev, cur, state.known), complete }),
+      null,
+      2,
+    )}\n`,
   );
   if (action !== "none")
     writeFileSync(
       join(values.out, "issue.md"),
-      renderIssue(diff, { action, runUrl: values["run-url"], cur }),
+      renderIssue(diff, { action, runUrl: values["run-url"], cur, trusted }),
     );
   console.log(
     `${md}\ncompare: ${diff.regressions.length} new, ${diff.tracked.length} tracked; ` +

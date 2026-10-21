@@ -9,10 +9,11 @@
 # (ADR-010), copied, with the same tarball checksum check.
 #
 # Each run is compared with the previous scheduled run, and regressions go to one issue labelled
-# `site-compat` (decision 12). Two jobs, as in spec-status.yml: the job that runs the browser on
-# live pages holds read permissions only, and the one that may write the issue checks out
-# nothing and runs only gh on the issue.md the first job wrote. Page text reaches that file only
-# as inert code spans (tools/sites/diff.mjs; docs/security.md, "Site compatibility workflow").
+# `site-compat` (decision 12). Three jobs: `sites` runs the browser on live pages and can only
+# read the repository; `compare`, on a fresh runner, reads that run's results.json and the
+# previous run's artifact and writes the diff and the issue text, with read permissions only;
+# `report` checks out nothing and runs only gh on that issue text. Page text reaches it only as
+# inert code spans (tools/sites/diff.mjs; docs/security.md, "Site compatibility workflow").
 name: sites
 
 on:
@@ -39,11 +40,6 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      actions: read # download the previous scheduled run's site-compat artifact
-      issues: read # find the open site-compat issue
-    outputs:
-      issue-action: ${{ steps.compare.outputs.action }}
-      issue: ${{ steps.compare.outputs.issue }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -84,41 +80,18 @@ jobs:
 
       # Exits 0 whenever it wrote a report, whatever the sites did; 1 only when the harness
       # itself failed. It appends the Markdown report to the job summary. Blocked sites get one
-      # more visit at the end (decision 11): a datacenter IP's bot checks are often brief.
+      # more visit at the end (decision 11): a datacenter IP's bot checks are often brief. Page
+      # text reaches the log, so workflow commands (::error:: and the like) are off meanwhile.
       - name: Site compatibility (npm run sites -- --artifact --retry-blocked)
         env:
           FILTER: ${{ inputs.filter }}
-        run: npm run sites -- --artifact --retry-blocked ${FILTER:+--filter "$FILTER"}
-
-      # The baseline: the latest successful scheduled run on main (this run is still in
-      # progress, so it is never its own). None when it has expired; the diff then says so.
-      - name: Previous scheduled run's results
-        if: ${{ !cancelled() }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
-          mkdir -p baseline
-          id=$(gh run list --workflow sites.yml --event schedule --branch main --status success \
-            --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-          if [ -n "$id" ]; then
-            gh run download "$id" --name site-compat --dir baseline \
-              || echo "::warning::could not download run $id's site-compat artifact"
-          fi
-          issue=$(gh issue list --label site-compat --state open --limit 1 \
-            --json number --jq '.[0].number // empty')
-          echo "OPEN_ISSUE=$issue" >> "$GITHUB_ENV"
-
-      - name: Night-to-night diff (tools/sites/compare.mjs)
-        id: compare
-        if: ${{ !cancelled() && hashFiles('site-compat-output/results.json') != '' }}
-        env:
-          SCHEDULED: ${{ github.event_name == 'schedule' }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          node tools/sites/compare.mjs --cur site-compat-output/results.json \
-            --out site-compat-output --prev baseline --open-issue "$OPEN_ISSUE" \
-            --run-url "$RUN_URL" $([ "$SCHEDULED" = true ] && echo --scheduled)
+          token=$(openssl rand -hex 16)
+          echo "::stop-commands::${token}"
+          status=0
+          npm run sites -- --artifact --retry-blocked ${FILTER:+--filter "$FILTER"} || status=$?
+          echo "::${token}::"
+          exit "$status"
 
       - name: Upload the report (results.json, report.md, report.html, screenshots/)
         if: always()
@@ -129,19 +102,82 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Keep the issue text for the report job
-        if: ${{ !cancelled() && steps.compare.outputs.action != '' && steps.compare.outputs.action != 'none' }}
+  compare:
+    name: Night-to-night diff
+    needs: sites
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read # download this run's and the previous scheduled run's artifacts
+      issues: read # find the open site-compat issue
+    outputs:
+      issue-action: ${{ steps.compare.outputs.action }}
+      issue: ${{ steps.compare.outputs.issue }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Only results.json is taken from the browser job's runner; compare.mjs checks its shape.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-compat
+          path: report
+
+      # The baseline: the latest successful scheduled run on main (this run is still in
+      # progress, so it is never its own). None when it has expired; the diff then says so.
+      - name: This run's results, the previous scheduled run's, and the open issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p current baseline previous
+          cp report/results.json current/
+          id=$(gh run list --workflow sites.yml --event schedule --branch main --status success \
+            --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          # results.json from its report, diff.json (the tracking state) from its diff; either
+          # may be missing on its own, which compare.mjs reports.
+          if [ -n "$id" ]; then
+            for pair in site-compat:results.json site-compat-diff:diff.json; do
+              name=${pair%%:*} file=${pair#*:}
+              if gh run download "$id" --name "$name" --dir "previous/$name" \
+                && [ -f "previous/$name/$file" ]; then
+                cp "previous/$name/$file" baseline/
+              else
+                echo "::warning::no $file in run $id's $name artifact"
+              fi
+            done
+          fi
+          issue=$(gh issue list --label site-compat --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+          echo "OPEN_ISSUE=$issue" >> "$GITHUB_ENV"
+
+      - name: Night-to-night diff (tools/sites/compare.mjs)
+        id: compare
+        env:
+          SCHEDULED: ${{ github.event_name == 'schedule' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node tools/sites/compare.mjs --cur current/results.json --out site-compat-diff \
+            --prev baseline --open-issue "$OPEN_ISSUE" \
+            --run-url "$RUN_URL" $([ "$SCHEDULED" = true ] && echo --scheduled)
+
+      # diff.json is the next night's tracking state: kept as long as the report artifact.
+      - name: Upload the diff (diff.md, diff.json, issue.md)
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: site-compat-issue
-          path: site-compat-output/issue.md
-          if-no-files-found: error
-          retention-days: 7
+          name: site-compat-diff
+          path: site-compat-diff/
+          if-no-files-found: warn
+          retention-days: 14
 
   report:
     name: Update the site-compat issue
-    needs: sites
-    if: ${{ !cancelled() && needs.sites.outputs.issue-action != '' && needs.sites.outputs.issue-action != 'none' }}
+    needs: compare
+    if: ${{ !cancelled() && needs.compare.outputs.issue-action != '' && needs.compare.outputs.issue-action != 'none' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -152,13 +188,13 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: site-compat-issue
+          name: site-compat-diff
           path: out
 
       - name: Issue
         env:
-          ACTION: ${{ needs.sites.outputs.issue-action }}
-          ISSUE: ${{ needs.sites.outputs.issue }}
+          ACTION: ${{ needs.compare.outputs.issue-action }}
+          ISSUE: ${{ needs.compare.outputs.issue }}
         run: |
           gh label create site-compat --force --color FBCA04 \
             --description "A site-compatibility check regressed (sites.yml)"

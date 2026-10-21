@@ -9,6 +9,12 @@ describe("tools/sites/sites.json", () => {
     expect(validateSites(SITES)).toEqual([]);
   });
 
+  // The names reach the site-compat issue as Markdown (decision 12): nothing GitHub would turn
+  // into a mention, a reference or a link.
+  it("names nothing GitHub would turn into a mention, reference or link", () => {
+    for (const s of SITES) expect(s.name, s.id).not.toMatch(/[@#`<>[\]]|:\/\/|\bGH-\d/);
+  });
+
   it("has the sites the suite covers", () => {
     const hosts = new Set(SITES.map((/** @type {any} */ s) => new URL(s.url).hostname));
     for (const host of [

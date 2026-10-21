@@ -33,7 +33,7 @@ describe("site-compat workflow (sites.yml)", () => {
 
   it("uses a standard GitHub-hosted runner, never a self-hosted or larger one", () => {
     const runsOn = [...text.matchAll(/runs-on: (.+)/g)].map((m) => m[1]?.trim());
-    expect(runsOn).toEqual(["ubuntu-24.04", "ubuntu-24.04"]);
+    expect(runsOn).toEqual(["ubuntu-24.04", "ubuntu-24.04", "ubuntu-24.04"]);
   });
 
   it("has no secrets, and no permission at the top level", () => {
@@ -44,12 +44,24 @@ describe("site-compat workflow (sites.yml)", () => {
 
   // Decision 12: the job that runs the browser on live pages only reads; the one that writes the
   // issue runs no repository code and sees page text only as a file it hands to gh.
-  it("the browser job only reads: contents, the previous artifact, and the open issue", () => {
-    expect(permissionsOf(job("sites"))).toEqual({
-      contents: "read",
-      actions: "read",
-      issues: "read",
-    });
+  it("the browser job only reads the repository, and holds no token in any step", () => {
+    expect(permissionsOf(job("sites"))).toEqual({ contents: "read" });
+    expect(job("sites")).not.toContain("GH_TOKEN");
+  });
+
+  // A page that escaped the browser could rewrite files on the browser job's runner; the diff and
+  // the issue text are therefore made on a fresh runner, from results.json alone.
+  it("the compare job only reads, and works from the browser job's results.json alone", () => {
+    const compare = job("compare");
+    expect(permissionsOf(compare)).toEqual({ contents: "read", actions: "read", issues: "read" });
+    expect(compare).toMatch(/needs: sites/);
+    expect(compare).toContain("persist-credentials: false");
+    expect(compare).toMatch(/cp \S*results\.json current\//);
+    expect(compare).not.toMatch(/npm (ci|run|install)/);
+  });
+
+  it("stops workflow commands while the suite logs page text", () => {
+    expect(job("sites")).toMatch(/::stop-commands::\$\{?token/);
   });
 
   it("issues: write is only in the report job, which checks out and runs no repository code", () => {
@@ -87,15 +99,15 @@ describe("site-compat workflow (sites.yml)", () => {
   });
 
   it("compares with the previous scheduled run and touches the issue on schedule only", () => {
-    const sites = job("sites");
-    expect(sites).toMatch(/gh run list --workflow sites\.yml --event schedule --branch main/);
-    expect(sites).toContain("node tools/sites/compare.mjs");
-    expect(sites.indexOf("npm run sites")).toBeLessThan(sites.indexOf("tools/sites/compare.mjs"));
-    expect(sites.indexOf("tools/sites/compare.mjs")).toBeLessThan(
-      sites.indexOf("actions/upload-artifact"),
+    const compare = job("compare");
+    expect(compare).toMatch(/gh run list --workflow sites\.yml --event schedule --branch main/);
+    expect(compare).toContain("node tools/sites/compare.mjs");
+    expect(compare).toContain("site-compat:results.json site-compat-diff:diff.json");
+    expect(compare.indexOf("tools/sites/compare.mjs")).toBeLessThan(
+      compare.indexOf("actions/upload-artifact"),
     );
-    expect(sites).toMatch(/github\.event_name == 'schedule'/);
-    expect(job("report")).toMatch(/needs: sites/);
+    expect(compare).toMatch(/github\.event_name == 'schedule'/);
+    expect(job("report")).toMatch(/needs: compare/);
   });
 
   it("every action it uses is pinned by a full commit SHA", () => {

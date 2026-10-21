@@ -86,11 +86,14 @@ describe("tools/sites/compare.mjs", () => {
     expect(r.diff).toContain("npm");
     expect(r.summary).toBe(r.diff);
     expect(r.issue).toBeNull();
-    expect(JSON.parse(r.state ?? "")).toEqual({
+    const state = JSON.parse(r.state ?? "");
+    expect(state).toMatchObject({
       version: 1,
       startedAt: "2026-10-21T09:31:04.772Z",
+      complete: true,
       tracked: [],
     });
+    expect(state.known["github-repo/hints"]).toBe("pass");
   });
 
   it("opens an issue for a scheduled run with a new regression", () => {
@@ -166,6 +169,48 @@ describe("tools/sites/compare.mjs", () => {
     writeFileSync(file, JSON.stringify(run));
     const r = compare({ cur: file, prev: fixture("2026-10-20") });
     expect(r.outputs.action).toBe("none");
+    expect(r.diff).not.toMatch(/removed/i);
+  });
+
+  it("carries the tracked list when only diff.json survives, and does not close then", () => {
+    const failing = regressedNight();
+    const first = compare({ cur: failing, prev: fixture("2026-10-20"), args: ["--scheduled"] });
+    const state = JSON.parse(first.state ?? "");
+    const lost = compare({
+      cur: failing,
+      prev: "",
+      prevState: state,
+      args: ["--scheduled", "--open-issue", "612"],
+    });
+    const lostState = JSON.parse(lost.state ?? "");
+    expect(lostState.tracked).toHaveLength(1);
+    expect(lostState.complete).toBe(false);
+    // The next night has a baseline again and the check passes, but the chain was broken.
+    const next = compare({
+      cur: fixture("2026-10-21"),
+      prev: failing,
+      prevState: lostState,
+      args: ["--scheduled", "--open-issue", "612"],
+    });
+    expect(next.outputs.action).toBe("update");
+    expect(next.issue).toMatch(/interrupted/);
+  });
+
+  it("does not close the issue after a run the harness stopped early", () => {
+    const run = JSON.parse(readFileSync(fixture("2026-10-21"), "utf8"));
+    run.harnessError = "Xvfb died";
+    run.sites = run.sites.slice(0, 5);
+    const dir = mkdtempSync(join(tmpdir(), "vimma-compare-"));
+    dirs.push(dir);
+    const file = join(dir, "results.json");
+    writeFileSync(file, JSON.stringify(run));
+    const r = compare({
+      cur: file,
+      prev: fixture("2026-10-20"),
+      prevState: { version: 1, complete: true, known: {}, tracked: [] },
+      args: ["--scheduled", "--open-issue", "612"],
+    });
+    expect(r.outputs.action).toBe("update");
     expect(r.diff).not.toMatch(/removed/i);
   });
 
