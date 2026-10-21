@@ -421,7 +421,8 @@ is on screen), as Vim's starts at the cursor.
   last match before where you were. After `?`, `n` goes on backward and `N` forward.
 - **A match in a text field** (a site's search box that holds your query) is selected there,
   but the field does not keep the focus: you stay in normal mode and `n` / `N` go on to the
-  next match. `i` or a click puts you in the field.
+  next match. `i`, a click, or the page itself focusing the field puts you in it, in insert
+  mode.
 
 `ctrl+f` still opens Firefox's own find bar, where `Enter` goes to the next match.
 
