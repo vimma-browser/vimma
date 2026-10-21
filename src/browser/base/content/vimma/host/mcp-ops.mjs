@@ -62,6 +62,11 @@ export const McpHost = {
     return { enabled: Services.prefs.getBoolPref(MCP_ENABLED_PREF, false), from: "pref" };
   },
 
+  /** The agent workspace's name, as questions and notices show it. */
+  get workspaceName() {
+    return WorkspaceStore.agent?.name ?? WorkspaceStore.agentName ?? "agent";
+  },
+
   /**
    * `:mcp [on|off|forget]`: returns the notice's text, or null while a y/N question is open.
    * @param {string | undefined} text
@@ -72,7 +77,7 @@ export const McpHost = {
   run(text, ask, say) {
     const command = parseMcpCommand(text);
     const agent = WorkspaceStore.agent;
-    const name = agent?.name ?? WorkspaceStore.agentName ?? "agent";
+    const name = this.workspaceName;
     switch (command.kind) {
       case "refuse":
         return command.text;

@@ -103,14 +103,32 @@ describe("the question's text (decision 13)", () => {
 
   test("full control asks y/N, with no grant (decision 29)", () => {
     const line = questionLine(full, { grantMinutes: 10 });
-    expect(text(line)).toBe("◇ a client with no code wants full control — y/N");
+    expect(text(line)).toBe(
+      '◇ a client with no code wants full control (every workspace, not only "agent") — y/N',
+    );
     expect(line.hint).toBe("y allow · n deny");
+  });
+
+  // mcp-drive D23 (security.md M22): the question is asked only while MCP is on, so it always
+  // says that full control reaches past the agent workspace, by the workspace's own name.
+  test("full control names the agent workspace it reaches beyond", () => {
+    const line = questionLine(
+      { ...full, what: { code: "7F3K" } },
+      { grantMinutes: 10, agentWorkspace: "bots\u202e" },
+    );
+    expect(text(line)).toBe(
+      '◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "bots") — y/N',
+    );
+    expect(line.parts.find((p) => p.text === "bots")?.isolate).toBe("auto");
+    expect(line.label).toBe(text(line));
   });
 
   // The code vimma-ctl printed tells a racing client's question apart.
   test("full control shows the client's code, in bold", () => {
     const line = questionLine({ ...full, what: { code: "7F3K" } }, { grantMinutes: 10 });
-    expect(text(line)).toBe("◇ vimma-ctl with code 7F3K wants full control — y/N");
+    expect(text(line)).toBe(
+      '◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N',
+    );
     expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["7F3K"]);
     expect(line.hint).toBe("y if the code is the one vimma-ctl printed · n deny");
   });
@@ -244,7 +262,7 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(agentAlertText(open)).toBe(
       "example-agent asks to use Vimma's agent workspace (open a page)",
     );
-    expect(agentAlertText(full)).toBe("vimma-ctl asks for full control of Vimma");
+    expect(agentAlertText(full)).toBe("vimma-ctl asks for full control of Vimma (every workspace)");
     for (const q of [read, open]) expect(agentAlertText(q)).not.toMatch(/github|docs\.rs|http/);
   });
 });
@@ -290,10 +308,24 @@ describe(":control (decision 29 D)", () => {
       expect(parseControlCommand(t).kind).toBe("refuse");
     },
   );
+  // mcp-drive D22 (security.md M22): while MCP is on, an agent with a shell can use full
+  // control too, so the question says what it gives away.
+  test("while MCP is on, the question says full control reaches beyond the agent workspace", () => {
+    // The name is set apart as its own bidi run (security.md M4), as in the question line.
+    expect(controlOnQuestion(15, "agent")).toBe(
+      'Turn on full control for 15 min? It reaches every workspace and tab, not only "\u2068agent\u2069", ' +
+        "and any local AI agent with a shell can use it. y/N",
+    );
+    expect(controlOnQuestion(1, "bots\n\u202e")).toBe(
+      'Turn on full control for 1 min? It reaches every workspace and tab, not only "\u2068bots\u2069", ' +
+        "and any local AI agent with a shell can use it. y/N",
+    );
+  });
   test("the question and the status", () => {
     expect(controlOnQuestion(15)).toBe(
       "Turn on full control (vimma-ctl: keys in this window, every workspace) for 15 min? y/N",
     );
+    expect(controlOnQuestion(15, null)).toBe(controlOnQuestion(15));
     expect(controlStatus({ enabled: false, until: null, now: 0 })).toBe(
       "full control off (:control on <minutes>)",
     );

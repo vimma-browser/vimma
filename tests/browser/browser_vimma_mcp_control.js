@@ -6,6 +6,8 @@
 // buttons when the asking window is not in front (decision 15); while MCP is on, each new
 // full-control connection asks y/N in the agent question line, and with MCP off nothing asks
 // (29 C); `:control on <minutes>` turns full control on for that long, across restarts (29 D).
+// docs/specs/mcp-drive.md, sub-PR 1: while MCP is on, both full-control questions say that full
+// control reaches beyond the agent workspace (D22, D23; security.md M22).
 
 "use strict";
 
@@ -169,8 +171,13 @@ add_task(async function test_full_control_asks_only_while_mcp_is_on() {
   await armed();
   Assert.equal(
     lineText(),
-    "◇ vimma-ctl with code 7F3K wants full control — y/N",
-    "MCP on: it asks, with the client's code",
+    '◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N',
+    "MCP on: it asks, with the client's code and what it reaches",
+  );
+  Assert.equal(
+    line().getAttribute("aria-label"),
+    lineText(),
+    "and its accessible name says it too",
   );
   Assert.equal(line().querySelector("b")?.textContent, "7F3K", "the code in bold");
   Assert.equal(
@@ -193,7 +200,7 @@ add_task(async function test_full_control_asks_only_while_mcp_is_on() {
   await armed();
   Assert.equal(
     lineText(),
-    "◇ a client with no code wants full control — y/N",
+    '◇ a client with no code wants full control (every workspace, not only "agent") — y/N',
     "a client that sent no code is named as one",
   );
   EventUtils.synthesizeKey("n");
@@ -267,5 +274,52 @@ add_task(async function test_control_on_minutes_turns_itself_off() {
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => !Services.prefs.getBoolPref(CONTROL, true), ":control off, at once");
   Assert.ok(!Services.prefs.prefHasUserValue(CONTROL_UNTIL_PREF), "with its end time");
+  await setSwitches({});
+});
+
+add_task(async function test_control_on_says_it_reaches_beyond_agent_while_mcp_is_on() {
+  Services.prefs.setIntPref(ARMING, 100);
+  const question = async () => {
+    await focusContent(gBrowser.selectedBrowser);
+    EventUtils.synthesizeKey(":", { shiftKey: true });
+    EventUtils.sendString("control on 15");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(() => renamePrompt() && !renamePrompt().hidden, ":control on asks");
+    const said = renamePrompt().textContent;
+    EventUtils.synthesizeKey("n");
+    await until(() => renamePrompt().hidden, "n closes it");
+    Assert.ok(!Services.prefs.getBoolPref(CONTROL, false), "and leaves full control off");
+    return said;
+  };
+
+  await setSwitches({ mcp: true });
+  Assert.ok(
+    (await question()).includes(
+      'Turn on full control for 15 min? It reaches every workspace and tab, not only "\u2068agent\u2069", ' +
+        "and any local AI agent with a shell can use it. y/N",
+    ),
+    "MCP on: the question says what full control gives away",
+  );
+
+  await setSwitches({});
+  Assert.ok(
+    (await question()).includes(
+      "Turn on full control (vimma-ctl: keys in this window, every workspace) for 15 min? y/N",
+    ),
+    "MCP off: the question stays as it was",
+  );
+
+  // MCP goes on while the MCP-off question is open: its yes would be to a question that no
+  // longer says what full control gives away, so it turns nothing on.
+  await focusContent(gBrowser.selectedBrowser);
+  EventUtils.synthesizeKey(":", { shiftKey: true });
+  EventUtils.sendString("control on 15");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => renamePrompt() && !renamePrompt().hidden, ":control on asks");
+  await setSwitches({ mcp: true });
+  await new Promise((r) => setTimeout(r, 150));
+  EventUtils.synthesizeKey("y");
+  await until(() => noticeText().includes("run :control on again"), "the yes says why");
+  Assert.ok(!Services.prefs.getBoolPref(CONTROL, false), "and full control stays off");
   await setSwitches({});
 });

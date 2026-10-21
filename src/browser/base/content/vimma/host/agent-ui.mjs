@@ -110,7 +110,11 @@ function onWindowChange(win, e) {
 function open(win, q) {
   const w = windows.get(win);
   if (!w) return false;
-  const shown = w.prompt.show(questionLine(q, { grantMinutes: grantMinutes() }), armMs());
+  const line = questionLine(q, {
+    grantMinutes: grantMinutes(),
+    agentWorkspace: McpHost.workspaceName,
+  });
+  const shown = w.prompt.show(line, armMs());
   if (!shown) return false;
   current = { id: q.id, win, count: "", question: q };
   return true;
