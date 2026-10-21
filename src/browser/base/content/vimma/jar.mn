@@ -25,6 +25,7 @@ browser.jar:
         content/browser/vimma/host/control-ops.mjs        (host/control-ops.mjs)
         content/browser/vimma/host/agent-ui.mjs           (host/agent-ui.mjs)
         content/browser/vimma/host/update-ui.mjs          (host/update-ui.mjs)
+        content/browser/vimma/host/restart.mjs            (host/restart.mjs)
         content/browser/vimma/host/prompt-keys.mjs        (host/prompt-keys.mjs)
         content/browser/vimma/host/hypr/HyprIpc.sys.mjs   (host/hypr/HyprIpc.sys.mjs)
         content/browser/vimma/host/find.mjs               (host/find.mjs)

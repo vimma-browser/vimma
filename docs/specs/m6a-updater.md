@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement and sub-PR 4's release manifest implemented; sub-PRs 2 and 5, the rest of sub-PR 3, and sub-PR 4's MAR and nightly parts open) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question and `:restart`, and sub-PR 4's release manifest implemented; sub-PRs 2 and 5, the rest of sub-PR 3, and sub-PR 4's MAR and nightly parts open) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -429,7 +429,8 @@ files older than a day are leftovers of a killed run and are removed. A symbolic
 `$APPIMAGE` is refused, because the rename would replace the link and not the file it names. Every write is synced, and the size and SHA-512 are
 checked on the file as written, before the rename. A target that already has the offered size
 and SHA-512 counts as replaced without a download. An urgent replaced update shows
-`⇡ 0.3.1 security: restart` until `:restart` exists, the one-time message says
+`⇡ 0.3.1 security: restart` until `:restart` exists (since changed: `⇡ 0.3.1 security: :restart`,
+§5), the one-time message says
 `Vimma 0.3.1 is installed · restart Vimma to use it` (or `fixes security issues · …`) once the
 file is replaced and not before, and the `Show the update command?` question of spec
 update-notices is not asked, because an AppImage that replaced its file has no command left to
@@ -505,10 +506,14 @@ offer asks `Show the update command? (y/N)` once per session; spec
 
 - The urgent question uses the command line's `y/N` form, as the add-on picker's removal
   question does (`packages/vimma-core/src/addons.mjs:100`). `y` runs `app.restart`.
+  (Since changed: it is the question line of spec [update-notices](update-notices.md), with its
+  guards and arming delay, because it opens without a key from the user; decision 35.)
 - `:restart` (action `app.restart`) is Firefox's restart path: `quit-application-requested`
   (add-ons and unsaved-form prompts can cancel), then `eAttemptQuit | eRestart`; the session comes
   back through SessionStore as on any restart (workspaces, panes, scroll). The private workspace
   is a private window, whose tabs a restart closes, hence the extra sentence in the question.
+  (Since changed: the AppImage quits and starts its own file again instead, decision 36; `:restart`
+  asks first while private tabs are open, decision 37.)
 - Firefox's own badge and doorhanger stay as Firefox has them (`badgeWaitTime` 0,
   `promptWaitTime` 24 h); they are the mouse path to the same restart.
 - **Interval**: `app.update.interval` becomes 43200 (12 h, Mozilla's release branding value)
@@ -868,6 +873,48 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     Firefox 158.0), as it already does for the `.deb` and the PKGBUILD; `docs/limits.md` states
     this. Rejected: an AppImage without the marker, detected by `$APPIMAGE` only, because nothing
     would then tell this build's AppImage from a tarball started by another AppImage.
+35. **The urgent restart question is the question line of update-notices, not a `y/N` that
+    takes focus**, because it opens at a moment the user did not choose, as the security question
+    of that spec does: it never takes focus, opens only after 1,500 ms without a key, out of
+    fields and overlays, and counts keys only after `security.dialog_enable_delay`, so a page
+    cannot have the user restart Vimma by asking for `y` as the line appears. It is asked only
+    once the update is in place (today, an AppImage that replaced its file), because before that
+    a restart applies nothing; an ordinary update asks nothing, because the dim segment says it
+    applies at the next start. An answer lasts for the session and for 24 hours in a session that
+    runs on (decision 21); a clock set back since the answer asks again, so a wrong clock never
+    silences it. Rejected: also asking before the file is in place, because `y` would restart
+    into the old version.
+36. **An AppImage restarts by quitting and starting `$APPIMAGE` again, not through Firefox's
+    restart**, because Firefox's restart starts the same binary path
+    (`toolkit/xre/nsAppRunner.cpp:2675`, `LaunchChild`), which in an AppImage lies inside the
+    image mounted at this start: it would run the old version even after the file was replaced,
+    and keep the old mount alive (checked with the 0.1.6 and 0.1.5 AppImages). Vimma asks
+    `quit-application-requested` with `restart` as Firefox's restart does, quits with
+    `eAttemptQuit`, and in `quit-application`, once no window can refuse, starts `/bin/sh` with a
+    fixed script that waits for this process to exit (up to 120 s, longer than Firefox's
+    shutdown watchdog, `toolkit.asyncshutdown.crash_timeout` 60 s plus 10 s) and then runs
+    `$APPIMAGE` with no arguments; the process id and the path are positional parameters, never
+    script text. The profile goes in `XRE_PROFILE_PATH` and `XRE_PROFILE_LOCAL_PATH`, as
+    `AppShutdown::MaybeDoRestart` passes it, and `browser.sessionstore.resume_session_once` is set
+    before the quit so the session comes back, as SessionStore sets it for a restart; a quit that
+    a window refused restores that pref, drops the observer and starts nothing. Only the AppImage this Vimma is (the marker rule of
+    decision 34) is started, never one whose `$APPIMAGE` it inherited, and a missing or
+    non-executable file falls back to Firefox's restart. It is the second process chrome code may
+    start (`docs/security.md` C2, UP11). Rejected: starting the AppImage at once, because the new
+    instance would meet the old one's profile lock and remote server; teaching the AppImage's
+    `AppRun` to wait, because the replaced file is the new release, so the waiting would depend on
+    what the next release's `AppRun` does. The costs: the restart is a quit, so with history
+    cleared on close (`privacy.sanitize.sanitizeOnShutdown`) SessionStore's purge observer stays
+    and the session is cleared (`SessionStore.sys.mjs` `#onQuitApplication` removes it only for a
+    restart), so no tab comes back, which the questions say first (decision 37); and the new
+    process gets none of the old one's command-line arguments, as a launch from the desktop.
+37. **`:restart` asks `Restart Vimma? N private tabs will close. (y/N)` while the private
+    workspace has tabs, and `Restart Vimma? Tabs will not come back. (y/N)` when session restore
+    will bring none back** (an AppImage with history cleared on close, or permanent private
+    browsing), as `:private close` asks before it closes them, because the command is otherwise
+    one keystroke from losing them. The urgent question says the same in its text, and `y` there
+    restarts without a second question unless a loss appeared while the line was open, which
+    `y` then asks about first.
 
 ### 9. Not in this spec
 

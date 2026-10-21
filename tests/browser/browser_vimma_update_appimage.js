@@ -16,6 +16,7 @@ const { VimmaUpdates } = ChromeUtils.importESModule(
 const { UpdateUi } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/update-ui.mjs",
 );
+const { Restart } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/restart.mjs");
 const { base64Encode, signatureComment, signedBytes, spkiKeyId } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/updates.mjs",
 );
@@ -179,30 +180,165 @@ add_task(async function a_newer_appimage_replaces_the_file() {
   );
 });
 
-add_task(async function a_replaced_appimage_says_restart_and_asks_nothing() {
+add_task(async function a_replaced_security_update_asks_to_restart() {
   await freshInstall();
   await serve(await manifest({ urgency: "security" }));
-  await BrowserTestUtils.withNewTab("https://example.com/", async () => {
+  let restarts = 0;
+  const startup = {
+    quit() {
+      restarts++;
+    },
+    restartInSafeMode() {},
+    get attemptingQuit() {
+      return false;
+    },
+  };
+  Restart._reset();
+  Restart._setStartup(startup, () => {});
+  const line = () => document.getElementById("vimma-update-prompt");
+  const lineShown = () => !!line() && !line().hidden;
+  const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
+  const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
+  try {
+    await BrowserTestUtils.withNewTab("https://example.com/", async (browser) => {
+      browser.focus();
+      await checkAndReplace();
+      await until(
+        () => segment()?.textContent === "⇡ 9.9.9 security: :restart",
+        "a security update in the error colour, naming :restart",
+      );
+      Assert.equal(segment().style.color, "var(--vimma-text-error)");
+      UpdateUi._sync();
+      await until(
+        () => Services.prefs.getStringPref("vimma.update.announced", "") === "9.9.9",
+        "the one-time message was shown",
+      );
+      // Announced once the file is replaced, never earlier with a command to run.
+      Assert.equal(
+        document.getElementById("vimma-notice").textContent,
+        "Vimma 9.9.9 fixes security issues · restart Vimma to use it",
+      );
+      // The question is the restart, not the update command: the AppImage has none left to run.
+      await until(lineShown, "the restart question shows once no key came for a moment");
+      Assert.equal(
+        lineText(),
+        "Security update 9.9.9 is ready. Restart now? Tabs come back. (y/N)",
+      );
+      Assert.equal(document.activeElement, browser, "the question takes no focus");
+      await until(armed, "armed after the delay");
+      EventUtils.synthesizeKey("n");
+      await until(() => !lineShown(), "n closes it");
+      Assert.equal(restarts, 0, "n restarts nothing");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      UpdateUi._sync();
+      Assert.ok(!UpdateUi.isOpen(window), "not asked again in this session, for a day");
+
+      // A day later in the same session: asked again, and y restarts.
+      UpdateUi._answeredAgo("9.9.9", 24 * 3600 * 1000);
+      UpdateUi._sync();
+      await until(lineShown, "asked again after 24 hours");
+      await until(armed, "armed");
+      EventUtils.synthesizeKey("y");
+      await until(() => restarts === 1, "y restarts");
+      Assert.ok(!lineShown(), "answered");
+      await until(
+        () => document.getElementById("vimma-notice").textContent === "restart cancelled",
+        "the fake refused the quit, and Vimma says so",
+      );
+    });
+  } finally {
+    Restart._reset();
+    Restart._setStartup(null);
+    UpdateUi._reset();
+  }
+});
+
+add_task(async function the_restart_question_says_what_a_restart_loses() {
+  await freshInstall();
+  await serve(await manifest({ urgency: "security" }));
+  let restarts = 0;
+  Restart._reset();
+  Restart._setStartup(
+    {
+      quit() {
+        restarts++;
+      },
+      restartInSafeMode() {},
+      get attemptingQuit() {
+        return false;
+      },
+    },
+    () => {},
+  );
+  const line = () => document.getElementById("vimma-update-prompt");
+  const lineShown = () => !!line() && !line().hidden;
+  const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
+  const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
+  const yN = () => document.getElementById("vimma-rename");
+  const yNText = () => yN()?.querySelector(".vimma-cmdline-prompt")?.textContent.trim() ?? "";
+  try {
+    // History cleared on close: an AppImage's restart is a quit, which purges the session.
+    await SpecialPowers.pushPrefEnv({ set: [["privacy.sanitize.sanitizeOnShutdown", true]] });
+    await BrowserTestUtils.withNewTab("https://example.com/", async (browser) => {
+      browser.focus();
+      await checkAndReplace();
+      UpdateUi._sync();
+      await until(lineShown, "the restart question shows");
+      Assert.equal(
+        lineText(),
+        "Security update 9.9.9 is ready. Restart now? Tabs will not come back. (y/N)",
+      );
+      await until(armed, "armed");
+      EventUtils.synthesizeKey("n");
+      await until(() => !lineShown(), "n closes it");
+    });
+    await SpecialPowers.popPrefEnv();
+
+    // A private tab opened while the line is open: y asks about it before anything restarts.
+    UpdateUi._reset();
+    await BrowserTestUtils.withNewTab("https://example.com/", async (browser) => {
+      browser.focus();
+      UpdateUi._sync();
+      await until(lineShown, "asked again in a new session");
+      Assert.equal(
+        lineText(),
+        "Security update 9.9.9 is ready. Restart now? Tabs come back. (y/N)",
+      );
+      const priv2 = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+      await SimpleTest.promiseFocus(window);
+      browser.focus();
+      try {
+        UpdateUi._sync();
+        await until(lineShown, "the line is back once the window is in front");
+        await until(armed, "armed");
+        EventUtils.synthesizeKey("y");
+        await until(() => yN()?.hidden === false, "the y/N about the private tab");
+        Assert.equal(yNText(), "Restart Vimma? 1 private tab will close. (y/N)");
+        Assert.equal(restarts, 0, "nothing restarts before that answer");
+        EventUtils.synthesizeKey("n");
+        await until(() => yN()?.hidden !== false, "n closes it");
+        Assert.equal(restarts, 0, "n keeps the private tab");
+      } finally {
+        await BrowserTestUtils.closeWindow(priv2);
+      }
+    });
+  } finally {
+    Restart._reset();
+    Restart._setStartup(null);
+    UpdateUi._reset();
+  }
+});
+
+add_task(async function an_ordinary_replaced_update_asks_nothing() {
+  await freshInstall();
+  await serve(await manifest());
+  await BrowserTestUtils.withNewTab("https://example.com/", async (browser) => {
+    browser.focus();
     await checkAndReplace();
-    await until(
-      () => segment()?.textContent === "⇡ 9.9.9 security: restart",
-      "a security update in the error colour",
-    );
-    Assert.equal(segment().style.color, "var(--vimma-text-error)");
-    UpdateUi._sync();
-    await until(
-      () => Services.prefs.getStringPref("vimma.update.announced", "") === "9.9.9",
-      "the one-time message was shown",
-    );
-    // Announced once the file is replaced, never earlier with a command to run.
-    Assert.equal(
-      document.getElementById("vimma-notice").textContent,
-      "Vimma 9.9.9 fixes security issues · restart Vimma to use it",
-    );
-    // The question offers a command to run: the AppImage has none left to run.
+    await until(() => segment()?.textContent === "⇡ 9.9.9 on restart", "the status bar says so");
     await new Promise((resolve) => setTimeout(resolve, 2000));
     UpdateUi._sync();
-    Assert.ok(!UpdateUi.isOpen(window), "no security question for a replaced AppImage");
+    Assert.ok(!UpdateUi.isOpen(window), "only a security update asks to restart");
   });
 });
 

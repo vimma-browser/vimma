@@ -7,6 +7,7 @@ import {
   appImagePartPath,
   appImagePlan,
   downloadProblem,
+  ownAppImage,
   stagedSteps,
 } from "../src/appimage-update.mjs";
 import { RELEASES_URL } from "../src/updates.mjs";
@@ -185,5 +186,40 @@ describe("stagedSteps (what :update and about:vimma say once the file is replace
       commands: [],
       link: "https://github.com/vimma-browser/vimma/releases/tag/v0.3.1",
     });
+  });
+});
+
+describe("ownAppImage (the AppImage a restart starts again, spec §5)", () => {
+  const where = {
+    installType: base.installType,
+    marker: base.marker,
+    appImage: base.appImage,
+    appDir: base.appDir,
+    greDir: base.greDir,
+    forced: false,
+  };
+
+  test("this Vimma is the AppImage $APPIMAGE names: that file", () => {
+    expect(ownAppImage(where)).toBe("/home/u/Apps/vimma-0.1.0-x86_64.AppImage");
+  });
+
+  test("$APPIMAGE inherited from another AppImage is never started (decision 34)", () => {
+    expect(ownAppImage({ ...where, marker: null })).toBeNull();
+    expect(ownAppImage({ ...where, marker: "vimma-package=deb\n" })).toBeNull();
+    expect(ownAppImage({ ...where, greDir: "/opt/vimma" })).toBeNull();
+    expect(ownAppImage({ ...where, appDir: null })).toBeNull();
+    expect(ownAppImage({ ...where, installType: "tarball" })).toBeNull();
+  });
+
+  test("a $APPIMAGE that is not an absolute file path: none", () => {
+    for (const appImage of [null, "", "vimma.AppImage", "/a/../b.AppImage", "/a/\nb"]) {
+      expect(ownAppImage({ ...where, appImage })).toBeNull();
+    }
+  });
+
+  test("a test's forced install type skips the marker, as for the replacement", () => {
+    expect(ownAppImage({ ...where, marker: null, appDir: null, forced: true })).toBe(
+      where.appImage,
+    );
   });
 });

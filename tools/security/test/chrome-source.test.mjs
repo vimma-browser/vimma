@@ -62,10 +62,13 @@ describe("chrome code", () => {
   // agent download is scanned with the system's clamscan, or clamdscan when clamd can be used.
   // One file, one call, fixed program lists, arguments only from the three fixed builders with
   // the path after `--`, no shell, no PATH search, and no other way to reach Subprocess.
-  test("never starts a process, but ClamAV on an agent download", () => {
+  test("never starts a process, but ClamAV on an agent download and an AppImage's restart", () => {
     const CLAM = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
+    const RESTART = "src/browser/base/content/vimma/host/restart.mjs";
     const all = hits(/Subprocess|nsIProcess|@mozilla\.org\/process\/|\.launch\(\)|\.reveal\(\)/);
-    expect(all.filter((h) => !h.startsWith(`${CLAM}:`))).toEqual([]);
+    expect(all.filter((h) => !h.startsWith(`${CLAM}:`) && !h.startsWith(`${RESTART}:`))).toEqual(
+      [],
+    );
     const text = readFileSync(join(ROOT, CLAM), "utf8");
     // Every mention: the lazy getter's name and module, and one call.
     expect(text.match(/Subprocess\b/g)).toHaveLength(3);
@@ -108,6 +111,47 @@ describe("chrome code", () => {
     expect(core).toContain(
       'return configFile ? [`--config-file=${configFile}`, "--version"] : ["--version"];',
     );
+  });
+
+  // C2's second exception (docs/specs/m6a-updater.md §5; security.md C2, UP10): an AppImage's
+  // `:restart` starts /bin/sh with one fixed script that waits for Vimma to exit and then runs
+  // `$APPIMAGE`. One call site, the program and arguments only from relaunchCommand, the pid and
+  // the path as positional arguments that the script never reads as shell text.
+  test("restarts an AppImage through one fixed script, with its path never shell text", () => {
+    const RESTART = "src/browser/base/content/vimma/host/restart.mjs";
+    const text = readFileSync(join(ROOT, RESTART), "utf8");
+    expect(text).not.toMatch(/Subprocess|\.launch\(\)|\.reveal\(\)|\brun(Async)?\(|\brunwAsync\(/);
+    expect(text.match(/@mozilla\.org\/process\/util;1/g)).toHaveLength(1);
+    expect(text.match(/nsIProcess/g)).toHaveLength(1);
+    expect(text.match(/\.runw\(/g)).toEqual([".runw("]);
+    expect(text).toContain("proc.runw(false, args, args.length);");
+    expect(text).toContain("proc.noShell = true;");
+    // The process is the program relaunchCommand names, and nothing else.
+    expect(text.match(/initWithPath\(/g)).toHaveLength(2);
+    expect(text).toContain("  file.initWithPath(program);\n");
+    expect(text).toContain("  proc.init(file);\n");
+    // Started only from quit-application (the observer) and the automation-only test hook.
+    expect(text.match(/\bstartRelaunch\(/g)).toHaveLength(3);
+    expect(text).toContain("const observer = () => startRelaunch();");
+    expect(text).toMatch(
+      /if \(!inAutomation\(\)\) throw new Error\("test-only"\);\s*startRelaunch\(\);/,
+    );
+    // runDetached is reached only through `spawn`, whose one call is relaunchCommand's output.
+    expect(text.match(/runDetached\b/g)).toHaveLength(3);
+    expect(text.match(/\bspawn\(/g)).toEqual(["spawn("]);
+    expect(text).toMatch(
+      /const \{ program, args \} = relaunchCommand\(\{\s*pid: Services\.appinfo\.processID,\s*appImage: path,\s*\}\);\s*spawn\(program, args\);/,
+    );
+    const core = readFileSync(join(ROOT, "packages/vimma-core/src/restart.mjs"), "utf8");
+    expect(core).toContain('program: "/bin/sh",');
+    expect(core).toContain(
+      'args: ["-c", RELAUNCH_SCRIPT, "vimma-restart", String(pid), appImage],',
+    );
+    // The script: quoted positional parameters only, no eval, and `$2` run with no arguments.
+    const start = core.indexOf("export const RELAUNCH_SCRIPT");
+    const script = core.slice(start, core.indexOf(";\n\n", start));
+    expect(script).not.toMatch(/\beval\b|\$\{|\$[3-9@*]|\$\(\s*[a-z]|`/);
+    expect(script).toContain(`'exec "$2"'`);
   });
 
   // js-ctypes reaches any native function. Its one use is statx(2) on clamd's socket, for its

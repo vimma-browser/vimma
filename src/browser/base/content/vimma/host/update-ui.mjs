@@ -10,16 +10,23 @@
 // out of fields, after 1,500 ms without a key and with nothing else open (core
 // mayOpenByItself); it never takes focus; VimmaHost hands it the keys from its capture listener,
 // and a key counts only once it is armed (security.dialog_enable_delay, as Firefox's security
-// dialogs), so a key a page made the user press as it appeared never answers it.
+// dialogs), so a key a page made the user press as it appeared never answers it. Once a security
+// update is installed (an AppImage that replaced its file), the same line asks instead
+// `Restart now? Tabs come back. (y/N)` (m6a-updater Behaviour 6): once per session, and again
+// 24 hours after an answer in a session that runs on; `y` restarts.
 
 import { mayOpenByItself } from "../core/agent-prompt.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import {
   QUESTION_HINT,
+  RESTART_HINT,
+  RESTART_REASK_MS,
   announcement,
   questionAnswer,
+  restartQuestion,
   securityQuestion,
   shouldAsk,
+  shouldAskRestart,
 } from "../core/update-notices.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 
@@ -56,6 +63,11 @@ const REARM_EVENTS = ["activate", "deactivate", "focus", "blur"];
  * @property {(text: string) => void} hideNotice  hides the notice if it shows `text`: the
  *   question says what the message said
  * @property {() => void} openSteps  what `:update` opens: about:vimma's Updates section
+ * @property {(confirmed: boolean) => void} restart  `y` in the restart question: restarts at
+ *   once when the question said everything a restart now loses (`confirmed`), else asks first as
+ *   `:restart` does
+ * @property {() => { privateTabs: boolean, tabsKept: boolean }} restartLoses  what a restart now
+ *   loses: the private workspace's tabs, or every tab (core restartKeepsTabs)
  */
 
 /** @type {Map<Window, UpdateWindow>} */
@@ -66,8 +78,15 @@ const lastKey = new WeakMap();
 const rearmers = new WeakMap();
 /** The versions asked about in this session, answered either way. @type {string[]} */
 let asked = [];
-/** The question on screen. @type {{ win: Window, version: string } | null} */
+/** When each version's restart question was answered in this session.
+ * @type {Record<string, number>} */
+let dismissed = {};
+/** The question on screen, and for the restart what it said is lost. @type {{ win: Window,
+ *   version: string, kind: "steps" | "restart",
+ *   said?: { privateTabs: boolean, tabsKept: boolean } } | null} */
 let current = null;
+/** Looks again when an answered restart question is due once more. */
+let reask = /** @type {any} */ (null);
 let poll = /** @type {any} */ (null);
 /** The delay of the pending poll. */
 let pollMs = POLL_MS;
@@ -120,14 +139,20 @@ function announce() {
   return false;
 }
 
-/** @param {Window} win @param {string} version @param {string} question */
-function open(win, version, question) {
+/**
+ * @param {Window} win @param {string} version @param {"steps" | "restart"} kind
+ * @param {string} question
+ * @param {{ privateTabs: boolean, tabsKept: boolean }} [said]  what the restart question says
+ *   is lost
+ */
+function open(win, version, kind, question, said) {
   const w = windows.get(win);
   if (!w) return false;
-  const line = { parts: [{ text: question }], hint: QUESTION_HINT, label: question };
+  const hint = kind === "restart" ? RESTART_HINT : QUESTION_HINT;
+  const line = { parts: [{ text: question }], hint, label: question };
   if (!w.prompt.show(line, armMs())) return false;
   if (lastMessage) w.hideNotice(lastMessage);
-  current = { win, version };
+  current = { win, version, kind, ...(said ? { said } : {}) };
   return true;
 }
 
@@ -138,21 +163,35 @@ function close() {
   current = null;
 }
 
+/**
+ * Which question is due in a window of this kind: the steps of an urgent offer, or the restart
+ * into an urgent update already installed; null for none.
+ * @param {boolean} privateWindow
+ * @returns {"steps" | "restart" | null}
+ */
+function dueQuestion(privateWindow) {
+  const { enabled, offer, installType, stage } = offerState();
+  if (!installType) return null;
+  const now = Date.now();
+  if (shouldAskRestart({ enabled, installType, offer, stage, dismissed, now, privateWindow })) {
+    return "restart";
+  }
+  return shouldAsk({ enabled, installType, offer, asked, privateWindow, stage }) ? "steps" : null;
+}
+
 /** The question when it is due and may open; true while it waits. */
 function ask() {
-  const { enabled, offer, installType, stage } = offerState();
-  /** @param {boolean} privateWindow */
-  const due = (privateWindow) =>
-    !!installType && shouldAsk({ enabled, installType, offer, asked, privateWindow, stage });
-  if (!due(false) || !offer) {
+  const { offer } = offerState();
+  const kind = dueQuestion(false);
+  if (!kind || !offer) {
     close();
     return false;
   }
-  if (current?.version === offer.displayVersion) return false;
+  if (current?.version === offer.displayVersion && current.kind === kind) return false;
   close();
   // It waits for a focused normal window: never asked in a private one.
   const win = focusedWindow();
-  if (!win || !due(isPrivate(win))) return true;
+  if (!win || !dueQuestion(isPrivate(win))) return true;
   const w = /** @type {UpdateWindow} */ (windows.get(win));
   const may = mayOpenByItself({
     focused: true,
@@ -161,7 +200,12 @@ function ask() {
     otherOpen: w.otherOpen(),
     fullscreen: isFullscreen(win),
   });
-  return !(may && open(win, offer.displayVersion, securityQuestion(offer)));
+  if (!may) return true;
+  if (kind === "restart") {
+    const said = w.restartLoses();
+    return !open(win, offer.displayVersion, kind, restartQuestion(offer, said), said);
+  }
+  return !open(win, offer.displayVersion, kind, securityQuestion(offer));
 }
 
 /** Shows what is due and may show; looks again shortly while something waits. */
@@ -233,6 +277,8 @@ export const UpdateUi = {
       removeListener = null;
       lazy.clearTimeout(poll);
       poll = null;
+      lazy.clearTimeout(reask);
+      reask = null;
     }
   },
 
@@ -268,10 +314,26 @@ export const UpdateUi = {
       return true;
     }
     if (e.repeat) return true;
-    const { version } = current;
+    const { version, kind, said } = current;
     close();
+    const yes = questionAnswer(formatKey(chord)) === "yes";
+    if (kind === "restart") {
+      dismissed[version] = Date.now();
+      // A session that runs on is asked again a day later, even with no window event between.
+      lazy.clearTimeout(reask);
+      reask = lazy.setTimeout(sync, RESTART_REASK_MS);
+      if (yes) {
+        // Private tabs opened, or history clearing turned on, while the line was open: the
+        // answer did not cover that loss, so `:restart`'s y/N asks about it first.
+        const now = w.restartLoses();
+        const covered =
+          !!said && (!said.tabsKept || (now.tabsKept && (!now.privateTabs || said.privateTabs)));
+        w.restart(covered);
+      }
+      return true;
+    }
     asked.push(version);
-    if (questionAnswer(formatKey(chord)) === "yes") w.openSteps();
+    if (yes) w.openSteps();
     return true;
   },
 
@@ -302,5 +364,16 @@ export const UpdateUi = {
   _reset() {
     close();
     asked = [];
+    dismissed = {};
+    lazy.clearTimeout(reask);
+    reask = null;
+  },
+
+  /**
+   * Test-only: the restart question of `version` answered `ms` ago, as if a day had passed.
+   * @param {string} version @param {number} ms
+   */
+  _answeredAgo(version, ms) {
+    dismissed[version] = Date.now() - ms;
   },
 };

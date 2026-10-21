@@ -30,7 +30,12 @@ import {
   verifyManifest,
 } from "../core/updates.mjs";
 import { UPDATE_KEYS } from "../core/update-keys.mjs";
-import { appImagePlan, downloadProblem, stagedSteps } from "../core/appimage-update.mjs";
+import {
+  appImagePlan,
+  downloadProblem,
+  ownAppImage,
+  stagedSteps,
+} from "../core/appimage-update.mjs";
 import { checkDue } from "../core/update-notices.mjs";
 
 /** @import { InstallType, Offer, PinnedKey, UpdateNotice } from "../core/updates.mjs" */
@@ -127,6 +132,8 @@ let configCheck = /** @type {boolean | null} */ (null);
 let running = null;
 /** The install type once installInfo has run; until then no notice can be due anyway. */
 let knownType = /** @type {InstallType | null} */ (null);
+/** The install, once known. @type {Install | null} */
+let knownWhere = null;
 /**
  * @typedef {object} Install
  * @property {InstallType} type
@@ -192,6 +199,7 @@ function installInfo() {
   install ??= detectInstall().then((where) => {
     const first = knownType === null;
     knownType = where.type;
+    knownWhere = where;
     // The status bar and the notices wait for the install type: tell them it is known.
     if (first) notify();
     return where;
@@ -849,6 +857,30 @@ export const VimmaUpdates = {
     };
   },
 
+  /**
+   * `$APPIMAGE` when this Vimma is the AppImage it names, else null: what `:restart` starts
+   * again (core ownAppImage, the replacement's own rule).
+   * @returns {Promise<string | null>}
+   */
+  async ownAppImage() {
+    await installInfo();
+    return this.ownAppImageNow;
+  },
+
+  /** ownAppImage, synchronously: null until the install is known. */
+  get ownAppImageNow() {
+    const where = knownWhere;
+    if (!where) return null;
+    return ownAppImage({
+      installType: where.type,
+      marker: where.marker,
+      appImage: where.appImage,
+      appDir: where.appDir,
+      greDir: where.installDir,
+      forced: where.forced,
+    });
+  },
+
   /** How this copy was installed, once known (null before the first look). */
   get installType() {
     return knownType;
@@ -898,6 +930,7 @@ export const VimmaUpdates = {
     verifiedBuildId = null;
     install = null;
     knownType = null;
+    knownWhere = null;
     Services.prefs.clearUserPref(SERIAL_PREF);
     Services.prefs.clearUserPref(LAST_PREF);
     notify();
