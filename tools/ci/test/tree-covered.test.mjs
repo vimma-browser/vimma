@@ -18,6 +18,8 @@ import { promisify } from "node:util";
 import { tempDir } from "../../test/temp-dir.mjs";
 import {
   PER_PAGE,
+  GUARD_JOB,
+  completeRun,
   coveringRun,
   findCover,
   githubApi,
@@ -70,6 +72,44 @@ describe("coveringRun", () => {
   });
 });
 
+// Issue #443: a draft pull request's run skips Semgrep's scan and still succeeds, so a run counts
+// as a cover only if no job but the guard was skipped: a draft from a fork whose tree matches a
+// later squash merge must not let main's push run skip the only scan of that tree.
+describe("completeRun", () => {
+  /** @param {string} name @param {string} conclusion */
+  const j = (name, conclusion) => ({ name, conclusion });
+
+  it("covers when every job but the guard ran", () => {
+    expect(GUARD_JOB).toBe("tree already checked on a pull request?");
+    expect(completeRun({ jobs: [j(GUARD_JOB, "skipped"), j("semgrep (x)", "success")] })).toBe(
+      true,
+    );
+    expect(
+      completeRun({ jobs: [j("lint, typecheck, test, commitlint, licences", "success")] }),
+    ).toBe(true);
+  });
+
+  it("does not cover when another job was skipped, or the job list is missing", () => {
+    expect(completeRun({ jobs: [j(GUARD_JOB, "skipped"), j("semgrep (x)", "skipped")] })).toBe(
+      false,
+    );
+    expect(completeRun({ jobs: [j(GUARD_JOB, "skipped")] })).toBe(false);
+    expect(completeRun({ jobs: [] })).toBe(false);
+    expect(completeRun(null)).toBe(false);
+    expect(completeRun({ total_count: 3 })).toBe(false);
+  });
+
+  it("coveringRun passes over a matching run that is not complete", async () => {
+    const found = await coveringRun({
+      tree: TREE,
+      runs: [run(3, sha("a")), run(2, sha("b"))],
+      treeOf: async () => TREE,
+      complete: async (r) => r.id === 2,
+    });
+    expect(found?.id).toBe(2);
+  });
+});
+
 describe("findCover", () => {
   it("lists this workflow's successful pull_request runs and reads each head's tree", async () => {
     const paths = /** @type {string[]} */ ([]);
@@ -80,6 +120,8 @@ describe("findCover", () => {
         return { workflow_runs: [run(7, sha("a"))] };
       if (path === `repos/o/r/git/commits/${sha("a")}`) return { tree: { sha: TREE } };
       if (path === `repos/o/r/git/commits/${sha("9")}`) return { tree: { sha: TREE } };
+      if (path === "repos/o/r/actions/runs/7/jobs?filter=latest&per_page=100")
+        return { jobs: [{ name: "check", conclusion: "success" }] };
       throw new Error(`unexpected ${path}`);
     };
     const found = await findCover({ repo: "o/r", workflow: "ci.yml", sha: sha("9"), api });
@@ -89,6 +131,21 @@ describe("findCover", () => {
       `repos/o/r/actions/workflows/ci.yml/runs?event=pull_request&status=success&per_page=${PER_PAGE}`,
     );
     expect(PER_PAGE).toBe(50);
+    expect(paths[3]).toBe("repos/o/r/actions/runs/7/jobs?filter=latest&per_page=100");
+  });
+
+  it("finds no cover in a run whose checks were skipped, such as a draft's", async () => {
+    /** @type {(path: string) => Promise<unknown>} */
+    const api = async (path) => {
+      if (path.startsWith("repos/o/r/actions/workflows/semgrep.yml/runs?"))
+        return { workflow_runs: [run(7, sha("a"))] };
+      if (path.startsWith("repos/o/r/git/commits/")) return { tree: { sha: TREE } };
+      if (path === "repos/o/r/actions/runs/7/jobs?filter=latest&per_page=100")
+        return { jobs: [{ name: "semgrep (x)", conclusion: "skipped" }] };
+      throw new Error(`unexpected ${path}`);
+    };
+    const found = await findCover({ repo: "o/r", workflow: "semgrep.yml", sha: sha("9"), api });
+    expect(found).toEqual({ tree: TREE, run: null });
   });
 
   it("refuses a repository, workflow or commit it cannot put in a URL safely", async () => {
@@ -220,6 +277,9 @@ describe("the command", () => {
     ] = { body: { workflow_runs: [run(3, sha("a")), run(2, sha("b"))] } };
     routes[`/repos/o/r/git/commits/${sha("a")}`] = { body: { tree: { sha: OTHER } } };
     routes[`/repos/o/r/git/commits/${sha("b")}`] = { body: { tree: { sha: TREE } } };
+    routes["/repos/o/r/actions/runs/2/jobs?filter=latest&per_page=100"] = {
+      body: { jobs: [{ name: "check", conclusion: "success" }] },
+    };
     const res = await runScript({});
     expect(res.stderr).toBe("");
     expect(res.status).toBe(0);
@@ -305,7 +365,14 @@ describe("workflow wiring", () => {
       expect(main).toMatch(/^ {4}needs: covered$/m);
       // !cancelled(), not success(): a failed guard runs the checks instead of skipping them; on a
       // pull request the guard is skipped, its output is empty and the checks run.
-      expect(jobIf(main)).toBe("${{ !cancelled() && needs.covered.outputs.skip != 'true' }}");
+      // Semgrep also skips a draft pull request (issue #443, tools/test/draft-pull-requests.test.mjs).
+      const draft =
+        name === "semgrep.yml"
+          ? " && !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize'))"
+          : "";
+      expect(jobIf(main)).toBe(
+        `\${{ !cancelled() && needs.covered.outputs.skip != 'true'${draft} }}`,
+      );
     },
   );
 

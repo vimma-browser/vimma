@@ -165,6 +165,7 @@ export class Find {
       onClose: () => this.#closedElsewhere(session),
     };
     // Before the first search: it starts where Vim's would, not at the document's first match.
+    VimmaActors.findStep(browser);
     VimmaActors.findAnchor(browser);
     this.session = session;
     this.onChange();
@@ -350,6 +351,7 @@ export class Find {
     const tab = this.#gBrowser().getTabForBrowser(browser);
     const findbar = tab ? this.#gBrowser().getCachedFindBar(tab) : undefined;
     if (findbar?._findField.value && (!findbar.hidden || !this.last)) {
+      VimmaActors.findStep(browser);
       findbar.onFindAgainCommand(reverse);
       return;
     }
@@ -380,6 +382,7 @@ export class Find {
       return;
     }
     browser.finder.caseSensitive = isCaseSensitive(query);
+    VimmaActors.findStep(browser);
     browser.finder.findAgain(query, backward, false, false);
   }
 

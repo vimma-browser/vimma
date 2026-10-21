@@ -12,6 +12,10 @@ const { SetupHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
 );
 
+const { ConfigHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
+);
+
 const { SearchService } = ChromeUtils.importESModule(
   "moz-src:///toolkit/components/search/SearchService.sys.mjs",
 );
@@ -40,18 +44,24 @@ const UBLOCK = "uBlock0@raymondhill.net";
 const SETUP_URL = "about:vimma-setup";
 const OFFERED = "vimma.setup.offered";
 
+// XDG_CONFIG_HOME first: the vimma.config.path change reloads the config at once, and would
+// otherwise read the developer's own ~/.config/vimma/config.toml.
 add_task(async () => {
+  const xdg = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-setup");
+  const before = Services.env.exists("XDG_CONFIG_HOME") ? Services.env.get("XDG_CONFIG_HOME") : "";
+  Services.env.set("XDG_CONFIG_HOME", xdg);
   await SpecialPowers.pushPrefEnv({
     set: [
       ["vimma.setup.amoApi", "http://127.0.0.1:1/"],
       ["vimma.config.path", ""],
     ],
   });
-  const xdg = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-setup");
-  const before = Services.env.exists("XDG_CONFIG_HOME") ? Services.env.get("XDG_CONFIG_HOME") : "";
-  Services.env.set("XDG_CONFIG_HOME", xdg);
+  await ConfigHost.reload();
   registerCleanupFunction(async () => {
+    await removeConfig();
+    await SpecialPowers.popPrefEnv();
     Services.env.set("XDG_CONFIG_HOME", before);
+    await ConfigHost.reload();
     Services.prefs.clearUserPref(OFFERED);
     await IOUtils.remove(xdg, { recursive: true, ignoreAbsent: true });
   });
@@ -59,6 +69,20 @@ add_task(async () => {
 
 const configFile = () =>
   PathUtils.join(Services.env.get("XDG_CONFIG_HOME"), "vimma", "config.toml");
+
+/**
+ * Removes config.toml and reads the config now, so Vimma undoes the `[search] default` a summary
+ * applied before the next task starts. Left to the 2 s poll, the undo lands in whichever task is
+ * running then and changes the default engine under it.
+ */
+async function removeConfig() {
+  await IOUtils.remove(configFile(), { ignoreAbsent: true });
+  await ConfigHost.reload();
+  await TestUtils.waitForCondition(
+    () => !Services.prefs.prefHasUserValue("vimma.search.applied"),
+    "the [search] default the summary applied is undone",
+  );
+}
 
 async function openSetup() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, SETUP_URL);
@@ -154,6 +178,7 @@ add_task(async function summary_creates_a_private_config_toml_when_absent() {
   Assert.equal((await IOUtils.stat(configFile())).permissions, 0o600, "created 0600");
   await TestUtils.waitForCondition(async () => (await SearchService.getDefault()).name === name);
   BrowserTestUtils.removeTab(tab);
+  await removeConfig();
 });
 
 add_task(async function summary_keeps_comments_and_mode_of_config_toml() {
@@ -168,6 +193,7 @@ add_task(async function summary_keeps_comments_and_mode_of_config_toml() {
   Assert.equal(await IOUtils.readUTF8(file), before.replace('"x"', JSON.stringify(name)));
   Assert.equal((await IOUtils.stat(file)).permissions, 0o640, "mode kept");
   BrowserTestUtils.removeTab(tab);
+  await removeConfig();
 });
 
 add_task(async function summary_writes_nothing_on_a_parse_error() {
@@ -182,7 +208,7 @@ add_task(async function summary_writes_nothing_on_a_parse_error() {
   await press(doc, "KEY_Enter");
   await TestUtils.waitForCondition(() => step(doc) === "done");
   Assert.equal(await IOUtils.readUTF8(file), "[search\n", "untouched");
-  await IOUtils.remove(file);
+  await removeConfig();
   BrowserTestUtils.removeTab(tab);
 });
 
@@ -261,7 +287,7 @@ add_task(async function install_shows_the_permission_prompt() {
   Assert.equal(doc.querySelector("#setup-results li:last-child")?.className, "declined");
   Assert.equal(await AddonManager.getAddonByID(UBLOCK), null, "declining installs nothing");
   stub.restore();
-  await IOUtils.remove(configFile(), { ignoreAbsent: true });
+  await removeConfig();
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
 });

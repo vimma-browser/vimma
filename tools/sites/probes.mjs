@@ -113,7 +113,10 @@ export function contentScrollSnapshot() {
 }
 
 /**
- * Focus the site's search field: `selector`, else the first visible search-like input.
+ * Focus the site's search field: `selector`, else the first visible search-like input that takes
+ * the focus, else the first visible textarea or contenteditable text box that does (a code
+ * editor). A visible field can refuse the focus: a component library's hidden form input (a
+ * select's value on regex101) is one, so the next candidate is tried.
  * @param {{ selector: string | null }} arg
  */
 export function contentFocusField({ selector }) {
@@ -122,20 +125,29 @@ export function contentFocusField({ selector }) {
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
   };
-  const candidates = selector
-    ? [...document.querySelectorAll(selector)]
+  const lists = selector
+    ? [selector]
     : [
-        ...document.querySelectorAll(
-          "input[type=search], [role=searchbox], input[name=q], textarea[name=q], " +
-            "input[placeholder*='earch' i], input[aria-label*='earch' i], " +
-            "input[type=text], input:not([type])",
-        ),
+        "input[type=search], [role=searchbox], input[name=q], textarea[name=q], " +
+          "input[placeholder*='earch' i], input[aria-label*='earch' i], " +
+          "input[type=text], input:not([type])",
+        "textarea, [contenteditable=true][role=textbox], [contenteditable=''][role=textbox]",
       ];
-  const el = /** @type {HTMLElement | undefined} */ (candidates.find(visible));
-  if (!el) return { found: false, desc: null, focused: false };
-  el.focus();
-  const desc = `${el.tagName.toLowerCase()}${el.getAttribute("name") ? `[name=${el.getAttribute("name")}]` : ""}${el.id ? `#${el.id}` : ""}`;
-  return { found: true, desc, focused: document.activeElement === el };
+  const describe = (/** @type {Element} */ el) =>
+    `${el.tagName.toLowerCase()}${el.getAttribute("name") ? `[name=${el.getAttribute("name")}]` : ""}${el.id ? `#${el.id}` : ""}`;
+  /** @type {HTMLElement | null} */
+  let first = null;
+  for (const list of lists) {
+    for (const node of document.querySelectorAll(list)) {
+      const el = /** @type {HTMLElement} */ (node);
+      if (!visible(el)) continue;
+      first ??= el;
+      el.focus();
+      if (document.activeElement === el) return { found: true, desc: describe(el), focused: true };
+    }
+  }
+  if (!first) return { found: false, desc: null, focused: false };
+  return { found: true, desc: describe(first), focused: false };
 }
 
 /** The focused element: is it a text field? */

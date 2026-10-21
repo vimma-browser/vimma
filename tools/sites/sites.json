@@ -23,6 +23,13 @@
     "url": "https://github.com/neovim/neovim/issues"
   },
   {
+    "id": "gitlab",
+    "name": "GitLab project",
+    "url": "https://gitlab.com/gitlab-org/gitlab",
+    "find": "GitLab",
+    "notes": "A large Vue application, often behind a bot check; removed if it is blocked night after night (spec, decision 14)."
+  },
+  {
     "id": "stackoverflow",
     "name": "Stack Overflow",
     "url": "https://stackoverflow.com/questions/11828270/how-do-i-exit-vim",
@@ -40,6 +47,13 @@
     "name": "docs.rs",
     "url": "https://docs.rs/serde/latest/serde/",
     "find": "serialize"
+  },
+  {
+    "id": "crates-io",
+    "name": "crates.io",
+    "url": "https://crates.io/crates/serde",
+    "find": "framework",
+    "notes": "An Ember app shell."
   },
   {
     "id": "npm",
@@ -70,6 +84,13 @@
     "name": "Hacker News",
     "url": "https://news.ycombinator.com/",
     "find": "comments"
+  },
+  {
+    "id": "hacker-news-comments",
+    "name": "Hacker News comments",
+    "url": "https://news.ycombinator.com/item?id=8863",
+    "find": "Dropbox",
+    "notes": "A long thread: nested tables with hundreds of links."
   },
   {
     "id": "reddit",

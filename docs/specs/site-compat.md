@@ -1,6 +1,6 @@
 # Spec: site-compat
 
-Status: draft (sub-PR 1 implemented, #157; open questions 1-4 below) · Milestone: after private-swap (testing infrastructure, no
+Status: accepted (sub-PRs 1 and 2 implemented; sub-PR 3, the snapshot layer, next) · Milestone: after private-swap (testing infrastructure, no
 user-visible change) · Area: `tools/sites/` (new), `tools/e2e/launcher.mjs` (one option),
 `.github/workflows/sites.yml` (new), `package.json` (one script). No upstream patch, no product
 code, no new dependency.
@@ -180,13 +180,13 @@ needs no dependency.
 
 ## Cost and runtime
 
-| Part                                               | Time            | Source                                                            |
-| -------------------------------------------------- | --------------- | ----------------------------------------------------------------- |
-| Checkout, Node, `npm ci`, `vimma-ctl`              | ≈ 0.4 min       | e2e run 38229657690                                               |
-| Firefox source, import, artifact build             | ≈ 3.1 min       | same                                                              |
-| 22 site entries × ≈ 15-35 s (launch, load, checks) | ≈ 9-13 min      | measured 8.6 min locally (sub-PR 1); up to 1.5× on a 4-CPU runner |
-| Report, upload                                     | < 0.5 min       |                                                                   |
-| **Total per night**                                | **≈ 13-17 min** | budgeted as 20 min                                                |
+| Part                                               | Time            | Source                                                        |
+| -------------------------------------------------- | --------------- | ------------------------------------------------------------- |
+| Checkout, Node, `npm ci`, `vimma-ctl`              | ≈ 0.4 min       | e2e run 38229657690                                           |
+| Firefox source, import, artifact build             | ≈ 3.1 min       | same                                                          |
+| 25 site entries × ≈ 15-35 s (launch, load, checks) | ≈ 10-14 min     | measured 8.6 min for 22 locally (sub-PR 1); nightly 10-14 min |
+| Retry of blocked sites (decision 11), diff, upload | ≈ 0.5-1.5 min   | 2-3 blocked sites a night × ≈ 30 s                            |
+| **Total per night**                                | **≈ 13-17 min** | budgeted as 20 min                                            |
 
 - About 600 runner-minutes a month, free (public repo, standard runner). The job takes 1 of the
   free plan's 20 concurrent hosted jobs, at 04:30 UTC, when no PR is waiting on e2e.
@@ -261,15 +261,71 @@ needs no dependency.
     needs a security design of its own, and Vimma runs none for any workflow (spec
     [build-supply-chain](build-supply-chain.md), decisions 6 and 7). Rejected: the self-hosted
     alternative in Research, for that reason.
+11. **A blocked site is retried once, at the end of the run, on the nightly runner only.**
+    `npm run sites -- --retry-blocked` loads each site whose status is `blocked` (bot check) a
+    second time, in a fresh profile, after every other site has run; `sites.yml` passes the flag
+    and local runs do not by default. A bot check on a datacenter IP is often a short-lived rate
+    or reputation decision, so a second visit minutes later turns some of them into a real
+    result, at the cost of one more page load for that site only. A home IP is the opposite
+    case: it is the developer's own connection, and every extra visit to a site that already
+    challenges it makes the next challenge more likely. The retry's result replaces the first
+    one, which stays in `results.json` under `retry` (its status and block reason); the report
+    lists every retried site with both outcomes. A consent wall is not retried, because it does
+    not go away on its own.
+12. **Regressions go to one rolling issue labelled `site-compat`.** Each nightly run compares
+    its results with the previous scheduled run's `results.json` (downloaded from that run's
+    artifact) and writes the changes into the job summary and `diff.md`. A **regression** is a
+    check that passed in the previous run and fails now. Regressions are tracked from night to
+    night in `diff.json`, which each run uploads as its `site-compat-diff` artifact: a tracked
+    regression stays
+    until its check passes again, and stays while its site could not be checked (blocked,
+    consent, a harness error on that site, or the check skipped). A site removed from the list drops out. The
+    issue is opened when a new regression appears and none is open, updated on each scheduled
+    run while any regression is tracked, and closed with a comment when none is left, the
+    pattern of `spec-status.yml`. A failure in the artifact alone goes unseen, and one issue
+    rather than one per failure keeps a live suite, whose sites change without notice, from
+    filling the tracker. Checks that already failed before they were first compared (the known
+    failures of the first run) are listed in the diff but open no issue, because they are not
+    news. Only `schedule` runs touch the issue: a `workflow_dispatch` run, often filtered, shows
+    its diff in the job summary only, so the night-to-night chain stays one run per night. If
+    the previous `results.json` has expired or cannot be read, the run has no baseline and says
+    so, but still checks the tracked regressions from the previous `diff.json` against its own
+    results; an issue open across such a break is not closed automatically (implementation log,
+    sub-PR 2).
+
+    Page titles and check reasons come from live pages and end up in the issue body, where
+    Markdown would render, `@name` would notify a user and `#123` or a URL would link another
+    issue. Every such value is written as an inline code span (no mentions,
+    references, links or HTML render inside one), with control and bidirectional-override
+    characters replaced, and cut to 160 characters; a list stops at 50 entries and the body at
+    60 000 characters. The downloaded `results.json` and `diff.json` are checked for shape (site
+    ids, statuses and check ids from known sets) and rejected otherwise. The job that runs the
+    browser can only read the repository. A second job, on a fresh runner, takes only that
+    job's `results.json`, downloads the previous run's files and writes the diff and the issue
+    text, with read permissions only (`actions` for the artifacts, `issues` to find the open
+    issue). `issues: write` belongs to a third job that checks out nothing and runs only `gh` on
+    that text (docs/security.md, "Site compatibility workflow").
+
+13. **Shortcut conflicts are reported, not acted on.** The `shortcuts` check stays `info`. A
+    per-site pass-through list would be a user-facing configuration feature with its own design
+    (which keys, how sites are matched, how it meets insert mode and the prefix), so it belongs
+    in a spec of its own; the report already gives that spec its data.
+14. **Three more sites:** the Hacker News comments page of a long thread, a crates.io crate page
+    and a GitLab project page, for 25 entries, because each adds a page structure the list
+    lacked: a deeply nested table of comments with hundreds of links, an Ember app shell, and a
+    large Vue application that is often behind a bot check. GitLab stays only while it loads
+    from the hosted runner on most nights; if it is blocked night after night, it is removed, as
+    decision 10 prescribes for bot checks that swamp the results.
 
 ## Sub-PRs
 
 1. **This one.** `tools/sites/` (RDP client, probes, checks, bot-check classification, results,
    report, CLI), `sites.json` with the 22 entries, `npm run sites`, `sites.yml`, unit tests for
    the pure parts and the workflow's shape, one local live run whose table goes into the PR.
-2. **Night-to-night diff** (if wanted, open question 2): fetch the previous night's
-   `results.json` artifact and report what changed; optionally open or update one issue when a
-   site goes from `ok` to `fail`.
+2. **Night-to-night diff, retry and alerts** (decisions 11, 12 and 14): `--retry-blocked`, the
+   comparison with the previous scheduled run, `diff.md` and `diff.json`, the rolling
+   `site-compat` issue, and the three new sites. Unit tests with recorded `results.json` files
+   from nightly runs.
 3. **Snapshot layer**, the per-PR gate (design below). Not small, so not in sub-PR 1.
 
 ### Snapshot layer (design; sub-PR 3)
@@ -324,6 +380,22 @@ selected pages, and fail the PR when a check that passed on the recording fails.
     `workflow_dispatch` only, on `ubuntu-24.04`, with `contents: read`, no secrets, every action
     pinned by SHA, and the report uploaded even when the run fails.
   - `tools/e2e/test/launcher.test.mjs`: `browserArgs` puts extra switches before the URL.
+- Vitest for sub-PR 2, written first, on `results.json` files recorded from nightly runs
+  (`tools/sites/test/fixtures/`):
+  - `diff.test.mjs`: a check that passed and now fails is a new regression; one that failed in
+    both runs is not; a tracked regression stays while it fails or its site is blocked and goes
+    when it passes or the site leaves the list; status changes, added and removed sites; no
+    baseline, and a baseline of the wrong shape, give an empty comparison; the issue action for
+    each case (create, update, close, none, and none for a run that is not scheduled); titles
+    and reasons with Markdown, `@mentions`, `#123`, URLs, backticks, newlines and bidirectional
+    overrides come out as inert code spans, cut to length, and the body stays under its cap.
+  - `results.test.mjs`: which sites a retry runs (blocked only), and how a retry's result
+    replaces the first while keeping its status, block and screenshots.
+  - `report.test.mjs`: the retried sites' section.
+  - `sites-workflow.test.mjs`: `--retry-blocked` in `sites.yml` and not in `npm run sites`;
+    the browser job's permissions are read-only, `issues: write` is only in a job with no
+    checkout and no `node` or `npm`, and that job reaches the issue only through `gh` and
+    files.
 - Live: one local run over the full list under Xvfb from the maintainer's network; the summary
   table goes into the PR. Then one `workflow_dispatch` run after merge to compare the hosted
   runner's bot-check rate (decision 10).
@@ -333,6 +405,8 @@ selected pages, and fail the PR when a check that passed on the recording fails.
 - `docs/runbook.md`, "Actions minutes budget": one paragraph for `sites.yml` (≈ 15-20 min a
   night, free, never on PRs).
 - `CONTRIBUTING.md`: `npm run sites` under the test commands.
+- `docs/security.md`: the site workflow's issue writes and how untrusted page text is written
+  into the issue (sub-PR 2).
 - No guide, README or changelog change: nothing user-visible changes.
 
 ## Out of scope
@@ -343,17 +417,6 @@ selected pages, and fail the PR when a check that passed on the recording fails.
 - Screenshot comparison of live sites (they change daily).
 - Fixing what the suite finds: each problem becomes an issue and its own spec or bug fix.
 - Running on macOS or Windows, or on Wayland.
-
-## Open questions
-
-1. **Bot-check handling.** Report only (as now), or also retry a blocked site once at the end of
-   the run?
-2. **Alerts.** Should a site going from `ok` to `fail` open or update a GitHub issue (sub-PR 2),
-   or is the artifact and job summary enough?
-3. **Shortcut conflicts.** Report only (as now), or also suggest a per-site pass-through list
-   for the config (a feature of its own)?
-4. **The site list.** Add more sites developers use daily beyond the first 19 (Hacker News comments
-   page, a GitLab project, crates.io)?
 
 ## Implementation log (sub-PR 1)
 
@@ -411,3 +474,40 @@ Everything else passed on every site that loaded: hints (21-150 labels; the foll
 never reaching the page (normal mode and in a field), and the status bar agreeing with the mode
 after every step. Key-to-effect: `j` 7-17 ms, `f` 16-27 ms, `yy` 4-8 ms, including `vimma-ctl`'s
 start.
+
+## Implementation log (sub-PR 2)
+
+What changed from the plan above, and why:
+
+- **The baseline is the latest successful scheduled run on `main`**, found with `gh run list`
+  while the current run is still in progress, so a run never compares with itself. A
+  `workflow_dispatch` run is compared with it too, but never becomes a baseline, and a filtered
+  run (its `--filter` is recorded in `results.json`) removes no site from the tracked list: the
+  sites it did not visit stay tracked as not checked.
+- **The open issue is looked up by the compare job** (`issues: read`), so the choice between
+  create, update, close and nothing is made in tested code (`issueAction` in
+  `tools/sites/diff.mjs`). The report job only carries the choice out.
+- **Retried screenshots** are named `<site>.retry-<n>-<label>.png`, so the first visit's are
+  kept beside them, and no site id (letters, digits and dashes) can produce the same name.
+- **A broken chain never closes the issue.** A tracked regression must not vanish because one
+  night could not compare: a run that stopped early (a harness error) keeps the sites it did not
+  reach tracked and lists none as removed; a night whose previous `results.json` is missing
+  still carries the tracked list from `diff.json` and checks it against its own results. Each
+  `diff.json` records whether its chain is complete. When it is not and an issue is open, or is
+  opened that night (its list may then be missing regressions), the issue is updated with a note
+  and never closed automatically; closing it by hand starts the tracking afresh. A partial run
+  never closes it either. A harness error fails the run, and the baseline is always the last
+  successful scheduled run, so the night after one compares with the night before it and finds
+  that night's regressions again.
+- **A regression is measured against each check's last known result**, kept in `diff.json`
+  (`known`), not only the previous night's: a check that passed, was skipped on a blocked night,
+  and then fails is still a regression. A check that no longer exists drops out of the list.
+- **The diff runs in a job of its own** (`compare`), on a fresh runner, from the browser job's
+  `results.json` alone, so code that escaped the browser onto that runner could not rewrite the
+  issue text or the environment of the step that writes it. The suite's step also turns workflow
+  commands off (`::stop-commands::`) while it logs page text.
+- The tests compare three recorded nightly runs (2026-10-19 to 2026-10-21, 22 entries each).
+  They show the case the tracking is built for: insert mode and the status bar fail every night
+  on YouTube, Google search, DuckDuckGo and regex101 (focusing the search field does not give
+  insert mode), so those failures predate the comparison and open no issue; they are listed in
+  each night's report.
