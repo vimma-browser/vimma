@@ -384,7 +384,8 @@ export const AgentDrive = {
               const why = NOT_ALLOWED[refused] ?? `Vimma did not load (${refused})`;
               Object.assign(result, { ok: false, note: `${why} ${wf(url.hostname)}` });
               done.push(result);
-              stopped = "denied";
+              // Withdrawn because the call's 60 s ran out: the call timed out (D15).
+              stopped = refused === "cancelled" && Date.now() >= deadline ? "timeout" : "denied";
               break;
             } else if (elsewhere && halt()) {
               // The question took a while: the call may have run out, or the tab moved on.
