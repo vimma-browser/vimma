@@ -130,6 +130,29 @@
       },
       "name": "vimma_keys",
       "title": "Vimma: move around a page"
+    },
+    {
+      "name": "vimma_show",
+      "title": "Vimma: show a page to the user",
+      "description": "Show the user a tab of Vimma's agent workspace, by its id from vimma_tabs or vimma_open: the window that holds the tab switches to the agent workspace with that tab selected. Vimma asks the user every time (no grant covers it), and the question waits while they are typing, so the call waits for their answer and may be denied. Only the agent workspace can be shown; Vimma never raises or focuses a window, and the user goes back to their own workspace with ctrl+^. Use it when the user should look at a page, not to read one: vimma_read_page reads a page without showing it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tab": {
+            "type": "string",
+            "pattern": "^[0-9]{1,20}$",
+            "description": "The tab's id, from vimma_tabs or vimma_open."
+          }
+        },
+        "additionalProperties": false,
+        "required": ["tab"]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
     }
   ]
 }

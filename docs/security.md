@@ -694,9 +694,9 @@ while MCP is on (`:mcp on`). Every check runs in the browser, never in the clien
 a shell can run `vimma-ctl` itself, or speak the protocol directly.
 
 [mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16,
-M17, M20, M23), following its links by hint label (M18, M21) and full control's wording while
-MCP is on (M22), all in force. **Planned:** `vimma_show` (M19) enters this section with its tests
-in the sub-PR that builds it; M20 then gains its limit.
+M17, M20, M23), following its links by hint label (M18, M21), `vimma_show` (the agent workspace
+brought to the front with one agent tab selected: M19, M20) and full control's wording while MCP
+is on (M22), all in force.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
@@ -923,6 +923,25 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_links_only_on_web_pages`](../tests/browser/browser_vimma_mcp_follow.js),
   [`f at the end lists the links; f<label> follows one`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`a collection for an agent carries each link's text, capped, and only links`](../packages/vimma-core/test/hints.test.mjs)
+- M19. `agent-show` (mcp-drive D2-D7) **must** always ask: no grant of any tool covers it, a
+  grant given as its answer is refused and `x` is a plain no, so no grant of `vimma_show` ever
+  exists (core's `ALWAYS_ASK`, whatever the caller passes). It **must** name only an agent tab
+  (M2), checked before the question and again after the yes with the URL asked about, and switch
+  only the normal window that holds that tab, only to the agent workspace, through the ordinary
+  workspace switch, so `ctrl+^` returns to the workspace and split the user was in. It **never**
+  changes a private window and **never** raises or focuses a window: a tab in a window other
+  than the one in front switches that window, and the notice says `shown in the other window`.
+  Its question opens by itself only while the user is not typing or in a field (vimma-mcp
+  decision 14), so the switch never lands mid-typing. Showing a page changes what the user sees,
+  so a grant would let an agent switch the view at any moment.
+  [`test_show_switches_to_the_agent_tab_and_ctrl_caret_returns`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_always_asks_even_under_a_grant`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_waits_while_the_user_types`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_never_touches_a_private_window`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_never_focuses_a_window`](../tests/browser/browser_vimma_mcp_show.js),
+  [`it waits even when asked without always, and a grant answer allows it once only`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`no grant: a, counts and x do not grant or mute`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`agent-show: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs)
 - M20. `agent-keys`' limits (mcp-drive D15) **must** deny: keys over 512 characters or with
   control characters, more than 32 actions, a count over 99 and a find query over 256 characters
   are `invalid-args` before anything is asked; more than 30 calls of one connection a minute,
@@ -931,7 +950,8 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   200 links need (3 characters) and a count before `f` are `invalid-args`; a call stops 60 s
   after the yes, and no query to the page holds it longer than 5 s. `vimma-ctl mcp` checks the
   size and characters, the find queries and the counts it can see first; the browser checks all
-  of it again.
+  of it again. More than 6 `agent-show` calls of one connection a minute (mcp-drive D7), counted
+  when asked and before the question, are `busy`, so a refused show cannot be retried in a loop.
   [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
   [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),
@@ -939,7 +959,9 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_loads_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_follows_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_follow.js),
   [`a label is lowercase hint characters, at most the longest label of 200 links`](../packages/vimma-core/test/agent-keys.test.mjs),
-  [`bad_keys_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
+  [`bad_keys_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs),
+  [`at most 6 agent-show per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_show_refuses_other_tabs_and_six_a_minute_is_the_most`](../tests/browser/browser_vimma_mcp_show.js)
 - M21. `f`'s link list **must** be one string inside the untrusted-content delimiters, wrapped
   by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the protocol
   validator **must** refuse a list that is not, or that holds a second delimiter, so the model
@@ -972,7 +994,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`the desktop notification names the client and the kind of request, never a URL`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`the_instructions_advise_against_full_control`](../tools/vimma-ctl/src/mcp.rs)
 - M23. Every agent request that is answered, runs under a grant or is denied (by the gate, or
-  after it: `in-use`, `changed`, the keys rate) **must** be in `:mcp log`, as must a `vimma_keys`
+  after it: `in-use`, `changed`, the keys and show rates) **must** be in `:mcp log`, as must a `vimma_keys`
   call that stopped early (the last 100, in memory only, cleared by `:mcp off`). Each row's
   agent name, title and keys or URL is its own bidi run. Every call under a grant
   **must** show a notice; a `vimma_keys` notice names the keys and the tab, and a follow under a

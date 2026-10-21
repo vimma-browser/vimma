@@ -3,18 +3,28 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The agent role's commands (docs/specs/vimma-mcp.md, decision 4): list, read, open and close
-// tabs of the agent workspace, and run Vimma's own page keys in one, following its links by
-// label (docs/specs/mcp-drive.md, `agent-keys`), and nothing else. What an agent can reach is decided here, in
+// tabs of the agent workspace, run Vimma's own page keys in one, following its links by label
+// (docs/specs/mcp-drive.md, `agent-keys`), and show one to the user (`agent-show`), and nothing
+// else. What an agent can reach is decided here, in
 // the browser, when each command runs (decision 7): a tab of the agent workspace **and** of its
 // container, in a normal window (private windows have no workspaces and are never enumerated).
 // Every command but hello and ping asks through AgentGate first (decision 12), and after the
 // yes the tab and URL must still be the ones asked about, or nothing happens (decision 19).
 
-import { AGENT_TOOLS, CallRate, KEYS_RATE, OpenRate, wrapUntrusted } from "../core/agent.mjs";
+import {
+  AGENT_TOOLS,
+  CallRate,
+  KEYS_RATE,
+  OpenRate,
+  SHOW_RATE,
+  wrapUntrusted,
+} from "../core/agent.mjs";
 import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
+import { shownNotice } from "../core/agent-prompt.mjs";
 import { MAX_LINE_LENGTH, MAX_READ_CHARS } from "../core/control.mjs";
 import { workspaceOfTab } from "../core/workspaces.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
+import { AgentUi } from "../host/agent-ui.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
@@ -45,6 +55,8 @@ const DEFAULT_MAX_READ = 200000;
 const opens = new OpenRate();
 /** Each connection's `agent-keys`: at most KEYS_RATE a minute, counted when asked (D15). */
 const keyCalls = new CallRate(KEYS_RATE);
+/** Each connection's `agent-show`: at most SHOW_RATE a minute, counted when asked (D7). */
+const showCalls = new CallRate(SHOW_RATE);
 /** The longest an `agent-keys` call runs after the yes (mcp-drive D15). */
 const KEYS_CALL_MS = 60000;
 
@@ -199,11 +211,13 @@ function agentPrincipal(/** @type {number} */ userContextId) {
  * Ask, and wait: resolves when allowed, throws `denied` otherwise. While the question waits,
  * `agent-cancel` with the request's id `rid` can withdraw it (decision 17: MCP's
  * notifications/cancelled); the connection's `state.cancels` keeps the way to, until answered.
- * With `until`, the question is withdrawn then (a step of a call that must end by then).
+ * With `until`, the question is withdrawn then (a step of a call that must end by then);
+ * `always`: asked even under a grant, and never granted (mcp-drive D4).
  * @param {ConnId} conn @param {string} command @param {object} what
  * @param {AgentConn} state @param {number | undefined} rid @param {number} [until]
+ * @param {boolean} [always]
  */
-async function ask(conn, command, what, state, rid, until) {
+async function ask(conn, command, what, state, rid, until, always = false) {
   const tool = /** @type {Record<string, string>} */ (AGENT_TOOLS)[command];
   /** @type {any} */
   let timer = null;
@@ -213,6 +227,7 @@ async function ask(conn, command, what, state, rid, until) {
   };
   try {
     const outcome = await AgentGate.request(conn, /** @type {string} */ (tool), what, {
+      always,
       onCancel,
     });
     if (!outcome.allow) throw denied(outcome.reason);
@@ -577,6 +592,49 @@ const COMMANDS = {
     return result;
   },
 
+  /**
+   * The agent workspace brought to the front with one agent tab selected (mcp-drive D2-D7):
+   * always asked, never under a grant, and applied only to the normal window that holds the
+   * tab, through the ordinary workspace switch, so ctrl+^ returns. No window is raised or
+   * focused.
+   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   */
+  async "agent-show"(conn, state, { tab: id }, rid) {
+    const agent = agentWorkspace();
+    const asked = findAgentTab(agent, id);
+    const what = { ...describeTab(asked.tab), index: asked.index };
+    // Counted when asked, before the question, so a refused show cannot loop (D7).
+    if (!showCalls.take(conn, Date.now())) {
+      AgentGate.note(conn, "vimma_show", what, "busy");
+      const message = "too many vimma_show calls from this agent in the last minute";
+      throw new AgentError("denied", message, "busy");
+    }
+    // AgentQueue asks vimma_show every time whatever is passed (ALWAYS_ASK); always is said here
+    // too, so the gate's own options agree (D4).
+    await ask(conn, "agent-show", what, state, rid, undefined, true);
+    let found;
+    try {
+      found = stillAsAsked(agent, id, what.url);
+    } catch (e) {
+      AgentGate.note(conn, "vimma_show", what, "changed");
+      throw e;
+    }
+    const { win, tab } = found;
+    // normalWindows() never lists a private window, so this is a normal one (D5).
+    const ww = WindowWorkspaces.get(win);
+    const refused = ww ? ww.showTab(tab) : "no workspaces in that window";
+    if (refused) throw new AgentError("failed", refused);
+    const label = { client: state.agent?.client, via: state.agent?.via };
+    const answered = AgentUi.askingWindow();
+    AgentGate.notify(
+      shownNotice(
+        { tool: "vimma_show", label, what },
+        { otherWindow: !!answered && answered !== win },
+      ),
+    );
+    return { shown: true };
+  },
+
   /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
   async "agent-close"(conn, state, { tab: id }, rid) {
     const agent = agentWorkspace();
@@ -596,6 +654,7 @@ const COMMANDS = {
 export function forgetAgentConnection(conn) {
   opens.forget(conn);
   keyCalls.forget(conn);
+  showCalls.forget(conn);
   AgentDrive.forget(conn);
 }
 

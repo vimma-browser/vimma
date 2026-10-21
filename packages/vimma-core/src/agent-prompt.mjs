@@ -135,6 +135,16 @@ function downloadParts(w) {
 /** A download no agent connection asked for (PAGE_CLIENT). @param {Asked} q */
 export const isPage = (q) => q.tool === DOWNLOAD_TOOL && q.label?.client === PAGE_CLIENT;
 
+/** The tool that brings the agent workspace to the front (docs/specs/mcp-drive.md D2). */
+export const SHOW_TOOL = "vimma_show";
+
+/**
+ * Whether the question is one yes or no, with no count or grant and `x` a plain no: a page's
+ * download, an unscanned file (decision 31) and `vimma_show` (mcp-drive D4).
+ * @param {Asked} q
+ */
+export const noGrant = (q) => isPage(q) || q.tool === SHOW_TOOL || !!q.what?.unscanned;
+
 /**
  * The question line: its text in parts (the host of an open in bold), the hint shown once the
  * line is armed, and the accessible name (the whole question).
@@ -197,6 +207,10 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
       } else if (isPage(q)) {
         hint = "y once · n deny";
       }
+    } else if (q.tool === SHOW_TOOL) {
+      // mcp-drive D4: a show is asked every time, so there is nothing to grant.
+      parts = [...head, ...tabParts(w)];
+      hint = "y show it · n deny";
     } else if (q.tool === "vimma_tabs") {
       parts = [...head, { text: `the list of agent tabs (${Number(w.count) || 0})` }];
     } else if (q.tool === "vimma_keys") {
@@ -286,6 +300,19 @@ export function ranNotice(q, until, now) {
 }
 
 /**
+ * The notice after `vimma_show` switched a window to the agent workspace (mcp-drive D3, D6):
+ * `ctrl+^` returns, because the switch is an ordinary one. `otherWindow`: the tab is in a window
+ * other than the one where the user answered, which switched instead.
+ * @param {Asked} q @param {{ otherWindow: boolean }} where
+ */
+export function shownNotice(q, { otherWindow }) {
+  const whose = `${clientName(q.label)}'s tab`;
+  return otherWindow
+    ? `showing ${whose}, shown in the other window · ctrl+^ there goes back`
+    : `showing ${whose} · ctrl+^ goes back`;
+}
+
+/**
  * The notice after a denial: the user's no (`user`), `x` (`mute`) or no answer (`timeout`).
  * @param {Asked} q @param {"user" | "mute" | "timeout"} why
  */
@@ -304,6 +331,7 @@ const ASKS = Object.freeze({
   vimma_open: "open a page",
   vimma_close_tab: "close a tab",
   vimma_keys: "move around a page",
+  [SHOW_TOOL]: "show you a page",
   [DOWNLOAD_TOOL]: "download a file",
 });
 

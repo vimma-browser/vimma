@@ -115,7 +115,14 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-open": "vimma_open",
   "agent-close": "vimma_close_tab",
   "agent-keys": "vimma_keys",
+  "agent-show": "vimma_show",
 });
+/**
+ * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
+ * page changes what the user sees, so no grant may let an agent do it at any moment
+ * (docs/specs/mcp-drive.md D4, security.md M19).
+ */
+export const ALWAYS_ASK = Object.freeze(["vimma_show"]);
 /** Questions that may wait: per connection and in all (decision 17). */
 export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
 /**
@@ -129,6 +136,12 @@ export const OPEN_RATE = Object.freeze({ max: 10, ms: 60_000 });
  * counted when asked: a `vimma_keys` grant runs unasked, and a refused call must not loop.
  */
 export const KEYS_RATE = Object.freeze({ max: 30, ms: 60_000 });
+
+/**
+ * `agent-show` requests per connection in any window of `ms` (mcp-drive D7, security.md M20),
+ * counted when asked, so a refused show cannot be retried in a loop.
+ */
+export const SHOW_RATE = Object.freeze({ max: 6, ms: 60_000 });
 
 /** A sliding window of each connection's calls of one kind, at most `max` in any `ms`. */
 export class CallRate {
@@ -282,10 +295,11 @@ export class AgentQueue {
    * A request arrives: it runs under a grant, waits for an answer, or is denied at once.
    * @param {ConnId} conn @param {string} tool @param {number} now
    * @param {{ always?: boolean }} [options]  `always`: ask even under a grant (a dangerous
-   *   download, decision 31 d)
+   *   download, decision 31 d); an ALWAYS_ASK tool always does
    * @returns {Admission}
    */
-  ask(conn, tool, now, { always = false } = {}) {
+  ask(conn, tool, now, { always: asked = false } = {}) {
+    const always = asked || ALWAYS_ASK.includes(tool);
     const c = this.conns.get(conn);
     if (!c) return { kind: "deny", reason: "busy" };
     if (c.mutedUntil > now) return { kind: "deny", reason: "muted" };

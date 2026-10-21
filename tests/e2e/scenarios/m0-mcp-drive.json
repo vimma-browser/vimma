@@ -1,0 +1,160 @@
+{
+  "name": "m0-mcp-drive",
+  "description": "docs/specs/mcp-drive.md, sub-PR 4: the real vimma-ctl mcp over stdio drives and shows a page of the agent workspace on a real build. vimma_open opens drive.html in the background; vimma_keys scrolls and finds a word in it after y, with the keys shown in the question line, while the window stays on main with its own page selected; vimma_keys gg f lists the visible links with labels, and fa follows the first one, on the same site; vimma_show asks y or n, and after y the window shows the agent workspace with that tab selected; ctrl+^ returns to main and its page.",
+  "timeoutSeconds": 120,
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "fixture:long.html" },
+    { "wait-for-state": { "tabs": [{}, { "selected": true, "title": "long top navigate" }] } },
+    { "hold": true },
+    {
+      "mcp": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-11-25",
+          "capabilities": {},
+          "clientInfo": { "name": "claude-code", "version": "2.1.0" }
+        },
+        "as": "init"
+      }
+    },
+    {
+      "mcp-result": {
+        "of": "init",
+        "expect": { "result": { "protocolVersion": "2025-11-25" } }
+      }
+    },
+    { "mcp": { "method": "notifications/initialized" } },
+    { "keys": ": m c p space o n enter" },
+    { "sleep": 0.5 },
+    { "keys": "y" },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": { "name": "vimma_open", "arguments": { "url": "fixture:drive.html" } },
+        "as": "open1"
+      }
+    },
+    { "sleep": 1.5 },
+    { "keys": "y" },
+    {
+      "mcp-result": {
+        "of": "open1",
+        "expect": { "result": { "content": [{ "type": "text" }] } }
+      }
+    },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_keys",
+          "arguments": {
+            "tab": "$open1.result.structuredContent.tab",
+            "keys": "3j /pricing<CR>"
+          }
+        },
+        "as": "keys1"
+      }
+    },
+    { "sleep": 1.5 },
+    { "screenshot": "m0-mcp-drive-keys-question" },
+    { "keys": "y" },
+    {
+      "mcp-result": {
+        "of": "keys1",
+        "expect": { "result": { "content": [{ "type": "text" }, { "type": "text" }] } }
+      }
+    },
+    {
+      "assert-state": {
+        "workspace": "main",
+        "tabs": [{}, { "selected": true, "title": "long top navigate" }]
+      }
+    },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_keys",
+          "arguments": { "tab": "$open1.result.structuredContent.tab", "keys": "gg f" }
+        },
+        "as": "links"
+      }
+    },
+    { "sleep": 1.5 },
+    { "keys": "y" },
+    {
+      "mcp-result": {
+        "of": "links",
+        "expect": {
+          "result": {
+            "content": [
+              { "type": "text" },
+              { "type": "text" },
+              { "type": "text" },
+              { "type": "text" }
+            ]
+          }
+        }
+      }
+    },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_keys",
+          "arguments": { "tab": "$open1.result.structuredContent.tab", "keys": "fa" }
+        },
+        "as": "follow"
+      }
+    },
+    { "sleep": 1.5 },
+    { "keys": "y" },
+    {
+      "mcp-result": {
+        "of": "follow",
+        "expect": { "result": { "content": [{ "type": "text" }, { "type": "text" }] } }
+      }
+    },
+    { "assert-state": { "workspace": "main" } },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_show",
+          "arguments": { "tab": "$open1.result.structuredContent.tab" }
+        },
+        "as": "show1"
+      }
+    },
+    { "sleep": 1.5 },
+    { "keys": "y" },
+    {
+      "mcp-result": {
+        "of": "show1",
+        "expect": { "result": { "content": [{ "type": "text" }] } }
+      }
+    },
+    {
+      "wait-for-state": {
+        "workspace": "agent",
+        "tabs": [{ "selected": true, "title": "Drive next page" }]
+      }
+    },
+    { "sleep": 0.5 },
+    { "screenshot": "m0-mcp-drive-shown" },
+    { "keys": "ctrl+^" },
+    {
+      "wait-for-state": {
+        "workspace": "main",
+        "tabs": [{}, { "selected": true, "title": "long top navigate" }]
+      }
+    },
+    { "keys": ": m c p space o f f enter" }
+  ]
+}

@@ -43,7 +43,8 @@
               { "name": "vimma_read_page", "annotations": { "openWorldHint": true } },
               { "name": "vimma_open", "annotations": { "readOnlyHint": false } },
               { "name": "vimma_close_tab", "annotations": { "destructiveHint": true } },
-              { "name": "vimma_keys", "annotations": { "openWorldHint": true } }
+              { "name": "vimma_keys", "annotations": { "openWorldHint": true } },
+              { "name": "vimma_show", "annotations": { "idempotentHint": true } }
             ]
           }
         }
