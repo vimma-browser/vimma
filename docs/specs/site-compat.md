@@ -276,9 +276,10 @@ needs no dependency.
     its results with the previous scheduled run's `results.json` (downloaded from that run's
     artifact) and writes the changes into the job summary and `diff.md`. A **regression** is a
     check that passed in the previous run and fails now. Regressions are tracked from night to
-    night in `diff.json`, which each run uploads with its report: a tracked regression stays
+    night in `diff.json`, which each run uploads as its `site-compat-diff` artifact: a tracked
+    regression stays
     until its check passes again, and stays while its site could not be checked (blocked,
-    consent, harness error, or the check skipped). A site removed from the list drops out. The
+    consent, a harness error on that site, or the check skipped). A site removed from the list drops out. The
     issue is opened when a new regression appears and none is open, updated on each scheduled
     run while any regression is tracked, and closed with a comment when none is left, the
     pattern of `spec-status.yml`. A failure in the artifact alone goes unseen, and one issue
@@ -287,8 +288,10 @@ needs no dependency.
     failures of the first run) are listed in the diff but open no issue, because they are not
     news. Only `schedule` runs touch the issue: a `workflow_dispatch` run, often filtered, shows
     its diff in the job summary only, so the night-to-night chain stays one run per night. If
-    the previous artifact has expired or cannot be read, the run has no baseline, reports that,
-    and tracking starts again from that run.
+    the previous `results.json` has expired or cannot be read, the run has no baseline and says
+    so, but still checks the tracked regressions from the previous `diff.json` against its own
+    results; an issue open across such a break is not closed automatically (implementation log,
+    sub-PR 2).
 
     Page titles and check reasons come from live pages and end up in the issue body, where
     Markdown would render, `@name` would notify a user and `#123` or a URL would link another
@@ -481,7 +484,7 @@ What changed from the plan above, and why:
   `workflow_dispatch` run is compared with it too, but never becomes a baseline, and a filtered
   run (its `--filter` is recorded in `results.json`) removes no site from the tracked list: the
   sites it did not visit stay tracked as not checked.
-- **The open issue is looked up by the browser job** (`issues: read`), so the choice between
+- **The open issue is looked up by the compare job** (`issues: read`), so the choice between
   create, update, close and nothing is made in tested code (`issueAction` in
   `tools/sites/diff.mjs`). The report job only carries the choice out.
 - **Retried screenshots** are named `<site>.retry-<n>-<label>.png`, so the first visit's are
@@ -490,10 +493,12 @@ What changed from the plan above, and why:
   night could not compare: a run that stopped early (a harness error) keeps the sites it did not
   reach tracked and lists none as removed; a night whose previous `results.json` is missing
   still carries the tracked list from `diff.json` and checks it against its own results. Each
-  `diff.json` records whether its chain is complete. When it is not and an issue is open (that
-  issue's list may then be missing regressions), the issue is updated with a note and never
-  closed automatically; closing it by hand starts the tracking afresh. A partial run never closes
-  it either.
+  `diff.json` records whether its chain is complete. When it is not and an issue is open, or is
+  opened that night (its list may then be missing regressions), the issue is updated with a note
+  and never closed automatically; closing it by hand starts the tracking afresh. A partial run
+  never closes it either. A harness error fails the run, and the baseline is always the last
+  successful scheduled run, so the night after one compares with the night before it and finds
+  that night's regressions again.
 - **A regression is measured against each check's last known result**, kept in `diff.json`
   (`known`), not only the previous night's: a check that passed, was skipped on a blocked night,
   and then fails is still a regression. A check that no longer exists drops out of the list.

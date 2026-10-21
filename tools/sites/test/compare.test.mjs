@@ -196,6 +196,29 @@ describe("tools/sites/compare.mjs", () => {
     expect(next.issue).toMatch(/interrupted/);
   });
 
+  it("an issue opened on a broken chain stays out of automatic closing", () => {
+    const created = compare({
+      cur: regressedNight(),
+      prev: fixture("2026-10-20"),
+      prevState: { version: 9 },
+      args: ["--scheduled"],
+    });
+    expect(created.outputs.action).toBe("create");
+    expect(created.issue).toMatch(/interrupted/);
+    expect(JSON.parse(created.state ?? "").complete).toBe(false);
+  });
+
+  it("opens an issue for a regression found against diff.json alone", () => {
+    const n2 = compare({ cur: fixture("2026-10-21"), prev: fixture("2026-10-20") });
+    const r = compare({
+      cur: regressedNight(),
+      prev: "",
+      prevState: JSON.parse(n2.state ?? ""),
+      args: ["--scheduled"],
+    });
+    expect(r.outputs.action).toBe("create");
+  });
+
   it("does not close the issue after a run the harness stopped early", () => {
     const run = JSON.parse(readFileSync(fixture("2026-10-21"), "utf8"));
     run.harnessError = "Xvfb died";

@@ -323,10 +323,12 @@ export function diffState(diff, cur, { known, complete }) {
  * @returns {IssueAction}
  */
 export function issueAction(diff, { scheduled, openIssue, trusted = true, partial = false }) {
-  if (!scheduled || !diff.baseline) return "none";
+  if (!scheduled) return "none";
+  // Without a baseline, only a regression found against diff.json's known results counts.
+  if (!diff.baseline && !diff.regressions.length) return "none";
   if (!diff.tracked.length) {
     if (!openIssue) return "none";
-    return trusted && !partial ? "close" : "update";
+    return trusted && diff.baseline && !partial ? "close" : "update";
   }
   if (openIssue) return "update";
   return diff.regressions.length ? "create" : "none";
@@ -414,14 +416,16 @@ const namesOf = (cur) => {
  * @param {Run} cur
  */
 export function renderDiff(diff, cur) {
-  if (!diff.baseline) {
-    return (
-      "### Night-to-night diff\n\nNo baseline: no earlier scheduled run's results could be " +
-      "read, so nothing is compared. Tracking starts again from this run.\n"
-    );
-  }
   const l = lists(diff, namesOf(cur));
-  const out = [`### Changes since ${baselineLine(diff.baseline)}`, ""];
+  const out = diff.baseline
+    ? [`### Changes since ${baselineLine(diff.baseline)}`, ""]
+    : [
+        "### Night-to-night diff",
+        "",
+        "No baseline: no earlier scheduled run's results could be read, so only the tracked " +
+          "regressions and last known results from its diff.json, if any, are compared.",
+        "",
+      ];
   if (l.regressions.length)
     section(out, "**New regressions** (passed then, fail now):", l.regressions);
   else out.push("No new regression.", "");

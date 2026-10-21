@@ -1499,7 +1499,7 @@ report about them, and so choose text that ends up in a GitHub issue. Nobody els
 runs on `schedule` and `workflow_dispatch` only, never on a pull request.
 
 - SC1. The job that runs the browser on live pages holds **only** `contents: read`, and no step
-  of it gets a token; the workflow reads no secret, and the top-level permissions are empty. The
+  of it keeps or exports a token (checkout uses its read-only token and does not persist it); the workflow reads no secret, and the top-level permissions are empty. The
   diff and the issue text are made by a second job, on a fresh runner, from that job's
   `results.json` alone, with read permissions only (`actions` for the artifacts, `issues` to
   find the open issue), so code that escaped the browser onto its runner could not rewrite the
@@ -1514,7 +1514,11 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
   repository code: it runs `gh` on the `issue.md` the compare job wrote, passed as `--body-file`.
   The action and issue number reach its script through `env`, never through an expression in the
   script, and the number must be digits.
-  [`issues: write is only in the report job, which checks out and runs no repository code`](../tools/test/sites-workflow.test.mjs)
+  The report job downloads the compare job's own upload by its artifact id, and runs only when
+  that job succeeded, so an artifact of the same name uploaded from the browser job's runner is
+  never the one posted.
+  [`issues: write is only in the report job, which checks out and runs no repository code`](../tools/test/sites-workflow.test.mjs),
+  [`the report job takes the compare job's own upload, by id, only after it succeeded`](../tools/test/sites-workflow.test.mjs)
 - SC3. Text from a page or a check (titles, failure reasons) **never** reaches the issue body
   outside an inline code span, so GitHub renders no mention, issue or commit reference, link,
   image or HTML from it. Each value is put on one line with control and format characters

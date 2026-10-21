@@ -117,10 +117,11 @@ function main() {
   const partial = Boolean(cur.filter || cur.harnessError);
   // An issue opened on a broken chain is never closed automatically (diffState).
   const trusted = Boolean(prev) && state.complete;
-  const complete = (trusted && !partial) || openIssue === null;
-
   const diff = compareRuns(prev, cur, state.tracked, state.known);
   const action = issueAction(diff, { scheduled: values.scheduled, openIssue, trusted, partial });
+  // With no issue open nothing can be closed wrongly, so the chain counts as whole again; an
+  // issue opened tonight on a broken chain keeps the mark.
+  const complete = (trusted && !partial) || (openIssue === null && action !== "create");
   mkdirSync(values.out, { recursive: true });
   const md = renderDiff(diff, cur);
   writeFileSync(join(values.out, "diff.md"), md);

@@ -319,9 +319,11 @@ npm run sites -- --pref name=value             # an extra profile pref (repeatab
   `site-compat`; each scheduled run updates it and closes it once every tracked check passes
   again. A check that has failed since before it was first compared opens no issue. To see what
   a run compared with, open the compare job's summary; to start tracking afresh, close the issue
-  (it reopens only on a new regression). If a night could not compare (an expired or missing
-  artifact, a harness error), the issue says the tracking was interrupted and is no longer closed
-  automatically: close it by hand once the report shows its checks passing.
+  (it reopens only on a new regression). If a night could not compare (an expired, missing or
+  damaged artifact), the issue says the tracking was interrupted and is no longer closed
+  automatically: close it by hand once the report shows its checks passing. A night whose
+  harness failed fails the run and is skipped as a baseline; the next night compares with the
+  last successful one.
 - Adding a site: an entry in `sites.json` (`id`, `name`, an https `url`; optional `search`, a CSS
   selector for its search field, and `find`, a word on the page). `npm test` checks the file.
 - Running it from a worktree against the main checkout's build: pass

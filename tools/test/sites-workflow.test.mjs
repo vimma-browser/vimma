@@ -110,6 +110,18 @@ describe("site-compat workflow (sites.yml)", () => {
     expect(job("report")).toMatch(/needs: compare/);
   });
 
+  // Code that escaped the browser could upload an artifact of the same name first: the report job
+  // takes the compare job's own upload by its id, and only when that job succeeded.
+  it("the report job takes the compare job's own upload, by id, only after it succeeded", () => {
+    const compare = job("compare");
+    expect(compare).toMatch(/diff-artifact: \$\{\{ steps\.upload\.outputs\.artifact-id \}\}/);
+    expect(compare).toMatch(/id: upload\n/);
+    const report = job("report");
+    expect(report).toMatch(/needs\.compare\.result == 'success'/);
+    expect(report).toMatch(/artifact-ids: \$\{\{ needs\.compare\.outputs\.diff-artifact \}\}/);
+    expect(report).not.toMatch(/^\s+name: site-compat-diff$/m);
+  });
+
   it("every action it uses is pinned by a full commit SHA", () => {
     const uses = [...text.matchAll(/^\s*(?:- )?uses: (\S+)/gm)].map((m) => m[1] ?? "");
     expect(uses.length).toBeGreaterThan(0);
