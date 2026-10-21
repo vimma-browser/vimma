@@ -83,8 +83,10 @@ Early, for Linux x86_64 and macOS on Apple Silicon. Releases are on
 `.deb` and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
 ([Install](#install)); you can also
 [build it from source](CONTRIBUTING.md#build-and-run). Update notices are live: Vimma 0.1.2 and
-later check a signed update file every 12 hours and show a newer release in the status bar. They
-notify only; installing the update is up to you.
+later check a signed update file every 12 hours and show a newer release in the status bar. The
+AppImage, from the first release that includes its self-update, then replaces its own file with
+the newer release once its size and SHA-512 match the signed file, and the next start runs it.
+The other packages notify only; installing the update is up to you.
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>
 

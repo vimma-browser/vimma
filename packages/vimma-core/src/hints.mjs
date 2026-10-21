@@ -8,10 +8,13 @@
  */
 
 /** @import { Chord } from "./keys.mjs" */
+/** @import { BlockKind } from "./blocks.mjs" */
+
+import { BLOCK_KINDS } from "./blocks.mjs";
 
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
 /** @typedef {{ rect: Rect }} Target */
-/** @typedef {"hint.follow" | "hint.follow_new_tab"} HintAction */
+/** @typedef {"hint.follow" | "hint.follow_new_tab" | "hint.element"} HintAction */
 /**
  * @template {Target} [T=Target]
  * @typedef {{ label: string, target: T }} Hint
@@ -44,7 +47,7 @@ export class HintError extends Error {
 export const DEFAULT_HINT_CHARS = "asdfghjkl";
 
 /** @type {readonly HintAction[]} */
-export const HINT_ACTIONS = Object.freeze(["hint.follow", "hint.follow_new_tab"]);
+export const HINT_ACTIONS = Object.freeze(["hint.follow", "hint.follow_new_tab", "hint.element"]);
 
 /** @param {string} chars */
 function checkChars(chars) {
@@ -207,10 +210,16 @@ export const HINT_REPLY_MAX_HREF = 8192;
 /** Coordinates beyond this are not on any screen. */
 const MAX_COORD = 1e6;
 /** @type {ReadonlySet<string>} */
-const TARGET_KINDS = new Set(["link", "input", "click"]);
+const TARGET_KINDS = new Set(["link", "input", "click", "block"]);
+/** @type {ReadonlySet<string>} */
+const BLOCK_KIND_SET = new Set(BLOCK_KINDS);
 
-/** @typedef {"link" | "input" | "click"} TargetKind */
-/** @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string }} ReplyTarget */
+/** @typedef {"link" | "input" | "click" | "block"} TargetKind */
+/**
+ * `rect` is where the label goes (for a text block, its first visible line); a block also
+ * carries its kind and its whole border box, for the outline (docs/specs/element-focus.md).
+ * @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string, blockKind?: BlockKind, box?: Rect }} ReplyTarget
+ */
 /** @typedef {{ id: number, rect: Rect }} ReplyFrame */
 /** @typedef {{ targets: ReplyTarget[], frames: ReplyFrame[], ms: number }} HintReply */
 
@@ -235,11 +244,14 @@ function parseRect(value) {
 /**
  * A `Vimma:CollectHints` reply from a content process, which may be compromised: a fresh copy
  * with only the known fields, each of its exact type and within the caps, or null if anything
- * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs).
+ * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs). A
+ * collection gets only the kind of target it asked for: text blocks for element focus, never
+ * a block for `f` or `F`, so a block is never followed and a link never outlined.
  * @param {unknown} value
+ * @param {{ blocks?: boolean }} [options]  the collection asked for text blocks
  * @returns {HintReply | null}
  */
-export function parseHintReply(value) {
+export function parseHintReply(value, { blocks = false } = {}) {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const { targets, frames, ms } = /** @type {Record<string, unknown>} */ (value);
@@ -251,11 +263,12 @@ export function parseHintReply(value) {
     const ids = new Set();
     for (const t of [...targets]) {
       if (typeof t !== "object" || t === null) return null;
-      const { id, rect, kind, href } = /** @type {Record<string, unknown>} */ (t);
+      const { id, rect, kind, href, blockKind, box } = /** @type {Record<string, unknown>} */ (t);
       if (!isIndex(id) || ids.has(id)) return null;
       ids.add(id);
       const r = parseRect(rect);
       if (!r || typeof kind !== "string" || !TARGET_KINDS.has(kind)) return null;
+      if ((kind === "block") !== blocks) return null;
       /** @type {ReplyTarget} */
       const out = {
         id: /** @type {number} */ (id),
@@ -265,6 +278,16 @@ export function parseHintReply(value) {
       if (href !== undefined) {
         if (typeof href !== "string" || href.length > HINT_REPLY_MAX_HREF) return null;
         out.href = href;
+      }
+      if (kind === "block") {
+        // A block is clipped by its frame, not by the viewport: its box may start above it.
+        const b = parseRect(box);
+        if (typeof blockKind !== "string" || !BLOCK_KIND_SET.has(blockKind) || !b) return null;
+        if (href !== undefined) return null;
+        out.blockKind = /** @type {BlockKind} */ (blockKind);
+        out.box = b;
+      } else if (blockKind !== undefined || box !== undefined) {
+        return null;
       }
       outTargets.push(out);
     }

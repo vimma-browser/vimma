@@ -106,6 +106,21 @@ describe("announcement (the one-time message per new version)", () => {
     );
   });
 
+  test("an AppImage that is downloading its update waits; once replaced, it says restart", () => {
+    const appimage = { ...base, installType: /** @type {const} */ ("appimage") };
+    expect(announcement({ ...appimage, stage: "pending" })).toBeNull();
+    expect(announcement({ ...appimage, stage: "staged" })).toBe(
+      "Vimma 0.1.3 is installed · restart Vimma to use it",
+    );
+    expect(announcement({ ...appimage, stage: "staged", offer: offer({ urgent: true }) })).toBe(
+      "Vimma 0.1.3 fixes security issues · restart Vimma to use it",
+    );
+    // The replacement failed: the AppImage gets the command, as before.
+    expect(announcement({ ...appimage, stage: "none" })).toBe(
+      "Vimma 0.1.3 is available · :update shows the command",
+    );
+  });
+
   test("no offer, checks off or a source build: nothing", () => {
     expect(announcement({ ...base, offer: null })).toBeNull();
     expect(announcement({ ...base, enabled: false })).toBeNull();
@@ -137,6 +152,12 @@ describe("shouldAsk (the security question, once per session)", () => {
   test("an ordinary release never asks", () => {
     expect(shouldAsk({ ...base, offer: offer() })).toBe(false);
     expect(shouldAsk({ ...base, offer: null })).toBe(false);
+  });
+
+  test("an AppImage that replaces its file itself is not asked to show a command", () => {
+    expect(shouldAsk({ ...base, installType: "appimage", stage: "pending" })).toBe(false);
+    expect(shouldAsk({ ...base, installType: "appimage", stage: "staged" })).toBe(false);
+    expect(shouldAsk({ ...base, installType: "appimage", stage: "none" })).toBe(true);
   });
 
   test("checks off, a source build or a private window: never", () => {

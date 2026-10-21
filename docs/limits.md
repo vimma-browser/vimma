@@ -12,6 +12,8 @@ the [user guide](guide.md); planned work is on the
   the prefix and chords such as `ctrl+t` still work.
 - Link hints label only real elements: canvas apps (Google Docs, Figma, maps, games) get no
   hints.
+- Text block hints follow the page's elements: a page that draws several paragraphs as one
+  element with line breaks gets one label for all of them, and text drawn on a canvas gets none.
 - The command line has no `:set`, ranges or counts, and does not complete URLs. Its history lasts
   until Vimma quits.
 - Firefox's shortcuts on keys Vimma uses (`ctrl+w`, `ctrl+u`, `ctrl+h`, `ctrl+d`, `ctrl+o`,
@@ -119,3 +121,8 @@ the [user guide](guide.md); planned work is on the
   like Firefox's own packages, they do not warn when the kernel blocks the unprivileged user
   namespaces the content sandbox uses (as Ubuntu 24.04's AppArmor policy does for the AppImage
   and the `.deb`). The sandbox is then weaker without saying so; the tarball still warns.
+- The AppImage updates itself by replacing its own file, which keeps its old name
+  (`vimma-0.1.0-x86_64.AppImage` can hold 0.3.1); about:vimma shows the real version. A
+  directory Vimma cannot write, or an AppImage run from a copy that `--appimage-extract` made,
+  gets the manual steps instead. The new version runs from the next start; nothing restarts
+  Vimma for it.

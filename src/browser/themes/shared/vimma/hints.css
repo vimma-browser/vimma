@@ -37,3 +37,24 @@
     text-underline-offset: 1px;
   }
 }
+
+/* Element focus (docs/specs/element-focus.md, decision 6): the chosen text block's outline, in
+ * chrome like the labels. A 2 px accent ring with a 1 px background halo outside it, so it shows
+ * on light and dark pages alike. */
+#vimma-element {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+  contain: strict;
+
+  & .vimma-element-ring {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid var(--vimma-element-outline, var(--vimma-accent, #1bf587));
+    border-radius: 3px;
+    box-shadow:
+      0 0 0 1px var(--vimma-bg, #0a0f12),
+      inset 0 0 0 1px var(--vimma-bg, #0a0f12);
+  }
+}

@@ -1585,6 +1585,11 @@
           ]
         },
         {
+          "name": "focus_element",
+          "description": "Focus a text block",
+          "keys": []
+        },
+        {
           "name": "hint_cancel",
           "description": "Leave hint mode",
           "keys": [

@@ -217,7 +217,7 @@ function feed(state, keys) {
 describe("hint mode", () => {
   test("HINT_ACTIONS are action ids in actions.mjs", () => {
     const ids = new Set(ACTIONS.map((a) => a.id));
-    expect(HINT_ACTIONS).toEqual(["hint.follow", "hint.follow_new_tab"]);
+    expect(HINT_ACTIONS).toEqual(["hint.follow", "hint.follow_new_tab", "hint.element"]);
     for (const id of HINT_ACTIONS) expect(ids.has(id)).toBe(true);
   });
 
@@ -250,6 +250,26 @@ describe("hint mode", () => {
       action: "hint.follow_new_tab",
       target: twelve[0],
     });
+  });
+
+  test("element focus is a hint action, carried by the selection", () => {
+    const s = startHints(twelve, { action: "hint.element" });
+    expect(hintKey(s, key("a")).result).toMatchObject({
+      kind: "select",
+      action: "hint.element",
+      target: twelve[0],
+    });
+  });
+
+  test("text blocks order by their first visible line, not by their whole box", () => {
+    // A tall paragraph on the left whose box reaches past two short ones on the right: its
+    // first line is in the first row, the right column's second block in the second.
+    const blocks = [
+      { id: "right2", rect: { x: 300, y: 60, width: 200, height: 16 } },
+      { id: "left", rect: { x: 0, y: 0, width: 280, height: 16 } },
+      { id: "right1", rect: { x: 300, y: 2, width: 200, height: 16 } },
+    ];
+    expect(orderTargets(blocks).map((b) => b.id)).toEqual(["left", "right1", "right2"]);
   });
 
   test("an unknown action is bad-action; zero targets is no-targets", () => {
@@ -381,6 +401,28 @@ describe("parseHintReply: untrusted Vimma:CollectHints replies from a content pr
     ["a zero width", { ...good, targets: [{ ...t0, rect: { ...rect, width: 0 } }] }],
     ["a string height", { ...good, targets: [{ ...t0, rect: { ...rect, height: "9" } }] }],
     ["an href not a string", { ...good, targets: [{ ...t0, href: 1 }] }],
+    [
+      "a block with no blockKind",
+      { ...good, targets: [{ id: 0, rect, kind: "block", box: rect }] },
+    ],
+    [
+      "a block with an unknown blockKind",
+      { ...good, targets: [{ id: 0, rect, kind: "block", blockKind: "script", box: rect }] },
+    ],
+    [
+      "a block with no box",
+      { ...good, targets: [{ id: 0, rect, kind: "block", blockKind: "paragraph" }] },
+    ],
+    [
+      "a block with a non-finite box",
+      {
+        ...good,
+        targets: [
+          { id: 0, rect, kind: "block", blockKind: "paragraph", box: { ...rect, x: Infinity } },
+        ],
+      },
+    ],
+    ["a blockKind on a link", { ...good, targets: [{ ...t0, blockKind: "paragraph" }] }],
     ["a long href", { ...good, targets: [{ ...t0, href: "h".repeat(8193) }] }],
     ["a frame id not an integer", { ...good, frames: [{ id: "42", rect }] }],
     [
@@ -397,6 +439,45 @@ describe("parseHintReply: untrusted Vimma:CollectHints replies from a content pr
     ["a frame with no rect", { ...good, frames: [{ id: 42 }] }],
   ])("%s → null", (_, value) => {
     expect(parseHintReply(value)).toBeNull();
+  });
+
+  test("a block target needs a kind from the closed list and a finite box", () => {
+    const block = { id: 0, rect, kind: "block", blockKind: "code", box: rect };
+    expect(
+      parseHintReply({ targets: [block], frames: [], ms: 0 }, { blocks: true })?.targets,
+    ).toEqual([block]);
+    for (const bad of [
+      { ...block, blockKind: "script" },
+      { ...block, blockKind: undefined },
+      { ...block, box: undefined },
+      { ...block, box: { ...rect, width: NaN } },
+    ]) {
+      expect(parseHintReply({ targets: [bad], frames: [], ms: 0 }, { blocks: true })).toBeNull();
+    }
+  });
+
+  test("only a block target carries a blockKind or a box", () => {
+    for (const bad of [
+      { ...t0, blockKind: "paragraph" },
+      { ...t0, box: rect },
+    ]) {
+      expect(parseHintReply({ targets: [bad], frames: [], ms: 0 })).toBeNull();
+    }
+  });
+
+  test("a block target carries no href", () => {
+    const block = { id: 0, rect, kind: "block", blockKind: "code", box: rect, href: "https://x/" };
+    expect(parseHintReply({ targets: [block], frames: [], ms: 0 }, { blocks: true })).toBeNull();
+  });
+
+  test("a reply holds only the kind of target its collection asked for", () => {
+    const block = { id: 0, rect, kind: "block", blockKind: "code", box: rect };
+    const links = { targets: [t0], frames: [], ms: 0 };
+    const blocks = { targets: [block], frames: [], ms: 0 };
+    expect(parseHintReply(links)).not.toBeNull();
+    expect(parseHintReply(blocks, { blocks: true })).not.toBeNull();
+    expect(parseHintReply(blocks)).toBeNull();
+    expect(parseHintReply(links, { blocks: true })).toBeNull();
   });
 
   test("a throwing getter → null, not an exception", () => {

@@ -88,6 +88,8 @@ beforeAll(async () => {
   [key, stranger] = await Promise.all([kmsKey(), kmsKey()]);
 }, 60_000);
 
+const DL = "https://github.com/vimma-browser/vimma/releases/download/v0.3.1";
+
 describe("buildManifest (spec §2)", () => {
   it("writes the format the client parses: channel, target and serial on <updates>, one <update>", () => {
     const body = buildManifest({ serial: "20261028041207", update: offer() });
@@ -121,9 +123,17 @@ describe("buildManifest (spec §2)", () => {
           urgent: false,
           advisories: [],
           assets: {
-            tarball: { size: 86804240, sha512: HASH("a") },
-            appimage: { size: 111966712, sha512: HASH("b") },
-            deb: { size: 87718612, sha512: HASH("c") },
+            tarball: {
+              size: 86804240,
+              sha512: HASH("a"),
+              url: `${DL}/vimma-0.3.1-linux-x86_64.tar.xz`,
+            },
+            appimage: {
+              size: 111966712,
+              sha512: HASH("b"),
+              url: `${DL}/vimma-0.3.1-x86_64.AppImage`,
+            },
+            deb: { size: 87718612, sha512: HASH("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
           },
         },
       },
@@ -409,6 +419,7 @@ describe("prepareRelease and checkSigned (the jobs' checks)", () => {
     expect(m.update.assets.deb).toEqual({
       size: deb.length,
       sha512: createHash("sha512").update(deb).digest("hex"),
+      url: "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/vimma_0.3.1_amd64.deb",
     });
   });
 

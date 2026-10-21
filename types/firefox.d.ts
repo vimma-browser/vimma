@@ -130,6 +130,11 @@ declare const IOUtils: {
     data: string,
     options?: { mode?: "overwrite" | "append" | "appendOrCreate" | "create"; tmpPath?: string },
   ): Promise<number>;
+  write(
+    path: string,
+    data: Uint8Array,
+    options?: { mode?: "overwrite" | "append" | "appendOrCreate" | "create"; flush?: boolean },
+  ): Promise<number>;
   setPermissions(path: string, permissions: number, honorUmask?: boolean): Promise<void>;
   makeDirectory(
     path: string,
@@ -142,8 +147,10 @@ declare const IOUtils: {
     lastModified: number;
     creationTime?: number;
     permissions: number;
+    type: "regular" | "directory" | "other";
   }>;
   exists(path: string): Promise<boolean>;
+  getChildren(path: string): Promise<string[]>;
   copy(from: string, to: string): Promise<void>;
   move(from: string, to: string): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;

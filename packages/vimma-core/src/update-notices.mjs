@@ -35,27 +35,41 @@ export function checkDue({ enabled, installType, okAt, triedAt, now, intervalSec
 }
 
 /**
- * The one-time message for an offer whose version was not announced before, or null.
+ * How far an AppImage got with replacing its own file (spec m6a-updater, decision 19): `none`
+ * when it does not (another install type, or the replacement failed), `pending` while it
+ * downloads, `staged` once the new file is in place.
+ * @typedef {"none" | "pending" | "staged"} Stage
+ */
+
+/**
+ * The one-time message for an offer whose version was not announced before, or null. An
+ * AppImage that is replacing its file waits until it is done, then says to restart.
  * @param {{ enabled: boolean, installType: InstallType, offer: Offer | null,
- *   announced: string }} input  `announced`: the last version announced (pref), "" for none
+ *   announced: string, stage?: Stage }} input  `announced`: the last version announced (pref),
+ *   "" for none
  * @returns {string | null}
  */
-export function announcement({ enabled, installType, offer, announced }) {
+export function announcement({ enabled, installType, offer, announced, stage = "none" }) {
   if (!enabled || installType === "source" || !offer) return null;
-  if (offer.displayVersion === announced) return null;
+  if (offer.displayVersion === announced || stage === "pending") return null;
   const what = offer.urgent ? "fixes security issues" : "is available";
+  if (stage === "staged") {
+    const done = offer.urgent ? what : "is installed";
+    return `Vimma ${offer.displayVersion} ${done} · restart Vimma to use it`;
+  }
   return `Vimma ${offer.displayVersion} ${what} · :update shows the command`;
 }
 
 /**
  * Whether to ask the security question now: an urgent offer, a version not asked about in
- * this session, checks on, not a source build, and a normal window.
+ * this session, checks on, not a source build, and a normal window. An AppImage that replaces
+ * its own file has no command to show.
  * @param {{ enabled: boolean, installType: InstallType, offer: Offer | null,
- *   asked: readonly string[], privateWindow: boolean }} input
+ *   asked: readonly string[], privateWindow: boolean, stage?: Stage }} input
  *   `asked`: the versions asked about in this session
  */
-export function shouldAsk({ enabled, installType, offer, asked, privateWindow }) {
-  if (!enabled || installType === "source" || privateWindow) return false;
+export function shouldAsk({ enabled, installType, offer, asked, privateWindow, stage = "none" }) {
+  if (!enabled || installType === "source" || privateWindow || stage !== "none") return false;
   return !!offer?.urgent && !asked.includes(offer.displayVersion);
 }
 
