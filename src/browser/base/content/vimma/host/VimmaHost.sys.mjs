@@ -110,9 +110,12 @@ import {
   pickerSelect,
   privatePanel,
   privateStatus,
+  privateTabCount,
   switchFromPrivate,
   togglePrivate,
 } from "./private-ops.mjs";
+import { restartVimma, tabsKeptBy } from "./restart.mjs";
+import { restartConfirmation } from "../core/restart.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 import { ControlHost } from "./control-ops.mjs";
 import { AgentUi } from "./agent-ui.mjs";
@@ -522,6 +525,41 @@ function addonOp(s, op, id) {
 }
 
 /**
+ * Restarts Vimma now (docs/specs/m6a-updater.md §5); says so when something cancelled it. An
+ * AppImage starts its own file again, and only when this Vimma is the AppImage `$APPIMAGE`
+ * names, never one it inherited the variable from.
+ * @param {WindowState} s
+ */
+async function restartNow(s) {
+  const appImage = await VimmaUpdates.ownAppImage();
+  const going = restartVimma({ installType: appImage ? "appimage" : null, appImage });
+  if (!going) s.notice.show("restart cancelled");
+}
+
+/** @param {WindowState} s */
+function restartOrSay(s) {
+  restartNow(s).catch((e) => {
+    console.error("vimma: :restart failed", e);
+    s.notice.show(`restart failed: ${e?.message ?? e}`, { error: true });
+  });
+}
+
+/**
+ * `:restart`: asks first when tabs would be lost (core restartConfirmation), as `:private close`
+ * asks before it closes the private workspace.
+ * @param {WindowState} s
+ */
+async function restartAsking(s) {
+  const appImage = await VimmaUpdates.ownAppImage();
+  const question = restartConfirmation({
+    privateTabs: privateTabCount(),
+    tabsKept: tabsKeptBy(appImage),
+  });
+  if (question) s.rename.ask(question, () => restartOrSay(s));
+  else restartOrSay(s);
+}
+
+/**
  * `:update` (docs/specs/m6a-updater.md): checks now and says the result; an update opens
  * about:vimma's Updates section, which shows the exact steps for this install.
  * @param {WindowState} s
@@ -797,6 +835,14 @@ export const RUNNERS = Object.freeze({
     const result = parseCommandLine(a.line ?? "");
     if (result.kind === "run") VimmaHost._runCommand(s, result);
     else if (result.kind === "error") s.notice.show(result.error.message, { error: true });
+  },
+  // `:restart`: asks first when tabs would be lost (private ones, or all of them).
+  "app.restart": (/** @type {WindowState} */ s) => {
+    s.notice.hide();
+    restartAsking(s).catch((e) => {
+      console.error("vimma: :restart failed", e);
+      s.notice.show(`restart failed: ${e?.message ?? e}`, { error: true });
+    });
   },
   "app.update_check": (/** @type {WindowState} */ s) => {
     checkUpdates(s).catch((e) => {
@@ -1466,6 +1512,14 @@ export const VimmaHost = {
         if (state.notice.el?.textContent === text) state.notice.hide();
       },
       openSteps: () => openOrSay(state, "about:vimma#updates", "tab"),
+      restart: (confirmed) => {
+        if (confirmed) restartOrSay(state);
+        else restartAsking(state).catch((e) => console.error("vimma: restart failed", e));
+      },
+      restartLoses: () => ({
+        privateTabs: privateTabCount() > 0,
+        tabsKept: tabsKeptBy(VimmaUpdates.ownAppImageNow),
+      }),
     });
     // After the page and in the system group, as Tabbrowser's own key handling: text-field keys
     // the page left alone (key-handling-batch § 2).

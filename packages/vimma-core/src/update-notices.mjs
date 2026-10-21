@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // How an update reaches the user without a modal window (docs/specs/update-notices.md): when a
-// check is due, the one-time message for a new version, and the once-per-session question for a
-// security update. Pure rules; the host (updates/VimmaUpdates.sys.mjs, host/update-ui.mjs)
+// check is due, the one-time message for a new version, the once-per-session question for a
+// security update, and the restart question once one is installed (m6a-updater Behaviour 6). Pure rules; the host (updates/VimmaUpdates.sys.mjs, host/update-ui.mjs)
 // brings the clock, the prefs and the windows.
 
 /** @import { InstallType, Offer } from "./updates.mjs" */
@@ -16,6 +16,11 @@ const MIN_INTERVAL_S = 3600;
 
 /** What the question line shows once it takes keys. */
 export const QUESTION_HINT = "y show · n or Esc: not this session";
+/** What the restart question's line shows once it takes keys. */
+export const RESTART_HINT = "y restart · n or Esc: not now";
+/** An answered restart question is asked again after this, in a session that runs on
+ * (m6a-updater decision 21): rare enough not to train a reflex `n`. */
+export const RESTART_REASK_MS = 24 * 3_600_000;
 
 /**
  * Whether a check is due: checks on, not a source build, and no successful check within the
@@ -71,6 +76,46 @@ export function announcement({ enabled, installType, offer, announced, stage = "
 export function shouldAsk({ enabled, installType, offer, asked, privateWindow, stage = "none" }) {
   if (!enabled || installType === "source" || privateWindow || stage !== "none") return false;
   return !!offer?.urgent && !asked.includes(offer.displayVersion);
+}
+
+/**
+ * Whether to ask the restart question now (m6a-updater Behaviour 6): an urgent update already
+ * in place (`staged`), checks on, not a source build, a normal window, and the version not
+ * answered in this session, or answered at least RESTART_REASK_MS ago. An answer time in the
+ * future (the clock was set back) asks again, so a wrong clock never silences it.
+ * @param {{ enabled: boolean, installType: InstallType, offer: Offer | null, stage: Stage,
+ *   dismissed: Readonly<Record<string, number>>, now: number, privateWindow: boolean }} input
+ *   `dismissed`: when each version's question was answered in this session
+ */
+export function shouldAskRestart({
+  enabled,
+  installType,
+  offer,
+  stage,
+  dismissed,
+  now,
+  privateWindow,
+}) {
+  if (!enabled || installType === "source" || privateWindow || stage !== "staged") return false;
+  if (!offer?.urgent) return false;
+  const at = dismissed[offer.displayVersion];
+  if (at === undefined || !Object.hasOwn(dismissed, offer.displayVersion)) return true;
+  return at > now || now - at >= RESTART_REASK_MS;
+}
+
+/**
+ * The restart question. A restart closes the private workspace's tabs, which session restore
+ * does not bring back, so it says so when there are any; when session restore brings no tab back
+ * (core/restart.mjs restartKeepsTabs), it says that instead.
+ * @param {Offer} offer @param {{ privateTabs: boolean, tabsKept: boolean }} loses
+ */
+export function restartQuestion(offer, { privateTabs, tabsKept }) {
+  const what = !tabsKept
+    ? "Tabs will not come back."
+    : privateTabs
+      ? "Tabs come back. Private tabs will close."
+      : "Tabs come back.";
+  return `Security update ${offer.displayVersion} is ready. Restart now? ${what} (y/N)`;
 }
 
 /** @param {Offer} offer */

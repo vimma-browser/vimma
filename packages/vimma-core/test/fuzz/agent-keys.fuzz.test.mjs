@@ -14,6 +14,11 @@ const piece = fc.oneof(
     arbitrary: fc.constantFrom(
       ..."jkhldugGHLnN/?:txivyypPfFr]w[q0123456789 ",
       "gg",
+      "f",
+      "fa",
+      "fsd",
+      "fasdfghjkl",
+      "3f",
       "gu",
       "gU",
       "gi",
@@ -57,6 +62,13 @@ describe("vimma_keys parser fuzzing", () => {
             for (const step of r.steps) {
               expect(AGENT_KEY_ACTIONS.has(step.action)).toBe(true);
               expect(step.count ?? 1).toBeLessThanOrEqual(AGENT_KEY_LIMITS.count);
+              if (step.label !== undefined) {
+                expect(step.action).toBe("hint.follow");
+                expect(step.label).toMatch(/^[asdfghjkl]{1,3}$/);
+              }
+              if (step.action === "hint.follow" && step.label === undefined) {
+                expect(step).toBe(r.steps.at(-1));
+              }
               if (step.query !== undefined) {
                 expect([...step.query].length).toBeLessThanOrEqual(AGENT_KEY_LIMITS.query);
                 expect(step.query).not.toMatch(/\p{Cc}/u);

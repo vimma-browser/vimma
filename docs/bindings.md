@@ -130,6 +130,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Reopen the last closed window                     | `restore_window`           | `ctrl+shift+n`            |
 | Quit (asks first)                                 | `quit`                     | `ctrl+q`                  |
 | Check for a newer Vimma                           | `check_updates`            | —                         |
+| Restart Vimma; an installed update applies        | `restart`                  | —                         |
 | Reload, bypassing the cache                       | `reload_hard`              | `ctrl+f5`, `ctrl+shift+r` |
 | Stop loading the page                             | `stop_loading`             | `esc`                     |
 | Run a Firefox command or key by its id (:firefox) | `firefox_command`          | —                         |

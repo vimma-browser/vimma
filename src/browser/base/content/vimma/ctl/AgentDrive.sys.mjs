@@ -9,7 +9,15 @@
 // top frame without smooth scrolling (a background tab's refresh driver is throttled), finds go
 // through the tab's own finder, and history moves within the tab's own session history. Core
 // (agent-keys.mjs) parsed and whitelisted the steps; agent-commands.mjs asked first.
+//
+// `f` lists the tab's visible links with labels (D12, D16; security.md M21), collected under the
+// tab's own key so the user's hint mode is left alone, and kept per tab and connection, bound to
+// the document they were collected from, for AGENT_LINKS.ttlMs. `f<label>` follows one as a load
+// of its href with the page's own principal, in the same tab: no click event fires, so no page
+// handler runs (M18). A link to another site is asked as a `vimma_open` of its URL first (D18).
 
+import { AGENT_LINKS, agentLinkList, labelAgentLinks } from "../core/agent-keys.mjs";
+import { wrapUntrusted } from "../core/agent.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
 import { urlRoot, urlUp } from "../core/pageurl.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
@@ -37,8 +45,18 @@ const FIND_WRAPPED = 2;
  * @typedef {{ query: string, found: boolean, wrapped: boolean }} FindResult
  * @typedef {{ url: string, title: string, loading: boolean, scroll: { y: number },
  *   steps: StepResult[], stopped?: "changed" | "in-use" | "timeout" | "denied",
- *   find?: FindResult }} KeysResult
+ *   find?: FindResult, links?: string, dropped?: number }} KeysResult
+ * @typedef {{ mark: { doc: number, url: string }, at: number,
+ *   byLabel: Map<string, import("../actors/VimmaActors.sys.mjs").HintTarget> }} LinkSession
+ *   one `f`'s labels: the page they were collected on and when (D12)
  * @typedef {object} DriveContext
+ * @property {unknown} conn  the agent connection: its labels are its own
+ * @property {(url: string, until: number) => Promise<string | null>} askOpen  asks a cross-site
+ *   follow of `url` as a `vimma_open` (D18), or runs it under a `vimma_open` grant, withdrawn
+ *   at `until`; null when it may load, else the denial's reason
+ * @property {(url: string, keys: string) => void} followed  a follow loaded `url`: into
+ *   `:mcp log`, and a grant's notice names its host (D14, M23)
+ * @property {() => boolean} canLoad  whether the open rate has a slot left, without taking it
  * @property {() => boolean} stillAgent  the tab is still an agent tab (M2), checked before
  *   each step
  * @property {(url: string) => boolean} load  loads `url` in the tab as the agent's (its
@@ -47,6 +65,42 @@ const FIND_WRAPPED = 2;
  *   rate, its downloads the agent's; false when the rate is used up
  * @property {number} deadline  ms since the epoch: the call stops here (D15)
  */
+
+/** The most the link list may take of the 1 MiB reply line (protocol decision 4). */
+const LINKS_BYTES = 768 * 1024;
+
+/** What a step says when a cross-site follow was not allowed, by the denial's reason. */
+const NOT_ALLOWED = /** @type {Record<string, string>} */ ({
+  user: "the user did not allow loading",
+  timeout: "no answer in Vimma to loading",
+  muted: "this agent is muted in Vimma; it did not load",
+  busy: "too many agent requests wait in Vimma; it did not load",
+  cancelled: "the question was withdrawn; it did not load",
+});
+
+/**
+ * A page links are listed and followed on: a web page (D12). A tab moved into the agent
+ * workspace may show a file, about: or the start page, whose principals may load anything.
+ * @param {any} principal nsIPrincipal
+ */
+const onTheWeb = (principal) =>
+  !!principal?.isContentPrincipal && (principal.schemeIs("http") || principal.schemeIs("https"));
+
+/** Each connection's labels, per agent tab (D12). @type {Map<unknown, WeakMap<object, LinkSession>>} */
+const sessions = new Map();
+
+/**
+ * A URI's site, its registrable domain (eTLD+1, D18); its host when it has none (an IP address,
+ * localhost).
+ * @param {any} uri nsIURI
+ */
+function siteOf(uri) {
+  try {
+    return Services.eTLD.getBaseDomain(uri);
+  } catch {
+    return String(uri?.asciiHost ?? "");
+  }
+}
 
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
@@ -146,13 +200,27 @@ function findOnce(browser, query, again, backward) {
 export const AgentDrive = {
   /** Test-only: called after each step with the number of steps done. */
   _onStep: /** @type {((n: number) => void | Promise<void>) | null} */ (null),
+  /** Test-only: how long labels live, in place of AGENT_LINKS.ttlMs. */
+  _linkTtlMs: /** @type {number | null} */ (null),
+
+  /**
+   * The connection closed: its labels go.
+   * @param {unknown} conn
+   */
+  forget(conn) {
+    sessions.delete(conn);
+  },
 
   /**
    * Runs `steps` on `tab`, in order, in the background.
    * @param {Tab} tab @param {AgentStep[]} steps @param {DriveContext} ctx
    * @returns {Promise<KeysResult>}
    */
-  async run(tab, steps, { stillAgent, load, countLoad, deadline }) {
+  async run(
+    tab,
+    steps,
+    { conn, askOpen, followed, canLoad, stillAgent, load, countLoad, deadline },
+  ) {
     const browser = tab.linkedBrowser;
     /** @type {StepResult[]} */
     const done = [];
@@ -162,6 +230,17 @@ export const AgentDrive = {
     let last = null;
     /** @type {FindResult | undefined} */
     let find;
+    /** @type {{ text: string, dropped: number } | undefined} the call's link list */
+    let links;
+    let labels = sessions.get(conn);
+    if (!labels) sessions.set(conn, (labels = new WeakMap()));
+    const ttl = this._linkTtlMs ?? AGENT_LINKS.ttlMs;
+    /** Whether `session` still names the links of the page in the tab (D12). */
+    const current = (/** @type {LinkSession | undefined} */ session) => {
+      if (!session || Date.now() - session.at >= ttl) return false;
+      const now = pageMark(browser);
+      return now.doc === session.mark.doc && now.url === session.mark.url;
+    };
 
     /** Why the call must stop now, or null. @returns {KeysResult["stopped"] | null} */
     const halt = () =>
@@ -238,6 +317,101 @@ export const AgentDrive = {
               result.note = "the page is still loading";
             }
           }
+        } else if (id === "hint.follow" && !onTheWeb(browser.contentPrincipal)) {
+          Object.assign(result, {
+            ok: false,
+            note: "links are listed and followed only on http and https pages",
+          });
+        } else if (id === "hint.follow" && step.label === undefined) {
+          // `f`: the visible links, labelled (D12), as the call's link list (D16).
+          const targets = await bounded(
+            VimmaActors.collectHints(browser, "hint.follow", { agent: true }),
+            [],
+            deadline,
+          );
+          const { links: labelled, dropped } = labelAgentLinks(targets);
+          // The reply is one line: links past its room are left out, and their labels too.
+          const list = agentLinkList(labelled, LINKS_BYTES);
+          const listed = labelled.slice(0, labelled.length - list.omitted);
+          labels.set(browser, {
+            mark: pageMark(browser),
+            at: Date.now(),
+            byLabel: new Map(listed.map((l) => [l.label, l.target])),
+          });
+          links = { text: wrapUntrusted(wf(list.text)), dropped: dropped + list.omitted };
+          if (!labelled.length) result.note = "no links on screen";
+        } else if (id === "hint.follow") {
+          // `f<label>`: a load of the link's href, never a click (D12, D18; M18).
+          const label = /** @type {string} */ (step.label);
+          const session = labels.get(browser);
+          const target = current(session) ? session?.byLabel.get(label) : undefined;
+          const url = target ? URL.parse(target.href ?? "") : null;
+          if (!current(session) || (target && target.bc.currentWindowGlobal !== target.wg)) {
+            Object.assign(result, { ok: false, note: "stale labels: send f again" });
+          } else if (!target) {
+            Object.assign(result, { ok: false, note: `no link has the label "${label}"` });
+          } else if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
+            Object.assign(result, { ok: false, note: "only http and https links are followed" });
+          } else {
+            const wg = target.wg;
+            const principal = wg.documentPrincipal;
+            let linkable = true;
+            try {
+              Services.scriptSecurityManager.checkLoadURIWithPrincipal(
+                principal,
+                url.URI,
+                Ci.nsIScriptSecurityManager.DISALLOW_INHERIT_PRINCIPAL,
+              );
+            } catch {
+              linkable = false;
+            }
+            const elsewhere = linkable && siteOf(url.URI) !== siteOf(browser.currentURI);
+            /** @type {string | null} */
+            let refused = null;
+            if (!linkable || !onTheWeb(principal)) {
+              Object.assign(result, { ok: false, note: "the page may not link there" });
+            } else if (!canLoad()) {
+              // Before any question: a yes must not end in "too many loads".
+              Object.assign(result, {
+                ok: false,
+                note: "too many loads from this agent in the last minute",
+              });
+              done.push(result);
+              stopped = "denied";
+              break;
+            } else if (elsewhere && (refused = await askOpen(url.href, deadline)) !== null) {
+              // D18: another site is a vimma_open of its URL; a no stops the call.
+              const why = NOT_ALLOWED[refused] ?? `Vimma did not load (${refused})`;
+              Object.assign(result, { ok: false, note: `${why} ${wf(url.hostname)}` });
+              done.push(result);
+              // Withdrawn because the call's 60 s ran out: the call timed out (D15).
+              stopped = refused === "cancelled" && Date.now() >= deadline ? "timeout" : "denied";
+              break;
+            } else if (elsewhere && halt()) {
+              // The question took a while: the call may have run out, or the tab moved on.
+              Object.assign(result, { ok: false, note: "the call stopped while it was asked" });
+              done.push(result);
+              stopped = /** @type {any} */ (halt());
+              break;
+            } else if (!current(session) || target.bc.currentWindowGlobal !== wg) {
+              Object.assign(result, { ok: false, note: "stale labels: send f again" });
+            } else if (!countLoad(url.href)) {
+              Object.assign(result, {
+                ok: false,
+                note: "too many loads from this agent in the last minute",
+              });
+              done.push(result);
+              stopped = "denied";
+              break;
+            } else {
+              const mark = pageMark(browser);
+              labels.delete(browser);
+              VimmaActors.loadLink(browser, target, url.URI);
+              const until = Math.min(deadline, Date.now() + LOAD_TIMEOUT_MS);
+              if (!(await loaded(browser, mark, until))) result.note = "the page is still loading";
+              followed(url.href, step.keys);
+            }
+          }
         } else {
           // find.forward, find.backward, find.next, find.previous (D11).
           const fresh = id === "find.forward" || id === "find.backward";
@@ -307,6 +481,7 @@ export const AgentDrive = {
     };
     if (stopped) out.stopped = stopped;
     if (find) out.find = find;
+    if (links) Object.assign(out, { links: links.text, dropped: links.dropped });
     return out;
   },
 };

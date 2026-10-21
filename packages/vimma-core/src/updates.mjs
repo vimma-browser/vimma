@@ -527,7 +527,7 @@ export function updateNotice(state) {
   const { offer } = state;
   if (offer && state.staged) {
     return offer.urgent
-      ? { text: `⇡ ${offer.displayVersion} security: restart`, tone: "urgent" }
+      ? { text: `⇡ ${offer.displayVersion} security: :restart`, tone: "urgent" }
       : { text: `⇡ ${offer.displayVersion} on restart`, tone: "info" };
   }
   if (offer) {

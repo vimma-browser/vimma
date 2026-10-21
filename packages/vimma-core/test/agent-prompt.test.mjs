@@ -267,6 +267,11 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(ranNotice(keys, 12 * MIN, 0)).toBe(
       'claude-code pressed 3j /"pricing"⏎ gg in "Pricing · Example" (grant, 12m left)',
     );
+    // mcp-drive D14: a follow under a grant names the host it loaded.
+    const followed = { ...keys, what: { ...keys.what, keys: "fsd", followed: "docs.example.com" } };
+    expect(ranNotice(followed, 12 * MIN, 0)).toBe(
+      'claude-code followed a link to docs.example.com in "Pricing · Example" (grant, 12m left)',
+    );
     expect(ranNotice({ ...read, tool: "vimma_close_tab" }, MIN, 0)).toBe(
       'example-agent closed "Pull requests · vimma-browser/vimma" (grant, 1m left)',
     );

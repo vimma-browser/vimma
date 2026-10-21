@@ -103,6 +103,7 @@ Browser
   restore_window            ctrl+shift+n                                      Reopen the last closed window
   quit                      ctrl+q                                            Quit (asks first)
   check_updates             (unbound)                                         Check for a newer Vimma
+  restart                   (unbound)                                         Restart Vimma; an installed update applies
   reload_hard               ctrl+f5, ctrl+shift+r                             Reload, bypassing the cache
   stop_loading              esc                                               Stop loading the page
   firefox_command           (unbound)                                         Run a Firefox command or key by its id (:firefox)

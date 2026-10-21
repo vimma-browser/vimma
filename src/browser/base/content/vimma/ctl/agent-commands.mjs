@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The agent role's commands (docs/specs/vimma-mcp.md, decision 4): list, read, open and close
-// tabs of the agent workspace, and run Vimma's own page keys in one (docs/specs/mcp-drive.md,
-// `agent-keys`), and nothing else. What an agent can reach is decided here, in
+// tabs of the agent workspace, and run Vimma's own page keys in one, following its links by
+// label (docs/specs/mcp-drive.md, `agent-keys`), and nothing else. What an agent can reach is decided here, in
 // the browser, when each command runs (decision 7): a tab of the agent workspace **and** of its
 // container, in a normal window (private windows have no workspaces and are never enumerated).
 // Every command but hello and ping asks through AgentGate first (decision 12), and after the
@@ -30,6 +30,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
@@ -198,13 +199,17 @@ function agentPrincipal(/** @type {number} */ userContextId) {
  * Ask, and wait: resolves when allowed, throws `denied` otherwise. While the question waits,
  * `agent-cancel` with the request's id `rid` can withdraw it (decision 17: MCP's
  * notifications/cancelled); the connection's `state.cancels` keeps the way to, until answered.
+ * With `until`, the question is withdrawn then (a step of a call that must end by then).
  * @param {ConnId} conn @param {string} command @param {object} what
- * @param {AgentConn} state @param {number | undefined} rid
+ * @param {AgentConn} state @param {number | undefined} rid @param {number} [until]
  */
-async function ask(conn, command, what, state, rid) {
+async function ask(conn, command, what, state, rid, until) {
   const tool = /** @type {Record<string, string>} */ (AGENT_TOOLS)[command];
+  /** @type {any} */
+  let timer = null;
   const onCancel = (/** @type {() => void} */ cancel) => {
     if (rid !== undefined) (state.cancels ??= new Map()).set(rid, cancel);
+    if (until !== undefined) timer = lazy.setTimeout(cancel, Math.max(0, until - Date.now()));
   };
   try {
     const outcome = await AgentGate.request(conn, /** @type {string} */ (tool), what, {
@@ -214,6 +219,7 @@ async function ask(conn, command, what, state, rid) {
     return outcome;
   } finally {
     if (rid !== undefined) state.cancels?.delete(rid);
+    if (timer !== null) lazy.clearTimeout(timer);
   }
 }
 
@@ -491,7 +497,7 @@ const COMMANDS = {
       throw refuse("busy", new AgentError("denied", message, "busy"));
     }
     if (VimmaHost.inUse(asked.tab.linkedBrowser)) throw refuse("in-use");
-    await ask(conn, "agent-keys", what, state, rid);
+    const outcome = await ask(conn, "agent-keys", what, state, rid);
     let found;
     try {
       found = stillAsAsked(agent, id, what.url);
@@ -513,6 +519,40 @@ const COMMANDS = {
       return true;
     };
     const result = await AgentDrive.run(tab, parsed.steps, {
+      conn,
+      // D18: a follow to another site is a vimma_open of its URL, asked unless a vimma_open
+      // grant is in force; the tab and the page it replaces are shown as for any open.
+      askOpen: async (url, until) => {
+        const uri = agentUri(url);
+        const now = describeTab(tab);
+        const open = { url: uri.spec, host: uri.host, tab: now.tab, title: now.title };
+        try {
+          await ask(conn, "agent-open", { ...open, current: now.url }, state, rid, until);
+          return null;
+        } catch (e) {
+          return /** @type {AgentError} */ (e).reason ?? "user";
+        }
+      },
+      // D14, M23: a follow goes into `:mcp log` with the URL it loaded, and under a grant its
+      // notice names the host.
+      followed: (url, keys) => {
+        const uri = agentUri(url);
+        AgentGate.note(
+          conn,
+          "vimma_keys",
+          { title: what.title, keys: `${keys} → ${uri.spec}` },
+          "followed",
+        );
+        if (outcome.grant) {
+          AgentGate.announce(
+            conn,
+            "vimma_keys",
+            { ...what, followed: uri.host },
+            outcome.grant.until,
+          );
+        }
+      },
+      canLoad: () => opens.can(conn, Date.now()),
       stillAgent: () => {
         const now = WorkspaceStore.agent;
         return (
@@ -556,6 +596,7 @@ const COMMANDS = {
 export function forgetAgentConnection(conn) {
   opens.forget(conn);
   keyCalls.forget(conn);
+  AgentDrive.forget(conn);
 }
 
 /**

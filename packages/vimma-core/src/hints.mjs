@@ -207,6 +207,8 @@ export const HINT_REPLY_MAX_TARGETS = 5000;
 export const HINT_REPLY_MAX_FRAMES = 64;
 /** Longest href a link target may carry (for `gF`). */
 export const HINT_REPLY_MAX_HREF = 8192;
+/** Longest link text a target may carry (an agent's `f`, docs/specs/mcp-drive.md D12). */
+export const HINT_REPLY_MAX_TEXT = 512;
 /** Coordinates beyond this are not on any screen. */
 const MAX_COORD = 1e6;
 /** @type {ReadonlySet<string>} */
@@ -217,8 +219,9 @@ const BLOCK_KIND_SET = new Set(BLOCK_KINDS);
 /** @typedef {"link" | "input" | "click" | "block"} TargetKind */
 /**
  * `rect` is where the label goes (for a text block, its first visible line); a block also
- * carries its kind and its whole border box, for the outline (docs/specs/element-focus.md).
- * @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string, blockKind?: BlockKind, box?: Rect }} ReplyTarget
+ * carries its kind and its whole border box, for the outline (docs/specs/element-focus.md). An
+ * agent's collection (docs/specs/mcp-drive.md D12) is of links only, each with its text.
+ * @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string, text?: string, blockKind?: BlockKind, box?: Rect }} ReplyTarget
  */
 /** @typedef {{ id: number, rect: Rect }} ReplyFrame */
 /** @typedef {{ targets: ReplyTarget[], frames: ReplyFrame[], ms: number }} HintReply */
@@ -246,12 +249,14 @@ function parseRect(value) {
  * with only the known fields, each of its exact type and within the caps, or null if anything
  * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs). A
  * collection gets only the kind of target it asked for: text blocks for element focus, never
- * a block for `f` or `gF`, so a block is never followed and a link never outlined.
+ * a block for `f` or `gF`, so a block is never followed and a link never outlined; an agent's
+ * collection (`texts`) only links, with their text.
  * @param {unknown} value
- * @param {{ blocks?: boolean }} [options]  the collection asked for text blocks
+ * @param {{ blocks?: boolean, texts?: boolean }} [options]  the collection asked for text
+ *   blocks, or for links with their text (an agent's `f`)
  * @returns {HintReply | null}
  */
-export function parseHintReply(value, { blocks = false } = {}) {
+export function parseHintReply(value, { blocks = false, texts = false } = {}) {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const { targets, frames, ms } = /** @type {Record<string, unknown>} */ (value);
@@ -263,12 +268,14 @@ export function parseHintReply(value, { blocks = false } = {}) {
     const ids = new Set();
     for (const t of [...targets]) {
       if (typeof t !== "object" || t === null) return null;
-      const { id, rect, kind, href, blockKind, box } = /** @type {Record<string, unknown>} */ (t);
+      const { id, rect, kind, href, text, blockKind, box } =
+        /** @type {Record<string, unknown>} */ (t);
       if (!isIndex(id) || ids.has(id)) return null;
       ids.add(id);
       const r = parseRect(rect);
       if (!r || typeof kind !== "string" || !TARGET_KINDS.has(kind)) return null;
       if ((kind === "block") !== blocks) return null;
+      if (texts && kind !== "link") return null;
       /** @type {ReplyTarget} */
       const out = {
         id: /** @type {number} */ (id),
@@ -278,6 +285,10 @@ export function parseHintReply(value, { blocks = false } = {}) {
       if (href !== undefined) {
         if (typeof href !== "string" || href.length > HINT_REPLY_MAX_HREF) return null;
         out.href = href;
+      }
+      if (texts && text !== undefined) {
+        if (typeof text !== "string" || text.length > HINT_REPLY_MAX_TEXT) return null;
+        out.text = text;
       }
       if (kind === "block") {
         // A block is clipped by its frame, not by the viewport: its box may start above it.

@@ -41,13 +41,14 @@ What works today, each with the section that explains it:
   for a security release), a short message announces each new version once, a security release
   asks once per session whether to show the update command, and `:update` shows the exact
   commands for how you installed it. The AppImage replaces its own file with a newer release
-  checked against the signed update file, and runs it from the next start.
+  checked against the signed update file, and runs it from the next start; once a security
+  release is in place it asks once per session to restart, and `:restart` restarts into it.
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
   uploads; Safe Browsing on.
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
   local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
-  open, scroll and search pages, and every request asks you first.
+  open, scroll and search pages and follow their links, and every request asks you first.
 
 ## Every key is yours
 
@@ -1303,13 +1304,13 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
 and output, connects to Vimma as an agent (never with full control), and offers five tools:
 
-| Tool              | What the agent can do                                                                     |
-| ----------------- | ----------------------------------------------------------------------------------------- |
-| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.               |
-| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.            |
-| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs.       |
-| `vimma_close_tab` | Close one of its tabs.                                                                    |
-| `vimma_keys`      | Scroll, find text, go back and forward or up a level in one of its tabs, with Vimma keys. |
+| Tool              | What the agent can do                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------- |
+| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.                              |
+| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.                           |
+| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs.                      |
+| `vimma_close_tab` | Close one of its tabs.                                                                                   |
+| `vimma_keys`      | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1432,34 +1433,46 @@ with the rest of your computer.
 
 #### Moving around a page
 
-`vimma_keys` lets an agent scroll an agent tab, search it for a word, go back and forward in it,
-or go up a level of its address, without you switching to it. The question shows the keys as
+`vimma_keys` lets an agent scroll an agent tab, search it for a word, follow one of its links, go
+back and forward in it, or go up a level of its address, without you switching to it. The question shows the keys as
 they will run, `◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys:
 3j /"pricing"⏎`, and on `y` they run in that tab, in the background: your window keeps its
 workspace, tab, focus, find bar and hint mode.
 
 - **The keys it may press** are Vimma's own defaults, whatever your `config.toml` binds: `j`
   `k` `h` `l`, `d` `u` (`ctrl+d` `ctrl+u`, `ctrl+e` `ctrl+y`), `gg` `G`, `H` `L` (`ctrl+o`
-  `ctrl+i`), `gu` `gU`, `/word⏎` `?word⏎` and `n` `N`, with counts up to 99, at most 32 a
-  call. A match becomes the page's selection, which a `vimma_read_page` then returns.
+  `ctrl+i`), `gu` `gU`, `/word⏎` `?word⏎` and `n` `N`, with counts up to 99, and `f`, at most
+  32 a call. A match becomes the page's selection, which a `vimma_read_page` then returns.
+- **Links by label.** `f` gives the agent the links on screen, up to 200, each with a hint label,
+  its text and its address, marked as untrusted web content; a second call with `fsd` follows
+  link `sd`. Labels use Vimma's default hint characters, whatever your `hint_chars`, and last
+  two minutes on the page that listed them: after the page changes the agent has to send `f`
+  again. The agent's `f` has hints of its own, so your hint mode in the same window is never
+  cancelled by it, and only links are listed, never buttons or fields.
+- **A follow loads the link's address, it does not click.** The page's own click handlers do
+  not run, so a link cannot post a form or start a purchase through `vimma_keys`. Only http and
+  https links are followed, only on web pages, and without a referrer. A link to another site (another registrable domain:
+  `docs.example.com` is the same site as `example.com`, `example.org` is not) asks you again, as
+  a `vimma_open` of its whole address, unless you granted that agent `vimma_open`; a no stops
+  the call there.
 - **The keys it never presses:** `ctrl+b` and every binding after it, `:`, tab, workspace,
   window and split keys, `i` and every way into a text field, copy mode, `yy` and `p` (your
   clipboard), `gF` and `gf` (they open tabs), element focus (`F`), `r` (a reload can send a form
   again), and every key of the Browser, Developer tools, Bookmarks and Agents groups,
   `ctrl+b shift+a` included, so an agent never answers its own question. Such a call is refused before anything asks you.
 - **Nothing reaches the page as a key press.** Each key runs as a Vimma action on the tab, so the
-  page sees no keydown, and nothing is ever typed, clicked or submitted. Following links by hint
-  label comes later.
+  page sees no keydown, and nothing is ever typed, clicked or submitted.
 - **Not while you type there.** A request for the tab in front of you while you are in insert,
   copy or hint mode in it, or halfway through a key sequence, is denied (`in-use`) without a
   question. Watching is fine: in normal mode you see the agent scroll.
 - **A grant covers it:** `15a` lets that agent run keys for 15 minutes, and each call then shows
-  `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`. A `vimma_keys` grant is not
-  a read or open grant. At most 30 calls a minute; `gu`, `gU`, `H` and `L` count towards the
-  10 opens a minute. A find does not run in the tab you are in, since the browser's find would
+  `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`; a follow adds
+  `claude-code followed a link to docs.example.com in "Pricing · Example"`. A `vimma_keys` grant
+  is not a read or open grant. At most 30 calls a minute; a follow, `gu`, `gU`, `H` and `L`
+  count towards the 10 opens a minute. A find does not run in the tab you are in, since the browser's find would
   put your focus in a text field it matched.
-- **`:mcp log`** lists what agents did, asked or under a grant, so you can check afterwards what
-  a grant let through. It is kept in memory only and cleared by `:mcp off`.
+- **`:mcp log`** lists what agents did, asked or under a grant, each follow with the address it
+  loaded, so you can check afterwards what a grant let through. It is kept in memory only and cleared by `:mcp off`.
 
 #### Keeping agents out of your Vimma profile
 
@@ -2218,6 +2231,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
 | `:bug`                                | Opens `about:vimma` and copies its redacted report to the clipboard, for a bug report.                                                         |
 | `:update`                             | Checks for a newer Vimma now; when there is one, opens `about:vimma`'s Updates section with the exact commands ([Updates](#updates)).          |
+| `:restart`                            | Restarts Vimma; tabs come back, and an installed update applies. Asks first while private tabs are open ([Updates](#updates)).                 |
 
 A command whose action has no implementation says so for a moment, as its keys do.
 
@@ -2498,12 +2512,29 @@ Except for the AppImage, it installs nothing; it tells you.
   AppImage from the project's GitHub release into a hidden file next to yours, checks its size
   and SHA-512 against the signed file, makes it executable and renames it over yours. The Vimma
   you are running carries on; the next start runs the new version. The status bar then shows
-  `⇡ 0.3.1 on restart` (`⇡ 0.3.1 security: restart` in the error colour for a security
+  `⇡ 0.3.1 on restart` (`⇡ 0.3.1 security: :restart` in the error colour for a security
   release), and a message says `Vimma 0.3.1 is installed · restart Vimma to use it`. Vimma
   never restarts by itself. Your file keeps its name, so `vimma-0.1.0-x86_64.AppImage` can hold
   0.3.1; `about:vimma` shows the version that runs. If the AppImage's directory is not writable,
   the download does not match, or it fails, your file stays as it was, `about:vimma` says why,
   `:update` shows the manual steps, and the next check tries again.
+- **A security update that is installed asks to restart**, once per session:
+  `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, with
+  `Private tabs will close.` before `(y/N)` while the private workspace has tabs, and
+  `Tabs will not come back.` in place of `Tabs come back.` when they will not (below). `y` restarts
+  Vimma at once, as `:restart` does; `n`, Esc or any other key dismisses it, and a session that
+  runs on is asked again 24 hours later. It waits and arms as the question above does, and is not
+  asked in a private window. Today this is the AppImage, once it has replaced its file.
+- **`:restart`** restarts Vimma. Your workspaces, tabs and panes come back, as after any restart;
+  the private workspace's tabs do not, so with private tabs open it asks first:
+  `Restart Vimma? 2 private tabs will close. (y/N)`. A page that asks before it is left (unsaved
+  input) can stop the restart; Vimma then says `restart cancelled`. The AppImage starts its own
+  file again, so a replaced AppImage restarts into the new version: Vimma quits, and a small
+  `/bin/sh` script waits for it to exit and starts the AppImage on the same profile, without the
+  command-line arguments the old one had. Because that restart is a quit, an AppImage set to
+  clear history when it closes (Settings, Privacy & Security) brings no tab back, and
+  `:restart` asks `Restart Vimma? Tabs will not come back. (y/N)` first. `:restart` has no
+  default key; bind the `restart` action in [config.toml](#configtoml) if you want one.
 - **`:update`** checks at once. When a newer version exists it opens `about:vimma` at its
   Updates section, with the exact commands for how you installed Vimma; otherwise it says
   `Vimma 0.1.0 is up to date`, or why the check failed.

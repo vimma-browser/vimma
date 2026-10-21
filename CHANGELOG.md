@@ -6,6 +6,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
+- `:restart` restarts Vimma with its tabs, asking first while private tabs are open; an AppImage restarts into the file it replaced. Once a security update is installed, Vimma asks once per session, and again a day later, `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, and its status-bar segment reads `⇡ 0.3.1 security: :restart`. The help snapshot gains the unbound `restart` row.
 - Element focus: a text block chosen with `:focus_element` (or a key bound to `focus_element`) is in the new `ELEMENT` mode, where `y` copies it, `v` / `V` select it in copy mode, `+` / `-` and `j` / `k` move the focus and `F` picks another block. The help and `defaults.toml` snapshots gain the `[modal.element]` keys and the full `focus_element` description.
 - Copy mode: `ip` selects the text block around the caret, the one element focus would select, and `ap` grows the selection to the block around it on each press. The help and `defaults.toml` snapshots gain the two keys.
 - e2e baselines `element-hints.png`, `element-focus.png` and `element-visual.png` (scenario `issue-213-element-focus`): `F`'s labels on an article's text blocks, a focused paragraph with its outline and `ELEMENT` badge, and that paragraph selected in copy mode.

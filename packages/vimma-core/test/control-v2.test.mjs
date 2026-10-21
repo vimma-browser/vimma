@@ -286,7 +286,38 @@ describe("agent commands: results and errors", () => {
       "result.find.found must be a boolean",
       "result.find.wrapped must be a boolean",
     ]);
-    expect(errorsOf(ok({ ...keys, links: "x" }), cmd)).toEqual(['unknown field "result.links"']);
+    expect(errorsOf(ok({ ...keys, extra: "x" }), cmd)).toEqual(['unknown field "result.extra"']);
+  });
+
+  // mcp-drive D12, D16 (security.md M21): `f`'s link list is one string inside the
+  // untrusted-content delimiters, with how many links were left out.
+  test("agent-keys: a link list inside the untrusted delimiters, and how many were dropped", () => {
+    const keys = {
+      url: "https://a/",
+      title: "A",
+      loading: false,
+      scroll: { y: 0 },
+      steps: [{ keys: "f", action: "hint.follow", ok: true }],
+    };
+    const cmd = { command: "agent-keys" };
+    const links = '<untrusted-web-content>\na "A" https://a/b\n</untrusted-web-content>';
+    expect(errorsOf(ok({ ...keys, links, dropped: 3 }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...keys, links: "a https://a/b", dropped: 0 }), cmd)).toEqual([
+      "result.links must be inside the untrusted-content delimiters",
+    ]);
+    const twice = `${links}\n${links}`;
+    expect(errorsOf(ok({ ...keys, links: twice, dropped: 0 }), cmd)).toEqual([
+      "result.links must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...keys, links: 3, dropped: 0 }), cmd)).toEqual([
+      "result.links must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...keys, links, dropped: -1 }), cmd)).toEqual([
+      "result.dropped must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...keys, links }), cmd)).toEqual([
+      "result.links and result.dropped come together",
+    ]);
   });
 
   test("agent-cancel says whether a question was withdrawn", () => {
