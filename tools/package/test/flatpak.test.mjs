@@ -110,7 +110,11 @@ describe("Flatpak manifest", () => {
       "--own-name=org.mpris.MediaPlayer2.firefox.*",
     ]);
     for (const a of args) {
-      expect(a).not.toMatch(/^--filesystem=(home|host|~\/?$|~\/\.config)|--allow=devel|:create/);
+      expect(a).not.toMatch(
+        /^--filesystem=(home|host|~\/?$|~\/\.config|xdg-data)|--allow=devel|:create/,
+      );
+      if (a.startsWith("--filesystem=xdg-config"))
+        expect(a).toBe("--filesystem=xdg-config/gtk-3.0:ro");
     }
   });
 
@@ -336,7 +340,9 @@ describe("flatpak.yml", () => {
     const run = job.steps.map((/** @type {any} */ s) => s.run ?? "").join("\n");
     expect(run).toContain("https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG");
     expect(run).toMatch(/grep -Eqx 'v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+'/);
-    expect(run).toContain('line=$(grep -E "^[0-9a-f]{64}  $file\\$" SHA256SUMS || true)');
+    expect(run).toContain(
+      "line=$(awk -v f=\"$file\" '$2 == f && $1 ~ /^[0-9a-f]{64}$/' SHA256SUMS)",
+    );
     expect(run).toContain('case "$expected" in "Vimma ${TAG#v} · Firefox "*)');
     expect(run).toContain('tools/package/flatpak-smoke.sh --release "$TAG" "$sha" "$expected"');
   });

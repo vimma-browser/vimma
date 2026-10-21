@@ -111,7 +111,7 @@ jobs:
       - name: Build, install and run the release's Flatpak
         run: |
           file="vimma-${TAG#v}-linux-x86_64.tar.xz"
-          line=$(grep -E "^[0-9a-f]{64}  $file\$" SHA256SUMS || true)
+          line=$(awk -v f="$file" '$2 == f && $1 ~ /^[0-9a-f]{64}$/' SHA256SUMS)
           [ -n "$line" ] || { echo "::error::SHA256SUMS does not list $file"; exit 1; }
           sha=${line%% *}
           git fetch --no-tags --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"

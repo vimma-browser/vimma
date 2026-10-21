@@ -1041,14 +1041,15 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
   [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
 
-## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`)
+## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`)
 
 Vimma's binaries are built from Mozilla's Firefox source, this repository, and the npm packages
 that drive the build, chiefly Surfer. These rules keep what reaches a build pinned and reviewed.
 Spec: [build-supply-chain](specs/build-supply-chain.md), [ADR-001](adr/001-engine-firefox-surfer.md).
 
 **Reach:** Mozilla's archive and Taskcluster, the npm registry, this repository, and GitHub's
-hosted runners. Dependabot pull requests run and auto-merge today, whether or not a build runs.
+hosted runners; for the Flatpak build only (B12), Docker Hub's Fedora image, Fedora's package
+mirrors and Flathub (`dl.flathub.org`). Dependabot pull requests run and auto-merge today, whether or not a build runs.
 
 The macOS build, `macos.yml` ([ADR-018](adr/018-macos-cross-build.md)), also runs on pull
 requests that touch it. It holds no secret and only a read-only token, builds on hosted runners
@@ -1354,7 +1355,10 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   the `fedora:44` image pinned by digest, on Flathub runtimes pinned by commit. A release event
   runs the tag's copy of the workflow, which has the same read-only token. The app's sandbox
   grants Firefox's Flatpak permissions and `~/.local/state/omarchy` read-only, never the home
-  directory or `~/.config`, so the Omarchy hook (section 7) is never installed from it. **⚠
+  directory and nothing under `~/.config` but `gtk-3.0` read-only, so the Omarchy hook
+  (section 7) is never installed from it. The container is privileged, since Flatpak's sandbox
+  needs it inside docker, and runs the release build, which reaches the network; that is safe
+  only on a GitHub-hosted runner, which every job is held to (B5). **⚠
   limit:** Fedora's packages (`flatpak`, `flatpak-builder`) are installed at their current
   versions from Fedora's signed repositories; the digest fixes only the base image.
   [`builds a published release from its download URL, checked against SHA256SUMS`](../tools/package/test/flatpak.test.mjs),
