@@ -199,6 +199,37 @@ function whiteSpace(node, win) {
 }
 
 /**
+ * Whether any text between two points shows on the page: white space the page collapses (the
+ * line breaks and indentation of a page's source around a paragraph's text) does not.
+ * @param {{ node: Node, offset: number }} a
+ * @param {{ node: Node, offset: number }} b
+ * @param {Window} win
+ */
+export function drawnBetween(a, b, win) {
+  const doc = a.node.ownerDocument;
+  if (!doc) return false;
+  const range = doc.createRange();
+  range.setStart(a.node, a.offset);
+  if (range.comparePoint(b.node, b.offset) < 0) range.setStart(b.node, b.offset);
+  else range.setEnd(b.node, b.offset);
+  if (range.collapsed) return false;
+  const root = range.commonAncestorContainer;
+  const walker = doc.createTreeWalker(root, SHOW_TEXT);
+  for (let n = root.nodeType === 3 ? root : walker.nextNode(); n; n = walker.nextNode()) {
+    const node = /** @type {Text} */ (n);
+    if (!range.intersectsNode(node)) continue;
+    const start = node === range.startContainer ? range.startOffset : 0;
+    const end = node === range.endContainer ? range.endOffset : node.data.length;
+    const part = node.data.slice(start, end);
+    const ws = whiteSpace(node, win);
+    if (ws === "preserve" ? part.length > 0 : (ws === "breaks" ? /[^ \t]/ : VISIBLE).test(part)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Whether a text node is drawn and the page lets it be selected: a range that starts or ends
  * in a `user-select: none` part (a line-number gutter) would carry that part into the copy, as
  * the encoder serializes a boundary node whole.

@@ -10,7 +10,7 @@
 
 import { findChar, firstNonBlank, textMotion, wordObject } from "../core/motions.mjs";
 import { textAround } from "./text-model.mjs";
-import { blockRangeAt } from "./block.mjs";
+import { blockRangeAt, drawnBetween } from "./block.mjs";
 
 /** @import { FindKind } from "../core/motions.mjs" */
 /** @import { Point } from "./text-model.mjs" */
@@ -251,7 +251,7 @@ export class Caret {
         this.#textMove(win, sel, 1, (text, at) => firstNonBlank(text, at), false);
         break;
       default:
-        if (Object.hasOwn(MOVES, op)) this.#layoutMove(sel, selCon, op, n);
+        if (Object.hasOwn(MOVES, op)) this.#layoutMove(win, sel, selCon, op, n);
         else if (Object.hasOwn(TEXT_MOVES, op)) {
           const after = TEXT_MOVES[op] === true;
           this.#textMove(win, sel, n, (text, at) => textMotion(text, at, op, n), after);
@@ -279,20 +279,22 @@ export class Caret {
 
   /**
    * A layout motion `n` times. `{` and `}` from a paragraph's edge first step over it, so they
-   * reach the next paragraph instead of staying put.
+   * reach the next paragraph instead of staying put. Firefox's paragraph edge is the edge of the
+   * paragraph's text node, so from the last character drawn it moves only over the source's
+   * white space after it: a move that passes no drawn text also counts as staying put.
+   * @param {Window} win
    * @param {Selection} sel
    * @param {nsISelectionController} selCon
    * @param {string} op
    * @param {number} n
    */
-  #layoutMove(sel, selCon, op, n) {
+  #layoutMove(win, sel, selCon, op, n) {
     const [method, forward] = /** @type {(typeof MOVES)[string]} */ (MOVES[op]);
     for (let i = 0; i < n; i++) {
       const before = focusOf(sel);
       try {
         selCon[method](forward, this.selecting);
-        const same = sel.focusNode === before.node && sel.focusOffset === before.offset;
-        if (same && method === "paragraphMove") {
+        if (method === "paragraphMove" && !drawnBetween(before, focusOf(sel), win)) {
           selCon.characterMove(forward, this.selecting);
           selCon.paragraphMove(forward, this.selecting);
         }
