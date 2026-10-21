@@ -131,5 +131,9 @@ the [user guide](guide.md); planned work is on the
 - The AppImage updates itself by replacing its own file, which keeps its old name
   (`vimma-0.1.0-x86_64.AppImage` can hold 0.3.1); about:vimma shows the real version. A
   directory Vimma cannot write, or an AppImage run from a copy that `--appimage-extract` made,
-  gets the manual steps instead. The new version runs from the next start; nothing restarts
-  Vimma for it.
+  gets the manual steps instead. The new version runs from the next start, or after `:restart`;
+  Vimma never restarts by itself.
+- An AppImage's `:restart` is a quit and a new start of the AppImage: it drops the old process's
+  command-line arguments, brings no tab back when history is cleared on close (it asks first),
+  and starts nothing when Vimma runs as a systemd service unit that stops its leftover
+  processes on exit (a scope, as app launchers use, is fine).

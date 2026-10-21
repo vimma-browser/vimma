@@ -287,16 +287,23 @@ text that pages, add-ons and bookmarks choose.
   [`toggles_in_the_side_panels_slot_one_panel_at_a_time`](../tests/browser/browser_vimma_bookmarks.js),
   [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.mjs)
 - C2. Chrome code **never** builds code from text (`eval`, `Function`) and **never** starts a
-  process, with one exception: the system's ClamAV scanners, `clamscan` (only
+  process, with two exceptions. First, the system's ClamAV scanners, `clamscan` (only
   `/usr/bin/clamscan` or `/usr/local/bin/clamscan`) and `clamdscan` (only `/usr/bin/clamdscan`
   or `/usr/local/bin/clamdscan`), never from a `PATH` search, and only a regular file another
   user (root) owns that the user cannot write, in a folder the user cannot write. They run in
   one call with arguments from three fixed builders (the scan, clamd's scan with `--fdpass`, and
   `--version`), the path after `--` and no shell, on an agent download in the quarantine folder
-  (M13; [vimma-mcp](specs/vimma-mcp.md) decisions 31 g, 43-45). Chrome code **never** calls
+  (M13; [vimma-mcp](specs/vimma-mcp.md) decisions 31 g, 43-45). Second, an AppImage's restart
+  (UP11): `/bin/sh` (an absolute path) with one fixed script that waits for Vimma's own process
+  to exit and then runs `$APPIMAGE` with no arguments, the process id and the path passed as
+  positional parameters the script **never** reads as shell text, started from one call site
+  only once a quit can no longer be cancelled. Chrome code **never** calls
   native code, with one exception: `statx(2)` from libc through js-ctypes, for the owner of
   clamd's socket (M13). [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
-  [`never starts a process, but ClamAV on an agent download`](../tools/security/test/chrome-source.test.mjs),
+  [`never starts a process, but ClamAV on an agent download and an AppImage's restart`](../tools/security/test/chrome-source.test.mjs),
+  [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
+  [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../packages/vimma-core/test/restart.test.mjs),
+  [`starts the AppImage only once the old process has exited, with no arguments`](../packages/vimma-core/test/restart.test.mjs),
   [`never calls native code, but statx on clamd's socket`](../tools/security/test/chrome-source.test.mjs)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
@@ -1392,11 +1399,12 @@ Spec: [m6a-updater](specs/m6a-updater.md) (delivery 1) and [update-notices](spec
 Vimma fetches one signed manifest from `updates.vimma.dev` every 12 hours, at startup when a check
 is due, and on `:update`, and tells the status bar, about:vimma and, once per version, a short
 message whether a newer release exists; a security release also asks once per session whether
-to show the update command. Only the AppImage installs anything: it replaces its own file with
+to show the update command, and once it is installed, whether to restart (UP11). Only the AppImage installs anything: it replaces its own file with
 the offered AppImage (UP10); every other install downloads and installs nothing. Who can reach it: whoever
 controls the update host or the network path (TLS stops the path), _you_ through `about:config`
-and `config.toml`, and the control socket's full role (`app.update_check`, as it can run
-`app.quit`). The agent role reaches no action, so a local AI agent cannot trigger a check.
+and `config.toml`, and the control socket's full role (`app.update_check` and `app.restart`, as
+it can run `app.quit`). The agent role reaches no action, so a local AI agent can neither trigger
+a check nor restart Vimma.
 _Pages_ and _extensions_ cannot reach it.
 
 - UP1. A manifest is accepted **only** when its signature (RSASSA-PKCS1-v1_5, SHA-384, over
@@ -1602,6 +1610,44 @@ _Pages_ and _extensions_ cannot reach it.
   [`a Vimma that does not run from $APPDIR is not the AppImage $APPIMAGE names`](../packages/vimma-core/test/appimage-update.test.mjs),
   [`a download from %s is refused outside automation`](../packages/vimma-core/test/appimage-update.test.mjs),
   [`another size or hash: refused, with the reason`](../packages/vimma-core/test/appimage-update.test.mjs)
+
+- UP11. Vimma **never** restarts by itself: only `:restart` (action `app.restart`), `y` in the
+  restart question, or Firefox's own restart commands do. The restart question
+  (`Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`) is asked **only** for a
+  security release that is already in place (an AppImage that replaced its file), once per
+  session and again 24 hours after an answer, and arms, waits and refuses keys exactly as the
+  question of UP9. It **never** hides a loss: while the private workspace has tabs it says they
+  will close, and when session restore will bring no tab back it says `Tabs will not come back`;
+  a loss that appears while the line is open (a private tab opened since) makes `y` ask
+  `:restart`'s `y/N` before anything restarts. `:restart` asks that `y/N` first whenever tabs
+  would be lost. A restart asks Firefox's `quit-application-requested` observers with
+  `restart`, and a page's beforeunload can still keep its window, which cancels it. Every install
+  but the AppImage restarts through Firefox (`eAttemptQuit | eRestart`). The AppImage restarts
+  only when its install type is the AppImage (UP10's marker rule) and `$APPIMAGE` is an absolute
+  path to an executable file: it quits, and **only** in `quit-application`, once no window can
+  refuse, it starts the relaunch script of C2 on its own process id, with the profile and its
+  local directory in `XRE_PROFILE_PATH` and `XRE_PROFILE_LOCAL_PATH` as Firefox's restart passes
+  them; a quit that a window refused starts nothing. The script gives up after 120 seconds and
+  then starts nothing, so a process id reused by another program never keeps it waiting for
+  long. **⚠ limit:** an AppImage's restart is a quit and a new start: with history cleared on
+  close (`privacy.sanitize.sanitizeOnShutdown`), the session is purged and no tab comes back,
+  where Firefox's restart keeps it (the question and `:restart` say so first); the new process
+  gets none of the old one's command-line arguments; and when Vimma runs as a systemd service
+  unit, not a scope, systemd may stop the script with the unit, so nothing starts.
+  [`an_appimage_quits_and_starts_its_file_again`](../tests/browser/browser_vimma_restart.js),
+  [`a_refused_quit_starts_nothing_and_leaves_the_session_as_it_was`](../tests/browser/browser_vimma_restart.js),
+  [`a_cancelled_request_quits_nothing`](../tests/browser/browser_vimma_restart.js),
+  [`a_tarball_restarts_through_firefox`](../tests/browser/browser_vimma_restart.js),
+  [`an_appimage_whose_file_cannot_run_restarts_through_firefox`](../tests/browser/browser_vimma_restart.js),
+  [`private_tabs_ask_before_they_close`](../tests/browser/browser_vimma_restart.js),
+  [`a_replaced_security_update_asks_to_restart`](../tests/browser/browser_vimma_update_appimage.js),
+  [`an_ordinary_replaced_update_asks_nothing`](../tests/browser/browser_vimma_update_appimage.js),
+  [`answered in this session: asked again 24 hours later, not sooner`](../packages/vimma-core/test/update-notices.test.mjs),
+  [`the_restart_question_says_what_a_restart_loses`](../tests/browser/browser_vimma_update_appimage.js),
+  [`history_cleared_on_close_asks_before_an_appimage_restart`](../tests/browser/browser_vimma_restart.js),
+  [`history cleared on close: an AppImage's restart is a quit, so the session is purged`](../packages/vimma-core/test/restart.test.mjs),
+  [`an AppImage without a usable $APPIMAGE falls back to Firefox's restart`](../packages/vimma-core/test/restart.test.mjs),
+  [`gives up after RELAUNCH_WAIT_S when the old process never exits`](../packages/vimma-core/test/restart.test.mjs)
 
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing job on `main`, in the `update-signing` environment, can
