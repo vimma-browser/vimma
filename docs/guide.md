@@ -386,8 +386,9 @@ message; and the `ctrl+b ?` overlay dims it.
 
 Link hints let you click without the mouse. `f` puts a short label on everything you could click
 on screen: links, buttons, form fields,
-and elements the page made clickable (ARIA buttons and tabs, elements with a click handler),
-also inside web components and in frames from other sites. Things off screen, hidden or covered
+and elements the page made clickable (ARIA buttons, tabs and menu entries, elements with a click
+handler), also inside web components and in frames from other sites. Each entry of an open menu
+gets its own label, also when the page's menu code puts a click handler on the list around them. Things off screen, hidden or covered
 by something else (a fixed header, a cookie banner) get no label. Type a label to pick its
 target: a link is followed, a button is pressed, a text field gets focus and the tab is in
 insert mode. Labels use the home row (`a s d f g h j k l`), in reading order: targets near the

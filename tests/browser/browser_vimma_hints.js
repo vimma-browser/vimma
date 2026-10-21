@@ -21,6 +21,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const PAGE = DIR + "file_vimma_hints.html";
 const MANY = DIR + "file_vimma_hints_many.html";
+const MENU = DIR + "file_vimma_hints_menu.html";
 const { HintOverlay } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/hint-overlay.mjs",
 );
@@ -528,4 +529,67 @@ add_task(async function collection_of_2000_links_stays_within_budget() {
       );
     });
   }
+});
+
+/** The entries of the open menu in file_vimma_hints_menu.html: every one gets a label. */
+const MENU_ENTRIES = ["settings", "language", "help", "upgrade", "learn", "logout"];
+/**
+ * Its elements that must not get one: the menu's header, a hidden entry and the page under the
+ * modal menu. The menu and its item wrapper hold the entries: the label count rules them out.
+ */
+const MENU_NONE = ["email", "hidden", "chats", "projects", "recent", "account"];
+
+/**
+ * Opens the menu fixture and waits for its open animation to end.
+ * @param {(browser: XULBrowserElement) => Promise<void>} fn
+ */
+function withMenu(fn) {
+  return withPage(MENU, async (browser) => {
+    await SpecialPowers.spawn(browser, [], async () => {
+      const menu = content.document.getElementById("menu");
+      await Promise.all(menu.getAnimations().map((a) => a.finished));
+    });
+    await fn(browser);
+  });
+}
+
+/**
+ * Each element's centre in the page's CSS pixels, by id.
+ * @param {XULBrowserElement} browser
+ * @param {string[]} ids
+ * @returns {Promise<Record<string, { x: number, y: number }>>}
+ */
+function pageCentres(browser, ids) {
+  return SpecialPowers.spawn(browser, [ids], (list) => {
+    /** @type {Record<string, { x: number, y: number }>} */
+    const out = {};
+    for (const id of list) {
+      const r = content.document.getElementById(id).getBoundingClientRect();
+      out[id] = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }
+    return out;
+  });
+}
+
+add_task(async function every_entry_of_an_open_dropdown_menu_gets_a_label() {
+  await withMenu(async (browser) => {
+    const hints = await startHints();
+    const at = await pageCentres(browser, [...MENU_ENTRIES, ...MENU_NONE]);
+    for (const id of MENU_ENTRIES) Assert.ok(labelAt(hints, at[id]), `${id} has a label`);
+    for (const id of MENU_NONE) Assert.equal(labelAt(hints, at[id]), undefined, `${id} has none`);
+    Assert.equal(hints.hints.length, MENU_ENTRIES.length, "one label per entry and no other");
+  });
+});
+
+add_task(async function a_label_clicks_a_menu_entry_with_only_a_listener() {
+  await withMenu(async (browser) => {
+    const hints = await startHints();
+    const label = labelAt(hints, (await pageCentres(browser, ["logout"])).logout);
+    Assert.ok(label, "logout has a label");
+    type(/** @type {string} */ (label));
+    await TestUtils.waitForCondition(
+      () => SpecialPowers.spawn(browser, [], () => content.wrappedJSObject.clicked === "logout"),
+      "the entry got a click",
+    );
+  });
 });
