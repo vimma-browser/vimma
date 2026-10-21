@@ -47,7 +47,7 @@ What works today, each with the section that explains it:
   uploads; Safe Browsing on.
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
   local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
-  open, scroll and search pages, and every request asks you first.
+  open, scroll and search pages and follow their links, and every request asks you first.
 
 ## Every key is yours
 
@@ -1300,13 +1300,13 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
 and output, connects to Vimma as an agent (never with full control), and offers five tools:
 
-| Tool              | What the agent can do                                                                     |
-| ----------------- | ----------------------------------------------------------------------------------------- |
-| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.               |
-| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.            |
-| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs.       |
-| `vimma_close_tab` | Close one of its tabs.                                                                    |
-| `vimma_keys`      | Scroll, find text, go back and forward or up a level in one of its tabs, with Vimma keys. |
+| Tool              | What the agent can do                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------- |
+| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.                              |
+| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.                           |
+| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs.                      |
+| `vimma_close_tab` | Close one of its tabs.                                                                                   |
+| `vimma_keys`      | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1429,34 +1429,46 @@ with the rest of your computer.
 
 #### Moving around a page
 
-`vimma_keys` lets an agent scroll an agent tab, search it for a word, go back and forward in it,
-or go up a level of its address, without you switching to it. The question shows the keys as
+`vimma_keys` lets an agent scroll an agent tab, search it for a word, follow one of its links, go
+back and forward in it, or go up a level of its address, without you switching to it. The question shows the keys as
 they will run, `◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys:
 3j /"pricing"⏎`, and on `y` they run in that tab, in the background: your window keeps its
 workspace, tab, focus, find bar and hint mode.
 
 - **The keys it may press** are Vimma's own defaults, whatever your `config.toml` binds: `j`
   `k` `h` `l`, `d` `u` (`ctrl+d` `ctrl+u`, `ctrl+e` `ctrl+y`), `gg` `G`, `H` `L` (`ctrl+o`
-  `ctrl+i`), `gu` `gU`, `/word⏎` `?word⏎` and `n` `N`, with counts up to 99, at most 32 a
-  call. A match becomes the page's selection, which a `vimma_read_page` then returns.
+  `ctrl+i`), `gu` `gU`, `/word⏎` `?word⏎` and `n` `N`, with counts up to 99, and `f`, at most
+  32 a call. A match becomes the page's selection, which a `vimma_read_page` then returns.
+- **Links by label.** `f` gives the agent the links on screen, up to 200, each with a hint label,
+  its text and its address, marked as untrusted web content; a second call with `fsd` follows
+  link `sd`. Labels use Vimma's default hint characters, whatever your `hint_chars`, and last
+  two minutes on the page that listed them: after the page changes the agent has to send `f`
+  again. The agent's `f` has hints of its own, so your hint mode in the same window is never
+  cancelled by it, and only links are listed, never buttons or fields.
+- **A follow loads the link's address, it does not click.** The page's own click handlers do
+  not run, so a link cannot post a form or start a purchase through `vimma_keys`. Only http and
+  https links are followed, only on web pages, and without a referrer. A link to another site (another registrable domain:
+  `docs.example.com` is the same site as `example.com`, `example.org` is not) asks you again, as
+  a `vimma_open` of its whole address, unless you granted that agent `vimma_open`; a no stops
+  the call there.
 - **The keys it never presses:** `ctrl+b` and every binding after it, `:`, tab, workspace,
   window and split keys, `i` and every way into a text field, copy mode, `yy` and `p` (your
   clipboard), `F` and `gf` (they open tabs), `r` (a reload can send a form again), and every key
   of the Browser, Developer tools, Bookmarks and Agents groups, `ctrl+b shift+a` included, so an
   agent never answers its own question. Such a call is refused before anything asks you.
 - **Nothing reaches the page as a key press.** Each key runs as a Vimma action on the tab, so the
-  page sees no keydown, and nothing is ever typed, clicked or submitted. Following links by hint
-  label comes later.
+  page sees no keydown, and nothing is ever typed, clicked or submitted.
 - **Not while you type there.** A request for the tab in front of you while you are in insert,
   copy or hint mode in it, or halfway through a key sequence, is denied (`in-use`) without a
   question. Watching is fine: in normal mode you see the agent scroll.
 - **A grant covers it:** `15a` lets that agent run keys for 15 minutes, and each call then shows
-  `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`. A `vimma_keys` grant is not
-  a read or open grant. At most 30 calls a minute; `gu`, `gU`, `H` and `L` count towards the
-  10 opens a minute. A find does not run in the tab you are in, since the browser's find would
+  `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`; a follow adds
+  `claude-code followed a link to docs.example.com in "Pricing · Example"`. A `vimma_keys` grant
+  is not a read or open grant. At most 30 calls a minute; a follow, `gu`, `gU`, `H` and `L`
+  count towards the 10 opens a minute. A find does not run in the tab you are in, since the browser's find would
   put your focus in a text field it matched.
-- **`:mcp log`** lists what agents did, asked or under a grant, so you can check afterwards what
-  a grant let through. It is kept in memory only and cleared by `:mcp off`.
+- **`:mcp log`** lists what agents did, asked or under a grant, each follow with the address it
+  loaded, so you can check afterwards what a grant let through. It is kept in memory only and cleared by `:mcp off`.
 
 #### Keeping agents out of your Vimma profile
 

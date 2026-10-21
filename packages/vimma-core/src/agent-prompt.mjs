@@ -274,11 +274,14 @@ export function ranNotice(q, until, now) {
           ? `closed "${cutTitle(w.title)}"`
           : q.tool === "vimma_tabs"
             ? "listed the agent tabs"
-            : q.tool === "vimma_keys"
-              ? `pressed ${clean(w.keys)} in "${cutTitle(w.title)}"`
-              : q.tool === DOWNLOAD_TOOL
-                ? `downloads "${cutTitle(w.name)}"`
-                : `used ${q.tool}`;
+            : q.tool === "vimma_keys" && w.followed
+              ? // mcp-drive D14: a follow under a grant names the host it loaded.
+                `followed a link to ${clean(w.followed)} in "${cutTitle(w.title)}"`
+              : q.tool === "vimma_keys"
+                ? `pressed ${clean(w.keys)} in "${cutTitle(w.title)}"`
+                : q.tool === DOWNLOAD_TOOL
+                  ? `downloads "${cutTitle(w.name)}"`
+                  : `used ${q.tool}`;
   return `${clientName(q.label)} ${did} (grant, ${left}m left)`;
 }
 
@@ -327,6 +330,7 @@ const OUTCOMES = Object.freeze({
   cancelled: "cancelled",
   "in-use": "denied (the user was using the tab)",
   changed: "denied (the tab changed)",
+  followed: "followed a link",
 });
 
 /** @type {Readonly<Record<string, string>>} */

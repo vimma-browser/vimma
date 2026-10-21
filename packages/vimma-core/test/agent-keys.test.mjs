@@ -1,13 +1,18 @@
-// docs/specs/mcp-drive.md, sub-PR 2: `vimma_keys` parses its keys with a dispatcher of its own
-// over Vimma's default keymap, and runs only the whitelisted action ids (D9, D10; security.md
-// M16), within the limits of D15 (M20).
+// docs/specs/mcp-drive.md, sub-PRs 2 and 3: `vimma_keys` parses its keys with a dispatcher of its
+// own over Vimma's default keymap, and runs only the whitelisted action ids (D9, D10; security.md
+// M16), within the limits of D15 (M20); `f` lists links and `f<label>` follows one (D12).
 import { describe, expect, test } from "vitest";
 import {
   AGENT_KEY_ACTIONS,
   AGENT_KEY_LIMITS,
+  AGENT_LINKS,
+  agentLinkLines,
+  agentLinkList,
+  labelAgentLinks,
   parseAgentKeys,
   shownKeys,
 } from "../src/agent-keys.mjs";
+import { DEFAULT_HINT_CHARS, hintLabels } from "../src/hints.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
 
 /** @param {string} keys */
@@ -52,9 +57,11 @@ describe("the whitelist (D9)", () => {
     for (const [keys, id] of Object.entries(table)) expect(ids(keys), keys).toEqual([id]);
     expect(ids("/x<CR>")).toEqual(["find.forward"]);
     expect(ids("?x<CR>")).toEqual(["find.backward"]);
+    expect(ids("f")).toEqual(["hint.follow"]);
+    expect(ids("fsd")).toEqual(["hint.follow"]);
   });
 
-  test("the whitelist is the spec's table, without hint.follow until links come", () => {
+  test("the whitelist is the spec's table", () => {
     expect([...AGENT_KEY_ACTIONS].sort()).toEqual(
       [
         "scroll.down",
@@ -73,6 +80,7 @@ describe("the whitelist (D9)", () => {
         "find.previous",
         "page.url_up",
         "page.url_root",
+        "hint.follow",
       ].sort(),
     );
   });
@@ -127,11 +135,6 @@ describe("the whitelist (D9)", () => {
     expect(refusal("z")).toBe('key "z" is refused: it is not one of the keys vimma_keys runs');
   });
 
-  test("f is refused until following links comes (sub-PR 3)", () => {
-    expect(refusal("f")).toContain("following links by hint label");
-    expect(refusal("fsd")).toContain("following links by hint label");
-  });
-
   test("the first refused key is named, and nothing before it counts", () => {
     expect(refusal("3j gg t x")).toContain('key "t"');
   });
@@ -146,6 +149,146 @@ describe("the whitelist (D9)", () => {
     const user = compileKeymap({ modal: { normal: { j: "tab.close" } } });
     expect(user).toBeTruthy();
     expect(ids("j")).toEqual(["scroll.down"]);
+  });
+});
+
+describe("links (D12)", () => {
+  /** @param {string} keys */
+  const steps = (keys) => {
+    const r = parseAgentKeys(keys);
+    if (!r.ok) throw new Error(r.error);
+    return r.steps;
+  };
+
+  test("f at the end lists the links; f<label> follows one", () => {
+    expect(steps("3j f")).toEqual([
+      { keys: "3j", action: "scroll.down", count: 3 },
+      { keys: "f", action: "hint.follow" },
+    ]);
+    expect(steps("fsd")).toEqual([{ keys: "fsd", action: "hint.follow", label: "sd" }]);
+    expect(steps("fa")).toEqual([{ keys: "fa", action: "hint.follow", label: "a" }]);
+  });
+
+  test("fsd after f is a follow of sd, and keys after a label are keys again", () => {
+    // Labels are prefix-free, so a label ends at the first key that is not a hint character
+    // or at a space: `fsdG` is a follow of sd then G, `fsd j` a follow of sd then j.
+    expect(steps("fsdG")).toEqual([
+      { keys: "fsd", action: "hint.follow", label: "sd" },
+      { keys: "G", action: "scroll.bottom" },
+    ]);
+    expect(steps("fsd j f")).toEqual([
+      { keys: "fsd", action: "hint.follow", label: "sd" },
+      { keys: "j", action: "scroll.down" },
+      { keys: "f", action: "hint.follow" },
+    ]);
+  });
+
+  test("f without a label anywhere but at the end is refused", () => {
+    expect(refusal("f j")).toContain("f without a label lists the links and must be the last");
+    expect(refusal("f fsd")).toContain("must be the last");
+  });
+
+  test("a label is lowercase hint characters, at most the longest label of 200 links", () => {
+    const longest = Math.max(
+      ...hintLabels(AGENT_LINKS.max, DEFAULT_HINT_CHARS).map((l) => l.length),
+    );
+    expect(AGENT_LINKS.label).toBe(longest);
+    expect(steps(`f${"a".repeat(longest)}`)[0]?.label).toBe("a".repeat(longest));
+    expect(refusal(`f${"a".repeat(longest + 1)}`)).toContain(`at most ${longest} characters`);
+  });
+
+  test("a count before f is refused", () => {
+    expect(refusal("3f")).toContain("a count does not apply to f");
+    expect(refusal("2fsd")).toContain("a count does not apply to f");
+  });
+
+  test("F (a new tab) and the caret's f stay refused", () => {
+    expect(refusal("F")).toContain("vimma_open");
+    expect(refusal("Fsd")).toContain("vimma_open");
+  });
+});
+
+describe("link lists (D12, D16; security.md M21)", () => {
+  /** @param {number} x @param {number} y @param {string} [href] @param {string} [text] */
+  const at = (x, y, href = `https://a.example/${x}-${y}`, text = `${x},${y}`) => ({
+    rect: { x, y, width: 10, height: 10 },
+    href,
+    text,
+  });
+
+  test("the spec's caps", () => {
+    expect(AGENT_LINKS).toEqual({ max: 200, text: 80, href: 2048, ttlMs: 120_000, label: 3 });
+  });
+
+  test("labels in reading order over the default hint characters, never the user's", () => {
+    const { links, dropped } = labelAgentLinks([at(50, 0), at(0, 100), at(0, 0)]);
+    expect(dropped).toBe(0);
+    expect(links.map((l) => [l.label, l.target.text])).toEqual([
+      ["a", "0,0"],
+      ["s", "50,0"],
+      ["d", "0,100"],
+    ]);
+  });
+
+  test("at most 200 links; the rest are dropped and counted", () => {
+    const many = Array.from({ length: 250 }, (_, i) => at(0, i * 20));
+    const { links, dropped } = labelAgentLinks(many);
+    expect(links).toHaveLength(200);
+    expect(dropped).toBe(50);
+    expect(new Set(links.map((l) => l.label)).size).toBe(200);
+    // Prefix-free: no label starts another.
+    const labels = links.map((l) => l.label);
+    for (const a of labels)
+      for (const b of labels) if (a !== b) expect(b.startsWith(a)).toBe(false);
+  });
+
+  test("one line per link: the label, the text as JSON cut at 80, the href cut at 2,048", () => {
+    const long = `https://a.example/${"x".repeat(3000)}`;
+    const { links } = labelAgentLinks([
+      at(0, 0, "https://a.example/p", 'Pricing "plans"\n'),
+      at(0, 20, long, "y".repeat(100)),
+      { rect: { x: 0, y: 40, width: 10, height: 10 }, text: "z" },
+    ]);
+    const lines = agentLinkLines(links).split("\n");
+    expect(lines[0]).toBe('a "Pricing \\"plans\\"" https://a.example/p');
+    expect(lines[1]).toBe(`s ${JSON.stringify(`${"y".repeat(79)}…`)} ${long.slice(0, 2047)}…`);
+    expect(lines[2]).toBe('d "z" (no URL)');
+    expect(lines).toHaveLength(3);
+  });
+
+  test("text is one line: whitespace collapsed, bidi and control characters dropped", () => {
+    const { links } = labelAgentLinks([at(0, 0, "https://a.example/", "  a\n\tb\u202ec\u0000 ")]);
+    expect(agentLinkLines(links)).toBe('a "a bc" https://a.example/');
+    // Review: NFKC before quoting, so a fullwidth quote cannot end the JSON string; tag
+    // characters, variation selectors and other invisible ones are dropped.
+    const spoof = labelAgentLinks([
+      at(0, 0, "https://evil.example/x", "Docs\uff02 https://d/ \uff02"),
+    ]);
+    expect(agentLinkLines(spoof.links)).toBe('a "Docs\\" https://d/ \\"" https://evil.example/x');
+    const tags = labelAgentLinks([
+      at(0, 0, "https://a/", "a\u{E0041}\u{E007F}b\ufe0fc\u180ed\u034fe\u3164f"),
+    ]);
+    expect(agentLinkLines(tags.links)).toBe('a "abcdef" https://a/');
+    const bidi = labelAgentLinks([at(0, 0, "javascript:x\u202e//", "t")]).links;
+    expect(agentLinkLines(bidi)).toBe('a "t" javascript:x//');
+  });
+});
+
+describe("the link list's size (review: the reply must fit the protocol's line)", () => {
+  test("links past the byte budget are left out and counted", () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({
+      rect: { x: 0, y: i * 20, width: 10, height: 10 },
+      href: `https://a.example/${"x".repeat(100)}${i}`,
+      text: "t",
+    }));
+    const { links } = labelAgentLinks(many);
+    const all = agentLinkList(links, 1 << 20);
+    expect(all.omitted).toBe(0);
+    expect(all.text).toBe(agentLinkLines(links));
+    const some = agentLinkList(links, 400);
+    expect(some.omitted).toBeGreaterThan(0);
+    expect(new TextEncoder().encode(JSON.stringify(some.text)).length).toBeLessThanOrEqual(400);
+    expect(some.text.split("\n")).toHaveLength(10 - some.omitted);
   });
 });
 

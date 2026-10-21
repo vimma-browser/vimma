@@ -1,0 +1,19 @@
+{
+  "description": "f lists the page's visible links with labels, inside the untrusted-content delimiters",
+  "kind": "response",
+  "command": "agent-keys",
+  "message": {
+    "type": "response",
+    "id": 3,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/pricing",
+      "title": "Pricing · Example",
+      "loading": false,
+      "scroll": { "y": 0 },
+      "steps": [{ "keys": "f", "action": "hint.follow", "ok": true }],
+      "links": "<untrusted-web-content>\na \"Plans\" https://example.com/plans\ns \"Docs\" https://docs.example.com/\n</untrusted-web-content>",
+      "dropped": 0
+    }
+  }
+}

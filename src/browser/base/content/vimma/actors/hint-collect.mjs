@@ -11,6 +11,7 @@ import {
   HINT_REPLY_MAX_FRAMES,
   HINT_REPLY_MAX_HREF,
   HINT_REPLY_MAX_TARGETS,
+  HINT_REPLY_MAX_TEXT,
 } from "../core/hints.mjs";
 import { needsBlockText, pickBlocks } from "../core/blocks.mjs";
 
@@ -467,4 +468,22 @@ export function frameViewport(win, el) {
   const height = el.clientHeight - pt - (parseFloat(style.paddingBottom) || 0);
   if (width < 1 || height < 1) return null;
   return { x: r.left + el.clientLeft + pl, y: r.top + el.clientTop + pt, width, height };
+}
+
+/**
+ * What a link says, for an agent's link list (docs/specs/mcp-drive.md D12): its rendered text,
+ * else its accessible label, its title or the alt of an image in it; whitespace collapsed, at
+ * most HINT_REPLY_MAX_TEXT code units. The parent checks and cuts it again.
+ * @param {Element} el
+ * @returns {string}
+ */
+export function linkText(el) {
+  const html = /** @type {HTMLElement} */ (el);
+  const raw =
+    (typeof html.innerText === "string" ? html.innerText : el.textContent) ||
+    el.getAttribute("aria-label") ||
+    el.getAttribute("title") ||
+    el.querySelector("img[alt]")?.getAttribute("alt") ||
+    "";
+  return raw.replace(/\s+/g, " ").trim().slice(0, HINT_REPLY_MAX_TEXT);
 }

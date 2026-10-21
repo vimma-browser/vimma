@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_follow.js: links an agent's f lists and follows. One link has
+   - click and mousedown handlers that would load another page, so a follow that clicked it
+   - would land elsewhere; others have hrefs an agent must not follow, or point to another
+   - site, or to a subdomain of the same one. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Links agent fixture</title>
+  </head>
+  <body>
+    <p><a id="same" href="file_vimma_agent_page.html?same">Same site page</a></p>
+    <p><a id="handled" href="file_vimma_agent_page.html?href">Handled link</a></p>
+    <p><a id="js" href="javascript:void(document.title='ran')">Script link</a></p>
+    <p><a id="data" href="data:text/html,hi">Data link</a></p>
+    <p><a id="other" href="#">Other site</a></p>
+    <p><a id="sub" href="#">Subdomain</a></p>
+    <p><button id="button" type="button">A button, never a target</button></p>
+    <script>
+      // The test directory's path, on another site and on a subdomain of this one.
+      const dir = location.pathname.replace(/[^/]*$/, "");
+      const page = `${dir}file_vimma_agent_page.html`;
+      document.getElementById("other").href = `https://example.org${page}?other`;
+      document.getElementById("sub").href = `https://test1.example.com${page}?sub`;
+      const handled = document.getElementById("handled");
+      for (const type of ["mousedown", "click"]) {
+        handled.addEventListener(type, (e) => {
+          e.preventDefault();
+          location.href = "file_vimma_agent_page.html?clicked";
+        });
+      }
+    </script>
+  </body>
+</html>

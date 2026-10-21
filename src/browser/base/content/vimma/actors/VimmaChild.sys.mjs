@@ -8,7 +8,7 @@
 
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
-import { collectTargets } from "./hint-collect.mjs";
+import { collectTargets, linkText } from "./hint-collect.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
@@ -592,8 +592,9 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * The hint targets of this frame (m1-hints). Rects are in this frame's CSS pixels; the parent
-   * offsets them by the frame rects the embedding frame's child reports.
-   * @param {{ gen: number, linksOnly: boolean, blocks?: boolean }} data
+   * offsets them by the frame rects the embedding frame's child reports. An agent's collection
+   * (`texts`, docs/specs/mcp-drive.md D12) gets each link's text too.
+   * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean }} data
    */
   #collectHints(data) {
     const gen = data?.gen;
@@ -604,13 +605,17 @@ export class VimmaChild extends JSWindowActorChild {
       linksOnly: data.linksOnly === true,
       blocks: data.blocks === true,
     });
-    this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    const texts = data.texts === true;
+    // An agent's collection is never followed through here (the parent loads its href): the
+    // user's targets of this frame stay as they were.
+    if (!texts) this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
     return {
       targets: targets.map((t, id) => ({
         id,
         rect: t.rect,
         kind: t.kind,
         href: t.href,
+        text: texts ? linkText(t.el) : undefined,
         blockKind: t.blockKind,
         box: t.box,
       })),

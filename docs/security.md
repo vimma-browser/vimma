@@ -694,9 +694,9 @@ while MCP is on (`:mcp on`). Every check runs in the browser, never in the clien
 a shell can run `vimma-ctl` itself, or speak the protocol directly.
 
 [mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16,
-M17, M20, M23) and full control's wording while MCP is on (M22), both in force. **Planned:**
-following links by hint label (M18, M21) and `vimma_show` (M19) enter this section with their
-tests in the sub-PRs that build them; M20 then gains their limits.
+M17, M20, M23), following its links by hint label (M18, M21) and full control's wording while
+MCP is on (M22), all in force. **Planned:** `vimma_show` (M19) enters this section with its tests
+in the sub-PR that builds it; M20 then gains its limit.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
@@ -894,20 +894,69 @@ tests in the sub-PRs that build them; M20 then gains their limits.
   [`test_keys_refuses_a_non_agent_tab`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_in_use_while_the_user_types_in_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_stop_when_the_tab_leaves`](../tests/browser/browser_vimma_mcp_keys.js),
-  [`test_keys_stop_when_the_user_starts_using_the_tab`](../tests/browser/browser_vimma_mcp_keys.js)
+  [`test_keys_stop_when_the_user_starts_using_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_agent_hints_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_follow.js)
+- M18. A follow (`f<label>`, mcp-drive D12) **must** load only an http or https href the page
+  could link to (`checkLoadURIWithPrincipal` with the page's own principal), from an http or
+  https page, in the same tab, as a load with no referrer: no click, mousedown or other event
+  fires on the link, so no click handler runs (a link to a fragment of the same page fires its
+  `hashchange`, as any navigation there would). `f` lists nothing on a page that is not on the
+  web (a file, about: or the start page in a tab moved into the agent workspace), whose
+  principal may load anything. Its label **must** be from this connection's last `f` on that
+  tab, of the top document still shown at the same URL and, for a link in a frame, of that
+  frame's document still shown, no older than 120 s; otherwise the step is refused with `stale
+labels: send f again`. The label names the href captured when `f` ran, so a frame that
+  changed its URL without a new document cannot change where a follow goes. A follow to another site (another
+  registrable domain, eTLD+1) **must** be asked as a `vimma_open` of its whole URL, unless the
+  connection holds a `vimma_open` grant, and a no stops the call (`stopped: "denied"`); it is
+  not asked when the open rate has no slot left, and the question is withdrawn when the call's
+  60 s run out. Labels
+  are over Vimma's default hint characters, never the user's, and the agent's collection is
+  keyed by its tab, so it never cancels the user's hint mode in the same window, nor theirs the
+  agent's, nor does it take the user's targets from the page's child. Buttons, fields and
+  elements clickable only through script are never listed.
+  [`test_follow_loads_the_href_without_a_click`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_follow_refuses_javascript_and_data_hrefs`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_stale_labels_are_refused`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_cross_site_follow_asks_as_vimma_open`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_agent_hints_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_links_only_on_web_pages`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`f at the end lists the links; f<label> follows one`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`a collection for an agent carries each link's text, capped, and only links`](../packages/vimma-core/test/hints.test.mjs)
 - M20. `agent-keys`' limits (mcp-drive D15) **must** deny: keys over 512 characters or with
   control characters, more than 32 actions, a count over 99 and a find query over 256 characters
   are `invalid-args` before anything is asked; more than 30 calls of one connection a minute,
   counted when asked and before anything else, are `busy`; a `gu`, `gU` or history step that
-  loads a page takes a slot of the 10 opens a minute; a call stops 60 s after the yes, and no
-  query to the page holds it longer than 5 s. `vimma-ctl mcp` checks the size and characters,
-  the find queries and the counts it can see first; the browser checks all of it again.
+  loads a page, and each follow, takes a slot of the 10 opens a minute; a label longer than
+  200 links need (3 characters) and a count before `f` are `invalid-args`; a call stops 60 s
+  after the yes, and no query to the page holds it longer than 5 s. `vimma-ctl mcp` checks the
+  size and characters, the find queries and the counts it can see first; the browser checks all
+  of it again.
   [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
   [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_loads_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_follows_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`a label is lowercase hint characters, at most the longest label of 200 links`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`bad_keys_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
+- M21. `f`'s link list **must** be one string inside the untrusted-content delimiters, wrapped
+  by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the protocol
+  validator **must** refuse a list that is not, or that holds a second delimiter, so the model
+  never sees link texts or URLs outside them. At most 200 links, in reading order, and no more
+  than fit 768 KiB of the reply line; each link's text and href are NFKC-normalised before they
+  are quoted (a fullwidth quote cannot end the text's JSON string), with control,
+  bidirectional and invisible characters (tag characters and variation selectors among them)
+  dropped, the text one line cut at 80 characters, the href cut at 2,048; the rest are dropped
+  and counted. No page text beyond link texts is returned, so a
+  `vimma_keys` grant is never a read grant.
+  [`test_f_lists_links_with_labels_marked_untrusted`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`at most 200 links; the rest are dropped and counted`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`one line per link: the label, the text as JSON cut at 80, the href cut at 2,048`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`text is one line: whitespace collapsed, bidi and control characters dropped`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`links past the byte budget are left out and counted`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`agent-keys: a link list inside the untrusted delimiters, and how many were dropped`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`keys_list_links_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
   workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
   use it, and a yes given after MCP went on or off **never** turns it on; each new full
@@ -926,11 +975,14 @@ tests in the sub-PRs that build them; M20 then gains their limits.
   after it: `in-use`, `changed`, the keys rate) **must** be in `:mcp log`, as must a `vimma_keys`
   call that stopped early (the last 100, in memory only, cleared by `:mcp off`). Each row's
   agent name, title and keys or URL is its own bidi run. Every call under a grant
-  **must** show a notice; a `vimma_keys` notice names the keys and the tab. Grants run calls
+  **must** show a notice; a `vimma_keys` notice names the keys and the tab, and a follow under a
+  grant names the host it loaded. Every follow that loads, asked or under a grant, **must** be a
+  row of its own naming the URL it loaded. Grants run calls
   unasked and notices last seconds, so the log is how the user checks afterwards.
   [`test_mcp_log_lists_asked_and_granted_calls`](../tests/browser/browser_vimma_mcp_log.js),
   [`keeps the last 100, newest first`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_cross_site_follow_asks_as_vimma_open`](../tests/browser/browser_vimma_mcp_follow.js),
   [`a call under a grant shows what it did and the time left`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M24. A tab you did not open inside the agent workspace **never** takes its container: a link from
   another app (the remote command line, `vimma-open`, Firefox's container guess, a `[[routes]]`

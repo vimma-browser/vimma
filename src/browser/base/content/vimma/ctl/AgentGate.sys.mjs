@@ -360,6 +360,19 @@ export const AgentGate = {
     });
   },
 
+  /**
+   * A notice for a step of a call that runs under a grant (mcp-drive D14: a follow names the
+   * host it loaded), shown like the call's own.
+   * @param {ConnId} conn @param {string} tool @param {object} what @param {number} until
+   */
+  announce(conn, tool, what, until) {
+    const label = labels.get(conn);
+    // A grant revoked while the call ran shows no "(grant, …left)".
+    const grant = queue.grants(Date.now()).find((g) => g.conn === conn && g.tool === tool);
+    if (!label || !grant) return;
+    changed({ kind: "ran", conn, tool, what, label, until: Math.min(until, grant.until) });
+  },
+
   /** `:mcp log`'s rows, newest first (mcp-drive D14). */
   get log() {
     return log.entries();
