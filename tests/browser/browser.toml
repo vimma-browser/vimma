@@ -75,6 +75,8 @@ support-files = ["file_vimma_plain.html", "file_vimma_mixed.js"]
 ["browser_vimma_toolbar_theme.js"]
 support-files = ["file_vimma_plain.html"]
 
+["browser_vimma_bookmarks_toolbar.js"]
+
 ["browser_vimma_firefox_surfaces_theme.js"]
 support-files = ["file_vimma_plain.html"]
 

@@ -10,6 +10,7 @@ import {
   historyNext,
   resetHistoryCursor,
   parseToolbarCommand,
+  parseBookmarksToolbarCommand,
 } from "../src/cmdline.mjs";
 import { ACTIONS, getAction } from "../src/actions.mjs";
 
@@ -98,6 +99,16 @@ describe("parseCommandLine: plan §2 commands", () => {
     [":toggle_toolbar", run("toggle_toolbar", "toolbar.toggle")],
     [":show_toolbar", run("show_toolbar", "toolbar.show")],
     [":hide_toolbar", run("hide_toolbar", "toolbar.hide")],
+    // docs/specs/bookmarks-toolbar-hidden.md decision 5: Firefox's toggle; a word sets a state.
+    [":bookmarkstoolbar", run("bookmarkstoolbar", "browser.bookmarks_toolbar")],
+    [
+      ":bookmarkstoolbar show",
+      run("bookmarkstoolbar", "browser.bookmarks_toolbar", { text: "show" }),
+    ],
+    [
+      ":bookmarkstoolbar newtab",
+      run("bookmarkstoolbar", "browser.bookmarks_toolbar", { text: "newtab" }),
+    ],
     // docs/specs/vimma-mcp.md decision 29 D: full control for a while.
     [":control", run("control", "control.command")],
     [":control on 15", run("control", "control.command", { text: "on 15" })],
@@ -302,6 +313,21 @@ describe("completeCommandLine", () => {
     expect(c).toMatchObject({ label: "show", kind: "argument", description: "toolbar" });
   });
 
+  test(":bookmarkstoolbar completes show, hide and newtab", () => {
+    expect(values(":bookmarkstoolbar ")).toEqual([
+      "bookmarkstoolbar show",
+      "bookmarkstoolbar hide",
+      "bookmarkstoolbar newtab",
+    ]);
+    expect(values(":bookmarkstoolbar sho")).toEqual(["bookmarkstoolbar show"]);
+    const c = completeCommandLine(":bookmarkstoolbar ne").candidates[0];
+    expect(c).toMatchObject({
+      label: "newtab",
+      kind: "argument",
+      description: "bookmarks toolbar",
+    });
+  });
+
   test("no match gives no candidates", () => {
     expect(values(":qqqqqqqq")).toEqual([]);
   });
@@ -324,6 +350,25 @@ describe("parseToolbarCommand: :toolbar [show|hide]", () => {
       kind: "refuse",
       text: ':toolbar takes "show", "hide" or nothing',
     });
+  });
+});
+
+describe("parseBookmarksToolbarCommand: :bookmarkstoolbar [show|hide|newtab]", () => {
+  test("without text it toggles; each word sets its state, in any case", () => {
+    expect(parseBookmarksToolbarCommand(undefined)).toEqual({ kind: "toggle" });
+    expect(parseBookmarksToolbarCommand(" ")).toEqual({ kind: "toggle" });
+    expect(parseBookmarksToolbarCommand("show")).toEqual({ kind: "set", setting: "shown" });
+    expect(parseBookmarksToolbarCommand(" HIDE ")).toEqual({ kind: "set", setting: "hidden" });
+    expect(parseBookmarksToolbarCommand("newtab")).toEqual({ kind: "set", setting: "newtab" });
+  });
+
+  test("an unknown word is refused, with the closest one when it is close", () => {
+    const refusal = ':bookmarkstoolbar takes "show", "hide", "newtab" or nothing';
+    expect(parseBookmarksToolbarCommand("shw")).toEqual({
+      kind: "refuse",
+      text: `${refusal}: did you mean "show"?`,
+    });
+    expect(parseBookmarksToolbarCommand("blue")).toEqual({ kind: "refuse", text: refusal });
   });
 });
 

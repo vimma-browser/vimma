@@ -67,3 +67,11 @@ describe("update checks", () => {
     );
   });
 });
+
+// docs/specs/bookmarks-toolbar-hidden.md, decision 1.
+describe("Firefox's Bookmarks Toolbar", () => {
+  it('is hidden by default ("never"), a default the user can change, not a locked pref', () => {
+    expect(prefValue("browser.toolbars.bookmarks.visibility")).toBe('"never"');
+    expect(readFileSync(OURS, "utf8")).not.toMatch(/lockPref\(\s*"browser\.toolbars\.bookmarks/);
+  });
+});

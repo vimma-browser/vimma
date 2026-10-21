@@ -30,8 +30,10 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  * @property {{ placement?: "swap" | "window" }} [private]  where the private workspace is shown
  *   (docs/specs/private-swap.md)
  * @property {{ check?: boolean }} [updates]  update checks (docs/specs/m6a-updater.md)
- * @property {{ toolbar?: "shown" | "hidden" }} [ui]  Firefox's toolbar at startup
- *   (docs/specs/toolbar-toggle.md)
+ * @property {{ toolbar?: "shown" | "hidden",
+ *   bookmarks_toolbar?: import("./bookmarks-toolbar.mjs").BookmarksToolbarSetting }} [ui]
+ *   Firefox's toolbar at startup (docs/specs/toolbar-toggle.md) and its Bookmarks Toolbar
+ *   (docs/specs/bookmarks-toolbar-hidden.md)
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
  *   notify?: boolean, download_dir?: string, download_max_mb?: number,
@@ -473,6 +475,10 @@ export function formatDefaultsToml() {
     "# Hidden, focusing the address bar shows it; ctrl+b u and :toolbar toggle it until restart.",
     "[ui]",
     `toolbar = ${tomlString(DEFAULT_CONFIG.ui?.toolbar ?? "shown")}`,
+    "# Firefox's Bookmarks Toolbar, hidden by default (your bookmarks: ctrl+b shift+b):",
+    '# "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,',
+    "# ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.",
+    '# bookmarks_toolbar = "shown"',
     "",
     "# Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request",
     "# names only the update channel and the platform. false stops every check.",

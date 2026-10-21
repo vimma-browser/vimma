@@ -330,6 +330,10 @@ placement = "swap"
 # Hidden, focusing the address bar shows it; ctrl+b u and :toolbar toggle it until restart.
 [ui]
 toolbar = "shown"
+# Firefox's Bookmarks Toolbar, hidden by default (your bookmarks: ctrl+b shift+b):
+# "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,
+# ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.
+# bookmarks_toolbar = "shown"
 
 # Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request
 # names only the update channel and the platform. false stops every check.
