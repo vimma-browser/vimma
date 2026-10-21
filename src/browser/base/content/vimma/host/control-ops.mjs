@@ -96,11 +96,11 @@ export const ControlHost = {
    * @param {string | undefined} text
    * @param {(question: string, yes: () => void) => void} ask
    * @param {(text: string) => void} say  after the answer
-   * @param {string | null} [agentWorkspace]  while MCP is on, the agent workspace's name, which
-   *   the question says full control reaches beyond (mcp-drive D22); null while it is off
+   * @param {() => string | null} [agentWorkspace]  while MCP is on, the agent workspace's name,
+   *   which the question says full control reaches beyond (mcp-drive D22); null while it is off
    * @returns {string | null}
    */
-  run(text, ask, say, agentWorkspace = null) {
+  run(text, ask, say, agentWorkspace = () => null) {
     const command = parseControlCommand(text);
     switch (command.kind) {
       case "refuse":
@@ -112,7 +112,16 @@ export const ControlHost = {
         return "full control off";
       case "on": {
         const { minutes } = command;
-        ask(controlOnQuestion(minutes, agentWorkspace), () => {
+        const asked = agentWorkspace();
+        ask(controlOnQuestion(minutes, asked), () => {
+          // MCP went on or off while it asked: the yes was to a question that no longer says
+          // what full control reaches (mcp-drive D22).
+          if (agentWorkspace() !== asked) {
+            say(
+              "full control stays off: agents were turned on or off meanwhile; run :control on again",
+            );
+            return;
+          }
           // On first: the end time's observer clears an end time while control is off.
           Services.prefs.setBoolPref(CONTROL_ENABLED_PREF, true);
           Services.prefs.setStringPref(CONTROL_UNTIL_PREF, String(Date.now() + minutes * 60_000));

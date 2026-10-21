@@ -1462,7 +1462,7 @@ number of agent tabs for the tab list.
 An agent with a shell can read the control socket's token like any program of yours. So while
 agents are on (`:mcp on`), each new `vimma-ctl` connection with full control (keys in your
 window, every workspace) asks in the same line:
-`◇ vimma-ctl wants full control (every workspace, not only "agent") — y/N`. `y` lets
+`◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N`. `y` lets
 that one connection in, `n`, `Esc`, `Enter`, `x` or any other key refuses it, and nothing is
 remembered: the next one asks again. The line shows the code `vimma-ctl` printed in your terminal
 (`vimma-ctl with code 7F3K wants full control`): answer `y` only if it is the same, since

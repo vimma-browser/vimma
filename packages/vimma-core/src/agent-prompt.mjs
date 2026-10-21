@@ -360,7 +360,9 @@ export function controlOnQuestion(minutes, agentWorkspace = null) {
   if (agentWorkspace !== null) {
     return (
       `Turn on full control for ${minutes} min? It reaches every workspace and tab, not only ` +
-      `"${workspaceName(agentWorkspace)}", and any local AI agent with a shell can use it. y/N`
+      // FSI…PDI: the name is its own bidi run (security.md M4), as the question line's <bdi>.
+      `"\u2068${workspaceName(agentWorkspace)}\u2069", and any local AI agent with a shell can ` +
+      "use it. y/N"
     );
   }
   return (

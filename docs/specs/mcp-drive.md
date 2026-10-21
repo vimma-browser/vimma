@@ -402,10 +402,13 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
 
 ### E. Full control while MCP is on
 
-22. **`:control on` says what it gives away.** While MCP is on (`vimma.mcp.enabled`), its
+22. **`:control on` says what it gives away.** While MCP is on (`[mcp] enabled`, else the pref
+    `vimma.mcp.enabled`), its
     question becomes
     `Turn on full control for <N> min? It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use it. y/N`.
-    With MCP off it stays as it is. The arming of an ordinary y/N applies; the question line's
+    With MCP off it stays as it is. A yes given after MCP went on or off while the question was
+    open turns nothing on, because it answered a question that no longer says what full control
+    reaches. The arming of an ordinary y/N applies; the question line's
     1 s arming delay is not added, because `:control on` is typed by the user, not sent by an
     agent. `:control` stays the user's tool: no agent command can turn it on, and the agent role
     never reaches `send-keys` (security.md S12).

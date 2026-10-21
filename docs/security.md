@@ -101,8 +101,8 @@ only the agent workspace, and every request asks you first (§12).
   and only then prints it, so a process reading your terminal learns it too late to race it in,
   and the question shows it (`vimma-ctl with code 7F3K wants full control`; a client
   without one is "a client with no code"), so a racing client's question is told from the one
-  the user ran; the question also says what it reaches (M22). `:control on <minutes>` **must** turn full control off when its time is up, also
-  across a restart, and **must** fail closed: an end time that is not a time ahead within 1441
+  the user ran; the question also says what it reaches (M22). `:control on <minutes>` **must**
+  turn full control off when its time is up, also across a restart, and **must** fail closed: an end time that is not a time ahead within 1441
   minutes turns it off.
   [`test_full_control_asks_only_while_mcp_is_on`](../tests/browser/browser_vimma_mcp_control.js),
   [`prints_and_sends_a_code_while_mcp_is_on`](../tools/vimma-ctl/tests/cli.rs),
@@ -833,8 +833,9 @@ control's wording while MCP is on) is in force.
   [`bad_arguments_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
   workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
-  use it; each new full connection's question (S13) **must** end its text and accessible name
-  with `(every workspace, not only "agent")`, naming the agent workspace, and its desktop
+  use it, and a yes given after MCP went on or off **never** turns it on; each new full
+  connection's question (S13) **must** say `wants full control (every workspace, not only
+"agent")` in its text and accessible name, naming the agent workspace, and its desktop
   notification **must** say `(every workspace)`. `vimma-ctl mcp`'s instructions **must** tell the
   model never to ask for full control or `vimma-ctl send-keys`. An agent that wants keys in the
   user's window has to talk the user into full control, so the questions state what a yes gives
