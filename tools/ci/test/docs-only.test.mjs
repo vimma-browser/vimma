@@ -246,7 +246,7 @@ describe("workflow wiring", () => {
     // !cancelled(), not success(): a failed classifier runs the job instead of skipping it.
     // A draft pull request skips it too (issue #443, tools/test/draft-pull-requests.test.mjs).
     expect(jobIf(mochitest)).toBe(
-      `\${{ !cancelled() && ${RUNS} && github.event.pull_request.draft != true }}`,
+      `\${{ !cancelled() && ${RUNS} && !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')) }}`,
     );
   });
 

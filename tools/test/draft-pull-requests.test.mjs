@@ -23,8 +23,17 @@ const REQUIRED = [
   "Mozilla release key unchanged or approved",
 ];
 
-/** The one expression that skips work on a draft; null on any other event, so it runs there. */
-const RUNS = "github.event.pull_request.draft != true";
+/**
+ * When a draft skips: only on `opened` and `synchronize`, the two events that bring a new head,
+ * which has no earlier run, so no real result is replaced by a skipped success. `reopened` and
+ * `ready_for_review` on a draft, and a re-run of such a run, run everything: converting a pull
+ * request to a draft and reopening it must not turn a failed check green on the same head. On an
+ * event that is not a pull request, `github.event.pull_request` is null and everything runs.
+ */
+const SKIP =
+  "github.event.pull_request.draft == true && " +
+  "(github.event.action == 'opened' || github.event.action == 'synchronize')";
+const RUNS = `!(${SKIP})`;
 
 /**
  * The jobs that skip a draft, with how: `job` skips the whole job by its `if:` (a skipped job
@@ -96,12 +105,12 @@ describe("draft pull requests", () => {
       expect(job.strategy, "a matrix job skipped by its if: reports no required name").toBe(
         undefined,
       );
-      expect(condition(job.if).split(" && ")).toContain(RUNS);
+      expect(condition(job.if).endsWith(` && ${RUNS}`), condition(job.if)).toBe(true);
       for (const step of steps) expect(String(step.if ?? "")).not.toContain("draft");
     } else {
       expect(String(job.if ?? "")).not.toContain("draft");
       // Every step skips on a draft except the notice that says why, which runs only there.
-      const notice = steps.filter((s) => condition(s.if) === "github.event.pull_request.draft");
+      const notice = steps.filter((s) => condition(s.if) === SKIP);
       expect(notice).toHaveLength(1);
       expect(String(notice[0]?.run)).toContain("::notice::");
       for (const step of steps.filter((s) => !notice.includes(s))) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { commands, decide, gather } from "../security-release.mjs";
+import { SLOW_CHECKS, commands, decide, gather, slowChecksStarted } from "../security-release.mjs";
 
 // Spec firefox-versions, decisions 11 to 15; docs/security.md G9 and G10. The fixtures are
 // recorded API responses: the merge of #186 (upstream: firefox 158.0, labelled security) and
@@ -66,6 +66,43 @@ describe("decide", () => {
       "cec9a520593c407d909a4a9352865dddb1805496",
     ]);
     expect(comment?.slice(0, 5)).toEqual(["pr", "comment", "186", "--repo", "vimma-browser/vimma"]);
+  });
+
+  // A draft's run reports the slow checks as skipped successes on the head; until the run that
+  // "ready for review" starts has replaced them, auto-merge could take them for passes.
+  it("sets auto-merge only once the slow checks of the ready run have replaced the draft's", () => {
+    expect(SLOW_CHECKS).toEqual([
+      "mochitest (artifact build)",
+      "semgrep (javascript, typescript, rust, secrets, github-actions)",
+    ]);
+    /** @param {number} id @param {string} name @param {string} status @param {string | null} conclusion */
+    const c = (id, name, status, conclusion) => ({ id, name, status, conclusion });
+    const [mochitest, semgrep] = /** @type {[string, string]} */ (SLOW_CHECKS);
+    const draft = [c(1, mochitest, "completed", "skipped"), c(2, semgrep, "completed", "skipped")];
+    expect(slowChecksStarted(draft)).toBe(false);
+    expect(slowChecksStarted([...draft, c(3, mochitest, "queued", null)])).toBe(false);
+    expect(
+      slowChecksStarted([
+        ...draft,
+        c(3, mochitest, "queued", null),
+        c(4, semgrep, "in_progress", null),
+      ]),
+    ).toBe(true);
+    // the newest run of a name counts, whatever order the API lists them in
+    expect(
+      slowChecksStarted([
+        c(5, mochitest, "completed", "skipped"),
+        c(3, mochitest, "queued", null),
+        c(4, semgrep, "completed", "success"),
+      ]),
+    ).toBe(false);
+    expect(
+      slowChecksStarted([
+        c(3, mochitest, "completed", "failure"),
+        c(4, semgrep, "completed", "success"),
+      ]),
+    ).toBe(true);
+    expect(slowChecksStarted([])).toBe(false);
   });
 
   it("leaves a release PR that is already ready as it is", () => {

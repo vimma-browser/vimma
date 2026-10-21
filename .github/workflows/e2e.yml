@@ -102,9 +102,10 @@ jobs:
   mochitest:
     name: mochitest (artifact build)
     needs: changes
-    # Issue #443: a draft pull request skips it too (the release PR, rebuilt after each merge),
-    # and reports success; marking it ready (ready_for_review above) runs it on the same head.
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' && github.event.pull_request.draft != true }}
+    # Issue #443: a push to a draft pull request skips it too (the release PR, rebuilt after each
+    # merge), and reports success; marking it ready (ready_for_review above) runs it on the same
+    # head. Only opened and synchronize skip: they bring a new head, so no real result is replaced.
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' && !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:

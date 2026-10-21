@@ -527,28 +527,41 @@ A hand edit of a generated file fails there with the command to run.
 
 ### Draft pull requests (issue #443)
 
-A draft pull request skips the three slow required checks: `mochitest (artifact build)` with the
-e2e scenarios (e2e.yml), the Semgrep scan and both CodeQL analyses. Each still reports success,
-so the ruleset never waits on a check that will not come: e2e.yml and semgrep.yml skip the job
-by `if:`, and codeql.yml, a matrix job, skips every step instead, because a matrix job skipped
-by its own `if:` reports one check under the unexpanded `CodeQL (${{ matrix.language }})` and
-the required names would never appear. The condition is `github.event.pull_request.draft !=
-true`, which holds on every event that is not a pull request, so pushes, schedules, manual runs
-and `workflow_call` run everything. CI (`lint, typecheck, test, commitlint, licences`) and the
-key guard are cheap and run on drafts too.
+A push to a draft pull request skips the three slow required checks: `mochitest (artifact
+build)` with the e2e scenarios (e2e.yml), the Semgrep scan and both CodeQL analyses. Each still
+reports success, so the ruleset never waits on a check that will not come: e2e.yml and
+semgrep.yml skip the job by `if:`, and codeql.yml, a matrix job, skips every step instead,
+because a matrix job skipped by its own `if:` reports one check under the unexpanded
+`CodeQL (${{ matrix.language }})` and the required names would never appear. CI (`lint,
+typecheck, test, commitlint, licences`) and the key guard are cheap and run on drafts too.
+
+Only the `opened` and `synchronize` events of a draft skip. Both bring a head that has had no
+run, so a skipped success never replaces a real result. Every other event runs everything:
+`reopened` and `ready_for_review` on a draft, pushes to `main`, schedules, manual runs and
+`workflow_call` (where `github.event.pull_request` is null). Without that limit, converting a
+pull request with a failed mochitest to a draft and closing and reopening it would put newer
+skipped successes on the same head. For the same reason, never re-run a draft's run once the
+pull request is ready: a re-run keeps the event it started with and skips again.
 
 Marking the pull request ready for review (`gh pr ready <n>`) sends `ready_for_review`, which
 ci.yml, e2e.yml, semgrep.yml and codeql.yml list, and runs the skipped checks on the same head.
-A draft cannot be merged, and the green checks of its draft run cannot let it through
-afterwards: CodeQL uploaded no analysis for that head, so the ruleset's code scanning rule
-blocks the merge until the run after "ready for review" has uploaded one. The analysis takes
-minutes, and the same event queues the run's other checks on that head within seconds, so they
-are pending, not green, by the time it lands. A push to a pull request that is already ready
-runs everything, as before.
+A draft cannot be merged, and the skipped successes of its draft run cannot let it through
+afterwards: CodeQL uploaded no analysis for that head, and the ruleset's code scanning rule
+blocks a merge until one exists (seen on draft PR #249, "Docs-only pull requests" above). The
+analysis takes minutes, while the same event queues the run's other checks on that head within
+seconds, so they are pending, not green, by the time it lands. That margin is timing, not a
+rule of GitHub's, so merge by hand only once the new run's checks are green; the automatic
+security release waits for them before it sets auto-merge ("Releases" below). Converting a
+pull request to a draft (`gh pr ready --undo <n>`) starts no run and leaves its results as
+they are.
+
+`tools/ci/tree-covered.mjs` takes no run as a cover when a job other than its guard was
+skipped, so a draft's Semgrep run, which scanned nothing, never lets a push to `main` skip its
+scan ("Once per tree" below).
 
 The release pull request is the reason (below, "Releases"): release-please rebuilds it after
-each merge to `main`, and only the state that is merged is released. Other drafts follow the same
-rule: mark one ready to get the mochitests on it. `tools/test/draft-pull-requests.test.mjs`
+each merge to `main`, and only the state that is merged is released. Other drafts follow the
+same rule: mark one ready to get the mochitests on it. `tools/test/draft-pull-requests.test.mjs`
 pins the wiring.
 
 ### Once per tree (issue #358)
@@ -558,9 +571,10 @@ squash merge usually gives `main` a commit whose tree is the pull request head's
 push run would check the same files again. Their first job on a push, `covered`, runs
 `tools/ci/tree-covered.mjs`: it reads the pushed commit's tree and the last 50 successful
 `pull_request` runs of the same workflow from the Actions API (both public; the job token holds
-`actions: read` and `contents: read`, nothing more), and compares each run's head tree. On a
-match it outputs `skip=true` and a notice on the run's summary names the covering run; the other
-jobs then skip by `if:`. Equal trees include `.github/workflows`, so the covering run used the
+`actions: read` and `contents: read`, nothing more), and compares each run's head tree. A run
+with the same tree counts only if every job but the guard ran (`actions/runs/<id>/jobs`): a
+draft's run skips the Semgrep scan and still succeeds. On a match it outputs `skip=true` and a
+notice on the run's summary names the covering run; the other jobs then skip by `if:`. Equal trees include `.github/workflows`, so the covering run used the
 same workflow definition. When `main` moved after the pull request's last run, the trees differ
 and the checks run as before: the ruleset does not require up-to-date branches
 (`strict_required_status_checks_policy: false`), so that run is the only check of the merged
@@ -1353,7 +1367,8 @@ maintainer's one click.
   the code scanning rule keeps it blocked until CodeQL has analyzed the final head. If `main`
   gets another merge first, release-please rebuilds the PR, which stays ready, and the full
   checks run again on the new head. release-please opens only new release PRs as drafts: to
-  turn the open one into a draft, run `gh pr ready --undo <n>`.
+  turn the open one into a draft, run `gh pr ready --undo <n>` (no run starts, and the results
+  on its head stay as they are).
 - **Version source:** `surfer.json` `brands.vimma.release.displayVersion`, the version
   `vimma --version` and the About dialog show (spec m0-app-version). The release
   PR bumps it through `extra-files` (jsonpath `$.brands.vimma.release.displayVersion`), plus
@@ -1438,7 +1453,10 @@ maintainer's one click.
   `tools/release/security-release.mjs` sets the open release PR to auto-merge with
   `RELEASE_PLEASE_TOKEN`, pinned to its head commit (`--match-head-commit`), and comments on the
   bump PR. A draft release PR is first marked ready for review through the same token, since
-  GitHub never merges a draft; that starts the full checks the draft skipped. GitHub merges it
+  GitHub never merges a draft; that starts the full checks the draft skipped, and the job sets
+  auto-merge only once the newest mochitest and Semgrep checks on the head are no longer the
+  draft's skips (it polls the head's check runs for up to 3 minutes, and fails without setting
+  auto-merge if they do not start; a person then merges the ready PR). GitHub merges it
   when the required checks pass; that merge's push starts this workflow again, which tags and
   creates the draft release and starts `release.yml`. Publishing the draft stays a click. Any other push logs a notice naming the check that did not hold (the run's
   summary), and the job never merges the first release PR (it requires an existing release).
