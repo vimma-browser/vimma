@@ -2252,8 +2252,12 @@ export const VimmaHost = {
         state.hintOverlay.filter(next.typed);
         return;
       case "select":
-        if (result.action === "hint.element" && result.target.box) {
-          // The labels go and the block stays outlined, in chrome: the page sees nothing.
+        if (result.action === "hint.element") {
+          // Never followed: a block is outlined, in chrome, where the page sees nothing.
+          if (!result.target.box) {
+            this._cancelHints(state);
+            return;
+          }
           session.focused = result.target;
           state.hintOverlay.hide();
           state.hintOverlay.outline(session.browser, result.target.box);

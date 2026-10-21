@@ -228,10 +228,12 @@ link targets for hints, which chrome must treat as untrusted.
   [`the caps are 5,000 targets, 64 frames and 8 KiB hrefs`](../packages/vimma-core/test/hints.test.mjs),
   [`a well-formed reply → a fresh copy with only the known fields`](../packages/vimma-core/test/hints.test.mjs)
   A text block target ([element-focus](specs/element-focus.md)) **must** carry a kind from the
-  closed list and a finite box, and is used only by a collection that asked for blocks; any other
-  target carrying those fields is refused.
+  closed list and a finite, bounded, non-empty box, and no link. A reply **must** hold only the
+  kind of target its collection asked for: a block in an `f` or `F` reply, or a link or control in
+  an element-focus reply, refuses the whole reply, so a block is never followed.
   [`a block target needs a kind from the closed list and a finite box`](../packages/vimma-core/test/hints.test.mjs),
-  [`only a block target carries a blockKind or a box`](../packages/vimma-core/test/hints.test.mjs)
+  [`only a block target carries a blockKind or a box`](../packages/vimma-core/test/hints.test.mjs),
+  [`a reply holds only the kind of target its collection asked for`](../packages/vimma-core/test/hints.test.mjs)
 - U7. Text pasted on the command line **must** be read in bounded time: a megabyte never
   freezes the window.
   [`a pasted megabyte is parsed and completed in bounded time`](../packages/vimma-core/test/fuzz/cmdline.fuzz.test.mjs),

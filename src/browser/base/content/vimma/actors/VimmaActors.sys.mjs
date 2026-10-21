@@ -265,15 +265,13 @@ export const VimmaActors = {
         clearTimeout(timer);
       }
       // From a content process, which may be compromised: a fresh, checked copy or nothing.
-      const reply = parseHintReply(raw);
+      const reply = parseHintReply(raw, { blocks });
       if (!reply || !live()) return;
       ms += reply.ms;
       for (const t of reply.targets) {
         if (out.length >= MAX_HINTS) break;
         const rect = intersect(offset(t.rect, origin), frame);
         if (!rect) continue;
-        // Only a block is outlined; a kind this collection did not ask for is not its target.
-        if ((t.kind === "block") !== blocks) continue;
         /** @type {HintTarget} */
         const target = { gen, bc, wg, id: t.id, kind: t.kind, href: t.href, rect };
         if (t.box) {

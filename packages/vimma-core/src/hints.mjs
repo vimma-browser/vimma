@@ -244,11 +244,14 @@ function parseRect(value) {
 /**
  * A `Vimma:CollectHints` reply from a content process, which may be compromised: a fresh copy
  * with only the known fields, each of its exact type and within the caps, or null if anything
- * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs).
+ * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs). A
+ * collection gets only the kind of target it asked for: text blocks for element focus, never
+ * a block for `f` or `F`, so a block is never followed and a link never outlined.
  * @param {unknown} value
+ * @param {{ blocks?: boolean }} [options]  the collection asked for text blocks
  * @returns {HintReply | null}
  */
-export function parseHintReply(value) {
+export function parseHintReply(value, { blocks = false } = {}) {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const { targets, frames, ms } = /** @type {Record<string, unknown>} */ (value);
@@ -265,6 +268,7 @@ export function parseHintReply(value) {
       ids.add(id);
       const r = parseRect(rect);
       if (!r || typeof kind !== "string" || !TARGET_KINDS.has(kind)) return null;
+      if ((kind === "block") !== blocks) return null;
       /** @type {ReplyTarget} */
       const out = {
         id: /** @type {number} */ (id),
@@ -279,6 +283,7 @@ export function parseHintReply(value) {
         // A block is clipped by its frame, not by the viewport: its box may start above it.
         const b = parseRect(box);
         if (typeof blockKind !== "string" || !BLOCK_KIND_SET.has(blockKind) || !b) return null;
+        if (href !== undefined) return null;
         out.blockKind = /** @type {BlockKind} */ (blockKind);
         out.box = b;
       } else if (blockKind !== undefined || box !== undefined) {

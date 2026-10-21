@@ -211,6 +211,19 @@ function unoccluded(el, rect) {
   return false;
 }
 
+/**
+ * Visible text anywhere inside: stops at the first text node with a character, so a deep
+ * nesting of blocks is not read whole for each of them.
+ * @param {Element} el
+ */
+function hasText(el) {
+  const walker = el.ownerDocument.createTreeWalker(el, 4 /* NodeFilter.SHOW_TEXT */);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (/\S/.test(/** @type {Text} */ (n).data)) return true;
+  }
+  return false;
+}
+
 /** A direct text child with a visible character. */
 /** @param {Element} el */
 function hasDirectText(el) {
@@ -277,7 +290,7 @@ function collectBlocks(onScreen, win, vw, vh) {
     };
     if (!d.onScreen) return d;
     d.directText = hasDirectText(el);
-    if (needsBlockText(d)) d.text = d.directText || /\S/.test(el.textContent ?? "");
+    if (needsBlockText(d)) d.text = d.directText || hasText(el);
     if (d.directText || role === "code") d.display = win.getComputedStyle(el)?.display;
     return d;
   };

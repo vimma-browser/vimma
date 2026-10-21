@@ -348,7 +348,6 @@ describe("parseHintReply: untrusted Vimma:CollectHints replies from a content pr
       { id: 0, rect, kind: "link", href: "https://example.com/" },
       { id: 1, rect, kind: "input" },
       { id: 2, rect, kind: "click" },
-      { id: 3, rect, kind: "block", blockKind: "list item", box: { ...rect, height: 300 } },
     ],
     frames: [{ id: 42, rect }],
     ms: 3.5,
@@ -444,14 +443,16 @@ describe("parseHintReply: untrusted Vimma:CollectHints replies from a content pr
 
   test("a block target needs a kind from the closed list and a finite box", () => {
     const block = { id: 0, rect, kind: "block", blockKind: "code", box: rect };
-    expect(parseHintReply({ targets: [block], frames: [], ms: 0 })?.targets).toEqual([block]);
+    expect(
+      parseHintReply({ targets: [block], frames: [], ms: 0 }, { blocks: true })?.targets,
+    ).toEqual([block]);
     for (const bad of [
       { ...block, blockKind: "script" },
       { ...block, blockKind: undefined },
       { ...block, box: undefined },
       { ...block, box: { ...rect, width: NaN } },
     ]) {
-      expect(parseHintReply({ targets: [bad], frames: [], ms: 0 })).toBeNull();
+      expect(parseHintReply({ targets: [bad], frames: [], ms: 0 }, { blocks: true })).toBeNull();
     }
   });
 
@@ -462,6 +463,21 @@ describe("parseHintReply: untrusted Vimma:CollectHints replies from a content pr
     ]) {
       expect(parseHintReply({ targets: [bad], frames: [], ms: 0 })).toBeNull();
     }
+  });
+
+  test("a block target carries no href", () => {
+    const block = { id: 0, rect, kind: "block", blockKind: "code", box: rect, href: "https://x/" };
+    expect(parseHintReply({ targets: [block], frames: [], ms: 0 }, { blocks: true })).toBeNull();
+  });
+
+  test("a reply holds only the kind of target its collection asked for", () => {
+    const block = { id: 0, rect, kind: "block", blockKind: "code", box: rect };
+    const links = { targets: [t0], frames: [], ms: 0 };
+    const blocks = { targets: [block], frames: [], ms: 0 };
+    expect(parseHintReply(links)).not.toBeNull();
+    expect(parseHintReply(blocks, { blocks: true })).not.toBeNull();
+    expect(parseHintReply(blocks)).toBeNull();
+    expect(parseHintReply(links, { blocks: true })).toBeNull();
   });
 
   test("a throwing getter → null, not an exception", () => {
