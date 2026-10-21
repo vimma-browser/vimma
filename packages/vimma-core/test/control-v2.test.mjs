@@ -73,6 +73,7 @@ describe("protocol 2 constants", () => {
       "agent-ping",
       "agent-cancel",
       "agent-keys",
+      "agent-show",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
@@ -224,6 +225,15 @@ describe("agent commands: args", () => {
     ]);
   });
 
+  // docs/specs/mcp-drive.md D2: a show names one tab and nothing else, never a workspace.
+  test("agent-show: a tab and no other field", () => {
+    expect(errorsOf(req("agent-show", { tab: "12" }))).toEqual([]);
+    expect(errorsOf(req("agent-show", {}))).toEqual(["tab must be a tab id (digits)"]);
+    expect(errorsOf(req("agent-show", { tab: "12", workspace: "main" }))).toEqual([
+      'unknown field "args.workspace"',
+    ]);
+  });
+
   test("agent-tabs and agent-ping take no args", () => {
     expect(errorsOf(req("agent-tabs"))).toEqual([]);
     expect(errorsOf(req("agent-ping", { x: 1 }))).toEqual(['unknown field "args.x"']);
@@ -255,6 +265,15 @@ describe("agent commands: results and errors", () => {
     ]);
     expect(errorsOf(ok({ ...read, selection: 3 }), { command: "agent-read" })).toEqual([
       "result.selection must be a string or null",
+    ]);
+  });
+
+  test("agent-show: shown is true, and nothing else", () => {
+    const cmd = { command: "agent-show" };
+    expect(errorsOf(ok({ shown: true }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ shown: false }), cmd)).toEqual(["result.shown must be true"]);
+    expect(errorsOf(ok({ shown: true, workspace: "agent" }), cmd)).toEqual([
+      'unknown field "result.workspace"',
     ]);
   });
 

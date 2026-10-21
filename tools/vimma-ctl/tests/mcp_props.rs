@@ -77,6 +77,7 @@ fn scalar() -> impl Strategy<Value = Value> {
             "vimma_open",
             "vimma_close_tab",
             "vimma_keys",
+            "vimma_show",
             "3j /pricing<CR> gg",
             "/x",
             "100j",
@@ -174,6 +175,7 @@ fn tool() -> impl Strategy<Value = ToolCall> {
         }),
         any::<String>().prop_map(|url| ToolCall::Open { url, tab: None }),
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Close { tab }),
+        ("[0-9]{1,20}").prop_map(|tab| ToolCall::Show { tab }),
         ("[0-9]{1,20}", any::<String>()).prop_map(|(tab, keys)| ToolCall::Keys { tab, keys }),
     ]
 }

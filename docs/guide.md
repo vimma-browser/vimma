@@ -48,7 +48,8 @@ What works today, each with the section that explains it:
   uploads; Safe Browsing on.
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
   local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
-  open, scroll and search pages and follow their links, and every request asks you first.
+  open, scroll and search pages, follow their links and show you a page, and every request asks
+  you first.
 
 ## Every key is yours
 
@@ -1306,7 +1307,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers five tools:
+and output, connects to Vimma as an agent (never with full control), and offers six tools:
 
 | Tool              | What the agent can do                                                                                    |
 | ----------------- | -------------------------------------------------------------------------------------------------------- |
@@ -1315,6 +1316,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs.                      |
 | `vimma_close_tab` | Close one of its tabs.                                                                                   |
 | `vimma_keys`      | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
+| `vimma_show`      | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1477,6 +1479,25 @@ workspace, tab, focus, find bar and hint mode.
   put your focus in a text field it matched.
 - **`:mcp log`** lists what agents did, asked or under a grant, each follow with the address it
   loaded, so you can check afterwards what a grant let through. It is kept in memory only and cleared by `:mcp off`.
+
+#### Showing you a page
+
+`vimma_show` lets an agent show you one of its tabs when it wants you to look at a page. The
+question names the tab and where it takes you, `◇ claude-code wants vimma_show: 2 "Pricing ·
+Example" example.com/pricing (switches you to "agent")`, and on `y` your window switches to the agent workspace with that tab
+selected, as `:ws agent` would. The notice says `showing claude-code's tab · ctrl+^ goes back`:
+`ctrl+^` returns you to the workspace, tab and split you were in.
+
+- **It asks every time.** No grant covers it, and its question offers only `y` and `n` (`x` is a
+  plain no), so an agent cannot switch your view while you read or type something else. Like
+  every question, it opens by itself only when you are not typing; otherwise it waits behind
+  `◇ agent 1?` for `ctrl+b shift+a`.
+- **Only the agent workspace.** It shows one of the agent's own tabs and nothing else, never
+  another workspace or a private window.
+- **It never raises or activates a window.** In the window that switches, the shown tab has the
+  keyboard as after any tab switch. If the tab is in another Vimma window, that window switches
+  behind the one you are in, and the notice says `shown in the other window`.
+- **At most 6 a minute** per agent; it is in `:mcp log` like every other call.
 
 #### Keeping agents out of your Vimma profile
 

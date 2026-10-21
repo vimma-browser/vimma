@@ -17,7 +17,7 @@
 // (docs/specs/mcp-drive.md D14), the last 100, in memory only like the grants.
 
 import { AgentLog, AgentQueue, grantLength } from "../core/agent.mjs";
-import { FULL_CONTROL, PAGE_CLIENT } from "../core/agent-prompt.mjs";
+import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL } from "../core/agent-prompt.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 
 /** @import { Answer, ConnId } from "../core/agent.mjs" */
@@ -313,9 +313,13 @@ export const AgentGate = {
     let length = null;
     /** @type {Answer} */
     let final = /** @type {Answer} */ (answer);
-    // Full control and a page's download are one yes or no: no grant covers them, and `x` is a
-    // plain no.
-    if (question?.tool === FULL_CONTROL || question?.conn === PAGE_CONN) {
+    // Full control, a page's download and a show (mcp-drive D4) are one yes or no: no grant
+    // covers them, and `x` is a plain no.
+    if (
+      question?.tool === FULL_CONTROL ||
+      question?.tool === SHOW_TOOL ||
+      question?.conn === PAGE_CONN
+    ) {
       if (answer.kind === "grant") return null;
       if (answer.kind === "mute") final = { kind: "deny" };
     }

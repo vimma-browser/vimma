@@ -1,0 +1,13 @@
+{
+  "description": "shown must be true: a show that did not happen is an error",
+  "kind": "response",
+  "command": "agent-show",
+  "message": {
+    "type": "response",
+    "id": 9,
+    "ok": true,
+    "result": {
+      "shown": false
+    }
+  }
+}

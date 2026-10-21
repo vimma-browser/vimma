@@ -15,10 +15,13 @@ import {
   deniedNotice,
   grantNotice,
   mayOpenByItself,
+  noGrant,
   parseControlCommand,
   promptKey,
   questionLine,
+  logRow,
   ranNotice,
+  shownNotice,
 } from "../src/agent-prompt.mjs";
 import { textWidth } from "../src/textwidth.mjs";
 
@@ -498,5 +501,72 @@ describe("a download's question (decision 31 a, d)", () => {
     expect(agentAlertText(download)).toBe(
       "example-agent asks to use Vimma's agent workspace (download a file)",
     );
+  });
+});
+
+// docs/specs/mcp-drive.md D2-D6 (security.md M19): vimma_show asks y or n for one agent tab, no
+// grant, and the notice after it says how to get back.
+describe("vimma_show's question and notice (mcp-drive D2-D6)", () => {
+  const show = { ...keys, tool: "vimma_show", what: { ...keys.what, keys: undefined } };
+  const none = { count: "" };
+
+  test("it names the tab it would show, and offers only y and n", () => {
+    const line = questionLine(show, { grantMinutes: 15 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants vimma_show: 2 "Pricing · Example" example.com/pricing ' +
+        '(switches you to "agent")',
+    );
+    expect(line.hint).toBe("y show it · n deny");
+    expect(line.label).toBe(text(line));
+    const named = questionLine(show, { grantMinutes: 15, agentWorkspace: "bots" });
+    expect(text(named)).toMatch(/\(switches you to "bots"\)$/);
+    expect(named.parts.find((p) => p.text === "bots")?.isolate).toBe("auto");
+  });
+
+  test("no grant: a, counts and x do not grant or mute", () => {
+    expect(noGrant(show)).toBe(true);
+    expect(noGrant(keys)).toBe(false);
+    expect(noGrant(read)).toBe(false);
+    const p = { noGrant: noGrant(show) };
+    expect(promptKey(none, "y", p)).toEqual({ kind: "answer", answer: { kind: "once" } });
+    expect(promptKey(none, "a", p)).toEqual({ kind: "ignore" });
+    expect(promptKey(none, "1", p)).toEqual({ kind: "ignore" });
+    expect(promptKey(none, "x", p)).toEqual({ kind: "answer", answer: { kind: "deny" } });
+  });
+
+  test("the notice after the switch says ctrl+^ goes back, and names another window", () => {
+    expect(shownNotice(show, { otherWindow: false })).toBe(
+      "showing claude-code's tab · ctrl+^ goes back",
+    );
+    expect(shownNotice(show, { otherWindow: true })).toBe(
+      "showing claude-code's tab, shown in the other window · ctrl+^ there goes back",
+    );
+    expect(shownNotice({ ...show, label: null }, { otherWindow: false })).toBe(
+      "showing an agent's tab · ctrl+^ goes back",
+    );
+    // Already on the agent workspace: a plain tab selection, so ctrl+^ would not go back.
+    expect(shownNotice(show, { otherWindow: false, switched: false })).toBe(
+      "showing claude-code's tab",
+    );
+  });
+
+  test("the desktop notification names no title or URL", () => {
+    expect(agentAlertText(show)).toBe(
+      "claude-code asks to use Vimma's agent workspace (show you a page)",
+    );
+  });
+});
+
+describe(":mcp log of a show that failed after the yes (mcp-drive D14)", () => {
+  test("it reads as failed, not as allowed", () => {
+    const e = {
+      at: 0,
+      client: "claude-code",
+      tool: "vimma_show",
+      title: "A",
+      detail: "",
+      outcome: "failed",
+    };
+    expect(logRow(e)).toMatch(/ · failed$/);
   });
 });
