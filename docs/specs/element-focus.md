@@ -310,7 +310,8 @@ solve "point at something on screen in two keys" for links; text blocks have no 
    `o`, `V` and `y`, so the highlight can be adjusted before copying with nothing new to learn:
    - the child sets the selection from the block's first to its last visible text position (a
      range from `selectNodeContents`, trimmed to text that is rendered, so the caret does not sit
-     in trailing white space), anchor at the start, focus at the end, without scrolling;
+     in trailing white space), anchor at the start, focus at the end, without scrolling unless the
+     block is off screen (copy mode starts from a selection it can see);
    - the host then runs the existing `mode.visual` path: `Caret.run` `enter` keeps an on-screen
      selection and sets `selecting` (`caret.mjs:180-193`), so copy mode starts with the
      highlight, `VISUAL` in the badge, and every motion, `o`, `V` and `y` work on it;
@@ -420,8 +421,10 @@ solve "point at something on screen in two keys" for links; text blocks have no 
   asked; anything else is refused.
 - Text from `y` goes to the clipboard and nowhere else. It is not logged and not sent over the
   control socket.
-- What the page can observe: nothing while a block is focused (the outline is chrome, the scroll
-  listener is in the system group). `v` sets a real selection, so the page sees `selectionchange`
+- What the page can observe while a block is focused: only the scrolls `j` and `k` make to show
+  the next block, in its document and the documents around it (the outline is chrome, the scroll
+  listener is in the system group). `v` scrolls an off-screen block into view and, in a frame,
+  focuses that frame. `v` sets a real selection, so the page sees `selectionchange`
   and can read the selection, as with a mouse selection; it gets no `selectstart` for the initial
   range (Research, Firefox), and copy-mode motions afterwards behave as they do today. `y` from
   `ELEMENT` is not observable by the page.

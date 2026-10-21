@@ -235,7 +235,9 @@ link targets for hints, which chrome must treat as untrusted.
   [`only a block target carries a blockKind or a box`](../packages/vimma-core/test/hints.test.mjs),
   [`a reply holds only the kind of target its collection asked for`](../packages/vimma-core/test/hints.test.mjs)
   A focused block stays in its frame's actor: each `Vimma:Block` op is answered only for the
-  collection the block came from and only by the frame that holds it, and each reply **must** be
+  collection the block came from and only by the frame that holds it, except `frame`, which the
+  frames around it answer with the viewport of the next frame in (a rect that only places the
+  outline, which is clipped to the browser). Each reply **must** be
   checked field by field before chrome uses it (a kind from the closed list, a bounded length and
   box, at most 16 Mi characters of text for `y`, which goes to the clipboard and nowhere else).
   The scroll reports that move the outline are heard only from the block's frame and the frames

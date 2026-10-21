@@ -53,6 +53,8 @@ export class ElementFocus {
     this.session = null;
     /** Focuses so far: each one's `seq` is new. */
     this.seq = 0;
+    /** Yanks so far: a reply that comes after a newer yank or focus is dropped. */
+    this.yanks = 0;
   }
 
   /** The <browser> in ELEMENT mode, or null. */
@@ -128,17 +130,20 @@ export class ElementFocus {
     const s = this.#live();
     if (!s) return;
     this.#end(s);
+    const turn = ++this.yanks;
     const reply = /** @type {{ text: string, unselectable: boolean } | null} */ (
       await VimmaActors.block(s.chain[0], s.target.gen, "yank")
     );
     this.#release(s);
+    // A frame that answers late must not overwrite what the user copied or chose since.
+    if (turn !== this.yanks || this.session) return;
     if (!reply?.text) {
       this.host.notify(NOTHING_TO_YANK);
       return;
     }
     Cc["@mozilla.org/widget/clipboardhelper;1"]
       .getService(Ci.nsIClipboardHelper)
-      .copyString(reply.text);
+      .copyString(reply.text, s.browser.browsingContext?.currentWindowContext);
     this.host.notify(yankedText(reply.text) + (reply.unselectable ? UNSELECTABLE : ""));
   }
 
@@ -214,17 +219,18 @@ export class ElementFocus {
     s.kind = reply.kind;
     s.length = reply.length;
     this.host.changed();
-    this.#draw(s, reply.box);
+    this.#draw(s, reply.box, s.seq);
   }
 
   /**
    * Draws the outline where the block's box is in the top frame.
    * @param {ElementSession} s
    * @param {Rect} box  in the block's frame
+   * @param {number} seq  the move it is for: a slow answer for an earlier one is not drawn
    */
-  async #draw(s, box) {
+  async #draw(s, box, seq) {
     const at = await VimmaActors.blockBox(s.chain, s.target.gen, box);
-    if (this.session === s) this.host.overlay.outline(s.browser, at);
+    if (this.session === s && s.seq === seq) this.host.overlay.outline(s.browser, at);
   }
 
   /**
@@ -249,7 +255,7 @@ export class ElementFocus {
           this.#live();
           return;
         }
-        await this.#draw(s, reply.box);
+        await this.#draw(s, reply.box, s.seq);
       } while (s.dirty && this.session === s);
     } finally {
       s.drawing = false;

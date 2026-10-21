@@ -858,11 +858,27 @@ add_task(async function malformed_block_messages_are_refused() {
       null,
       "a collection is spent once a label is chosen",
     );
+    // A report from the block's own frame for another collection is not heard.
+    await SpecialPowers.spawn(browser, [gen], (g) => {
+      content.windowGlobalChild.getActor("Vimma").sendAsyncMessage("Vimma:BlockGone", {
+        gen: g + 1,
+      });
+    });
     // A report from a frame that is not the block's is not heard.
     await SpecialPowers.spawn(browser.browsingContext.children[0], [gen], (g) => {
       content.windowGlobalChild.getActor("Vimma").sendAsyncMessage("Vimma:BlockGone", { gen: g });
     });
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Nor one from the same page in another tab, opened in the background.
+    const other = BrowserTestUtils.addTab(gBrowser, PAGE);
+    try {
+      await BrowserTestUtils.browserLoaded(other.linkedBrowser);
+      await SpecialPowers.spawn(other.linkedBrowser, [gen], (g) => {
+        content.windowGlobalChild.getActor("Vimma").sendAsyncMessage("Vimma:BlockGone", { gen: g });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } finally {
+      BrowserTestUtils.removeTab(other);
+    }
     Assert.ok(VimmaHost._element(window), "the focus stays");
     await waitForRingOn(browser, "p2");
   });
