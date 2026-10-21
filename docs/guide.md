@@ -2561,8 +2561,9 @@ Except for the AppImage, it installs nothing; it tells you.
   checks three times in a row shows `updates: check failed`, and one that is older than 45 days
   (7 for nightly builds) shows `updates: no news for N days`.
 - **Off:** `[updates] check = false` in [config.toml](#configtoml), or `vimma.update.enabled` =
-  `false` in `about:config`, stops every request, the message and the question; `about:vimma`
-  then says checks are off. A `config.toml` with errors never turns checks back on: its `check = false` still holds, and
+  `false` in `about:config`, stops every request, the message and the question. The status bar
+  then shows a dim `updates: off` for a few seconds after startup, once per session, and hides
+  it; `about:vimma` says checks are off at any time. A `config.toml` with errors never turns checks back on: its `check = false` still holds, and
   while Vimma runs on its defaults because of the errors, it does not check at all.
 
 ## Privacy defaults
