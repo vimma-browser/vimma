@@ -4,11 +4,15 @@ import { describe, test, expect } from "vitest";
 import {
   CHECK_RETRY_MS,
   QUESTION_HINT,
+  RESTART_HINT,
+  RESTART_REASK_MS,
   announcement,
   checkDue,
   questionAnswer,
+  restartQuestion,
   securityQuestion,
   shouldAsk,
+  shouldAskRestart,
 } from "../src/update-notices.mjs";
 
 const HOUR = 3_600_000;
@@ -182,5 +186,76 @@ describe("the question and its keys", () => {
     for (const key of ["n", "N", "escape", "enter", "j", ":", "space"]) {
       expect(questionAnswer(key)).toBe("no");
     }
+  });
+});
+
+describe("shouldAskRestart (the restart question for an installed security update)", () => {
+  const base = {
+    enabled: true,
+    installType: /** @type {const} */ ("appimage"),
+    offer: offer({ urgent: true }),
+    stage: /** @type {const} */ ("staged"),
+    dismissed: /** @type {Record<string, number>} */ ({}),
+    now: NOW,
+    privateWindow: false,
+  };
+
+  test("an urgent update in place, not asked about in this session: ask", () => {
+    expect(shouldAskRestart(base)).toBe(true);
+  });
+
+  test("only once it is installed: not while it downloads, not for an offer alone", () => {
+    expect(shouldAskRestart({ ...base, stage: "pending" })).toBe(false);
+    expect(shouldAskRestart({ ...base, stage: "none" })).toBe(false);
+  });
+
+  test("an ordinary update in place never asks: the status bar says it applies on restart", () => {
+    expect(shouldAskRestart({ ...base, offer: offer() })).toBe(false);
+    expect(shouldAskRestart({ ...base, offer: null })).toBe(false);
+  });
+
+  test("answered in this session: asked again 24 hours later, not sooner", () => {
+    const at = NOW - RESTART_REASK_MS + 1;
+    expect(shouldAskRestart({ ...base, dismissed: { "0.1.3": at } })).toBe(false);
+    expect(shouldAskRestart({ ...base, dismissed: { "0.1.3": NOW - RESTART_REASK_MS } })).toBe(
+      true,
+    );
+    expect(RESTART_REASK_MS).toBe(24 * HOUR);
+  });
+
+  test("a clock set back since the answer asks again, so a wrong clock never silences it", () => {
+    expect(shouldAskRestart({ ...base, dismissed: { "0.1.3": NOW + HOUR } })).toBe(true);
+  });
+
+  test("a newer urgent version is a new question", () => {
+    expect(shouldAskRestart({ ...base, dismissed: { "0.1.2": NOW } })).toBe(true);
+  });
+
+  test("checks off, a source build or a private window: never", () => {
+    expect(shouldAskRestart({ ...base, enabled: false })).toBe(false);
+    expect(shouldAskRestart({ ...base, installType: "source" })).toBe(false);
+    expect(shouldAskRestart({ ...base, privateWindow: true })).toBe(false);
+  });
+
+  test("the restart question replaces the steps question once the update is in place", () => {
+    const asked = /** @type {string[]} */ ([]);
+    const steps = { ...base, asked, stage: /** @type {const} */ ("staged") };
+    expect(shouldAsk(steps)).toBe(false);
+    expect(shouldAskRestart(base)).toBe(true);
+  });
+});
+
+describe("the restart question", () => {
+  test("names the version, says the tabs come back and ends in (y/N) (Behaviour 6)", () => {
+    expect(restartQuestion(offer({ urgent: true }), false)).toBe(
+      "Security update 0.1.3 is ready. Restart now? Tabs come back. (y/N)",
+    );
+    expect(RESTART_HINT).toBe("y restart · n or Esc: not now");
+  });
+
+  test("with private tabs open it says they will close", () => {
+    expect(restartQuestion(offer({ urgent: true }), true)).toBe(
+      "Security update 0.1.3 is ready. Restart now? Tabs come back. Private tabs will close. (y/N)",
+    );
   });
 });

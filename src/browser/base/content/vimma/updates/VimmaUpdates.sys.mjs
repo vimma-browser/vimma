@@ -30,7 +30,12 @@ import {
   verifyManifest,
 } from "../core/updates.mjs";
 import { UPDATE_KEYS } from "../core/update-keys.mjs";
-import { appImagePlan, downloadProblem, stagedSteps } from "../core/appimage-update.mjs";
+import {
+  appImagePlan,
+  downloadProblem,
+  ownAppImage,
+  stagedSteps,
+} from "../core/appimage-update.mjs";
 import { checkDue } from "../core/update-notices.mjs";
 
 /** @import { InstallType, Offer, PinnedKey, UpdateNotice } from "../core/updates.mjs" */
@@ -847,6 +852,23 @@ export const VimmaUpdates = {
       key: state.key,
       pinnedKeys: pinnedKeys().length,
     };
+  },
+
+  /**
+   * `$APPIMAGE` when this Vimma is the AppImage it names, else null: what `:restart` starts
+   * again (core ownAppImage, the replacement's own rule).
+   * @returns {Promise<string | null>}
+   */
+  async ownAppImage() {
+    const where = await installInfo();
+    return ownAppImage({
+      installType: where.type,
+      marker: where.marker,
+      appImage: where.appImage,
+      appDir: where.appDir,
+      greDir: where.installDir,
+      forced: where.forced,
+    });
   },
 
   /** How this copy was installed, once known (null before the first look). */

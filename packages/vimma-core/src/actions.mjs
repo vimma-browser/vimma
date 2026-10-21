@@ -184,6 +184,8 @@ group("Browser", [
   ["quit", "app.quit", "Quit (asks first)"],
   // docs/specs/m6a-updater.md: no default key; :update.
   ["check_updates", "app.update_check", "Check for a newer Vimma"],
+  // docs/specs/m6a-updater.md §5: no default key; :restart. Tabs come back, private ones close.
+  ["restart", "app.restart", "Restart Vimma; an installed update applies"],
   ["reload_hard", "page.reload_hard", "Reload, bypassing the cache"],
   ["stop_loading", "page.stop", "Stop loading the page"],
   ["firefox_command", "firefox.command", "Run a Firefox command or key by its id (:firefox)"],

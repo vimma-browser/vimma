@@ -286,6 +286,8 @@ support-files = [
 ["browser_vimma_update_appimage.js"]
 support-files = ["file_vimma_update_manifest.sjs", "file_vimma_update_appimage.sjs"]
 
+["browser_vimma_restart.js"]
+
 ["browser_vimma_update_notices.js"]
 support-files = ["file_vimma_update_manifest.sjs", "file_vimma_plain.html"]
 

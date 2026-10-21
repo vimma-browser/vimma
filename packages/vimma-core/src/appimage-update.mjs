@@ -61,6 +61,42 @@ function allowedUrl(url, automation) {
 }
 
 /**
+ * What a restart and the replacement both ask: whether this Vimma is the AppImage `$APPIMAGE`
+ * names. `$APPIMAGE` is inherited by every program an AppImage starts: only the AppDir's own
+ * marker and a GRE directory inside `$APPDIR` show that it is (decision 34).
+ * @typedef {{ installType: InstallType, marker: string | null, appImage: string | null,
+ *   appDir: string | null, greDir: string, forced: boolean }} AppImageWhere
+ * @param {AppImageWhere} input
+ * @returns {{ ok: true, path: string } | { ok: false, why: string }}
+ */
+function ownership({ installType, marker, appImage, appDir, greDir, forced }) {
+  if (installType !== "appimage") return { ok: false, why: "not an AppImage install" };
+  if (!forced) {
+    if (marker === null || !MARKER.test(marker)) {
+      return {
+        ok: false,
+        why: "this Vimma is not an AppImage build (no vimma-package=appimage marker)",
+      };
+    }
+    if (!appDir || !greDir.startsWith(`${appDir.replace(/\/+$/, "")}/`)) {
+      return { ok: false, why: "this Vimma does not run from the AppImage's mount ($APPDIR)" };
+    }
+  }
+  if (!plainFilePath(appImage)) return { ok: false, why: "$APPIMAGE is not an absolute file path" };
+  return { ok: true, path: /** @type {string} */ (appImage) };
+}
+
+/**
+ * `$APPIMAGE` when this Vimma is the AppImage it names, else null: the file `:restart` starts
+ * again (spec §5), so a replaced AppImage restarts into its new version.
+ * @param {AppImageWhere} input
+ */
+export function ownAppImage(input) {
+  const own = ownership(input);
+  return own.ok ? own.path : null;
+}
+
+/**
  * Whether this install may replace `$APPIMAGE` with the offered build, and where.
  * @param {{ installType: InstallType, marker: string | null, appImage: string | null,
  *   appDir: string | null, greDir: string, offer: Offer | null, automation: boolean,
@@ -82,21 +118,9 @@ export function appImagePlan({
 }) {
   if (installType !== "appimage") return { ok: false, why: "not an AppImage install" };
   if (!offer) return { ok: false, why: "no update is offered" };
-  // `$APPIMAGE` is inherited by every program an AppImage starts: only the AppDir's own marker
-  // and a GRE directory inside `$APPDIR` show that this Vimma is the AppImage it names.
-  if (!forced) {
-    if (marker === null || !MARKER.test(marker)) {
-      return {
-        ok: false,
-        why: "this Vimma is not an AppImage build (no vimma-package=appimage marker)",
-      };
-    }
-    if (!appDir || !greDir.startsWith(`${appDir.replace(/\/+$/, "")}/`)) {
-      return { ok: false, why: "this Vimma does not run from the AppImage's mount ($APPDIR)" };
-    }
-  }
-  if (!plainFilePath(appImage)) return { ok: false, why: "$APPIMAGE is not an absolute file path" };
-  const target = /** @type {string} */ (appImage);
+  const own = ownership({ installType, marker, appImage, appDir, greDir, forced });
+  if (!own.ok) return own;
+  const target = own.path;
   const asset = offer.assets?.appimage;
   if (!asset || typeof asset.url !== "string") {
     return { ok: false, why: "the update manifest names no AppImage" };

@@ -641,7 +641,7 @@ describe("updateNotice (§5, the rows delivery 1 has)", () => {
         offer: { ...offer, urgent: true },
         staged: true,
       }),
-    ).toEqual({ text: "⇡ 0.3.1 security: restart", tone: "urgent" });
+    ).toEqual({ text: "⇡ 0.3.1 security: :restart", tone: "urgent" });
   });
 
   test("checks off or a source build: nothing, offer or not (decision 14)", () => {

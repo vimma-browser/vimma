@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- `:restart` restarts Vimma with its tabs, asking first while private tabs are open; an AppImage restarts into the file it replaced. Once a security update is installed, Vimma asks once per session, and again a day later, `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, and its status-bar segment reads `⇡ 0.3.1 security: :restart`. The help snapshot gains the unbound `restart` row.
+
 ### Changed
 
 - Firefox's Bookmarks Toolbar is hidden by default, also on the start page and after an import; `ctrl+b shift+b` opens your bookmarks, the start page names it, and `:bookmarkstoolbar [show|hide|newtab]`, `ctrl+shift+b` or `[ui] bookmarks_toolbar` brings the toolbar back. A profile that showed it has it hidden once, with a notice. The `defaults.toml` snapshot gains the commented `[ui] bookmarks_toolbar` line.

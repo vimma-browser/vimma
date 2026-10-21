@@ -1139,6 +1139,11 @@
           "keys": []
         },
         {
+          "name": "restart",
+          "description": "Restart Vimma; an installed update applies",
+          "keys": []
+        },
+        {
           "name": "reload_hard",
           "description": "Reload, bypassing the cache",
           "keys": [
