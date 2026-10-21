@@ -12,7 +12,8 @@ Read plan.md once per milestone; read docs/specs/<current>.md every session.
 - npm run lint # eslint, prettier, the Markdown and comment wording checks (tools/md-wording), spec-lint
 - npm run gen-docs # regenerate docs/bindings.md, docs/bindings.json, defaults.toml from actions.mjs
 - npm run import # sync-core + surfer import: symlink src/ and tests/ into engine/; rerun after editing packages/vimma-core
-- npx surfer build --ui # rebuild our UI only; plain ./mach build after a moz.build change.
+- npm run build -- --ui # surfer build under a Python mach supports; --ui rebuilds our UI only,
+  --mach runs ./mach build (after a moz.build change); it adds ~/.mozbuild/sccache to PATH.
   surfer build exits 0 even when make fails: grep the log for errors (`grep ' E '`)
 - npm start # launch the dev build with its own profile (sets the prefs a dev build needs)
 - npm run mochitest -- tests/browser/browser_vimma_<name>.js (add --artifact for an artifact build)

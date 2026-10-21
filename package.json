@@ -24,6 +24,7 @@
     "version-files": "node tools/version-files/version-files.mjs",
     "import": "tools/upstream/verify-source.sh --require && npm run sync-core && npm run version-files && node tools/import/restore-patched.mjs && surfer config brand vimma && surfer import && SURFER_MOZCONFIG_ONLY=1 surfer build",
     "start": "node tools/start.mjs",
+    "build": "node tools/build.mjs",
     "mochitest": "node tools/mochitest.mjs",
     "e2e": "node tools/e2e/e2e.mjs",
     "sites": "node tools/sites/sites.mjs",
