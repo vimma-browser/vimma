@@ -10,6 +10,7 @@ import {
   visibleHints,
   HintError,
   parseHintReply,
+  HINT_REPLY_MAX_TEXT,
   parseBlockReply,
   BLOCK_REPLY_MAX_TEXT,
   HINT_REPLY_MAX_TARGETS,
@@ -441,6 +442,25 @@ describe("parseHintReply: untrusted Vimma:CollectHints replies from a content pr
     ["a frame with no rect", { ...good, frames: [{ id: 42 }] }],
   ])("%s → null", (_, value) => {
     expect(parseHintReply(value)).toBeNull();
+  });
+
+  // mcp-drive D12: an agent's `f` asks for links with their text, and only for links.
+  test("a collection for an agent carries each link's text, capped, and only links", () => {
+    const link = { ...t0, text: "Pricing" };
+    const one = (/** @type {object} */ t) => ({ targets: [t], frames: [], ms: 0 });
+    expect(HINT_REPLY_MAX_TEXT).toBe(512);
+    expect(parseHintReply(one(link), { texts: true })?.targets).toEqual([link]);
+    expect(parseHintReply(one(t0), { texts: true })?.targets).toEqual([t0]);
+    // Without the ask, a text is dropped like any unknown field.
+    expect(parseHintReply(one(link))?.targets).toEqual([t0]);
+    for (const bad of [
+      { ...t0, text: 1 },
+      { ...t0, text: "x".repeat(513) },
+      { id: 0, rect, kind: "click", text: "x" },
+      { id: 0, rect, kind: "input" },
+    ]) {
+      expect(parseHintReply(one(bad), { texts: true }), JSON.stringify(bad)).toBeNull();
+    }
   });
 
   test("a block target needs a kind from the closed list and a finite box", () => {

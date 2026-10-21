@@ -9,6 +9,7 @@
  * tests/contract/control/v2/). Pure: the browser-side server and the tests share it.
  */
 
+import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./agent.mjs";
 import { parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
 
@@ -371,13 +372,14 @@ function checkFields(result, prefix, { strings = [], flags = [], nullable = [] }
 
 /**
  * `agent-keys`'s result (mcp-drive D16): the page after the steps, each step, why it stopped,
- * the last find's outcome.
+ * the last find's outcome, and `f`'s link list (D12) inside the untrusted-content delimiters
+ * with how many links were left out (security.md M21).
  * @param {Obj} result @param {string[]} errors
  */
 function checkKeysResult(result, errors) {
   noExtraFields(
     result,
-    ["url", "title", "loading", "scroll", "steps", "stopped", "find"],
+    ["url", "title", "loading", "scroll", "steps", "stopped", "find", "links", "dropped"],
     errors,
     "result.",
   );
@@ -407,6 +409,21 @@ function checkKeysResult(result, errors) {
   }
   if ("stopped" in result && !KEYS_STOPS.includes(/** @type {any} */ (result.stopped))) {
     errors.push(`result.stopped must be one of ${KEYS_STOPS.join(", ")}`);
+  }
+  if ("links" in result !== "dropped" in result) {
+    errors.push("result.links and result.dropped come together");
+  } else if ("links" in result) {
+    const { links, dropped } = result;
+    if (
+      typeof links !== "string" ||
+      !links.startsWith(`${UNTRUSTED_OPEN}\n`) ||
+      !links.endsWith(`\n${UNTRUSTED_CLOSE}`)
+    ) {
+      errors.push("result.links must be inside the untrusted-content delimiters");
+    }
+    if (!Number.isSafeInteger(dropped) || /** @type {number} */ (dropped) < 0) {
+      errors.push("result.dropped must be a non-negative integer");
+    }
   }
   if ("find" in result) {
     if (!isObject(result.find)) errors.push("result.find must be an object");

@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The agent role's commands (docs/specs/vimma-mcp.md, decision 4): list, read, open and close
-// tabs of the agent workspace, and run Vimma's own page keys in one (docs/specs/mcp-drive.md,
-// `agent-keys`), and nothing else. What an agent can reach is decided here, in
+// tabs of the agent workspace, and run Vimma's own page keys in one, following its links by
+// label (docs/specs/mcp-drive.md, `agent-keys`), and nothing else. What an agent can reach is decided here, in
 // the browser, when each command runs (decision 7): a tab of the agent workspace **and** of its
 // container, in a normal window (private windows have no workspaces and are never enumerated).
 // Every command but hello and ping asks through AgentGate first (decision 12), and after the
@@ -491,7 +491,7 @@ const COMMANDS = {
       throw refuse("busy", new AgentError("denied", message, "busy"));
     }
     if (VimmaHost.inUse(asked.tab.linkedBrowser)) throw refuse("in-use");
-    await ask(conn, "agent-keys", what, state, rid);
+    const outcome = await ask(conn, "agent-keys", what, state, rid);
     let found;
     try {
       found = stillAsAsked(agent, id, what.url);
@@ -513,6 +513,26 @@ const COMMANDS = {
       return true;
     };
     const result = await AgentDrive.run(tab, parsed.steps, {
+      conn,
+      // D18: a follow to another site is a vimma_open of its URL, asked unless a vimma_open
+      // grant is in force; the tab and the page it replaces are shown as for any open.
+      askOpen: async (url) => {
+        const uri = agentUri(url);
+        const now = describeTab(tab);
+        const open = { url: uri.spec, host: uri.host, tab: now.tab, title: now.title };
+        try {
+          await ask(conn, "agent-open", { ...open, current: now.url }, state, rid);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      // D14: under a grant a follow's notice names the host it loaded.
+      followed: (host) => {
+        if (outcome.grant) {
+          AgentGate.announce(conn, "vimma_keys", { ...what, followed: host }, outcome.grant.until);
+        }
+      },
       stillAgent: () => {
         const now = WorkspaceStore.agent;
         return (
@@ -556,6 +576,7 @@ const COMMANDS = {
 export function forgetAgentConnection(conn) {
   opens.forget(conn);
   keyCalls.forget(conn);
+  AgentDrive.forget(conn);
 }
 
 /**

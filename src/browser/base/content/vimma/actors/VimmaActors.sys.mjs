@@ -28,6 +28,7 @@ const START_PAGE_MATCH = "chrome://browser/content/vimma/start/start.html";
  * @property {Rect} rect  in the top frame's CSS pixels
  * @property {"link" | "input" | "click" | "block"} kind
  * @property {string} [href]  links only
+ * @property {string} [text]  an agent's links only: what the link says (mcp-drive D12)
  * @property {import("../core/blocks.mjs").BlockKind} [blockKind]  text blocks only
  * @property {Rect} [box]  text blocks only: the border box, for the outline
  * @property {number} gen  the collection it came from
@@ -46,8 +47,12 @@ let hintGen = 0;
  * @type {WeakMap<object, number>}
  */
 const blurGens = new WeakMap();
-/** The live collection of each window; another window's `f` must not void it. */
-/** @type {WeakMap<object, number>} */
+/**
+ * The live collection of each window, and of each agent tab (docs/specs/mcp-drive.md D12):
+ * another window's `f` must not void a window's, and an agent's `f`, keyed by its tab's
+ * <browser>, neither voids the user's hint mode in the same window nor is voided by it.
+ * @type {WeakMap<object, number>}
+ */
 const liveGen = new WeakMap();
 
 /** How long a subframe may take to answer (ms) before its targets are left out. */
@@ -246,18 +251,21 @@ export const VimmaActors = {
    * @param {any} browser XULBrowserElement
    * @param {string} action "hint.follow", "hint.follow_new_tab" (links only) or "hint.element"
    *   (text blocks, docs/specs/element-focus.md)
+   * @param {{ agent?: boolean }} [options]  `agent`: an agent's `f` in its tab
+   *   (docs/specs/mcp-drive.md D12): links only, each with its text, live per tab, not per window
    * @returns {Promise<HintTarget[]>}
    */
-  async collectHints(browser, action) {
+  async collectHints(browser, action, { agent = false } = {}) {
     const gen = ++hintGen;
-    const win = browser.ownerDocument.defaultView;
-    liveGen.set(win, gen);
-    const live = () => liveGen.get(win) === gen;
+    const key = agent ? browser : browser.ownerDocument.defaultView;
+    liveGen.set(key, gen);
+    const live = () => liveGen.get(key) === gen;
     const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
     /** Each frame at most once, whatever its embedder reports. */
     const visited = new Set();
-    const linksOnly = action === "hint.follow_new_tab";
-    const blocks = action === "hint.element";
+    const linksOnly = agent || action === "hint.follow_new_tab";
+    const blocks = !agent && action === "hint.element";
+    const texts = agent;
     /** @type {HintTarget[]} */
     const out = [];
     let ms = 0;
@@ -280,7 +288,12 @@ export const VimmaActors = {
         const late = new Promise((resolve) => {
           timer = setTimeout(resolve, depth === 0 ? TOP_TIMEOUT_MS : frameTimeout, null);
         });
-        const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", { gen, linksOnly, blocks });
+        const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", {
+          gen,
+          linksOnly,
+          blocks,
+          texts,
+        });
         raw = await Promise.race([query, late]);
       } catch {
         return; // the frame navigated or its process went away
@@ -288,7 +301,7 @@ export const VimmaActors = {
         clearTimeout(timer);
       }
       // From a content process, which may be compromised: a fresh, checked copy or nothing.
-      const reply = parseHintReply(raw, { blocks });
+      const reply = parseHintReply(raw, { blocks, texts });
       if (!reply || !live()) return;
       ms += reply.ms;
       for (const t of reply.targets) {
@@ -297,6 +310,7 @@ export const VimmaActors = {
         if (!rect) continue;
         /** @type {HintTarget} */
         const target = { gen, bc, wg, id: t.id, kind: t.kind, href: t.href, rect };
+        if (texts) target.text = t.text ?? "";
         if (t.box) {
           const box = intersect(offset(t.box, origin), frame);
           if (!box) continue;
@@ -370,6 +384,23 @@ export const VimmaActors = {
       referrerInfo: new ReferrerInfo(Ci.nsIReferrerInfo.EMPTY, true, wg.documentURI),
     });
     return true;
+  },
+
+  /**
+   * Loads a link target's href in `browser` itself, as the page would load it: the page's
+   * principal triggers the load and no event fires on the link, so no page handler runs (an
+   * agent's follow, docs/specs/mcp-drive.md D12). The caller checked the scheme, the document
+   * and checkLoadURIWithPrincipal.
+   * @param {any} browser XULBrowserElement
+   * @param {HintTarget} target
+   * @param {any} uri nsIURI of the target's href
+   */
+  loadLink(browser, target, uri) {
+    const wg = target.wg;
+    browser.loadURI(uri, {
+      triggeringPrincipal: wg.documentPrincipal,
+      referrerInfo: new ReferrerInfo(Ci.nsIReferrerInfo.EMPTY, true, wg.documentURI),
+    });
   },
 
   /**

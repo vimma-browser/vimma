@@ -360,6 +360,17 @@ export const AgentGate = {
     });
   },
 
+  /**
+   * A notice for a step of a call that runs under a grant (mcp-drive D14: a follow names the
+   * host it loaded), shown like the call's own.
+   * @param {ConnId} conn @param {string} tool @param {object} what @param {number} until
+   */
+  announce(conn, tool, what, until) {
+    const label = labels.get(conn);
+    if (!label || until <= Date.now()) return;
+    changed({ kind: "ran", conn, tool, what, label, until });
+  },
+
   /** `:mcp log`'s rows, newest first (mcp-drive D14). */
   get log() {
     return log.entries();

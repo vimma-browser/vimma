@@ -3,22 +3,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * `vimma_keys`'s keys (docs/specs/mcp-drive.md, D9-D11, D15; security.md M16, M20): the text an
- * agent sends, parsed by a dispatcher of its own over Vimma's default keymap, never the user's,
+ * `vimma_keys`'s keys (docs/specs/mcp-drive.md, D9-D12, D15; security.md M16, M20, M21): the text
+ * an agent sends, parsed by a dispatcher of its own over Vimma's default keymap, never the user's,
  * and kept only when every action id is on a fixed whitelist. Nothing here reaches a page: the
- * browser runs each step as a Vimma action on the agent tab (ctl/AgentDrive.sys.mjs).
+ * browser runs each step as a Vimma action on the agent tab (ctl/AgentDrive.sys.mjs). Also the
+ * link list `f` returns: its labels and its lines.
  */
 
 import { getAction } from "./actions.mjs";
 import { DEFAULT_CONFIG } from "./defaults.mjs";
 import { createDispatcher } from "./dispatcher.mjs";
+import { DEFAULT_HINT_CHARS, hintLabels, orderTargets } from "./hints.mjs";
 import { compileKeymap } from "./keymap.mjs";
 import { formatKey, parseBinding, parseKey } from "./keys.mjs";
 
 /** @import { Chord, BindingElement } from "./keys.mjs" */
 /** @import { Action } from "./dispatcher.mjs" */
 
-/** The actions `vimma_keys` may run (D9), by id. Links (`hint.follow`) come with D12. */
+/** The actions `vimma_keys` may run (D9), by id. */
 export const AGENT_KEY_ACTIONS = Object.freeze(
   new Set([
     "scroll.down",
@@ -37,6 +39,7 @@ export const AGENT_KEY_ACTIONS = Object.freeze(
     "find.previous",
     "page.url_up",
     "page.url_root",
+    "hint.follow",
   ]),
 );
 
@@ -44,9 +47,25 @@ export const AGENT_KEY_ACTIONS = Object.freeze(
 export const AGENT_KEY_LIMITS = Object.freeze({ chars: 512, actions: 32, count: 99, query: 256 });
 
 /**
- * One action to run: the keys that made it as the question shows them, its id, its count and,
- * for `/` and `?`, the query.
- * @typedef {{ keys: string, action: string, count?: number, query?: string }} AgentStep
+ * D12: at most `max` links a list, each link's text cut at `text` and its href at `href`
+ * characters; labels live `ttlMs`. `label` is the longest label `max` links get over
+ * DEFAULT_HINT_CHARS, so a longer one can name no link.
+ */
+export const AGENT_LINKS = Object.freeze({
+  max: 200,
+  text: 80,
+  href: 2048,
+  ttlMs: 120_000,
+  label: Math.max(...hintLabels(200, DEFAULT_HINT_CHARS).map((l) => l.length)),
+});
+
+/** The characters of a label (D12): the default ones, never the user's `hint_chars` (D10). */
+const LABEL_CHARS = new Set(DEFAULT_HINT_CHARS);
+
+/**
+ * One action to run: the keys that made it as the question shows them, its id, its count, for
+ * `/` and `?` the query, and for `f<label>` the label (`f` without one lists the links).
+ * @typedef {{ keys: string, action: string, count?: number, query?: string, label?: string }} AgentStep
  * @typedef {{ ok: true, steps: AgentStep[] } | { ok: false, error: string }} AgentKeys
  */
 
@@ -59,7 +78,6 @@ let keymap = null;
 
 /** Why each refused action is refused, by id or by id prefix, first match wins. */
 const REASONS = /** @type {const} */ ([
-  [["hint.follow"], "following links by hint label is not in this Vimma yet; use vimma_open"],
   [["command.open", "cmdline.run"], "the command line is the user's"],
   [
     ["mode.insert", "urlbar.focus", "page.focus_input", "page.open"],
@@ -181,6 +199,9 @@ export function parseAgentKeys(text) {
   /** The step that wants its query: the text after its `/` or `?`. */
   /** @type {AgentStep | null} */
   let wantsQuery = null;
+  /** The `f` that may take a label: the hint characters right after it. */
+  /** @type {AgentStep | null} */
+  let wantsLabel = null;
 
   /**
    * One action from the dispatcher: whitelisted, within the limits.
@@ -191,6 +212,9 @@ export function parseAgentKeys(text) {
     const keys = typed;
     typed = "";
     if (!AGENT_KEY_ACTIONS.has(action.id)) return refusal(keys, reasonFor(action.id), action.id);
+    if (action.id === "hint.follow" && action.count !== undefined) {
+      return refusal(keys, "a count does not apply to f");
+    }
     if (action.count !== undefined && action.count > AGENT_KEY_LIMITS.count) {
       return refusal(keys, `a count must be at most ${AGENT_KEY_LIMITS.count}`);
     }
@@ -202,6 +226,7 @@ export function parseAgentKeys(text) {
     if (action.count !== undefined) step.count = action.count;
     steps.push(step);
     if (action.id === "find.forward" || action.id === "find.backward") wantsQuery = step;
+    if (action.id === "hint.follow") wantsLabel = step;
     return null;
   };
 
@@ -279,6 +304,22 @@ export function parseAgentKeys(text) {
       }
       const why = feed(el);
       if (why) return refused(why);
+      if (wantsLabel) {
+        // D12: the label is the hint characters right after `f`, up to a space or another key;
+        // labels being prefix-free, `fsdG` is a follow of sd, then G.
+        const step = /** @type {AgentStep} */ (wantsLabel);
+        wantsLabel = null;
+        let label = "";
+        while (i < end && LABEL_CHARS.has(/** @type {string} */ (text[i]))) label += text[i++];
+        if (label) {
+          if (label.length > AGENT_LINKS.label) {
+            const why = `a label is at most ${AGENT_LINKS.label} characters`;
+            return refused(refusal(`${step.keys}${label}`, why));
+          }
+          step.label = label;
+          step.keys = `${step.keys}${label}`;
+        }
+      }
       if (wantsQuery) {
         const step = /** @type {AgentStep} */ (wantsQuery);
         wantsQuery = null;
@@ -311,6 +352,11 @@ export function parseAgentKeys(text) {
     return refused(refusal(typed, "the key sequence is incomplete"));
   }
   if (!steps.length) return refused("keys has no keys");
+  const list = steps.findIndex((s) => s.action === "hint.follow" && s.label === undefined);
+  if (list !== -1 && list !== steps.length - 1) {
+    const why = "f without a label lists the links and must be the last key";
+    return refused(refusal(/** @type {AgentStep} */ (steps[list]).keys, why));
+  }
   return { ok: true, steps };
 }
 
@@ -320,4 +366,61 @@ export function parseAgentKeys(text) {
  */
 export function shownKeys(steps) {
   return steps.map((s) => s.keys).join(" ");
+}
+
+/**
+ * A link as the browser collected it: where it is, and its href and text as the page gave them.
+ * @typedef {{ rect: { x: number, y: number, width: number, height: number }, href?: string,
+ *   text?: string }} AgentLinkTarget
+ */
+
+/**
+ * The links of `f` with their labels (D12): in reading order (orderTargets), at most
+ * AGENT_LINKS.max, labelled over DEFAULT_HINT_CHARS; the rest dropped and counted.
+ * @template {AgentLinkTarget} T
+ * @param {readonly T[]} targets
+ * @returns {{ links: { label: string, target: T }[], dropped: number }}
+ */
+export function labelAgentLinks(targets) {
+  const kept = orderTargets(targets).slice(0, AGENT_LINKS.max);
+  const labels = hintLabels(kept.length, DEFAULT_HINT_CHARS);
+  return {
+    links: kept.map((target, i) => ({ label: /** @type {string} */ (labels[i]), target })),
+    dropped: Math.max(0, targets.length - kept.length),
+  };
+}
+
+/** Control, bidirectional and invisible characters: dropped from a link's text. */
+const UNSHOWN =
+  // eslint-disable-next-line no-control-regex -- the control characters are what it drops
+  /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+
+/** @param {string} s @param {number} max  at most `max` code points, `…` the last when cut */
+function cutTo(s, max) {
+  const chars = [...s];
+  return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : s;
+}
+
+/**
+ * The link list's text (D16, security.md M21), one link a line: the label, the text as a JSON
+ * string cut at AGENT_LINKS.text, the href cut at AGENT_LINKS.href. The browser wraps it in the
+ * untrusted-content delimiters (wrapUntrusted): every word of it is the page's.
+ * @param {readonly { label: string, target: AgentLinkTarget }[]} links
+ */
+export function agentLinkLines(links) {
+  return links
+    .map(({ label, target }) => {
+      const text = cutTo(
+        String(target.text ?? "")
+          .replace(UNSHOWN, "")
+          .replace(/\s+/g, " ")
+          .trim(),
+        AGENT_LINKS.text,
+      );
+      const href = target.href
+        ? cutTo(target.href.replace(UNSHOWN, "").replace(/\s/g, ""), AGENT_LINKS.href)
+        : "(no URL)";
+      return `${label} ${JSON.stringify(text)} ${href}`;
+    })
+    .join("\n");
 }
