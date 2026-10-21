@@ -115,3 +115,8 @@ the [user guide](guide.md); planned work is on the
   like Firefox's own packages, they do not warn when the kernel blocks the unprivileged user
   namespaces the content sandbox uses (as Ubuntu 24.04's AppArmor policy does for the AppImage
   and the `.deb`). The sandbox is then weaker without saying so; the tarball still warns.
+- The AppImage updates itself by replacing its own file, which keeps its old name
+  (`vimma-0.1.0-x86_64.AppImage` can hold 0.3.1); about:vimma shows the real version. A
+  directory Vimma cannot write, or an AppImage run from a copy that `--appimage-extract` made,
+  gets the manual steps instead. The new version runs from the next start; nothing restarts
+  Vimma for it.

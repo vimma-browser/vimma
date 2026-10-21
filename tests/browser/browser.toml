@@ -272,5 +272,8 @@ support-files = [
   "file_vimma_update_bomb.gz^headers^",
 ]
 
+["browser_vimma_update_appimage.js"]
+support-files = ["file_vimma_update_manifest.sjs", "file_vimma_update_appimage.sjs"]
+
 ["browser_vimma_update_notices.js"]
 support-files = ["file_vimma_update_manifest.sjs", "file_vimma_plain.html"]

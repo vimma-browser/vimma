@@ -1296,7 +1296,8 @@ Spec: [m6a-updater](specs/m6a-updater.md) (delivery 1) and [update-notices](spec
 Vimma fetches one signed manifest from `updates.vimma.dev` every 12 hours, at startup when a check
 is due, and on `:update`, and tells the status bar, about:vimma and, once per version, a short
 message whether a newer release exists; a security release also asks once per session whether
-to show the update command. It downloads and installs nothing. Who can reach it: whoever
+to show the update command. Only the AppImage installs anything: it replaces its own file with
+the offered AppImage (UP10); every other install downloads and installs nothing. Who can reach it: whoever
 controls the update host or the network path (TLS stops the path), _you_ through `about:config`
 and `config.toml`, and the control socket's full role (`app.update_check`, as it can run
 `app.quit`). The agent role reaches no action, so a local AI agent cannot trigger a check.
@@ -1472,6 +1473,34 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_new_version_is_announced_once`](../tests/browser/browser_vimma_update_notices.js),
   [`y or Y shows the steps; n, Esc, Enter and any other key dismiss`](../packages/vimma-core/test/update-notices.test.mjs)
 
+- UP10. The AppImage **only** replaces its own file (`$APPIMAGE`) with a download whose size
+  and SHA-512 match the verified manifest, checked on the file as written to disk, after every
+  write is synced, and before the rename; anything else leaves the file as it was and removes
+  the download. It replaces nothing unless its GRE directory carries the
+  `vimma-package=appimage` marker and lies inside `$APPDIR`, so a program started from another
+  AppImage, which inherits that AppImage's `$APPIMAGE`, never overwrites it. Outside automation
+  the download **must** come from `https://github.com/vimma-browser/vimma/releases/download/`
+  (path segments only), so a leaked manifest key alone cannot point installs at a file of its
+  own. The download is anonymous (no cookies, no referrer, an empty `Accept-Language`), follows
+  GitHub's redirect to its asset host but must end on https, stops past the signed size or after
+  60 seconds without data, and is written to a hidden file in the same directory that is created
+  exclusively, so a second Vimma never writes into it. The file is made `0755` and renamed over
+  `$APPIMAGE`; the running Vimma keeps its mounted image, and nothing restarts it. Checks off
+  (UP4) download nothing. **⚠ limit:** the manifest's hash is the AppImage's only signature: an
+  AppImage carries no MAR signature the way Firefox's updater checks one, so a leaked primary key
+  together with any release asset of the project (an older AppImage included) can install that
+  asset; the replay and downgrade rules (UP2) compare the manifest's versions, not the file's.
+  [`a_newer_appimage_replaces_the_file`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_wrong_hash_leaves_the_file_alone`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_larger_download_than_signed_is_refused`](../tests/browser/browser_vimma_update_appimage.js),
+  [`an_unwritable_directory_falls_back_to_the_steps`](../tests/browser/browser_vimma_update_appimage.js),
+  [`another_install_type_never_touches_appimage`](../tests/browser/browser_vimma_update_appimage.js),
+  [`checks_off_never_downloads`](../tests/browser/browser_vimma_update_appimage.js),
+  [`without the AppDir's own appimage marker, $APPIMAGE is never replaced`](../packages/vimma-core/test/appimage-update.test.mjs),
+  [`a Vimma that does not run from $APPDIR is not the AppImage $APPIMAGE names`](../packages/vimma-core/test/appimage-update.test.mjs),
+  [`a download from %s is refused outside automation`](../packages/vimma-core/test/appimage-update.test.mjs),
+  [`another size or hash: refused, with the reason`](../packages/vimma-core/test/appimage-update.test.mjs)
+
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing job on `main`, in the `update-signing` environment, can
 ask to sign, through GitHub OIDC (UP7); the secondary is to be generated and kept offline by the maintainer (not made yet). Their
@@ -1483,6 +1512,7 @@ the secondary is pinned in a later release, an ordinary one whose manifest the p
 Until then a lost or leaked primary cannot be replaced through the update check: installs keep
 trusting it until they are updated by hand. A leaked primary can announce a version that does
 not exist and link its details page anywhere over https, but the commands about:vimma shows
-still name only the project's own release downloads (UP5), and nothing is installed by the check.
+still name only the project's own release downloads (UP5), and only the AppImage installs
+anything, and only a release asset of the project (UP10).
 It can also mark such an offer as a security release, and hold back genuine manifests for up to a
 day by signing a serial ahead of the clock (UP2).

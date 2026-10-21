@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1 and sub-PR 4's release manifest implemented; sub-PRs 2, 3 and 5, and sub-PR 4's MAR and nightly parts open) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement and sub-PR 4's release manifest implemented; sub-PRs 2 and 5, the rest of sub-PR 3, and sub-PR 4's MAR and nightly parts open) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -413,6 +413,24 @@ it cannot write falls back to the hint. Rejected: AppImageUpdate/zsync (a tool t
 run, so updates are not automatic) and MAR-patching an extracted copy (the AppImage would stop
 being one file). The file keeps its old name (`vimma-0.1.0-x86_64.AppImage` now holding 0.3.1);
 the guide says so, and about:vimma shows the real version.
+
+(Since changed: the replacement is built in `packages/vimma-core/src/appimage-update.mjs` and
+`VimmaUpdates.sys.mjs`, with these rules. It runs only when the GRE directory's
+`is-packaged-app` says `vimma-package=appimage` and lies inside `$APPDIR`, because `$APPIMAGE` is
+inherited by every program an AppImage starts (decision 34). The download URL must be one of the
+project's release downloads (`https://github.com/vimma-browser/vimma/releases/download/…`, path
+segments only), because a leaked manifest key would otherwise be enough to point every AppImage at
+a file of its own; with that rule it also needs a release asset in the project. The part file is
+created exclusively, so two Vimma processes never write one download, and a part file younger than
+an hour is left to the process writing it. Every write is synced, and the size and SHA-512 are
+checked on the file as written, before the rename. A target that already has the offered size
+and SHA-512 counts as replaced without a download. An urgent replaced update shows
+`⇡ 0.3.1 security: restart` until `:restart` exists, the one-time message says
+`Vimma 0.3.1 is installed · restart Vimma to use it` (or `fixes security issues · …`) once the
+file is replaced and not before, and the `Show the update command?` question of spec
+update-notices is not asked, because an AppImage that replaced its file has no command left to
+run. A failed replacement keeps the offer and its manual steps and is tried again at the next
+check.)
 
 ### 4. Client: verification, downgrade and replay
 
@@ -838,7 +856,9 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     starts, so a tarball Vimma launched from another AppImage sees it as well. The marker lets
     detection require the AppDir's own `vimma-package=appimage` before it offers to replace
     `$APPIMAGE`; today `installTypeFrom` still accepts `$APPIMAGE` without a marker, and making
-    the marker required is a separate change. The cost is that Firefox, which reads the marker
+    the marker required is a separate change (since changed: replacing the file requires the
+    marker and a GRE directory inside `$APPDIR`; the install type shown and the manual steps
+    still accept `$APPIMAGE` alone). The cost is that Firefox, which reads the marker
     as "packaged app" (`isPackagedApp`), stops showing its warning that the content sandbox runs
     without unprivileged user namespaces (`security/sandbox/common/SandboxUtils.sys.mjs:25`,
     Firefox 158.0), as it already does for the `.deb` and the PKGBUILD; `docs/limits.md` states

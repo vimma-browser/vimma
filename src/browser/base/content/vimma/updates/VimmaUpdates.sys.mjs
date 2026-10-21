@@ -6,8 +6,10 @@
 // the signed manifest from updates.vimma.dev, verifies it against the keys pinned in this build
 // (core/update-keys.mjs) and tells the status bar and about:vimma whether a newer Vimma exists;
 // `:update` checks at once, and a start checks a few seconds after the first window is ready
-// when the last good check is older than the interval (docs/specs/update-notices.md). It
-// downloads and installs nothing. The request is anonymous (no cookies, no cache) and its URL may
+// when the last good check is older than the interval (docs/specs/update-notices.md). Only the
+// AppImage installs anything: it downloads the offered AppImage next to itself, checks it against
+// the signed manifest and renames it over its own file (spec §3, decision 19); every other
+// install is told how to update. The request is anonymous (no cookies, no cache) and its URL may
 // carry only the platform and the update channel. A host that does not answer is logged and
 // otherwise quiet; a manifest that fails verification is refused and, three times in a row,
 // shown. Pure rules live in core/updates.mjs.
@@ -28,9 +30,11 @@ import {
   verifyManifest,
 } from "../core/updates.mjs";
 import { UPDATE_KEYS } from "../core/update-keys.mjs";
+import { appImagePlan, downloadProblem, stagedSteps } from "../core/appimage-update.mjs";
 import { checkDue } from "../core/update-notices.mjs";
 
 /** @import { InstallType, Offer, PinnedKey, UpdateNotice } from "../core/updates.mjs" */
+/** @import { Stage } from "../core/update-notices.mjs" */
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -61,6 +65,13 @@ const STARTUP_CHECK_MS = 5_000;
 /** How often the timer asks whether a check is due. */
 const POLL_MS = 3_600_000;
 const FETCH_TIMEOUT_MS = 30_000;
+/** An AppImage download that receives nothing for this long is given up (and tried again at
+ * the next check); a slow link that keeps receiving is never cut off. */
+const STALL_MS = 60_000;
+/** The download is written in pieces of about this size. */
+const WRITE_CHUNK = 4 * 1024 * 1024;
+/** A part file this old is a leftover of a run that ended mid-download, not one in progress. */
+const STALE_PART_MS = 3_600_000;
 /** The only placeholders the URL may use: nothing that identifies an install or a person. */
 const ALLOWED_PLACEHOLDERS = new Set(["BUILD_TARGET", "CHANNEL"]);
 const MARKER = "is-packaged-app";
@@ -111,8 +122,26 @@ let configCheck = /** @type {boolean | null} */ (null);
 let running = null;
 /** The install type once installInfo has run; until then no notice can be due anyway. */
 let knownType = /** @type {InstallType | null} */ (null);
-/** @type {Promise<{ type: InstallType, installDir: string, appImage: string | null }> | null} */
+/**
+ * @typedef {object} Install
+ * @property {InstallType} type
+ * @property {string} installDir  the GRE directory
+ * @property {string | null} appImage  `$APPIMAGE`
+ * @property {string | null} appDir  `$APPDIR`
+ * @property {string | null} marker  the `is-packaged-app` file's text
+ * @property {boolean} forced  a test set the install type
+ */
+/** @type {Promise<Install> | null} */
 let install = null;
+/**
+ * The AppImage's own replacement (decision 19), for this process only: after a restart the new
+ * build runs and the offer is gone. `reason` says why the last attempt failed.
+ * @type {{ stage: Stage, buildId: string | null, reason: string | null }}
+ */
+let replacement = { stage: "none", buildId: null, reason: null };
+/** The replacement under way, and the promise that resolves once its stage is known. */
+let replacing = /** @type {Promise<void> | null} */ (null);
+let replacingDecided = /** @type {Promise<void>} */ (Promise.resolve());
 /** @type {Set<() => void>} */
 const listeners = new Set();
 let started = false;
@@ -157,13 +186,15 @@ function installInfo() {
   return install;
 }
 
-/** @returns {Promise<{ type: InstallType, installDir: string, appImage: string | null }>} */
+/** @returns {Promise<Install>} */
 async function detectInstall() {
   const gre = Services.dirsvc.get("GreD", Ci.nsIFile).path;
   const appImage = Services.env.get("APPIMAGE") || null;
+  const appDir = Services.env.get("APPDIR") || null;
   const forced = inAutomation() ? Services.prefs.getStringPref(TEST_TYPE_PREF, "") : "";
   if (forced) {
-    return { type: /** @type {InstallType} */ (forced), installDir: gre, appImage };
+    const type = /** @type {InstallType} */ (forced);
+    return { type, installDir: gre, appImage, appDir, marker: null, forced: true };
   }
   // A build run from its objdir has no omni.ja: the chrome files are loose links into the
   // source tree. Every packaged build (tarball, AppImage, .deb, AUR, the .dmg) has one.
@@ -176,7 +207,7 @@ async function detectInstall() {
   const appPath = mac ? appBundleOf(gre) : null;
   const caskroom = mac ? await IOUtils.exists(HOMEBREW_CASKROOM).catch(() => false) : false;
   const type = installTypeFrom({ packaged, marker, appImage, platform, appPath, caskroom });
-  return { type, installDir: gre, appImage };
+  return { type, installDir: gre, appImage, appDir, marker, forced: false };
 }
 
 /** @returns {PinnedKey[]} */
@@ -406,6 +437,235 @@ async function runCheck() {
   });
 }
 
+/**
+ * The file's SHA-512 as lower-case hex, read in pieces off the main thread so that hashing an
+ * AppImage (about 110 MB) never holds it in memory or blocks a window for long.
+ * @param {string} path
+ */
+async function sha512File(path) {
+  const hash = Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
+  hash.init(Ci.nsICryptoHash.SHA512);
+  for (let offset = 0; ;) {
+    const bytes = await IOUtils.read(path, { offset, maxBytes: WRITE_CHUNK });
+    if (!bytes.byteLength) break;
+    hash.update(/** @type {any} */ (bytes), bytes.byteLength);
+    offset += bytes.byteLength;
+  }
+  const binary = hash.finish(false);
+  let hex = "";
+  for (let i = 0; i < binary.length; i++) {
+    hex += binary.charCodeAt(i).toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+/**
+ * Downloads `url` into `part`, which the caller created empty, anonymously, stopping past `size`
+ * bytes or after STALL_MS without data. Every write is synced, so the file is on disk before
+ * the rename makes it the AppImage.
+ * @param {string} url @param {string} part @param {number} size
+ */
+async function download(url, part, size) {
+  const abort = new AbortController();
+  let stall = lazy.setTimeout(() => abort.abort(), STALL_MS);
+  const alive = () => {
+    lazy.clearTimeout(stall);
+    stall = lazy.setTimeout(() => abort.abort(), STALL_MS);
+  };
+  /** @param {Uint8Array} bytes */
+  const write = (bytes) => IOUtils.write(part, bytes, { mode: "append", flush: true });
+  try {
+    const response = await fetch(url, {
+      credentials: "omit",
+      cache: "no-store",
+      referrerPolicy: "no-referrer",
+      headers: { "Accept-Language": "" },
+      signal: abort.signal,
+    });
+    // GitHub answers a release download with a redirect to its asset host: the redirect is
+    // followed, but the file must arrive over https.
+    if (!response.url.startsWith("https://")) throw new Error("the download left https");
+    if (!response.ok) throw new Error(`the download host answered ${response.status}`);
+    const length = response.headers.get("Content-Length");
+    if (length !== null && Number(length) !== size) {
+      throw new Error(`the download is ${length} bytes, the signed manifest says ${size}`);
+    }
+    const reader = /** @type {ReadableStream<Uint8Array>} */ (response.body).getReader();
+    /** @type {Uint8Array[]} */
+    let pending = [];
+    let buffered = 0;
+    let total = 0;
+    const flush = async () => {
+      const bytes = new Uint8Array(buffered);
+      let at = 0;
+      for (const c of pending) {
+        bytes.set(c, at);
+        at += c.byteLength;
+      }
+      pending = [];
+      buffered = 0;
+      await write(bytes);
+    };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      alive();
+      total += value.byteLength;
+      if (total > size) {
+        await reader.cancel().catch(() => {});
+        throw new Error(`the download is larger than the signed ${size} bytes`);
+      }
+      pending.push(value);
+      buffered += value.byteLength;
+      if (buffered >= WRITE_CHUNK) await flush();
+    }
+    if (buffered) await flush();
+  } catch (e) {
+    if (abort.signal.aborted) throw new Error("the download stalled", { cause: e });
+    throw e;
+  } finally {
+    lazy.clearTimeout(stall);
+  }
+}
+
+/** @param {Partial<typeof replacement>} next */
+function setReplacement(next) {
+  replacement = { ...replacement, ...next };
+  if (replacement.reason) console.warn(`vimma: AppImage update: ${replacement.reason}`);
+  notify();
+}
+
+/**
+ * Replaces `$APPIMAGE` with the offered build (decision 19): a hidden part file next to it,
+ * checked against the signed size and SHA-512, mode 0755, then renamed over the file. Anything
+ * that fails leaves the AppImage as it was, removes the part file, and falls back to the steps
+ * `:update` shows; the next check tries again.
+ * @param {() => void} decided  called once the stage is known (pending, or done without a download)
+ */
+async function replaceAppImage(decided) {
+  const where = await installInfo();
+  const offer = state.offer;
+  if (where.type !== "appimage" || !offer || !enabled()) return;
+  if (replacement.stage === "staged" && replacement.buildId === offer.buildId) return;
+  const plan = appImagePlan({
+    installType: where.type,
+    marker: where.marker,
+    appImage: where.appImage,
+    appDir: where.appDir,
+    greDir: where.installDir,
+    offer,
+    automation: inAutomation(),
+    forced: where.forced,
+  });
+  if (!plan.ok) {
+    setReplacement({ stage: "none", buildId: offer.buildId, reason: plan.why });
+    return;
+  }
+  const expected = { size: plan.size, sha512: plan.sha512 };
+  try {
+    const info = await IOUtils.stat(plan.target);
+    if (info.type !== "regular") throw new Error("$APPIMAGE is not a regular file");
+    // Already replaced, by this Vimma before a session restore or by another one running the
+    // same file: nothing to download.
+    if (
+      info.size === plan.size &&
+      !downloadProblem(expected, { size: info.size, sha512: await sha512File(plan.target) })
+    ) {
+      setReplacement({ stage: "staged", buildId: offer.buildId, reason: null });
+      return;
+    }
+  } catch (e) {
+    const why = /** @type {any} */ (e)?.message ?? String(e);
+    setReplacement({
+      stage: "none",
+      buildId: offer.buildId,
+      reason: `cannot read $APPIMAGE: ${why}`,
+    });
+    return;
+  }
+  const leftover = await IOUtils.stat(plan.part).catch(() => null);
+  if (leftover) {
+    if (Date.now() - (leftover.lastModified ?? 0) < STALE_PART_MS) {
+      setReplacement({
+        stage: "none",
+        buildId: offer.buildId,
+        reason: "another download of this update is under way",
+      });
+      return;
+    }
+    await IOUtils.remove(plan.part).catch(() => {});
+  }
+  try {
+    // "create" fails when the file exists: a second Vimma never writes into another's download.
+    await IOUtils.write(plan.part, new Uint8Array(0), { mode: "create" });
+  } catch (e) {
+    const why = /** @type {any} */ (e)?.message ?? String(e);
+    setReplacement({
+      stage: "none",
+      buildId: offer.buildId,
+      reason: `cannot write next to the AppImage: ${why}`,
+    });
+    return;
+  }
+  setReplacement({ stage: "pending", buildId: offer.buildId, reason: null });
+  decided();
+  let ours = true;
+  try {
+    await download(plan.url, plan.part, plan.size);
+    const size = (await IOUtils.stat(plan.part)).size;
+    const problem = downloadProblem(expected, { size, sha512: await sha512File(plan.part) });
+    if (problem) throw new Error(problem);
+    await IOUtils.setPermissions(plan.part, 0o755);
+    // The offer may have changed while the file downloaded (a newer check, checks turned off).
+    if (state.offer?.buildId !== offer.buildId || !enabled()) {
+      throw new Error("the offer changed during the download");
+    }
+    await IOUtils.move(plan.part, plan.target);
+    ours = false;
+    setReplacement({ stage: "staged", buildId: offer.buildId, reason: null });
+  } catch (e) {
+    const why = /** @type {any} */ (e)?.message ?? String(e);
+    setReplacement({ stage: "none", buildId: offer.buildId, reason: why });
+  } finally {
+    if (ours) await IOUtils.remove(plan.part).catch(() => {});
+  }
+}
+
+/**
+ * How far the AppImage got with the offer shown now. An AppImage offer it has not tried yet
+ * counts as pending, so the one-time message waits for the outcome instead of showing a
+ * command the replacement is about to make unnecessary.
+ * @returns {Stage}
+ */
+function stage() {
+  const offer = state.offer;
+  if (!offer) return "none";
+  if (replacement.buildId === offer.buildId) return replacement.stage;
+  return knownType === "appimage" && enabled() ? "pending" : "none";
+}
+
+/**
+ * Starts the AppImage's replacement when one is due, one at a time.
+ * @returns {Promise<void>} resolves once the stage is known, before any download ends
+ */
+function maybeReplace() {
+  if (knownType !== "appimage" || !state.offer) return Promise.resolve();
+  if (!replacing) {
+    /** @type {() => void} */
+    let decided = () => {};
+    replacingDecided = new Promise((resolve) => {
+      decided = resolve;
+    });
+    replacing = replaceAppImage(decided)
+      .catch((e) => console.error("vimma: AppImage update failed", e))
+      .finally(() => {
+        decided();
+        replacing = null;
+      });
+  }
+  return replacingDecided;
+}
+
 /** A due check found config.toml not read yet: configure() runs it. */
 let waitingForConfig = false;
 
@@ -426,6 +686,9 @@ async function maybeCheck() {
     intervalSeconds: Services.prefs.getIntPref(INTERVAL_PREF, 43200),
   });
   if (due) await VimmaUpdates.check();
+  // An offer saved by an earlier session, which the AppImage has not tried to replace its file
+  // with in this one. A failed attempt waits for the next check, not the hourly timer.
+  else if (replacement.buildId !== state.offer?.buildId) maybeReplace();
 }
 
 export const VimmaUpdates = {
@@ -474,9 +737,14 @@ export const VimmaUpdates = {
    * @returns {Promise<UpdateState>}
    */
   check() {
-    running ??= runCheck().finally(() => {
-      running = null;
-    });
+    running ??= runCheck()
+      .then(async (result) => {
+        await maybeReplace();
+        return result;
+      })
+      .finally(() => {
+        running = null;
+      });
     return running;
   },
 
@@ -489,6 +757,7 @@ export const VimmaUpdates = {
       offer: state.offer,
       refusals: state.refusals,
       staleDays: state.serial ? staleDays(state.serial, channel(), Date.now()) : null,
+      staged: stage() === "staged",
     });
   },
 
@@ -510,9 +779,18 @@ export const VimmaUpdates = {
             line: updateVersionLine(offer),
             urgent: offer.urgent,
             advisories: offer.advisories,
-            steps: updateSteps(where.type, offer, where),
+            steps:
+              stage() === "staged" ? stagedSteps(offer) : updateSteps(where.type, offer, where),
           }
         : null,
+      // The AppImage's own replacement (decision 19): under way, done, or why it failed.
+      appImage:
+        where.type === "appimage" && offer
+          ? {
+              stage: stage(),
+              reason: replacement.buildId === offer.buildId ? replacement.reason : null,
+            }
+          : null,
       serial: state.serial,
       key: state.key,
       pinnedKeys: pinnedKeys().length,
@@ -533,6 +811,7 @@ export const VimmaUpdates = {
   status() {
     return {
       ...state,
+      stage: stage(),
       enabled: enabled(),
       from: held ? "config-errors" : configCheck === false ? "config" : "pref",
     };
@@ -555,9 +834,15 @@ export const VimmaUpdates = {
     return maybeCheck();
   },
 
+  /** Test-only: the AppImage replacement under way, if any. */
+  _replacing() {
+    return replacing ?? Promise.resolve();
+  },
+
   /** Test-only: forget every result and the cached install type. */
   _reset() {
     state = fresh();
+    replacement = { stage: "none", buildId: null, reason: null };
     install = null;
     knownType = null;
     Services.prefs.clearUserPref(SERIAL_PREF);
