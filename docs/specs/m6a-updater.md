@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question and `:restart`, and sub-PR 4's release manifest implemented; sub-PRs 2 and 5, the rest of sub-PR 3, and sub-PR 4's MAR and nightly parts open) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question, `:restart` and `updates: off` notice, and sub-PR 4's release manifest implemented; Firefox's updater for tarball installs, that is sub-PRs 2 and 5, the rest of sub-PR 3 and sub-PR 4's MAR and nightly parts, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -15,7 +15,8 @@ the update manifest before Firefox parses it (m6a-updater)") · ADR: ADR-016 (ne
 update channel"; the number is free on `main` and reserved for this spec), ADR-003 (three register
 lines), ADR-010 (the artifact-build gap, unchanged)
 
-Issue: [#217](https://github.com/vimma-browser/vimma/issues/217)
+Issues: [#217](https://github.com/vimma-browser/vimma/issues/217) (delivered parts),
+[#456](https://github.com/vimma-browser/vimma/issues/456) (Firefox's updater for tarball installs)
 
 Prerequisites: m0-updater (whose `--disable-updater` this reverses for release and nightly
 builds), m6-packaging (the artifacts), build-supply-chain delivery 4
@@ -93,6 +94,7 @@ https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && make
    its urgency, the manifest serial and the key that signed it.
 10. **Off switch.** `config.toml` `[updates] check = false` (or the pref `vimma.update.enabled` =
     `false`) stops every update request; the status bar shows `updates: off` once per session.
+    (Since changed: for a few seconds after startup, then it hides; decision 38.)
 11. **Refusals.** An unsigned or wrongly signed manifest, a manifest for another channel or
     target, an older manifest than one already accepted, and an offer of an older or equal build
     are refused; no update is downloaded. The reason is shown in about:vimma.
@@ -498,7 +500,7 @@ updater state, offered and running versions, urgency, last check, now); the host
 | AppImage replaced                                            | `⇡ 0.3.1 on restart`                                    | as staged                               | as staged                                                                                                                 |
 | Manifest refused 3 times in a row (decision 27)              | `updates: check failed`                                 | `--vimma-text-yellow`                   | reason in about:vimma                                                                                                     |
 | Stale feed (rule 5)                                          | `updates: no news for N days`                           | `--vimma-text-yellow`                   | once a day                                                                                                                |
-| Checks off                                                   | `updates: off`                                          | `--vimma-fg-dim`                        | once per session                                                                                                          |
+| Checks off                                                   | `updates: off`                                          | `--vimma-fg-dim`                        | once per session, for 5 seconds (decision 38)                                                                             |
 
 (Since changed: an offer is also announced once per version by a short message, and an urgent
 offer asks `Show the update command? (y/N)` once per session; spec
@@ -724,7 +726,8 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     install up to a day later); shorter than 12 hours (no Firefox release cadence needs it).
 14. **`[updates] check = false` also hides the stale-feed warning**, because with checks off
     there is no feed to be stale, and the warning would be noise after an explicit opt-out; the
-    once-per-session `updates: off` stays, so the state is never invisible.
+    once-per-session `updates: off` stays, so the state is never invisible. (Since changed: it
+    shows for a few seconds and hides; decision 38.)
 15. **Checks are on by default**, as in Firefox, because an install that never hears of a security
     release stays vulnerable, and a check sends no identifier (Security and privacy). The guide's
     "Updates" section names the off switch. Rejected: off by default, because the people who never
@@ -915,6 +918,26 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     one keystroke from losing them. The urgent question says the same in its text, and `y` there
     restarts without a second question unless a loss appeared while the line was open, which
     `y` then asks about first.
+38. **With checks off, `updates: off` shows for 5 seconds, once per session, then hides**: the
+    clock starts the first time a status bar draws while checks are off on an install that checks
+    (not a source build), and turning checks on and off again later in the session does not start
+    it again (core `offNotice`). The reason: the notice exists so that an install that never
+    checks says so (decision 14), and seeing it once at startup is enough for that; kept on the
+    bar all session, the segment takes room on the right side for a state set on purpose.
+    Rejected: a permanent segment
+    (noise after an explicit opt-out), and no segment at all (an install that stopped checking by
+    an old config line would then never say so). about:vimma's Updates section shows the state
+    at any time.
+39. **Until the offline ceremony makes the cold secondary (decision 17), the updater's secondary
+    certificate slot holds the primary certificate a second time**, and the slot gets the cold
+    secondary's certificate in a later release. The updater is built with a certificate in each
+    slot (§6), and the secondary does not exist yet. The primary twice makes the updater trust
+    exactly the one key the manifest check pins (`update-keys.mjs`, runbook step 5), so the two
+    verifiers agree. Rejected: a throwaway key generated for the slot, because it is either
+    held by someone, which adds a party who can sign a Vimma update, or discarded, which adds
+    nothing; and waiting for the ceremony, because it would hold back every tarball update
+    without making a lost primary any more recoverable than it is with the AppImage and the
+    manifest today.
 
 ### 9. Not in this spec
 

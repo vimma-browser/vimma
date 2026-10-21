@@ -513,17 +513,39 @@ export function staleDays(serial, channel, now) {
   return days > limit ? days : null;
 }
 
+/** How long `updates: off` shows once checks are seen off (decision 38). */
+export const OFF_NOTICE_MS = 5000;
+
+/**
+ * The once-per-session `updates: off` notice (decision 38): its clock starts the first time
+ * checks are seen off on an install that checks, and the notice shows until OFF_NOTICE_MS later.
+ * Turning checks off again later in the session does not restart it.
+ * @param {{ enabled: boolean, installType: InstallType | null, since: number | null,
+ *   now: number }} input  `since`: when the clock started, null before
+ * @returns {{ since: number | null, shown: boolean }}
+ */
+export function offNotice({ enabled, installType, since, now }) {
+  const checks = installType !== null && installType !== "source";
+  const start = since ?? (!enabled && checks ? now : null);
+  return {
+    since: start,
+    shown: !enabled && checks && start !== null && now - start < OFF_NOTICE_MS,
+  };
+}
+
 /**
  * What the status bar shows (spec §5: the rows a check produces, and an AppImage replaced), or
  * null.
  * @param {{ enabled: boolean, installType: InstallType,
  *   offer: { displayVersion: string, urgent: boolean } | null, refusals: number,
- *   staleDays: number | null, staged?: boolean }} state  `staged`: the AppImage was replaced
- *   with the offer
+ *   staleDays: number | null, staged?: boolean, offShown?: boolean }} state  `staged`: the
+ *   AppImage was replaced with the offer; `offShown`: the startup `updates: off` notice lasts
+ *   (offNotice)
  * @returns {UpdateNotice | null}
  */
 export function updateNotice(state) {
-  if (!state.enabled || state.installType === "source") return null;
+  if (state.installType === "source") return null;
+  if (!state.enabled) return state.offShown ? { text: "updates: off", tone: "info" } : null;
   const { offer } = state;
   if (offer && state.staged) {
     return offer.urgent

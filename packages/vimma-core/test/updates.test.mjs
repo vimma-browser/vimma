@@ -14,6 +14,8 @@ import {
   base64Encode,
   installTypeFrom,
   judgeManifest,
+  offNotice,
+  OFF_NOTICE_MS,
   offerAssets,
   parseManifest,
   shellQuote,
@@ -647,6 +649,55 @@ describe("updateNotice (§5, the rows delivery 1 has)", () => {
   test("checks off or a source build: nothing, offer or not (decision 14)", () => {
     expect(updateNotice({ ...state, enabled: false, offer, staleDays: 50 })).toBeNull();
     expect(updateNotice({ ...state, installType: "source", offer })).toBeNull();
+  });
+
+  test("checks off while the startup notice lasts: updates: off, dim (decision 38)", () => {
+    const off = { ...state, enabled: false, offShown: true };
+    expect(updateNotice(off)).toEqual({ text: "updates: off", tone: "info" });
+    expect(updateNotice({ ...off, offer, staleDays: 50, refusals: 3 })?.text).toBe("updates: off");
+    expect(updateNotice({ ...off, offShown: false })).toBeNull();
+    expect(updateNotice({ ...off, installType: "source" })).toBeNull();
+    // On is on: the flag means nothing while checks run.
+    expect(updateNotice({ ...state, offShown: true })).toBeNull();
+  });
+});
+
+describe("offNotice (decision 38: updates: off for a few seconds, once per session)", () => {
+  const off = { enabled: false, installType: /** @type {const} */ ("tarball") };
+
+  test("the first time checks are seen off, the clock starts and the notice shows", () => {
+    expect(offNotice({ ...off, since: null, now: 1000 })).toEqual({ since: 1000, shown: true });
+  });
+
+  test("it shows for OFF_NOTICE_MS, then hides for the rest of the session", () => {
+    expect(OFF_NOTICE_MS).toBeGreaterThanOrEqual(3000);
+    expect(OFF_NOTICE_MS).toBeLessThanOrEqual(10000);
+    const at = (/** @type {number} */ now) => offNotice({ ...off, since: 1000, now });
+    expect(at(1000 + OFF_NOTICE_MS - 1)).toEqual({ since: 1000, shown: true });
+    expect(at(1000 + OFF_NOTICE_MS)).toEqual({ since: 1000, shown: false });
+    expect(at(1000 + 86400000)).toEqual({ since: 1000, shown: false });
+  });
+
+  test("checks on: no clock; turned off later in the session, it starts then, once", () => {
+    expect(offNotice({ ...off, enabled: true, since: null, now: 5 })).toEqual({
+      since: null,
+      shown: false,
+    });
+    // On again and off again after it was shown: the clock is not restarted.
+    expect(offNotice({ ...off, enabled: true, since: 1000, now: 2000 })).toEqual({
+      since: 1000,
+      shown: false,
+    });
+    expect(offNotice({ ...off, since: 1000, now: 1000 + OFF_NOTICE_MS + 5 }).shown).toBe(false);
+  });
+
+  test("a source build or an install type not known yet: no clock", () => {
+    for (const installType of /** @type {const} */ (["source", null])) {
+      expect(offNotice({ ...off, installType, since: null, now: 5 })).toEqual({
+        since: null,
+        shown: false,
+      });
+    }
   });
 });
 

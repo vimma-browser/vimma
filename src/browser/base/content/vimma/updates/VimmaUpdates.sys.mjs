@@ -20,6 +20,8 @@ import {
   appBundleOf,
   installTypeFrom,
   judgeManifest,
+  OFF_NOTICE_MS,
+  offNotice,
   offerAssets,
   parseManifest,
   staleDays,
@@ -171,6 +173,10 @@ let firstTimer = null;
 let firstWindow = null;
 /** @type {unknown} */
 let pollTimer = null;
+/** When this session's `updates: off` notice started (decision 38), and its end's redraw. */
+let offSince = /** @type {number | null} */ (null);
+/** @type {unknown} */
+let offTimer = null;
 
 function inAutomation() {
   return Cu.isInAutomation === true;
@@ -772,6 +778,7 @@ export const VimmaUpdates = {
       if (firstWindow) Services.obs.removeObserver(firstWindow, "browser-delayed-startup-finished");
       firstWindow = null;
       lazy.clearTimeout(firstTimer);
+      lazy.clearTimeout(offTimer);
       lazy.clearInterval(pollTimer);
     }, "quit-application");
   },
@@ -811,13 +818,26 @@ export const VimmaUpdates = {
   /** The status bar's update segment (core updateNotice), or null. @returns {UpdateNotice | null} */
   notice() {
     if (!knownType) return null;
+    const on = enabled();
+    const off = offNotice({
+      enabled: on,
+      installType: knownType,
+      since: offSince,
+      now: Date.now(),
+    });
+    if (offSince === null && off.since !== null) {
+      offSince = off.since;
+      // Redraw every status bar when the notice ends.
+      offTimer = lazy.setTimeout(notify, OFF_NOTICE_MS);
+    }
     return updateNotice({
-      enabled: enabled(),
+      enabled: on,
       installType: knownType,
       offer: state.offer,
       refusals: state.refusals,
       staleDays: state.serial ? staleDays(state.serial, channel(), Date.now()) : null,
       staged: stage() === "staged",
+      offShown: off.shown,
     });
   },
 
@@ -931,6 +951,8 @@ export const VimmaUpdates = {
     install = null;
     knownType = null;
     knownWhere = null;
+    lazy.clearTimeout(offTimer);
+    offSince = null;
     Services.prefs.clearUserPref(SERIAL_PREF);
     Services.prefs.clearUserPref(LAST_PREF);
     notify();
