@@ -7,7 +7,6 @@
   ],
   "build-supply-chain.md": [],
   "element-focus.md": [
-    "The start key is chosen when implementation starts, not in this spec.",
     "Focus: the `ELEMENT` mode.",
     "Frames",
     "Shadow DOM",
