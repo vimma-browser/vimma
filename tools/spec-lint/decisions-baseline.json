@@ -16,12 +16,6 @@
     "Ad hoc signed until a Developer ID exists",
     "Artifact names carry both versions."
   ],
-  "mcp-drive.md": [
-    "No grant covers it.",
-    "Limits.",
-    "Grants.",
-    "Each full connection says it too."
-  ],
   "vimma-mcp.md": [
     "`vimma-ctl mcp`",
     "Two switches.",
