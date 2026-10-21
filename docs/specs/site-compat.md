@@ -307,7 +307,7 @@ needs no dependency.
     (which keys, how sites are matched, how it meets insert mode and the prefix), so it belongs
     in a spec of its own; the report already gives that spec its data.
 14. **Three more sites:** the Hacker News comments page of a long thread, a crates.io crate page
-    and a GitLab project page, for 25 entries. Each adds a page structure the list lacked: a
+    and a GitLab project page, for 25 entries, because each adds a page structure the list lacked: a
     deeply nested table of comments with hundreds of links, an Ember app shell, and a large Vue
     application that is often behind a bot check. GitLab stays only while it loads from the
     hosted runner on most nights; if it is blocked night after night, it is removed, as decision
