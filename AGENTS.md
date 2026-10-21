@@ -61,6 +61,10 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   chat or agent notes (`npm run lint` checks the wording). An implemented spec is frozen: add a
   `(Since changed: …)` note instead of rewriting it. Notes for the next session belong in the pull
   request description or the issue, not in the repository.
+- **Docs voice.** User docs lead with what the reader gains, clearly and without superlatives or
+  exclamation marks. Frame the keys as Vim- and tmux-style, and say that every key, the prefix and
+  the leader can be remapped in `config.toml`. The README says what Vimma is, its features and its
+  state; development material belongs in `CONTRIBUTING.md` and `docs/`.
 - **Comments** explain why (a constraint, a Firefox quirk with its source, a non-obvious decision),
   never what the code plainly does, and never cite who asked or a process note.
 - **Commits.** Conventional Commits with a body: the subject is the changelog line (lower case),
@@ -77,10 +81,12 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   separate, fresh session with no stake in the change before merging; fix its findings first.
 - **Dependencies.** No new dependency without a licence check (`npm run license-check`) and a line
   in the pull request. No `eslint-disable` or `#[allow]` without a reason comment.
-- **Never disable a workflow, pin or lint rule to get green.** Stop and report instead.
+- **Never disable a workflow, pin or lint rule, or dismiss a code-scanning alert, to get green.**
+  Stop and report instead.
 - **Git.** Never force-push or rewrite pushed history; update a branch with
-  `git merge origin/main` and git's default message. Check `git status` before
-  `git worktree remove --force`.
+  `git merge origin/main` and git's default message (a custom merge message fails commitlint;
+  if one slips in, squash the branch onto a fresh branch from `main` and open a replacement pull
+  request). Check `git status` before `git worktree remove --force`.
 - **Processes.** Never `pkill -f <pattern>` (it matches the agent's own shell); kill only
   processes you started, by exact PID.
 - When unsure how Firefox's front end does something, grep the engine tree (`engine/`) and Zen's
@@ -118,7 +124,10 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 ## Working in parallel
 
 - One item (a pull request or an issue) per session or agent, each in its own worktree. At most
-  three run at once.
+  three run at once, on items that touch different files: two changes to a shared host file
+  (`VimmaHost.sys.mjs`, `index.mjs`) or to the keymap run one after the other.
+- Finish before starting: clear the open pull requests (`gh pr list`) before opening new ones, and
+  an agent that finishes one sub-PR does not start the next.
 - Start a fresh session after a merge, before a review, after three failed attempts at the same
   problem, and when switching area. Before stopping mid-task, commit (or push a draft) and write
   the state of the work into the pull request description.
@@ -143,11 +152,12 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 
 1. One item per branch. Start from the latest `origin/main`.
 2. Red test, fix, green test (keep both outputs). Docs and the spec change in the same branch.
-3. **Verify in a real build**: the lane's artifact build, or a full build when patches, C++ or
-   `moz.build` change. Use the change as a user would; unit tests and CI alone are not enough. UI
+3. **Verify in a real build**: the lane's artifact build, or a full build when `*.patch`, C++,
+   `moz.build`, `configs/`, `moz.configure` or branding change (report that run, ADR-010). Use the change as a user would; unit tests and CI alone are not enough. UI
    changes get screenshots, and every image is looked at, with the Omarchy theme
    (`vimma.theme.source=omarchy`, `vimma.theme.omarchyPath=~/.local/state/omarchy/current/theme`)
-   and also in a light theme if colours change. Throwaway e2e scenarios:
+   and in a stock theme. Check that every Vimma and Firefox surface the change touches follows the
+   theme. Throwaway e2e scenarios:
    `npm run e2e -- --xvfb --scenarios <dir>/scen --baselines <dir>/shots --out <dir>/out
 --update-baselines`. Chrome UI that keys cannot reach: a temporary mochitest that saves
    `drawSnapshot` PNGs, removed afterwards with its `browser.toml` line and engine symlink.
@@ -179,6 +189,11 @@ End each item with a short report: the item; the outcome (merged as #N at a comm
 and why); red and green test evidence; the screenshots looked at; CI re-runs; anything only the
 maintainer can do or decide; the cleanup done.
 
+Hand the maintainer only what an agent cannot verify (real window-manager behaviour, their own
+theme and profile, real sites and logins, feel and focus), as a short checklist with the fastest
+way to run it, a time estimate and a recommendation (merge now, or test X first). When a
+git-ignored `TESTING.md` exists in the primary checkout, add those items there.
+
 ## Releases (short)
 
 release-please keeps a `chore(main): release X.Y.Z` pull request open. Merging it creates the tag
@@ -186,6 +201,10 @@ and a draft release, and `release.yml` builds, signs and uploads it (about 2 h 1
 maintainer publishes the draft; `update-publish.yml` then signs the update manifest and pushes it
 to `vimma-updates`, served at `updates.vimma.dev`. vimma.dev follows the latest release through
 its daily `release-sync` workflow. Details: `docs/runbook.md`, "Releases".
+
+Cadence: until Vimma is advertised, release whenever a useful batch is in; afterwards weekly
+(skipping weeks with nothing user-visible), with security releases (Firefox MFSA bumps, Vimma
+security fixes) within one to three days.
 
 ## Tool notes
 
