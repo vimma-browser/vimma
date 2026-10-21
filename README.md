@@ -18,7 +18,8 @@ memory; Vimma puts it to work on the web. Bare keys drive the page, `ctrl+b` dri
 and workspaces, and your hands never leave the keyboard.
 
 - **Vim on the page:** `j`/`k` to scroll, `f` for link hints, `/` to find, `:` for commands, and
-  `Esc` to get back to normal mode.
+  `Esc` to get back to normal mode. Copy a paragraph, list item or code block in three keys: `F`,
+  its label, then `y` (or `v` to adjust it first).
 - **tmux for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab, `v` to split,
   `w` to switch workspace. If your fingers know tmux, they already know Vimma.
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in

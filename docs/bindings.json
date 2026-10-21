@@ -1584,8 +1584,8 @@
           "description": "Follow link in new tab",
           "keys": [
             {
-              "keys": "F",
-              "chords": ["F"]
+              "keys": "gF",
+              "chords": ["gF"]
             }
           ]
         },
@@ -1593,6 +1593,10 @@
           "name": "focus_element",
           "description": "Focus a text block: v selects it, y copies it",
           "keys": [
+            {
+              "keys": "F",
+              "chords": ["F"]
+            },
             {
               "keys": "F",
               "chords": ["F"],

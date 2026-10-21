@@ -13,10 +13,11 @@ yet as **planned**. Known gaps are listed in [limits.md](limits.md).
 What works today, each with the section that explains it:
 
 - **Vim on the page** ([the two layers](#the-two-layers)): `j`/`k`/`h`/`l` scroll, `d`/`u`
-  half a page, `gg`/`G` top and bottom, `H`/`L` back and forward; `f` link hints (`F` in a
-  background tab); `/` find as you type, in frames and PDFs too; `v` copy mode with Vim motions
-  and `y`; insert mode in text fields, `Esc` to leave; `:` a [command line](#the-command-line)
-  with completion and history.
+  half a page, `gg`/`G` top and bottom, `H`/`L` back and forward; `f` link hints (`gF` in a
+  background tab); `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
+  list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
+  with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
+  [command line](#the-command-line) with completion and history.
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
   found and renamed with [tab search](#tab-search-and-tab-rename)); up to 4 split panes (`v`, `-`,
   `h/j/k/l`, `z` zoom, swap, resize); tiling [layouts](#layouts) (`enter` dwindle, `space`
@@ -399,8 +400,10 @@ text field gets focus and the tab is in insert mode. Labels use the home row (`a
 in reading order: targets near the top get the shortest. As you type, labels that no longer match
 disappear. `Backspace` takes back a key and `Esc` leaves hints without doing anything.
 
-`F` labels links only and opens the one you pick in a new tab in the background, so you stay
-on the page and can pick more.
+`gF` labels links only and opens the one you pick in a new tab in the background, so you stay
+on the page and can pick more. (`F` is [element focus](#copying-a-paragraph-element-focus); a
+`config.toml` that binds `F = "hint.follow_new_tab"` under `[modal.normal]` keeps background-tab
+hints on `F`.)
 
 The labels are drawn by the browser, over the page, not inside it: the page cannot see them,
 restyle them or hide them. Apps that draw their own controls on a canvas (Google Docs, Figma,
@@ -408,11 +411,11 @@ maps, games) have nothing to label.
 
 ### Copying a paragraph (element focus)
 
-Element focus puts the same labels as link hints on the text on screen instead of on what you
-could click: paragraphs, headings, list items, quotes, code blocks, table cells and captions, also
-inside web components and in frames from other sites. Each block gets one label, on its first line
-on screen: a list item made of two paragraphs gets a label on each paragraph, and a code block gets
-one label however its lines are built. Hidden blocks, text fields and blocks covered by something
+`F` (element focus) puts the same labels as link hints on the text on screen instead of on what
+you could click: paragraphs, headings, list items, quotes, code blocks, table cells and captions,
+also inside web components and in frames from other sites. Each block gets one label, on its first
+line on screen: a list item made of two paragraphs gets a label on each paragraph, and a code block
+gets one label however its lines are built. Hidden blocks, text fields and blocks covered by something
 else get none. Typing, `Backspace` and `Esc` work as they do for link hints.
 
 Typing a label **focuses** its block: the browser draws an outline around it, the status bar
@@ -445,9 +448,9 @@ click leaves element focus.
 - **PDFs.** The PDF viewer has lines, not paragraphs: element focus says
   `no text blocks here (PDF: use v)`, and [copy mode](#copy-mode) copies from a PDF.
 
-Element focus has no key of its own yet. Run it as `:focus_element`, or bind `focus_element` to a
-key in [config.toml](#configtoml), for example `e = "hint.element"` under `[modal.normal]`. The
-keys of the table are `[modal.element]`'s, and can be rebound there.
+Element focus is `F` in normal mode and `:focus_element` on the command line; bind
+`focus_element` to another key in [config.toml](#configtoml) under `[modal.normal]`. The keys of
+the table are `[modal.element]`'s, and can be rebound there.
 
 ### Find
 
@@ -821,7 +824,8 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `gu` / `gU`                                                                             | Normal mode: up one level in the URL / to the site's root, without query and hash; `2gu` goes up two. At the top it says so.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `gf`                                                                                    | Normal mode: the page's source in a new tab, as Firefox's `ctrl+u` does. In insert mode `gi`, `yy`, `p`, `P`, `gu`, `gU` and `gf` are typed into the field.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `I`, `ctrl+l`, `alt+d`                                                                  | Focus the address bar with its text selected (in a split, the focused pane's); closes an open panel first. `I` in normal and copy mode, Firefox's `ctrl+l` and `alt+d` everywhere.                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `f` / `F`                                                                               | Normal mode: link hints. Type a label to follow it, or, with `F`, to open the link in a background tab. `Backspace` undoes a key, `Esc` cancels.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `f` / `gF`                                                                              | Normal mode: link hints. Type a label to follow it, or, with `gF`, to open the link in a background tab. `Backspace` undoes a key, `Esc` cancels.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `F`                                                                                     | Normal mode: element focus ([above](#copying-a-paragraph-element-focus)). Type a label to outline a text block; `y` copies it, `v` selects it in copy mode.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `/` / `?`                                                                               | Normal mode: find in the page (below). `Enter` stays on the match, `Esc` goes back to where you were.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `n` / `N`, `ctrl+g` / `ctrl+shift+g`, `F3` / `shift+F3`                                 | Next / previous match of the last search (`?` reverses them), wrapping around the page; `n` / `N` in normal mode. With Firefox's own find bar open, its search.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `v`, `ctrl+b [`                                                                         | Normal mode: copy mode ([above](#copy-mode)): `h j k l w b e ge W B E 0 ^ $ { } gg G f t F T ; ,` move, `v V o iw aw ip ap` select, `y Y` copy, `Esc` leaves.                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -1453,9 +1457,9 @@ workspace, tab, focus, find bar and hint mode.
   the call there.
 - **The keys it never presses:** `ctrl+b` and every binding after it, `:`, tab, workspace,
   window and split keys, `i` and every way into a text field, copy mode, `yy` and `p` (your
-  clipboard), `F` and `gf` (they open tabs), `r` (a reload can send a form again), and every key
-  of the Browser, Developer tools, Bookmarks and Agents groups, `ctrl+b shift+a` included, so an
-  agent never answers its own question. Such a call is refused before anything asks you.
+  clipboard), `gF` and `gf` (they open tabs), element focus (`F`), `r` (a reload can send a form
+  again), and every key of the Browser, Developer tools, Bookmarks and Agents groups,
+  `ctrl+b shift+a` included, so an agent never answers its own question. Such a call is refused before anything asks you.
 - **Nothing reaches the page as a key press.** Each key runs as a Vimma action on the tab, so the
   page sees no keydown, and nothing is ever typed, clicked or submitted.
 - **Not while you type there.** A request for the tab in front of you while you are in insert,
@@ -1829,7 +1833,7 @@ workspace = "notes"
 
 **Where rules apply:** an address you type in the address bar or with `:open` / `:tabnew`, a
 bookmark, a link from another app and a new window opened on a URL: what you or Vimma open. A
-link a page opens (a click, middle-click, `F` hints, `target=_blank`, a pop-up) stays in that
+link a page opens (a click, middle-click, `gF` hints, `target=_blank`, a pop-up) stays in that
 page's workspace, because a page could otherwise open any site with another workspace's logins;
 when you look at such a tab, the status bar names the workspace its rule would choose and
 `:route move` moves it. Opened in front, the tab takes you to its

@@ -65,7 +65,7 @@ const TOP_TIMEOUT_MS = 2000;
 const MAX_HINTS = HINT_REPLY_MAX_TARGETS;
 /** At most this deep in frames. */
 const MAX_FRAME_DEPTH = 8;
-/** Schemes `F` opens; the page's principal must be allowed to load them too. */
+/** Schemes `gF` opens; the page's principal must be allowed to load them too. */
 const OPENABLE = new Set(["http:", "https:", "file:"]);
 
 const ReferrerInfo = Components.Constructor(

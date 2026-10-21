@@ -11,6 +11,8 @@ As a user, `f` puts a short label on everything I could click in the page on scr
 label follows the link, presses the button, or focuses the text field (and I am in insert).
 `F` does the same for links only and opens the link in a new tab in the background. `Backspace`
 takes back a key and `Esc` leaves hint mode. The page cannot tell that hints were shown.
+(Since changed: background-tab hints moved from `F` to `gF`, and `F` starts element focus;
+[element-focus](element-focus.md), decision 2.)
 
 ## Scope
 

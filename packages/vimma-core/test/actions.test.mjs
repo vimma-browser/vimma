@@ -211,7 +211,7 @@ describe("toolbar toggle", () => {
     expect(km.bindingsFor("hide_toolbar")).toEqual([]);
   });
 
-  test("focus_element (hint.element) is a Hints action, unbound until its keymap sub-PR", () => {
+  test("focus_element (hint.element) is a Hints action on F, in normal and element mode", () => {
     const a = getAction("focus_element");
     expect(a).toMatchObject({
       id: "hint.element",
@@ -219,8 +219,12 @@ describe("toolbar toggle", () => {
       description: "Focus a text block: v selects it, y copies it",
     });
     expect(resolveActionName("hint.element")?.name).toBe("focus_element");
-    // No key in normal mode until then; in ELEMENT mode, F picks another block.
-    expect(compileKeymap().bindingsFor("focus_element")).toEqual(["F [element]"]);
+    // In ELEMENT mode, F picks another block.
+    expect(compileKeymap().bindingsFor("focus_element")).toEqual(["F", "F [element]"]);
+  });
+
+  test("follow_link_new_tab (hint.follow_new_tab) moved from F to gF", () => {
+    expect(compileKeymap().bindingsFor("follow_link_new_tab")).toEqual(["gF"]);
   });
 
   test("the ELEMENT mode's actions are grouped, and bound only in [modal.element]", () => {

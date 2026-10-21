@@ -150,8 +150,8 @@ Developer tools
 
 Hints
   follow_link               f                                                 Follow link
-  follow_link_new_tab       F                                                 Follow link in new tab
-  focus_element             F [element]                                       Focus a text block: v selects it, y copies it
+  follow_link_new_tab       gF                                                Follow link in new tab
+  focus_element             F, F [element]                                    Focus a text block: v selects it, y copies it
   hint_cancel               esc [hint]                                        Leave hint mode
 
 Element focus

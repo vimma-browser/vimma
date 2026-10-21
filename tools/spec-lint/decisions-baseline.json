@@ -1,13 +1,5 @@
 {
   "build-supply-chain.md": [],
-  "element-focus.md": [
-    "Focus: the `ELEMENT` mode.",
-    "Frames",
-    "Shadow DOM",
-    "PDFs (pdf.js)",
-    "Performance",
-    "Accessibility"
-  ],
   "m6a-updater.md": [
     "Downgrade",
     "Complete MARs only",

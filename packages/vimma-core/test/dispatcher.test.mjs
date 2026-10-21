@@ -472,6 +472,33 @@ describe("element focus keys (docs/specs/element-focus.md, decision 7)", () => {
     });
   });
 
+  test("F in normal mode starts element focus; gF opens a link in a background tab (decision 2)", () => {
+    expect(last(feed(make(), "normal", "F"))).toEqual({
+      kind: "action",
+      action: { id: "hint.element" },
+    });
+    expect(last(feed(make(), "normal", "g F"))).toEqual({
+      kind: "action",
+      action: { id: "hint.follow_new_tab" },
+    });
+    expect(last(feed(make(), "normal", "f"))).toEqual({
+      kind: "action",
+      action: { id: "hint.follow" },
+    });
+  });
+
+  test("a config.toml that binds F to background-tab hints keeps it", () => {
+    const d = make({ modal: { normal: { F: "hint.follow_new_tab" } } });
+    expect(last(feed(d, "normal", "F"))).toEqual({
+      kind: "action",
+      action: { id: "hint.follow_new_tab" },
+    });
+    expect(last(feed(d, "normal", "g F"))).toEqual({
+      kind: "action",
+      action: { id: "hint.follow_new_tab" },
+    });
+  });
+
   test("another plain key is no binding there (the host consumes it); chords keep theirs", () => {
     expect(last(feed(make(), "element", "x"))).toEqual({ kind: "pass" });
     expect(last(feed(make(), "element", "ctrl+b ?"))).toEqual({
