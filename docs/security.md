@@ -1488,3 +1488,46 @@ not exist and link its details page anywhere over https, but the commands about:
 still name only the project's own release downloads (UP5), and nothing is installed by the check.
 It can also mark such an offer as a security release, and hold back genuine manifests for up to a
 day by signing a serial ahead of the clock (UP2).
+
+## 17. Site compatibility workflow (`sites.yml`, `tools/sites`)
+
+Spec: [site-compat](specs/site-compat.md), decisions 1, 11 and 12. Every night a hosted runner
+loads about 25 live websites in an artifact build, compares the results with the previous
+scheduled run and keeps one issue labelled `site-compat` up to date. Who can reach it: the
+_pages_ it loads, which choose their titles, their text, where they redirect and what the checks
+report about them, and so choose text that ends up in a GitHub issue. Nobody else: the workflow
+runs on `schedule` and `workflow_dispatch` only, never on a pull request.
+
+- SC1. The job that runs the browser on live pages **never** holds a token that can write:
+  `contents`, `actions` (to download the previous scheduled run's artifact) and `issues` (to
+  find the open issue) are read only, and the workflow reads no secret. The top-level
+  permissions are empty.
+  [`the browser job only reads: contents, the previous artifact, and the open issue`](../tools/test/sites-workflow.test.mjs),
+  [`has no secrets, and no permission at the top level`](../tools/test/sites-workflow.test.mjs),
+  [`runs nightly and by hand, never on a pull request or a push`](../tools/test/sites-workflow.test.mjs)
+- SC2. `issues: write` is **only** in the report job, which checks out nothing and runs no
+  repository code: it runs `gh` on the `issue.md` the first job wrote, passed as `--body-file`.
+  The action and issue number reach its script through `env`, never through an expression in the
+  script, and the number must be digits.
+  [`issues: write is only in the report job, which checks out and runs no repository code`](../tools/test/sites-workflow.test.mjs)
+- SC3. Text from a page or a check (titles, failure reasons) **never** reaches the issue body
+  outside an inline code span, so GitHub renders no mention, issue or commit reference, link,
+  image or HTML from it. Each value is put on one line with control and format characters
+  (bidirectional overrides among them) replaced, cut to 160 characters, and fenced with more
+  backticks than it contains. Lists stop at 50 entries and the body at 60 000 characters. The run
+  link is written only when it is a GitHub Actions run URL, and the baseline's commit only when
+  it is hexadecimal.
+  [`puts no untrusted text outside a code span`](../tools/sites/test/diff.test.mjs),
+  [`wraps text in a code span, where GitHub renders no mention, reference, link or HTML`](../tools/sites/test/diff.test.mjs),
+  [`picks a fence longer than any run of backticks inside, padded at a backtick edge`](../tools/sites/test/diff.test.mjs),
+  [`puts everything on one line: newlines, control and bidirectional characters`](../tools/sites/test/diff.test.mjs),
+  [`cuts to MAX_TEXT characters, and says when it is empty`](../tools/sites/test/diff.test.mjs),
+  [`caps the list and the body`](../tools/sites/test/diff.test.mjs),
+  [`drops a run URL that is not GitHub's`](../tools/sites/test/diff.test.mjs)
+- SC4. The previous run's `results.json` and `diff.json` are used **only** when they have the
+  expected shape: site ids of lowercase letters, digits and dashes, statuses and check ids from
+  fixed sets, strings where strings belong. Anything else is reported and compared as no
+  baseline, so a damaged artifact cannot inject names or open an issue.
+  [`rejects a run of the wrong shape, unknown statuses and check ids, and odd site ids`](../tools/sites/test/diff.test.mjs),
+  [`round-trips the tracked list through diff.json, and rejects one of the wrong shape`](../tools/sites/test/diff.test.mjs),
+  [`reports no baseline when the previous artifact is missing or malformed`](../tools/sites/test/compare.test.mjs)

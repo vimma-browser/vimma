@@ -470,3 +470,23 @@ Everything else passed on every site that loaded: hints (21-150 labels; the foll
 never reaching the page (normal mode and in a field), and the status bar agreeing with the mode
 after every step. Key-to-effect: `j` 7-17 ms, `f` 16-27 ms, `yy` 4-8 ms, including `vimma-ctl`'s
 start.
+
+## Implementation log (sub-PR 2)
+
+What changed from the plan above, and why:
+
+- **The baseline is the latest successful scheduled run on `main`**, found with `gh run list`
+  while the current run is still in progress, so a run never compares with itself. A
+  `workflow_dispatch` run is compared with it too, but never becomes a baseline, and a filtered
+  run (its `--filter` is recorded in `results.json`) removes no site from the tracked list: the
+  sites it did not visit stay tracked as not checked.
+- **The open issue is looked up by the browser job** (`issues: read`), so the choice between
+  create, update, close and nothing is made in tested code (`issueAction` in
+  `tools/sites/diff.mjs`). The report job only carries the choice out.
+- **Retried screenshots** are named `<site>-retry-<n>-<label>.png`, so the first visit's are
+  kept beside them.
+- The tests compare three recorded nightly runs (2026-10-19 to 2026-10-21, 22 entries each).
+  They show the case the tracking is built for: insert mode and the status bar fail every night
+  on YouTube, Google search, DuckDuckGo and regex101 (focusing the search field does not give
+  insert mode), so those failures predate the comparison and open no issue; they are listed in
+  each night's report.

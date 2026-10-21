@@ -12,6 +12,10 @@
  *   npm run sites -- --out dir                  # default site-compat-output/
  *   npm run sites -- --pref name=value          # an extra profile pref (repeatable)
  *   npm run sites -- --site-timeout 180         # seconds per site
+ *   npm run sites -- --retry-blocked            # load blocked sites once more at the end
+ *
+ * --retry-blocked is for the nightly hosted runner (spec, decision 11). From a home network every
+ * extra visit to a site that already shows a bot check makes the next one more likely.
  *
  * Exit 0 when the report was written, whatever the sites did; 1 when the harness failed;
  * 2 on usage errors.
@@ -38,7 +42,7 @@ import { capture } from "../e2e/screenshot.mjs";
 import { runSite } from "./checks.mjs";
 import { Rdp } from "./rdp.mjs";
 import { renderHtml, renderMarkdown } from "./report.mjs";
-import { completeChecks, exitCode, siteStatus } from "./results.mjs";
+import { completeChecks, exitCode, mergeRetry, retryTargets, siteStatus } from "./results.mjs";
 import { filterSites, validateSites } from "./site-list.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
@@ -61,6 +65,7 @@ const OPTIONS = /** @type {const} */ ({
   pref: { type: "string", multiple: true, default: [] },
   "site-timeout": { type: "string", default: "180" },
   keep: { type: "boolean", default: false },
+  "retry-blocked": { type: "boolean", default: false },
   help: { type: "boolean", short: "h", default: false },
 });
 
@@ -178,6 +183,7 @@ async function main() {
     network: process.env.GITHUB_ACTIONS ? "github-hosted" : "local",
     build: "",
     commit: gitCommit(),
+    filter: values.filter?.trim() || null,
     sites: [],
     harnessError: null,
   };
@@ -195,8 +201,13 @@ async function main() {
     run.build = build.binary;
     console.log(`build: ${build.binary}\nvimma-ctl: ${ctlBin}\nsites: ${sites.length}`);
 
-    for (const site of sites) {
-      console.log(`\n${site.id}: ${site.url}`);
+    /**
+     * One visit: a fresh profile and browser (decision 3). Screenshots are named after `prefix`.
+     * @param {import("./site-list.mjs").Site} site
+     * @param {string} prefix
+     */
+    const visit = async (site, prefix) => {
+      console.log(`\n${prefix}: ${site.url}`);
       const started = Date.now();
       /** @type {import("./results.mjs").SiteResult} */
       const result = {
@@ -209,7 +220,6 @@ async function main() {
         screenshots: [],
         durationMs: 0,
       };
-      run.sites.push(result);
       // Short: a Unix socket path must fit in 107 bytes.
       const sockDir = mkdtempSync(join(tmpdir(), "vsc-"));
       const sock = join(sockDir, "rdp.sock");
@@ -241,7 +251,7 @@ async function main() {
         const display = session.display;
         const screenshot = async (/** @type {string} */ label) => {
           if (!display) return null;
-          const file = `${site.id}-${++shots}-${label}.png`;
+          const file = `${prefix}-${++shots}-${label}.png`;
           writeFileSync(join(out, "screenshots", file), encodePng(await capture(display.fbFile)));
           return file;
         };
@@ -276,6 +286,17 @@ async function main() {
       }
       result.durationMs = Date.now() - started;
       console.log(`  → ${result.status} (${Math.round(result.durationMs / 1000)} s)`);
+      return result;
+    };
+
+    for (const site of sites) run.sites.push(await visit(site, site.id));
+    if (values["retry-blocked"]) {
+      for (const first of retryTargets(run.sites)) {
+        const site = sites.find((s) => s.id === first.id);
+        if (!site) continue;
+        const second = await visit(site, `${site.id}-retry`);
+        run.sites[run.sites.indexOf(first)] = mergeRetry(first, second);
+      }
     }
   } catch (e) {
     run.harnessError = /** @type {Error} */ (e).message;

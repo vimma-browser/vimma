@@ -5,8 +5,14 @@
 # A report, never a gate: it runs on a schedule and by hand only, never on pull requests, and is
 # not a required check. Live sites change and bot checks come and go, so its results must not
 # block anyone. A standard hosted runner (free on a public repo; larger runners are not, see the
-# spec's "Cost and runtime"), a read-only token and no secret. The steps up to the artifact build are
-# e2e.yml's (ADR-010), copied, with the same tarball checksum check.
+# spec's "Cost and runtime") and no secret. The steps up to the artifact build are e2e.yml's
+# (ADR-010), copied, with the same tarball checksum check.
+#
+# Each run is compared with the previous scheduled run, and regressions go to one issue labelled
+# `site-compat` (decision 12). Two jobs, as in spec-status.yml: the job that runs the browser on
+# live pages holds read permissions only, and the one that may write the issue checks out
+# nothing and runs only gh on the issue.md the first job wrote. Page text reaches that file only
+# as inert code spans (tools/sites/diff.mjs; docs/security.md, "Site compatibility workflow").
 name: sites
 
 on:
@@ -20,8 +26,7 @@ on:
         required: false
         default: ""
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: sites
@@ -32,6 +37,13 @@ jobs:
     name: site compatibility (live)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read # download the previous scheduled run's site-compat artifact
+      issues: read # find the open site-compat issue
+    outputs:
+      issue-action: ${{ steps.compare.outputs.action }}
+      issue: ${{ steps.compare.outputs.issue }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,11 +83,42 @@ jobs:
         run: node tools/artifact-build/artifact-build.mjs
 
       # Exits 0 whenever it wrote a report, whatever the sites did; 1 only when the harness
-      # itself failed. It appends the Markdown report to the job summary.
-      - name: Site compatibility (npm run sites -- --artifact)
+      # itself failed. It appends the Markdown report to the job summary. Blocked sites get one
+      # more visit at the end (decision 11): a datacenter IP's bot checks are often brief.
+      - name: Site compatibility (npm run sites -- --artifact --retry-blocked)
         env:
           FILTER: ${{ inputs.filter }}
-        run: npm run sites -- --artifact ${FILTER:+--filter "$FILTER"}
+        run: npm run sites -- --artifact --retry-blocked ${FILTER:+--filter "$FILTER"}
+
+      # The baseline: the latest successful scheduled run on main (this run is still in
+      # progress, so it is never its own). None when it has expired; the diff then says so.
+      - name: Previous scheduled run's results
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p baseline
+          id=$(gh run list --workflow sites.yml --event schedule --branch main --status success \
+            --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$id" ]; then
+            gh run download "$id" --name site-compat --dir baseline \
+              || echo "::warning::could not download run $id's site-compat artifact"
+          fi
+          issue=$(gh issue list --label site-compat --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+          echo "OPEN_ISSUE=$issue" >> "$GITHUB_ENV"
+
+      - name: Night-to-night diff (tools/sites/compare.mjs)
+        id: compare
+        if: ${{ !cancelled() && hashFiles('site-compat-output/results.json') != '' }}
+        env:
+          SCHEDULED: ${{ github.event_name == 'schedule' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node tools/sites/compare.mjs --cur site-compat-output/results.json \
+            --out site-compat-output --prev baseline --open-issue "$OPEN_ISSUE" \
+            --run-url "$RUN_URL" $([ "$SCHEDULED" = true ] && echo --scheduled)
 
       - name: Upload the report (results.json, report.md, report.html, screenshots/)
         if: always()
@@ -85,3 +128,59 @@ jobs:
           path: site-compat-output/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Keep the issue text for the report job
+        if: ${{ !cancelled() && steps.compare.outputs.action != '' && steps.compare.outputs.action != 'none' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-compat-issue
+          path: site-compat-output/issue.md
+          if-no-files-found: error
+          retention-days: 7
+
+  report:
+    name: Update the site-compat issue
+    needs: sites
+    if: ${{ !cancelled() && needs.sites.outputs.issue-action != '' && needs.sites.outputs.issue-action != 'none' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write # open, update or close the one site-compat issue, and its label
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-compat-issue
+          path: out
+
+      - name: Issue
+        env:
+          ACTION: ${{ needs.sites.outputs.issue-action }}
+          ISSUE: ${{ needs.sites.outputs.issue }}
+        run: |
+          gh label create site-compat --force --color FBCA04 \
+            --description "A site-compatibility check regressed (sites.yml)"
+          case "$ACTION" in
+            create)
+              gh issue create --title "Site compatibility regressions" --label site-compat \
+                --body-file out/issue.md
+              ;;
+            update | close)
+              if ! [[ "$ISSUE" =~ ^[0-9]+$ ]]; then
+                echo "::error::not an issue number: $ISSUE"
+                exit 1
+              fi
+              if [ "$ACTION" = update ]; then
+                gh issue edit "$ISSUE" --body-file out/issue.md
+              else
+                gh issue comment "$ISSUE" --body-file out/issue.md
+                gh issue close "$ISSUE" --reason completed
+              fi
+              ;;
+            *)
+              echo "::error::unknown action: $ACTION"
+              exit 1
+              ;;
+          esac

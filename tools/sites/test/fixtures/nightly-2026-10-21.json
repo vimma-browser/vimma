@@ -1,0 +1,1336 @@
+{
+  "startedAt": "2026-10-21T09:31:04.772Z",
+  "finishedAt": "2026-10-21T09:38:35.889Z",
+  "network": "github-hosted",
+  "build": "obj-artifact/dist/bin/vimma",
+  "commit": "7748419",
+  "sites": [
+    {
+      "id": "github-repo",
+      "name": "GitHub repo",
+      "url": "https://github.com/neovim/neovim",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: j (focus), k (focus), / (dialog), ? (dialog), t (focus), y (navigate); stopped at y"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 10,
+        "yy": 7,
+        "f": 18,
+        "follow": 287
+      },
+      "durationMs": 27365,
+      "loadMs": 3804,
+      "finalUrl": "https://github.com/neovim/neovim",
+      "title": "GitHub - neovim/neovim: Vim-fork focused on extensibility and usability · GitHub"
+    },
+    {
+      "id": "github-file",
+      "name": "GitHub file",
+      "url": "https://github.com/neovim/neovim/blob/master/README.md",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (dialog), ? (dialog), t (focus), b (handled), r (navigate); stopped at r"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 10,
+        "yy": 8,
+        "f": 19,
+        "follow": 136
+      },
+      "durationMs": 19734,
+      "loadMs": 1050,
+      "finalUrl": "https://github.com/neovim/neovim/blob/master/README.md",
+      "title": "neovim/README.md at master · neovim/neovim · GitHub"
+    },
+    {
+      "id": "github-pr",
+      "name": "GitHub PR",
+      "url": "https://github.com/neovim/neovim/pull/30000",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "skip",
+          "reason": "no search field"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (dialog), ? (dialog)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 12,
+        "yy": 10,
+        "f": 20,
+        "follow": 67
+      },
+      "durationMs": 25172,
+      "loadMs": 2069,
+      "finalUrl": "https://github.com/neovim/neovim/pull/30000",
+      "title": "vim-patch:partial:8.1.0914: code related to findfile() is spread out by zeertzjq · Pull Request #30000 · neovim/neovim"
+    },
+    {
+      "id": "github-issues",
+      "name": "GitHub issues",
+      "url": "https://github.com/neovim/neovim/issues",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: j (focus), k (focus), l (dialog), u (dialog), / (dialog), ? (dialog), t (dialog), p (dialog)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 20,
+        "yy": 8,
+        "f": 18,
+        "follow": 132
+      },
+      "durationMs": 24109,
+      "loadMs": 1320,
+      "finalUrl": "https://github.com/neovim/neovim/issues",
+      "title": "Issues · neovim/neovim · GitHub"
+    },
+    {
+      "id": "stackoverflow",
+      "name": "Stack Overflow",
+      "url": "https://stackoverflow.com/questions/11828270/how-do-i-exit-vim",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "the site handles none of Vimma's single keys"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 13,
+        "yy": 6,
+        "f": 35,
+        "follow": 186
+      },
+      "durationMs": 25337,
+      "loadMs": 1915,
+      "finalUrl": "https://stackoverflow.com/questions/11828270/how-do-i-exit-vim",
+      "title": "vi - How do I exit Vim? - Stack Overflow"
+    },
+    {
+      "id": "mdn",
+      "name": "MDN",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "skip",
+          "reason": "no search field"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (focus)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 8,
+        "yy": 6,
+        "f": 25,
+        "follow": 49
+      },
+      "durationMs": 22882,
+      "loadMs": 584,
+      "finalUrl": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
+      "title": "Array - JavaScript | MDN"
+    },
+    {
+      "id": "docs-rs",
+      "name": "docs.rs",
+      "url": "https://docs.rs/serde/latest/serde/",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (navigate); stopped at /"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 6,
+        "yy": 5,
+        "f": 8,
+        "follow": 201
+      },
+      "durationMs": 13610,
+      "loadMs": 458,
+      "finalUrl": "https://docs.rs/serde/latest/serde/",
+      "title": "serde - Rust"
+    },
+    {
+      "id": "npm",
+      "name": "npmjs.com",
+      "url": "https://www.npmjs.com/package/vitest",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (focus)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 6,
+        "yy": 5,
+        "f": 18,
+        "follow": 240
+      },
+      "durationMs": 22490,
+      "loadMs": 884,
+      "finalUrl": "https://www.npmjs.com/package/vitest",
+      "title": "vitest - npm"
+    },
+    {
+      "id": "pypi",
+      "name": "PyPI",
+      "url": "https://pypi.org/project/requests/",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (focus)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 8,
+        "yy": 5,
+        "f": 8,
+        "follow": 31
+      },
+      "durationMs": 22416,
+      "loadMs": 629,
+      "finalUrl": "https://pypi.org/project/requests/",
+      "title": "requests · PyPI"
+    },
+    {
+      "id": "rust-std",
+      "name": "doc.rust-lang.org",
+      "url": "https://doc.rust-lang.org/std/vec/struct.Vec.html",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "skip",
+          "reason": "no search field"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (navigate); stopped at /"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 9,
+        "yy": 8,
+        "f": 10,
+        "follow": 49
+      },
+      "durationMs": 13930,
+      "loadMs": 966,
+      "finalUrl": "https://doc.rust-lang.org/std/vec/struct.Vec.html",
+      "title": "Vec in std::vec - Rust"
+    },
+    {
+      "id": "python-docs",
+      "name": "docs.python.org",
+      "url": "https://docs.python.org/3/library/pathlib.html",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (focus)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 9,
+        "yy": 6,
+        "f": 18,
+        "follow": 46
+      },
+      "durationMs": 22514,
+      "loadMs": 484,
+      "finalUrl": "https://docs.python.org/3/library/pathlib.html",
+      "title": "pathlib — Object-oriented filesystem paths — Python 3.15.0 documentation"
+    },
+    {
+      "id": "hacker-news",
+      "name": "Hacker News",
+      "url": "https://news.ycombinator.com/",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "the site handles none of Vimma's single keys"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 8,
+        "yy": 6,
+        "f": 25,
+        "follow": 85
+      },
+      "durationMs": 19671,
+      "loadMs": 510,
+      "finalUrl": "https://news.ycombinator.com/",
+      "title": "Hacker News"
+    },
+    {
+      "id": "reddit",
+      "name": "Reddit",
+      "url": "https://www.reddit.com/r/vim/",
+      "status": "blocked",
+      "checks": [
+        {
+          "id": "load",
+          "status": "skip",
+          "reason": "blocked (bot check): Reddit block"
+        },
+        {
+          "id": "scroll",
+          "status": "skip",
+          "reason": "blocked (bot check): Reddit block"
+        },
+        {
+          "id": "find",
+          "status": "skip",
+          "reason": "blocked (bot check): Reddit block"
+        },
+        {
+          "id": "yank",
+          "status": "skip",
+          "reason": "blocked (bot check): Reddit block"
+        },
+        {
+          "id": "insert",
+          "status": "skip",
+          "reason": "blocked (bot check): Reddit block"
+        },
+        {
+          "id": "prefix",
+          "status": "skip",
+          "reason": "blocked (bot check): Reddit block"
+        },
+        {
+          "id": "shortcuts",
+          "status": "skip",
+          "reason": "blocked (bot check): Reddit block"
+        },
+        {
+          "id": "hints",
+          "status": "skip",
+          "reason": "blocked (bot check): Reddit block"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "skip",
+          "reason": "blocked (bot check): Reddit block"
+        }
+      ],
+      "latency": {},
+      "durationMs": 3917,
+      "loadMs": 162,
+      "finalUrl": "https://www.reddit.com/r/vim/",
+      "title": "",
+      "block": {
+        "kind": "bot-check",
+        "reason": "Reddit block"
+      }
+    },
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "url": "https://www.youtube.com/results?search_query=neovim",
+      "status": "fail",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "fail",
+          "reason": "focusing input[name=search_query] did not give insert mode"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "the site handles none of Vimma's single keys"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "fail",
+          "reason": "focus the search field: expected insert, state normal, bar NORMAL"
+        }
+      ],
+      "latency": {
+        "j": 12,
+        "yy": 7,
+        "f": 18,
+        "follow": 31
+      },
+      "durationMs": 23072,
+      "loadMs": 1234,
+      "finalUrl": "https://www.youtube.com/results?search_query=neovim",
+      "title": "neovim - YouTube"
+    },
+    {
+      "id": "wikipedia",
+      "name": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Vim_(text_editor)",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "the site handles none of Vimma's single keys"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 9,
+        "yy": 6,
+        "f": 19,
+        "follow": 55
+      },
+      "durationMs": 20298,
+      "loadMs": 597,
+      "finalUrl": "https://en.wikipedia.org/wiki/Vim_(text_editor)",
+      "title": "Vim (text editor) - Wikipedia"
+    },
+    {
+      "id": "google",
+      "name": "Google search",
+      "url": "https://www.google.com/search?q=neovim",
+      "status": "fail",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "fail",
+          "reason": "focusing textarea[name=q]#ti6dpd did not give insert mode"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (handled)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "fail",
+          "reason": "focus the search field: expected insert, state normal, bar NORMAL"
+        }
+      ],
+      "latency": {
+        "j": 15,
+        "yy": 8,
+        "f": 19,
+        "follow": 122
+      },
+      "durationMs": 22390,
+      "loadMs": 842,
+      "finalUrl": "https://www.google.com/search?q=neovim&sei=jIfYatHIIrqiqtsP5aaX4AY",
+      "title": "neovim - Google Search"
+    },
+    {
+      "id": "duckduckgo",
+      "name": "DuckDuckGo",
+      "url": "https://duckduckgo.com/?q=neovim",
+      "status": "fail",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "fail",
+          "reason": "focusing input[name=q]#search_form_input did not give insert mode"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: j (focus), h (handled), / (handled)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "fail",
+          "reason": "focus the search field: expected insert, state normal, bar NORMAL"
+        }
+      ],
+      "latency": {
+        "j": 8,
+        "yy": 8,
+        "f": 19,
+        "follow": 49
+      },
+      "durationMs": 24970,
+      "loadMs": 891,
+      "finalUrl": "https://duckduckgo.com/?q=neovim&ia=web",
+      "title": "neovim at DuckDuckGo"
+    },
+    {
+      "id": "vercel-docs",
+      "name": "Vercel docs",
+      "url": "https://vercel.com/docs",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "skip",
+          "reason": "no search field"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (dialog), ? (dialog)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 10,
+        "yy": 6,
+        "f": 24,
+        "follow": 130
+      },
+      "durationMs": 22854,
+      "loadMs": 620,
+      "finalUrl": "https://vercel.com/docs",
+      "title": "Vercel Documentation"
+    },
+    {
+      "id": "cloudflare-docs",
+      "name": "Cloudflare docs",
+      "url": "https://developers.cloudflare.com/workers/",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "pass"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: / (focus)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "j": 10,
+        "yy": 10,
+        "f": 30,
+        "follow": 83
+      },
+      "durationMs": 22812,
+      "loadMs": 654,
+      "finalUrl": "https://developers.cloudflare.com/workers/",
+      "title": "Overview · Cloudflare Workers docs"
+    },
+    {
+      "id": "codepen",
+      "name": "CodePen",
+      "url": "https://codepen.io/pen/",
+      "status": "blocked",
+      "checks": [
+        {
+          "id": "load",
+          "status": "skip",
+          "reason": "blocked (bot check): Cloudflare challenge"
+        },
+        {
+          "id": "scroll",
+          "status": "skip",
+          "reason": "blocked (bot check): Cloudflare challenge"
+        },
+        {
+          "id": "find",
+          "status": "skip",
+          "reason": "blocked (bot check): Cloudflare challenge"
+        },
+        {
+          "id": "yank",
+          "status": "skip",
+          "reason": "blocked (bot check): Cloudflare challenge"
+        },
+        {
+          "id": "insert",
+          "status": "skip",
+          "reason": "blocked (bot check): Cloudflare challenge"
+        },
+        {
+          "id": "prefix",
+          "status": "skip",
+          "reason": "blocked (bot check): Cloudflare challenge"
+        },
+        {
+          "id": "shortcuts",
+          "status": "skip",
+          "reason": "blocked (bot check): Cloudflare challenge"
+        },
+        {
+          "id": "hints",
+          "status": "skip",
+          "reason": "blocked (bot check): Cloudflare challenge"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "skip",
+          "reason": "blocked (bot check): Cloudflare challenge"
+        }
+      ],
+      "latency": {},
+      "durationMs": 4494,
+      "loadMs": 666,
+      "finalUrl": "https://codepen.io/pen/",
+      "title": "Just a moment...",
+      "block": {
+        "kind": "bot-check",
+        "reason": "Cloudflare challenge"
+      }
+    },
+    {
+      "id": "regex101",
+      "name": "regex101",
+      "url": "https://regex101.com/",
+      "status": "fail",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "pass",
+          "reason": "scrolled div._7EOv.rORdM"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "fail",
+          "reason": "focusing input#base-ui-_r_40_-hidden-input did not give insert mode"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: ? (dialog)"
+        },
+        {
+          "id": "hints",
+          "status": "pass"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "fail",
+          "reason": "focus the search field: expected insert, state normal, bar NORMAL"
+        }
+      ],
+      "latency": {
+        "j": 8,
+        "yy": 8,
+        "f": 18,
+        "follow": 27
+      },
+      "durationMs": 25151,
+      "loadMs": 1451,
+      "finalUrl": "https://regex101.com/",
+      "title": "regex101: Online Regex Tester, Builder, Converter & Debugger"
+    },
+    {
+      "id": "excalidraw",
+      "name": "Excalidraw",
+      "url": "https://excalidraw.com/",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "load",
+          "status": "pass"
+        },
+        {
+          "id": "scroll",
+          "status": "skip",
+          "reason": "nothing on the page scrolls"
+        },
+        {
+          "id": "find",
+          "status": "pass"
+        },
+        {
+          "id": "yank",
+          "status": "pass"
+        },
+        {
+          "id": "insert",
+          "status": "skip",
+          "reason": "no search field"
+        },
+        {
+          "id": "prefix",
+          "status": "pass"
+        },
+        {
+          "id": "shortcuts",
+          "status": "info",
+          "reason": "site handles: l (dialog), f (dialog), ? (dialog), n (dialog), v (dialog), t (dialog), b (dialog), r (dialog), H (handled), G (focus), g (dialog)"
+        },
+        {
+          "id": "hints",
+          "status": "skip",
+          "reason": "36 labels, none on a same-tab link to follow"
+        },
+        {
+          "id": "errors",
+          "status": "pass"
+        },
+        {
+          "id": "statusbar",
+          "status": "pass"
+        }
+      ],
+      "latency": {
+        "yy": 8,
+        "f": 19
+      },
+      "durationMs": 21923,
+      "loadMs": 1159,
+      "finalUrl": "https://excalidraw.com/",
+      "title": "Excalidraw Whiteboard"
+    }
+  ],
+  "harnessError": null
+}

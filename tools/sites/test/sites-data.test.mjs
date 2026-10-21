@@ -31,6 +31,8 @@ describe("tools/sites/sites.json", () => {
       "codepen.io",
       "regex101.com",
       "excalidraw.com",
+      "crates.io",
+      "gitlab.com",
     ]) {
       expect(hosts.has(host), host).toBe(true);
     }
@@ -41,6 +43,11 @@ describe("tools/sites/sites.json", () => {
       "github-pr",
       "github-repo",
     ]);
+    // Decision 14: a comments page as well as the front page.
+    expect(
+      SITES.some((/** @type {any} */ s) => s.url.startsWith("https://news.ycombinator.com/item?")),
+    ).toBe(true);
+    expect(SITES).toHaveLength(25);
   });
 });
 
