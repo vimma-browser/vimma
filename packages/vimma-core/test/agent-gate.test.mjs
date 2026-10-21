@@ -323,9 +323,8 @@ describe(":mcp log (mcp-drive D14)", () => {
       ["in-use", "denied (the user was using the tab)"],
       ["changed", "denied (the tab changed)"],
     ]) {
-      expect(logRow({ ...entry(), outcome: /** @type {any} */ (outcome) })).toMatch(
-        new RegExp(` · ${said.replace(/[()]/g, "\\$&")}$`),
-      );
+      const row = logRow({ ...entry(), outcome: /** @type {any} */ (outcome) });
+      expect(row.endsWith(` · ${said}`), row).toBe(true);
     }
   });
 
