@@ -1474,7 +1474,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`y or Y shows the steps; n, Esc, Enter and any other key dismiss`](../packages/vimma-core/test/update-notices.test.mjs)
 
 - UP10. The AppImage **only** replaces its own file (`$APPIMAGE`) with a download whose size
-  and SHA-512 match the verified manifest, checked on the file as written to disk, after every
+  and SHA-512 match a manifest verified by a check in the running process (an offer restored
+  from the saved result, the pref `vimma.update.last`, waits for a check), checked on the file as written to disk, after every
   write is synced, and before the rename; anything else leaves the file as it was and removes
   the download. It replaces nothing unless its GRE directory carries the
   `vimma-package=appimage` marker and lies inside `$APPDIR`, so a program started from another
@@ -1483,10 +1484,12 @@ _Pages_ and _extensions_ cannot reach it.
   (path segments only), so a leaked manifest key alone cannot point installs at a file of its
   own. The download is anonymous (no cookies, no referrer, an empty `Accept-Language`), follows
   GitHub's redirect to its asset host but must end on https, stops past the signed size or after
-  60 seconds without data, and is written to a hidden file in the same directory that is created
-  exclusively, so a second Vimma never writes into it. The file is made `0755` and renamed over
+  60 seconds without data or after 6 hours, and is written to a hidden file in the same
+  directory whose name no other file has, created by this process alone, so a second Vimma
+  never writes into it or removes it; part files left by a killed run are removed after a day.
+  A symbolic link at `$APPIMAGE` is refused. The file is made `0755` and renamed over
   `$APPIMAGE`; the running Vimma keeps its mounted image, and nothing restarts it. Checks off
-  (UP4) download nothing. **⚠ limit:** the manifest's hash is the AppImage's only signature: an
+  (UP4) download nothing, and turning them off stops a download under way. **⚠ limit:** the manifest's hash is the AppImage's only signature: an
   AppImage carries no MAR signature the way Firefox's updater checks one, so a leaked primary key
   together with any release asset of the project (an older AppImage included) can install that
   asset; the replay and downgrade rules (UP2) compare the manifest's versions, not the file's.
@@ -1496,6 +1499,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`an_unwritable_directory_falls_back_to_the_steps`](../tests/browser/browser_vimma_update_appimage.js),
   [`another_install_type_never_touches_appimage`](../tests/browser/browser_vimma_update_appimage.js),
   [`checks_off_never_downloads`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_saved_offer_is_installed_only_after_a_check`](../tests/browser/browser_vimma_update_appimage.js),
+  [`another_downloads_part_file_neither_blocks_nor_is_removed`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_symlinked_appimage_is_not_replaced`](../tests/browser/browser_vimma_update_appimage.js),
   [`without the AppDir's own appimage marker, $APPIMAGE is never replaced`](../packages/vimma-core/test/appimage-update.test.mjs),
   [`a Vimma that does not run from $APPDIR is not the AppImage $APPIMAGE names`](../packages/vimma-core/test/appimage-update.test.mjs),
   [`a download from %s is refused outside automation`](../packages/vimma-core/test/appimage-update.test.mjs),

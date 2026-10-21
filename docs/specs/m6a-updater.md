@@ -420,9 +420,13 @@ the guide says so, and about:vimma shows the real version.
 inherited by every program an AppImage starts (decision 34). The download URL must be one of the
 project's release downloads (`https://github.com/vimma-browser/vimma/releases/download/…`, path
 segments only), because a leaked manifest key would otherwise be enough to point every AppImage at
-a file of its own; with that rule it also needs a release asset in the project. The part file is
-created exclusively, so two Vimma processes never write one download, and a part file younger than
-an hour is left to the process writing it. Every write is synced, and the size and SHA-512 are
+a file of its own; with that rule it also needs a release asset in the project. Only an offer
+verified by a check in the running process is installed, because the saved result it may be
+restored from is a pref anyone can edit. The part file gets a name no other file has
+(`.vimma-update-<buildID>.AppImage.part`, numbered when taken), created by one process alone, so
+two Vimma processes running the same AppImage never write or remove each other's download; part
+files older than a day are leftovers of a killed run and are removed. A symbolic link at
+`$APPIMAGE` is refused, because the rename would replace the link and not the file it names. Every write is synced, and the size and SHA-512 are
 checked on the file as written, before the rename. A target that already has the offered size
 and SHA-512 counts as replaced without a download. An urgent replaced update shows
 `⇡ 0.3.1 security: restart` until `:restart` exists, the one-time message says

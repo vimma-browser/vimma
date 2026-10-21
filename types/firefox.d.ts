@@ -150,6 +150,7 @@ declare const IOUtils: {
     type: "regular" | "directory" | "other";
   }>;
   exists(path: string): Promise<boolean>;
+  getChildren(path: string): Promise<string[]>;
   copy(from: string, to: string): Promise<void>;
   move(from: string, to: string): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;

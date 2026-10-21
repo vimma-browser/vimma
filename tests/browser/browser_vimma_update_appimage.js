@@ -37,6 +37,13 @@ const dir = PathUtils.join(PathUtils.tempDir, `vimma-appimage-${Date.now()}`);
 const appImage = PathUtils.join(dir, "vimma-0.1.0-x86_64.AppImage");
 const part = PathUtils.join(dir, ".vimma-update-20991231000000.AppImage.part");
 
+/** The part files in the AppImage's directory. */
+async function partFiles() {
+  return (await IOUtils.getChildren(dir))
+    .map((p) => PathUtils.filename(p))
+    .filter((n) => n.startsWith(".vimma-update-"));
+}
+
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
@@ -156,7 +163,7 @@ add_task(async function a_newer_appimage_replaces_the_file() {
   Assert.equal(r.outcome, "offer", r.reason ?? "");
   Assert.equal(await IOUtils.readUTF8(appImage), NEW, "the file is the new AppImage");
   Assert.equal((await IOUtils.stat(appImage)).permissions & 0o777, 0o755, "mode 0755");
-  Assert.ok(!(await IOUtils.exists(part)), "no part file is left behind");
+  Assert.deepEqual(await partFiles(), [], "no part file is left behind");
   Assert.equal(VimmaUpdates.status().stage, "staged");
   await until(() => segment()?.textContent === "⇡ 9.9.9 on restart", "the status bar says so");
   Assert.equal(segment().style.color, "var(--vimma-fg-dim)");
@@ -225,7 +232,7 @@ add_task(async function a_wrong_hash_leaves_the_file_alone() {
   Assert.equal(r.outcome, "offer");
   Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the AppImage is unchanged");
   Assert.equal((await IOUtils.stat(appImage)).permissions & 0o777, 0o644);
-  Assert.ok(!(await IOUtils.exists(part)), "the part file is removed");
+  Assert.deepEqual(await partFiles(), [], "the part file is removed");
   const status = VimmaUpdates.status();
   Assert.equal(status.stage, "none");
   const info = await VimmaUpdates.describe();
@@ -239,7 +246,7 @@ add_task(async function a_larger_download_than_signed_is_refused() {
   await serve(await manifest({ file: NEW, size: NEW.length - 1 }), NEW);
   await checkAndReplace();
   Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the AppImage is unchanged");
-  Assert.ok(!(await IOUtils.exists(part)), "the part file is removed");
+  Assert.deepEqual(await partFiles(), [], "the part file is removed");
   const info = await VimmaUpdates.describe();
   Assert.ok(/signed manifest says/.test(info.appImage.reason), info.appImage.reason);
 });
@@ -295,4 +302,59 @@ add_task(async function checks_off_never_downloads() {
   Assert.equal(await IOUtils.readUTF8(appImage), OLD);
   Assert.deepEqual(await downloads(), [], "no download");
   await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function a_saved_offer_is_installed_only_after_a_check() {
+  await freshInstall();
+  await serve(await manifest());
+  await checkAndReplace();
+  const saved = Services.prefs.getStringPref("vimma.update.last");
+  // Anyone can edit the saved result: a new session restores it, but installs nothing from it.
+  await freshInstall();
+  Services.prefs.setStringPref("vimma.update.last", saved);
+  await fetch(`${FILES}?reset`);
+  VimmaUpdates._load();
+  await VimmaUpdates._startupCheck();
+  await VimmaUpdates._replacing();
+  Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the AppImage is unchanged");
+  Assert.deepEqual(await downloads(), [], "no download");
+  Assert.equal(VimmaUpdates.status().stage, "none");
+  Services.prefs.clearUserPref("vimma.update.last");
+});
+
+add_task(async function another_downloads_part_file_neither_blocks_nor_is_removed() {
+  await freshInstall();
+  // A second Vimma running the same AppImage, mid-download.
+  await IOUtils.writeUTF8(part, "another process's download");
+  await serve(await manifest());
+  await checkAndReplace();
+  Assert.equal(await IOUtils.readUTF8(appImage), NEW, "replaced all the same");
+  Assert.equal(await IOUtils.readUTF8(part), "another process's download", "left alone");
+  await IOUtils.remove(part);
+});
+
+add_task(async function a_symlinked_appimage_is_not_replaced() {
+  await freshInstall();
+  const link = PathUtils.join(dir, "Vimma.AppImage");
+  const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  file.initWithPath(link);
+  await IOUtils.remove(link).catch(() => {});
+  // nsIFile has no symlink creation; a relative link through the shell would need a process.
+  const ln = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  ln.initWithPath("/usr/bin/ln");
+  const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
+  proc.init(ln);
+  proc.run(true, ["-s", appImage, link], 3);
+  Services.env.set("APPIMAGE", link);
+  try {
+    await serve(await manifest());
+    await checkAndReplace();
+  } finally {
+    Services.env.set("APPIMAGE", appImage);
+  }
+  Assert.ok(file.isSymlink(), "the link is still a link");
+  Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the file it names is unchanged");
+  const info = await VimmaUpdates.describe();
+  Assert.equal(info.appImage.reason, "cannot read $APPIMAGE: $APPIMAGE is a symbolic link");
+  await IOUtils.remove(link);
 });
