@@ -1,6 +1,6 @@
 # Spec: mcp-drive
 
-Status: accepted (sub-PRs 1-3 implemented) · Area: `packages/vimma-core/src/` (`agent-keys.mjs` new, `agent.mjs`,
+Status: accepted (sub-PRs 1-4 implemented) · Area: `packages/vimma-core/src/` (`agent-keys.mjs` new, `agent.mjs`,
 `agent-prompt.mjs`, `control.mjs`, `cmdline.mjs`); `src/browser/base/content/vimma/`
 (`ctl/agent-commands.mjs`, `ctl/AgentDrive.sys.mjs` new, `actors/VimmaActors.sys.mjs`,
 `host/agent-ui.mjs`, `host/control-ops.mjs`, `host/workspace-ops.mjs`); `tools/vimma-ctl`

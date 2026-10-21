@@ -9,6 +9,7 @@ import {
   CallRate,
   KEYS_RATE,
   LOG_SIZE,
+  SHOW_RATE,
   OPEN_RATE,
   OpenRate,
   MUTE_MS,
@@ -43,6 +44,7 @@ describe("the tools", () => {
       "agent-open": "vimma_open",
       "agent-close": "vimma_close_tab",
       "agent-keys": "vimma_keys",
+      "agent-show": "vimma_show",
     });
   });
 });
@@ -280,6 +282,21 @@ describe("the keys rate (mcp-drive D15)", () => {
   });
 });
 
+// docs/specs/mcp-drive.md D7 (security.md M20): at most 6 shows a minute per connection, counted
+// when asked, so a refused show cannot be retried in a loop.
+describe("the show rate (mcp-drive D7)", () => {
+  test("at most 6 agent-show per connection a minute", () => {
+    expect(SHOW_RATE).toEqual({ max: 6, ms: 60_000 });
+    const r = new CallRate(SHOW_RATE);
+    const ok = [];
+    for (let i = 0; i < 8; i++) ok.push(r.take(1, i * 100));
+    expect(ok.filter(Boolean)).toHaveLength(6);
+    expect(ok.slice(6)).toEqual([false, false]);
+    expect(r.take(2, 900)).toBe(true);
+    expect(r.take(1, 60_001)).toBe(true);
+  });
+});
+
 // docs/specs/mcp-drive.md D14 (security.md M23): every agent call that ran or was denied, in
 // memory only, the last 100.
 describe(":mcp log (mcp-drive D14)", () => {
@@ -416,5 +433,30 @@ describe("questions that always ask", () => {
       resolved: [{ id: b.id, allow: true }],
     });
     expect(q.grants(0)).toEqual([]);
+  });
+});
+
+// docs/specs/mcp-drive.md D4 (security.md M19): vimma_show asks every time, whatever the caller
+// passes, and its answer never makes a grant.
+describe("vimma_show always asks (mcp-drive D4)", () => {
+  const SHOW = "vimma_show";
+  test("it waits even when asked without always, and a grant answer allows it once only", () => {
+    const q = queue();
+    const a = q.ask(1, SHOW, 0);
+    expect(a.kind).toBe("wait");
+    expect(q.answer(a.id, { kind: "grant", minutes: 10 }, 0)).toEqual({
+      resolved: [{ id: a.id, allow: true }],
+    });
+    expect(q.grants(0)).toEqual([]);
+    expect(q.ask(1, SHOW, MIN).kind).toBe("wait");
+  });
+
+  test("a grant of another tool never covers it", () => {
+    const q = queue();
+    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
+    const b = q.ask(1, SHOW, 0);
+    expect(b.kind).toBe("wait");
+    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
+    expect(q.waiting.map((r) => r.id)).toContain(b.id);
   });
 });

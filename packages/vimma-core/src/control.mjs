@@ -27,8 +27,9 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
 /**
  * The agent role's commands (protocol 2; vimma-mcp decision 4). No other role runs them.
  * `agent-cancel` withdraws one of the connection's waiting questions (decision 17, MCP's
- * `notifications/cancelled`). `agent-keys` runs Vimma's own page keys in an agent tab
- * (docs/specs/mcp-drive.md D8, D19).
+ * `notifications/cancelled`). `agent-keys` runs Vimma's own page keys in an agent tab, and
+ * `agent-show` brings the agent workspace to the front with one agent tab selected
+ * (docs/specs/mcp-drive.md D2, D8, D19).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -39,6 +40,7 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-ping",
   "agent-cancel",
   "agent-keys",
+  "agent-show",
 ]);
 /**
  * Why an agent request was `denied` (vimma-mcp decision 4). `in-use`: the user is typing in that
@@ -337,7 +339,8 @@ function checkRequest(m, errors) {
   else if (command === "agent-read") checkAgentReadArgs(args, errors);
   else if (command === "agent-open") checkAgentOpenArgs(args, errors);
   else if (command === "agent-keys") checkAgentKeysArgs(args, errors);
-  else if (command === "agent-close") {
+  else if (command === "agent-close" || command === "agent-show") {
+    // A show names its tab only, never a workspace (mcp-drive D2).
     noExtraFields(args, ["tab"], errors, "args.");
     checkTabArg(args, errors);
   } else if (command === "agent-cancel") {
@@ -463,6 +466,9 @@ function checkAgentResult(result, command, errors) {
     checkFields(result, "result", { strings: ["tab"] }, errors);
   } else if (command === "agent-close" && result.closed !== true) {
     errors.push("result.closed must be true");
+  } else if (command === "agent-show") {
+    noExtraFields(result, ["shown"], errors, "result.");
+    if (result.shown !== true) errors.push("result.shown must be true");
   } else if (command === "agent-cancel") {
     checkFields(result, "result", { flags: ["cancelled"] }, errors);
   } else if (command === "agent-keys") {

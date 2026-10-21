@@ -308,6 +308,30 @@ export class WindowWorkspacesImpl {
   }
 
   /**
+   * Shows `tab`'s workspace with `tab` selected, through the same switch as `switchTo`, so the
+   * workspace left becomes the alternate and its split is parked (docs/specs/mcp-drive.md D2).
+   * Returns why not, or null.
+   * @param {Tab} tab
+   * @returns {string | null}
+   */
+  showTab(tab) {
+    const model = this.#model;
+    if (!model) return "no workspaces in this window";
+    const id = this.#idOf(tab);
+    if (tab.closing || this.#foreign.has(id) || !workspaceOfTab(model, id)) {
+      return "this tab is in no workspace";
+    }
+    const next = selectTab(model, id);
+    if (next.active === model.active) {
+      // The same workspace: a plain selection, which #onSelect records.
+      this.#gBrowser.selectedTab = tab;
+      return null;
+    }
+    this.#show(model, next);
+    return null;
+  }
+
+  /**
    * Moves `tab` to workspace `ref` (decision 6, sub-spec 4b): reopens its URL in the target's
    * container, as Firefox's "Reopen in Container" does (history, form data, scroll and POST
    * data stay behind; the label and mute come along), then closes it. A tab in a split leaves
