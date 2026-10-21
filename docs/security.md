@@ -1504,7 +1504,7 @@ day by signing a serial ahead of the clock (UP2).
 
 ## 17. Site compatibility workflow (`sites.yml`, `tools/sites`)
 
-Spec: [site-compat](specs/site-compat.md), decisions 1, 11 and 12. Every night a hosted runner
+Spec: [site-compat](specs/site-compat.md), decisions 1, 11 and 12, and its snapshot layer (SC5). Every night a hosted runner
 loads about 25 live websites in an artifact build, compares the results with the previous
 scheduled run and keeps one issue labelled `site-compat` up to date. Who can reach it: the
 _pages_ it loads, which choose their titles, their text, where they redirect and what the checks
@@ -1556,3 +1556,32 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
   [`rejects a run of the wrong shape, unknown statuses and check ids, and odd site ids`](../tools/sites/test/diff.test.mjs),
   [`round-trips the tracked list through diff.json, and rejects one of the wrong shape`](../tools/sites/test/diff.test.mjs),
   [`reports no baseline when the previous artifact is missing or malformed`](../tools/sites/test/compare.test.mjs)
+- SC5. The **snapshot gate** (`npm run sites -- --offline`, run by e2e.yml on every pull request)
+  loads only the files in `tests/e2e/fixtures/sites/`, from a page server on 127.0.0.1, and never
+  a live site: no other mode of the suite runs in e2e.yml. Each snapshot is third-party page
+  content, recorded once and committed, so a test holds every file to the recorder's guarantees:
+  it starts with a Content-Security-Policy that lets nothing run or load (`default-src 'none'`,
+  inline styles only), and holds no script, event handler, frame, image or other embedded
+  content, no URL attribute, no `url()`, `@import` or `image-set()` in a style, and no link but a
+  fragment or the local `followed.html`. The checker reads markup where the browser's parser
+  could read text (inside `<svg>`, after an abrupt comment end), never the reverse, and decodes
+  CSS escapes and comments first. It is a backstop of what the recorder removes, not the only
+  barrier: the policy blocks anything it might miss, and the offline profile sends every host
+  but 127.0.0.1 to a proxy port where nothing listens, with WebRTC off. A pull request can change
+  the checker and its tests as well as the snapshots, so the review of that pull request is the
+  control; what such a change could reach is the job below. Only pages whose licence allows a copy are recorded
+  (`--record` refuses any other id), and a new or changed snapshot is reviewed in its pull
+  request like code. The step runs in the mochitest job (`contents: read`, no secret); its report
+  and screenshots, which show only committed snapshots, are uploaded as an artifact when it
+  fails, and nothing from it reaches an issue.
+  [`rejects scripts and every element that loads or embeds something`](../tools/sites/test/snapshot.test.mjs),
+  [`rejects event handlers however they are written`](../tools/sites/test/snapshot.test.mjs),
+  [`allows only fragment links and the follow target as href`](../tools/sites/test/snapshot.test.mjs),
+  [`rejects every other attribute that names a URL`](../tools/sites/test/snapshot.test.mjs),
+  [`rejects url(), @import and image-set() in styles`](../tools/sites/test/snapshot.test.mjs),
+  [`wants the doctype, and the CSP as the first thing in <head>`](../tools/sites/test/snapshot.test.mjs),
+  [`ends a comment where the parser does: <!-->, <!--->, --!>`](../tools/sites/test/snapshot.test.mjs),
+  [`reads markup inside raw-text elements too, as in <svg>, where they are not raw`](../tools/sites/test/snapshot.test.mjs),
+  [`reads CSS escapes and comments before looking for loads`](../tools/sites/test/snapshot.test.mjs),
+  [`each have a manifest entry with a licence that allows redistribution`](../tools/sites/test/snapshot.test.mjs),
+  [`runs the suite only offline, after the e2e scenarios, on the artifact build`](../tools/test/sites-workflow.test.mjs)

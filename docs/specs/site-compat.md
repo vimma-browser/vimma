@@ -1,9 +1,10 @@
 # Spec: site-compat
 
-Status: accepted (sub-PRs 1 and 2 implemented; sub-PR 3, the snapshot layer, next) · Milestone: after private-swap (testing infrastructure, no
+Status: implemented · Milestone: after private-swap (testing infrastructure, no
 user-visible change) · Area: `tools/sites/` (new), `tools/e2e/launcher.mjs` (one option),
-`.github/workflows/sites.yml` (new), `package.json` (one script). No upstream patch, no product
-code, no new dependency.
+`.github/workflows/sites.yml` (new), `package.json` (one script), `.github/workflows/e2e.yml`
+(one step), `tests/e2e/fixtures/sites/` (new). No upstream patch, no product code, no new
+dependency.
 
 Issue: [#262](https://github.com/vimma-browser/vimma/issues/262)
 
@@ -396,6 +397,17 @@ selected pages, and fail the PR when a check that passed on the recording fails.
     the browser job's permissions are read-only, `issues: write` is only in a job with no
     checkout and no `node` or `npm`, and that job reaches the issue only through `gh` and
     files.
+- Vitest for sub-PR 3, written first:
+  - `snapshot.test.mjs`: `verifySnapshot` rejects scripts, every element that loads or embeds
+    something, event handlers however they are written, any `href` but a fragment or the follow
+    target, every other URL attribute, `url()`, `@import` and `image-set()` in styles, and a
+    missing or weakened Content-Security-Policy; it is not fooled by markup in comments, text or
+    `<style>`. Every committed snapshot passes it, is in `snapshots.json` with its licence, and is
+    attributed in the README. The manifest's shape; which ids may be recorded; the gate (a check
+    that passed on the recording and does not now fails it, as does a skipped one that fails, a
+    snapshot that did not run or a harness error; `shortcuts` is ignored) and its summary.
+  - `sites-workflow.test.mjs`: e2e.yml runs the suite only with `--offline`, after the
+    scenarios, as a Beta-mode suite, and uploads its output when it fails.
 - Live: one local run over the full list under Xvfb from the maintainer's network; the summary
   table goes into the PR. Then one `workflow_dispatch` run after merge to compare the hosted
   runner's bot-check rate (decision 10).
@@ -511,3 +523,35 @@ What changed from the plan above, and why:
   on YouTube, Google search, DuckDuckGo and regex101 (focusing the search field does not give
   insert mode), so those failures predate the comparison and open no issue; they are listed in
   each night's report.
+
+## Implementation log (sub-PR 3)
+
+What changed from the plan above, and why:
+
+- **Four snapshots:** Wikipedia, MDN, docs.python.org and doc.rust-lang.org, the four pages on
+  the list whose licence allows a copy (`SNAPSHOT_LICENCES` in `tools/sites/snapshot.mjs`;
+  `--record` refuses any other id). No hand-written fixture yet: none of the live run's findings
+  so far is a structure the four lack.
+- **Every link leads to `followed.html`**, a page next to the snapshots, and fragment links
+  stay. A link to the live site would make the hints check leave the machine; one to a missing
+  page would depend on how the browser shows a 404.
+- **Nothing in a snapshot can run or load, three times over.** The recorder removes scripts,
+  handlers, frames, media and URL attributes and replaces `url()` in styles; every snapshot
+  starts with a Content-Security-Policy (`default-src 'none'`, inline styles only) that blocks
+  whatever it missed; and the offline profile sends every host but 127.0.0.1 to a proxy port
+  where nothing listens. `verifySnapshot` checks the first two on every committed file. The
+  DevTools server's evaluations, which the checks read the page with, are not subject to the
+  page's policy.
+- **Stylesheets are pruned** to the rules whose selector, without pseudo-classes, matches
+  something on the page, and `@font-face` rules are dropped (fonts are not loaded). That keeps
+  the four files at 0.2 to 0.8 MB.
+- **The expected results are written by hand** in `snapshots.json` from the first offline run,
+  not by the recorder, so a change to them is a reviewed line. Insert is `skip` on MDN and
+  doc.rust-lang.org, as in the live run: their search is a button.
+- **Recording from a saved copy** (`--record <id>=<url>`). The four were recorded from a local
+  copy of each page and its stylesheets, each fetched once, so recording put no extra visits
+  from a developer's network on the live sites. The copies served no scripts, which the
+  snapshot drops anyway.
+- **In e2e.yml** after the scenarios, as a Beta-mode suite (`sites-offline` in
+  `suite-results.mjs`): about 25 s for the four on a local machine. Screenshots are not
+  compared, as planned; they are uploaded with the report when the gate fails.

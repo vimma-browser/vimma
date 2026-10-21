@@ -326,6 +326,19 @@ npm run sites -- --pref name=value             # an extra profile pref (repeatab
   last successful one.
 - Adding a site: an entry in `sites.json` (`id`, `name`, an https `url`; optional `search`, a CSS
   selector for its search field, and `find`, a word on the page). `npm test` checks the file.
+- **The snapshot gate** (`npm run sites -- --offline`). e2e.yml replays the pages recorded in
+  `tests/e2e/fixtures/sites/` (Wikipedia, MDN, docs.python.org, doc.rust-lang.org: the ones
+  whose licence allows a copy here) from a page server on 127.0.0.1, with every other host
+  unreachable, and runs the same checks but the site's shortcuts. It fails the pull request when
+  a check that passed on the recording (`expect` in `snapshots.json`) does not pass now; its
+  report and screenshots are then the `site-compat-offline` artifact. About 25 s, safe to run
+  anywhere: it loads no live site. A failure is Vimma's, since the page cannot have changed.
+- **Recording a snapshot.** `npm run sites -- --record wikipedia` loads the live page once and
+  writes a checked snapshot into `site-compat-output/snapshots/`; `--record <id>=<url>` records
+  from a saved copy instead. Only the ids in `SNAPSHOT_LICENCES` (`tools/sites/snapshot.mjs`) are
+  accepted. Copy the file into the fixtures, set its `snapshots.json` entry from an offline run
+  and add its attribution row to the README there. A site whose licence allows no copy gets a
+  hand-written minimal fixture of the structure that broke instead.
 - Running it from a worktree against the main checkout's build: pass
   `--build <main>/engine/obj-x86_64-pc-linux-gnu/dist/bin` and
   `--pref security.sandbox.content.read_path_whitelist=<main>/src/`, or the content actor

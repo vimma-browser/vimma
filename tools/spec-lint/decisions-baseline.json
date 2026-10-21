@@ -38,16 +38,6 @@
     "The server's instructions",
     "Each full connection says it too."
   ],
-  "site-compat.md": [
-    "A separate workflow, `sites.yml`, on `ubuntu-24.04`.",
-    "Drive with `vimma-ctl`, observe with RDP",
-    "One fresh profile and browser per site",
-    "Firefox's normal user agent",
-    "Latency",
-    "Statuses per site",
-    "Output",
-    "The list is data"
-  ],
   "vimma-mcp.md": [
     "`vimma-ctl mcp`",
     "Two switches.",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { STEPS } from "../upstream/suite-results.mjs";
 
 // docs/specs/site-compat.md, decision 1: the live site suite's workflow. It must never run on a
 // pull request or gate a merge, must stay on a free standard runner, and holds no secret. Text
@@ -126,5 +127,40 @@ describe("site-compat workflow (sites.yml)", () => {
     const uses = [...text.matchAll(/^\s*(?:- )?uses: (\S+)/gm)].map((m) => m[1] ?? "");
     expect(uses.length).toBeGreaterThan(0);
     for (const u of uses) expect(u).toMatch(/@[0-9a-f]{40}$/);
+  });
+});
+
+// The snapshot layer (spec site-compat, "Snapshot layer"): e2e.yml replays the recorded pages on
+// every pull request, offline. A live site is never loaded from a pull request's run.
+describe("the snapshot gate in e2e.yml", () => {
+  const e2e = readFileSync(new URL("../../.github/workflows/e2e.yml", import.meta.url), "utf8");
+  /** The step with `id`, up to the next step. @param {string} id */
+  const step = (id) => {
+    const at = e2e.indexOf(`id: ${id}\n`);
+    if (at < 0) throw new Error(`no step ${id}`);
+    const start = e2e.lastIndexOf("\n      - ", at);
+    const next = e2e.indexOf("\n      - ", at);
+    return e2e.slice(start, next < 0 ? undefined : next);
+  };
+
+  it("runs the suite only offline, after the e2e scenarios, on the artifact build", () => {
+    const runs = [...e2e.matchAll(/^\s*run: (.*npm run sites\b.*)$/gm)].map((m) => m[1]);
+    expect(runs).toEqual(["npm run sites -- --offline --artifact --out site-compat-offline/"]);
+    expect(step("sites-offline")).toContain(runs[0]);
+    expect(e2e.indexOf("id: e2e\n")).toBeLessThan(e2e.indexOf("id: sites-offline\n"));
+    expect(e2e).not.toMatch(/--record|--retry-blocked|tools\/sites\/sites\.mjs/);
+  });
+
+  it("is a suite of Beta mode like the others, recorded in suite-results.json", () => {
+    expect(step("sites-offline")).toContain(
+      "continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}",
+    );
+    expect(STEPS).toContain("sites-offline");
+  });
+
+  it("uploads the gate's report and screenshots when it fails", () => {
+    expect(e2e).toMatch(
+      /- name: Upload site-compat-offline\/[^]*?if: failure\(\) \|\| \(steps\.mode\.outputs\.beta == 'true' && steps\.sites-offline\.outcome == 'failure'\)[^]*?path: site-compat-offline\/\n/,
+    );
   });
 });
