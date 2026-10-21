@@ -68,12 +68,18 @@ const DECLARED = [
 ].join(",");
 
 /**
- * Hintable only by inference: focusable, or a listener (below). Such an element is often a
- * wrapper (a menu's item list with a React onClick, a focusable list) rather than a control. It
- * yields to the declared targets inside it: they get the labels, it gets none and does not
- * swallow them, as Vimium drops a tabindex-only element that holds a clickable one.
+ * Hintable only by inference: focusable, or a listener (below). Such an element that holds an
+ * entry of a list (ENTRIES) is the list's wrapper (a menu's items with a React onClick, a
+ * focusable listbox), not a control: it gets no label. Holding any other control does not make
+ * it yield, so a row that opens on click and holds a checkbox keeps its label, and so does the
+ * checkbox (no inferred target hides a declared one, below).
  */
 const FOCUSABLE = "[tabindex]:not([tabindex^='-'])";
+
+/** The entries of menus, lists, trees and tab lists. */
+const ENTRIES = ["menuitem", "menuitemcheckbox", "menuitemradio", "option", "treeitem", "tab"]
+  .map((r) => `[role=${r}]`)
+  .join(",");
 
 const LINKS = "a[href]";
 
@@ -240,12 +246,16 @@ export function collectTargets(win, { linksOnly }) {
   }
   if (inferred.size) {
     for (const el of declared) {
+      if (!el.matches(ENTRIES)) continue;
       for (let p = parentOf(el); p; p = parentOf(p)) inferred.delete(p);
     }
   }
 
   /** @type {Set<Element>} */
-  const all = new Set([...strong, ...declared, ...inferred]);
+  /** @type {Set<Element>} */
+  const named = new Set([...strong, ...declared]);
+  /** @type {Set<Element>} */
+  const all = new Set([...named, ...inferred]);
   /** @type {Found[]} */
   const targets = [];
   /** @type {Set<Element>} */
@@ -254,8 +264,9 @@ export function collectTargets(win, { linksOnly }) {
   const labels = [];
   for (const el of all) {
     if (targets.length >= MAX_TARGETS) break;
-    const isStrong = strong.has(el);
-    if (!isStrong && insideCandidate(el, all)) continue;
+    // A declared target is dropped only inside a strong or declared one: a row that opens on
+    // click does not hide the checkbox in it.
+    if (!strong.has(el) && insideCandidate(el, declared.has(el) ? named : all)) continue;
     if (
       el.localName !== "a" &&
       /** @type {HTMLElement} */ (el).isContentEditable &&

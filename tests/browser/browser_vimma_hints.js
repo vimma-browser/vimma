@@ -30,7 +30,10 @@ const { HintOverlay } = ChromeUtils.importESModule(
 const FRAME_TIMEOUT_PREF = "vimma.hints.frameTimeoutMs";
 
 /** Elements of file_vimma_hints.html that get a label with `f`; `framed` is in the iframe. */
-const TARGETS = ["home", "l1", "l2", "l3", "field", "button", "role", "listener", "shadow"];
+const TARGETS = [
+  ...["home", "l1", "l2", "l3", "field", "button", "role", "listener", "row", "rowcheck"],
+  "shadow",
+];
 /** The links among them and `framed`: the only targets of `F`. */
 const LINKS = ["home", "l1", "l2", "l3", "shadow", "framed"];
 
@@ -154,18 +157,22 @@ async function centres(browser, ids) {
 }
 
 /**
- * The label of the hint whose target rect holds the element's centre, or undefined.
+ * The label of the innermost hint whose target rect holds the element's centre, or undefined.
+ * Innermost: a control inside a clickable row is under both rects.
  * @param {any} hints VimmaHost._hints(window)
  * @param {{ x: number, y: number }} c
  */
 function labelAt(hints, c) {
-  return hints.hints.find(
-    (/** @type {any} */ h) =>
-      c.x >= h.target.rect.x &&
-      c.x <= h.target.rect.x + h.target.rect.width &&
-      c.y >= h.target.rect.y &&
-      c.y <= h.target.rect.y + h.target.rect.height,
-  )?.label;
+  const area = (/** @type {any} */ h) => h.target.rect.width * h.target.rect.height;
+  return hints.hints
+    .filter(
+      (/** @type {any} */ h) =>
+        c.x >= h.target.rect.x &&
+        c.x <= h.target.rect.x + h.target.rect.width &&
+        c.y >= h.target.rect.y &&
+        c.y <= h.target.rect.y + h.target.rect.height,
+    )
+    .sort((/** @type {any} */ a, /** @type {any} */ b) => area(a) - area(b))[0]?.label;
 }
 
 /**
