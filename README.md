@@ -27,7 +27,8 @@ and workspaces, and your hands never leave the keyboard.
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.
 - **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through
   MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies, and every request asks
-  you first.
+  you first. There they read and open pages, scroll, search and follow links with Vimma's own
+  keys, and show you a page when they want you to look at it.
 
 ## Install
 

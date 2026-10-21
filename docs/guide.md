@@ -1415,8 +1415,9 @@ with the rest of your computer.
 - gets page text and titles marked as untrusted web content, so the model is told that
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
-- is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, and a minute
-  of silence after three noes in a row. Its pages get no permission prompts, pop-ups or other
+- is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
+  `vimma_keys` calls and 6 `vimma_show` calls a minute, and a minute of silence after three noes
+  in a row. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
 
@@ -1447,8 +1448,10 @@ workspace, tab, focus, find bar and hint mode.
 
 - **The keys it may press** are Vimma's own defaults, whatever your `config.toml` binds: `j`
   `k` `h` `l`, `d` `u` (`ctrl+d` `ctrl+u`, `ctrl+e` `ctrl+y`), `gg` `G`, `H` `L` (`ctrl+o`
-  `ctrl+i`), `gu` `gU`, `/word⏎` `?word⏎` and `n` `N`, with counts up to 99, and `f`, at most
-  32 a call. A match becomes the page's selection, which a `vimma_read_page` then returns.
+  `ctrl+i`, `ctrl+[` `ctrl+]`), `gu` `gU`, `/word⏎` `?word⏎` and `n` `N`, with counts up to
+  99, and `f`, at most 32 a call. A match becomes the page's selection, which a `vimma_read_page` then returns.
+  `H` and `L` go back and forward only to web pages: an `about:` or `file:` entry the tab had
+  before it was the agent's is refused.
 - **Links by label.** `f` gives the agent the links on screen, up to 200, each with a hint label,
   its text and its address, marked as untrusted web content; a second call with `fsd` follows
   link `sd`. Labels use Vimma's default hint characters, whatever your `hint_chars`, and last
@@ -1464,13 +1467,15 @@ workspace, tab, focus, find bar and hint mode.
 - **The keys it never presses:** `ctrl+b` and every binding after it, `:`, tab, workspace,
   window and split keys, `i` and every way into a text field, copy mode, `yy` and `p` (your
   clipboard), `gF` and `gf` (they open tabs), element focus (`F`), `r` (a reload can send a form
-  again), and every key of the Browser, Developer tools, Bookmarks and Agents groups,
-  `ctrl+b shift+a` included, so an agent never answers its own question. Such a call is refused before anything asks you.
+  again), and every key of the Browser, Developer tools, Bookmarks, Config, Add-ons, Help and
+  Agents groups, `ctrl+b shift+a` included, so an agent never answers its own question. Such a
+  call is refused before anything asks you.
 - **Nothing reaches the page as a key press.** Each key runs as a Vimma action on the tab, so the
   page sees no keydown, and nothing is ever typed, clicked or submitted.
 - **Not while you type there.** A request for the tab in front of you while you are in insert,
-  copy or hint mode in it, or halfway through a key sequence, is denied (`in-use`) without a
-  question. Watching is fine: in normal mode you see the agent scroll.
+  copy or hint mode in it, with its find bar open, or halfway through a key sequence, is denied
+  (`in-use`) without a question, and keys stop at the next step if you start using it while they
+  run. Watching is fine: in normal mode you see the agent scroll.
 - **A grant covers it:** `15a` lets that agent run keys for 15 minutes, and each call then shows
   `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`; a follow adds
   `claude-code followed a link to docs.example.com in "Pricing · Example"`. A `vimma_keys` grant
@@ -1496,7 +1501,9 @@ selected, as `:ws agent` would. The notice says `showing claude-code's tab · ct
   another workspace or a private window.
 - **It never raises or activates a window.** In the window that switches, the shown tab has the
   keyboard as after any tab switch. If the tab is in another Vimma window, that window switches
-  behind the one you are in, and the notice says `shown in the other window`.
+  behind the one you are in, and the notice says `shown in the other window`. When the window
+  is in the agent workspace already, only the tab changes, and the notice has no `ctrl+^`: there
+  is nowhere else to go back to.
 - **At most 6 a minute** per agent; it is in `:mcp log` like every other call.
 
 #### Keeping agents out of your Vimma profile
@@ -1553,8 +1560,9 @@ Each request an agent makes appears as one line at the foot of the window, above
 ```
 
 It names the agent (as the agent calls itself), the tool, and what it touches: the tab's place,
-title and address for a read or a close, the whole address for an open (its host in bold), the
-number of agent tabs for the tab list.
+title and address for a read, a close, keys or a show (then the keys as they will run, or the
+workspace a show switches you to), the whole address for an open (its host in bold), the number
+of agent tabs for the tab list.
 
 | Key                   | Answer                                                                                  |
 | --------------------- | --------------------------------------------------------------------------------------- |
