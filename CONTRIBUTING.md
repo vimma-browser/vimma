@@ -49,8 +49,17 @@ npm run verify-source   # that tarball against Mozilla's signed SHA512SUMS (need
                         # npm run import refuses an engine/ it has not verified
 npx surfer bootstrap    # Mozilla's toolchains into ~/.mozbuild (once)
 npm run import          # apply Vimma's files and patches, select the vimma brand
-npx surfer build        # full build
+npm run build           # full build (npx surfer build under a supported Python)
 ```
+
+`npm run build` runs `npx surfer build` with a Python inside the range `engine/mach` declares,
+chosen as `npm run mochitest` chooses one (see [Testing](#testing)), so a newer `python3` first
+on `PATH`, for example 3.15 from mise, does not break the build. It stops with the range and the
+interpreters it found when none fits. `npm run build -- --ui` rebuilds only the front end,
+`npm run build -- --mach` runs `./mach build` (after a `moz.build` change), and
+`npm run build -- --dry-run` prints the command and the Python it would use. It also adds
+`~/.mozbuild/sccache`, where `npx surfer bootstrap` puts sccache, to the end of `PATH`, so
+configure finds the compiler cache the mozconfig names.
 
 Google Safe Browsing (phishing and malware protection) needs an API key, which is not in this
 repository. A build without one works but shows the protection as off. To turn it on, get a free
@@ -75,9 +84,9 @@ front-end files are symlinks into `src/`, outside the Firefox tree, and without 
 content sandbox refuses them, so Vimma's page actor never loads (packaged builds copy the files
 and do not need it). `npx surfer run` uses a scratch profile without it.
 
-After editing JavaScript or CSS under `src/`, run `npm run import && npx surfer build --ui`. That
-rebuilds only the front end. Changes to branding, `configs/` or `moz.configure` need a full
-`npx surfer build`.
+After editing JavaScript or CSS under `src/`, run `npm run import && npm run build -- --ui`.
+That rebuilds only the front end. Changes to branding, `configs/` or `moz.configure` need a full
+`npm run build`.
 
 `npm run import` first restores the upstream files our `.patch` files touch
 (`tools/import/restore-patched.mjs`, the `+++ b/` paths, `--dry-run` to list them), so an edited

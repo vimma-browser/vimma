@@ -111,9 +111,9 @@ function drawnLabels() {
   return [...overlay.querySelectorAll(".vimma-hint:not([hidden])")].map((el) => el.dataset.label);
 }
 
-/** Presses `f` (or `F`) and waits for the labels. */
+/** Presses `f` (or `gF`, or `F`) and waits for the labels. */
 async function startHints(key = "f") {
-  EventUtils.synthesizeKey(key, key === "F" ? { shiftKey: true } : {});
+  for (const k of key) EventUtils.synthesizeKey(k, k === "F" ? { shiftKey: true } : {});
   await TestUtils.waitForCondition(
     () => VimmaHost._hints(window)?.hints.length && drawnLabels().length,
     "hints are drawn",
@@ -176,7 +176,7 @@ function labelAt(hints, c) {
 }
 
 /**
- * The label `f` (or `F`) gives the element with this id.
+ * The label `f` (or `gF`) gives the element with this id.
  * @param {XULBrowserElement} browser
  * @param {string} id
  * @param {string} [key]
@@ -277,15 +277,16 @@ add_task(async function a_label_on_an_input_focuses_it_and_enters_insert() {
   });
 });
 
-add_task(async function F_opens_the_link_in_a_background_tab() {
+add_task(async function gF_opens_the_link_in_a_background_tab() {
   await withPage(PAGE, async (browser) => {
-    const hints = await startHints("F");
-    Assert.equal(hints.hints.length, LINKS.length, "F labels links only");
+    const hints = await startHints("gF");
+    Assert.equal(hints.action, "hint.follow_new_tab", "gF is background-tab hints");
+    Assert.equal(hints.hints.length, LINKS.length, "gF labels links only");
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => !VimmaHost._hints(window), "cancelled");
 
     const selected = gBrowser.selectedTab;
-    const label = await labelFor(browser, "l3", "F");
+    const label = await labelFor(browser, "l3", "gF");
     const opened = BrowserTestUtils.waitForNewTab(gBrowser, (u) => u.endsWith("?to=3"), true);
     type(label);
     const tab = await opened;

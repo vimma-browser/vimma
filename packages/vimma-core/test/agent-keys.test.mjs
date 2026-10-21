@@ -109,6 +109,7 @@ describe("the whitelist (D9)", () => {
       "p",
       "P",
       "F",
+      "gF",
       "gf",
       "r",
       "<Esc>",
@@ -130,7 +131,8 @@ describe("the whitelist (D9)", () => {
     expect(refusal("yy")).toContain("the clipboard is the user's");
     expect(refusal(":")).toContain("the command line is the user's");
     expect(refusal("ctrl+b x")).toContain("the prefix");
-    expect(refusal("F")).toContain("vimma_open");
+    expect(refusal("gF")).toContain("vimma_open");
+    expect(refusal("F")).toContain("hint.element");
     expect(refusal("r")).toContain("form");
     expect(refusal("z")).toBe('key "z" is refused: it is not one of the keys vimma_keys runs');
   });
@@ -202,9 +204,10 @@ describe("links (D12)", () => {
     expect(refusal("2fsd")).toContain("a count does not apply to f");
   });
 
-  test("F (a new tab) and the caret's f stay refused", () => {
-    expect(refusal("F")).toContain("vimma_open");
-    expect(refusal("Fsd")).toContain("vimma_open");
+  test("gF (a new tab), F (element focus) and the caret's f stay refused", () => {
+    expect(refusal("gF")).toContain("vimma_open");
+    expect(refusal("gFsd")).toContain("vimma_open");
+    expect(refusal("F")).toContain("refused");
   });
 });
 
