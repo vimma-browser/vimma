@@ -244,7 +244,10 @@ describe("workflow wiring", () => {
     expect(mochitest).toMatch(/^ {4}name: mochitest \(artifact build\)$/m);
     expect(mochitest).toMatch(/^ {4}needs: changes$/m);
     // !cancelled(), not success(): a failed classifier runs the job instead of skipping it.
-    expect(jobIf(mochitest)).toBe(`\${{ !cancelled() && ${RUNS} }}`);
+    // A draft pull request skips it too (issue #443, tools/test/draft-pull-requests.test.mjs).
+    expect(jobIf(mochitest)).toBe(
+      `\${{ !cancelled() && ${RUNS} && github.event.pull_request.draft != true }}`,
+    );
   });
 
   // Not gated: the ruleset's code scanning rule waits for CodeQL results on every pull request,

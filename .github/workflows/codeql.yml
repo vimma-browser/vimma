@@ -42,15 +42,26 @@ jobs:
         # javascript-typescript: packages/, src/.../vimma/, tools/, tests/; rust: tools/vimma-ctl.
         # No build: neither language needs one (no Firefox engine either).
         language: [javascript-typescript, rust]
+    # Issue #443: a draft pull request skips every step, not the job, so both required checks
+    # report under their matrix names (a matrix job skipped by its own `if:` reports one check
+    # named with the unexpanded expression). No analysis is uploaded for a draft, so the code
+    # scanning rule keeps it blocked until the run that marking it ready starts on the same head.
     steps:
+      - name: Draft pull request (analysis skipped until it is marked ready)
+        if: github.event.pull_request.draft
+        run: echo "::notice::A draft pull request gets no CodeQL analysis until it is marked ready for review"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event.pull_request.draft != true
 
       - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        if: github.event.pull_request.draft != true
         with:
           languages: ${{ matrix.language }}
           build-mode: none
           config-file: ./.github/codeql/codeql-config.yml
 
       - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        if: github.event.pull_request.draft != true
         with:
           category: /language:${{ matrix.language }}

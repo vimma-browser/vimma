@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { decide, gather } from "../security-release.mjs";
+import { commands, decide, gather } from "../security-release.mjs";
 
 // Spec firefox-versions, decisions 11 to 15; docs/security.md G9 and G10. The fixtures are
 // recorded API responses: the merge of #186 (upstream: firefox 158.0, labelled security) and
@@ -43,7 +43,38 @@ describe("decide", () => {
       release: 347,
       head: "cec9a520593c407d909a4a9352865dddb1805496",
       bump: 186,
+      ready: false,
     });
+  });
+
+  // Issue #443: release-please opens the release PR as a draft, and GitHub never merges a draft,
+  // auto-merge or not. Marking it ready through RELEASE_PLEASE_TOKEN starts its full checks.
+  it("marks a draft release PR ready for review, then sets it to auto-merge", () => {
+    const decision = decide(input((i) => (i.releasePulls[0].draft = true)));
+    expect(decision).toMatchObject({ action: "merge", release: 347, ready: true });
+    const [ready, merge, comment] = commands(/** @type {any} */ (decision));
+    expect(ready).toEqual(["pr", "ready", "347", "--repo", "vimma-browser/vimma"]);
+    expect(merge).toEqual([
+      "pr",
+      "merge",
+      "347",
+      "--repo",
+      "vimma-browser/vimma",
+      "--auto",
+      "--squash",
+      "--match-head-commit",
+      "cec9a520593c407d909a4a9352865dddb1805496",
+    ]);
+    expect(comment?.slice(0, 5)).toEqual(["pr", "comment", "186", "--repo", "vimma-browser/vimma"]);
+  });
+
+  it("leaves a release PR that is already ready as it is", () => {
+    for (const draft of [false, undefined]) {
+      const decision = decide(input((i) => (i.releasePulls[0].draft = draft)));
+      expect(decision).toMatchObject({ action: "merge", ready: false });
+      const run = commands(/** @type {any} */ (decision));
+      expect(run.map((args) => args[1])).toEqual(["merge", "comment"]);
+    }
   });
 
   it("does nothing when AUTO_SECURITY_RELEASE is off", () => {

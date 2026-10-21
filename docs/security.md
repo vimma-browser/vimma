@@ -569,7 +569,15 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
 - G11. A merged `upstream` PR labelled `security` **must** set the release PR to auto-merge in the
   same `release-please.yml` run when `AUTO_SECURITY_RELEASE` is on, pinned to the release PR's
   head commit, and **never** any other PR. The merge goes through `RELEASE_PLEASE_TOKEN` and
-  GitHub's auto-merge, so the `main` ruleset's required checks still gate it.
+  GitHub's auto-merge, so the `main` ruleset's required checks still gate it. The release PR
+  opens as a draft, whose rebuilds skip the mochitests, Semgrep and CodeQL while still reporting
+  every required check (docs/runbook.md, "Draft pull requests"); the job marks it ready for review
+  through the same token before the auto-merge, which starts those checks on the pinned head. No
+  CodeQL analysis exists for a draft's head, so the code scanning rule holds the merge until the
+  run after "ready for review" has uploaded one.
+  [`marks a draft release PR ready for review, then sets it to auto-merge`](../tools/release/test/security-release.test.mjs),
+  [`the mochitests, Semgrep and CodeQL skip a draft and still report their required checks`](../tools/test/draft-pull-requests.test.mjs),
+  [`CodeQL still uploads an analysis for every pull request that is not a draft`](../tools/test/draft-pull-requests.test.mjs),
   [`auto-merges the release PR after a merged security bump`](../tools/release/test/security-release.test.mjs),
   [`does nothing for an upstream bump without the security label`](../tools/release/test/security-release.test.mjs),
   [`does nothing for a security-labelled PR from another branch or a fork`](../tools/release/test/security-release.test.mjs),

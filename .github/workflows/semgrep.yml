@@ -59,7 +59,9 @@ jobs:
   scan:
     name: semgrep (javascript, typescript, rust, secrets, github-actions)
     needs: covered
-    if: ${{ !cancelled() && needs.covered.outputs.skip != 'true' }}
+    # Issue #443: a draft pull request skips the scan and reports success; marking it ready
+    # (ready_for_review above) scans the same head.
+    if: ${{ !cancelled() && needs.covered.outputs.skip != 'true' && github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

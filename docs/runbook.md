@@ -525,6 +525,32 @@ The gen-docs freshness step runs on every pull request: `npm run gen-docs`, then
 --exit-code` on `docs/bindings.md`, `docs/bindings.json` and `packages/vimma-core/defaults.toml`.
 A hand edit of a generated file fails there with the command to run.
 
+### Draft pull requests (issue #443)
+
+A draft pull request skips the three slow required checks: `mochitest (artifact build)` with the
+e2e scenarios (e2e.yml), the Semgrep scan and both CodeQL analyses. Each still reports success,
+so the ruleset never waits on a check that will not come: e2e.yml and semgrep.yml skip the job
+by `if:`, and codeql.yml, a matrix job, skips every step instead, because a matrix job skipped
+by its own `if:` reports one check under the unexpanded `CodeQL (${{ matrix.language }})` and
+the required names would never appear. The condition is `github.event.pull_request.draft !=
+true`, which holds on every event that is not a pull request, so pushes, schedules, manual runs
+and `workflow_call` run everything. CI (`lint, typecheck, test, commitlint, licences`) and the
+key guard are cheap and run on drafts too.
+
+Marking the pull request ready for review (`gh pr ready <n>`) sends `ready_for_review`, which
+ci.yml, e2e.yml, semgrep.yml and codeql.yml list, and runs the skipped checks on the same head.
+A draft cannot be merged, and the green checks of its draft run cannot let it through
+afterwards: CodeQL uploaded no analysis for that head, so the ruleset's code scanning rule
+blocks the merge until the run after "ready for review" has uploaded one. The analysis takes
+minutes, and the same event queues the run's other checks on that head within seconds, so they
+are pending, not green, by the time it lands. A push to a pull request that is already ready
+runs everything, as before.
+
+The release pull request is the reason (below, "Releases"): release-please rebuilds it after
+each merge to `main`, and only the state that is merged is released. Other drafts follow the same
+rule: mark one ready to get the mochitests on it. `tools/test/draft-pull-requests.test.mjs`
+pins the wiring.
+
 ### Once per tree (issue #358)
 
 `ci.yml`, `semgrep.yml` and `pkgbuild.yml` run on pull requests and on pushes to `main`. A
@@ -617,11 +643,13 @@ A push to `main` repeats only CodeQL and, when the merged tree differs from the 
 head's, the rest ("Once per tree" above).
 
 The release pull request is rebuilt by release-please after each merge to `main` that adds a
-changelog line, and each rebuild runs every pull request check again: the version in
-`surfer.json` changes, so the docs-only path does not apply, and the mochitests check the
-display version the new build carries (`browser_vimma_app_version.js`). With `RELEASE_PLEASE_TOKEN`
-set, a rebuild pushes twice (release-please, then the `firefox-notes` commit), and the second
-push cancels the first run; without it, the release PR's pushes start no runs.
+changelog line. It is opened as a draft, so a rebuild runs only CI and the key guard (about 4
+min) and skips the mochitests, Semgrep and CodeQL ("Draft pull requests" above). Marking it
+ready for review runs them once on the final state, `browser_vimma_app_version.js` included,
+which checks the display version the build carries; the docs-only path never applies, because
+the version in `surfer.json` changes. With `RELEASE_PLEASE_TOKEN` set, a rebuild pushes twice
+(release-please, then the `firefox-notes` commit), and the second push cancels the first run;
+without it, the release PR's pushes start no runs.
 
 e2e.yml has no paths filter: "mochitest (artifact build)" is a required check, so the workflow
 starts on every PR, and on a docs-only one the job skips by `if:` in seconds (above). The upstream autopilot runs 6 × 1 min a day, plus ≈ 16 min (issue, patch check, the
@@ -1312,12 +1340,20 @@ push runs of CI, Semgrep and release-please wait for the next ordinary push to `
 
 Plan §4/§7: [release-please](https://github.com/googleapis/release-please-action) (v5.0.0, pinned
 by SHA) keeps one release PR open, `chore(main): release X.Y.Z`, updated on every push to `main`.
-It holds the next version and that release's `CHANGELOG.md` entry. **Merging it is the release**:
+It holds the next version and that release's `CHANGELOG.md` entry, and opens as a draft
+(`"draft-pull-request": true`). **Merging it is the release**:
 release-please tags `vX.Y.Z` and creates the GitHub Release with the same notes, **as a draft**
 (below). Its `release-build` job then starts `release.yml`, which builds, signs and uploads the
 packages to that draft (below, "Release packages"). Publishing the finished draft is the
 maintainer's one click.
 
+- **Releasing, step by step:** mark the release PR ready for review (`gh pr ready <n>`, or
+  "Ready for review" on the PR); that runs the mochitests, Semgrep and CodeQL, which its draft
+  rebuilds skipped ("Draft pull requests" above). Merge it once every required check is green;
+  the code scanning rule keeps it blocked until CodeQL has analyzed the final head. If `main`
+  gets another merge first, release-please rebuilds the PR, which stays ready, and the full
+  checks run again on the new head. release-please opens only new release PRs as drafts: to
+  turn the open one into a draft, run `gh pr ready --undo <n>`.
 - **Version source:** `surfer.json` `brands.vimma.release.displayVersion`, the version
   `vimma --version` and the About dialog show (spec m0-app-version). The release
   PR bumps it through `extra-files` (jsonpath `$.brands.vimma.release.displayVersion`), plus
@@ -1401,9 +1437,10 @@ maintainer's one click.
   merge of the autopilot's `upstream/firefox-<version>` PR labelled `upstream` and `security`,
   `tools/release/security-release.mjs` sets the open release PR to auto-merge with
   `RELEASE_PLEASE_TOKEN`, pinned to its head commit (`--match-head-commit`), and comments on the
-  bump PR. GitHub merges it when the required checks pass; that merge's push starts this workflow
-  again, which tags and creates the draft release and starts `release.yml`. Publishing the draft
-  stays a click. Any other push logs a notice naming the check that did not hold (the run's
+  bump PR. A draft release PR is first marked ready for review through the same token, since
+  GitHub never merges a draft; that starts the full checks the draft skipped. GitHub merges it
+  when the required checks pass; that merge's push starts this workflow again, which tags and
+  creates the draft release and starts `release.yml`. Publishing the draft stays a click. Any other push logs a notice naming the check that did not hold (the run's
   summary), and the job never merges the first release PR (it requires an existing release).
   Commits merged after the bump and before the checks finish ship in the same release.
   `RELEASE_PLEASE_TOKEN` is required: with the variable on and no token, the job fails.
@@ -1414,7 +1451,8 @@ One-time setup:
 
 1. Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and
    approve pull requests" (the same setting as for upstream bumps).
-2. Optional: the release PR, opened with `GITHUB_TOKEN`, triggers no CI. Run
+2. Optional: the release PR, opened with `GITHUB_TOKEN`, triggers no CI until it is marked
+   ready for review (by a person, so the event starts the workflows). Run
    `gh workflow run ci.yml --ref release-please--branches--main` before merging, or store a
    fine-grained token for this repo only (Contents, Pull requests and Issues: read/write) as
    `gh secret set RELEASE_PLEASE_TOKEN`; the workflow uses it when present.

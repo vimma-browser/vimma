@@ -1,6 +1,7 @@
 # Plan §4 step 6 / §7: release-please keeps one release PR open with the next version and its
-# CHANGELOG.md entry, built from the Conventional Commits on main. Merging that PR is the
-# release: release-please tags vX.Y.Z and creates the GitHub Release as a draft, and
+# CHANGELOG.md entry, built from the Conventional Commits on main. It opens as a draft, whose
+# rebuilds skip the slow checks; marking it ready runs them once (issue #443). Merging that PR is
+# the release: release-please tags vX.Y.Z and creates the GitHub Release as a draft, and
 # release-build starts release.yml, which uploads the packages to that draft; the maintainer
 # publishes it. Config:
 # release-please-config.json, .release-please-manifest.json; setup in docs/runbook.md (Releases).

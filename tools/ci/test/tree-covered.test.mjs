@@ -305,7 +305,11 @@ describe("workflow wiring", () => {
       expect(main).toMatch(/^ {4}needs: covered$/m);
       // !cancelled(), not success(): a failed guard runs the checks instead of skipping them; on a
       // pull request the guard is skipped, its output is empty and the checks run.
-      expect(jobIf(main)).toBe("${{ !cancelled() && needs.covered.outputs.skip != 'true' }}");
+      // Semgrep also skips a draft pull request (issue #443, tools/test/draft-pull-requests.test.mjs).
+      const draft = name === "semgrep.yml" ? " && github.event.pull_request.draft != true" : "";
+      expect(jobIf(main)).toBe(
+        `\${{ !cancelled() && needs.covered.outputs.skip != 'true'${draft} }}`,
+      );
     },
   );
 
