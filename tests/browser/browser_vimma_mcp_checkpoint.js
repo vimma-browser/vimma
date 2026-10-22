@@ -221,6 +221,54 @@ addTidyTask(async function test_card_fields_in_a_cross_site_frame_make_a_pay_ste
   Assert.deepEqual(await clicked(tab), ["apply"], "once");
 });
 
+// A payment provider's hosted frame takes the money: the question names its site, then the
+// tab's, and so do the notices; a yes allows the click, which runs after it.
+addTidyTask(async function test_a_pay_button_in_a_cross_site_frame_names_the_frames_site() {
+  await mcp(true);
+  const tab = await openAgentTab(`${CHECKOUT}?frame=hosted_pay`);
+  const frame = () => tab.linkedBrowser.browsingContext.children[0];
+  await until(
+    () =>
+      frame()?.currentWindowGlobal?.documentURI?.host === "example.org" &&
+      frame().currentWindowGlobal.documentURI.spec.endsWith("hosted_pay.html"),
+    "the provider's frame loaded",
+  );
+  const c = await agentClient();
+  const by = await grantedLabels(c, tab);
+  let id = c.request("agent-activate", { tab: idOf(tab), label: by["Pay 42.90 EUR"] });
+  let q = await question();
+  Assert.deepEqual(
+    q.what.pay,
+    { text: "Pay 42.90 EUR", site: "example.org", top: "example.com", total: "Total 42.90 EUR" },
+    "the frame's site, then the tab's",
+  );
+  Assert.equal(
+    questionLine(q, { grantMinutes: 10 })
+      .parts.map((p) => p.text)
+      .join(""),
+    '▲ claude-code wants to pay: "Pay 42.90 EUR" on example.org (in example.com) · the page says "Total 42.90 EUR"',
+    "as the question shows it",
+  );
+  AgentGate.answer(q.id, { kind: "once" });
+  await until(
+    () => noticeText() === "allowed payment on example.org (in example.com)",
+    "a yes says what it allowed, and where",
+  );
+  Assert.ok((await c.response(id)).ok, "and the click runs after it");
+  const clicks = await SpecialPowers.spawn(frame(), [], () =>
+    [...content.document.querySelectorAll("#log li")].map((li) => li.textContent),
+  );
+  Assert.deepEqual(clicks, ["pay"], "once, in the frame");
+  id = c.request("agent-activate", { tab: idOf(tab), label: by["Pay 42.90 EUR"] });
+  q = await question();
+  AgentGate.answer(q.id, { kind: "deny" });
+  await c.response(id);
+  await until(
+    () => noticeText() === "stopped claude-code's payment on example.org (in example.com)",
+    "a no names both too",
+  );
+});
+
 addTidyTask(async function test_a_no_stops_the_step_and_keeps_the_grant() {
   await mcp(true);
   const tab = await openAgentTab();
@@ -311,7 +359,10 @@ addTidyTask(async function test_checkpoint_notice_log_row_and_notification() {
   let id = c.request("agent-activate", { tab: idOf(tab), label: by["Vahvista tilaus"] });
   AgentGate.answer((await question()).id, { kind: "once" });
   await c.response(id);
-  await until(() => noticeText() === "paid on example.com", "a yes says where it paid");
+  await until(
+    () => noticeText() === "allowed payment on example.com",
+    "a yes says what it allowed",
+  );
   Assert.equal(AgentGate.log[0].outcome, "checkpoint-yes", ":mcp log: allowed (checkpoint)");
   id = c.request("agent-activate", { tab: idOf(tab), label: by["Vahvista tilaus"] });
   AgentGate.answer((await question()).id, { kind: "deny" });

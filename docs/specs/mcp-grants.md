@@ -65,7 +65,9 @@ changed) are already asked separately, whatever is granted.
 4. **The question's hint names the scope.** Once armed, a grantable question shows
    `y once · 10a 10 min, all but forms · n deny · x mute` (10 being `[mcp] grant_minutes`). The hint of a question in item 3 is unchanged.
    (Since changed: the hint says `all but forms and paying`; [mcp-checkpoints](mcp-checkpoints.md)
-   Behaviour 8.)
+   Behaviour 8. Since changed again: the hint is `y once · 10a 10 min · n deny · x mute`, and the
+   grant's notice (item 5) alone says what still asks, so that a usual question fits one line;
+   mcp-checkpoints Behaviour 8.)
 5. **The grant's notice names the scope and the way out.**
    `claude-code may use the agent workspace for 10 min; sending a form still asks (ctrl+b shift+a ends it)`.
    (Since changed: the notice says `sending a form or paying still asks`; mcp-checkpoints
@@ -170,7 +172,10 @@ publishes a list of what still asks.
    and downloads ask with their own wording when they come. The hint says it in three words
    (`all but forms`) because a longer one (`all tools for 10 min (sending a form still asks)`)
    wrapped a usual question, such as a `vimma_keys` one with its URL, onto a second line in a
-   1,280-pixel-wide window, and a question that fits one line is read at a glance. Rejected: a separate "grant all" key
+   1,280-pixel-wide window, and a question that fits one line is read at a glance. (Since
+   changed: with paying added, even the short scope wrapped such a question, so the hint names
+   no scope and the notice, shown the moment `a` is pressed, says what still asks;
+   [mcp-checkpoints](mcp-checkpoints.md) Behaviour 8.) Rejected: a separate "grant all" key
    beside a per-tool `a`, because two grant keys make the user choose a scope under time
    pressure, and the per-tool scope is the one this spec drops.
 4. **One key ends every grant** (G4, behaviour 7), because ending is the safe direction: an agent

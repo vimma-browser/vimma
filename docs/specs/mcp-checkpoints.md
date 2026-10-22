@@ -55,6 +55,11 @@ button that does not submit a form cannot pay unasked when either signal is ther
    A key step presses no button, so its question names its keys (`keys H`). The first key that
    acts in a call, on the page the call starts on, is asked in the call's own question, so that
    one step never asks twice; a later one asks when the call reaches it.
+   (Since changed: a control in a frame of another site than the tab's names that frame's host,
+   then the tab's in parentheses, `on pay.provider.example (in shop.example)`, because the
+   frame's site is where the payment goes, as with a payment provider's hosted payment frame,
+   while the tab's site tells the user which shop they are on; the notices of Behaviour 6 and 5
+   name both too. security.md M33 states the rule.)
 4. **A form submission's question shows what is sent:** the destination, then each field that
    goes, by name and value, as a fill's question shows them (mcp-forms F14): values cut at 40
    columns, the list cut where the line ends with `… (N more)`; a sensitive field (password,
@@ -72,6 +77,10 @@ button that does not submit a form cannot pay unasked when either signal is ther
    (vimma-mcp 18).
 6. **Notices and log.** A yes shows `sent the form to example.com` or `paid on shop.example`, and
    `:mcp log` records the step with outcome `allowed (checkpoint)` or `denied (checkpoint)`.
+   (Since changed: a yes shows `allowed payment on shop.example` or
+   `allowed sending the form to example.com`, because the notice appears when the user answers,
+   before the step runs, so nothing has been paid or sent yet and the step may still fail;
+   [guide](../guide.md#checkpoints-sending-a-form-and-paying), "Afterwards".)
 7. **The desktop notification** (vimma-mcp 15) says `claude-code asks to pay` or
    `claude-code asks to send a form`, with no site, amount or URL, since notifications show on
    lock screens and in screen shares.
@@ -79,6 +88,13 @@ button that does not submit a form cannot pay unasked when either signal is ther
    (mcp-grants G3) becomes
    `y once · 10a 10 min, all but forms and paying · n deny · x mute`,
    and the grant's notice ends `…; sending a form or paying still asks (ctrl+b shift+a ends it)`.
+   (Since changed: the hint is `y once · 10a 10 min · n deny · x mute`, and only the grant's
+   notice says what still asks, because the longer hint wrapped a usual question, such as a
+   `vimma_keys` one, onto a second line in a 1,280-pixel-wide window, which mcp-grants G3 set out
+   to avoid. The notice appears the moment the grant is made, and each checkpoint asks by itself
+   when it comes, so the shorter hint hides nothing that still asks. A shorter qualifier
+   (`10a 10 min (forms, paying ask)`) was rejected because it still wrapped a `vimma_read_page`
+   question with a long address.)
 
 ## Research
 

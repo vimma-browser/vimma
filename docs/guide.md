@@ -1774,7 +1774,7 @@ on it.
 Each request an agent makes appears as one line at the foot of the window, above the status bar:
 
 ```
-◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a 10 min, all but forms and paying · n deny · x mute
+◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a 10 min · n deny · x mute
 ```
 
 It names the agent (as the agent calls itself), the tool, and what it touches: the tab's place,
@@ -1822,7 +1822,8 @@ One grant covers a task. Answer any request with `15a`, and that agent may use e
 links, list a page's buttons and fields, click, fill, take screenshots, read a page's errors and
 download. The notice says so:
 `claude-code may use the agent workspace for 15 min; sending a form or paying still asks (ctrl+b shift+a ends it)`.
-Requests that wait when you answer run at once.
+The question's hint leaves that out, so the line stays short; the notice says it the moment you
+answer. Requests that wait when you answer run at once.
 
 These still ask under any grant, and your yes allows that one step without making a grant or
 ending the one in force:
@@ -1856,7 +1857,9 @@ do, answered with one key, after which the agent goes on under the grant it had:
   No count or grant is offered, and neither answer makes, lengthens or ends a grant. Three noes
   in a row ignore the agent for a minute, as for any question.
 - **What a payment shows.** The button's text (for a key, such as `H` on a checkout page, the
-  keys), the site in bold, and the total the page states, quoted after "the page says". The
+  keys), the site in bold, and the total the page states, quoted after "the page says". A button
+  inside a payment provider's frame of another site names that frame's site, which takes the
+  money, then the shop's: `on pay.provider.example (in shop.example)`. The
   amount is the page's own claim: your bank or card statement is what counts. When the page
   states no total, none is shown.
 - **What a form shows.** Where it goes, then each field it sends with its value, cut to fit the
@@ -1877,7 +1880,8 @@ do, answered with one key, after which the agent goes on under the grant it had:
   stopped, so a payment provider's or bank's own page, reached through such a button, stops the
   agent only at that page's card fields or pay button. Keep grants short on sites where you
   have a saved card, and read `:mcp log` after a task.
-- **Afterwards.** A yes shows `paid on shop.example` or `sent the form to example.com`, a no
+- **Afterwards.** A yes shows `allowed payment on shop.example` or
+  `allowed sending the form to example.com` as you answer, before the step runs, a no
   `stopped claude-code's payment on shop.example`, and `:mcp log` marks the row
   `allowed (checkpoint)` or `denied (checkpoint)`. When Vimma is not in front, the desktop
   notification says only `claude-code asks to pay` or `claude-code asks to send a form`, never

@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_checkpoint.js: a payment provider's hosted frame of another
+   - site, inside file_vimma_agent_checkout.html?frame=hosted_pay, with its own total and a pay
+   - button and no card field, as for a saved card. Each click is counted in #log. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hosted payment</title>
+  </head>
+  <!-- One row, so that the button shows in the checkout's 40-pixel-high frame. -->
+  <body style="margin: 0; display: flex; gap: 8px; align-items: center">
+    <span>Total 42.90 EUR</span>
+    <button id="pay" type="button">Pay 42.90 EUR</button>
+    <ol id="log"></ol>
+    <script>
+      document.getElementById("pay").addEventListener("click", () => {
+        const li = document.createElement("li");
+        li.textContent = "pay";
+        document.getElementById("log").append(li);
+      });
+    </script>
+  </body>
+</html>

@@ -92,6 +92,30 @@ function uriSite(uri) {
   }
 }
 
+/** A URI's host, or "" for one without a host. @param {any} uri nsIURI */
+function uriHost(uri) {
+  try {
+    return String(uri?.host ?? "");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The host of a frame of another site than the tab's page, or "" when the frame is of the same
+ * site or either has no host (about:blank and about:srcdoc frames take their parent's origin).
+ * @param {any} frameUri nsIURI @param {any} tabUri nsIURI
+ */
+function otherSiteHost(frameUri, tabUri) {
+  const host = uriHost(frameUri);
+  if (!host || !uriHost(tabUri)) return "";
+  try {
+    return uriSite(frameUri) === uriSite(tabUri) ? "" : host;
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Where a link a click would follow goes, against the tab's page (F10): another site, or not a
  * web page at all. `javascript:` runs in the page and loads nothing, so it counts as neither.
@@ -225,7 +249,9 @@ export const AgentAct = {
    *   keys?: string }} step  `target`: the element of the agent's `vimma_elements` it presses
    *   (`form`: through its form's default button); `text`: what the control says, as the parent
    *   knows it (a link of `f`'s list); `keys`: a key step's keys, shown when there is no text
-   * @returns {Promise<{ text: string, site: string, total?: string, keys?: string } | null>}
+   * @returns {Promise<{ text: string, site: string, top?: string, total?: string,
+   *   keys?: string } | null>}  `site`: the host of the control's frame; `top`: the tab's host,
+   *   when that frame is of another site
    */
   async payment(browser, { target = null, by = "click", text = "", keys = "" }) {
     const [cards, info] = await Promise.all([
@@ -246,15 +272,14 @@ export const AgentAct = {
     if (!isPayStep({ cards, texts })) return null;
     const shownText = pageText(texts.find((t) => pageText(t)) ?? "");
     const total = statedTotal(info?.total);
-    let site = "";
-    try {
-      site = String(browser.currentURI?.host ?? "");
-    } catch {
-      // a URI without a host: none to name
-    }
+    const tabHost = uriHost(browser.currentURI);
+    // A control in a frame of another site, such as a payment provider's hosted frame, pays that
+    // site: the question names it, then the tab's (mcp-checkpoints Behaviour 3).
+    const frameHost = target ? otherSiteHost(target.wg?.documentURI, browser.currentURI) : "";
     return {
       text: wf(cutTo(shownText, AGENT_ELEMENTS.text)),
-      site: wf(site),
+      site: wf(frameHost || tabHost),
+      ...(frameHost ? { top: wf(tabHost) } : {}),
       ...(total ? { total: wf(total) } : {}),
       ...(!shownText && keys ? { keys } : {}),
     };

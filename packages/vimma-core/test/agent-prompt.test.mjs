@@ -84,7 +84,7 @@ describe("the question's text (decision 13)", () => {
       '◇ example-agent wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" ' +
         "github.com/vimma-browser/vimma/pulls",
     );
-    expect(line.hint).toBe("y once · 15a 15 min, all but forms and paying · n deny · x mute");
+    expect(line.hint).toBe("y once · 15a 15 min · n deny · x mute");
     expect(line.label).toBe(text(line));
   });
 
@@ -113,7 +113,7 @@ describe("the question's text (decision 13)", () => {
       '◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys: ' +
         '3j /"pricing"⏎ gg',
     );
-    expect(line.hint).toBe("y once · 15a 15 min, all but forms and paying · n deny · x mute");
+    expect(line.hint).toBe("y once · 15a 15 min · n deny · x mute");
     const shown = line.parts.find((p) => p.text === '3j /"pricing"⏎ gg');
     expect(shown?.isolate).toBe("ltr");
   });
@@ -526,6 +526,29 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
   });
 
+  // A hosted payment frame takes the money: its site is named, and the tab's after it.
+  test("a pay button in a frame of another site names that site, then the tab's", () => {
+    const framed = {
+      ...pay,
+      what: {
+        ...pay.what,
+        pay: { text: "Pay 42,90 €", site: "pay.provider.example", top: "shop.example" },
+      },
+    };
+    const line = questionLine(framed, { grantMinutes: 10 });
+    expect(text(line)).toBe(
+      '▲ claude-code wants to pay: "Pay 42,90 €" on pay.provider.example (in shop.example)',
+    );
+    expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["pay.provider.example"]);
+    expect(line.parts.find((p) => p.text === "shop.example")?.isolate).toBe("ltr");
+    expect(checkpointNotice(framed)).toBe(
+      "allowed payment on pay.provider.example (in shop.example)",
+    );
+    expect(deniedNotice(framed, "user")).toBe(
+      "stopped claude-code's payment on pay.provider.example (in shop.example)",
+    );
+  });
+
   test("a payment that also sends a form: the payment wording, then the fields", () => {
     const both = {
       ...pay,
@@ -565,8 +588,8 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(isCheckpoint(pay)).toBe(true);
     expect(isCheckpoint(signup)).toBe(true);
     expect(isCheckpoint(read)).toBe(false);
-    expect(checkpointNotice(pay)).toBe("paid on shop.example");
-    expect(checkpointNotice(signup)).toBe("sent the form to example.com");
+    expect(checkpointNotice(pay)).toBe("allowed payment on shop.example");
+    expect(checkpointNotice(signup)).toBe("allowed sending the form to example.com");
     expect(deniedNotice(pay, "user")).toBe("stopped claude-code's payment on shop.example");
     expect(deniedNotice(signup, "user")).toBe("stopped claude-code's form to example.com");
   });
@@ -834,7 +857,7 @@ describe("a download's question (decision 31 a, d)", () => {
         "from example.com",
     );
     expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["example.com"]);
-    expect(line.hint).toBe("y once · 10a 10 min, all but forms and paying · n deny · x mute");
+    expect(line.hint).toBe("y once · 10a 10 min · n deny · x mute");
   });
 
   test("an unknown size and type say so", () => {

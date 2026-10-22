@@ -1409,10 +1409,11 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   whose check fails or that does not answer within 5 s counts as one, a frame that navigates
   away or whose process ends during the check does not), or whose pressed control has a phrase
   of the fixed list (`PAY_PHRASES`, six languages) as whole words in its text, accessible name,
-  title or value. Its question **must** name the button (for a key step, its keys), the tab's
-  host and the total the page states, quoted after "the page says" and cut at 40 columns; a
-  card field's value is **never** read, and the desktop notification names no site, amount or
-  URL. Not covered: a load of another site is not stopped, so a hosted payment page reached
+  title or value. Its question **must** name the button (for a key step, its keys), the host of
+  the frame whose control the step presses, followed by the tab's host in parentheses when that
+  frame is of another site (a payment provider's hosted frame), and the total the page states,
+  quoted after "the page says" and cut at 40 columns; a card field's value is **never** read,
+  and the desktop notification names no site, amount or URL. Not covered: a load of another site is not stopped, so a hosted payment page reached
   through a button whose words are not on the list stops the agent only at that page's own card
   fields or pay button; a page that hides its checkout (no card field shown, a button worded
   otherwise) is not recognised; a frame Vimma's actor does not cover (a data: or blob: document)
@@ -1420,6 +1421,8 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   card statement settles.
   [`test_pay_button_outside_a_form_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_card_fields_in_a_cross_site_frame_make_a_pay_step`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_pay_button_in_a_cross_site_frame_names_the_frames_site`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`a pay button in a frame of another site names that site, then the tab's`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`test_basket_button_does_not_ask`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_a_no_stops_the_step_and_keeps_the_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_the_stated_total_is_quoted`](../tests/browser/browser_vimma_mcp_checkpoint.js),

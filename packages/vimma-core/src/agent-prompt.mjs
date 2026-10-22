@@ -141,11 +141,10 @@ export const isPage = (q) => q.tool === DOWNLOAD_TOOL && q.label?.client === PAG
 
 /**
  * What a grant leaves asked that a task meets on its way, the checkpoints, as the grant's notice
- * says it, and as the question's hint says it in short, so the usual question still fits one
- * line (docs/specs/mcp-grants.md G3, mcp-checkpoints Behaviour 8).
+ * says it the moment the grant is made (docs/specs/mcp-checkpoints.md Behaviour 8). The
+ * question's hint leaves it out, so that a usual question fits one line.
  */
 export const STILL_ASKS = "sending a form or paying still asks";
-export const GRANT_SCOPE = "all but forms and paying";
 
 /**
  * A checkpoint's glyph in place of the agent glyph (docs/specs/mcp-checkpoints.md C3): used
@@ -293,6 +292,10 @@ function checkpointLine(q, who) {
       parts.push({ text: '"' });
     }
     parts.push({ text: " on " }, { text: clean(pay.site), strong: true, isolate: "ltr" });
+    // A hosted payment frame of another site: the shop the user is on, after who takes the money.
+    if (clean(pay.top)) {
+      parts.push({ text: " (in " }, { text: clean(pay.top), isolate: "ltr" }, { text: ")" });
+    }
     // The page's claim, quoted as such: the user's bank is the authority on what is charged.
     const total = truncate(pageClean(pay.total), TOTAL_COLUMNS, "end");
     if (total) {
@@ -389,8 +392,8 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
   const who = clientName(q.label);
   /** @type {Part[]} */
   let parts;
-  // mcp-grants G3: a grant covers every tool of the connection, and the hint says what still asks.
-  let hint = `y once · ${grantMinutes}a ${grantMinutes} min, ${GRANT_SCOPE} · n deny · x mute`;
+  // mcp-grants G3: a grant covers every tool of the connection; its notice says what still asks.
+  let hint = `y once · ${grantMinutes}a ${grantMinutes} min · n deny · x mute`;
   const w = q.what ?? {};
   if (q.tool === FULL_CONTROL) {
     // The code the client printed on its own terminal (security.md S13): the user answers
@@ -596,21 +599,31 @@ export function deniedNotice(q, why) {
   if (q.tool === FULL_CONTROL) return `denied ${who} full control`;
   const w = q.what ?? {};
   // mcp-checkpoints Behaviour 5: a no stops that step only, and `x` is a plain no there.
-  if (w.pay) return `stopped ${who}'s payment on ${clean(w.pay.site)}`;
+  if (w.pay) return `stopped ${who}'s payment on ${paySite(w.pay)}`;
   if (w.submit) return `stopped ${who}'s form to ${clean(w.submit.host)}`;
   const muted = why === "mute" ? "; muted until it reconnects" : "";
   return `denied ${who}'s ${q.tool}${muted}`;
 }
 
 /**
- * The notice after a checkpoint's yes (docs/specs/mcp-checkpoints.md Behaviour 6): where the
- * form went, or the site the payment was on.
+ * Where a payment goes, as a notice says it (docs/specs/mcp-checkpoints.md Behaviour 3): the
+ * host of the frame whose control pays, and the tab's after it when that is another site, as
+ * in a payment provider's hosted frame.
+ * @param {Record<string, any>} pay
+ */
+const paySite = (pay) => `${clean(pay.site)}${clean(pay.top) ? ` (in ${clean(pay.top)})` : ""}`;
+
+/**
+ * The notice after a checkpoint's yes (docs/specs/mcp-checkpoints.md Behaviour 6): what the user
+ * allowed, where the form goes or where the payment is made. It shows at the answer, before the
+ * step runs, so it says what was allowed, not what happened.
  * @param {Asked} q
  */
 export function checkpointNotice(q) {
   const w = q.what ?? {};
-  if (w.pay) return `paid on ${clean(w.pay.site)}`;
-  return `sent the form to ${clean(w.submit?.host) || displayUrl(clean(w.submit?.action))}`;
+  if (w.pay) return `allowed payment on ${paySite(w.pay)}`;
+  const to = clean(w.submit?.host) || displayUrl(clean(w.submit?.action));
+  return `allowed sending the form to ${to}`;
 }
 
 /** What each tool asks for, in the desktop notification (no URL, no title). */
