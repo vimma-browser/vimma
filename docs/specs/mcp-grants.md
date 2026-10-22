@@ -1,6 +1,6 @@
 # Spec: mcp-grants
 
-Status: accepted · Area: `packages/vimma-core/src/` (`agent.mjs`, `agent-prompt.mjs`);
+Status: implemented · Area: `packages/vimma-core/src/` (`agent.mjs`, `agent-prompt.mjs`);
 `src/browser/base/content/vimma/` (`ctl/AgentGate.sys.mjs`, `host/agent-ui.mjs`); `tests/e2e`
 · Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged: the gate
 stays in the browser, and this spec changes only what one answer allows). No new dependency.

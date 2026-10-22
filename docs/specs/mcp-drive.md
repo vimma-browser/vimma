@@ -388,7 +388,7 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
 17. **Grants.** `vimma_keys` is a tool like the others: `15a` grants it for this connection
     (vimma-mcp decisions 20-22). A `vimma_keys` grant does not cover `vimma_open`,
     `vimma_read_page` or `vimma_show`. A follow to another site is the one step that asks again
-    under a `vimma_keys` grant (D18).
+    under a `vimma_keys` grant (D18). (Since changed: one grant now covers every agent tool of its connection; [mcp-grants](mcp-grants.md) G1.)
 18. **A link to another site.** A follow whose target's
     registrable domain (eTLD+1, `Services.eTLD.getBaseDomain`,
     `netwerk/dns/nsIEffectiveTLDService.idl:93`) differs from the current page's

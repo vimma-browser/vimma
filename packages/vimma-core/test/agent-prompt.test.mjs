@@ -82,7 +82,9 @@ describe("the question's text (decision 13)", () => {
       '◇ example-agent wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" ' +
         "github.com/vimma-browser/vimma/pulls",
     );
-    expect(line.hint).toBe("y once · 15a for 15 min · n deny · x mute");
+    expect(line.hint).toBe(
+      "y once · 15a all tools for 15 min (sending a form still asks) · n deny · x mute",
+    );
     expect(line.label).toBe(text(line));
   });
 
@@ -111,7 +113,9 @@ describe("the question's text (decision 13)", () => {
       '◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys: ' +
         '3j /"pricing"⏎ gg',
     );
-    expect(line.hint).toBe("y once · 15a for 15 min · n deny · x mute");
+    expect(line.hint).toBe(
+      "y once · 15a all tools for 15 min (sending a form still asks) · n deny · x mute",
+    );
     const shown = line.parts.find((p) => p.text === '3j /"pricing"⏎ gg');
     expect(shown?.isolate).toBe("ltr");
   });
@@ -250,13 +254,14 @@ describe("the keys (decisions 13 and 20)", () => {
 });
 
 describe("notices and notifications (decisions 15, 16 and 23)", () => {
-  test("a grant says what and for how long, and when it was capped", () => {
+  test("a grant names its scope, its length, the cap, and the key that ends it", () => {
     expect(grantNotice(read, { minutes: 15, capped: false })).toBe(
-      "example-agent may use vimma_read_page for 15 min (:mcp revoke ends it)",
+      "example-agent may use the agent workspace for 15 min; sending a form still asks " +
+        "(ctrl+b shift+a ends it)",
     );
     expect(grantNotice(read, { minutes: 480, capped: true })).toBe(
-      "example-agent may use vimma_read_page for 480 min, the most [mcp] grant_max_minutes allows " +
-        "(:mcp revoke ends it)",
+      "example-agent may use the agent workspace for 480 min, the most [mcp] grant_max_minutes " +
+        "allows; sending a form still asks (ctrl+b shift+a ends it)",
     );
   });
 
@@ -634,7 +639,9 @@ describe("a download's question (decision 31 a, d)", () => {
         "from example.com",
     );
     expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["example.com"]);
-    expect(line.hint).toBe("y once · 10a for 10 min · n deny · x mute");
+    expect(line.hint).toBe(
+      "y once · 10a all tools for 10 min (sending a form still asks) · n deny · x mute",
+    );
   });
 
   test("an unknown size and type say so", () => {

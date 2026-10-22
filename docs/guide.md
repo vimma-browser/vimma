@@ -50,7 +50,8 @@ What works today, each with the section that explains it:
   local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
   open, scroll and search pages, follow their links, list and click their buttons, fill their
   fields (never a password or card number), take a screenshot, read a page's errors and show
-  you a page, and every request asks you first; a form they submit asks every time.
+  you a page. Every request asks you first, one answer can let an agent work through a task for
+  some minutes, and a form they submit asks every time.
 
 ## Every key is yours
 
@@ -1336,7 +1337,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 | `:mcp revoke`    | Ends every time-limited grant you gave agents, at once.                                                             |
 | `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                   |
 | `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.      |
-| `ctrl+b shift+a` | Answers the waiting agent request; with none, offers to end every grant.                                            |
+| `ctrl+b shift+a` | Answers the waiting agent request; with none, ends every grant at once.                                             |
 | `:control on 15` | Turns full control (`vimma-ctl`) on for 15 minutes, after a `y/N`; `:control off` ends it now.                      |
 
 - When the agent workspace is one of yours rather than one Vimma made, `:mcp on` warns:
@@ -1470,9 +1471,13 @@ with the rest of your computer.
 
 **What Vimma does not protect:**
 
-- **Grants are wide.** A grant lets that agent use that tool without asking until it ends. A
-  `vimma_open` grant means "let it fetch any address", and an address can carry what the agent
-  has read elsewhere. Grant reads; answer opens one at a time.
+- **Grants are wide.** A grant lets that agent use every tool without asking until it ends:
+  read, open, press keys, click, fill, take screenshots and download. Only sending a form,
+  showing you a page and a dangerous or unscanned download still ask
+  ([What a grant covers](#what-a-grant-covers)). A grant given for a read therefore also means
+  "let it fetch any address", and an address can carry what the agent has read elsewhere. Every
+  call under a grant shows a notice and a row in `:mcp log`, so you can see where it went; give
+  a grant for a task you are watching, and answer `y` one at a time otherwise.
 - **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.
   Grants belong to the connection, not the name, and `:mcp` shows the program that started it.
 - **The rest of your computer is the agent tool's matter.** An agent with a shell or file tools
@@ -1509,8 +1514,8 @@ workspace, tab, focus, find bar and hint mode.
   not run, so a link cannot post a form or start a purchase through `vimma_keys`. Only http and
   https links are followed, only on web pages, and without a referrer. A link to another site (another registrable domain:
   `docs.example.com` is the same site as `example.com`, `example.org` is not) asks you again, as
-  a `vimma_open` of its whole address, unless you granted that agent `vimma_open`; a no stops
-  the call there.
+  a `vimma_open` of its whole address, unless that agent holds a grant; a no stops the call
+  there.
 - **The keys it never presses:** `ctrl+b` and every binding after it, `:`, tab, workspace,
   window and split keys, `i` and every way into a text field, copy mode, `yy` and `p` (your
   clipboard), `gF` and `gf` (they open tabs), element focus (`F`), `r` (a reload can send a form
@@ -1523,10 +1528,9 @@ workspace, tab, focus, find bar and hint mode.
   copy or hint mode in it, with its find bar open, or halfway through a key sequence, is denied
   (`in-use`) without a question, and keys stop at the next step if you start using it while they
   run. Watching is fine: in normal mode you see the agent scroll.
-- **A grant covers it:** `15a` lets that agent run keys for 15 minutes, and each call then shows
+- **A grant covers it:** under a grant each call shows
   `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`; a follow adds
-  `claude-code followed a link to docs.example.com in "Pricing · Example"`. A `vimma_keys` grant
-  is not a read or open grant. At most 30 calls a minute; a follow, `gu`, `gU`, `H` and `L`
+  `claude-code followed a link to docs.example.com in "Pricing · Example"`. At most 30 calls a minute; a follow, `gu`, `gU`, `H` and `L`
   count towards the 10 opens a minute. A find does not run in the tab you are in, since the browser's find would
   put your focus in a text field it matched.
 - **`:mcp log`** lists what agents did, asked or under a grant, each follow with the address it
@@ -1556,9 +1560,8 @@ focus and hint mode.
   as a load of its address; the label of a button or a field is refused, and so is a link the
   page has replaced since it was listed.
 - **A grant covers it:** each call then shows
-  `claude-code listed the buttons and fields of "Sign up · Example" (grant, 12m left)`. It is
-  not a read grant: the list holds no page text beyond the elements' own. At most 30 calls a
-  minute; each is in `:mcp log`.
+  `claude-code listed the buttons and fields of "Sign up · Example" (grant, 12m left)`. The list
+  holds no page text beyond the elements' own. At most 30 calls a minute; each is in `:mcp log`.
 
 #### Clicking on a page
 
@@ -1586,8 +1589,8 @@ page opened.
   `the page tried to submit a form to example.com; Vimma stopped it`, and asks you properly by
   clicking the form's submit button. Your own submissions in an agent tab, and those of a page
   the agent has not touched, go through. A button whose script sends data without a form (with
-  `fetch`) cannot be told apart from any other button: under a `vimma_activate` grant the agent
-  can press it unasked, with a notice and a row in `:mcp log`.
+  `fetch`) cannot be told apart from any other button: under a grant the agent can press it
+  unasked, with a notice and a row in `:mcp log`.
 - **Agents cannot answer dialogs.** An `alert`, `confirm` or `prompt` the page opens waits in the
   tab for you; the agent only learns its text, as untrusted content.
 - **A grant covers clicks** (not submissions): each shows
@@ -1648,7 +1651,7 @@ has not scrolled since.
 - **Untrusted, like page text.** The agent is told that text in the image is web content, not
   yours. Only the viewport of an http or https page is captured, never the browser around it,
   another tab, or a settings page or local file opened in the agent workspace.
-- **A grant covers screenshots** only: each shows
+- **A grant covers screenshots:** each shows
   `claude-code took a screenshot of "Sign up · Example" (grant, 12m left)`. At most 12 a minute.
 
 #### Reading a page's errors
@@ -1674,7 +1677,7 @@ can pass back as `since` to see only what a later click or fill caused.
 - **Untrusted, like page text.** Messages and addresses are the page's own: they may carry
   instructions, which the agent is told are not yours, or tokens the page put in a URL. Only an
   http or https page's are read.
-- **A grant covers console reads** only: each shows
+- **A grant covers console reads:** each shows
   `claude-code read the errors of "Sign up · Example" (grant, 12m left)`. At most 30 a minute.
 
 #### Showing you a page
@@ -1733,8 +1736,8 @@ on it.
 
 #### Ending an agent's access
 
-- `:mcp revoke`, or `ctrl+b shift+a` with nothing waiting and then `y`: ends every grant now.
-  The agents stay connected, and their next requests ask.
+- `ctrl+b shift+a` with nothing waiting, or `:mcp revoke`: ends every grant now, without a
+  second question. The agents stay connected, and their next requests ask.
 - `x` on a question: denies everything that agent asked and ignores it until it reconnects.
 - `:mcp off`: disconnects every agent and ends their grants; `vimma-ctl mcp` then answers each
   call with `MCP is off in Vimma`.
@@ -1748,7 +1751,7 @@ on it.
 Each request an agent makes appears as one line at the foot of the window, above the status bar:
 
 ```
-◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a for 10 min · n deny · x mute
+◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a all tools for 10 min (sending a form still asks) · n deny · x mute
 ```
 
 It names the agent (as the agent calls itself), the tool, and what it touches: the tab's place,
@@ -1756,13 +1759,13 @@ title and address for a read, a close, keys or a show (then the keys as they wil
 workspace a show switches you to), the whole address for an open (its host in bold), the number
 of agent tabs for the tab list.
 
-| Key                   | Answer                                                                                  |
-| --------------------- | --------------------------------------------------------------------------------------- |
-| `y`                   | Allow this request once.                                                                |
-| a count, then `a`     | Allow this agent's use of this tool for that many minutes (`15a`); a bare `a` gives 10. |
-| `n`, `Esc` or `Enter` | Deny it.                                                                                |
-| `x`                   | Deny it and everything else this agent asked, and ignore it until it reconnects.        |
-| `Backspace`           | Take back a digit of the count.                                                         |
+| Key                   | Answer                                                                           |
+| --------------------- | -------------------------------------------------------------------------------- |
+| `y`                   | Allow this request once.                                                         |
+| a count, then `a`     | Allow this agent every tool for that many minutes (`15a`); a bare `a` gives 10.  |
+| `n`, `Esc` or `Enter` | Deny it.                                                                         |
+| `x`                   | Deny it and everything else this agent asked, and ignore it until it reconnects. |
+| `Backspace`           | Take back a digit of the count.                                                  |
 
 - **Nothing else answers.** Any other key does nothing and the line stays; a key held down from
   before never counts; and for its first second the line takes no key at all (the hint appears
@@ -1784,8 +1787,31 @@ of agent tabs for the tab list.
   title and no buttons: you answer in Vimma. `[mcp] notify = false` turns the notification off.
 - **Grants show.** `◇ agent 14m` counts down the shortest one, and each request a grant lets
   through shows a notice (`claude-code read "Pull requests · vimma-browser/vimma" (grant, 14m left)`).
-  `:mcp revoke`, or `ctrl+b shift+a` with nothing waiting and then `y`, ends them all. A grant
+  `ctrl+b shift+a` with nothing waiting, or `:mcp revoke`, ends them all at once. A grant
   also ends when the agent disconnects or `:mcp off` runs, and is never written to disk.
+
+#### What a grant covers
+
+One grant covers a task. Answer any request with `15a`, and that agent may use every tool for
+15 minutes without asking: read pages, list tabs, open and close tabs, press keys and follow
+links, list a page's buttons and fields, click, fill, take screenshots, read a page's errors and
+download. The notice says so:
+`claude-code may use the agent workspace for 15 min; sending a form still asks (ctrl+b shift+a ends it)`.
+Requests that wait when you answer run at once.
+
+These still ask under any grant, and your yes allows that one step without making a grant or
+ending the one in force:
+
+- **Sending a form** ([Clicking on a page](#clicking-on-a-page),
+  [Filling in a form](#filling-in-a-form)): it sends data to a server, where sign-ups, messages
+  and purchases happen.
+- **Showing you a page** ([Showing you a page](#showing-you-a-page)): it changes what you see.
+- **A dangerous or unscanned download**, and a download a page started by itself
+  ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
+
+A grant belongs to one agent session: another agent, or the same one after it reconnects, asks
+again. Buttons that pay without sending a form are not yet recognised as payments: a grant lets
+the agent press them like any button.
 
 #### Full control while agents are on
 
@@ -1829,7 +1855,7 @@ same line as every other request:
 
 It shows the file's name, its size (or `unknown size`), its type and extension and the site it
 comes from, never the full address. `y`, `n`, `x` and a count with `a` work as for any request;
-a `vimma_download` grant lets that agent's next downloads through without asking. A download
+a grant lets that agent's next downloads through without asking. A download
 counts as the agent's only when it is the address the agent itself opened (`vimma_open`), right
 then. Anything else, such as a page the agent opened downloading something later, says `a page
 in the agent workspace wants vimma_download` and takes only `y` or `n`, whatever grants you

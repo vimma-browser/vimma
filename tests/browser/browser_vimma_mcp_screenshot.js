@@ -357,12 +357,10 @@ add_task(async function test_screenshot_and_the_agents_own_steps_exclude_each_ot
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
-  // Grants, so the calls below run unasked.
+  // A grant, so the calls below run unasked; it covers keys too (mcp-grants G1).
   let r = await screenshot(c, tab, {}, { kind: "grant", minutes: 5 });
   Assert.ok(r.ok, "a screenshot grant");
-  const k = c.request("agent-keys", { tab: idOf(tab), keys: "gg" });
-  AgentGate.answer((await question()).id, { kind: "grant", minutes: 5 });
-  Assert.ok((await c.response(k)).ok, "a keys grant");
+  Assert.ok((await c.call("agent-keys", { tab: idOf(tab), keys: "gg" })).ok, "keys run under it");
   // While a screenshot is taken, the agent's keys on that tab are refused: it could scroll a
   // filled card field into view between the checks and back (F21).
   /** @type {any} */

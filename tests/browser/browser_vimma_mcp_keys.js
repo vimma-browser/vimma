@@ -442,10 +442,11 @@ add_task(async function test_loads_count_towards_the_open_rate() {
   for (let i = 2; i <= 10; i++) {
     Assert.ok((await c.call("agent-open", { url: `${PAGE}?x${i}` })).ok, `open ${i}`);
   }
-  let r = await keys(c, tab, "gu");
+  // The open's grant covers keys too (mcp-grants G1).
+  let r = await keys(c, tab, "gu", null);
   Assert.equal(r.result.stopped, "denied", "gu needs a slot of the open rate (M20)");
   Assert.equal(r.result.url, `${PAGE}?1`, "and loads nothing");
-  r = await keys(c, tab, "H");
+  r = await keys(c, tab, "H", null);
   Assert.equal(r.result.stopped, "denied", "so does a history load");
   Assert.equal(r.result.url, `${PAGE}?1`, "which does not run");
   c.close();

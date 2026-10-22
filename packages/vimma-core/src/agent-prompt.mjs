@@ -136,6 +136,12 @@ function downloadParts(w) {
 /** A download no agent connection asked for (PAGE_CLIENT). @param {Asked} q */
 export const isPage = (q) => q.tool === DOWNLOAD_TOOL && q.label?.client === PAGE_CLIENT;
 
+/**
+ * What a grant leaves asked that a task meets on its way, as the question's hint and the grant's
+ * notice say it (docs/specs/mcp-grants.md G3).
+ */
+export const STILL_ASKS = "sending a form still asks";
+
 /** The tool that brings the agent workspace to the front (docs/specs/mcp-drive.md D2). */
 export const SHOW_TOOL = "vimma_show";
 
@@ -252,7 +258,10 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
   const who = clientName(q.label);
   /** @type {Part[]} */
   let parts;
-  let hint = `y once · ${grantMinutes}a for ${grantMinutes} min · n deny · x mute`;
+  // mcp-grants G3: a grant covers every tool of the connection, and the hint says what still asks.
+  let hint =
+    `y once · ${grantMinutes}a all tools for ${grantMinutes} min (${STILL_ASKS}) · ` +
+    "n deny · x mute";
   const w = q.what ?? {};
   if (q.tool === FULL_CONTROL) {
     // The code the client printed on its own terminal (security.md S13): the user answers
@@ -395,12 +404,16 @@ export function promptKey(
 }
 
 /**
- * The notice after a grant (decision 20): how long, and whether the cap cut it.
+ * The notice after a grant (decision 20, mcp-grants G3): its scope, how long, whether the cap
+ * cut it, what still asks and the key that ends it.
  * @param {Asked} q @param {{ minutes: number, capped: boolean }} length
  */
 export function grantNotice(q, { minutes, capped }) {
   const cap = capped ? ", the most [mcp] grant_max_minutes allows" : "";
-  return `${clientName(q.label)} may use ${q.tool} for ${minutes} min${cap} (:mcp revoke ends it)`;
+  return (
+    `${clientName(q.label)} may use the agent workspace for ${minutes} min${cap}; ` +
+    `${STILL_ASKS} (ctrl+b shift+a ends it)`
+  );
 }
 
 /** @param {unknown} fields  "1 field", "3 fields" */

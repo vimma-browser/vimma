@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The agent role's gate (docs/specs/vimma-mcp.md, decisions 12-22): every agent request but
-// hello and ping waits here for the user's answer, or runs under a grant of its connection and
-// tool. Core's AgentQueue holds the rules (the queue and its caps, the mute, the grants); this
+// hello and ping waits here for the user's answer, or runs under its connection's grant, which
+// covers every tool but those that always ask (docs/specs/mcp-grants.md G1, G2). Core's AgentQueue holds the rules (the queue and its caps, the mute, the grants); this
 // adds the clock: the ask timeout (50 s, `[mcp] ask_timeout`) and the grants' expiry. One per
 // app, in memory only: nothing here is written to disk (decision 22), and a restart ends it all.
 //
@@ -202,7 +202,7 @@ export const AgentGate = {
   },
 
   /**
-   * An agent request: resolves once it may run (a yes, or a grant of its connection and tool)
+   * An agent request: resolves once it may run (a yes, or its connection's grant)
    * or is denied (no, timeout, busy, muted). The caller checks again, when it runs, that what
    * was asked about is still so (decision 19).
    * @param {ConnId} conn
@@ -348,7 +348,7 @@ export const AgentGate = {
    * @returns {number} how many ended
    */
   revoke() {
-    const n = queue.revoke();
+    const n = queue.revoke(Date.now());
     if (n) changed();
     return n;
   },
@@ -374,7 +374,7 @@ export const AgentGate = {
   announce(conn, tool, what, until) {
     const label = labels.get(conn);
     // A grant revoked while the call ran shows no "(grant, …left)".
-    const grant = queue.grants(Date.now()).find((g) => g.conn === conn && g.tool === tool);
+    const grant = queue.grants(Date.now()).find((g) => g.conn === conn);
     if (!label || !grant) return;
     changed({ kind: "ran", conn, tool, what, label, until: Math.min(until, grant.until) });
   },

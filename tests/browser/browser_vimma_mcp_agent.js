@@ -7,8 +7,8 @@
 // the agent workspace's tabs in its container, never another workspace's or a private window's
 // (7), checked when each command runs; every request but hello and ping waits for an answer
 // (12), denied on timeout (16), capped (17), muted after three noes (18); the yes stands for the
-// tab and URL asked about (19); grants per connection and tool, ended by `:mcp revoke` and by
-// the connection closing (20-22); opens are background and never switch (10, B2); page text
+// tab and URL asked about (19); one grant per connection, for every tool (mcp-grants G1), ended
+// by `:mcp revoke` and by the connection closing (20-22); opens are background and never switch (10, B2); page text
 // comes back between the untrusted-content delimiters. The question line has its own tests
 // (browser_vimma_mcp_prompt.js): here the tests answer through AgentGate, as the line does.
 
@@ -390,7 +390,7 @@ add_task(async function test_agent_cancel_withdraws_one_waiting_question() {
   await setSwitches({});
 });
 
-add_task(async function test_grants_per_connection_and_tool() {
+add_task(async function test_one_grant_covers_every_tool_of_its_connection() {
   await setSwitches({ mcp: true });
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -398,19 +398,22 @@ add_task(async function test_grants_per_connection_and_tool() {
   await answer({ kind: "grant", minutes: 15 });
   Assert.equal((await c.response(id)).ok, true, "15a allows the read");
   Assert.deepEqual(
-    AgentGate.grants().map((g) => g.tool),
-    ["vimma_read_page"],
-    "and grants that tool",
+    AgentGate.grants().map((g) => [g.conn !== undefined, g.tool]),
+    [[true, undefined]],
+    "and makes one grant of the connection, for no one tool",
   );
 
   let r = await c.call("agent-read", { tab: idOf(tab) });
   Assert.equal(r.ok, true, "the next read runs unasked");
+  r = await c.call("agent-tabs");
+  Assert.equal(r.ok, true, "so does another tool");
+  r = await c.call("agent-open", { url: `${PAGE}?granted` });
+  Assert.equal(r.ok, true, "an open too");
   Assert.equal(AgentGate.waiting.length, 0, "with no question");
-
-  id = c.request("agent-tabs");
-  Assert.equal((await question()).tool, "vimma_tabs", "another tool still asks");
-  await answer({ kind: "once" });
-  await c.response(id);
+  Assert.ok(
+    AgentGate.log.some((e) => e.tool === "vimma_open" && e.outcome === "grant"),
+    "and the open is in :mcp log as run under the grant",
+  );
 
   const other = await agentClient("codex");
   id = other.request("agent-read", { tab: idOf(tab) });
@@ -433,7 +436,7 @@ add_task(async function test_grants_per_connection_and_tool() {
   await c.response(id);
   c.close();
   await until(() => AgentGate.grants().length === 0, "closing the connection ends its grant");
-  BrowserTestUtils.removeTab(tab);
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   await setSwitches({});
 });
 
@@ -554,10 +557,8 @@ add_task(async function test_grants_cannot_flood() {
     "at most 4 agent requests of one connection run at once",
   );
 
-  // Opens under a grant: at most 10 a minute.
-  id = c.request("agent-open", { url: `${PAGE}?flood` });
-  await answer({ kind: "grant", minutes: 5 });
-  const opened = [await c.response(id)];
+  // Opens under the same grant: at most 10 a minute.
+  const opened = [];
   for (let i = 0; i < 11; i++) opened.push(await c.call("agent-open", { url: `${PAGE}?f${i}` }));
   Assert.equal(opened.filter((r) => r.ok).length, 10, "10 opens a minute");
   Assert.equal(opened.at(-1).error?.reason, "busy", "the rest are busy");
