@@ -309,13 +309,9 @@ support-files = ["file_vimma_title.html"]
 ["browser_vimma_side_panel_unsplit.js"]
 
 ["browser_vimma_firefox_keys.js"]
-# macOS: the Firefox key inventory lists Linux chords; macOS uses cmd as accel (#384)
-skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_firefox_coverage.js"]
-# macOS: the Firefox key inventory lists Linux chords; macOS uses cmd as accel (#384)
-skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_edit_keys.js"]
