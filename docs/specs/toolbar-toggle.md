@@ -586,6 +586,10 @@ Numbered decisions, each with its reason and the alternatives rejected.
       them (`vimmaSurfaceOpen` in `host/VimmaHost.sys.mjs`), so that a surface added later
       reaches all three; live grep and a search being typed were missing from the prompt keys'
       list, and `y` typed into live grep allowed the prompt; issue #485.)
+      (Since changed: nor in hint, copy or element mode, whose labels (from any
+      `[modal] hint_chars`) and yank type `y`, so a page could time a prompt to the mode; the
+      keys line starts with `Esc, then` there; `KEY_KEEPING_MODES` in `core/modes.mjs`,
+      issue #495.)
     - **`Tab`** (focus in the page, not in a field) moves focus onto the prompt's first button,
       the secondary one, with Vimma's focus ring (`--vimma-focus`, focus.css). From there
       Firefox's own keys work: the arrow keys move between the buttons, `Enter` and `Space` run

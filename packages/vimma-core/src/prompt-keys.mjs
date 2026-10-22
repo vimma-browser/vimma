@@ -59,7 +59,7 @@ function hintLabel(label) {
  * The keys line shown inside an armed prompt, named after its own buttons. With focus in a field
  * outside the prompt (a login form that keeps the page leaves it in the password field), the keys
  * are the field's text, so the line starts with the way out: Esc leaves the field and keeps the
- * prompt open.
+ * prompt open. The same holds in hint, copy and element mode, which keep the keys too.
  * @param {{ main: string, secondary: string, inField?: boolean }} labels
  */
 export function doorhangerHint({ main, secondary, inField = false }) {

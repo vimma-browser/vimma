@@ -715,7 +715,9 @@ meant for the page never answers a prompt. While you type in a text field of the
 address bar, `y` and `n` are text, and the line starts with `Esc, then`: `Esc` leaves the field
 and keeps the prompt open, and then `y` and `n` answer it. The same holds while one of Vimma's
 own pickers, live grep, the command line or a search you are typing is open: what you type is
-theirs. Vimma never moves focus onto the prompt. The same keys answer Firefox's
+theirs. In link hints, copy mode and element mode, `y` and `n` stay theirs too (a hint label, the
+yank), and the line starts with `Esc, then`: `Esc` leaves the mode, and then `y` and `n` answer
+the prompt. Vimma never moves focus onto the prompt. The same keys answer Firefox's
 other prompts in that panel, such as "Save password?" (`y` saves, `n` is Not now), and the "Add
 <name>?" prompt for installing an add-on, which Firefox opens with focus on the prompt itself.
 
@@ -1792,11 +1794,13 @@ of agent tabs for the tab list.
   before never counts; and for its first second the line takes no key at all (the hint appears
   when it is ready), so a key meant for something else cannot answer it. The second starts
   again whenever the window comes to the front or goes to the back, and with every key you
-  press before it is over. A prompt, picker or the command line you open over the line gets your keys; the
-  question waits and comes back when it closes.
+  press before it is over. A prompt, picker or the command line you open over the line gets
+  your keys; the question waits and comes back when it closes. Link hints, copy mode and
+  element mode keep their keys the same way (a hint label, `y` to copy): the line waits until
+  `Esc` leaves them, also after `ctrl+b shift+a`.
 - **It never interrupts your typing.** It opens by itself only when the window is in front,
-  focus is not in a text field, you have not pressed a key for 1.5 s, and no other prompt,
-  picker or panel is open. Otherwise it waits, and the status bar says `◇ agent 1?`; press
+  focus is not in a text field, you have not pressed a key for 1.5 s, no other prompt,
+  picker or panel is open, and you are not in link hints, copy mode or element mode. Otherwise it waits, and the status bar says `◇ agent 1?`; press
   `ctrl+b shift+a` to answer it then. It never takes focus: answer, and you carry on where you
   were. If you click into a text field while it shows, it goes back to waiting.
 - **One at a time**, oldest first. An agent may have 4 waiting, and all agents 16. With no
@@ -2862,8 +2866,9 @@ Except for the AppImage, it installs nothing; it tells you.
 - **A security release also asks**, once per session:
   `Vimma 0.3.1 fixes security issues. Show the update command? (y/N)`. `y` shows the update steps,
   as `:update` does; `n`, Esc or any other key dismisses it until the next start. The question
-  waits until you are not typing in a field and have not pressed a key for a moment, never takes
-  focus, and is not asked in a private window. Keys pressed in its first second are ignored, so a
+  waits until you are not typing in a field, are not in link hints, copy mode or element mode,
+  and have not pressed a key for a moment, never takes focus, and is not asked in a private
+  window. Keys pressed in its first second are ignored, so a
   key you were already typing, or one a page asked you to press, cannot answer it.
 - **The AppImage updates itself.** When a newer release is offered, Vimma downloads the new
   AppImage from the project's GitHub release into a hidden file next to yours, checks its size

@@ -1,6 +1,6 @@
 # Spec: macos-homebrew
 
-Status: draft (sub-PRs 1 to 5 implemented) · Area: `configs/branding/vimma/` (macOS icon
+Status: implemented · Area: `configs/branding/vimma/` (macOS icon
 files, new), `configs/macos/AppIcon.icon/` (icon source, new), `configs/macos/mozconfig`,
 `src/browser/branding/vimma/configure.sh`, `tools/package/` (cask generator and icon
 generator, new), `packages/vimma-core/src/updates.mjs`,
