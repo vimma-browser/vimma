@@ -150,19 +150,31 @@ function askTimeoutMs() {
  * Answer the agents of the requests `resolved` names.
  * @param {{ id: number, allow: boolean, reason?: string }[]} resolved
  * @param {{ until: number }} [grant]
+ * @param {number} [answered]  the question the user answered: the others a grant released ran
+ *   under it unseen, so each is logged and announced as a call under a grant (mcp-grants
+ *   behaviour 1)
  */
-function settle(resolved, grant) {
+function settle(resolved, grant, answered) {
   for (const r of resolved) {
     const p = pending.get(r.id);
     if (!p) continue;
     pending.delete(r.id);
     lazy.clearTimeout(p.timer);
+    const released = r.allow && grant && r.id !== answered;
     record(
       p.conn,
       p.tool,
       p.what,
-      r.allow ? "yes" : /** @type {any} */ (r.reason === "muted" ? "muted" : r.reason),
+      released
+        ? "grant"
+        : r.allow
+          ? "yes"
+          : /** @type {any} */ (r.reason === "muted" ? "muted" : r.reason),
     );
+    if (released) {
+      const { conn, tool, what, label } = p;
+      changed({ kind: "ran", conn, tool, what, label, until: grant.until });
+    }
     if (r.allow) ranAt = Date.now();
     p.resolve(
       r.allow
@@ -333,7 +345,7 @@ export const AgentGate = {
       final = { kind: "grant", minutes: length.minutes };
     }
     const { resolved, grant } = queue.answer(id, final, Date.now());
-    settle(resolved, grant);
+    settle(resolved, grant, id);
     const granted = resolved.length && length ? length : null;
     changed(
       question && resolved.length

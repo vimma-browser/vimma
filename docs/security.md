@@ -730,10 +730,12 @@ a show, a dangerous or unscanned download and a page's own download still ask un
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection, which covers every tool but those
-  that always ask (M11, M13, M19, M28); another connection's grant **never** covers it.
+  that always ask (M11, M13, M19, M28); another connection's grant **never** covers it. A
+  waiting call a grant releases **must** be logged and announced as a call under the grant.
   [`test_one_grant_covers_every_tool_of_its_connection`](../tests/browser/browser_vimma_mcp_agent.js),
   [`a grant covers every tool of its connection, not another connection's`](../packages/vimma-core/test/agent-gate.test.mjs),
-  [`a grant lets the connection's queued calls of every tool run, not an always-ask one`](../packages/vimma-core/test/agent-gate.test.mjs)
+  [`a grant lets the connection's queued calls of every tool run, not an always-ask one`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_queued_calls_a_grant_releases_show_as_granted`](../tests/browser/browser_vimma_mcp_agent.js)
 - M2. Agent commands **must** see only tabs of the agent workspace in its container, checked
   when each command runs; **never** another workspace's tab, a foreign or pinned tab, or a
   private window's.

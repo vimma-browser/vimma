@@ -83,7 +83,7 @@ describe("the question's text (decision 13)", () => {
         "github.com/vimma-browser/vimma/pulls",
     );
     expect(line.hint).toBe(
-      "y once · 15a all tools for 15 min (sending a form still asks) · n deny · x mute",
+      "y once · 15a 15 min, all but forms · n deny · x mute",
     );
     expect(line.label).toBe(text(line));
   });
@@ -114,7 +114,7 @@ describe("the question's text (decision 13)", () => {
         '3j /"pricing"⏎ gg',
     );
     expect(line.hint).toBe(
-      "y once · 15a all tools for 15 min (sending a form still asks) · n deny · x mute",
+      "y once · 15a 15 min, all but forms · n deny · x mute",
     );
     const shown = line.parts.find((p) => p.text === '3j /"pricing"⏎ gg');
     expect(shown?.isolate).toBe("ltr");
@@ -640,7 +640,7 @@ describe("a download's question (decision 31 a, d)", () => {
     );
     expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["example.com"]);
     expect(line.hint).toBe(
-      "y once · 10a all tools for 10 min (sending a form still asks) · n deny · x mute",
+      "y once · 10a 10 min, all but forms · n deny · x mute",
     );
   });
 

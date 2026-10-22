@@ -440,6 +440,35 @@ add_task(async function test_one_grant_covers_every_tool_of_its_connection() {
   await setSwitches({});
 });
 
+// mcp-grants behaviour 1: the user answered only the question on the line, so a waiting call
+// the grant releases shows as one run under it: a notice and a `:mcp log` row.
+add_task(async function test_queued_calls_a_grant_releases_show_as_granted() {
+  await setSwitches({ mcp: true });
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  /** @type {any[]} */
+  const ran = [];
+  const listener = (/** @type {any} */ e) => e?.kind === "ran" && ran.push(e);
+  AgentGate.addListener(listener);
+  const read = c.request("agent-read", { tab: idOf(tab) });
+  const open = c.request("agent-open", { url: `${PAGE}?queued` });
+  await until(() => AgentGate.waiting.length === 2, "both wait");
+  AgentGate.answer(AgentGate.waiting[0].id, { kind: "grant", minutes: 5 });
+  Assert.equal((await c.response(read)).ok, true, "the read the user answered runs");
+  Assert.equal((await c.response(open)).ok, true, "the waiting open runs under the grant");
+  AgentGate.removeListener(listener);
+  const row = AgentGate.log.find((e) => e.tool === "vimma_open");
+  Assert.equal(row?.outcome, "grant", "logged as run under the grant, not as answered");
+  Assert.deepEqual(
+    ran.map((e) => e.tool),
+    ["vimma_open"],
+    "with the notice of a call under a grant",
+  );
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  await setSwitches({});
+});
+
 add_task(async function test_agent_read_loads_a_lazy_tab_in_the_background() {
   await setSwitches({ mcp: true });
   const before = { workspace: activeName(), selected: gBrowser.selectedTab };

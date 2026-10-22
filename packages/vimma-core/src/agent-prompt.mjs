@@ -137,10 +137,12 @@ function downloadParts(w) {
 export const isPage = (q) => q.tool === DOWNLOAD_TOOL && q.label?.client === PAGE_CLIENT;
 
 /**
- * What a grant leaves asked that a task meets on its way, as the question's hint and the grant's
- * notice say it (docs/specs/mcp-grants.md G3).
+ * What a grant leaves asked that a task meets on its way, as the grant's notice says it, and as
+ * the question's hint says it in short, so the usual question still fits one line
+ * (docs/specs/mcp-grants.md G3).
  */
 export const STILL_ASKS = "sending a form still asks";
+export const GRANT_SCOPE = "all but forms";
 
 /** The tool that brings the agent workspace to the front (docs/specs/mcp-drive.md D2). */
 export const SHOW_TOOL = "vimma_show";
@@ -259,9 +261,7 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
   /** @type {Part[]} */
   let parts;
   // mcp-grants G3: a grant covers every tool of the connection, and the hint says what still asks.
-  let hint =
-    `y once · ${grantMinutes}a all tools for ${grantMinutes} min (${STILL_ASKS}) · ` +
-    "n deny · x mute";
+  let hint = `y once · ${grantMinutes}a ${grantMinutes} min, ${GRANT_SCOPE} · n deny · x mute`;
   const w = q.what ?? {};
   if (q.tool === FULL_CONTROL) {
     // The code the client printed on its own terminal (security.md S13): the user answers

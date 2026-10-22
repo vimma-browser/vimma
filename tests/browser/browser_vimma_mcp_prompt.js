@@ -130,7 +130,7 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
   await until(hintShown, "armed after the delay");
   Assert.equal(
     line().querySelector(".vimma-agent-prompt-hint").textContent,
-    "y once · 10a all tools for 10 min (sending a form still asks) · n deny · x mute",
+    "y once · 10a 10 min, all but forms · n deny · x mute",
     "the hint says what a grant covers and what still asks",
   );
   EventUtils.synthesizeKey("y", { repeat: true });

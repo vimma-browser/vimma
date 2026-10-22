@@ -1751,7 +1751,7 @@ on it.
 Each request an agent makes appears as one line at the foot of the window, above the status bar:
 
 ```
-◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a all tools for 10 min (sending a form still asks) · n deny · x mute
+◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a 10 min, all but forms · n deny · x mute
 ```
 
 It names the agent (as the agent calls itself), the tool, and what it touches: the tab's place,

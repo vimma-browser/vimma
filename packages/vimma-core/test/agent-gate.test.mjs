@@ -205,6 +205,14 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
     expect(q.waiting.map((r) => r.id)).toEqual([c.id, d.id, e.id]);
   });
 
+  test("a reconnect asks again", () => {
+    const q = queue();
+    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 5 }, 0);
+    q.disconnect(1);
+    q.connect(1);
+    expect(q.ask(1, READ, 1000).kind).toBe("wait");
+  });
+
   test("a connection holds at most one grant", () => {
     const q = queue();
     q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 5 }, 0);
