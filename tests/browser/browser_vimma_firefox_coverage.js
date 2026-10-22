@@ -229,6 +229,46 @@ add_task(async function firefoxs_out_of_keyset_shortcuts_are_all_inventory_rows(
   Assert.equal(swept, Object.keys(NAMED).length * 16, "every combination swept");
 });
 
+add_task(async function firefoxs_character_shortcuts_are_all_inventory_rows() {
+  // ShortcutUtils also maps typed characters (macOS: cmd+{ and cmd+}, by charCode on keypress).
+  // Each printable ASCII character with every ctrl/alt/meta combination; shift is in the
+  // character, as Vimma's notation folds it.
+  const chords = new Set(FIREFOX_SHORTCUTS.map((r) => r.chord));
+  /** @type {string[]} */
+  const found = [];
+  let swept = 0;
+  for (let code = 0x21; code < 0x7f; code++) {
+    const char = String.fromCharCode(code);
+    for (let bits = 1; bits < 8; bits++) {
+      const mods = { ctrl: !!(bits & 1), alt: !!(bits & 2), meta: !!(bits & 4) };
+      const event = new KeyboardEvent("keypress", {
+        charCode: code,
+        ctrlKey: mods.ctrl,
+        altKey: mods.alt,
+        metaKey: mods.meta,
+        shiftKey: /[A-Z~!@#$%^&*()_+{}|:"<>?]/.test(char),
+      });
+      const action = ShortcutUtils.getSystemActionForEvent(event);
+      swept++;
+      if (action == null) continue;
+      const chord = makeChordText(char === "+" ? "plus" : char, mods);
+      found.push(chord);
+      Assert.ok(
+        chords.has(chord),
+        `Firefox shortcut ${chord} (ShortcutUtils ${action}) is new: add it to FIREFOX_SHORTCUTS with a fate`,
+      );
+    }
+  }
+  Assert.equal(swept, 94 * 7, "every character and combination swept");
+  // The rows the sweep checks against Firefox's own handler: macOS's cmd+{ and cmd+}, with and
+  // without ctrl (Tabbrowser ignores it), none on Linux.
+  Assert.deepEqual(
+    found.toSorted(),
+    MAC ? ["ctrl+meta+{", "ctrl+meta+}", "meta+{", "meta+}"] : [],
+    "the character shortcuts",
+  );
+});
+
 add_task(async function out_of_keyset_keys_unbound_change_nothing() {
   // Every chrome row's action without its Firefox chord, and `'` (fate c) in a page.
   await useConfig(

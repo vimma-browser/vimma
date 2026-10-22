@@ -528,6 +528,9 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
       "alt+meta+down",
       "meta+{",
       "meta+}",
+      // ShortcutUtils reads cmd+{ and cmd+} by charCode without looking at ctrl.
+      "ctrl+meta+{",
+      "ctrl+meta+}",
     ]) {
       expect(chrome.find((r) => r.chord === chord)?.fate, chord).toBe("c");
     }

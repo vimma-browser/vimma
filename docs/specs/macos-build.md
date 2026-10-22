@@ -407,8 +407,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     is the same on both platforms until the macOS keymap (issues #385, #386) changes it. A row
     whose key moves to a chord Vimma does not bind is fate c there (unbound, its `<key>` off):
     `cmd+t`, `cmd+l`, `cmd+1..9`, the DevTools' `cmd+alt+<key>` and ShortcutUtils' `meta+{`,
-    `meta+}` and `alt+meta+<arrow>` tab keys (Firefox 158,
-    `toolkit/modules/ShortcutUtils.sys.mjs:380-445`). `key_quitApplication` is `cmd+q` and
+    `meta+}` (also with `ctrl`, which Tabbrowser ignores) and `alt+meta+<arrow>` tab keys
+    (Firefox 158, `toolkit/modules/ShortcutUtils.sys.mjs:380-445`). `key_quitApplication` is `cmd+q` and
     `internal` on macOS (`browser/base/content/browser-sets.inc.xhtml`, the `XP_MACOSX` branch),
     so it is fate d: `"all"` keeps it, as behaviour 4 says. A `<key>` that is off may still run
     from the native menu bar in a windowed build: `nsMenuItemX::SetKeyEquiv`
@@ -422,7 +422,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     sub-PR 5's hand check of the native menu bar. Rejected: a macOS chord column in every row,
     because the keymap, `pageFirst` and the docs would each have to pick a column while only
     the host and the coverage test differ by platform; and a hand-written second table, because
-    its 147 rows would be kept in step with Linux's 140 by hand, where 77 rows change their chord, 12 go and 19 are macOS's own.
+    its 149 rows would be kept in step with Linux's 140 by hand, where 77 rows change their
+    chord, 12 go and 21 are macOS's own.
 
 ### Not in this spec
 
