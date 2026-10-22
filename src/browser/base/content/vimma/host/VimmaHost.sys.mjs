@@ -64,7 +64,7 @@ import {
   selectTab,
 } from "./tab-ops.mjs";
 import { DEFAULT_FIREFOX_KEYS, FirefoxKeys } from "./firefox-keys.mjs";
-import { FIREFOX_SHORTCUTS, boundChords, pageFirst } from "../core/firefox-keys.mjs";
+import { boundChords, firefoxShortcuts, pageFirst } from "../core/firefox-keys.mjs";
 import { BROWSER_KEYS, browserRunners, firefoxIds, runKey } from "./browser-ops.mjs";
 import { focusedChromeField, runChromeEdit } from "./edit-keys.mjs";
 import { runRoute } from "./route-ops.mjs";
@@ -1220,9 +1220,11 @@ function paneStatus(win) {
   };
 }
 
-/** The inventory's chords Firefox handles in chrome code, outside its keysets. */
+/** The inventory's chords Firefox handles in chrome code, outside its keysets, on this platform. */
 const CHROME_HANDLED = new Set(
-  FIREFOX_SHORTCUTS.filter((r) => r.source === "chrome").map((r) => r.chord),
+  firefoxShortcuts({ mac: MAC })
+    .filter((r) => r.source === "chrome")
+    .map((r) => r.chord),
 );
 
 /** @param {Event} e */

@@ -1059,6 +1059,18 @@ only. Three are left alone: the `alt+letter` keys that open the menu bar's menus
 and a bare `alt` tap and `'` (quick find for links) do nothing (the `ui.key.menuAccessKeyFocuses`
 and `accessibility.typeaheadfind.manual` prefs are `false` in Vimma's defaults).
 
+**On macOS** Firefox's keys use `cmd` where Linux has `ctrl` (`cmd+t`, `cmd+l`, `cmd+w`, written
+`meta+t` in config.toml), and it has tab keys of its own: `meta+{` and `meta+}` (cmd+shift+[ and
+cmd+shift+]), also with `ctrl` (`ctrl+meta+{`, `ctrl+meta+}`), and `alt+meta+left`,
+`alt+meta+right`, `alt+meta+up` and `alt+meta+down`. Its sidebar keys use `ctrl`: `ctrl+x` (AI
+chatbot), `ctrl+z` (show or hide the sidebar) and `ctrl+u` (open tabs, which stays Vimma's
+half-page scroll). Vimma's keymap is the same as on Linux, so the others are unbound, and the
+default `disable = "all"` turns them off, `ctrl+x` and `ctrl+z` included:
+`[firefox] enable = ["meta+t"]` or `["meta+{"]` gives one back. In a windowed Mac build a key that
+also has a menu bar item (`cmd+t` is File > New Tab) may still run from the menu bar; this has not
+been checked on a Mac yet. `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt`
+access keys.
+
 **Any Firefox command from a key.** `:firefox <id>` runs one of the window's commands or keys by
 its id (Tab completes them): `:firefox Tools:Downloads`, `:firefox key_search2`. A value that
 starts with `:` in a `[modal.<mode>]` table binds a key to a command line; such bindings are
