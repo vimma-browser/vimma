@@ -229,7 +229,7 @@ function onGate(event) {
   const w = win && windows.get(win);
   if (event && w) {
     if (event.kind === "answered" && event.answer === "grant" && event.length) {
-      w.notice(grantNotice(event.question, event.length));
+      w.notice(grantNotice(event.question, event.length, event.released ?? 0));
     } else if (event.kind === "answered" && event.answer === "deny") {
       w.notice(deniedNotice(event.question, "user"));
     } else if (event.kind === "answered" && event.answer === "mute") {
@@ -349,7 +349,8 @@ export const AgentUi = {
 
   /**
    * `ctrl+b shift+a` (`mcp.answer`): the waiting question opens here, whatever the guards say;
-   * with none, the grants and `Revoke N agent grants? y/N`.
+   * with none, every grant ends at once (docs/specs/mcp-grants.md G4: ending is the safe
+   * direction, so it takes no second key).
    * @param {Window} win
    */
   answer(win) {
@@ -367,15 +368,12 @@ export const AgentUi = {
       redraw();
       return;
     }
-    const n = AgentGate.grants().length;
-    if (!n) {
-      w.notice("no agent requests waiting and no grants");
-      return;
-    }
-    w.ask(`Revoke ${n} agent grant${n === 1 ? "" : "s"}? y/N`, () => {
-      const ended = AgentGate.revoke();
-      w.notice(`mcp: ended ${ended} agent grant${ended === 1 ? "" : "s"}`);
-    });
+    const ended = AgentGate.revoke();
+    w.notice(
+      ended
+        ? `mcp: ended ${ended} agent grant${ended === 1 ? "" : "s"}`
+        : "no agent requests waiting and no grants",
+    );
   },
 
   /** The status bar's agent segment (decision 24), or null. */

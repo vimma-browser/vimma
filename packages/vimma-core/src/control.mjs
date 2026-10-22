@@ -59,6 +59,11 @@ export const ACTIVATE_STOPS = Object.freeze(["in-use"]);
 /** The page dialogs `agent-activate` reports (mcp-forms F11). */
 export const DIALOG_TYPES = Object.freeze(["alert", "confirm", "prompt"]);
 /**
+ * What a click that loaded no page changed in place (#510): the clicked element, the other
+ * listed elements, the page's text, a dialog of the page. Words only, never the page's text.
+ */
+export const ACTIVATE_CHANGES = Object.freeze(["element", "elements", "text", "dialog"]);
+/**
  * Why an agent request was `denied` (vimma-mcp decision 4). `in-use`: the user is typing in that
  * tab, or a key sequence or hint mode is under way there (mcp-drive D13).
  */
@@ -578,13 +583,13 @@ const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
 /**
  * `agent-activate`'s result (mcp-forms F11, F16): the page after the click, a dialog it opened
  * with its text inside the untrusted-content delimiters, the host of a submission Vimma stopped,
- * and why the wait stopped early.
+ * why the wait stopped early, and what changed in place when no page loaded (#510).
  * @param {Obj} result @param {string[]} errors
  */
 function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([])) {
   noExtraFields(
     result,
-    ["url", "title", "loading", "navigated", "dialog", "blocked", "stopped", ...extra],
+    ["url", "title", "loading", "navigated", "dialog", "blocked", "stopped", "changed", ...extra],
     errors,
     "result.",
   );
@@ -612,6 +617,16 @@ function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([]
   }
   if ("stopped" in result && !ACTIVATE_STOPS.includes(/** @type {any} */ (result.stopped))) {
     errors.push(`result.stopped must be ${ACTIVATE_STOPS.join(" or ")}`);
+  }
+  if (
+    "changed" in result &&
+    !(
+      Array.isArray(result.changed) &&
+      new Set(result.changed).size === result.changed.length &&
+      result.changed.every((c) => ACTIVATE_CHANGES.includes(/** @type {any} */ (c)))
+    )
+  ) {
+    errors.push(`result.changed must be a list of distinct ${ACTIVATE_CHANGES.join(", ")}`);
   }
 }
 

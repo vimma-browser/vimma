@@ -354,11 +354,8 @@ add_task(async function test_keys_under_a_grant_notice_and_rate() {
     () => noticeText().startsWith('claude-code pressed 2j in "Long agent fixture" (grant,'),
     "with a notice naming the keys and the tab",
   );
-  // A vimma_keys grant is not a read grant (D17).
-  const read = c.request("agent-read", { tab: idOf(tab) });
-  Assert.equal((await question()).tool, "vimma_read_page", "a read still asks");
-  AgentGate.answer(AgentGate.waiting[0].id, { kind: "deny" });
-  await c.response(read);
+  // The grant covers reads too (mcp-grants G1).
+  Assert.ok((await c.call("agent-read", { tab: idOf(tab) })).ok, "a read runs under it");
   // 30 a minute, counted when asked (M20): 2 so far.
   let busy = null;
   for (let i = 0; i < 29 && !busy; i++) {
@@ -442,10 +439,11 @@ add_task(async function test_loads_count_towards_the_open_rate() {
   for (let i = 2; i <= 10; i++) {
     Assert.ok((await c.call("agent-open", { url: `${PAGE}?x${i}` })).ok, `open ${i}`);
   }
-  let r = await keys(c, tab, "gu");
+  // The open's grant covers keys too (mcp-grants G1).
+  let r = await keys(c, tab, "gu", null);
   Assert.equal(r.result.stopped, "denied", "gu needs a slot of the open rate (M20)");
   Assert.equal(r.result.url, `${PAGE}?1`, "and loads nothing");
-  r = await keys(c, tab, "H");
+  r = await keys(c, tab, "H", null);
   Assert.equal(r.result.stopped, "denied", "so does a history load");
   Assert.equal(r.result.url, `${PAGE}?1`, "which does not run");
   c.close();

@@ -61,6 +61,8 @@ registerCleanupFunction(async () => {
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   await VimmaControl.settled();
   ww().switchTo({ id: mainId() });
+  // A task that timed out or hung never ran its finally: clear the child's test hook here too.
+  for (const t of agentTabs()) await beforeSubmitCheck(t, null).catch(() => {});
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
@@ -128,7 +130,8 @@ async function question() {
 /** The list's elements by what they say. @param {any} c @param {any} tab */
 async function labels(c, tab) {
   const id = c.request("agent-elements", { tab: idOf(tab) });
-  AgentGate.answer((await question()).id, { kind: "once" });
+  // Under a grant the list runs unasked (mcp-grants G1).
+  if (!AgentGate.grants().length) AgentGate.answer((await question()).id, { kind: "once" });
   const r = await c.response(id);
   Assert.ok(r.ok, "vimma_elements runs");
   /** @type {Record<string, string>} */
@@ -529,7 +532,7 @@ addTidyTask(async function test_a_skipped_submit_is_not_sent_and_allows_nothing_
 
 /**
  * Names the page function Vimma's child calls just before it checks an agent's form
- * submission in `tab`'s process (VimmaChild._beforeSubmitCheck), or null for none.
+ * submission in `tab`'s process (VimmaChild._beforeSubmitCheckForTests), or null for none.
  * @param {any} tab @param {string | null} name
  */
 const beforeSubmitCheck = (tab, name) =>
@@ -537,7 +540,7 @@ const beforeSubmitCheck = (tab, name) =>
     const { VimmaChild } = ChromeUtils.importESModule(
       "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs",
     );
-    VimmaChild._beforeSubmitCheck = n;
+    VimmaChild._beforeSubmitCheckForTests = n;
   });
 
 addTidyTask(async function test_a_skipped_default_submit_is_not_sent_and_allows_nothing_after_it() {

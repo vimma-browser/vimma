@@ -5,8 +5,9 @@
 // Spec: docs/specs/vimma-mcp.md, sub-PR 2b: the agent question line. It opens by itself only in
 // a focused window, out of fields, after 1,500 ms without a key (decision 14); otherwise it
 // waits as `◇ agent 1?` for ctrl+b shift+a. Armed after security.dialog_enable_delay, held keys
-// never count, other keys neither allow nor deny (13); a count and `a` grant (20) with a notice
-// and `◇ agent 14m` (23, 24); timeouts deny with a notice (16); questions one at a time (17); `x`
+// never count, other keys neither allow nor deny (13); a count and `a` grant every tool
+// (20, mcp-grants G1) with a notice naming the scope and `◇ agent 14m` (23, 24, G3), and
+// ctrl+b shift+a ends it at once (G4); timeouts deny with a notice (16); questions one at a time (17); `x`
 // mutes (18). It never takes focus. browser_vimma_mcp_control.js has the window not in front
 // (15), full control (29 C) and `:control` (29 D).
 
@@ -129,8 +130,8 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
   await until(hintShown, "armed after the delay");
   Assert.equal(
     line().querySelector(".vimma-agent-prompt-hint").textContent,
-    "y once · 10a for 10 min · n deny · x mute",
-    "the hint",
+    "y once · 10a 10 min, all but forms · n deny · x mute",
+    "the hint says what a grant covers and what still asks",
   );
   EventUtils.synthesizeKey("y", { repeat: true });
   for (const key of ["j", "q", " "]) EventUtils.synthesizeKey(key);
@@ -196,8 +197,11 @@ add_task(async function test_a_count_and_a_grant_minutes_shown_in_the_status_bar
   for (const key of ["1", "5", "a"]) EventUtils.synthesizeKey(key);
   Assert.ok((await c.response(id)).ok, "15a allows");
   await until(
-    () => noticeText() === "example-agent may use vimma_tabs for 15 min (:mcp revoke ends it)",
-    "the grant notice",
+    () =>
+      noticeText() ===
+      "example-agent may use the agent workspace for 15 min; sending a form still asks " +
+        "(ctrl+b shift+a ends it)",
+    "the grant notice names its scope and the key that ends it",
   );
   await until(() => segment() === "◇ agent 15m", "the status bar counts the grant down");
 
@@ -209,18 +213,20 @@ add_task(async function test_a_count_and_a_grant_minutes_shown_in_the_status_bar
   );
   Assert.ok(!lineOpen(), "without a question");
 
-  // With nothing waiting, ctrl+b shift+a offers to revoke the grants.
+  // With nothing waiting, ctrl+b shift+a ends the grant at once (mcp-grants G4).
   await focusContent(gBrowser.selectedBrowser);
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("A", { shiftKey: true });
-  await until(() => renamePrompt() && !renamePrompt().hidden, "ctrl+b shift+a asks");
-  Assert.ok(
-    renamePrompt().textContent.includes("Revoke 1 agent grant? y/N"),
-    "to revoke the grant",
-  );
-  EventUtils.synthesizeKey("y");
-  await until(() => AgentGate.grants().length === 0, "y revokes it");
+  await until(() => AgentGate.grants().length === 0, "ctrl+b shift+a ends the grant");
+  Assert.ok(!renamePrompt() || renamePrompt().hidden, "without a second question");
+  await until(() => noticeText() === "mcp: ended 1 agent grant", "and says so");
   await until(() => segment() === "◇ agent", "and the segment drops the minutes");
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("A", { shiftKey: true });
+  await until(
+    () => noticeText() === "no agent requests waiting and no grants",
+    "with none left, it says so",
+  );
   c.close();
   await until(() => segment() === null, "the segment goes with the last agent");
   await setSwitches({});

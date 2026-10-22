@@ -24,6 +24,8 @@ import {
   describeAgentElements,
   fillField,
   fillTargetOf,
+  pageChanges,
+  pageMarks,
   sensitiveValueShown,
 } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
@@ -175,10 +177,11 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * Test-only (browser_vimma_mcp_fill.js): the name of a page function an agent's form
    * submission calls just before its own check, so that a test can change the form in the one
-   * moment a busy page could. Only chrome code in the content process can set it; null otherwise.
+   * moment a busy page could. Only chrome code in the content process can set it, and it is read
+   * only in automation (`Cu.isInAutomation`), never in a release; null otherwise.
    * @type {string | null}
    */
-  static _beforeSubmitCheck = null;
+  static _beforeSubmitCheckForTests = null;
 
   /** @type {WeakRef<Element> | null} the last largest scrollable, reused while it can scroll */
   #largest = null;
@@ -195,6 +198,12 @@ export class VimmaChild extends JSWindowActorChild {
    * @type {{ gen: number, id: number, outcome: "pending" | "clicked" | "skipped" } | null}
    */
   #agentClick = null;
+  /**
+   * The page as it was just before the agent's last click here (#510), for `changes`: what
+   * changed in place when the click loaded no page.
+   * @type {{ gen: number, id: number, before: ReturnType<typeof pageMarks> } | null}
+   */
+  #agentWatch = null;
   /**
    * The agent's last fill of one field here (docs/specs/mcp-forms.md F12): its element and
    * whether it is still to run, kept its value, was put back by the page, or was skipped because
@@ -726,6 +735,16 @@ export class VimmaChild extends JSWindowActorChild {
         const last = this.#agentClick;
         return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
       }
+      case "changes": {
+        const watch = this.#agentWatch;
+        // Against the same list as before the click: a newer `vimma_elements` here ends it.
+        if (!known || !watch || watch.gen !== data.gen || watch.id !== data.id) return null;
+        try {
+          return pageChanges(watch.before, this.#pageMarks(data.id));
+        } catch {
+          return null;
+        }
+      }
       case "inspect-fill":
         return fillTargetOf(el, data.value);
       case "fill":
@@ -807,7 +826,7 @@ export class VimmaChild extends JSWindowActorChild {
     this.#agentClick = sent;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
-      const test = VimmaChild._beforeSubmitCheck;
+      const test = Cu.isInAutomation ? VimmaChild._beforeSubmitCheckForTests : null;
       if (test) {
         try {
           /** @type {any} */ (this.contentWindow)?.wrappedJSObject[test]?.();
@@ -851,8 +870,16 @@ export class VimmaChild extends JSWindowActorChild {
     if (!this.#asAsked(el, asked)) return "changed";
     const click = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
     this.#agentClick = click;
+    this.#agentWatch = null;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
+      try {
+        if (Date.now() <= until && el.isConnected) {
+          this.#agentWatch = { gen: asked.gen, id: asked.id, before: this.#pageMarks(asked.id) };
+        }
+      } catch {
+        // The page's DOM broke the snapshot: the click and its outcome (M28) go on without it.
+      }
       // A busy page can delay this past the parent's wait: then nothing is clicked.
       const ran =
         Date.now() <= until && el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
@@ -860,6 +887,15 @@ export class VimmaChild extends JSWindowActorChild {
       click.outcome = ran ? "clicked" : "skipped";
     });
     return "ok";
+  }
+
+  /**
+   * This frame's page as a click on the listed element `id` could change it in place (#510).
+   * @param {number} id
+   */
+  #pageMarks(id) {
+    const listed = this.#agentEls.els.map((ref) => ref.deref());
+    return pageMarks(/** @type {Document} */ (this.document), listed, id);
   }
 
   /**
