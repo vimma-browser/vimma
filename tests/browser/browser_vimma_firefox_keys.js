@@ -7,7 +7,8 @@
 // ctrl+b never run Firefox's action, in any mode. ctrl+t, ctrl+l and ctrl+tab are Vimma
 // bindings now, with Firefox's meaning, and every Firefox key on a chord Vimma binds is off
 // (bound means off). [firefox] disable / enable in config.toml change the rest; about:vimma
-// lists it.
+// lists it. On macOS Firefox's accel is cmd: its keys are the macOS inventory's
+// (FIREFOX_SHORTCUTS_MACOS), and disable = "all" keeps cmd+q (docs/specs/macos-build.md).
 
 "use strict";
 
@@ -22,6 +23,13 @@ const { ConfigHost } = ChromeUtils.importESModule(
 const { AboutVimma } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/about/AboutVimma.sys.mjs",
 );
+const { xulKeyChord } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/firefox-keys.mjs",
+);
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+
+/** Firefox's accel is cmd on macOS, where its keys move off Vimma's ctrl chords. */
+const MAC = AppConstants.platform == "macosx";
 
 const ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -29,17 +37,24 @@ const ROOT = getRootDirectory(gTestPath).replace(
 );
 const PLAIN = ROOT + "file_vimma_plain.html";
 
-/** The overlapping Firefox shortcuts on Linux (Firefox 157), by chord: `<key>` id. */
-const OVERLAP = {
-  w: "key_close",
-  u: "key_viewSource",
-  h: "key_gotoHistory",
-  d: "addBookmarkAsKb",
-  o: "openFileKb",
-  i: "key_viewInfo",
-  k: "key_search",
-  b: "viewBookmarksSidebarKb",
-};
+/** Vimma's ctrl keys that Firefox binds on Linux. */
+const LETTERS = ["w", "u", "h", "d", "o", "i", "k", "b"];
+/**
+ * The overlapping Firefox shortcuts, by chord: `<key>` id. Linux (Firefox 157) has one on each
+ * of LETTERS; macOS (Firefox 158) only ctrl+u, the open-tabs sidebar.
+ */
+const OVERLAP = MAC
+  ? { u: "viewOpenTabsSidebarKb" }
+  : {
+      w: "key_close",
+      u: "key_viewSource",
+      h: "key_gotoHistory",
+      d: "addBookmarkAsKb",
+      o: "openFileKb",
+      i: "key_viewInfo",
+      k: "key_search",
+      b: "viewBookmarksSidebarKb",
+    };
 
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-firefox-keys-${Date.now()}`);
 const file = PathUtils.join(dir, "config.toml");
@@ -113,11 +128,12 @@ add_task(async function the_overlapping_and_the_bound_keys_are_disabled_the_othe
   for (const id of Object.values(OVERLAP)) {
     Assert.equal(document.getElementById(id).getAttribute("disabled"), "true", `#${id} is off`);
   }
-  // Bound means off (firefox-keys decision 2): Vimma binds these chords, in every keyset.
+  // Bound means off (firefox-keys decision 2): Vimma binds these chords, in every keyset. On
+  // macOS they are cmd chords, off under the default "all", and cmd+q stays (the macOS task).
   for (const id of [
     "key_newNavigatorTab",
     "focusURLBar",
-    "key_quitApplication",
+    ...(MAC ? [] : ["key_quitApplication"]),
     "goBackKb",
     "key_reload2",
     "key_fullZoomEnlarge",
@@ -144,8 +160,9 @@ add_task(async function no_overlapping_shortcut_fires_and_the_page_gets_the_key(
   const tab = await insertModePage();
   const browser = tab.linkedBrowser;
   const tabs = gBrowser.tabs.length;
-  for (const [letter, id] of Object.entries(OVERLAP)) {
-    const spy = spyKey(id);
+  for (const letter of LETTERS) {
+    const id = OVERLAP[letter];
+    const spy = id ? spyKey(id) : { count: 0 };
     EventUtils.synthesizeKey(letter, { ctrlKey: true });
     if (letter === "b") {
       // Vimma's prefix in every mode: it waits for the next key, which Esc cancels.
@@ -158,7 +175,7 @@ add_task(async function no_overlapping_shortcut_fires_and_the_page_gets_the_key(
         `the page got ctrl+${letter}`,
       );
     }
-    Assert.equal(spy.count, 0, `ctrl+${letter} did not run #${id}`);
+    Assert.equal(spy.count, 0, `ctrl+${letter} did not run #${id ?? "a Firefox key"}`);
   }
   Assert.equal(gBrowser.tabs.length, tabs, "no tab opened or closed (ctrl+w, ctrl+u)");
   Assert.equal(gBrowser.selectedTab, tab, "the page's tab is still selected");
@@ -209,40 +226,47 @@ add_task(async function ctrl_t_ctrl_l_and_ctrl_tab_are_vimmas_with_firefoxs_mean
 });
 
 add_task(async function about_vimma_lists_what_is_off() {
-  // A list names chords no key has (ctrl+e, ctrl+y on Linux); "all", the default, names none.
-  const list = [...Object.keys(OVERLAP), "e", "y"].map((l) => `"ctrl+${l}"`).join(", ");
+  // A list names chords no key has (ctrl+e, ctrl+y on Linux; on macOS all but ctrl+u); "all",
+  // the default, names none.
+  const list = [...LETTERS, "e", "y"].map((l) => `"ctrl+${l}"`).join(", ");
   await useConfig(`[firefox]\ndisable = [${list}]`);
   const data = await AboutVimma.collect(window);
   const off = Object.fromEntries(data.firefoxKeys.off.map((k) => [k.chord, k.id]));
   for (const [letter, id] of Object.entries(OVERLAP)) {
     Assert.equal(off[`ctrl+${letter}`], id, `about:vimma lists ctrl+${letter} (#${id})`);
   }
-  Assert.deepEqual(data.firefoxKeys.unmatched, ["ctrl+e", "ctrl+y"], "no Firefox key on these");
+  const unmatched = [...LETTERS.filter((l) => !(l in OVERLAP)), "e", "y"].map((l) => `ctrl+${l}`);
+  Assert.deepEqual(data.firefoxKeys.unmatched, unmatched, "no Firefox key on these");
   Assert.stringContains(AboutVimma.report(data), "Firefox shortcuts on: ", "the report says so");
 });
 
 add_task(async function disable_all_turns_off_the_unbound_ones_and_enable_keeps_one() {
-  await useConfig(`[firefox]\ndisable = "all"\nenable = ["ctrl+t"]`);
+  // Firefox's new-tab key is accel+t, cmd+t on macOS. Enabling ctrl+t there would only drop
+  // Vimma's ctrl+t binding and leave no key to open the tab.
+  const newTab = MAC ? "meta+t" : "ctrl+t";
+  await useConfig(`[firefox]\ndisable = "all"\nenable = ["${newTab}"]`);
   Assert.equal(document.getElementById("focusURLBar").getAttribute("disabled"), "true");
   Assert.equal(document.getElementById("key_find").getAttribute("disabled"), "true");
-  Assert.equal(
-    document.getElementById("key_quitApplication").getAttribute("disabled"),
-    "true",
-    "ctrl+q is Vimma's quit now",
-  );
+  if (!MAC) {
+    Assert.equal(
+      document.getElementById("key_quitApplication").getAttribute("disabled"),
+      "true",
+      "ctrl+q is Vimma's quit now",
+    );
+  }
   Assert.ok(!document.getElementById("key_newNavigatorTab").hasAttribute("disabled"), "enabled");
 
   const tab = await insertModePage();
   const spy = spyKeyElement("key_find");
-  EventUtils.synthesizeKey("f", { ctrlKey: true });
-  Assert.ok(await waitForPageKey(tab.linkedBrowser, ["f", "!f"]), "the page got ctrl+f");
-  Assert.equal(spy.count, 0, "ctrl+f no longer opens Firefox's find bar");
+  EventUtils.synthesizeKey("f", { accelKey: true });
+  Assert.ok(await waitForPageKey(tab.linkedBrowser, ["f", "!f"]), "the page got accel+f");
+  Assert.equal(spy.count, 0, "accel+f no longer opens Firefox's find bar");
 
-  // ctrl+t: Firefox's key is on, and Vimma binds it too: Vimma takes the keydown, so exactly
-  // one tab opens.
+  // accel+t: Firefox's key is on. On Linux Vimma binds ctrl+t too and takes the keydown; on
+  // macOS Vimma does not bind cmd+t. Either way exactly one tab opens.
   const tabs = gBrowser.tabs.length;
   const opened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
-  EventUtils.synthesizeKey("t", { ctrlKey: true });
+  EventUtils.synthesizeKey("t", { accelKey: true });
   const { target: fresh } = await opened;
   await new Promise((r) => setTimeout(r, 300));
   Assert.equal(gBrowser.tabs.length, tabs + 1, "one tab, not two");
@@ -251,6 +275,10 @@ add_task(async function disable_all_turns_off_the_unbound_ones_and_enable_keeps_
 });
 
 add_task(async function enable_gives_one_back_and_a_list_replaces_the_default() {
+  if (MAC) {
+    await enableAndListOnMacos();
+    return;
+  }
   // ctrl+j unbound and not on the list: Firefox's again, as the list replaces "all".
   await useConfig(`[keys]\nweb_search = []\n[firefox]\ndisable = ["ctrl+u"]\nenable = []`);
   Assert.ok(!document.getElementById("key_search2").hasAttribute("disabled"), "all is undone");
@@ -276,6 +304,35 @@ add_task(async function enable_gives_one_back_and_a_list_replaces_the_default() 
   await ConfigHost.reload();
   Assert.equal(document.getElementById("key_close").getAttribute("disabled"), "true", "default");
 });
+
+/**
+ * The macOS form of the task above: Firefox's keys there are cmd chords Vimma does not bind, so
+ * a list turns off what it names and leaves the rest Firefox's, but for the keys on chords Vimma
+ * binds (ctrl+u, F5).
+ */
+async function enableAndListOnMacos() {
+  await useConfig(`[firefox]\ndisable = ["meta+u"]\nenable = []`);
+  const off = (id) => document.getElementById(id).getAttribute("disabled") === "true";
+  Assert.ok(off("key_viewSource"), "cmd+u is on the list");
+  Assert.ok(!off("key_search2"), "all is undone: cmd+alt+f is Firefox's");
+  Assert.ok(!off("key_find"), "cmd+f, unbound and not listed, is Firefox's");
+  Assert.ok(!off("key_close"), "cmd+w, unbound and not listed, is Firefox's");
+  Assert.ok(off("viewOpenTabsSidebarKb"), "ctrl+u is Vimma's: bound, so off");
+  Assert.ok(off("key_reload2"), "F5 is Vimma's reload: bound, so off");
+
+  await useConfig(`[firefox]\nenable = ["meta+w"]`);
+  Assert.ok(!off("key_close"), "cmd+w enabled");
+  Assert.ok(off("key_gotoHistory"), "all turns cmd+shift+h off");
+  const tab = await insertModePage();
+  const closing = BrowserTestUtils.waitForTabClosing(tab);
+  EventUtils.synthesizeKey("w", { metaKey: true });
+  await closing;
+  await TestUtils.waitForCondition(() => !tab.isConnected, "an enabled cmd+w closes the tab");
+
+  await IOUtils.remove(file);
+  await ConfigHost.reload();
+  Assert.ok(off("key_close"), "default: all turns cmd+w off");
+}
 
 add_task(async function a_key_firefox_re_enables_is_turned_off_again() {
   const key = document.getElementById("key_viewSource");
@@ -303,12 +360,14 @@ add_task(async function the_default_turns_off_plain_and_function_keys_too() {
 });
 
 add_task(async function enable_gives_ctrl_j_back_and_the_overlay_and_about_vimma_list_it() {
-  await useConfig(`[firefox]\nenable = ["ctrl+j"]`);
-  Assert.ok(!document.getElementById("key_search2").hasAttribute("disabled"), "ctrl+j on");
+  // key_search2 is cmd+alt+f on macOS.
+  const search2 = MAC ? "alt+meta+f" : "ctrl+j";
+  await useConfig(`[firefox]\nenable = ["${search2}"]`);
+  Assert.ok(!document.getElementById("key_search2").hasAttribute("disabled"), `${search2} on`);
   const data = await AboutVimma.collect(window);
   Assert.ok(
-    data.firefoxKeys.on.some((k) => k.chord === "ctrl+j" && k.id === "key_search2"),
-    "about:vimma lists ctrl+j as on",
+    data.firefoxKeys.on.some((k) => k.chord === search2 && k.id === "key_search2"),
+    `about:vimma lists ${search2} as on`,
   );
   const state = VimmaHost._state(window);
   state.help.open();
@@ -319,6 +378,32 @@ add_task(async function enable_gives_ctrl_j_back_and_the_overlay_and_about_vimma
     "Firefox (on in config.toml)",
   );
   state.help.close();
+});
+
+// docs/specs/macos-build.md behaviour 4 and its Tests section.
+add_task(async function accel_is_cmd_and_disable_all_keeps_cmd_q_on_macos() {
+  if (!MAC) {
+    Assert.ok(true, "macOS only");
+    return;
+  }
+  await useConfig(`[firefox]\ndisable = "all"`);
+  const chord = (id) => {
+    const el = document.getElementById(id);
+    const [key, keycode, modifiers] = ["key", "keycode", "modifiers"].map((a) =>
+      el.getAttribute(a),
+    );
+    return xulKeyChord({ key, keycode, modifiers }, { mac: true });
+  };
+  Assert.equal(chord("key_newNavigatorTab"), "meta+t", "accel is cmd");
+  Assert.equal(chord("key_quitApplication"), "meta+q");
+  const quit = document.getElementById("key_quitApplication");
+  Assert.ok(!quit.hasAttribute("disabled"), "all keeps cmd+q");
+  const data = await AboutVimma.collect(window);
+  const off = data.firefoxKeys.off.map((k) => `${k.chord} ${k.id}`);
+  for (const k of ["meta+t key_newNavigatorTab", "meta+w key_close", "meta+l focusURLBar"]) {
+    Assert.ok(off.includes(k), `about:vimma lists ${k} as off`);
+  }
+  Assert.ok(!off.some((k) => k.endsWith(" key_quitApplication")), "cmd+q is not listed as off");
 });
 
 add_task(async function enabling_a_chord_the_user_binds_is_an_error() {

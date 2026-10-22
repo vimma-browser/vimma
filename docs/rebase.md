@@ -282,7 +282,8 @@ prefs, so a green import alone is not enough: run the whole directory, not a sub
 When a bump fails here, read `tests/browser/browser_vimma_firefox_coverage.js` first: it compares
 Firefox's keysets, `ShortcutUtils` and the menu bar with `FIREFOX_SHORTCUTS` in
 `packages/vimma-core/src/firefox-keys.mjs`, and each failure names the row to add (with a fate)
-or drop. Then run `npm run gen-docs` so `docs/bindings.md` lists the new table.
+or drop. On a Mac it compares them with `FIREFOX_SHORTCUTS_MACOS`, the same rows with macOS's
+chords (`MAC_CHANGES`) and macOS's own keys (`MAC_ONLY`): a macOS failure is fixed there. Then run `npm run gen-docs` so `docs/bindings.md` lists the new table.
 
 ## 5. Artifact build and the suite on it
 

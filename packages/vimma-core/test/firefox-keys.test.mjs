@@ -3,9 +3,11 @@
 import { describe, test, expect } from "vitest";
 import {
   FIREFOX_SHORTCUTS,
+  FIREFOX_SHORTCUTS_MACOS,
   OVERLAP_CHORDS,
   boundChords,
   canonicalChord,
+  firefoxShortcuts,
   pageFirst,
   planFirefoxKeys,
   xulKeyChord,
@@ -128,9 +130,35 @@ describe("planFirefoxKeys", () => {
       { id: "key_aboutProcesses", chord: "shift+esc" },
       { id: "key_quitApplication", chord: "meta+q" },
     ];
-    expect(ids(planFirefoxKeys(keys, { disable: "all", enable: [] }, { mac: true }))).toEqual([
+    expect(ids(planFirefoxKeys(keys, { disable: "all", enable: [] }))).toEqual([
       "key_aboutProcesses",
       "key_quitApplication",
+    ]);
+  });
+
+  // docs/specs/macos-build.md behaviour 4: accel is cmd, and "all" keeps cmd+q.
+  test('"all" on macOS keeps cmd+q and reads the macOS fates', () => {
+    const keys = [
+      { id: "key_quitApplication", chord: "meta+q" },
+      { id: "key_undo", chord: "meta+z", internal: true },
+      { id: "toggleSidebarKb", chord: "ctrl+z" },
+      { id: "viewGenaiChatSidebarKb", chord: "ctrl+x" },
+      { id: "key_enterFullScreen_compat", chord: "f11" },
+      { id: "key_newNavigatorTab", chord: "meta+t" },
+      { id: "plain", chord: "x" },
+    ];
+    const all = { disable: /** @type {"all"} */ ("all"), enable: [] };
+    expect(ids(planFirefoxKeys(keys, all, { mac: true }))).toEqual([
+      "toggleSidebarKb",
+      "viewGenaiChatSidebarKb",
+      "key_enterFullScreen_compat",
+      "key_newNavigatorTab",
+    ]);
+    // Linux's table: ctrl+z and ctrl+x are the editor's (fate d), and meta+q is any meta chord.
+    expect(ids(planFirefoxKeys(keys, all))).toEqual([
+      "key_quitApplication",
+      "key_enterFullScreen_compat",
+      "key_newNavigatorTab",
     ]);
   });
 
@@ -364,5 +392,148 @@ describe("bound means off (decision 2)", () => {
   test("an internal key stays the editor's even when bound", () => {
     const plan = planFirefoxKeys(KEYS, { disable: [], enable: [] }, { bound: new Set(["ctrl+c"]) });
     expect(ids(plan)).toEqual([]);
+  });
+});
+
+// Issue #384, docs/specs/macos-build.md: Firefox 158's keys in a macOS browser window.
+describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
+  const keymap = compileKeymap();
+  const rows = FIREFOX_SHORTCUTS_MACOS;
+  const keyRows = rows.filter((r) => r.id && (r.source === "main" || r.source === "devtools"));
+  const byId = new Map(keyRows.map((r) => [r.id, r]));
+
+  test("firefoxShortcuts picks the platform's table, Linux's by default", () => {
+    expect(firefoxShortcuts()).toBe(FIREFOX_SHORTCUTS);
+    expect(firefoxShortcuts({ mac: false })).toBe(FIREFOX_SHORTCUTS);
+    expect(firefoxShortcuts({ mac: true })).toBe(FIREFOX_SHORTCUTS_MACOS);
+  });
+
+  test("is well formed: canonical chords, fates a-d, a/b rows name an existing action", () => {
+    expect(rows.length).toBeGreaterThan(100);
+    for (const r of rows) {
+      const where = `${r.chord} ${r.id}`;
+      expect(canonicalChord(r.chord), where).toBe(r.chord);
+      expect(["a", "b", "c", "d"], where).toContain(r.fate);
+      expect(r.does, where).toBeTruthy();
+      if (r.action) expect(getAction(r.action), where).toBeDefined();
+      if (r.fate === "b") expect(r.action, where).toBeTruthy();
+      if (r.action) expect(["all", "normal"], where).toContain(r.modes);
+      if (r.fate === "a" || r.fate === "b") expect(["P", "V"], where).toContain(r.first);
+      else expect(r.first, where).toBeUndefined();
+    }
+    expect(byId.size, "each <key> id is one row").toBe(keyRows.length);
+  });
+
+  test.each([
+    ["key_newNavigatorTab", "meta+t"],
+    ["focusURLBar", "meta+l"],
+    ["key_close", "meta+w"],
+    ["key_search2", "alt+meta+f"],
+    ["key_openDownloads", "meta+j"],
+    ["goBackKb", "meta+left"],
+    ["goForwardKb", "meta+right"],
+    ["goBackKb2", "meta+["],
+    ["showAllHistoryKb", "meta+y"],
+    ["key_gotoHistory", "shift+meta+h"],
+    ["key_enterFullScreen", "ctrl+meta+f"],
+    ["key_enterFullScreen_old", "shift+meta+f"],
+    ["key_togglePictureInPicture", "alt+meta+}"],
+    ["viewGenaiChatSidebarKb", "ctrl+x"],
+    ["toggleSidebarKb", "ctrl+z"],
+    ["key_selectTab1", "meta+1"],
+    ["key_selectTab8", "meta+8"],
+    ["key_selectLastTab", "meta+9"],
+    ["key_toggleToolbox", "alt+meta+i"],
+    ["key_browserToolbox", "alt+shift+meta+i"],
+    ["key_inspector", "alt+meta+c"],
+    ["key_inspectorMac", "shift+meta+c"],
+    ["key_dom", "alt+meta+w"],
+  ])("accel is cmd: %s is %s, unbound and off", (id, chord) => {
+    const row = byId.get(id);
+    expect(row).toMatchObject({ chord, fate: "c" });
+    expect(row?.action).toBeUndefined();
+  });
+
+  test("keys on the same chord as on Linux keep their Vimma action", () => {
+    expect(byId.get("key_reload2")).toMatchObject({ chord: "f5", action: "reload" });
+    expect(byId.get("key_toggleMute")).toMatchObject({ chord: "ctrl+m", action: "mute_tab" });
+    expect(byId.get("key_toggleToolboxF12")).toMatchObject({ chord: "f12", action: "devtools" });
+    expect(byId.get("key_enterFullScreen_compat")).toMatchObject({
+      chord: "f11",
+      action: "toggle_fullscreen",
+    });
+    // The open-tabs sidebar is ctrl+u on macOS, which is Vimma's half-page scroll there too.
+    expect(byId.get("viewOpenTabsSidebarKb")).toMatchObject({
+      chord: "ctrl+u",
+      fate: "a",
+      action: "scroll_half_up",
+      modes: "normal",
+      first: "V",
+    });
+  });
+
+  test('cmd+q quits as macOS runs it: fate d, so "all" keeps it', () => {
+    expect(byId.get("key_quitApplication")).toMatchObject({ chord: "meta+q", fate: "d" });
+  });
+
+  test("the macOS-only keys are rows; the Linux-only ones and the menu bar's are not", () => {
+    for (const id of [
+      "key_viewSourceSafari",
+      "key_findSelection",
+      "key_stop_mac",
+      "key_sanitize_mac",
+      "key_minimizeWindow",
+      "key_preferencesCmdMac",
+      "key_hideThisAppCmdMac",
+      "key_hideOtherAppsCmdMac",
+      "key_exitFullScreen_old",
+      "key_exitFullScreen_compat",
+    ]) {
+      expect(byId.has(id), id).toBe(true);
+    }
+    for (const id of ["focusURLBar2", "key_reload_skip_cache2"]) {
+      expect(byId.has(id), id).toBe(false);
+    }
+    const chords = new Set(rows.map((r) => r.chord));
+    for (const chord of ["alt+d", "ctrl+f5", "ctrl+}", "ctrl+f4", "f10", "alt+f"]) {
+      expect(chords.has(chord), chord).toBe(false);
+    }
+    expect(rows.filter((r) => r.source === "menubar")).toEqual([]);
+    expect(rows.filter((r) => r.source === "devtools" && !r.conditional)).toHaveLength(15);
+  });
+
+  test("ShortcutUtils' macOS tab keys are chrome rows, unbound", () => {
+    const chrome = rows.filter((r) => r.source === "chrome");
+    for (const chord of [
+      "alt+meta+left",
+      "alt+meta+up",
+      "alt+meta+right",
+      "alt+meta+down",
+      "meta+{",
+      "meta+}",
+    ]) {
+      expect(chrome.find((r) => r.chord === chord)?.fate, chord).toBe("c");
+    }
+    expect(chrome.find((r) => r.chord === "ctrl+tab")?.action).toBe("next_tab");
+  });
+
+  test("every a/b row with an action is bound to it by the default keymap, in its modes", () => {
+    for (const r of rows) {
+      if (!r.action || r.unbound) continue;
+      const modes =
+        r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
+      for (const mode of modes) {
+        const node = keymap.trie(/** @type {any} */ (mode)).children.get(r.chord);
+        expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
+      }
+    }
+  });
+
+  test("every c chord (but the conditional ones) is unbound by default", () => {
+    const bound = boundChords(keymap);
+    for (const r of rows) {
+      if (r.fate !== "c" || r.conditional) continue;
+      expect(bound.has(r.chord), `${r.chord} (${r.id})`).toBe(false);
+    }
   });
 });

@@ -7,9 +7,10 @@
 // the window (#mainKeyset, the DevTools' #devtoolsKeyset, the conditional ones) get
 // `disabled="true"`, which dom/events/GlobalKeyListener.cpp reads at key time (CanHandle →
 // KeyElementIsDisabled), so a disabled shortcut neither runs nor is reserved: the page gets the
-// chord. Core firefox-keys.mjs decides which; this reads the elements and writes the attribute.
+// chord. Core firefox-keys.mjs decides which, from the platform's inventory (macOS has its own);
+// this reads the elements and writes the attribute.
 
-import { FIREFOX_SHORTCUTS, planFirefoxKeys, xulKeyChord } from "../core/firefox-keys.mjs";
+import { firefoxShortcuts, planFirefoxKeys, xulKeyChord } from "../core/firefox-keys.mjs";
 
 /** @import { FirefoxKeySetting } from "../core/config.mjs" */
 
@@ -170,7 +171,7 @@ export class FirefoxKeys {
     const plan = planFirefoxKeys(
       keys.filter((k) => !k.firefoxOff),
       this.setting,
-      { bound: this.bound },
+      { bound: this.bound, mac: this.mac },
     );
     const off = new Set(plan.off.map((k) => k.el));
     for (const { el } of keys) {
@@ -205,7 +206,9 @@ export class FirefoxKeys {
       .filter((k) => k.chord && enabled.has(k.chord) && !k.firefoxOff && !k.internal)
       .map((k) => {
         const chord = /** @type {string} */ (k.chord);
-        const row = FIREFOX_SHORTCUTS.find((r) => r.chord === chord && r.id === k.el.id);
+        const row = firefoxShortcuts({ mac: this.mac }).find(
+          (r) => r.chord === chord && r.id === k.el.id,
+        );
         const label = row?.does ?? k.el.getAttribute("command") ?? k.el.id;
         return { chord, id: k.el.id, label };
       });

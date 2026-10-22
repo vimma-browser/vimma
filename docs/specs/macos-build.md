@@ -1,7 +1,7 @@
 # Spec: macos-build
 
 Status: draft (sub-PRs 3 and 6 built; sub-PR 2 built except its two macOS mochitests, which need
-sub-PR 1's Mac job) · Area: `configs/macos/mozconfig`, `tools/package/macos-dmg.sh` (new),
+sub-PR 1's Mac job; sub-PR 5's macOS key inventory built, #384) · Area: `configs/macos/mozconfig`, `tools/package/macos-dmg.sh` (new),
 `configs/branding/vimma/`, `tools/artifact-build/`, `tools/e2e/`, `tools/mochitest.mjs`,
 `tools/start.mjs`, `tools/vimma-ctl/src/discovery.rs`, `tools/vimma-ctl/src/mcp_serve.rs`,
 `.github/workflows/ci.yml`, `e2e.yml`,
@@ -49,7 +49,7 @@ release gate opens. Windows is not a target platform.
 3. Every Vimma key works as on Linux: `ctrl+b` is the prefix, and the modal layer, hints,
    workspaces, panes, the side panel, the status bar and `ctrl+b ?` behave the same.
 4. `cmd+q` quits, as `ctrl+q` does on Linux: Firefox's `accel` is `cmd` (meta) on macOS, and
-   `[firefox] disable = "all"` keeps `cmd+q` (`ALL_KEEP`, firefox-keys).
+   `[firefox] disable = "all"` keeps `cmd+q` (fate d in the macOS inventory, decision 22).
 5. A character typed with Option matches a binding for that character: Option+shift+8 on a Finnish
    layout types `{` and fires a `{` binding. An `alt+<letter>` binding does not fire on a Mac
    (open question 5).
@@ -238,7 +238,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 | vimma-ctl in CI         | `.github/workflows/ci.yml:110-130`                                                                        | Built and tested on `ubuntu-latest` only                                                                                                                                                                         | A macOS cargo job                                   |
 | Agent attention         | `vimma/host/agent-ui.mjs:180-188` (vimma-mcp)                                                             | `getAttention()` bounces the Dock icon (`widget/cocoa/nsCocoaWindow.mm:7338-7341`); `nsIAlertsService` posts through `widget/cocoa/MacOSNotificationCenter.mm`. Whether an ad hoc app may post is **unverified** | A hand check                                        |
 | `vimma-ctl mcp` caller  | `tools/vimma-ctl/src/mcp_serve.rs:508-519` (`parent_name`): `/proc/<ppid>/comm` on Linux only             | No `/proc` on macOS; the caller gets no name label                                                                                                                                                               | The macOS process name (decision 21)                |
-| Keys: accel             | `vimma/host/firefox-keys.mjs:55-57`; `packages/vimma-core/src/firefox-keys.mjs:692-693, 720-731, 784`     | `accel` is meta; `disable = "all"` keeps `cmd+q`                                                                                                                                                                 | Nothing in core; a macOS key inventory              |
+| Keys: accel             | `vimma/host/firefox-keys.mjs:55-57`; `packages/vimma-core/src/firefox-keys.mjs:692-693, 720-731, 784`     | `accel` is meta; `disable = "all"` keeps `cmd+q`                                                                                                                                                                 | The macOS key inventory (decision 22)               |
 | Keys: Option characters | `packages/vimma-core/src/keys.mjs:376-406`; `widget/cocoa/nsCocoaUtils.mm:725-731` (Option sets AltGraph) | Option+shift+8 is `{` and matches a `{` binding (key-handling-batch). Option+j types `∆`, so an `alt+j` binding never fires                                                                                      | Open question 5                                     |
 | Keys: text bindings     | `packages/vimma-core/src/editable.mjs:119-121`; `vimma/host/VimmaHost.sys.mjs:144, 1691-1696`             | On macOS Vimma leaves `ctrl+h` to Cocoa, which already deletes backward (`widget/cocoa/NativeKeyBindings.mm:87`)                                                                                                 | Nothing                                             |
 | Keys: native menu bar   | `widget/cocoa/nsMenuItemX.mm:316-357`                                                                     | Each menu item takes its key equivalent from its `<key>` element. Whether turning a `<key>` off (firefox-keys) also clears the menu's equivalent is **unverified**                                               | A hand check; the macOS key inventory               |
@@ -394,6 +394,27 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     `/bin/ps -o comm= -p <ppid>`, which prints the executable's path, and keeps the last component,
     cleaned to 32 printable characters as on Linux. The label is never proof of anything
     (vimma-mcp decision 4). Rejected: `proc_name` from libproc, because it needs `unsafe` FFI.
+
+### Keys on macOS
+
+22. **A macOS inventory derived from the Linux one.** `FIREFOX_SHORTCUTS_MACOS`
+    (`packages/vimma-core/src/firefox-keys.mjs`) is the Linux inventory with each row's macOS
+    chord (`MAC_CHANGES`, by `<key>` id), without the keys macOS lacks (`focusURLBar2`,
+    `key_reload_skip_cache2`, `ctrl+F4`, F10 and the menu bar's access keys, since
+    `ui.key.menuAccessKey` is 0 there), and with macOS's own keys (`MAC_ONLY`). The host reads it
+    on a Mac for what `disable = "all"` turns off and which out-of-keyset tab keys it stops; the
+    keymap, the page-first rule and `bindings.md` stay on the Linux table, because Vimma's keymap
+    is the same on both platforms until the macOS keymap (issues #385, #386) changes it. A row
+    whose key moves to a chord Vimma does not bind is fate c there (unbound and off): `cmd+t`,
+    `cmd+l`, `cmd+1..9`, the DevTools' `cmd+alt+<key>` and ShortcutUtils' `cmd+shift+[`,
+    `cmd+shift+]` and `cmd+alt+arrow` tab keys (Firefox 158,
+    `toolkit/modules/ShortcutUtils.sys.mjs:380-445`). `key_quitApplication` is `cmd+q` and
+    `internal` on macOS (`browser/base/content/browser-sets.inc.xhtml`, the `XP_MACOSX` branch),
+    so it is fate d: `"all"` keeps it, as behaviour 4 says. Rejected: a macOS chord column in
+    every row, because the keymap, `pageFirst` and the docs would each have to pick a column
+    while only the host and the coverage test differ by platform; and a hand-written second
+    table, because its 147 rows would be kept in step with Linux's 140 by hand, where 77 rows
+    change their chord, 12 go and 19 are macOS's own.
 
 ### Not in this spec
 
