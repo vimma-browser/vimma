@@ -726,6 +726,14 @@ add_task(async function test_clamav_stale_definitions_and_clamd() {
   // a socket; a Unix socket of the user's is a socket, owned by someone other than root.
   Assert.deepEqual(AgentDownloads._socketOwnerForTests("/"), { isSocket: false, uid: 0 });
   Assert.equal(AgentDownloads._socketOwnerForTests(PathUtils.join(clamDir, "none")), null);
+  if (AppConstants.platform === "macosx") {
+    // root:admin (0:80), so reading st_gid for st_uid would fail here. Linux has no such path
+    // on every distribution, and its statx fields are named, not laid out by hand.
+    Assert.deepEqual(AgentDownloads._socketOwnerForTests("/Applications"), {
+      isSocket: false,
+      uid: 0,
+    });
+  }
   const sock = new FileUtils.File(PathUtils.join(clamDir, "s.ctl"));
   const server = Cc["@mozilla.org/network/server-socket;1"].createInstance(Ci.nsIServerSocket);
   server.initWithFilename(sock, 0o600, -1);

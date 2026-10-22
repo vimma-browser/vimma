@@ -1560,9 +1560,14 @@ Ubuntu, `clamav-daemon` or `clamd` on others), Vimma asks it through `clamdscan`
 is fast. It does so only when `/etc/clamav/clamd.conf` is root's, clamd listens on a local socket
 (`LocalSocket`, no `TCPSocket`) owned by root or `clamav`, and the config has
 `AlertEncrypted yes` and `AlertExceedsMax yes`, so clamd reports what it cannot look inside.
-Otherwise, or if clamd fails or its definitions are old, Vimma uses `clamscan`. The same holds
-on macOS, where ClamAV must be installed in those root-owned paths: a Homebrew install, which
-belongs to your user, is not used.
+Otherwise, or if clamd fails or its definitions are old, Vimma uses `clamscan`.
+
+On macOS the same rules apply. Vimma looks for `clamscan` and `clamdscan` only in `/usr/bin`
+and `/usr/local/bin`, owned by root, and for the config only at `/etc/clamav/clamd.conf`.
+macOS has no `clamav` user, so in practice the socket must be root's. The common installs are
+not used: Homebrew (`/opt/homebrew`), MacPorts (`/opt/local`) and the official installer
+(`/usr/local/clamav`) put ClamAV elsewhere. So on macOS, ClamAV, and clamd especially, is
+usually not used.
 
 ### Side panel
 
