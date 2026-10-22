@@ -15,22 +15,5 @@
     "Hosted Macs run what was built.",
     "Ad hoc signed until a Developer ID exists",
     "Artifact names carry both versions."
-  ],
-  "vimma-mcp.md": [
-    "`vimma-ctl mcp`",
-    "Two switches.",
-    "Queueing.",
-    "Prompt fatigue.",
-    "The yes stands for what was asked",
-    "A grant is per connection and per tool.",
-    "A grant ends",
-    "Visible while it runs.",
-    "Segment",
-    "Commands:",
-    "Config",
-    "Migration.",
-    "ADR-019, \"Agents reach Vimma over MCP, through a confined control-socket role\"",
-    "Replies always fit and always parse.",
-    "Arguments are checked before anything reaches Vimma."
   ]
 }
