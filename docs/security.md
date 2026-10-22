@@ -1397,7 +1397,8 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   step only. A payment step is a `vimma_activate` click, a `vimma_fill` that submits, or a
   `vimma_keys` follow, `gu`, `gU`, `H` or `L`, in an agent tab whose page shows a payment card
   field in any frame (a `cc-*` autocomplete name or form autofill's card heuristics; a frame
-  that fails or does not answer within 5 s counts as one), or whose pressed control has a phrase
+  whose check fails or that does not answer within 5 s counts as one, a frame that navigates
+  away or whose process ends during the check does not), or whose pressed control has a phrase
   of the fixed list (`PAY_PHRASES`, six languages) as whole words in its text, accessible name,
   title or value. Its question **must** name the button (for a key step, its keys), the tab's
   host and the total the page states, quoted after "the page says" and cut at 40 columns; a

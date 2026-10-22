@@ -44,6 +44,12 @@ describe("a payment step (C5, C6)", () => {
     ["Commander"],
     ["Pagar"],
     ["Comprar"],
+    ["Place your order"],
+    ["Complete payment"],
+    ["Submit payment"],
+    ["Order now"],
+    ["Jetzt bestellen"],
+    ["Jetzt zahlen"],
   ])("%s is a pay phrase", (text) => {
     expect(hasPayPhrase(text)).toBe(true);
   });

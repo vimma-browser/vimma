@@ -415,9 +415,9 @@ export const AgentDrive = {
         } else if (id === "history.back" || id === "history.forward") {
           const history = browser.browsingContext?.sessionHistory;
           const delta = id === "history.back" ? -count : count;
-          const index = history ? history.index : 0;
-          const target = history ? Math.min(Math.max(index + delta, 0), history.count - 1) : index;
-          if (!history || target === index) {
+          const here = history ? history.index : 0;
+          const target = history ? Math.min(Math.max(here + delta, 0), history.count - 1) : here;
+          if (!history || target === here) {
             const where = delta < 0 ? "back to" : "forward to";
             Object.assign(result, { ok: false, note: `no page to go ${where} in this tab` });
           } else if (!/^https?:/i.test(String(history.getEntryAtIndex(target)?.URI?.spec ?? ""))) {

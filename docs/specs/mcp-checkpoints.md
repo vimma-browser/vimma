@@ -148,8 +148,8 @@ and the second at the provider's own card fields or pay button.
    checkout, which card fields never see because the agent cannot fill them (mcp-forms F6). The
    cost is an extra question on a button such as "Buy now" that only leads to a checkout.
    Only card fields the page shows count, so that a card form a shop keeps hidden on every page
-   does not make every click a payment; a frame that fails or does not answer in time counts as
-   one, so that a doubt asks. The list lives in `agent-checkpoint.mjs` (`PAY_PHRASES`); `ß`
+   does not make every click a payment; a frame whose check fails or that does not answer in time
+   counts as one, so that a doubt asks. The list lives in `agent-checkpoint.mjs` (`PAY_PHRASES`); `ß`
    matches `ss`, as a page in capitals writes it.
    Rejected: card fields alone, because they miss the one-button checkout, the case with the
    most risk; a cancel-and-ask rule for a load of another site from a checkout page (a hosted

@@ -1858,7 +1858,8 @@ do, answered with one key, after which the agent goes on under the grant it had:
 - **What a form shows.** Where it goes, then each field it sends with its value, cut to fit the
   line (`… (3 more)`); a password, payment card or one-time-code field by its name and `•••`,
   never its value; hidden fields (such as anti-forgery tokens) counted, `+ 2 hidden`. A fill
-  that sends a form shows the fields it fills, then `also` and the rest.
+  that sends a form shows the fields it fills, then `also` and the rest. These are the form's
+  own fields: a page's script can still add data to the request as it is sent.
 - **What counts as paying.** A click, a fill that sends a form, or a key that loads a page (a
   followed link, `gu`, `gU`, `H`, `L`) when the page shows a payment card field, also inside a
   payment provider's frame, or when the button or link says it pays: `pay`, `buy`,

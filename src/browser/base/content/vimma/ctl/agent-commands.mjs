@@ -292,6 +292,16 @@ function firstActing(list) {
 }
 
 /**
+ * The link a follow names now, in the connection's current labels of the page, or null.
+ * @param {any} browser @param {ConnId} conn @param {import("../core/agent-keys.mjs").AgentStep} step
+ */
+function linkOf(browser, conn, step) {
+  const session = AgentDrive.current(conn, browser);
+  const target = session?.byLabel.get(/** @type {string} */ (step.label));
+  return target ? { target, elements: session?.source === "elements" } : null;
+}
+
+/**
  * Whether a key step may pay, and its question's payment part (mcp-checkpoints C6, C7): a
  * follow by the link's words and the page's card fields, a load by the card fields.
  * @param {any} browser @param {ConnId} conn @param {import("../core/agent-keys.mjs").AgentStep} step
@@ -300,12 +310,7 @@ function firstActing(list) {
  */
 async function payStep(browser, conn, step, found = null) {
   if (step.action !== "hint.follow") return AgentAct.payment(browser, { keys: step.keys });
-  let link = found;
-  if (!link) {
-    const session = AgentDrive.current(conn, browser);
-    const target = session?.byLabel.get(/** @type {string} */ (step.label));
-    link = target ? { target, elements: session?.source === "elements" } : null;
-  }
+  const link = found ?? linkOf(browser, conn, step);
   // No such link: the follow is refused as it runs, before anything loads.
   if (!link) return null;
   if (link.elements) {
@@ -593,6 +598,11 @@ const COMMANDS = {
     // own question, so one step never asks twice; later ones ask when they come (`askPay`).
     const first = firstActing(parsed.steps);
     const firstPay = first ? await payStep(asked.tab.linkedBrowser, conn, first.step) : null;
+    // The link the question named: a list made while it waits may give its label to another.
+    const firstLink =
+      first?.step.action === "hint.follow"
+        ? linkOf(asked.tab.linkedBrowser, conn, first.step)
+        : null;
     const pageAsked = docOf(asked.tab.linkedBrowser);
     // A key step shows the call's keys, not only its own, so the yes covers nothing unseen.
     if (firstPay)
@@ -656,7 +666,12 @@ const COMMANDS = {
         // mcp-checkpoints C1, C6: a step that may pay asks under any grant, y or n only.
         askPay: async (step, index, found, until) => {
           const browser = tab.linkedBrowser;
-          if (firstPay && first?.index === index && docOf(browser) === pageAsked) return null;
+          const already =
+            firstPay &&
+            first?.index === index &&
+            docOf(browser) === pageAsked &&
+            (step.action !== "hint.follow" || found?.target === firstLink?.target);
+          if (already) return null;
           const pay = await payStep(browser, conn, step, found);
           if (!pay) return null;
           const at = { ...describeTab(tab), index: what.index, keys: step.keys, pay };

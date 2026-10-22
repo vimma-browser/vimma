@@ -295,6 +295,12 @@ addTidyTask(async function test_a_key_that_acts_where_it_may_pay_asks() {
   const r2 = await c.response(back);
   Assert.equal(r2.error?.reason, "user", "a no stops it");
   Assert.equal(String(tab.linkedBrowser.currentURI.spec), CHECKOUT, "nothing loaded");
+  // A yes to H asked in the call's own question runs it, with no second question.
+  const again = c.request("agent-keys", { tab: idOf(tab), keys: "H" });
+  AgentGate.answer((await question()).id, { kind: "once" });
+  const r3 = await c.response(again);
+  Assert.ok(r3.ok && r3.result.steps[0].ok, "the yes goes back once, unasked again");
+  Assert.equal(r3.result.url, `${PAGE}?paid`, "to the page before");
 });
 
 addTidyTask(async function test_checkpoint_notice_log_row_and_notification() {
