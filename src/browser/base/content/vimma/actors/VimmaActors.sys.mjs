@@ -126,6 +126,67 @@ function framesFor(browser) {
   return focused && focused !== top && focused.top === top ? [focused, top] : [top];
 }
 
+/**
+ * Agent tabs an agent just stepped in (docs/specs/mcp-forms.md F16; security.md M28), by their
+ * <browser>: the top document of the step, the one submission a question allowed during the
+ * running call (its method and destination without query), and the hosts of the submissions
+ * stopped since the step began.
+ * @type {WeakMap<object, { doc: number, allowed: { method: string, where: string } | null,
+ *   blocked: string[] }>}
+ */
+const submitMarks = new WeakMap();
+/** @type {((subject: any) => void) | null} */
+let submitObserver = null;
+
+/** A URI's destination as a submission is compared: scheme, host, port and path. @param {any} uri */
+const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
+
+/**
+ * Every navigating form submission's request passes here, in the parent, whatever started it
+ * (a submit button, `requestSubmit`, a later `submit()`, any frame): in a tab an agent stepped
+ * in, while its page is the one of the step, a submission without the user's activation is
+ * cancelled unless it is the one the question allowed, to the method and destination it named.
+ * The request carries its document's transient user activation, which an agent's click never
+ * gives, so a submission with it is the user's, and it ends the mark.
+ * @param {any} subject
+ */
+function onRequest(subject) {
+  let channel;
+  try {
+    channel = subject.QueryInterface(Ci.nsIHttpChannel);
+  } catch {
+    return;
+  }
+  const info = channel.loadInfo;
+  if (!info?.isFormSubmission) return;
+  const top = info.browsingContext?.top;
+  const browser = top?.embedderElement;
+  const mark = browser ? submitMarks.get(browser) : undefined;
+  if (!mark) return;
+  if (top.currentWindowGlobal?.innerWindowId !== mark.doc || info.hasValidUserGestureActivation) {
+    submitMarks.delete(browser);
+    return;
+  }
+  const uri = channel.URI;
+  const allowed = mark.allowed;
+  if (
+    allowed &&
+    allowed.method === String(channel.requestMethod).toLowerCase() &&
+    allowed.where === whereOf(uri)
+  ) {
+    mark.allowed = null;
+    return;
+  }
+  channel.cancel(Cr.NS_BINDING_ABORTED);
+  let host = "";
+  try {
+    host = String(uri.asciiHost);
+  } catch {
+    // no host to name
+  }
+  if (host && mark.blocked.length < 16) mark.blocked.push(host);
+}
+
 export const VimmaActors = {
   /** Registers the actor pair once per process; vimma.js calls this before VimmaHost.init. */
   register() {
@@ -143,9 +204,6 @@ export const VimmaActors = {
           mousedown: { capture: true, createActor: false },
           // A drag and drop's end is no mouse selection (m1-copy-mode).
           dragstart: { capture: true, createActor: false },
-          // A form submission an agent's click caused, unasked (docs/specs/mcp-forms.md F16):
-          // only a frame an agent stepped in has the actor and its mark.
-          DOMFormBeforeSubmit: { createActor: false },
         },
       },
       allFrames: true,
@@ -359,6 +417,9 @@ export const VimmaActors = {
    */
   activateHint(target) {
     if (target.bc.currentWindowGlobal !== target.wg) return;
+    // The user's own step through their hints: a submission it causes is theirs (mcp-forms F16).
+    const browser = target.bc.top?.embedderElement;
+    if (browser) submitMarks.delete(browser);
     actorFor(target.bc)
       ?.sendQuery("Vimma:ActivateHint", { gen: target.gen, id: target.id })
       .catch(() => {});
@@ -413,10 +474,11 @@ export const VimmaActors = {
    * and the same link. The child answers before it clicks, so a dialog the click opens never
    * holds the reply.
    * @param {HintTarget} target
-   * @param {{ submit: { method: string, action: string } | null, href: string | null }} asked
+   * @param {{ submit: { method: string, action: string } | null, href: string | null,
+   *   until: number }} asked  `until`: ms since the epoch; the child clicks nothing later
    * @returns {Promise<"ok" | "gone" | "changed">}
    */
-  async agentActivate(target, { submit, href }) {
+  async agentActivate(target, { submit, href, until }) {
     if (target.bc.currentWindowGlobal !== target.wg) return "gone";
     try {
       const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
@@ -425,6 +487,7 @@ export const VimmaActors = {
         id: target.id,
         submit,
         href,
+        until,
       });
       return reply === "ok" || reply === "changed" ? reply : "gone";
     } catch {
@@ -433,36 +496,67 @@ export const VimmaActors = {
   },
 
   /**
-   * Tells every frame of the browser's page about an agent's step (docs/specs/mcp-forms.md F16;
-   * security.md M28). `mark`: an agent is about to act here, so a form the page submits from
-   * now on, before the user's own input, is cancelled. `settle`: the step is over; the frames
-   * forget which submission the user allowed, and answer with the hosts of those they stopped.
+   * An agent is about to act in the browser's page (docs/specs/mcp-forms.md F16; security.md
+   * M28): from now until the user's own activation or another page, a form submission there is
+   * cancelled, but for `allowed`, the one the question named, once, during this call.
    * @param {any} browser XULBrowserElement
-   * @param {"mark" | "settle"} op
-   * @returns {Promise<string[]>} the hosts of stopped submissions (`settle`)
+   * @param {{ method: string, action: string } | null} allowed
    */
-  async agentStep(browser, op) {
-    /** @type {any[]} */
-    let contexts;
-    try {
-      contexts = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
-    } catch {
-      return [];
+  agentMark(browser, allowed) {
+    if (!submitObserver) {
+      submitObserver = onRequest;
+      Services.obs.addObserver(submitObserver, "http-on-modify-request");
     }
-    const replies = await Promise.all(
-      contexts.map(async (bc) => {
-        try {
-          // getActor creates the actor where there is none yet, so its frame gets the event.
-          return await actorFor(bc)?.sendQuery("Vimma:AgentStep", { op });
-        } catch {
-          return null; // a frame without the actor (not a web page), or one that went away
-        }
-      }),
-    );
-    // From content processes: only short host strings are taken.
-    return replies
-      .flatMap((r) => (Array.isArray(r) ? r : []))
-      .filter((h) => typeof h === "string" && /^[A-Za-z0-9.\-[\]:]{1,253}$/.test(h));
+    const doc = browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
+    let where = null;
+    if (allowed) {
+      try {
+        where = whereOf(Services.io.newURI(allowed.action));
+      } catch {
+        // not a URL: nothing is allowed
+      }
+    }
+    submitMarks.set(browser, {
+      doc,
+      allowed: allowed && where ? { method: allowed.method, where } : null,
+      blocked: [],
+    });
+  },
+
+  /**
+   * The agent's call is over: the allowed submission is no longer allowed, and the hosts of the
+   * submissions stopped since the mark are returned (the mark stays).
+   * @param {any} browser XULBrowserElement
+   * @returns {string[]}
+   */
+  agentSettle(browser) {
+    const mark = submitMarks.get(browser);
+    if (!mark) return [];
+    mark.allowed = null;
+    const blocked = mark.blocked;
+    mark.blocked = [];
+    return blocked;
+  },
+
+  /**
+   * Whether the agent's last click on `target` ran, or was skipped because the page changed
+   * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away
+   * (the click loaded a page) ran it.
+   * @param {HintTarget} target
+   * @returns {Promise<"clicked" | "skipped" | "pending">}
+   */
+  async agentClickOutcome(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "clicked";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "outcome",
+        gen: target.gen,
+        id: target.id,
+      });
+      return reply === "skipped" || reply === "pending" ? reply : "clicked";
+    } catch {
+      return "clicked";
+    }
   },
 
   /**

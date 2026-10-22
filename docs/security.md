@@ -1062,11 +1062,16 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   `f` hints send, with no event through `nsIDOMWindowUtils` or the widget, so the page gets no
   transient user activation: it cannot write or read the clipboard, use credentials or passkeys,
   or start anything else that needs a real gesture. Vimma **never** gives an agent tab's
-  document user activation. Before the click the child checks again that the element is still
-  the one asked about (not a field, not disabled, a submit only if asked as one, the same link);
-  it answers before it clicks, so a dialog the click opens never holds the call, and a dialog's
-  text reaches the agent only inside the untrusted-content delimiters. No tool answers a page
-  dialog.
+  document user activation. A trusted `click()` still runs the page's click listeners in
+  Firefox's older "handling user input" state, which some checks accept (audible autoplay,
+  pointer lock, a pop-up); pop-ups are refused in agent tabs by their sandbox flags (M10).
+  Before the click the child checks again that the element is still the one asked about (not a
+  field, not disabled, a submit only if asked as one and to the same method and destination,
+  the same link), and once more after the mouse events, which the page can handle; a changed
+  element is not clicked and the call says so. It answers before it clicks, so a dialog the
+  click opens never holds the call; a request that answers after the call stopped waiting
+  clicks nothing. A dialog's text reaches the agent only inside the untrusted-content
+  delimiters, and no tool answers a page dialog.
   [`test_activate_gives_the_page_no_user_activation`](../tests/browser/browser_vimma_mcp_activate.js),
   [`agent_clicks_never_synthesise_input_or_user_activation`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_activate_reports_a_dialog`](../tests/browser/browser_vimma_mcp_activate.js),
@@ -1076,17 +1081,23 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   method is not `dialog`, the element itself, the button it is in or its label's control)
   **must** ask every time, also under a `vimma_activate` grant, with only `y` and `n`, naming
   the form's method, destination and the number of fields it sends; its yes **never** makes a
-  grant. Before every click each frame of the tab is marked, and a navigating submission there
-  (the chrome-only `DOMFormBeforeSubmit`, which a page's `submit()` and `requestSubmit()` pass
-  too) **must** be cancelled while you have given no input in that document since, unless it is
-  the form the question allowed, during that call; the result and `:mcp log` name the host it
-  was going to. Your own submissions in an agent tab, also through your `f` hints, and those of
-  a page no agent stepped in, are untouched. A frame the page creates after the click is not
-  marked, and data a button's script sends with `fetch` is no form submission: such a button is
-  an ordinary click (mcp-forms F17).
+  grant. Before every click the tab is marked in the parent, and from then on, while its top
+  document is the same, the request of every navigating form submission in it (any frame, a
+  submit button, `requestSubmit()` or a later `submit()`, whatever the page cached) **must** be
+  cancelled when its document had no transient user activation, unless it is the one
+  submission the question allowed, during that call, with the method and destination (scheme,
+  host, port and path) it named; the result and `:mcp log` name the host it was going to. A
+  submission with your activation (a click or a key of yours in that page within Firefox's
+  activation window) and your `f` hints end the mark, so your own submissions in an agent tab
+  go through, and so do those of a page no agent stepped in. Only http and https requests are
+  checked, and data a button's script sends with `fetch`, also from a cancelled submission's
+  `submit` listener, is no form submission: such a button is an ordinary click (mcp-forms F17).
   [`test_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_page_script_submit_after_a_click_is_cancelled`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_users_own_submit_in_an_agent_tab_goes_through`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_a_submit_sent_elsewhere_than_asked_is_stopped`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_a_submit_listener_moving_the_destination_is_stopped`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_page_submits_after_a_cached_verdict_or_through_a_dialog_are_stopped`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_page_submitting_with_no_agent_step_is_untouched`](../tests/browser/browser_vimma_mcp_submit.js),
   [`vimma_activate can be granted; a submit asks under that grant and makes none`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a submit: method and host in bold, the field count, y or n only`](../packages/vimma-core/test/agent-prompt.test.mjs),
@@ -1099,6 +1110,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   of `f`'s link list. A click that loads a page takes a slot of the open rate (M3), and no click
   is made while that rate is used up.
   [`test_activate_refuses_fields_files_disabled_and_other_sites`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_activate_never_follows_a_link_moved_elsewhere_or_an_svg_link`](../tests/browser/browser_vimma_mcp_activate.js),
   [`a gone element, a field, a select, a file field, a disabled control are refused`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a link to another site is refused: vimma_keys follows it (M29)`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a link to something other than a web page is refused`](../packages/vimma-core/test/agent-act.test.mjs),

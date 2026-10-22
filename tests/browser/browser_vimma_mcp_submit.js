@@ -215,6 +215,40 @@ add_task(async function test_a_submit_sent_elsewhere_than_asked_is_stopped() {
   await mcp(false);
 });
 
+add_task(async function test_a_submit_listener_moving_the_destination_is_stopped() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const id = c.request("agent-activate", { tab: idOf(tab), label: by.Post });
+  const q = await question();
+  Assert.equal(q.what.submit?.host, "example.com", "asked as a submission to example.com");
+  AgentGate.answer(q.id, { kind: "once" });
+  const r = await c.response(id);
+  Assert.equal(r.result.navigated, false, "the form its submit listener moved was not sent");
+  Assert.equal(r.result.blocked, "example.org", "the result names where it was going");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+add_task(async function test_page_submits_after_a_cached_verdict_or_through_a_dialog_are_stopped() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  for (const button of ["Resend", "Close"]) {
+    const r = await activate(c, tab, by[button]);
+    Assert.ok(r.ok, `${button}: the click ran`);
+    Assert.equal(r.result.navigated, false, `${button}: the page's submission was not sent`);
+    Assert.equal(r.result.blocked, "example.com", `${button}: the result says Vimma stopped it`);
+    Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, `${button}: the page stayed`);
+  }
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 add_task(async function test_users_own_submit_in_an_agent_tab_goes_through() {
   await mcp(true);
   const tab = await openAgentTab();

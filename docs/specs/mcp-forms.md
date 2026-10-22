@@ -418,18 +418,25 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     so one question per submission is the price of keeping them in the hands of the person at
     the keyboard; the grant for `vimma_fill` or `vimma_activate` (F25) covers only what does not
     submit.
-16. **Submissions the agent did not ask for are stopped.** `VimmaChild` listens for the chrome-only
-    `DOMFormBeforeSubmit` (`HTMLFormElement.cpp:286`, `:840`) in agent tabs and cancels a
-    submission when an agent activated or filled something in that document and the user has
-    not given input there since (its `lastUserGestureTimeStamp` is older than the agent's last
-    step), unless it is the submission an F15 question just allowed: the same form, within that
-    call. This catches a page whose script submits after an agent's click, by `submit()` or
-    `requestSubmit()`, whatever element was clicked. The result says
+16. **Submissions the agent did not ask for are stopped.** Before each agent step the parent
+    marks the tab, and an `http-on-modify-request` observer cancels the request of a navigating
+    form submission there (`loadInfo.isFormSubmission`) while the tab's top document is the one
+    of the step, when the submitting document had no transient user activation
+    (`loadInfo.hasValidUserGestureActivation`, taken from the form's document,
+    `HTMLFormElement.cpp:884-887`), unless it is the submission an F15 question just allowed:
+    once, within that call, to the method and destination (scheme, host, port and path) the
+    question named. This catches a page whose script submits after an agent's click, by
+    `submit()` or `requestSubmit()`, from any frame, whatever element was clicked, and a
+    submission the page moved elsewhere in its `submit` listener. The result says
     `the page tried to submit a form to <host>; Vimma stopped it: activate its submit button`,
-    so the agent can ask properly. A form the user submits themselves, or a page that submits
-    with no agent step in it, is untouched, because the agent did not cause it. Rejected:
-    setting `SANDBOXED_FORMS` on agent tabs, because it would stop the user's own logins and
-    searches in the agent workspace too.
+    so the agent can ask properly. A form the user submits themselves (with their activation, or
+    through their hints, which end the mark), or a page that submits with no agent step in it, is
+    untouched, because the agent did not cause it. Rejected: the chrome-only
+    `DOMFormBeforeSubmit` in the child, because Firefox caches its verdict for the form
+    (`mNotifiedObservers`, `HTMLFormElement.cpp:286-289`, `:837-838`), so a page that once
+    prevented a submission could later `submit()` without it, and because it fires before the
+    page's `submit` listener can change the destination; setting `SANDBOXED_FORMS` on agent
+    tabs, because it would stop the user's own logins and searches in the agent workspace too.
 17. **What cannot be caught.** A page that sends data with `fetch` from a button's click
     listener, without a form submission, cannot be told apart from any other button. Such a click
     is an ordinary `vimma_activate`, whose question names the element's text; the guide says

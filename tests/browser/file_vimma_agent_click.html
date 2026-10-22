@@ -7,8 +7,10 @@
    - of the click (trusted, user activation, a clipboard write); a button that asks confirm(); a
    - same-site link and a link to another site; a text field, a select, a file field with its
    - label, and a disabled button; a search form with a submit button; a form whose button's
-   - click handler sends it elsewhere; and buttons whose script submits a form by itself, at once
-   - and a moment later. Everything fits the test window. -->
+   - click handler sends it elsewhere, one whose submit listener does, and a dialog form with a
+   - hidden posting button; buttons whose script submits a form by itself, at once, a moment later,
+   - after Firefox cached an earlier verdict, and through that hidden button; a link that changes
+   - its address on mousedown, and an SVG link to another site. Everything fits the test window. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -56,9 +58,25 @@
       <input name="topic" value="news" aria-label="Topic" />
       <button id="send" type="submit">Send</button>
     </form>
+    <form id="cached" method="post" action="file_vimma_agent_page.html?cached"></form>
+    <form id="moved" method="get" action="file_vimma_agent_page.html">
+      <input name="item" value="tea" aria-label="Item" />
+      <button id="post" type="submit">Post</button>
+    </form>
+    <form id="trick" method="dialog" action="file_vimma_agent_page.html?trick">
+      <button id="trick-post" type="submit" formmethod="post" hidden>Hidden post</button>
+    </form>
     <p>
       <button id="save" type="button">Save draft</button>
       <button id="later" type="button">Save later</button>
+      <button id="resend" type="button">Resend</button>
+      <button id="dialog-trick" type="button">Close</button>
+      <a id="swap-link" href="file_vimma_agent_page.html?swap">Swap link</a>
+      <svg width="80" height="20">
+        <a href="https://example.org/svg">
+          <foreignObject width="80" height="20"><span role="button">Svg go</span></foreignObject>
+        </a>
+      </svg>
     </p>
     <script>
       // What the page saw of each click, for the test to read.
@@ -91,6 +109,25 @@
       });
       const draft = document.getElementById("draft");
       document.getElementById("save").addEventListener("click", () => draft.submit());
+      // Firefox remembers the verdict of a submission the page prevented: a later submit() of the
+      // same form reuses it.
+      const cached = document.getElementById("cached");
+      cached.addEventListener("submit", (e) => e.preventDefault(), { once: true });
+      cached.requestSubmit();
+      document.getElementById("resend").addEventListener("click", () => cached.submit());
+      // A submit listener that sends the form elsewhere than the question said.
+      const moved = document.getElementById("moved");
+      moved.addEventListener("submit", () => (moved.action = "https://example.org/moved"));
+      // A dialog form whose hidden button posts.
+      document
+        .getElementById("dialog-trick")
+        .addEventListener("click", () =>
+          document.getElementById("trick").requestSubmit(document.getElementById("trick-post")),
+        );
+      // A link that points elsewhere once it is pressed.
+      document.getElementById("swap-link").addEventListener("mousedown", (e) => {
+        e.currentTarget.href = "https://example.org/swapped";
+      });
       document
         .getElementById("later")
         .addEventListener("click", () => setTimeout(() => draft.requestSubmit(), 300));

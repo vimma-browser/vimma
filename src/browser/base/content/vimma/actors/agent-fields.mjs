@@ -359,6 +359,36 @@ export function submitOf(el) {
   return null;
 }
 
+const XLINK = "http://www.w3.org/1999/xlink";
+
+/**
+ * The address of the link a click on `el` follows, resolved: an HTML `a` or `area` with an
+ * href, or an SVG `a` with `href` or `xlink:href`, the element or one around it; else null.
+ * @param {Element} el
+ * @returns {string | null}
+ */
+function linkHrefOf(el) {
+  for (
+    let node = el.closest("a, area");
+    node;
+    node = node.parentElement?.closest("a, area") ?? null
+  ) {
+    const html = /** @type {any} */ (node);
+    if (typeof html.href === "string") {
+      if (node.hasAttribute("href")) return html.href;
+      continue;
+    }
+    const raw = node.getAttribute("href") ?? node.getAttributeNS(XLINK, "href");
+    if (raw === null) continue;
+    try {
+      return new URL(raw, node.baseURI).href;
+    } catch {
+      return raw; // not a URL: the parent refuses what it cannot parse
+    }
+  }
+  return null;
+}
+
 /**
  * The element now, as a click on it would find it (F4, F9, F10, F15), for core's
  * `parseActTarget`: its kind and text, whether it is disabled, a field the click would reach,
@@ -376,8 +406,8 @@ export function actTargetOf(el) {
   if (el.matches(":disabled")) out.disabled = true;
   const field = fieldOf(el) ?? fieldOf(labelledControl(el));
   if (field) out.field = field;
-  const link = /** @type {any} */ (el.closest("a[href], area[href]"));
-  if (link) out.href = cap(link.href, ACTION);
+  const href = linkHrefOf(el);
+  if (href !== null) out.href = cap(href, ACTION);
   const submit = submitOf(el);
   if (submit) {
     out.submit = {

@@ -9,7 +9,7 @@
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
 import { collectTargets, linkText } from "./hint-collect.mjs";
-import { actTargetOf, describeAgentElements, destinationOf, submitOf } from "./agent-fields.mjs";
+import { actTargetOf, describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
@@ -166,21 +166,11 @@ export class VimmaChild extends JSWindowActorChild {
    */
   #agentEls = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
   /**
-   * An agent's step in this document (docs/specs/mcp-forms.md F16; security.md M28): the user's
-   * last gesture when it came. Until the user's own input, a form the page submits is cancelled,
-   * but for `#allowed`, the form a question just allowed, to the method and destination it named,
-   * while that call runs; `#blocked` holds the hosts of the submissions stopped since the step,
-   * for its result.
-   * @type {{ gesture: number } | null}
+   * The agent's last click here (docs/specs/mcp-forms.md F8): its element and whether it ran or
+   * was skipped because the page changed the element under the mouse events before it.
+   * @type {{ gen: number, id: number, outcome: "pending" | "clicked" | "skipped" } | null}
    */
-  #agentMark = null;
-  /**
-   * @type {{ form: WeakRef<Element>, submitter: WeakRef<Element>, method: string,
-   *   action: string } | null}
-   */
-  #allowed = null;
-  /** @type {string[]} */
-  #blocked = [];
+  #agentClick = null;
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
   #emptySearchAt = 0;
   /** Copy mode in this document (m1-copy-mode). */
@@ -323,44 +313,7 @@ export class VimmaChild extends JSWindowActorChild {
       }
       case "dragstart":
         this.#dragging = true;
-        return;
-      case "DOMFormBeforeSubmit":
-        this.#beforeSubmit(event);
     }
-  }
-
-  /**
-   * A form is about to be sent (the chrome-only `DOMFormBeforeSubmit`, before the navigation):
-   * cancelled when an agent stepped in this document and the user has given no input here since,
-   * unless it is the form the user allowed in the running call (docs/specs/mcp-forms.md F16;
-   * security.md M28). A page cannot tell; it sees no submission.
-   * @param {Event} event
-   */
-  #beforeSubmit(event) {
-    const mark = this.#agentMark;
-    if (!mark) return;
-    if (/** @type {any} */ (this.document)?.lastUserGestureTimeStamp !== mark.gesture) {
-      // The user's own input since the agent's step: what follows is theirs.
-      this.#agentMark = null;
-      return;
-    }
-    const form = /** @type {any} */ (event.originalTarget ?? event.target);
-    if (form?.localName !== "form" || form.method === "dialog") return;
-    const allowed = this.#allowed;
-    if (allowed && allowed.form.deref() === form) {
-      // The question named a destination: the page may have changed it since (its click handler
-      // runs before the submission), and then this is not the submission the user allowed.
-      const now = destinationOf(form, allowed.submitter.deref());
-      if (now.method === allowed.method && now.action === allowed.action) return;
-    }
-    event.preventDefault();
-    let host = "";
-    try {
-      host = new URL(String(form.action)).host;
-    } catch {
-      // no host to name
-    }
-    if (host && this.#blocked.length < 16) this.#blocked.push(host);
   }
 
   /**
@@ -576,8 +529,6 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#activateHint(msg.data);
       case "Vimma:AgentElement":
         return this.#agentElement(msg.data);
-      case "Vimma:AgentStep":
-        return this.#agentStep(msg.data);
       case "Vimma:Caret": {
         // Only the frame with focus has the user's caret (the parent sends to that one).
         const win = this.contentWindow;
@@ -701,7 +652,8 @@ export class VimmaChild extends JSWindowActorChild {
    * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
-   * @param {{ op: string, gen: number, id: number, submit?: any, href?: unknown }} data
+   * @param {{ op: string, gen: number, id: number, submit?: any, href?: unknown,
+   *   until?: unknown }} data
    */
   #agentElement(data) {
     const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
@@ -713,65 +665,54 @@ export class VimmaChild extends JSWindowActorChild {
         return actTargetOf(el);
       case "activate":
         return this.#agentActivate(el, data);
+      case "outcome": {
+        const last = this.#agentClick;
+        return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
+      }
     }
     return false;
   }
 
   /**
    * An agent's click (docs/specs/mcp-forms.md F8; security.md M26): the element must still be
-   * what the user was asked about (a submit only if asked as one, the same link, nothing it may
-   * not click), then the user's hint sequence runs on it, after this reply, so that a dialog the
-   * page opens in its handler never holds the parent's call. Nothing is focused, and no event
-   * goes through the widget or nsIDOMWindowUtils, so the page gets no user activation.
+   * what the user was asked about, then the user's hint sequence runs on it, after this reply,
+   * so that a dialog the page opens in its handler never holds the parent's call. The page may
+   * change the element in its handlers of the untrusted mouse events, so it is checked again
+   * before click(), which is skipped if it changed. Nothing is focused, and no event goes
+   * through the widget or nsIDOMWindowUtils, so the page gets no user activation. A request
+   * whose time is up (`until`, ms since the epoch) clicks nothing: the parent stopped waiting.
    * @param {Element | undefined} el
-   * @param {{ submit?: any, href?: unknown }} asked  `submit`: the method and destination the
-   *   question named, or null
+   * @param {{ gen: number, id: number, submit?: any, href?: unknown, until?: unknown }} asked
+   *   `submit`: the method and destination the question named, or null
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentActivate(el, asked) {
-    const now = /** @type {any} */ (actTargetOf(el));
-    if (!el || !now.alive) return "gone";
-    if (now.field || now.disabled) return "changed";
-    const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
-    if (!!now.submit !== !!named) return "changed";
-    if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
-      return "changed";
-    }
-    if ((now.href ?? null) !== (asked.href ?? null)) return "changed";
-    const submit = now.submit ? submitOf(el) : null;
-    this.#allowed = submit
-      ? {
-          form: new WeakRef(submit.form),
-          submitter: new WeakRef(submit.submitter),
-          method: submit.method,
-          action: submit.action,
-        }
-      : null;
+    if (!el || !actTargetOf(el).alive) return "gone";
+    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
+    if (!this.#asAsked(el, asked)) return "changed";
+    const click = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    this.#agentClick = click;
     Services.tm.dispatchToMainThread(() => {
-      if (el.isConnected) this.#press(el);
+      const ran = el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
+      click.outcome = ran ? "clicked" : "skipped";
     });
     return "ok";
   }
 
   /**
-   * An agent's step in this document (F16): `mark` before it acts, `settle` once its call is
-   * over, which answers with the hosts of the submissions stopped meanwhile.
-   * @param {{ op?: unknown }} data
+   * Whether `el` is still what the agent's question showed: nothing an agent may not click, a
+   * submit only if asked as one and to the same method and destination, the same link.
+   * @param {Element} el @param {{ submit?: any, href?: unknown }} asked
    */
-  #agentStep(data) {
-    if (data?.op === "mark") {
-      const gesture = /** @type {any} */ (this.document)?.lastUserGestureTimeStamp ?? 0;
-      this.#agentMark = { gesture };
-      this.#blocked = [];
-      return [];
+  #asAsked(el, asked) {
+    const now = /** @type {any} */ (actTargetOf(el));
+    if (!now.alive || now.field || now.disabled) return false;
+    const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
+    if (!!now.submit !== !!named) return false;
+    if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
+      return false;
     }
-    if (data?.op === "settle") {
-      this.#allowed = null;
-      const blocked = this.#blocked;
-      this.#blocked = [];
-      return blocked;
-    }
-    return [];
+    return (now.href ?? null) === (asked.href ?? null);
   }
 
   /**
@@ -798,8 +739,6 @@ export class VimmaChild extends JSWindowActorChild {
       }
       return true;
     }
-    // The user's own step through Vimma: a submission it causes is theirs (mcp-forms F16).
-    this.#agentMark = null;
     this.#press(el);
     return true;
   }
@@ -809,9 +748,11 @@ export class VimmaChild extends JSWindowActorChild {
    * and mouseup built with the page's constructor (untrusted), for pages that act on them (menus,
    * Google's jsaction), then click(), which the page sees as trusted and whose activation
    * behaviour follows links. No transient user activation (docs/specs/mcp-forms.md F8).
-   * @param {Element} el
+   * `still`: checked after the mouse events; when false, no click.
+   * @param {Element} el @param {() => boolean} [still]
+   * @returns {boolean} whether it clicked
    */
-  #press(el) {
+  #press(el, still = () => true) {
     const html = /** @type {HTMLElement} */ (el);
     const r = el.getBoundingClientRect();
     const init = {
@@ -828,10 +769,11 @@ export class VimmaChild extends JSWindowActorChild {
       const buttons = type === "mousedown" ? 1 : 0;
       el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));
     }
-    if (!el.isConnected) return;
+    if (!el.isConnected || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();
     else el.dispatchEvent(new win.MouseEvent("click", init));
+    return true;
   }
 
   /** The text model, rebuilt when the document changed since it was built. */

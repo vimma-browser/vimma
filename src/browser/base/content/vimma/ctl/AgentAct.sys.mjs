@@ -14,9 +14,10 @@
 // `activate` clicks one of those elements (F8-F11, F16; security.md M26, M28, M29): the frame's
 // child checks it is still what the user was asked about and calls its `click()`, never an event
 // through the widget or nsIDOMWindowUtils, so the page gets no user activation. Before the
-// click every frame of the tab is marked, so that a form the page submits by itself afterwards,
-// before the user's own input, is cancelled; the result names the hosts of those, whether a page
-// loaded, and a dialog the page opened, which no agent answers.
+// click the tab is marked in the parent, so that a form submission there afterwards, from any
+// frame and however started, without the user's own activation and other than the one the
+// question allowed, is cancelled at its request; the result names the hosts of those, whether a
+// page loaded, and a dialog the page opened, which no agent answers.
 
 import {
   AGENT_ELEMENTS,
@@ -173,7 +174,7 @@ export const AgentAct = {
    */
   async activate(browser, target, { submit, href, inUse }) {
     const before = { doc: docOf(browser), url: String(browser.currentURI?.spec ?? "") };
-    await bounded(VimmaActors.agentStep(browser, "mark"), [], COLLECT_TIMEOUT_MS);
+    VimmaActors.agentMark(browser, submit);
     /** @type {{ type: string, text: string } | null} */
     let dialog = null;
     const top = browser.browsingContext;
@@ -191,8 +192,10 @@ export const AgentAct = {
     };
     Services.obs.addObserver(observer, "common-dialog-loaded");
     try {
+      // The child clicks nothing once this call has stopped waiting for its answer.
+      const until = Date.now() + COLLECT_TIMEOUT_MS - 1000;
       const reply = await bounded(
-        VimmaActors.agentActivate(target, { submit, href }),
+        VimmaActors.agentActivate(target, { submit, href, until }),
         "gone",
         COLLECT_TIMEOUT_MS,
       );
@@ -220,11 +223,15 @@ export const AgentAct = {
         if (!started && Date.now() - start >= settle) break;
         if (Date.now() - start >= LOAD_TIMEOUT_MS) break;
       }
-      const blocked = await bounded(
-        VimmaActors.agentStep(browser, "settle"),
-        [],
+      const outcome = await bounded(
+        VimmaActors.agentClickOutcome(target),
+        "clicked",
         COLLECT_TIMEOUT_MS,
       );
+      if (outcome === "skipped") {
+        return { refused: "the element changed as it was clicked; nothing was clicked" };
+      }
+      const blocked = VimmaActors.agentSettle(browser);
       return {
         navigated: docOf(browser) !== before.doc,
         loading: !!browser.webProgress?.isLoadingDocument,
@@ -233,6 +240,8 @@ export const AgentAct = {
         ...(stopped ? { stopped } : {}),
       };
     } finally {
+      // On every path: no allowance outlives its call.
+      VimmaActors.agentSettle(browser);
       Services.obs.removeObserver(observer, "common-dialog-loaded");
     }
   },

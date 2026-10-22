@@ -253,6 +253,32 @@ add_task(async function test_activate_refuses_fields_files_disabled_and_other_si
   await mcp(false);
 });
 
+add_task(async function test_activate_never_follows_a_link_moved_elsewhere_or_an_svg_link() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // An SVG link to another site, around an element of its own.
+  Assert.ok(by["Svg go"], "the element inside the SVG link is listed");
+  let r = await c.call("agent-activate", { tab: idOf(tab), label: by["Svg go"] });
+  Assert.equal(
+    r.error?.message,
+    "that link goes to another site: follow it with vimma_keys",
+    "an SVG link to another site is refused (M29)",
+  );
+  // A same-site link that points elsewhere once the mouse is down on it.
+  r = await activate(c, tab, by["Swap link"]);
+  Assert.equal(
+    r.error?.message,
+    "the element changed as it was clicked; nothing was clicked",
+    "the click does not follow a link moved after the question",
+  );
+  Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "nothing loaded");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 add_task(async function test_activate_follows_a_same_site_link_as_an_open() {
   await mcp(true);
   const tab = await openAgentTab();
