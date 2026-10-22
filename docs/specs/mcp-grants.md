@@ -61,8 +61,7 @@ changed) are already asked separately, whatever is granted.
    - full control (vimma-mcp 29), which is not an agent tool;
    - paying, once [mcp-checkpoints](mcp-checkpoints.md) is built.
 4. **The question's hint names the scope.** Once armed, a grantable question shows
-   `y once · 10a all tools for 10 min (sending a form still asks) · n deny · x mute` (10 being
-   `[mcp] grant_minutes`). The hint of a question in item 3 is unchanged.
+   `y once · 10a 10 min, all but forms · n deny · x mute` (10 being `[mcp] grant_minutes`). The hint of a question in item 3 is unchanged.
 5. **The grant's notice names the scope and the way out.**
    `claude-code may use the agent workspace for 10 min; sending a form still asks (ctrl+b shift+a ends it)`.
    A count over `[mcp] grant_max_minutes` adds `, the most [mcp] grant_max_minutes allows`
@@ -160,9 +159,12 @@ publishes a list of what still asks.
      (a basket button that submits nothing and a checkout button can look the same).
 3. **The answer's scope is in the hint, not a second question** (G3, behaviour 4-5), because a
    question per answer is what this spec removes; the hint is read at the moment of answering,
-   and the notice repeats the scope and names the key that ends it. The hint names only the
-   steps the user will meet in a task (sending a form, and paying once built); `vimma_show` and
-   downloads ask with their own wording when they come. Rejected: a separate "grant all" key
+   and the notice repeats the scope in full and names the key that ends it. The hint names only
+   the steps the user will meet in a task (sending a form, and paying once built); `vimma_show`
+   and downloads ask with their own wording when they come. The hint says it in three words
+   (`all but forms`) because a longer one (`all tools for 10 min (sending a form still asks)`)
+   wrapped a usual question, such as a `vimma_keys` one with its URL, onto a second line in a
+   1,280-pixel-wide window, and a question that fits one line is read at a glance. Rejected: a separate "grant all" key
    beside a per-tool `a`, because two grant keys make the user choose a scope under time
    pressure, and the per-tool scope is the one this spec drops.
 4. **One key ends every grant** (G4, behaviour 7), because ending is the safe direction: an agent
