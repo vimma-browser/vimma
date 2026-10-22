@@ -780,25 +780,23 @@ function installCtl(from, to) {
   chmodSync(to, 0o755);
 }
 
+/** Whether `tar` is GNU tar, as on the release runner; macOS has bsdtar. */
+export const gnuTar = () =>
+  execFileSync("tar", ["--version"], { encoding: "utf8" }).includes("GNU");
+
 /**
  * The release tarball: mach's top-level `vimma/`, now with vimma-ctl, packed again. Owner and
- * group 0, names sorted, so it unpacks as mach's did and its listing does not depend on the
- * runner's file system.
+ * group 0, so it unpacks as mach's did; with GNU tar, which builds every release, names are
+ * sorted too, so its listing does not depend on the runner's file system. bsdtar, for the tests
+ * on a Mac, has no sort option.
  * @param {string} extract the directory holding `vimma/`
  * @param {string} to
  */
 function packTarball(extract, to) {
-  execFileSync("tar", [
-    "--sort=name",
-    "--owner=0",
-    "--group=0",
-    "--numeric-owner",
-    "-cJf",
-    to,
-    "-C",
-    extract,
-    APP,
-  ]);
+  const owner = gnuTar()
+    ? ["--sort=name", "--owner=0", "--group=0", "--numeric-owner"]
+    : ["--uid", "0", "--gid", "0", "--numeric-owner"];
+  execFileSync("tar", [...owner, "-cJf", to, "-C", extract, APP]);
 }
 
 /**

@@ -749,8 +749,10 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     }
     expectSameBytes(join(ours, "vimma/vimma-ctl"), ctl);
     expect(mode(join(ours, "vimma/vimma-ctl"))).toBe(0o755);
-    const owners = execFileSync("tar", ["-tvJf", release], { encoding: "utf8" });
-    for (const line of owners.trim().split("\n")) expect(line).toMatch(/^\S+ 0\/0 /);
+    // GNU tar lists `0/0`, bsdtar (macOS) `0 0`: owner and group 0 either way.
+    const owners = execFileSync("tar", ["--numeric-owner", "-tvJf", release], { encoding: "utf8" });
+    for (const line of owners.trim().split("\n"))
+      expect(line).toMatch(/^\S+\s+(?:\d+\s+)?0[/ ]\s*0\s/);
   });
 
   it("puts vimma-ctl next to vimma in the AppDir, and on PATH in the .deb and the .rpm", () => {

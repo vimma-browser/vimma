@@ -680,30 +680,32 @@ add_task(async function test_an_older_vimma_ctl_gets_a_notice_and_still_works() 
   };
   AgentGate.addListener(collect);
   try {
-    const hello = async (/** @type {object} */ args) => {
+    // Names no other test uses: the notice is once per client name and version a session, and
+    // the suite's other files connect as example-agent with no version.
+    const hello = async (/** @type {string} */ name, /** @type {object} */ args) => {
       const c = new Client(/** @type {number} */ (VimmaControl.port));
       await c.handshake({ protocol: 2, role: "agent" });
-      const hi = await c.call("agent-hello", { client: { name: "example-agent" }, ...args });
+      const hi = await c.call("agent-hello", { client: { name }, ...args });
       Assert.equal(hi.ok, true, `${JSON.stringify(args)}: welcomed all the same`);
       const ping = await c.call("agent-ping");
       Assert.equal(ping.ok, true, "and its commands run");
       return c;
     };
 
-    const current = await hello({ ctl: VIMMA_VERSION });
-    const older = await hello({ ctl: "0.0.1" });
+    const current = await hello("ctl-current", { ctl: VIMMA_VERSION });
+    const older = await hello("ctl-older", { ctl: "0.0.1" });
     await until(() => notices.length === 1, "one notice, for the older client");
     Assert.equal(
       notices[0],
       `vimma-ctl 0.0.1 is older than Vimma ${VIMMA_VERSION}: agents get fewer tools until you update it`,
     );
-    const unnamed = await hello({});
+    const unnamed = await hello("ctl-unnamed", {});
     await until(() => notices.length === 2, "and one for a client that names no version");
     Assert.equal(
       notices[1],
       `vimma-ctl is older than Vimma ${VIMMA_VERSION}: agents get fewer tools until you update it`,
     );
-    const newer = await hello({ ctl: "999.0.0" });
+    const newer = await hello("ctl-newer", { ctl: "999.0.0" });
     Assert.equal(notices.length, 2, "none for a newer client");
     await until(
       () => document.getElementById(NOTICE_ID)?.textContent === notices[1],
@@ -720,7 +722,7 @@ add_task(async function test_an_older_vimma_ctl_gets_a_notice_and_still_works() 
     bad.close();
     // Once per client name and version a session: a client reconnecting, or an agent opening
     // connection after connection, cannot keep the notice line for itself.
-    const again = await hello({ ctl: "0.0.1" });
+    const again = await hello("ctl-older", { ctl: "0.0.1" });
     Assert.equal(notices.length, 2, "no second notice for the same client and version");
     again.close();
   } finally {
