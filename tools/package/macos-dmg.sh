@@ -51,6 +51,8 @@ if [ -n "${VIMMA_CTL:-}" ]; then
   }
   cp "$VIMMA_CTL" "$app/Contents/MacOS/vimma-ctl"
   chmod 755 "$app/Contents/MacOS/vimma-ctl"
+  # Nested code is signed before the bundle that seals it, as codesign --verify --deep expects.
+  "$rcodesign" sign "$app/Contents/MacOS/vimma-ctl"
 fi
 
 # A disk image mounted on a Mac leaves Finder attributes that a strict verify rejects.

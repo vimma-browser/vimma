@@ -59,6 +59,8 @@ if [ "${1:-}" = "--stub" ]; then
   plutil -insert CFBundleIdentifier -string "$id" "$plist"
   plutil -insert CFBundleName -string Vimma "$plist"
   plutil -insert CFBundlePackageType -string APPL "$plist"
+  # Nested code first: a strict verify refuses an app whose vimma-ctl is unsigned.
+  codesign --sign - --force "$app/Contents/MacOS/vimma-ctl"
   codesign --sign - --force "$app"
   dmg="$work/vimma-macos-aarch64.dmg"
   hdiutil create -quiet -volname Vimma -srcfolder "$work/stage" -format UDZO "$dmg"
