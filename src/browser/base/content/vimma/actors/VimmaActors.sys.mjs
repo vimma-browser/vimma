@@ -7,6 +7,7 @@
 
 import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
 import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
+import { ACTIVATE_CHANGES } from "../core/control.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
 
@@ -727,6 +728,29 @@ export const VimmaActors = {
       return reply === "skipped" || reply === "pending" ? reply : "clicked";
     } catch {
       return "clicked";
+    }
+  },
+
+  /**
+   * Which parts of the page changed in place since the agent's last click on `target` (#510),
+   * in core's fixed words (ACTIVATE_CHANGES), checked like any reply from a content process;
+   * null when the frame has another document, did not watch that click, or answered wrongly.
+   * @param {HintTarget} target
+   * @returns {Promise<string[] | null>}
+   */
+  async agentChanges(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return null;
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "changes",
+        gen: target.gen,
+        id: target.id,
+      });
+      if (!Array.isArray(reply) || new Set(reply).size !== reply.length) return null;
+      if (!reply.every((w) => ACTIVATE_CHANGES.includes(w))) return null;
+      return ACTIVATE_CHANGES.filter((w) => reply.includes(w));
+    } catch {
+      return null;
     }
   },
 

@@ -65,7 +65,8 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 4. `vimma_activate { tab: "7", label: "sg" }` on a button `Add to list` asks
    `◇ claude-code wants vimma_activate: 2 "List · Example"  sg button "Add to list"`. On `y` the
    button is clicked. The result gives the tab's URL, title, whether a page loaded, and whether a
-   dialog opened.
+   dialog opened. (Since changed: when no page loaded, it also names what changed in place, here
+   `the page's text changed`; F11.)
 5. Activating a submit button, or a `vimma_fill` with `submit`, asks every time, also under a
    grant, with only `y` and `n`:
    `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)`.
@@ -377,7 +378,11 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     using the tab during the wait. A click that has started no load within a second is taken to
     have none. (Since changed: that second counts from when the click ran in the page's process,
     not from the child's reply before it, because a busy process runs the click later; the same
-    holds for a fill's submission; security.md M28.) Agents
+    holds for a fill's submission; security.md M28.) (Since changed: a click that loaded no
+    page also returns `changed`, the parts of the page that changed in place within a further
+    second: `element`, `elements`, `text` and `dialog`, fixed words with no page text, because an
+    agent told "the page did not change" after a basket updated in place clicked again; issue
+    [#510](https://github.com/vimma-browser/vimma/issues/510), security.md M26.) Agents
     cannot answer dialogs: no tool does, because a `confirm` is often the page asking "are you
     sure", which is the user's to answer. The dialog waits in the tab until the user shows it.
     Every navigation an activation causes takes a slot of the open rate (`OPEN_RATE`), shared
