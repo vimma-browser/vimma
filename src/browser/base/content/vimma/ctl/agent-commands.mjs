@@ -316,7 +316,11 @@ async function payStep(browser, conn, step, found = null) {
   if (link.elements) {
     return AgentAct.payment(browser, { target: link.target, text: link.target.info?.text ?? "" });
   }
-  return AgentAct.payment(browser, { text: link.target.text ?? "", keys: step.keys });
+  return AgentAct.payment(browser, {
+    text: link.target.text ?? "",
+    keys: step.keys,
+    frame: link.target.wg,
+  });
 }
 
 /**

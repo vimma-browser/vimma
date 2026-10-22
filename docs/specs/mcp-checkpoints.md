@@ -55,11 +55,11 @@ button that does not submit a form cannot pay unasked when either signal is ther
    A key step presses no button, so its question names its keys (`keys H`). The first key that
    acts in a call, on the page the call starts on, is asked in the call's own question, so that
    one step never asks twice; a later one asks when the call reaches it.
-   (Since changed: a control in a frame of another site than the tab's names that frame's host,
-   then the tab's in parentheses, `on pay.provider.example (in shop.example)`, because the
-   frame's site is where the payment goes, as with a payment provider's hosted payment frame,
-   while the tab's site tells the user which shop they are on; the notices of Behaviour 6 and 5
-   name both too. security.md M33 states the rule.)
+   (Since changed: a control or link in a frame of another site than the tab's names that
+   frame's host, then the tab's in parentheses, `on pay.provider.example (in shop.example)`,
+   because the frame's site is where the payment goes, as with a payment provider's hosted
+   payment frame, while the tab's site tells the user which shop they are on; the notices of
+   Behaviour 6 and 5 name both too. security.md M33 states the rule.)
 4. **A form submission's question shows what is sent:** the destination, then each field that
    goes, by name and value, as a fill's question shows them (mcp-forms F14): values cut at 40
    columns, the list cut where the line ends with `… (N more)`; a sensitive field (password,

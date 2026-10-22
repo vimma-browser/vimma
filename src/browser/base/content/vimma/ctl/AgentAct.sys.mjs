@@ -102,14 +102,16 @@ function uriHost(uri) {
 }
 
 /**
- * The host of a frame of another site than the tab's page, or "" when the frame is of the same
- * site or either has no host (about:blank and about:srcdoc frames take their parent's origin).
- * @param {any} frameUri nsIURI @param {any} tabUri nsIURI
+ * The host of a frame of another site than the tab's page, or "" when there is no frame, it is of
+ * the same site, or either has no host (about:blank and about:srcdoc frames take their parent's
+ * origin; data: and blob: frames name none), so that the tab's host is named as before.
+ * @param {any} wg the frame's WindowGlobalParent, or null @param {any} tabUri nsIURI
  */
-function otherSiteHost(frameUri, tabUri) {
-  const host = uriHost(frameUri);
-  if (!host || !uriHost(tabUri)) return "";
+function otherSiteHost(wg, tabUri) {
   try {
+    const frameUri = wg?.documentURI;
+    const host = uriHost(frameUri);
+    if (!host || !uriHost(tabUri)) return "";
     return uriSite(frameUri) === uriSite(tabUri) ? "" : host;
   } catch {
     return "";
@@ -246,14 +248,15 @@ export const AgentAct = {
    * Nothing on the page changes.
    * @param {any} browser XULBrowserElement
    * @param {{ target?: HintTarget | null, by?: "click" | "form", text?: string,
-   *   keys?: string }} step  `target`: the element of the agent's `vimma_elements` it presses
-   *   (`form`: through its form's default button); `text`: what the control says, as the parent
-   *   knows it (a link of `f`'s list); `keys`: a key step's keys, shown when there is no text
+   *   keys?: string, frame?: any }} step  `target`: the element of the agent's `vimma_elements`
+   *   it presses (`form`: through its form's default button); `text`: what the control says, as
+   *   the parent knows it (a link of `f`'s list); `keys`: a key step's keys, shown when there is
+   *   no text; `frame`: the WindowGlobalParent of a link of `f`'s list, which has no `target`
    * @returns {Promise<{ text: string, site: string, top?: string, total?: string,
    *   keys?: string } | null>}  `site`: the host of the control's frame; `top`: the tab's host,
    *   when that frame is of another site
    */
-  async payment(browser, { target = null, by = "click", text = "", keys = "" }) {
+  async payment(browser, { target = null, by = "click", text = "", keys = "", frame = null }) {
     const [cards, info] = await Promise.all([
       VimmaActors.agentCards(browser, COLLECT_TIMEOUT_MS),
       target
@@ -275,7 +278,7 @@ export const AgentAct = {
     const tabHost = uriHost(browser.currentURI);
     // A control in a frame of another site, such as a payment provider's hosted frame, pays that
     // site: the question names it, then the tab's (mcp-checkpoints Behaviour 3).
-    const frameHost = target ? otherSiteHost(target.wg?.documentURI, browser.currentURI) : "";
+    const frameHost = otherSiteHost(target?.wg ?? frame, browser.currentURI);
     return {
       text: wf(cutTo(shownText, AGENT_ELEMENTS.text)),
       site: wf(frameHost || tabHost),

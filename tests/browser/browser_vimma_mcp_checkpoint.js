@@ -269,6 +269,31 @@ addTidyTask(async function test_a_pay_button_in_a_cross_site_frame_names_the_fra
   );
 });
 
+// A link followed by a label of `f`'s own list, in the provider's frame, names that frame's site
+// too: the follow loads it there.
+addTidyTask(async function test_a_followed_pay_link_in_a_cross_site_frame_names_the_frames_site() {
+  await mcp(true);
+  const tab = await openAgentTab(`${CHECKOUT}?frame=hosted_pay`);
+  const frame = () => tab.linkedBrowser.browsingContext.children[0];
+  await until(
+    () => frame()?.currentWindowGlobal?.documentURI?.spec.endsWith("hosted_pay.html"),
+    "the provider's frame loaded",
+  );
+  const c = await agentClient();
+  await grantedLabels(c, tab);
+  const list = await c.call("agent-keys", { tab: idOf(tab), keys: "f" });
+  Assert.ok(list.ok, "f lists the links under the grant");
+  const line = list.result.links.split("\n").find((l) => l.includes('"Pay by bank"'));
+  Assert.ok(line, "the frame's link is listed");
+  const id = c.request("agent-keys", { tab: idOf(tab), keys: `f${line.split(" ")[0]}` });
+  const q = await question();
+  Assert.equal(q.what.pay?.text, "Pay by bank", "the follow asks as a payment");
+  Assert.equal(q.what.pay?.site, "example.org", "naming the frame's site");
+  Assert.equal(q.what.pay?.top, "example.com", "then the tab's");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await c.response(id)).error?.reason, "user", "a no stops it");
+});
+
 addTidyTask(async function test_a_no_stops_the_step_and_keeps_the_grant() {
   await mcp(true);
   const tab = await openAgentTab();
