@@ -1,0 +1,39 @@
+# Temporary: generates configs/branding/vimma/dsstore on a hosted Mac (spec macos-homebrew,
+# decision 14). Removed again before the pull request merges.
+name: dsstore-tmp
+
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: dsstore-tmp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dsstore:
+    runs-on: macos-15
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Generate the dsstore with Finder
+        run: |
+          tools/package/macos-dsstore.sh --out "$RUNNER_TEMP/dsstore"
+          strings "$RUNNER_TEMP/dsstore"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dsstore
+          path: ${{ runner.temp }}/dsstore
+          retention-days: 3
+          if-no-files-found: error
