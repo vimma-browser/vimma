@@ -407,11 +407,12 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     is the same on both platforms until the macOS keymap (issues #385, #386) changes it. A row
     whose key moves to a chord Vimma does not bind is fate c there (unbound, its `<key>` off):
     `cmd+t`, `cmd+l`, `cmd+1..9`, the DevTools' `cmd+alt+<key>` and ShortcutUtils' `meta+{`,
-    `meta+}` (also with `ctrl`, which Tabbrowser ignores) and `alt+meta+<arrow>` tab keys
-    (Firefox 158, `toolkit/modules/ShortcutUtils.sys.mjs:380-445`). `key_quitApplication` is `cmd+q` and
-    `internal` on macOS (`browser/base/content/browser-sets.inc.xhtml`, the `XP_MACOSX` branch),
-    so it is fate d: `"all"` keeps it, as behaviour 4 says. A `<key>` that is off may still run
-    from the native menu bar in a windowed build: `nsMenuItemX::SetKeyEquiv`
+    `meta+}` (also with `ctrl`, which `ShortcutUtils.getSystemActionForEvent` ignores) and
+    `alt+meta+<arrow>` tab keys (Firefox 158, `toolkit/modules/ShortcutUtils.sys.mjs:380-445`).
+    `key_quitApplication` is `cmd+q` and `internal` on macOS
+    (`browser/base/content/browser-sets.inc.xhtml`, the `XP_MACOSX` branch), so it is fate d:
+    `"all"` keeps it, as behaviour 4 says. A `<key>` that is off may still run from the native
+    menu bar in a windowed build: `nsMenuItemX::SetKeyEquiv`
     (`widget/cocoa/nsMenuItemX.mm:313-360`) copies the chord of a menu item's `<key>` without
     reading its `disabled`, the item's enabled state follows its command (`SetEnabled`,
     `nsMenuItemX.mm:427-447`), and a keydown nothing in Gecko consumed goes to the menu bar's
