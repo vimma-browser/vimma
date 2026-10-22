@@ -289,7 +289,12 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
    shown in N's place, or a new one is opened there; a private window visible elsewhere is only
    focused; pop-ups and extra private windows never swap or hide. Leaving to a normal window
    other than the hidden one first shows the hidden one again in the slot, then focuses the
-   target. Reason: one hidden window at most, so no window can be forgotten.
+   target. Reason: one hidden window at most, so no window can be forgotten. Vimma's keys run
+   in pop-ups too, so the native backend declines a switch made from a pop-up (a window whose
+   `toolbar.visible` is false) and shows the private workspace as a window. Whenever the native
+   backend declines while the private window is hidden (a pop-up, `"window"` placement, a
+   failure), it shows every hidden window first, because the caller's `focus()` cannot show a
+   hidden window on macOS.
 5. **Focus.** Showing a window with `visibility = true` makes it key (Research), so the swap
    calls no `focus()`. When the swap runs while Vimma is not the active app (a link, or
    `vimma-ctl send-keys` from a terminal), Vimma then calls `focus()` on the shown window so that
@@ -299,9 +304,13 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
      shows the hidden normal window at the slot window's frame. Every close path ends in
      `AppWindow::Destroy`, which destroys the docshell, and so fires `unload`, before it
      destroys the native window (`xpfe/appshell/AppWindow.cpp:541-565`, Firefox 158.0.1), so
-     there is never a moment with only a hidden window, and the Dock's reopen (Research) always
-     finds a visible one. The `close` event is not used, because the close-tabs warning can
-     still cancel it after Vimma would have acted. `ctrl+b shift+d` swaps first, then closes.
+     the hidden window is shown while the closing one still exists and the Dock's reopen
+     (Research) always finds a visible one. Off GTK, `AppWindow::Destroy` first orders the
+     closing window out (`mWindow->Show(false)`, `AppWindow.cpp:522-524`), so for that moment
+     no Vimma window is on screen and the desktop behind may show for a frame; the hand checks
+     look for it. The `close` event is not used, because the close-tabs warning can still cancel
+     it after Vimma would have acted, and every close path reaches `unload` anyway.
+     `ctrl+b shift+d` swaps first, then closes, so it has no such moment.
    - **A link reaches the hidden normal window** (`TabOpen` while hidden): Vimma swaps it back
      in place synchronously; Firefox's own `focus()` follows and brings Vimma to the front
      (behaviour 5).
@@ -326,9 +335,9 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
    full screen on the private window, because every switch would then take two native
    transitions, which Firefox serializes and each of which lasts as long as macOS's Space
    animation; no swap at all in full screen, because the private workspace would then be a
-   plain second window exactly where full screen makes it most visible; hiding the fullscreen window like
-   any other, because it depends on the unverified behaviour above. The last can be revisited
-   once the hand check shows what macOS does.
+   plain second window exactly where full screen makes it most visible; hiding the fullscreen
+   window like any other, because it depends on the unverified behaviour above. The last can
+   be revisited once the hand check shows what macOS does.
 8. **Multiple normal windows.** Only the window the private workspace was entered from is
    hidden. Other normal windows stay on screen, so the private window replaces one window, not
    the app's windows, the same as on Hyprland.
@@ -343,11 +352,12 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
     binding. macOS gets the swap by default, since the hand checks run before the delivering PR
     merges and `"window"` stays one line away. Rejected: `"window"` on macOS until the hand
     checks have run on a released build, because that needs a per-platform default, so the same
-    `config.toml` would mean different things on Linux and macOS. The comment that `defaults.mjs` writes into the generated
-    `config.toml` names macOS next to Hyprland.
+    `config.toml` would mean different things on Linux and macOS. The comment that
+    `defaults.mjs` writes into the generated `config.toml` names macOS next to Hyprland.
 11. **`about:vimma`.** The window manager line reads, on macOS,
     `Window manager: none needed (macOS), private placement: swap`, or `window (config)`, or
-    `window (swap failed)`. It shows no frame, title or window identifier, because the page can
+    `window (swap failed)`, or `window (config not read yet)` before `config.toml` is read, when
+    no window is hidden yet. It shows no frame, title or window identifier, because the page can
     be copied into a bug report.
 12. **Privacy.** The private window's title stays `Vimma Private Browsing`
     (`privacy.exposeContentTitleInWindow.pbm`, already `false` on macOS), which matters more now
@@ -409,10 +419,27 @@ component (the control socket, MCP, the agent gate, content actors) is touched.
   - `[private] placement = "window"`: no `visibility` write at all.
   - No disk: the profile directory has no new file and `SessionStore.getWindowState` of the
     normal window has no field the test did not expect.
+  - A config reload to `"window"` while the private window is hidden shows it and forgets the
+    pair; the next switch shows that window.
+  - A pop-up: `ctrl+b shift+p` in it never hides it or the normal window, and shows a hidden
+    private window.
+  - Two normal windows, then a swap that breaks half way: the hidden window comes back at the
+    last swap's slot, not an earlier one's.
+  - A private window that ignores the size it is given: the frame check fails the swap.
+  - A fullscreen normal window: nothing is hidden, the private window goes full screen.
+  - The un-zoomed frame of a private window entered from a zoomed one is the restored frame.
+  - Going back before a new private window has started up: nothing is hidden later.
+  - Activations and new tabs during a swap do not start another one.
+  - No swap while Vimma quits, and none before `config.toml` is read.
+  - Every public member of the Hyprland backend is routed by the backend switch.
 - **e2e:** none. The e2e harness runs under Xvfb on Linux, where this backend is never selected.
 - **By hand on a Mac** (recorded in a Results section, as private-swap does), on the current
   macOS release with a non-headless build (`npm start`, or `npm run mochitest -- --headed` for
-  the mochitest): no animation on enter and leave; the hidden window absent from Mission
+  the mochitest): no animation on enter and leave, including a zoomed window's zoom
+  (`maximize()` calls `[NSWindow zoom:]`, whose resize animation `animationBehavior` may not
+  govern); no flash of the desktop when the slot window is closed by the red button, `cmd+w`
+  or `ctrl+shift+w` (decision 6); no false `swap failed` from the frame check, which reads a
+  window's frame after it was moved while ordered out; the hidden window absent from Mission
   Control, App Exposé and `` cmd+` ``, and whether the Window menu and the Dock menu list it;
   picking it there swaps back; a link from another app while Vimma is in the background; the
   red close button, `cmd+w` on the last tab and File → Close Window; `cmd+h` and unhide; a Dock
@@ -425,8 +452,8 @@ component (the control socket, MCP, the agent gate, content actors) is touched.
 
 - `docs/guide.md`, "Private workspace": the paragraph "On Hyprland it takes your Vimma window's
   place" becomes "On Hyprland and macOS …", with a short macOS item (how: Vimma hides the normal
-  window itself, no window manager involved; a fullscreen window is never hidden (decision 7); the Window menu
-  behaviour found by the hand checks). "Elsewhere" lists other Linux systems and
+  window itself, no window manager involved; a fullscreen window is never hidden (decision 7);
+  the Window menu behaviour found by the hand checks). "Elsewhere" lists other Linux systems and
   `placement = "window"`. The `config.toml` section's `[private] placement` text names macOS.
 - `docs/limits.md`: the macOS line drops "the Hyprland private-window swap"; a new line says that
   on macOS the hidden normal window still runs its pages and still appears to scripts

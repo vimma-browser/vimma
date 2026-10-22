@@ -198,12 +198,27 @@ add_task(async function entering_shows_private_at_the_frame_and_every_way_back_s
   Assert.deepEqual(after, before, "SessionStore saves no new field for the normal window");
 });
 
-add_task(async function a_zoomed_window_hands_its_zoom_on() {
+add_task(async function a_zoomed_window_hands_its_zoom_and_its_restored_frame_on() {
   await start();
+  // What AppWindow persists for the un-zoomed frame: position, and the inner size.
+  const root = document.documentElement;
+  root.setAttribute("screenX", `${FRAME.x}`);
+  root.setAttribute("screenY", `${FRAME.y}`);
+  root.setAttribute("width", `${FRAME.width - (window.outerWidth - window.innerWidth)}`);
+  root.setAttribute("height", `${FRAME.height - (window.outerHeight - window.innerHeight)}`);
   window.maximize();
   await until(() => window.windowState === window.STATE_MAXIMIZED, "the normal window is zoomed");
+  Assert.notDeepEqual(frameOf(window), FRAME, "zoomed, the frame differs from the restored one");
   const priv = await enter();
   await until(() => priv.windowState === priv.STATE_MAXIMIZED, "private is zoomed too");
+  priv.restore();
+  await until(() => priv.windowState === priv.STATE_NORMAL, "private un-zoomed");
+  await until(
+    () => JSON.stringify(frameOf(priv)) === JSON.stringify(FRAME),
+    "un-zoomed, private goes to the normal window's restored frame",
+  );
+  priv.maximize();
+  await until(() => priv.windowState === priv.STATE_MAXIMIZED, "private zoomed again");
   await SimpleTest.promiseFocus(priv);
   prefix("P", { shiftKey: true }, priv);
   await until(() => hidden(priv) && !hidden(window), "back");
@@ -373,10 +388,199 @@ add_task(async function nothing_is_written_to_the_profile() {
     }
     return out.sort();
   };
+  // Past JSONFile's 1.5 s save delay: a write an earlier test scheduled (the workspace store
+  // and its .bak) lands before the listing, not during the swap.
+  await new Promise((r) => setTimeout(r, 2000));
   const before = names();
   const priv = await enter();
   await SimpleTest.promiseFocus(priv);
   prefix("P", { shiftKey: true }, priv);
   await until(() => hidden(priv), "back");
   Assert.deepEqual(names(), before, "the profile directory has no new file");
+});
+
+/** From the private window back to the normal one, by the toggle. */
+async function leave(priv) {
+  await SimpleTest.promiseFocus(priv);
+  prefix("P", { shiftKey: true }, priv);
+  await until(() => hidden(priv) && !hidden(window), "back to the normal window");
+}
+
+/** Two turns of the event loop: past every swap's frame check. */
+async function turns() {
+  for (let i = 0; i < 2; i++) await new Promise((r) => Services.tm.dispatchToMainThread(r));
+}
+
+/** @param {Window} win */
+const notice = (win) => win.document.getElementById(NOTICE_ID)?.textContent ?? "";
+
+add_task(async function placement_window_from_a_reload_shows_a_hidden_private_window() {
+  await start();
+  const priv = await enter();
+  await leave(priv);
+  // A config reload to "window" while the private window is hidden.
+  PrivateSwap.configure("window");
+  Assert.ok(!hidden(priv), "the hidden private window is shown again");
+  Assert.equal(NativeSwap._pair, null, "and the pair is forgotten");
+  // Shown again, the private window was raised; its activation swapped nothing back.
+  Assert.ok(!hidden(window), "the normal window stays shown");
+  await SimpleTest.promiseFocus(window);
+  prefix("P", { shiftKey: true });
+  await until(() => Services.focus.activeWindow === priv, "the private workspace is there");
+  Assert.equal(privateWindows().length, 1, "the same private window, no new one");
+  PrivateSwap.configure("swap");
+});
+
+add_task(async function a_pop_up_never_swaps_or_hides() {
+  await start();
+  const priv = await enter();
+  await leave(priv);
+  // A normal pop-up, as a page's window.open(…, "popup") makes one: a browser window without
+  // its toolbar.
+  const opened = BrowserTestUtils.waitForNewWindow();
+  const url = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
+  url.data = "about:blank";
+  Services.ww.openWindow(
+    window,
+    "chrome://browser/content/browser.xhtml",
+    "_blank",
+    "chrome,dialog=no,toolbar=no,width=320,height=240",
+    url,
+  );
+  const popup = await opened;
+  Assert.ok(!popup.toolbar.visible, "a pop-up");
+  log.length = 0;
+  await SimpleTest.promiseFocus(popup);
+  prefix("P", { shiftKey: true }, popup);
+  await until(() => !hidden(priv), "the private workspace is shown, as a window");
+  Assert.deepEqual(writes(popup), [], "the pop-up is never hidden");
+  Assert.ok(!hidden(window), "nor is the normal window");
+  Assert.equal(NativeSwap._pair, null, "no pair with a pop-up");
+  await BrowserTestUtils.closeWindow(popup);
+});
+
+add_task(async function the_slot_is_the_last_swaps_frame() {
+  await start();
+  const second = await BrowserTestUtils.openNewBrowserWindow();
+  const priv = await enter();
+  const other = { x: 300, y: 200, width: 700, height: 500 };
+  await place(second, other);
+  await enter(second);
+  await turns();
+  // The next swap breaks half way: the hidden window comes back at the slot's frame.
+  const real = second.resizeTo;
+  second.resizeTo = function () {
+    second.resizeTo = real;
+    throw new Error("a broken window");
+  };
+  await SimpleTest.promiseFocus(priv);
+  prefix("P", { shiftKey: true }, priv);
+  await until(() => !hidden(second), "the second window is shown");
+  Assert.deepEqual(frameOf(second), other, "at the private window's frame, the slot's");
+  await BrowserTestUtils.closeWindow(second);
+});
+
+add_task(async function a_frame_that_does_not_apply_fails_the_swap() {
+  await start();
+  const priv = await enter();
+  await leave(priv);
+  await place(window, { x: 150, y: 110, width: 760, height: 560 });
+  // The private window ignores the size it is given: decision 9's check catches it.
+  priv.resizeTo = () => {};
+  await SimpleTest.promiseFocus(window);
+  prefix("P", { shiftKey: true });
+  await until(() => !hidden(window) && !hidden(priv), "both windows are shown");
+  await until(() => notice(priv).includes(SWAP_FAILED), "the notice says so");
+  Assert.equal(NativeSwap._pair, null, "the pair is forgotten");
+  delete priv.resizeTo;
+});
+
+add_task(async function a_fullscreen_window_is_never_hidden() {
+  await start();
+  window.fullScreen = true;
+  await until(() => window.windowState === window.STATE_FULLSCREEN, "the normal window is full");
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  const priv = await opened;
+  await until(() => priv.fullScreen, "private gets a full screen of its own");
+  await turns();
+  Assert.deepEqual(log, [], "nothing is hidden or shown");
+  Assert.equal(NativeSwap._pair, null, "no pair");
+  Assert.ok(!notice(priv).includes(SWAP_FAILED), "not a failure");
+  Assert.equal(NativeSwap.status, "none needed (macOS), private placement: swap", "swap stays on");
+  priv.fullScreen = false;
+  await BrowserTestUtils.closeWindow(priv);
+  window.fullScreen = false;
+  await until(() => window.windowState !== window.STATE_FULLSCREEN, "the normal window leaves");
+});
+
+add_task(async function going_back_before_a_new_window_starts_up_hides_nothing() {
+  await start();
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  // Back before the new window's delayed startup: its enter must not hide anything later.
+  PrivateSwap.show(window);
+  const priv = await opened;
+  await until(() => priv.gBrowserInit?.delayedStartupFinished, "the window started up");
+  await turns();
+  Assert.deepEqual(writes(window), [], "the normal window is never hidden");
+  Assert.equal(NativeSwap._pair, null, "no pair");
+});
+
+add_task(async function activations_and_new_tabs_during_a_swap_are_its_own() {
+  await start();
+  // As if macOS activated, or a tab opened in, a window in the middle of the swap that hid it.
+  log.push = function (/** @type {{ win: Window, visible: boolean }} */ e) {
+    const n = Array.prototype.push.call(this, e);
+    if (!e.visible) {
+      e.win.dispatchEvent(new e.win.Event("activate"));
+      e.win.dispatchEvent(new e.win.Event("TabOpen", { bubbles: true }));
+    }
+    return n;
+  };
+  const priv = await enter();
+  await turns();
+  Assert.ok(hidden(window), "entering: the normal window stays hidden");
+  await leave(priv);
+  await turns();
+  Assert.ok(hidden(priv), "leaving: the private window stays hidden");
+  delete log.push;
+});
+
+add_task(async function nothing_swaps_while_vimma_quits() {
+  let quitting = false;
+  await start();
+  NativeSwap._resetForTests({ force: true, log, shuttingDown: () => quitting });
+  const priv = await enter();
+  quitting = true;
+  const count = log.length;
+  const unloaded = new Promise((r) => priv.addEventListener("unload", r, { once: true }));
+  priv.close();
+  await unloaded;
+  Assert.equal(log.length, count, "no visibility write at shutdown");
+  quitting = false;
+});
+
+add_task(async function before_the_config_is_read_nothing_is_hidden() {
+  await start({ configured: false });
+  Assert.equal(
+    (await AboutVimma.collect(window)).windowManager,
+    "none needed (macOS), private placement: window (config not read yet)",
+  );
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  const priv = await opened;
+  await until(() => Services.focus.activeWindow === priv, "shown as a window");
+  await turns();
+  Assert.deepEqual(log, [], "no visibility write");
+});
+
+add_task(async function every_public_member_is_routed_by_the_backend_switch() {
+  // PrivateSwap inherits Hyprland's test hooks; a public member it does not route would reach
+  // macOS through the prototype unnoticed.
+  const hypr = Object.getPrototypeOf(PrivateSwap);
+  const unrouted = Object.keys(Object.getOwnPropertyDescriptors(hypr)).filter(
+    (k) => !k.startsWith("_") && !Object.hasOwn(PrivateSwap, k),
+  );
+  Assert.deepEqual(unrouted, [], "every public member of HyprSwap is routed");
 });

@@ -2141,9 +2141,10 @@ to disk.
 
 **On macOS it takes your Vimma window's place too.** Going to the private workspace opens the
 private window exactly where your Vimma window was (same screen, position and size, and zoomed
-if it was zoomed), without animation, and hides your normal window. Going back (any of the keys
-above) shows your normal window where the private window is now, so if you moved or resized the
-private window, your normal window takes that frame. Your normal window comes back in its place
+if it was zoomed), with macOS's window animations turned off (zooming may still animate), and
+hides your normal window. Going back (any of the keys above) shows your normal window where the
+private window is now, so if you moved or resized the private window, your normal window takes
+that frame. Your normal window comes back in its place
 when the private window closes in any way (`ctrl+b shift+d`, `ctrl+shift+w`, `cmd+shift+w`,
 `cmd+w` on its last tab, the red close button, File → Close Window), when a link from another
 app arrives, and when you pick it from the Window menu or the Dock menu if macOS lists it there.
@@ -2163,7 +2164,7 @@ about the swap is written to disk.
 - **Opting out:** `[private] placement = "window"` in `config.toml` (below) opens it as a second
   window.
 
-**Elsewhere** (Linux without Hyprland, X11, or `placement = "window"`) it is a second window:
+**Elsewhere** (Linux without Hyprland, or `placement = "window"`) it is a second window:
 Vimma opens it at the current window's size (and, on X11 and floating window managers, its
 position) and focuses it when you switch.
 

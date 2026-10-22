@@ -643,7 +643,10 @@ const HyprSwap = {
 /**
  * The backend switch (docs/specs/private-swap-macos.md, decision 3): the native swap on macOS
  * (native-swap.mjs), Hyprland's everywhere else. Both watch every window and read the config,
- * so a switch goes to whichever applies; Hyprland's test hooks are inherited unchanged.
+ * so a switch goes to whichever applies. Only HyprSwap's test hooks (`_` names) may be
+ * inherited: every public member (init, configure, enter, show, beforeClose, status) is routed
+ * here, and a new one must be too, or it would reach macOS through the prototype.
+ * browser_vimma_private_swap_native.js fails on a public member that is not routed.
  * @type {typeof HyprSwap & { openFeatures(from: Window): string | null }}
  */
 export const PrivateSwap = Object.create(HyprSwap, {

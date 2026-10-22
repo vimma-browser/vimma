@@ -59,6 +59,17 @@ let pair = null;
 let running = 0;
 /** Bumped by every switch: an enter still waiting for a new window when another began drops. */
 let switches = 0;
+/** Bumped by every swap: only the latest one's frame check may update the slot. */
+let swaps = 0;
+/** Whether Vimma is quitting: SessionStore hides every window then, and no swap may run. */
+let quitting = () => /** @type {any} */ (Services).startup.shuttingDown;
+
+/**
+ * A browser window, not a pop-up: pop-ups never swap or hide (private-swap decision 6).
+ * @param {Window} win
+ */
+export const isBrowserWindow = (win) =>
+  !win.closed && /** @type {any} */ (win).toolbar?.visible !== false;
 
 /** @param {string} text */
 function logOnce(text) {
@@ -102,11 +113,11 @@ function windowOf(id) {
  * @param {boolean} visible
  */
 function setVisible(win, visible) {
-  spy?.push({ win, visible });
   const base = /** @type {any} */ (win).docShell.treeOwner.QueryInterface(Ci.nsIBaseWindow);
   base.visibility = visible;
   if (visible) hidden.delete(win);
   else hidden.add(win);
+  spy?.push({ win, visible });
 }
 
 /** @param {Window} win @param {boolean} on */
@@ -164,6 +175,17 @@ function frameOf(win) {
 function forget() {
   pair = null;
   slot = null;
+}
+
+/** Every window Vimma hid is shown again where it is, and the pair is forgotten. */
+function revealAll() {
+  // First: a window shown is raised, and its activate event (synchronous, headless) must not
+  // find a pair to swap back.
+  forget();
+  for (const ref of byId.values()) {
+    const win = ref.deref();
+    if (win && !win.closed && hidden.has(win)) setVisible(win, true);
+  }
 }
 
 /**
@@ -238,6 +260,7 @@ function showInPlace(op) {
     x.focus();
     return false;
   }
+  const mine = ++swaps;
   running++;
   const others = [x, ...(y && !y.closed ? [y] : [])];
   try {
@@ -257,7 +280,7 @@ function showInPlace(op) {
   // Not the active app (a link, vimma-ctl from a terminal): focus() brings Vimma forward
   // (decision 5). Shown, the window is already key otherwise.
   if (/** @type {any} */ (Services.focus).activeWindow !== x) x.focus();
-  checkFrame(op, plan);
+  checkFrame(op, plan, mine);
   return true;
 }
 
@@ -265,15 +288,16 @@ function showInPlace(op) {
  * Decision 9: the shown window must report the frame it was given within one event loop turn.
  * @param {ShowOp} op
  * @param {Extract<NativePlan, { kind: "swap" }>} plan
+ * @param {number} mine  the swap's number: a later swap's slot is never overwritten
  */
-function checkFrame(op, plan) {
+function checkFrame(op, plan, mine) {
   const at = pair;
   Services.tm.dispatchToMainThread(() => {
     const x = windowOf(op.show);
     // The pair moved on meanwhile: a later swap checks its own frame.
     if (!x || pair !== at || parkedWindow(pair) === op.show) return;
     if (!frameApplied(plan, frameOf(x))) fail(op, new Error("the frame was not applied"));
-    else slot = frameOf(x);
+    else if (mine === swaps) slot = frameOf(x);
   });
 }
 
@@ -283,7 +307,7 @@ function checkFrame(op, plan) {
  * @returns {boolean} whether every swap was done
  */
 function step(event) {
-  if (/** @type {any} */ (Services).startup.shuttingDown) return false;
+  if (quitting()) return false;
   const { state, ops } = pairStep(pair, event);
   pair = state;
   for (const op of ops) {
@@ -316,7 +340,8 @@ function onTabOpen(win) {
 
 /**
  * A window closes, by any path: its docshell unloads before its native window is destroyed
- * (AppWindow::Destroy), so the hidden window is shown in its place first (decision 6).
+ * (AppWindow::Destroy), so the hidden window is shown in its place first (decision 6). Off GTK
+ * Destroy orders the closing window out before that, so the desktop may show for a frame.
  * @param {Window} win
  */
 function onUnload(win) {
@@ -363,6 +388,9 @@ export const NativeSwap = {
     placement = next;
     configured = true;
     failed = false;
+    // Never stranded: with "window" placement nothing may stay hidden, or a hidden private
+    // window could not be reached (focus() does not show a hidden window on macOS).
+    if (next === "window") revealAll();
   },
 
   /**
@@ -393,7 +421,11 @@ export const NativeSwap = {
    * @returns {boolean}
    */
   enter(from, priv, fresh) {
-    if (!wanted()) return false;
+    if (!wanted() || !isBrowserWindow(from)) {
+      // Declined: the caller focuses priv, which must then be on screen.
+      if (!priv.closed && hidden.has(priv)) revealAll();
+      return false;
+    }
     const mine = ++switches;
     const go = () => {
       // Another switch began meanwhile: this one would hide a window under the user.
@@ -446,7 +478,7 @@ export const NativeSwap = {
   /** about:vimma's line (decision 11): no frame, title or window identifier. */
   get status() {
     const how = !configured
-      ? placement
+      ? "window (config not read yet)"
       : placement === "window"
         ? "window (config)"
         : failed
@@ -469,16 +501,13 @@ export const NativeSwap = {
    * Tests only: forget the pair and every hidden window (showing them), select this backend
    * (`force`) or not, and record visibility writes in `log`.
    * @param {{ force?: boolean, log?: { win: Window, visible: boolean }[] | null,
-   *   configured?: boolean }} [options]
+   *   configured?: boolean, shuttingDown?: () => boolean }} [options]
    */
-  _resetForTests({ force = false, log = null, configured: read = true } = {}) {
-    for (const ref of byId.values()) {
-      const win = ref.deref();
-      if (win && !win.closed && hidden.has(win)) setVisible(win, true);
-    }
+  _resetForTests({ force = false, log = null, configured: read = true, shuttingDown } = {}) {
+    quitting = shuttingDown ?? (() => /** @type {any} */ (Services).startup.shuttingDown);
+    revealAll();
     forced = force;
     spy = log;
-    forget();
     failed = false;
     placement = "swap";
     configured = read;
