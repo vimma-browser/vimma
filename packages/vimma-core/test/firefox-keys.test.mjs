@@ -36,6 +36,8 @@ describe("xulKeyChord", () => {
     [{ keycode: "VK_DELETE", modifiers: "accel,shift" }, "ctrl+shift+delete"],
     [{ keycode: "VK_BACK" }, "backspace"],
     [{ key: "W", modifiers: "accel" }, "meta+w", { mac: true }],
+    // macOS's Nightly window-recording key: control,shift with 4, which a US keyboard types as $.
+    [{ key: "4", modifiers: "control,shift" }, "ctrl+$", { mac: true }],
     [{ key: "M", modifiers: "control" }, "ctrl+m", { mac: true }],
     [{ key: "Q", modifiers: "meta" }, "meta+q"],
     [{ key: "R", modifiers: "os, accel" }, "ctrl+meta+r"],
@@ -474,6 +476,21 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
 
   test('cmd+q quits as macOS runs it: fate d, so "all" keeps it', () => {
     expect(byId.get("key_quitApplication")).toMatchObject({ chord: "meta+q", fate: "d" });
+    // Fate d keeps it even if a later Firefox drops `internal` from the key.
+    const keys = [{ id: "key_quitApplication", chord: "meta+q" }];
+    const plan = planFirefoxKeys(keys, { disable: "all", enable: [] }, { mac: true });
+    expect(ids(plan)).toEqual([]);
+  });
+
+  test("the Nightly-only conditional keys keep Linux's chords in Vimma's notation", () => {
+    // browser-sets.inc.xhtml: macOS's key_windowRecordingCmd is control,shift with 4 (ctrl+$),
+    // and browser-graphics-utils.js gives the WebRender keys control,shift with 3 and 6.
+    expect(byId.get("key_windowRecordingCmd")).toMatchObject({
+      chord: "ctrl+$",
+      conditional: true,
+    });
+    expect(byId.get("key_wrCaptureCmd")).toMatchObject({ chord: "ctrl+#", conditional: true });
+    expect(byId.get("key_wrToggleCaptureSequenceCmd")).toMatchObject({ chord: "ctrl+^" });
   });
 
   test("the macOS-only keys are rows; the Linux-only ones and the menu bar's are not", () => {
