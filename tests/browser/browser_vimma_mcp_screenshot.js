@@ -214,6 +214,18 @@ add_task(async function test_screenshot_of_a_background_tab_shows_its_page() {
   );
   Assert.ok(tab.hidden, "the agent tab stayed hidden");
   Assert.ok(!tab.linkedBrowser.docShellIsActive, "and inactive");
+  // A zoomed page is captured as it shows: the same viewport, its contents larger.
+  tab.linkedBrowser.fullZoom = 2;
+  const zoomed = await screenshot(c, tab);
+  tab.linkedBrowser.fullZoom = 1;
+  const big = await decode(zoomed.result);
+  // The zoomed viewport is a whole number of the page's CSS pixels: a pixel more at most.
+  Assert.ok(
+    Math.abs(big.width - image.width) <= 1 && Math.abs(big.height - image.height) <= 1,
+    `the same size zoomed: ${big.width}x${big.height}`,
+  );
+  Assert.deepEqual(big.at(10, 200 * scale), [255, 0, 0], "with the band twice as high");
+  Assert.deepEqual(image.at(10, 200 * scale), [255, 255, 255], "where unzoomed is the page");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

@@ -134,9 +134,13 @@ export const AgentShot = {
     // The <browser>'s box is the viewport's size in the chrome's CSS pixels; a hidden tab
     // panel keeps it (Firefox lays out background tabs). A box with no room draws nothing.
     const box = browser.getBoundingClientRect();
-    const scale = screenshotScale(box.width, win.devicePixelRatio, box.height);
+    const fit = screenshotScale(box.width, win.devicePixelRatio, box.height);
     const wg = browser.browsingContext?.currentWindowGlobal;
-    if (scale === null || !wg) return { refused: SHOT_REFUSALS.unpainted };
+    if (fit === null || !wg) return { refused: SHOT_REFUSALS.unpainted };
+    // The page's CSS pixels are the chrome's times its zoom, as `tabs.captureTab` scales: the
+    // image shows the zoomed page at the viewport's size, and labels' rects scale the same way.
+    const zoom = browser.fullZoom > 0 ? browser.fullZoom : 1;
+    const scale = fit * zoom;
     if (await VimmaActors.agentSensitiveShown(browser, FRAME_TIMEOUT_MS)) {
       return { refused: SHOT_REFUSALS.sensitive };
     }
