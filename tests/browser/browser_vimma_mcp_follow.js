@@ -199,6 +199,30 @@ add_task(async function test_follow_loads_the_href_without_a_click() {
   await mcp(false);
 });
 
+// A load can pass through an initial about:blank, which a process switch makes in the tab: that
+// document is not the page the step loaded, so the wait goes on past it to the page itself.
+add_task(async function test_the_load_wait_passes_over_an_initial_document() {
+  const tab = BrowserTestUtils.addTab(gBrowser);
+  const browser = tab.linkedBrowser;
+  await until(() => !!browser.browsingContext?.currentWindowGlobal, "the tab has a document");
+  Assert.ok(browser.browsingContext.currentWindowGlobal.isInitialDocument, "its initial one");
+  Assert.ok(!browser.webProgress.isLoadingDocument, "which is not loading");
+  // What the tab showed before the step: another document at another URL.
+  const before = { doc: 0, url: LINKS };
+  Assert.equal(
+    await AgentDrive._loaded(browser, before, Date.now() + 500),
+    false,
+    "the initial document does not count as the loaded page",
+  );
+  BrowserTestUtils.startLoadingURIString(browser, PAGE);
+  Assert.ok(
+    await AgentDrive._loaded(browser, before, Date.now() + 10000),
+    "the page after it does",
+  );
+  Assert.equal(browser.currentURI.spec, PAGE, "and is the page that loaded");
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function test_follow_refuses_javascript_and_data_hrefs() {
   await mcp(true);
   const tab = await openAgentTab();

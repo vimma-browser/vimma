@@ -35,6 +35,7 @@ import {
   pinnedPem,
   prepareRelease,
   previousRelease,
+  publishedTags,
   releaseInfo,
   serialAt,
   urgencyOf,
@@ -324,32 +325,40 @@ describe("urgency (spec §7)", () => {
   });
 });
 
-describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
-  /** An error as execFileSync throws it when gh exits non-zero. */
-  const ghError = (/** @type {string} */ stderr) =>
-    Object.assign(new Error("Command failed: gh api"), { stderr });
-  const HTTP_500 = ghError("unexpected end of JSON input\n");
-  /** A gh that answers with `replies` in turn (an Error is thrown), and the waits it was given. */
-  const fake = (/** @type {(string | Error)[]} */ ...replies) => {
-    const calls = /** @type {string[][]} */ ([]);
-    const waits = /** @type {number[]} */ ([]);
-    const run = (/** @type {string[]} */ args) => {
-      calls.push(args);
-      const r = replies[Math.min(calls.length, replies.length) - 1];
-      if (r instanceof Error) throw r;
-      return r ?? "";
-    };
-    return { run, sleep: async (/** @type {number} */ ms) => void waits.push(ms), calls, waits };
+/** An error as execFileSync throws it when gh exits non-zero. */
+const ghError = (/** @type {string} */ stderr) =>
+  Object.assign(new Error("Command failed: gh api"), { stderr });
+/** A gh that answers with `replies` in turn (an Error is thrown), and the waits it was given. */
+const fake = (/** @type {(string | Error)[]} */ ...replies) => {
+  const calls = /** @type {string[][]} */ ([]);
+  const waits = /** @type {number[]} */ ([]);
+  const run = (/** @type {string[]} */ args) => {
+    calls.push(args);
+    const r = replies[Math.min(calls.length, replies.length) - 1];
+    if (r instanceof Error) throw r;
+    return r ?? "";
   };
+  return { run, sleep: async (/** @type {number} */ ms) => void waits.push(ms), calls, waits };
+};
+
+describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
+  const HTTP_500 = ghError("unexpected end of JSON input\n");
+
+  /** The commits/<sha>/pulls response for pull requests carrying these labels. */
+  const pulls = (/** @type {string[][]} */ ...labels) =>
+    JSON.stringify(
+      labels.map((names, i) => ({ number: i + 1, labels: names.map((name) => ({ name })) })),
+    );
 
   it("retries a transient failure, then reads the labels", async () => {
-    const gh = fake(HTTP_500, "security\nupstream\n");
+    const gh = fake(HTTP_500, pulls(["upstream", "security"], ["security"]));
     await expect(commitLabels("abc", "vimma-browser/vimma", gh)).resolves.toEqual([
       "security",
       "upstream",
     ]);
     expect(gh.calls).toHaveLength(2);
     expect(gh.calls[0]).toContain("repos/vimma-browser/vimma/commits/abc/pulls");
+    expect(gh.calls[0]).not.toContain("--jq");
     expect(gh.waits).toEqual([2000]);
   });
 
@@ -357,14 +366,36 @@ describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
     const gh = fake(
       ghError("gh: Server Error (HTTP 502)\n"),
       ghError("Get https://api.github.com/: dial tcp: i/o timeout\n"),
-      "security\n",
+      pulls(["security"]),
     );
     await expect(commitLabels("abc", "o/r", gh)).resolves.toEqual(["security"]);
     expect(gh.waits).toEqual([2000, 4000]);
   });
 
+  it("retries a successful exit whose body is not JSON", async () => {
+    const gh = fake("", '[{"labels":[{"na', pulls(["security"]));
+    await expect(commitLabels("abc", "o/r", gh)).resolves.toEqual(["security"]);
+    expect(gh.waits).toEqual([2000, 4000]);
+  });
+
   it("a commit with no pull request or no labels has none", async () => {
-    await expect(commitLabels("abc", "o/r", fake(""))).resolves.toEqual([]);
+    await expect(commitLabels("abc", "o/r", fake(pulls()))).resolves.toEqual([]);
+    await expect(commitLabels("abc", "o/r", fake(pulls([])))).resolves.toEqual([]);
+  });
+
+  it.each([
+    ["an object", "{}"],
+    ["null", "null"],
+    ["a pull request without labels", '[{"number":1}]'],
+    ["a pull request that is not an object", "[null]"],
+    ["labels that are not a list", '[{"labels":{}}]'],
+    ["a label without a string name", '[{"labels":[{"name":7}]}]'],
+  ])("throws at once on %s instead of answering no labels", async (_, body) => {
+    const gh = fake(body, pulls(["security"]));
+    await expect(commitLabels("abc", "o/r", gh)).rejects.toThrow(
+      /labels of abc: unexpected response/,
+    );
+    expect(gh.calls).toHaveLength(1);
   });
 
   it("throws after four attempts that all fail, never answering no labels", async () => {
@@ -375,10 +406,54 @@ describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
   });
 
   it("throws at once on a failure that is not transient", async () => {
-    const gh = fake(ghError("gh: Not Found (HTTP 404)\n"), "security\n");
+    const gh = fake(ghError("gh: Not Found (HTTP 404)\n"), pulls(["security"]));
     await expect(commitLabels("abc", "o/r", gh)).rejects.toThrow(/HTTP 404/);
     expect(gh.calls).toHaveLength(1);
     expect(gh.waits).toEqual([]);
+  });
+});
+
+describe("reading the published releases (spec §7: the range of commits)", () => {
+  /** One entry of the releases list. */
+  const release = (/** @type {string} */ tag_name, draft = false, prerelease = false) => ({
+    tag_name,
+    draft,
+    prerelease,
+  });
+  /** The releases list as `gh api --paginate --slurp` prints it: a list of pages. */
+  const pages = (/** @type {object[][]} */ ...p) => JSON.stringify(p);
+
+  it("reads the published releases' tags from every page", async () => {
+    const gh = fake(
+      ghError("gh: Server Error (HTTP 500)\n"),
+      pages(
+        [release("v0.1.8", true), release("v0.1.7"), release("v0.1.7-rc.1", false, true)],
+        [release("v0.1.6")],
+      ),
+    );
+    await expect(publishedTags("v0.1.7", "o/r", gh)).resolves.toEqual(["v0.1.7", "v0.1.6"]);
+    expect(gh.calls[0]).toEqual(
+      expect.arrayContaining(["repos/o/r/releases", "--paginate", "--slurp"]),
+    );
+    expect(gh.calls[0]).not.toContain("--jq");
+    expect(gh.waits).toEqual([2000]);
+  });
+
+  it.each([
+    ["an object", "{}"],
+    ["null", "null"],
+    ["a page that is an object", "[{}]"],
+    ["a release without a tag", '[[{"draft":false,"prerelease":false}]]'],
+    ["a release without its draft flag", '[[{"tag_name":"v0.1.7","prerelease":false}]]'],
+    ["no pages", "[]"],
+    ["a list without the current tag", pages([release("v0.1.6")])],
+    ["a list with the current tag only as a draft", pages([release("v0.1.7", true)])],
+  ])("throws at once on %s instead of widening the range", async (_, body) => {
+    const gh = fake(body, pages([release("v0.1.7")]));
+    await expect(publishedTags("v0.1.7", "o/r", gh)).rejects.toThrow(
+      /published releases: unexpected response/,
+    );
+    expect(gh.calls).toHaveLength(1);
   });
 });
 
