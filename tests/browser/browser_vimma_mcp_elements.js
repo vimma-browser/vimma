@@ -13,7 +13,7 @@
 "use strict";
 
 /* global focusContent -- from head.js */
-/* global Client -- from head_vimma_control.js */
+/* global Client, tidyTask -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 
@@ -109,9 +109,26 @@ async function openAgentTab(url = FORM) {
   return tab;
 }
 
+/** The connections the running task opened. @type {any[]} */
+const clients = [];
+
+/** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
+async function putBack() {
+  for (const c of clients.splice(0)) c.close();
+  Services.prefs.clearUserPref(ASK_TIMEOUT);
+  if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
+  await mcp(false);
+}
+
+/** add_task, with putBack after the task however it ends. @param {() => Promise<void>} task */
+const addTidyTask = (task) => add_task(tidyTask(task, putBack));
+
 /** An agent connection, after its agent-hello. */
 async function agentClient(name = "example-agent") {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
+  clients.push(c);
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name } });
   return c;
@@ -166,7 +183,7 @@ function one(list, pick, what) {
   return found[0] ?? {};
 }
 
-add_task(async function test_elements_lists_kinds_fields_and_forms() {
+addTidyTask(async function test_elements_lists_kinds_fields_and_forms() {
   await mcp(true);
   const tab = await openAgentTab();
   await focusContent(gBrowser.selectedBrowser);
@@ -259,7 +276,7 @@ add_task(async function test_elements_lists_kinds_fields_and_forms() {
   await mcp(false);
 });
 
-add_task(async function test_password_and_card_fields_are_sensitive_without_values() {
+addTidyTask(async function test_password_and_card_fields_are_sensitive_without_values() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -282,7 +299,7 @@ add_task(async function test_password_and_card_fields_are_sensitive_without_valu
   await mcp(false);
 });
 
-add_task(async function test_agent_labels_leave_the_users_hint_mode_alone() {
+addTidyTask(async function test_agent_labels_leave_the_users_hint_mode_alone() {
   await mcp(true);
   const tab = await openAgentTab();
   const mine = await BrowserTestUtils.openNewForegroundTab(gBrowser, FORM);
@@ -313,7 +330,7 @@ add_task(async function test_agent_labels_leave_the_users_hint_mode_alone() {
   await mcp(false);
 });
 
-add_task(async function test_f_follows_only_links_from_an_elements_list() {
+addTidyTask(async function test_f_follows_only_links_from_an_elements_list() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -336,7 +353,7 @@ add_task(async function test_f_follows_only_links_from_an_elements_list() {
   await mcp(false);
 });
 
-add_task(async function test_labels_of_a_gone_element_are_refused() {
+addTidyTask(async function test_labels_of_a_gone_element_are_refused() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -360,7 +377,7 @@ add_task(async function test_labels_of_a_gone_element_are_refused() {
   await mcp(false);
 });
 
-add_task(async function test_elements_only_on_web_pages_and_agent_tabs() {
+addTidyTask(async function test_elements_only_on_web_pages_and_agent_tabs() {
   await mcp(true);
   const c = await agentClient();
   // A tab of the user's own workspace is unknown to the agent (M2), and nothing is asked.
@@ -384,7 +401,7 @@ add_task(async function test_elements_only_on_web_pages_and_agent_tabs() {
   await mcp(false);
 });
 
-add_task(async function test_elements_under_a_grant_notice_log_and_rate() {
+addTidyTask(async function test_elements_under_a_grant_notice_log_and_rate() {
   await mcp(true);
   Services.prefs.setIntPref(ASK_TIMEOUT, 200);
   const tab = await openAgentTab();

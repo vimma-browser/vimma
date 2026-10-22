@@ -11,6 +11,11 @@ describe("testNames", () => {
     expect([...testNames(src, "x.js")]).toEqual(["test_a", "b_c"]);
   });
 
+  test("mochitest tasks added through a file's own add...Task wrapper", () => {
+    const src = `addTidyTask(async function test_a() {});\nreaddTask(function not_a_task() {});`;
+    expect([...testNames(src, "x.js")]).toEqual(["test_a"]);
+  });
+
   test("Vitest test, it, describe and test.each titles", () => {
     const src = [
       `describe("group", () => {`,

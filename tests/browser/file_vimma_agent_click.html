@@ -10,8 +10,10 @@
    - click handler sends it elsewhere, one whose submit listener does, and a dialog form with a
    - hidden posting button; buttons whose script submits a form by itself, at once, a moment later,
    - after Firefox cached an earlier verdict, and through that hidden button; a link that changes
-   - its address on mousedown, an SVG link to another site, and a form whose destination
-   - redirects. Everything fits the test window. -->
+   - its address on mousedown, an SVG link to another site, a form whose destination
+   - redirects, and three whose button moves the form's destination while it is pressed, then
+   - puts it back and sends the form itself: a moment later, at once, or after keeping the page
+   - busy. Everything fits the test window. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -24,6 +26,9 @@
       form,
       p {
         margin: 2px 0;
+      }
+      form.inline {
+        display: inline;
       }
     </style>
   </head>
@@ -69,6 +74,18 @@
     </form>
     <form id="trick" method="dialog" action="file_vimma_agent_page.html?trick">
       <button id="trick-post" type="submit" formmethod="post" hidden>Hidden post</button>
+    </form>
+    <form id="bounce" method="get" action="file_vimma_agent_page.html" class="inline">
+      <input name="bounce-note" aria-label="Bounce note" size="4" />
+      <button type="submit">Bounce</button>
+    </form>
+    <form id="bounce-now" method="get" action="file_vimma_agent_page.html" class="inline">
+      <input name="bounce-now-note" aria-label="Bounce now note" size="4" />
+      <button type="submit">Bounce now</button>
+    </form>
+    <form id="bounce-busy" method="get" action="file_vimma_agent_page.html" class="inline">
+      <input name="bounce-busy-note" aria-label="Bounce busy note" size="4" />
+      <button type="submit">Bounce busy</button>
     </form>
     <p>
       <button id="save" type="button">Save draft</button>
@@ -132,6 +149,40 @@
       document.getElementById("swap-link").addEventListener("mousedown", (e) => {
         e.currentTarget.href = "https://example.org/swapped";
       });
+      // Buttons that move their form's destination as they are pressed, so the click is skipped,
+      // then put it back and send the form themselves: 100 ms later, at once (a zero timeout),
+      // or after keeping the page busy for 1.2 s, longer than the parent waits for an answer.
+      window.bounced = {};
+      for (const [id, wait, busy] of [
+        ["bounce", 100, 0],
+        ["bounce-now", 0, 0],
+        ["bounce-busy", 0, 1200],
+      ]) {
+        const form = document.getElementById(id);
+        form.querySelector("button").addEventListener("mousedown", () => {
+          const action = form.action;
+          form.action = "https://example.org/bounce";
+          setTimeout(() => {
+            for (const start = Date.now(); Date.now() - start < busy;);
+            form.action = action;
+            form.submit();
+            window.bounced[id] = true;
+          }, wait);
+        });
+      }
+      // Called by Vimma's child just before it checks an agent's form submission (a test sets
+      // VimmaChild._beforeSubmitCheck): moves the form's destination so the submission is
+      // skipped, then at once puts it back and sends the form itself.
+      window.bounceForm = () => {
+        const form = document.getElementById("bounce");
+        const action = form.action;
+        form.action = "https://example.org/bounce";
+        setTimeout(() => {
+          form.action = action;
+          form.submit();
+          window.bounced["bounce-form"] = true;
+        }, 0);
+      };
       document
         .getElementById("later")
         .addEventListener("click", () => setTimeout(() => draft.requestSubmit(), 300));

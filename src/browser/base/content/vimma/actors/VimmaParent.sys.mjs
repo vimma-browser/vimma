@@ -8,6 +8,7 @@
 
 import { parseDescriptor } from "../core/editable.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
+import { VimmaActors } from "./VimmaActors.sys.mjs";
 
 const TRIGGERS = new Set(["focusin", "recheck"]);
 const MESSAGES = new Set(["Vimma:Focus", "Vimma:MouseSelection", "Vimma:Click"]);
@@ -31,6 +32,13 @@ export class VimmaParent extends JSWindowActorParent {
         this.manager,
         msg.data?.gen,
       );
+      return;
+    }
+    if (msg.name === "Vimma:AgentSkipped") {
+      // An agent's click or submit was skipped in this frame (docs/specs/mcp-forms.md F16;
+      // security.md M28): the tab's allowed submission is withdrawn. From any frame of the tab,
+      // a forged one can only take an allowance away.
+      VimmaActors.agentSkipped(this.browsingContext);
       return;
     }
     if (!MESSAGES.has(msg.name)) return;
