@@ -1564,7 +1564,8 @@ Otherwise, or if clamd fails or its definitions are old, Vimma uses `clamscan`.
 
 On macOS the same rules apply. Vimma looks for `clamscan` and `clamdscan` only in `/usr/bin`
 and `/usr/local/bin`, owned by root, and for the config only at `/etc/clamav/clamd.conf`.
-macOS has no `clamav` user, so in practice the socket must be root's. The common installs are
+macOS's own ClamAV account is listed as `_clamav`, not `clamav`, in `/etc/passwd`, so the socket
+must be root's. The common installs are
 not used: Homebrew (`/opt/homebrew`), MacPorts (`/opt/local`) and the official installer
 (`/usr/local/clamav`) put ClamAV elsewhere. So on macOS, ClamAV, and clamd especially, is
 usually not used.
