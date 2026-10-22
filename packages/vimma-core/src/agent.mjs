@@ -116,6 +116,7 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-close": "vimma_close_tab",
   "agent-keys": "vimma_keys",
   "agent-show": "vimma_show",
+  "agent-elements": "vimma_elements",
 });
 /**
  * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
@@ -142,6 +143,13 @@ export const KEYS_RATE = Object.freeze({ max: 30, ms: 60_000 });
  * counted when asked, so a refused show cannot be retried in a loop.
  */
 export const SHOW_RATE = Object.freeze({ max: 6, ms: 60_000 });
+
+/**
+ * `agent-elements` requests per connection in any window of `ms` (mcp-forms F26, security.md
+ * M31), counted when asked: a `vimma_elements` grant runs unasked and must not flood a page, and
+ * a refused call must not loop.
+ */
+export const ELEMENTS_RATE = Object.freeze({ max: 30, ms: 60_000 });
 
 /** A sliding window of each connection's calls of one kind, at most `max` in any `ms`. */
 export class CallRate {

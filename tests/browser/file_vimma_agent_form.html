@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_elements.js: what vimma_elements lists. A sign-up form with a
+   - password field, one switched from password to text, a one-time code, a select, a checkbox, a
+   - disabled button and a submit button; a card form without autocomplete attributes, which only
+   - form autofill's heuristics recognise; a search form; a link; a script-only button; and a
+   - frame of another site with a button; a srcdoc frame with a button, which has no host; and a
+   - masked PIN field, which pages draw as dots without type=password. Everything fits the test
+   - window's viewport. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Form agent fixture</title>
+    <style>
+      body {
+        margin: 4px;
+        font: 12px sans-serif;
+      }
+      form,
+      p {
+        margin: 2px 0;
+      }
+      iframe {
+        width: 200px;
+        height: 40px;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="signup" method="post" action="/api/signup">
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" autocomplete="email" required />
+      <label for="pw">Password</label>
+      <input id="pw" name="password" type="password" value="hunter2-secret" />
+      <label for="shown">Old password</label>
+      <input id="shown" name="old" type="password" />
+      <input id="code" name="code" autocomplete="one-time-code" value="864213" placeholder="Code" />
+      <select id="country" name="country">
+        <option value="fi" selected>Finland</option>
+        <option value="se">Sweden</option>
+      </select>
+      <label><input id="remember" type="checkbox" name="remember" checked /> Remember me</label>
+      <textarea id="bio" name="bio" rows="1">Hello there</textarea>
+      <button id="later" type="button" disabled>Later</button>
+      <button id="submit" type="submit">Sign up</button>
+    </form>
+    <form id="pay" method="post" action="/api/pay">
+      <label for="cardno">Card number</label>
+      <input id="cardno" name="cardnumber" value="4111111111111111" />
+      <label for="cardname">Name on card</label>
+      <input id="cardname" name="ccname" value="Ada Lovelace" />
+      <label for="expiry">Expiration date (MM/YY)</label>
+      <input id="expiry" name="expiry" value="12/31" />
+      <label for="cvc">Security code (CVC)</label>
+      <input id="cvc" name="cvc" value="737" />
+      <input id="card2" name="card2" autocomplete="cc-number" value="5555444433331111" />
+    </form>
+    <form id="search" method="get" action="/search">
+      <input id="q" type="search" name="q" value="cats" aria-label="Search the site" />
+    </form>
+    <p>
+      <a id="plans" href="file_vimma_agent_page.html?plans">Plans</a>
+      <span id="menu" role="button" tabindex="0">Menu</span>
+    </p>
+    <p>
+      <label for="pin">PIN</label>
+      <input id="pin" name="pin" value="4321" style="-webkit-text-security: disc" />
+    </p>
+    <iframe id="frame" title="Widget"></iframe>
+    <iframe id="inline" title="Inline" srcdoc="<button>Inline</button>"></iframe>
+    <script>
+      // A "show password" toggle: the field was a password field and now shows its text.
+      const shown = document.getElementById("shown");
+      shown.value = "old-secret-value";
+      shown.type = "text";
+      document.getElementById("menu").addEventListener("click", () => {
+        document.title = "menu";
+      });
+      // A frame of another site: the test directory on example.org.
+      const dir = location.pathname.replace(/[^/]*$/, "");
+      document.getElementById("frame").src =
+        `https://example.org${dir}file_vimma_agent_widget.html`;
+    </script>
+  </body>
+</html>

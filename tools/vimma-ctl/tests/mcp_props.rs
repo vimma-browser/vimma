@@ -78,6 +78,7 @@ fn scalar() -> impl Strategy<Value = Value> {
             "vimma_close_tab",
             "vimma_keys",
             "vimma_show",
+            "vimma_elements",
             "3j /pricing<CR> gg",
             "/x",
             "100j",

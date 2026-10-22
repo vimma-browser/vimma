@@ -199,6 +199,14 @@ support-files = [
   "head_vimma_control.js",
 ]
 
+["browser_vimma_mcp_elements.js"]
+support-files = [
+  "file_vimma_agent_form.html",
+  "file_vimma_agent_page.html",
+  "file_vimma_agent_widget.html",
+  "head_vimma_control.js",
+]
+
 ["browser_vimma_mcp_show.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 

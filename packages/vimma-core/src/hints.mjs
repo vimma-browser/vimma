@@ -9,8 +9,10 @@
 
 /** @import { Chord } from "./keys.mjs" */
 /** @import { BlockKind } from "./blocks.mjs" */
+/** @import { AgentElementInfo, AgentForm } from "./agent-element.mjs" */
 
 import { BLOCK_KINDS } from "./blocks.mjs";
+import { parseAgentElement, parseAgentForms } from "./agent-element.mjs";
 
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
 /** @typedef {{ rect: Rect }} Target */
@@ -220,11 +222,13 @@ const BLOCK_KIND_SET = new Set(BLOCK_KINDS);
 /**
  * `rect` is where the label goes (for a text block, its first visible line); a block also
  * carries its kind and its whole border box, for the outline (docs/specs/element-focus.md). An
- * agent's collection (docs/specs/mcp-drive.md D12) is of links only, each with its text.
- * @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string, text?: string, blockKind?: BlockKind, box?: Rect }} ReplyTarget
+ * agent's collection (docs/specs/mcp-drive.md D12) is of links only, each with its text; an
+ * agent's `vimma_elements` (docs/specs/mcp-forms.md F5) is of every kind but blocks, each with the
+ * child's description of it (`agent`), and the frame's forms.
+ * @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string, text?: string, blockKind?: BlockKind, box?: Rect, agent?: AgentElementInfo }} ReplyTarget
  */
 /** @typedef {{ id: number, rect: Rect }} ReplyFrame */
-/** @typedef {{ targets: ReplyTarget[], frames: ReplyFrame[], ms: number }} HintReply */
+/** @typedef {{ targets: ReplyTarget[], frames: ReplyFrame[], ms: number, forms?: AgentForm[] }} HintReply */
 
 /** @param {unknown} n */
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
@@ -250,17 +254,23 @@ function parseRect(value) {
  * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs). A
  * collection gets only the kind of target it asked for: text blocks for element focus, never
  * a block for `f` or `gF`, so a block is never followed and a link never outlined; an agent's
- * collection (`texts`) only links, with their text.
+ * collection (`texts`) only links, with their text; an agent's `vimma_elements` (`elements`) every
+ * kind but blocks, each with its description, checked by parseAgentElement, and the frame's forms.
  * @param {unknown} value
- * @param {{ blocks?: boolean, texts?: boolean }} [options]  the collection asked for text
- *   blocks, or for links with their text (an agent's `f`)
+ * @param {{ blocks?: boolean, texts?: boolean, elements?: boolean }} [options]  the collection
+ *   asked for text blocks, for links with their text (an agent's `f`), or for every element with
+ *   its description (`vimma_elements`)
  * @returns {HintReply | null}
  */
-export function parseHintReply(value, { blocks = false, texts = false } = {}) {
+export function parseHintReply(value, { blocks = false, texts = false, elements = false } = {}) {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const { targets, frames, ms } = /** @type {Record<string, unknown>} */ (value);
     if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+    const forms = elements
+      ? parseAgentForms(/** @type {Record<string, unknown>} */ (value).forms)
+      : null;
+    if (elements && !forms) return null;
     if (!Array.isArray(targets) || targets.length > HINT_REPLY_MAX_TARGETS) return null;
     if (!Array.isArray(frames) || frames.length > HINT_REPLY_MAX_FRAMES) return null;
     /** @type {ReplyTarget[]} */
@@ -268,7 +278,7 @@ export function parseHintReply(value, { blocks = false, texts = false } = {}) {
     const ids = new Set();
     for (const t of [...targets]) {
       if (typeof t !== "object" || t === null) return null;
-      const { id, rect, kind, href, text, blockKind, box } =
+      const { id, rect, kind, href, text, blockKind, box, agent } =
         /** @type {Record<string, unknown>} */ (t);
       if (!isIndex(id) || ids.has(id)) return null;
       ids.add(id);
@@ -289,6 +299,11 @@ export function parseHintReply(value, { blocks = false, texts = false } = {}) {
       if (texts && text !== undefined) {
         if (typeof text !== "string" || text.length > HINT_REPLY_MAX_TEXT) return null;
         out.text = text;
+      }
+      if (elements) {
+        const info = parseAgentElement(agent, /** @type {AgentForm[]} */ (forms).length);
+        if (!info) return null;
+        out.agent = info;
       }
       if (kind === "block") {
         // A block is clipped by its frame, not by the viewport: its box may start above it.
@@ -314,7 +329,9 @@ export function parseHintReply(value, { blocks = false, texts = false } = {}) {
       frameIds.add(id);
       outFrames.push({ id: /** @type {number} */ (id), rect: r });
     }
-    return { targets: outTargets, frames: outFrames, ms };
+    return forms
+      ? { targets: outTargets, frames: outFrames, ms, forms }
+      : { targets: outTargets, frames: outFrames, ms };
   } catch {
     return null;
   }

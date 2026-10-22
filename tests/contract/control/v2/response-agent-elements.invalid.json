@@ -1,0 +1,16 @@
+{
+  "description": "An element list outside the untrusted-content delimiters",
+  "kind": "response",
+  "command": "agent-elements",
+  "message": {
+    "type": "response",
+    "id": 11,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/signup",
+      "title": "Sign up · Example",
+      "elements": "{\"label\":\"d\",\"kind\":\"button\",\"text\":\"Sign up\"}",
+      "dropped": 0
+    }
+  }
+}

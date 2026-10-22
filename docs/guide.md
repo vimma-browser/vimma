@@ -48,8 +48,8 @@ What works today, each with the section that explains it:
   uploads; Safe Browsing on.
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
   local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
-  open, scroll and search pages, follow their links and show you a page, and every request asks
-  you first.
+  open, scroll and search pages, follow their links, list their buttons and fields and show you
+  a page, and every request asks you first.
 
 ## Every key is yours
 
@@ -1307,7 +1307,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers six tools:
+and output, connects to Vimma as an agent (never with full control), and offers seven tools:
 
 | Tool              | What the agent can do                                                                                    |
 | ----------------- | -------------------------------------------------------------------------------------------------------- |
@@ -1317,6 +1317,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_close_tab` | Close one of its tabs.                                                                                   |
 | `vimma_keys`      | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
 | `vimma_show`      | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
+| `vimma_elements`  | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1416,7 +1417,7 @@ with the rest of your computer.
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
-  `vimma_keys` calls and 6 `vimma_show` calls a minute, and a minute of silence after three noes
+  `vimma_keys` calls, 30 `vimma_elements` calls and 6 `vimma_show` calls a minute, and a minute of silence after three noes
   in a row. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -1484,6 +1485,34 @@ workspace, tab, focus, find bar and hint mode.
   put your focus in a text field it matched.
 - **`:mcp log`** lists what agents did, asked or under a grant, each follow with the address it
   loaded, so you can check afterwards what a grant let through. It is kept in memory only and cleared by `:mcp off`.
+
+#### Listing a page's buttons and fields
+
+`vimma_elements` lets an agent see what it could act on in an agent tab: the buttons, fields,
+links and other clickable elements on screen, each with a hint label. The question names the tab,
+`◇ claude-code wants vimma_elements: 2 "Sign up · Example" example.com/signup`, and on `y` the
+agent gets the list. Nothing on the page is touched, and your window keeps its workspace, tab,
+focus and hint mode.
+
+- **What it lists.** Each element's label, kind (link, button, field, checkbox, radio, select or
+  other clickable element) and text; a link's address; a field's type, name, label and current
+  value; a checkbox's state; a select's options; and the forms they belong to, with where each
+  sends its data. Disabled controls are listed as disabled. Only what is on screen is listed, up
+  to 200 elements, as your own hints would show; the agent scrolls with `vimma_keys` for more.
+  Everything in it is marked as untrusted web content.
+- **Passwords, card numbers and one-time codes are never listed with their value.** A password
+  field (also one a "show password" button turned into a text field), a one-time-code field and
+  a payment card field are listed as sensitive, with no value, so the agent can tell you what to
+  type and where. Card fields are recognised by their `autocomplete` attribute and by the
+  heuristics Firefox's form autofill uses, which also catch card forms without the attribute.
+- **Labels by the same rules as `f`.** They last two minutes on the page that listed them, and a
+  new list or `f` replaces them. `vimma_keys` with `f` and a label from the list follows a link,
+  as a load of its address; the label of a button or a field is refused, and so is a link the
+  page has replaced since it was listed.
+- **A grant covers it:** each call then shows
+  `claude-code listed the buttons and fields of "Sign up · Example" (grant, 12m left)`. It is
+  not a read grant: the list holds no page text beyond the elements' own. At most 30 calls a
+  minute; each is in `:mcp log`.
 
 #### Showing you a page
 

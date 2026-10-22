@@ -9,6 +9,7 @@
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
 import { collectTargets, linkText } from "./hint-collect.mjs";
+import { describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
@@ -159,6 +160,11 @@ export class VimmaChild extends JSWindowActorChild {
   #largest = null;
   /** The last hint collection (m1-hints): its generation and its elements, by target id. */
   #hints = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
+  /**
+   * An agent's last `vimma_elements` in this frame (docs/specs/mcp-forms.md F4): beside the
+   * user's collection, never in its place, so neither voids the other.
+   */
+  #agentEls = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
   #emptySearchAt = 0;
   /** Copy mode in this document (m1-copy-mode). */
@@ -515,6 +521,8 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#collectHints(msg.data);
       case "Vimma:ActivateHint":
         return this.#activateHint(msg.data);
+      case "Vimma:AgentElement":
+        return this.#agentElement(msg.data);
       case "Vimma:Caret": {
         // Only the frame with focus has the user's caret (the parent sends to that one).
         const win = this.contentWindow;
@@ -593,22 +601,30 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * The hint targets of this frame (m1-hints). Rects are in this frame's CSS pixels; the parent
    * offsets them by the frame rects the embedding frame's child reports. An agent's collection
-   * (`texts`, docs/specs/mcp-drive.md D12) gets each link's text too.
-   * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean }} data
+   * (`texts`, docs/specs/mcp-drive.md D12) gets each link's text too; an agent's
+   * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
+   * controls included, each described, with the frame's forms, and keeps its elements apart from
+   * the user's (F4).
+   * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
+   *   elements?: boolean }} data
    */
   #collectHints(data) {
     const gen = data?.gen;
     const win = this.contentWindow;
     if (!isIndex(gen) || !win) return null;
     const t0 = ChromeUtils.now();
+    const elements = data.elements === true;
     const { targets, frames } = collectTargets(win, {
-      linksOnly: data.linksOnly === true,
-      blocks: data.blocks === true,
+      linksOnly: data.linksOnly === true && !elements,
+      blocks: data.blocks === true && !elements,
+      disabled: elements,
     });
-    const texts = data.texts === true;
-    // An agent's collection is never followed through here (the parent loads its href): the
-    // user's targets of this frame stay as they were.
-    if (!texts) this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    const texts = data.texts === true && !elements;
+    // An agent's collection is never followed through the user's targets: the user's targets of
+    // this frame stay as they were, and an agent's elements are kept apart.
+    if (elements) this.#agentEls = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    else if (!texts) this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    const described = elements ? describeAgentElements(targets.map((t) => t.el)) : null;
     return {
       targets: targets.map((t, id) => ({
         id,
@@ -618,10 +634,25 @@ export class VimmaChild extends JSWindowActorChild {
         text: texts ? linkText(t.el) : undefined,
         blockKind: t.blockKind,
         box: t.box,
+        agent: described?.elements[id],
       })),
       frames: frames.map((f) => ({ id: f.bc.id, rect: f.rect })),
       ms: ChromeUtils.now() - t0,
+      ...(described ? { forms: described.forms } : {}),
     };
+  }
+
+  /**
+   * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
+   * says whether it is still in the document, so a label never names an element the page has
+   * replaced since.
+   * @param {{ op: string, gen: number, id: number }} data
+   */
+  #agentElement(data) {
+    if (!isIndex(data?.gen) || !isIndex(data?.id) || data.gen !== this.#agentEls.gen) return false;
+    const el = this.#agentEls.els[data.id]?.deref();
+    if (data.op === "alive") return !!el?.isConnected;
+    return false;
   }
 
   /**
