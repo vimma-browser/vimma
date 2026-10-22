@@ -289,10 +289,12 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     the deploy key and pull requests by others.
 11. **The tap holds only generated files and a README,** so that every cask change is visible in
     this repository's review, and the tap cannot drift from the generator. The tap's own CI,
-    `check.yml`, runs `brew style` and the same offline `brew audit --cask --strict` as
-    `cask-check.sh` on the tap's pull requests and pushes to `main`, so that the two checks
-    cannot disagree and a network failure cannot fail the tap with no cask change. It is not a
-    required check, so it never holds `homebrew.yml`'s push. Rejected: `--online`, because it
+    `check.yml`, runs the same checks as `cask-check.sh`, `brew style` and an offline
+    `brew audit --cask --strict`, on the latest stable Homebrew, on the tap's pull requests and
+    pushes to `main`, so that a cask passes the same rules in both places and a network failure
+    cannot fail the tap with no cask change. `cask-check.sh` runs the runner image's Homebrew on
+    the one cask, so a new Homebrew audit rule can turn the tap red before this repository's
+    `cask` job. It is not a required check, so it never holds `homebrew.yml`'s push. Rejected: `--online`, because it
     downloads the `.dmg` and queries GitHub, and `macos-smoke` already installs the `.dmg`
     through the cask.
 

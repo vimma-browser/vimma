@@ -1501,12 +1501,18 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   bypass it, so the workflow pushes directly, and admins bypass it only through a pull request
   (docs/runbook.md, "Release packages", step 7). The tap's own
   [`check.yml`](https://github.com/vimma-browser/homebrew-tap/blob/main/.github/workflows/check.yml)
-  runs `brew style` and the same offline `brew audit --cask --strict` on the tap's pull requests
-  and on each push to its `main`, on a GitHub-hosted `macos-15` runner with a `contents: read`
-  token, no secret, no `pull_request_target` trigger and `Homebrew/actions/setup-homebrew` pinned
-  by commit SHA. A fork's pull request has its cask's Ruby loaded on that runner, which holds
-  nothing to steal. It is not a required check, so it never holds `homebrew.yml`'s push; it
-  reports a pushed cask that Homebrew would reject. **⚠ limit:** the `.dmg` is ad hoc signed and not
+  runs `brew style` and the same offline `brew audit --cask --strict` checks, on the latest stable
+  Homebrew, on the tap's pull requests and on each push to its `main`, on a GitHub-hosted
+  `macos-15` runner with a `contents: read` token, no secret, no `pull_request_target` trigger
+  and `Homebrew/actions/setup-homebrew` pinned by commit SHA. A fork's pull request can replace
+  `check.yml` itself, so those settings do not bound it: what does is GitHub's token for a fork's
+  pull request, which is read-only and gets no secret, and the tap's approval policy for fork
+  runs. **⚠ setting:** the tap's fork pull request approval is `all_external_contributors`, so
+  a fork's workflow runs only once a person approves it. **⚠ setting:** the tap's Actions
+  permissions set `sha_pinning_required`, so GitHub refuses an action not pinned to a full
+  commit SHA (docs/runbook.md, "Release packages", step 7, for both). The check is not
+  required, so it never holds `homebrew.yml`'s push; it reports a pushed cask that Homebrew
+  would reject. **⚠ limit:** the `.dmg` is ad hoc signed and not
   notarised, so Gatekeeper cannot vouch for it; the cask's caveats tell users to choose Open Anyway
   in System Settings, and never to remove the quarantine flag.
   [`names the release dmg for the version and pins its sha256`](../tools/package/test/cask.test.mjs),
