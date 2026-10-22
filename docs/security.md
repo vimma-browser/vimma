@@ -357,8 +357,10 @@ text that pages, add-ons and bookmarks choose.
     between (any key restarts the wait), **never** from a text field (the page's, the chrome's,
     or the prompt's own, such as the password prompt's username), **never** while one of
     Vimma's own surfaces holds the keyboard (a picker, live grep, the command line, a search being
-    typed, the other prompts), and go through Firefox's
-    own buttons, so Firefox's click delay still applies. The wait counts from Firefox's own time
+    typed, the other prompts), **never** in hint, copy or element mode (a label typed from any
+    `[modal] hint_chars`, the yank: a page can time a prompt to the mode; `Esc` leaves it, and
+    then `y` answers), so `y` and `n` answer a prompt only in normal and resize mode, and go
+    through Firefox's own buttons, so Firefox's click delay still applies. The wait counts from Firefox's own time
     for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
     moves or resizes, the window is activated or another prompt takes the panel), so an armed key
     never meets a button Firefox's delay still refuses. Vimma **never** gives the prompt focus;
@@ -369,6 +371,8 @@ text that pages, add-ons and bookmarks choose.
     [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_leave_live_grep_and_find_their_keys`](../tests/browser/browser_vimma_toolbar.js),
+    [`KEY_KEEPING_MODES`](../packages/vimma-core/test/modes.test.mjs),
+    [`prompt_keys_leave_hint_copy_and_element_mode_their_keys`](../tests/browser/browser_vimma_toolbar.js),
     [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
@@ -761,14 +765,17 @@ form (a saved card's one-button checkout) runs unasked under a grant.
   deactivated, focused or blurred, hidden or shown, and when a key arrives before it is armed,
   so a window brought to the front (by the user, or by a process that can focus windows) never
   takes a key meant for another; a just-focused window counts as one being typed in. With a
-  prompt, picker, panel or the command line open over it, and for the rest of a key sequence,
-  the keys are theirs. Text an agent or a page chooses (the client name, which is the agent's own
-  claim and proves nothing, and titles) is drawn as a bidi isolate (`<bdi>`), URLs as
+  prompt, picker, panel or the command line open over it, in hint, copy or element mode (whose
+  labels and yank type letters, `y` included, while one answer can grant a whole task), and for
+  the rest of a key sequence, the keys are theirs, and the question **never** opens by itself.
+  Text an agent or a page chooses (the client name, which is the agent's own claim and proves
+  nothing, and titles) is drawn as a bidi isolate (`<bdi>`), URLs as
   left-to-right isolates. A window not in front gets the urgency hint and a notification with no
   URL, no title and no buttons.
   [`test_the_line_opens_arms_and_ignores_stray_keys`](../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_focus_changes_and_early_keys_rearm_the_line`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_other_ui_opened_over_the_line_gets_the_keys`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
+  [`test_hint_and_copy_mode_keep_their_keys`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_names_titles_and_urls_are_bidi_isolates`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_typing_in_a_field_waits_for_ctrl_b_shift_a`](../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_a_window_not_in_front_gets_attention_and_a_notification`](../tests/browser/browser_vimma_mcp_control.js),
@@ -2063,13 +2070,14 @@ _Pages_ and _extensions_ cannot reach it.
   it appears or after its window comes to the front or leaves it, an earlier key starts the
   delay again, and a held key never answers. It **never** takes focus, **never** opens while
   focus is in a field, while another Vimma overlay, the agent question or a Firefox permission
-  prompt is open, or in a private window; a key that arrives while focus is in a field or a page
-  is in DOM full screen is **never** taken as an answer; and `y` **only** opens about:vimma's Updates section: nothing is installed or
+  prompt is open, in hint, copy or element mode, or in a private window; a key that arrives
+  while focus is in a field or a page is in DOM full screen is **never** taken as an answer; and `y` **only** opens about:vimma's Updates section: nothing is installed or
   run. The one-time message is a notice that takes no focus and no keys.
   [`a_security_update_asks_once_per_session`](../tests/browser/browser_vimma_update_notices.js),
   [`early_and_held_keys_never_answer`](../tests/browser/browser_vimma_update_notices.js),
   [`another_window_in_front_arms_it_again`](../tests/browser/browser_vimma_update_notices.js),
   [`the_question_waits_for_an_open_overlay`](../tests/browser/browser_vimma_update_notices.js),
+  [`the_question_waits_for_copy_mode`](../tests/browser/browser_vimma_update_notices.js),
   [`y_shows_the_update_steps_and_esc_dismisses`](../tests/browser/browser_vimma_update_notices.js),
   [`the_question_waits_while_the_user_types`](../tests/browser/browser_vimma_update_notices.js),
   [`no_question_in_a_private_window`](../tests/browser/browser_vimma_update_notices.js),

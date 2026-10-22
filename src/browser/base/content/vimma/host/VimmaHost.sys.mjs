@@ -20,6 +20,7 @@ import {
 import { HintError, hintKey, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { compileKeymap } from "../core/keymap.mjs";
+import { KEY_KEEPING_MODES } from "../core/modes.mjs";
 import { describeAction, notImplementedText } from "../core/actions.mjs";
 import {
   PENDING_ACTIONS,
@@ -265,7 +266,7 @@ function renameTab(s, text) {
  * Whether one of Vimma's own surfaces holds the keyboard: the help overlay, a picker, live grep,
  * the command line, a prompt, the side panel, the bookmarks or a search being typed. The agent
  * question, the update question and the permission prompt keys all stand back for these, from
- * this one list, so a surface added later reaches all three.
+ * this one list (through `keysHeld`), so a surface added later reaches all three.
  * @param {WindowState} s
  */
 function vimmaSurfaceOpen(s) {
@@ -282,6 +283,16 @@ function vimmaSurfaceOpen(s) {
     s.bookmarks.isOpen ||
     s.find.typing
   );
+}
+
+/**
+ * Whether the keys are not a question's to take: one of Vimma's own surfaces is open, or the
+ * mode types its own letters (a hint label, copy and element mode's yank; KEY_KEEPING_MODES).
+ * The agent question, the update question and the permission prompt keys share this guard.
+ * @param {WindowState} s
+ */
+function keysHeld(s) {
+  return vimmaSurfaceOpen(s) || KEY_KEEPING_MODES.has(VimmaHost._mode(s));
 }
 
 /**
@@ -1494,7 +1505,7 @@ export const VimmaHost = {
     AgentUi.register(win, {
       prompt: state.agentPrompt,
       inField: () => this._mode(state) === "insert",
-      otherOpen: () => vimmaSurfaceOpen(state) || UpdateUi.isOpen(win),
+      otherOpen: () => keysHeld(state) || UpdateUi.isOpen(win),
       pending: () => state.dispatcher.pending().length > 0,
       notice: (text) => state.notice.show(text),
       ask: (question, yes) => state.rename.ask(question, yes),
@@ -1506,7 +1517,7 @@ export const VimmaHost = {
       prompt: state.updatePrompt,
       inField: () => this._mode(state) === "insert",
       otherOpen: () =>
-        vimmaSurfaceOpen(state) || state.agentPrompt.isOpen || !!state.promptKeys?.notification,
+        keysHeld(state) || state.agentPrompt.isOpen || !!state.promptKeys?.notification,
       pending: () => state.dispatcher.pending().length > 0,
       notice: (text) => state.notice.show(text, { ms: ANNOUNCE_MS }),
       hideNotice: (text) => {
@@ -1566,9 +1577,9 @@ export const VimmaHost = {
     try {
       const promptKeys = new PromptKeys(win, {
         inField: () => this._mode(state) === "insert",
-        otherOpen: () =>
-          vimmaSurfaceOpen(state) || state.agentPrompt.isOpen || UpdateUi.isOpen(win),
+        otherOpen: () => keysHeld(state) || state.agentPrompt.isOpen || UpdateUi.isOpen(win),
         pending: () => state.dispatcher.pending().length > 0,
+        modeKeys: () => KEY_KEEPING_MODES.has(this._mode(state)),
       });
       promptKeys.init();
       state.promptKeys = promptKeys;

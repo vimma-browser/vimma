@@ -25,6 +25,12 @@ const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
 const { CONTROL_UNTIL_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/control-ops.mjs",
 );
+const { VimmaHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+const { DEFAULT_HINT_CHARS } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/hints.mjs",
+);
 
 const CONTROL = "vimma.control.enabled";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
@@ -147,6 +153,52 @@ add_task(async function test_other_ui_opened_over_the_line_gets_the_keys() {
   await armed();
   EventUtils.synthesizeKey("y");
   Assert.ok((await c.response(id)).ok, "the line came back, and y answers it");
+  c.close();
+  await setSwitches({});
+});
+
+// Issue #495: hint, copy and element mode type y for themselves (a label from any
+// `[modal] hint_chars`, the yank), and a grant can release a whole task's calls: the question
+// never opens over them, and their y never answers it. It opens once Esc leaves the mode.
+add_task(async function test_hint_and_copy_mode_keep_their_keys() {
+  await setSwitches({ mcp: true });
+  Services.prefs.setIntPref(ARMING, 100);
+  const browser = gBrowser.selectedBrowser;
+  await SpecialPowers.spawn(browser, [], () => {
+    const doc = content.document;
+    for (let i = 0; i < 4; i++) {
+      const a = doc.createElement("a");
+      a.href = `#link${i}`;
+      a.textContent = `link ${i} `;
+      doc.body.prepend(a);
+    }
+  });
+  const mode = () => VimmaHost.status(window).mode;
+  const c = await agentClient();
+
+  for (const [what, key, inMode] of [
+    ["hint mode", "f", "hint"],
+    ["copy mode", "v", "visual"],
+  ]) {
+    VimmaHost.configure({ hintChars: "yn" });
+    await calmPage();
+    EventUtils.synthesizeKey(key);
+    await until(() => mode() === inMode, `${what} starts`);
+    const id = c.request("agent-tabs");
+    await until(() => segment() === "◇ agent 1?", `${what}: the question waits`);
+    // Past the quiet time the line would open by itself in normal mode.
+    await new Promise((r) => setTimeout(r, 2000));
+    Assert.ok(!lineOpen(), `${what}: the line does not open over the mode`);
+    EventUtils.synthesizeKey("y");
+    await new Promise((r) => setTimeout(r, 300));
+    Assert.equal(AgentGate.waiting.length, 1, `${what}: the y went to the mode`);
+    if (mode() === inMode) EventUtils.synthesizeKey("KEY_Escape");
+    await until(() => mode() === "normal", `${what}: back in normal mode`);
+    await armed();
+    EventUtils.synthesizeKey("y");
+    Assert.ok((await c.response(id)).ok, `${what}: then the line opens, and y answers it`);
+  }
+  VimmaHost.configure({ hintChars: DEFAULT_HINT_CHARS });
   c.close();
   await setSwitches({});
 });

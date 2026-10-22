@@ -456,6 +456,9 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
       `ctrl`, `alt` or meta go on to the bindings. The rest of a key sequence, and keys while a
       prompt, picker, panel or the command line is open over the line, go to them; the line waits
       until they close.
+      (Since changed: so do keys in hint, copy and element mode, where a hint label and the yank
+      type `y`, and the line does not open by itself in them, because one answer can grant a
+      whole task's calls; issue #495, docs/security.md M4.)
 
 14. **No focus stealing.** The question never takes focus from what the user is doing:
     - It opens by itself only when the Vimma window has focus, focus is not in an editable field
