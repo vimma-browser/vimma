@@ -13,7 +13,7 @@
 
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 // The file took 24 to 47 s on the hosted macOS runner, around the harness's 45 s limit, and
-// several tasks wait out NAME_MS on purpose: about 30 s on a laptop since they were added.
+// several tasks wait out NAME_MS on purpose: 37 to 45 s on an Apple Silicon laptop since then.
 requestLongerTimeout(2);
 
 const { NAME_MS, PrivateSwap } = ChromeUtils.importESModule(
