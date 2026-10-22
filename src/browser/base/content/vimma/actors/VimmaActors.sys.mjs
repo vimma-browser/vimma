@@ -638,6 +638,41 @@ export const VimmaActors = {
   },
 
   /**
+   * Each frame's own script errors and console errors and warnings, for an agent's
+   * `vimma_console` (docs/specs/mcp-forms.md F22): every frame is asked in its own process, and
+   * its answer is the child's, which the caller checks entry by entry. A frame that has no actor
+   * (a data: or blob: document), fails or does not answer within `ms` answers nothing.
+   * @param {any} browser XULBrowserElement
+   * @param {number} ms
+   * @returns {Promise<unknown[][]>}
+   */
+  async agentConsole(browser, ms) {
+    /** @type {any[]} BrowsingContexts */
+    const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
+    /** @type {number | undefined} */
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms, null);
+    });
+    try {
+      return await Promise.all(
+        frames.map(async (bc) => {
+          const actor = actorFor(bc);
+          if (!actor) return [];
+          try {
+            const r = await Promise.race([actor.sendQuery("Vimma:AgentConsole"), late]);
+            return Array.isArray(r) ? r : [];
+          } catch {
+            return []; // the frame navigated or its process went away
+          }
+        }),
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
    * Whether the agent's last click on `target` ran, or was skipped because the page changed
    * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away
    * (the click loaded a page) ran it.

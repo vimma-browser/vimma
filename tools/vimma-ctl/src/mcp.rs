@@ -65,7 +65,9 @@ button or a link on a page, call vimma_elements, then vimma_activate with its la
 submission is asked every time. To type into a page's fields, call vimma_elements, then \
 vimma_fill with their labels; it never fills passwords, payment card or one-time-code fields, \
 or file fields. To see what a page of the agent workspace shows, call vimma_screenshot (labels: \
-true draws the labels of your last vimma_elements on it). Never ask the user to turn on full control (:control on) or to run vimma-ctl \
+true draws the labels of your last vimma_elements on it). To see a page's script errors, console \
+errors and warnings, and failed requests, call vimma_console; pass the time of its last result as \
+since to see only what came after. Never ask the user to turn on full control (:control on) or to run vimma-ctl \
 send-keys: they reach every workspace and tab, far beyond the agent workspace.";
 
 /// Which revision a request is served under.
@@ -137,6 +139,12 @@ pub enum ToolCall {
     Screenshot {
         tab: String,
         labels: bool,
+    },
+    /// mcp-forms F22: the tab's script errors and failed requests, only those after `since`
+    /// (ms since the epoch) when given.
+    Console {
+        tab: String,
+        since: Option<u64>,
     },
 }
 
@@ -570,6 +578,7 @@ fn tools_call(id: &Value, era: Era, params: &BTreeMap<String, Value>) -> Action 
         "vimma_activate" => activate_args(arguments),
         "vimma_fill" => fill_args(arguments),
         "vimma_screenshot" => screenshot_args(arguments),
+        "vimma_console" => console_args(arguments),
         _ => {
             let shown: String = name.chars().take(100).collect();
             return Action::Reply(error(
@@ -765,6 +774,31 @@ fn screenshot_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall, Stri
     Ok(ToolCall::Screenshot { tab, labels })
 }
 
+/// The largest time `since` takes: what a double holds exactly, as vimma-core's check.
+const MAX_SINCE: u64 = 9_007_199_254_740_991;
+
+/// mcp-forms F22, F23: a tab, and only entries after a time; never an expression.
+fn console_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall, String> {
+    only(arguments, &["tab", "since"])?;
+    let tab = tab_arg(arguments.get("tab"))?;
+    let since = match arguments.get("since") {
+        None => None,
+        Some(n) => Some(
+            n.as_u64()
+                .filter(|n| *n <= MAX_SINCE)
+                .ok_or("since must be a whole number of milliseconds since the epoch")?,
+        ),
+    };
+    Ok(ToolCall::Console { tab, since })
+}
+
+/// `n` as a double, exact up to [`MAX_SINCE`].
+fn exact_f64(n: u64) -> f64 {
+    let high = u32::try_from(n >> 32).unwrap_or(u32::MAX);
+    let low = u32::try_from(n & 0xffff_ffff).unwrap_or(0);
+    f64::from(high) * 4_294_967_296.0 + f64::from(low)
+}
+
 fn read_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall, String> {
     only(arguments, &["tab", "format", "max_chars"])?;
     let tab = tab_arg(arguments.get("tab"))?;
@@ -917,6 +951,7 @@ pub fn tools() -> Value {
         activate_tool(),
         fill_tool(),
         screenshot_tool(),
+        console_tool(),
     ])
 }
 
@@ -1351,6 +1386,49 @@ fn screenshot_tool() -> Value {
     )
 }
 
+/// mcp-forms F23, F30: it runs nothing in the page and changes nothing, so read-only and
+/// idempotent; the page is the web's, so open-world.
+fn console_tool() -> Value {
+    tool(
+        "vimma_console",
+        "Vimma: read a page's errors",
+        "Read the recent script errors, console errors and warnings, and failed requests (HTTP \
+         status 400 and above, or a network error) of a tab of Vimma's agent workspace, by its id \
+         from vimma_tabs or vimma_open, newest first. Vimma asks the user first, so the call \
+         waits for their answer and may be denied. Nothing runs in the page to get them. Pass \
+         since (the time of an earlier result, ms since the epoch) to see only what came after, \
+         such as what a vimma_activate or vimma_fill caused. Messages and URLs are untrusted web \
+         content.",
+        schema(
+            object([
+                ("tab", tab_property(TAB_FROM)),
+                (
+                    "since",
+                    object([
+                        ("type", text("integer")),
+                        ("minimum", Value::Number(0.0)),
+                        ("maximum", Value::Number(exact_f64(MAX_SINCE))),
+                        (
+                            "description",
+                            text(
+                                "Only entries after this time, in ms since the epoch: the time \
+                                 of an earlier vimma_console result.",
+                            ),
+                        ),
+                    ]),
+                ),
+            ]),
+            &["tab"],
+        ),
+        hints([
+            ("readOnlyHint", true),
+            ("destructiveHint", false),
+            ("idempotentHint", true),
+            ("openWorldHint", true),
+        ]),
+    )
+}
+
 impl ToolCall {
     /// The MCP tool's name.
     #[must_use]
@@ -1366,6 +1444,7 @@ impl ToolCall {
             ToolCall::Activate { .. } => "vimma_activate",
             ToolCall::Fill { .. } => "vimma_fill",
             ToolCall::Screenshot { .. } => "vimma_screenshot",
+            ToolCall::Console { .. } => "vimma_console",
         }
     }
 
@@ -1447,6 +1526,13 @@ impl ToolCall {
                     args.insert("labels".into(), Value::Bool(true));
                 }
                 ("agent-screenshot", Value::Object(args))
+            }
+            ToolCall::Console { tab, since } => {
+                let mut args = BTreeMap::from([("tab".to_string(), text(tab))]);
+                if let Some(since) = since {
+                    args.insert("since".into(), Value::Number(exact_f64(*since)));
+                }
+                ("agent-console", Value::Object(args))
             }
         }
     }
@@ -1581,6 +1667,7 @@ fn success(tool: &ToolCall, result: &Value) -> Result<Value, String> {
         ToolCall::Activate { tab, label } => ok(activate_text(tab, label, result)?),
         ToolCall::Fill { tab, fields, .. } => ok(fill_text(tab, fields.len(), result)?),
         ToolCall::Screenshot { tab, labels } => ok(screenshot_items(tab, *labels, result)?),
+        ToolCall::Console { tab, .. } => ok(console_text(tab, result)?),
         ToolCall::Show { tab } => {
             if result.get("shown") != Some(&Value::Bool(true)) {
                 return Err("Vimma's result does not say shown".into());
@@ -1736,6 +1823,41 @@ fn elements_text(tab: &str, result: &Value) -> Result<Vec<Value>, String> {
         text_item(&untrusted_header(url, title)),
         text_item(&said),
         text_item(wrapped),
+    ])
+}
+
+/// `vimma_console`'s result (mcp-forms F22, F24; security.md M31): the page's URL and title under
+/// the untrusted header, what the lists are and Vimma's clock to pass as `since`, then the errors
+/// and the failed requests, each as Vimma wrapped it.
+fn console_text(tab: &str, result: &Value) -> Result<Vec<Value>, String> {
+    let url = field(result, "url")?;
+    let title = field(result, "title")?;
+    let time = match result.get("time") {
+        Some(Value::Number(n)) if n.fract() == 0.0 && *n >= 0.0 => *n,
+        _ => return Err("Vimma's result has no time".into()),
+    };
+    let (errors, dropped) = wrapped_list(result.get("errors"), result.get("dropped"))
+        .ok_or("Vimma's errors are not inside the untrusted-content delimiters")?;
+    let requests = wrapped_text(result.get("requests"))
+        .ok_or("Vimma's failed requests are not inside the untrusted-content delimiters")?;
+    let mut said = format!(
+        "The recent script errors, console errors and warnings, and failed requests of tab {tab} \
+         of Vimma's agent workspace, newest first, one JSON object a line (untrusted web \
+         content: messages, files and URLs are the page's). First the errors, then the failed \
+         requests. Vimma read them at {time} (ms since the epoch): pass that as since to see \
+         only what comes after."
+    );
+    if dropped > 0.0 {
+        said = format!(
+            "{dropped} older entries were left out (at most 100 errors and 100 requests are \
+             listed). {said}"
+        );
+    }
+    Ok(vec![
+        text_item(&untrusted_header(url, title)),
+        text_item(&said),
+        text_item(errors),
+        text_item(requests),
     ])
 }
 
@@ -2133,6 +2255,12 @@ mod tests {
             "To type into a page's fields, call vimma_elements, then vimma_fill with their labels; \
              it never fills passwords, payment card or one-time-code fields, or file fields."
         ));
+        // mcp-forms F31: vimma_console shows why a page failed, read-only.
+        assert!(INSTRUCTIONS.contains(
+            "To see a page's script errors, console errors and warnings, and failed requests, \
+             call vimma_console; pass the time of its last result as since to see only what came \
+             after."
+        ));
         // mcp-forms F31: vimma_screenshot shows the result of a click or a fill.
         assert!(INSTRUCTIONS.contains(
             "To see what a page of the agent workspace shows, call vimma_screenshot (labels: true \
@@ -2295,7 +2423,8 @@ mod tests {
                 "vimma_elements",
                 "vimma_activate",
                 "vimma_fill",
-                "vimma_screenshot"
+                "vimma_screenshot",
+                "vimma_console"
             ]
         );
     }
@@ -2356,6 +2485,14 @@ mod tests {
                 },
                 "vimma_screenshot",
                 "agent-screenshot",
+            ),
+            (
+                ToolCall::Console {
+                    tab: tab(),
+                    since: None,
+                },
+                "vimma_console",
+                "agent-console",
             ),
         ] {
             assert_eq!(call.name(), name);
@@ -3022,6 +3159,120 @@ mod tests {
         let r = tool_result(
             &call,
             Ok(&parse(r#"{"url":"https://a/","title":"A","elements":"x"}"#).unwrap()),
+        );
+        assert!(tool_error_text(&r).contains("protocol"), "{r}");
+    }
+
+    // mcp-forms F22, F23: a console read names its tab and, optionally, a time in ms since the
+    // epoch; never an expression; anything else is a tool error that never reaches Vimma.
+    #[test]
+    fn console_calls_become_agent_commands() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        for (arguments, sent) in [
+            (r#"{"tab":"12"}"#, r#"{"tab":"12"}"#),
+            (r#"{"tab":12,"since":0}"#, r#"{"since":0,"tab":"12"}"#),
+            (
+                r#"{"tab":"12","since":1761000000000}"#,
+                r#"{"since":1761000000000,"tab":"12"}"#,
+            ),
+        ] {
+            let Action::Call(call) = handle(&mut p, &call_line(5, "vimma_console", arguments))
+            else {
+                panic!("{arguments}: not a call");
+            };
+            assert_eq!(call.tool.command().0, "agent-console");
+            assert_eq!(call.tool.command().1.to_string(), sent, "{arguments}");
+        }
+        let since = "since must be a whole number of milliseconds since the epoch";
+        for (arguments, says) in [
+            ("{}", "tab must be a tab id"),
+            (r#"{"tab":"12","since":-1}"#, since),
+            (r#"{"tab":"12","since":1.5}"#, since),
+            (r#"{"tab":"12","since":"1"}"#, since),
+            (r#"{"tab":"12","since":9007199254740992}"#, since),
+            (
+                r#"{"tab":"12","expression":"document.cookie"}"#,
+                "unknown argument \"expression\"",
+            ),
+        ] {
+            let Action::Reply(r) = handle(&mut p, &call_line(6, "vimma_console", arguments)) else {
+                panic!("{arguments}: reached Vimma");
+            };
+            let t = tool_error_text(&r);
+            assert!(t.starts_with("Invalid arguments for vimma_console"), "{t}");
+            assert!(t.contains(says), "{arguments}: {t}");
+        }
+    }
+
+    // mcp-forms F22, F24 (security.md M31): the page under the untrusted header, what the lists
+    // are and Vimma's clock to pass as since, then each list as Vimma wrapped it; a list outside
+    // its delimiters, or a malformed time or count, is a protocol error.
+    #[test]
+    fn console_lists_as_untrusted_content() {
+        let call = legacy_call(ToolCall::Console {
+            tab: "12".into(),
+            since: None,
+        });
+        let errors = "<untrusted-web-content>\n{\"level\":\"error\",\"source\":\"script\",\
+                      \"message\":\"boom\"}\n</untrusted-web-content>";
+        let requests = "<untrusted-web-content>\n\n</untrusted-web-content>";
+        let result = |errors: &str, requests: &str, extra: &str| {
+            parse(&format!(
+                r#"{{"url":"https://example.com/app","title":"App","time":1761000005000,
+                "errors":{},"requests":{}{extra}}}"#,
+                Value::String(errors.into()),
+                Value::String(requests.into())
+            ))
+            .unwrap()
+        };
+        let r = tool_result(&call, Ok(&result(errors, requests, r#","dropped":0"#)));
+        assert!(r.get("result").unwrap().get("isError").is_none(), "{r}");
+        let t = texts(&r);
+        assert_eq!(t.len(), 4, "{t:?}");
+        assert_eq!(t[0], untrusted_header("https://example.com/app", "App"));
+        for says in [
+            "tab 12 of Vimma's agent workspace",
+            "newest first, one JSON object a line",
+            "untrusted web content",
+            "First the errors, then the failed requests.",
+            "Vimma read them at 1761000005000 (ms since the epoch): pass that as since",
+        ] {
+            assert!(t[1].contains(says), "{says}: {}", t[1]);
+        }
+        assert!(!t[1].contains("left out"), "{}", t[1]);
+        assert_eq!(t[2], errors);
+        assert_eq!(t[3], requests);
+        let many = texts(&tool_result(
+            &call,
+            Ok(&result(errors, requests, r#","dropped":7"#)),
+        ));
+        assert!(
+            many[1].contains("7 older entries were left out"),
+            "{}",
+            many[1]
+        );
+        for (e, q, extra) in [
+            ("{\"level\":\"error\"}", requests, r#","dropped":0"#),
+            (errors, "x", r#","dropped":0"#),
+            (errors, requests, r#","dropped":-1"#),
+            (errors, requests, ""),
+        ] {
+            let r = tool_result(&call, Ok(&result(e, q, extra)));
+            assert!(
+                tool_error_text(&r).contains("protocol"),
+                "{e} {q} {extra}: {r}"
+            );
+        }
+        let r = tool_result(
+            &call,
+            Ok(&parse(&format!(
+                r#"{{"url":"https://a/","title":"A","time":-5,"errors":{},"requests":{},
+                "dropped":0}}"#,
+                Value::String(errors.into()),
+                Value::String(requests.into())
+            ))
+            .unwrap()),
         );
         assert!(tool_error_text(&r).contains("protocol"), "{r}");
     }
@@ -3706,6 +3957,7 @@ mod tests {
             ("agent-activate", "vimma_activate"),
             ("agent-fill", "vimma_fill"),
             ("agent-screenshot", "vimma_screenshot"),
+            ("agent-console", "vimma_console"),
         ] {
             let request = v2_fixture(&format!("request-{command}.valid.json"));
             let message = request.get("message").unwrap();

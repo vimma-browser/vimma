@@ -1,6 +1,6 @@
 # Spec: mcp-forms
 
-Status: accepted (sub-PRs 1 to 4 of 6 built: `vimma_elements`, `vimma_activate`, `vimma_fill`, `vimma_screenshot`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
+Status: accepted (sub-PRs 1 to 5 of 6 built: `vimma_elements`, `vimma_activate`, `vimma_fill`, `vimma_screenshot`, `vimma_console`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
 `agent-prompt.mjs`, `control.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
 `ctl/AgentAct.sys.mjs` new, `ctl/AgentShot.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`, `actors/agent-fields.mjs` new);
@@ -523,7 +523,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 ### G. `vimma_console`
 
 22. **What it returns.** `vimma_console { tab, since? }` (control command `agent-console`) asks,
-    and on a yes returns the agent tab's current page's `errors` and `requests`:
+    and on a yes returns the agent tab's current page's `errors` and the tab's `requests`, with
+    `time`, Vimma's clock when it read them. Like `vimma_elements` (F2) it reads only an http or
+    https page, refused before anything is asked, because a privileged about: page, the start
+    page or a local file moved into the agent workspace is not the agent's to read:
     - `errors`: script errors from `nsIScriptError` (uncaught exceptions, CSP and mixed-content
       reports, network security warnings) at error and warning level, read in each frame's
       process and in the parent by the frame's inner window id, as BiDi's `ConsoleListener` does;
@@ -535,10 +538,15 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     - `requests`: failed requests of the tab, recorded by an `http-on-stop-request` observer in
       the parent for channels whose top browsing context is an agent tab: HTTP status 400 and
       above, or a failed channel status (by its error name, such as `NS_ERROR_UNKNOWN_HOST`).
-      Each has its method, URL (cut at 512), status or error, resource type and time. Requests
-      cancelled by a navigation (`NS_BINDING_ABORTED`) are left out.
+      Each has its method, URL (cut at 512, without a user name or password), status or error,
+      resource type and time. Requests cancelled by a navigation (`NS_BINDING_ABORTED`), the
+      first leg of a redirect (`NS_BINDING_REDIRECTED`) and a load handed to a download
+      (`NS_BINDING_RETARGETED`) are left out, because none of them failed. The log is the tab's,
+      not only its current page's, because a top-level load that fails (an unknown host, a
+      refused connection) leaves an error page whose document is newer than the failure the
+      agent needs to see.
       `since` (ms since the epoch) returns only newer entries, so an agent can check what a click
-      caused.
+      caused; the `time` of a result is the `since` of the next.
 23. **Read-only by construction.** It runs no code in the page. It never starts the DevTools
     server, the Remote Agent or Marionette, never evaluates an expression and never calls a page
     function, because each of those could run script with the browser's privileges or the

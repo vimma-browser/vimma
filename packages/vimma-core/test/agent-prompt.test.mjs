@@ -295,6 +295,20 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
   });
 
+  // docs/specs/mcp-forms.md F22, F28: vimma_console asks with the tab, and its notice names it.
+  test("vimma_console: the tab in the question, the page in the notice", () => {
+    const read = { ...keys, tool: "vimma_console", what: { ...keys.what, keys: undefined } };
+    expect(text(questionLine(read, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_console: 2 "Pricing · Example" example.com/pricing',
+    );
+    expect(ranNotice(read, 12 * MIN, 0)).toBe(
+      'claude-code read the errors of "Pricing · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(read)).toBe(
+      "claude-code asks to use Vimma's agent workspace (read a page's errors and failed requests)",
+    );
+  });
+
   // docs/specs/mcp-forms.md F18, F28: vimma_screenshot asks with the tab, and its notice names it.
   test("vimma_screenshot: the tab in the question, the page in the notice", () => {
     const shot = { ...keys, tool: "vimma_screenshot", what: { ...keys.what, keys: undefined } };

@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Console agent fixture</title>
+  </head>
+  <body>
+    <h1>Console agent fixture</h1>
+    <iframe id="other"></iframe>
+    <script>
+      // A frame of another site: the test directory on example.org.
+      const dir = location.pathname.replace(/[^/]*$/, "");
+      document.getElementById("other").src =
+        `https://example.org${dir}file_vimma_agent_console_frame.html`;
+      // An argument the page owns: reading it in any way but typeof runs the page's code, which
+      // leaves a mark the test checks (docs/specs/mcp-forms.md F23).
+      window.touched = [];
+      const trap = {
+        get message() {
+          window.touched.push("getter");
+          return "from a getter";
+        },
+        toString() {
+          window.touched.push("toString");
+          return "from toString";
+        },
+      };
+      const proxy = new Proxy(
+        {},
+        {
+          get(_t, key) {
+            window.touched.push(`proxy get ${String(key)}`);
+            return undefined;
+          },
+          ownKeys() {
+            window.touched.push("proxy ownKeys");
+            return [];
+          },
+          getPrototypeOf() {
+            window.touched.push("proxy getPrototypeOf");
+            return null;
+          },
+        },
+      );
+      console.error("Failed to save", 42, true, null, trap, proxy);
+      console.warn("deprecated call");
+      console.log("plain log line");
+      console.info("plain info line");
+      fetch("file_vimma_agent_console.sjs?status=500", { method: "POST" });
+      fetch("file_vimma_agent_console_missing.json");
+      fetch("file_vimma_agent_console.sjs?status=200");
+      const abort = new AbortController();
+      fetch("file_vimma_agent_console.sjs?status=200&slow=1", { signal: abort.signal }).catch(
+        () => {},
+      );
+      setTimeout(() => abort.abort(), 50);
+      setTimeout(() => {
+        throw new Error("boom from the fixture");
+      }, 0);
+    </script>
+  </body>
+</html>
