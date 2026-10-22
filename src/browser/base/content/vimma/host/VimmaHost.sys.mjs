@@ -262,6 +262,29 @@ function renameTab(s, text) {
 }
 
 /**
+ * Whether one of Vimma's own surfaces holds the keyboard: the help overlay, a picker, live grep,
+ * the command line, a prompt, the side panel, the bookmarks or a search being typed. The agent
+ * question, the update question and the permission prompt keys all stand back for these, from
+ * this one list, so a surface added later reaches all three.
+ * @param {WindowState} s
+ */
+function vimmaSurfaceOpen(s) {
+  return (
+    s.help.isOpen ||
+    s.picker.isOpen ||
+    s.wsPicker.isOpen ||
+    s.addonPicker.isOpen ||
+    s.mcpLog.isOpen ||
+    s.grep.isOpen ||
+    s.cmdline.isOpen ||
+    s.rename.isOpen ||
+    s.panel.isOpen ||
+    s.bookmarks.isOpen ||
+    s.find.typing
+  );
+}
+
+/**
  * `:open` / `:tabnew` text, or the notice saying why not.
  * @param {WindowState} s
  * @param {string} text
@@ -1469,19 +1492,7 @@ export const VimmaHost = {
     AgentUi.register(win, {
       prompt: state.agentPrompt,
       inField: () => this._mode(state) === "insert",
-      otherOpen: () =>
-        state.help.isOpen ||
-        state.picker.isOpen ||
-        state.wsPicker.isOpen ||
-        state.addonPicker.isOpen ||
-        state.mcpLog.isOpen ||
-        state.grep.isOpen ||
-        state.cmdline.isOpen ||
-        state.rename.isOpen ||
-        state.panel.isOpen ||
-        state.bookmarks.isOpen ||
-        state.find.typing ||
-        UpdateUi.isOpen(win),
+      otherOpen: () => vimmaSurfaceOpen(state) || UpdateUi.isOpen(win),
       pending: () => state.dispatcher.pending().length > 0,
       notice: (text) => state.notice.show(text),
       ask: (question, yes) => state.rename.ask(question, yes),
@@ -1493,19 +1504,7 @@ export const VimmaHost = {
       prompt: state.updatePrompt,
       inField: () => this._mode(state) === "insert",
       otherOpen: () =>
-        state.help.isOpen ||
-        state.picker.isOpen ||
-        state.wsPicker.isOpen ||
-        state.addonPicker.isOpen ||
-        state.mcpLog.isOpen ||
-        state.grep.isOpen ||
-        state.cmdline.isOpen ||
-        state.rename.isOpen ||
-        state.panel.isOpen ||
-        state.bookmarks.isOpen ||
-        state.find.typing ||
-        state.agentPrompt.isOpen ||
-        !!state.promptKeys?.notification,
+        vimmaSurfaceOpen(state) || state.agentPrompt.isOpen || !!state.promptKeys?.notification,
       pending: () => state.dispatcher.pending().length > 0,
       notice: (text) => state.notice.show(text, { ms: ANNOUNCE_MS }),
       hideNotice: (text) => {
@@ -1566,17 +1565,7 @@ export const VimmaHost = {
       const promptKeys = new PromptKeys(win, {
         inField: () => this._mode(state) === "insert",
         otherOpen: () =>
-          state.help.isOpen ||
-          state.picker.isOpen ||
-          state.wsPicker.isOpen ||
-          state.addonPicker.isOpen ||
-          state.mcpLog.isOpen ||
-          state.cmdline.isOpen ||
-          state.rename.isOpen ||
-          state.panel.isOpen ||
-          state.bookmarks.isOpen ||
-          state.agentPrompt.isOpen ||
-          UpdateUi.isOpen(win),
+          vimmaSurfaceOpen(state) || state.agentPrompt.isOpen || UpdateUi.isOpen(win),
         pending: () => state.dispatcher.pending().length > 0,
       });
       promptKeys.init();

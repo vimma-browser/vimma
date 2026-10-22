@@ -711,7 +711,9 @@ these buttons) with no key pressed in between; the line `y allow · n block · T
 prompt shows when they do. Any key you press meanwhile starts the wait again, so typing that was
 meant for the page never answers a prompt. While you type in a text field of the page or the
 address bar, `y` and `n` are text, and the line starts with `Esc, then`: `Esc` leaves the field
-and keeps the prompt open, and then `y` and `n` answer it. Vimma never moves focus onto the prompt. The same keys answer Firefox's
+and keeps the prompt open, and then `y` and `n` answer it. The same holds while one of Vimma's
+own pickers, live grep, the command line or a search you are typing is open: what you type is
+theirs. Vimma never moves focus onto the prompt. The same keys answer Firefox's
 other prompts in that panel, such as "Save password?" (`y` saves, `n` is Not now), and the "Add
 <name>?" prompt for installing an add-on, which Firefox opens with focus on the prompt itself.
 

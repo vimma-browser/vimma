@@ -581,6 +581,11 @@ Numbered decisions, each with its reason and the alternatives rejected.
       focus then and the keys were otherwise lost; see `host/prompt-keys.mjs`. The fields inside
       a prompt, the password prompt's username and password, are fields too: their keys are
       theirs, because a username with a `y` in it could not be typed otherwise; issue #423.)
+      (Since changed: nor while one of Vimma's own surfaces holds the keyboard. The permission
+      prompt keys, the agent question and the update question stand back for one shared list of
+      them (`vimmaSurfaceOpen` in `host/VimmaHost.sys.mjs`), so that a surface added later
+      reaches all three; live grep and a search being typed were missing from the prompt keys'
+      list, and `y` typed into live grep allowed the prompt; issue #485.)
     - **`Tab`** (focus in the page, not in a field) moves focus onto the prompt's first button,
       the secondary one, with Vimma's focus ring (`--vimma-focus`, focus.css). From there
       Firefox's own keys work: the arrow keys move between the buttons, `Enter` and `Space` run
