@@ -104,6 +104,17 @@ function logOnce(text, kind = text) {
   console.warn(`vimma: ${text}`);
 }
 
+/**
+ * How long a naming waits for Hyprland's event (#422). The event for a window that is still
+ * starting up can come well after REPLY_MS on a busy machine, before j/clients shows the title.
+ */
+export const NAME_MS = 2000;
+/**
+ * A naming gave up since config.toml was last read: later ones wait only REPLY_MS, so a
+ * Hyprland that does not name windows does not hold every switch for NAME_MS.
+ */
+let unnamed = false;
+
 /** What a switch says when Hyprland never named a Vimma window (decision 7). */
 const NOT_NAMED = "private: Hyprland did not name the Vimma window; showing it as a window";
 
@@ -273,12 +284,9 @@ function addressOf(win) {
     ensureEvents();
     const nonce = nonceTitle(crypto.getRandomValues(new Uint8Array(16)));
     /** @type {Promise<string | null>} */
-    const heard = new Promise((resolve) => {
-      nonces.set(nonce, resolve);
-      lazy.setTimeout(() => {
-        if (nonces.delete(nonce)) resolve(null);
-      }, REPLY_MS);
-    });
+    const heard = new Promise((resolve) => nonces.set(nonce, resolve));
+    /** @param {number} ms @returns {Promise<null>} */
+    const after = (ms) => new Promise((resolve) => lazy.setTimeout(() => resolve(null), ms));
     // Held until Hyprland names the window: a page loading meanwhile would retitle it.
     const doc = win.document;
     doc.title = nonce;
@@ -286,9 +294,10 @@ function addressOf(win) {
       if (doc.title !== nonce) doc.title = nonce;
     });
     keep.observe(doc.documentElement, { subtree: true, childList: true, characterData: true });
-    let address = await heard;
-    if (at !== naming) address = null;
-    else if (!address) {
+    let address = await Promise.race([heard, after(REPLY_MS)]);
+    if (!address && at === naming) {
+      // No event yet: j/clients may already show the title. The nonce stays pending meanwhile,
+      // so an event that comes during the request still counts.
       try {
         address = findNonce(
           await HyprIpc.request(QUERY_CLIENTS),
@@ -298,7 +307,14 @@ function addressOf(win) {
       } catch {
         address = null;
       }
+      // A busy machine names a starting window late: wait for the event up to NAME_MS.
+      if (!address && at === naming && !unnamed) {
+        address = await Promise.race([heard, after(Math.max(0, NAME_MS - REPLY_MS))]);
+      }
+      if (!address && at === naming && !win.closed) unnamed = true;
     }
+    nonces.delete(nonce);
+    if (at !== naming) address = null;
     keep.disconnect();
     if (!win.closed) /** @type {any} */ (win).gBrowser?.updateTitlebar();
     if (address && !win.closed) {
@@ -514,6 +530,7 @@ export const PrivateSwap = {
     placement = next;
     configured = true;
     failed = false;
+    unnamed = false;
     skipped = null;
     if (next === "window") {
       stopEvents();
@@ -613,6 +630,7 @@ export const PrivateSwap = {
     wm = { state: "unknown" };
     pair = null;
     failed = false;
+    unnamed = false;
     logged.clear();
     skipped = null;
     placement = "swap";
