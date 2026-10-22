@@ -417,11 +417,8 @@ addTidyTask(async function test_elements_under_a_grant_notice_log_and_rate() {
   );
   Assert.equal(AgentGate.log[0].tool, "vimma_elements", "and a row in :mcp log (M23)");
   Assert.equal(AgentGate.log[0].outcome, "grant", "that ran under the grant");
-  // A vimma_elements grant is not a read grant.
-  const read = c.request("agent-read", { tab: idOf(tab) });
-  Assert.equal((await question()).tool, "vimma_read_page", "a read still asks");
-  AgentGate.answer(AgentGate.waiting[0].id, { kind: "deny" });
-  await c.response(read);
+  // The grant covers reads too (mcp-grants G1).
+  Assert.ok((await c.call("agent-read", { tab: idOf(tab) })).ok, "a read runs under it");
   // 30 a minute, counted when asked (F26): 2 so far.
   let busy = null;
   for (let i = 0; i < 29 && !busy; i++) {

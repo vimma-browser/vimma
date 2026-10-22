@@ -354,11 +354,8 @@ add_task(async function test_keys_under_a_grant_notice_and_rate() {
     () => noticeText().startsWith('claude-code pressed 2j in "Long agent fixture" (grant,'),
     "with a notice naming the keys and the tab",
   );
-  // A vimma_keys grant is not a read grant (D17).
-  const read = c.request("agent-read", { tab: idOf(tab) });
-  Assert.equal((await question()).tool, "vimma_read_page", "a read still asks");
-  AgentGate.answer(AgentGate.waiting[0].id, { kind: "deny" });
-  await c.response(read);
+  // The grant covers reads too (mcp-grants G1).
+  Assert.ok((await c.call("agent-read", { tab: idOf(tab) })).ok, "a read runs under it");
   // 30 a minute, counted when asked (M20): 2 so far.
   let busy = null;
   for (let i = 0; i < 29 && !busy; i++) {

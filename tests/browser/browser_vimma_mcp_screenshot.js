@@ -438,11 +438,9 @@ add_task(async function test_screenshot_under_a_grant_notice_log_and_rate() {
   );
   Assert.equal(AgentGate.log[0].tool, "vimma_screenshot", "and a row in :mcp log (M23)");
   Assert.equal(AgentGate.log[0].outcome, "grant", "that ran under the grant");
-  // A screenshot grant is no element-list grant (F25).
-  const list = c.request("agent-elements", { tab: idOf(tab) });
-  Assert.equal((await question()).tool, "vimma_elements", "a list still asks");
-  AgentGate.answer(AgentGate.waiting[0].id, { kind: "deny" });
-  await c.response(list);
+  // The grant covers the other tools too (mcp-grants G1).
+  Assert.ok((await c.call("agent-elements", { tab: idOf(tab) })).ok, "a list runs under it");
+  Assert.equal(AgentGate.log[0].outcome, "grant", "as a row run under the grant");
   // 12 a minute, counted when asked (F21): 2 so far.
   let busy = null;
   for (let i = 0; i < 11 && !busy; i++) {
