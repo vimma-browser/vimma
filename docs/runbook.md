@@ -2151,11 +2151,17 @@ pull request has the `security` label (the autopilot puts it on a bump whose adv
 not read), a `fix(security)` commit, or any change whose pull request has the `security` label.
 Installs then show the update in red (`⇡ X.Y.Z security: :update`).
 
-`prepare` reads those labels with `gh api`, one call per commit. A call that fails with an HTTP
-5xx, a body gh cannot parse (GitHub's 500 with an empty body shows as `unexpected end of JSON
-input`) or a network error is tried again after 2, 4 and 8 s; any other failure, or a fourth
-transient one, fails the run, because an unread label could hide a security release. During a
-GitHub incident, wait for it to pass and re-run the failed jobs.
+`prepare` reads the published releases (to find the previous one) and then those labels with
+`gh api`, one call per commit, and parses each raw JSON response itself. A call that fails with
+an HTTP 5xx, a body that is not JSON (GitHub's 500 with an empty body shows as `unexpected end of
+JSON input`) or a network error is tried again after 2, 4 and 8 s; any other failure, or a fourth
+transient one, fails the run, because an unread label could hide a security release. A response
+of the wrong shape fails the run at once, with `unexpected response` in the log: a pulls answer
+that is not a list of pull requests each with a list of named labels, or a releases list that
+does not include the tag being published (such a list is malformed or cut short, and counting
+from it could reach back to the start of the history). During a GitHub incident, wait for it to
+pass and re-run the failed jobs. A `... is not among them` failure seconds after a release was
+published can be the releases list lagging behind the release itself: re-run the failed jobs.
 
 One-time setup, in order (each step can be checked before the next):
 

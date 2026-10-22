@@ -26,6 +26,10 @@
 // set, and sets it with `setUserInput`, a select's own end of a user's choice, or a checkbox's
 // `click()`, never focusing it. The tab is marked first, as for a click, and a submission the
 // question allowed (a submit button's click, or the form's default submission) runs last.
+//
+// `payment` and `sent` say what a step's checkpoint shows (docs/specs/mcp-checkpoints.md;
+// security.md M28, M33): whether it may pay, by a card field in any frame of the tab or the
+// pressed control's words, with the total the page states, and what a submission sends.
 
 import {
   AGENT_ELEMENTS,
@@ -34,6 +38,7 @@ import {
   fillRefusal,
   labelAgentElements,
 } from "../core/agent-act.mjs";
+import { isPayStep, pageText, statedTotal } from "../core/agent-checkpoint.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { cutTo, shown } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
@@ -209,6 +214,72 @@ function afterStep(browser, before, dialog, blocked, stopped) {
 export const AgentAct = {
   /** Test-only: SETTLE_MS's place, so a test of many clicks stays quick. */
   _settleMs: /** @type {number | null} */ (null),
+
+  /**
+   * Whether a step may pay (docs/specs/mcp-checkpoints.md C5, C6; security.md M33), and what its
+   * question shows when it may (C7): the tab's page shows a payment card field in any frame, or
+   * the control the step presses has a pay phrase in its text, accessible name, title or value.
+   * Nothing on the page changes.
+   * @param {any} browser XULBrowserElement
+   * @param {{ target?: HintTarget | null, by?: "click" | "form", text?: string,
+   *   keys?: string }} step  `target`: the element of the agent's `vimma_elements` it presses
+   *   (`form`: through its form's default button); `text`: what the control says, as the parent
+   *   knows it (a link of `f`'s list); `keys`: a key step's keys, shown when there is no text
+   * @returns {Promise<{ text: string, site: string, total?: string, keys?: string } | null>}
+   */
+  async payment(browser, { target = null, by = "click", text = "", keys = "" }) {
+    const [cards, info] = await Promise.all([
+      VimmaActors.agentCards(browser, COLLECT_TIMEOUT_MS),
+      target
+        ? bounded(VimmaActors.agentPayInfo(target, by), null, COLLECT_TIMEOUT_MS)
+        : bounded(
+            VimmaActors.agentPageTotal(browser).then((total) => ({
+              texts: [],
+              ...(total ? { total } : {}),
+            })),
+            null,
+            COLLECT_TIMEOUT_MS,
+          ),
+    ]);
+    // A control whose words did not come back is judged by what the parent knows of it.
+    const texts = [text, ...(info?.texts ?? [])];
+    if (!isPayStep({ cards, texts })) return null;
+    const shownText = pageText(texts.find((t) => pageText(t)) ?? "");
+    const total = statedTotal(info?.total);
+    let site = "";
+    try {
+      site = String(browser.currentURI?.host ?? "");
+    } catch {
+      // a URI without a host: none to name
+    }
+    return {
+      text: wf(cutTo(shownText, AGENT_ELEMENTS.text)),
+      site: wf(site),
+      ...(total ? { total: wf(total) } : {}),
+      ...(!shownText && keys ? { keys } : {}),
+    };
+  },
+
+  /**
+   * What a submission by the control `target` presses sends, for its question (docs/specs/
+   * mcp-checkpoints.md Behaviour 4), or null when the page did not say in time; `skip`: the
+   * fields the same call fills, which its question shows with their new values.
+   * @param {HintTarget} target @param {"click" | "form"} by @param {HintTarget[]} [skip]
+   * @returns {Promise<import("../core/agent-checkpoint.mjs").SentFields | null>}
+   */
+  async sent(target, by, skip = []) {
+    const ids = skip.filter((t) => t.bc === target.bc && t.gen === target.gen).map((t) => t.id);
+    const sent = await bounded(VimmaActors.agentSent(target, by, ids), null, COLLECT_TIMEOUT_MS);
+    if (!sent) return null;
+    return {
+      ...sent,
+      fields: sent.fields.map((f) => ({
+        ...f,
+        name: wf(f.name),
+        ...(f.value !== undefined ? { value: wf(f.value) } : {}),
+      })),
+    };
+  },
 
   /**
    * The element a label names, as it is now, if an agent may click it (F4, F9, F10; security.md

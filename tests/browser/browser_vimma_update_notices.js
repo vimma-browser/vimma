@@ -9,6 +9,11 @@
 
 "use strict";
 
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+// Several tasks wait out the question's quiet time (2.5 s each): the file runs near the
+// default 45 s even on a fast machine.
+requestLongerTimeout(2);
+
 const { VimmaUpdates } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs",
 );
@@ -391,6 +396,31 @@ add_task(async function the_question_waits_for_an_open_overlay() {
     EventUtils.synthesizeKey("KEY_Escape");
     await until(() => VimmaHostMode() === "normal", "the command line closed");
     await until(lineShown, "asked once it closed");
+  });
+  freshSession();
+});
+
+// Issue #495: copy mode's y is the yank (hint and element mode type letters too); the question
+// waits until Esc leaves the mode.
+add_task(async function the_question_waits_for_copy_mode() {
+  await BrowserTestUtils.withNewTab(PLAIN, async (browser) => {
+    freshSession();
+    Services.prefs.setStringPref(ANNOUNCED, "9.9.9");
+    await SpecialPowers.spawn(browser, [], () => {
+      const p = content.document.createElement("p");
+      p.textContent = "Text for the caret.";
+      content.document.body.prepend(p);
+    });
+    browser.focus();
+    EventUtils.synthesizeKey("v");
+    await until(() => VimmaHostMode() === "visual", "copy mode");
+    await serve(await manifest({ urgent: true }));
+    Assert.equal((await VimmaUpdates.check()).outcome, "offer");
+    await pause(2500);
+    Assert.ok(!lineShown(), "no question over copy mode");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await until(() => VimmaHostMode() === "normal", "copy mode ended");
+    await until(lineShown, "asked once it ended");
   });
   freshSession();
 });

@@ -4,7 +4,9 @@
 
 // The agent role's gate (docs/specs/vimma-mcp.md, decisions 12-22): every agent request but
 // hello and ping waits here for the user's answer, or runs under its connection's grant, which
-// covers every tool but those that always ask (docs/specs/mcp-grants.md G1, G2). Core's AgentQueue holds the rules (the queue and its caps, the mute, the grants); this
+// covers every tool but those that always ask (docs/specs/mcp-grants.md G1, G2), among them the
+// checkpoints, sending a form and paying, which are one yes or no that leaves the grant as it was
+// (docs/specs/mcp-checkpoints.md C1). Core's AgentQueue holds the rules (the queue and its caps, the mute, the grants); this
 // adds the clock: the ask timeout (50 s, `[mcp] ask_timeout`) and the grants' expiry. One per
 // app, in memory only: nothing here is written to disk (decision 22), and a restart ends it all.
 //
@@ -17,7 +19,7 @@
 // (docs/specs/mcp-drive.md D14), the last 100, in memory only like the grants.
 
 import { AgentLog, AgentQueue, grantLength } from "../core/agent.mjs";
-import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL } from "../core/agent-prompt.mjs";
+import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL, isCheckpoint } from "../core/agent-prompt.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 
 /** @import { Answer, ConnId } from "../core/agent.mjs" */
@@ -165,6 +167,8 @@ function settle(resolved, grant, answered) {
     // No notice of its own: it would replace the grant's at once, which counts these instead.
     const unseen = r.allow && grant && r.id !== answered;
     if (unseen) released++;
+    // mcp-checkpoints Behaviour 6: the user's yes or no to a payment or a form is told apart.
+    const checkpoint = isCheckpoint(/** @type {any} */ (p));
     record(
       p.conn,
       p.tool,
@@ -172,8 +176,12 @@ function settle(resolved, grant, answered) {
       unseen
         ? "grant"
         : r.allow
-          ? "yes"
-          : /** @type {any} */ (r.reason === "muted" ? "muted" : r.reason),
+          ? checkpoint
+            ? "checkpoint-yes"
+            : "yes"
+          : r.reason === "user" && checkpoint
+            ? "checkpoint-no"
+            : /** @type {any} */ (r.reason === "muted" ? "muted" : r.reason),
     );
     if (r.allow) ranAt = Date.now();
     p.resolve(
@@ -342,8 +350,18 @@ export const AgentGate = {
     // A dangerous download is allowed for that one file only (decision 31 d): no grant.
     const asked = /** @type {any} */ (question?.what);
     if (answer.kind === "grant" && (asked?.danger || asked?.unscanned)) return null;
-    if (answer.kind === "grant") {
-      length = grantLength(answer.minutes, McpHost.config ?? DEFAULT_GRANT);
+    // A checkpoint is one yes or no (mcp-checkpoints Behaviour 1, 2): a grant answer allows that
+    // step once and makes no grant, and its `x` is a plain no, so the agent goes on under the
+    // grant it had.
+    if (question && isCheckpoint(question)) {
+      if (answer.kind === "mute") final = { kind: "deny" };
+      if (answer.kind === "grant") final = { kind: "once" };
+    }
+    if (final.kind === "grant") {
+      length = grantLength(
+        /** @type {{ minutes: number | null }} */ (answer).minutes,
+        McpHost.config ?? DEFAULT_GRANT,
+      );
       final = { kind: "grant", minutes: length.minutes };
     }
     const { resolved, grant } = queue.answer(id, final, Date.now());

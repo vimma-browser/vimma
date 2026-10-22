@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_submit.js and the e2e checkpoint scenario: a sign-up form whose
+   - question lists what it sends. An email, a name whose value holds a right-to-left override, a
+   - password, an unchecked and a checked box, a chosen plan, two hidden fields (an anti-forgery
+   - token and a referrer), and a named submit button. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sign up · Example</title>
+    <style>
+      body {
+        margin: 8px 16px;
+        font: 14px sans-serif;
+      }
+      p {
+        margin: 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="signup" method="post" action="file_vimma_agent_page.html?signup">
+      <input type="hidden" name="csrf" value="x9f3k2" />
+      <input type="hidden" name="ref" value="home" />
+      <p><input name="email" aria-label="Email" value="ada@example.com" /></p>
+      <p><input id="name" name="name" aria-label="Name" /></p>
+      <p><input name="password" type="password" aria-label="Password" value="hunter2" /></p>
+      <p>
+        <label><input type="checkbox" name="news" value="yes" /> News</label>
+        <label><input type="checkbox" name="terms" value="ok" checked /> Terms</label>
+      </p>
+      <p>
+        <select name="plan" aria-label="Plan">
+          <option value="free">Free</option>
+          <option value="pro" selected>Pro</option>
+        </select>
+      </p>
+      <p><button name="action" value="join" type="submit">Join</button></p>
+    </form>
+    <script>
+      // A value a page could use to reorder the question: the question must show it as it is.
+      document.getElementById("name").value = "Ada ‮ecalevoL";
+    </script>
+  </body>
+</html>

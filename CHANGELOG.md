@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. From the first release on, release-please writes each release's entry from the Conventional Commits on `main` ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.8](https://github.com/vimma-browser/vimma/compare/v0.1.7...v0.1.8) · Firefox 158.0.1 (2026-10-22)
+
+
+### Added
+
+* **keys:** a firefox key inventory for macos ([f46e554](https://github.com/vimma-browser/vimma/commit/f46e554e3b077f26aed7800697eaddde73a487c9))
+* **mcp:** one grant covers every agent tool of its connection ([#515](https://github.com/vimma-browser/vimma/issues/515)) ([e4273b9](https://github.com/vimma-browser/vimma/commit/e4273b903138c46402cba24a2b887df050bbb032))
+* **private:** swap in place on macos ([202e260](https://github.com/vimma-browser/vimma/commit/202e2603622fd93199e317c380d1f3aa253f7167))
+
+
+### Fixed
+
+* **keys:** hint, copy and element mode keep y and n from a waiting question ([#521](https://github.com/vimma-browser/vimma/issues/521)) ([423b0c0](https://github.com/vimma-browser/vimma/commit/423b0c03fc13360c9eb81a61ac577c13ae5ccb73)), closes [#495](https://github.com/vimma-browser/vimma/issues/495)
+* **mcp:** agent clicks, fills and lists no longer race a busy content process ([df1c20c](https://github.com/vimma-browser/vimma/commit/df1c20c7692910b55d6480ecc130ae660e906e3e))
+* **mcp:** an agent step's load wait passes over an initial about:blank ([#520](https://github.com/vimma-browser/vimma/issues/520)) ([fc39dfd](https://github.com/vimma-browser/vimma/commit/fc39dfde27ddd9b1e498f7ec5c02fbcf363c26c5))
+* **mcp:** read clamd's socket owner on macOS with lstat ([d83cdc2](https://github.com/vimma-browser/vimma/commit/d83cdc2c6208ad753227dfd267169248db1242ce))
+* **mcp:** the child's submit-check test hook works only in automation ([947178f](https://github.com/vimma-browser/vimma/commit/947178f802a8d8eac813412b4b8cbecbf8f3f34f))
+* **mcp:** vimma_activate says what a click changed in place ([#514](https://github.com/vimma-browser/vimma/issues/514)) ([c39fc4b](https://github.com/vimma-browser/vimma/commit/c39fc4b5b7146b4f6ecb4c046818494d73238783)), closes [#510](https://github.com/vimma-browser/vimma/issues/510) [#513](https://github.com/vimma-browser/vimma/issues/513)
+* **update:** check the shape of github's responses before reading labels ([#519](https://github.com/vimma-browser/vimma/issues/519)) ([27b58a1](https://github.com/vimma-browser/vimma/commit/27b58a1fba2e0f9cd6bd092d4b23075eff0ae5ac))
+* **update:** retry transient gh failures when reading commit labels ([50a061b](https://github.com/vimma-browser/vimma/commit/50a061b4a7e38e7896c5f40164a336863a1b656f))
+
 ## [0.1.7](https://github.com/vimma-browser/vimma/compare/v0.1.6...v0.1.7) · Firefox 158.0.1 (2026-10-22)
 
 
@@ -73,6 +94,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Agents (MCP): `vimma_console` reads an agent tab's script errors, console errors and warnings, and failed requests, without running page code.
 - Packaging: an `.rpm` for Fedora and openSUSE, installed and checked with dnf and zypper; `:update` shows the dnf and zypper commands for it.
 - Agents (MCP): one answer covers a task. `10a` lets that agent use every tool for 10 minutes, not only the one it asked about; sending a form, showing a page and a dangerous or unscanned download still ask. The question's hint reads `y once · 10a 10 min, all but forms · n deny · x mute`, the grant's notice names what still asks and that `ctrl+b shift+a` ends it, and `ctrl+b shift+a` with nothing waiting now ends every grant at once. The e2e baselines `m0-mcp-stdio-question`, `m0-mcp-drive-keys-question` and `m0-mcp-forms-fill-question` change with the hint.
+- Agents (MCP): sending a form and paying are checkpoints. Under any grant they ask with `y` and `n` only, marked `▲` in the theme's warning colour, and the agent goes on under its grant after either answer. A step pays when the page shows a payment card field (also in a payment provider's frame) or the pressed button or followed link says it pays (`Pay now`, `Place order`, `Vahvista tilaus`, … in six languages), also a button that sends no form; its question names the button, the site and the total the page states (`▲ claude-code wants to pay: "Vahvista tilaus" on shop.example · the page says "Yhteensä 42,90 €"`). A form's question lists each field it sends with its value, a password as `•••`, hidden fields counted. The grant's hint reads `all but forms and paying`. The e2e baselines `m0-mcp-stdio-question`, `m0-mcp-drive-keys-question`, `m0-mcp-forms-fill-question` and `m0-mcp-forms-submit-question` change with the hint and the form question, and `m0-mcp-checkpoints-basket-ran`, `m0-mcp-checkpoints-pay-question` and `m0-mcp-checkpoints-card-question` are new.
 
 ### Changed
 

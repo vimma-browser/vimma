@@ -1,6 +1,6 @@
 # Spec: mcp-checkpoints
 
-Status: accepted · Area: `packages/vimma-core/src/` (`agent-prompt.mjs`, `agent-act.mjs`, new
+Status: implemented · Area: `packages/vimma-core/src/` (`agent-prompt.mjs`, `agent-act.mjs`, new
 `agent-checkpoint.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
 `ctl/AgentAct.sys.mjs`, `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`,
 `actors/agent-fields.mjs`, `ui/agent-prompt.mjs`, `host/agent-ui.mjs`); `tools/vimma-ctl`
@@ -52,6 +52,9 @@ button that does not submit a form cannot pay unasked when either signal is ther
    (a follow, `gu`, `gU`, `H` or `L`; `vimma_keys` sends no key events, mcp-drive D8-D9) in an agent tab, when a signal of C6 says it may pay. Its question names the agent, the
    button's text, the site, and the amount the page states (C7):
    `▲ claude-code wants to pay: "Confirm order" on shop.example · the page says "Total 42,90 €"`.
+   A key step presses no button, so its question names its keys (`keys H`). The first key that
+   acts in a call, on the page the call starts on, is asked in the call's own question, so that
+   one step never asks twice; a later one asks when the call reaches it.
 4. **A form submission's question shows what is sent:** the destination, then each field that
    goes, by name and value, as a fill's question shows them (mcp-forms F14): values cut at 40
    columns, the list cut where the line ends with `… (N more)`; a sensitive field (password,
@@ -62,7 +65,8 @@ button that does not submit a form cannot pay unasked when either signal is ther
    that do. Every name and value is cleaned as a fill's question cleans them (NFKC, control,
    bidirectional and invisible characters dropped, each a bidi isolate), since they are the
    page's text. When the submission is also a payment step, the payment wording wins and the
-   fields follow.
+   fields follow. A fill that submits shows the fields it fills, as today, then `also` and what
+   else the form sends, so that no field is shown twice with two values.
 5. **A stop is final for that step.** `n` refuses the call with `denied`; under a grant the
    agent may go on with other steps, and three noes in a row mute it as any denials do
    (vimma-mcp 18).
@@ -143,6 +147,10 @@ and the second at the provider's own card fields or pay button.
    checkout where a card is typed, and the button's words catch a saved card's one-button
    checkout, which card fields never see because the agent cannot fill them (mcp-forms F6). The
    cost is an extra question on a button such as "Buy now" that only leads to a checkout.
+   Only card fields the page shows count, so that a card form a shop keeps hidden on every page
+   does not make every click a payment; a frame whose check fails or that does not answer in time
+   counts as one, so that a doubt asks. The list lives in `agent-checkpoint.mjs` (`PAY_PHRASES`); `ß`
+   matches `ss`, as a page in capitals writes it.
    Rejected: card fields alone, because they miss the one-button checkout, the case with the
    most risk; a cancel-and-ask rule for a load of another site from a checkout page (a hosted
    payment page or a bank), because shops, logins and payment providers move between sites all

@@ -38,6 +38,8 @@ const EVENTS = ["popupshowing", "popupshown", "popuppositioned", "popuphidden", 
  * @property {() => boolean} inField  focus is in an editable field (insert mode)
  * @property {() => boolean} otherOpen  a picker, prompt, panel or the command line of Vimma's
  * @property {() => boolean} pending  a key sequence is under way (after ctrl+b)
+ * @property {() => boolean} modeKeys  the mode types its own letters (hint, copy, element mode);
+ *   `otherOpen` covers it too, this only words the keys line
  */
 
 /** @param {any} node  an element, possibly in a shadow root */
@@ -150,7 +152,8 @@ export class PromptKeys {
     const text = doorhangerHint({
       main: n.getAttribute("buttonlabel") ?? "",
       secondary: secondaryHidden ? "" : (n.getAttribute("secondarybuttonlabel") ?? ""),
-      inField: focus.inField && !focus.inPrompt,
+      // Hint, copy and element mode keep y and n as well; Esc leaves them too.
+      inField: (focus.inField || this.host.modeKeys()) && !focus.inPrompt,
     });
     if (hint.textContent !== text) {
       hint.removeAttribute(ARMED_ATTR);

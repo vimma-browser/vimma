@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- m0-mcp-checkpoints: a shop's checkout whose card number field is in a payment provider's
+     frame of another site (card-frame.html from localhost, while the page is on 127.0.0.1), and
+     an "Apply coupon" button whose words pay nothing: the card field alone makes its click a
+     payment checkpoint, which quotes the order total before it. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout · Shop</title>
+    <style>
+      body {
+        margin: 0 auto;
+        max-width: 560px;
+        padding: 24px;
+        font: 16px/1.5 sans-serif;
+        color: #222;
+        background: #fafafa;
+      }
+      iframe {
+        display: block;
+        width: 360px;
+        height: 64px;
+        margin: 12px 0;
+        border: 1px solid #ccc;
+        background: #fff;
+      }
+      input,
+      button {
+        font: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Checkout</h1>
+    <p>Order total: <b>42.90 EUR</b></p>
+    <iframe id="provider" title="Card payment"></iframe>
+    <p>
+      <input name="coupon" aria-label="Coupon" value="AUTUMN" size="10" />
+      <button id="apply" type="button">Apply coupon</button>
+    </p>
+    <script>
+      // The payment provider is another site: the same server under another host name.
+      const frame = new URL("card-frame.html", location.href);
+      frame.hostname = "localhost";
+      document.getElementById("provider").src = frame.href;
+    </script>
+  </body>
+</html>

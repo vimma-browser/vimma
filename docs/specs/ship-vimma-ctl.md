@@ -151,7 +151,7 @@ that it cannot click or fill, although the browser can.
 ## Security and privacy
 
 - No new browser surface. `ctl` is a label, like `client` and `via`: it changes only whether
-  the notice is shown, never what the connection may do (docs/security.md, M33). The discovery
+  the notice is shown, never what the connection may do (docs/security.md, M34). The discovery
   file's new `version` is public information.
 - The release gains two build jobs, `ctl` and `macos-ctl`, with a read-only token, no
   environment and no secret; the Rust toolchain comes through the runner's rustup from the
@@ -196,7 +196,7 @@ vimma`, `puts vimma-ctl next to vimma in the AppDir, and on PATH in the .deb and
   agent's tool" points MCP hosts at the shipped binary and describes the older-client notice;
   "Scripting with vimma-ctl" drops the build step.
 - `CONTRIBUTING.md`: building `vimma-ctl` from source, and where its version comes from.
-- `docs/security.md`: M33 and B13.
+- `docs/security.md`: M34 and B13.
 - `CHANGELOG.md`: "Release packages ship vimma-ctl, and an older vimma-ctl says it is older".
 
 ## Delivery

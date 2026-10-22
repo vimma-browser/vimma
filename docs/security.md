@@ -357,9 +357,12 @@ text that pages, add-ons and bookmarks choose.
     between (any key restarts the wait), **never** from a text field (the page's, the chrome's,
     or the prompt's own, such as the password prompt's username), **never** while one of
     Vimma's own surfaces holds the keyboard (a picker, live grep, the command line, a search being
-    typed, the other prompts), and go through Firefox's
-    own buttons, so Firefox's click delay still applies. The wait counts from Firefox's own time
-    for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
+    typed, the other prompts), **never** in hint, copy or element mode (a label typed from any
+    `[modal] hint_chars`, the yank: a page can time a prompt to the mode; `Esc` leaves it, and
+    then `y` answers), nor while link labels or a focused block are still on screen after a
+    prompt took focus (the next key ends them), so `y` and `n` answer a prompt only in normal and
+    resize mode or with focus on the prompt itself, and go through Firefox's own buttons, so
+    Firefox's click delay still applies. The wait counts from Firefox's own time for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
     moves or resizes, the window is activated or another prompt takes the panel), so an armed key
     never meets a button Firefox's delay still refuses. Vimma **never** gives the prompt focus;
     `Tab` focuses the secondary (Block) button first. A prompt Firefox itself opens with focus on
@@ -369,6 +372,8 @@ text that pages, add-ons and bookmarks choose.
     [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_leave_live_grep_and_find_their_keys`](../tests/browser/browser_vimma_toolbar.js),
+    [`KEY_KEEPING_MODES`](../packages/vimma-core/test/modes.test.mjs),
+    [`prompt_keys_leave_hint_copy_and_element_mode_their_keys`](../tests/browser/browser_vimma_toolbar.js),
     [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
@@ -725,14 +730,14 @@ workspace. What limits it: the agent workspace's container holds none of your ot
 under a grant shows a notice (an open names its host) and is a `:mcp log` row with its whole URL
 (M23); at most 10 opens a minute (M3); `ctrl+b shift+a` ends every grant at once; and an agent
 with a shell can send what it read over its own network without Vimma anyway. A form submission,
-a show, a dangerous or unscanned download and a page's own download still ask under any grant
-(M11, M13, M19, M28). Paying is not yet recognised apart from a form submission: until
-[mcp-checkpoints](specs/mcp-checkpoints.md) is built, a button that pays without submitting a
-form (a saved card's one-button checkout) runs unasked under a grant.
+a step that may pay, a show, a dangerous or unscanned download and a page's own download still
+ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
+makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
+spends and leaves the grant as it was (M28, M33).
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection, which covers every tool but those
-  that always ask (M11, M13, M19, M28); another connection's grant **never** covers it. A
+  that always ask (M11, M13, M19, M28, M33); another connection's grant **never** covers it. A
   waiting call a grant releases **must** be logged as run under the grant, and the grant's
   notice **must** count it, since the user never saw it asked.
   [`test_one_grant_covers_every_tool_of_its_connection`](../tests/browser/browser_vimma_mcp_agent.js),
@@ -761,14 +766,18 @@ form (a saved card's one-button checkout) runs unasked under a grant.
   deactivated, focused or blurred, hidden or shown, and when a key arrives before it is armed,
   so a window brought to the front (by the user, or by a process that can focus windows) never
   takes a key meant for another; a just-focused window counts as one being typed in. With a
-  prompt, picker, panel or the command line open over it, and for the rest of a key sequence,
-  the keys are theirs. Text an agent or a page chooses (the client name, which is the agent's own
-  claim and proves nothing, and titles) is drawn as a bidi isolate (`<bdi>`), URLs as
+  prompt, picker, panel or the command line open over it, in hint, copy or element mode (whose
+  labels and yank type letters: `y` allows, and with the default `hint_chars` a label can start
+  with `a`, which grants a whole task), and for
+  the rest of a key sequence, the keys are theirs, and the question **never** opens by itself.
+  Text an agent or a page chooses (the client name, which is the agent's own claim and proves
+  nothing, and titles) is drawn as a bidi isolate (`<bdi>`), URLs as
   left-to-right isolates. A window not in front gets the urgency hint and a notification with no
   URL, no title and no buttons.
   [`test_the_line_opens_arms_and_ignores_stray_keys`](../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_focus_changes_and_early_keys_rearm_the_line`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_other_ui_opened_over_the_line_gets_the_keys`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
+  [`test_hint_and_copy_mode_keep_their_keys`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_names_titles_and_urls_are_bidi_isolates`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_typing_in_a_field_waits_for_ctrl_b_shift_a`](../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_a_window_not_in_front_gets_attention_and_a_notification`](../tests/browser/browser_vimma_mcp_control.js),
@@ -1179,8 +1188,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
 - M28. A click that submits a form (a submit button or a submit or image input in a form whose
   method is not `dialog`, the element itself, the button it is in or its label's control)
   **must** ask every time, also under any grant, with only `y` and `n`, naming
-  the form's method, destination and the number of fields it sends; its yes **never** makes a
-  grant; so **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
+  the form's method, destination and each field it sends by name and value (hidden fields
+  counted, a file field by its name), **never** a password, payment card or one-time-code
+  field's value, only its name and `•••`, or the number of fields when the page did not say in
+  time; its yes **never** makes or ends a grant, and its `x` is a plain no; so **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
   label or the form's default submission), under a grant too, naming the same and
   the fields it fills, only through a submit button of the filled fields' own form or that
   form's default submission, and it is not sent when the page put back a value the question
@@ -1238,6 +1249,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_a_page_submit_during_a_fill_is_not_the_asked_one`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_selects_ranges_and_a_submit_button_of_another_form`](../tests/browser/browser_vimma_mcp_fill.js),
   [`a fill that submits: the destination, then the fields, y or n only`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`test_submit_question_lists_the_fields_it_sends`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`a form checkpoint lists the fields it sends, sensitive ones as •••`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a form checkpoint cleans the page's names and values and cuts them to fit`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a malformed fields reply is refused, and a secret never carries a value`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
   [`a click grant covers fills; a fill that submits asks under it`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a plain button, a reset, one outside a form or one closing a dialog is not`](../packages/vimma-core/test/agent-act.test.mjs)
 - M29. `agent-activate` **must** refuse, before anything is asked, a link to another site than
@@ -1386,7 +1401,38 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`vimma_console can be granted, and its grant covers the other tools`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_console_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_console.js),
   [`vimma_console: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
-- M33. The `vimma-ctl` version an `agent-hello` names (`ctl`, spec
+- M33. A payment step (mcp-checkpoints C6) **must** ask under any grant, with only `y` and `n`
+  (`x` is a plain no), and its yes **never** makes, lengthens or ends a grant; its no denies that
+  step only. A payment step is a `vimma_activate` click, a `vimma_fill` that submits, or a
+  `vimma_keys` follow, `gu`, `gU`, `H` or `L`, in an agent tab whose page shows a payment card
+  field in any frame (a `cc-*` autocomplete name or form autofill's card heuristics; a frame
+  whose check fails or that does not answer within 5 s counts as one, a frame that navigates
+  away or whose process ends during the check does not), or whose pressed control has a phrase
+  of the fixed list (`PAY_PHRASES`, six languages) as whole words in its text, accessible name,
+  title or value. Its question **must** name the button (for a key step, its keys), the tab's
+  host and the total the page states, quoted after "the page says" and cut at 40 columns; a
+  card field's value is **never** read, and the desktop notification names no site, amount or
+  URL. Not covered: a load of another site is not stopped, so a hosted payment page reached
+  through a button whose words are not on the list stops the agent only at that page's own card
+  fields or pay button; a page that hides its checkout (no card field shown, a button worded
+  otherwise) is not recognised; a frame Vimma's actor does not cover (a data: or blob: document)
+  is not asked for card fields; and the total is the page's own claim, which the user's bank or
+  card statement settles.
+  [`test_pay_button_outside_a_form_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_card_fields_in_a_cross_site_frame_make_a_pay_step`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_basket_button_does_not_ask`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_no_stops_the_step_and_keeps_the_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_the_stated_total_is_quoted`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_key_that_acts_where_it_may_pay_asks`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_checkpoint_notice_log_row_and_notification`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`card fields alone, and a pay phrase alone, make a payment step; neither makes none`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`a phrase inside another word is not one`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`property: a phrase of the list, with any text around it apart by a space, matches`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`a payment checkpoint names the button, site and stated amount`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a checkpoint offers y and n only, and x is a plain no`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a checkpoint asks under a grant, its yes leaves the grant as it was`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`property: no answer to a checkpoint makes, lengthens or ends a grant`](../packages/vimma-core/test/agent-gate.test.mjs)
+- M34. The `vimma-ctl` version an `agent-hello` names (`ctl`, spec
   [ship-vimma-ctl](specs/ship-vimma-ctl.md)) is a label, as `client` and `via` are: it **must**
   change only whether Vimma shows the older-client notice, **never** what the connection may do,
   so an older or a lying client gets every check any other gets. A `ctl` that is not a Vimma
@@ -2028,10 +2074,15 @@ _Pages_ and _extensions_ cannot reach it.
   signing and checked against the signed size and SHA-512. A serial that is not newer than the
   published manifest's, a serial more than a day ahead of the clock, and an offer older than the
   published one are refused. The urgency comes from the labels of each commit's pull request;
-  a label read that fails transiently (an HTTP 5xx, a body gh cannot parse, a network error) is
+  a label read that fails transiently (an HTTP 5xx, a body that is not JSON, a network error) is
   tried four times in all, 2, 4 and 8 s apart, and a commit whose labels still cannot be read
   **must** fail the run, never count as unlabelled, so a security release is never published as
-  a normal one. The push uses a deploy key that can write only to
+  a normal one. The responses are parsed as raw JSON in `manifest.mjs`, not through jq, and their
+  shape is checked: a pulls response that is not a list of pull requests, each with a list of
+  labels with string names, fails the run (jq would read `{}` as no labels), and so does a
+  releases list that does not contain the tag being published (such a list is malformed or cut
+  short, and counting from it could widen the range of commits to the whole history; a wider
+  range can only raise the urgency, but costs a label read per commit). The push uses a deploy key that can write only to
   `vimma-updates`, kept in the `update-publish` environment (deployment branch `main` alone),
   reached only by the push step, to a pinned github.com host key, and **never** forced; nothing is
   pushed unless `UPDATES_ENABLED` is `true`. **⚠ setting:** the environments' branch rules and the
@@ -2069,6 +2120,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`retries a transient failure, then reads the labels`](../tools/update/test/manifest.test.mjs),
   [`throws after four attempts that all fail, never answering no labels`](../tools/update/test/manifest.test.mjs),
   [`throws at once on a failure that is not transient`](../tools/update/test/manifest.test.mjs),
+  [`throws at once on %s instead of answering no labels`](../tools/update/test/manifest.test.mjs),
+  [`throws at once on %s instead of widening the range`](../tools/update/test/manifest.test.mjs),
   [`downloads the target's files and sums, and passes the target to manifest.mjs`](../tools/update/test/update-workflow.test.mjs),
   [`checks a macOS body against the macOS target, and refuses a Linux one there`](../tools/update/test/update-workflow.test.mjs),
   [`runs one manifest per target at a time, never cancelling one half done`](../tools/update/test/update-workflow.test.mjs),
@@ -2095,13 +2148,14 @@ _Pages_ and _extensions_ cannot reach it.
   it appears or after its window comes to the front or leaves it, an earlier key starts the
   delay again, and a held key never answers. It **never** takes focus, **never** opens while
   focus is in a field, while another Vimma overlay, the agent question or a Firefox permission
-  prompt is open, or in a private window; a key that arrives while focus is in a field or a page
-  is in DOM full screen is **never** taken as an answer; and `y` **only** opens about:vimma's Updates section: nothing is installed or
+  prompt is open, in hint, copy or element mode, or in a private window; a key that arrives
+  while focus is in a field or a page is in DOM full screen is **never** taken as an answer; and `y` **only** opens about:vimma's Updates section: nothing is installed or
   run. The one-time message is a notice that takes no focus and no keys.
   [`a_security_update_asks_once_per_session`](../tests/browser/browser_vimma_update_notices.js),
   [`early_and_held_keys_never_answer`](../tests/browser/browser_vimma_update_notices.js),
   [`another_window_in_front_arms_it_again`](../tests/browser/browser_vimma_update_notices.js),
   [`the_question_waits_for_an_open_overlay`](../tests/browser/browser_vimma_update_notices.js),
+  [`the_question_waits_for_copy_mode`](../tests/browser/browser_vimma_update_notices.js),
   [`y_shows_the_update_steps_and_esc_dismisses`](../tests/browser/browser_vimma_update_notices.js),
   [`the_question_waits_while_the_user_types`](../tests/browser/browser_vimma_update_notices.js),
   [`no_question_in_a_private_window`](../tests/browser/browser_vimma_update_notices.js),

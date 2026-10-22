@@ -20,13 +20,17 @@ import { cutTo } from "../core/agent-keys.mjs";
 import { collectTargets, linkText } from "./hint-collect.mjs";
 import {
   actTargetOf,
+  cardFieldShown,
   defaultSubmitOf,
   describeAgentElements,
   fillField,
   fillTargetOf,
   pageChanges,
   pageMarks,
+  payInfoOf,
   sensitiveValueShown,
+  sentFieldsOf,
+  totalBefore,
 } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
@@ -577,6 +581,28 @@ export class VimmaChild extends JSWindowActorChild {
           console.error("vimma agent-console:", e);
           return { entries: [], omitted: 0 };
         }
+      case "Vimma:AgentCards": {
+        // A step that may pay (docs/specs/mcp-checkpoints.md C6): whether this frame shows a
+        // payment card field. A failure answers yes, so that a doubt asks.
+        const doc = this.document;
+        if (!doc) return false;
+        try {
+          return cardFieldShown(doc);
+        } catch (e) {
+          console.error("vimma agent checkpoint: card fields", e);
+          return true;
+        }
+      }
+      case "Vimma:AgentTotal": {
+        // A key step that may pay (mcp-checkpoints C7) has no control: the page's last total.
+        const doc = this.document;
+        try {
+          return (doc && totalBefore(doc, null)) || null;
+        } catch (e) {
+          console.error("vimma agent checkpoint: total", e);
+          return null;
+        }
+      }
       case "Vimma:AgentSensitiveShown": {
         // An agent's screenshot is about to be taken (docs/specs/mcp-forms.md F21): whether a
         // sensitive field with a value is in this frame's viewport. A failure answers yes, so
@@ -714,7 +740,7 @@ export class VimmaChild extends JSWindowActorChild {
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
    * @param {{ op: string, gen: number, id: number, submit?: any, href?: unknown,
-   *   until?: unknown, value?: unknown, expect?: any }} data
+   *   until?: unknown, value?: unknown, expect?: any, by?: unknown, skip?: unknown }} data
    */
   #agentElement(data) {
     const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
@@ -755,6 +781,19 @@ export class VimmaChild extends JSWindowActorChild {
       }
       case "submit":
         return this.#agentSubmit(el, data);
+      case "pay":
+        // docs/specs/mcp-checkpoints.md C6, C7: what the pressed control says, the total before it.
+        return payInfoOf(el, data.by === "form" ? "form" : "click");
+      case "sent": {
+        // Behaviour 4: what the form sends, but for the fields the same call fills.
+        /** @type {Set<Element>} */
+        const skip = new Set();
+        for (const id of Array.isArray(data.skip) ? data.skip : []) {
+          const field = isIndex(id) ? this.#agentEls.els[id]?.deref() : undefined;
+          if (field) skip.add(field);
+        }
+        return sentFieldsOf(el, data.by === "form" ? "form" : "click", skip);
+      }
     }
     return false;
   }

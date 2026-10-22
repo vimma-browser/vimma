@@ -7,7 +7,10 @@
 // the content process, in VimmaChild, in the element's own frame. Reads only: nothing here
 // focuses, clicks or changes an element. The parent checks every field again (core
 // agent-element.mjs, agent-act.mjs) and builds the list. Before an agent's screenshot, the same
-// rules say whether a sensitive field with a value is on screen (F21).
+// rules say whether a sensitive field with a value is on screen (F21), and before a step that
+// may pay or send a form, whether the page shows a payment card field, what the pressed control
+// says, the total the page states before it and what the form sends (docs/specs/
+// mcp-checkpoints.md).
 //
 // A field is sensitive, and its value is never read into the reply, when it is or was ever a
 // password field, when the page draws it as dots (`-webkit-text-security`), when its autocomplete
@@ -16,6 +19,7 @@
 // their machine-learning model). A failure of the heuristics makes every field of that form
 // sensitive: it refuses rather than fills.
 
+import { isStatedTotal } from "../core/agent-checkpoint.mjs";
 import { isSensitiveAutocomplete, isSubmitControl } from "../core/agent-element.mjs";
 import { linkText } from "./hint-collect.mjs";
 
@@ -734,4 +738,182 @@ export function pageChanges(before, now) {
   if (now.text !== before.text) changed.push("text");
   if ([...now.dialogs].some((el) => !before.dialogs.has(el))) changed.push("dialog");
   return changed;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Checkpoints (docs/specs/mcp-checkpoints.md C6, C7, Behaviour 4; security.md M33): what the
+// payment and form questions show, read from the page without touching it. A card field's value
+// is never read (F6).
+
+/** An element bigger than this is a container, not the line that states a total. */
+const TOTAL_TEXT_MAX = 300;
+const TOTAL_CHILDREN_MAX = 12;
+
+/**
+ * Every input and select of `root` and its shadow trees, open and closed.
+ * @param {Document} doc @param {Node} root
+ * @returns {Element[]}
+ */
+function controlsIn(doc, root) {
+  /** @type {Element[]} */
+  const out = [];
+  const walker = doc.createTreeWalker(root, 1 /* NodeFilter.SHOW_ELEMENT */);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const el = /** @type {Element} */ (node);
+    if (el.localName === "input" || el.localName === "select") out.push(el);
+    const shadow = /** @type {any} */ (el).openOrClosedShadowRoot;
+    if (shadow) out.push(...controlsIn(doc, shadow));
+  }
+  return out;
+}
+
+/**
+ * Whether `doc` shows a payment card field (C6): one whose autocomplete field name is a card's
+ * (`cc-*`), or that form autofill's heuristics infer as one. Only fields the page shows count, so
+ * a card form a shop keeps hidden on every page does not make every click a payment; a failure
+ * of the heuristics counts as one (cardFields), so that a doubt asks.
+ * @param {Document} doc
+ */
+export function cardFieldShown(doc) {
+  const shown = controlsIn(doc, doc).filter((el) => {
+    const html = /** @type {any} */ (el);
+    if (el.localName === "input" && (NO_VALUE.has(html.type) || html.type === "hidden")) {
+      return false;
+    }
+    if (!(html.checkVisibility?.({ visibilityProperty: true }) ?? true)) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  });
+  if (!shown.length) return false;
+  const named = shown.some((el) => {
+    try {
+      const name = /** @type {any} */ (el).getAutocompleteInfo?.()?.fieldName;
+      return String(name ?? "").startsWith("cc-");
+    } catch {
+      return false;
+    }
+  });
+  return named || cardFields(shown).size > 0;
+}
+
+/**
+ * The text of the nearest element before `el` in reading order that states a total (C7), or of
+ * the last one in the document when there is no `el` (a key step). Elements with many children
+ * or much text are containers and are skipped, so the quote is the line that states it; an
+ * element the page does not show has no rendered text and never matches.
+ * @param {Document} doc @param {Element | null} el
+ * @returns {string | undefined}
+ */
+export function totalBefore(doc, el) {
+  if (!doc.body) return undefined;
+  /** @type {string | undefined} */
+  let found;
+  const walker = doc.createTreeWalker(doc.body, 1 /* NodeFilter.SHOW_ELEMENT */, {
+    acceptNode: (node) =>
+      NOT_SHOWN.has(/** @type {Element} */ (node).localName)
+        ? 2 /* NodeFilter.FILTER_REJECT */
+        : 1 /* NodeFilter.FILTER_ACCEPT */,
+  });
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node === el) break;
+    const html = /** @type {any} */ (node);
+    if (html.childElementCount > TOTAL_CHILDREN_MAX) continue;
+    const raw = node.textContent ?? "";
+    if (raw.length > TOTAL_TEXT_MAX || !/\d/.test(raw)) continue;
+    const text = oneLine(typeof html.innerText === "string" ? html.innerText : raw);
+    if (text && isStatedTotal(text)) found = text;
+  }
+  return found === undefined ? undefined : cap(found, TEXT);
+}
+
+/**
+ * The control a step presses: for a click, the submit control it presses (`el`, the button it
+ * is in, its label's control) or else `el`; for a form's default submission (`form`), the form's
+ * default button, or null when it has none.
+ * @param {Element} el @param {"click" | "form"} by
+ * @returns {Element | null}
+ */
+function pressedBy(el, by) {
+  const html = /** @type {any} */ (el);
+  if (by === "form") return html.form ? (defaultSubmitOf(html.form)?.submitter ?? null) : null;
+  return submitOf(el)?.submitter ?? el;
+}
+
+/**
+ * What a payment's question needs of the control a step presses (C6, C7): its text, accessible
+ * name, title and value, and the text of the total before it.
+ * @param {Element | null | undefined} el @param {"click" | "form"} by
+ * @returns {{ texts: string[], total?: string } | null} null: the element is gone
+ */
+export function payInfoOf(el, by) {
+  if (!el?.isConnected) return null;
+  const control = pressedBy(el, by);
+  /** @type {string[]} */
+  const texts = [];
+  if (control) {
+    const html = /** @type {any} */ (control);
+    const words = [
+      textOf(control, kindOf(control)),
+      control.getAttribute("aria-label"),
+      control.getAttribute("title"),
+      control.localName === "input" || control.localName === "button" ? html.value : "",
+    ];
+    for (const w of words) {
+      const t = cap(oneLine(String(w ?? "")), TEXT);
+      if (t && !texts.includes(t)) texts.push(t);
+    }
+  }
+  const total = totalBefore(/** @type {Document} */ (el.ownerDocument), control ?? el);
+  return { texts: texts.slice(0, 4), ...(total ? { total } : {}) };
+}
+
+/** Fields a form's question gets at most; the rest are counted (core CHECKPOINT_CAPS). */
+const SENT_MAX = 64;
+
+/**
+ * What a submission by the control a step presses sends (Behaviour 4): each named, enabled
+ * field's name and value, as the form would send it, but for those in `skip` (the fields a fill
+ * sets, which its question shows with their new values); a sensitive field (F6) by its name
+ * only, never its value; a file field by its name; hidden fields counted, not listed.
+ * @param {Element | null | undefined} el @param {"click" | "form"} by @param {Set<Element>} skip
+ * @returns {{ fields: { name: string, value?: string, secret?: true, file?: true }[],
+ *   hidden: number, more: number } | null} null: it submits no form
+ */
+export function sentFieldsOf(el, by, skip) {
+  if (!el?.isConnected) return null;
+  const html = /** @type {any} */ (el);
+  const form = by === "form" ? html.form : submitOf(el)?.form;
+  const submit = form ? (by === "form" ? defaultSubmitOf(form) : submitOf(el)) : null;
+  if (!form || !submit) return null;
+  /** @type {{ name: string, value?: string, secret?: true, file?: true }[]} */
+  const fields = [];
+  let hidden = 0;
+  let more = 0;
+  /** @param {{ name: string, value?: string, secret?: true, file?: true }} f */
+  const add = (f) => (fields.length < SENT_MAX ? fields.push(f) : more++);
+  for (const c of form.elements) {
+    if (!c.name || c.matches(":disabled") || c.closest("datalist") || skip.has(c)) continue;
+    if (["fieldset", "output", "object"].includes(c.localName)) continue;
+    const name = cap(c.name, TEXT);
+    const box = c.type === "checkbox" || c.type === "radio";
+    if (c.localName === "button" || BUTTON_TYPES.has(c.type)) {
+      // Of the buttons only the one pressed is sent; an image button's click point means nothing.
+      if (c === submit.submitter && c.type !== "image") add({ name, value: cap(c.value, VALUE) });
+    } else if (c.type === "hidden") {
+      hidden++;
+    } else if (box && !c.checked) {
+      // an unchecked box sends nothing
+    } else if (secretOf(c)) {
+      add({ name, secret: true });
+    } else if (box) {
+      add({ name, value: cap(c.value, VALUE) });
+    } else if (c.type === "file") {
+      add({ name, file: true });
+    } else if (c.localName === "select") {
+      for (const o of c.selectedOptions) add({ name, value: cap(o.value, VALUE) });
+    } else {
+      add({ name, value: cap(c.value, VALUE) });
+    }
+  }
+  return { fields, hidden, more };
 }
