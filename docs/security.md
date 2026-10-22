@@ -1161,7 +1161,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   `requestSubmit()` or a later `submit()`, whatever the page cached) **must** be cancelled
   before it is sent when it carries no transient user activation, unless it is the one
   submission the question allowed, during that call, with the method and destination (scheme,
-  host, port and path) it named; a redirect of a submission let through follows on. The result
+  host, port and path) it named; a redirect of a submission let through follows on. The call's
+  wait for a page counts from when the click or the submission ran in the page's process, not
+  from the child's reply before it, so that the allowance is still open when a busy process runs
+  the step late; it still ends with the call. The result
   and `:mcp log` name the host it was going to. Clicks and fills on one tab run one at a time, so no call
   takes another's allowance. Your activation after the step (a click or a key of yours in that
   page) and your `f` hints end the mark, so your own submissions in an agent tab go through, and

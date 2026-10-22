@@ -8,9 +8,26 @@
 
 "use strict";
 
-/* exported Client, discovery, hmacHex */
+/* exported Client, discovery, hmacHex, tidyTask */
 
 const CONTROL_DISCOVERY = PathUtils.join(PathUtils.profileDir, "vimma-control.json");
+
+/**
+ * `task` under its own name, then `after` however it ended: a task that fails part-way leaves
+ * no agent tab, connection, grant or workspace behind, which the next task would trip over.
+ * @param {() => Promise<void>} task @param {() => Promise<void>} after
+ */
+function tidyTask(task, after) {
+  return {
+    async [task.name]() {
+      try {
+        await task();
+      } finally {
+        await after();
+      }
+    },
+  }[task.name];
+}
 
 /** The discovery file's contents: port, token, protocol and roles. */
 async function discovery() {

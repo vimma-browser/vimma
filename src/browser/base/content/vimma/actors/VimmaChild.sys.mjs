@@ -182,8 +182,8 @@ export class VimmaChild extends JSWindowActorChild {
    */
   #agentEls = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
   /**
-   * The agent's last click here (docs/specs/mcp-forms.md F8): its element and whether it ran or
-   * was skipped because the page changed the element under the mouse events before it.
+   * The agent's last click here (docs/specs/mcp-forms.md F8), or its fill's submission (F15): its
+   * element and whether it ran or was skipped because the page changed the element before it.
    * @type {{ gen: number, id: number, outcome: "pending" | "clicked" | "skipped" } | null}
    */
   #agentClick = null;
@@ -782,7 +782,7 @@ export class VimmaChild extends JSWindowActorChild {
    * named, by `requestSubmit`, after this reply. No user activation is given: the parent lets
    * through only the submission the question allowed.
    * @param {Element | undefined} el
-   * @param {{ submit?: any, until?: unknown }} asked
+   * @param {{ gen: number, id: number, submit?: any, until?: unknown }} asked
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentSubmit(el, asked) {
@@ -794,11 +794,22 @@ export class VimmaChild extends JSWindowActorChild {
     if (!now || !named || now.method !== named.method || now.action !== named.action) {
       return "changed";
     }
+    // The parent's wait for a page counts from when this ran (`outcome`, as for a click).
+    const sent = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    this.#agentClick = sent;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
-      if (Date.now() > until) return;
       const again = form.isConnected ? defaultSubmitOf(form) : null;
-      if (!again || again.method !== named.method || again.action !== named.action) return;
+      if (
+        Date.now() > until ||
+        !again ||
+        again.method !== named.method ||
+        again.action !== named.action
+      ) {
+        sent.outcome = "skipped";
+        return;
+      }
+      sent.outcome = "clicked";
       form.requestSubmit(again.submitter ?? undefined);
     });
     return "ok";

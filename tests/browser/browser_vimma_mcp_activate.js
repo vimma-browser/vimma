@@ -13,7 +13,7 @@
 "use strict";
 
 /* global focusContent -- from head.js */
-/* global Client -- from head_vimma_control.js */
+/* global Client, tidyTask -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 
@@ -89,9 +89,27 @@ async function openAgentTab(url = CLICK) {
   return tab;
 }
 
+/** The connections the running task opened. @type {any[]} */
+const clients = [];
+
+/** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
+async function putBack() {
+  for (const c of clients.splice(0)) c.close();
+  Services.prefs.clearUserPref(ASK_TIMEOUT);
+  AgentAct._settleMs = 300;
+  if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
+  await mcp(false);
+}
+
+/** add_task, with putBack after the task however it ends. @param {() => Promise<void>} task */
+const addTidyTask = (task) => add_task(tidyTask(task, putBack));
+
 /** An agent connection, after its agent-hello. */
 async function agentClient(name = "example-agent") {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
+  clients.push(c);
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name } });
   return c;
@@ -152,7 +170,7 @@ add_task(async function setup() {
   AgentAct._settleMs = 300;
 });
 
-add_task(async function test_activate_clicks_a_button_in_a_background_tab() {
+addTidyTask(async function test_activate_clicks_a_button_in_a_background_tab() {
   await mcp(true);
   const tab = await openAgentTab();
   await focusContent(gBrowser.selectedBrowser);
@@ -195,7 +213,7 @@ add_task(async function test_activate_clicks_a_button_in_a_background_tab() {
   await mcp(false);
 });
 
-add_task(async function test_activate_gives_the_page_no_user_activation() {
+addTidyTask(async function test_activate_gives_the_page_no_user_activation() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -213,7 +231,7 @@ add_task(async function test_activate_gives_the_page_no_user_activation() {
   await mcp(false);
 });
 
-add_task(async function test_activate_refuses_fields_files_disabled_and_other_sites() {
+addTidyTask(async function test_activate_refuses_fields_files_disabled_and_other_sites() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -253,7 +271,7 @@ add_task(async function test_activate_refuses_fields_files_disabled_and_other_si
   await mcp(false);
 });
 
-add_task(async function test_activate_never_follows_a_link_moved_elsewhere_or_an_svg_link() {
+addTidyTask(async function test_activate_never_follows_a_link_moved_elsewhere_or_an_svg_link() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -279,7 +297,7 @@ add_task(async function test_activate_never_follows_a_link_moved_elsewhere_or_an
   await mcp(false);
 });
 
-add_task(async function test_activate_follows_a_same_site_link_as_an_open() {
+addTidyTask(async function test_activate_follows_a_same_site_link_as_an_open() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -296,7 +314,7 @@ add_task(async function test_activate_follows_a_same_site_link_as_an_open() {
   await mcp(false);
 });
 
-add_task(async function test_activate_reports_a_dialog() {
+addTidyTask(async function test_activate_reports_a_dialog() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -328,7 +346,7 @@ add_task(async function test_activate_reports_a_dialog() {
   await mcp(false);
 });
 
-add_task(async function test_activate_in_use_while_the_user_types() {
+addTidyTask(async function test_activate_in_use_while_the_user_types() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -352,7 +370,7 @@ add_task(async function test_activate_in_use_while_the_user_types() {
   await mcp(false);
 });
 
-add_task(async function test_activate_under_a_grant_notice_log_and_rate() {
+addTidyTask(async function test_activate_under_a_grant_notice_log_and_rate() {
   await mcp(true);
   Services.prefs.setIntPref(ASK_TIMEOUT, 200);
   const tab = await openAgentTab();

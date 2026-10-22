@@ -16,7 +16,7 @@
 "use strict";
 
 /* global focusContent -- from head.js */
-/* global Client -- from head_vimma_control.js */
+/* global Client, tidyTask -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 
@@ -92,9 +92,27 @@ async function openAgentTab(url = FILL) {
   return tab;
 }
 
+/** The connections the running task opened. @type {any[]} */
+const clients = [];
+
+/** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
+async function putBack() {
+  for (const c of clients.splice(0)) c.close();
+  Services.prefs.clearUserPref(ASK_TIMEOUT);
+  AgentAct._settleMs = 50;
+  if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
+  await mcp(false);
+}
+
+/** add_task, with putBack after the task however it ends. @param {() => Promise<void>} task */
+const addTidyTask = (task) => add_task(tidyTask(task, putBack));
+
 /** An agent connection, after its agent-hello. */
 async function agentClient(name = "example-agent") {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
+  clients.push(c);
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name } });
   return c;
@@ -180,7 +198,7 @@ add_task(async function setup() {
   AgentAct._settleMs = 50;
 });
 
-add_task(async function test_fill_sets_values_and_fires_input_and_change() {
+addTidyTask(async function test_fill_sets_values_and_fires_input_and_change() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient("claude-code");
@@ -233,7 +251,7 @@ add_task(async function test_fill_sets_values_and_fires_input_and_change() {
   await mcp(false);
 });
 
-add_task(async function test_fill_never_focuses_the_field() {
+addTidyTask(async function test_fill_never_focuses_the_field() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -255,7 +273,7 @@ add_task(async function test_fill_never_focuses_the_field() {
   await mcp(false);
 });
 
-add_task(async function test_fill_refuses_password_card_otp_and_file_fields() {
+addTidyTask(async function test_fill_refuses_password_card_otp_and_file_fields() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -303,7 +321,7 @@ add_task(async function test_fill_refuses_password_card_otp_and_file_fields() {
   await mcp(false);
 });
 
-add_task(async function test_fill_stops_when_a_field_turns_sensitive() {
+addTidyTask(async function test_fill_stops_when_a_field_turns_sensitive() {
   await mcp(true);
   const c = await agentClient();
   for (const [type, attr] of [
@@ -352,7 +370,7 @@ add_task(async function test_fill_stops_when_a_field_turns_sensitive() {
   await mcp(false);
 });
 
-add_task(async function test_fill_reports_a_value_the_page_put_back() {
+addTidyTask(async function test_fill_reports_a_value_the_page_put_back() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -370,7 +388,7 @@ add_task(async function test_fill_reports_a_value_the_page_put_back() {
   await mcp(false);
 });
 
-add_task(async function test_fill_submit_asks_under_a_grant() {
+addTidyTask(async function test_fill_submit_asks_under_a_grant() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient("claude-code");
@@ -446,7 +464,7 @@ add_task(async function test_fill_submit_asks_under_a_grant() {
   await mcp(false);
 });
 
-add_task(async function test_page_script_submit_after_a_fill_is_cancelled() {
+addTidyTask(async function test_page_script_submit_after_a_fill_is_cancelled() {
   await mcp(true);
   AgentAct._settleMs = null;
   const tab = await openAgentTab();
@@ -463,7 +481,7 @@ add_task(async function test_page_script_submit_after_a_fill_is_cancelled() {
   await mcp(false);
 });
 
-add_task(async function test_a_page_submit_during_a_fill_is_not_the_asked_one() {
+addTidyTask(async function test_a_page_submit_during_a_fill_is_not_the_asked_one() {
   await mcp(true);
   AgentAct._settleMs = null;
   const tab = await openAgentTab();
@@ -491,7 +509,7 @@ add_task(async function test_a_page_submit_during_a_fill_is_not_the_asked_one() 
   await mcp(false);
 });
 
-add_task(async function test_selects_ranges_and_a_submit_button_of_another_form() {
+addTidyTask(async function test_selects_ranges_and_a_submit_button_of_another_form() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -531,7 +549,7 @@ add_task(async function test_selects_ranges_and_a_submit_button_of_another_form(
   await mcp(false);
 });
 
-add_task(async function test_fill_reports_a_dialog_and_stops() {
+addTidyTask(async function test_fill_reports_a_dialog_and_stops() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -549,7 +567,7 @@ add_task(async function test_fill_reports_a_dialog_and_stops() {
   await mcp(false);
 });
 
-add_task(async function test_fill_in_use_while_the_user_types() {
+addTidyTask(async function test_fill_in_use_while_the_user_types() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -576,7 +594,7 @@ add_task(async function test_fill_in_use_while_the_user_types() {
   await mcp(false);
 });
 
-add_task(async function test_fills_take_labels_only_from_elements_and_share_the_click_rate() {
+addTidyTask(async function test_fills_take_labels_only_from_elements_and_share_the_click_rate() {
   await mcp(true);
   Services.prefs.setIntPref(ASK_TIMEOUT, 200);
   const tab = await openAgentTab();
