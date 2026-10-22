@@ -667,6 +667,30 @@ export function fillField(el, value) {
 /** Elements a page shows as a dialog of its own, not the browser's tab-modal ones. */
 const PAGE_DIALOGS = 'dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]';
 
+/** Elements whose text is code or markup, not text the page shows. */
+const NOT_SHOWN = new Set(["script", "style", "noscript", "template"]);
+
+/**
+ * The page's text in `doc`, outside scripts and styles, as its length and a 32-bit FNV-1a hash:
+ * enough to tell that it changed, without keeping a copy of a large page between polls.
+ * @param {Document} doc
+ */
+function textMark(doc) {
+  if (!doc.body) return "";
+  const walker = doc.createTreeWalker(doc.body, 4 /* NodeFilter.SHOW_TEXT */);
+  let hash = 0x811c9dc5;
+  let length = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (NOT_SHOWN.has(node.parentElement?.localName ?? "")) continue;
+    const text = /** @type {Text} */ (node).data;
+    length += text.length;
+    for (let i = 0; i < text.length; i++) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+    }
+  }
+  return `${length}:${hash >>> 0}`;
+}
+
 /**
  * What a click could change in place in `doc` (#510), to compare with `pageChanges` after it:
  * the clicked element and the other listed elements as `vimma_elements` describes them (no
@@ -688,7 +712,7 @@ export function pageMarks(doc, listed, clicked) {
   return {
     clicked: markOf(listed[clicked]),
     listed: listed.filter((_, i) => i !== clicked).map(markOf),
-    text: String(doc.body?.textContent ?? ""),
+    text: textMark(doc),
     dialogs: new Set(
       [...doc.querySelectorAll(PAGE_DIALOGS)].filter(
         (el) => /** @type {any} */ (el).checkVisibility?.() ?? true,

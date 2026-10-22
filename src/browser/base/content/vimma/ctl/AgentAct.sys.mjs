@@ -298,6 +298,8 @@ export const AgentAct = {
         };
       }
       const changed = stopped ? null : await this.changesAfter(browser, before, dialogs, target);
+      // A submission the page tried by itself during that wait was stopped too: it is said.
+      blocked.push(...VimmaActors.agentSettle(browser));
       const after = afterStep(browser, before, dialogs.dialog, blocked, stopped);
       return after.navigated || after.loading || !changed ? after : { ...after, changed };
     } finally {

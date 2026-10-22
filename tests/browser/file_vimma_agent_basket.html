@@ -5,7 +5,7 @@
 <!-- Fixture for browser_vimma_mcp_activate.js: buttons that change the page in place without
    - loading one, as a shop's do. One counts itself and updates the basket total, one disables
    - another button, one opens a dialog of the page, one updates the total a moment later, and
-   - one does nothing. Everything fits the test window. -->
+   - one changes only a style sheet, which shows no text. Everything fits the test window. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -44,6 +44,11 @@
       });
       document.getElementById("deliver").addEventListener("click", () => {
         document.getElementById("options").show();
+      });
+      document.getElementById("nothing").addEventListener("click", () => {
+        const style = document.createElement("style");
+        style.textContent = "#total { letter-spacing: 0; }";
+        document.body.append(style);
       });
       document.getElementById("later").addEventListener("click", () => {
         setTimeout(() => {

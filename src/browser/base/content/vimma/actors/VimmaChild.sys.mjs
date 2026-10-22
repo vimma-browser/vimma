@@ -738,7 +738,11 @@ export class VimmaChild extends JSWindowActorChild {
         const watch = this.#agentWatch;
         // Against the same list as before the click: a newer `vimma_elements` here ends it.
         if (!known || !watch || watch.gen !== data.gen || watch.id !== data.id) return null;
-        return pageChanges(watch.before, this.#pageMarks(data.id));
+        try {
+          return pageChanges(watch.before, this.#pageMarks(data.id));
+        } catch {
+          return null;
+        }
       }
       case "inspect-fill":
         return fillTargetOf(el, data.value);
@@ -868,8 +872,12 @@ export class VimmaChild extends JSWindowActorChild {
     this.#agentWatch = null;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
-      if (Date.now() <= until && el.isConnected) {
-        this.#agentWatch = { gen: asked.gen, id: asked.id, before: this.#pageMarks(asked.id) };
+      try {
+        if (Date.now() <= until && el.isConnected) {
+          this.#agentWatch = { gen: asked.gen, id: asked.id, before: this.#pageMarks(asked.id) };
+        }
+      } catch {
+        // The page's DOM broke the snapshot: the click and its outcome (M28) go on without it.
       }
       // A busy page can delay this past the parent's wait: then nothing is clicked.
       const ran =

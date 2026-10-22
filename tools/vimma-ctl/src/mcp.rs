@@ -2043,8 +2043,9 @@ fn in_place(changed: Option<&Value>) -> Result<String, String> {
             .to_string()
     } else {
         format!(
-            "No new page loaded, but the page changed in place: {}. The click took effect: call \
-             vimma_elements to see the page now before clicking it again.",
+            "No new page loaded, but the page changed in place after the click: {}. Call \
+             vimma_elements to see whether the click did what you meant before clicking it \
+             again.",
             said.join("; ")
         )
     })
@@ -3547,9 +3548,9 @@ mod tests {
         let body = said(r#"["element","text"]"#);
         assert!(
             body.contains(
-                "No new page loaded, but the page changed in place: the clicked element changed; \
-                 the page's text changed. The click took effect: call vimma_elements to see the \
-                 page now before clicking it again."
+                "No new page loaded, but the page changed in place after the click: the clicked \
+                 element changed; the page's text changed. Call vimma_elements to see whether \
+                 the click did what you meant before clicking it again."
             ),
             "{body}"
         );
@@ -3557,8 +3558,8 @@ mod tests {
         let body = said(r#"["elements","dialog"]"#);
         assert!(
             body.contains(
-                "in place: other listed elements changed or went away; a dialog appeared on the \
-                 page."
+                "after the click: other listed elements changed or went away; a dialog appeared \
+                 on the page."
             ),
             "{body}"
         );

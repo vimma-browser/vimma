@@ -373,7 +373,7 @@ addTidyTask(async function test_activate_says_what_changed_in_place() {
   Assert.deepEqual(await changedBy("Lock"), ["elements"], "a button that disables another");
   Assert.deepEqual(await changedBy("Delivery"), ["dialog"], "a button that opens a dialog");
   Assert.deepEqual(await changedBy("Later"), ["text"], "a total updated a moment later");
-  Assert.deepEqual(await changedBy("Nothing"), [], "a button that does nothing");
+  Assert.deepEqual(await changedBy("Nothing"), [], "a style sheet is no text the page shows");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

@@ -1107,9 +1107,12 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   clicks nothing. A dialog's text reaches the agent only inside the untrusted-content
   delimiters, and no tool answers a page dialog. After a click that loaded no page, the result
   says which parts of the page changed in place (`changed`: the clicked element, the other
-  listed elements, the page's text, a visible dialog element), as fixed words from a list that
-  both the browser and `vimma-ctl mcp` check; the comparison runs in the frame's child, which
-  sends no page text and reads no sensitive field's value, as in `vimma_elements` (M31).
+  listed elements, the frame's text outside scripts and styles, a visible dialog element), as
+  fixed words from a list that both the browser and `vimma-ctl mcp` check; the comparison runs in
+  the clicked element's frame's child, which keeps only a hash of the text, sends no page text
+  and reads no sensitive field's value, as in `vimma_elements` (M31). That check waits up to one
+  more second after the submission allowance of M28 is closed, so it opens nothing, and a
+  submission the page tries meanwhile is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../tests/browser/browser_vimma_mcp_activate.js),
   [`test_activate_says_what_changed_in_place`](../tests/browser/browser_vimma_mcp_activate.js),
   [`activate_says_what_changed_in_place`](../tools/vimma-ctl/src/mcp.rs),
