@@ -158,7 +158,7 @@ add_task(async function agent_clicks_never_synthesise_input_or_user_activation()
     "actors/hint-collect.mjs",
   ];
   const forbidden =
-    /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b|\bconsumeTransientUserGestureActivation\b/g;
+    /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b/g;
   for (const file of files) {
     const source = await (await fetch(base + file)).text();
     Assert.greater(source.length, 0, `${file} is read`);

@@ -419,24 +419,30 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     the keyboard; the grant for `vimma_fill` or `vimma_activate` (F25) covers only what does not
     submit.
 16. **Submissions the agent did not ask for are stopped.** Before each agent step the parent
-    marks the tab, and an `http-on-modify-request` observer cancels the request of a navigating
-    form submission there (`loadInfo.isFormSubmission`) while the tab's top document is the one
-    of the step, when the submitting document had no transient user activation
-    (`loadInfo.hasValidUserGestureActivation`, taken from the form's document,
-    `HTMLFormElement.cpp:884-887`), unless it is the submission an F15 question just allowed:
-    once, within that call, to the method and destination (scheme, host, port and path) the
-    question named. This catches a page whose script submits after an agent's click, by
-    `submit()` or `requestSubmit()`, from any frame, whatever element was clicked, and a
-    submission the page moved elsewhere in its `submit` listener. The result says
+    consumes the page's transient user activation in every frame and marks the tab; an
+    `http-on-modify-request` observer then cancels, before it is sent, the request of a
+    navigating form submission there (`loadInfo.isFormSubmission`) while the tab's top document
+    is the one of the step, when it carries no transient user activation
+    (`loadInfo.hasValidUserGestureActivation`, from the form's document or the target frame,
+    `HTMLFormElement.cpp:884-887`, `nsDocShell.cpp:10036-10039`), unless it is the submission an
+    F15 question just allowed: once, within that call, to the method and destination (scheme,
+    host, port and path) the question named. A redirect of a submission let through follows on,
+    because the server already has it and cancelling the redirect would only invite a second
+    submission. Clicks on one tab run one at a time, so that one call never takes another's
+    allowance. This catches a page whose script submits after an agent's click, by `submit()`
+    or `requestSubmit()`, from any frame, whatever element was clicked, and a submission the
+    page moved elsewhere in its `submit` listener. The result says
     `the page tried to submit a form to <host>; Vimma stopped it: activate its submit button`,
-    so the agent can ask properly. A form the user submits themselves (with their activation, or
-    through their hints, which end the mark), or a page that submits with no agent step in it, is
-    untouched, because the agent did not cause it. Rejected: the chrome-only
-    `DOMFormBeforeSubmit` in the child, because Firefox caches its verdict for the form
-    (`mNotifiedObservers`, `HTMLFormElement.cpp:286-289`, `:837-838`), so a page that once
-    prevented a submission could later `submit()` without it, and because it fires before the
-    page's `submit` listener can change the destination; setting `SANDBOXED_FORMS` on agent
-    tabs, because it would stop the user's own logins and searches in the agent workspace too.
+    so the agent can ask properly. A form the user submits themselves (with activation they gave
+    after the step, or through their hints, which end the mark), or a page that submits with no
+    agent step in it, is untouched, because the agent did not cause it. A page the agent's click
+    loaded is a new document, unmarked: its own submissions are the page's, as its redirects
+    are. Rejected: the chrome-only `DOMFormBeforeSubmit` in the child, because Firefox caches its
+    verdict for the form (`mNotifiedObservers`, `HTMLFormElement.cpp:286-289`, `:837-838`), so a
+    page that once prevented a submission could later `submit()` without it, and because it
+    fires before the page's `submit` listener can change the destination; setting
+    `SANDBOXED_FORMS` on agent tabs, because it would stop the user's own logins and searches in
+    the agent workspace too.
 17. **What cannot be caught.** A page that sends data with `fetch` from a button's click
     listener, without a form submission, cannot be told apart from any other button. Such a click
     is an ordinary `vimma_activate`, whose question names the element's text; the guide says

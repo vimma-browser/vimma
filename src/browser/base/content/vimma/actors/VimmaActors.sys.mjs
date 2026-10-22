@@ -128,13 +128,13 @@ function framesFor(browser) {
 
 /**
  * Agent tabs an agent just stepped in (docs/specs/mcp-forms.md F16; security.md M28), by their
- * <browser>: the top document of the step, the one submission a question allowed during the
- * running call (its method and destination without query), and the hosts of the submissions
- * stopped since the step began.
- * @type {WeakMap<object, { doc: number, allowed: { method: string, where: string } | null,
+ * browserId, which survives a move to another window: the top document of the step, the one
+ * submission a question allowed during the running call (its method and destination without
+ * query), and the hosts of the submissions stopped since the step began.
+ * @type {Map<number, { doc: number, allowed: { method: string, where: string } | null,
  *   blocked: string[] }>}
  */
-const submitMarks = new WeakMap();
+const submitMarks = new Map();
 /** @type {((subject: any) => void) | null} */
 let submitObserver = null;
 
@@ -160,13 +160,16 @@ function onRequest(subject) {
   const info = channel.loadInfo;
   if (!info?.isFormSubmission) return;
   const top = info.browsingContext?.top;
-  const browser = top?.embedderElement;
-  const mark = browser ? submitMarks.get(browser) : undefined;
+  const id = top?.browserId;
+  const mark = id ? submitMarks.get(id) : undefined;
   if (!mark) return;
   if (top.currentWindowGlobal?.innerWindowId !== mark.doc || info.hasValidUserGestureActivation) {
-    submitMarks.delete(browser);
+    forgetMark(id);
     return;
   }
+  // A redirect of a submission that was let through (the allowed one, or the user's): its first
+  // request was checked here, and the server has already received it.
+  if (info.redirectChainIncludingInternalRedirects?.length) return;
   const uri = channel.URI;
   const allowed = mark.allowed;
   if (
@@ -185,6 +188,15 @@ function onRequest(subject) {
     // no host to name
   }
   if (host && mark.blocked.length < 16) mark.blocked.push(host);
+}
+
+/** @param {number} id  a browserId whose mark ends; the observer goes with the last mark */
+function forgetMark(id) {
+  submitMarks.delete(id);
+  if (!submitMarks.size && submitObserver) {
+    Services.obs.removeObserver(submitObserver, "http-on-modify-request");
+    submitObserver = null;
+  }
 }
 
 export const VimmaActors = {
@@ -418,8 +430,8 @@ export const VimmaActors = {
   activateHint(target) {
     if (target.bc.currentWindowGlobal !== target.wg) return;
     // The user's own step through their hints: a submission it causes is theirs (mcp-forms F16).
-    const browser = target.bc.top?.embedderElement;
-    if (browser) submitMarks.delete(browser);
+    const id = target.bc.top?.browserId;
+    if (id) forgetMark(id);
     actorFor(target.bc)
       ?.sendQuery("Vimma:ActivateHint", { gen: target.gen, id: target.id })
       .catch(() => {});
@@ -498,16 +510,40 @@ export const VimmaActors = {
   /**
    * An agent is about to act in the browser's page (docs/specs/mcp-forms.md F16; security.md
    * M28): from now until the user's own activation or another page, a form submission there is
-   * cancelled, but for `allowed`, the one the question named, once, during this call.
+   * cancelled, but for `allowed`, the one the question named, once, during this call. The
+   * user's activation from before the step is consumed in every frame first, so that only their
+   * input after it counts as theirs.
    * @param {any} browser XULBrowserElement
    * @param {{ method: string, action: string } | null} allowed
+   * @returns {Promise<boolean>} false when the page has no document to mark
    */
-  agentMark(browser, allowed) {
+  async agentMark(browser, allowed) {
+    const top = browser.browsingContext;
+    const doc = top?.currentWindowGlobal?.innerWindowId ?? 0;
+    if (!top || !doc) return false;
+    /** @type {any[]} */
+    let contexts;
+    try {
+      contexts = top.getAllBrowsingContextsInSubtree();
+    } catch {
+      return false;
+    }
+    await Promise.all(
+      contexts.map((bc) =>
+        actorFor(bc)
+          ?.sendQuery("Vimma:AgentElement", { op: "consume" })
+          .catch(() => {}),
+      ),
+    );
+    // Marks of tabs that closed or moved to another page are dropped here.
+    for (const [id, mark] of submitMarks) {
+      const other = /** @type {any} */ (BrowsingContext).getCurrentTopByBrowserId(id);
+      if (other?.currentWindowGlobal?.innerWindowId !== mark.doc) submitMarks.delete(id);
+    }
     if (!submitObserver) {
       submitObserver = onRequest;
       Services.obs.addObserver(submitObserver, "http-on-modify-request");
     }
-    const doc = browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
     let where = null;
     if (allowed) {
       try {
@@ -516,11 +552,12 @@ export const VimmaActors = {
         // not a URL: nothing is allowed
       }
     }
-    submitMarks.set(browser, {
+    submitMarks.set(top.browserId, {
       doc,
       allowed: allowed && where ? { method: allowed.method, where } : null,
       blocked: [],
     });
+    return true;
   },
 
   /**
@@ -530,7 +567,7 @@ export const VimmaActors = {
    * @returns {string[]}
    */
   agentSettle(browser) {
-    const mark = submitMarks.get(browser);
+    const mark = submitMarks.get(browser.browsingContext?.browserId);
     if (!mark) return [];
     mark.allowed = null;
     const blocked = mark.blocked;

@@ -25,6 +25,7 @@ import {
   agentElementList,
   labelAgentElements,
 } from "../core/agent-act.mjs";
+import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { cutTo, shown } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
@@ -98,6 +99,13 @@ function linkWhere(browser, href) {
   return { crossSite: uriSite(uri) !== uriSite(browser.currentURI), otherScheme: false };
 }
 
+/**
+ * Each tab's running click, so that two calls on one tab never share its mark: the next waits
+ * for the last to settle (F16).
+ * @type {WeakMap<object, Promise<unknown>>}
+ */
+const running = new WeakMap();
+
 /** @param {any} browser  the top document's id */
 const docOf = (browser) => browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
 
@@ -152,6 +160,10 @@ export const AgentAct = {
     if (!element) return { refused: "the page did not answer in time" };
     const refused = actRefusal(label, element, linkWhere(browser, element.href));
     if (refused) return { refused };
+    // A destination cut to the child's cap could not be shown, nor matched at its request.
+    if (element.submit && element.submit.action.length >= ELEMENT_REPLY_CAPS.action) {
+      return { refused: "that form's destination is too long to show; nothing was asked" };
+    }
     // Page strings for the question, as the list shows them (security.md M31).
     const text = cutTo(
       shown(element.text ?? "")
@@ -169,12 +181,33 @@ export const AgentAct = {
    * @param {any} browser XULBrowserElement @param {HintTarget} target
    * @param {{ submit: { method: string, action: string } | null, href: string | null,
    *   inUse: () => boolean }} asked  `submit`: the submission the question named
-   * @returns {Promise<{ refused: string } | { navigated: boolean, loading: boolean,
-   *   dialog?: { type: string, text: string }, blocked?: string, stopped?: "in-use" }>}
+   * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
+   *   loading: boolean, dialog?: { type: string, text: string }, blocked?: string,
+   *   stopped?: "in-use" }>}
    */
-  async activate(browser, target, { submit, href, inUse }) {
+  activate(browser, target, asked) {
+    const last = running.get(browser) ?? Promise.resolve();
+    const run = last.then(() => this.activateNow(browser, target, asked));
+    running.set(
+      browser,
+      run.catch(() => {}),
+    );
+    return run;
+  },
+
+  /**
+   * `activate`, once no other click runs on the tab.
+   * @param {any} browser XULBrowserElement @param {HintTarget} target
+   * @param {{ submit: { method: string, action: string } | null, href: string | null,
+   *   inUse: () => boolean }} asked
+   * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
+   *   loading: boolean, dialog?: { type: string, text: string }, blocked?: string,
+   *   stopped?: "in-use" }>}
+   */
+  async activateNow(browser, target, { submit, href, inUse }) {
     const before = { doc: docOf(browser), url: String(browser.currentURI?.spec ?? "") };
-    VimmaActors.agentMark(browser, submit);
+    const marked = await bounded(VimmaActors.agentMark(browser, submit), false, COLLECT_TIMEOUT_MS);
+    if (!marked) return { refused: "the page did not answer in time" };
     /** @type {{ type: string, text: string } | null} */
     let dialog = null;
     const top = browser.browsingContext;
@@ -228,10 +261,14 @@ export const AgentAct = {
         "clicked",
         COLLECT_TIMEOUT_MS,
       );
-      if (outcome === "skipped") {
-        return { refused: "the element changed as it was clicked; nothing was clicked" };
-      }
       const blocked = VimmaActors.agentSettle(browser);
+      if (outcome === "skipped") {
+        // The page's handlers of the mouse events ran: what they tried to submit is still said.
+        return {
+          refused: "the element changed as it was clicked; nothing was clicked",
+          ...(blocked.length ? { blocked: blocked[0] } : {}),
+        };
+      }
       return {
         navigated: docOf(browser) !== before.doc,
         loading: !!browser.webProgress?.isLoadingDocument,

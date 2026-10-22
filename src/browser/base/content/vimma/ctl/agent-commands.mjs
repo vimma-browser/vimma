@@ -788,7 +788,13 @@ const COMMANDS = {
       href: element.href ?? null,
       inUse: () => VimmaHost.inUse(tab.linkedBrowser),
     });
-    if ("refused" in result) throw refuse("failed", new AgentError("failed", result.refused), what);
+    if ("refused" in result) {
+      if (result.blocked) {
+        const stopped = { ...what, detail: `${what.detail} · stopped a form to ${result.blocked}` };
+        AgentGate.note(conn, "vimma_activate", stopped, "stopped", "unasked submission");
+      }
+      throw refuse("failed", new AgentError("failed", result.refused), what);
+    }
     if (result.navigated) {
       // The page the labels named is gone, and the load was an open of this connection's.
       AgentDrive.drop(conn, tab.linkedBrowser);

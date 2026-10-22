@@ -665,6 +665,11 @@ export class VimmaChild extends JSWindowActorChild {
         return actTargetOf(el);
       case "activate":
         return this.#agentActivate(el, data);
+      case "consume":
+        // An agent is about to act here (mcp-forms F16): the user's activation from before its
+        // step must not count as the user's for what the page does after it.
+        /** @type {any} */ (this.document)?.consumeTransientUserGestureActivation();
+        return true;
       case "outcome": {
         const last = this.#agentClick;
         return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";

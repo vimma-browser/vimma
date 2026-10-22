@@ -1081,23 +1081,28 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   method is not `dialog`, the element itself, the button it is in or its label's control)
   **must** ask every time, also under a `vimma_activate` grant, with only `y` and `n`, naming
   the form's method, destination and the number of fields it sends; its yes **never** makes a
-  grant. Before every click the tab is marked in the parent, and from then on, while its top
-  document is the same, the request of every navigating form submission in it (any frame, a
-  submit button, `requestSubmit()` or a later `submit()`, whatever the page cached) **must** be
-  cancelled when its document had no transient user activation, unless it is the one
+  grant. Before every click the tab is marked in the parent, after the page's transient user
+  activation is consumed in every frame, and from then on, while its top document is the same,
+  the request of every navigating form submission in it (any frame, a submit button,
+  `requestSubmit()` or a later `submit()`, whatever the page cached) **must** be cancelled
+  before it is sent when it carries no transient user activation, unless it is the one
   submission the question allowed, during that call, with the method and destination (scheme,
-  host, port and path) it named; the result and `:mcp log` name the host it was going to. A
-  submission with your activation (a click or a key of yours in that page within Firefox's
-  activation window) and your `f` hints end the mark, so your own submissions in an agent tab
-  go through, and so do those of a page no agent stepped in. Only http and https requests are
-  checked, and data a button's script sends with `fetch`, also from a cancelled submission's
-  `submit` listener, is no form submission: such a button is an ordinary click (mcp-forms F17).
+  host, port and path) it named; a redirect of a submission let through follows on. The result
+  and `:mcp log` name the host it was going to. Clicks on one tab run one at a time, so no call
+  takes another's allowance. Your activation after the step (a click or a key of yours in that
+  page) and your `f` hints end the mark, so your own submissions in an agent tab go through, and
+  so do those of a page no agent stepped in. Not covered: a page the agent's click loaded that
+  submits a form by itself (the mark ends with the document it was set on), requests that are
+  not http or https, and data a button's script sends with `fetch`, also from a cancelled
+  submission's `submit` listener: such a button is an ordinary click (mcp-forms F17).
   [`test_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_page_script_submit_after_a_click_is_cancelled`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_users_own_submit_in_an_agent_tab_goes_through`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submit_sent_elsewhere_than_asked_is_stopped`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submit_listener_moving_the_destination_is_stopped`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_page_submits_after_a_cached_verdict_or_through_a_dialog_are_stopped`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_an_allowed_submit_follows_its_redirect`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_the_users_earlier_input_does_not_cover_an_agents_click`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_page_submitting_with_no_agent_step_is_untouched`](../tests/browser/browser_vimma_mcp_submit.js),
   [`vimma_activate can be granted; a submit asks under that grant and makes none`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a submit: method and host in bold, the field count, y or n only`](../packages/vimma-core/test/agent-prompt.test.mjs),

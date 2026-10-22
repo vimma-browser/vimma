@@ -218,6 +218,7 @@ support-files = [
 support-files = [
   "file_vimma_agent_click.html",
   "file_vimma_agent_page.html",
+  "file_vimma_agent_redirect.sjs",
   "head_vimma_control.js",
 ]
 

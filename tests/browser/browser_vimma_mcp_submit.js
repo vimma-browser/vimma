@@ -249,6 +249,40 @@ add_task(async function test_page_submits_after_a_cached_verdict_or_through_a_di
   await mcp(false);
 });
 
+add_task(async function test_an_allowed_submit_follows_its_redirect() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const r = await activate(c, tab, by.Checkout);
+  Assert.ok(r.ok, "the submit ran");
+  Assert.ok(!("blocked" in r.result), "its redirect was not taken for an unasked submission");
+  Assert.equal(r.result.url, `${PAGE}?redirected`, "the tab followed the redirect");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+add_task(async function test_the_users_earlier_input_does_not_cover_an_agents_click() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // The user clicks in the page, then within the activation window the agent clicks a button
+  // whose script submits a form.
+  ww().switchTo({ id: agent().id });
+  await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
+  await BrowserTestUtils.synthesizeMouseAtCenter("#list", {}, tab.linkedBrowser);
+  const r = await activate(c, tab, by["Save draft"]);
+  Assert.ok(r.ok, "the click ran");
+  Assert.equal(r.result?.navigated, false, "the user's earlier click does not send the form");
+  Assert.equal(r.result?.blocked, "example.com", "Vimma stopped it");
+  ww().switchTo({ id: mainId() });
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 add_task(async function test_users_own_submit_in_an_agent_tab_goes_through() {
   await mcp(true);
   const tab = await openAgentTab();
