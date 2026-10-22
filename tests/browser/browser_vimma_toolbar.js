@@ -646,6 +646,7 @@ add_task(async function prompt_keys_leave_hint_copy_and_element_mode_their_keys(
 
   // Hint mode with an alphabet of y and n: every label starts with one of them.
   VimmaHost.configure({ hintChars: "yn" });
+  registerCleanupFunction(() => VimmaHost.configure({ hintChars: DEFAULT_HINT_CHARS }));
   EventUtils.synthesizeKey("f");
   await until(() => mode() === "hint", "f starts link hints");
   let n = await ask();
@@ -791,6 +792,33 @@ add_task(async function the_addon_install_prompt_answers_y_and_n() {
   await until(() => shows(hintOf(n)), "armed");
   EventUtils.synthesizeKey("y");
   Assert.equal(await answer, true, "y adds it");
+  await until(() => panel.state === "closed", "the prompt is gone");
+
+  // Issue #495: this prompt takes focus from the page, so link labels still on screen are no
+  // longer the focused page's mode; a y meant for them still never answers it.
+  await SpecialPowers.spawn(browser, [], () => {
+    for (let i = 0; i < 4; i++) {
+      const a = content.document.createElement("a");
+      a.href = `#link${i}`;
+      a.textContent = `link ${i} `;
+      content.document.body.prepend(a);
+    }
+    content.scrollTo(0, 0);
+  });
+  EventUtils.synthesizeKey("f");
+  await until(() => VimmaHost.status(window).mode === "hint", "f starts link hints");
+  ({ n, answer } = await ask());
+  settled = false;
+  answer.then(() => (settled = true));
+  await until(() => shows(hintOf(n)), "armed over the labels");
+  Assert.ok(VimmaHost._hints(window), "the labels are still up");
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 2);
+  Assert.ok(!settled, "a y typed while the labels show installs nothing");
+  Assert.equal(VimmaHost._hints(window), null, "and the labels are gone");
+  await until(() => shows(hintOf(n)), "armed again");
+  EventUtils.synthesizeKey("y");
+  Assert.equal(await answer, true, "then y adds it");
   await until(() => panel.state === "closed", "the prompt is gone");
 
   await SpecialPowers.popPrefEnv();

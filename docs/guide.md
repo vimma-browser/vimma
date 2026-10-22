@@ -1786,9 +1786,10 @@ of agent tabs for the tab list.
   before never counts; and for its first second the line takes no key at all (the hint appears
   when it is ready), so a key meant for something else cannot answer it. The second starts
   again whenever the window comes to the front or goes to the back, and with every key you
-  press before it is over. A prompt, picker or the command line you open over the line gets your keys; the
-  question waits and comes back when it closes. Link hints, copy mode and element mode keep
-  their keys the same way (a hint label, `y` to copy): the line waits until `Esc` leaves them.
+  press before it is over. A prompt, picker or the command line you open over the line gets
+  your keys; the question waits and comes back when it closes. Link hints, copy mode and
+  element mode keep their keys the same way (a hint label, `y` to copy): the line waits until
+  `Esc` leaves them, also after `ctrl+b shift+a`.
 - **It never interrupts your typing.** It opens by itself only when the window is in front,
   focus is not in a text field, you have not pressed a key for 1.5 s, no other prompt,
   picker or panel is open, and you are not in link hints, copy mode or element mode. Otherwise it waits, and the status bar says `◇ agent 1?`; press

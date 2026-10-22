@@ -359,9 +359,10 @@ text that pages, add-ons and bookmarks choose.
     Vimma's own surfaces holds the keyboard (a picker, live grep, the command line, a search being
     typed, the other prompts), **never** in hint, copy or element mode (a label typed from any
     `[modal] hint_chars`, the yank: a page can time a prompt to the mode; `Esc` leaves it, and
-    then `y` answers), so `y` and `n` answer a prompt only in normal and resize mode, and go
-    through Firefox's own buttons, so Firefox's click delay still applies. The wait counts from Firefox's own time
-    for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
+    then `y` answers), nor while link labels or a focused block are still on screen after a
+    prompt took focus (the next key ends them), so `y` and `n` answer a prompt only in normal and
+    resize mode or with focus on the prompt itself, and go through Firefox's own buttons, so
+    Firefox's click delay still applies. The wait counts from Firefox's own time for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
     moves or resizes, the window is activated or another prompt takes the panel), so an armed key
     never meets a button Firefox's delay still refuses. Vimma **never** gives the prompt focus;
     `Tab` focuses the secondary (Block) button first. A prompt Firefox itself opens with focus on
@@ -766,7 +767,8 @@ form (a saved card's one-button checkout) runs unasked under a grant.
   so a window brought to the front (by the user, or by a process that can focus windows) never
   takes a key meant for another; a just-focused window counts as one being typed in. With a
   prompt, picker, panel or the command line open over it, in hint, copy or element mode (whose
-  labels and yank type letters, `y` included, while one answer can grant a whole task), and for
+  labels and yank type letters: `y` allows, and with the default `hint_chars` a label can start
+  with `a`, which grants a whole task), and for
   the rest of a key sequence, the keys are theirs, and the question **never** opens by itself.
   Text an agent or a page chooses (the client name, which is the agent's own claim and proves
   nothing, and titles) is drawn as a bidi isolate (`<bdi>`), URLs as

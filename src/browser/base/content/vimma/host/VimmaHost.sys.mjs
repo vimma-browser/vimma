@@ -288,11 +288,15 @@ function vimmaSurfaceOpen(s) {
 /**
  * Whether the keys are not a question's to take: one of Vimma's own surfaces is open, or the
  * mode types its own letters (a hint label, copy and element mode's yank; KEY_KEEPING_MODES).
+ * Labels or a focused block still on screen count too when focus has left their page (a prompt
+ * that takes focus, the add-on install prompt): the user may still be typing a label. The next
+ * key ends them (`_onKeyDown`), so the prompt answers after that.
  * The agent question, the update question and the permission prompt keys share this guard.
  * @param {WindowState} s
  */
 function keysHeld(s) {
-  return vimmaSurfaceOpen(s) || KEY_KEEPING_MODES.has(VimmaHost._mode(s));
+  if (vimmaSurfaceOpen(s) || s.hint || s.element.browser) return true;
+  return KEY_KEEPING_MODES.has(VimmaHost._mode(s));
 }
 
 /**

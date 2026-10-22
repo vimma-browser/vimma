@@ -174,6 +174,7 @@ add_task(async function test_hint_and_copy_mode_keep_their_keys() {
     }
   });
   const mode = () => VimmaHost.status(window).mode;
+  registerCleanupFunction(() => VimmaHost.configure({ hintChars: DEFAULT_HINT_CHARS }));
   const c = await agentClient();
 
   for (const [what, key, inMode] of [

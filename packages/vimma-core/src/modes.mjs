@@ -29,7 +29,8 @@ export const COUNT_MODES = new Set(["normal", "visual", "element", "resize"]);
 
 /**
  * Modes whose own keys a question never takes: a hint label is typed from any `[modal]
- * hint_chars`, `y` and `n` included, and `y` yanks in copy and element mode. A page can raise a
+ * hint_chars` (the default starts with `a`, the agent question's grant key; a custom one may
+ * hold `y` and `n`), and `y` yanks in copy and element mode. A page can raise a
  * permission prompt timed to the mode, and one agent grant releases a whole task's calls, so
  * Firefox's permission prompts, the agent question and the update question stand back in these
  * modes as they do for Vimma's own surfaces; Esc leaves the mode, and then `y` answers.
