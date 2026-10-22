@@ -462,6 +462,9 @@ these status checks must pass:
 - `semgrep (javascript, typescript, rust, secrets, github-actions)` (semgrep.yml)
 - `CodeQL (javascript-typescript)` and `CodeQL (rust)` (codeql.yml)
 
+`mochitest (artifact build, macOS)` (e2e.yml) is deliberately not in this list ("macOS
+mochitests" below).
+
 The ruleset also requires CodeQL code scanning results without errors or high-severity alerts.
 `vimma-ctl on macOS` (ci.yml, spec macos-build, sub-PR 2) runs vimma-ctl's clippy and tests on
 `macos-15` and is informational: it is not in the ruleset, so a red run shows on the pull
@@ -659,6 +662,45 @@ or containing `esr`, which would make mach search the wrong tree.
 Fork PRs run the same job with a read-only token and no secrets; GitHub asks you to approve
 every run from an external contributor (Settings → Actions → General; the approval policy is
 `all_external_contributors`).
+
+### macOS mochitests (`e2e.yml`, spec macos-build)
+
+The job `mochitest (artifact build, macOS)` runs the front-end tests on a hosted Apple Silicon
+Mac (`macos-15`), as sub-PR 1 of [macos-build](specs/macos-build.md) describes. Its steps: `npm
+ci`; the whole Vitest suite (`npm test`); GNU tar and `gpgv` from Homebrew when the image lacks
+them; `tools/upstream/firefox-source.sh`; `npm run import`;
+`node tools/artifact-build/artifact-build.mjs`, which fetches Mozilla's `macosx64-aarch64-opt`
+build of the same release; and `npm run mochitest -- --artifact tests/browser/`, headless. `df
+-k .` records the free disk before the download, after the unpack and after the tests, because
+GitHub documents only 14 GB for hosted Macs. On a failure the run uploads `mochitest-macos-logs`
+(the mochitests' TBPL log and the objdir's `config.log`, kept 7 days).
+
+It runs on every pull request except a docs-only one, gated by the same `changes` job as the
+Linux job, and on a manual run without a `firefox-version`. It does not run when `upstream.yml` or
+`upstream-beta.yml` call `e2e.yml` with a version, because a macOS failure must never block a
+Linux release (spec macos-build, decision 13). It does not build `vimma-ctl`, so
+`browser_vimma_control.js` skips there; vimma-ctl's own macOS tests run in `ci.yml` (`vimma-ctl
+on macOS`). The e2e scenarios follow with the spec's sub-PR 4.
+
+**Informational, not required.** The job is new and its runner type has no history in this
+repository, so a flaky macOS run would otherwise block every pull request (spec macos-build, open
+question 6). It fails visibly, with no `continue-on-error`, and the ruleset "main" must not list
+it among the required checks ("Merging and branch protection" above). It becomes a candidate for
+a required check once it has been green and not flaky for about two weeks, as the Linux job was.
+
+When it fails:
+
+- **Vitest:** a test that assumes Linux (a path, `/proc`, a shell tool). Make the test or the
+  code portable, or gate the macOS difference on `process.platform === "darwin"`; never loosen a
+  Linux expectation.
+- **Source, import or artifact build:** compare with the Linux job in the same run. If only macOS
+  fails, read the step log and `config.log`; a missing Taskcluster index for
+  `macosx64-aarch64-opt` means Mozilla's build for that revision has expired or does not exist.
+- **Mochitests:** reproduce on a Mac with "Building on macOS" in
+  [CONTRIBUTING.md](../CONTRIBUTING.md). Fix the test or the code; a test that cannot pass on
+  macOS gets `skip-if = ["os == 'mac'"]` in `tests/browser/browser.toml` with a comment naming
+  its issue.
+- A merge with this check red is allowed; the failure then gets an issue of its own.
 
 ### Actions minutes budget
 

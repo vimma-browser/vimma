@@ -26,6 +26,9 @@ const { SessionStore } = ChromeUtils.importESModule(
 const { BrowserWindowTracker } = ChromeUtils.importESModule(
   "resource:///modules/BrowserWindowTracker.sys.mjs",
 );
+const { TabStateFlusher } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
+);
 
 const PAGE = "https://example.org/";
 const PICKER_ID = "vimma-picker";
@@ -337,8 +340,13 @@ add_task(async function agent_tabs_are_marked_and_last_and_a_closed_one_reopens_
   Assert.ok(agent, "sanity: the agent workspace exists");
   const robot = await openTitled("Robot tab", { userContextId: agent.userContextId });
   const gone = await openTitled("Robot closed", { userContextId: agent.userContextId });
+  // Flushed, the close is recorded with its title; an earlier test's closed tab cannot stand in.
+  await TabStateFlusher.flush(gone.linkedBrowser);
   BrowserTestUtils.removeTab(gone);
-  await until(() => SessionStore.getClosedTabCount() >= 1, "closed");
+  await until(
+    () => SessionStore.getClosedTabDataForWindow(window).some((t) => t.title === "Robot closed"),
+    "closed",
+  );
   await focusPage();
   prefix("g");
   await until(isOpen, "open");

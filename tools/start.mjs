@@ -13,7 +13,8 @@
  * profile, such as the Omarchy hook's `-vimma-reload-theme`. The profile's user.js gets
  * security.sandbox.content.read_path_whitelist = <repo>/src/: in a local objdir the
  * chrome files are symlinks into engine/, which `surfer import` links to this repo's src/, outside
- * the Firefox tree, so the content sandbox refuses to read them and VimmaChild never loads.
+ * the Firefox tree, so the content sandbox refuses to read them and VimmaChild never loads. On
+ * macOS the pref is security.sandbox.content.mac.testing_read_path1 = <repo>/src instead.
  * Packaged builds copy the files and do not need it. It also turns on the developer tools a
  * shipped build keeps off (DEVTOOLS_PREFS). Other user.js lines are kept.
  * Refuses to start when the profile is in use by a running instance.
@@ -39,8 +40,11 @@ import { refreshAppIni } from "./artifact-build/artifact-build.mjs";
 
 const REPO = fileURLToPath(new URL("../", import.meta.url));
 export const READ_PATH_PREF = "security.sandbox.content.read_path_whitelist";
+/** The mac content sandbox's extra read path (dom/ipc/ContentParent.cpp), a Seatbelt subpath. */
+export const MAC_READ_PATH_PREF = "security.sandbox.content.mac.testing_read_path1";
 const FULL_OBJDIR = "obj-x86_64-pc-linux-gnu";
 const ARTIFACT_OBJDIR = "obj-artifact";
+const MAC_APP_BINARY = "dist/Vimma.app/Contents/MacOS/vimma";
 
 /**
  * @param {string[]} argv arguments after `npm start --`
@@ -77,13 +81,25 @@ export function parseStartArgs(argv, home) {
 /**
  * The full build if there is one, else the artifact build, which runs Mozilla's binaries with
  * our front end through XUL_APP_FILE (ADR-010; tools/mochitest.mjs does the same).
- * @param {{ engine: string, exists?: (path: string) => boolean }} options
+ * On macOS both run the launcher inside dist/Vimma.app.
+ * @param {{ engine: string, exists?: (path: string) => boolean, platform?: string,
+ *   arch?: string }} options
  * @returns {{ kind: "full" | "artifact", binary: string, env: Record<string, string> }}
  */
-export function selectBuild({ engine, exists = existsSync }) {
-  const full = join(engine, FULL_OBJDIR, "dist/bin/vimma");
+export function selectBuild({
+  engine,
+  exists = existsSync,
+  platform = process.platform,
+  arch = process.arch,
+}) {
+  const mac = platform === "darwin";
+  const fullObjdir = mac
+    ? `obj-${arch === "arm64" ? "aarch64" : "x86_64"}-apple-darwin`
+    : FULL_OBJDIR;
+  const binary = mac ? MAC_APP_BINARY : "dist/bin/vimma";
+  const full = join(engine, fullObjdir, binary);
   if (exists(full)) return { kind: "full", binary: full, env: {} };
-  const artifact = join(engine, ARTIFACT_OBJDIR, "dist/bin/vimma");
+  const artifact = join(engine, ARTIFACT_OBJDIR, binary);
   if (exists(artifact)) {
     return {
       kind: "artifact",
@@ -109,12 +125,16 @@ export function browserCommand(build, profile, extra) {
 
 /**
  * Prefs every dev profile needs: content processes may read the repo's src/ (real path, as the
- * objdir's symlinks resolve to it; trailing slash, so the whole directory is allowed).
+ * objdir's symlinks resolve to it; trailing slash, so the whole directory is allowed). macOS
+ * takes the directory without the slash: the sandbox profile allows `(subpath <path>)`.
  * @param {string} root the repository root
+ * @param {string} [platform] process.platform
  * @returns {Array<[string, string]>}
  */
-export function devPrefs(root) {
-  return [[READ_PATH_PREF, `${realpathSync(root).replace(/\/$/, "")}/src/`]];
+export function devPrefs(root, platform = process.platform) {
+  const src = `${realpathSync(root).replace(/\/$/, "")}/src`;
+  if (platform === "darwin") return [[MAC_READ_PATH_PREF, src]];
+  return [[READ_PATH_PREF, `${src}/`]];
 }
 
 /** Prefs whose value is a comma-separated list: merged, never replaced. */
@@ -177,10 +197,11 @@ export const DEVTOOLS_PREFS = [
 /**
  * What npm start writes into its profile's user.js.
  * @param {string} root the repository root
+ * @param {string} [platform] process.platform
  * @returns {Array<readonly [string, string | boolean]>}
  */
-export function startPrefs(root) {
-  return [...devPrefs(root), ...DEVTOOLS_PREFS];
+export function startPrefs(root, platform = process.platform) {
+  return [...devPrefs(root, platform), ...DEVTOOLS_PREFS];
 }
 
 /**
@@ -225,22 +246,51 @@ function readProcLocks() {
 }
 
 /**
+ * The pids that have `path` open, from lsof (macOS has no /proc/locks).
+ * @param {string} path
+ * @returns {number[]}
+ */
+function lsofPids(path) {
+  const res = spawnSync("lsof", ["-t", path], { encoding: "utf8" });
+  return (res.stdout ?? "")
+    .split("\n")
+    .filter((l) => /^\d+$/.test(l))
+    .map(Number);
+}
+
+/**
  * Whether a running instance holds the profile. Firefox on Linux holds a POSIX lock on
  * `.parentlock` while it runs (the file itself stays after exit) and points the `lock` symlink
  * at `ip:+pid` (which a crash, or even a quit, can leave behind). So: a live lock on
  * `.parentlock` in /proc/locks, else a `lock` symlink whose pid is alive.
+ * On macOS (toolkit/profile/nsProfileLock.cpp) there is no `lock` link: a process that has
+ * `.parentlock` open (it keeps the fcntl-locked file open while it runs), else a `.parentlock`
+ * link, the fallback where fcntl locks are not supported.
  * @param {string} profile
- * @param {{ alive?: (pid: number) => boolean, procLocks?: () => string }} [deps]
+ * @param {{ alive?: (pid: number) => boolean, procLocks?: () => string,
+ *   openers?: (path: string) => number[], platform?: string }} [deps]
  * @returns {{ pid: number | null } | null}
  */
-export function profileInUse(profile, { alive = pidAlive, procLocks = readProcLocks } = {}) {
+export function profileInUse(
+  profile,
+  {
+    alive = pidAlive,
+    procLocks = readProcLocks,
+    openers = lsofPids,
+    platform = process.platform,
+  } = {},
+) {
+  const mac = platform === "darwin";
   let ino = null;
   try {
     ino = statSync(join(profile, ".parentlock")).ino;
   } catch {
     // no .parentlock: never started, or not a Firefox profile yet
   }
-  if (ino !== null) {
+  if (ino !== null && mac) {
+    const pid = openers(join(profile, ".parentlock"))[0];
+    if (pid !== undefined) return { pid };
+  } else if (ino !== null) {
     for (const row of procLocks().split("\n")) {
       const m = /^\d+:\s+POSIX\s+\S+\s+\S+\s+(\d+)\s+[0-9a-f]+:[0-9a-f]+:(\d+)\s/.exec(row);
       if (m && Number(m[2]) === ino) return { pid: Number(m[1]) };
@@ -248,7 +298,7 @@ export function profileInUse(profile, { alive = pidAlive, procLocks = readProcLo
   }
   let target;
   try {
-    target = readlinkSync(join(profile, "lock"));
+    target = readlinkSync(join(profile, mac ? ".parentlock" : "lock"));
   } catch {
     return null;
   }

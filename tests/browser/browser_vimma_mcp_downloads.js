@@ -42,6 +42,7 @@ const { DownloadIntegration } = ChromeUtils.importESModule(
   "resource://gre/modules/DownloadIntegration.sys.mjs",
 );
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 const ARMING = "security.dialog_enable_delay";
@@ -136,8 +137,9 @@ async function fakeClam(mode, { owned = false, defs = 0 } = {}) {
  * @param {number | "none"} defs  days old, or no date
  */
 function version(defs) {
-  const date =
-    defs === "none" ? "" : `/28156/$(date -d '${defs} days ago' '+%a %b %e %H:%M:%S %Y')`;
+  // macOS has BSD date(1), without GNU's -d.
+  const ago = AppConstants.platform === "macosx" ? `-v-${defs}d` : `-d '${defs} days ago'`;
+  const date = defs === "none" ? "" : `/28156/$(date ${ago} '+%a %b %e %H:%M:%S %Y')`;
   return `for a; do [ "$a" = --version ] && { echo "ClamAV 1.5.4${date}"; exit 0; }; done`;
 }
 

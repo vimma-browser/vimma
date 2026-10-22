@@ -77,6 +77,8 @@ skip-if = ["artifact"]
 skip-if = ["artifact"]
 
 ["browser_vimma_tabstrip.js"]
+# macOS: cmd+t and cmd+l are off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_toolbar.js"]
 support-files = ["file_vimma_plain.html", "file_vimma_mixed.js"]
@@ -101,6 +103,8 @@ support-files = ["head_vimma_aus.js"]
 skip-if = ["artifact"]
 
 ["browser_vimma_split_contract.js"]
+# macOS: the zoom hit test's control needs Firefox's non-macOS z-index on column 0 (#389)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_split_layout.js"]
 
@@ -152,6 +156,8 @@ support-files = [
 ["browser_vimma_tab_search.js"]
 
 ["browser_vimma_live_grep.js"]
+# macOS: on the hosted runner the list does not settle after a quick reopen (#419)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_grep.html"]
 
 ["browser_vimma_rename.js"]
@@ -163,11 +169,17 @@ support-files = ["file_vimma_grep.html"]
 ["browser_vimma_workspace_store.js"]
 
 ["browser_vimma_workspace_routes.js"]
+# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_workspace_routing.js"]
+# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_cookie.html"]
 
 ["browser_vimma_workspace_switching.js"]
+# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_workspace_ops.js"]
 
@@ -260,6 +272,8 @@ support-files = [
 ]
 
 ["browser_vimma_mcp_downloads.js"]
+# macOS: the clamd socket owner check uses Linux statx, so clamd is never used (#387)
+skip-if = ["os == 'mac'"]
 support-files = [
   "file_vimma_agent_page.html",
   "file_vimma_agent_download.sjs",
@@ -269,10 +283,14 @@ support-files = [
 ["browser_vimma_workspace_picker.js"]
 
 ["browser_vimma_workspace_edges.js"]
+# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_workspace_buffer_keys.js"]
 
 ["browser_vimma_private_workspace.js"]
+# macOS: keys sent at once after a workspace switch are lost (#388)
+skip-if = ["os == 'mac'"]
 support-files = [
   "file_vimma_private_form.html",
   "file_vimma_private_download.txt",
@@ -280,6 +298,8 @@ support-files = [
 ]
 
 ["browser_vimma_private_swap.js"]
+# macOS: on the hosted runner the fake Hyprland's openwindow event can come after REPLY_MS (#422)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_title.html"]
 
 ["browser_vimma_side_panel.js"]
@@ -289,9 +309,13 @@ support-files = ["file_vimma_title.html"]
 ["browser_vimma_side_panel_unsplit.js"]
 
 ["browser_vimma_firefox_keys.js"]
+# macOS: the Firefox key inventory lists Linux chords; macOS uses cmd as accel (#384)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_firefox_coverage.js"]
+# macOS: the Firefox key inventory lists Linux chords; macOS uses cmd as accel (#384)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_edit_keys.js"]
@@ -342,6 +366,8 @@ support-files = ["head_vimma_control.js"]
 ["browser_vimma_a11y.js"]
 
 ["browser_vimma_browser_keys.js"]
+# macOS: the page takes Option+arrow and Option+digit first; undo is cmd+z (#386)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_plain.html", "file_vimma_slow.sjs"]
 
 ["browser_vimma_update_check.js"]
