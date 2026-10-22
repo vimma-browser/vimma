@@ -10,7 +10,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { join } from "node:path";
@@ -52,15 +52,47 @@ const tempDir = () => {
   return d;
 };
 
+/** @param {number} pid @returns {string} ps's state letters, "" once the pid is gone */
+const psState = (pid) => {
+  try {
+    return execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim();
+  } catch (err) {
+    // ps exits 1 with no output for a pid that does not exist; anything else is a real error.
+    if (/** @type {{ status?: number }} */ (err).status === 1) return "";
+    throw err;
+  }
+};
+
 /** @param {number} pid */
 const alive = (pid) => {
   try {
     process.kill(pid, 0);
-    return true;
   } catch {
     return false;
   }
+  // An orphan that has exited still answers signal 0 until init reaps it, which launchd on
+  // macOS may do only after the process group already looks empty.
+  const state = psState(pid);
+  return state !== "" && !state.startsWith("Z");
 };
+
+describe("alive", () => {
+  it("counts an exited process that no one has reaped yet (a zombie) as gone", async () => {
+    // The exec'd sleep never waits for the backgrounded one, which stays a zombie for 5 s.
+    const parent = spawn("sh", ["-c", "sleep 0 & echo $!; exec sleep 5"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    cleanups.push(async () => void parent.kill("SIGKILL"));
+    const zombie = Number(
+      await new Promise((resolve) => parent.stdout.once("data", (d) => resolve(String(d).trim()))),
+    );
+    for (let i = 0; i < 200 && !psState(zombie).startsWith("Z"); i++) await sleep(25);
+    expect(psState(zombie)).toMatch(/^Z/);
+    expect(() => process.kill(zombie, 0)).not.toThrow();
+    expect(alive(zombie)).toBe(false);
+    expect(alive(/** @type {number} */ (parent.pid))).toBe(true);
+  });
+});
 
 describe("findBuild", () => {
   const engine = "/repo/engine/";

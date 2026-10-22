@@ -28,7 +28,9 @@ and workspaces, and your hands never leave the keyboard.
 - **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through
   MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies, and every request asks
   you first. There they read and open pages, scroll, search and follow links with Vimma's own
-  keys, and show you a page when they want you to look at it.
+  keys, click buttons and fill forms by hint label (never a password or payment card field, and
+  a form they send asks every time), see a page as a screenshot, read its errors, and show you a
+  page when they want you to look at it.
 
 ## Install
 

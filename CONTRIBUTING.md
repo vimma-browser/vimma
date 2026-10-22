@@ -5,12 +5,14 @@ How to build, run and test Vimma, and how changes get in. For why Vimma exists, 
 
 ## Requirements
 
-- Linux x86_64 (the only platform built and tested so far).
+- Linux x86_64 (the only platform with a full build so far; macOS on Apple Silicon runs the
+  front-end tests on an artifact build, see "Building on macOS").
 - About 35 GB of free disk space, as measured on one machine: `engine/` 27 GB (source and the
   full build), the sccache compiler cache 6.8 GB, toolchains in `~/.mozbuild` 3.1 GB and the
   Firefox source download in `.surfer/` 0.8 GB.
-- Node.js 20 or later, git, and Python 3.10 to 3.14: the range `engine/mach` declares it supports.
-  A newer Python breaks mach in places; Python 3.15 cannot parse the test manifests.
+- Node.js 20.19 or later in the 20 line, or 22.12 or later; git.
+- Python 3.10 to 3.14: the range `engine/mach` declares it supports. A newer Python breaks mach in
+  places; Python 3.15 cannot parse the test manifests.
 - Time: the first full build took 39 min on a 16-thread Ryzen with 58 GB RAM. The Firefox source
   download took 12.5 min. See [docs/runbook.md](docs/runbook.md).
 
@@ -131,6 +133,34 @@ npm run mochitest -- --artifact tests/browser/
 An artifact build cannot check compiled-in settings (the `--version` string, the crash reporter
 flag). A PR that touches patches, `configs/`, `moz.configure` or branding must report a
 mochitest run on a full build.
+
+### Building on macOS
+
+macOS support is in progress ([spec macos-build](docs/specs/macos-build.md)). On a Mac, Vimma's
+front end runs on an artifact build only, and only on Apple Silicon: the tool fetches Mozilla's
+macOS arm64 build of the release in `surfer.json`. A full build on a Mac is not supported.
+
+- **Tools.** Xcode's command line tools (`xcode-select --install`), Python 3 and
+  `brew install gnu-tar gnupg`: Surfer unpacks the Firefox source with GNU tar (`gtar`) on macOS,
+  and the source check needs `gpgv`.
+- **Node.js** 20.19 or later in the 20 line, or 22.12 or later: the native binding of rolldown,
+  which Vitest uses, refuses older versions. `.nvmrc` pins the version CI uses.
+
+```sh
+npm ci
+tools/upstream/firefox-source.sh                # download, verify, unpack into engine/
+npm run import
+node tools/artifact-build/artifact-build.mjs    # Mozilla's macosx64-aarch64 build
+npm run mochitest -- --artifact tests/browser/  # headless
+```
+
+`tools/upstream/firefox-source.sh` deletes `engine/` without asking, objdir included; in an
+existing checkout use `npx surfer download` and `npm run verify-source` instead, as in "Build and
+run". The artifact build's app is `engine/obj-artifact/dist/Vimma.app`.
+
+Pull requests run the same steps on a hosted Mac (`mochitest (artifact build, macOS)` in
+`e2e.yml`); that check is informational and does not block a merge
+([runbook](docs/runbook.md#macos-mochitests-e2eyml-spec-macos-build)).
 
 ## Project layout
 

@@ -120,6 +120,7 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-activate": "vimma_activate",
   "agent-fill": "vimma_fill",
   "agent-screenshot": "vimma_screenshot",
+  "agent-console": "vimma_console",
 });
 /**
  * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
@@ -166,6 +167,12 @@ export const ACT_RATE = Object.freeze({ max: 30, ms: 60_000 });
  * M32), counted when asked: each is a large reply and a paint in the content process.
  */
 export const SCREENSHOT_RATE = Object.freeze({ max: 12, ms: 60_000 });
+
+/**
+ * `agent-console` requests per connection in any window of `ms` (mcp-forms F26, security.md
+ * M32), counted when asked.
+ */
+export const CONSOLE_RATE = Object.freeze({ max: 30, ms: 60_000 });
 
 /** A sliding window of each connection's calls of one kind, at most `max` in any `ms`. */
 export class CallRate {

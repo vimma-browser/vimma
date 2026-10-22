@@ -78,6 +78,8 @@ let forced = false;
 const addresses = new WeakMap();
 /** @type {WeakMap<Window, Promise<string | null>>} */
 let resolving = new WeakMap();
+/** The switches that wait on the naming in `resolving`. @type {WeakMap<Window, Set<number>>} */
+let waiters = new WeakMap();
 /** Bumped by a reset: a naming begun before it ends without an address. */
 let naming = 0;
 /** @type {Map<string, WeakRef<Window>>} */
@@ -106,6 +108,27 @@ function logOnce(text, kind = text) {
   logged.add(kind);
   console.warn(`vimma: ${text}`);
 }
+
+/**
+ * How long a naming waits for Hyprland's event (#422). The event for a window that is still
+ * starting up can come well after REPLY_MS on a busy machine, before j/clients shows the title.
+ */
+export const NAME_MS = 2000;
+/**
+ * A naming a switch waited on gave up, and none has succeeded since (nor was config.toml read):
+ * later ones wait only REPLY_MS, so a Hyprland that does not name windows does not hold every
+ * switch for NAME_MS. A naming no switch waits on (at startup, from track) never sets it.
+ */
+let unnamed = false;
+/** Bumped by every switch (enter, show): a switch still naming when another began is dropped. */
+let switches = 0;
+/**
+ * Private windows a switch opened that no switch has swapped in yet: a dropped switch, or one
+ * whose naming gave up, leaves its window here, so the next switch to it still swaps it in
+ * rather than only focusing it.
+ * @type {WeakSet<Window>}
+ */
+let unswapped = new WeakSet();
 
 /** What a switch says when Hyprland never named a Vimma window (decision 7). */
 const NOT_NAMED = "private: Hyprland did not name the Vimma window; showing it as a window";
@@ -263,35 +286,49 @@ function onLine(line) {
  * The window's Hyprland address, learnt once: it carries a random title until Hyprland's event
  * names it, then its own title again (decision 5).
  * @param {Window} win
+ * @param {number} [by]  the switch that waits on it (0: none). Only a give-up that the latest
+ *   switch waits on shortens later waits.
  * @returns {Promise<string | null>}
  */
-function addressOf(win) {
+function addressOf(win, by = 0) {
   const known = addresses.get(win);
   if (known) return Promise.resolve(known);
   const running_ = resolving.get(win);
-  if (running_) return running_;
+  if (running_) {
+    if (by) waiters.get(win)?.add(by);
+    return running_;
+  }
+  /** @type {Set<number>} */
+  const job = new Set(by ? [by] : []);
+  /** Whether a switch still in force waits on this naming. */
+  const waited = () => job.has(switches);
   const promise = (async () => {
     const at = naming;
     if (!(await startedUp(win)) || !(await detect()) || at !== naming) return null;
     ensureEvents();
     const nonce = nonceTitle(crypto.getRandomValues(new Uint8Array(16)));
     /** @type {Promise<string | null>} */
-    const heard = new Promise((resolve) => {
-      nonces.set(nonce, resolve);
-      lazy.setTimeout(() => {
-        if (nonces.delete(nonce)) resolve(null);
-      }, REPLY_MS);
-    });
+    const heard = new Promise((resolve) => nonces.set(nonce, resolve));
+    /** @param {number} ms @returns {Promise<null>} */
+    const after = (ms) => new Promise((resolve) => lazy.setTimeout(() => resolve(null), ms));
     // Held until Hyprland names the window: a page loading meanwhile would retitle it.
     const doc = win.document;
     doc.title = nonce;
+    const deadline = Date.now() + NAME_MS;
     const keep = new /** @type {any} */ (win).MutationObserver(() => {
+      // A reset began another naming of this window while this one still waits on a request:
+      // two observers holding two nonces would retitle each other forever.
+      if (at !== naming) {
+        keep.disconnect();
+        return;
+      }
       if (doc.title !== nonce) doc.title = nonce;
     });
     keep.observe(doc.documentElement, { subtree: true, childList: true, characterData: true });
-    let address = await heard;
-    if (at !== naming) address = null;
-    else if (!address) {
+    let address = await Promise.race([heard, after(REPLY_MS)]);
+    if (!address && at === naming) {
+      // No event yet: j/clients may already show the title. The nonce stays pending meanwhile,
+      // so an event that comes during the request still counts.
       try {
         address = findNonce(
           await HyprIpc.request(QUERY_CLIENTS),
@@ -301,18 +338,45 @@ function addressOf(win) {
       } catch {
         address = null;
       }
+      // A busy machine names a starting window late: wait for the event up to NAME_MS, then
+      // look in j/clients again, as socket2 does not replay an event sent before we listened.
+      if (!address && at === naming && !(unnamed && waited())) {
+        address = await Promise.race([heard, after(Math.max(0, deadline - Date.now()))]);
+        if (!address && at === naming) {
+          try {
+            address = findNonce(
+              await HyprIpc.request(QUERY_CLIENTS),
+              nonce,
+              Services.appinfo.processID,
+            );
+          } catch {
+            address = null;
+          }
+        }
+      }
+      // An event that came while j/clients was being asked still counts.
+      if (!address) address = await Promise.race([heard, Promise.resolve(null)]);
+      if (!address && at === naming && !win.closed && waited()) unnamed = true;
     }
+    nonces.delete(nonce);
+    if (at !== naming) address = null;
     keep.disconnect();
     if (!win.closed) /** @type {any} */ (win).gBrowser?.updateTitlebar();
     if (address && !win.closed) {
       addresses.set(win, address);
       byAddress.set(address, new WeakRef(win));
+      unnamed = false;
     }
     return address;
   })();
   const pending = resolving;
+  const jobs = waiters;
   pending.set(win, promise);
-  promise.finally(() => pending.delete(win));
+  jobs.set(win, job);
+  promise.finally(() => {
+    pending.delete(win);
+    jobs.delete(win);
+  });
   return promise;
 }
 
@@ -517,6 +581,7 @@ const HyprSwap = {
     placement = next;
     configured = true;
     failed = false;
+    unnamed = false;
     skipped = null;
     if (next === "window") {
       stopEvents();
@@ -536,8 +601,13 @@ const HyprSwap = {
    */
   enter(from, priv, fresh) {
     if (!wanted()) return false;
+    const mine = ++switches;
+    if (fresh) unswapped.add(priv);
     (async () => {
-      const [normal, p] = await Promise.all([addressOf(from), addressOf(priv)]);
+      const [normal, p] = await Promise.all([addressOf(from, mine), addressOf(priv, mine)]);
+      // The user switched again meanwhile (back to normal): this swap would park it under them.
+      // A fresh window stays in `unswapped` for the next switch, as it does after a give-up.
+      if (mine !== switches) return;
       if (!normal || !p) {
         // Hyprland is there but did not name a window: never silent (decision 7).
         if (wm.state === "ok" && !from.closed && !priv.closed) {
@@ -548,8 +618,9 @@ const HyprSwap = {
         return;
       }
       skipped = null;
+      const opened = unswapped.delete(priv);
       // A private window shown somewhere else (a second one from ctrl+n): focus it, as today.
-      if (!fresh && p !== pair?.private) {
+      if (!opened && p !== pair?.private) {
         if (!priv.closed) priv.focus();
         return;
       }
@@ -566,6 +637,7 @@ const HyprSwap = {
    * @returns {boolean}
    */
   show(win) {
+    switches++;
     if (pair?.parked !== "normal") return false;
     const back = pair.normal;
     step({ type: "leave" }).then((ok) => {
@@ -599,6 +671,11 @@ const HyprSwap = {
     }
   },
 
+  /** Tests: whether namings wait only REPLY_MS. */
+  get _unnamed() {
+    return unnamed;
+  },
+
   /** Tests: the pair, as addresses. */
   get _pair() {
     return pair;
@@ -616,6 +693,7 @@ const HyprSwap = {
     wm = { state: "unknown" };
     pair = null;
     failed = false;
+    unnamed = false;
     logged.clear();
     skipped = null;
     placement = "swap";
@@ -629,6 +707,8 @@ const HyprSwap = {
     for (const resolve of nonces.values()) resolve(null);
     nonces.clear();
     resolving = new WeakMap();
+    waiters = new WeakMap();
+    unswapped = new WeakSet();
     byAddress.clear();
     records.clear();
     for (const win of windows) addresses.delete(win);

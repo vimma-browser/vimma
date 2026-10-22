@@ -117,6 +117,12 @@
   );
   AgentPages.init();
 
+  // docs/specs/mcp-forms.md F22: the agent workspace's failed requests, for vimma_console.
+  const { AgentConsole } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/ctl/AgentConsole.sys.mjs",
+  );
+  AgentConsole.init();
+
   // The private workspace in place of this window on Hyprland (spec private-swap): learns the
   // window's address while `[private] placement = "swap"` applies. Nothing without Hyprland.
   const { PrivateSwap } = ChromeUtils.importESModule(

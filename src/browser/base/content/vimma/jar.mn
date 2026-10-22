@@ -13,6 +13,7 @@ browser.jar:
         content/browser/vimma/ctl/AgentDrive.sys.mjs      (ctl/AgentDrive.sys.mjs)
         content/browser/vimma/ctl/AgentAct.sys.mjs        (ctl/AgentAct.sys.mjs)
         content/browser/vimma/ctl/AgentShot.sys.mjs       (ctl/AgentShot.sys.mjs)
+        content/browser/vimma/ctl/AgentConsole.sys.mjs    (ctl/AgentConsole.sys.mjs)
         content/browser/vimma/config/ConfigHost.sys.mjs   (config/ConfigHost.sys.mjs)
         content/browser/vimma/search/SearchHost.sys.mjs   (search/SearchHost.sys.mjs)
         content/browser/vimma/updates/VimmaUpdates.sys.mjs (updates/VimmaUpdates.sys.mjs)

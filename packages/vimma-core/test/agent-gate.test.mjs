@@ -9,6 +9,7 @@ import {
   ALWAYS_ASK,
   AgentLog,
   CallRate,
+  CONSOLE_RATE,
   ELEMENTS_RATE,
   KEYS_RATE,
   LOG_SIZE,
@@ -53,6 +54,7 @@ describe("the tools", () => {
       "agent-activate": "vimma_activate",
       "agent-fill": "vimma_fill",
       "agent-screenshot": "vimma_screenshot",
+      "agent-console": "vimma_console",
     });
   });
 });
@@ -385,6 +387,31 @@ describe("the screenshot rate (mcp-forms F21)", () => {
     q.answer(/** @type {any} */ (a).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.ask(1, "vimma_screenshot", 1000).kind).toBe("run");
     expect(q.ask(1, "vimma_activate", 1000).kind).not.toBe("run");
+  });
+});
+
+// docs/specs/mcp-forms.md F26 (security.md M32): at most 30 console reads a minute per
+// connection, counted when asked; a console read is granted like any read-only tool, and its
+// grant covers no other tool (F25).
+describe("the console rate (mcp-forms F26)", () => {
+  test("at most 30 agent-console per connection a minute", () => {
+    expect(CONSOLE_RATE).toEqual({ max: 30, ms: 60_000 });
+    const r = new CallRate(CONSOLE_RATE);
+    const ok = [];
+    for (let i = 0; i < 32; i++) ok.push(r.take(1, i * 100));
+    expect(ok.filter(Boolean)).toHaveLength(30);
+    expect(r.take(2, 3300)).toBe(true);
+    expect(r.take(1, 60_001)).toBe(true);
+  });
+
+  test("vimma_console can be granted, and its grant covers no other tool", () => {
+    expect(ALWAYS_ASK).not.toContain("vimma_console");
+    const q = new AgentQueue();
+    q.connect(1);
+    const a = q.ask(1, "vimma_console", 0);
+    q.answer(/** @type {any} */ (a).id, { kind: "grant", minutes: 10 }, 0);
+    expect(q.ask(1, "vimma_console", 1000).kind).toBe("run");
+    expect(q.ask(1, "vimma_screenshot", 1000).kind).not.toBe("run");
   });
 });
 
