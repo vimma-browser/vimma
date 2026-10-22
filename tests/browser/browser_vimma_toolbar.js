@@ -508,6 +508,73 @@ add_task(async function permission_prompts_answer_y_and_n() {
   await show();
 });
 
+// Issue #485: a Vimma surface that takes typing keeps y and n while a prompt shows: live grep's
+// query and a search being typed.
+add_task(async function prompt_keys_leave_live_grep_and_find_their_keys() {
+  const DELAY = 100;
+  await SpecialPowers.pushPrefEnv({ set: [["security.notification_enable_delay", DELAY]] });
+  const tab = await openPage();
+  await hide();
+  const browser = tab.linkedBrowser;
+  const panel = PopupNotifications.panel;
+  const principal = () => browser.contentPrincipal;
+  const geo = () => SitePermissions.getForPrincipal(principal(), "geo", browser).state;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const shown = BrowserTestUtils.waitForEvent(panel, "popupshown");
+  await SpecialPowers.spawn(browser, [], () => {
+    content.navigator.geolocation.getCurrentPosition(
+      () => {},
+      () => {},
+    );
+  });
+  await shown;
+  const n = /** @type {any} */ (panel.firstElementChild);
+  await until(() => shows(n.querySelector(".vimma-prompt-keys")), "the prompt is armed");
+
+  const grep = () => $("vimma-grep");
+  prefix("f");
+  EventUtils.synthesizeKey("g");
+  await until(() => !!grep()?.open, "ctrl+b f g opens live grep");
+  EventUtils.synthesizeKey("y");
+  EventUtils.synthesizeKey("n");
+  await wait(DELAY * 2);
+  Assert.equal(panel.state, "open", "y and n typed into live grep answer nothing");
+  Assert.equal(geo(), SitePermissions.UNKNOWN, "nothing decided");
+  Assert.equal(
+    grep().querySelector(".vimma-grep-query")?.textContent,
+    "yn",
+    "they went into the grep query",
+  );
+  // The first Esc leaves the query for browse mode, the second closes.
+  EventUtils.synthesizeKey("KEY_Escape");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !grep()?.open, "Esc Esc closes live grep");
+
+  await focusContent(browser);
+  await until(() => VimmaHost.status(window).mode === "normal", "normal mode");
+  EventUtils.synthesizeKey("/");
+  await until(() => VimmaHost.status(window).mode === "command", "/ starts a search");
+  EventUtils.synthesizeKey("y");
+  EventUtils.synthesizeKey("n");
+  await wait(DELAY * 2);
+  Assert.equal(panel.state, "open", "y and n typed into a search answer nothing");
+  Assert.equal(geo(), SitePermissions.UNKNOWN, "still nothing decided");
+  Assert.equal(gBrowser.getCachedFindBar()?._findField.value, "yn", "they went into the search");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => VimmaHost.status(window).mode === "normal", "Esc ends the search");
+  await until(() => shows(n.querySelector(".vimma-prompt-keys")), "armed again");
+
+  const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
+  EventUtils.synthesizeKey("y");
+  await hidden;
+  Assert.equal(geo(), SitePermissions.ALLOW, "with both closed, y answers the prompt again");
+  SitePermissions.removeFromPrincipal(principal(), "geo", browser);
+
+  await SpecialPowers.popPrefEnv();
+  gBrowser.removeTab(tab);
+  await show();
+});
+
 // 5b: the keys follow Firefox's own delay for the prompt (notification.timeShown), which it
 // restarts when the panel is repositioned or resized and when the window is activated. A key
 // armed earlier would click a button Firefox still refuses, and be lost.

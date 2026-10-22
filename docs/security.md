@@ -349,7 +349,9 @@ text that pages, add-ons and bookmarks choose.
   - Vimma's keys for a permission prompt (`y`, `n`, `Tab`; toolbar shown or hidden) **must
     not** answer it before it has shown for `security.notification_enable_delay` with no key in
     between (any key restarts the wait), **never** from a text field (the page's, the chrome's,
-    or the prompt's own, such as the password prompt's username), and go through Firefox's
+    or the prompt's own, such as the password prompt's username), **never** while one of
+    Vimma's own surfaces holds the keyboard (a picker, live grep, the command line, a search being
+    typed, the other prompts), and go through Firefox's
     own buttons, so Firefox's click delay still applies. The wait counts from Firefox's own time
     for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
     moves or resizes, the window is activated or another prompt takes the panel), so an armed key
@@ -360,6 +362,7 @@ text that pages, add-ons and bookmarks choose.
     [`doorhangerKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
     [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
+    [`prompt_keys_leave_live_grep_and_find_their_keys`](../tests/browser/browser_vimma_toolbar.js),
     [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
