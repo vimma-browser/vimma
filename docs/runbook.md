@@ -481,6 +481,7 @@ with a workflow token (docs/security.md, B5; spec build-supply-chain, decisions 
   once:
   `gh api -X PUT repos/vimma-browser/vimma/actions/permissions -F enabled=true -f allowed_actions=all -F sha_pinning_required=true`,
   and checks it with `gh api repos/vimma-browser/vimma/actions/permissions`.
+- The Homebrew tap takes the same two settings ("Release packages", step 7).
 
 An organization owner also confirms that the organization has no self-hosted runner:
 `gh api orgs/vimma-browser/actions/runners` must report `total_count` 0. A runner registered at
@@ -1665,6 +1666,28 @@ neither needs another file.
        "bypass_actors": [ { "actor_type": "DeployKey", "bypass_mode": "always" },
          { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request" } ] }
      JSON
+     ```
+
+   - The tap's check, `.github/workflows/check.yml` in the tap: `brew style` and an offline
+     `brew audit --cask --strict` on `macos-15`, on every pull request and every push to `main`:
+     the checks `tools/package/cask-check.sh` runs here, but on the latest stable Homebrew and
+     the whole tap, so a new Homebrew audit rule can turn the tap red before the `cask` job here. It is not a required check in the ruleset, so
+     `homebrew.yml`'s push lands first and the check then runs on it. When it fails on `main`,
+     the pushed cask came from a release: fix `tools/package/cask.mjs` here and ship a fixed
+     release, since `homebrew.yml` never replaces a newer cask with an older one. Its one action,
+     `Homebrew/actions/setup-homebrew`, is pinned by commit SHA with its tag in a comment, and
+     the tap has no Dependabot: bump it by hand from Homebrew's releases.
+
+   - The tap's Actions settings, as for this repository ("Actions settings", above), which an
+     administrator applies: `sha_pinning_required`, so GitHub refuses any action not pinned to
+     a full commit SHA, and fork pull request approval `all_external_contributors`, so a fork's
+     own workflow files run only once a person approves the run (docs/security.md, B11):
+
+     ```sh
+     gh api -X PUT repos/vimma-browser/homebrew-tap/actions/permissions \
+       -F enabled=true -f allowed_actions=all -F sha_pinning_required=true
+     gh api -X PUT repos/vimma-browser/homebrew-tap/actions/permissions/fork-pr-contributor-approval \
+       -f approval_policy=all_external_contributors
      ```
 
    - A key for the workflow only, with write access to the tap and nothing else:
