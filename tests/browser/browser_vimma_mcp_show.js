@@ -256,7 +256,9 @@ add_task(async function test_show_waits_while_the_user_types() {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("A", { shiftKey: true });
   await until(lineOpen, "ctrl+b shift+a opens the question");
-  await until(() => !!line().querySelector(".vimma-agent-prompt-hint")?.textContent, "armed");
+  // The hint is set when the line opens and shown once it is armed; a key before that only
+  // arms it again (security.md M4).
+  await until(() => !!line().querySelector(".vimma-agent-prompt-hint:not([hidden])"), "armed");
   Assert.ok(line().textContent.includes("y show it · n deny"), "the question offers y and n only");
   EventUtils.synthesizeKey("y");
   Assert.ok((await c.response(id)).ok, "y shows it");
