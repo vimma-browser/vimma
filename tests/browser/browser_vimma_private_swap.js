@@ -97,21 +97,41 @@ function shortDir() {
 class FakeHypr {
   /**
    * @param {{ mode?: "lua" | "silent" | "errors" | "hangup" | "open-on-nonce" | "nameless",
-   *   delayMoves?: number, delayNames?: number, dropNames?: number, listAfter?: number }}
+   *   delayMoves?: number, delayNames?: number, dropNames?: number, listAfter?: number,
+   *   holdNames?: number, slowClients?: number }}
    *   [options]  hangup: closes every request unanswered; open-on-nonce: a window is announced
    *   only by openwindow, with its nonce title, and j/clients never shows that title (unless
    *   listAfter); nameless: a nonce title never reaches Hyprland (its events and j/clients show
    *   "Vimma" instead); delayMoves: movewindowv2 comes this many ms late; delayNames:
    *   open-on-nonce's openwindow comes this many ms late, as on a busy machine; dropNames: that
    *   many of those openwindow events are lost; listAfter: j/clients shows a title once it has
-   *   been the window's title this many ms, as Hyprland does once the title reaches it
+   *   been the window's title this many ms, as Hyprland does once the title reaches it;
+   *   holdNames: open-on-nonce's openwindow is sent only while a j/clients request is being
+   *   answered, once the title has been set this many ms, and that reply then comes 100 ms
+   *   late (the event arrives during the request); slowClients: j/clients replies this late
    */
-  constructor({ mode = "lua", delayMoves = 0, delayNames = 0, dropNames = 0, listAfter = 0 } = {}) {
+  constructor({
+    mode = "lua",
+    delayMoves = 0,
+    delayNames = 0,
+    dropNames = 0,
+    listAfter = 0,
+    holdNames = 0,
+    slowClients = 0,
+  } = {}) {
     this.mode = mode;
     this.delayMoves = delayMoves;
     this.delayNames = delayNames;
     this.dropNames = dropNames;
     this.listAfter = listAfter;
+    this.holdNames = holdNames;
+    this.slowClients = slowClients;
+    /** holdNames' lines not sent yet. @type {{ a: string, line: string }[]} */
+    this.held = [];
+    /** How late the reply being written comes, in ms. */
+    this.lateReply = 0;
+    /** When each j/clients request came. @type {number[]} */
+    this.clientsAt = [];
     /** When each window's title last changed. @type {Map<string, number>} */
     this.titledAt = new Map();
     this.reqAccepts = 0;
@@ -186,12 +206,17 @@ class FakeHypr {
           this.received.push(text);
           if (this.mode === "silent") return;
           const reply = utf8(this.handle(text));
+          const late = this.lateReply;
+          this.lateReply = 0;
           let sent = 0;
           const write = () => {
             try {
               sent += out.write(reply.slice(sent), reply.length - sent);
             } catch {
-              // the client went away
+              // The client went away (a late reply after its timeout): waiting on the stream
+              // again would call this back at once, forever.
+              t.close(Cr.NS_OK);
+              return;
             }
             if (sent < reply.length) {
               out
@@ -202,7 +227,8 @@ class FakeHypr {
               t.close(Cr.NS_OK);
             }
           };
-          write();
+          if (late) setTimeout(write, late);
+          else write();
         },
       },
       0,
@@ -280,6 +306,7 @@ class FakeHypr {
         else if (/^vimma-[0-9a-f]{32}$/.test(title)) {
           const line = `openwindow>>${a.slice(2)},3,vimma-vimma,${title}`;
           if (this.dropNames > 0) this.dropNames--;
+          else if (this.holdNames) this.held.push({ a, line });
           else if (this.delayNames) setTimeout(() => this.emit(line), this.delayNames);
           else this.emit(line);
         }
@@ -308,6 +335,16 @@ class FakeHypr {
     if (text === "j/activeworkspace") return JSON.stringify(this.active);
     if (text === "j/clients") {
       this.poll();
+      this.clientsAt.push(Date.now());
+      if (this.slowClients) this.lateReply = this.slowClients;
+      const due = this.held.filter(
+        ({ a }) => Date.now() - (this.titledAt.get(a) ?? 0) >= this.holdNames,
+      );
+      if (due.length) {
+        this.held = this.held.filter((h) => !due.includes(h));
+        for (const { line } of due) this.emit(line);
+        this.lateReply = Math.max(this.lateReply, 100);
+      }
       // An unrelated app's window, whose title must never travel further.
       const other = {
         address: "0xabc",
@@ -981,6 +1018,82 @@ add_task(async function going_back_while_entering_is_naming_wins() {
   Assert.ok(!parked(window), "the normal window is not parked under the user");
   Assert.deepEqual(f.batches, [], "nothing is moved");
   Assert.equal(Services.focus.activeWindow, window, "the normal window keeps the focus");
+  // The dropped switch never swapped that window in: the next switch still does.
+  Assert.equal(await enter(), priv, "the same private window");
+  Assert.ok(inSlot(priv) && parked(window), "and it takes the normal window's place");
+});
+
+// A second switch for the same fresh window while the first is still naming (ctrl+b shift+p
+// again from the normal window): the window is still swapped in.
+add_task(async function a_second_switch_while_the_first_is_naming_still_swaps() {
+  const f = await start({ mode: "open-on-nonce", delayNames: REPLY_MS + 300 });
+  await SimpleTest.promiseFocus(window);
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  const priv = await opened;
+  await until(() => NONCE.test(priv.document.title), "the private window is being named");
+  await SimpleTest.promiseFocus(window);
+  prefix("P", { shiftKey: true });
+  await until(() => parked(window) && inSlot(priv), "the private window takes the slot");
+  await PrivateSwap._settled();
+  Assert.ok(f.batches.length >= 1);
+});
+
+// A switch dropped by a later one does not decide how long later namings wait.
+add_task(async function a_dropped_switch_does_not_shorten_later_waits() {
+  await start({ mode: "nameless" });
+  await SimpleTest.promiseFocus(window);
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  const priv = await opened;
+  await until(() => NONCE.test(priv.document.title), "the private window is being named");
+  await SimpleTest.promiseFocus(priv);
+  prefix("P", { shiftKey: true }, priv);
+  await until(() => Services.focus.activeWindow === window, "back to the normal window");
+  await until(() => !NONCE.test(priv.document.title), "the naming gave up");
+  await PrivateSwap._settled();
+  Assert.ok(!PrivateSwap._unnamed, "no switch waited on it: later namings keep NAME_MS");
+});
+
+/** The start names the normal window (open-on-nonce), so a switch names only the private one. */
+async function startNamed(options) {
+  const f = await start({ mode: "open-on-nonce", ...options }, undefined, { configured: false });
+  PrivateSwap.configure("swap");
+  await until(() => f.evAccepts >= 1, "Vimma listens to the event socket");
+  // A named window's track() reads j/clients once; a naming that falls back reads it itself.
+  await until(() => f.clientsAt.length >= 1, "the start names the normal window");
+  await until(() => !NONCE.test(document.title), "and is done");
+  await PrivateSwap._settled();
+  await wait(100);
+  Assert.equal(f.clientsAt.length, 1, "by its event, without the fallback");
+  return f;
+}
+
+// The event comes while the last j/clients request is being answered: it still counts.
+add_task(async function an_event_during_the_last_j_clients_request_counts() {
+  const f = await startNamed();
+  f.holdNames = REPLY_MS + 300;
+  const priv = await enter();
+  Assert.ok(inSlot(priv) && parked(window), "named by the event that came during the request");
+});
+
+// The waits count from one deadline: a slow j/clients does not stretch the naming past NAME_MS.
+add_task(async function a_slow_j_clients_does_not_stretch_the_wait() {
+  const f = await startNamed();
+  f.dropNames = Infinity;
+  f.slowClients = 2 * REPLY_MS; // past HyprIpc's own timeout: each request takes REPLY_MS
+  const from = f.clientsAt.length;
+  await SimpleTest.promiseFocus(window);
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  const priv = await opened;
+  await until(() => NONCE.test(priv.document.title), "the private window is being named");
+  await until(() => !NONCE.test(priv.document.title), "the naming gave up");
+  const asked = f.clientsAt.slice(from);
+  Assert.equal(asked.length, 2, "j/clients at REPLY_MS and at the deadline");
+  // From one deadline the second comes NAME_MS - REPLY_MS after the first (1.5 s); counted
+  // from the first's reply it comes REPLY_MS later (2 s).
+  Assert.less(asked[1] - asked[0], NAME_MS - REPLY_MS / 2, "the deadline is not pushed back");
 });
 
 add_task(async function a_fresh_private_window_is_named_once_its_document_is_up() {
