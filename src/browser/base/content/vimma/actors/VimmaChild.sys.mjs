@@ -175,10 +175,11 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * Test-only (browser_vimma_mcp_fill.js): the name of a page function an agent's form
    * submission calls just before its own check, so that a test can change the form in the one
-   * moment a busy page could. Only chrome code in the content process can set it; null otherwise.
+   * moment a busy page could. Only chrome code in the content process can set it, and it is read
+   * only in automation (`Cu.isInAutomation`), never in a release; null otherwise.
    * @type {string | null}
    */
-  static _beforeSubmitCheck = null;
+  static _beforeSubmitCheckForTests = null;
 
   /** @type {WeakRef<Element> | null} the last largest scrollable, reused while it can scroll */
   #largest = null;
@@ -807,7 +808,7 @@ export class VimmaChild extends JSWindowActorChild {
     this.#agentClick = sent;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
-      const test = VimmaChild._beforeSubmitCheck;
+      const test = Cu.isInAutomation ? VimmaChild._beforeSubmitCheckForTests : null;
       if (test) {
         try {
           /** @type {any} */ (this.contentWindow)?.wrappedJSObject[test]?.();

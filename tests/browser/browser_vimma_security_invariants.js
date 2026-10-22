@@ -201,3 +201,22 @@ add_task(async function agent_fills_never_set_a_file() {
     "fillField checks the field is no secret and is text before it sets it",
   );
 });
+
+// security.md M28: the child's test hook that runs a page function just before an agent's
+// submission is checked is read only behind Cu.isInAutomation, so a release never runs one,
+// whoever sets it. Comments are left out: they may name the hook.
+add_task(async function the_submit_check_test_hook_is_read_only_in_automation() {
+  const file = "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs";
+  const source = await (await fetch(file)).text();
+  Assert.greater(source.length, 0, "VimmaChild.sys.mjs is read");
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+  const uses = [...code.matchAll(/^.*\b_beforeSubmitCheck\w*.*$/gm)].map((m) => m[0].trim());
+  Assert.deepEqual(
+    uses,
+    [
+      "static _beforeSubmitCheckForTests = null;",
+      "const test = Cu.isInAutomation ? VimmaChild._beforeSubmitCheckForTests : null;",
+    ],
+    "the hook is declared, and read once, behind Cu.isInAutomation",
+  );
+});
