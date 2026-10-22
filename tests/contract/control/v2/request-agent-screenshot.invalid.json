@@ -1,0 +1,13 @@
+{
+  "description": "A screenshot names its tab only, never an area or the user's other tabs",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 14,
+    "command": "agent-screenshot",
+    "args": {
+      "tab": "12",
+      "rect": { "x": 0, "y": 0, "width": 4000, "height": 4000 }
+    }
+  }
+}

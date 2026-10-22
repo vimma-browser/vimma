@@ -1,0 +1,13 @@
+{
+  "description": "A console read never evaluates an expression (mcp-forms F23)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 15,
+    "command": "agent-console",
+    "args": {
+      "tab": "12",
+      "expression": "document.cookie"
+    }
+  }
+}

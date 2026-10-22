@@ -4,7 +4,8 @@
 
 // Spec: docs/specs/firefox-keys.md decision 12 (sub-PR 3). Compares the window's real keys with
 // the inventory, FIREFOX_SHORTCUTS, so a Firefox upgrade that adds, drops or moves a shortcut
-// fails here, in the upgrade PR, with the table row to add or drop (docs/rebase.md step 4).
+// fails here, in the upgrade PR, with the table row to add or drop (docs/rebase.md step 4). On
+// macOS the inventory is FIREFOX_SHORTCUTS_MACOS: accel is cmd, and macOS has keys of its own.
 
 "use strict";
 
@@ -17,7 +18,7 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const { ConfigHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
 );
-const { FIREFOX_SHORTCUTS, xulKeyChord } = ChromeUtils.importESModule(
+const { firefoxShortcuts, xulKeyChord } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/firefox-keys.mjs",
 );
 const { getAction } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/actions.mjs");
@@ -27,6 +28,11 @@ const { makeChordText, parseKey } = ChromeUtils.importESModule(
 const { ShortcutUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/ShortcutUtils.sys.mjs",
 );
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+
+const MAC = AppConstants.platform == "macosx";
+/** This platform's inventory. */
+const FIREFOX_SHORTCUTS = firefoxShortcuts({ mac: MAC });
 
 const ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -55,11 +61,14 @@ async function useConfig(text) {
 function windowKeys() {
   return [...document.querySelectorAll('keyset:not([id^="ext-keyset-id-"]) key')].map((el) => ({
     el,
-    chord: xulKeyChord({
-      key: el.getAttribute("key"),
-      keycode: el.getAttribute("keycode"),
-      modifiers: el.getAttribute("modifiers"),
-    }),
+    chord: xulKeyChord(
+      {
+        key: el.getAttribute("key"),
+        keycode: el.getAttribute("keycode"),
+        modifiers: el.getAttribute("modifiers"),
+      },
+      { mac: MAC },
+    ),
   }));
 }
 
@@ -220,6 +229,46 @@ add_task(async function firefoxs_out_of_keyset_shortcuts_are_all_inventory_rows(
   Assert.equal(swept, Object.keys(NAMED).length * 16, "every combination swept");
 });
 
+add_task(async function firefoxs_character_shortcuts_are_all_inventory_rows() {
+  // ShortcutUtils also maps typed characters (macOS: cmd+{ and cmd+}, by charCode on keypress).
+  // Each printable ASCII character with every ctrl/alt/meta combination; shift is in the
+  // character, as Vimma's notation folds it.
+  const chords = new Set(FIREFOX_SHORTCUTS.map((r) => r.chord));
+  /** @type {string[]} */
+  const found = [];
+  let swept = 0;
+  for (let code = 0x21; code < 0x7f; code++) {
+    const char = String.fromCharCode(code);
+    for (let bits = 1; bits < 8; bits++) {
+      const mods = { ctrl: !!(bits & 1), alt: !!(bits & 2), meta: !!(bits & 4) };
+      const event = new KeyboardEvent("keypress", {
+        charCode: code,
+        ctrlKey: mods.ctrl,
+        altKey: mods.alt,
+        metaKey: mods.meta,
+        shiftKey: /[A-Z~!@#$%^&*()_+{}|:"<>?]/.test(char),
+      });
+      const action = ShortcutUtils.getSystemActionForEvent(event);
+      swept++;
+      if (action == null) continue;
+      const chord = makeChordText(char === "+" ? "plus" : char, mods);
+      found.push(chord);
+      Assert.ok(
+        chords.has(chord),
+        `Firefox shortcut ${chord} (ShortcutUtils ${action}) is new: add it to FIREFOX_SHORTCUTS with a fate`,
+      );
+    }
+  }
+  Assert.equal(swept, 94 * 7, "every character and combination swept");
+  // The rows the sweep checks against Firefox's own handler: macOS's cmd+{ and cmd+}, with and
+  // without ctrl (Tabbrowser ignores it), none on Linux.
+  Assert.deepEqual(
+    found.toSorted(),
+    MAC ? ["ctrl+meta+{", "ctrl+meta+}", "meta+{", "meta+}"] : [],
+    "the character shortcuts",
+  );
+});
+
 add_task(async function out_of_keyset_keys_unbound_change_nothing() {
   // Every chrome row's action without its Firefox chord, and `'` (fate c) in a page.
   await useConfig(
@@ -269,6 +318,14 @@ add_task(async function out_of_keyset_keys_unbound_change_nothing() {
 });
 
 add_task(async function the_menu_bars_access_keys_stay() {
+  if (MAC) {
+    // macOS has no menu access keys: Firefox sets ui.key.menuAccessKey to 0 there
+    // (modules/libpref/init/StaticPrefList.yaml), so no alt+letter opens a menu.
+    Assert.equal(Services.prefs.getIntPref("ui.key.menuAccessKey"), 0, "no menu access key");
+    const rows = FIREFOX_SHORTCUTS.filter((r) => r.source === "menubar");
+    Assert.deepEqual(rows, [], "so the macOS inventory has no menu bar rows");
+    return;
+  }
   const menus = [...document.querySelectorAll("#main-menubar > menu")];
   const keys = menus.map((m) => `alt+${m.getAttribute("accesskey")?.toLowerCase()}`);
   const rows = FIREFOX_SHORTCUTS.filter((r) => r.source === "menubar").map((r) => r.chord);

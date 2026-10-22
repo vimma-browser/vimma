@@ -42,6 +42,7 @@ const { DownloadIntegration } = ChromeUtils.importESModule(
   "resource://gre/modules/DownloadIntegration.sys.mjs",
 );
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 const ARMING = "security.dialog_enable_delay";
@@ -136,8 +137,9 @@ async function fakeClam(mode, { owned = false, defs = 0 } = {}) {
  * @param {number | "none"} defs  days old, or no date
  */
 function version(defs) {
-  const date =
-    defs === "none" ? "" : `/28156/$(date -d '${defs} days ago' '+%a %b %e %H:%M:%S %Y')`;
+  // macOS has BSD date(1), without GNU's -d.
+  const ago = AppConstants.platform === "macosx" ? `-v-${defs}d` : `-d '${defs} days ago'`;
+  const date = defs === "none" ? "" : `/28156/$(date ${ago} '+%a %b %e %H:%M:%S %Y')`;
   return `for a; do [ "$a" = --version ] && { echo "ClamAV 1.5.4${date}"; exit 0; }; done`;
 }
 
@@ -720,9 +722,25 @@ add_task(async function test_clamav_stale_definitions_and_clamd() {
   Assert.ok(r.ok, "saved");
   Assert.deepEqual(await dscanned(), [], "a clamdscan and config of the user's own are not used");
 
-  // The socket's owner, from statx: root's folder is root's and not a socket.
+  // The socket's owner, from statx (Linux) or lstat (macOS): root's folder is root's and not
+  // a socket; a Unix socket of the user's is a socket, owned by someone other than root.
   Assert.deepEqual(AgentDownloads._socketOwnerForTests("/"), { isSocket: false, uid: 0 });
   Assert.equal(AgentDownloads._socketOwnerForTests(PathUtils.join(clamDir, "none")), null);
+  if (AppConstants.platform === "macosx") {
+    // root:admin (0:80), so reading st_gid for st_uid would fail here. Linux has no such path
+    // on every distribution, and its statx fields are named, not laid out by hand.
+    Assert.deepEqual(AgentDownloads._socketOwnerForTests("/Applications"), {
+      isSocket: false,
+      uid: 0,
+    });
+  }
+  const sock = new FileUtils.File(PathUtils.join(clamDir, "s.ctl"));
+  const server = Cc["@mozilla.org/network/server-socket;1"].createInstance(Ci.nsIServerSocket);
+  server.initWithFilename(sock, 0o600, -1);
+  const owner = AgentDownloads._socketOwnerForTests(sock.path);
+  server.close();
+  Assert.equal(owner?.isSocket, true, "a Unix socket is a socket");
+  Assert.ok(Number.isInteger(owner?.uid) && owner?.uid !== 0, "the user's socket is not root's");
   BrowserTestUtils.removeTab(tab);
   await clean();
 });

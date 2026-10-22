@@ -462,6 +462,9 @@ these status checks must pass:
 - `semgrep (javascript, typescript, rust, secrets, github-actions)` (semgrep.yml)
 - `CodeQL (javascript-typescript)` and `CodeQL (rust)` (codeql.yml)
 
+`mochitest (artifact build, macOS)` (e2e.yml) is deliberately not in this list ("macOS
+mochitests" below).
+
 The ruleset also requires CodeQL code scanning results without errors or high-severity alerts.
 `vimma-ctl on macOS` (ci.yml, spec macos-build, sub-PR 2) runs vimma-ctl's clippy and tests on
 `macos-15` and is informational: it is not in the ruleset, so a red run shows on the pull
@@ -481,6 +484,7 @@ with a workflow token (docs/security.md, B5; spec build-supply-chain, decisions 
   once:
   `gh api -X PUT repos/vimma-browser/vimma/actions/permissions -F enabled=true -f allowed_actions=all -F sha_pinning_required=true`,
   and checks it with `gh api repos/vimma-browser/vimma/actions/permissions`.
+- The Homebrew tap takes the same two settings ("Release packages", step 7).
 
 An organization owner also confirms that the organization has no self-hosted runner:
 `gh api orgs/vimma-browser/actions/runners` must report `total_count` 0. A runner registered at
@@ -658,6 +662,45 @@ or containing `esr`, which would make mach search the wrong tree.
 Fork PRs run the same job with a read-only token and no secrets; GitHub asks you to approve
 every run from an external contributor (Settings → Actions → General; the approval policy is
 `all_external_contributors`).
+
+### macOS mochitests (`e2e.yml`, spec macos-build)
+
+The job `mochitest (artifact build, macOS)` runs the front-end tests on a hosted Apple Silicon
+Mac (`macos-15`), as sub-PR 1 of [macos-build](specs/macos-build.md) describes. Its steps: `npm
+ci`; the whole Vitest suite (`npm test`); GNU tar and `gpgv` from Homebrew when the image lacks
+them; `tools/upstream/firefox-source.sh`; `npm run import`;
+`node tools/artifact-build/artifact-build.mjs`, which fetches Mozilla's `macosx64-aarch64-opt`
+build of the same release; and `npm run mochitest -- --artifact tests/browser/`, headless. `df
+-k .` records the free disk before the download, after the unpack and after the tests, because
+GitHub documents only 14 GB for hosted Macs. On a failure the run uploads `mochitest-macos-logs`
+(the mochitests' TBPL log and the objdir's `config.log`, kept 7 days).
+
+It runs on every pull request except a docs-only one, gated by the same `changes` job as the
+Linux job, and on a manual run without a `firefox-version`. It does not run when `upstream.yml` or
+`upstream-beta.yml` call `e2e.yml` with a version, because a macOS failure must never block a
+Linux release (spec macos-build, decision 13). It does not build `vimma-ctl`, so
+`browser_vimma_control.js` skips there; vimma-ctl's own macOS tests run in `ci.yml` (`vimma-ctl
+on macOS`). The e2e scenarios follow with the spec's sub-PR 4.
+
+**Informational, not required.** The job is new and its runner type has no history in this
+repository, so a flaky macOS run would otherwise block every pull request (spec macos-build, open
+question 6). It fails visibly, with no `continue-on-error`, and the ruleset "main" must not list
+it among the required checks ("Merging and branch protection" above). It becomes a candidate for
+a required check once it has been green and not flaky for about two weeks, as the Linux job was.
+
+When it fails:
+
+- **Vitest:** a test that assumes Linux (a path, `/proc`, a shell tool). Make the test or the
+  code portable, or gate the macOS difference on `process.platform === "darwin"`; never loosen a
+  Linux expectation.
+- **Source, import or artifact build:** compare with the Linux job in the same run. If only macOS
+  fails, read the step log and `config.log`; a missing Taskcluster index for
+  `macosx64-aarch64-opt` means Mozilla's build for that revision has expired or does not exist.
+- **Mochitests:** reproduce on a Mac with "Building on macOS" in
+  [CONTRIBUTING.md](../CONTRIBUTING.md). Fix the test or the code; a test that cannot pass on
+  macOS gets `skip-if = ["os == 'mac'"]` in `tests/browser/browser.toml` with a comment naming
+  its issue.
+- A merge with this check red is allowed; the failure then gets an issue of its own.
 
 ### Actions minutes budget
 
@@ -1681,6 +1724,28 @@ neither needs another file.
        "bypass_actors": [ { "actor_type": "DeployKey", "bypass_mode": "always" },
          { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request" } ] }
      JSON
+     ```
+
+   - The tap's check, `.github/workflows/check.yml` in the tap: `brew style` and an offline
+     `brew audit --cask --strict` on `macos-15`, on every pull request and every push to `main`:
+     the checks `tools/package/cask-check.sh` runs here, but on the latest stable Homebrew and
+     the whole tap, so a new Homebrew audit rule can turn the tap red before the `cask` job here. It is not a required check in the ruleset, so
+     `homebrew.yml`'s push lands first and the check then runs on it. When it fails on `main`,
+     the pushed cask came from a release: fix `tools/package/cask.mjs` here and ship a fixed
+     release, since `homebrew.yml` never replaces a newer cask with an older one. Its one action,
+     `Homebrew/actions/setup-homebrew`, is pinned by commit SHA with its tag in a comment, and
+     the tap has no Dependabot: bump it by hand from Homebrew's releases.
+
+   - The tap's Actions settings, as for this repository ("Actions settings", above), which an
+     administrator applies: `sha_pinning_required`, so GitHub refuses any action not pinned to
+     a full commit SHA, and fork pull request approval `all_external_contributors`, so a fork's
+     own workflow files run only once a person approves the run (docs/security.md, B11):
+
+     ```sh
+     gh api -X PUT repos/vimma-browser/homebrew-tap/actions/permissions \
+       -F enabled=true -f allowed_actions=all -F sha_pinning_required=true
+     gh api -X PUT repos/vimma-browser/homebrew-tap/actions/permissions/fork-pr-contributor-approval \
+       -f approval_policy=all_external_contributors
      ```
 
    - A key for the workflow only, with write access to the tap and nothing else:

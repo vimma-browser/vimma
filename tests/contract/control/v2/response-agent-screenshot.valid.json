@@ -1,0 +1,19 @@
+{
+  "description": "A PNG of the viewport in base64 with its size and page, and the two labels drawn",
+  "kind": "response",
+  "command": "agent-screenshot",
+  "message": {
+    "type": "response",
+    "id": 14,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/signup",
+      "title": "Sign up · Example",
+      "mimeType": "image/png",
+      "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgaPgPAAIDAYAkYfWXAAAAAElFTkSuQmCC",
+      "width": 1,
+      "height": 1,
+      "labels": 2
+    }
+  }
+}

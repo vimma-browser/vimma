@@ -2,6 +2,55 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. From the first release on, release-please writes each release's entry from the Conventional Commits on `main` ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.7](https://github.com/vimma-browser/vimma/compare/v0.1.6...v0.1.7) · Firefox 158.0.1 (2026-10-22)
+
+
+### Added
+
+* **bookmarks:** firefox's bookmarks toolbar hidden by default ([#438](https://github.com/vimma-browser/vimma/issues/438)) ([3e5fed1](https://github.com/vimma-browser/vimma/commit/3e5fed1f29b96bcd42ec80d93a7786f89cef2122)), closes [#214](https://github.com/vimma-browser/vimma/issues/214)
+* **copy:** ip and ap select the block around the caret ([#451](https://github.com/vimma-browser/vimma/issues/451)) ([ed08a47](https://github.com/vimma-browser/vimma/commit/ed08a47b8203dd9dfe91a7a0c83de65a396246b0))
+* **element:** focus a block, then v selects it and y copies it ([#449](https://github.com/vimma-browser/vimma/issues/449)) ([375684a](https://github.com/vimma-browser/vimma/commit/375684a7f7d134a319a978d8661f98c9c4383c8c)), closes [#213](https://github.com/vimma-browser/vimma/issues/213)
+* **hints:** text blocks as hint targets ([#447](https://github.com/vimma-browser/vimma/issues/447)) ([7643f5a](https://github.com/vimma-browser/vimma/commit/7643f5ac61b1a5dae576ab770b44f816069fbc43)), closes [#213](https://github.com/vimma-browser/vimma/issues/213)
+* **keys:** `F` starts element focus, `gF` opens a link in the background ([#453](https://github.com/vimma-browser/vimma/issues/453)) ([775b45f](https://github.com/vimma-browser/vimma/commit/775b45f416de5152be09ca06c3a7e3c30d3c2aa4)), closes [#213](https://github.com/vimma-browser/vimma/issues/213)
+* **mcp:** full control says it reaches beyond the agent workspace ([#441](https://github.com/vimma-browser/vimma/issues/441)) ([b3bd8f9](https://github.com/vimma-browser/vimma/commit/b3bd8f93c9284c933524d897b8dc52f343700cd0))
+* **mcp:** vimma_activate clicks by hint label ([#472](https://github.com/vimma-browser/vimma/issues/472)) ([5a15c32](https://github.com/vimma-browser/vimma/commit/5a15c32613b797a585f0759a8737d5e03cf81ad4))
+* **mcp:** vimma_console reads a page's errors and failed requests ([#482](https://github.com/vimma-browser/vimma/issues/482)) ([14af7d0](https://github.com/vimma-browser/vimma/commit/14af7d0dcb966dfd7caf4a75877a4f5f6203836c))
+* **mcp:** vimma_elements lists a page's buttons and fields by hint label ([#471](https://github.com/vimma-browser/vimma/issues/471)) ([dcb7487](https://github.com/vimma-browser/vimma/commit/dcb7487dc02fd5df2e48a7178a8cc86172d9c56b))
+* **mcp:** vimma_fill fills fields, never passwords or payment fields ([#474](https://github.com/vimma-browser/vimma/issues/474)) ([7f536ac](https://github.com/vimma-browser/vimma/commit/7f536acac02058c87e3f2408deb57df5466ea269))
+* **mcp:** vimma_keys follows links by hint label ([#455](https://github.com/vimma-browser/vimma/issues/455)) ([0c3c401](https://github.com/vimma-browser/vimma/commit/0c3c4011476023add114fe7df98e0ef6b87c559f))
+* **mcp:** vimma_keys scrolls, finds and goes back in an agent tab ([#450](https://github.com/vimma-browser/vimma/issues/450)) ([b596440](https://github.com/vimma-browser/vimma/commit/b596440b145b83675296b3b681214d5369cebc4f))
+* **mcp:** vimma_screenshot shows an agent tab ([#480](https://github.com/vimma-browser/vimma/issues/480)) ([7215505](https://github.com/vimma-browser/vimma/commit/72155051bfaec7571c9c90929d053367f6376ce6))
+* **mcp:** vimma_show brings the agent workspace to the front ([#459](https://github.com/vimma-browser/vimma/issues/459)) ([5af9cf4](https://github.com/vimma-browser/vimma/commit/5af9cf4b02438603aec7bd148509ef3bc250d172))
+* **packaging:** an .rpm for fedora and opensuse ([#448](https://github.com/vimma-browser/vimma/issues/448)) ([0d76cfa](https://github.com/vimma-browser/vimma/commit/0d76cfaac0977e8d89fc40906c0d9a47123f342e)), closes [#294](https://github.com/vimma-browser/vimma/issues/294)
+* **sites:** a snapshot gate that replays recorded pages offline on every pull request ([#446](https://github.com/vimma-browser/vimma/issues/446)) ([dd71c74](https://github.com/vimma-browser/vimma/commit/dd71c74ab5e496dc2d942b1983b04fc668e8e4d4))
+* **sites:** night-to-night diff, a rolling site-compat issue and one retry of blocked sites ([#437](https://github.com/vimma-browser/vimma/issues/437)) ([a0247d4](https://github.com/vimma-browser/vimma/commit/a0247d4cf8a1f1561b0012eeb17f5362f05c62fb))
+* **split:** a 3 px border in the theme's focus colour marks the focused pane ([#431](https://github.com/vimma-browser/vimma/issues/431)) ([5a7203f](https://github.com/vimma-browser/vimma/commit/5a7203feacf77e6da0d5b3e207640a2901f241fc)), closes [#362](https://github.com/vimma-browser/vimma/issues/362)
+* **updates:** :restart, and an installed security update asks to restart ([#454](https://github.com/vimma-browser/vimma/issues/454)) ([660af98](https://github.com/vimma-browser/vimma/commit/660af9844bed58673dbda8d65a6430fb50317de3))
+* **updates:** the appimage replaces its own file with a verified newer release ([#430](https://github.com/vimma-browser/vimma/issues/430)) ([d20bc3b](https://github.com/vimma-browser/vimma/commit/d20bc3b7784d555ccf58148f68d7ebacb2a2775a))
+* **updates:** update notices on macos ([620fdef](https://github.com/vimma-browser/vimma/commit/620fdefef059e75386bb2be9ffb9720e3fef21ba)), closes [#393](https://github.com/vimma-browser/vimma/issues/393)
+* **updates:** with checks off, updates: off shows for a few seconds at startup ([#457](https://github.com/vimma-browser/vimma/issues/457)) ([09a15c2](https://github.com/vimma-browser/vimma/commit/09a15c273ab193f4634f3990e79f0d7859ce647e))
+
+
+### Fixed
+
+* **build:** npm run build runs surfer build under a python mach supports ([#460](https://github.com/vimma-browser/vimma/issues/460)) ([a84946d](https://github.com/vimma-browser/vimma/commit/a84946d6c690dacaaf24141e67f8c55f6ee8f448)), closes [#458](https://github.com/vimma-browser/vimma/issues/458)
+* **commitlint:** skip dependabot commits that write bump in lower case ([#421](https://github.com/vimma-browser/vimma/issues/421)) ([0ee6c71](https://github.com/vimma-browser/vimma/commit/0ee6c71155b68f10898227827c53e8db19cfdd64))
+* **copy:** { and } step past a paragraph's source white space ([#463](https://github.com/vimma-browser/vimma/issues/463)) ([60c463c](https://github.com/vimma-browser/vimma/commit/60c463c6935d8a514b15b2425bb81d103b256b16)), closes [#461](https://github.com/vimma-browser/vimma/issues/461)
+* **find:** a page's own focus on a field a find matched in enters insert mode ([#445](https://github.com/vimma-browser/vimma/issues/445)) ([3300eb9](https://github.com/vimma-browser/vimma/commit/3300eb98b7808d5ad2f0beb7b8f31773142f03b2)), closes [#442](https://github.com/vimma-browser/vimma/issues/442)
+* **hints:** every entry of an open dropdown menu gets a label ([#428](https://github.com/vimma-browser/vimma/issues/428)) ([c03bb0b](https://github.com/vimma-browser/vimma/commit/c03bb0b358fddfdce882328a482df75a5eddca56)), closes [#329](https://github.com/vimma-browser/vimma/issues/329)
+* **macos:** platform fallbacks ([#414](https://github.com/vimma-browser/vimma/issues/414)) ([4304712](https://github.com/vimma-browser/vimma/commit/430471269d7c3cdcf0c04d1f46b54d01e30b9e9e))
+* **mochitest:** run mach with a python inside the range mach supports ([#436](https://github.com/vimma-browser/vimma/issues/436)) ([190739c](https://github.com/vimma-browser/vimma/commit/190739c0e71c3bb9138f0c018934b61761b4281b)), closes [#435](https://github.com/vimma-browser/vimma/issues/435)
+* **private:** the swap waits up to 2 s for hyprland to name a starting window ([0820c9e](https://github.com/vimma-browser/vimma/commit/0820c9e1a06e6d633d1d7e24a5d4d2b2c9f95b0c))
+* **prompts:** the password prompt's fields keep their keys, and the keys line says esc first ([#432](https://github.com/vimma-browser/vimma/issues/432)) ([35d017f](https://github.com/vimma-browser/vimma/commit/35d017ff78e9eab48ca9d7252badbd61fe1a4f60))
+* **prompts:** y and n typed into live grep or a search no longer answer a permission prompt ([#491](https://github.com/vimma-browser/vimma/issues/491)) ([0f1c26d](https://github.com/vimma-browser/vimma/commit/0f1c26d4cc34691c30d772dea88ef1f447f49453))
+* **theme:** every mode badge keeps a colour of its own under any theme ([#464](https://github.com/vimma-browser/vimma/issues/464)) ([3792de4](https://github.com/vimma-browser/vimma/commit/3792de4067bbe7da2994f3b005be571375412d95)), closes [#462](https://github.com/vimma-browser/vimma/issues/462)
+* **workspaces:** keys typed while a new start page loads reach vimma ([#417](https://github.com/vimma-browser/vimma/issues/417)) ([3ce256c](https://github.com/vimma-browser/vimma/commit/3ce256c8d09191d381f7b9cb09790a2c29219f08)), closes [#388](https://github.com/vimma-browser/vimma/issues/388)
+
+
+### Changed
+
+* Firefox 158.0.1 ([MFSA 2026-111](https://www.mozilla.org/en-US/security/advisories/mfsa2026-111/)) ([#425](https://github.com/vimma-browser/vimma/issues/425)) ([7748419](https://github.com/vimma-browser/vimma/commit/7748419063371dd7b8878f2d4b36e46c198572b7))
+
 ## [Unreleased]
 
 ### Added
@@ -10,11 +59,18 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Element focus: a text block chosen with `:focus_element` (or a key bound to `focus_element`) is in the new `ELEMENT` mode, where `y` copies it, `v` / `V` select it in copy mode, `+` / `-` and `j` / `k` move the focus and `F` picks another block. The help and `defaults.toml` snapshots gain the `[modal.element]` keys and the full `focus_element` description.
 - Agents (MCP): `vimma_show` lets an agent show you one of the agent workspace's tabs. It asks every time, with only `y` and `n`; on `y` the window that holds the tab switches to the agent workspace with that tab selected, never raising or focusing a window, and `ctrl+^` brings you back to your workspace and split. The e2e baselines `m0-mcp-drive-keys-question` and `m0-mcp-drive-shown` are new, from the `m0-mcp-drive` scenario that drives the real `vimma-ctl mcp` through `vimma_keys` and `vimma_show`.
 - Copy mode: `ip` selects the text block around the caret, the one element focus would select, and `ap` grows the selection to the block around it on each press. The help and `defaults.toml` snapshots gain the two keys.
+- e2e baselines `m0-mcp-forms-fill-question` and `m0-mcp-forms-submit-question` (scenario `m0-mcp-forms`): the question line asking to fill two fields of a sign-up form, and the question asking to submit it, as the real `vimma-ctl mcp` lists the form, is refused its password field, fills it, takes a labelled screenshot, submits it and reads the failed request that follows.
 - e2e baselines `element-hints.png`, `element-focus.png` and `element-visual.png` (scenario `issue-213-element-focus`): `F`'s labels on an article's text blocks, a focused paragraph with its outline and `ELEMENT` badge, and that paragraph selected in copy mode.
 - The AppImage updates itself: it replaces its own file with a newer release checked against the signed update file, and runs it from the next start.
 - Agents (MCP): `vimma_keys` scrolls, finds and goes back or forward in an agent tab without bringing it to the front, from a fixed set of Vimma's default keys; it asks first, shows the keys it will run, and `:mcp log` lists the last 100 agent calls.
 - Agents (MCP): `vimma_keys` lists an agent tab's visible links by hint label and follows one in the same tab, never as a click and with no referrer; a link to another site asks first unless the agent holds an open grant.
 - Updates: with update checks off, a dim `updates: off` segment shows for a few seconds at startup, once per session.
+- Agents (MCP): `vimma_elements` lists the buttons, fields and links on screen in an agent tab by hint label; password, one-time-code and payment card fields are marked sensitive and never show a value.
+- Agents (MCP): `vimma_activate` clicks buttons, links and checkboxes in an agent tab by hint label, in the background and without user activation; a form submission asks every time, and one a page makes by itself after an agent's click is stopped.
+- Agents (MCP): `vimma_fill` fills form fields in an agent tab, never passwords, payment card, one-time-code or file fields; a fill that submits asks every time and shows every value.
+- Agents (MCP): `vimma_screenshot` shows an agent tab as an image, taken in the background, with its `vimma_elements` labels drawn on it if asked; it is never taken while a password, one-time-code or card field on screen has a value.
+- Agents (MCP): `vimma_console` reads an agent tab's script errors, console errors and warnings, and failed requests, without running page code.
+- Packaging: an `.rpm` for Fedora and openSUSE, installed and checked with dnf and zypper; `:update` shows the dnf and zypper commands for it.
 
 ### Changed
 

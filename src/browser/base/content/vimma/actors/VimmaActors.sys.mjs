@@ -597,6 +597,93 @@ export const VimmaActors = {
   },
 
   /**
+   * Whether any frame of `browser` shows a sensitive field with a value in its viewport, just
+   * before and just after an agent's screenshot is drawn (docs/specs/mcp-forms.md F21). Every
+   * frame is asked in its own process: `shown` when one says so or fails; `unchecked` when a
+   * frame has no actor (a data: or blob: document) or does not answer within `ms`, which refuses
+   * too; else `clear`.
+   * @param {any} browser XULBrowserElement
+   * @param {number} ms
+   * @returns {Promise<"shown" | "unchecked" | "clear">}
+   */
+  async agentSensitiveShown(browser, ms) {
+    /** @type {any[]} BrowsingContexts */
+    const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
+    /** @type {number | undefined} */
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms, "late");
+    });
+    try {
+      const answers = await Promise.all(
+        frames
+          .filter((bc) => bc.currentWindowGlobal)
+          .map(async (bc) => {
+            const actor = actorFor(bc);
+            if (!actor) return "unchecked";
+            try {
+              const r = await Promise.race([actor.sendQuery("Vimma:AgentSensitiveShown"), late]);
+              if (r === "late") return "unchecked";
+              return r === false ? "clear" : "shown";
+            } catch {
+              return "shown"; // the frame navigated or its process went away mid-check
+            }
+          }),
+      );
+      if (answers.includes("shown")) return "shown";
+      return answers.includes("unchecked") ? "unchecked" : "clear";
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
+   * Each frame's own script errors and console errors and warnings, for an agent's
+   * `vimma_console` (docs/specs/mcp-forms.md F22, F24): the first `frames` frames are asked, each
+   * in its own process, for its newest `max` entries after `since` and how many more it holds.
+   * The answer is the child's, which the caller checks entry by entry. A frame that has no actor
+   * (a data: or blob: document), fails or does not answer within `ms` answers nothing.
+   * @param {any} browser XULBrowserElement
+   * @param {number} ms
+   * @param {{ since: number, max: number, frames?: number }} ask
+   * @returns {Promise<{ entries: unknown[], omitted: number }[]>}
+   */
+  async agentConsole(browser, ms, { since, max, frames: most = 100 }) {
+    /** @type {any[]} BrowsingContexts */
+    const frames = (browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []).slice(
+      0,
+      most,
+    );
+    /** @type {number | undefined} */
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms, null);
+    });
+    try {
+      return await Promise.all(
+        frames.map(async (bc) => {
+          const none = { entries: [], omitted: 0 };
+          const actor = actorFor(bc);
+          if (!actor) return none;
+          try {
+            const r = await Promise.race([
+              actor.sendQuery("Vimma:AgentConsole", { since, max }),
+              late,
+            ]);
+            if (!r || !Array.isArray(r.entries)) return none;
+            const omitted = Number.isSafeInteger(r.omitted) && r.omitted > 0 ? r.omitted : 0;
+            return { entries: r.entries.slice(0, max), omitted };
+          } catch {
+            return none; // the frame navigated or its process went away
+          }
+        }),
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
    * Whether the agent's last click on `target` ran, or was skipped because the page changed
    * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away
    * (the click loaded a page) ran it.

@@ -436,9 +436,13 @@ export function ranNotice(q, until, now) {
                     ? `clicked ${clean(w.kind)} "${cutTitle(w.text)}" in "${cutTitle(w.title)}"`
                     : q.tool === "vimma_fill"
                       ? `filled ${fieldCount(w.fields)} in "${cutTitle(w.title)}"`
-                      : q.tool === DOWNLOAD_TOOL
-                        ? `downloads "${cutTitle(w.name)}"`
-                        : `used ${q.tool}`;
+                      : q.tool === "vimma_screenshot"
+                        ? `took a screenshot of "${cutTitle(w.title)}"`
+                        : q.tool === "vimma_console"
+                          ? `read the errors of "${cutTitle(w.title)}"`
+                          : q.tool === DOWNLOAD_TOOL
+                            ? `downloads "${cutTitle(w.name)}"`
+                            : `used ${q.tool}`;
   return `${clientName(q.label)} ${did} (grant, ${left}m left)`;
 }
 
@@ -481,6 +485,8 @@ const ASKS = Object.freeze({
   vimma_elements: "list a page's buttons and fields",
   vimma_activate: "click on a page",
   vimma_fill: "fill in a form",
+  vimma_screenshot: "take a screenshot of a page",
+  vimma_console: "read a page's errors and failed requests",
   [DOWNLOAD_TOOL]: "download a file",
 });
 

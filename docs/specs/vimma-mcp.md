@@ -1,6 +1,6 @@
 # Spec: vimma-mcp
 
-Status: accepted (sub-PRs 1-4 implemented; agents act on pages: #231) · Area: `tools/vimma-ctl` (`src/mcp.rs`, `src/mcp_serve.rs`, `src/client.rs`,
+Status: implemented · Area: `tools/vimma-ctl` (`src/mcp.rs`, `src/mcp_serve.rs`, `src/client.rs`,
 `src/protocol.rs`, `src/cli.rs`); `packages/vimma-core/src/` (`control.mjs`, `agent.mjs`,
 `agent-prompt.mjs`, `agent-downloads.mjs`, `config.mjs`, `defaults.mjs`, `actions.mjs`,
 `cmdline.mjs`, `statusbar.mjs`, `workspacedefs.mjs`, `workspaces.mjs`); `ctl/VimmaControl.sys.mjs`,
@@ -912,7 +912,12 @@ outdated definitions (ClamAV)`. An infected verdict is refused however old the d
     root or by `clamav` (its uid from /etc/passwd). The owner is read with `statx(2)` through
     js-ctypes, not following a symlink, because no Firefox file API gives it and the no-op chmod
     proves only "not the user's"; statx, not stat, because struct statx has one layout on every
-    Linux architecture. clamdscan runs with `--config-file=<that file> --fdpass --no-summary
+    Linux architecture. macOS has no statx, so there the owner is read with `lstat(2)` from
+    `/usr/lib/libSystem.B.dylib` (an absolute path, since dyld searches the working directory for a
+    bare name), because Darwin's `struct stat` (64-bit inodes) has one 144-byte layout
+    on arm64 and x86_64 (`sys/stat.h`, `__DARWIN_STRUCT_STAT64`, checked against the macOS 26.5
+    SDK); x86_64 exports it as `lstat$INODE64`, since its plain `lstat` takes the 32-bit-inode
+    struct. Any other platform gives no owner, so clamd is not used there. clamdscan runs with `--config-file=<that file> --fdpass --no-summary
 --stdout --` and the path; `--fdpass` because clamd runs as another user and may not be able
     to open the quarantine. Its exit codes read as clamscan's. On any failure (no clamd, an
     error, a timeout, stale or undated definitions) the file is scanned by clamscan, with
@@ -1128,10 +1133,11 @@ One sub-PR at a time, after firefox-keys sub-PR 2 (both change the keymap; this 
 | 2c  | `feat(mcp): agent downloads, asked and quarantined`                | Decision 31.                                                                                                                                                                                                                                                          | merged (#182) |
 | 2d  | `feat(mcp): ClamAV definitions age and clamdscan`                  | Decisions 43-45: `[mcp] clamav_max_age_days`, the stale-definitions question, clamdscan with its config and socket checks, the clamscan fallback.                                                                                                                     | merged (#355) |
 | 3   | `feat(vimma-ctl): vimma-ctl mcp, an MCP server over stdio`         | Decisions 35-41: `src/mcp.rs` and `src/mcp_serve.rs` (dual-era server, tool table and fixture, protocol-2 client, keep-alive, error texts), `agent-cancel`; Rust unit, integration and property tests; the e2e harness's `mcp` steps and the `m0-mcp-stdio` scenario. | merged (#243) |
-| 4   | `docs(guide): set up Claude Code, Codex, opencode and Copilot`     | The guide's "Agents (MCP)" in full: the threat model in plain words, each tool's setup run against a real install with the version tested, timeouts, grants, sharing a tab, revoking, why `vimma.control.enabled` stays off; README feature line; limits.md.          | this PR       |
+| 4   | `docs(guide): set up Claude Code, Codex, opencode and Copilot`     | The guide's "Agents (MCP)" in full: the threat model in plain words, each tool's setup run against a real install with the version tested, timeouts, grants, sharing a tab, revoking, why `vimma.control.enabled` stays off; README feature line; limits.md.          | merged (#361) |
 
-Out of scope: Agent `send-keys`, clicks, form filling and screenshots (later specs, decision 6;
-showing pages and page keys are [mcp-drive](mcp-drive.md)); `:pipe <cmd>` sending page context to a local tool; MCP over HTTP or a listener inside the browser;
+Out of scope: Agent `send-keys`, clicks, form filling and screenshots (later specs, decision 6:
+page keys and showing pages are [mcp-drive](mcp-drive.md), clicks, form filling and screenshots
+[mcp-forms](mcp-forms.md)); `:pipe <cmd>` sending page context to a local tool; MCP over HTTP or a listener inside the browser;
 MCP resources, prompts, sampling and elicitation; several agent workspaces (one per agent); macOS
 (`/proc` parent name and notifications differ; the macOS spec takes it up); Windows.
 

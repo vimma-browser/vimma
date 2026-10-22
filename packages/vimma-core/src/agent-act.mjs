@@ -507,3 +507,291 @@ export function fillDetail(fields, submit) {
   const { method, action, fields: n } = submit;
   return `${what} → ${method.toUpperCase()} ${action} (${n} field${n === 1 ? "" : "s"})`;
 }
+
+/**
+ * `vimma_screenshot` (F18, F19): the image is at most `width` pixels wide and `height` high, its
+ * base64 at most `base64` characters, so the reply fits the protocol's 1 MiB line; a PNG that
+ * does not fit is encoded as JPEG at each of `jpeg`'s qualities in turn.
+ */
+export const AGENT_SCREENSHOT = Object.freeze({
+  width: 1280,
+  height: 16384,
+  base64: 700 * 1024,
+  jpeg: Object.freeze([0.8, 0.6]),
+});
+
+/**
+ * The scale a viewport `width` by `height` CSS pixels is drawn at (F18): the device pixel ratio,
+ * or less so the image is at most AGENT_SCREENSHOT.width pixels wide and AGENT_SCREENSHOT.height
+ * high; null when there is nothing to draw. Without a height only the width limits it.
+ * @param {number} width @param {number} dpr @param {number} [height]
+ * @returns {number | null}
+ */
+export function screenshotScale(width, dpr, height = 1) {
+  if (!(width > 0) || !(height > 0)) return null;
+  const ratio = dpr > 0 ? dpr : 1;
+  return Math.min(ratio, AGENT_SCREENSHOT.width / width, AGENT_SCREENSHOT.height / height);
+}
+
+/**
+ * Where each label of an element list is drawn on a screenshot (F20): at its element's top left
+ * corner (top-frame CSS pixels, scaled), kept inside the image; a label whose element is not on
+ * the image is left out.
+ * @param {Map<string, { rect: { x: number, y: number, width: number, height: number } }>} labels
+ * @param {number} scale
+ * @param {{ width: number, height: number }} size  the image's, in pixels
+ * @returns {{ label: string, x: number, y: number }[]}
+ */
+export function screenshotLabels(labels, scale, size) {
+  const out = [];
+  for (const [label, { rect }] of labels) {
+    const x = rect.x * scale;
+    const y = rect.y * scale;
+    const right = (rect.x + rect.width) * scale;
+    const bottom = (rect.y + rect.height) * scale;
+    if (right <= 0 || bottom <= 0 || x >= size.width || y >= size.height) continue;
+    out.push({ label, x: Math.max(0, x), y: Math.max(0, y) });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// `vimma_console` (F22-F24; security.md M30, M31).
+
+/**
+ * F24: at most `errors` errors and `requests` failed requests a reply, each message cut at
+ * `message` and each URL or file at `url` characters, the two lists at most `bytes` of the
+ * reply line; at most `log` failed requests kept per agent tab.
+ */
+export const AGENT_CONSOLE = Object.freeze({
+  errors: 100,
+  requests: 100,
+  message: 1000,
+  url: 512,
+  log: 100,
+  bytes: 512 * 1024,
+  frames: 100,
+});
+
+/** Where an error entry comes from: a script error's category, or the page's own console call. */
+export const CONSOLE_SOURCES = Object.freeze([
+  "script",
+  "console",
+  "csp",
+  "mixed-content",
+  "cors",
+  "network",
+  "other",
+]);
+
+/** nsIScriptError's flags (dom/bindings/nsIScriptError.idl): error is 0, warning 1, info 8. */
+const WARNING_FLAG = 0x1;
+const INFO_FLAG = 0x8;
+
+/**
+ * An nsIScriptError's level (F22): `error` or `warn`, as WebDriver BiDi's ConsoleListener maps
+ * its flags; null for info and anything that is no flag word, which the reply leaves out.
+ * @param {unknown} flags
+ * @returns {"error" | "warn" | null}
+ */
+export function scriptErrorLevel(flags) {
+  if (typeof flags !== "number" || !Number.isInteger(flags) || flags < 0) return null;
+  if (flags & WARNING_FLAG) return "warn";
+  if (flags & INFO_FLAG) return null;
+  return "error";
+}
+
+/**
+ * Where an nsIScriptError comes from, by Firefox's category for it (F22): a fixed word, so the
+ * reply carries no category name of Firefox's that a later version might add.
+ * @param {unknown} category
+ * @returns {typeof CONSOLE_SOURCES[number]}
+ */
+export function scriptErrorSource(category) {
+  const c = typeof category === "string" ? category : "";
+  if (/\bCSP\b/.test(c)) return "csp";
+  if (/mixed content/i.test(c)) return "mixed-content";
+  if (/\bCORS\b/.test(c)) return "cors";
+  if (/javascript/i.test(c)) return "script";
+  if (/\b(SSL|Security|HTTPS|SRI|Network|Cookie)/i.test(c)) return "network";
+  return "other";
+}
+
+/**
+ * A console call's arguments as one message (F23; security.md M30): strings as they are,
+ * numbers, booleans, bigints, null and undefined as their text, and any other value only as its
+ * type in brackets (`[object]`, `[function]`), read with `typeof`, so no getter, `toString` or
+ * proxy trap of the page runs.
+ * @param {unknown} args
+ */
+export function consoleArgsText(args) {
+  if (!Array.isArray(args)) return "";
+  // A page may log a string of any size, or any number of arguments: each is cut, and the
+  // joining stops, once there is more than a message's worth (the caller cuts it to size).
+  const room = 2 * AGENT_CONSOLE.message;
+  let out = "";
+  for (let i = 0; i < args.length && out.length < room; i++) {
+    const v = args[i];
+    const type = typeof v;
+    /** @type {string} */
+    let text;
+    if (type === "string") text = /** @type {string} */ (v).slice(0, room);
+    else if (v === null) text = "null";
+    else if (type === "number" || type === "boolean" || type === "bigint" || type === "undefined") {
+      text = String(v);
+    } else text = `[${type}]`;
+    out = out ? `${out} ${text}` : text;
+  }
+  return out.slice(0, room);
+}
+
+/**
+ * Channel statuses that end a request without its failing (F22): a navigation's cancel, the first
+ * leg of a redirect, and a load handed to a download.
+ */
+const NOT_FAILED = Object.freeze([
+  "NS_BINDING_ABORTED",
+  "NS_BINDING_REDIRECTED",
+  "NS_BINDING_RETARGETED",
+]);
+
+/**
+ * Whether a stopped request failed (F22): an HTTP status of 400 or above, or a channel error by
+ * its name; null when it did not.
+ * @param {number} status  the response's HTTP status, 0 without a response
+ * @param {string | null} error  the channel's status name, null when it succeeded
+ * @returns {{ status?: number, error?: string } | null}
+ */
+export function requestFailure(status, error) {
+  if (error && NOT_FAILED.includes(error)) return null;
+  const bad = Number.isInteger(status) && status >= 400 && status <= 999;
+  if (!bad && !error) return null;
+  return { ...(bad ? { status } : {}), ...(error ? { error } : {}) };
+}
+
+/**
+ * One error entry: its level and source, the message, the file, line and column it names, and
+ * when it was logged (ms since the epoch).
+ * @typedef {{ level: "error" | "warn", source: typeof CONSOLE_SOURCES[number], message: string,
+ *   file: string, line: number, column: number, time: number }} ConsoleEntry
+ */
+
+/**
+ * One failed request: method, URL, status or error, Firefox's content type of the request, time.
+ * @typedef {{ method: string, url: string, status?: number, error?: string, type: string,
+ *   time: number }} RequestEntry
+ */
+
+/** @param {unknown} n */
+const isCountOf = (n) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+
+/**
+ * An error entry from a frame's child (F22), checked like any reply from a content process: the
+ * level, the source and the numbers must be what the child may send, and the strings are cut.
+ * @param {unknown} raw
+ * @returns {ConsoleEntry | null}
+ */
+export function parseConsoleEntry(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const r = /** @type {Record<string, unknown>} */ (raw);
+  if (r.level !== "error" && r.level !== "warn") return null;
+  if (!CONSOLE_SOURCES.includes(/** @type {any} */ (r.source))) return null;
+  if (typeof r.message !== "string" || typeof r.file !== "string") return null;
+  if (!isCountOf(r.line) || !isCountOf(r.column) || !isCountOf(r.time)) return null;
+  return {
+    level: r.level,
+    source: /** @type {ConsoleEntry["source"]} */ (r.source),
+    // Sliced first: a content process's string of any size is never spread whole.
+    message: cutTo(r.message.slice(0, 4 * AGENT_CONSOLE.message), AGENT_CONSOLE.message),
+    file: cutTo(r.file.slice(0, 4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url),
+    line: /** @type {number} */ (r.line),
+    column: /** @type {number} */ (r.column),
+    time: /** @type {number} */ (r.time),
+  };
+}
+
+/**
+ * `url` without a user name and password, which a script's or request's URL may carry and which
+ * are never the agent's (security.md M30).
+ * @param {string} url
+ */
+const withoutUserinfo = (url) => url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#@]*@/i, "$1");
+
+/**
+ * A frame's entries as it answers them (F24): only those after `since`, newest first, at most
+ * `max`, so that no frame sends more than one reply's worth to the parent.
+ * @template {{ time: number }} T
+ * @param {readonly T[]} entries @param {number} since @param {number} max
+ * @returns {T[]}
+ */
+export function newestEntries(entries, since, max) {
+  return entries
+    .filter((e) => e.time > since)
+    .sort((a, b) => b.time - a.time)
+    .slice(0, max);
+}
+
+/** @param {ConsoleEntry} e */
+const errorLine = (e) =>
+  jsonLine({
+    level: e.level,
+    source: e.source,
+    message: valueText(e.message, AGENT_CONSOLE.message),
+    file: cutTo(withoutUserinfo(shown(e.file).replace(/\s/g, "")), AGENT_CONSOLE.url),
+    line: e.line,
+    column: e.column,
+    time: e.time,
+  });
+
+/** @param {RequestEntry} r */
+const requestLine = (r) =>
+  jsonLine({
+    method: line(r.method, 16),
+    url: cutTo(withoutUserinfo(shown(r.url).replace(/\s/g, "")), AGENT_CONSOLE.url),
+    ...(r.status !== undefined ? { status: r.status } : {}),
+    ...(r.error !== undefined ? { error: line(r.error, 64) } : {}),
+    type: line(r.type, 32),
+    time: r.time,
+  });
+
+/**
+ * The two lists of a reply (F22, F24; security.md M31): the entries newer than `since`, newest
+ * first, at most AGENT_CONSOLE.errors and AGENT_CONSOLE.requests, one JSON object a line; past
+ * `maxBytes` of the two JSON-encoded texts together the oldest entries of either are left out.
+ * Every entry left out is counted in `dropped`. The browser wraps each text in the
+ * untrusted-content delimiters.
+ * @param {readonly ConsoleEntry[]} errors @param {readonly RequestEntry[]} requests
+ * @param {number} since @param {number} maxBytes
+ * @returns {{ errors: string, requests: string, dropped: number }}
+ */
+export function consoleLists(errors, requests, since, maxBytes) {
+  const newest = (/** @type {{ time: number }} */ a, /** @type {{ time: number }} */ b) =>
+    b.time - a.time;
+  const e = errors.filter((x) => x.time > since).sort(newest);
+  const r = requests.filter((x) => x.time > since).sort(newest);
+  const total = e.length + r.length;
+  const shownE = e
+    .slice(0, AGENT_CONSOLE.errors)
+    .map((x) => ({ time: x.time, text: errorLine(x), e: true }));
+  const shownR = r
+    .slice(0, AGENT_CONSOLE.requests)
+    .map((x) => ({ time: x.time, text: requestLine(x), e: false }));
+  const encoder = new TextEncoder();
+  // Each line counts with its \n (2 bytes in JSON); newest first across both lists.
+  let bytes = 4;
+  /** @type {string[]} */
+  const outE = [];
+  /** @type {string[]} */
+  const outR = [];
+  for (const x of [...shownE, ...shownR].sort(newest)) {
+    const cost = encoder.encode(JSON.stringify(x.text)).length - 2 + 2;
+    if (bytes + cost > maxBytes) break;
+    bytes += cost;
+    (x.e ? outE : outR).push(x.text);
+  }
+  return {
+    errors: outE.join("\n"),
+    requests: outR.join("\n"),
+    dropped: total - outE.length - outR.length,
+  };
+}
