@@ -477,7 +477,7 @@ add_task(async function a_symlinked_appimage_is_not_replaced() {
   await IOUtils.remove(link).catch(() => {});
   // nsIFile has no symlink creation; a relative link through the shell would need a process.
   const ln = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-  ln.initWithPath("/usr/bin/ln");
+  ln.initWithPath("/bin/ln"); // macOS has no /usr/bin/ln; Linux has both
   const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
   proc.init(ln);
   proc.run(true, ["-s", appImage, link], 3);
