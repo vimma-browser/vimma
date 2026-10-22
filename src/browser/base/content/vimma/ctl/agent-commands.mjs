@@ -6,7 +6,7 @@
 // tabs of the agent workspace, run Vimma's own page keys in one, following its links by label
 // (docs/specs/mcp-drive.md, `agent-keys`), show one to the user (`agent-show`), and list one's
 // buttons, fields and links with labels (docs/specs/mcp-forms.md, `agent-elements`), click one
-// by its label (`agent-activate`), and nothing else. What an agent can reach is decided here, in
+// by its label (`agent-activate`), fill fields by their labels (`agent-fill`), and nothing else. What an agent can reach is decided here, in
 // the browser, when each command runs (decision 7): a tab of the agent workspace **and** of its
 // container, in a normal window (private windows have no workspaces and are never enumerated).
 // Every command but hello and ping asks through AgentGate first (decision 12), and after the
@@ -22,10 +22,11 @@ import {
   SHOW_RATE,
   wrapUntrusted,
 } from "../core/agent.mjs";
-import { actDetail } from "../core/agent-act.mjs";
+import { actDetail, fillDetail } from "../core/agent-act.mjs";
 import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
 import { shownNotice } from "../core/agent-prompt.mjs";
 import { MAX_LINE_LENGTH, MAX_READ_CHARS } from "../core/control.mjs";
+import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { workspaceOfTab } from "../core/workspaces.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { AgentUi } from "../host/agent-ui.mjs";
@@ -64,7 +65,10 @@ const keyCalls = new CallRate(KEYS_RATE);
 const showCalls = new CallRate(SHOW_RATE);
 /** Each connection's `agent-elements`: at most ELEMENTS_RATE a minute, counted when asked (F26). */
 const elementCalls = new CallRate(ELEMENTS_RATE);
-/** Each connection's `agent-activate`: at most ACT_RATE a minute, counted when asked (F26). */
+/**
+ * Each connection's `agent-activate` and `agent-fill`: at most ACT_RATE a minute together,
+ * counted when asked (F26).
+ */
 const actCalls = new CallRate(ACT_RATE);
 /** The longest URL and title an `agent-elements` reply carries, in code points. */
 const ELEMENTS_URL_MAX = 8192;
@@ -815,6 +819,195 @@ const COMMANDS = {
     return {
       url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      loading: result.loading,
+      navigated: result.navigated,
+      ...(result.dialog ? { dialog: result.dialog } : {}),
+      ...(result.blocked ? { blocked: result.blocked } : {}),
+      ...(result.stopped ? { stopped: result.stopped } : {}),
+    };
+  },
+
+  /**
+   * Fills fields of an agent tab, by their labels from the connection's last `vimma_elements`
+   * there (mcp-forms F12-F14; security.md M27): every field is checked before the question and
+   * any refused one refuses the call; a fill that submits asks every time (F15, M28); the fields
+   * are set in the background, in order, each checked again in its child just before. A tab the
+   * user is using is `in-use` (F27). Fills share the clicks' rate (F26).
+   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   */
+  async "agent-fill"(conn, state, { tab: id, fields, submit: submitArg }, rid) {
+    const agent = agentWorkspace();
+    const asked = findAgentTab(agent, id);
+    const browser = asked.tab.linkedBrowser;
+    const labels = fields.map((/** @type {any} */ f) => f.label).join(" ");
+    const base = { ...describeTab(asked.tab), index: asked.index, detail: labels };
+    /**
+     * A refusal outside the gate goes into `:mcp log` too (M23, M32).
+     * @param {any} outcome @param {unknown} error @param {object} [what] @param {string} [why]
+     */
+    const refuse = (outcome, error, what = base, why) => {
+      AgentGate.note(conn, "vimma_fill", what, outcome, why);
+      return error;
+    };
+    // Counted when asked, before anything else is learnt, so a refused call cannot loop (F26).
+    if (!actCalls.take(conn, Date.now())) {
+      const message =
+        "too many vimma_activate and vimma_fill calls from this agent in the last minute";
+      throw refuse("busy", new AgentError("denied", message, "busy"));
+    }
+    if (VimmaHost.inUse(browser)) throw refuse("in-use", denied("in-use"));
+    /** @type {{ label: string, target: any, value: string | boolean, name: string,
+     *   field: import("../core/agent-act.mjs").FillTarget }[]} */
+    const steps = [];
+    for (const { label, value } of fields) {
+      const found = AgentDrive.element(conn, browser, label);
+      if ("refused" in found) throw refuse("failed", new AgentError("failed", found.refused));
+      let checked;
+      try {
+        checked = await AgentAct.fillable(browser, found.target, label, value);
+      } catch (e) {
+        // Fixed text: an error's message could carry the page's words past the untrusted header.
+        console.error("vimma agent-fill:", e);
+        checked = { refused: "Vimma could not check this field" };
+      }
+      if ("refused" in checked) throw refuse("failed", new AgentError("failed", checked.refused));
+      steps.push({ label, target: found.target, value, name: checked.name, field: checked.field });
+    }
+    /** @type {{ by: "click" | "form", target: any, submit: { method: string,
+     *   action: string, fields: number } } | null} */
+    let submitting = null;
+    if (typeof submitArg === "string") {
+      const found = AgentDrive.element(conn, browser, submitArg);
+      if ("refused" in found) throw refuse("failed", new AgentError("failed", found.refused));
+      let checked;
+      try {
+        checked = await AgentAct.clickable(browser, found.target, submitArg);
+      } catch (e) {
+        console.error("vimma agent-fill:", e);
+        checked = { refused: "Vimma could not check this element" };
+      }
+      if ("refused" in checked) throw refuse("failed", new AgentError("failed", checked.refused));
+      if (!checked.element.submit) {
+        const message = `label "${submitArg}" is not a submit button: submit takes a submit button's label, or true`;
+        throw refuse("failed", new AgentError("failed", message));
+      }
+      submitting = { by: "click", target: found.target, submit: checked.element.submit };
+    } else if (submitArg === true) {
+      const first = steps[0];
+      const key = first?.target.form?.key;
+      if (!first || !key || steps.some((s) => s.target.form?.key !== key)) {
+        const message = "submit: true sends one form: every field must be in one form";
+        throw refuse("failed", new AgentError("failed", message));
+      }
+      const own = first.field.submit;
+      if (!own) {
+        const message =
+          "that form cannot be sent from here (its default button is disabled, or it only closes a dialog)";
+        throw refuse("failed", new AgentError("failed", message));
+      }
+      submitting = { by: "form", target: first.target, submit: own };
+    }
+    if (submitting && submitting.submit.action.length >= ELEMENT_REPLY_CAPS.action) {
+      const message = "that form's destination is too long to show; nothing was asked";
+      throw refuse("failed", new AgentError("failed", message));
+    }
+    // A fill may load a page (a change handler's, or the submit), which is an open (F11).
+    if (!opens.can(conn, Date.now())) {
+      const message = "too many loads from this agent in the last minute";
+      throw refuse("busy", new AgentError("denied", message, "busy"));
+    }
+    /** @type {{ method: string, action: string, host: string, fields: number } | undefined} */
+    let submit;
+    if (submitting) {
+      let host = "";
+      try {
+        host = /** @type {any} */ (Services.io.newURI(submitting.submit.action)).host;
+      } catch {
+        // no host to show in bold
+      }
+      submit = { ...submitting.submit, action: wf(submitting.submit.action), host: wf(host) };
+    }
+    const shownFields = steps.map((s) => ({
+      label: s.label,
+      name: wf(s.name),
+      value: typeof s.value === "string" ? wf(s.value) : s.value,
+    }));
+    const what = {
+      ...base,
+      fields: shownFields,
+      detail: wf(fillDetail(shownFields, submitting?.submit)),
+      ...(submit ? { submit } : {}),
+    };
+    // F15: a submission asks every time, also under a grant, and its yes makes no grant.
+    await ask(conn, "agent-fill", what, state, rid, undefined, !!submit);
+    let found2;
+    try {
+      found2 = stillAsAsked(agent, id, what.url);
+    } catch (e) {
+      throw refuse("changed", e, what);
+    }
+    const { win, tab } = found2;
+    if (VimmaHost.inUse(tab.linkedBrowser)) throw refuse("in-use", denied("in-use"), what);
+    const result = await AgentAct.fill(
+      tab.linkedBrowser,
+      steps.map((s) => ({
+        label: s.label,
+        target: s.target,
+        value: s.value,
+        expect: { field: /** @type {string} */ (s.field.field), type: s.field.type ?? null },
+      })),
+      {
+        submit: submitting
+          ? {
+              by: submitting.by,
+              target: submitting.target,
+              // Only that submission is let through, to the method and destination asked about.
+              submit: { method: submitting.submit.method, action: submitting.submit.action },
+            }
+          : null,
+        inUse: () => VimmaHost.inUse(tab.linkedBrowser),
+        still: () => {
+          try {
+            stillAsAsked(agent, id, what.url);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      },
+    );
+    /** M23, M28: a submission Vimma stopped is a row of its own, naming where it would have gone. */
+    const noteBlocked = (/** @type {string} */ host) =>
+      AgentGate.note(
+        conn,
+        "vimma_fill",
+        { ...what, detail: `${what.detail} · stopped a form to ${host}` },
+        "stopped",
+        "unasked submission",
+      );
+    if ("refused" in result) {
+      if (result.blocked) noteBlocked(result.blocked);
+      const outcome = result.changed ? "stopped" : "failed";
+      throw refuse(outcome, new AgentError("failed", result.refused), what, "changed");
+    }
+    if (result.navigated) {
+      // The page the labels named is gone, and the load was an open of this connection's.
+      AgentDrive.drop(conn, tab.linkedBrowser);
+      opens.take(conn, Date.now());
+    }
+    const now = WorkspaceStore.agent;
+    if (!now || now.id !== agent.id || win.closed || !isAgentTab(win, tab, agent)) {
+      // The tab left the agent workspace during the fill: nothing of it is said.
+      AgentGate.note(conn, "vimma_fill", what, "stopped", "changed");
+      throw new AgentError("failed", "the tab left the agent workspace during the fill");
+    }
+    if (result.blocked) noteBlocked(result.blocked);
+    if (result.stopped) AgentGate.note(conn, "vimma_fill", what, "stopped", result.stopped);
+    return {
+      url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
+      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      filled: result.filled,
+      ...(result.reset ? { reset: result.reset } : {}),
       loading: result.loading,
       navigated: result.navigated,
       ...(result.dialog ? { dialog: result.dialog } : {}),

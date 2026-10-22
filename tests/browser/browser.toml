@@ -222,6 +222,13 @@ support-files = [
   "head_vimma_control.js",
 ]
 
+["browser_vimma_mcp_fill.js"]
+support-files = [
+  "file_vimma_agent_fill.html",
+  "file_vimma_agent_page.html",
+  "head_vimma_control.js",
+]
+
 ["browser_vimma_mcp_show.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 

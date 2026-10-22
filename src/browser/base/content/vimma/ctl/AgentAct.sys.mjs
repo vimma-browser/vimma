@@ -18,11 +18,18 @@
 // frame and however started, without the user's own activation and other than the one the
 // question allowed, is cancelled at its request; the result names the hosts of those, whether a
 // page loaded, and a dialog the page opened, which no agent answers.
+//
+// `fill` sets fields of that list (F12-F14; security.md M27) as form autofill does: the field's
+// child checks that it is still what the question showed and not sensitive, just before each
+// set, and sets it with `setUserInput`, a select's own end of a user's choice, or a checkbox's
+// `click()`, never focusing it. The tab is marked first, as for a click, and a submission the
+// question allowed (a submit button's click, or the form's default submission) runs last.
 
 import {
   AGENT_ELEMENTS,
   actRefusal,
   agentElementList,
+  fillRefusal,
   labelAgentElements,
 } from "../core/agent-act.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
@@ -142,6 +149,60 @@ function hostOf(principal) {
   }
 }
 
+/**
+ * @typedef {{ refused: string, filled: number, changed?: boolean, blocked?: string }
+ *   | { filled: number, reset?: string[], navigated: boolean, loading: boolean,
+ *   dialog?: { type: string, text: string }, blocked?: string, stopped?: "in-use" }} FillResult
+ */
+
+/** @param {any} browser  its top document and URL now */
+const pageOf = (browser) => ({ doc: docOf(browser), url: String(browser.currentURI?.spec ?? "") });
+
+/**
+ * Watches for a tab-modal dialog the page of `browser` opens (F11): the first one's type and
+ * text, inside the untrusted-content delimiters.
+ * @param {any} browser XULBrowserElement
+ */
+function watchDialogs(browser) {
+  const top = browser.browsingContext;
+  const seen = {
+    /** @type {{ type: string, text: string } | null} */
+    dialog: null,
+    stop: () => Services.obs.removeObserver(observer, "common-dialog-loaded"),
+  };
+  const observer = (/** @type {any} */ subject) => {
+    try {
+      const args = subject?.Dialog?.args ?? subject?.args;
+      if (seen.dialog || args?.owningBrowsingContext?.top !== top) return;
+      const type = DIALOGS[String(args.promptType)];
+      if (!type) return;
+      const text = wf(cutTo(shown(String(args.text ?? "")), DIALOG_TEXT_MAX));
+      seen.dialog = { type, text: wrapUntrusted(text) };
+    } catch {
+      // not a dialog of this tab
+    }
+  };
+  Services.obs.addObserver(observer, "common-dialog-loaded");
+  return seen;
+}
+
+/**
+ * The page after an agent's step: whether a new document loaded and is still loading, the
+ * dialog it opened, the first submission Vimma stopped, and why the wait stopped early.
+ * @param {any} browser XULBrowserElement @param {{ doc: number }} before
+ * @param {{ type: string, text: string } | null} dialog @param {string[]} blocked
+ * @param {"in-use" | undefined} stopped
+ */
+function afterStep(browser, before, dialog, blocked, stopped) {
+  return {
+    navigated: docOf(browser) !== before.doc,
+    loading: !!browser.webProgress?.isLoadingDocument,
+    ...(dialog ? { dialog } : {}),
+    ...(blocked.length ? { blocked: blocked[0] } : {}),
+    ...(stopped ? { stopped } : {}),
+  };
+}
+
 export const AgentAct = {
   /** Test-only: SETTLE_MS's place, so a test of many clicks stays quick. */
   _settleMs: /** @type {number | null} */ (null),
@@ -205,25 +266,10 @@ export const AgentAct = {
    *   stopped?: "in-use" }>}
    */
   async activateNow(browser, target, { submit, href, inUse }) {
-    const before = { doc: docOf(browser), url: String(browser.currentURI?.spec ?? "") };
+    const before = pageOf(browser);
     const marked = await bounded(VimmaActors.agentMark(browser, submit), false, COLLECT_TIMEOUT_MS);
     if (!marked) return { refused: "the page did not answer in time" };
-    /** @type {{ type: string, text: string } | null} */
-    let dialog = null;
-    const top = browser.browsingContext;
-    const observer = (/** @type {any} */ subject) => {
-      try {
-        const args = subject?.Dialog?.args ?? subject?.args;
-        if (dialog || args?.owningBrowsingContext?.top !== top) return;
-        const type = DIALOGS[String(args.promptType)];
-        if (!type) return;
-        const text = wf(cutTo(shown(String(args.text ?? "")), DIALOG_TEXT_MAX));
-        dialog = { type, text: wrapUntrusted(text) };
-      } catch {
-        // not a dialog of this tab
-      }
-    };
-    Services.obs.addObserver(observer, "common-dialog-loaded");
+    const dialogs = watchDialogs(browser);
     try {
       // The child clicks nothing once this call has stopped waiting for its answer.
       const until = Date.now() + COLLECT_TIMEOUT_MS - 1000;
@@ -236,26 +282,7 @@ export const AgentAct = {
       if (reply === "changed") {
         return { refused: "the element changed since it was asked about; nothing was clicked" };
       }
-      const start = Date.now();
-      const settle = this._settleMs ?? SETTLE_MS;
-      let started = false;
-      /** @type {"in-use" | undefined} */
-      let stopped;
-      for (;;) {
-        await sleep(50);
-        if (dialog) break;
-        if (inUse()) {
-          stopped = "in-use";
-          break;
-        }
-        const loading = !!browser.webProgress?.isLoadingDocument;
-        const moved =
-          docOf(browser) !== before.doc || String(browser.currentURI?.spec ?? "") !== before.url;
-        if (loading || moved) started = true;
-        if (started && !loading) break;
-        if (!started && Date.now() - start >= settle) break;
-        if (Date.now() - start >= LOAD_TIMEOUT_MS) break;
-      }
+      const stopped = await this.waitForPage(browser, before, dialogs, inUse);
       const outcome = await bounded(
         VimmaActors.agentClickOutcome(target),
         "clicked",
@@ -269,17 +296,198 @@ export const AgentAct = {
           ...(blocked.length ? { blocked: blocked[0] } : {}),
         };
       }
-      return {
-        navigated: docOf(browser) !== before.doc,
-        loading: !!browser.webProgress?.isLoadingDocument,
-        ...(dialog ? { dialog } : {}),
-        ...(blocked.length ? { blocked: blocked[0] } : {}),
-        ...(stopped ? { stopped } : {}),
-      };
+      return afterStep(browser, before, dialogs.dialog, blocked, stopped);
     } finally {
       // On every path: no allowance outlives its call.
       VimmaActors.agentSettle(browser);
-      Services.obs.removeObserver(observer, "common-dialog-loaded");
+      dialogs.stop();
+    }
+  },
+
+  /**
+   * Waits after an agent's step for a page it started (up to 20 s), a dialog it opened, or the
+   * user starting to use the tab (F11, F27); a step that has started no load within a second is
+   * taken to have none.
+   * @param {any} browser XULBrowserElement @param {{ doc: number, url: string }} before
+   * @param {{ dialog: { type: string, text: string } | null }} dialogs
+   * @param {() => boolean} inUse
+   * @returns {Promise<"in-use" | undefined>}
+   */
+  async waitForPage(browser, before, dialogs, inUse) {
+    const start = Date.now();
+    const settle = this._settleMs ?? SETTLE_MS;
+    let started = false;
+    for (;;) {
+      await sleep(50);
+      if (dialogs.dialog) return undefined;
+      if (inUse()) return "in-use";
+      const loading = !!browser.webProgress?.isLoadingDocument;
+      const now = pageOf(browser);
+      if (loading || now.doc !== before.doc || now.url !== before.url) started = true;
+      if (started && !loading) return undefined;
+      if (!started && Date.now() - start >= settle) return undefined;
+      if (Date.now() - start >= LOAD_TIMEOUT_MS) return undefined;
+    }
+  },
+
+  /**
+   * The field a label names, as it is now, if an agent may fill it with `value` (F4, F6, F13;
+   * security.md M27): what the question shows (its name and how it is set), or why it is
+   * refused. Nothing on the page changes.
+   * @param {any} browser XULBrowserElement @param {HintTarget} target @param {string} label
+   * @param {string | boolean} value
+   * @returns {Promise<{ field: import("../core/agent-act.mjs").FillTarget, name: string }
+   *   | { refused: string }>}
+   */
+  async fillable(browser, target, label, value) {
+    if (!onTheWeb(target.wg?.documentPrincipal) || !onTheWeb(browser.contentPrincipal)) {
+      return { refused: "fields are filled only on http and https pages" };
+    }
+    const field = await bounded(
+      VimmaActors.agentInspectFill(target, value),
+      null,
+      COLLECT_TIMEOUT_MS,
+    );
+    if (!field) return { refused: "the page did not answer in time" };
+    const refused = fillRefusal(label, field, value);
+    if (refused) return { refused };
+    // The field's name for the question, as the list shows page text (security.md M31).
+    const name = cutTo(
+      shown(field.caption || field.name || "")
+        .replace(/\s+/g, " ")
+        .trim(),
+      AGENT_ELEMENTS.text,
+    );
+    return { field, name };
+  },
+
+  /**
+   * Fills fields in the background, in order (F12, F13, F16; security.md M27, M28), once
+   * `fillable` said each may be and the user allowed it, then submits their form when the
+   * question said so: through `submit.target`'s submit button (`click`) or the form's default
+   * submission (`form`). Before each field the tab must still be the agent's (`still`) and not
+   * in use; a field that changed since the question stops the call. Then waits as after a click.
+   * @param {any} browser XULBrowserElement
+   * @param {{ label: string, target: HintTarget, value: string | boolean,
+   *   expect: { field: string, type: string | null } }[]} steps
+   * @param {{ submit: { by: "click" | "form", target: HintTarget,
+   *   submit: { method: string, action: string } } | null, inUse: () => boolean,
+   *   still: () => boolean }} asked
+   * @returns {Promise<FillResult>}
+   */
+  fill(browser, steps, asked) {
+    const last = running.get(browser) ?? Promise.resolve();
+    const run = last.then(() => this.fillNow(browser, steps, asked));
+    running.set(
+      browser,
+      run.catch(() => {}),
+    );
+    return run;
+  },
+
+  /**
+   * `fill`, once no other step runs on the tab.
+   * @param {any} browser XULBrowserElement
+   * @param {{ label: string, target: HintTarget, value: string | boolean,
+   *   expect: { field: string, type: string | null } }[]} steps
+   * @param {{ submit: { by: "click" | "form", target: HintTarget,
+   *   submit: { method: string, action: string } } | null, inUse: () => boolean,
+   *   still: () => boolean }} asked
+   * @returns {Promise<FillResult>}
+   */
+  async fillNow(browser, steps, { submit, inUse, still }) {
+    const before = pageOf(browser);
+    const marked = await bounded(
+      VimmaActors.agentMark(browser, submit?.submit ?? null),
+      false,
+      COLLECT_TIMEOUT_MS,
+    );
+    if (!marked) return { refused: "the page did not answer in time", filled: 0 };
+    const dialogs = watchDialogs(browser);
+    let filled = 0;
+    /** @type {string[]} */
+    const reset = [];
+    /**
+     * The call stops at `label`: what happened, and how far it got.
+     * @param {string} why @param {string} [label]
+     */
+    const stop = (why, label) => {
+      const blocked = VimmaActors.agentSettle(browser);
+      const n = `${filled} of ${steps.length} field${steps.length === 1 ? " was" : "s were"}`;
+      return {
+        refused: `${label ? `field "${label}" ` : ""}${why}; ${n} filled, nothing more was done`,
+        filled,
+        changed: true,
+        ...(blocked.length ? { blocked: blocked[0] } : {}),
+      };
+    };
+    try {
+      /** @type {"in-use" | undefined} */
+      let stopped;
+      for (const step of steps) {
+        if (dialogs.dialog) break;
+        if (inUse()) {
+          stopped = "in-use";
+          break;
+        }
+        if (!still()) return stop("the tab changed since the user was asked");
+        // The child sets nothing once this call has stopped waiting for its answer.
+        const until = Date.now() + COLLECT_TIMEOUT_MS - 1000;
+        const reply = await bounded(
+          VimmaActors.agentFill(step.target, { value: step.value, expect: step.expect, until }),
+          "gone",
+          COLLECT_TIMEOUT_MS,
+        );
+        if (reply === "gone") return stop("is gone", step.label);
+        if (reply === "changed") return stop("changed since the user was asked", step.label);
+        let outcome = "pending";
+        const start = Date.now();
+        while (outcome === "pending" && !dialogs.dialog) {
+          if (Date.now() - start >= COLLECT_TIMEOUT_MS) break;
+          await sleep(10);
+          outcome = await bounded(VimmaActors.agentFillOutcome(step.target), "pending", 1000);
+        }
+        if (outcome === "skipped") return stop("changed since the user was asked", step.label);
+        if (outcome === "gone") return stop("is gone: its page went away", step.label);
+        if (outcome === "pending" && !dialogs.dialog) {
+          return stop("did not answer in time", step.label);
+        }
+        // A dialog the page opened while the field was set: its value is in, its events ran.
+        filled++;
+        if (outcome === "reset") reset.push(step.label);
+      }
+      if (submit && filled === steps.length && !dialogs.dialog && !stopped) {
+        // The question showed the values the form would send: the page's own are not those.
+        if (reset.length) return stop("was put back by the page; the form was not sent", reset[0]);
+        if (inUse()) stopped = "in-use";
+        else if (!still()) return stop("the tab changed before the form was sent");
+        else {
+          const until = Date.now() + COLLECT_TIMEOUT_MS - 1000;
+          const reply = await bounded(
+            submit.by === "click"
+              ? VimmaActors.agentActivate(submit.target, {
+                  submit: submit.submit,
+                  href: null,
+                  until,
+                })
+              : VimmaActors.agentSubmit(submit.target, { submit: submit.submit, until }),
+            "gone",
+            COLLECT_TIMEOUT_MS,
+          );
+          if (reply !== "ok")
+            return stop("the form changed since the user was asked; it was not sent");
+        }
+      }
+      stopped = (await this.waitForPage(browser, before, dialogs, inUse)) ?? stopped;
+      const blocked = VimmaActors.agentSettle(browser);
+      return {
+        filled,
+        ...(reset.length ? { reset } : {}),
+        ...afterStep(browser, before, dialogs.dialog, blocked, stopped),
+      };
+    } finally {
+      VimmaActors.agentSettle(browser);
+      dialogs.stop();
     }
   },
 

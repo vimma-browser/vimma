@@ -10,7 +10,7 @@
  */
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./agent.mjs";
-import { isAgentLabel } from "./agent-act.mjs";
+import { AGENT_FILL, isAgentLabel } from "./agent-act.mjs";
 import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
@@ -32,8 +32,8 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
  * `notifications/cancelled`). `agent-keys` runs Vimma's own page keys in an agent tab, and
  * `agent-show` brings the agent workspace to the front with one agent tab selected
  * (docs/specs/mcp-drive.md D2, D8, D19). `agent-elements` lists an agent tab's buttons, fields
- * and links with hint labels (docs/specs/mcp-forms.md F2), and `agent-activate` clicks one by its
- * label (F8).
+ * and links with hint labels (docs/specs/mcp-forms.md F2), `agent-activate` clicks one by its
+ * label (F8), and `agent-fill` fills fields by their labels (F12).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -47,6 +47,7 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-show",
   "agent-elements",
   "agent-activate",
+  "agent-fill",
 ]);
 /** Why `agent-activate`'s wait after the click stopped early (mcp-forms F27). */
 export const ACTIVATE_STOPS = Object.freeze(["in-use"]);
@@ -340,6 +341,51 @@ function checkAgentActivateArgs(args, errors) {
   }
 }
 
+/** Control characters a fill's value must not hold: all but the line break (mcp-forms F14). */
+// eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+const FILL_CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
+
+/** @param {unknown} v  a fill's value: true, false, or a text within its cap (mcp-forms F14) */
+const isFillValue = (v) =>
+  typeof v === "boolean" ||
+  (typeof v === "string" && [...v].length <= AGENT_FILL.value && !FILL_CONTROL.test(v));
+
+/** @param {Obj} args @param {string[]} errors */
+function checkAgentFillArgs(args, errors) {
+  noExtraFields(args, ["tab", "fields", "submit"], errors, "args.");
+  checkTabArg(args, errors);
+  const { fields } = args;
+  if (!Array.isArray(fields) || fields.length < 1 || fields.length > AGENT_FILL.fields) {
+    errors.push(`fields must be a list of 1 to ${AGENT_FILL.fields} fields`);
+  } else {
+    const seen = new Set();
+    fields.forEach((f, i) => {
+      const at = `args.fields[${i}]`;
+      if (!isObject(f)) {
+        errors.push(`${at} must be an object`);
+        return;
+      }
+      noExtraFields(f, ["label", "value"], errors, `${at}.`);
+      if (!isAgentLabel(f.label)) {
+        errors.push(`${at}.label must be 1 to 3 of the hint characters ${DEFAULT_HINT_CHARS}`);
+      } else if (seen.has(f.label)) {
+        errors.push("fields must name each label once");
+      } else seen.add(f.label);
+      if (!isFillValue(f.value)) {
+        errors.push(
+          `${at}.value must be true, false or a text of at most ${AGENT_FILL.value} characters ` +
+            "without control characters but line breaks",
+        );
+      }
+    });
+  }
+  if ("submit" in args && args.submit !== true && !isAgentLabel(args.submit)) {
+    errors.push(
+      `submit must be true or a label of 1 to 3 of the hint characters ${DEFAULT_HINT_CHARS}`,
+    );
+  }
+}
+
 /** @param {Obj} m @param {string[]} errors */
 function checkRequest(m, errors) {
   noExtraFields(m, ["type", "id", "command", "args"], errors);
@@ -359,6 +405,7 @@ function checkRequest(m, errors) {
   else if (command === "agent-open") checkAgentOpenArgs(args, errors);
   else if (command === "agent-keys") checkAgentKeysArgs(args, errors);
   else if (command === "agent-activate") checkAgentActivateArgs(args, errors);
+  else if (command === "agent-fill") checkAgentFillArgs(args, errors);
   else if (command === "agent-close" || command === "agent-show" || command === "agent-elements") {
     // A show names its tab only, never a workspace (mcp-drive D2); a list takes no selector.
     noExtraFields(args, ["tab"], errors, "args.");
@@ -431,10 +478,10 @@ const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
  * and why the wait stopped early.
  * @param {Obj} result @param {string[]} errors
  */
-function checkActivateResult(result, errors) {
+function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([])) {
   noExtraFields(
     result,
-    ["url", "title", "loading", "navigated", "dialog", "blocked", "stopped"],
+    ["url", "title", "loading", "navigated", "dialog", "blocked", "stopped", ...extra],
     errors,
     "result.",
   );
@@ -462,6 +509,22 @@ function checkActivateResult(result, errors) {
   }
   if ("stopped" in result && !ACTIVATE_STOPS.includes(/** @type {any} */ (result.stopped))) {
     errors.push(`result.stopped must be ${ACTIVATE_STOPS.join(" or ")}`);
+  }
+}
+
+/**
+ * `agent-fill`'s result (mcp-forms F12): how many fields were set, the labels of those whose
+ * value the page put back, then the page as after a click (F11, F16).
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkFillResult(result, errors) {
+  checkActivateResult(result, errors, ["filled", "reset"]);
+  if (!isCount(result.filled)) errors.push("result.filled must be a non-negative integer");
+  if (
+    "reset" in result &&
+    !(Array.isArray(result.reset) && result.reset.every((l) => isAgentLabel(l)))
+  ) {
+    errors.push("result.reset must be a list of labels");
   }
 }
 
@@ -560,6 +623,8 @@ function checkAgentResult(result, command, errors) {
     checkElementsResult(result, errors);
   } else if (command === "agent-activate") {
     checkActivateResult(result, errors);
+  } else if (command === "agent-fill") {
+    checkFillResult(result, errors);
   }
 }
 

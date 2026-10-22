@@ -12,7 +12,7 @@
 
 import { AGENT_LINKS, cutTo, labelAgentLinks, shown } from "./agent-keys.mjs";
 import { DEFAULT_HINT_CHARS } from "./hints.mjs";
-import { ELEMENT_KINDS, ELEMENT_REPLY_CAPS } from "./agent-element.mjs";
+import { ELEMENT_KINDS, ELEMENT_REPLY_CAPS, isSensitiveAutocomplete } from "./agent-element.mjs";
 
 export {
   ELEMENT_KINDS,
@@ -290,4 +290,174 @@ export function actDetail(label, t) {
   if (!t.submit) return what;
   const { method, action, fields } = t.submit;
   return `${what} → ${method.toUpperCase()} ${action} (${fields} field${fields === 1 ? "" : "s"})`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// `vimma_fill` (F12-F14).
+
+/**
+ * F14: at most `fields` fields a call, each value at most `value` characters (code points), no
+ * control character but a line break, and that only in a text area.
+ */
+export const AGENT_FILL = Object.freeze({ fields: 32, value: 1024 });
+
+/** What a field is to a fill (F12, F13): how it is set, or why it is not. */
+const FILL_FIELDS = Object.freeze([
+  "text",
+  "textarea",
+  "select",
+  "checkbox",
+  "radio",
+  "file",
+  "editable",
+  "hidden",
+  "none",
+]);
+/** Why a field is sensitive, as the refusal names it (F6). */
+const SECRETS = /** @type {Record<string, string>} */ ({
+  password: "password",
+  card: "payment card",
+  code: "one-time-code",
+});
+
+/**
+ * @typedef {object} FillTarget  a field now, as its frame's child sees it just before a fill
+ * @property {boolean} alive  still in its document (F4)
+ * @property {string} [kind]  one of ELEMENT_KINDS
+ * @property {string} [field]  one of FILL_FIELDS
+ * @property {string} [type]
+ * @property {string} [name]
+ * @property {string} [caption]
+ * @property {string} [autocomplete]
+ * @property {string} [secret]  `password`, `card` or `code`: never filled (F6)
+ * @property {boolean} [disabled]
+ * @property {boolean} [readonly]
+ * @property {boolean} [checked]
+ * @property {boolean} [accepts]  the value asked for parses for the field, or names an option
+ * @property {ActSubmit} [submit]  where the field's form goes when submitted with its default
+ *   button (F15)
+ */
+
+/**
+ * A child's account of a field before a fill, checked like any reply from a content process: a
+ * fresh copy with only the known fields, or null when anything is wrong.
+ * @param {unknown} value
+ * @returns {FillTarget | null}
+ */
+export function parseFillTarget(value) {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const v = /** @type {Record<string, unknown>} */ (value);
+    if (typeof v.alive !== "boolean") return null;
+    if (!v.alive) return { alive: false };
+    if (typeof v.kind !== "string" || !ELEMENT_KINDS.includes(v.kind)) return null;
+    if (typeof v.field !== "string" || !FILL_FIELDS.includes(v.field)) return null;
+    /** @type {Record<string, unknown>} */
+    const out = { alive: true, kind: v.kind, field: v.field };
+    for (const [key, max] of /** @type {const} */ ([
+      ["type", ELEMENT_REPLY_CAPS.type],
+      ["name", ELEMENT_REPLY_CAPS.name],
+      ["caption", ELEMENT_REPLY_CAPS.caption],
+      ["autocomplete", ELEMENT_REPLY_CAPS.autocomplete],
+    ])) {
+      if (v[key] === undefined) continue;
+      if (!isText(v[key], max)) return null;
+      out[key] = v[key];
+    }
+    if (v.secret !== undefined) {
+      if (typeof v.secret !== "string" || !(v.secret in SECRETS)) return null;
+      out.secret = v.secret;
+    }
+    for (const key of ["disabled", "readonly", "checked", "accepts"]) {
+      if (v[key] === undefined) continue;
+      if (typeof v[key] !== "boolean") return null;
+      if (v[key] || key === "checked" || key === "accepts") out[key] = v[key];
+    }
+    if (v.submit !== undefined) {
+      const parsed = parseActTarget({ alive: true, kind: v.kind, text: "", submit: v.submit });
+      if (!parsed?.submit) return null;
+      out.submit = parsed.submit;
+    }
+    return /** @type {FillTarget} */ (out);
+  } catch {
+    return null;
+  }
+}
+
+/** Why an autocomplete field name makes a field sensitive (F6), or undefined. @param {unknown} name */
+function secretOf(name) {
+  if (!isSensitiveAutocomplete(name)) return undefined;
+  if (name === "one-time-code") return "code";
+  return String(name).startsWith("cc-") ? "card" : "password";
+}
+
+/** @param {unknown} s  an agent's value, shown in a refusal on one line */
+const shownValue = (s) => cutTo(String(s).replace(/\s+/g, " "), AGENT_ELEMENTS.text);
+
+/**
+ * Why a fill of `t` with `value` is refused, before anything is asked (F6, F13; security.md
+ * M27), or null when it may be asked. A field whose autocomplete name is sensitive is
+ * sensitive, whatever the child says.
+ * @param {string} label @param {FillTarget} t @param {string | boolean} value
+ * @returns {string | null}
+ */
+export function fillRefusal(label, t, value) {
+  if (!t.alive) return "that element is gone: call vimma_elements again";
+  const secret = t.secret ?? secretOf(t.autocomplete);
+  if (secret) {
+    return `field "${label}" is a ${SECRETS[secret]} field; Vimma never fills it: ask the user to type it`;
+  }
+  switch (t.field) {
+    case "file":
+      return `field "${label}" is a file field; Vimma never fills it: ask the user to choose the file`;
+    case "editable":
+      return `label "${label}" is a rich text editor; Vimma does not fill those`;
+    case "none":
+      return `label "${label}" is a ${t.kind}, not a field: use vimma_activate`;
+    case "hidden":
+      return `field "${label}" is hidden`;
+  }
+  if (t.disabled) return `field "${label}" is disabled`;
+  if (t.readonly) return `field "${label}" is read-only`;
+  if (t.field === "checkbox") {
+    return typeof value === "boolean"
+      ? null
+      : `field "${label}" is a checkbox: its value is true or false`;
+  }
+  if (t.field === "radio") {
+    if (value === true) return null;
+    return value === false
+      ? `field "${label}" is a radio button: to unselect it, fill another of its group with true`
+      : `field "${label}" is a radio button: its value is true`;
+  }
+  if (typeof value !== "string") return `field "${label}" takes text, not true or false`;
+  if (t.field !== "textarea" && value.includes("\n")) {
+    return `field "${label}" is one line: its value must not contain a line break`;
+  }
+  if (t.accepts === false) {
+    return t.field === "select"
+      ? `select "${label}" has no option with the value or text "${shownValue(value)}"`
+      : `field "${label}" does not take "${shownValue(value)}" as a ${t.type ?? "value"}`;
+  }
+  return null;
+}
+
+/**
+ * What a fill is, for `:mcp log` (F14, F28): each field's label, name and value in full (the
+ * log is in memory only), and for a submit its method, destination and number of fields.
+ * @param {readonly { label: string, name: string, value: string | boolean }[]} fields
+ * @param {ActSubmit} [submit]
+ */
+export function fillDetail(fields, submit) {
+  const what = fields
+    .map(({ label, name, value }) => {
+      const shown =
+        typeof value === "boolean" ? (value ? "checked" : "unchecked") : JSON.stringify(value);
+      const who = line(name, AGENT_ELEMENTS.text);
+      return `${label}${who ? ` ${who}` : ""} = ${shown}`;
+    })
+    .join(", ");
+  if (!submit) return what;
+  const { method, action, fields: n } = submit;
+  return `${what} → ${method.toUpperCase()} ${action} (${n} field${n === 1 ? "" : "s"})`;
 }

@@ -1,6 +1,6 @@
 # Spec: mcp-forms
 
-Status: accepted (sub-PRs 1 and 2 of 6 built: `vimma_elements`, `vimma_activate`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
+Status: accepted (sub-PRs 1 to 3 of 6 built: `vimma_elements`, `vimma_activate`, `vimma_fill`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
 `agent-prompt.mjs`, `control.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
 `ctl/AgentAct.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`, `actors/agent-fields.mjs` new);
@@ -381,23 +381,32 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 
 12. **A fill is `setUserInput`, as form autofill fills.** `vimma_fill { tab, fields, submit? }`
     (control command `agent-fill`) asks, and on a yes sets each field in its frame, in order:
-    text-like inputs and text areas with `setUserInput(value)`, which dispatches `input` and
-    `change` without focusing the field (`HTMLInputElement.cpp:2529-2569`); a select by option
-    value or exact option text, then `input` and `change`, as `FormAutofillHandler.fillFieldValue`
-    does (`FormAutofillHandler.sys.mjs:1115-1133`); a checkbox or radio given `true` or `false`
-    with `click()` when its state differs. Unlike autofill, Vimma never focuses the field first,
-    because focus would move the page's focus and run its focus handlers in a tab the user may
-    be watching. No key event is sent, so pages that act only on `keydown` (some autocomplete
-    widgets) do not see the fill; the result says when a field's value did not stick (the page
-    reset it), so the agent can tell.
+    text-like inputs and text areas with `setUserInput(value)`, which dispatches `input`, and for
+    an input also `change`, without focusing the field (`HTMLInputElement.cpp:2529-2569`; a text
+    area gets `input` only, as when form autofill fills it, `HTMLTextAreaElement.cpp:242-247`); a
+    select by option value or exact option text (never a disabled option), then the select's own
+    chrome-only `userFinishedInteracting(changed)`, which dispatches trusted `input` and `change`
+    as its popup does (`HTMLSelectElement.cpp:1637-1660`), rather than the untrusted events
+    `FormAutofillHandler.fillFieldValue` constructs (`FormAutofillHandler.sys.mjs:1115-1133`),
+    which pages that check `isTrusted` ignore; a checkbox given `true` or `false`, and a radio
+    given `true`, with `click()` when its state differs. A radio given `false` is refused,
+    because a click never unchecks a radio: the agent fills another of its group. Unlike
+    autofill, Vimma never focuses the field first, because focus would move the page's focus
+    and run its focus handlers in a tab the user may be watching. No key event is sent, so pages
+    that act only on `keydown` (some autocomplete widgets) do not see the fill; the result
+    `{ url, title, filled, reset?, loading, navigated, dialog?, blocked?, stopped? }` names in
+    `reset` the fields whose value did not stick (the page put it back), so the agent can tell,
+    and otherwise reads as after a click (F11). Each field is set after the child's reply, as a
+    click is, so a dialog the page opens in its `change` handler never holds the call: the
+    fields after it are not filled and the result names the dialog.
 13. **What it never fills.** Refused before anything is asked, naming the field: sensitive fields
     (F6), file fields, hidden and disabled fields, read-only fields, editable roots
     (`contenteditable`; rich editors keep their own model, and no Firefox API sets their text as
     user input without editor commands; a later spec may add them), and a field whose value does
     not parse for its type (a `date`, `number` or `color` input rejects it). The sensitivity
     check runs again in the child just before each set, and a field that has turned sensitive
-    since the question stops the call with `changed`, as the yes no longer stands for it
-    (vimma-mcp 19).
+    since the question stops the call, as the yes no longer stands for it (vimma-mcp 19); the
+    error says how many fields were filled before it.
 14. **Limits.** At most 32 fields per call, each value at most 1,024 characters with no control
     characters except a newline in a text area, checked in `vimma-ctl mcp` and again in the
     browser (as mcp-drive D15). The question shows each field's label, its name or label text and
@@ -409,7 +418,8 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 
 15. **A submit always asks.** Activating a submit control (a `button` whose type is `submit` in a
     form, `input type=submit` or `type=image`), and a `vimma_fill` with `submit` (a label of a
-    submit control, or `true` for the form's default button through `requestSubmit`), are asked
+    submit control, or `true` for the form's default button through `requestSubmit`, when every
+    filled field is in that one form and its default button is not disabled), are asked
     with `always` (`ALWAYS_ASK`, `agent.mjs:125`): under any grant, with only `y` and `n`, and a
     yes makes no grant. The question names the form's method and action host in bold and the
     number of fields it sends:
@@ -417,7 +427,8 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     A submission sends data to a server and is where sign-ups, messages and purchases happen,
     so one question per submission is the price of keeping them in the hands of the person at
     the keyboard; the grant for `vimma_fill` or `vimma_activate` (F25) covers only what does not
-    submit.
+    submit. A fill that submits shows its fields after the destination, and is not sent when the
+    page put back a value the question showed, because the yes was for the values shown.
 16. **Submissions the agent did not ask for are stopped.** Before each agent step the parent
     consumes the page's transient user activation in every frame and marks the tab; an
     `http-on-modify-request` observer then cancels, before it is sent, the request of a

@@ -76,6 +76,7 @@ describe("protocol 2 constants", () => {
       "agent-show",
       "agent-elements",
       "agent-activate",
+      "agent-fill",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
@@ -265,6 +266,53 @@ describe("agent commands: args", () => {
     ]);
   });
 
+  // docs/specs/mcp-forms.md F12, F14, F15: a fill names one tab, 1 to 32 fields by label with a
+  // text or a true or false, and an optional submit: true or a submit button's label.
+  test("agent-fill: a tab, fields by label and value, an optional submit", () => {
+    const fill = (args) => errorsOf(req("agent-fill", args));
+    const sd = { label: "sd", value: "ada@example.com" };
+    expect(fill({ tab: "12", fields: [sd] })).toEqual([]);
+    expect(fill({ tab: "12", fields: [sd, { label: "sf", value: true }], submit: true })).toEqual(
+      [],
+    );
+    expect(fill({ tab: "12", fields: [sd], submit: "sg" })).toEqual([]);
+    expect(fill({ tab: "12", fields: [{ label: "sd", value: "two\nlines" }] })).toEqual([]);
+    expect(fill({ tab: "12", fields: [{ label: "sd", value: "x".repeat(1024) }] })).toEqual([]);
+    // 1,024 characters are code points: an emoji is one.
+    expect(fill({ tab: "12", fields: [{ label: "sd", value: "😀".repeat(1024) }] })).toEqual([]);
+    const list = "fields must be a list of 1 to 32 fields";
+    expect(fill({ tab: "12" })).toEqual([list]);
+    expect(fill({ tab: "12", fields: [] })).toEqual([list]);
+    expect(fill({ tab: "12", fields: sd })).toEqual([list]);
+    const many = Array.from({ length: 33 }, (_, i) => ({ label: "asdfghjkl"[i % 9], value: "x" }));
+    expect(fill({ tab: "12", fields: many })).toEqual([list]);
+    expect(fill({ tab: "12", fields: [sd, { ...sd, value: "y" }] })).toEqual([
+      "fields must name each label once",
+    ]);
+    expect(fill({ tab: "12", fields: [{ label: "x", value: "y" }] })).toEqual([
+      "args.fields[0].label must be 1 to 3 of the hint characters asdfghjkl",
+    ]);
+    const value =
+      "args.fields[0].value must be true, false or a text of at most 1024 characters " +
+      "without control characters but line breaks";
+    for (const v of ["x".repeat(1025), "a\u0000b", "a\rb", "a\tb", 3, null, ["x"]]) {
+      expect(fill({ tab: "12", fields: [{ label: "sd", value: v }] }), JSON.stringify(v)).toEqual([
+        value,
+      ]);
+    }
+    expect(fill({ tab: "12", fields: [{ ...sd, selector: "#email" }] })).toEqual([
+      'unknown field "args.fields[0].selector"',
+    ]);
+    expect(fill({ tab: "12", fields: ["sd"] })).toEqual(["args.fields[0] must be an object"]);
+    for (const submit of [false, "x", "#go", 1, null]) {
+      expect(fill({ tab: "12", fields: [sd], submit }), String(submit)).toEqual([
+        "submit must be true or a label of 1 to 3 of the hint characters asdfghjkl",
+      ]);
+    }
+    expect(fill({ fields: [sd] })).toEqual(["tab must be a tab id (digits)"]);
+    expect(fill({ tab: "12", fields: [sd], x: 1 })).toEqual(['unknown field "args.x"']);
+  });
+
   test("agent-tabs and agent-ping take no args", () => {
     expect(errorsOf(req("agent-tabs"))).toEqual([]);
     expect(errorsOf(req("agent-ping", { x: 1 }))).toEqual(['unknown field "args.x"']);
@@ -361,6 +409,40 @@ describe("agent commands: results and errors", () => {
       "result.stopped must be in-use",
     ]);
     expect(errorsOf(ok({ ...result, steps: [] }), cmd)).toEqual(['unknown field "result.steps"']);
+  });
+
+  // docs/specs/mcp-forms.md F12, F16: how many fields were filled, which did not keep their
+  // value, then the page as after a click.
+  test("agent-fill: the fields filled, those the page reset, the page after it", () => {
+    const cmd = { command: "agent-fill" };
+    const result = { url: "https://a/", title: "A", filled: 2, loading: false, navigated: false };
+    expect(errorsOf(ok(result), cmd)).toEqual([]);
+    const dialog = {
+      type: "alert",
+      text: "<untrusted-web-content>\nSaved\n</untrusted-web-content>",
+    };
+    const full = { ...result, reset: ["sd"], dialog, blocked: "example.com", stopped: "in-use" };
+    expect(errorsOf(ok(full), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, filled: -1 }), cmd)).toEqual([
+      "result.filled must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, filled: undefined }), cmd)).toEqual([
+      "result.filled must be a non-negative integer",
+    ]);
+    for (const reset of ["sd", ["x"], [1]]) {
+      expect(errorsOf(ok({ ...result, reset }), cmd), JSON.stringify(reset)).toEqual([
+        "result.reset must be a list of labels",
+      ]);
+    }
+    expect(errorsOf(ok({ ...result, dialog: { type: "alert", text: "Saved" } }), cmd)).toEqual([
+      "result.dialog.text must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...result, navigated: "no" }), cmd)).toEqual([
+      "result.navigated must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...result, elements: "" }), cmd)).toEqual([
+      'unknown field "result.elements"',
+    ]);
   });
 
   test("agent-keys: the page after the steps, and why it stopped", () => {

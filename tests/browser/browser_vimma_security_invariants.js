@@ -166,3 +166,38 @@ add_task(async function agent_clicks_never_synthesise_input_or_user_activation()
     Assert.deepEqual(code.match(forbidden) ?? [], [], `${file} synthesises no input (M26)`);
   }
 });
+
+// docs/specs/mcp-forms.md F13 (security.md M27): an agent's fill never sets a file field. The
+// code the agent role reaches has no way to give a file input a file, and the one place that
+// calls setUserInput refuses a file field, an editable root and a sensitive field just before.
+add_task(async function agent_fills_never_set_a_file() {
+  const base = "chrome://browser/content/vimma/";
+  const files = [
+    "ctl/agent-commands.mjs",
+    "ctl/AgentAct.sys.mjs",
+    "ctl/AgentDrive.sys.mjs",
+    "actors/VimmaActors.sys.mjs",
+    "actors/VimmaChild.sys.mjs",
+    "actors/agent-fields.mjs",
+  ];
+  const forbidden = /\bmozSet\w*|\.files\s*=|\bmozFileOrDirectory\w*|\bDataTransfer\b/g;
+  /** @type {string[]} */
+  const setters = [];
+  for (const file of files) {
+    const source = await (await fetch(base + file)).text();
+    Assert.greater(source.length, 0, `${file} is read`);
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+    Assert.deepEqual(code.match(forbidden) ?? [], [], `${file} gives no input a file (M27)`);
+    for (const m of code.matchAll(/\bsetUserInput\(/g)) setters.push(`${file}@${m.index}`);
+  }
+  Assert.equal(setters.length, 1, `one call of setUserInput: ${setters.join(", ")}`);
+  Assert.ok(setters[0].startsWith("actors/agent-fields.mjs@"), "in agent-fields.mjs");
+  const fields = await (await fetch(`${base}actors/agent-fields.mjs`)).text();
+  const fill = fields.slice(fields.indexOf("export function fillField("));
+  const body = fill.slice(0, fill.indexOf("\n}\n"));
+  Assert.ok(
+    body.indexOf("if (secretOf(el)) return false;") < body.indexOf("setUserInput(") &&
+      body.indexOf('field === "text" || field === "textarea"') < body.indexOf("setUserInput("),
+    "fillField checks the field is no secret and is text before it sets it",
+  );
+});

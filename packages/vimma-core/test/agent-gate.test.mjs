@@ -50,6 +50,7 @@ describe("the tools", () => {
       "agent-show": "vimma_show",
       "agent-elements": "vimma_elements",
       "agent-activate": "vimma_activate",
+      "agent-fill": "vimma_fill",
     });
   });
 });
@@ -340,6 +341,23 @@ describe("clicks and submissions (mcp-forms F15, F25, F26)", () => {
     // The yes to a submit is that one submission: the grant is still the first one's.
     expect(q.grants(3000)).toEqual([expect.objectContaining({ conn: 1, until: 600_000 })]);
     expect(q.ask(1, "vimma_activate", 4000, { always: true }).kind).toBe("wait");
+  });
+});
+
+// docs/specs/mcp-forms.md F15, F25 (security.md M28): fills are granted like clicks, apart from
+// them, and a fill that submits asks under a fill grant and makes none.
+describe("fills (mcp-forms F15, F25)", () => {
+  test("vimma_fill can be granted, not by a click grant; a submit asks under it", () => {
+    expect(ALWAYS_ASK).not.toContain("vimma_fill");
+    const q = new AgentQueue();
+    q.connect(1);
+    const click = q.ask(1, "vimma_activate", 0);
+    q.answer(/** @type {any} */ (click).id, { kind: "grant", minutes: 10 }, 0);
+    expect(q.ask(1, "vimma_fill", 1000).kind).toBe("wait");
+    const fill = q.ask(1, "vimma_fill", 2000);
+    q.answer(/** @type {any} */ (fill).id, { kind: "grant", minutes: 10 }, 2000);
+    expect(q.ask(1, "vimma_fill", 3000).kind).toBe("run");
+    expect(q.ask(1, "vimma_fill", 4000, { always: true }).kind).toBe("wait");
   });
 });
 

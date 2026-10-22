@@ -418,3 +418,178 @@ export function actTargetOf(el) {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------------------------
+// `vimma_fill` (docs/specs/mcp-forms.md F12-F14; security.md M27).
+
+/**
+ * Why a field is sensitive now (F6), or null: `password` when it is or was ever a password field
+ * or the page draws it as dots, `code` or `card` by its autocomplete field name, `card` when form
+ * autofill's heuristics infer a payment card field for it, or every field of its group when they
+ * fail.
+ * @param {Element} el
+ * @returns {"password" | "code" | "card" | null}
+ */
+export function secretOf(el) {
+  if (!["input", "select", "textarea"].includes(el.localName)) return null;
+  const html = /** @type {any} */ (el);
+  if (plainlySensitive(el)) {
+    let name = "";
+    try {
+      name = String(html.getAutocompleteInfo?.()?.fieldName ?? "");
+    } catch {
+      // no autocomplete info: a password field by its type or its dots
+    }
+    if (name === "one-time-code") return "code";
+    return name.startsWith("cc-") ? "card" : "password";
+  }
+  return cardFields([el]).has(el) ? "card" : null;
+}
+
+/**
+ * What a field is to a fill (F12, F13): how it would be set, or what it is instead.
+ * @param {Element | null | undefined} el
+ */
+function fillFieldOf(el) {
+  if (!el) return "none";
+  const html = /** @type {any} */ (el);
+  switch (el.localName) {
+    case "input":
+      if (html.type === "file") return "file";
+      if (html.type === "hidden") return "hidden";
+      if (html.type === "checkbox" || html.type === "radio") return html.type;
+      return BUTTON_TYPES.has(html.type) ? "none" : "text";
+    case "textarea":
+      return "textarea";
+    case "select":
+      return "select";
+  }
+  return html.isContentEditable ? "editable" : "none";
+}
+
+/**
+ * The option of a select that a fill's value names: by its value, else by its exact text.
+ * Disabled options are never chosen, as the user cannot choose them.
+ * @param {any} select @param {string} value
+ */
+function optionOf(select, value) {
+  const options = [...select.options].filter((/** @type {any} */ o) => !o.disabled);
+  return (
+    options.find((/** @type {any} */ o) => o.value === value) ??
+    options.find((/** @type {any} */ o) => o.text === value) ??
+    null
+  );
+}
+
+/**
+ * Whether a text input takes `value` as it is (F13): a date, number or color input empties a
+ * value that does not parse, an email or URL input trims it. A detached input of the same type
+ * in the same document tells, without touching the page's field or running page code.
+ * @param {any} input @param {string} value
+ */
+function inputTakes(input, value) {
+  const probe = /** @type {any} */ (input.ownerDocument.createElement("input"));
+  probe.type = input.type;
+  probe.value = value;
+  return probe.value === value;
+}
+
+/**
+ * The form's default submission (F15): where its first submit button, or the form itself when
+ * it has none, sends it, and how many fields it sends; null when it only closes a dialog or its
+ * default button is disabled, which no implicit submission passes.
+ * @param {any} form
+ * @returns {{ submitter: any, method: string, action: string, fields: number } | null}
+ */
+export function defaultSubmitOf(form) {
+  const submitter =
+    [...form.elements].find(
+      (/** @type {any} */ e) =>
+        (e.localName === "button" && e.type === "submit") ||
+        (e.localName === "input" && (e.type === "submit" || e.type === "image")),
+    ) ?? null;
+  if (submitter?.matches(":disabled")) return null;
+  const { method, action } = destinationOf(form, submitter);
+  if (method === "dialog") return null;
+  return { submitter, method, action, fields: fieldCount(form, submitter) };
+}
+
+/**
+ * A field now, as a fill with `value` would find it (F4, F6, F12, F13), for core's
+ * `parseFillTarget`: its kind, how it is set, why it is sensitive, its state, whether it takes
+ * the value, and its form's default submission.
+ * @param {Element | null | undefined} el @param {unknown} value
+ * @returns {Record<string, unknown>}
+ */
+export function fillTargetOf(el, value) {
+  if (!el?.isConnected) return { alive: false };
+  const html = /** @type {any} */ (el);
+  const kind = kindOf(el);
+  const field = fillFieldOf(el);
+  /** @type {Record<string, unknown>} */
+  const out = { alive: true, kind, field };
+  if (el.localName === "input") out.type = cap(html.type, 32);
+  else if (el.localName === "textarea") out.type = "textarea";
+  if (["input", "select", "textarea"].includes(el.localName)) {
+    if (typeof html.name === "string" && html.name) out.name = cap(html.name, TEXT);
+    const caption = cap(textOf(el, kind) || captionOf(el), TEXT);
+    if (caption) out.caption = caption;
+    try {
+      const auto = String(html.getAutocompleteInfo?.()?.fieldName ?? "");
+      if (auto) out.autocomplete = cap(auto, 64);
+    } catch {
+      // no autocomplete info
+    }
+    const secret = secretOf(el);
+    if (secret) out.secret = secret;
+    if (html.readOnly === true) out.readonly = true;
+  }
+  if (el.matches(":disabled")) out.disabled = true;
+  if (field === "checkbox" || field === "radio") out.checked = html.checked === true;
+  if (typeof value === "string") {
+    if (field === "text") out.accepts = inputTakes(html, value);
+    else if (field === "select") out.accepts = !!optionOf(html, value);
+    else if (field === "textarea") out.accepts = true;
+  }
+  const form = ["input", "select", "textarea"].includes(el.localName) ? html.form : null;
+  const submit = form ? defaultSubmitOf(form) : null;
+  if (submit) {
+    out.submit = { method: submit.method, action: submit.action, fields: submit.fields };
+  }
+  return out;
+}
+
+/**
+ * Sets a field as the user would (F12; security.md M27): text with `setUserInput`, which fires
+ * `input` and `change` without focus; a select's option, then the select's own end of a user's
+ * choice, which fires them as its popup does; a checkbox or radio with `click()` when its state
+ * differs. Nothing is focused and no key event is sent. A file field, an editable root or a
+ * sensitive field is never set, whatever the caller checked before.
+ * @param {Element} el @param {string | boolean} value
+ * @returns {boolean} whether the field holds the value afterwards (the page may put it back)
+ */
+export function fillField(el, value) {
+  const html = /** @type {any} */ (el);
+  const field = fillFieldOf(el);
+  if (secretOf(el)) return false;
+  if (field === "text" || field === "textarea") {
+    if (typeof value !== "string") return false;
+    html.setUserInput(value);
+    return html.value === value;
+  }
+  if (field === "select") {
+    if (typeof value !== "string") return false;
+    const option = optionOf(html, value);
+    if (!option) return false;
+    const changed = !option.selected;
+    option.selected = true;
+    html.userFinishedInteracting(changed);
+    return option.selected === true;
+  }
+  if (field === "checkbox" || field === "radio") {
+    if (typeof value !== "boolean") return false;
+    if (html.checked !== value) html.click();
+    return html.checked === value;
+  }
+  return false;
+}
