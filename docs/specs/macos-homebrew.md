@@ -380,7 +380,10 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
       volume `make_dmg` creates. Finder records dates and the scratch image's path in it, so it
       is not reproducible byte for byte, and `tools/package/test/macos.test.mjs` checks what it
       says instead: the two icon positions, the window size, the icon size, a background alias
-      to `.background/background.png` on Vimma, and no home directory. Rejected: a `.DS_Store`
+      to `.background/background.png` on Vimma, and no home directory. The committed file is
+      generated on a GitHub-hosted `macos-15` runner, not a developer's Mac, because Finder also
+      records the generating machine's per-user temp-dir hash and its volume UUIDs; the test
+      fails on a known developer Mac's. Rejected: a `.DS_Store`
       writer such as Python's `ds_store` and `mac_alias`, because it is a new dependency for a
       file that changes only with the layout.
     - **Checked in the release.** `tools/package/macos-dmg.sh` refuses a `.dmg` without the

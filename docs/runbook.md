@@ -1043,11 +1043,14 @@ cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns,disk.icns,background.
 The `.dmg` window's layout, `configs/branding/vimma/dsstore`, is the `.DS_Store` Finder writes,
 so no job can regenerate it byte for byte (it records dates and the disk image's location).
 After changing `DMG_LAYOUT` in `tools/package/macos-icons.mjs` or the background, run
-`tools/package/macos-dsstore.sh` on a Mac, logged in, with no volume named Vimma mounted: it lays
-out a scratch disk image in Finder through AppleScript (macOS asks once to let the terminal
-control Finder) and copies the `.DS_Store` into place. `tools/package/test/macos.test.mjs` checks
-that it places `Vimma.app` and the Applications link where `DMG_LAYOUT` says and shows the
-background from the Vimma volume.
+`tools/package/macos-dsstore.sh --out "$RUNNER_TEMP/dsstore"` on a GitHub-hosted `macos-15`
+runner (a short-lived workflow on the branch that uploads the file as an artifact, with
+`contents: read` and pinned actions, removed again before merge) and commit the downloaded file.
+It lays out a scratch disk image in Finder through AppleScript, which the hosted image allows
+without a prompt, and copies the `.DS_Store`. A developer's Mac is not used, because Finder
+records the machine's per-user temp-dir hash and volume UUIDs in the file.
+`tools/package/test/macos.test.mjs` checks that it places `Vimma.app` and the Applications link
+where `DMG_LAYOUT` says, shows the background from the Vimma volume, and names no home directory.
 
 `actool` names the catalog's flattened fallback images with a fresh UUID and writes them anew on
 every run, so the check compares `assetutil --info` without those names and digests, and

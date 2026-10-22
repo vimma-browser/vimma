@@ -475,6 +475,19 @@ describe("macOS dmg window art", () => {
       expect(file.includes(":Users:")).toBe(false);
       expect(file.includes("Nightly")).toBe(false);
     });
+
+    // Spec macos-homebrew, decision 14: it is generated on a hosted runner, because Finder records
+    // the generating machine's temp-dir hash and volume UUIDs. These are a developer Mac's.
+    it("names no developer machine's temp dir or volume", () => {
+      const file = bytes(`${branding}/dsstore`);
+      for (const id of [
+        "_cn4ccfd03vb0x_znj1lfhr80000gn",
+        "15407C9C-2F06-444F-ADA8-D93EDE259FA9",
+        "37F51DCF",
+      ]) {
+        expect(file.includes(id), id).toBe(false);
+      }
+    });
   });
 });
 
