@@ -166,7 +166,8 @@ export const AgentAct = {
    * `clickable` said it may be and the user allowed it, then waits for a page the click started
    * (up to 20 s), a dialog it opened, or the user starting to use the tab.
    * @param {any} browser XULBrowserElement @param {HintTarget} target
-   * @param {{ submit: boolean, href: string | null, inUse: () => boolean }} asked
+   * @param {{ submit: { method: string, action: string } | null, href: string | null,
+   *   inUse: () => boolean }} asked  `submit`: the submission the question named
    * @returns {Promise<{ refused: string } | { navigated: boolean, loading: boolean,
    *   dialog?: { type: string, text: string }, blocked?: string, stopped?: "in-use" }>}
    */

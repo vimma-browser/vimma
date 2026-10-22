@@ -327,6 +327,19 @@ function fieldCount(form, submitter) {
 }
 
 /**
+ * Where a submission by `submitter` (or by the form's own script, without one) goes: the
+ * button's `formmethod` and `formaction` when it has them, else the form's (F15). A button's
+ * `formAction` is the document's URL when it has no attribute, so the attribute decides.
+ * @param {any} form @param {any} [submitter]
+ * @returns {{ method: string, action: string }}
+ */
+export function destinationOf(form, submitter) {
+  const method = submitter?.hasAttribute("formmethod") ? submitter.formMethod : form.method;
+  const action = submitter?.hasAttribute("formaction") ? submitter.formAction : form.action;
+  return { method: String(method ?? ""), action: cap(action, ACTION) };
+}
+
+/**
  * The submit control a click on `el` presses, and its form: `el` itself, the button it is
  * inside, or its label's control (F15).
  * @param {Element} el
@@ -338,12 +351,10 @@ export function submitOf(el) {
     if (!c) continue;
     const html = /** @type {any} */ (c);
     if (!html?.form) continue;
-    const method = html.hasAttribute("formmethod") ? html.formMethod : html.form.method;
+    const { method, action } = destinationOf(html.form, html);
     const control = { localName: c.localName, type: html.type, inForm: true, method };
     if (!isSubmitControl(control)) continue;
-    // formAction is the document's URL when the button has no formaction of its own.
-    const action = html.hasAttribute("formaction") ? html.formAction : html.form.action;
-    return { submitter: html, form: html.form, method, action: String(action ?? "") };
+    return { submitter: html, form: html.form, method, action };
   }
   return null;
 }
@@ -371,7 +382,7 @@ export function actTargetOf(el) {
   if (submit) {
     out.submit = {
       method: submit.method,
-      action: cap(submit.action, ACTION),
+      action: submit.action,
       fields: fieldCount(submit.form, submit.submitter),
     };
   }

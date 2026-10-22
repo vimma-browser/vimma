@@ -196,6 +196,25 @@ add_task(async function test_page_script_submit_after_a_click_is_cancelled() {
   await mcp(false);
 });
 
+add_task(async function test_a_submit_sent_elsewhere_than_asked_is_stopped() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const id = c.request("agent-activate", { tab: idOf(tab), label: by.Send });
+  const q = await question();
+  Assert.equal(q.what.submit?.host, "example.com", "asked as a submission to example.com");
+  AgentGate.answer(q.id, { kind: "once" });
+  const r = await c.response(id);
+  Assert.ok(r.ok, "the click ran");
+  Assert.equal(r.result.navigated, false, "the form the page sent elsewhere was not sent (M28)");
+  Assert.equal(r.result.blocked, "example.org", "the result names where it was going");
+  Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "the page stayed");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 add_task(async function test_users_own_submit_in_an_agent_tab_goes_through() {
   await mcp(true);
   const tab = await openAgentTab();

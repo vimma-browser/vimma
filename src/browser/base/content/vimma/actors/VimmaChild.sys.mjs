@@ -9,7 +9,7 @@
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
 import { collectTargets, linkText } from "./hint-collect.mjs";
-import { actTargetOf, describeAgentElements, submitOf } from "./agent-fields.mjs";
+import { actTargetOf, describeAgentElements, destinationOf, submitOf } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
@@ -168,13 +168,17 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * An agent's step in this document (docs/specs/mcp-forms.md F16; security.md M28): the user's
    * last gesture when it came. Until the user's own input, a form the page submits is cancelled,
-   * but for `#allowedForm`, the one a question just allowed, while that call runs; `#blocked`
-   * holds the hosts of the submissions stopped since the step, for its result.
+   * but for `#allowed`, the form a question just allowed, to the method and destination it named,
+   * while that call runs; `#blocked` holds the hosts of the submissions stopped since the step,
+   * for its result.
    * @type {{ gesture: number } | null}
    */
   #agentMark = null;
-  /** @type {WeakRef<Element> | null} */
-  #allowedForm = null;
+  /**
+   * @type {{ form: WeakRef<Element>, submitter: WeakRef<Element>, method: string,
+   *   action: string } | null}
+   */
+  #allowed = null;
   /** @type {string[]} */
   #blocked = [];
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
@@ -342,7 +346,13 @@ export class VimmaChild extends JSWindowActorChild {
     }
     const form = /** @type {any} */ (event.originalTarget ?? event.target);
     if (form?.localName !== "form" || form.method === "dialog") return;
-    if (this.#allowedForm?.deref() === form) return;
+    const allowed = this.#allowed;
+    if (allowed && allowed.form.deref() === form) {
+      // The question named a destination: the page may have changed it since (its click handler
+      // runs before the submission), and then this is not the submission the user allowed.
+      const now = destinationOf(form, allowed.submitter.deref());
+      if (now.method === allowed.method && now.action === allowed.action) return;
+    }
     event.preventDefault();
     let host = "";
     try {
@@ -691,7 +701,7 @@ export class VimmaChild extends JSWindowActorChild {
    * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
-   * @param {{ op: string, gen: number, id: number, submit?: unknown, href?: unknown }} data
+   * @param {{ op: string, gen: number, id: number, submit?: any, href?: unknown }} data
    */
   #agentElement(data) {
     const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
@@ -714,19 +724,29 @@ export class VimmaChild extends JSWindowActorChild {
    * page opens in its handler never holds the parent's call. Nothing is focused, and no event
    * goes through the widget or nsIDOMWindowUtils, so the page gets no user activation.
    * @param {Element | undefined} el
-   * @param {{ submit?: unknown, href?: unknown }} asked
+   * @param {{ submit?: any, href?: unknown }} asked  `submit`: the method and destination the
+   *   question named, or null
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentActivate(el, asked) {
-    const now = actTargetOf(el);
+    const now = /** @type {any} */ (actTargetOf(el));
     if (!el || !now.alive) return "gone";
     if (now.field || now.disabled) return "changed";
-    if (!!now.submit !== (asked.submit === true)) return "changed";
-    if ((now.href ?? null) !== (asked.href ?? null)) return "changed";
-    if (now.submit) {
-      const form = submitOf(el)?.form;
-      this.#allowedForm = form ? new WeakRef(form) : null;
+    const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
+    if (!!now.submit !== !!named) return "changed";
+    if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
+      return "changed";
     }
+    if ((now.href ?? null) !== (asked.href ?? null)) return "changed";
+    const submit = now.submit ? submitOf(el) : null;
+    this.#allowed = submit
+      ? {
+          form: new WeakRef(submit.form),
+          submitter: new WeakRef(submit.submitter),
+          method: submit.method,
+          action: submit.action,
+        }
+      : null;
     Services.tm.dispatchToMainThread(() => {
       if (el.isConnected) this.#press(el);
     });
@@ -746,7 +766,7 @@ export class VimmaChild extends JSWindowActorChild {
       return [];
     }
     if (data?.op === "settle") {
-      this.#allowedForm = null;
+      this.#allowed = null;
       const blocked = this.#blocked;
       this.#blocked = [];
       return blocked;

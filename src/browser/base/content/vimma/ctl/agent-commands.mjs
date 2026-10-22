@@ -781,7 +781,10 @@ const COMMANDS = {
     const { win, tab } = found2;
     if (VimmaHost.inUse(tab.linkedBrowser)) throw refuse("in-use", denied("in-use"), what);
     const result = await AgentAct.activate(tab.linkedBrowser, found.target, {
-      submit: !!submit,
+      // The child clicks only if the element still submits there, and lets only that through.
+      submit: element.submit
+        ? { method: element.submit.method, action: element.submit.action }
+        : null,
       href: element.href ?? null,
       inUse: () => VimmaHost.inUse(tab.linkedBrowser),
     });

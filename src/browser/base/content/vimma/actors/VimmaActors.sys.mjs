@@ -409,10 +409,11 @@ export const VimmaActors = {
   /**
    * Clicks the element of a target from an agent's `vimma_elements` with the child's `click()`
    * (docs/specs/mcp-forms.md F8; security.md M26), once the child has seen it is still what the
-   * user was asked about: a submit only when `submit`, and the same link. The child answers
-   * before it clicks, so a dialog the click opens never holds the reply.
+   * user was asked about: a submit only when `submit`, to the method and destination it names,
+   * and the same link. The child answers before it clicks, so a dialog the click opens never
+   * holds the reply.
    * @param {HintTarget} target
-   * @param {{ submit: boolean, href: string | null }} asked
+   * @param {{ submit: { method: string, action: string } | null, href: string | null }} asked
    * @returns {Promise<"ok" | "gone" | "changed">}
    */
   async agentActivate(target, { submit, href }) {

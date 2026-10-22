@@ -6,8 +6,9 @@
    - vimma_activate clicks and refuses. A button that adds to a list and records what the page saw
    - of the click (trusted, user activation, a clipboard write); a button that asks confirm(); a
    - same-site link and a link to another site; a text field, a select, a file field with its
-   - label, and a disabled button; a search form with a submit button; and buttons whose script
-   - submits a form by itself, at once and a moment later. Everything fits the test window. -->
+   - label, and a disabled button; a search form with a submit button; a form whose button's
+   - click handler sends it elsewhere; and buttons whose script submits a form by itself, at once
+   - and a moment later. Everything fits the test window. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -51,6 +52,10 @@
     <form id="draft" method="post" action="file_vimma_agent_page.html?draft">
       <input name="note" value="hello" aria-label="Note" />
     </form>
+    <form id="swap" method="get" action="file_vimma_agent_page.html">
+      <input name="topic" value="news" aria-label="Topic" />
+      <button id="send" type="submit">Send</button>
+    </form>
     <p>
       <button id="save" type="button">Save draft</button>
       <button id="later" type="button">Save later</button>
@@ -79,6 +84,10 @@
       });
       document.getElementById("menu").addEventListener("click", () => {
         document.title = "menu";
+      });
+      // A page that sends the form elsewhere than it said once the button is pressed.
+      document.getElementById("send").addEventListener("click", () => {
+        document.getElementById("swap").action = "https://example.org/collect";
       });
       const draft = document.getElementById("draft");
       document.getElementById("save").addEventListener("click", () => draft.submit());
