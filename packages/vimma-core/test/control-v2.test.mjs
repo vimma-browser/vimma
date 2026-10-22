@@ -77,6 +77,7 @@ describe("protocol 2 constants", () => {
       "agent-elements",
       "agent-activate",
       "agent-fill",
+      "agent-screenshot",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
@@ -246,6 +247,17 @@ describe("agent commands: args", () => {
     ]);
   });
 
+  // docs/specs/mcp-forms.md F18, F20: a screenshot names one tab, and whether to draw the labels.
+  test("agent-screenshot: a tab and an optional labels flag, nothing else", () => {
+    const shot = (args) => errorsOf(req("agent-screenshot", args));
+    expect(shot({ tab: "12" })).toEqual([]);
+    expect(shot({ tab: "12", labels: true })).toEqual([]);
+    expect(shot({ tab: "12", labels: false })).toEqual([]);
+    expect(shot({})).toEqual(["tab must be a tab id (digits)"]);
+    expect(shot({ tab: "12", labels: "yes" })).toEqual(["labels must be a boolean"]);
+    expect(shot({ tab: "12", rect: { x: 0 } })).toEqual(['unknown field "args.rect"']);
+  });
+
   // docs/specs/mcp-forms.md F8: a click names one tab and one label from vimma_elements.
   test("agent-activate: a tab and a label of hint characters, nothing else", () => {
     expect(errorsOf(req("agent-activate", { tab: "12", label: "sd" }))).toEqual([]);
@@ -397,6 +409,48 @@ describe("agent commands: results and errors", () => {
     expect(errorsOf(ok({ ...result, screenshot: "x" }), cmd)).toEqual([
       'unknown field "result.screenshot"',
     ]);
+  });
+
+  // docs/specs/mcp-forms.md F19, F20 (security.md M31): a PNG or JPEG in base64 that fits the
+  // reply line, its size, the page, and with labels how many were drawn and whether the list was
+  // stale.
+  test("agent-screenshot: the image, its size, the page, and the labels drawn", () => {
+    const cmd = { command: "agent-screenshot" };
+    const result = {
+      url: "https://a/",
+      title: "A",
+      mimeType: "image/png",
+      data: "iVBORw0KGgo=",
+      width: 1280,
+      height: 662,
+    };
+    expect(errorsOf(ok(result), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, mimeType: "image/jpeg" }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, labels: 4 }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, labels: 0, stale: true }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, mimeType: "image/svg+xml" }), cmd)).toEqual([
+      "result.mimeType must be one of image/png, image/jpeg",
+    ]);
+    const base64 = "result.data must be base64 of at most 716800 characters";
+    expect(errorsOf(ok({ ...result, data: "" }), cmd)).toEqual([base64]);
+    expect(errorsOf(ok({ ...result, data: "not base64!" }), cmd)).toEqual([base64]);
+    expect(errorsOf(ok({ ...result, data: "A".repeat(716804) }), cmd)).toEqual([base64]);
+    expect(errorsOf(ok({ ...result, width: 1281 }), cmd)).toEqual([
+      "result.width must be an integer from 1 to 1280",
+    ]);
+    expect(errorsOf(ok({ ...result, height: 0 }), cmd)).toEqual([
+      "result.height must be an integer from 1 to 16384",
+    ]);
+    expect(errorsOf(ok({ ...result, labels: -1 }), cmd)).toEqual([
+      "result.labels must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, stale: true }), cmd)).toEqual([
+      "result.stale comes only with result.labels",
+    ]);
+    expect(errorsOf(ok({ ...result, stale: false, labels: 0 }), cmd)).toEqual([
+      "result.stale must be true when present",
+    ]);
+    expect(errorsOf(ok({ ...result, html: "<p>" }), cmd)).toEqual(['unknown field "result.html"']);
   });
 
   // docs/specs/mcp-forms.md F11, F16: the page after the click, a dialog's text inside the

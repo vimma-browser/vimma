@@ -103,7 +103,11 @@ the [user guide](guide.md); planned work is on the
 - `vimma_fill` knows a one-time-code field by its `autocomplete="one-time-code"` only, and a
   password field by its type (or a past type, or dots drawn by the page): a text field merely
   labelled "Password" or "Code" is filled like any other, with its value shown in the question.
-  They cannot press keys, click, fill forms or take screenshots.
+- `vimma_screenshot` captures the viewport only, never the whole page. It is refused while a
+  password or payment card field on screen has a value, but a card number the page copies into
+  other text, or draws on a canvas, is not recognised, nor one the user or the page shows only
+  for the moment of the drawing. A page with a data: or blob: frame, which Vimma cannot check, is never captured.
+  Only http and https pages are captured.
 - The agent's name in a question (`claude-code`) is what the agent says it is; Vimma cannot check
   it. Grants belong to the connection, and `:mcp` shows the program that started it.
 - Each agent tool's own approvals, sandbox and timeouts are its own; Vimma neither reads nor

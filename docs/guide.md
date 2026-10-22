@@ -1335,19 +1335,20 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers nine tools:
+and output, connects to Vimma as an agent (never with full control), and offers ten tools:
 
-| Tool              | What the agent can do                                                                                    |
-| ----------------- | -------------------------------------------------------------------------------------------------------- |
-| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.                              |
-| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.                           |
-| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs.                      |
-| `vimma_close_tab` | Close one of its tabs.                                                                                   |
-| `vimma_keys`      | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
-| `vimma_show`      | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
-| `vimma_elements`  | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
-| `vimma_activate`  | Click a button, link or checkbox from that list; a form it would send asks you every time.               |
-| `vimma_fill`      | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
+| Tool               | What the agent can do                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `vimma_tabs`       | List the agent workspace's tabs: id, address, title, whether it is loading.                              |
+| `vimma_read_page`  | Read a tab's text, as Markdown or plain text, marked as untrusted web content.                           |
+| `vimma_open`       | Open an http or https address in a new background tab there, or in one of its tabs.                      |
+| `vimma_close_tab`  | Close one of its tabs.                                                                                   |
+| `vimma_keys`       | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
+| `vimma_show`       | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
+| `vimma_elements`   | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
+| `vimma_activate`   | Click a button, link or checkbox from that list; a form it would send asks you every time.               |
+| `vimma_fill`       | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
+| `vimma_screenshot` | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1447,7 +1448,7 @@ with the rest of your computer.
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
-  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills and 6 `vimma_show` calls a minute, and a minute of silence after three noes
+  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots and 6 `vimma_show` calls a minute, and a minute of silence after three noes
   in a row. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -1612,6 +1613,28 @@ pages react to key presses only, which Vimma never sends).
   `claude-code filled 2 fields in "Sign up · Example" (grant, 12m left)`, and `:mcp log` keeps
   every value. At most 32 fields a call, 30 clicks and fills a minute, none while you are typing
   in the tab.
+
+#### Seeing a page
+
+`vimma_screenshot` lets an agent see what an agent tab shows, to check the effect of a click or
+a fill. The question names the tab,
+`◇ claude-code wants vimma_screenshot: 2 "Sign up · Example" example.com/signup`, and on `y`
+the agent gets an image of the tab's viewport (what you would see with the tab selected), at
+most 1,280 pixels wide, taken in the background: the tab is not selected or shown, and your
+window keeps its workspace, tab and mode. With `labels`, the labels of the agent's last
+`vimma_elements` list of that page are drawn on it in your theme's hint colours, while the page
+has not scrolled since.
+
+- **Not while a secret shows.** While a password field or payment card field on screen, in the
+  page or any of its frames, has a value, the screenshot is refused, because a card number shows
+  in clear: the agent is told to scroll past it or to ask you. A card number the page copies into
+  other text, or draws itself, is not recognised. A page with a frame Vimma cannot check (a
+  data: or blob: frame) is refused too.
+- **Untrusted, like page text.** The agent is told that text in the image is web content, not
+  yours. Only the viewport of an http or https page is captured, never the browser around it,
+  another tab, or a settings page or local file opened in the agent workspace.
+- **A grant covers screenshots** only: each shows
+  `claude-code took a screenshot of "Sign up · Example" (grant, 12m left)`. At most 12 a minute.
 
 #### Showing you a page
 

@@ -700,8 +700,10 @@ is on (M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements`
 tab's buttons, fields and links listed with hint labels, sensitive values left out: M25, M31,
 M32), `vimma_activate` (a click on one of them, with no user activation, every form
 submission asked: M25, M26, M28, M29, M32) and `vimma_fill` (fields set as form autofill sets
-them, never a password, payment card, one-time-code or file field: M25, M27, M28, M32), in
-force; its screenshots and console output enter this page with the sub-PRs that build them.
+them, never a password, payment card, one-time-code or file field: M25, M27, M28, M32) and
+`vimma_screenshot` (an image of an agent tab's viewport, refused while a password or payment
+card field on screen has a value: M25, M31, M32), in force; its console output enters this page
+with the sub-PR that builds it.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
@@ -1048,8 +1050,15 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   the tab never selected and the element never focused, and it is denied as `in-use` while you
   are using the tab, before the question and after the yes. `agent-fill` (F12) is held the same
   way, and also before each field: it sets only fields of that list, never focusing them, and
-  stops when you start using the tab or the tab leaves the agent workspace. The screenshots and
-  console reads of mcp-forms join this rule with the sub-PRs that build them.
+  stops when you start using the tab or the tab leaves the agent workspace. `agent-screenshot`
+  (F18) is held the same way, checked before the question, after the yes and once the image is
+  made: the tab's own top window global draws its viewport with `drawSnapshot`, frames of other
+  sites included and **never** the browser's chrome, the status bar or another tab, and a tab in
+  the background draws its current page, so the tab is never selected or shown. It captures
+  only an http or https page, checked before and after the drawing, never a privileged about:
+  page, the start page or a local file a tab moved into the agent workspace may show. It changes
+  nothing on the page, so it runs while you use the tab. The console reads of mcp-forms join this
+  rule with the sub-PR that builds them.
   [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_only_on_web_pages_and_agent_tabs`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_agent_labels_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_elements.js),
@@ -1063,7 +1072,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_fill_never_focuses_the_field`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_fill_in_use_while_the_user_types`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_fills_take_labels_only_from_elements_and_share_the_click_rate`](../tests/browser/browser_vimma_mcp_fill.js),
-  [`agent-fill: a tab, fields by label and value, an optional submit`](../packages/vimma-core/test/control-v2.test.mjs)
+  [`agent-fill: a tab, fields by label and value, an optional submit`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`test_screenshot_of_a_background_tab_shows_its_page`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`test_screenshot_only_of_agent_tabs`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`agent-screenshot: a tab and an optional labels flag, nothing else`](../packages/vimma-core/test/control-v2.test.mjs)
 - M26. An agent's click (`agent-activate`, mcp-forms F8) **must** be the frame's child calling
   the element's `click()` after the same untrusted `mouseover`, `mousedown` and `mouseup` your
   `f` hints send, with no event through `nsIDOMWindowUtils` or the widget, so the page gets no
@@ -1207,14 +1219,48 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`elements past the byte budget are left out and counted; their forms too`](../packages/vimma-core/test/agent-act.test.mjs),
   [`agent-elements: the page, its list inside the untrusted delimiters, how many dropped`](../packages/vimma-core/test/control-v2.test.mjs),
   [`elements_list_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
-- M32. More than 30 `agent-elements` calls, or 30 `agent-activate` and `agent-fill` calls
-  together, of one connection a minute (mcp-forms F26), counted when asked and before the
+
+  `agent-screenshot`'s image (F19) **must** be a PNG, or a JPEG when the PNG does not fit, whose
+  base64 is at most 700 KiB, at most 1,280 by 16,384 pixels; the protocol validator and
+  `vimma-ctl mcp` **must** refuse any other type, size or encoding, and `vimma-ctl mcp` **must**
+  pass it on as an MCP image item only after the untrusted header, which says that text in the
+  image is web content and not from you. Labels drawn on it (F20) come only from the
+  connection's current `vimma_elements` list of that page, and only while its top frame has
+  not scrolled since the list was made; else none is drawn and the result says the list is
+  stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
+  meets the viewport of any frame of the tab: each frame's child checks, just before and again
+  just after the drawing, every form control of its document and its open and closed shadow
+  trees, a number field showing text it cannot parse and an autofill preview counting as a
+  value, a select counting when its choice differs from the page's default; a field counts even
+  if the page covers or hides it otherwise, and a frame that fails counts as showing one. A
+  frame that has no Vimma actor (a data: or blob: document) or does not answer in 5 s refuses
+  the screenshot too, saying that Vimma could not check every frame. A scroll of the top frame
+  between the two checks discards the image. The agent's own steps on that tab and its
+  screenshot exclude each other: from the first check to the second, `agent-keys`,
+  `agent-activate` and `agent-fill` there are denied as `in-use` (a running `agent-keys` stops
+  before its next step), and a screenshot is refused while one of them runs, so the agent cannot
+  scroll or change the tab between its checks. A page that is not http or https is refused
+  before the question. A value the page copies out of such a field into
+  other text, or draws on a canvas, is not recognised, and a value that appears and goes again
+  within the moment of the drawing, between the two checks, is not seen by either.
+  [`test_screenshot_refused_while_a_sensitive_value_is_on_screen`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`test_screenshot_fits_the_reply_line`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`test_screenshot_draws_labels`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`test_screenshot_and_the_agents_own_steps_exclude_each_other`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`the scale: at most 1,280 pixels wide, at most the device pixel ratio`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`labels at their element's corner, scaled; those off the image are left out`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`agent-screenshot: the image, its size, the page, and the labels drawn`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a_screenshot_is_an_image_after_the_untrusted_header`](../tools/vimma-ctl/src/mcp.rs),
+  [`screenshot_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp.rs)
+
+- M32. More than 30 `agent-elements` calls, 30 `agent-activate` and `agent-fill` calls
+  together, or 12 `agent-screenshot` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
   question, **must** be denied as `busy`, so a grant cannot flood a page and a refused call
   cannot loop; every call, asked, under a grant or denied, **must** be in `:mcp log` (M23), a
   click with its element, a fill with its fields and values (one refused before its question,
   with its labels), and a submission with its destination, and a call under a grant shows a notice naming the page (and for a click, the
-  element; for a fill, how many fields). The rates of screenshots and console reads join this
-  rule with their sub-PRs.
+  element; for a fill, how many fields). The rate of console reads joins this rule with its
+  sub-PR.
   [`at most 30 agent-elements per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_elements_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_elements.js),
   [`vimma_elements: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
@@ -1222,7 +1268,11 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_activate_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_activate.js),
   [`vimma_activate: the element in the question, what it clicked in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`test_fill_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_fill.js),
-  [`test_fills_take_labels_only_from_elements_and_share_the_click_rate`](../tests/browser/browser_vimma_mcp_fill.js)
+  [`test_fills_take_labels_only_from_elements_and_share_the_click_rate`](../tests/browser/browser_vimma_mcp_fill.js),
+  [`at most 12 agent-screenshot per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`vimma_screenshot can be granted, and its grant covers no other tool`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_screenshot_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`vimma_screenshot: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 

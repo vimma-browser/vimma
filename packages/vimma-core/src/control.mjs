@@ -10,7 +10,7 @@
  */
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./agent.mjs";
-import { AGENT_FILL, hasInvisible, isAgentLabel } from "./agent-act.mjs";
+import { AGENT_FILL, AGENT_SCREENSHOT, hasInvisible, isAgentLabel } from "./agent-act.mjs";
 import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
@@ -33,7 +33,8 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
  * `agent-show` brings the agent workspace to the front with one agent tab selected
  * (docs/specs/mcp-drive.md D2, D8, D19). `agent-elements` lists an agent tab's buttons, fields
  * and links with hint labels (docs/specs/mcp-forms.md F2), `agent-activate` clicks one by its
- * label (F8), and `agent-fill` fills fields by their labels (F12).
+ * label (F8), `agent-fill` fills fields by their labels (F12), and `agent-screenshot` returns an
+ * image of an agent tab's viewport (F18).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -48,6 +49,7 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-elements",
   "agent-activate",
   "agent-fill",
+  "agent-screenshot",
 ]);
 /** Why `agent-activate`'s wait after the click stopped early (mcp-forms F27). */
 export const ACTIVATE_STOPS = Object.freeze(["in-use"]);
@@ -409,7 +411,18 @@ function checkRequest(m, errors) {
   else if (command === "agent-keys") checkAgentKeysArgs(args, errors);
   else if (command === "agent-activate") checkAgentActivateArgs(args, errors);
   else if (command === "agent-fill") checkAgentFillArgs(args, errors);
-  else if (command === "agent-close" || command === "agent-show" || command === "agent-elements") {
+  else if (command === "agent-screenshot") {
+    // The viewport of one tab, never an area of the page or another tab (mcp-forms F18).
+    noExtraFields(args, ["tab", "labels"], errors, "args.");
+    checkTabArg(args, errors);
+    if ("labels" in args && typeof args.labels !== "boolean") {
+      errors.push("labels must be a boolean");
+    }
+  } else if (
+    command === "agent-close" ||
+    command === "agent-show" ||
+    command === "agent-elements"
+  ) {
     // A show names its tab only, never a workspace (mcp-drive D2); a list takes no selector.
     noExtraFields(args, ["tab"], errors, "args.");
     checkTabArg(args, errors);
@@ -470,6 +483,52 @@ function checkElementsResult(result, errors) {
     errors.push("result.elements must be inside the untrusted-content delimiters");
   }
   if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+}
+
+/** The image types a screenshot comes in (mcp-forms F19). */
+const SCREENSHOT_TYPES = Object.freeze(["image/png", "image/jpeg"]);
+/** Base64 of at least one byte, padded: what `convertToBlob`'s bytes encode to. */
+const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+/**
+ * `agent-screenshot`'s result (mcp-forms F19, F20; security.md M31): the page, a PNG or JPEG in
+ * base64 that fits the reply line, its size in pixels, and with labels asked how many were drawn
+ * and whether the element list was stale.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkScreenshotResult(result, errors) {
+  noExtraFields(
+    result,
+    ["url", "title", "mimeType", "data", "width", "height", "labels", "stale"],
+    errors,
+    "result.",
+  );
+  checkFields(result, "result", { strings: ["url", "title"] }, errors);
+  if (!SCREENSHOT_TYPES.includes(/** @type {any} */ (result.mimeType))) {
+    errors.push(`result.mimeType must be one of ${SCREENSHOT_TYPES.join(", ")}`);
+  }
+  const data = result.data;
+  if (
+    typeof data !== "string" ||
+    !data ||
+    data.length > AGENT_SCREENSHOT.base64 ||
+    !BASE64.test(data)
+  ) {
+    errors.push(`result.data must be base64 of at most ${AGENT_SCREENSHOT.base64} characters`);
+  }
+  if (!isInt(result.width, 1, AGENT_SCREENSHOT.width)) {
+    errors.push(`result.width must be an integer from 1 to ${AGENT_SCREENSHOT.width}`);
+  }
+  if (!isInt(result.height, 1, AGENT_SCREENSHOT.height)) {
+    errors.push(`result.height must be an integer from 1 to ${AGENT_SCREENSHOT.height}`);
+  }
+  if ("labels" in result && !isCount(result.labels)) {
+    errors.push("result.labels must be a non-negative integer");
+  }
+  if ("stale" in result) {
+    if (!("labels" in result)) errors.push("result.stale comes only with result.labels");
+    else if (result.stale !== true) errors.push("result.stale must be true when present");
+  }
 }
 
 /** A host name: letters, digits, dots, hyphens and the brackets and colons of an IPv6 address. */
@@ -628,6 +687,8 @@ function checkAgentResult(result, command, errors) {
     checkActivateResult(result, errors);
   } else if (command === "agent-fill") {
     checkFillResult(result, errors);
+  } else if (command === "agent-screenshot") {
+    checkScreenshotResult(result, errors);
   }
 }
 
