@@ -1133,8 +1133,18 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   element is not clicked and the call says so. It answers before it clicks, so a dialog the
   click opens never holds the call; a request that answers after the call stopped waiting
   clicks nothing. A dialog's text reaches the agent only inside the untrusted-content
-  delimiters, and no tool answers a page dialog.
+  delimiters, and no tool answers a page dialog. After a click that loaded no page, the result
+  says which parts of the page changed in place (`changed`: the clicked element, the other
+  listed elements, the frame's text outside scripts and styles, a visible dialog element), as
+  fixed words from a list that both the browser and `vimma-ctl mcp` check; the comparison runs in
+  the clicked element's frame's child, which keeps only a hash of the text, sends no page text
+  and reads no sensitive field's value, as in `vimma_elements` (M31). That check waits up to one
+  more second after the submission allowance of M28 is closed, so it opens nothing, and a
+  submission the page tries meanwhile is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_activate_says_what_changed_in_place`](../tests/browser/browser_vimma_mcp_activate_changes.js),
+  [`activate_says_what_changed_in_place`](../tools/vimma-ctl/src/mcp.rs),
+  [`agent-activate: what changed in place, from a fixed list`](../packages/vimma-core/test/control-v2.test.mjs),
   [`agent_clicks_never_synthesise_input_or_user_activation`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_activate_reports_a_dialog`](../tests/browser/browser_vimma_mcp_activate.js),
   [`agent-activate: the page after the click, a dialog, a stopped submission`](../packages/vimma-core/test/control-v2.test.mjs),

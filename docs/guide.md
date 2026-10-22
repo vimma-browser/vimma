@@ -1581,7 +1581,12 @@ clickable element. The question names the tab and the element,
 `◇ claude-code wants vimma_activate: 2 "List · Example" example.com/list  sg button "Add to list"`,
 and on `y` the element is clicked in the background: the tab is not selected and nothing in it is
 focused. The agent gets the page after the click, whether a new page loaded, and any dialog the
-page opened.
+page opened. When no page loaded, it is told which parts of the page changed in place within
+about 2 seconds (the clicked element, other listed elements, the page's text, a dialog drawn by
+the page), or that nothing did, so that a button that updates a basket in place is not pressed
+twice. It gets no page text this way: it calls `vimma_elements` to see what changed. Only the
+frame of the clicked element is compared, so a button inside an embedded frame that updates the
+page around it reads as no change.
 
 - **A plain click, no user activation.** The page gets the same click your `f` hints give it,
   never a mouse press from the system. It therefore cannot do what needs a real gesture of yours

@@ -4,6 +4,7 @@ import { describe, test, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  ACTIVATE_CHANGES,
   AGENT_COMMANDS,
   CONTROL_COMMANDS,
   DENY_REASONS,
@@ -530,6 +531,21 @@ describe("agent commands: results and errors", () => {
       "result.stopped must be in-use",
     ]);
     expect(errorsOf(ok({ ...result, steps: [] }), cmd)).toEqual(['unknown field "result.steps"']);
+  });
+
+  // #510: after a click that loaded no page, which parts of it changed in place, as fixed words
+  // only, never the page's text.
+  test("agent-activate: what changed in place, from a fixed list", () => {
+    const cmd = { command: "agent-activate" };
+    const result = { url: "https://a/", title: "A", loading: false, navigated: false };
+    for (const changed of [[], ["element"], ["element", "elements", "text", "dialog"]]) {
+      expect(errorsOf(ok({ ...result, changed }), cmd), JSON.stringify(changed)).toEqual([]);
+    }
+    for (const changed of ["text", ["price"], ["text", "text"], [1], { element: true }]) {
+      expect(errorsOf(ok({ ...result, changed }), cmd), JSON.stringify(changed)).toEqual([
+        `result.changed must be a list of distinct ${ACTIVATE_CHANGES.join(", ")}`,
+      ]);
+    }
   });
 
   // docs/specs/mcp-forms.md F12, F16: how many fields were filled, which did not keep their

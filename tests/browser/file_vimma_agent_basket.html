@@ -1,0 +1,60 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_activate_changes.js: buttons that change the page in place
+   - without loading one, as a shop's do. One counts itself and updates the basket total, one disables
+   - another button, one opens a dialog of the page, one updates the total a moment later, and
+   - one changes only a style sheet, which shows no text. Everything fits the test window. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Basket agent fixture</title>
+    <style>
+      body {
+        margin: 4px;
+        font: 12px sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <p>
+      <button id="add" type="button">Add to basket (0)</button>
+      <button id="lock" type="button">Lock</button>
+      <button id="deliver" type="button">Delivery</button>
+      <button id="later" type="button">Later</button>
+      <button id="nothing" type="button">Nothing</button>
+    </p>
+    <p id="total">Total 0 items</p>
+    <dialog id="options">
+      <p>Delivery options</p>
+      <button id="close" type="button">Close</button>
+    </dialog>
+    <script>
+      let count = 0;
+      const add = document.getElementById("add");
+      const total = document.getElementById("total");
+      add.addEventListener("click", () => {
+        count++;
+        add.textContent = `Add to basket (${count})`;
+        total.textContent = `Total ${count} items`;
+      });
+      document.getElementById("lock").addEventListener("click", () => {
+        add.disabled = true;
+      });
+      document.getElementById("deliver").addEventListener("click", () => {
+        document.getElementById("options").show();
+      });
+      document.getElementById("nothing").addEventListener("click", () => {
+        const style = document.createElement("style");
+        style.textContent = "#total { letter-spacing: 0; }";
+        document.body.append(style);
+      });
+      document.getElementById("later").addEventListener("click", () => {
+        setTimeout(() => {
+          total.textContent = "Total updated later";
+        }, 400);
+      });
+    </script>
+  </body>
+</html>

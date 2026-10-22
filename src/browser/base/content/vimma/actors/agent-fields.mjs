@@ -663,3 +663,75 @@ export function fillField(el, value) {
   }
   return false;
 }
+
+/** Elements a page shows as a dialog of its own, not the browser's tab-modal ones. */
+const PAGE_DIALOGS = 'dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]';
+
+/** Elements whose text is code or markup, not text the page shows. */
+const NOT_SHOWN = new Set(["script", "style", "noscript", "template"]);
+
+/**
+ * The page's text in `doc`, outside scripts and styles, as its length and a 32-bit FNV-1a hash:
+ * enough to tell that it changed, without keeping a copy of a large page between polls.
+ * @param {Document} doc
+ */
+function textMark(doc) {
+  if (!doc.body) return "";
+  const walker = doc.createTreeWalker(doc.body, 4 /* NodeFilter.SHOW_TEXT */);
+  let hash = 0x811c9dc5;
+  let length = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (NOT_SHOWN.has(node.parentElement?.localName ?? "")) continue;
+    const text = /** @type {Text} */ (node).data;
+    length += text.length;
+    for (let i = 0; i < text.length; i++) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+    }
+  }
+  return `${length}:${hash >>> 0}`;
+}
+
+/**
+ * What a click could change in place in `doc` (#510), to compare with `pageChanges` after it:
+ * the clicked element and the other listed elements as `vimma_elements` describes them (no
+ * sensitive value, M31) and whether each is shown, the page's text, and its visible dialogs.
+ * Kept in this process: the parent only ever gets the words of `pageChanges`.
+ * @param {Document} doc @param {(Element | undefined)[]} listed  undefined: gone
+ * @param {number} clicked  its index in `listed`
+ */
+export function pageMarks(doc, listed, clicked) {
+  const live = /** @type {Element[]} */ (listed.filter((el) => el?.isConnected));
+  const { elements } = describeAgentElements(live);
+  /** @type {Map<Element, string>} */
+  const described = new Map();
+  live.forEach((el, i) => {
+    const shown = /** @type {any} */ (el).checkVisibility?.() ?? true;
+    described.set(el, JSON.stringify([elements[i], shown]));
+  });
+  const markOf = (/** @type {Element | undefined} */ el) => (el && described.get(el)) ?? "gone";
+  return {
+    clicked: markOf(listed[clicked]),
+    listed: listed.filter((_, i) => i !== clicked).map(markOf),
+    text: textMark(doc),
+    dialogs: new Set(
+      [...doc.querySelectorAll(PAGE_DIALOGS)].filter(
+        (el) => /** @type {any} */ (el).checkVisibility?.() ?? true,
+      ),
+    ),
+  };
+}
+
+/**
+ * Which parts of the page changed since `before` (#510), in core's fixed words
+ * (ACTIVATE_CHANGES): a dialog counts when one is shown that was not before.
+ * @param {ReturnType<typeof pageMarks>} before @param {ReturnType<typeof pageMarks>} now
+ * @returns {string[]}
+ */
+export function pageChanges(before, now) {
+  const changed = [];
+  if (now.clicked !== before.clicked) changed.push("element");
+  if (now.listed.some((mark, i) => mark !== before.listed[i])) changed.push("elements");
+  if (now.text !== before.text) changed.push("text");
+  if ([...now.dialogs].some((el) => !before.dialogs.has(el))) changed.push("dialog");
+  return changed;
+}
