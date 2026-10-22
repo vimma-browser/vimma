@@ -356,9 +356,14 @@ text that pages, add-ons and bookmarks choose.
     never meets a button Firefox's delay still refuses. Vimma **never** gives the prompt focus;
     `Tab` focuses the secondary (Block) button first. A prompt Firefox itself opens with focus on
     its panel (the add-on install prompt, `autofocus` in ExtensionsUI) takes the keys from there,
-    under the same delay; no text field has focus then.
+    under the same delay; no text field has focus then. While one of Vimma's own surfaces holds
+    the keys (the help overlay, a picker, live grep, the command line, a search being typed, the
+    side panel, the bookmarks panel, a Vimma prompt or question), the keys are that surface's and
+    **never** answer the permission prompt; one list in `VimmaHost.sys.mjs` (`vimmaUiOpen`) names
+    these surfaces for the permission prompt, the agent question and the update question alike.
     [`doorhangerKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
     [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
+    [`vimma_ui_keeps_y_and_n_from_the_prompt`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
     [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)

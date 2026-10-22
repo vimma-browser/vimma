@@ -508,6 +508,66 @@ add_task(async function permission_prompts_answer_y_and_n() {
   await show();
 });
 
+// 11a: while one of Vimma's own surfaces holds the keys, y and n are its input, never an answer
+// to the prompt behind it (issue #485): live grep, and a search typed before Firefox's find bar
+// exists.
+add_task(async function vimma_ui_keeps_y_and_n_from_the_prompt() {
+  const DELAY = 400;
+  await SpecialPowers.pushPrefEnv({ set: [["security.notification_enable_delay", DELAY]] });
+  const tab = await openPage();
+  await hide();
+  const browser = tab.linkedBrowser;
+  const panel = PopupNotifications.panel;
+  const principal = () => browser.contentPrincipal;
+  const geo = () => SitePermissions.getForPrincipal(principal(), "geo", browser).state;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const shown = BrowserTestUtils.waitForEvent(panel, "popupshown");
+  await SpecialPowers.spawn(browser, [], () => {
+    content.navigator.geolocation.getCurrentPosition(
+      () => {},
+      () => {},
+    );
+  });
+  await shown;
+  const n = /** @type {any} */ (panel.firstElementChild);
+  const armed = () => shows(n.querySelector(".vimma-prompt-keys"));
+  await until(armed, "armed");
+
+  // Live grep: ctrl+b f g, then y once the prompt is armed again.
+  const grep = VimmaHost._state(window).grep;
+  await focusContent(browser);
+  prefix("f");
+  EventUtils.synthesizeKey("g");
+  await until(() => grep.isOpen, "ctrl+b f g opens live grep");
+  await until(armed, "armed again with live grep open");
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 2);
+  Assert.equal(panel.state, "open", "y typed into live grep answers nothing");
+  Assert.equal(geo(), SitePermissions.UNKNOWN, "nothing decided");
+  const query = $("vimma-grep")?.querySelector(".vimma-grep-query")?.textContent;
+  Assert.equal(query, "y", "y went into the grep field");
+  // The first Esc goes to browse mode, the second closes live grep.
+  EventUtils.synthesizeKey("KEY_Escape");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !grep.isOpen, "Esc Esc closes live grep");
+  Assert.equal(panel.state, "open", "the prompt is still there");
+
+  // A search: / and n in one go, before Firefox has made the find bar.
+  await focusContent(browser);
+  await until(armed, "armed again after live grep");
+  EventUtils.synthesizeKey("/");
+  EventUtils.synthesizeKey("n");
+  const findbar = await gBrowser.getFindBar(tab);
+  await until(() => findbar._findField.value === "n", "n went into the search");
+  Assert.equal(panel.state, "open", "n typed into a search answers nothing");
+  Assert.equal(geo(), SitePermissions.UNKNOWN, "nothing decided");
+  EventUtils.synthesizeKey("KEY_Escape");
+
+  await SpecialPowers.popPrefEnv();
+  gBrowser.removeTab(tab);
+  await show();
+});
+
 // 5b: the keys follow Firefox's own delay for the prompt (notification.timeShown), which it
 // restarts when the panel is repositioned or resized and when the window is activated. A key
 // armed earlier would click a button Firefox still refuses, and be lost.

@@ -1202,6 +1202,29 @@ const CHROME_HANDLED = new Set(
   FIREFOX_SHORTCUTS.filter((r) => r.source === "chrome").map((r) => r.chord),
 );
 
+/**
+ * Whether one of Vimma's own surfaces holds the keys: the help overlay, a picker, live grep, the
+ * command line, a search being typed, a prompt on the prompt line, the side panel or the
+ * bookmarks panel. The agent question, the update question and the permission prompt keys all
+ * stand back while it does, so one list keeps them from drifting apart (issue #485).
+ * @param {WindowState} state
+ */
+function vimmaUiOpen(state) {
+  return (
+    state.help.isOpen ||
+    state.picker.isOpen ||
+    state.wsPicker.isOpen ||
+    state.addonPicker.isOpen ||
+    state.mcpLog.isOpen ||
+    state.grep.isOpen ||
+    state.cmdline.isOpen ||
+    state.rename.isOpen ||
+    state.panel.isOpen ||
+    state.bookmarks.isOpen ||
+    state.find.typing
+  );
+}
+
 /** @param {Event} e */
 function consume(e) {
   e.preventDefault();
@@ -1469,19 +1492,7 @@ export const VimmaHost = {
     AgentUi.register(win, {
       prompt: state.agentPrompt,
       inField: () => this._mode(state) === "insert",
-      otherOpen: () =>
-        state.help.isOpen ||
-        state.picker.isOpen ||
-        state.wsPicker.isOpen ||
-        state.addonPicker.isOpen ||
-        state.mcpLog.isOpen ||
-        state.grep.isOpen ||
-        state.cmdline.isOpen ||
-        state.rename.isOpen ||
-        state.panel.isOpen ||
-        state.bookmarks.isOpen ||
-        state.find.typing ||
-        UpdateUi.isOpen(win),
+      otherOpen: () => vimmaUiOpen(state) || UpdateUi.isOpen(win),
       pending: () => state.dispatcher.pending().length > 0,
       notice: (text) => state.notice.show(text),
       ask: (question, yes) => state.rename.ask(question, yes),
@@ -1493,19 +1504,7 @@ export const VimmaHost = {
       prompt: state.updatePrompt,
       inField: () => this._mode(state) === "insert",
       otherOpen: () =>
-        state.help.isOpen ||
-        state.picker.isOpen ||
-        state.wsPicker.isOpen ||
-        state.addonPicker.isOpen ||
-        state.mcpLog.isOpen ||
-        state.grep.isOpen ||
-        state.cmdline.isOpen ||
-        state.rename.isOpen ||
-        state.panel.isOpen ||
-        state.bookmarks.isOpen ||
-        state.find.typing ||
-        state.agentPrompt.isOpen ||
-        !!state.promptKeys?.notification,
+        vimmaUiOpen(state) || state.agentPrompt.isOpen || !!state.promptKeys?.notification,
       pending: () => state.dispatcher.pending().length > 0,
       notice: (text) => state.notice.show(text, { ms: ANNOUNCE_MS }),
       hideNotice: (text) => {
@@ -1565,18 +1564,7 @@ export const VimmaHost = {
     try {
       const promptKeys = new PromptKeys(win, {
         inField: () => this._mode(state) === "insert",
-        otherOpen: () =>
-          state.help.isOpen ||
-          state.picker.isOpen ||
-          state.wsPicker.isOpen ||
-          state.addonPicker.isOpen ||
-          state.mcpLog.isOpen ||
-          state.cmdline.isOpen ||
-          state.rename.isOpen ||
-          state.panel.isOpen ||
-          state.bookmarks.isOpen ||
-          state.agentPrompt.isOpen ||
-          UpdateUi.isOpen(win),
+        otherOpen: () => vimmaUiOpen(state) || state.agentPrompt.isOpen || UpdateUi.isOpen(win),
         pending: () => state.dispatcher.pending().length > 0,
       });
       promptKeys.init();
