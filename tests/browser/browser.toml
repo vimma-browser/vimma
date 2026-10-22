@@ -274,6 +274,8 @@ support-files = [
 ["browser_vimma_private_swap.js"]
 support-files = ["file_vimma_title.html"]
 
+["browser_vimma_private_swap_native.js"]
+
 ["browser_vimma_side_panel.js"]
 
 ["browser_vimma_side_panel_marks.js"]

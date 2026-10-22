@@ -1,11 +1,11 @@
 # Spec: private-swap-macos
 
-Status: draft (Delivery 1 built; open question 1 waits for the hand checks) · Area:
+Status: draft (Delivery 1 and 2 built; the hand checks and open question 1 are open) · Area:
 `packages/vimma-core/src/` (`hyprswap.mjs`'s pair state machine moved to a backend-neutral
 `privatepair.mjs`, `nativeswap.mjs` new); `host/private-swap.mjs` (a backend switch),
-`host/native-swap.mjs` (new), `host/private-ops.mjs`, `about/AboutVimma.sys.mjs`; `docs/guide.md`,
-`docs/limits.md` · Upstream patches: none · ADR: none (no window manager IPC, so
-[ADR-017](../adr/017-window-manager-ipc.md) does not apply)
+`host/native-swap.mjs` (new, and its `jar.mn` line), `host/private-ops.mjs`,
+`about/AboutVimma.sys.mjs`; `docs/guide.md`, `docs/limits.md` · Upstream patches: none · ADR:
+none (no window manager IPC, so [ADR-017](../adr/017-window-manager-ipc.md) does not apply)
 
 Issue: [#415](https://github.com/vimma-browser/vimma/issues/415)
 
@@ -295,11 +295,13 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
    `vimma-ctl send-keys` from a terminal), Vimma then calls `focus()` on the shown window so that
    `raise-on-setfocus` activates the app, as Firefox would for a link.
 6. **Never stranded.**
-   - **The slot window closes** (any close path in behaviour 3): on its `close` event, and on
-     `unload` if no `close` event came, Vimma shows the hidden normal window at the slot
-     window's frame. This runs in the same process before the private window's native window is
-     destroyed, so there is never a moment with only a hidden window, and the Dock's reopen
-     (Research) always finds a visible one. `ctrl+b shift+d` swaps first, then closes.
+   - **The slot window closes** (any close path in behaviour 3): on its `unload` event, Vimma
+     shows the hidden normal window at the slot window's frame. Every close path ends in
+     `AppWindow::Destroy`, which destroys the docshell, and so fires `unload`, before it
+     destroys the native window (`xpfe/appshell/AppWindow.cpp:541-565`, Firefox 158.0.1), so
+     there is never a moment with only a hidden window, and the Dock's reopen (Research) always
+     finds a visible one. The `close` event is not used, because the close-tabs warning can
+     still cancel it after Vimma would have acted. `ctrl+b shift+d` swaps first, then closes.
    - **A link reaches the hidden normal window** (`TabOpen` while hidden): Vimma swaps it back
      in place synchronously; Firefox's own `focus()` follows and brings Vimma to the front
      (behaviour 5).

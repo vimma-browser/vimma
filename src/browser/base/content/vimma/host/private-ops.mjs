@@ -160,7 +160,9 @@ function openPrivate(from) {
     Ci.nsISupportsString,
   );
   args.data = f.BROWSER_NEW_TAB_URL;
-  return f.OpenBrowserWindow({ private: true, features: size.join(","), args });
+  // On macOS the swap opens it at the exact (restored) frame, without animation.
+  const features = PrivateSwap.openFeatures(from) ?? size.join(",");
+  return f.OpenBrowserWindow({ private: true, features, args });
 }
 
 /**

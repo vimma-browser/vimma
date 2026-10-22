@@ -2086,8 +2086,8 @@ restore all forget it, and so do Vimma's own files.
   Searches use Firefox's private search engine if you set one. Vimma's own keys and pages need
   no add-on.
 - **Links from other apps** open in your normal window, as Firefox does, so you leave the
-  private workspace to see them (on Hyprland the normal window swaps back into place; the
-  private workspace stays one key away). Routing rules never send a page into or out of it.
+  private workspace to see them (on Hyprland and macOS the normal window swaps back into place;
+  the private workspace stays one key away). Routing rules never send a page into or out of it.
 - **Scripts:** `vimma-ctl state` in the private workspace says `"private": true` and
   `"workspace": "private"`, and gives every tab's `url` and `title` as `null`. `vimma-ctl open`
   and `send-keys` act on the focused window, so with the private workspace focused they load
@@ -2139,7 +2139,31 @@ to disk.
 - **Opting out:** `[private] placement = "window"` in `config.toml` (below) opens it as a second
   window, as on other systems.
 
-**Elsewhere** (other window managers, X11, or `placement = "window"`) it is a second window:
+**On macOS it takes your Vimma window's place too.** Going to the private workspace opens the
+private window exactly where your Vimma window was (same screen, position and size, and zoomed
+if it was zoomed), without animation, and hides your normal window. Going back (any of the keys
+above) shows your normal window where the private window is now, so if you moved or resized the
+private window, your normal window takes that frame. Your normal window comes back in its place
+when the private window closes in any way (`ctrl+b shift+d`, `ctrl+shift+w`, `cmd+shift+w`,
+`cmd+w` on its last tab, the red close button, File → Close Window), when a link from another
+app arrives, and when you pick it from the Window menu or the Dock menu if macOS lists it there.
+If Vimma quits or crashes meanwhile, the next start shows your normal window as usual: nothing
+about the swap is written to disk.
+
+- **How:** no window manager is involved. Vimma's browser process owns both windows and hides
+  and shows them itself, with the same call Firefox uses to hide its windows while it quits.
+  Other normal windows stay on screen: the private workspace replaces one window, not the app.
+- **Full screen:** a window in full screen (its own Space) is never hidden. From a fullscreen
+  window, the private workspace opens in a fullscreen Space of its own, and switching moves
+  between the two Spaces, with macOS's animation.
+- **If a swap fails**, Vimma shows your normal window, says
+  `private: the swap failed; showing it as a window`, and opens the private workspace as a
+  window of its own until the config is next reloaded. `about:vimma` says
+  `Window manager: none needed (macOS)` and which placement is in force.
+- **Opting out:** `[private] placement = "window"` in `config.toml` (below) opens it as a second
+  window.
+
+**Elsewhere** (Linux without Hyprland, X11, or `placement = "window"`) it is a second window:
 Vimma opens it at the current window's size (and, on X11 and floating window managers, its
 position) and focuses it when you switch.
 
@@ -2530,7 +2554,8 @@ accent = "#ff9e64"
   `ctrl+u`, `ctrl+h` in text fields, default `true`); `[bookmarks] root` (`"workspace"`, the
   default: the current workspace's folder; `"toolbar"`; or `"all"`: what the
   [bookmarks panel](#bookmarks) lists and where paths start); `[private] placement` (`"swap"`, the
-  default: on Hyprland the [private workspace](#private-workspace) takes the Vimma window's place;
+  default: on Hyprland and macOS the [private workspace](#private-workspace) takes the Vimma
+  window's place;
   `"window"`: it is a window of its own beside it); `[mcp]` (local AI agents:
   `enabled`, which wins over `:mcp on|off`; `workspace`, the [agent workspace](#agent-workspace)'s
   name, default `"agent"`, never `"private"`; `ask_timeout`, 10 to 300 seconds, default 50;

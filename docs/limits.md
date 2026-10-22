@@ -129,7 +129,11 @@ the [user guide](guide.md); planned work is on the
   It has no update notices (no update manifest exists for macOS): install a newer `.dmg` by hand.
 - The mounted macOS `.dmg` is a plain Finder window, without a background or a volume icon
   (spec macos-homebrew, decision 14).
-- On macOS, Omarchy theming, the Omarchy hook and the Hyprland private-window swap do nothing.
+- On macOS, Omarchy theming and the Omarchy hook do nothing.
+- On macOS, the normal window hidden while the private workspace is shown still runs its pages
+  (audio keeps playing), and scripts still see it: `vimma-ctl state` lists both windows. A
+  window in full screen is never hidden, so from full screen the private workspace is a
+  fullscreen Space of its own and switching moves between Spaces.
 - The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
 - The `.rpm` has no OpenPGP signature and there is no dnf or zypper repository for it: zypper
   installs it only with `--allow-unsigned-rpm`, `SHA256SUMS` and its cosign signature are what

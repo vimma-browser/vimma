@@ -335,8 +335,8 @@ main_size = 60
 root = "workspace"
 
 # The private workspace (ctrl+b shift+p): "swap" shows it in place of the Vimma window on
-# Hyprland, which hides the other one until you switch back; "window" opens it as a window
-# of its own beside it, as on every other window manager.
+# Hyprland and macOS, which hide the other one until you switch back; "window" opens it as
+# a window of its own beside it, as on every other system.
 [private]
 placement = "swap"
 
