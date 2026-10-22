@@ -139,7 +139,8 @@ insert_editing = true
 "<Esc>" = "page.stop"
 "r" = "page.reload"
 "f" = "hint.follow"
-"F" = "hint.follow_new_tab"
+"F" = "hint.element"
+"gF" = "hint.follow_new_tab"
 "/" = "find.forward"
 "?" = "find.backward"
 "n" = "find.next"
@@ -214,6 +215,8 @@ insert_editing = true
 "o" = "selection.swap"
 "iw" = "selection.inner_word"
 "aw" = "selection.a_word"
+"ip" = "selection.inner_block"
+"ap" = "selection.a_block"
 "y" = "selection.yank"
 "Y" = "selection.yank_lines"
 "I" = "urlbar.focus"
@@ -223,6 +226,17 @@ insert_editing = true
 
 [modal.hint]
 "<Esc>" = "hint.cancel"
+
+[modal.element]
+"<Esc>" = "mode.normal"
+"v" = "element.visual"
+"V" = "element.visual_line"
+"y" = "element.yank"
+"+" = "element.parent"
+"-" = "element.child"
+"j" = "element.next"
+"k" = "element.prev"
+"F" = "hint.element"
 
 [modal.help]
 "<Esc>" = "help.close"

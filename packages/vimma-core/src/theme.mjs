@@ -29,6 +29,8 @@ import { formatPath, locateKeys, parseToml } from "./toml.mjs";
  *   white just far enough to reach MIN_CONTRAST on each (spec m7-a11y)
  * @property {boolean} [focus]      a focus indicator: `from`, moved toward black or white just
  *   far enough to reach MIN_FOCUS_CONTRAST on every FOCUS_SURFACE_TOKENS
+ * @property {boolean} [badge]    a status-bar badge: `from`, unless an earlier badge already
+ *   has that colour (badgeColors)
  * @property {string} description
  */
 
@@ -252,13 +254,19 @@ const BUILTIN_ROLES = Object.freeze({
   vimma: Object.freeze({ "--vimma-hint-bg": "bright_green" }),
 });
 
-/** Status-bar badge colour per mode, plus the pending prefix. */
+/**
+ * Status-bar badge colour per mode, plus the pending prefix: the palette slot each badge asks for.
+ * A theme can give two slots one colour (Catppuccin's bright magenta is its magenta); badgeColors
+ * then moves the later badge, so every badge keeps a colour of its own.
+ */
 const BADGE_COLORS = Object.freeze({
   normal: "accent",
   insert: "green",
   visual: "magenta",
   command: "yellow",
   hint: "orange",
+  // Beside VISUAL's magenta, the mode `v` leads into, and apart from it (element-focus 17).
+  element: "bright_magenta",
   help: "cyan",
   panel: "blue",
   resize: "brown",
@@ -267,6 +275,12 @@ const BADGE_COLORS = Object.freeze({
 
 /** Badges the status bar can show: every mode, and `prefix`. */
 export const BADGES = Object.freeze(Object.keys(BADGE_COLORS));
+
+/**
+ * How far apart two badges' colours must be (CIE76 delta E): about where two flat swatches stop
+ * reading as one colour at a glance, since a badge is recognised by its colour before its text.
+ */
+export const MIN_BADGE_DISTANCE = 10;
 
 const ANSI = ["red", "yellow", "orange", "green", "cyan", "blue", "magenta", "brown"];
 const BRIGHT = ["red", "yellow", "green", "cyan", "blue", "magenta"];
@@ -310,8 +324,18 @@ export const THEME_TOKENS = Object.freeze([
   { name: "--vimma-statusbar-fg", from: "foreground", description: "status bar text" },
   { name: "--vimma-hint-bg", from: "yellow", description: "link hint label" },
   { name: "--vimma-hint-fg", textOn: "--vimma-hint-bg", description: "link hint text" },
+  {
+    name: "--vimma-element-outline",
+    from: "accent",
+    description: "the focused text block's outline (element focus)",
+  },
   ...Object.entries(BADGE_COLORS).flatMap(([badge, from]) => [
-    { name: `--vimma-mode-${badge}`, from, description: `${badge} mode badge` },
+    {
+      name: `--vimma-mode-${badge}`,
+      from,
+      badge: true,
+      description: `${badge} mode badge, apart from every other badge's colour`,
+    },
     {
       name: `--vimma-mode-${badge}-fg`,
       textOn: `--vimma-mode-${badge}`,
@@ -411,15 +435,25 @@ export function normalizeHex(hex) {
   return h.length === 4 ? `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}` : h;
 }
 
-/** @param {string} hex */
-function luminance(hex) {
+/**
+ * The colour's linear-light sRGB channels, 0 to 1.
+ * @param {string} hex  a hex colour
+ * @returns {[number, number, number]}
+ */
+function linearRgb(hex) {
   const h = normalizeHex(hex);
   /** @param {number} at */
   const channel = (at) => {
     const c = parseInt(h.slice(at, at + 2), 16) / 255;
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
-  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+  return [channel(1), channel(3), channel(5)];
+}
+
+/** @param {string} hex */
+function luminance(hex) {
+  const [r, g, b] = linearRgb(hex);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 /**
@@ -622,9 +656,11 @@ function textOn(bg, palette) {
 function paletteToTokens(palette, font, roles = {}) {
   /** @type {Tokens} */
   const tokens = {};
+  const badges = badgeColors(palette);
   for (const t of THEME_TOKENS) {
     const from = Object.hasOwn(roles, t.name) ? roles[t.name] : t.from;
-    if (t.textOn) tokens[t.name] = textOn(/** @type {string} */ (tokens[t.textOn]), palette);
+    if (t.badge) tokens[t.name] = /** @type {string} */ (badges[t.name]);
+    else if (t.textOn) tokens[t.name] = textOn(/** @type {string} */ (tokens[t.textOn]), palette);
     else if (from) tokens[t.name] = /** @type {string} */ (palette[from]);
     else tokens[t.name] = cssFontFamily(font);
   }
@@ -639,6 +675,74 @@ function paletteToTokens(palette, font, roles = {}) {
     else if (t.focus) tokens[t.name] = readable(value, focusSurfaces, MIN_FOCUS_CONTRAST);
   }
   return tokens;
+}
+
+/**
+ * Each badge's colour, by token name. A badge keeps its slot's colour when that is at least
+ * MIN_BADGE_DISTANCE from the colour of every badge before it in BADGE_COLORS that kept its own.
+ * The others, in the same order, take their slot's colour lightened or darkened by the smallest
+ * 5% step that sets it apart from every badge placed so far: a shade of the colour asked for keeps
+ * the badge recognisable (ELEMENT a deeper VISUAL), where taking another slot would push that
+ * slot's badge on in turn. Badge text is chosen after (textOn), so every pick still gets AA text.
+ * @param {Palette} palette
+ * @returns {Record<string, string>}
+ */
+function badgeColors(palette) {
+  /** @type {Record<string, string>} */
+  const out = {};
+  /** @type {string[]} */
+  const placed = [];
+  /** @param {string} c */
+  const apart = (c) => placed.every((p) => colorDistance(c, p) >= MIN_BADGE_DISTANCE);
+  const wants = Object.entries(BADGE_COLORS).map(([badge, slot]) => ({
+    name: `--vimma-mode-${badge}`,
+    want: /** @type {string} */ (palette[slot]),
+  }));
+  /** @type {typeof wants} */
+  const moved = [];
+  for (const w of wants) {
+    if (!apart(w.want)) moved.push(w);
+    else placed.push((out[w.name] = w.want));
+  }
+  /** @param {string} c */
+  const room = (c) => Math.min(...placed.map((p) => colorDistance(c, p)));
+  for (const { name, want } of moved) {
+    /** @type {string[]} */
+    const shades = [];
+    for (let step = 1; step <= 20; step++) {
+      shades.push(mix(want, "#ffffff", step / 20), mix(want, "#000000", step / 20));
+    }
+    // A theme of a few greys has no shade apart from them all: the one with the most room.
+    const pick = shades.find(apart) ?? shades.reduce((a, b) => (room(b) > room(a) ? b : a));
+    placed.push((out[name] = pick));
+  }
+  return out;
+}
+
+/**
+ * CIELAB (D65) L*, a*, b*.
+ * @param {string} hex  a hex colour
+ * @returns {[number, number, number]}
+ */
+function lab(hex) {
+  const [r, g, b] = linearRgb(hex);
+  /** @param {number} t */
+  const f = (t) => (t > 216 / 24389 ? Math.cbrt(t) : ((24389 / 27) * t + 16) / 116);
+  const x = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+  const y = f(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  const z = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+
+/**
+ * CIE76 delta E between two colours (sRGB, D65): 0 for one colour, 100 from black to white.
+ * @param {string} a  hex colour
+ * @param {string} b  hex colour
+ */
+export function colorDistance(a, b) {
+  const [l1, a1, b1] = lab(a);
+  const [l2, a2, b2] = lab(b);
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
 }
 
 /**

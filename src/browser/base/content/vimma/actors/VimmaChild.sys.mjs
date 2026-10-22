@@ -8,8 +8,10 @@
 
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
-import { collectTargets } from "./hint-collect.mjs";
+import { collectTargets, linkText } from "./hint-collect.mjs";
+import { describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
+import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
 import { textOfDocument } from "./text-model.mjs";
 import { GrepMatcher } from "./grep-matcher.mjs";
@@ -158,10 +160,17 @@ export class VimmaChild extends JSWindowActorChild {
   #largest = null;
   /** The last hint collection (m1-hints): its generation and its elements, by target id. */
   #hints = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
+  /**
+   * An agent's last `vimma_elements` in this frame (docs/specs/mcp-forms.md F4): beside the
+   * user's collection, never in its place, so neither voids the other.
+   */
+  #agentEls = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
   #emptySearchAt = 0;
   /** Copy mode in this document (m1-copy-mode). */
   #caret = new Caret();
+  /** Element focus in this document (docs/specs/element-focus.md). */
+  #block = new BlockFocus();
   /**
    * Live grep (docs/specs/live-grep.md decision 14): this document's text model while the
    * picker is open, marked stale by any change to the document until the next query rebuilds it.
@@ -220,6 +229,7 @@ export class VimmaChild extends JSWindowActorChild {
 
   didDestroy() {
     this.#grepEnd();
+    this.#block.destroy();
     try {
       this.#watched?.removeSelectionListener(this.#selectionListener);
     } catch {
@@ -444,7 +454,15 @@ export class VimmaChild extends JSWindowActorChild {
   receiveMessage(msg) {
     switch (msg.name) {
       case "Vimma:Scroll":
-        return this.#scroll(msg.data.kind, msg.data.count);
+        return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+      case "Vimma:ScrollFraction": {
+        // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16): the element `j`
+        // scrolls, as a fraction of how far it can go.
+        const el = this.#scrollTarget(true);
+        if (!el) return 0;
+        const max = el.scrollHeight - el.clientHeight;
+        return max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
+      }
       case "Vimma:Blur": {
         if (isIndex(msg.data?.gen)) this.#blurGen = msg.data.gen;
         const el = deepActiveElement(this.document);
@@ -503,19 +521,46 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#collectHints(msg.data);
       case "Vimma:ActivateHint":
         return this.#activateHint(msg.data);
+      case "Vimma:AgentElement":
+        return this.#agentElement(msg.data);
       case "Vimma:Caret": {
         // Only the frame with focus has the user's caret (the parent sends to that one).
         const win = this.contentWindow;
         if (!isCaretMessage(msg.data) || !win || !this.document.hasFocus()) return false;
-        // The frame's nsISelectionController, got as ViewSourcePageChild gets it.
-        const selCon = this.docShell
-          .QueryInterface(Ci.nsIInterfaceRequestor)
-          .getInterface(Ci.nsISelectionDisplay)
-          .QueryInterface(Ci.nsISelectionController);
-        return this.#caret.run(win, selCon, msg.data);
+        return this.#caret.run(win, this.#selCon(), msg.data);
+      }
+      case "Vimma:Block": {
+        // Element focus (docs/specs/element-focus.md): the parent sends to the frame whose
+        // block a label chose, and to the frames around it, which only report their scrolls.
+        const win = this.contentWindow;
+        if (!win) return null;
+        return this.#block.run(win, msg.data, {
+          take: (gen, id) => {
+            if (gen !== this.#hints.gen) return null;
+            const el = this.#hints.els[id]?.deref() ?? null;
+            this.#hints = { gen: -1, els: [] };
+            return el;
+          },
+          // `v` on a block: copy mode starts with the block selected, as with a mouse selection.
+          enterCopyMode: (line) => {
+            const selCon = this.#selCon();
+            if (this.#caret.run(win, selCon, { op: "enter" }) !== true) return false;
+            if (line) this.#caret.run(win, selCon, { op: "line" });
+            return true;
+          },
+          send: (name, data) => this.sendAsyncMessage(name, data),
+        });
       }
     }
     return undefined;
+  }
+
+  /** The frame's nsISelectionController, got as ViewSourcePageChild gets it. */
+  #selCon() {
+    return this.docShell
+      .QueryInterface(Ci.nsIInterfaceRequestor)
+      .getInterface(Ci.nsISelectionDisplay)
+      .QueryInterface(Ci.nsISelectionController);
   }
 
   /**
@@ -555,23 +600,59 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * The hint targets of this frame (m1-hints). Rects are in this frame's CSS pixels; the parent
-   * offsets them by the frame rects the embedding frame's child reports.
-   * @param {{ gen: number, linksOnly: boolean }} data
+   * offsets them by the frame rects the embedding frame's child reports. An agent's collection
+   * (`texts`, docs/specs/mcp-drive.md D12) gets each link's text too; an agent's
+   * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
+   * controls included, each described, with the frame's forms, and keeps its elements apart from
+   * the user's (F4).
+   * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
+   *   elements?: boolean }} data
    */
   #collectHints(data) {
     const gen = data?.gen;
     const win = this.contentWindow;
     if (!isIndex(gen) || !win) return null;
     const t0 = ChromeUtils.now();
+    const elements = data.elements === true;
     const { targets, frames } = collectTargets(win, {
-      linksOnly: data.linksOnly === true,
+      linksOnly: data.linksOnly === true && !elements,
+      blocks: data.blocks === true && !elements,
+      disabled: elements,
     });
-    this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    const texts = data.texts === true && !elements;
+    // An agent's collection is never followed through the user's targets: the user's targets of
+    // this frame stay as they were, and an agent's elements are kept apart.
+    if (elements) this.#agentEls = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    else if (!texts) this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    const described = elements ? describeAgentElements(targets.map((t) => t.el)) : null;
     return {
-      targets: targets.map((t, id) => ({ id, rect: t.rect, kind: t.kind, href: t.href })),
+      targets: targets.map((t, id) => ({
+        id,
+        rect: t.rect,
+        kind: t.kind,
+        href: t.href,
+        text: texts ? linkText(t.el) : undefined,
+        blockKind: t.blockKind,
+        box: t.box,
+        agent: described?.elements[id],
+      })),
       frames: frames.map((f) => ({ id: f.bc.id, rect: f.rect })),
       ms: ChromeUtils.now() - t0,
+      ...(described ? { forms: described.forms } : {}),
     };
+  }
+
+  /**
+   * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
+   * says whether it is still in the document, so a label never names an element the page has
+   * replaced since.
+   * @param {{ op: string, gen: number, id: number }} data
+   */
+  #agentElement(data) {
+    if (!isIndex(data?.gen) || !isIndex(data?.id) || data.gen !== this.#agentEls.gen) return false;
+    const el = this.#agentEls.els[data.id]?.deref();
+    if (data.op === "alive") return !!el?.isConnected;
+    return false;
   }
 
   /**
@@ -841,15 +922,16 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * @param {ScrollKind} kind
    * @param {number} count
+   * @param {boolean} [instant]  no smooth scroll: an agent's tab in the background, whose
+   *   refresh driver is throttled (docs/specs/mcp-drive.md D8)
    * @returns {boolean} whether this frame had something to scroll
    */
-  #scroll(kind, count) {
+  #scroll(kind, count, instant = false) {
     const vertical = kind !== "left" && kind !== "right";
     const el = this.#scrollTarget(vertical);
     if (!el) return false;
-    const behavior = Services.prefs.getBoolPref("general.smoothScroll", true)
-      ? "smooth"
-      : "instant";
+    const behavior =
+      !instant && Services.prefs.getBoolPref("general.smoothScroll", true) ? "smooth" : "instant";
     const n = Math.max(1, Number(count) || 1);
     // Whole pixels, so d then u returns to the same place.
     const half = Math.round(el.clientHeight / 2) * n;

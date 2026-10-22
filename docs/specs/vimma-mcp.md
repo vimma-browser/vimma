@@ -326,7 +326,8 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
    are not painted), so it is later too. `:pipe <cmd>` (send the current page to a local tool) is
    a different direction, started by the user, and out of scope. Showing a page to the user and
    running Vimma's own page keys in an agent tab, confined to the agent workspace, are specified
-   in [mcp-drive](mcp-drive.md).
+   in [mcp-drive](mcp-drive.md); clicks, form filling, screenshots and console output in
+   [mcp-forms](mcp-forms.md).
 
 ### B. The agent workspace
 

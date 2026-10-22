@@ -19,8 +19,8 @@ pub const MAX_LINE: usize = 1024 * 1024;
 /// Largest request id (2^53 - 1, exact in a JSON number).
 pub const MAX_ID: u64 = (1 << 53) - 1;
 /// vimma-core's `MODES` (packages/vimma-core/src/modes.mjs; a test keeps them in step).
-pub const MODES: [&str; 8] = [
-    "normal", "insert", "visual", "command", "hint", "help", "panel", "resize",
+pub const MODES: [&str; 9] = [
+    "normal", "insert", "visual", "command", "hint", "element", "help", "panel", "resize",
 ];
 /// vimma-core's `ERROR_CODES`.
 pub const ERROR_CODES: [&str; 11] = [
@@ -37,7 +37,15 @@ pub const ERROR_CODES: [&str; 11] = [
     "denied",
 ];
 /// vimma-core's `DENY_REASONS`: why an agent request was denied.
-pub const DENY_REASONS: [&str; 6] = ["user", "timeout", "busy", "muted", "changed", "cancelled"];
+pub const DENY_REASONS: [&str; 7] = [
+    "user",
+    "timeout",
+    "busy",
+    "muted",
+    "changed",
+    "cancelled",
+    "in-use",
+];
 
 /// A connection's role (protocol 2). Protocol 1 is always `Full`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

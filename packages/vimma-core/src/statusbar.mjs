@@ -66,6 +66,12 @@ export { textWidth };
  * @property {readonly string[]} [sharing]  devices the page uses (sharingCues)
  * @property {UpdateNotice | null} [update]  a newer Vimma, or an update problem
  *   (docs/specs/m6a-updater.md §5, updateNotice)
+ * @property {ElementStatus | null} [element]  the focused text block in ELEMENT mode
+ */
+/**
+ * The focused text block (docs/specs/element-focus.md decision 5): its kind, its length in
+ * characters, and `seq`, which changes on every focus and move, so that each is spoken.
+ * @typedef {{ kind: string, length: number, seq: number }} ElementStatus
  */
 /** @import { UpdateNotice } from "./updates.mjs" */
 
@@ -297,6 +303,9 @@ export function displayUrl(url, { keepHttp = false } = {}) {
   return slash === rest.length - 1 ? rest.slice(0, -1) : rest;
 }
 
+/** @param {number} n */
+const chars = (n) => `${n} ${n === 1 ? "char" : "chars"}`;
+
 /**
  * @param {Partial<Segment> & { id: string, text: string, fg: string, priority: number }} s
  * @returns {Segment}
@@ -329,6 +338,7 @@ export function statusSegments(input) {
     privateWindow = false,
     sharing = [],
     update = null,
+    element = null,
   } = input;
   /** @type {Segment[]} */
   const left = [];
@@ -345,6 +355,18 @@ export function statusSegments(input) {
       cut: "end",
     }),
   );
+  if (element && mode === "element") {
+    left.push(
+      seg({
+        id: "element",
+        text: `${element.kind} · ${chars(element.length)}`,
+        fg: "--vimma-fg-bright",
+        priority: 1,
+        min: 4,
+        cut: "end",
+      }),
+    );
+  }
   if (pending.length) {
     const prefix = pending[0] === "prefix";
     left.push(
@@ -729,9 +751,10 @@ export function renderStatusBar(input, width) {
 const SELF_ANNOUNCING = new Set(["help", "command", "panel"]);
 
 /**
- * What the status bar last said: the mode, the failed search (page and query), and how many
- * agent questions were waiting.
- * @typedef {{ mode: Mode | null, notFound: string | null, agentWaiting?: number }} Announced
+ * What the status bar last said: the mode, the failed search (page and query), how many
+ * agent questions were waiting, and the focused text block's `seq`.
+ * @typedef {{ mode: Mode | null, notFound: string | null, agentWaiting?: number,
+ *   element?: number | null }} Announced
  */
 
 /**
@@ -742,13 +765,21 @@ const SELF_ANNOUNCING = new Set(["help", "command", "panel"]);
  * screen reader reads the bar on demand (role=status).
  * @param {Announced} last
  * An agent question waiting (docs/specs/vimma-mcp.md decision 24) is said when the count rises.
- * @param {{ mode: Mode, find?: FindStatus | null, url?: string | null, agentWaiting?: number }} input
+ * A focused text block (docs/specs/element-focus.md decision 16) is said on each focus and
+ * move: its kind and length, as "paragraph, 412 characters".
+ * @param {{ mode: Mode, find?: FindStatus | null, url?: string | null, agentWaiting?: number,
+ *   element?: ElementStatus | null }} input
  * @returns {{ text: string | null, last: Announced }}
  */
-export function statusAnnouncement(last, { mode, find = null, url = null, agentWaiting = 0 }) {
+export function statusAnnouncement(
+  last,
+  { mode, find = null, url = null, agentWaiting = 0, element = null },
+) {
   const parts = [];
   let { mode: lastMode, notFound } = last;
-  if (!SELF_ANNOUNCING.has(mode) && mode !== lastMode) {
+  // ELEMENT mode is said with the block it focused, once the frame has said what that is.
+  const waiting = mode === "element" && !element;
+  if (!SELF_ANNOUNCING.has(mode) && mode !== lastMode && !waiting) {
     parts.push(`${mode} mode`);
     lastMode = mode;
   }
@@ -759,6 +790,11 @@ export function statusAnnouncement(last, { mode, find = null, url = null, agentW
   } else if (!find?.notFound) {
     notFound = null;
   }
+  const focused = mode === "element" && element ? element.seq : null;
+  if (element && focused !== null && focused !== (last.element ?? null)) {
+    const n = element.length;
+    parts.push(`${element.kind}, ${n} ${n === 1 ? "character" : "characters"}`);
+  }
   if (agentWaiting > (last.agentWaiting ?? 0)) {
     parts.push(
       agentWaiting === 1
@@ -768,6 +804,6 @@ export function statusAnnouncement(last, { mode, find = null, url = null, agentW
   }
   return {
     text: parts.length ? parts.join(". ") : null,
-    last: { mode: lastMode, notFound, agentWaiting },
+    last: { mode: lastMode, notFound, agentWaiting, element: focused },
   };
 }

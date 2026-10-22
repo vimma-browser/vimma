@@ -3,23 +3,30 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Link-hint target collection in one frame (spec: docs/specs/m1-hints.md). Runs in the content
-// process, in VimmaChild. Finds what a user could click in the viewport, skips what is hidden or
-// covered, and reports subframes so the parent can ask their own child.
+// process, in VimmaChild. Finds what a user could click in the viewport, or the text blocks on it
+// for element focus (docs/specs/element-focus.md), skips what is hidden or covered, and reports
+// subframes so the parent can ask their own child.
 
 import {
   HINT_REPLY_MAX_FRAMES,
   HINT_REPLY_MAX_HREF,
   HINT_REPLY_MAX_TARGETS,
+  HINT_REPLY_MAX_TEXT,
 } from "../core/hints.mjs";
+import { needsBlockText, pickBlocks } from "../core/blocks.mjs";
+
+/** @import { BlockDescriptor, BlockKind } from "../core/blocks.mjs" */
 
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
-/** @typedef {"link" | "input" | "click"} TargetKind */
+/** @typedef {"link" | "input" | "click" | "block"} TargetKind */
 /**
  * @typedef {object} Found
  * @property {Element} el
  * @property {Rect} rect      viewport-clipped, in this frame's CSS pixels
  * @property {TargetKind} kind
  * @property {string} [href]  links only
+ * @property {BlockKind} [blockKind]  blocks only
+ * @property {Rect} [box]  blocks only: the border box, viewport-clipped, for the outline
  */
 /** @typedef {{ bc: any, rect: Rect }} FoundFrame */
 
@@ -154,7 +161,7 @@ function insideCandidate(el, candidates) {
  * @param {Node} node
  * @returns {Element | null}
  */
-function parentOf(node) {
+export function parentOf(node) {
   const p = node.parentNode;
   if (!p) return null;
   if (p.nodeType === 1) return /** @type {Element} */ (p);
@@ -206,16 +213,140 @@ function unoccluded(el, rect) {
 }
 
 /**
+ * Visible text anywhere inside: stops at the first text node with a character, so a deep
+ * nesting of blocks is not read whole for each of them.
+ * @param {Element} el
+ */
+function hasText(el) {
+  const walker = el.ownerDocument.createTreeWalker(el, 4 /* NodeFilter.SHOW_TEXT */);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (/\S/.test(/** @type {Text} */ (n).data)) return true;
+  }
+  return false;
+}
+
+/** A direct text child with a visible character. */
+/** @param {Element} el */
+function hasDirectText(el) {
+  for (let n = el.firstChild; n; n = n.nextSibling) {
+    if (n.nodeType === 3 && /\S/.test(/** @type {Text} */ (n).data)) return true;
+  }
+  return false;
+}
+
+/**
+ * The first line box of a block that shows in the viewport, clipped to it: where its label
+ * goes, so a long paragraph partly scrolled off is labelled where the reader is looking, and
+ * where its row is decided (element-focus decision 4).
+ * @param {Element} el
+ * @param {number} vw
+ * @param {number} vh
+ * @returns {Rect | null}
+ */
+function firstLineRect(el, vw, vh) {
+  const range = el.ownerDocument.createRange();
+  range.selectNodeContents(el);
+  for (const r of range.getClientRects()) {
+    if (r.width < 1 || r.height < 1) continue;
+    const x = Math.max(r.left, 0);
+    const y = Math.max(r.top, 0);
+    const right = Math.min(r.right, vw);
+    const bottom = Math.min(r.bottom, vh);
+    if (right - x >= 1 && bottom - y >= 1) return { x, y, width: right - x, height: bottom - y };
+  }
+  return null;
+}
+
+/**
+ * The text blocks on screen (element-focus decision 3): the child describes each on-screen
+ * element and its ancestors, core's pickBlocks decides which get a label. The cheap reads
+ * (tag, role, attributes, a direct text child) come first; `display` and the text are read
+ * only where they decide.
+ * @param {Set<Element>} onScreen
+ * @param {Window} win
+ * @param {number} vw
+ * @param {number} vh
+ * @returns {Found[]}
+ */
+function collectBlocks(onScreen, win, vw, vh) {
+  /** @type {BlockDescriptor[]} */
+  const descs = [];
+  /** @type {Element[]} */
+  const elements = [];
+  /** @type {Map<Element, number>} */
+  const index = new Map();
+  /** @param {Element} el */
+  const describe = (el) => {
+    const role = el.getAttribute("role")?.trim().split(/\s+/)[0]?.toLowerCase() || undefined;
+    /** @type {BlockDescriptor} */
+    const d = {
+      parent: -1,
+      tag: el.localName,
+      role,
+      hidden: el.hasAttribute("hidden"),
+      ariaHidden: el.getAttribute("aria-hidden") === "true",
+      editable: /** @type {HTMLElement} */ (el).isContentEditable === true,
+      host: el.parentNode?.nodeType === 11,
+      onScreen: onScreen.has(el),
+    };
+    if (!d.onScreen) return d;
+    d.directText = hasDirectText(el);
+    if (needsBlockText(d)) d.text = d.directText || hasText(el);
+    if (d.directText || role === "code") d.display = win.getComputedStyle(el)?.display;
+    return d;
+  };
+  for (const el of onScreen) {
+    if (index.has(el)) continue;
+    // Ancestors first, so each descriptor's parent comes before it.
+    /** @type {Element[]} */
+    const chain = [];
+    for (let e = /** @type {Element | null} */ (el); e && !index.has(e); e = parentOf(e)) {
+      chain.push(e);
+    }
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const e = /** @type {Element} */ (chain[i]);
+      const d = describe(e);
+      const p = parentOf(e);
+      d.parent = p ? (index.get(p) ?? -1) : -1;
+      index.set(e, descs.length);
+      descs.push(d);
+      elements.push(e);
+    }
+  }
+  /** @type {Found[]} */
+  const out = [];
+  for (const { index: i, kind } of pickBlocks(descs)) {
+    if (out.length >= MAX_TARGETS) break;
+    const el = /** @type {Element} */ (elements[i]);
+    const rect = firstLineRect(el, vw, vh);
+    if (!rect || !unoccluded(el, rect)) continue;
+    const b = el.getBoundingClientRect();
+    const x = Math.max(b.left, 0);
+    const y = Math.max(b.top, 0);
+    const box = { x, y, width: Math.min(b.right, vw) - x, height: Math.min(b.bottom, vh) - y };
+    if (box.width < 1 || box.height < 1) continue;
+    out.push({ el, rect, kind: "block", blockKind: kind, box });
+  }
+  return out;
+}
+
+/**
  * The hint targets of one frame, in no particular order (core orders them), and its visible
  * subframes.
  * @param {Window} win  the frame's content window
- * @param {{ linksOnly: boolean }} options  `F` hints links only
+ * @param {{ linksOnly: boolean, blocks?: boolean, disabled?: boolean }} options  `F` hints
+ *   links only; `blocks` hints text blocks instead of what can be clicked (element focus);
+ *   `disabled` keeps disabled controls (an agent's `vimma_elements`, docs/specs/mcp-forms.md F5)
  * @returns {{ targets: Found[], frames: FoundFrame[] }}
  */
-export function collectTargets(win, { linksOnly }) {
+export function collectTargets(win, { linksOnly, blocks = false, disabled = false }) {
   const doc = win.document;
   const vw = doc.documentElement?.clientWidth || win.innerWidth;
   const vh = doc.documentElement?.clientHeight || win.innerHeight;
+  if (blocks) {
+    const onScreen = onScreenElements(win, vw, vh);
+    return { targets: collectBlocks(onScreen, win, vw, vh), frames: visibleFrames(win, onScreen) };
+  }
   const els = Services.els;
 
   /** @type {Set<Element>} */
@@ -274,7 +405,7 @@ export function collectTargets(win, { linksOnly }) {
     ) {
       continue; // only the editing host of a contenteditable region
     }
-    if (/** @type {HTMLInputElement} */ (el).disabled) continue;
+    if (!disabled && /** @type {HTMLInputElement} */ (el).disabled) continue;
     const rect = visibleRect(el, vw, vh);
     if (!rect) continue;
     if (!unoccluded(el, rect)) continue;
@@ -298,24 +429,62 @@ export function collectTargets(win, { linksOnly }) {
   );
   const kept = dropped.size ? targets.filter((t) => !dropped.has(t.el)) : targets;
 
+  return { targets: kept, frames: visibleFrames(win, frameEls) };
+}
+
+/**
+ * The subframes among `candidates`, with their viewports in this frame's CSS pixels.
+ * @param {Window} win
+ * @param {Iterable<Element>} candidates
+ * @returns {FoundFrame[]}
+ */
+function visibleFrames(win, candidates) {
   /** @type {FoundFrame[]} */
   const frames = [];
-  for (const el of frameEls) {
+  for (const el of candidates) {
+    if (el.localName !== "iframe" && el.localName !== "frame") continue;
     if (frames.length >= MAX_FRAMES) break;
     const bc = /** @type {any} */ (el).browsingContext;
     if (!bc) continue;
-    const r = el.getBoundingClientRect();
-    // The frame's viewport starts inside its border and padding.
-    const style = win.getComputedStyle(el);
-    const pl = parseFloat(style.paddingLeft) || 0;
-    const pt = parseFloat(style.paddingTop) || 0;
-    const width = el.clientWidth - pl - (parseFloat(style.paddingRight) || 0);
-    const height = el.clientHeight - pt - (parseFloat(style.paddingBottom) || 0);
-    if (width < 1 || height < 1) continue;
-    frames.push({
-      bc,
-      rect: { x: r.left + el.clientLeft + pl, y: r.top + el.clientTop + pt, width, height },
-    });
+    const rect = frameViewport(win, el);
+    if (rect) frames.push({ bc, rect });
   }
-  return { targets: kept, frames };
+  return frames;
+}
+
+/**
+ * A frame element's viewport in its document's CSS pixels: inside its border and padding.
+ * Null when it has no room to show anything.
+ * @param {Window} win
+ * @param {Element} el  an iframe or frame
+ * @returns {Rect | null}
+ */
+export function frameViewport(win, el) {
+  const r = el.getBoundingClientRect();
+  const style = win.getComputedStyle(el);
+  if (!style) return null;
+  const pl = parseFloat(style.paddingLeft) || 0;
+  const pt = parseFloat(style.paddingTop) || 0;
+  const width = el.clientWidth - pl - (parseFloat(style.paddingRight) || 0);
+  const height = el.clientHeight - pt - (parseFloat(style.paddingBottom) || 0);
+  if (width < 1 || height < 1) return null;
+  return { x: r.left + el.clientLeft + pl, y: r.top + el.clientTop + pt, width, height };
+}
+
+/**
+ * What a link says, for an agent's link list (docs/specs/mcp-drive.md D12): its rendered text,
+ * else its accessible label, its title or the alt of an image in it; whitespace collapsed, at
+ * most HINT_REPLY_MAX_TEXT code units. The parent checks and cuts it again.
+ * @param {Element} el
+ * @returns {string}
+ */
+export function linkText(el) {
+  const html = /** @type {HTMLElement} */ (el);
+  const raw =
+    (typeof html.innerText === "string" ? html.innerText : el.textContent) ||
+    el.getAttribute("aria-label") ||
+    el.getAttribute("title") ||
+    el.querySelector("img[alt]")?.getAttribute("alt") ||
+    "";
+  return raw.replace(/\s+/g, " ").trim().slice(0, HINT_REPLY_MAX_TEXT);
 }

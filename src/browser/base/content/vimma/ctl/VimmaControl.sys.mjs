@@ -1000,6 +1000,8 @@ function enqueue(step) {
 }
 
 function apply() {
+  // `:mcp off` (or [mcp] enabled = false): the log of agent calls goes too (mcp-drive D14).
+  if (!McpHost.state.enabled) AgentGate.clearLog();
   return enqueue(() => (enabledRoles().length ? startServer() : stopServer()));
 }
 

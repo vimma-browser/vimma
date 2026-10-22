@@ -227,6 +227,24 @@ link targets for hints, which chrome must treat as untrusted.
   copied field by field before chrome uses them.
   [`the caps are 5,000 targets, 64 frames and 8 KiB hrefs`](../packages/vimma-core/test/hints.test.mjs),
   [`a well-formed reply → a fresh copy with only the known fields`](../packages/vimma-core/test/hints.test.mjs)
+  A text block target ([element-focus](specs/element-focus.md)) **must** carry a kind from the
+  closed list and a finite, bounded, non-empty box, and no link. A reply **must** hold only the
+  kind of target its collection asked for: a block in an `f` or `gF` reply, or a link or control in
+  an element-focus reply, refuses the whole reply, so a block is never followed.
+  [`a block target needs a kind from the closed list and a finite box`](../packages/vimma-core/test/hints.test.mjs),
+  [`only a block target carries a blockKind or a box`](../packages/vimma-core/test/hints.test.mjs),
+  [`a reply holds only the kind of target its collection asked for`](../packages/vimma-core/test/hints.test.mjs)
+  A focused block stays in its frame's actor: each `Vimma:Block` op is answered only for the
+  collection the block came from and only by the frame that holds it, except `frame`, which the
+  frames around it answer with the viewport of the next frame in (a rect that only places the
+  outline, which is clipped to the browser). Each reply **must** be
+  checked field by field before chrome uses it (a kind from the closed list, a bounded length and
+  box, at most 16 Mi characters of text for `y`, which goes to the clipboard and nowhere else).
+  The scroll reports that move the outline are heard only from the block's frame and the frames
+  around it, with the documents they had when the block was chosen.
+  [`%s: a kind from the closed list, a length and a box`](../packages/vimma-core/test/hints.test.mjs),
+  [`yank: the text, and whether the page marks it unselectable`](../packages/vimma-core/test/hints.test.mjs),
+  [`malformed_block_messages_are_refused`](../tests/browser/browser_vimma_element.js)
 - U7. Text pasted on the command line **must** be read in bounded time: a megabyte never
   freezes the window.
   [`a pasted megabyte is parsed and completed in bounded time`](../packages/vimma-core/test/fuzz/cmdline.fuzz.test.mjs),
@@ -269,16 +287,23 @@ text that pages, add-ons and bookmarks choose.
   [`toggles_in_the_side_panels_slot_one_panel_at_a_time`](../tests/browser/browser_vimma_bookmarks.js),
   [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.mjs)
 - C2. Chrome code **never** builds code from text (`eval`, `Function`) and **never** starts a
-  process, with one exception: the system's ClamAV scanners, `clamscan` (only
+  process, with two exceptions. First, the system's ClamAV scanners, `clamscan` (only
   `/usr/bin/clamscan` or `/usr/local/bin/clamscan`) and `clamdscan` (only `/usr/bin/clamdscan`
   or `/usr/local/bin/clamdscan`), never from a `PATH` search, and only a regular file another
   user (root) owns that the user cannot write, in a folder the user cannot write. They run in
   one call with arguments from three fixed builders (the scan, clamd's scan with `--fdpass`, and
   `--version`), the path after `--` and no shell, on an agent download in the quarantine folder
-  (M13; [vimma-mcp](specs/vimma-mcp.md) decisions 31 g, 43-45). Chrome code **never** calls
+  (M13; [vimma-mcp](specs/vimma-mcp.md) decisions 31 g, 43-45). Second, an AppImage's restart
+  (UP11): `/bin/sh` (an absolute path) with one fixed script that waits for Vimma's own process
+  to exit and then runs `$APPIMAGE` with no arguments, the process id and the path passed as
+  positional parameters the script **never** reads as shell text, started from one call site
+  only once a quit can no longer be cancelled. Chrome code **never** calls
   native code, with one exception: `statx(2)` from libc through js-ctypes, for the owner of
   clamd's socket (M13). [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
-  [`never starts a process, but ClamAV on an agent download`](../tools/security/test/chrome-source.test.mjs),
+  [`never starts a process, but ClamAV on an agent download and an AppImage's restart`](../tools/security/test/chrome-source.test.mjs),
+  [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
+  [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../packages/vimma-core/test/restart.test.mjs),
+  [`starts the AppImage only once the old process has exited, with no arguments`](../packages/vimma-core/test/restart.test.mjs),
   [`never calls native code, but statx on clamd's socket`](../tools/security/test/chrome-source.test.mjs)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
@@ -668,11 +693,13 @@ one workspace, **agent**, through the control socket's `agent` role. Spec:
 while MCP is on (`:mcp on`). Every check runs in the browser, never in the client: an agent with
 a shell can run `vimma-ctl` itself, or speak the protocol directly.
 
-**Planned:** [mcp-drive](specs/mcp-drive.md) adds `vimma_show` and `vimma_keys` (the agent shows
-a page, and runs Vimma's own page keys in an agent tab). Its rules M16-M21 and M23 (key
-whitelist, background-only, follows as loads, show always asked, limits, delimited link lists,
-the audit) enter this section with their tests in the sub-PR that builds each. M22 (full
-control's wording while MCP is on) is in force.
+[mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16,
+M17, M20, M23), following its links by hint label (M18, M21), `vimma_show` (the agent workspace
+brought to the front with one agent tab selected: M19, M20) and full control's wording while MCP
+is on (M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements` (an agent
+tab's buttons, fields and links listed with hint labels, sensitive values left out: M25, M31,
+M32), in force; its clicks, form filling, screenshots and console output enter this page with
+the sub-PRs that build them.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
@@ -844,6 +871,121 @@ control's wording while MCP is on) is in force.
   [`the_token_never_leaves_the_handshake`](../tools/vimma-ctl/tests/mcp.rs),
   [`bad_arguments_never_reach_vimma`](../tools/vimma-ctl/tests/mcp.rs),
   [`bad_arguments_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
+- M16. `agent-keys` **must** run only the whitelisted action ids of mcp-drive D9, parsed with a
+  dispatcher of its own over Vimma's default keymap, never the user's; the whitelist is checked
+  on the action ids the dispatcher returns. It **never** sends a key event to the page and
+  **never** focuses a field: the prefix, `:`, tab, workspace, window, clipboard, insert, copy
+  mode and agent actions (`mcp.answer` among them) are refused before anything is asked. A find
+  does not run in a tab that has the user's focus, where the finder would focus a text field.
+  Keys with control, bidirectional or invisible characters are refused, so the question shows
+  what runs.
+  [`each refused group is invalid-args naming the key (M16)`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`a user keymap that binds j to tab.close does not change the agent's j (D10)`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`any text parses to whitelisted actions within the limits, or is refused`](../packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs),
+  [`agent_keys_never_reach_the_prefix_the_command_line_or_mcp_answer`](../tests/browser/browser_vimma_security_invariants.js),
+  [`test_keys_scroll_a_background_tab_without_touching_the_window`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_a_find_never_focuses_a_field_of_the_tab_the_user_is_in`](../tests/browser/browser_vimma_mcp_keys.js)
+- M17. `agent-keys` **must** act only on an agent tab (M2), checked before the question, after
+  the yes and before each step, in the background: it **never** selects, shows or focuses the
+  tab, and **never** changes the window's workspace, mode, find bar or hint mode (finds use the
+  tab's own finder, history moves stay in the tab's own session history). A tab the user is
+  typing in, in copy or hint mode, a key sequence or its own find bar, is denied `in-use`; a call
+  already running stops there.
+  [`test_keys_scroll_a_background_tab_without_touching_the_window`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_find_uses_the_tabs_finder`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_back_and_forward_stay_in_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_refuses_a_non_agent_tab`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_in_use_while_the_user_types_in_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_stop_when_the_tab_leaves`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_keys_stop_when_the_user_starts_using_the_tab`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_agent_hints_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_follow.js)
+- M18. A follow (`f<label>`, mcp-drive D12) **must** load only an http or https href the page
+  could link to (`checkLoadURIWithPrincipal` with the page's own principal), from an http or
+  https page, in the same tab, as a load with no referrer: no click, mousedown or other event
+  fires on the link, so no click handler runs (a link to a fragment of the same page fires its
+  `hashchange`, as any navigation there would). `f` lists nothing on a page that is not on the
+  web (a file, about: or the start page in a tab moved into the agent workspace), whose
+  principal may load anything. Its label **must** be from this connection's last `f` on that
+  tab, of the top document still shown at the same URL and, for a link in a frame, of that
+  frame's document still shown, no older than 120 s; otherwise the step is refused with `stale
+labels: send f again`. The label names the href captured when `f` ran, so a frame that
+  changed its URL without a new document cannot change where a follow goes. A follow to another site (another
+  registrable domain, eTLD+1) **must** be asked as a `vimma_open` of its whole URL, unless the
+  connection holds a `vimma_open` grant, and a no stops the call (`stopped: "denied"`); it is
+  not asked when the open rate has no slot left, and the question is withdrawn when the call's
+  60 s run out. Labels
+  are over Vimma's default hint characters, never the user's, and the agent's collection is
+  keyed by its tab, so it never cancels the user's hint mode in the same window, nor theirs the
+  agent's, nor does it take the user's targets from the page's child. Buttons, fields and
+  elements clickable only through script are never listed.
+  [`test_follow_loads_the_href_without_a_click`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_follow_refuses_javascript_and_data_hrefs`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_stale_labels_are_refused`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_cross_site_follow_asks_as_vimma_open`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_agent_hints_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_links_only_on_web_pages`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`f at the end lists the links; f<label> follows one`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`a collection for an agent carries each link's text, capped, and only links`](../packages/vimma-core/test/hints.test.mjs)
+- M19. `agent-show` (mcp-drive D2-D7) **must** always ask: no grant of any tool covers it, a
+  grant given as its answer is refused and `x` is a plain no, so no grant of `vimma_show` ever
+  exists (core's `ALWAYS_ASK`, whatever the caller passes). It **must** name only an agent tab
+  (M2), checked before the question and again after the yes with the URL asked about, and switch
+  only the normal window that holds that tab, only to the agent workspace, through the ordinary
+  workspace switch, so `ctrl+^` returns to the workspace and split the user was in. It **never**
+  changes a private window and **never** raises or activates a window (in the window that
+  switches, the shown tab has the keyboard as after any tab switch): a tab in a window other than
+  the one in front switches that window, a pane of an agent split included, and the notice says
+  `shown in the other window`. A yes whose window cannot switch is a `failed` row in `:mcp log`.
+  Its question opens by itself only while the user is not typing or in a field (vimma-mcp
+  decision 14), so the switch never lands mid-typing. Showing a page changes what the user sees,
+  so a grant would let an agent switch the view at any moment.
+  [`test_show_switches_to_the_agent_tab_and_ctrl_caret_returns`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_always_asks_even_under_a_grant`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_waits_while_the_user_types`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_never_touches_a_private_window`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_never_focuses_a_window`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_a_pane_of_an_agent_split_in_a_window_behind`](../tests/browser/browser_vimma_mcp_show.js),
+  [`test_show_refuses_a_tab_changed_after_the_question`](../tests/browser/browser_vimma_mcp_show.js),
+  [`it waits even when asked without always, and a grant answer allows it once only`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`no grant: a, counts and x do not grant or mute`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`agent-show: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs)
+- M20. `agent-keys`' limits (mcp-drive D15) **must** deny: keys over 512 characters or with
+  control characters, more than 32 actions, a count over 99 and a find query over 256 characters
+  are `invalid-args` before anything is asked; more than 30 calls of one connection a minute,
+  counted when asked and before anything else, are `busy`; a `gu`, `gU` or history step that
+  loads a page, and each follow, takes a slot of the 10 opens a minute; a label longer than
+  200 links need (3 characters) and a count before `f` are `invalid-args`; a call stops 60 s
+  after the yes, and no query to the page holds it longer than 5 s. `vimma-ctl mcp` checks the
+  size and characters, the find queries and the counts it can see first; the browser checks all
+  of it again. More than 6 `agent-show` calls of one connection a minute (mcp-drive D7), counted
+  when asked and before the question, are `busy`, so a refused show cannot be retried in a loop.
+  [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_loads_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_follows_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`a label is lowercase hint characters, at most the longest label of 200 links`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`bad_keys_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs),
+  [`at most 6 agent-show per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_show_refuses_other_tabs_and_six_a_minute_is_the_most`](../tests/browser/browser_vimma_mcp_show.js)
+- M21. `f`'s link list **must** be one string inside the untrusted-content delimiters, wrapped
+  by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the protocol
+  validator **must** refuse a list that is not, or that holds a second delimiter, so the model
+  never sees link texts or URLs outside them. At most 200 links, in reading order, and no more
+  than fit 768 KiB of the reply line; each link's text and href are NFKC-normalised before they
+  are quoted (a fullwidth quote cannot end the text's JSON string), with control,
+  bidirectional and invisible characters (tag characters and variation selectors among them)
+  dropped, the text one line cut at 80 characters, the href cut at 2,048; the rest are dropped
+  and counted. No page text beyond link texts is returned, so a
+  `vimma_keys` grant is never a read grant.
+  [`test_f_lists_links_with_labels_marked_untrusted`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`at most 200 links; the rest are dropped and counted`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`one line per link: the label, the text as JSON cut at 80, the href cut at 2,048`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`text is one line: whitespace collapsed, bidi and control characters dropped`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`links past the byte budget are left out and counted`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`agent-keys: a link list inside the untrusted delimiters, and how many were dropped`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`keys_list_links_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
   workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
   use it, and a yes given after MCP went on or off **never** turns it on; each new full
@@ -858,6 +1000,19 @@ control's wording while MCP is on) is in force.
   [`full control names the agent workspace it reaches beyond`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`the desktop notification names the client and the kind of request, never a URL`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`the_instructions_advise_against_full_control`](../tools/vimma-ctl/src/mcp.rs)
+- M23. Every agent request that is answered, runs under a grant or is denied (by the gate, or
+  after it: `in-use`, `changed`, the keys and show rates) **must** be in `:mcp log`, as must a `vimma_keys`
+  call that stopped early (the last 100, in memory only, cleared by `:mcp off`). Each row's
+  agent name, title and keys or URL is its own bidi run. Every call under a grant
+  **must** show a notice; a `vimma_keys` notice names the keys and the tab, and a follow under a
+  grant names the host it loaded. Every follow that loads, asked or under a grant, **must** be a
+  row of its own naming the URL it loaded. Grants run calls
+  unasked and notices last seconds, so the log is how the user checks afterwards.
+  [`test_mcp_log_lists_asked_and_granted_calls`](../tests/browser/browser_vimma_mcp_log.js),
+  [`keeps the last 100, newest first`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_cross_site_follow_asks_as_vimma_open`](../tests/browser/browser_vimma_mcp_follow.js),
+  [`a call under a grant shows what it did and the time left`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M24. A tab you did not open inside the agent workspace **never** takes its container: a link from
   another app (the remote command line, `vimma-open`, Firefox's container guess, a `[[routes]]`
   rule), the control socket's `open`, a tab sent from another device, a new window's first tab, the
@@ -878,6 +1033,64 @@ control's wording while MCP is on) is in force.
   [`a_new_windows_first_tab_and_the_startup_cache_skip_the_agent`](../tests/browser/browser_vimma_agent_outside_opens.js),
   [`with_no_normal_workspace_used_yet_the_first_one_is_taken`](../tests/browser/browser_vimma_agent_outside_opens.js),
   [`never the agent workspace, even when it is all there is with a container`](../packages/vimma-core/test/workspacedefs.test.mjs)
+- M25. `agent-elements` (mcp-forms F2-F4) **must** act only on an agent tab (M2), checked before
+  the question, after the yes and again once the list is made, with the URL asked about, and in
+  the background: it **never** selects, shows or focuses the tab or an element in it, and changes
+  nothing on the page (no click, no focus, no event). It lists nothing on a page that is not http
+  or https. Each frame's child keeps the agent's elements apart from the user's hint targets, so
+  a list never cancels the user's hint mode in the same window and never takes the user's targets
+  from the page; its labels replace the connection's last `f` on that tab and live by M18's
+  rules, and `f<label>` follows only a link from the list, as a load (M18), and only while the
+  link is still in its document. The clicks, fills, screenshots and console reads of mcp-forms
+  join this rule with the sub-PRs that build them.
+  [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_elements_only_on_web_pages_and_agent_tabs`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_agent_labels_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_f_follows_only_links_from_an_elements_list`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_labels_of_a_gone_element_are_refused`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`agent-elements: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs)
+- M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,
+  wrapped by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the
+  protocol validator **must** refuse a list that is not, or that holds a second delimiter. At
+  most 200 elements, in reading order, and no more than fit 768 KiB of the reply line, as one
+  JSON object a line with the forms they name first (at most 64); every page string is
+  NFKC-normalised and stripped of bidirectional and invisible characters before it is quoted,
+  and of control characters too except a value's tabs and line breaks, which JSON escapes; no
+  page `<`, line separator or paragraph separator appears literally in the list (each is
+  escaped as `\u003c`, `\u2028`, `\u2029`), so no page string can spell a delimiter; texts and
+  captions are cut at 80 characters, values at 256, hrefs and form actions at 2,048, at most 50
+  options a select; the rest are dropped and counted, and the reply's URL and title are capped. The child's description
+  of each element is a fresh, checked copy (core's `parseAgentElement`). A sensitive field **must
+  never** be listed with its value or its selected option: a field that is or was ever a
+  password field, one the page draws as dots (`-webkit-text-security`), one whose autocomplete
+  field name is `current-password`, `new-password`, `one-time-code` or any `cc-*` name (a
+  password type and these names are counted in the parent too, whatever the child says), and
+  one form autofill's heuristics infer as a payment card field, with, in a card form, any field
+  they leave to their machine-learning model; if the heuristics fail, every field of that form
+  counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned, so a
+  `vimma_elements` grant is never a read grant.
+  [`test_password_and_card_fields_are_sensitive_without_values`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`passwords, one-time codes and every cc-* name are sensitive; email is not`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a sensitive field carries no value and no selected option`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a password input is sensitive whatever the child says`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`no page < appears literally, and values keep no raw line or paragraph separator`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`an autocomplete name that is sensitive makes the field sensitive whatever the child says`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`anything malformed, over its cap or naming a form not reported is refused`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a sensitive field says so and never carries a value`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`texts and captions cut at 80, values at 256, hrefs at 2,048, at most 50 options`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`page strings are NFKC, one line, without bidi, control or invisible characters`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`elements past the byte budget are left out and counted; their forms too`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`agent-elements: the page, its list inside the untrusted delimiters, how many dropped`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`elements_list_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
+- M32. More than 30 `agent-elements` calls of one connection a minute (mcp-forms F26), counted
+  when asked and before the question, **must** be denied as `busy`, so a grant cannot flood a
+  page and a refused call cannot loop; every call, asked, under a grant or denied, **must** be in
+  `:mcp log` (M23), and a call under a grant shows a notice naming the page. The rates of
+  clicks, fills, screenshots and console reads join this rule with their sub-PRs.
+  [`at most 30 agent-elements per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_elements_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`vimma_elements: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 
@@ -915,14 +1128,15 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
   [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
 
-## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`)
+## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`)
 
 Vimma's binaries are built from Mozilla's Firefox source, this repository, and the npm packages
 that drive the build, chiefly Surfer. These rules keep what reaches a build pinned and reviewed.
 Spec: [build-supply-chain](specs/build-supply-chain.md), [ADR-001](adr/001-engine-firefox-surfer.md).
 
 **Reach:** Mozilla's archive and Taskcluster, the npm registry, this repository, and GitHub's
-hosted runners. Dependabot pull requests run and auto-merge today, whether or not a build runs.
+hosted runners; for the Flatpak build only (B12), Docker Hub's Fedora image, Fedora's package
+mirrors and Flathub (`dl.flathub.org`). Dependabot pull requests run and auto-merge today, whether or not a build runs.
 
 The macOS build, `macos.yml` ([ADR-018](adr/018-macos-cross-build.md)), also runs on pull
 requests that touch it. It holds no secret and only a read-only token, builds on hosted runners
@@ -1233,6 +1447,32 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`pushes Casks/vimma.rb to the tap over SSH with github.com's pinned host key`](../tools/package/test/release-workflow.test.mjs),
   [`never replaces a newer cask with an older one`](../tools/package/test/release-workflow.test.mjs)
 
+- B12. The Flatpak build, `flatpak.yml` (spec [flatpak](specs/flatpak.md)), publishes nothing,
+  holds no secret and no environment, and each job's token only reads the repository. It
+  **must** build a release only from the release's public download URL, which answers 404 for a
+  draft, pinned to the tarball's SHA-256 in that release's `SHA256SUMS`, and with signing on
+  only after `SHA256SUMS` passes `cosign verify-blob` against `IDENTITY_REGEXP`; flatpak-builder
+  then refuses a tarball with any other hash. Event values reach its scripts only through `env`.
+  The manifest generator accepts only a SemVer version, a lower-case SHA-256 and a bare file
+  name, and its build commands are fixed strings. The build runs in a privileged container from
+  the `fedora:44` image pinned by digest, on Flathub runtimes pinned by commit. A release event
+  runs the tag's copy of the workflow, which has the same read-only token. The app's sandbox
+  grants Firefox's Flatpak permissions and `~/.local/state/omarchy` read-only, never the home
+  directory and nothing under `~/.config` but `gtk-3.0` read-only, so the Omarchy hook
+  (section 7) is never installed from it. The container is privileged, since Flatpak's sandbox
+  needs it inside docker, and runs the release build, which reaches the network; that is safe
+  only on a GitHub-hosted runner, which every job is held to (B5). **⚠
+  limit:** Fedora's packages (`flatpak`, `flatpak-builder`) are installed at their current
+  versions from Fedora's signed repositories; the digest fixes only the base image.
+  [`builds a published release from its download URL, checked against SHA256SUMS`](../tools/package/test/flatpak.test.mjs),
+  [`checks the release's signature against the documented identity when signing is on`](../tools/package/test/flatpak.test.mjs),
+  [`holds no secret and only reads the repository`](../tools/package/test/flatpak.test.mjs),
+  [`passes event values to run: through env only`](../tools/package/test/flatpak.test.mjs),
+  [`refuses %s`](../tools/package/test/flatpak.test.mjs),
+  [`puts no input into a build command, so none can change what the build runs`](../tools/package/test/flatpak.test.mjs),
+  [`pins the Fedora image by digest and the runtime and SDK by commit`](../tools/package/test/flatpak.test.mjs),
+  [`grants Firefox's Flatpak permissions and the Omarchy theme read-only, never the home`](../tools/package/test/flatpak.test.mjs)
+
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 
 `ctrl+b f g` searches the text of the tabs in its scope: the parent sends the query to each
@@ -1341,10 +1581,12 @@ Spec: [m6a-updater](specs/m6a-updater.md) (delivery 1) and [update-notices](spec
 Vimma fetches one signed manifest from `updates.vimma.dev` every 12 hours, at startup when a check
 is due, and on `:update`, and tells the status bar, about:vimma and, once per version, a short
 message whether a newer release exists; a security release also asks once per session whether
-to show the update command. It downloads and installs nothing. Who can reach it: whoever
+to show the update command, and once it is installed, whether to restart (UP11). Only the AppImage installs anything: it replaces its own file with
+the offered AppImage (UP10); every other install downloads and installs nothing. Who can reach it: whoever
 controls the update host or the network path (TLS stops the path), _you_ through `about:config`
-and `config.toml`, and the control socket's full role (`app.update_check`, as it can run
-`app.quit`). The agent role reaches no action, so a local AI agent cannot trigger a check.
+and `config.toml`, and the control socket's full role (`app.update_check` and `app.restart`, as
+it can run `app.quit`). The agent role reaches no action, so a local AI agent can neither trigger
+a check nor restart Vimma.
 _Pages_ and _extensions_ cannot reach it.
 
 - UP1. A manifest is accepted **only** when its signature (RSASSA-PKCS1-v1_5, SHA-384, over
@@ -1522,6 +1764,78 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_new_version_is_announced_once`](../tests/browser/browser_vimma_update_notices.js),
   [`y or Y shows the steps; n, Esc, Enter and any other key dismiss`](../packages/vimma-core/test/update-notices.test.mjs)
 
+- UP10. The AppImage **only** replaces its own file (`$APPIMAGE`) with a download whose size
+  and SHA-512 match a manifest verified by a check in the running process (an offer restored
+  from the saved result, the pref `vimma.update.last`, waits for a check), checked on the file as written to disk, after every
+  write is synced, and before the rename; anything else leaves the file as it was and removes
+  the download. It replaces nothing unless its GRE directory carries the
+  `vimma-package=appimage` marker and lies inside `$APPDIR`, so a program started from another
+  AppImage, which inherits that AppImage's `$APPIMAGE`, never overwrites it. Outside automation
+  the download **must** come from `https://github.com/vimma-browser/vimma/releases/download/`
+  (path segments only), so a leaked manifest key alone cannot point installs at a file of its
+  own. The download is anonymous (no cookies, no referrer, an empty `Accept-Language`), follows
+  GitHub's redirect to its asset host but must end on https, stops past the signed size or after
+  60 seconds without data or after 6 hours, and is written to a hidden file in the same
+  directory whose name no other file has, created by this process alone, so a second Vimma
+  never writes into it or removes it; part files left by a killed run are removed after a day.
+  A symbolic link at `$APPIMAGE` is refused. The file is made `0755` and renamed over
+  `$APPIMAGE`; the running Vimma keeps its mounted image, and nothing restarts it. Checks off
+  (UP4) download nothing, and turning them off stops a download under way. **⚠ limit:** the manifest's hash is the AppImage's only signature: an
+  AppImage carries no MAR signature the way Firefox's updater checks one, so a leaked primary key
+  together with any release asset of the project (an older AppImage included) can install that
+  asset; the replay and downgrade rules (UP2) compare the manifest's versions, not the file's.
+  [`a_newer_appimage_replaces_the_file`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_wrong_hash_leaves_the_file_alone`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_larger_download_than_signed_is_refused`](../tests/browser/browser_vimma_update_appimage.js),
+  [`an_unwritable_directory_falls_back_to_the_steps`](../tests/browser/browser_vimma_update_appimage.js),
+  [`another_install_type_never_touches_appimage`](../tests/browser/browser_vimma_update_appimage.js),
+  [`checks_off_never_downloads`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_saved_offer_is_installed_only_after_a_check`](../tests/browser/browser_vimma_update_appimage.js),
+  [`another_downloads_part_file_neither_blocks_nor_is_removed`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_symlinked_appimage_is_not_replaced`](../tests/browser/browser_vimma_update_appimage.js),
+  [`without the AppDir's own appimage marker, $APPIMAGE is never replaced`](../packages/vimma-core/test/appimage-update.test.mjs),
+  [`a Vimma that does not run from $APPDIR is not the AppImage $APPIMAGE names`](../packages/vimma-core/test/appimage-update.test.mjs),
+  [`a download from %s is refused outside automation`](../packages/vimma-core/test/appimage-update.test.mjs),
+  [`another size or hash: refused, with the reason`](../packages/vimma-core/test/appimage-update.test.mjs)
+
+- UP11. Vimma **never** restarts by itself: only `:restart` (action `app.restart`), `y` in the
+  restart question, or Firefox's own restart commands do. The restart question
+  (`Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`) is asked **only** for a
+  security release that is already in place (an AppImage that replaced its file), once per
+  session and again 24 hours after an answer, and arms, waits and refuses keys exactly as the
+  question of UP9. It **never** hides a loss: while the private workspace has tabs it says they
+  will close, and when session restore will bring no tab back it says `Tabs will not come back`;
+  a loss that appears while the line is open (a private tab opened since) makes `y` ask
+  `:restart`'s `y/N` before anything restarts. `:restart` asks that `y/N` first whenever tabs
+  would be lost. A restart asks Firefox's `quit-application-requested` observers with
+  `restart`, and a page's beforeunload can still keep its window, which cancels it. Every install
+  but the AppImage restarts through Firefox (`eAttemptQuit | eRestart`). The AppImage restarts
+  only when its install type is the AppImage (UP10's marker rule) and `$APPIMAGE` is an absolute
+  path to an executable file: it quits, and **only** in `quit-application`, once no window can
+  refuse, it starts the relaunch script of C2 on its own process id, with the profile and its
+  local directory in `XRE_PROFILE_PATH` and `XRE_PROFILE_LOCAL_PATH` as Firefox's restart passes
+  them; a quit that a window refused starts nothing. The script gives up after 120 seconds and
+  then starts nothing, so a process id reused by another program never keeps it waiting for
+  long. **⚠ limit:** an AppImage's restart is a quit and a new start: with history cleared on
+  close (`privacy.sanitize.sanitizeOnShutdown`), the session is purged and no tab comes back,
+  where Firefox's restart keeps it (the question and `:restart` say so first); the new process
+  gets none of the old one's command-line arguments; and when Vimma runs as a systemd service
+  unit, not a scope, systemd may stop the script with the unit, so nothing starts.
+  [`an_appimage_quits_and_starts_its_file_again`](../tests/browser/browser_vimma_restart.js),
+  [`a_refused_quit_starts_nothing_and_leaves_the_session_as_it_was`](../tests/browser/browser_vimma_restart.js),
+  [`a_cancelled_request_quits_nothing`](../tests/browser/browser_vimma_restart.js),
+  [`a_tarball_restarts_through_firefox`](../tests/browser/browser_vimma_restart.js),
+  [`an_appimage_whose_file_cannot_run_restarts_through_firefox`](../tests/browser/browser_vimma_restart.js),
+  [`private_tabs_ask_before_they_close`](../tests/browser/browser_vimma_restart.js),
+  [`a_replaced_security_update_asks_to_restart`](../tests/browser/browser_vimma_update_appimage.js),
+  [`an_ordinary_replaced_update_asks_nothing`](../tests/browser/browser_vimma_update_appimage.js),
+  [`answered in this session: asked again 24 hours later, not sooner`](../packages/vimma-core/test/update-notices.test.mjs),
+  [`the_restart_question_says_what_a_restart_loses`](../tests/browser/browser_vimma_update_appimage.js),
+  [`history_cleared_on_close_asks_before_an_appimage_restart`](../tests/browser/browser_vimma_restart.js),
+  [`history cleared on close: an AppImage's restart is a quit, so the session is purged`](../packages/vimma-core/test/restart.test.mjs),
+  [`an AppImage without a usable $APPIMAGE falls back to Firefox's restart`](../packages/vimma-core/test/restart.test.mjs),
+  [`gives up after RELAUNCH_WAIT_S when the old process never exits`](../packages/vimma-core/test/restart.test.mjs)
+
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing job on `main`, in the `update-signing` environment, can
 ask to sign, through GitHub OIDC (UP7); the secondary is to be generated and kept offline by the maintainer (not made yet). Their
@@ -1533,7 +1847,8 @@ the secondary is pinned in a later release, an ordinary one whose manifest the p
 Until then a lost or leaked primary cannot be replaced through the update check: installs keep
 trusting it until they are updated by hand. A leaked primary can announce a version that does
 not exist and link its details page anywhere over https, but the commands about:vimma shows
-still name only the project's own release downloads (UP5), and nothing is installed by the check.
+still name only the project's own release downloads (UP5), and only the AppImage installs
+anything, and only a release asset of the project (UP10).
 It can also mark such an offer as a security release, and hold back genuine manifests for up to a
 day by signing a serial ahead of the clock (UP2).
 

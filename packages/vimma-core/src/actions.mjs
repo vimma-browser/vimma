@@ -184,6 +184,8 @@ group("Browser", [
   ["quit", "app.quit", "Quit (asks first)"],
   // docs/specs/m6a-updater.md: no default key; :update.
   ["check_updates", "app.update_check", "Check for a newer Vimma"],
+  // docs/specs/m6a-updater.md §5: no default key; :restart. Tabs come back, private ones close.
+  ["restart", "app.restart", "Restart Vimma; an installed update applies"],
   ["reload_hard", "page.reload_hard", "Reload, bypassing the cache"],
   ["stop_loading", "page.stop", "Stop loading the page"],
   ["firefox_command", "firefox.command", "Run a Firefox command or key by its id (:firefox)"],
@@ -235,7 +237,19 @@ group("Developer tools", [
 group("Hints", [
   ["follow_link", "hint.follow", "Follow link"],
   ["follow_link_new_tab", "hint.follow_new_tab", "Follow link in new tab"],
+  ["focus_element", "hint.element", "Focus a text block: v selects it, y copies it"],
   ["hint_cancel", "hint.cancel", "Leave hint mode"],
+]);
+
+// docs/specs/element-focus.md decision 7: the keys of the ELEMENT mode a chosen block is in.
+group("Element focus", [
+  ["element_visual", "element.visual", "Select the focused block in copy mode"],
+  ["element_visual_line", "element.visual_line", "Select the focused block's lines in copy mode"],
+  ["element_yank", "element.yank", "Copy the focused block's text"],
+  ["element_parent", "element.parent", "Focus the block around this one"],
+  ["element_child", "element.child", "Focus back down, or the first block inside"],
+  ["element_next", "element.next", "Focus the next block"],
+  ["element_prev", "element.prev", "Focus the previous block"],
 ]);
 
 group("Find", [
@@ -308,6 +322,8 @@ group("Copy mode", [
   ["swap_selection_ends", "selection.swap", "Swap the selection's ends"],
   ["select_inner_word", "selection.inner_word", "Select the word at the caret"],
   ["select_a_word", "selection.a_word", "Select the word at the caret and its spaces"],
+  ["select_inner_block", "selection.inner_block", "Select the text block at the caret"],
+  ["select_a_block", "selection.a_block", "Select the block at the caret; again: its parent"],
   ["yank_selection", "selection.yank", "Copy selection and leave copy mode"],
   ["yank_lines", "selection.yank_lines", "Copy the selection's whole lines and leave"],
 ]);

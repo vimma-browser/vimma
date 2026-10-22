@@ -15,10 +15,13 @@ import {
   deniedNotice,
   grantNotice,
   mayOpenByItself,
+  noGrant,
   parseControlCommand,
   promptKey,
   questionLine,
+  logRow,
   ranNotice,
+  shownNotice,
 } from "../src/agent-prompt.mjs";
 import { textWidth } from "../src/textwidth.mjs";
 
@@ -40,6 +43,17 @@ const open = {
   what: { url: "https://docs.rs/serde/latest/serde/", host: "docs.rs" },
 };
 const full = { tool: FULL_CONTROL, label: { client: "vimma-ctl" }, what: {} };
+const keys = {
+  tool: "vimma_keys",
+  label: { client: "claude-code" },
+  what: {
+    tab: "7",
+    index: 2,
+    title: "Pricing · Example",
+    url: "https://example.com/pricing",
+    keys: '3j /"pricing"⏎ gg',
+  },
+};
 /** @param {{ parts: { text: string }[] }} line */
 const text = (line) => line.parts.map((p) => p.text).join("");
 
@@ -87,6 +101,18 @@ describe("the question's text (decision 13)", () => {
     expect(text(questionLine(into, { grantMinutes: 10 }))).toBe(
       '◇ example-agent wants vimma_open: https://docs.rs/serde/latest/serde/ in "Old"',
     );
+  });
+
+  // mcp-drive D14: the keys exactly as they will run, after parsing.
+  test("vimma_keys shows the tab and the keys as they will run", () => {
+    const line = questionLine(keys, { grantMinutes: 15 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys: ' +
+        '3j /"pricing"⏎ gg',
+    );
+    expect(line.hint).toBe("y once · 15a for 15 min · n deny · x mute");
+    const shown = line.parts.find((p) => p.text === '3j /"pricing"⏎ gg');
+    expect(shown?.isolate).toBe("ltr");
   });
 
   test("the tab list and a close", () => {
@@ -241,8 +267,30 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(ranNotice({ ...read, tool: "vimma_tabs", what: { count: 2 } }, MIN, 0)).toBe(
       "example-agent listed the agent tabs (grant, 1m left)",
     );
+    expect(ranNotice(keys, 12 * MIN, 0)).toBe(
+      'claude-code pressed 3j /"pricing"⏎ gg in "Pricing · Example" (grant, 12m left)',
+    );
+    // mcp-drive D14: a follow under a grant names the host it loaded.
+    const followed = { ...keys, what: { ...keys.what, keys: "fsd", followed: "docs.example.com" } };
+    expect(ranNotice(followed, 12 * MIN, 0)).toBe(
+      'claude-code followed a link to docs.example.com in "Pricing · Example" (grant, 12m left)',
+    );
     expect(ranNotice({ ...read, tool: "vimma_close_tab" }, MIN, 0)).toBe(
       'example-agent closed "Pull requests · vimma-browser/vimma" (grant, 1m left)',
+    );
+  });
+
+  // docs/specs/mcp-forms.md F28: vimma_elements asks with the tab, and its notice names it.
+  test("vimma_elements: the tab in the question, the page in the notice", () => {
+    const elements = { ...keys, tool: "vimma_elements", what: { ...keys.what, keys: undefined } };
+    expect(text(questionLine(elements, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_elements: 2 "Pricing · Example" example.com/pricing',
+    );
+    expect(ranNotice(elements, 12 * MIN, 0)).toBe(
+      'claude-code listed the buttons and fields of "Pricing · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(elements)).toBe(
+      "claude-code asks to use Vimma's agent workspace (list a page's buttons and fields)",
     );
   });
 
@@ -261,6 +309,9 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
     expect(agentAlertText(open)).toBe(
       "example-agent asks to use Vimma's agent workspace (open a page)",
+    );
+    expect(agentAlertText(keys)).toBe(
+      "claude-code asks to use Vimma's agent workspace (move around a page)",
     );
     expect(agentAlertText(full)).toBe("vimma-ctl asks for full control of Vimma (every workspace)");
     for (const q of [read, open]) expect(agentAlertText(q)).not.toMatch(/github|docs\.rs|http/);
@@ -464,5 +515,72 @@ describe("a download's question (decision 31 a, d)", () => {
     expect(agentAlertText(download)).toBe(
       "example-agent asks to use Vimma's agent workspace (download a file)",
     );
+  });
+});
+
+// docs/specs/mcp-drive.md D2-D6 (security.md M19): vimma_show asks y or n for one agent tab, no
+// grant, and the notice after it says how to get back.
+describe("vimma_show's question and notice (mcp-drive D2-D6)", () => {
+  const show = { ...keys, tool: "vimma_show", what: { ...keys.what, keys: undefined } };
+  const none = { count: "" };
+
+  test("it names the tab it would show, and offers only y and n", () => {
+    const line = questionLine(show, { grantMinutes: 15 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants vimma_show: 2 "Pricing · Example" example.com/pricing ' +
+        '(switches you to "agent")',
+    );
+    expect(line.hint).toBe("y show it · n deny");
+    expect(line.label).toBe(text(line));
+    const named = questionLine(show, { grantMinutes: 15, agentWorkspace: "bots" });
+    expect(text(named)).toMatch(/\(switches you to "bots"\)$/);
+    expect(named.parts.find((p) => p.text === "bots")?.isolate).toBe("auto");
+  });
+
+  test("no grant: a, counts and x do not grant or mute", () => {
+    expect(noGrant(show)).toBe(true);
+    expect(noGrant(keys)).toBe(false);
+    expect(noGrant(read)).toBe(false);
+    const p = { noGrant: noGrant(show) };
+    expect(promptKey(none, "y", p)).toEqual({ kind: "answer", answer: { kind: "once" } });
+    expect(promptKey(none, "a", p)).toEqual({ kind: "ignore" });
+    expect(promptKey(none, "1", p)).toEqual({ kind: "ignore" });
+    expect(promptKey(none, "x", p)).toEqual({ kind: "answer", answer: { kind: "deny" } });
+  });
+
+  test("the notice after the switch says ctrl+^ goes back, and names another window", () => {
+    expect(shownNotice(show, { otherWindow: false })).toBe(
+      "showing claude-code's tab · ctrl+^ goes back",
+    );
+    expect(shownNotice(show, { otherWindow: true })).toBe(
+      "showing claude-code's tab, shown in the other window · ctrl+^ there goes back",
+    );
+    expect(shownNotice({ ...show, label: null }, { otherWindow: false })).toBe(
+      "showing an agent's tab · ctrl+^ goes back",
+    );
+    // Already on the agent workspace: a plain tab selection, so ctrl+^ would not go back.
+    expect(shownNotice(show, { otherWindow: false, switched: false })).toBe(
+      "showing claude-code's tab",
+    );
+  });
+
+  test("the desktop notification names no title or URL", () => {
+    expect(agentAlertText(show)).toBe(
+      "claude-code asks to use Vimma's agent workspace (show you a page)",
+    );
+  });
+});
+
+describe(":mcp log of a show that failed after the yes (mcp-drive D14)", () => {
+  test("it reads as failed, not as allowed", () => {
+    const e = {
+      at: 0,
+      client: "claude-code",
+      tool: "vimma_show",
+      title: "A",
+      detail: "",
+      outcome: "failed",
+    };
+    expect(logRow(e)).toMatch(/ · failed$/);
   });
 });

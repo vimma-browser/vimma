@@ -279,7 +279,35 @@ add_task(async function off_by_pref_or_config_sends_nothing() {
   await until(() => !VimmaUpdates.status().enabled, "[updates] check = false applied");
   Assert.equal((await VimmaUpdates.check()).outcome, "off");
   Assert.equal(VimmaUpdates.status().from, "config");
-  Assert.equal(segment(), null, "no offer shown with checks off");
+  Assert.notEqual(segment()?.textContent, "⇡ 9.9.9 available", "no offer shown with checks off");
+  Assert.deepEqual(await requests(), [], "no request at all");
+  await ConfigHost.reload();
+  await until(() => VimmaUpdates.status().enabled, "back on with the defaults");
+});
+
+// Decision 38: with checks off, `updates: off` shows for a few seconds once per session.
+add_task(async function checks_off_show_updates_off_briefly_once_per_session() {
+  await fetch(`${HOST}?reset`);
+  VimmaUpdates._reset(); // a new session: the notice has not been shown
+  const file = PathUtils.join(dir, "config.toml");
+  await IOUtils.writeUTF8(file, "schema = 2\n[updates]\ncheck = false\n");
+  await ConfigHost.reload(file);
+  await until(() => !VimmaUpdates.status().enabled, "[updates] check = false applied");
+  Assert.equal((await VimmaUpdates.check()).outcome, "off", "the install type is known");
+
+  await until(() => segment()?.textContent === "updates: off", "updates: off shows");
+  Assert.equal(segment().style.color, "var(--vimma-fg-dim)", "dim");
+  const shownAt = Date.now();
+  await TestUtils.waitForCondition(() => !segment(), "then hides by itself", 100, 150);
+  Assert.greaterOrEqual(Date.now() - shownAt, 2000, "it stayed a few seconds");
+
+  // On again, then off again: not shown a second time this session.
+  await ConfigHost.reload();
+  await until(() => VimmaUpdates.status().enabled, "back on with the defaults");
+  await ConfigHost.reload(file);
+  await until(() => !VimmaUpdates.status().enabled, "off again");
+  Assert.equal(VimmaUpdates.notice(), null, "once per session");
+  Assert.equal(segment(), null, "nothing in the status bar");
   Assert.deepEqual(await requests(), [], "no request at all");
   await ConfigHost.reload();
   await until(() => VimmaUpdates.status().enabled, "back on with the defaults");

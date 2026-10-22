@@ -1,14 +1,5 @@
 {
   "build-supply-chain.md": [],
-  "element-focus.md": [
-    "The start key is chosen when implementation starts, not in this spec.",
-    "Focus: the `ELEMENT` mode.",
-    "Frames",
-    "Shadow DOM",
-    "PDFs (pdf.js)",
-    "Performance",
-    "Accessibility"
-  ],
   "m6a-updater.md": [
     "Downgrade",
     "Complete MARs only",
@@ -24,12 +15,6 @@
     "Hosted Macs run what was built.",
     "Ad hoc signed until a Developer ID exists",
     "Artifact names carry both versions."
-  ],
-  "mcp-drive.md": [
-    "No grant covers it.",
-    "Limits.",
-    "Grants.",
-    "Each full connection says it too."
   ],
   "vimma-mcp.md": [
     "`vimma-ctl mcp`",

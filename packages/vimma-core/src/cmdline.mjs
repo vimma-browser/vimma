@@ -154,18 +154,20 @@ export const COMMANDS = Object.freeze([
   }),
   // docs/specs/m6a-updater.md: checks now; an update opens about:vimma's steps.
   cmd("update", "none", "app.update_check", "Check for a newer Vimma and how to update"),
+  cmd("restart", "none", "app.restart", "Restart Vimma (tabs come back); applies an update"),
   cmd("bug", "none", "tab.new", "Copy a redacted about:vimma report", {
     text: "about:vimma#bug",
   }),
   // docs/specs/addon-manager.md. Without a name, :addon asks on the command line.
   cmd("addons", "none", "addons.picker", "Add-on picker"),
   cmd("addon", "optional", "addons.popup", "Open an add-on's popup (Tab completes names)"),
-  // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget).
+  // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget);
+  // log: docs/specs/mcp-drive.md D14.
   cmd(
     "mcp",
     "optional",
     "mcp.command",
-    "Agents (MCP): on, off, revoke, forget; without: the status",
+    "Agents (MCP): on, off, revoke, forget, log; without: the status",
   ),
   // docs/specs/vimma-mcp.md decision 29 D: full control (vimma.control.enabled) for a while.
   cmd(

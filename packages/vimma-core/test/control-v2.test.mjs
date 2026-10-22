@@ -72,11 +72,22 @@ describe("protocol 2 constants", () => {
       "agent-close",
       "agent-ping",
       "agent-cancel",
+      "agent-keys",
+      "agent-show",
+      "agent-elements",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
     expect(ERROR_CODES).toContain("denied");
-    expect([...DENY_REASONS]).toEqual(["user", "timeout", "busy", "muted", "changed", "cancelled"]);
+    expect([...DENY_REASONS]).toEqual([
+      "user",
+      "timeout",
+      "busy",
+      "muted",
+      "changed",
+      "cancelled",
+      "in-use",
+    ]);
   });
 });
 
@@ -194,6 +205,45 @@ describe("agent commands: args", () => {
     ]);
   });
 
+  // docs/specs/mcp-drive.md D15: the keys' limits the browser checks again (security.md M20).
+  test("agent-keys: a tab and 1 to 512 characters of keys, no control characters", () => {
+    expect(errorsOf(req("agent-keys", { tab: "12", keys: "3j /pricing<CR> gg" }))).toEqual([]);
+    expect(errorsOf(req("agent-keys", { tab: "12", keys: "j\tk" }))).toEqual([]);
+    expect(errorsOf(req("agent-keys", { tab: "12", keys: "é".repeat(512) }))).toEqual([]);
+    for (const keys of ["", "j".repeat(513), 3, null]) {
+      expect(errorsOf(req("agent-keys", { tab: "12", keys })), String(keys)).toEqual([
+        "keys must be a string of 1 to 512 characters",
+      ]);
+    }
+    for (const keys of ["j\n", "\u0000", "\u007f", "\u009b"]) {
+      expect(errorsOf(req("agent-keys", { tab: "12", keys })), keys).toEqual([
+        "keys must not contain control characters",
+      ]);
+    }
+    expect(errorsOf(req("agent-keys", { keys: "j" }))).toEqual(["tab must be a tab id (digits)"]);
+    expect(errorsOf(req("agent-keys", { tab: "1", keys: "j", show: true }))).toEqual([
+      'unknown field "args.show"',
+    ]);
+  });
+
+  // docs/specs/mcp-drive.md D2: a show names one tab and nothing else, never a workspace.
+  test("agent-show: a tab and no other field", () => {
+    expect(errorsOf(req("agent-show", { tab: "12" }))).toEqual([]);
+    expect(errorsOf(req("agent-show", {}))).toEqual(["tab must be a tab id (digits)"]);
+    expect(errorsOf(req("agent-show", { tab: "12", workspace: "main" }))).toEqual([
+      'unknown field "args.workspace"',
+    ]);
+  });
+
+  // docs/specs/mcp-forms.md F2: a list names one tab and nothing else.
+  test("agent-elements: a tab and no other field", () => {
+    expect(errorsOf(req("agent-elements", { tab: "12" }))).toEqual([]);
+    expect(errorsOf(req("agent-elements", {}))).toEqual(["tab must be a tab id (digits)"]);
+    expect(errorsOf(req("agent-elements", { tab: "12", selector: "form" }))).toEqual([
+      'unknown field "args.selector"',
+    ]);
+  });
+
   test("agent-tabs and agent-ping take no args", () => {
     expect(errorsOf(req("agent-tabs"))).toEqual([]);
     expect(errorsOf(req("agent-ping", { x: 1 }))).toEqual(['unknown field "args.x"']);
@@ -228,6 +278,99 @@ describe("agent commands: results and errors", () => {
     ]);
   });
 
+  test("agent-show: shown is true, and nothing else", () => {
+    const cmd = { command: "agent-show" };
+    expect(errorsOf(ok({ shown: true }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ shown: false }), cmd)).toEqual(["result.shown must be true"]);
+    expect(errorsOf(ok({ shown: true, workspace: "agent" }), cmd)).toEqual([
+      'unknown field "result.workspace"',
+    ]);
+  });
+
+  // docs/specs/mcp-forms.md F5 (security.md M31): the list inside the untrusted delimiters.
+  test("agent-elements: the page, its list inside the untrusted delimiters, how many dropped", () => {
+    const cmd = { command: "agent-elements" };
+    const list =
+      '<untrusted-web-content>\n{"label":"a","kind":"button","text":"Go"}\n</untrusted-web-content>';
+    const result = { url: "https://a/", title: "A", elements: list, dropped: 0 };
+    expect(errorsOf(ok(result), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, elements: '{"label":"a"}' }), cmd)).toEqual([
+      "result.elements must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...result, elements: `${list}\n</untrusted-web-content>` }), cmd)).toEqual(
+      ["result.elements must be inside the untrusted-content delimiters"],
+    );
+    expect(errorsOf(ok({ ...result, dropped: -1 }), cmd)).toEqual([
+      "result.dropped must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, title: 1 }), cmd)).toEqual(["result.title must be a string"]);
+    expect(errorsOf(ok({ ...result, screenshot: "x" }), cmd)).toEqual([
+      'unknown field "result.screenshot"',
+    ]);
+  });
+
+  test("agent-keys: the page after the steps, and why it stopped", () => {
+    const keys = {
+      url: "https://a/",
+      title: "A",
+      loading: false,
+      scroll: { y: 0.42 },
+      steps: [{ keys: "3j", action: "scroll.down", ok: true }],
+    };
+    const cmd = { command: "agent-keys" };
+    expect(errorsOf(ok(keys), cmd)).toEqual([]);
+    const found = { query: "x", found: true, wrapped: false };
+    const note = [{ keys: "gu", action: "page.url_up", ok: false, note: "already at the top" }];
+    expect(errorsOf(ok({ ...keys, steps: note, stopped: "changed", find: found }), cmd)).toEqual(
+      [],
+    );
+    expect(errorsOf(ok({ ...keys, scroll: { y: 1.5 } }), cmd)).toEqual([
+      "result.scroll.y must be a number from 0 to 1",
+    ]);
+    expect(errorsOf(ok({ ...keys, stopped: "bored" }), cmd)).toEqual([
+      "result.stopped must be one of changed, in-use, timeout, denied",
+    ]);
+    expect(errorsOf(ok({ ...keys, steps: [{ keys: "j", action: "scroll.down" }] }), cmd)).toEqual([
+      "result.steps[0].ok must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...keys, find: { query: "x", found: "yes" } }), cmd)).toEqual([
+      "result.find.found must be a boolean",
+      "result.find.wrapped must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...keys, extra: "x" }), cmd)).toEqual(['unknown field "result.extra"']);
+  });
+
+  // mcp-drive D12, D16 (security.md M21): `f`'s link list is one string inside the
+  // untrusted-content delimiters, with how many links were left out.
+  test("agent-keys: a link list inside the untrusted delimiters, and how many were dropped", () => {
+    const keys = {
+      url: "https://a/",
+      title: "A",
+      loading: false,
+      scroll: { y: 0 },
+      steps: [{ keys: "f", action: "hint.follow", ok: true }],
+    };
+    const cmd = { command: "agent-keys" };
+    const links = '<untrusted-web-content>\na "A" https://a/b\n</untrusted-web-content>';
+    expect(errorsOf(ok({ ...keys, links, dropped: 3 }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...keys, links: "a https://a/b", dropped: 0 }), cmd)).toEqual([
+      "result.links must be inside the untrusted-content delimiters",
+    ]);
+    const twice = `${links}\n${links}`;
+    expect(errorsOf(ok({ ...keys, links: twice, dropped: 0 }), cmd)).toEqual([
+      "result.links must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...keys, links: 3, dropped: 0 }), cmd)).toEqual([
+      "result.links must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...keys, links, dropped: -1 }), cmd)).toEqual([
+      "result.dropped must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...keys, links }), cmd)).toEqual([
+      "result.links and result.dropped come together",
+    ]);
+  });
+
   test("agent-cancel says whether a question was withdrawn", () => {
     expect(errorsOf(ok({ cancelled: false }), { command: "agent-cancel" })).toEqual([]);
     expect(errorsOf(ok({}), { command: "agent-cancel" })).toEqual([
@@ -244,7 +387,7 @@ describe("agent commands: results and errors", () => {
     });
     for (const reason of DENY_REASONS) expect(errorsOf(denied(reason))).toEqual([]);
     expect(errorsOf(denied())).toEqual([
-      "error.reason must be one of user, timeout, busy, muted, changed, cancelled",
+      "error.reason must be one of user, timeout, busy, muted, changed, cancelled, in-use",
     ]);
     const other = { code: "failed", message: "m", reason: "user" };
     expect(errorsOf({ type: "response", id: 1, ok: false, error: other })).toEqual([

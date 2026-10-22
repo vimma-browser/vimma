@@ -5,6 +5,12 @@ import { describe, test, expect } from "vitest";
 import {
   AgentQueue,
   AGENT_TOOLS,
+  AgentLog,
+  CallRate,
+  ELEMENTS_RATE,
+  KEYS_RATE,
+  LOG_SIZE,
+  SHOW_RATE,
   OPEN_RATE,
   OpenRate,
   MUTE_MS,
@@ -17,6 +23,7 @@ import {
   untrustedHeader,
   wrapUntrusted,
 } from "../src/agent.mjs";
+import { logCells, logRow } from "../src/agent-prompt.mjs";
 
 const MIN = 60_000;
 const READ = "vimma_read_page";
@@ -37,6 +44,9 @@ describe("the tools", () => {
       "agent-read": "vimma_read_page",
       "agent-open": "vimma_open",
       "agent-close": "vimma_close_tab",
+      "agent-keys": "vimma_keys",
+      "agent-show": "vimma_show",
+      "agent-elements": "vimma_elements",
     });
   });
 });
@@ -258,6 +268,137 @@ describe("open rate (security.md M3)", () => {
   });
 });
 
+// docs/specs/mcp-drive.md D15 (security.md M20): keys are counted when asked, so a refused call
+// cannot be retried in a loop; the rate class is the opens' one, with its own limit.
+describe("the keys rate (mcp-drive D15)", () => {
+  test("at most 30 agent-keys per connection a minute, in OpenRate's class", () => {
+    expect(KEYS_RATE).toEqual({ max: 30, ms: 60_000 });
+    const r = new CallRate(KEYS_RATE);
+    const ok = [];
+    for (let i = 0; i < 32; i++) ok.push(r.take(1, i * 100));
+    expect(ok.filter(Boolean)).toHaveLength(30);
+    expect(ok.slice(30)).toEqual([false, false]);
+    expect(r.take(2, 3_200)).toBe(true);
+    expect(r.take(1, 60_001)).toBe(true);
+    expect(new OpenRate()).toBeInstanceOf(CallRate);
+  });
+});
+
+// docs/specs/mcp-drive.md D7 (security.md M20): at most 6 shows a minute per connection, counted
+// when asked, so a refused show cannot be retried in a loop.
+describe("the show rate (mcp-drive D7)", () => {
+  test("at most 6 agent-show per connection a minute", () => {
+    expect(SHOW_RATE).toEqual({ max: 6, ms: 60_000 });
+    const r = new CallRate(SHOW_RATE);
+    const ok = [];
+    for (let i = 0; i < 8; i++) ok.push(r.take(1, i * 100));
+    expect(ok.filter(Boolean)).toHaveLength(6);
+    expect(ok.slice(6)).toEqual([false, false]);
+    expect(r.take(2, 900)).toBe(true);
+    expect(r.take(1, 60_001)).toBe(true);
+  });
+});
+
+// docs/specs/mcp-forms.md F26 (security.md M31): at most 30 element lists a minute per connection,
+// counted when asked, so a grant cannot flood a page and a refused call cannot loop.
+describe("the elements rate (mcp-forms F26)", () => {
+  test("at most 30 agent-elements per connection a minute", () => {
+    expect(ELEMENTS_RATE).toEqual({ max: 30, ms: 60_000 });
+    const r = new CallRate(ELEMENTS_RATE);
+    const ok = [];
+    for (let i = 0; i < 32; i++) ok.push(r.take(1, i * 100));
+    expect(ok.filter(Boolean)).toHaveLength(30);
+    expect(r.take(2, 3300)).toBe(true);
+    expect(r.take(1, 60_001)).toBe(true);
+  });
+});
+
+// docs/specs/mcp-drive.md D14 (security.md M23): every agent call that ran or was denied, in
+// memory only, the last 100.
+describe(":mcp log (mcp-drive D14)", () => {
+  const at = new Date(2026, 9, 21, 17, 5, 9).getTime();
+  const entry = (n = 0) => ({
+    at: at + n * 1000,
+    client: "claude-code",
+    tool: "vimma_keys",
+    title: "Pricing · Example",
+    detail: '3j /"pricing"⏎',
+    outcome: /** @type {const} */ ("grant"),
+  });
+
+  test("keeps the last 100, newest first", () => {
+    expect(LOG_SIZE).toBe(100);
+    const log = new AgentLog();
+    for (let i = 0; i < 105; i++) log.add(entry(i));
+    const rows = log.entries();
+    expect(rows).toHaveLength(100);
+    expect(rows[0]?.at).toBe(at + 104_000);
+    expect(rows[99]?.at).toBe(at + 5_000);
+    log.clear();
+    expect(log.entries()).toEqual([]);
+  });
+
+  test("a row: time, client, tool, tab title, keys or URL, outcome", () => {
+    const plain = (/** @type {string} */ t) => t.replace(/[\u2068\u2069]/g, "");
+    expect(plain(logRow(entry()))).toBe(
+      '17:05:09 claude-code vimma_keys "Pricing · Example" 3j /"pricing"⏎ · ran under a grant',
+    );
+    const open = { ...entry(), tool: "vimma_open", title: "", detail: "https://a.example/x" };
+    expect(plain(logRow({ ...open, outcome: "yes" }))).toBe(
+      "17:05:09 claude-code vimma_open https://a.example/x · allowed",
+    );
+    for (const [outcome, said] of [
+      ["user", "denied"],
+      ["timeout", "no answer (denied)"],
+      ["busy", "denied (busy)"],
+      ["muted", "denied (muted)"],
+      ["cancelled", "cancelled"],
+      ["in-use", "denied (the user was using the tab)"],
+      ["changed", "denied (the tab changed)"],
+    ]) {
+      const row = logRow({ ...entry(), outcome: /** @type {any} */ (outcome) });
+      expect(row.endsWith(` · ${said}`), row).toBe(true);
+    }
+  });
+
+  test("the log picker's cells: the time, what was called, the outcome", () => {
+    // Text an agent or a page chose is its own bidi run (FSI…PDI), as in the question line.
+    const iso = (/** @type {string} */ t) => `\u2068${t}\u2069`;
+    expect(logCells(entry())).toEqual({
+      time: "17:05:09",
+      text: `${iso("claude-code")} vimma_keys "${iso("Pricing · Example")}" ${iso('3j /"pricing"⏎')}`,
+      outcome: "ran under a grant",
+    });
+    expect(logCells({ ...entry(), outcome: "stopped", why: "in-use" }).outcome).toBe(
+      "stopped (in-use)",
+    );
+  });
+
+  // mcp-drive D14 (M23): a follow's row names what it loaded, asked or under a grant.
+  test("a follow's row says where it went", () => {
+    expect(logCells({ ...entry(), outcome: "followed" }).outcome).toBe("followed a link");
+  });
+
+  // Review: a cross-site follow checks the open rate before it asks, without taking a slot.
+  test("a rate can be checked without counting", () => {
+    const r = new CallRate({ max: 1, ms: 1000 });
+    expect(r.can("c", 0)).toBe(true);
+    expect(r.can("c", 0)).toBe(true);
+    expect(r.take("c", 0)).toBe(true);
+    expect(r.can("c", 1)).toBe(false);
+    expect(r.can("c", 1001)).toBe(true);
+  });
+
+  test("control characters and long titles are cut to one readable line", () => {
+    const hostile = { ...entry(), title: `a\u202eb\n${"x".repeat(200)}`, client: "c\u0007d" };
+    const row = logRow(hostile);
+    expect([...row].some((c) => /\p{Cc}/u.test(c) || c === "\u202e")).toBe(false);
+    expect(row).toContain("c d");
+    expect(row.match(/\u2068/g)?.length).toBe(3);
+    expect(row.length).toBeLessThan(200);
+  });
+});
+
 describe(":mcp revoke and :mcp's status", () => {
   test("revoke is one of :mcp's words", () => {
     expect(parseMcpCommand("revoke")).toEqual({ kind: "revoke" });
@@ -308,5 +449,30 @@ describe("questions that always ask", () => {
       resolved: [{ id: b.id, allow: true }],
     });
     expect(q.grants(0)).toEqual([]);
+  });
+});
+
+// docs/specs/mcp-drive.md D4 (security.md M19): vimma_show asks every time, whatever the caller
+// passes, and its answer never makes a grant.
+describe("vimma_show always asks (mcp-drive D4)", () => {
+  const SHOW = "vimma_show";
+  test("it waits even when asked without always, and a grant answer allows it once only", () => {
+    const q = queue();
+    const a = q.ask(1, SHOW, 0);
+    expect(a.kind).toBe("wait");
+    expect(q.answer(a.id, { kind: "grant", minutes: 10 }, 0)).toEqual({
+      resolved: [{ id: a.id, allow: true }],
+    });
+    expect(q.grants(0)).toEqual([]);
+    expect(q.ask(1, SHOW, MIN).kind).toBe("wait");
+  });
+
+  test("a grant of another tool never covers it", () => {
+    const q = queue();
+    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
+    const b = q.ask(1, SHOW, 0);
+    expect(b.kind).toBe("wait");
+    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
+    expect(q.waiting.map((r) => r.id)).toContain(b.id);
   });
 });

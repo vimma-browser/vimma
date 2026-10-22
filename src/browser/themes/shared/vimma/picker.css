@@ -82,6 +82,15 @@
     color: var(--vimma-fg-bright, SelectedItemText);
   }
 
+  /* `:mcp log` (docs/specs/mcp-drive.md D14): the time first, and the outcome always shown. */
+  &#vimma-mcp-log {
+    width: min(72rem, calc(100vw - 4rem));
+  }
+
+  &#vimma-mcp-log .vimma-picker-row {
+    grid-template-columns: 8ch 1fr max-content;
+  }
+
   & .vimma-picker-index {
     font-family: var(--vimma-font, monospace);
     text-align: end;

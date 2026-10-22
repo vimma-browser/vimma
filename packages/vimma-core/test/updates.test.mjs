@@ -14,6 +14,8 @@ import {
   base64Encode,
   installTypeFrom,
   judgeManifest,
+  offNotice,
+  OFF_NOTICE_MS,
   offerAssets,
   parseManifest,
   shellQuote,
@@ -375,13 +377,15 @@ describe("parseManifest", () => {
   test("reads each package's size and SHA-512 (the release pipeline's asset elements)", () => {
     const r = /** @type {any} */ (parseManifest(withAssets(tarball + appimage + deb + rpm)));
     expect(r.manifest.update.assets).toEqual({
-      tarball: { size: 86804240, sha512: H("a") },
-      appimage: { size: 111966712, sha512: H("b") },
-      deb: { size: 87718612, sha512: H("c") },
-      rpm: { size: 87921340, sha512: H("f") },
+      tarball: { size: 86804240, sha512: H("a"), url: `${DL}/vimma-0.3.1-linux-x86_64.tar.xz` },
+      appimage: { size: 111966712, sha512: H("b"), url: `${DL}/vimma-0.3.1-x86_64.AppImage` },
+      deb: { size: 87718612, sha512: H("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
+      rpm: { size: 87921340, sha512: H("f"), url: `${DL}/vimma-0.3.1-1.x86_64.rpm` },
     });
     const one = /** @type {any} */ (parseManifest(withAssets(deb)));
-    expect(one.manifest.update.assets).toEqual({ deb: { size: 87718612, sha512: H("c") } });
+    expect(one.manifest.update.assets).toEqual({
+      deb: { size: 87718612, sha512: H("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
+    });
   });
 
   test.each([
@@ -412,7 +416,9 @@ describe("parseManifest", () => {
 
   test("reads the macOS manifest's <vimmaDmg> (macos-homebrew decision 18)", () => {
     const r = /** @type {any} */ (parseManifest(withAssets(dmg)));
-    expect(r.manifest.update.assets).toEqual({ dmg: { size: 110809760, sha512: H("e") } });
+    expect(r.manifest.update.assets).toEqual({
+      dmg: { size: 110809760, sha512: H("e"), url: `${DL}/vimma-0.3.1-macos-aarch64.dmg` },
+    });
   });
 
   test.each([
@@ -435,6 +441,18 @@ describe("parseManifest", () => {
     expect(offerAssets([good])).toEqual({});
     expect(offerAssets({ dmg: good, x: good })).toEqual({ dmg: good });
     expect(offerAssets({ rpm: good })).toEqual({ rpm: good });
+  });
+
+  test("offerAssets keeps a saved download URL only when it is https (decision 19)", () => {
+    const url = `${DL}/vimma-0.3.1-x86_64.AppImage`;
+    expect(offerAssets({ appimage: { size: 1, sha512: H("d"), url } })).toEqual({
+      appimage: { size: 1, sha512: H("d"), url },
+    });
+    for (const bad of ["http://example.com/x", 7, "", "javascript:x"]) {
+      expect(offerAssets({ appimage: { size: 1, sha512: H("d"), url: bad } })).toEqual({
+        appimage: { size: 1, sha512: H("d") },
+      });
+    }
   });
 
   test("entities in attributes are decoded", () => {
@@ -626,9 +644,73 @@ describe("updateNotice (§5, the rows delivery 1 has)", () => {
     expect(updateNotice({ ...state, staleDays: 46, offer })?.text).toBe("⇡ 0.3.1 available");
   });
 
+  test("an AppImage already replaced: ⇡ 0.3.1 on restart, dim; urgent: red (§5)", () => {
+    expect(updateNotice({ ...state, installType: "appimage", offer, staged: true })).toEqual({
+      text: "⇡ 0.3.1 on restart",
+      tone: "info",
+    });
+    expect(
+      updateNotice({
+        ...state,
+        installType: "appimage",
+        offer: { ...offer, urgent: true },
+        staged: true,
+      }),
+    ).toEqual({ text: "⇡ 0.3.1 security: :restart", tone: "urgent" });
+  });
+
   test("checks off or a source build: nothing, offer or not (decision 14)", () => {
     expect(updateNotice({ ...state, enabled: false, offer, staleDays: 50 })).toBeNull();
     expect(updateNotice({ ...state, installType: "source", offer })).toBeNull();
+  });
+
+  test("checks off while the startup notice lasts: updates: off, dim (decision 38)", () => {
+    const off = { ...state, enabled: false, offShown: true };
+    expect(updateNotice(off)).toEqual({ text: "updates: off", tone: "info" });
+    expect(updateNotice({ ...off, offer, staleDays: 50, refusals: 3 })?.text).toBe("updates: off");
+    expect(updateNotice({ ...off, offShown: false })).toBeNull();
+    expect(updateNotice({ ...off, installType: "source" })).toBeNull();
+    // On is on: the flag means nothing while checks run.
+    expect(updateNotice({ ...state, offShown: true })).toBeNull();
+  });
+});
+
+describe("offNotice (decision 38: updates: off for a few seconds, once per session)", () => {
+  const off = { enabled: false, installType: /** @type {const} */ ("tarball") };
+
+  test("the first time checks are seen off, the clock starts and the notice shows", () => {
+    expect(offNotice({ ...off, since: null, now: 1000 })).toEqual({ since: 1000, shown: true });
+  });
+
+  test("it shows for OFF_NOTICE_MS, then hides for the rest of the session", () => {
+    expect(OFF_NOTICE_MS).toBeGreaterThanOrEqual(3000);
+    expect(OFF_NOTICE_MS).toBeLessThanOrEqual(10000);
+    const at = (/** @type {number} */ now) => offNotice({ ...off, since: 1000, now });
+    expect(at(1000 + OFF_NOTICE_MS - 1)).toEqual({ since: 1000, shown: true });
+    expect(at(1000 + OFF_NOTICE_MS)).toEqual({ since: 1000, shown: false });
+    expect(at(1000 + 86400000)).toEqual({ since: 1000, shown: false });
+  });
+
+  test("checks on: no clock; turned off later in the session, it starts then, once", () => {
+    expect(offNotice({ ...off, enabled: true, since: null, now: 5 })).toEqual({
+      since: null,
+      shown: false,
+    });
+    // On again and off again after it was shown: the clock is not restarted.
+    expect(offNotice({ ...off, enabled: true, since: 1000, now: 2000 })).toEqual({
+      since: 1000,
+      shown: false,
+    });
+    expect(offNotice({ ...off, since: 1000, now: 1000 + OFF_NOTICE_MS + 5 }).shown).toBe(false);
+  });
+
+  test("a source build or an install type not known yet: no clock", () => {
+    for (const installType of /** @type {const} */ (["source", null])) {
+      expect(offNotice({ ...off, installType, since: null, now: 5 })).toEqual({
+        since: null,
+        shown: false,
+      });
+    }
   });
 });
 

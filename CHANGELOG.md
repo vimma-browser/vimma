@@ -4,9 +4,32 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- `:restart` restarts Vimma with its tabs, asking first while private tabs are open; an AppImage restarts into the file it replaced. Once a security update is installed, Vimma asks once per session, and again a day later, `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, and its status-bar segment reads `⇡ 0.3.1 security: :restart`. The help snapshot gains the unbound `restart` row.
+- Element focus: a text block chosen with `:focus_element` (or a key bound to `focus_element`) is in the new `ELEMENT` mode, where `y` copies it, `v` / `V` select it in copy mode, `+` / `-` and `j` / `k` move the focus and `F` picks another block. The help and `defaults.toml` snapshots gain the `[modal.element]` keys and the full `focus_element` description.
+- Agents (MCP): `vimma_show` lets an agent show you one of the agent workspace's tabs. It asks every time, with only `y` and `n`; on `y` the window that holds the tab switches to the agent workspace with that tab selected, never raising or focusing a window, and `ctrl+^` brings you back to your workspace and split. The e2e baselines `m0-mcp-drive-keys-question` and `m0-mcp-drive-shown` are new, from the `m0-mcp-drive` scenario that drives the real `vimma-ctl mcp` through `vimma_keys` and `vimma_show`.
+- Copy mode: `ip` selects the text block around the caret, the one element focus would select, and `ap` grows the selection to the block around it on each press. The help and `defaults.toml` snapshots gain the two keys.
+- e2e baselines `element-hints.png`, `element-focus.png` and `element-visual.png` (scenario `issue-213-element-focus`): `F`'s labels on an article's text blocks, a focused paragraph with its outline and `ELEMENT` badge, and that paragraph selected in copy mode.
+- The AppImage updates itself: it replaces its own file with a newer release checked against the signed update file, and runs it from the next start.
+- Agents (MCP): `vimma_keys` scrolls, finds and goes back or forward in an agent tab without bringing it to the front, from a fixed set of Vimma's default keys; it asks first, shows the keys it will run, and `:mcp log` lists the last 100 agent calls.
+- Agents (MCP): `vimma_keys` lists an agent tab's visible links by hint label and follows one in the same tab, never as a click and with no referrer; a link to another site asks first unless the agent holds an open grant.
+- Updates: with update checks off, a dim `updates: off` segment shows for a few seconds at startup, once per session.
+
 ### Changed
 
+- `F` now starts element focus; background-tab link hints moved to `gF` (a `config.toml` that binds `F` keeps it). The help and `defaults.toml` snapshots show `F` on `focus_element` and `gF` on `follow_link_new_tab`.
 - Firefox's Bookmarks Toolbar is hidden by default, also on the start page and after an import; `ctrl+b shift+b` opens your bookmarks, the start page names it, and `:bookmarkstoolbar [show|hide|newtab]`, `ctrl+shift+b` or `[ui] bookmarks_toolbar` brings the toolbar back. A profile that showed it has it hidden once, with a notice. The `defaults.toml` snapshot gains the commented `[ui] bookmarks_toolbar` line.
+- While agents are on, full control's questions say that it reaches every workspace, not only the agent workspace, and `vimma-ctl mcp` tells agents never to ask for it.
+- Themes: mode badges keep distinct colours when a theme maps two palette slots to one colour; under Catppuccin the `ELEMENT` and `HINT` badges get a shade of their own, and every badge keeps AA text contrast.
+
+### Fixed
+
+- Link hints: every entry of an open dropdown menu gets a label, also when the page puts a click handler on the list around them.
+- Save-password prompt: its own fields keep the keys you type, and when focus is in a page field the keys line says to press Esc first, then `y` or `n`.
+- Workspaces: keys typed right after switching to a workspace whose start page is still loading reach Vimma instead of being lost.
+- Find: when a page focuses its search field after a find matched in it, Vimma enters insert mode (YouTube, Google, DuckDuckGo).
+- Copy mode: `}` and `{` step over a paragraph's invisible source white space, so `}` at the end of a paragraph moves into the list that follows it.
 
 ## [0.1.6](https://github.com/vimma-browser/vimma/compare/v0.1.5...v0.1.6) · Firefox 158.0 (2026-10-19)
 

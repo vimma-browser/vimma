@@ -5,7 +5,9 @@
 // Registers the Vimma JSWindowActor pair and sends it commands (spec:
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
-import { HINT_REPLY_MAX_TARGETS, parseHintReply } from "../core/hints.mjs";
+import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
+
+/** @import { BlockReply } from "../core/hints.mjs" */
 
 // System modules have no timer globals; Firefox's actors import them the same way.
 const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
@@ -24,8 +26,15 @@ const START_PAGE_MATCH = "chrome://browser/content/vimma/start/start.html";
  * A hint target in the parent: where to draw it and how to reach its element again.
  * @typedef {object} HintTarget
  * @property {Rect} rect  in the top frame's CSS pixels
- * @property {"link" | "input" | "click"} kind
+ * @property {"link" | "input" | "click" | "block"} kind
  * @property {string} [href]  links only
+ * @property {string} [text]  an agent's links only: what the link says (mcp-drive D12)
+ * @property {import("../core/blocks.mjs").BlockKind} [blockKind]  text blocks only
+ * @property {Rect} [box]  text blocks only: the border box, for the outline
+ * @property {import("../core/agent-element.mjs").AgentElementInfo} [info]  an agent's
+ *   `vimma_elements` only: what the element is (docs/specs/mcp-forms.md F5)
+ * @property {{ key: string, method: string, action: string }} [form]  an agent's
+ *   `vimma_elements` only: the element's form; `key` tells forms of different frames apart
  * @property {number} gen  the collection it came from
  * @property {number} id  the element's index in its frame's collection
  * @property {any} bc  its frame's BrowsingContext
@@ -42,8 +51,12 @@ let hintGen = 0;
  * @type {WeakMap<object, number>}
  */
 const blurGens = new WeakMap();
-/** The live collection of each window; another window's `f` must not void it. */
-/** @type {WeakMap<object, number>} */
+/**
+ * The live collection of each window, and of each agent tab (docs/specs/mcp-drive.md D12):
+ * another window's `f` must not void a window's, and an agent's `f`, keyed by its tab's
+ * <browser>, neither voids the user's hint mode in the same window nor is voided by it.
+ * @type {WeakMap<object, number>}
+ */
 const liveGen = new WeakMap();
 
 /** How long a subframe may take to answer (ms) before its targets are left out. */
@@ -56,7 +69,7 @@ const TOP_TIMEOUT_MS = 2000;
 const MAX_HINTS = HINT_REPLY_MAX_TARGETS;
 /** At most this deep in frames. */
 const MAX_FRAME_DEPTH = 8;
-/** Schemes `F` opens; the page's principal must be allowed to load them too. */
+/** Schemes `gF` opens; the page's principal must be allowed to load them too. */
 const OPENABLE = new Set(["http:", "https:", "file:"]);
 
 const ReferrerInfo = Components.Constructor(
@@ -156,10 +169,31 @@ export const VimmaActors = {
    * @param {any} browser XULBrowserElement
    * @param {ScrollKind} kind
    * @param {number} [count]
+   * @param {{ instant?: boolean, top?: boolean }} [options]  `instant`: no smooth scroll;
+   *   `top`: the top frame's scroller only, whatever frame has focus (an agent's tab,
+   *   docs/specs/mcp-drive.md D8)
+   * @returns {Promise<boolean>} whether a frame had something to scroll
    */
-  async scroll(browser, kind, count = 1) {
-    for (const bc of framesFor(browser)) {
-      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count })) return;
+  async scroll(browser, kind, count = 1, { instant = false, top = false } = {}) {
+    const frames = top ? [browser.browsingContext] : framesFor(browser);
+    for (const bc of frames) {
+      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count, instant })) return true;
+    }
+    return false;
+  },
+
+  /**
+   * How far the top frame is scrolled down, from 0 to 1 (docs/specs/mcp-drive.md D16). The
+   * page's child answers, so the number is checked here.
+   * @param {any} browser XULBrowserElement
+   * @returns {Promise<number>}
+   */
+  async scrollFraction(browser) {
+    try {
+      const y = await actorFor(browser.browsingContext)?.sendQuery("Vimma:ScrollFraction");
+      return typeof y === "number" && Number.isFinite(y) ? Math.min(1, Math.max(0, y)) : 0;
+    } catch {
+      return 0;
     }
   },
 
@@ -219,18 +253,25 @@ export const VimmaActors = {
    * reported and clipped to them. Replies are from content processes and checked like any
    * other message: a malformed one drops that frame.
    * @param {any} browser XULBrowserElement
-   * @param {string} action "hint.follow" or "hint.follow_new_tab" (links only)
+   * @param {string} action "hint.follow", "hint.follow_new_tab" (links only) or "hint.element"
+   *   (text blocks, docs/specs/element-focus.md)
+   * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an agent's `f` in its
+   *   tab (docs/specs/mcp-drive.md D12): links only, each with its text, live per tab, not per
+   *   window; with `elements`, an agent's `vimma_elements` (docs/specs/mcp-forms.md F2): every
+   *   kind but blocks, disabled controls too, each described, kept apart from the user's
    * @returns {Promise<HintTarget[]>}
    */
-  async collectHints(browser, action) {
+  async collectHints(browser, action, { agent = false, elements = false } = {}) {
     const gen = ++hintGen;
-    const win = browser.ownerDocument.defaultView;
-    liveGen.set(win, gen);
-    const live = () => liveGen.get(win) === gen;
+    const key = agent ? browser : browser.ownerDocument.defaultView;
+    liveGen.set(key, gen);
+    const live = () => liveGen.get(key) === gen;
     const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
     /** Each frame at most once, whatever its embedder reports. */
     const visited = new Set();
-    const linksOnly = action === "hint.follow_new_tab";
+    const linksOnly = (agent && !elements) || action === "hint.follow_new_tab";
+    const blocks = !agent && action === "hint.element";
+    const texts = agent && !elements;
     /** @type {HintTarget[]} */
     const out = [];
     let ms = 0;
@@ -253,7 +294,13 @@ export const VimmaActors = {
         const late = new Promise((resolve) => {
           timer = setTimeout(resolve, depth === 0 ? TOP_TIMEOUT_MS : frameTimeout, null);
         });
-        const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", { gen, linksOnly });
+        const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", {
+          gen,
+          linksOnly,
+          blocks,
+          texts,
+          elements: agent && elements,
+        });
         raw = await Promise.race([query, late]);
       } catch {
         return; // the frame navigated or its process went away
@@ -261,14 +308,28 @@ export const VimmaActors = {
         clearTimeout(timer);
       }
       // From a content process, which may be compromised: a fresh, checked copy or nothing.
-      const reply = parseHintReply(raw);
+      const reply = parseHintReply(raw, { blocks, texts, elements: agent && elements });
       if (!reply || !live()) return;
       ms += reply.ms;
       for (const t of reply.targets) {
         if (out.length >= MAX_HINTS) break;
         const rect = intersect(offset(t.rect, origin), frame);
         if (!rect) continue;
-        out.push({ gen, bc, wg, id: t.id, kind: t.kind, href: t.href, rect });
+        /** @type {HintTarget} */
+        const target = { gen, bc, wg, id: t.id, kind: t.kind, href: t.href, rect };
+        if (texts) target.text = t.text ?? "";
+        if (t.agent) {
+          target.info = t.agent;
+          const form = t.agent.form === undefined ? undefined : reply.forms?.[t.agent.form];
+          if (form) target.form = { key: `${bc.id}:${t.agent.form}`, ...form };
+        }
+        if (t.box) {
+          const box = intersect(offset(t.box, origin), frame);
+          if (!box) continue;
+          target.blockKind = t.blockKind;
+          target.box = box;
+        }
+        out.push(target);
       }
       if (depth >= MAX_FRAME_DEPTH) return;
       const children = reply.frames.map((f) => {
@@ -297,6 +358,27 @@ export const VimmaActors = {
     actorFor(target.bc)
       ?.sendQuery("Vimma:ActivateHint", { gen: target.gen, id: target.id })
       .catch(() => {});
+  },
+
+  /**
+   * Whether the element of a target from an agent's `vimma_elements` is still in its document
+   * (docs/specs/mcp-forms.md F4): false when its frame shows another document, the page removed
+   * or replaced it, or the frame did not answer.
+   * @param {HintTarget} target
+   * @returns {Promise<boolean>}
+   */
+  async agentElementAlive(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return false;
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "alive",
+        gen: target.gen,
+        id: target.id,
+      });
+      return reply === true;
+    } catch {
+      return false; // the frame navigated or its process went away
+    }
   },
 
   /**
@@ -335,6 +417,24 @@ export const VimmaActors = {
       referrerInfo: new ReferrerInfo(Ci.nsIReferrerInfo.EMPTY, true, wg.documentURI),
     });
     return true;
+  },
+
+  /**
+   * Loads a link target's href in `browser` itself, as the page would load it: the page's
+   * principal triggers the load and no event fires on the link, so no page handler runs (an
+   * agent's follow, docs/specs/mcp-drive.md D12). It sends no referrer: the child does not
+   * report the page's referrer policy or the link's `rel`, and none is the strictest of them.
+   * The caller checked the scheme, the document and checkLoadURIWithPrincipal.
+   * @param {any} browser XULBrowserElement
+   * @param {HintTarget} target
+   * @param {any} uri nsIURI of the target's href
+   */
+  loadLink(browser, target, uri) {
+    const wg = target.wg;
+    browser.loadURI(uri, {
+      triggeringPrincipal: wg.documentPrincipal,
+      referrerInfo: new ReferrerInfo(Ci.nsIReferrerInfo.NO_REFERRER, false, wg.documentURI),
+    });
   },
 
   /**
@@ -492,6 +592,85 @@ export const VimmaActors = {
     } finally {
       clearTimeout(timer);
     }
+  },
+
+  /**
+   * Element focus (docs/specs/element-focus.md): one `Vimma:Block` op in the frame of a block,
+   * for the collection `gen`. The reply is from a content process and checked (core
+   * parseBlockReply): null for none, a malformed one, or a frame that since shows another
+   * document.
+   * @param {{ bc: any, wg: any }} frame  the frame and its WindowGlobalParent when the block
+   *   was chosen
+   * @param {number} gen
+   * @param {string} op
+   * @param {object} [extra]
+   * @returns {Promise<BlockReply | null>}
+   */
+  async block(frame, gen, op, extra = {}) {
+    if (frame.bc.currentWindowGlobal !== frame.wg) return null;
+    try {
+      const raw = await actorFor(frame.bc)?.sendQuery("Vimma:Block", { ...extra, op, gen });
+      return parseBlockReply(raw, op);
+    } catch {
+      return null; // the frame navigated or its process went away
+    }
+  },
+
+  /**
+   * A `Vimma:Block` op with no reply (`track`, `blur`) to a frame, if it still shows the same
+   * document.
+   * @param {{ bc: any, wg: any }} frame
+   * @param {number} gen
+   * @param {"track" | "blur"} op
+   */
+  blockNotify(frame, gen, op) {
+    if (frame.bc.currentWindowGlobal !== frame.wg) return;
+    try {
+      actorFor(frame.bc)?.sendAsyncMessage("Vimma:Block", { op, gen });
+    } catch {
+      // the frame went away: nothing to tell
+    }
+  },
+
+  /**
+   * A frame and the frames around it up to the top, each with its WindowGlobalParent now.
+   * @param {any} bc BrowsingContext
+   * @returns {{ bc: any, wg: any }[]}  the frame first, the top last
+   */
+  frameChain(bc) {
+    /** @type {{ bc: any, wg: any }[]} */
+    const out = [];
+    for (let c = bc; c && out.length <= MAX_FRAME_DEPTH; c = c.parent) {
+      out.push({ bc: c, wg: c.currentWindowGlobal });
+    }
+    return out;
+  },
+
+  /**
+   * Where a box in the first frame of `chain` is in the top frame's CSS pixels, clipped to
+   * every frame around it, as hint rects are: each frame's embedder is asked for its viewport.
+   * Null when it shows in none of them, or a frame did not answer.
+   * @param {{ bc: any, wg: any }[]} chain  from frameChain
+   * @param {number} gen
+   * @param {Rect} box
+   * @returns {Promise<Rect | null>}
+   */
+  async blockBox(chain, gen, box) {
+    let origin = { x: 0, y: 0 };
+    let clip = /** @type {Rect | null} */ ({ x: 0, y: 0, width: Infinity, height: Infinity });
+    for (let i = chain.length - 1; i > 0; i--) {
+      const outer = /** @type {{ bc: any, wg: any }} */ (chain[i]);
+      const inner = /** @type {{ bc: any, wg: any }} */ (chain[i - 1]);
+      const reply = /** @type {{ rect: Rect } | null} */ (
+        await this.block(outer, gen, "frame", { id: inner.bc.id })
+      );
+      if (!reply || !clip) return null;
+      const rect = offset(reply.rect, origin);
+      clip = intersect(clip, rect);
+      origin = { x: rect.x, y: rect.y };
+    }
+    if (!clip) return null;
+    return chain.length > 1 ? intersect(offset(box, origin), clip) : box;
   },
 
   /**

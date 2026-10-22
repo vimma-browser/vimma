@@ -1,0 +1,13 @@
+{
+  "description": "A show names a tab only, never a workspace",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 9,
+    "command": "agent-show",
+    "args": {
+      "tab": "12",
+      "workspace": "main"
+    }
+  }
+}

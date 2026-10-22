@@ -13,10 +13,11 @@ yet as **planned**. Known gaps are listed in [limits.md](limits.md).
 What works today, each with the section that explains it:
 
 - **Vim on the page** ([the two layers](#the-two-layers)): `j`/`k`/`h`/`l` scroll, `d`/`u`
-  half a page, `gg`/`G` top and bottom, `H`/`L` back and forward; `f` link hints (`F` in a
-  background tab); `/` find as you type, in frames and PDFs too; `v` copy mode with Vim motions
-  and `y`; insert mode in text fields, `Esc` to leave; `:` a [command line](#the-command-line)
-  with completion and history.
+  half a page, `gg`/`G` top and bottom, `H`/`L` back and forward; `f` link hints (`gF` in a
+  background tab); `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
+  list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
+  with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
+  [command line](#the-command-line) with completion and history.
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
   found and renamed with [tab search](#tab-search-and-tab-rename)); up to 4 split panes (`v`, `-`,
   `h/j/k/l`, `z` zoom, swap, resize); tiling [layouts](#layouts) (`enter` dwindle, `space`
@@ -39,13 +40,16 @@ What works today, each with the section that explains it:
 - **[Update checks](#updates)** (from 0.1.2): the status bar says when a newer Vimma exists (red
   for a security release), a short message announces each new version once, a security release
   asks once per session whether to show the update command, and `:update` shows the exact
-  commands for how you installed it.
+  commands for how you installed it. The AppImage replaces its own file with a newer release
+  checked against the signed update file, and runs it from the next start; once a security
+  release is in place it asks once per session to restart, and `:restart` restarts into it.
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
   uploads; Safe Browsing on.
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
-  local AI agents reach one [agent workspace](#agent-workspace) through MCP, and every request
-  asks you first.
+  local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
+  open, scroll and search pages, follow their links, list their buttons and fields and show you
+  a page, and every request asks you first.
 
 ## Every key is yours
 
@@ -94,6 +98,8 @@ vimma-vimma.desktop` does that. Next to the files are `SHA256SUMS`, a CycloneDX 
 install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
 tarball over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
 command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so update it this way once.
+An AppImage from a release that includes the self-update replaces its own file when a newer
+release is out; the next start runs it.
 
 **Building from source.** Follow [CONTRIBUTING.md](../CONTRIBUTING.md#build-and-run): `npm ci`,
 `npx surfer download`, `npx surfer bootstrap`, `npm run import`, `npx surfer build`. The first
@@ -422,12 +428,57 @@ text field gets focus and the tab is in insert mode. Labels use the home row (`a
 in reading order: targets near the top get the shortest. As you type, labels that no longer match
 disappear. `Backspace` takes back a key and `Esc` leaves hints without doing anything.
 
-`F` labels links only and opens the one you pick in a new tab in the background, so you stay
-on the page and can pick more.
+`gF` labels links only and opens the one you pick in a new tab in the background, so you stay
+on the page and can pick more. (`F` is [element focus](#copying-a-paragraph-element-focus); a
+`config.toml` that binds `F = "hint.follow_new_tab"` under `[modal.normal]` keeps background-tab
+hints on `F`.)
 
 The labels are drawn by the browser, over the page, not inside it: the page cannot see them,
 restyle them or hide them. Apps that draw their own controls on a canvas (Google Docs, Figma,
 maps, games) have nothing to label.
+
+### Copying a paragraph (element focus)
+
+`F` (element focus) puts the same labels as link hints on the text on screen instead of on what
+you could click: paragraphs, headings, list items, quotes, code blocks, table cells and captions,
+also inside web components and in frames from other sites. Each block gets one label, on its first
+line on screen: a list item made of two paragraphs gets a label on each paragraph, and a code block
+gets one label however its lines are built. Hidden blocks, text fields and blocks covered by something
+else get none. Typing, `Backspace` and `Esc` work as they do for link hints.
+
+Typing a label **focuses** its block: the browser draws an outline around it, the status bar
+badge says `ELEMENT`, and next to it the bar names the block and its length
+(`paragraph · 412 chars`), which a screen reader hears too. Nothing in the page changes while a
+block is focused: no selection, no focus, and the page cannot see the outline. The outline follows
+the block as the page scrolls.
+
+| Key       | Does                                                                        |
+| --------- | --------------------------------------------------------------------------- |
+| `y`       | copies the block's text and goes back to normal mode                        |
+| `v`       | selects the whole block in [copy mode](#copy-mode), to adjust it before `y` |
+| `V`       | the same, line-wise, so `j` and `k` extend it by lines                      |
+| `+` / `-` | focuses the block around it (the list around a list item) / back down again |
+| `j` / `k` | focuses the next / previous block, scrolling it into view                   |
+| `F`       | labels again, to pick another block                                         |
+| `Esc`     | back to normal mode, nothing selected; a loading page is not stopped        |
+
+Counts work on `+`, `-`, `j` and `k` (`3j`). Any other binding, a tab switch, a navigation or a
+click leaves element focus.
+
+- **Plain text.** `y` copies the block as plain text, as copy mode's `y` copies a selection, and
+  says `yanked N chars`. After `v`, `y` gives the same text.
+- **Code blocks** copy exactly as shown: indentation, tabs, blank lines and line breaks are kept,
+  and line numbers the page marks unselectable are left out.
+- **Unselectable text.** When the page marks a whole block unselectable (`user-select: none`),
+  `y` copies its text anyway and the notice says so; `v` shows no highlight there.
+- **Frames.** Blocks in frames get labels too. `y` copies from a frame without moving focus into
+  it; `v` moves focus into the frame, where copy mode then runs. `+` stops at the frame's edge.
+- **PDFs.** The PDF viewer has lines, not paragraphs: element focus says
+  `no text blocks here (PDF: use v)`, and [copy mode](#copy-mode) copies from a PDF.
+
+Element focus is `F` in normal mode and `:focus_element` on the command line; bind
+`focus_element` to another key in [config.toml](#configtoml) under `[modal.normal]`. The keys of
+the table are `[modal.element]`'s, and can be rebound there.
 
 ### Find
 
@@ -537,6 +588,11 @@ caret browsing (`F7`), for this page only, driven by Vim keys:
   `V` again drops it (`v` keeps the same text, character by character). **`o`** swaps the ends,
   so the motions move the other one. **`iw`** selects the word at the caret, **`aw`** the word
   and the spaces after it.
+- **`ip`** selects the text block the caret is in (the paragraph, heading, list item, quote, code
+  block or table cell), as `v` from [element focus](#copying-a-paragraph-element-focus) would.
+  **`ap`** does the same, and each further `ap` grows the selection to the block around it: the
+  section, then the article. A code block is selected whole from any of its lines. Blocks are the
+  page's elements, not blank lines as in Vim.
 - **`y`** copies the selection to the clipboard as plain text, says "yanked 12 chars" and goes
   back to normal mode. With nothing selected it says "nothing to yank". **`Y`** copies the whole
   lines the selection (or the caret) is on, then leaves the same way.
@@ -564,7 +620,11 @@ with `F11` keeps it. From the left:
 - the **mode** badge in the mode's colour: `NORMAL` on a page, `INSERT` while a text field has
   focus (or after `i`), `COMMAND` while you type a `:` command or a `/` search, `HELP` while
   the `ctrl+b ?` overlay or tab search is open, `HINT` while link hints are up,
-  `VISUAL` in copy mode;
+  `VISUAL` in copy mode. Each mode keeps a colour of its own: when a theme gives two modes the
+  same colour or nearly (Catppuccin's bright magenta is its magenta, so `ELEMENT` would look like
+  `VISUAL`), the later of the two in the order `NORMAL`, `INSERT`, `VISUAL`, `COMMAND`, `HINT`,
+  `ELEMENT`, `HELP`, `PANEL`, `RESIZE`, prefix takes a lighter or darker shade of its colour, and
+  its text stays readable;
 - the **pending keys**, e.g. `prefix` after `ctrl+b`;
 - the **workspace**: `● 2:work`, its number in workspace order and its name;
 - `tab 2/5`: the selected tab and how many the workspace shows;
@@ -796,10 +856,11 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `gu` / `gU`                                                                             | Normal mode: up one level in the URL / to the site's root, without query and hash; `2gu` goes up two. At the top it says so.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `gf`                                                                                    | Normal mode: the page's source in a new tab, as Firefox's `ctrl+u` does. In insert mode `gi`, `yy`, `p`, `P`, `gu`, `gU` and `gf` are typed into the field.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `I`, `ctrl+l`, `alt+d`                                                                  | Focus the address bar with its text selected (in a split, the focused pane's); closes an open panel first. `I` in normal and copy mode, Firefox's `ctrl+l` and `alt+d` everywhere.                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `f` / `F`                                                                               | Normal mode: link hints. Type a label to follow it, or, with `F`, to open the link in a background tab. `Backspace` undoes a key, `Esc` cancels.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `f` / `gF`                                                                              | Normal mode: link hints. Type a label to follow it, or, with `gF`, to open the link in a background tab. `Backspace` undoes a key, `Esc` cancels.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `F`                                                                                     | Normal mode: element focus ([above](#copying-a-paragraph-element-focus)). Type a label to outline a text block; `y` copies it, `v` selects it in copy mode.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `/` / `?`                                                                               | Normal mode: find in the page (below). `Enter` stays on the match, `Esc` goes back to where you were.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `n` / `N`, `ctrl+g` / `ctrl+shift+g`, `F3` / `shift+F3`                                 | Next / previous match of the last search (`?` reverses them), wrapping around the page; `n` / `N` in normal mode. With Firefox's own find bar open, its search.                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `v`, `ctrl+b [`                                                                         | Normal mode: copy mode ([above](#copy-mode)): `h j k l w b e ge W B E 0 ^ $ { } gg G f t F T ; ,` move, `v V o iw aw` select, `y Y` copy, `Esc` leaves.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `v`, `ctrl+b [`                                                                         | Normal mode: copy mode ([above](#copy-mode)): `h j k l w b e ge W B E 0 ^ $ { } gg G f t F T ; ,` move, `v V o iw aw ip ap` select, `y Y` copy, `Esc` leaves.                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `Esc`                                                                                   | Insert mode: leave the text field, back to normal mode. In normal mode the page gets `Esc` first; if it leaves it alone, `Esc` stops a page that is still loading, as Firefox's does.                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `ctrl+b ?`                                                                              | Opens the bindings overlay over any page, including `about:preferences` and the PDF viewer. Press it again to close.                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `/` (in the overlay)                                                                    | Filters the list as you type.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -1259,6 +1320,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 | `:mcp off`       | Turns agents off, without a question. Connected agents are disconnected and their grants end.                       |
 | `:mcp revoke`    | Ends every time-limited grant you gave agents, at once.                                                             |
 | `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                   |
+| `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.      |
 | `ctrl+b shift+a` | Answers the waiting agent request; with none, offers to end every grant.                                            |
 | `:control on 15` | Turns full control (`vimma-ctl`) on for 15 minutes, after a `y/N`; `:control off` ends it now.                      |
 
@@ -1272,14 +1334,17 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers four tools:
+and output, connects to Vimma as an agent (never with full control), and offers seven tools:
 
-| Tool              | What the agent can do                                                               |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.         |
-| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.      |
-| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs. |
-| `vimma_close_tab` | Close one of its tabs.                                                              |
+| Tool              | What the agent can do                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------- |
+| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.                              |
+| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.                           |
+| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs.                      |
+| `vimma_close_tab` | Close one of its tabs.                                                                                   |
+| `vimma_keys`      | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
+| `vimma_show`      | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
+| `vimma_elements`  | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1371,13 +1436,16 @@ with the rest of your computer.
   your session.
 - cannot press keys in your window, read Vimma's state, or open a page anywhere else. It
   connects with the agent role only, and `vimma-ctl mcp` never asks for full control.
+  `vimma_keys` runs a fixed set of Vimma's page keys in an agent tab
+  ([Moving around a page](#moving-around-a-page)), never keys of the page itself.
 - asks you for every request, in a line that pages cannot reach or draw on. Only `y`, or a count
   and `a`, allows; no answer within `ask_timeout` denies.
 - gets page text and titles marked as untrusted web content, so the model is told that
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
-- is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, and a minute
-  of silence after three noes in a row. Its pages get no permission prompts, pop-ups or other
+- is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
+  `vimma_keys` calls, 30 `vimma_elements` calls and 6 `vimma_show` calls a minute, and a minute of silence after three noes
+  in a row. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
 
@@ -1397,6 +1465,102 @@ with the rest of your computer.
   while (`:control on 15`) when you script Vimma yourself.
 - **Malware running as you** can do the same, with or without agents
   ([security model](security.md)).
+
+#### Moving around a page
+
+`vimma_keys` lets an agent scroll an agent tab, search it for a word, follow one of its links, go
+back and forward in it, or go up a level of its address, without you switching to it. The question shows the keys as
+they will run, `◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys:
+3j /"pricing"⏎`, and on `y` they run in that tab, in the background: your window keeps its
+workspace, tab, focus, find bar and hint mode.
+
+- **The keys it may press** are Vimma's own defaults, whatever your `config.toml` binds: `j`
+  `k` `h` `l`, `d` `u` (`ctrl+d` `ctrl+u`, `ctrl+e` `ctrl+y`), `gg` `G`, `H` `L` (`ctrl+o`
+  `ctrl+i`, `ctrl+[` `ctrl+]`), `gu` `gU`, `/word⏎` `?word⏎` and `n` `N`, with counts up to
+  99, and `f`, at most 32 a call. A match becomes the page's selection, which a `vimma_read_page` then returns.
+  `H` and `L` go back and forward only to web pages: an `about:` or `file:` entry the tab had
+  before it was the agent's is refused.
+- **Links by label.** `f` gives the agent the links on screen, up to 200, each with a hint label,
+  its text and its address, marked as untrusted web content; a second call with `fsd` follows
+  link `sd`. Labels use Vimma's default hint characters, whatever your `hint_chars`, and last
+  two minutes on the page that listed them: after the page changes the agent has to send `f`
+  again. The agent's `f` has hints of its own, so your hint mode in the same window is never
+  cancelled by it, and only links are listed, never buttons or fields.
+- **A follow loads the link's address, it does not click.** The page's own click handlers do
+  not run, so a link cannot post a form or start a purchase through `vimma_keys`. Only http and
+  https links are followed, only on web pages, and without a referrer. A link to another site (another registrable domain:
+  `docs.example.com` is the same site as `example.com`, `example.org` is not) asks you again, as
+  a `vimma_open` of its whole address, unless you granted that agent `vimma_open`; a no stops
+  the call there.
+- **The keys it never presses:** `ctrl+b` and every binding after it, `:`, tab, workspace,
+  window and split keys, `i` and every way into a text field, copy mode, `yy` and `p` (your
+  clipboard), `gF` and `gf` (they open tabs), element focus (`F`), `r` (a reload can send a form
+  again), and every key of the Browser, Developer tools, Bookmarks, Config, Add-ons, Help and
+  Agents groups, `ctrl+b shift+a` included, so an agent never answers its own question. Such a
+  call is refused before anything asks you.
+- **Nothing reaches the page as a key press.** Each key runs as a Vimma action on the tab, so the
+  page sees no keydown, and nothing is ever typed, clicked or submitted.
+- **Not while you type there.** A request for the tab in front of you while you are in insert,
+  copy or hint mode in it, with its find bar open, or halfway through a key sequence, is denied
+  (`in-use`) without a question, and keys stop at the next step if you start using it while they
+  run. Watching is fine: in normal mode you see the agent scroll.
+- **A grant covers it:** `15a` lets that agent run keys for 15 minutes, and each call then shows
+  `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`; a follow adds
+  `claude-code followed a link to docs.example.com in "Pricing · Example"`. A `vimma_keys` grant
+  is not a read or open grant. At most 30 calls a minute; a follow, `gu`, `gU`, `H` and `L`
+  count towards the 10 opens a minute. A find does not run in the tab you are in, since the browser's find would
+  put your focus in a text field it matched.
+- **`:mcp log`** lists what agents did, asked or under a grant, each follow with the address it
+  loaded, so you can check afterwards what a grant let through. It is kept in memory only and cleared by `:mcp off`.
+
+#### Listing a page's buttons and fields
+
+`vimma_elements` lets an agent see what it could act on in an agent tab: the buttons, fields,
+links and other clickable elements on screen, each with a hint label. The question names the tab,
+`◇ claude-code wants vimma_elements: 2 "Sign up · Example" example.com/signup`, and on `y` the
+agent gets the list. Nothing on the page is touched, and your window keeps its workspace, tab,
+focus and hint mode.
+
+- **What it lists.** Each element's label, kind (link, button, field, checkbox, radio, select or
+  other clickable element) and text; a link's address; a field's type, name, label and current
+  value; a checkbox's state; a select's options; and the forms they belong to, with where each
+  sends its data. Disabled controls are listed as disabled. Only what is on screen is listed, up
+  to 200 elements, as your own hints would show; the agent scrolls with `vimma_keys` for more.
+  Everything in it is marked as untrusted web content.
+- **Passwords, card numbers and one-time codes are never listed with their value.** A password
+  field (also one a "show password" button turned into a text field), a one-time-code field and
+  a payment card field are listed as sensitive, with no value, so the agent can tell you what to
+  type and where. Card fields are recognised by their `autocomplete` attribute and by the
+  heuristics Firefox's form autofill uses, which also catch card forms without the attribute.
+- **Labels by the same rules as `f`.** They last two minutes on the page that listed them, and a
+  new list or `f` replaces them. `vimma_keys` with `f` and a label from the list follows a link,
+  as a load of its address; the label of a button or a field is refused, and so is a link the
+  page has replaced since it was listed.
+- **A grant covers it:** each call then shows
+  `claude-code listed the buttons and fields of "Sign up · Example" (grant, 12m left)`. It is
+  not a read grant: the list holds no page text beyond the elements' own. At most 30 calls a
+  minute; each is in `:mcp log`.
+
+#### Showing you a page
+
+`vimma_show` lets an agent show you one of its tabs when it wants you to look at a page. The
+question names the tab and where it takes you, `◇ claude-code wants vimma_show: 2 "Pricing ·
+Example" example.com/pricing (switches you to "agent")`, and on `y` your window switches to the agent workspace with that tab
+selected, as `:ws agent` would. The notice says `showing claude-code's tab · ctrl+^ goes back`:
+`ctrl+^` returns you to the workspace, tab and split you were in.
+
+- **It asks every time.** No grant covers it, and its question offers only `y` and `n` (`x` is a
+  plain no), so an agent cannot switch your view while you read or type something else. Like
+  every question, it opens by itself only when you are not typing; otherwise it waits behind
+  `◇ agent 1?` for `ctrl+b shift+a`.
+- **Only the agent workspace.** It shows one of the agent's own tabs and nothing else, never
+  another workspace or a private window.
+- **It never raises or activates a window.** In the window that switches, the shown tab has the
+  keyboard as after any tab switch. If the tab is in another Vimma window, that window switches
+  behind the one you are in, and the notice says `shown in the other window`. When the window
+  is in the agent workspace already, only the tab changes, and the notice has no `ctrl+^`: there
+  is nowhere else to go back to.
+- **At most 6 a minute** per agent; it is in `:mcp log` like every other call.
 
 #### Keeping agents out of your Vimma profile
 
@@ -1452,8 +1616,9 @@ Each request an agent makes appears as one line at the foot of the window, above
 ```
 
 It names the agent (as the agent calls itself), the tool, and what it touches: the tab's place,
-title and address for a read or a close, the whole address for an open (its host in bold), the
-number of agent tabs for the tab list.
+title and address for a read, a close, keys or a show (then the keys as they will run, or the
+workspace a show switches you to), the whole address for an open (its host in bold), the number
+of agent tabs for the tab list.
 
 | Key                   | Answer                                                                                  |
 | --------------------- | --------------------------------------------------------------------------------------- |
@@ -1757,7 +1922,7 @@ workspace = "notes"
 
 **Where rules apply:** an address you type in the address bar or with `:open` / `:tabnew`, a
 bookmark, a link from another app and a new window opened on a URL: what you or Vimma open. A
-link a page opens (a click, middle-click, `F` hints, `target=_blank`, a pop-up) stays in that
+link a page opens (a click, middle-click, `gF` hints, `target=_blank`, a pop-up) stays in that
 page's workspace, because a page could otherwise open any site with another workspace's logins;
 when you look at such a tab, the status bar names the workspace its rule would choose and
 `:route move` moves it. Opened in front, the tab takes you to its
@@ -2155,6 +2320,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
 | `:bug`                                | Opens `about:vimma` and copies its redacted report to the clipboard, for a bug report.                                                         |
 | `:update`                             | Checks for a newer Vimma now; when there is one, opens `about:vimma`'s Updates section with the exact commands ([Updates](#updates)).          |
+| `:restart`                            | Restarts Vimma; tabs come back, and an installed update applies. Asks first while private tabs are open ([Updates](#updates)).                 |
 
 A command whose action has no implementation says so for a moment, as its keys do.
 
@@ -2401,7 +2567,8 @@ slots busy. Turn the pref off to stop either.
 ## Updates
 
 Vimma 0.1.2 and later tell you when a newer release is out, on Linux x86_64 and on Macs with
-Apple Silicon. Vimma notifies you and shows the command; it does not install the update itself.
+Apple Silicon. Vimma notifies you and shows the command; it does not install the update itself,
+except as an AppImage, which replaces its own file (below).
 
 **Vimma 0.1.6 on a Mac** shows the notice, but its `:update` shows the Linux tarball command,
 which does not apply to a Mac: do not run it. Update with `brew upgrade --cask vimma`, or install
@@ -2416,7 +2583,7 @@ fetches one small signed file from `updates.vimma.dev` that names the newest rel
 update channel. A check that fails is tried again every hour while Vimma runs. Vimma checks the
 file's signature against the keys built into Vimma and refuses anything else: a file signed by
 another key, one for another channel or platform, or one older than a file it already accepted.
-It installs nothing; it tells you.
+Except for the AppImage, it installs nothing; it tells you.
 
 - **A newer version:** the status bar's right side shows `⇡ 0.3.1 available`, dim. A release that
   carries a Firefox security fix shows `⇡ 0.3.1 security: :update` in the error colour.
@@ -2430,6 +2597,33 @@ It installs nothing; it tells you.
   waits until you are not typing in a field and have not pressed a key for a moment, never takes
   focus, and is not asked in a private window. Keys pressed in its first second are ignored, so a
   key you were already typing, or one a page asked you to press, cannot answer it.
+- **The AppImage updates itself.** When a newer release is offered, Vimma downloads the new
+  AppImage from the project's GitHub release into a hidden file next to yours, checks its size
+  and SHA-512 against the signed file, makes it executable and renames it over yours. The Vimma
+  you are running carries on; the next start runs the new version. The status bar then shows
+  `⇡ 0.3.1 on restart` (`⇡ 0.3.1 security: :restart` in the error colour for a security
+  release), and a message says `Vimma 0.3.1 is installed · restart Vimma to use it`. Vimma
+  never restarts by itself. Your file keeps its name, so `vimma-0.1.0-x86_64.AppImage` can hold
+  0.3.1; `about:vimma` shows the version that runs. If the AppImage's directory is not writable,
+  the download does not match, or it fails, your file stays as it was, `about:vimma` says why,
+  `:update` shows the manual steps, and the next check tries again.
+- **A security update that is installed asks to restart**, once per session:
+  `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, with
+  `Private tabs will close.` before `(y/N)` while the private workspace has tabs, and
+  `Tabs will not come back.` in place of `Tabs come back.` when they will not (below). `y` restarts
+  Vimma at once, as `:restart` does; `n`, Esc or any other key dismisses it, and a session that
+  runs on is asked again 24 hours later. It waits and arms as the question above does, and is not
+  asked in a private window. Today this is the AppImage, once it has replaced its file.
+- **`:restart`** restarts Vimma. Your workspaces, tabs and panes come back, as after any restart;
+  the private workspace's tabs do not, so with private tabs open it asks first:
+  `Restart Vimma? 2 private tabs will close. (y/N)`. A page that asks before it is left (unsaved
+  input) can stop the restart; Vimma then says `restart cancelled`. The AppImage starts its own
+  file again, so a replaced AppImage restarts into the new version: Vimma quits, and a small
+  `/bin/sh` script waits for it to exit and starts the AppImage on the same profile, without the
+  command-line arguments the old one had. Because that restart is a quit, an AppImage set to
+  clear history when it closes (Settings, Privacy & Security) brings no tab back, and
+  `:restart` asks `Restart Vimma? Tabs will not come back. (y/N)` first. `:restart` has no
+  default key; bind the `restart` action in [config.toml](#configtoml) if you want one.
 - **`:update`** checks at once. When a newer version exists it opens `about:vimma` at its
   Updates section, with the exact commands for how you installed Vimma; otherwise it says
   `Vimma 0.1.0 is up to date`, or why the check failed.
@@ -2444,7 +2638,7 @@ It installs nothing; it tells you.
   | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
   | `.rpm`                   | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
   | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                               |
-  | AppImage                 | download the new AppImage next to yours, check it, and rename it over yours; the next start runs it                                                              |
+  | AppImage                 | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
   | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |
   | `.dmg` (macOS)           | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
   | A build from source      | nothing: source builds never check (pull and rebuild)                                                                                                            |
@@ -2461,8 +2655,9 @@ It installs nothing; it tells you.
   checks three times in a row shows `updates: check failed`, and one that is older than 45 days
   (7 for nightly builds) shows `updates: no news for N days`.
 - **Off:** `[updates] check = false` in [config.toml](#configtoml), or `vimma.update.enabled` =
-  `false` in `about:config`, stops every request, the message and the question; `about:vimma`
-  then says checks are off. A `config.toml` with errors never turns checks back on: its `check = false` still holds, and
+  `false` in `about:config`, stops every request, the message and the question. The status bar
+  then shows a dim `updates: off` for a few seconds after startup, once per session, and hides
+  it; `about:vimma` says checks are off at any time. A `config.toml` with errors never turns checks back on: its `check = false` still holds, and
   while Vimma runs on its defaults because of the errors, it does not check at all.
 
 ## Privacy defaults

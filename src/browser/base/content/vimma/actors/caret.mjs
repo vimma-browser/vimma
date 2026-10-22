@@ -10,6 +10,7 @@
 
 import { findChar, firstNonBlank, textMotion, wordObject } from "../core/motions.mjs";
 import { textAround } from "./text-model.mjs";
+import { blockRangeAt, drawnBetween } from "./block.mjs";
 
 /** @import { FindKind } from "../core/motions.mjs" */
 /** @import { Point } from "./text-model.mjs" */
@@ -63,6 +64,8 @@ const OPS = new Set([
   "swap",
   "inner_word",
   "a_word",
+  "inner_block",
+  "a_block",
   "yank_lines",
 ]);
 /** A count above this is cut to it (`9999j`): each step is a layout query. */
@@ -239,12 +242,16 @@ export class Caret {
       case "a_word":
         this.#wordObject(win, sel, op === "a_word");
         break;
+      case "inner_block":
+      case "a_block":
+        this.#blockObject(win, sel, op === "a_block");
+        break;
       case "first_nonblank":
         selCon.intraLineMove(false, this.selecting);
         this.#textMove(win, sel, 1, (text, at) => firstNonBlank(text, at), false);
         break;
       default:
-        if (Object.hasOwn(MOVES, op)) this.#layoutMove(sel, selCon, op, n);
+        if (Object.hasOwn(MOVES, op)) this.#layoutMove(win, sel, selCon, op, n);
         else if (Object.hasOwn(TEXT_MOVES, op)) {
           const after = TEXT_MOVES[op] === true;
           this.#textMove(win, sel, n, (text, at) => textMotion(text, at, op, n), after);
@@ -272,20 +279,22 @@ export class Caret {
 
   /**
    * A layout motion `n` times. `{` and `}` from a paragraph's edge first step over it, so they
-   * reach the next paragraph instead of staying put.
+   * reach the next paragraph instead of staying put. Firefox's paragraph edge is the edge of the
+   * paragraph's text node, so from the last character drawn it moves only over the source's
+   * white space after it: a move that passes no drawn text also counts as staying put.
+   * @param {Window} win
    * @param {Selection} sel
    * @param {nsISelectionController} selCon
    * @param {string} op
    * @param {number} n
    */
-  #layoutMove(sel, selCon, op, n) {
+  #layoutMove(win, sel, selCon, op, n) {
     const [method, forward] = /** @type {(typeof MOVES)[string]} */ (MOVES[op]);
     for (let i = 0; i < n; i++) {
       const before = focusOf(sel);
       try {
         selCon[method](forward, this.selecting);
-        const same = sel.focusNode === before.node && sel.focusOffset === before.offset;
-        if (same && method === "paragraphMove") {
+        if (method === "paragraphMove" && !drawnBetween(before, focusOf(sel), win)) {
           selCon.characterMove(forward, this.selecting);
           selCon.paragraphMove(forward, this.selecting);
         }
@@ -410,6 +419,28 @@ export class Caret {
     const end = model.pointAt(range[1], true);
     if (!start || !end) return;
     sel.setBaseAndExtent(start.node, start.offset, end.node, end.offset);
+    this.selecting = true;
+    this.linewise = null;
+  }
+
+  /**
+   * `ip` / `ap` (element-focus decision 11): selects the text block around the caret as `v` from
+   * element focus would, character-wise, anchor at its start; `ap` on a selection that already
+   * holds that block takes its parent block instead.
+   * @param {Window} win
+   * @param {Selection} sel
+   * @param {boolean} around
+   */
+  #blockObject(win, sel, around) {
+    const selected = this.selecting && sel.rangeCount ? sel.getRangeAt(0) : null;
+    const range = blockRangeAt(/** @type {Node} */ (sel.focusNode), win, around, selected);
+    if (!range) return;
+    sel.setBaseAndExtent(
+      range.startContainer,
+      range.startOffset,
+      range.endContainer,
+      range.endOffset,
+    );
     this.selecting = true;
     this.linewise = null;
   }
