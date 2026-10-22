@@ -9,7 +9,7 @@ Status: draft (Delivery 1 built; open question 1 waits for the hand checks) · A
 
 Issue: [#415](https://github.com/vimma-browser/vimma/issues/415)
 
-Engine paths are relative to `engine/` and were read in Firefox 158.0 (`config/milestone.txt`,
+Engine paths are relative to `engine/` and were read in Firefox 158.0.1 (`config/milestone.txt`,
 the version in `surfer.json`). Facts about macOS that this spec could not check against source
 are marked **unverified**, with the check that settles them.
 
