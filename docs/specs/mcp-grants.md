@@ -1,6 +1,6 @@
 # Spec: mcp-grants
 
-Status: accepted · Area: `packages/vimma-core/src/` (`agent.mjs`, `agent-prompt.mjs`);
+Status: implemented · Area: `packages/vimma-core/src/` (`agent.mjs`, `agent-prompt.mjs`);
 `src/browser/base/content/vimma/` (`ctl/AgentGate.sys.mjs`, `host/agent-ui.mjs`); `tests/e2e`
 · Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged: the gate
 stays in the browser, and this spec changes only what one answer allows). No new dependency.
@@ -46,8 +46,10 @@ changed) are already asked separately, whatever is granted.
    `vimma_read_page`, `vimma_open`, `vimma_close_tab`, `vimma_keys`, `vimma_elements`,
    `vimma_activate`, `vimma_fill`, `vimma_screenshot`, `vimma_console` and the agent's own
    downloads (`vimma_download`). The connection's questions already waiting, other than those in
-   item 3, run at once, each with the notice and `:mcp log` row of a call under a grant
-   (item 6), since the user answered only the one on the line.
+   item 3, run at once, each a `:mcp log` row of a call under a grant, and the grant's notice
+   ends `· it also ran 2 waiting calls (:mcp log)`, since the user answered only the one on the
+   line. They get no notice each, because notices replace each other and the grant's would be
+   gone at once.
 2. **Other connections still ask.** A grant belongs to one connection (one `vimma-ctl mcp`
    process, one agent session), as in vimma-mcp 21; another agent, or the same agent after a
    reconnect, asks again.
@@ -182,6 +184,26 @@ publishes a list of what still asks.
 7. **The rates and confinement do not change** (G7), because they are per connection already
    (Research), so a grant over every tool cannot do more of any one thing than a grant of that
    tool could.
+8. **The agent workspace is for everyday tasks done on the user's behalf, so one grant per task
+   with hard checkpoints is the core of the feature** (G8). Vimma's agents shop, fill in forms,
+   book and look things up for the user, in the user's own daily browser: in a workspace of its
+   own container, with only the logins the user puts there; in a real, visible browser the user
+   can watch and interrupt with one key; with checkpoints before sending a form (and paying,
+   mcp-checkpoints); with every call in `:mcp log`; and with compact lists of labelled elements
+   instead of page source, so the agent needs few calls. A task like that runs for minutes and
+   uses every tool, so it needs one answer that covers it and stops only where a step cannot be
+   taken back. Vimma is deliberately not a test-automation or scraping tool, because those need
+   headless, parallel and scripted control that a confined, watched workspace cannot give.
+   Rejected as the way to give agents a browser: driving a browser profile through Playwright or
+   the Chrome DevTools MCP server, because that gives the agent full control of the profile,
+   every login and cookie in it included, with no checkpoint before it sends or pays, no
+   confinement to part of the profile and no log the user reads. Playwright drives Firefox
+   through its own patched build (its Juggler protocol); support for stock Firefox through
+   WebDriver BiDi was experimental when checked, tracked by Mozilla's WebDriver BiDi milestones
+   (wiki.mozilla.org, "WebDriver/RemoteProtocol/WebDriver BiDi", milestone 19; read on
+   2026-10-22, not tried), so it cannot drive the Vimma the user browses with. The guide's
+   "When to use Playwright instead" points users with those needs to it, on a throwaway
+   profile.
 
 ## Security and privacy
 
@@ -239,9 +261,11 @@ on disconnect, and are listed shortest first`; `a grant does not run it, whateve
 waits` (a dangerous download); the vimma_show tests; the per-tool tests become `… and its grant
 covers the other tools`.
 - `agent-prompt.test.mjs`: the hint in the question tests; `a grant names its scope, its
-length, the cap, and the key that ends it`.
-- `fuzz/agent.fuzz.test.mjs`: unchanged properties (no limit broken, no request resolved twice)
-  hold with one grant per connection.
+length, the cap, and the key that ends it`; `a grant names the waiting calls it let run, which
+the user did not see asked`.
+- `fuzz/agent.fuzz.test.mjs`: the old properties (no limit broken, no request resolved twice)
+  hold with one grant per connection, and `no sequence of events runs an always-ask request
+under a grant or makes a grant from one`.
 
 ### Mochitests (`tests/browser/`)
 
@@ -249,7 +273,7 @@ length, the cap, and the key that ends it`.
   `test_grants_per_connection_and_tool`): a read granted for 15 minutes lets the tab list and
   an open of that connection run with log rows, while a second connection asks;
   `test_queued_calls_a_grant_releases_show_as_granted`: a waiting open released by a grant given
-  to a read is a `:mcp log` row run under the grant, with its notice.
+  to a read is a `:mcp log` row run under the grant, and the grant's notice counts it.
 - `browser_vimma_mcp_prompt.js`: the hint's wording; in
   `test_a_count_and_a_grant_minutes_shown_in_the_status_bar`, the grant's notice and
   `ctrl+b shift+a` ending the grant at once.

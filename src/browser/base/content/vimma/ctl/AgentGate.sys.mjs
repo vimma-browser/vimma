@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The agent role's gate (docs/specs/vimma-mcp.md, decisions 12-22): every agent request but
-// hello and ping waits here for the user's answer, or runs under a grant of its connection and
-// tool. Core's AgentQueue holds the rules (the queue and its caps, the mute, the grants); this
+// hello and ping waits here for the user's answer, or runs under its connection's grant, which
+// covers every tool but those that always ask (docs/specs/mcp-grants.md G1, G2). Core's AgentQueue holds the rules (the queue and its caps, the mute, the grants); this
 // adds the clock: the ask timeout (50 s, `[mcp] ask_timeout`) and the grants' expiry. One per
 // app, in memory only: nothing here is written to disk (decision 22), and a restart ends it all.
 //
@@ -41,7 +41,7 @@ const DEFAULT_GRANT = { grantMinutes: 10, grantMaxMinutes: 480 };
  *   asked: number, deadline: number }} Question
  * @typedef {{ kind: "asked", question: Question }
  *   | { kind: "answered", question: Question, answer: string,
- *       length: { minutes: number, capped: boolean } | null }
+ *       length: { minutes: number, capped: boolean } | null, released?: number }
  *   | { kind: "timeout", question: Question }
  *   | { kind: "ran", conn: ConnId, tool: string, what: object, label: AgentLabel,
  *       until: number }
@@ -150,18 +150,30 @@ function askTimeoutMs() {
  * Answer the agents of the requests `resolved` names.
  * @param {{ id: number, allow: boolean, reason?: string }[]} resolved
  * @param {{ until: number }} [grant]
+ * @param {number} [answered]  the question the user answered: the others a grant released ran
+ *   under it unseen, so each is logged as a call under a grant, and the grant's notice counts
+ *   them (mcp-grants behaviour 1)
+ * @returns {number} how many waiting calls the grant released
  */
-function settle(resolved, grant) {
+function settle(resolved, grant, answered) {
+  let released = 0;
   for (const r of resolved) {
     const p = pending.get(r.id);
     if (!p) continue;
     pending.delete(r.id);
     lazy.clearTimeout(p.timer);
+    // No notice of its own: it would replace the grant's at once, which counts these instead.
+    const unseen = r.allow && grant && r.id !== answered;
+    if (unseen) released++;
     record(
       p.conn,
       p.tool,
       p.what,
-      r.allow ? "yes" : /** @type {any} */ (r.reason === "muted" ? "muted" : r.reason),
+      unseen
+        ? "grant"
+        : r.allow
+          ? "yes"
+          : /** @type {any} */ (r.reason === "muted" ? "muted" : r.reason),
     );
     if (r.allow) ranAt = Date.now();
     p.resolve(
@@ -170,6 +182,7 @@ function settle(resolved, grant) {
         : /** @type {Outcome} */ ({ allow: false, reason: r.reason }),
     );
   }
+  return released;
 }
 
 export const AgentGate = {
@@ -202,7 +215,7 @@ export const AgentGate = {
   },
 
   /**
-   * An agent request: resolves once it may run (a yes, or a grant of its connection and tool)
+   * An agent request: resolves once it may run (a yes, or its connection's grant)
    * or is denied (no, timeout, busy, muted). The caller checks again, when it runs, that what
    * was asked about is still so (decision 19).
    * @param {ConnId} conn
@@ -333,11 +346,11 @@ export const AgentGate = {
       final = { kind: "grant", minutes: length.minutes };
     }
     const { resolved, grant } = queue.answer(id, final, Date.now());
-    settle(resolved, grant);
+    const released = settle(resolved, grant, id);
     const granted = resolved.length && length ? length : null;
     changed(
       question && resolved.length
-        ? { kind: "answered", question, answer: final.kind, length: granted }
+        ? { kind: "answered", question, answer: final.kind, length: granted, released }
         : undefined,
     );
     return granted;
@@ -348,7 +361,7 @@ export const AgentGate = {
    * @returns {number} how many ended
    */
   revoke() {
-    const n = queue.revoke();
+    const n = queue.revoke(Date.now());
     if (n) changed();
     return n;
   },
@@ -374,7 +387,7 @@ export const AgentGate = {
   announce(conn, tool, what, until) {
     const label = labels.get(conn);
     // A grant revoked while the call ran shows no "(grant, …left)".
-    const grant = queue.grants(Date.now()).find((g) => g.conn === conn && g.tool === tool);
+    const grant = queue.grants(Date.now()).find((g) => g.conn === conn);
     if (!label || !grant) return;
     changed({ kind: "ran", conn, tool, what, label, until: Math.min(until, grant.until) });
   },

@@ -59,7 +59,7 @@ const FIND_WRAPPED = 2;
  * @typedef {object} DriveContext
  * @property {unknown} conn  the agent connection: its labels are its own
  * @property {(url: string, until: number) => Promise<string | null>} askOpen  asks a cross-site
- *   follow of `url` as a `vimma_open` (D18), or runs it under a `vimma_open` grant, withdrawn
+ *   follow of `url` as a `vimma_open` (D18), or runs it under the connection's grant, withdrawn
  *   at `until`; null when it may load, else the denial's reason
  * @property {(url: string, keys: string) => void} followed  a follow loaded `url`: into
  *   `:mcp log`, and a grant's notice names its host (D14, M23)

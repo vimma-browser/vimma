@@ -569,7 +569,7 @@ const COMMANDS = {
     const result = await AgentShot.acting(tab.linkedBrowser, () =>
       AgentDrive.run(tab, parsed.steps, {
         conn,
-        // D18: a follow to another site is a vimma_open of its URL, asked unless a vimma_open
+        // D18: a follow to another site is a vimma_open of its URL, asked unless the connection's
         // grant is in force; the tab and the page it replaces are shown as for any open.
         askOpen: async (url, until) => {
           const uri = agentUri(url);

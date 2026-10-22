@@ -296,10 +296,10 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient("claude-code");
-  // Under a vimma_keys grant, a same-site follow runs unasked: a subdomain is the same site.
+  // Under a grant, a same-site follow runs unasked: a subdomain is the same site.
   await keys(c, tab, "f", { kind: "grant", minutes: 5 });
   let r = await keys(c, tab, `f${LABEL.sub}`, null);
-  Assert.equal(r.result.url, SUB, "a follow to a subdomain runs under the keys grant");
+  Assert.equal(r.result.url, SUB, "a follow to a subdomain runs under the grant");
   await until(
     () => noticeText().startsWith('claude-code followed a link to test1.example.com in "'),
     "its notice names the host it loaded (D14)",
@@ -307,13 +307,28 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   const row = AgentGate.log.find((e) => e.outcome === "followed");
   Assert.equal(row?.detail, `f${LABEL.sub} → ${SUB}`, ":mcp log names the URL it loaded (M23)");
   Assert.equal(row?.tool, "vimma_keys", "as a vimma_keys row");
+  // Under the grant, a follow to another site runs unasked too: the grant covers vimma_open
+  // (mcp-grants G1), and the log names the URL it loaded.
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, LINKS);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, LINKS);
-
-  // Another site is asked as vimma_open, with the whole URL (D18).
   await keys(c, tab, "f", null);
+  r = await keys(c, tab, `f${LABEL.other}`, null);
+  Assert.equal(r.result.url, OTHER, "a cross-site follow runs under the grant");
+  Assert.ok(
+    AgentGate.log.some((e) => e.outcome === "followed" && e.detail.endsWith(OTHER)),
+    "and the log names the other site",
+  );
+
+  // Without a grant, another site is asked as vimma_open, with the whole URL (D18).
+  AgentGate.revoke();
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, LINKS);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, LINKS);
+  await keys(c, tab, "f");
   let id = c.request("agent-keys", { tab: idOf(tab), keys: `f${LABEL.other} j` });
   let q = await question();
+  Assert.equal(q.tool, "vimma_keys", "the keys ask first");
+  AgentGate.answer(q.id, { kind: "once" });
+  q = await question();
   Assert.equal(q.tool, "vimma_open", "a cross-site follow asks as vimma_open");
   Assert.equal(q.what.url, OTHER, "naming the whole URL");
   Assert.equal(q.what.host, "example.org", "and its host");
@@ -331,23 +346,14 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   Assert.equal(r.result.url, LINKS, "nothing loaded");
 
   // A yes loads it.
-  await keys(c, tab, "f", null);
+  await keys(c, tab, "f");
   id = c.request("agent-keys", { tab: idOf(tab), keys: `f${LABEL.other}` });
+  AgentGate.answer((await question()).id, { kind: "once" });
   q = await question();
-  AgentGate.answer(q.id, { kind: "grant", minutes: 5 });
+  Assert.equal(q.tool, "vimma_open", "the follow asks as vimma_open");
+  AgentGate.answer(q.id, { kind: "once" });
   r = await c.response(id);
   Assert.equal(r.result.url, OTHER, "after the yes the other site loads");
-  Assert.ok(
-    AgentGate.log.some((e) => e.outcome === "followed" && e.detail.endsWith(OTHER)),
-    "and the log names it too, after a yes",
-  );
-
-  // With a vimma_open grant, a cross-site follow runs unasked.
-  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, LINKS);
-  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, LINKS);
-  await keys(c, tab, "f", null);
-  r = await keys(c, tab, `f${LABEL.other}`, null);
-  Assert.equal(r.result.url, OTHER, "a vimma_open grant already means load any URL");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
@@ -364,14 +370,15 @@ add_task(async function test_follows_count_towards_the_open_rate() {
   for (let i = 2; i <= 10; i++) {
     Assert.ok((await c.call("agent-open", { url: `${PAGE}?x${i}` })).ok, `open ${i}`);
   }
-  await keys(c, tab, "f");
-  let r = await keys(c, tab, `f${LABEL.same}`);
+  // The open's grant covers keys too (mcp-grants G1).
+  await keys(c, tab, "f", null);
+  let r = await keys(c, tab, `f${LABEL.same}`, null);
   Assert.equal(r.result.stopped, "denied", "a follow needs a slot of the open rate (M20)");
   Assert.equal(r.result.steps[0].ok, false, "the step did not run");
   Assert.equal(r.result.url, LINKS, "and nothing loaded");
   // A cross-site follow is not asked when the rate is used up: a yes would load nothing.
-  await keys(c, tab, "f");
-  r = await keys(c, tab, `f${LABEL.other}`);
+  await keys(c, tab, "f", null);
+  r = await keys(c, tab, `f${LABEL.other}`, null);
   Assert.equal(r.result.stopped, "denied", "a cross-site follow over the rate is denied");
   Assert.equal(AgentGate.waiting.length, 0, "without a vimma_open question");
   c.close();

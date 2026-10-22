@@ -585,7 +585,7 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `vimma_activate` grant a script-only button that sends data runs unasked, with a notice and
     a log row (F17, F28). Rejected: `vimma_activate` asking every time, because a task with ten
     clicks would ask ten times and invite answering by reflex; neither tool grantable, for the
-    same reason.
+    same reason. (Since changed: one grant now covers every agent tool of its connection; [mcp-grants](mcp-grants.md) G1.)
 26. **Rates.** `vimma_activate` and `vimma_fill` share one rate of 30 requests per connection a
     minute, `vimma_elements` and `vimma_console` 30 each, `vimma_screenshot` 12 (F21), all
     counted when asked, with `busy` beyond, as mcp-drive D15's rate is, so that a refused call

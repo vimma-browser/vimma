@@ -108,7 +108,10 @@ export function mcpActivity({ connections, waiting, grants, now }) {
 // The gate (decisions 12-22). Time is passed in (`now`, ms), so the rules are tested without a
 // clock; the browser's AgentGate runs the timers.
 
-/** The agent commands that ask, and the MCP tool each one is (decision 5). Grants are per tool. */
+/**
+ * The agent commands that ask, and the MCP tool each one is (decision 5). A grant covers every
+ * one of them but ALWAYS_ASK (docs/specs/mcp-grants.md G1).
+ */
 export const AGENT_TOOLS = Object.freeze({
   "agent-tabs": "vimma_tabs",
   "agent-read": "vimma_read_page",
@@ -125,20 +128,21 @@ export const AGENT_TOOLS = Object.freeze({
 /**
  * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
  * page changes what the user sees, so no grant may let an agent do it at any moment
- * (docs/specs/mcp-drive.md D4, security.md M19).
+ * (docs/specs/mcp-drive.md D4, mcp-grants G2, security.md M19). Requests asked with `always`
+ * (a submission, a dangerous or unscanned download) do the same.
  */
 export const ALWAYS_ASK = Object.freeze(["vimma_show"]);
 /** Questions that may wait: per connection and in all (decision 17). */
 export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
 /**
- * `agent-open`s per connection in any window of `ms` (security.md M3): a `vimma_open` grant
- * runs unasked, and must not open thousands of tabs.
+ * `agent-open`s per connection in any window of `ms` (security.md M3): a grant runs
+ * opens unasked, and must not open thousands of tabs.
  */
 export const OPEN_RATE = Object.freeze({ max: 10, ms: 60_000 });
 
 /**
  * `agent-keys` requests per connection in any window of `ms` (mcp-drive D15, security.md M20),
- * counted when asked: a `vimma_keys` grant runs unasked, and a refused call must not loop.
+ * counted when asked: a grant runs keys unasked, and a refused call must not loop.
  */
 export const KEYS_RATE = Object.freeze({ max: 30, ms: 60_000 });
 
@@ -150,7 +154,7 @@ export const SHOW_RATE = Object.freeze({ max: 6, ms: 60_000 });
 
 /**
  * `agent-elements` requests per connection in any window of `ms` (mcp-forms F26, security.md
- * M31), counted when asked: a `vimma_elements` grant runs unasked and must not flood a page, and
+ * M31), counted when asked: a grant runs lists unasked and must not flood a page, and
  * a refused call must not loop.
  */
 export const ELEMENTS_RATE = Object.freeze({ max: 30, ms: 60_000 });
@@ -271,8 +275,9 @@ export const MUTE_MS = 60_000;
 /**
  * @typedef {string | number} ConnId
  * @typedef {{ id: number, conn: ConnId, tool: string, always?: boolean }} AgentRequest  `always`:
- *   asks even under a grant of its tool, and its answer never makes one (decision 31 d)
- * @typedef {{ conn: ConnId, tool: string, until: number }} AgentGrant
+ *   asks even under a grant, and its answer never makes one (decision 31 d)
+ * @typedef {{ conn: ConnId, until: number }} AgentGrant  one per connection, for every tool but
+ *   ALWAYS_ASK (mcp-grants G1, G5)
  * @typedef {{ id: number, allow: true } | { id: number, allow: false,
  *   reason: "user" | "timeout" | "muted" }} Resolution
  * @typedef {{ kind: "once" } | { kind: "deny" } | { kind: "mute" }
@@ -282,14 +287,15 @@ export const MUTE_MS = 60_000;
  */
 
 /**
- * The questions agents wait on, oldest first across connections, and each connection's grants
+ * The questions agents wait on, oldest first across connections, and each connection's grant
  * and mute. Held in memory only (decision 22): nothing here is ever written down.
  */
 export class AgentQueue {
   constructor() {
     /** @type {AgentRequest[]} */
     this.queue = [];
-    /** @type {Map<ConnId, { denials: number, mutedUntil: number, grants: Map<string, number> }>} */
+    /** @type {Map<ConnId, { denials: number, mutedUntil: number, grant: number }>} `grant`: when
+     * the connection's grant ends, 0 for none */
     this.conns = new Map();
     this.nextId = 1;
   }
@@ -297,12 +303,12 @@ export class AgentQueue {
   /** @param {ConnId} conn  an agent connection, after its hello */
   connect(conn) {
     if (!this.conns.has(conn)) {
-      this.conns.set(conn, { denials: 0, mutedUntil: 0, grants: new Map() });
+      this.conns.set(conn, { denials: 0, mutedUntil: 0, grant: 0 });
     }
   }
 
   /**
-   * The connection closed: its grants end, and its waiting requests go with it.
+   * The connection closed: its grant ends, and its waiting requests go with it.
    * @param {ConnId} conn
    * @returns {number[]} the ids of the requests it took
    */
@@ -335,11 +341,8 @@ export class AgentQueue {
     const c = this.conns.get(conn);
     if (!c) return { kind: "deny", reason: "busy" };
     if (c.mutedUntil > now) return { kind: "deny", reason: "muted" };
-    const until = c.grants.get(tool);
-    if (!always && until !== undefined && until > now) {
-      return { kind: "run", grant: { conn, tool, until } };
-    }
-    if (until !== undefined && until <= now) c.grants.delete(tool);
+    if (c.grant && c.grant <= now) c.grant = 0;
+    if (!always && c.grant) return { kind: "run", grant: { conn, until: c.grant } };
     const mine = this.queue.filter((r) => r.conn === conn).length;
     if (mine >= QUEUE_LIMITS.perConnection || this.queue.length >= QUEUE_LIMITS.total) {
       return { kind: "deny", reason: "busy" };
@@ -368,18 +371,16 @@ export class AgentQueue {
     if (answer.kind === "grant") {
       c.denials = 0;
       const until = now + Math.max(1, answer.minutes) * 60_000;
-      c.grants.set(request.tool, until);
-      // The same connection's queued calls of that tool now run under the grant.
-      const covered = this.queue.filter(
-        (r) => r.conn === request.conn && r.tool === request.tool && !r.always,
-      );
+      c.grant = until;
+      // The same connection's queued calls now run under the grant, but not one that always asks.
+      const covered = this.queue.filter((r) => r.conn === request.conn && !r.always);
       for (const r of covered) this.#drop(r.id);
       return {
         resolved: [
           { id, allow: true },
           ...covered.map((r) => ({ id: r.id, allow: /** @type {true} */ (true) })),
         ],
-        grant: { conn: request.conn, tool: request.tool, until },
+        grant: { conn: request.conn, until },
       };
     }
     if (answer.kind === "mute") {
@@ -425,14 +426,15 @@ export class AgentQueue {
   }
 
   /**
-   * End every grant (`:mcp revoke`, decision 22).
+   * End every grant (`:mcp revoke`, `ctrl+b shift+a`: decision 22, mcp-grants G4).
+   * @param {number} [now]  grants that ended before it are not counted
    * @returns {number} how many there were
    */
-  revoke() {
+  revoke(now = -Infinity) {
     let n = 0;
     for (const c of this.conns.values()) {
-      n += c.grants.size;
-      c.grants.clear();
+      if (c.grant > now) n++;
+      c.grant = 0;
     }
     return n;
   }
@@ -445,9 +447,7 @@ export class AgentQueue {
   grants(now) {
     /** @type {AgentGrant[]} */
     const out = [];
-    for (const [conn, c] of this.conns) {
-      for (const [tool, until] of c.grants) if (until > now) out.push({ conn, tool, until });
-    }
+    for (const [conn, c] of this.conns) if (c.grant > now) out.push({ conn, until: c.grant });
     return out.sort((a, b) => a.until - b.until);
   }
 
