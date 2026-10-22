@@ -50,7 +50,7 @@ pay unasked.
    `y send it · n stop` for a form and `y pay · n stop` for a payment; `Esc`, `Enter`, `n` and `x`
    stop. The arming delay (1 s) and every guard of the question line apply (vimma-mcp 13-14).
 3. **A payment step** is a click (`vimma_activate`), a fill that submits, or a key that acts
-   (`Enter` on a focused control, a follow) in an agent tab, when the signals of open question 1
+   (a follow, `gu`, `gU`, `H` or `L`; `vimma_keys` sends no key events, mcp-drive D8-D9) in an agent tab, when the signals of open question 1
    say it may pay. Its question names the agent, the button's text, the site, and what the page
    says about the amount (open question 2):
    `▲ claude-code wants to pay: "Confirm order" on shop.example · the page says "Total 42,90 €"`.
@@ -59,7 +59,12 @@ pay unasked.
    columns, the list cut where the line ends with `… (N more)`; a sensitive field (password,
    card, one-time code: mcp-forms F6) as its name and `•••`, never its value:
    `▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "a@example.com", name "Ada", password •••`.
-   When the submission is also a payment step, the payment wording wins and the fields follow.
+   Hidden fields (`type=hidden`, such as anti-forgery tokens) are not listed but counted
+   (`+ 2 hidden`), because their values mean nothing to the user and would crowd out the ones
+   that do. Every name and value is cleaned as a fill's question cleans them (NFKC, control,
+   bidirectional and invisible characters dropped, each a bidi isolate), since they are the
+   page's text. When the submission is also a payment step, the payment wording wins and the
+   fields follow.
 5. **A stop is final for that step.** `n` refuses the call with `denied`; under a grant the
    agent may go on with other steps, and three noes in a row mute it as any denials do
    (vimma-mcp 18).
@@ -87,7 +92,7 @@ pay unasked.
   (`actors/agent-fields.mjs:148-154`, mcp-forms F6).
 - **Card fields in other sites' frames.** Payment providers often draw the card fields in a
   frame of their own site inside the shop's page. Vimma's child actor runs in every frame
-  (`actors/VimmaActors.sys.mjs:229`, `allFrames: true`, for http and https), so each frame's
+  (`actors/VimmaActors.sys.mjs:229-232`, `allFrames: true`, on http, https and a few local pages), so each frame's
   child can report its own card fields to the parent.
 - **The Payment Request API is off.** `dom.payments.request.enabled` defaults to `false`
   (`modules/libpref/init/StaticPrefList.yaml:4183`), so `PaymentRequest` does not exist in
@@ -169,8 +174,11 @@ and n only, and x is a plain no`; the new grant hint and notice.
 - `browser_vimma_mcp_checkpoint.js` (new): `test_card_fields_in_a_cross_site_frame_make_a_pay_step`,
   `test_pay_button_outside_a_form_asks_under_a_grant`,
   `test_leaving_for_another_site_from_checkout_asks`, `test_basket_button_does_not_ask`,
-  `test_a_no_stops_the_step_and_keeps_the_grant`.
-- `browser_vimma_mcp_submit.js`: `test_submit_question_lists_the_fields_it_sends`.
+  `test_a_no_stops_the_step_and_keeps_the_grant`, `test_a_late_redirect_to_another_site_asks`,
+  `test_a_yes_to_a_cancelled_post_is_refused_not_repeated`,
+  `test_checkpoint_notice_log_row_and_notification`.
+- `browser_vimma_mcp_submit.js`: `test_submit_question_lists_the_fields_it_sends` (hidden fields
+  counted, values cleaned).
 
 ### e2e (`tools/e2e`, under Xvfb)
 
@@ -194,15 +202,21 @@ and n only, and x is a plain no`; the new grant hint and notice.
 ## Open questions
 
 1. **Which signals make a step a payment step?** A step is a click, a fill that submits, or an
-   acting key in an agent tab.
+   acting key (a follow, `gu`, `gU`, `H`, `L`) in an agent tab. In every option the signals are
+   read in every frame of the tab, payment providers' cross-site frames included, for buttons
+   as for fields.
    - (a) **Card fields only:** the tab's page, in any frame, holds a payment card field (an
      `autocomplete` `cc-*` name or form autofill's card heuristics). Catches checkouts where the
      card is typed; misses a saved card's one-button checkout and hosted payment pages.
    - (b) **(a), and leaving for another site from a checkout:** also a step that would load
      another site in the tab's top level while the page holds card fields, or its URL or title
      has a checkout word (`checkout`, `cart`, `basket`, `payment`, `kassa`, `maksu`, …). The
-     load is cancelled before it is sent and asked about; a yes repeats the step. Catches
-     hosted payment pages and bank redirects; misses a saved card's one-button checkout.
+     load is cancelled before it is sent and asked about, also when a script, a timer or a meta
+     refresh starts it up to 10 s after the step, or it opens in a new window. A yes loads the
+     cancelled URL when it was a GET; a POST or a 307 or 308 redirect is refused instead with a
+     note to the agent to ask the user to continue, because repeating the step that led there
+     could place the order twice. Catches hosted payment pages and bank redirects; misses a
+     saved card's one-button checkout.
    - (c) **(b), and the button's words:** also a click on a control whose text, accessible name
      or value contains a pay phrase from a fixed list in English, Finnish, Swedish, German,
      French and Spanish (`pay`, `buy now`, `place order`, `confirm order`, `complete purchase`,
@@ -214,7 +228,10 @@ and n only, and x is a plain no`; the new grant hint and notice.
    - (d) **(c), and a config list:** `[mcp] pay_words` and `[mcp] pay_sites` add phrases and
      sites (a user's own shop or bank) to the built-in ones.
    - **Recommendation: (c).** Each signal covers a checkout the others miss (Research, Shops),
-     and a false positive costs one key while a miss costs money. Button words are not enough
+     and a false positive costs one key while a miss costs money. Card fields alone protect
+     least: the agent can never fill them (mcp-forms F6), so a card form holds a card only when
+     the user typed it, and the real risk is a saved card's one-button checkout, which only the
+     button words catch. Button words are not enough
      alone, since a button can be an icon or in another language, but together with card fields
      and the cross-site rule they cover the common checkouts. (d) can follow when a real shop is
      missed; starting without it keeps the config surface small.

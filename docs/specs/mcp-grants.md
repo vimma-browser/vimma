@@ -46,7 +46,8 @@ changed) are already asked separately, whatever is granted.
    `vimma_read_page`, `vimma_open`, `vimma_close_tab`, `vimma_keys`, `vimma_elements`,
    `vimma_activate`, `vimma_fill`, `vimma_screenshot`, `vimma_console` and the agent's own
    downloads (`vimma_download`). The connection's questions already waiting, other than those in
-   item 3, run at once.
+   item 3, run at once, each with the notice and `:mcp log` row of a call under a grant
+   (item 6), since the user answered only the one on the line.
 2. **Other connections still ask.** A grant belongs to one connection (one `vimma-ctl mcp`
    process, one agent session), as in vimma-mcp 21; another agent, or the same agent after a
    reconnect, asks again.
@@ -109,15 +110,17 @@ none of them runs on Linux with a local agent:
 
 - **Firefox 158** ships no agent that acts on pages. Its Smart Window's model tools read open
   tabs, history and page text and manage tabs
-  (`engine/browser/components/aiwindow/models/Tools.sys.mjs:142-152`); closing or grouping tabs
-  shows a confirmation card (`ui/components/ai-website-confirmation/`).
+  (`engine/browser/components/aiwindow/models/Tools.sys.mjs:142-152`), and run a web search
+  (`run_search`, `search_the_web`, `:146-147`); closing or grouping tabs first asks the user to
+  pick the tabs (`ui/components/ai-website-confirmation/`) and afterwards offers undo
+  (`ui/components/ai-action-confirmation/`).
 - **Chrome's auto browse** (Gemini in Chrome, January 2026) asks for confirmation before a
   purchase or a social media post, and the user can take over the task
   ([The Register, 2026-01-29](https://www.theregister.com/2026/01/29/chrome_gemini_pane/)). It
   acts in the user's own profile, with the user's logins.
 - **ChatGPT Atlas's agent mode** pauses on sensitive sites such as financial institutions so the
   user watches, and has a logged-out mode that uses no existing cookies (OpenAI's help center,
-  "ChatGPT Atlas agent mode", via press coverage; the page refused automated reading).
+  "ChatGPT Atlas agent mode", via press coverage; the help page itself could not be fetched for checking).
 - **Perplexity Comet** pauses before sensitive steps such as logging in or completing a purchase,
   and the user can stop it at any time (Perplexity's announcement, via press coverage).
 
@@ -180,24 +183,31 @@ publishes a list of what still asks.
 
 ## Security and privacy
 
-What changes: a grant given in answer to any question, a read included, now lets the agent
-open URLs, follow links, click buttons that do not submit a form, fill fields and take
-screenshots without asking, until the grant ends. What it cannot do unasked: send a form, pay
-(once mcp-checkpoints is built), show a page, keep a dangerous or unscanned file, or reach
-outside the agent workspace.
+What changes: a grant given in answer to any question, even one for the tab list, now lets the
+agent load any http or https URL, follow links to any site, click buttons that do not submit a
+form, fill fields and take screenshots without asking, until the grant ends. What it cannot do
+unasked: submit a form, pay (once mcp-checkpoints is built, and only as far as its signals
+recognise a payment), show a page, keep a dangerous or unscanned file, or reach outside the
+agent workspace.
 
-- **Exfiltration through `vimma_open`.** A read grant now lets the agent load any http or https
+- **Exfiltration through `vimma_open`.** Any grant now lets the agent load any http or https
   URL in the agent workspace, and a URL can carry what the agent read. Before, the guide told
   users to grant reads and answer opens one at a time; that advice no longer exists in the
-  product. What limits it: the agent workspace's container has none of the user's other
-  logins, so what the agent can read is what the agent workspace holds (vimma-mcp 7); each open
-  shows a notice naming its host and a `:mcp log` row with the whole URL; at most 10 opens a
-  minute; and an agent with a shell, which every supported agent host has, can send what it
-  read over its own network without Vimma. The guide says this plainly where it describes
-  grants.
+  product. What the agent can read is what the agent workspace holds: none of the user's logins
+  in other workspaces (vimma-mcp 7), but every login the user made in the agent workspace
+  itself, such as a shop account with its address and order history. What limits it: each open
+  and each follow shows a notice naming its host and a `:mcp log` row with the whole URL; at
+  most 10 loads a minute; and grants are for minutes, ended with one key. Agent hosts usually
+  ask before their own shell or network use, so under a Vimma grant Vimma may be the agent's
+  only unprompted way to send data out. The guide says so where it describes grants, and
+  advises a grant only for a task the user is watching.
 - **Prompt injection.** A page read under a grant can tell the agent to act on other pages, and
   under the grant those acts run unasked. They stay inside the agent workspace and its
-  container, they cannot submit a form or pay, and each is a notice and a log row.
+  container, and each is a notice and a log row. They cannot submit a form, but a button whose
+  script sends data without a form (a `fetch` from its click listener, mcp-forms F17) can be
+  pressed unasked, after fields were filled unasked: posting a message is such a step. Before,
+  that needed a `vimma_activate` grant; now any grant allows it. mcp-checkpoints covers the
+  payments among these steps, and only those its signals recognise.
 - **Answering by reflex** is less likely, because a task now asks once instead of once per tool.
 
 `docs/security.md` changes in the implementing PR:
@@ -209,6 +219,11 @@ outside the agent workspace.
   `:mcp off` and expiry.
 - M19, M28 and the download rules (M11, M13) keep their wording ("under any grant"); their tests
   gain the case of a grant given for another tool.
+- M18: a follow to another site is asked as a `vimma_open` unless the connection holds a grant
+  (any grant, where it was a `vimma_open` grant); `test_cross_site_follow_asks_as_vimma_open`
+  checks both.
+- M21 and M31 lose "so a `vimma_keys` (`vimma_elements`) grant is never a read grant", which no
+  longer holds.
 - §12's reach paragraph says what a grant allows and what still asks.
 
 ## Tests
@@ -217,31 +232,40 @@ outside the agent workspace.
 
 - `agent-gate.test.mjs`: `a grant covers every tool of its connection, not another
 connection's`; `a grant lets the connection's queued calls of every tool run, not an always-ask
-one`; `a grant never covers vimma_show, a submit or a dangerous download, whatever was asked`;
-  `grants end on revoke and on disconnect,
-and are listed shortest first` (one per connection); the existing per-tool tests
-  (`vimma_screenshot can be granted, and its grant covers no other tool` and the like) become
-  `… and its grant covers the other tools`.
-- `agent-prompt.test.mjs`: `the hint names the grant's scope`; `the grant notice names the scope
-and the key that ends it`.
+one`; `a connection holds at most one grant`; `a reconnect asks again`; `grants end on revoke and
+on disconnect, and are listed shortest first`; `a grant does not run it, whatever was asked: it
+waits` (a dangerous download); the vimma_show tests; the per-tool tests become `… and its grant
+covers the other tools`.
+- `agent-prompt.test.mjs`: the hint in the question tests; `a grant names its scope, its
+length, the cap, and the key that ends it`.
 - `fuzz/agent.fuzz.test.mjs`: unchanged properties (no limit broken, no request resolved twice)
   hold with one grant per connection.
 
 ### Mochitests (`tests/browser/`)
 
 - `browser_vimma_mcp_agent.js`: `test_one_grant_covers_every_tool_of_its_connection` (replaces
-  `test_grants_per_connection_and_tool`): a read granted for 15 minutes lets opens, keys, clicks
-  and fills of that connection run with notices and log rows, while a second connection asks.
-- `browser_vimma_mcp_prompt.js`: `test_ctrl_b_shift_a_ends_grants_at_once`; the hint's wording.
-- `browser_vimma_mcp_submit.js`, `browser_vimma_mcp_fill.js`: a submission asks under a grant
-  given for a read.
-- `browser_vimma_mcp_show.js`: a show asks under a grant given for a read.
-- `browser_vimma_mcp_downloads.js`: a dangerous download asks under a grant given for a read.
+  `test_grants_per_connection_and_tool`): a read granted for 15 minutes lets the tab list and
+  an open of that connection run with log rows, while a second connection asks;
+  `test_queued_calls_a_grant_releases_show_as_granted`: a waiting open released by a grant given
+  to a read is a `:mcp log` row run under the grant, with its notice.
+- `browser_vimma_mcp_prompt.js`: the hint's wording; in
+  `test_a_count_and_a_grant_minutes_shown_in_the_status_bar`, the grant's notice and
+  `ctrl+b shift+a` ending the grant at once.
+- `browser_vimma_mcp_follow.js`: `test_cross_site_follow_asks_as_vimma_open`: under a grant a
+  follow to another site runs unasked; without one it asks as `vimma_open`.
+- `browser_vimma_mcp_submit.js`, `browser_vimma_mcp_fill.js`: a submission asks under a grant.
+- `browser_vimma_mcp_show.js`: a show asks under a grant and leaves it unchanged.
+- `browser_vimma_mcp_downloads.js`: under a grant the agent's opens and downloads run unasked; a
+  dangerous download still asks.
+- The keys, elements, screenshot and console tests: their grant now covers the other tools.
 
 ### e2e (`tools/e2e`, under Xvfb)
 
-- `m0-mcp-stdio` and `m0-mcp-agent-prompt`: the question line's new hint and the grant's notice,
-  with the Omarchy theme; the baselines change, with a changelog line.
+- `m0-mcp-stdio`: the question line's new hint (baseline `m0-mcp-stdio-question`), and
+  `ctrl+b shift+a` ending the grant so that the next call asks again; the baseline changes, with
+  a changelog line. The question, the grant's notice, calls under the grant, a submission under
+  it and the ended grant are also screenshotted with the Omarchy theme in a throwaway run before
+  merging.
 
 ## Docs and changelog
 
@@ -251,7 +275,8 @@ and the key that ends it`.
 - README: the agents feature line says one grant covers a task, with forms always asked.
 - `CHANGELOG.md`: added by the maintainer at merge, apart from the baseline line.
 - Notes in implemented specs (docs/specs/README.md, "Implemented specs are frozen"): vimma-mcp
-  21 and 23, mcp-forms F25, and mcp-drive's grant lines get `(Since changed: …; mcp-grants.md.)`.
+  21 and its threat rows on `vimma_open`, mcp-forms F25, and mcp-drive D17 and D18 get
+  `(Since changed: …; mcp-grants.md.)`.
 
 ## Delivery
 
