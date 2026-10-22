@@ -2310,7 +2310,9 @@ exceptions there (unicode-ident's Unicode-3.0 tables, and two WASI-only crates w
 
 Spec m0-control-protocol-and-vimma-ctl, ADR-007, ADR-011. A std-only Rust binary in
 `tools/vimma-ctl/`; the toolchain is pinned in its `rust-toolchain.toml` (rustup honours it; a
-system Rust of the same version works too).
+system Rust of the same version works too). Users get it with Vimma: every release package
+ships it next to `vimma` (spec [ship-vimma-ctl](specs/ship-vimma-ctl.md)); the commands below
+are for working on it.
 
 ```sh
 cd tools/vimma-ctl
