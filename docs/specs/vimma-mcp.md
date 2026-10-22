@@ -912,7 +912,8 @@ outdated definitions (ClamAV)`. An infected verdict is refused however old the d
     js-ctypes, not following a symlink, because no Firefox file API gives it and the no-op chmod
     proves only "not the user's"; statx, not stat, because struct statx has one layout on every
     Linux architecture. macOS has no statx, so there the owner is read with `lstat(2)` from
-    `libSystem.B.dylib`, because Darwin's `struct stat` (64-bit inodes) has one 144-byte layout
+    `/usr/lib/libSystem.B.dylib` (an absolute path, since dyld searches the working directory for a
+    bare name), because Darwin's `struct stat` (64-bit inodes) has one 144-byte layout
     on arm64 and x86_64 (`sys/stat.h`, `__DARWIN_STRUCT_STAT64`, checked against the macOS 26.5
     SDK); x86_64 exports it as `lstat$INODE64`, since its plain `lstat` takes the 32-bit-inode
     struct. Any other platform gives no owner, so clamd is not used there. clamdscan runs with `--config-file=<that file> --fdpass --no-summary

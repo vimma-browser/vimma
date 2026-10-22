@@ -588,10 +588,11 @@ function statxOwner(path) {
 }
 
 /**
- * lstat(2) from libSystem. Darwin's struct stat with 64-bit inodes (`__DARWIN_STRUCT_STAT64` in
- * the SDK's sys/stat.h) is 144 bytes on arm64 and x86_64 alike: st_dev (int32), st_mode
- * (uint16), st_nlink (uint16), st_ino (uint64), st_uid (uint32), st_gid (uint32), then fields
- * this does not read. An architecture not in LSTAT, or a struct of another size, gives null.
+ * lstat(2) from /usr/lib/libSystem.B.dylib. Darwin's struct stat with 64-bit inodes
+ * (`__DARWIN_STRUCT_STAT64` in the SDK's sys/stat.h) is 144 bytes on arm64 and x86_64 alike:
+ * st_dev (int32), st_mode (uint16), st_nlink (uint16), st_ino (uint64), st_uid (uint32),
+ * st_gid (uint32), then fields this does not read. An architecture not in LSTAT, or a struct
+ * of another size, gives null.
  * @param {string} path
  * @returns {{ isSocket: boolean, uid: number } | null}
  */
@@ -604,7 +605,9 @@ function lstatOwner(path) {
     const arch = Services.appinfo.XPCOMABI.split("-")[0] ?? "";
     if (!Object.hasOwn(LSTAT, arch)) return null;
     const symbol = LSTAT[/** @type {keyof typeof LSTAT} */ (arch)];
-    libc = ctypes.open("libSystem.B.dylib");
+    // An absolute path: for a bare name dyld also searches the working directory, so a
+    // libSystem.B.dylib planted where Vimma starts would run. This one is in the shared cache.
+    libc = ctypes.open("/usr/lib/libSystem.B.dylib");
     const Stat = new ctypes.StructType("stat", [
       { st_dev: ctypes.int32_t },
       { st_mode: ctypes.uint16_t },

@@ -277,9 +277,12 @@ text that pages, add-ons and bookmarks choose.
   `--version`), the path after `--` and no shell, on an agent download in the quarantine folder
   (M13; [vimma-mcp](specs/vimma-mcp.md) decisions 31 g, 43-45). Chrome code **never** calls
   native code, with one exception: the owner and type of clamd's socket (M13), read through
-  js-ctypes with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from `libSystem.B.dylib`
-  on macOS (`lstat` on arm64, `lstat$INODE64` on x86_64, the same 144-byte `struct stat`),
-  neither following a symlink. Any other system or architecture, a failed call or a struct of
+  js-ctypes with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
+  `/usr/lib/libSystem.B.dylib` on macOS (`lstat` on arm64, `lstat$INODE64` on x86_64, the same
+  144-byte `struct stat`), neither following a symlink. libSystem is opened by its absolute path,
+  which dyld resolves from its shared cache, because for a bare name dyld also searches the
+  working directory of a process without the hardened runtime, so a library planted where Vimma
+  starts would be loaded. Any other system or architecture, a failed call or a struct of
   another size gives no owner, so clamd is not used. [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
   [`never starts a process, but ClamAV on an agent download`](../tools/security/test/chrome-source.test.mjs),
   [`never calls native code, but statx or lstat on clamd's socket`](../tools/security/test/chrome-source.test.mjs)
