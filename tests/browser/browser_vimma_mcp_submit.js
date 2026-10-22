@@ -10,7 +10,7 @@
 
 "use strict";
 
-/* global Client -- from head_vimma_control.js */
+/* global Client, tidyTask -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 
@@ -80,9 +80,27 @@ async function openAgentTab(url = CLICK) {
   return tab;
 }
 
+/** The connections the running task opened. @type {any[]} */
+const clients = [];
+
+/** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
+async function putBack() {
+  for (const c of clients.splice(0)) c.close();
+  Services.prefs.clearUserPref(ASK_TIMEOUT);
+  AgentAct._settleMs = null;
+  if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
+  await mcp(false);
+}
+
+/** add_task, with putBack after the task however it ends. @param {() => Promise<void>} task */
+const addTidyTask = (task) => add_task(tidyTask(task, putBack));
+
 /** An agent connection, after its agent-hello. */
 async function agentClient(name = "example-agent") {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
+  clients.push(c);
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name } });
   return c;
@@ -128,12 +146,30 @@ async function activate(c, tab, label, answer = { kind: "once" }) {
   return r;
 }
 
+/**
+ * The status of the next request to a URL starting with `prefix`, once every observer of it
+ * has run: NS_BINDING_ABORTED when Vimma cancelled it.
+ * @param {string} prefix
+ * @returns {Promise<number>}
+ */
+function requestStatus(prefix) {
+  return new Promise((resolve) => {
+    const observe = (/** @type {any} */ subject) => {
+      const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+      if (!channel.URI.spec.startsWith(prefix)) return;
+      Services.obs.removeObserver(observe, "http-on-modify-request");
+      Services.tm.dispatchToMainThread(() => resolve(channel.status));
+    };
+    Services.obs.addObserver(observe, "http-on-modify-request");
+  });
+}
+
 add_task(async function setup() {
   // The default wait after a click: a page's submission a moment later is still in its result.
   AgentAct._settleMs = null;
 });
 
-add_task(async function test_submit_asks_under_a_grant() {
+addTidyTask(async function test_submit_asks_under_a_grant() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient("claude-code");
@@ -179,7 +215,7 @@ add_task(async function test_submit_asks_under_a_grant() {
   await mcp(false);
 });
 
-add_task(async function test_page_script_submit_after_a_click_is_cancelled() {
+addTidyTask(async function test_page_script_submit_after_a_click_is_cancelled() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -196,7 +232,51 @@ add_task(async function test_page_script_submit_after_a_click_is_cancelled() {
   await mcp(false);
 });
 
-add_task(async function test_a_submit_sent_elsewhere_than_asked_is_stopped() {
+/** The click fixture's forms whose button is skipped, then sends the form itself (M28). */
+const BOUNCES = [
+  { form: "bounce", button: "Bounce", field: "Bounce note", how: "100 ms later" },
+  { form: "bounce-now", button: "Bounce now", field: "Bounce now note", how: "at once" },
+  {
+    form: "bounce-busy",
+    button: "Bounce busy",
+    field: "Bounce busy note",
+    how: "after 1.2 s busy",
+  },
+];
+
+addTidyTask(async function test_a_skipped_submit_lets_no_later_submission_through() {
+  await mcp(true);
+  const c = await agentClient();
+  for (const { form, button, how } of BOUNCES) {
+    const tab = await openAgentTab();
+    const by = await labels(c, tab);
+    const sent = requestStatus(`${PAGE}?${form}-note=`);
+    // The page moves the destination as the button is pressed, so the click is skipped; then
+    // it puts the destination back and calls submit(), which matches what was allowed.
+    const r = await activate(c, tab, by[button]);
+    Assert.equal(
+      r.error?.message,
+      "the element changed as it was clicked; nothing was clicked",
+      `${how}: the click was skipped`,
+    );
+    Assert.equal(await sent, Cr.NS_BINDING_ABORTED, `${how}: the page's submission was cancelled`);
+    await until(
+      async () =>
+        await SpecialPowers.spawn(
+          tab.linkedBrowser,
+          [form],
+          (f) => content.wrappedJSObject.bounced[f],
+        ),
+      `${how}: the page sent the form itself`,
+    );
+    Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, `${how}: the page stayed`);
+    BrowserTestUtils.removeTab(tab);
+  }
+  c.close();
+  await mcp(false);
+});
+
+addTidyTask(async function test_a_submit_sent_elsewhere_than_asked_is_stopped() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -215,7 +295,7 @@ add_task(async function test_a_submit_sent_elsewhere_than_asked_is_stopped() {
   await mcp(false);
 });
 
-add_task(async function test_a_submit_listener_moving_the_destination_is_stopped() {
+addTidyTask(async function test_a_submit_listener_moving_the_destination_is_stopped() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -232,24 +312,26 @@ add_task(async function test_a_submit_listener_moving_the_destination_is_stopped
   await mcp(false);
 });
 
-add_task(async function test_page_submits_after_a_cached_verdict_or_through_a_dialog_are_stopped() {
-  await mcp(true);
-  const tab = await openAgentTab();
-  const c = await agentClient();
-  const by = await labels(c, tab);
-  for (const button of ["Resend", "Close"]) {
-    const r = await activate(c, tab, by[button]);
-    Assert.ok(r.ok, `${button}: the click ran`);
-    Assert.equal(r.result.navigated, false, `${button}: the page's submission was not sent`);
-    Assert.equal(r.result.blocked, "example.com", `${button}: the result says Vimma stopped it`);
-    Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, `${button}: the page stayed`);
-  }
-  c.close();
-  BrowserTestUtils.removeTab(tab);
-  await mcp(false);
-});
+addTidyTask(
+  async function test_page_submits_after_a_cached_verdict_or_through_a_dialog_are_stopped() {
+    await mcp(true);
+    const tab = await openAgentTab();
+    const c = await agentClient();
+    const by = await labels(c, tab);
+    for (const button of ["Resend", "Close"]) {
+      const r = await activate(c, tab, by[button]);
+      Assert.ok(r.ok, `${button}: the click ran`);
+      Assert.equal(r.result.navigated, false, `${button}: the page's submission was not sent`);
+      Assert.equal(r.result.blocked, "example.com", `${button}: the result says Vimma stopped it`);
+      Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, `${button}: the page stayed`);
+    }
+    c.close();
+    BrowserTestUtils.removeTab(tab);
+    await mcp(false);
+  },
+);
 
-add_task(async function test_an_allowed_submit_follows_its_redirect() {
+addTidyTask(async function test_an_allowed_submit_follows_its_redirect() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -263,7 +345,7 @@ add_task(async function test_an_allowed_submit_follows_its_redirect() {
   await mcp(false);
 });
 
-add_task(async function test_the_users_earlier_input_does_not_cover_an_agents_click() {
+addTidyTask(async function test_the_users_earlier_input_does_not_cover_an_agents_click() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -283,7 +365,7 @@ add_task(async function test_the_users_earlier_input_does_not_cover_an_agents_cl
   await mcp(false);
 });
 
-add_task(async function test_users_own_submit_in_an_agent_tab_goes_through() {
+addTidyTask(async function test_users_own_submit_in_an_agent_tab_goes_through() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -302,7 +384,7 @@ add_task(async function test_users_own_submit_in_an_agent_tab_goes_through() {
   await mcp(false);
 });
 
-add_task(async function test_a_page_submitting_with_no_agent_step_is_untouched() {
+addTidyTask(async function test_a_page_submitting_with_no_agent_step_is_untouched() {
   await mcp(true);
   const tab = await openAgentTab();
   const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, `${PAGE}?draft`);

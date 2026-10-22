@@ -26,6 +26,7 @@ import {
   buildManifest,
   checkAssets,
   checkSigned,
+  commitLabels,
   digestInfo,
   dmgInfo,
   manifestPath,
@@ -320,6 +321,64 @@ describe("urgency (spec §7)", () => {
     expect(previousRelease(["v0.1.1", "v0.1.3", "v0.1.10", "v0.2.0"], "v0.1.11")).toBe("v0.1.10");
     expect(previousRelease(["v0.1.1"], "v0.1.1")).toBe(null);
     expect(previousRelease(["nightly", "v0.1.1-rc.1", "v0.1.0"], "v0.1.2")).toBe("v0.1.0");
+  });
+});
+
+describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
+  /** An error as execFileSync throws it when gh exits non-zero. */
+  const ghError = (/** @type {string} */ stderr) =>
+    Object.assign(new Error("Command failed: gh api"), { stderr });
+  const HTTP_500 = ghError("unexpected end of JSON input\n");
+  /** A gh that answers with `replies` in turn (an Error is thrown), and the waits it was given. */
+  const fake = (/** @type {(string | Error)[]} */ ...replies) => {
+    const calls = /** @type {string[][]} */ ([]);
+    const waits = /** @type {number[]} */ ([]);
+    const run = (/** @type {string[]} */ args) => {
+      calls.push(args);
+      const r = replies[Math.min(calls.length, replies.length) - 1];
+      if (r instanceof Error) throw r;
+      return r ?? "";
+    };
+    return { run, sleep: async (/** @type {number} */ ms) => void waits.push(ms), calls, waits };
+  };
+
+  it("retries a transient failure, then reads the labels", async () => {
+    const gh = fake(HTTP_500, "security\nupstream\n");
+    await expect(commitLabels("abc", "vimma-browser/vimma", gh)).resolves.toEqual([
+      "security",
+      "upstream",
+    ]);
+    expect(gh.calls).toHaveLength(2);
+    expect(gh.calls[0]).toContain("repos/vimma-browser/vimma/commits/abc/pulls");
+    expect(gh.waits).toEqual([2000]);
+  });
+
+  it("retries an HTTP 5xx and a network error as transient", async () => {
+    const gh = fake(
+      ghError("gh: Server Error (HTTP 502)\n"),
+      ghError("Get https://api.github.com/: dial tcp: i/o timeout\n"),
+      "security\n",
+    );
+    await expect(commitLabels("abc", "o/r", gh)).resolves.toEqual(["security"]);
+    expect(gh.waits).toEqual([2000, 4000]);
+  });
+
+  it("a commit with no pull request or no labels has none", async () => {
+    await expect(commitLabels("abc", "o/r", fake(""))).resolves.toEqual([]);
+  });
+
+  it("throws after four attempts that all fail, never answering no labels", async () => {
+    const gh = fake(HTTP_500);
+    await expect(commitLabels("abc", "o/r", gh)).rejects.toThrow(/abc.*4 attempts/s);
+    expect(gh.calls).toHaveLength(4);
+    expect(gh.waits).toEqual([2000, 4000, 8000]);
+  });
+
+  it("throws at once on a failure that is not transient", async () => {
+    const gh = fake(ghError("gh: Not Found (HTTP 404)\n"), "security\n");
+    await expect(commitLabels("abc", "o/r", gh)).rejects.toThrow(/HTTP 404/);
+    expect(gh.calls).toHaveLength(1);
+    expect(gh.waits).toEqual([]);
   });
 });
 

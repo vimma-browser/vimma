@@ -65,6 +65,14 @@ const FRAME_TIMEOUT_PREF = "vimma.hints.frameTimeoutMs";
 const FRAME_TIMEOUT_DEFAULT = 150;
 /** The top frame gets longer: without it there are no hints at all. */
 const TOP_TIMEOUT_MS = 2000;
+/**
+ * An agent's collection (docs/specs/mcp-drive.md D12, mcp-forms.md F2): every frame answers
+ * within this of its start. No user waits on labels there, and an agent's tab is in the
+ * background, whose frames' processes may be busy or just started: at the user's 150 ms, a
+ * frame of another site would be left out of the list without a word. The calls give up after
+ * 5 s, so the frames that answered are still listed then.
+ */
+const AGENT_FRAMES_MS = 4000;
 
 /** At most this many targets in all frames (each frame: core HINT_REPLY_MAX_TARGETS). */
 const MAX_HINTS = HINT_REPLY_MAX_TARGETS;
@@ -341,6 +349,12 @@ export const VimmaActors = {
     liveGen.set(key, gen);
     const live = () => liveGen.get(key) === gen;
     const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
+    const agentDeadline = Date.now() + AGENT_FRAMES_MS;
+    /** How long the frame at `depth` may take, from now. @param {number} depth */
+    const timeoutAt = (depth) => {
+      if (agent) return Math.max(0, agentDeadline - Date.now());
+      return depth === 0 ? TOP_TIMEOUT_MS : frameTimeout;
+    };
     /** Each frame at most once, whatever its embedder reports. */
     const visited = new Set();
     const linksOnly = (agent && !elements) || action === "hint.follow_new_tab";
@@ -366,7 +380,7 @@ export const VimmaActors = {
       try {
         // A busy or hung frame (its process spinning) must not hold up the others' labels.
         const late = new Promise((resolve) => {
-          timer = setTimeout(resolve, depth === 0 ? TOP_TIMEOUT_MS : frameTimeout, null);
+          timer = setTimeout(resolve, timeoutAt(depth), null);
         });
         const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", {
           gen,
@@ -579,6 +593,18 @@ export const VimmaActors = {
       return false;
     }
     return true;
+  },
+
+  /**
+   * The child skipped the agent's click or submission (VimmaParent, `Vimma:AgentSkipped`): the
+   * submission the question allowed is withdrawn at once, before the call ends, so the page cannot
+   * send it by itself (docs/specs/mcp-forms.md F16; security.md M28). The mark stays.
+   * @param {any} bc  the frame that skipped it (BrowsingContext)
+   */
+  agentSkipped(bc) {
+    const id = bc?.top?.browserId;
+    const mark = id ? submitMarks.get(id) : undefined;
+    if (mark) mark.allowed = null;
   },
 
   /**

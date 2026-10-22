@@ -172,6 +172,14 @@ const JS_REASON = 256;
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
 
 export class VimmaChild extends JSWindowActorChild {
+  /**
+   * Test-only (browser_vimma_mcp_fill.js): the name of a page function an agent's form
+   * submission calls just before its own check, so that a test can change the form in the one
+   * moment a busy page could. Only chrome code in the content process can set it; null otherwise.
+   * @type {string | null}
+   */
+  static _beforeSubmitCheck = null;
+
   /** @type {WeakRef<Element> | null} the last largest scrollable, reused while it can scroll */
   #largest = null;
   /** The last hint collection (m1-hints): its generation and its elements, by target id. */
@@ -182,8 +190,8 @@ export class VimmaChild extends JSWindowActorChild {
    */
   #agentEls = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
   /**
-   * The agent's last click here (docs/specs/mcp-forms.md F8): its element and whether it ran or
-   * was skipped because the page changed the element under the mouse events before it.
+   * The agent's last click here (docs/specs/mcp-forms.md F8), or its fill's submission (F15): its
+   * element and whether it ran or was skipped because the page changed the element before it.
    * @type {{ gen: number, id: number, outcome: "pending" | "clicked" | "skipped" } | null}
    */
   #agentClick = null;
@@ -782,7 +790,7 @@ export class VimmaChild extends JSWindowActorChild {
    * named, by `requestSubmit`, after this reply. No user activation is given: the parent lets
    * through only the submission the question allowed.
    * @param {Element | undefined} el
-   * @param {{ submit?: any, until?: unknown }} asked
+   * @param {{ gen: number, id: number, submit?: any, until?: unknown }} asked
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentSubmit(el, asked) {
@@ -794,11 +802,31 @@ export class VimmaChild extends JSWindowActorChild {
     if (!now || !named || now.method !== named.method || now.action !== named.action) {
       return "changed";
     }
+    // The parent's wait for a page counts from when this ran (`outcome`, as for a click).
+    const sent = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    this.#agentClick = sent;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
-      if (Date.now() > until) return;
+      const test = VimmaChild._beforeSubmitCheck;
+      if (test) {
+        try {
+          /** @type {any} */ (this.contentWindow)?.wrappedJSObject[test]?.();
+        } catch {
+          // the test's page function threw: the check below sees what it left
+        }
+      }
       const again = form.isConnected ? defaultSubmitOf(form) : null;
-      if (!again || again.method !== named.method || again.action !== named.action) return;
+      if (
+        Date.now() > until ||
+        !again ||
+        again.method !== named.method ||
+        again.action !== named.action
+      ) {
+        this.#skipped();
+        sent.outcome = "skipped";
+        return;
+      }
+      sent.outcome = "clicked";
       form.requestSubmit(again.submitter ?? undefined);
     });
     return "ok";
@@ -828,9 +856,28 @@ export class VimmaChild extends JSWindowActorChild {
       // A busy page can delay this past the parent's wait: then nothing is clicked.
       const ran =
         Date.now() <= until && el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
+      if (!ran) this.#skipped();
       click.outcome = ran ? "clicked" : "skipped";
     });
     return "ok";
+  }
+
+  /**
+   * The agent's click or submission was skipped here: the parent withdraws the one submission
+   * the question allowed (security.md M28). Sent in the task that decided it, before any page
+   * script runs again, so it reaches the parent ahead of every later navigation or request this
+   * process starts for the page: the actor's messages and the page's loads (DocumentChannel)
+   * go over the same PContent channel, in order. A page that puts the form back and submits by
+   * itself afterwards is then cancelled like any other submission.
+   */
+  #skipped() {
+    try {
+      this.sendAsyncMessage("Vimma:AgentSkipped", {});
+    } catch {
+      // The actor is going away with its document. For the top frame the mark goes with the
+      // page; for a subframe removed this way the allowance stays open until the call ends,
+      // still only for the method and destination the question named.
+    }
   }
 
   /**

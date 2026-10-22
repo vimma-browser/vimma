@@ -16,7 +16,7 @@
 "use strict";
 
 /* global focusContent -- from head.js */
-/* global Client -- from head_vimma_control.js */
+/* global Client, tidyTask -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 
@@ -51,6 +51,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const FILL = `${DIR}file_vimma_agent_fill.html`;
 const PAGE = `${DIR}file_vimma_agent_page.html`;
+const CLICK = `${DIR}file_vimma_agent_click.html`;
 const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
@@ -92,9 +93,27 @@ async function openAgentTab(url = FILL) {
   return tab;
 }
 
+/** The connections the running task opened. @type {any[]} */
+const clients = [];
+
+/** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
+async function putBack() {
+  for (const c of clients.splice(0)) c.close();
+  Services.prefs.clearUserPref(ASK_TIMEOUT);
+  AgentAct._settleMs = 50;
+  if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
+  await mcp(false);
+}
+
+/** add_task, with putBack after the task however it ends. @param {() => Promise<void>} task */
+const addTidyTask = (task) => add_task(tidyTask(task, putBack));
+
 /** An agent connection, after its agent-hello. */
 async function agentClient(name = "example-agent") {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
+  clients.push(c);
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name } });
   return c;
@@ -146,6 +165,24 @@ async function fill(c, tab, fields, { answer = { kind: "once" }, submit, asked }
   return r;
 }
 
+/**
+ * The status of the next request to a URL starting with `prefix`, once every observer of it
+ * has run: NS_BINDING_ABORTED when Vimma cancelled it.
+ * @param {string} prefix
+ * @returns {Promise<number>}
+ */
+function requestStatus(prefix) {
+  return new Promise((resolve) => {
+    const observe = (/** @type {any} */ subject) => {
+      const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+      if (!channel.URI.spec.startsWith(prefix)) return;
+      Services.obs.removeObserver(observe, "http-on-modify-request");
+      Services.tm.dispatchToMainThread(() => resolve(channel.status));
+    };
+    Services.obs.addObserver(observe, "http-on-modify-request");
+  });
+}
+
 /** What the page's fields hold, and the events they got. @param {any} tab */
 const page = (tab) =>
   SpecialPowers.spawn(tab.linkedBrowser, [], () => {
@@ -180,7 +217,7 @@ add_task(async function setup() {
   AgentAct._settleMs = 50;
 });
 
-add_task(async function test_fill_sets_values_and_fires_input_and_change() {
+addTidyTask(async function test_fill_sets_values_and_fires_input_and_change() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient("claude-code");
@@ -233,7 +270,7 @@ add_task(async function test_fill_sets_values_and_fires_input_and_change() {
   await mcp(false);
 });
 
-add_task(async function test_fill_never_focuses_the_field() {
+addTidyTask(async function test_fill_never_focuses_the_field() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -255,7 +292,7 @@ add_task(async function test_fill_never_focuses_the_field() {
   await mcp(false);
 });
 
-add_task(async function test_fill_refuses_password_card_otp_and_file_fields() {
+addTidyTask(async function test_fill_refuses_password_card_otp_and_file_fields() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -303,7 +340,7 @@ add_task(async function test_fill_refuses_password_card_otp_and_file_fields() {
   await mcp(false);
 });
 
-add_task(async function test_fill_stops_when_a_field_turns_sensitive() {
+addTidyTask(async function test_fill_stops_when_a_field_turns_sensitive() {
   await mcp(true);
   const c = await agentClient();
   for (const [type, attr] of [
@@ -352,7 +389,7 @@ add_task(async function test_fill_stops_when_a_field_turns_sensitive() {
   await mcp(false);
 });
 
-add_task(async function test_fill_reports_a_value_the_page_put_back() {
+addTidyTask(async function test_fill_reports_a_value_the_page_put_back() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -370,7 +407,7 @@ add_task(async function test_fill_reports_a_value_the_page_put_back() {
   await mcp(false);
 });
 
-add_task(async function test_fill_submit_asks_under_a_grant() {
+addTidyTask(async function test_fill_submit_asks_under_a_grant() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient("claude-code");
@@ -446,7 +483,100 @@ add_task(async function test_fill_submit_asks_under_a_grant() {
   await mcp(false);
 });
 
-add_task(async function test_page_script_submit_after_a_fill_is_cancelled() {
+/** The click fixture's forms whose button is skipped, then sends the form itself (M28). */
+const BOUNCES = [
+  { form: "bounce", button: "Bounce", field: "Bounce note", how: "100 ms later" },
+  { form: "bounce-now", button: "Bounce now", field: "Bounce now note", how: "at once" },
+  {
+    form: "bounce-busy",
+    button: "Bounce busy",
+    field: "Bounce busy note",
+    how: "after 1.2 s busy",
+  },
+];
+
+addTidyTask(async function test_a_skipped_submit_is_not_sent_and_allows_nothing_after_it() {
+  await mcp(true);
+  AgentAct._settleMs = null;
+  const c = await agentClient();
+  for (const { form, button, field, how } of BOUNCES) {
+    const tab = await openAgentTab(CLICK);
+    const by = await labels(c, tab);
+    const sent = requestStatus(`${PAGE}?${form}-note=`);
+    // The page moves the destination as its submit button is pressed, so the click is skipped;
+    // then it puts the destination back and calls submit(), which matches what was allowed.
+    const r = await fill(c, tab, [{ label: by[field], value: "hello" }], { submit: by[button] });
+    Assert.ok(
+      r.error?.message.startsWith("the form changed since the user was asked; it was not sent"),
+      `${how}: the fill says the form was not sent: ${r.error?.message}`,
+    );
+    Assert.equal(await sent, Cr.NS_BINDING_ABORTED, `${how}: the page's submission was cancelled`);
+    await until(
+      async () =>
+        await SpecialPowers.spawn(
+          tab.linkedBrowser,
+          [form],
+          (f) => content.wrappedJSObject.bounced[f],
+        ),
+      `${how}: the page sent the form itself`,
+    );
+    Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, `${how}: the page stayed`);
+    BrowserTestUtils.removeTab(tab);
+  }
+  c.close();
+  await mcp(false);
+});
+
+/**
+ * Names the page function Vimma's child calls just before it checks an agent's form
+ * submission in `tab`'s process (VimmaChild._beforeSubmitCheck), or null for none.
+ * @param {any} tab @param {string | null} name
+ */
+const beforeSubmitCheck = (tab, name) =>
+  SpecialPowers.spawn(tab.linkedBrowser, [name], (n) => {
+    const { VimmaChild } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs",
+    );
+    VimmaChild._beforeSubmitCheck = n;
+  });
+
+addTidyTask(async function test_a_skipped_default_submit_is_not_sent_and_allows_nothing_after_it() {
+  await mcp(true);
+  AgentAct._settleMs = null;
+  const tab = await openAgentTab(CLICK);
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // The form's default submission, not a button's click: just before the child's check the
+  // page moves the destination, so the submission is skipped, then at once it puts it back and
+  // calls submit(), which matches what was allowed.
+  await beforeSubmitCheck(tab, "bounceForm");
+  try {
+    const sent = requestStatus(`${PAGE}?bounce-note=`);
+    const r = await fill(c, tab, [{ label: by["Bounce note"], value: "hello" }], { submit: true });
+    Assert.ok(
+      r.error?.message.startsWith("the form changed since the user was asked; it was not sent"),
+      `the fill says the form was not sent: ${r.error?.message}`,
+    );
+    Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's own submission was cancelled");
+    await until(
+      async () =>
+        await SpecialPowers.spawn(
+          tab.linkedBrowser,
+          [],
+          () => content.wrappedJSObject.bounced["bounce-form"],
+        ),
+      "the page sent the form itself",
+    );
+    Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "the page stayed");
+  } finally {
+    await beforeSubmitCheck(tab, null);
+  }
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_page_script_submit_after_a_fill_is_cancelled() {
   await mcp(true);
   AgentAct._settleMs = null;
   const tab = await openAgentTab();
@@ -463,7 +593,7 @@ add_task(async function test_page_script_submit_after_a_fill_is_cancelled() {
   await mcp(false);
 });
 
-add_task(async function test_a_page_submit_during_a_fill_is_not_the_asked_one() {
+addTidyTask(async function test_a_page_submit_during_a_fill_is_not_the_asked_one() {
   await mcp(true);
   AgentAct._settleMs = null;
   const tab = await openAgentTab();
@@ -491,7 +621,7 @@ add_task(async function test_a_page_submit_during_a_fill_is_not_the_asked_one() 
   await mcp(false);
 });
 
-add_task(async function test_selects_ranges_and_a_submit_button_of_another_form() {
+addTidyTask(async function test_selects_ranges_and_a_submit_button_of_another_form() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -531,7 +661,7 @@ add_task(async function test_selects_ranges_and_a_submit_button_of_another_form(
   await mcp(false);
 });
 
-add_task(async function test_fill_reports_a_dialog_and_stops() {
+addTidyTask(async function test_fill_reports_a_dialog_and_stops() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -549,7 +679,7 @@ add_task(async function test_fill_reports_a_dialog_and_stops() {
   await mcp(false);
 });
 
-add_task(async function test_fill_in_use_while_the_user_types() {
+addTidyTask(async function test_fill_in_use_while_the_user_types() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -576,7 +706,7 @@ add_task(async function test_fill_in_use_while_the_user_types() {
   await mcp(false);
 });
 
-add_task(async function test_fills_take_labels_only_from_elements_and_share_the_click_rate() {
+addTidyTask(async function test_fills_take_labels_only_from_elements_and_share_the_click_rate() {
   await mcp(true);
   Services.prefs.setIntPref(ASK_TIMEOUT, 200);
   const tab = await openAgentTab();

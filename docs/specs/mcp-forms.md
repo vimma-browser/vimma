@@ -270,7 +270,11 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    own tool name. Like `f`, it lists nothing on a page that is not http or https (mcp-drive D12,
    "Web pages only"), because a file, about: page or the start page moved into the agent
    workspace is not the agent's to act on; the call fails with
-   `elements are listed only on http and https pages`.
+   `elements are listed only on http and https pages`. (Since changed: every frame of an agent's
+   collection, its frames of other sites included, has up to 4 s from the start to answer, where
+   the user's hint mode gives a subframe 150 ms, because an agent tab is in the background, where
+   a frame's process may be busy or newly started, and an agent cannot tell that a frame was left
+   out; `AGENT_FRAMES_MS` in `actors/VimmaActors.sys.mjs`.)
 3. **One session per tab and connection.** The labels go into the same session store as
    `vimma_keys`' `f` (`ctl/AgentDrive.sys.mjs:89-90`), bound to the document and URL and valid
    for 120 s, so a label never names an element of another page. `vimma_elements` and `f` each
@@ -371,7 +375,9 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     opened in the tab (`common-dialog-loaded`), with its type and text (cut at 200, untrusted),
     `blocked` the host of a submission F16 stopped, and `stopped: "in-use"` when the user started
     using the tab during the wait. A click that has started no load within a second is taken to
-    have none. Agents
+    have none. (Since changed: that second counts from when the click ran in the page's process,
+    not from the child's reply before it, because a busy process runs the click later; the same
+    holds for a fill's submission; security.md M28.) Agents
     cannot answer dialogs: no tool does, because a `confirm` is often the page asking "are you
     sure", which is the user's to answer. The dialog waits in the tab until the user shows it.
     Every navigation an activation causes takes a slot of the open rate (`OPEN_RATE`), shared
