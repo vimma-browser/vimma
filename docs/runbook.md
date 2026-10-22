@@ -1444,7 +1444,8 @@ maintainer's one click.
   turn the open one into a draft, run `gh pr ready --undo <n>` (no run starts, and the results
   on its head stay as they are).
 - **Version source:** `surfer.json` `brands.vimma.release.displayVersion`, the version
-  `vimma --version` and the About dialog show (spec m0-app-version). The release
+  `vimma --version` and the About dialog show (spec m0-app-version), and `vimma-ctl --version`
+  too, since `tools/vimma-ctl/build.rs` reads it (spec ship-vimma-ctl). The release
   PR bumps it through `extra-files` (jsonpath `$.brands.vimma.release.displayVersion`), plus
   `.release-please-manifest.json`, which must always match it (tested in
   `tools/package/test/release-workflow.test.mjs`). The Firefox pin `version.version` is never

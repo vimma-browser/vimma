@@ -90,8 +90,9 @@ the hours slip by. It also happens to start with _Vim_.
 Early, for Linux x86_64 and macOS on Apple Silicon. Releases are on
 [GitHub Releases](https://github.com/vimma-browser/vimma/releases), with a tarball, an AppImage, a
 `.deb`, an `.rpm` for Fedora and openSUSE and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
-([Install](#install)); you can also
-[build it from source](CONTRIBUTING.md#build-and-run). Update notices are live: Vimma 0.1.2 and
+([Install](#install)). Each carries `vimma-ctl`, the client for scripts and agents, so it updates
+with the browser ([where it is](docs/guide.md#installing)); you can also
+[build Vimma from source](CONTRIBUTING.md#build-and-run). Update notices are live: Vimma 0.1.2 and
 later check a signed update file every 12 hours and show a newer release in the status bar. The
 AppImage, from the first release that includes its self-update, then replaces its own file with
 the newer release once its size and SHA-512 match the signed file, and the next start runs it.
