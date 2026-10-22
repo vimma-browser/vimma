@@ -1976,10 +1976,14 @@ _Pages_ and _extensions_ cannot reach it.
   signing and checked against the signed size and SHA-512. A serial that is not newer than the
   published manifest's, a serial more than a day ahead of the clock, and an offer older than the
   published one are refused. The urgency comes from the labels of each commit's pull request;
-  a label read that fails transiently (an HTTP 5xx, a body gh cannot parse, a network error) is
+  a label read that fails transiently (an HTTP 5xx, a body that is not JSON, a network error) is
   tried four times in all, 2, 4 and 8 s apart, and a commit whose labels still cannot be read
   **must** fail the run, never count as unlabelled, so a security release is never published as
-  a normal one. The push uses a deploy key that can write only to
+  a normal one. The responses are parsed as raw JSON in `manifest.mjs`, not through jq, and their
+  shape is checked: a pulls response that is not a list of pull requests, each with a list of
+  labels with string names, fails the run (jq would read `{}` as no labels), and so does a
+  releases list that does not contain the tag being published (a truncated list would widen the
+  range of commits to the whole history). The push uses a deploy key that can write only to
   `vimma-updates`, kept in the `update-publish` environment (deployment branch `main` alone),
   reached only by the push step, to a pinned github.com host key, and **never** forced; nothing is
   pushed unless `UPDATES_ENABLED` is `true`. **⚠ setting:** the environments' branch rules and the
@@ -2017,6 +2021,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`retries a transient failure, then reads the labels`](../tools/update/test/manifest.test.mjs),
   [`throws after four attempts that all fail, never answering no labels`](../tools/update/test/manifest.test.mjs),
   [`throws at once on a failure that is not transient`](../tools/update/test/manifest.test.mjs),
+  [`throws at once on %s instead of answering no labels`](../tools/update/test/manifest.test.mjs),
+  [`throws at once on %s instead of widening the range`](../tools/update/test/manifest.test.mjs),
   [`downloads the target's files and sums, and passes the target to manifest.mjs`](../tools/update/test/update-workflow.test.mjs),
   [`checks a macOS body against the macOS target, and refuses a Linux one there`](../tools/update/test/update-workflow.test.mjs),
   [`runs one manifest per target at a time, never cancelling one half done`](../tools/update/test/update-workflow.test.mjs),
