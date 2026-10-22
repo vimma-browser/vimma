@@ -1667,6 +1667,15 @@ neither needs another file.
      JSON
      ```
 
+   - The tap's check, `.github/workflows/check.yml` in the tap: `brew style` and an offline
+     `brew audit --cask --strict` on `macos-15`, on every pull request and every push to `main`,
+     as `tools/package/cask-check.sh` runs here. It is not a required check in the ruleset, so
+     `homebrew.yml`'s push lands first and the check then runs on it. When it fails on `main`,
+     the pushed cask came from a release: fix `tools/package/cask.mjs` here and ship a fixed
+     release, since `homebrew.yml` never replaces a newer cask with an older one. Its one action,
+     `Homebrew/actions/setup-homebrew`, is pinned by commit SHA with its tag in a comment, and
+     the tap has no Dependabot: bump it by hand from Homebrew's releases.
+
    - A key for the workflow only, with write access to the tap and nothing else:
 
      ```sh

@@ -1499,7 +1499,14 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   environment's only deployment policy is the branch `main`. **⚠ setting:** the tap's
   ruleset on `main` forbids deletion and force pushes and requires a pull request; deploy keys
   bypass it, so the workflow pushes directly, and admins bypass it only through a pull request
-  (docs/runbook.md, "Release packages", step 7). **⚠ limit:** the `.dmg` is ad hoc signed and not
+  (docs/runbook.md, "Release packages", step 7). The tap's own
+  [`check.yml`](https://github.com/vimma-browser/homebrew-tap/blob/main/.github/workflows/check.yml)
+  runs `brew style` and the same offline `brew audit --cask --strict` on the tap's pull requests
+  and on each push to its `main`, on a GitHub-hosted `macos-15` runner with a `contents: read`
+  token, no secret, no `pull_request_target` trigger and `Homebrew/actions/setup-homebrew` pinned
+  by commit SHA. A fork's pull request has its cask's Ruby loaded on that runner, which holds
+  nothing to steal. It is not a required check, so it never holds `homebrew.yml`'s push; it
+  reports a pushed cask that Homebrew would reject. **⚠ limit:** the `.dmg` is ad hoc signed and not
   notarised, so Gatekeeper cannot vouch for it; the cask's caveats tell users to choose Open Anyway
   in System Settings, and never to remove the quarantine flag.
   [`names the release dmg for the version and pins its sha256`](../tools/package/test/cask.test.mjs),
