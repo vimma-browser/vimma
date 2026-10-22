@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // What an agent's `vimma_elements` says of each element (docs/specs/mcp-forms.md F5, F6;
-// security.md M31). Runs in the content process, in VimmaChild, in the element's own frame.
-// Reads only: nothing here focuses, clicks or changes an element. The parent checks every field
-// again (core agent-element.mjs) and builds the list.
+// security.md M31), and what a `vimma_activate` click on one would reach (F9, F10, F15). Runs in
+// the content process, in VimmaChild, in the element's own frame. Reads only: nothing here
+// focuses, clicks or changes an element. The parent checks every field again (core
+// agent-element.mjs, agent-act.mjs) and builds the list.
 //
 // A field is sensitive, and its value is never read into the reply, when it is or was ever a
 // password field, when the page draws it as dots (`-webkit-text-security`), when its autocomplete
@@ -14,7 +15,7 @@
 // their machine-learning model). A failure of the heuristics makes every field of that form
 // sensitive: it refuses rather than fills.
 
-import { isSensitiveAutocomplete } from "../core/agent-element.mjs";
+import { isSensitiveAutocomplete, isSubmitControl } from "../core/agent-element.mjs";
 import { linkText } from "./hint-collect.mjs";
 
 const lazy = /** @type {any} */ ({});
@@ -265,4 +266,114 @@ export function describeAgentElements(els) {
     return info;
   });
   return { elements, forms };
+}
+
+/** Elements whose own click a surrounding `<label>` does not pass on to its control. */
+const INTERACTIVE = new Set(["a", "button", "input", "select", "textarea", "label"]);
+
+/**
+ * What a click on `el` would reach that an agent may not click (F9): a text-like field, a
+ * select, an editable root or a file field, else null.
+ * @param {Element | null | undefined} el
+ */
+function fieldOf(el) {
+  if (!el) return null;
+  const html = /** @type {any} */ (el);
+  if (el.localName === "input") {
+    if (html.type === "file") return "file";
+    if (NO_VALUE.has(html.type) || html.type === "hidden") return null;
+    return "text";
+  }
+  if (el.localName === "textarea") return "text";
+  if (el.localName === "select") return "select";
+  if (html.isContentEditable) return "editable";
+  return null;
+}
+
+/**
+ * The control a click on `el` also activates: a `<label>`'s, when `el` is the label or plain
+ * content inside it (a click on a label clicks or focuses its control).
+ * @param {Element} el
+ * @returns {Element | null}
+ */
+function labelledControl(el) {
+  const label = /** @type {any} */ (el.closest("label"));
+  if (!label?.control || label.control === el) return null;
+  if (el !== label && INTERACTIVE.has(el.localName)) return null;
+  return label.control;
+}
+
+/**
+ * How many fields a submission by `submitter` sends (F15): the form's enabled, named controls,
+ * checkboxes and radios only when checked, and of the buttons only the submitter.
+ * @param {any} form @param {any} submitter
+ */
+function fieldCount(form, submitter) {
+  let n = 0;
+  for (const el of form.elements) {
+    if (!el.name || el.matches(":disabled") || el.closest("datalist")) continue;
+    if (el.localName === "fieldset" || el.localName === "output" || el.localName === "object") {
+      continue;
+    }
+    if (el.localName === "button" || BUTTON_TYPES.has(el.type)) {
+      if (el === submitter) n++;
+    } else if (el.type === "checkbox" || el.type === "radio") {
+      if (el.checked) n++;
+    } else {
+      n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * The submit control a click on `el` presses, and its form: `el` itself, the button it is
+ * inside, or its label's control (F15).
+ * @param {Element} el
+ * @returns {{ submitter: any, form: any, method: string, action: string } | null}
+ */
+export function submitOf(el) {
+  const candidates = [el, el.closest("button"), labelledControl(el)];
+  for (const c of candidates) {
+    if (!c) continue;
+    const html = /** @type {any} */ (c);
+    if (!html?.form) continue;
+    const method = html.hasAttribute("formmethod") ? html.formMethod : html.form.method;
+    const control = { localName: c.localName, type: html.type, inForm: true, method };
+    if (!isSubmitControl(control)) continue;
+    // formAction is the document's URL when the button has no formaction of its own.
+    const action = html.hasAttribute("formaction") ? html.formAction : html.form.action;
+    return { submitter: html, form: html.form, method, action: String(action ?? "") };
+  }
+  return null;
+}
+
+/**
+ * The element now, as a click on it would find it (F4, F9, F10, F15), for core's
+ * `parseActTarget`: its kind and text, whether it is disabled, a field the click would reach,
+ * the link it would follow, and the form it would submit.
+ * @param {Element | null | undefined} el
+ * @returns {Record<string, unknown>}
+ */
+export function actTargetOf(el) {
+  if (!el?.isConnected) return { alive: false };
+  const html = /** @type {any} */ (el);
+  const kind = kindOf(el);
+  /** @type {Record<string, unknown>} */
+  const out = { alive: true, kind, text: cap(textOf(el, kind), TEXT) };
+  if (el.localName === "input" || el.localName === "button") out.type = cap(html.type, 32);
+  if (el.matches(":disabled")) out.disabled = true;
+  const field = fieldOf(el) ?? fieldOf(labelledControl(el));
+  if (field) out.field = field;
+  const link = /** @type {any} */ (el.closest("a[href], area[href]"));
+  if (link) out.href = cap(link.href, ACTION);
+  const submit = submitOf(el);
+  if (submit) {
+    out.submit = {
+      method: submit.method,
+      action: cap(submit.action, ACTION),
+      fields: fieldCount(submit.form, submit.submitter),
+    };
+  }
+  return out;
 }

@@ -294,6 +294,74 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
   });
 
+  // docs/specs/mcp-forms.md F28: vimma_activate asks with the tab and the element; a submit
+  // asks with the form's method and destination, offers no grant (F15) and names its fields.
+  test("vimma_activate: the element in the question, what it clicked in the notice", () => {
+    const activate = {
+      tool: "vimma_activate",
+      label: { client: "claude-code" },
+      what: {
+        tab: "7",
+        index: 2,
+        title: "List · Example",
+        url: "https://example.com/list",
+        label: "sg",
+        kind: "button",
+        text: "Add to list",
+      },
+    };
+    expect(text(questionLine(activate, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_activate: 2 "List · Example" example.com/list  sg button "Add to list"',
+    );
+    expect(noGrant(activate)).toBe(false);
+    expect(ranNotice(activate, 12 * MIN, 0)).toBe(
+      'claude-code clicked button "Add to list" in "List · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(activate)).toBe(
+      "claude-code asks to use Vimma's agent workspace (click on a page)",
+    );
+    const long = { ...activate, what: { ...activate.what, text: "x".repeat(100) } };
+    expect(text(questionLine(long, { grantMinutes: 10 }))).toMatch(/ sg button "x{59}…"$/);
+  });
+
+  test("a submit: method and host in bold, the field count, y or n only", () => {
+    const submit = {
+      tool: "vimma_activate",
+      label: { client: "claude-code" },
+      what: {
+        tab: "7",
+        index: 2,
+        title: "Sign up · Example",
+        url: "https://example.com/signup",
+        label: "sg",
+        kind: "button",
+        text: "Sign up",
+        submit: {
+          method: "post",
+          action: "https://example.com/api/signup",
+          host: "example.com",
+          fields: 3,
+        },
+      },
+    };
+    const line = questionLine(submit, { grantMinutes: 10 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)',
+    );
+    expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["POST", "example.com"]);
+    expect(line.hint).toBe("y submit once · n deny");
+    expect(noGrant(submit)).toBe(true);
+    expect(promptKey({ count: "" }, "a", { noGrant: noGrant(submit) })).toEqual({ kind: "ignore" });
+    expect(agentAlertText(submit)).toBe(
+      "claude-code asks to use Vimma's agent workspace (submit a form)",
+    );
+    const one = {
+      ...submit,
+      what: { ...submit.what, submit: { ...submit.what.submit, fields: 1 } },
+    };
+    expect(text(questionLine(one, { grantMinutes: 10 }))).toMatch(/\(1 field\)$/);
+  });
+
   test("denials and timeouts", () => {
     expect(deniedNotice(read, "user")).toBe("denied example-agent's vimma_read_page");
     expect(deniedNotice(read, "timeout")).toBe("agent request timed out (denied)");

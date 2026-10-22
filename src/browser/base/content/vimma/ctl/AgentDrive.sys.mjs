@@ -17,7 +17,8 @@
 // handler runs (M18). A link to another site is asked as a `vimma_open` of its URL first (D18).
 // `vimma_elements` (ctl/AgentAct.sys.mjs, docs/specs/mcp-forms.md F3) keeps its labels in the
 // same store, each list replacing the other; `f<label>` follows only a link from either, and from
-// an element list only while the link is still in the page (F4).
+// an element list only while the link is still in the page (F4). `vimma_activate` clicks only an
+// element of a `vimma_elements` list (`element`).
 
 import { AGENT_LINKS, agentLinkList, labelAgentLinks } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
@@ -237,6 +238,48 @@ export const AgentDrive = {
     let labels = sessions.get(conn);
     if (!labels) sessions.set(conn, (labels = new WeakMap()));
     labels.set(browser, { mark: pageMark(browser), at: Date.now(), source, byLabel });
+  },
+
+  /**
+   * The element a label of the connection's last `vimma_elements` on the page now in `browser`
+   * names (mcp-forms F3), for `vimma_activate`; or why there is none. Only a `vimma_elements`
+   * list's labels are clicked: it showed the agent each element's kind and details.
+   * @param {unknown} conn @param {Browser} browser @param {string} label
+   * @returns {{ target: import("../actors/VimmaActors.sys.mjs").HintTarget } | { refused: string }}
+   */
+  element(conn, browser, label) {
+    const session = sessions.get(conn)?.get(browser);
+    const ttl = this._linkTtlMs ?? AGENT_LINKS.ttlMs;
+    const now = pageMark(browser);
+    if (
+      !session ||
+      Date.now() - session.at >= ttl ||
+      now.doc !== session.mark.doc ||
+      now.url !== session.mark.url
+    ) {
+      return { refused: "stale labels: call vimma_elements again" };
+    }
+    if (session.source !== "elements") {
+      return {
+        refused:
+          "labels from f's link list are followed with vimma_keys: call vimma_elements to click",
+      };
+    }
+    const target = session.byLabel.get(label);
+    if (!target)
+      return { refused: `no element has the label "${label}": call vimma_elements again` };
+    if (target.bc.currentWindowGlobal !== target.wg) {
+      return { refused: "stale labels: call vimma_elements again" };
+    }
+    return { target };
+  },
+
+  /**
+   * Forgets the connection's labels for `browser`: its page moved on after a click.
+   * @param {unknown} conn @param {Browser} browser
+   */
+  drop(conn, browser) {
+    sessions.get(conn)?.delete(browser);
   },
 
   /**

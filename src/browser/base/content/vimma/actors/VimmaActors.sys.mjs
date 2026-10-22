@@ -6,6 +6,7 @@
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
 import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
+import { parseActTarget } from "../core/agent-act.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
 
@@ -142,6 +143,9 @@ export const VimmaActors = {
           mousedown: { capture: true, createActor: false },
           // A drag and drop's end is no mouse selection (m1-copy-mode).
           dragstart: { capture: true, createActor: false },
+          // A form submission an agent's click caused, unasked (docs/specs/mcp-forms.md F16):
+          // only a frame an agent stepped in has the actor and its mark.
+          DOMFormBeforeSubmit: { createActor: false },
         },
       },
       allFrames: true,
@@ -379,6 +383,85 @@ export const VimmaActors = {
     } catch {
       return false; // the frame navigated or its process went away
     }
+  },
+
+  /**
+   * What the element of a target from an agent's `vimma_elements` is now, just before a click
+   * (docs/specs/mcp-forms.md F4, F9, F10, F15), checked like any reply from a content process;
+   * `{ alive: false }` when it is gone, its frame shows another document or did not answer.
+   * @param {HintTarget} target
+   * @returns {Promise<import("../core/agent-act.mjs").ActTarget | null>} null: a malformed reply
+   */
+  async agentInspect(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return { alive: false };
+    try {
+      const raw = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "inspect",
+        gen: target.gen,
+        id: target.id,
+      });
+      return raw === undefined ? { alive: false } : parseActTarget(raw);
+    } catch {
+      return { alive: false }; // the frame navigated or its process went away
+    }
+  },
+
+  /**
+   * Clicks the element of a target from an agent's `vimma_elements` with the child's `click()`
+   * (docs/specs/mcp-forms.md F8; security.md M26), once the child has seen it is still what the
+   * user was asked about: a submit only when `submit`, and the same link. The child answers
+   * before it clicks, so a dialog the click opens never holds the reply.
+   * @param {HintTarget} target
+   * @param {{ submit: boolean, href: string | null }} asked
+   * @returns {Promise<"ok" | "gone" | "changed">}
+   */
+  async agentActivate(target, { submit, href }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "activate",
+        gen: target.gen,
+        id: target.id,
+        submit,
+        href,
+      });
+      return reply === "ok" || reply === "changed" ? reply : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * Tells every frame of the browser's page about an agent's step (docs/specs/mcp-forms.md F16;
+   * security.md M28). `mark`: an agent is about to act here, so a form the page submits from
+   * now on, before the user's own input, is cancelled. `settle`: the step is over; the frames
+   * forget which submission the user allowed, and answer with the hosts of those they stopped.
+   * @param {any} browser XULBrowserElement
+   * @param {"mark" | "settle"} op
+   * @returns {Promise<string[]>} the hosts of stopped submissions (`settle`)
+   */
+  async agentStep(browser, op) {
+    /** @type {any[]} */
+    let contexts;
+    try {
+      contexts = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
+    } catch {
+      return [];
+    }
+    const replies = await Promise.all(
+      contexts.map(async (bc) => {
+        try {
+          // getActor creates the actor where there is none yet, so its frame gets the event.
+          return await actorFor(bc)?.sendQuery("Vimma:AgentStep", { op });
+        } catch {
+          return null; // a frame without the actor (not a web page), or one that went away
+        }
+      }),
+    );
+    // From content processes: only short host strings are taken.
+    return replies
+      .flatMap((r) => (Array.isArray(r) ? r : []))
+      .filter((h) => typeof h === "string" && /^[A-Za-z0-9.\-[\]:]{1,253}$/.test(h));
   },
 
   /**

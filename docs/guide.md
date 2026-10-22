@@ -48,8 +48,8 @@ What works today, each with the section that explains it:
   uploads; Safe Browsing on.
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
   local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
-  open, scroll and search pages, follow their links, list their buttons and fields and show you
-  a page, and every request asks you first.
+  open, scroll and search pages, follow their links, list and click their buttons and show you
+  a page, and every request asks you first; a form they submit asks every time.
 
 ## Every key is yours
 
@@ -1307,7 +1307,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers seven tools:
+and output, connects to Vimma as an agent (never with full control), and offers eight tools:
 
 | Tool              | What the agent can do                                                                                    |
 | ----------------- | -------------------------------------------------------------------------------------------------------- |
@@ -1318,6 +1318,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_keys`      | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
 | `vimma_show`      | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
 | `vimma_elements`  | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
+| `vimma_activate`  | Click a button, link or checkbox from that list; a form it would send asks you every time.               |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1417,7 +1418,7 @@ with the rest of your computer.
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
-  `vimma_keys` calls, 30 `vimma_elements` calls and 6 `vimma_show` calls a minute, and a minute of silence after three noes
+  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and 6 `vimma_show` calls a minute, and a minute of silence after three noes
   in a row. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -1513,6 +1514,42 @@ focus and hint mode.
   `claude-code listed the buttons and fields of "Sign up · Example" (grant, 12m left)`. It is
   not a read grant: the list holds no page text beyond the elements' own. At most 30 calls a
   minute; each is in `:mcp log`.
+
+#### Clicking on a page
+
+`vimma_activate` lets an agent click an element of an agent tab by its label from
+`vimma_elements`: a button, a link to the same site, a checkbox, a radio button or another
+clickable element. The question names the tab and the element,
+`◇ claude-code wants vimma_activate: 2 "List · Example" example.com/list  sg button "Add to list"`,
+and on `y` the element is clicked in the background: the tab is not selected and nothing in it is
+focused. The agent gets the page after the click, whether a new page loaded, and any dialog the
+page opened.
+
+- **A plain click, no user activation.** The page gets the same click your `f` hints give it,
+  never a mouse press from the system. It therefore cannot do what needs a real gesture of yours
+  from that click: write or read the clipboard, use a passkey or a saved login, or ask for a
+  permission.
+- **What it does not click.** Text fields and selects (a click there would only move focus
+  into the page), file fields (a click would open a file chooser), disabled elements, links to
+  another site (the agent follows those with `vimma_keys`, which asks as an open of that site)
+  and links that are not web pages. These are refused before you are asked.
+- **A form submission asks every time**, also under a grant, with only `y` and `n`, naming where
+  the form goes and how many fields it sends:
+  `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)`.
+  A `y` sends that one form; it never makes a grant.
+- **A form the page sends by itself after an agent's click is stopped**: the agent is told
+  `the page tried to submit a form to example.com; Vimma stopped it`, and asks you properly by
+  clicking the form's submit button. Your own submissions in an agent tab, and those of a page
+  the agent has not touched, go through. A button whose script sends data without a form (with
+  `fetch`) cannot be told apart from any other button: under a `vimma_activate` grant the agent
+  can press it unasked, with a notice and a row in `:mcp log`.
+- **Agents cannot answer dialogs.** An `alert`, `confirm` or `prompt` the page opens waits in the
+  tab for you; the agent only learns its text, as untrusted content.
+- **A grant covers clicks** (not submissions): each shows
+  `claude-code clicked button "Add to list" in "List · Example" (grant, 12m left)`. A click that
+  loads a page counts as one of the 10 opens a minute, and no click is made while those are used
+  up. At most 30 clicks a minute, none while you are typing in the tab, and each is in
+  `:mcp log` with the element, a submission with its destination.
 
 #### Showing you a page
 

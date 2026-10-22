@@ -1,6 +1,6 @@
 # Spec: mcp-forms
 
-Status: accepted (sub-PR 1 of 6 built: `vimma_elements`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
+Status: accepted (sub-PRs 1 and 2 of 6 built: `vimma_elements`, `vimma_activate`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
 `agent-prompt.mjs`, `control.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
 `ctl/AgentAct.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`, `actors/agent-fields.mjs` new);
@@ -351,24 +351,31 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    reason: a text field, text area, select or editable root (`use vimma_fill`); a file field
    (it would open a file chooser for the user, and `setUserInput` from system code can set a
    file from a path, `HTMLInputElement.cpp:2533-2546`); a disabled control; a target in a page
-   that is not http or https (mcp-drive D12, "Web pages only"). A checkbox or radio is clicked,
-   which toggles it and fires its events as a user's click does.
+   that is not http or https (mcp-drive D12, "Web pages only"). Each counts when the click would
+   reach it through a `<label>` too, because a click on a label clicks or focuses its control. A
+   checkbox or radio is clicked, which toggles it and fires its events as a user's click does.
 10. **Links.** A link whose `href` is http or https on another site (registrable domain,
     mcp-drive D18) is refused with `that link goes to another site: follow it with vimma_keys`,
     because a cross-site follow is asked as a `vimma_open` there and a click must not be a way
     around that question. A same-site link, or one whose `href` is empty, `#…` or
     `javascript:`, is clicked, because single-page apps route such clicks in script and a load of
-    the href would miss that. A navigation the page's own script starts after a click is the
+    the href would miss that. A link with any other scheme (`mailto:`, an app's) is refused,
+    because it leaves the web pages of the agent workspace. A navigation the page's own script
+    starts after a click is the
     page's, as a redirect is; the result names where the tab ended up.
 11. **After the click.** Vimma waits up to 20 s for a load the click started (mcp-drive D13), then
-    returns `{ url, title, loading, navigated, dialog?, stopped? }`: `navigated` when the
-    top-level document changed, `dialog` when a tab-modal `alert`, `confirm` or `prompt` opened in
-    the tab (`common-dialog-loaded`), with its type and text (cut at 200, untrusted). Agents
+    returns `{ url, title, loading, navigated, dialog?, blocked?, stopped? }`: `navigated` when
+    the top-level document changed, `dialog` when a tab-modal `alert`, `confirm` or `prompt`
+    opened in the tab (`common-dialog-loaded`), with its type and text (cut at 200, untrusted),
+    `blocked` the host of a submission F16 stopped, and `stopped: "in-use"` when the user started
+    using the tab during the wait. A click that has started no load within a second is taken to
+    have none. Agents
     cannot answer dialogs: no tool does, because a `confirm` is often the page asking "are you
     sure", which is the user's to answer. The dialog waits in the tab until the user shows it.
     Every navigation an activation causes takes a slot of the open rate (`OPEN_RATE`), shared
     with `vimma_open` and follows, so that a granted click loop cannot load pages faster than
-    opens can.
+    opens can; while that rate is used up no click is made, because a click that loads cannot be
+    told from one that does not until it has run.
 
 ### D. Filling: `vimma_fill`
 

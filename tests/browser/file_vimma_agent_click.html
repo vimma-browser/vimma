@@ -1,0 +1,90 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_activate.js and browser_vimma_mcp_submit.js: what
+   - vimma_activate clicks and refuses. A button that adds to a list and records what the page saw
+   - of the click (trusted, user activation, a clipboard write); a button that asks confirm(); a
+   - same-site link and a link to another site; a text field, a select, a file field with its
+   - label, and a disabled button; a search form with a submit button; and buttons whose script
+   - submits a form by itself, at once and a moment later. Everything fits the test window. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Click agent fixture</title>
+    <style>
+      body {
+        margin: 4px;
+        font: 12px sans-serif;
+      }
+      form,
+      p {
+        margin: 2px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <p>
+      <button id="add" type="button">Add to list</button>
+      <button id="ask" type="button">Remove</button>
+      <span id="menu" role="button" tabindex="0">Menu</span>
+    </p>
+    <ul id="list"></ul>
+    <p>
+      <a id="same" href="file_vimma_agent_page.html?clicked">Same site</a>
+      <a id="other" href="https://example.org/">Other site</a>
+    </p>
+    <p>
+      <input id="field" name="field" aria-label="Field" />
+      <select id="pick" name="pick" aria-label="Pick">
+        <option>One</option>
+      </select>
+      <label id="upload-label" for="upload">Upload</label>
+      <input id="upload" name="upload" type="file" />
+      <button id="off" type="button" disabled>Off</button>
+    </p>
+    <form id="search" method="get" action="file_vimma_agent_page.html">
+      <input id="q" name="q" value="cats" aria-label="Query" />
+      <input type="hidden" name="from" value="fixture" />
+      <button id="go" type="submit">Search</button>
+    </form>
+    <form id="draft" method="post" action="file_vimma_agent_page.html?draft">
+      <input name="note" value="hello" aria-label="Note" />
+    </form>
+    <p>
+      <button id="save" type="button">Save draft</button>
+      <button id="later" type="button">Save later</button>
+    </p>
+    <script>
+      // What the page saw of each click, for the test to read.
+      window.seen = [];
+      document.getElementById("add").addEventListener("click", (e) => {
+        const item = document.createElement("li");
+        item.textContent = "added";
+        document.getElementById("list").append(item);
+        const saw = {
+          trusted: e.isTrusted,
+          active: navigator.userActivation.isActive,
+          beenActive: navigator.userActivation.hasBeenActive,
+          clipboard: "pending",
+        };
+        window.seen.push(saw);
+        navigator.clipboard.writeText("from the page").then(
+          () => (saw.clipboard = "written"),
+          () => (saw.clipboard = "refused"),
+        );
+      });
+      document.getElementById("ask").addEventListener("click", () => {
+        window.answer = confirm("Remove this item?");
+      });
+      document.getElementById("menu").addEventListener("click", () => {
+        document.title = "menu";
+      });
+      const draft = document.getElementById("draft");
+      document.getElementById("save").addEventListener("click", () => draft.submit());
+      document
+        .getElementById("later")
+        .addEventListener("click", () => setTimeout(() => draft.requestSubmit(), 300));
+    </script>
+  </body>
+</html>

@@ -10,6 +10,8 @@
  */
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./agent.mjs";
+import { isAgentLabel } from "./agent-act.mjs";
+import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
 
@@ -30,7 +32,8 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
  * `notifications/cancelled`). `agent-keys` runs Vimma's own page keys in an agent tab, and
  * `agent-show` brings the agent workspace to the front with one agent tab selected
  * (docs/specs/mcp-drive.md D2, D8, D19). `agent-elements` lists an agent tab's buttons, fields
- * and links with hint labels (docs/specs/mcp-forms.md F2).
+ * and links with hint labels (docs/specs/mcp-forms.md F2), and `agent-activate` clicks one by its
+ * label (F8).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -43,7 +46,12 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-keys",
   "agent-show",
   "agent-elements",
+  "agent-activate",
 ]);
+/** Why `agent-activate`'s wait after the click stopped early (mcp-forms F27). */
+export const ACTIVATE_STOPS = Object.freeze(["in-use"]);
+/** The page dialogs `agent-activate` reports (mcp-forms F11). */
+export const DIALOG_TYPES = Object.freeze(["alert", "confirm", "prompt"]);
 /**
  * Why an agent request was `denied` (vimma-mcp decision 4). `in-use`: the user is typing in that
  * tab, or a key sequence or hint mode is under way there (mcp-drive D13).
@@ -323,6 +331,15 @@ function checkAgentKeysArgs(args, errors) {
   } else if (KEYS_CONTROL.test(keys)) errors.push("keys must not contain control characters");
 }
 
+/** @param {Obj} args @param {string[]} errors */
+function checkAgentActivateArgs(args, errors) {
+  noExtraFields(args, ["tab", "label"], errors, "args.");
+  checkTabArg(args, errors);
+  if (!isAgentLabel(args.label)) {
+    errors.push(`label must be 1 to 3 of the hint characters ${DEFAULT_HINT_CHARS}`);
+  }
+}
+
 /** @param {Obj} m @param {string[]} errors */
 function checkRequest(m, errors) {
   noExtraFields(m, ["type", "id", "command", "args"], errors);
@@ -341,6 +358,7 @@ function checkRequest(m, errors) {
   else if (command === "agent-read") checkAgentReadArgs(args, errors);
   else if (command === "agent-open") checkAgentOpenArgs(args, errors);
   else if (command === "agent-keys") checkAgentKeysArgs(args, errors);
+  else if (command === "agent-activate") checkAgentActivateArgs(args, errors);
   else if (command === "agent-close" || command === "agent-show" || command === "agent-elements") {
     // A show names its tab only, never a workspace (mcp-drive D2); a list takes no selector.
     noExtraFields(args, ["tab"], errors, "args.");
@@ -402,6 +420,49 @@ function checkElementsResult(result, errors) {
     errors.push("result.elements must be inside the untrusted-content delimiters");
   }
   if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+}
+
+/** A host name: letters, digits, dots, hyphens and the brackets and colons of an IPv6 address. */
+const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
+
+/**
+ * `agent-activate`'s result (mcp-forms F11, F16): the page after the click, a dialog it opened
+ * with its text inside the untrusted-content delimiters, the host of a submission Vimma stopped,
+ * and why the wait stopped early.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkActivateResult(result, errors) {
+  noExtraFields(
+    result,
+    ["url", "title", "loading", "navigated", "dialog", "blocked", "stopped"],
+    errors,
+    "result.",
+  );
+  checkFields(
+    result,
+    "result",
+    { strings: ["url", "title"], flags: ["loading", "navigated"] },
+    errors,
+  );
+  if ("dialog" in result) {
+    const d = result.dialog;
+    if (!isObject(d)) errors.push("result.dialog must be an object");
+    else {
+      noExtraFields(d, ["type", "text"], errors, "result.dialog.");
+      if (!DIALOG_TYPES.includes(/** @type {any} */ (d.type))) {
+        errors.push(`result.dialog.type must be one of ${DIALOG_TYPES.join(", ")}`);
+      }
+      if (!insideDelimiters(d.text)) {
+        errors.push("result.dialog.text must be inside the untrusted-content delimiters");
+      }
+    }
+  }
+  if ("blocked" in result && !(typeof result.blocked === "string" && HOST.test(result.blocked))) {
+    errors.push("result.blocked must be a host");
+  }
+  if ("stopped" in result && !ACTIVATE_STOPS.includes(/** @type {any} */ (result.stopped))) {
+    errors.push(`result.stopped must be ${ACTIVATE_STOPS.join(" or ")}`);
+  }
 }
 
 /**
@@ -497,6 +558,8 @@ function checkAgentResult(result, command, errors) {
     checkKeysResult(result, errors);
   } else if (command === "agent-elements") {
     checkElementsResult(result, errors);
+  } else if (command === "agent-activate") {
+    checkActivateResult(result, errors);
   }
 }
 

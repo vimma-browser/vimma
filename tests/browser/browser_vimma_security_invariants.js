@@ -142,3 +142,27 @@ add_task(async function agent_keys_never_reach_the_prefix_the_command_line_or_mc
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   await VimmaControl.settled();
 });
+
+// docs/specs/mcp-forms.md F8 (security.md M26): an agent's click is the child's click(), so the
+// code the agent role reaches never synthesises input through nsIDOMWindowUtils or the widget,
+// and never gives a page user activation. Comments are left out: they may name what is avoided.
+add_task(async function agent_clicks_never_synthesise_input_or_user_activation() {
+  const base = "chrome://browser/content/vimma/";
+  const files = [
+    "ctl/agent-commands.mjs",
+    "ctl/AgentAct.sys.mjs",
+    "ctl/AgentDrive.sys.mjs",
+    "actors/VimmaActors.sys.mjs",
+    "actors/VimmaChild.sys.mjs",
+    "actors/agent-fields.mjs",
+    "actors/hint-collect.mjs",
+  ];
+  const forbidden =
+    /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b|\bconsumeTransientUserGestureActivation\b/g;
+  for (const file of files) {
+    const source = await (await fetch(base + file)).text();
+    Assert.greater(source.length, 0, `${file} is read`);
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+    Assert.deepEqual(code.match(forbidden) ?? [], [], `${file} synthesises no input (M26)`);
+  }
+});

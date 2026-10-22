@@ -698,8 +698,9 @@ M17, M20, M23), following its links by hint label (M18, M21), `vimma_show` (the 
 brought to the front with one agent tab selected: M19, M20) and full control's wording while MCP
 is on (M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements` (an agent
 tab's buttons, fields and links listed with hint labels, sensitive values left out: M25, M31,
-M32), in force; its clicks, form filling, screenshots and console output enter this page with
-the sub-PRs that build them.
+M32) and `vimma_activate` (a click on one of them, with no user activation, every form
+submission asked: M25, M26, M28, M29, M32), in force; its form filling, screenshots and console
+output enter this page with the sub-PRs that build them.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
@@ -1041,14 +1042,67 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   a list never cancels the user's hint mode in the same window and never takes the user's targets
   from the page; its labels replace the connection's last `f` on that tab and live by M18's
   rules, and `f<label>` follows only a link from the list, as a load (M18), and only while the
-  link is still in its document. The clicks, fills, screenshots and console reads of mcp-forms
-  join this rule with the sub-PRs that build them.
+  link is still in its document. `agent-activate` (F8-F11) is held the same way: it clicks only
+  an element of the connection's current `vimma_elements` list, on an http or https page, with
+  the tab never selected and the element never focused, and it is denied as `in-use` while you
+  are using the tab, before the question and after the yes. The fills, screenshots and console
+  reads of mcp-forms join this rule with the sub-PRs that build them.
   [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_only_on_web_pages_and_agent_tabs`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_agent_labels_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_f_follows_only_links_from_an_elements_list`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_labels_of_a_gone_element_are_refused`](../tests/browser/browser_vimma_mcp_elements.js),
-  [`agent-elements: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs)
+  [`agent-elements: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`test_activate_clicks_a_button_in_a_background_tab`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_activate_in_use_while_the_user_types`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_activate_follows_a_same_site_link_as_an_open`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`agent-activate: a tab and a label of hint characters, nothing else`](../packages/vimma-core/test/control-v2.test.mjs)
+- M26. An agent's click (`agent-activate`, mcp-forms F8) **must** be the frame's child calling
+  the element's `click()` after the same untrusted `mouseover`, `mousedown` and `mouseup` your
+  `f` hints send, with no event through `nsIDOMWindowUtils` or the widget, so the page gets no
+  transient user activation: it cannot write or read the clipboard, use credentials or passkeys,
+  or start anything else that needs a real gesture. Vimma **never** gives an agent tab's
+  document user activation. Before the click the child checks again that the element is still
+  the one asked about (not a field, not disabled, a submit only if asked as one, the same link);
+  it answers before it clicks, so a dialog the click opens never holds the call, and a dialog's
+  text reaches the agent only inside the untrusted-content delimiters. No tool answers a page
+  dialog.
+  [`test_activate_gives_the_page_no_user_activation`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`agent_clicks_never_synthesise_input_or_user_activation`](../tests/browser/browser_vimma_security_invariants.js),
+  [`test_activate_reports_a_dialog`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`agent-activate: the page after the click, a dialog, a stopped submission`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`activate_says_what_the_click_did`](../tools/vimma-ctl/src/mcp.rs)
+- M28. A click that submits a form (a submit button or a submit or image input in a form whose
+  method is not `dialog`, the element itself, the button it is in or its label's control)
+  **must** ask every time, also under a `vimma_activate` grant, with only `y` and `n`, naming
+  the form's method, destination and the number of fields it sends; its yes **never** makes a
+  grant. Before every click each frame of the tab is marked, and a navigating submission there
+  (the chrome-only `DOMFormBeforeSubmit`, which a page's `submit()` and `requestSubmit()` pass
+  too) **must** be cancelled while you have given no input in that document since, unless it is
+  the form the question allowed, during that call; the result and `:mcp log` name the host it
+  was going to. Your own submissions in an agent tab, also through your `f` hints, and those of
+  a page no agent stepped in, are untouched. A frame the page creates after the click is not
+  marked, and data a button's script sends with `fetch` is no form submission: such a button is
+  an ordinary click (mcp-forms F17).
+  [`test_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_page_script_submit_after_a_click_is_cancelled`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_users_own_submit_in_an_agent_tab_goes_through`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_a_page_submitting_with_no_agent_step_is_untouched`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`vimma_activate can be granted; a submit asks under that grant and makes none`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a submit: method and host in bold, the field count, y or n only`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a submit button, a submit or image input in a form is a submit`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a plain button, a reset, one outside a form or one closing a dialog is not`](../packages/vimma-core/test/agent-act.test.mjs)
+- M29. `agent-activate` **must** refuse, before anything is asked, a link to another site than
+  the tab's (by registrable domain, mcp-drive D18; the agent follows it with `vimma_keys`, which
+  asks as `vimma_open`), a link that is not http, https or `javascript:`, a text field, a select,
+  an editable root, a file field (also through its `<label>`), a disabled control and a label
+  of `f`'s link list. A click that loads a page takes a slot of the open rate (M3), and no click
+  is made while that rate is used up.
+  [`test_activate_refuses_fields_files_disabled_and_other_sites`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`a gone element, a field, a select, a file field, a disabled control are refused`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a link to another site is refused: vimma_keys follows it (M29)`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a link to something other than a web page is refused`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`anything malformed or over its cap is refused`](../packages/vimma-core/test/agent-act.test.mjs)
 - M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,
   wrapped by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the
   protocol validator **must** refuse a list that is not, or that holds a second delimiter. At
@@ -1083,14 +1137,19 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`elements past the byte budget are left out and counted; their forms too`](../packages/vimma-core/test/agent-act.test.mjs),
   [`agent-elements: the page, its list inside the untrusted delimiters, how many dropped`](../packages/vimma-core/test/control-v2.test.mjs),
   [`elements_list_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
-- M32. More than 30 `agent-elements` calls of one connection a minute (mcp-forms F26), counted
-  when asked and before the question, **must** be denied as `busy`, so a grant cannot flood a
-  page and a refused call cannot loop; every call, asked, under a grant or denied, **must** be in
-  `:mcp log` (M23), and a call under a grant shows a notice naming the page. The rates of
-  clicks, fills, screenshots and console reads join this rule with their sub-PRs.
+- M32. More than 30 `agent-elements` calls, or 30 `agent-activate` calls, of one connection a
+  minute (mcp-forms F26), counted when asked and before the question, **must** be denied as
+  `busy`, so a grant cannot flood a page and a refused call cannot loop; every call, asked, under
+  a grant or denied, **must** be in `:mcp log` (M23), a click with its element and a submission
+  with its destination, and a call under a grant shows a notice naming the page (and for a
+  click, the element). The rates of fills, screenshots and console reads join this rule with
+  their sub-PRs.
   [`at most 30 agent-elements per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_elements_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_elements.js),
-  [`vimma_elements: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
+  [`vimma_elements: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`at most 30 agent-activate per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_activate_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`vimma_activate: the element in the question, what it clicked in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 

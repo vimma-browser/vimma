@@ -6,7 +6,12 @@ import { describe, expect, test } from "vitest";
 import {
   AGENT_ELEMENTS,
   ELEMENT_KINDS,
+  actDetail,
+  actRefusal,
   agentElementList,
+  isAgentLabel,
+  isSubmitControl,
+  parseActTarget,
   isSensitiveAutocomplete,
   labelAgentElements,
   parseAgentElement,
@@ -365,5 +370,152 @@ describe("the element list (F5; security.md M31)", () => {
     const lines = list.text.split("\n").map((l) => JSON.parse(l));
     expect(lines.filter((l) => "action" in l)).toHaveLength(64);
     expect(lines.filter((l) => "label" in l && !("form" in l))).toHaveLength(6);
+  });
+});
+
+// docs/specs/mcp-forms.md, sub-PR 2: `vimma_activate` clicks an element by its label (F8-F11,
+// F15; security.md M26, M28, M29). The label is checked before anything is asked, the child's
+// account of the element now is checked like any reply from a content process, and what it
+// will not click is refused, naming the label and the reason.
+describe("labels an activation takes (F3)", () => {
+  test("one to three of the default hint characters", () => {
+    for (const label of ["a", "sd", "lll"]) expect(isAgentLabel(label), label).toBe(true);
+    for (const label of ["", "x", "SD", "asdf", "s d", 1, null, undefined, "ä"]) {
+      expect(isAgentLabel(label), String(label)).toBe(false);
+    }
+  });
+});
+
+describe("submit controls (F15)", () => {
+  test("a submit button, a submit or image input in a form is a submit", () => {
+    expect(isSubmitControl({ localName: "button", type: "submit", inForm: true })).toBe(true);
+    expect(isSubmitControl({ localName: "input", type: "submit", inForm: true })).toBe(true);
+    expect(isSubmitControl({ localName: "input", type: "image", inForm: true })).toBe(true);
+  });
+
+  test("a plain button, a reset, one outside a form or one closing a dialog is not", () => {
+    expect(isSubmitControl({ localName: "button", type: "button", inForm: true })).toBe(false);
+    expect(isSubmitControl({ localName: "button", type: "reset", inForm: true })).toBe(false);
+    expect(isSubmitControl({ localName: "input", type: "checkbox", inForm: true })).toBe(false);
+    expect(isSubmitControl({ localName: "button", type: "submit", inForm: false })).toBe(false);
+    expect(isSubmitControl({ localName: "a", type: "submit", inForm: true })).toBe(false);
+    expect(
+      isSubmitControl({ localName: "button", type: "submit", inForm: true, method: "dialog" }),
+    ).toBe(false);
+  });
+});
+
+describe("the child's account of an element before a click (F4, F9, F15)", () => {
+  const button = { alive: true, kind: "button", text: "Add to list" };
+
+  test("a known shape comes back as a fresh copy with only its fields", () => {
+    const raw = {
+      ...button,
+      type: "submit",
+      href: "https://example.com/next",
+      submit: { method: "post", action: "https://example.com/api/signup", fields: 3 },
+      extra: 1,
+    };
+    const t = parseActTarget(raw);
+    expect(t).toEqual({
+      alive: true,
+      kind: "button",
+      text: "Add to list",
+      type: "submit",
+      href: "https://example.com/next",
+      submit: { method: "post", action: "https://example.com/api/signup", fields: 3 },
+    });
+    expect(t).not.toBe(raw);
+    expect(parseActTarget({ alive: false })).toEqual({ alive: false });
+  });
+
+  test("anything malformed or over its cap is refused", () => {
+    for (const bad of [
+      null,
+      [],
+      "x",
+      { ...button, alive: "yes" },
+      { ...button, kind: "teleport" },
+      { ...button, text: "x".repeat(513) },
+      { ...button, field: "password" },
+      { ...button, disabled: 1 },
+      { ...button, href: 5 },
+      { ...button, href: "x".repeat(8193) },
+      { ...button, submit: { method: "put", action: "https://a/", fields: 1 } },
+      { ...button, submit: { method: "post", action: 1, fields: 1 } },
+      { ...button, submit: { method: "post", action: "https://a/", fields: -1 } },
+      { ...button, submit: { method: "post", action: "https://a/", fields: 1.5 } },
+    ]) {
+      expect(parseActTarget(bad), JSON.stringify(bad)).toBe(null);
+    }
+  });
+});
+
+describe("what a click refuses (F4, F9, F10)", () => {
+  const button = { alive: true, kind: "button", text: "Add to list" };
+  const ok = { crossSite: false };
+
+  test("a button, a checkbox, a radio and a same-site link are clicked", () => {
+    expect(actRefusal("sg", button, ok)).toBe(null);
+    expect(actRefusal("sg", { alive: true, kind: "checkbox", text: "" }, ok)).toBe(null);
+    expect(actRefusal("sg", { alive: true, kind: "radio", text: "" }, ok)).toBe(null);
+    const link = { alive: true, kind: "link", text: "Plans", href: "https://example.com/p" };
+    expect(actRefusal("sg", link, ok)).toBe(null);
+  });
+
+  test("a gone element, a field, a select, a file field, a disabled control are refused", () => {
+    expect(actRefusal("sg", { alive: false }, ok)).toBe(
+      "that element is gone: call vimma_elements again",
+    );
+    expect(actRefusal("sd", { alive: true, kind: "field", text: "", field: "text" }, ok)).toBe(
+      'label "sd" is a field: use vimma_fill',
+    );
+    expect(actRefusal("sd", { alive: true, kind: "click", text: "", field: "editable" }, ok)).toBe(
+      'label "sd" is a field: use vimma_fill',
+    );
+    expect(actRefusal("sd", { alive: true, kind: "select", text: "", field: "select" }, ok)).toBe(
+      'label "sd" is a select: use vimma_fill',
+    );
+    expect(actRefusal("sd", { alive: true, kind: "field", text: "", field: "file" }, ok)).toBe(
+      'label "sd" is a file field; Vimma never clicks it: ask the user to choose the file',
+    );
+    // A label of a file field opens its file chooser just the same.
+    expect(actRefusal("sd", { alive: true, kind: "click", text: "", field: "file" }, ok)).toBe(
+      'label "sd" is a file field; Vimma never clicks it: ask the user to choose the file',
+    );
+    expect(actRefusal("sd", { ...button, disabled: true }, ok)).toBe('label "sd" is disabled');
+  });
+
+  test("a link to something other than a web page is refused", () => {
+    const mail = { alive: true, kind: "link", text: "Mail", href: "mailto:a@example.com" };
+    expect(actRefusal("sg", mail, { crossSite: false, otherScheme: true })).toBe(
+      "that link does not go to a web page; Vimma does not click it",
+    );
+  });
+
+  test("a link to another site is refused: vimma_keys follows it (M29)", () => {
+    const link = { alive: true, kind: "link", text: "Elsewhere", href: "https://example.org/" };
+    expect(actRefusal("sg", link, { crossSite: true })).toBe(
+      "that link goes to another site: follow it with vimma_keys",
+    );
+  });
+});
+
+describe("what a click says it does (F28)", () => {
+  test("the label, the kind and the text; a submit names where it sends", () => {
+    expect(actDetail("sg", { alive: true, kind: "button", text: "Add to list" })).toBe(
+      'sg button "Add to list"',
+    );
+    expect(
+      actDetail("sg", {
+        alive: true,
+        kind: "button",
+        text: "Sign up",
+        submit: { method: "post", action: "https://example.com/api/signup", fields: 3 },
+      }),
+    ).toBe('sg button "Sign up" → POST https://example.com/api/signup (3 fields)');
+    expect(actDetail("a", { alive: true, kind: "click", text: "x".repeat(100) })).toBe(
+      `a click "${"x".repeat(79)}…"`,
+    );
   });
 });
