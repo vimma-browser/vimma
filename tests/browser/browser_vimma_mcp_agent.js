@@ -782,7 +782,15 @@ add_task(async function test_the_older_client_notice_waits_for_the_question_line
   await new Promise((r) => setTimeout(r, 1000));
   Assert.ok(!noticeText().includes("is older than"), "no notice over the waiting question");
   AgentGate.answer(q.id, { kind: "once" });
+  // A notice of what the agent did, shown just before the held one is due (1.6 s after the line
+  // frees), is never cut short: it stays its 1.5 s, and the held one follows.
+  const did = new Promise((r) => setTimeout(r, 1200)).then(() =>
+    AgentGate.notify("the agent did something"),
+  );
   Assert.equal((await tabs).ok, true, "the older client's call runs");
+  await did;
+  await new Promise((r) => setTimeout(r, 800));
+  Assert.equal(noticeText(), "the agent did something", "the held notice waits for it");
   await until(
     () => noticeText().startsWith("vimma-ctl 0.0.1 is older than Vimma"),
     "the notice once the line is free",

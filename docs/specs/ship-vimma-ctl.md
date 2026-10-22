@@ -127,8 +127,9 @@ that it cannot click or fill, although the browser can.
    connection, cannot keep the notice line from the notices of what its grants ran. The
    connection opens at the agent's first call, whose question follows the hello at once, and a
    notice shown then would cover the question's answer keys; so `AgentGate.notify` marks it
-   `hold`, and `host/agent-ui.mjs` shows it 1.6 s after no question waits (after an answer's own
-   1.5 s notice), for 6 s, as long as an update announcement stays.
+   `hold`, and `host/agent-ui.mjs` shows it once no question has waited for 1.6 s and no other
+   notice is on screen, so it never cuts short an answer's notice or one of what a grant ran,
+   for 6 s, as long as an update announcement stays.
 10. **The discovery file names Vimma's version.** `vimma-ctl mcp` reads it before `initialize`
     answers, so the server instructions can already say the client is older; the version is no
     secret, since the `welcome` and `vimma --version` give it too.

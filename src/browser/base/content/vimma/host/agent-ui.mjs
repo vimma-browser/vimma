@@ -60,6 +60,7 @@ const HELD_MS = 6000;
  * @property {() => boolean} otherOpen  a picker, prompt, panel or the command line is open
  * @property {() => boolean} pending  a key sequence is under way (after ctrl+b)
  * @property {(text: string, ms?: number) => void} notice  `ms`: how long it stays
+ * @property {() => boolean} noticeOpen  a notice is on screen
  * @property {(question: string, yes: () => void) => void} ask  a y/N on the prompt line
  * @property {() => void} emit  redraw the status bar
  */
@@ -78,6 +79,8 @@ let tick = /** @type {any} */ (null);
 /** A notice that waits until no question waits, and its timer. @type {string | null} */
 let held = null;
 let heldTimer = /** @type {any} */ (null);
+/** Since when no question has waited (0 while one waits). */
+let freeSince = 0;
 let listening = false;
 
 /** The window that asks: the most recent normal (non-private) browser window. */
@@ -178,6 +181,8 @@ function sync() {
       sync();
     }, POLL_MS);
   }
+  if (head) freeSince = 0;
+  else freeSince ||= Date.now();
   if (held !== null) {
     heldTimer ??= lazy.setTimeout(showHeld, HELD_DELAY_MS);
   }
@@ -190,13 +195,21 @@ function sync() {
   redraw();
 }
 
-/** The held notice, once no question waits; otherwise the next sync() tries again. */
+/**
+ * The held notice, once no question has waited for HELD_DELAY_MS and no other notice is on
+ * screen, so it never cuts short the notice of what an agent just did; until then, it tries
+ * again.
+ */
 function showHeld() {
   heldTimer = null;
   if (held === null || AgentGate.waiting.length) return;
   const win = askingWindow();
   const w = win && windows.get(win);
-  if (!w) return;
+  const wait = freeSince ? freeSince + HELD_DELAY_MS - Date.now() : HELD_DELAY_MS;
+  if (!w || wait > 0 || w.noticeOpen()) {
+    heldTimer = lazy.setTimeout(showHeld, Math.max(wait, POLL_MS));
+    return;
+  }
   w.notice(held, HELD_MS);
   held = null;
 }
