@@ -75,6 +75,8 @@ let forced = false;
 const addresses = new WeakMap();
 /** @type {WeakMap<Window, Promise<string | null>>} */
 let resolving = new WeakMap();
+/** Whether a switch waits on the naming in `resolving`. @type {WeakMap<Window, { waited: boolean }>} */
+let waiters = new WeakMap();
 /** Bumped by a reset: a naming begun before it ends without an address. */
 let naming = 0;
 /** @type {Map<string, WeakRef<Window>>} */
@@ -110,10 +112,13 @@ function logOnce(text, kind = text) {
  */
 export const NAME_MS = 2000;
 /**
- * A naming gave up since config.toml was last read: later ones wait only REPLY_MS, so a
- * Hyprland that does not name windows does not hold every switch for NAME_MS.
+ * A naming a switch waited on gave up, and none has succeeded since (nor was config.toml read):
+ * later ones wait only REPLY_MS, so a Hyprland that does not name windows does not hold every
+ * switch for NAME_MS. A naming no switch waits on (at startup, from track) never sets it.
  */
 let unnamed = false;
+/** Bumped by every switch (enter, show): a switch still naming when another began is dropped. */
+let switches = 0;
 
 /** What a switch says when Hyprland never named a Vimma window (decision 7). */
 const NOT_NAMED = "private: Hyprland did not name the Vimma window; showing it as a window";
@@ -271,13 +276,19 @@ function onLine(line) {
  * The window's Hyprland address, learnt once: it carries a random title until Hyprland's event
  * names it, then its own title again (decision 5).
  * @param {Window} win
+ * @param {boolean} [waited]  a switch waits on it: only then does a give-up shorten later waits
  * @returns {Promise<string | null>}
  */
-function addressOf(win) {
+function addressOf(win, waited = false) {
   const known = addresses.get(win);
   if (known) return Promise.resolve(known);
   const running_ = resolving.get(win);
-  if (running_) return running_;
+  if (running_) {
+    const job = waiters.get(win);
+    if (job && waited) job.waited = true;
+    return running_;
+  }
+  const job = { waited };
   const promise = (async () => {
     const at = naming;
     if (!(await startedUp(win)) || !(await detect()) || at !== naming) return null;
@@ -307,11 +318,23 @@ function addressOf(win) {
       } catch {
         address = null;
       }
-      // A busy machine names a starting window late: wait for the event up to NAME_MS.
-      if (!address && at === naming && !unnamed) {
+      // A busy machine names a starting window late: wait for the event up to NAME_MS, then
+      // look in j/clients again, as socket2 does not replay an event sent before we listened.
+      if (!address && at === naming && !(unnamed && job.waited)) {
         address = await Promise.race([heard, after(Math.max(0, NAME_MS - REPLY_MS))]);
+        if (!address && at === naming) {
+          try {
+            address = findNonce(
+              await HyprIpc.request(QUERY_CLIENTS),
+              nonce,
+              Services.appinfo.processID,
+            );
+          } catch {
+            address = null;
+          }
+        }
       }
-      if (!address && at === naming && !win.closed) unnamed = true;
+      if (!address && at === naming && !win.closed && job.waited) unnamed = true;
     }
     nonces.delete(nonce);
     if (at !== naming) address = null;
@@ -320,12 +343,18 @@ function addressOf(win) {
     if (address && !win.closed) {
       addresses.set(win, address);
       byAddress.set(address, new WeakRef(win));
+      unnamed = false;
     }
     return address;
   })();
   const pending = resolving;
+  const jobs = waiters;
   pending.set(win, promise);
-  promise.finally(() => pending.delete(win));
+  jobs.set(win, job);
+  promise.finally(() => {
+    pending.delete(win);
+    jobs.delete(win);
+  });
   return promise;
 }
 
@@ -550,8 +579,11 @@ export const PrivateSwap = {
    */
   enter(from, priv, fresh) {
     if (!wanted()) return false;
+    const mine = ++switches;
     (async () => {
-      const [normal, p] = await Promise.all([addressOf(from), addressOf(priv)]);
+      const [normal, p] = await Promise.all([addressOf(from, true), addressOf(priv, true)]);
+      // The user switched again meanwhile (back to normal): this swap would park it under them.
+      if (mine !== switches) return;
       if (!normal || !p) {
         // Hyprland is there but did not name a window: never silent (decision 7).
         if (wm.state === "ok" && !from.closed && !priv.closed) {
@@ -580,6 +612,7 @@ export const PrivateSwap = {
    * @returns {boolean}
    */
   show(win) {
+    switches++;
     if (pair?.parked !== "normal") return false;
     const back = pair.normal;
     step({ type: "leave" }).then((ok) => {
@@ -613,6 +646,11 @@ export const PrivateSwap = {
     }
   },
 
+  /** Tests: whether namings wait only REPLY_MS. */
+  get _unnamed() {
+    return unnamed;
+  },
+
   /** Tests: the pair, as addresses. */
   get _pair() {
     return pair;
@@ -644,6 +682,7 @@ export const PrivateSwap = {
     for (const resolve of nonces.values()) resolve(null);
     nonces.clear();
     resolving = new WeakMap();
+    waiters = new WeakMap();
     byAddress.clear();
     records.clear();
     for (const win of windows) addresses.delete(win);

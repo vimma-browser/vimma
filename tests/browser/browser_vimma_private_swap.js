@@ -11,6 +11,11 @@
 
 "use strict";
 
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+// The file took 24 to 47 s on the hosted macOS runner, around the harness's 45 s limit, and
+// several tasks wait out NAME_MS on purpose: about 30 s on a laptop since they were added.
+requestLongerTimeout(2);
+
 const { NAME_MS, PrivateSwap } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/private-swap.mjs",
 );
@@ -92,16 +97,23 @@ function shortDir() {
 class FakeHypr {
   /**
    * @param {{ mode?: "lua" | "silent" | "errors" | "hangup" | "open-on-nonce" | "nameless",
-   *   delayMoves?: number, delayNames?: number }} [options]  hangup: closes every request
-   *   unanswered; open-on-nonce: a window is announced only by openwindow, with its nonce title,
-   *   and j/clients never shows that title; nameless: a nonce title never reaches Hyprland (its
-   *   events and j/clients show "Vimma" instead); delayMoves: movewindowv2 comes this many ms
-   *   late; delayNames: open-on-nonce's openwindow comes this many ms late, as on a busy machine
+   *   delayMoves?: number, delayNames?: number, dropNames?: number, listAfter?: number }}
+   *   [options]  hangup: closes every request unanswered; open-on-nonce: a window is announced
+   *   only by openwindow, with its nonce title, and j/clients never shows that title (unless
+   *   listAfter); nameless: a nonce title never reaches Hyprland (its events and j/clients show
+   *   "Vimma" instead); delayMoves: movewindowv2 comes this many ms late; delayNames:
+   *   open-on-nonce's openwindow comes this many ms late, as on a busy machine; dropNames: that
+   *   many of those openwindow events are lost; listAfter: j/clients shows a title once it has
+   *   been the window's title this many ms, as Hyprland does once the title reaches it
    */
-  constructor({ mode = "lua", delayMoves = 0, delayNames = 0 } = {}) {
+  constructor({ mode = "lua", delayMoves = 0, delayNames = 0, dropNames = 0, listAfter = 0 } = {}) {
     this.mode = mode;
     this.delayMoves = delayMoves;
     this.delayNames = delayNames;
+    this.dropNames = dropNames;
+    this.listAfter = listAfter;
+    /** When each window's title last changed. @type {Map<string, number>} */
+    this.titledAt = new Map();
     this.reqAccepts = 0;
     this.evAccepts = 0;
     /** What j/activeworkspace answers. */
@@ -262,15 +274,13 @@ class FakeHypr {
       const nameless = this.mode === "nameless" && /^vimma-[0-9a-f]{32}$/.test(real);
       const title = nameless ? "Vimma" : real;
       if (this.titles.get(a) !== title) {
-        // open-on-nonce announces a nonce once and j/clients never shows it, so a line sent
-        // before the event socket is accepted could never be recovered: wait for a listener.
-        const once = this.mode === "open-on-nonce" && /^vimma-[0-9a-f]{32}$/.test(title);
-        if (once && !this.events.length) continue;
         this.titles.set(a, title);
+        this.titledAt.set(a, Date.now());
         if (this.mode !== "open-on-nonce") this.emit(`windowtitlev2>>${a.slice(2)},${title}`);
         else if (/^vimma-[0-9a-f]{32}$/.test(title)) {
           const line = `openwindow>>${a.slice(2)},3,vimma-vimma,${title}`;
-          if (this.delayNames) setTimeout(() => this.emit(line), this.delayNames);
+          if (this.dropNames > 0) this.dropNames--;
+          else if (this.delayNames) setTimeout(() => this.emit(line), this.delayNames);
           else this.emit(line);
         }
       }
@@ -281,6 +291,14 @@ class FakeHypr {
         this.emit(`closewindow>>${a.slice(2)}`);
       }
     }
+  }
+
+  /** j/clients' title for `a`. @param {string} a */
+  clientTitle(a) {
+    const title = this.titles.get(a) ?? "";
+    if (this.mode !== "open-on-nonce") return title;
+    const listed = this.listAfter && Date.now() - (this.titledAt.get(a) ?? 0) >= this.listAfter;
+    return listed ? title : "Vimma";
   }
 
   /** @param {string} text */
@@ -303,7 +321,7 @@ class FakeHypr {
         ...[...this.clients.values()].map((c) => ({
           ...c,
           win: undefined,
-          title: this.mode === "open-on-nonce" ? "Vimma" : (this.titles.get(c.address) ?? ""),
+          title: this.clientTitle(c.address),
         })),
         other,
       ]);
@@ -878,8 +896,16 @@ add_task(async function a_refused_connection_is_not_retried() {
   Assert.equal(f.reqAccepts, 1, "Hyprland is asked once, not at every switch");
 });
 
+const NONCE = /^vimma-[0-9a-f]{32}$/;
+
 add_task(async function a_window_named_only_by_openwindow_is_found() {
-  const f = await start({ mode: "open-on-nonce" });
+  // As on Hyprland, an event sent before the listener is accepted is lost, and this mode's
+  // j/clients never shows the title. So the listener is up, and the start's naming of the
+  // normal window over, before the switch's namings begin.
+  const f = await start({ mode: "open-on-nonce" }, undefined, { configured: false });
+  PrivateSwap.configure("swap");
+  await until(() => f.evAccepts >= 1, "Vimma listens to the event socket");
+  await until(() => !NONCE.test(document.title), "the start's naming is over");
   const priv = await enter();
   Assert.ok(inSlot(priv) && parked(window), "the swap ran with addresses from openwindow");
   Assert.ok(f.batches.length >= 1);
@@ -892,6 +918,69 @@ add_task(async function a_window_named_late_by_openwindow_is_still_found() {
   const priv = await enter();
   Assert.ok(inSlot(priv) && parked(window), "the swap ran with addresses from late events");
   Assert.ok(f.batches.length >= 1);
+});
+
+// socket2 does not replay events to a listener that connects late: a lost event is found in
+// j/clients once Hyprland has the title, even after REPLY_MS.
+add_task(async function a_lost_event_is_recovered_through_j_clients() {
+  const f = await start({ mode: "open-on-nonce", dropNames: Infinity, listAfter: REPLY_MS + 300 });
+  const priv = await enter();
+  Assert.ok(inSlot(priv) && parked(window), "the swap ran with addresses from j/clients");
+  Assert.ok(f.batches.length >= 1);
+});
+
+// The start's naming runs at the busiest moment: its miss must not cut the first switch's wait.
+add_task(async function a_start_naming_that_misses_does_not_shorten_the_first_switch() {
+  const f = await start(
+    { mode: "open-on-nonce", dropNames: 1, delayNames: REPLY_MS + 300 },
+    undefined,
+    {
+      configured: false,
+    },
+  );
+  PrivateSwap.configure("swap");
+  await until(() => NONCE.test(document.title), "the start names the normal window");
+  await until(() => !NONCE.test(document.title), "and misses");
+  Assert.ok(!PrivateSwap._unnamed, "a background naming does not shorten later waits");
+  const priv = await enter();
+  Assert.ok(inSlot(priv) && parked(window), "the first switch still waits for late events");
+  Assert.ok(f.batches.length >= 1);
+});
+
+// A switch's naming gave up, then one succeeds: the full wait applies again.
+add_task(async function a_naming_that_succeeds_lifts_the_short_wait() {
+  const f = await start({ mode: "nameless" });
+  await SimpleTest.promiseFocus(window);
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  const first = await opened;
+  await until(() => /window not named/.test(PrivateSwap.status), "the switch gave up");
+  Assert.ok(PrivateSwap._unnamed, "later namings wait only REPLY_MS");
+  await BrowserTestUtils.closeWindow(first);
+  f.mode = "lua";
+  const priv = await enter();
+  Assert.ok(inSlot(priv) && parked(window), "named this time");
+  Assert.ok(!PrivateSwap._unnamed, "and the full wait applies again");
+});
+
+// Going back while the switch to private is still naming: the late swap must not park the
+// normal window the user went back to.
+add_task(async function going_back_while_entering_is_naming_wins() {
+  const f = await start({ mode: "open-on-nonce", delayNames: REPLY_MS + 300 });
+  await SimpleTest.promiseFocus(window);
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  const priv = await opened;
+  await until(() => NONCE.test(priv.document.title), "the private window is being named");
+  await SimpleTest.promiseFocus(priv);
+  prefix("P", { shiftKey: true }, priv);
+  await until(() => Services.focus.activeWindow === window, "back to the normal window");
+  await until(() => !NONCE.test(priv.document.title), "the naming is over");
+  await PrivateSwap._settled();
+  await wait(100);
+  Assert.ok(!parked(window), "the normal window is not parked under the user");
+  Assert.deepEqual(f.batches, [], "nothing is moved");
+  Assert.equal(Services.focus.activeWindow, window, "the normal window keeps the focus");
 });
 
 add_task(async function a_fresh_private_window_is_named_once_its_document_is_up() {
@@ -929,12 +1018,16 @@ add_task(async function a_window_hyprland_never_names_is_shown_as_a_window_and_s
   prefix("P", { shiftKey: true }, priv);
   await until(() => Services.focus.activeWindow === window, "back as a window");
   await SimpleTest.promiseFocus(window);
-  const again = Date.now();
+  const asked = f.received.length;
   prefix("P", { shiftKey: true });
   await until(() => Services.focus.activeWindow === priv, "and there again");
-  // Hyprland has not named a window this session: later switches do not wait NAME_MS again.
-  Assert.less(Date.now() - again, NAME_MS, "the next switch is not held for NAME_MS");
-  await wait(700); // past REPLY_MS: a late second nonce would have timed out by now
+  await wait(NAME_MS); // past every wait: a late second nonce would have timed out by now
+  // A switch's naming gave up: later ones ask j/clients once at REPLY_MS, not again at NAME_MS.
+  Assert.equal(
+    f.received.slice(asked).filter((r) => r === "j/clients").length,
+    2,
+    "the next switch's two namings look in j/clients once each",
+  );
   storage.removeLogEventListener(onLog);
   Assert.equal(
     lines.filter((l) => l.includes("vimma: private: Hyprland did not name")).length,

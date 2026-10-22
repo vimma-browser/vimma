@@ -119,8 +119,12 @@ the private workspace stays a private window. This spec changes where that windo
   500 ms, `j/clients` is searched for that title and our `pid` (`Services.appinfo.processID`,
   `xpcom/system/nsIXULRuntime.idl:218`). (Since changed: when `j/clients` does not show the
   title either, Vimma keeps waiting for the event up to 2 s in all, because on a busy machine
-  the title of a window that is still starting up can reach Hyprland later than 500 ms; after
-  one window goes unnamed, later namings wait only the 500 ms until the config is next read.
+  the title of a window that is still starting up can reach Hyprland later than 500 ms, and
+  then searches `j/clients` once more, because Hyprland does not replay an event to a listener
+  that connected after it was sent. After a switch's naming gives up, later namings wait only
+  the 500 ms until a window is named or the config is next read; a naming at startup that no
+  switch waits on does not shorten them. A fresh private window that Hyprland names late
+  therefore shows as a tiled window titled `vimma-<32 hex>` for up to 2 s before the swap.
   `NAME_MS` in `host/private-swap.mjs`,
   [#422](https://github.com/vimma-browser/vimma/issues/422).)
 - Rejected: "the active window when the key arrived" (wrong for `vimma-ctl send-keys`, a
