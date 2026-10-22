@@ -527,6 +527,55 @@ addTidyTask(async function test_a_skipped_submit_is_not_sent_and_allows_nothing_
   await mcp(false);
 });
 
+/**
+ * Names the page function Vimma's child calls just before it checks an agent's form
+ * submission in `tab`'s process (VimmaChild._beforeSubmitCheck), or null for none.
+ * @param {any} tab @param {string | null} name
+ */
+const beforeSubmitCheck = (tab, name) =>
+  SpecialPowers.spawn(tab.linkedBrowser, [name], (n) => {
+    const { VimmaChild } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs",
+    );
+    VimmaChild._beforeSubmitCheck = n;
+  });
+
+addTidyTask(async function test_a_skipped_default_submit_is_not_sent_and_allows_nothing_after_it() {
+  await mcp(true);
+  AgentAct._settleMs = null;
+  const tab = await openAgentTab(CLICK);
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // The form's default submission, not a button's click: just before the child's check the
+  // page moves the destination, so the submission is skipped, then at once it puts it back and
+  // calls submit(), which matches what was allowed.
+  await beforeSubmitCheck(tab, "bounceForm");
+  try {
+    const sent = requestStatus(`${PAGE}?bounce-note=`);
+    const r = await fill(c, tab, [{ label: by["Bounce note"], value: "hello" }], { submit: true });
+    Assert.ok(
+      r.error?.message.startsWith("the form changed since the user was asked; it was not sent"),
+      `the fill says the form was not sent: ${r.error?.message}`,
+    );
+    Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's own submission was cancelled");
+    await until(
+      async () =>
+        await SpecialPowers.spawn(
+          tab.linkedBrowser,
+          [],
+          () => content.wrappedJSObject.bounced["bounce-form"],
+        ),
+      "the page sent the form itself",
+    );
+    Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "the page stayed");
+  } finally {
+    await beforeSubmitCheck(tab, null);
+  }
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 addTidyTask(async function test_page_script_submit_after_a_fill_is_cancelled() {
   await mcp(true);
   AgentAct._settleMs = null;

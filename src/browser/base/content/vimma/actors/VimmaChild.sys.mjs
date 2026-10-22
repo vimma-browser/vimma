@@ -172,6 +172,14 @@ const JS_REASON = 256;
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
 
 export class VimmaChild extends JSWindowActorChild {
+  /**
+   * Test-only (browser_vimma_mcp_fill.js): the name of a page function an agent's form
+   * submission calls just before its own check, so that a test can change the form in the one
+   * moment a busy page could. Only chrome code in the content process can set it; null otherwise.
+   * @type {string | null}
+   */
+  static _beforeSubmitCheck = null;
+
   /** @type {WeakRef<Element> | null} the last largest scrollable, reused while it can scroll */
   #largest = null;
   /** The last hint collection (m1-hints): its generation and its elements, by target id. */
@@ -799,6 +807,14 @@ export class VimmaChild extends JSWindowActorChild {
     this.#agentClick = sent;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
+      const test = VimmaChild._beforeSubmitCheck;
+      if (test) {
+        try {
+          /** @type {any} */ (this.contentWindow)?.wrappedJSObject[test]?.();
+        } catch {
+          // the test's page function threw: the check below sees what it left
+        }
+      }
       const again = form.isConnected ? defaultSubmitOf(form) : null;
       if (
         Date.now() > until ||
@@ -858,7 +874,9 @@ export class VimmaChild extends JSWindowActorChild {
     try {
       this.sendAsyncMessage("Vimma:AgentSkipped", {});
     } catch {
-      // the actor is going away with its document, and the mark with it
+      // The actor is going away with its document. For the top frame the mark goes with the
+      // page; for a subframe removed this way the allowance stays open until the call ends,
+      // still only for the method and destination the question named.
     }
   }
 

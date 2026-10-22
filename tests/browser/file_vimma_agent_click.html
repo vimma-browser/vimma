@@ -170,6 +170,19 @@
           }, wait);
         });
       }
+      // Called by Vimma's child just before it checks an agent's form submission (a test sets
+      // VimmaChild._beforeSubmitCheck): moves the form's destination so the submission is
+      // skipped, then at once puts it back and sends the form itself.
+      window.bounceForm = () => {
+        const form = document.getElementById("bounce");
+        const action = form.action;
+        form.action = "https://example.org/bounce";
+        setTimeout(() => {
+          form.action = action;
+          form.submit();
+          window.bounced["bounce-form"] = true;
+        }, 0);
+      };
       document
         .getElementById("later")
         .addEventListener("click", () => setTimeout(() => draft.requestSubmit(), 300));

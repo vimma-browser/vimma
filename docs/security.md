@@ -1199,6 +1199,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_fill_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_a_skipped_submit_lets_no_later_submission_through`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_skipped_submit_is_not_sent_and_allows_nothing_after_it`](../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_skipped_default_submit_is_not_sent_and_allows_nothing_after_it`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_page_script_submit_after_a_fill_is_cancelled`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_a_page_submit_during_a_fill_is_not_the_asked_one`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_selects_ranges_and_a_submit_button_of_another_form`](../tests/browser/browser_vimma_mcp_fill.js),
