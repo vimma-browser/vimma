@@ -533,44 +533,98 @@ export async function checkSigned(text, { keys, tag, dir, published, now, os = "
 /** @param {string} path */
 const readOrNull = (path) => (existsSync(path) ? readFileSync(path, "utf8") : null);
 
+/** How often a gh read is tried, and the waits between the tries. */
+const GH_WAITS_MS = [2000, 4000, 8000];
+/**
+ * A gh failure worth another try: an HTTP 5xx, a body gh could not parse (GitHub answers a 500
+ * with an empty body, which gh reports as `unexpected end of JSON input`), or a network error.
+ */
+const TRANSIENT =
+  /HTTP 5\d\d|unexpected end of JSON input|invalid character|unexpected EOF|connection reset|i\/o timeout|TLS handshake timeout|dial tcp|ECONNRESET|ETIMEDOUT/i;
+
+/**
+ * @typedef {{ run?: (args: string[]) => string, sleep?: (ms: number) => Promise<void> }} Gh
+ * how gh is run and how a retry waits; the defaults run the real gh and wait
+ */
+
+/** @param {string[]} args */
+const runGh = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 << 20 });
+/** @param {number} ms */
+const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+
+/**
+ * gh's output, tried again after 2, 4 and 8 s while it fails transiently. Any other failure,
+ * and the last transient one, throws: the caller never reads a failure as an empty answer.
+ * @param {string[]} args
+ * @param {string} what  what is read, for the error
+ * @param {Gh} [gh]
+ */
+async function ghRead(args, what, { run = runGh, sleep = wait } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return run(args);
+    } catch (e) {
+      const err = /** @type {{ message?: string, stderr?: unknown }} */ (e);
+      const detail = `${String(err.stderr ?? "").trim()} ${err.message ?? ""}`.trim();
+      const delay = GH_WAITS_MS[attempt - 1];
+      if (!TRANSIENT.test(detail) || delay === undefined) {
+        throw new Error(
+          `could not read ${what} after ${attempt} attempt${attempt > 1 ? "s" : ""}: ${detail}`,
+          { cause: e },
+        );
+      }
+      console.error(`gh: ${what}: ${detail}; trying again in ${delay / 1000} s`);
+      await sleep(delay);
+    }
+  }
+}
+
+/**
+ * The labels of the pull requests that merged a commit. Urgency (spec §7) depends on them, so
+ * labels that cannot be read throw instead of counting as none.
+ * @param {string} sha
+ * @param {string} repo
+ * @param {Gh} [gh]
+ * @returns {Promise<string[]>}
+ */
+export async function commitLabels(sha, repo, gh) {
+  const out = await ghRead(
+    ["api", `repos/${repo}/commits/${sha}/pulls`, "--jq", "[.[].labels[].name] | unique | .[]"],
+    `the labels of ${sha}`,
+    gh,
+  );
+  return out.split("\n").filter(Boolean);
+}
+
 /**
  * The subjects since the previous published release, each with its pull request's labels.
  * @param {string} tag
  * @param {string} repo
  */
-function commitsSince(tag, repo) {
-  /** @param {string[]} args */
-  const gh = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 << 20 });
-  const tags = gh([
-    "api",
-    `repos/${repo}/releases`,
-    "--paginate",
-    "--jq",
-    ".[] | select(.draft == false and .prerelease == false) | .tag_name",
-  ])
-    .split("\n")
-    .filter(Boolean);
+async function commitsSince(tag, repo) {
+  const releases = await ghRead(
+    [
+      "api",
+      `repos/${repo}/releases`,
+      "--paginate",
+      "--jq",
+      ".[] | select(.draft == false and .prerelease == false) | .tag_name",
+    ],
+    "the published releases",
+  );
+  const tags = releases.split("\n").filter(Boolean);
   const previous = previousRelease(tags, tag);
   const range = previous ? `${previous}..${tag}` : tag;
   const log = execFileSync("git", ["log", "--format=%H%x09%s", range], {
     encoding: "utf8",
     maxBuffer: 64 << 20,
   });
-  return log
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const [sha = "", subject = ""] = line.split("\t");
-      const labels = gh([
-        "api",
-        `repos/${repo}/commits/${sha}/pulls`,
-        "--jq",
-        "[.[].labels[].name] | unique | .[]",
-      ])
-        .split("\n")
-        .filter(Boolean);
-      return { sha, subject, labels };
-    });
+  const commits = [];
+  for (const line of log.split("\n").filter(Boolean)) {
+    const [sha = "", subject = ""] = line.split("\t");
+    commits.push({ sha, subject, labels: await commitLabels(sha, repo) });
+  }
+  return commits;
 }
 
 async function main() {
@@ -597,7 +651,8 @@ async function main() {
   switch (command) {
     case "commits": {
       need(!!values.tag && !!values.repo, "commits needs --tag and --repo");
-      process.stdout.write(`${JSON.stringify(commitsSince(values.tag, values.repo), null, 1)}\n`);
+      const commits = await commitsSince(values.tag, values.repo);
+      process.stdout.write(`${JSON.stringify(commits, null, 1)}\n`);
       return;
     }
     case "build": {
