@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. From the first release on, release-please writes each release's entry from the Conventional Commits on `main` ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.7](https://github.com/vimma-browser/vimma/compare/v0.1.6...v0.1.7) (2026-10-22)
+## [0.1.7](https://github.com/vimma-browser/vimma/compare/v0.1.6...v0.1.7) · Firefox 158.0.1 (2026-10-22)
 
 
 ### Added
@@ -49,7 +49,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
-* firefox 158.0.1 (MFSA 2026-111) ([#425](https://github.com/vimma-browser/vimma/issues/425)) ([7748419](https://github.com/vimma-browser/vimma/commit/7748419063371dd7b8878f2d4b36e46c198572b7))
+* Firefox 158.0.1 ([MFSA 2026-111](https://www.mozilla.org/en-US/security/advisories/mfsa2026-111/)) ([#425](https://github.com/vimma-browser/vimma/issues/425)) ([7748419](https://github.com/vimma-browser/vimma/commit/7748419063371dd7b8878f2d4b36e46c198572b7))
 
 ## [Unreleased]
 
