@@ -456,11 +456,16 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
       `ctrl`, `alt` or meta go on to the bindings. The rest of a key sequence, and keys while a
       prompt, picker, panel or the command line is open over the line, go to them; the line waits
       until they close.
+      (Since changed: so do keys in hint, copy and element mode, where a hint label and the yank
+      type letters (`y`, and with the default `hint_chars` a label starting with `a`, the grant
+      key), and the line does not open by itself in them, because one answer can grant a
+      whole task's calls; issue #495, docs/security.md M4.)
 
 14. **No focus stealing.** The question never takes focus from what the user is doing:
     - It opens by itself only when the Vimma window has focus, focus is not in an editable field
       (insert mode), no key was pressed in the last 1,500 ms, no other prompt, picker or command
       line is open, and the page is not in DOM full screen (core `mayOpenByItself`, `QUIET_MS`).
+      (Since changed: nor in hint, copy or element mode; issue #495, see decision 13.)
     - Otherwise it waits. The status bar shows `◇ agent 1?`, and `ctrl+b shift+a`
       (`agent_prompt`, action `mcp.answer`, group "Agents") opens it, even with focus in a field
       (it then takes the keys; the field gets none). The same key with nothing pending shows the
