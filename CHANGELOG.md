@@ -2,6 +2,55 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. From the first release on, release-please writes each release's entry from the Conventional Commits on `main` ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.7](https://github.com/vimma-browser/vimma/compare/v0.1.6...v0.1.7) (2026-10-22)
+
+
+### Added
+
+* **bookmarks:** firefox's bookmarks toolbar hidden by default ([#438](https://github.com/vimma-browser/vimma/issues/438)) ([3e5fed1](https://github.com/vimma-browser/vimma/commit/3e5fed1f29b96bcd42ec80d93a7786f89cef2122)), closes [#214](https://github.com/vimma-browser/vimma/issues/214)
+* **copy:** ip and ap select the block around the caret ([#451](https://github.com/vimma-browser/vimma/issues/451)) ([ed08a47](https://github.com/vimma-browser/vimma/commit/ed08a47b8203dd9dfe91a7a0c83de65a396246b0))
+* **element:** focus a block, then v selects it and y copies it ([#449](https://github.com/vimma-browser/vimma/issues/449)) ([375684a](https://github.com/vimma-browser/vimma/commit/375684a7f7d134a319a978d8661f98c9c4383c8c)), closes [#213](https://github.com/vimma-browser/vimma/issues/213)
+* **hints:** text blocks as hint targets ([#447](https://github.com/vimma-browser/vimma/issues/447)) ([7643f5a](https://github.com/vimma-browser/vimma/commit/7643f5ac61b1a5dae576ab770b44f816069fbc43)), closes [#213](https://github.com/vimma-browser/vimma/issues/213)
+* **keys:** `F` starts element focus, `gF` opens a link in the background ([#453](https://github.com/vimma-browser/vimma/issues/453)) ([775b45f](https://github.com/vimma-browser/vimma/commit/775b45f416de5152be09ca06c3a7e3c30d3c2aa4)), closes [#213](https://github.com/vimma-browser/vimma/issues/213)
+* **mcp:** full control says it reaches beyond the agent workspace ([#441](https://github.com/vimma-browser/vimma/issues/441)) ([b3bd8f9](https://github.com/vimma-browser/vimma/commit/b3bd8f93c9284c933524d897b8dc52f343700cd0))
+* **mcp:** vimma_activate clicks by hint label ([#472](https://github.com/vimma-browser/vimma/issues/472)) ([5a15c32](https://github.com/vimma-browser/vimma/commit/5a15c32613b797a585f0759a8737d5e03cf81ad4))
+* **mcp:** vimma_console reads a page's errors and failed requests ([#482](https://github.com/vimma-browser/vimma/issues/482)) ([14af7d0](https://github.com/vimma-browser/vimma/commit/14af7d0dcb966dfd7caf4a75877a4f5f6203836c))
+* **mcp:** vimma_elements lists a page's buttons and fields by hint label ([#471](https://github.com/vimma-browser/vimma/issues/471)) ([dcb7487](https://github.com/vimma-browser/vimma/commit/dcb7487dc02fd5df2e48a7178a8cc86172d9c56b))
+* **mcp:** vimma_fill fills fields, never passwords or payment fields ([#474](https://github.com/vimma-browser/vimma/issues/474)) ([7f536ac](https://github.com/vimma-browser/vimma/commit/7f536acac02058c87e3f2408deb57df5466ea269))
+* **mcp:** vimma_keys follows links by hint label ([#455](https://github.com/vimma-browser/vimma/issues/455)) ([0c3c401](https://github.com/vimma-browser/vimma/commit/0c3c4011476023add114fe7df98e0ef6b87c559f))
+* **mcp:** vimma_keys scrolls, finds and goes back in an agent tab ([#450](https://github.com/vimma-browser/vimma/issues/450)) ([b596440](https://github.com/vimma-browser/vimma/commit/b596440b145b83675296b3b681214d5369cebc4f))
+* **mcp:** vimma_screenshot shows an agent tab ([#480](https://github.com/vimma-browser/vimma/issues/480)) ([7215505](https://github.com/vimma-browser/vimma/commit/72155051bfaec7571c9c90929d053367f6376ce6))
+* **mcp:** vimma_show brings the agent workspace to the front ([#459](https://github.com/vimma-browser/vimma/issues/459)) ([5af9cf4](https://github.com/vimma-browser/vimma/commit/5af9cf4b02438603aec7bd148509ef3bc250d172))
+* **packaging:** an .rpm for fedora and opensuse ([#448](https://github.com/vimma-browser/vimma/issues/448)) ([0d76cfa](https://github.com/vimma-browser/vimma/commit/0d76cfaac0977e8d89fc40906c0d9a47123f342e)), closes [#294](https://github.com/vimma-browser/vimma/issues/294)
+* **sites:** a snapshot gate that replays recorded pages offline on every pull request ([#446](https://github.com/vimma-browser/vimma/issues/446)) ([dd71c74](https://github.com/vimma-browser/vimma/commit/dd71c74ab5e496dc2d942b1983b04fc668e8e4d4))
+* **sites:** night-to-night diff, a rolling site-compat issue and one retry of blocked sites ([#437](https://github.com/vimma-browser/vimma/issues/437)) ([a0247d4](https://github.com/vimma-browser/vimma/commit/a0247d4cf8a1f1561b0012eeb17f5362f05c62fb))
+* **split:** a 3 px border in the theme's focus colour marks the focused pane ([#431](https://github.com/vimma-browser/vimma/issues/431)) ([5a7203f](https://github.com/vimma-browser/vimma/commit/5a7203feacf77e6da0d5b3e207640a2901f241fc)), closes [#362](https://github.com/vimma-browser/vimma/issues/362)
+* **updates:** :restart, and an installed security update asks to restart ([#454](https://github.com/vimma-browser/vimma/issues/454)) ([660af98](https://github.com/vimma-browser/vimma/commit/660af9844bed58673dbda8d65a6430fb50317de3))
+* **updates:** the appimage replaces its own file with a verified newer release ([#430](https://github.com/vimma-browser/vimma/issues/430)) ([d20bc3b](https://github.com/vimma-browser/vimma/commit/d20bc3b7784d555ccf58148f68d7ebacb2a2775a))
+* **updates:** update notices on macos ([620fdef](https://github.com/vimma-browser/vimma/commit/620fdefef059e75386bb2be9ffb9720e3fef21ba)), closes [#393](https://github.com/vimma-browser/vimma/issues/393)
+* **updates:** with checks off, updates: off shows for a few seconds at startup ([#457](https://github.com/vimma-browser/vimma/issues/457)) ([09a15c2](https://github.com/vimma-browser/vimma/commit/09a15c273ab193f4634f3990e79f0d7859ce647e))
+
+
+### Fixed
+
+* **build:** npm run build runs surfer build under a python mach supports ([#460](https://github.com/vimma-browser/vimma/issues/460)) ([a84946d](https://github.com/vimma-browser/vimma/commit/a84946d6c690dacaaf24141e67f8c55f6ee8f448)), closes [#458](https://github.com/vimma-browser/vimma/issues/458)
+* **commitlint:** skip dependabot commits that write bump in lower case ([#421](https://github.com/vimma-browser/vimma/issues/421)) ([0ee6c71](https://github.com/vimma-browser/vimma/commit/0ee6c71155b68f10898227827c53e8db19cfdd64))
+* **copy:** { and } step past a paragraph's source white space ([#463](https://github.com/vimma-browser/vimma/issues/463)) ([60c463c](https://github.com/vimma-browser/vimma/commit/60c463c6935d8a514b15b2425bb81d103b256b16)), closes [#461](https://github.com/vimma-browser/vimma/issues/461)
+* **find:** a page's own focus on a field a find matched in enters insert mode ([#445](https://github.com/vimma-browser/vimma/issues/445)) ([3300eb9](https://github.com/vimma-browser/vimma/commit/3300eb98b7808d5ad2f0beb7b8f31773142f03b2)), closes [#442](https://github.com/vimma-browser/vimma/issues/442)
+* **hints:** every entry of an open dropdown menu gets a label ([#428](https://github.com/vimma-browser/vimma/issues/428)) ([c03bb0b](https://github.com/vimma-browser/vimma/commit/c03bb0b358fddfdce882328a482df75a5eddca56)), closes [#329](https://github.com/vimma-browser/vimma/issues/329)
+* **macos:** platform fallbacks ([#414](https://github.com/vimma-browser/vimma/issues/414)) ([4304712](https://github.com/vimma-browser/vimma/commit/430471269d7c3cdcf0c04d1f46b54d01e30b9e9e))
+* **mochitest:** run mach with a python inside the range mach supports ([#436](https://github.com/vimma-browser/vimma/issues/436)) ([190739c](https://github.com/vimma-browser/vimma/commit/190739c0e71c3bb9138f0c018934b61761b4281b)), closes [#435](https://github.com/vimma-browser/vimma/issues/435)
+* **private:** the swap waits up to 2 s for hyprland to name a starting window ([0820c9e](https://github.com/vimma-browser/vimma/commit/0820c9e1a06e6d633d1d7e24a5d4d2b2c9f95b0c))
+* **prompts:** the password prompt's fields keep their keys, and the keys line says esc first ([#432](https://github.com/vimma-browser/vimma/issues/432)) ([35d017f](https://github.com/vimma-browser/vimma/commit/35d017ff78e9eab48ca9d7252badbd61fe1a4f60))
+* **prompts:** y and n typed into live grep or a search no longer answer a permission prompt ([#491](https://github.com/vimma-browser/vimma/issues/491)) ([0f1c26d](https://github.com/vimma-browser/vimma/commit/0f1c26d4cc34691c30d772dea88ef1f447f49453))
+* **theme:** every mode badge keeps a colour of its own under any theme ([#464](https://github.com/vimma-browser/vimma/issues/464)) ([3792de4](https://github.com/vimma-browser/vimma/commit/3792de4067bbe7da2994f3b005be571375412d95)), closes [#462](https://github.com/vimma-browser/vimma/issues/462)
+* **workspaces:** keys typed while a new start page loads reach vimma ([#417](https://github.com/vimma-browser/vimma/issues/417)) ([3ce256c](https://github.com/vimma-browser/vimma/commit/3ce256c8d09191d381f7b9cb09790a2c29219f08)), closes [#388](https://github.com/vimma-browser/vimma/issues/388)
+
+
+### Changed
+
+* firefox 158.0.1 (MFSA 2026-111) ([#425](https://github.com/vimma-browser/vimma/issues/425)) ([7748419](https://github.com/vimma-browser/vimma/commit/7748419063371dd7b8878f2d4b36e46c198572b7))
+
 ## [Unreleased]
 
 ### Added
