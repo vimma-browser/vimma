@@ -272,8 +272,6 @@ support-files = [
 ]
 
 ["browser_vimma_mcp_downloads.js"]
-# macOS: the clamd socket owner check uses Linux statx, so clamd is never used (#387)
-skip-if = ["os == 'mac'"]
 support-files = [
   "file_vimma_agent_page.html",
   "file_vimma_agent_download.sjs",
