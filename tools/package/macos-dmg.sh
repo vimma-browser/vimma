@@ -31,6 +31,17 @@ if [ "$#" -ne 1 ] || [ ! -d "$1" ]; then
 fi
 app=$1
 
+# The window art and volume icon (spec macos-homebrew, decision 14). mach package puts them on the
+# volume from the branding directory (toolkit/moz.configure, MOZ_PACKAGE_EXTRA_ARGS); unpack_dmg
+# copies the volume's hidden files into $staged and make_dmg packs them again with the app, so a
+# dmg without them would be repacked without them.
+for art in .DS_Store .background/background.png .VolumeIcon.icns; do
+  if [ ! -f "$staged/$art" ]; then
+    echo "macos-dmg.sh: $in has no $art; mach package puts it there from the branding directory" >&2
+    exit 1
+  fi
+done
+
 # A disk image mounted on a Mac leaves Finder attributes that a strict verify rejects.
 if command -v xattr > /dev/null 2>&1; then xattr -cr "$app"; fi
 

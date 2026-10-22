@@ -13,7 +13,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { jobs, parseWorkflow } from "../../test/workflow-runners.mjs";
-import { catalogSummary } from "../macos-icons.mjs";
+import { DMG_LAYOUT, FILES, catalogSummary } from "../macos-icons.mjs";
+import { readDsStore } from "./dsstore.mjs";
 
 // Spec macos-build, sub-PRs 3 and 4: an arm64 macOS build cross-compiled on a GitHub-hosted Linux
 // runner, ad hoc signed with rcodesign, packed as a .dmg and checked on a hosted Mac.
@@ -54,11 +55,12 @@ describe("fetch-rcodesign.sh", () => {
 
 /**
  * A stub `mach` and `rcodesign` in `dir`, logging their arguments to `dir/log`. `apps` is how many
- * .app bundles the stub unpack_dmg writes.
+ * .app bundles the stub unpack_dmg writes; `art` lists the window art and volume icon files it
+ * writes beside them, where mach package puts them on the volume.
  * @param {string} dir
- * @param {{ apps?: number, signFails?: boolean }} [options]
+ * @param {{ apps?: number, signFails?: boolean, art?: string[] }} [options]
  */
-function stubs(dir, { apps = 1, signFails = false } = {}) {
+function stubs(dir, { apps = 1, signFails = false, art = DMG_ART } = {}) {
   const log = join(dir, "log");
   const mach = join(dir, "mach");
   writeFileSync(
@@ -71,6 +73,7 @@ case "$3" in
       [ "$name" = 1 ] && name=Vimma || name="Other$name"
       mkdir -p "$5/$name.app/Contents/MacOS"
     done
+    for file in ${art.join(" ")}; do mkdir -p "$(dirname "$5/$file")"; echo art > "$5/$file"; done
     ;;
   mozbuild.action.make_dmg) for last; do :; done; echo dmg > "$last" ;;
 esac
@@ -99,6 +102,10 @@ function sign(dir, { mach, rcodesign }) {
   });
   return { ...result, tmp };
 }
+
+// The window art and volume icon, as make_dmg names them on the volume
+// (python/mozbuild/mozbuild/action/make_dmg.py:35-40).
+const DMG_ART = [".DS_Store", ".background/background.png", ".VolumeIcon.icns"];
 
 describe("macos-dmg.sh", () => {
   it("unpacks the dmg, ad hoc signs the one app in it and packs a new dmg", () => {
@@ -131,6 +138,21 @@ describe("macos-dmg.sh", () => {
       const { status, stderr, tmp } = sign(dir, tools);
       expect(status, `${apps} apps`).not.toBe(0);
       expect(stderr).toMatch(/exactly one \.app/);
+      expect(readFileSync(tools.log, "utf8")).not.toMatch(/rcodesign|make_dmg/);
+      expect(readdirSync(tmp)).toEqual([]);
+    }
+  });
+
+  // Spec macos-homebrew, decision 14: make_dmg packs the volume's hidden files with the app, so
+  // the art survives the repack only if mach package put it on the volume.
+  it("refuses a dmg without its window art or volume icon", () => {
+    for (const missing of DMG_ART) {
+      const dir = tempDir("vimma-macos-dmg-");
+      const tools = stubs(dir, { art: DMG_ART.filter((f) => f !== missing) });
+      mkdirSync(join(dir, "out"));
+      const { status, stderr, tmp } = sign(dir, tools);
+      expect(status, missing).not.toBe(0);
+      expect(stderr, missing).toContain(missing);
       expect(readFileSync(tools.log, "utf8")).not.toMatch(/rcodesign|make_dmg/);
       expect(readdirSync(tmp)).toEqual([]);
     }
@@ -181,6 +203,7 @@ describe("macos.yml", () => {
       "src/browser/branding/vimma/**",
       "tools/package/fetch-rcodesign.sh",
       "tools/package/macos-app-check.sh",
+      "tools/package/macos-dmg-check.sh",
       "tools/package/macos-dmg.sh",
       "tools/package/macos-icons.mjs",
       "tools/package/render-icon.swift",
@@ -266,6 +289,14 @@ describe("macos.yml", () => {
       .map((s) => s.run ?? "")
       .join("\n");
     expect(run).toContain('tools/package/macos-app-check.sh "$APP"');
+  });
+
+  // Spec macos-homebrew, decision 14: the mounted volume carries Vimma's window art and icon.
+  it("checks the mounted dmg's window art and volume icon before detaching it", () => {
+    const run = step(smoke, "Mount the dmg").run ?? "";
+    const check = run.indexOf('tools/package/macos-dmg-check.sh "$RUNNER_TEMP/vimma-dmg"');
+    expect(check).toBeGreaterThan(run.indexOf("hdiutil attach"));
+    expect(check).toBeLessThan(run.indexOf("hdiutil detach"));
   });
 
   // Decision 13: actool runs only on a Mac with Xcode, so a Mac regenerates the committed icon
@@ -363,6 +394,164 @@ describe("macOS icons", () => {
 
 // Both smoke jobs (macos.yml and release.yml) run it on the app from the dmg, so a release cannot
 // publish a dmg that shows Firefox's icon or carries Surfer's bundle identifier.
+// Spec macos-homebrew, decision 14: toolkit/moz.configure passes the branding directory's
+// dsstore, background.png and disk.icns to mach package, and Surfer copies the files of
+// configs/branding/vimma over Firefox's unofficial ones, whose dsstore lays out "Nightly.app".
+describe("macOS dmg window art", () => {
+  const branding = "configs/branding/vimma";
+  /** @param {string} path */
+  const bytes = (path) => readFileSync(join(repo, path));
+  const { window, icons, iconSize } = DMG_LAYOUT;
+
+  it("macos-icons.mjs generates the background and volume icon, so --check covers them", () => {
+    expect(FILES).toEqual(expect.arrayContaining(["background.png", "disk.icns"]));
+  });
+
+  // Finder draws a background at its pixel size over its density, so 144 dpi fills the window
+  // on a Retina display without blurring.
+  it("commits a background.png of twice the window's size at 144 dpi", () => {
+    const png = bytes(`${branding}/background.png`);
+    expect(png.subarray(1, 4).toString("latin1")).toBe("PNG");
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([
+      window.width * 2,
+      window.height * 2,
+    ]);
+    const phys = png.indexOf("pHYs");
+    expect(phys).toBeGreaterThan(0);
+    // pixels per metre, both axes, unit 1 (metre): 144 / 0.0254 rounded
+    expect([png.readUInt32BE(phys + 4), png.readUInt32BE(phys + 8), png[phys + 12]]).toEqual([
+      5669, 5669, 1,
+    ]);
+  });
+
+  it("commits a disk.icns that is the Vimma mark, as the app's fallback icon", () => {
+    expect(bytes(`${branding}/disk.icns`).equals(bytes(`${branding}/firefox.icns`))).toBe(true);
+  });
+
+  describe("dsstore", () => {
+    const records = () => readDsStore(bytes(`${branding}/dsstore`));
+    /** @param {string} name @param {string} code */
+    const value = (name, code) => {
+      const found = records().filter((r) => r.name === name && r.code === code);
+      expect(found, `${name} ${code}`).toHaveLength(1);
+      return /** @type {Buffer} */ (found[0]?.value);
+    };
+
+    it("places Vimma.app and the Applications link where the background expects them", () => {
+      for (const [name, [x, y]] of Object.entries(icons)) {
+        const iloc = value(name, "Iloc");
+        expect([iloc.readUInt32BE(0), iloc.readUInt32BE(4)], name).toEqual([x, y]);
+      }
+      const placed = records()
+        .filter((r) => r.code === "Iloc")
+        .map((r) => r.name);
+      expect(placed.sort()).toEqual(Object.keys(icons).sort());
+    });
+
+    it("opens a window of the background's size, without toolbar or sidebar", () => {
+      const bwsp = value(".", "bwsp").toString("latin1");
+      const bounds = /\{\{-?\d+, -?\d+\}, \{(\d+), (\d+)\}\}/.exec(bwsp);
+      expect(bounds?.slice(1).map(Number)).toEqual([window.width, window.height]);
+    });
+
+    // The alias is resolved by volume name and path, so it must name the volume make_dmg
+    // creates (macos-dmg.sh, --volume-name Vimma).
+    it("shows .background/background.png from the Vimma volume at the icon size", () => {
+      const icvp = value(".", "icvp");
+      expect(icvp.includes("backgroundImageAlias")).toBe(true);
+      expect(icvp.includes("background.png")).toBe(true);
+      expect(icvp.includes("Vimma")).toBe(true);
+      expect(icvp.includes("Nightly")).toBe(false);
+      // iconSize, a real in the property list: 0x23 then the big-endian double
+      const size = Buffer.alloc(9);
+      size[0] = 0x23;
+      size.writeDoubleBE(iconSize, 1);
+      expect(icvp.includes(size)).toBe(true);
+    });
+
+    // Finder writes the path of the disk image it laid out into the alias; it must not name a
+    // home directory.
+    it("names no home directory or Firefox volume", () => {
+      const file = bytes(`${branding}/dsstore`);
+      expect(file.includes("/Users/")).toBe(false);
+      expect(file.includes(":Users:")).toBe(false);
+      expect(file.includes("Nightly")).toBe(false);
+    });
+  });
+});
+
+// Both smoke jobs run it on the mounted release dmg, so a release cannot publish a dmg with
+// Firefox's art, or none.
+describe("macos-dmg-check.sh", () => {
+  const CHECK = join(repo, "tools/package/macos-dmg-check.sh");
+  const ART = {
+    ".DS_Store": "configs/branding/vimma/dsstore",
+    ".background/background.png": "configs/branding/vimma/background.png",
+    ".VolumeIcon.icns": "configs/branding/vimma/disk.icns",
+  };
+  // com.apple.FinderInfo of a folder whose Finder flags (bytes 8 and 9) have kHasCustomIcon,
+  // as `xattr -px` prints it.
+  const CUSTOM_ICON = "00 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00\n" + "00 ".repeat(16);
+  /**
+   * @param {{ replace?: Record<string, string>, omit?: string, finderInfo?: string }} [volume]
+   */
+  function check({ replace = {}, omit, finderInfo = CUSTOM_ICON } = {}) {
+    const dir = tempDir("vimma-dmg-check-");
+    const volume = join(dir, "Vimma");
+    mkdirSync(join(volume, "Vimma.app"), { recursive: true });
+    for (const [name, source] of Object.entries(ART)) {
+      if (name === omit) continue;
+      mkdirSync(join(volume, name, ".."), { recursive: true });
+      writeFileSync(join(volume, name), replace[name] ?? readFileSync(join(repo, source)));
+    }
+    const xattr = join(dir, "xattr");
+    writeFileSync(
+      xattr,
+      `#!/bin/sh\necho "$*" > "${dir}/xattr-args"\nprintf '%s\\n' '${finderInfo}'\n`,
+    );
+    chmodSync(xattr, 0o755);
+    const result = spawnSync(CHECK, [volume], {
+      cwd: repo,
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, XATTR: xattr },
+    });
+    return { ...result, dir, volume };
+  }
+
+  it("passes a volume with Vimma's background, layout and icon", () => {
+    const result = check();
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(result.dir, "xattr-args"), "utf8").trim()).toBe(
+      `-px com.apple.FinderInfo ${result.volume}`,
+    );
+  });
+
+  it("fails a volume with other art, such as Firefox's", () => {
+    for (const name of Object.keys(ART)) {
+      const result = check({ replace: { [name]: "firefox\n" } });
+      expect(result.status, name).not.toBe(0);
+      expect(result.stdout + result.stderr, name).toContain(name);
+    }
+  });
+
+  it("fails a volume without one of the files", () => {
+    for (const name of Object.keys(ART)) {
+      const result = check({ omit: name });
+      expect(result.status, name).not.toBe(0);
+      expect(result.stdout + result.stderr, name).toContain(name);
+    }
+  });
+
+  // Finder shows .VolumeIcon.icns only when the root folder's kHasCustomIcon flag is set, which
+  // make_dmg sets (python/mozbuild/mozpack/dmg.py, set_folder_icon).
+  it("fails a volume whose custom icon flag is not set", () => {
+    const result = check({ finderInfo: "00 ".repeat(32) });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("custom icon");
+  });
+});
+
 describe("macos-app-check.sh", () => {
   const CHECK = join(repo, "tools/package/macos-app-check.sh");
   /**

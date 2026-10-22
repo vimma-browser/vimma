@@ -1020,12 +1020,15 @@ SHA-256) and packs it again. The run's artifact is
 Mac, runs `codesign --verify --deep --strict`, checks the binary is arm64 and the version line,
 and renders a page headless; `tools/package/macos-app-check.sh` checks its `Assets.car` has
 Vimma's `AppIcon` and none of Firefox's, and that its bundle identifier is `surfer.json`'s
-`appId`. The rendered icon and the page are the run's `macos-smoke` artifact.
+`appId`. `tools/package/macos-dmg-check.sh` checks the mounted volume's `.DS_Store`,
+`.background/background.png` and `.VolumeIcon.icns` are the committed `dsstore`, `background.png`
+and `disk.icns`, and that the volume's custom icon flag is set. The rendered icon and the page are
+the run's `macos-smoke` artifact.
 
 The `icons` job, on a hosted `macos-26` runner with Xcode 26.6 pinned, regenerates the committed
-macOS icon files (`Assets.car`, `firefox.icns`, `document.icns` in `configs/branding/vimma/`)
-from `configs/branding/vimma/logo-mac.png` and the Icon Composer source
-`configs/macos/AppIcon.icon/icon.json`, and fails if they differ
+macOS icon files (`Assets.car`, `firefox.icns`, `document.icns`, and the `.dmg`'s `disk.icns`
+and `background.png`, in `configs/branding/vimma/`) from `configs/branding/vimma/logo-mac.png`
+and the Icon Composer source `configs/macos/AppIcon.icon/icon.json`, and fails if they differ
 (spec [macos-homebrew](specs/macos-homebrew.md), decision 13). `actool`, which compiles
 `Assets.car`, ships only with Xcode, not the Command Line Tools. After changing the logo or the
 icon source, either run `node tools/package/macos-icons.mjs` on a Mac with Xcode, or push and
@@ -1033,8 +1036,18 @@ copy the files from the run's `macos-icons` artifact, which also holds their ren
 
 ```sh
 gh run download "$run" -n macos-icons -D /tmp/macos-icons
-cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns} configs/branding/vimma/
+cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns,disk.icns,background.png} \
+  configs/branding/vimma/
 ```
+
+The `.dmg` window's layout, `configs/branding/vimma/dsstore`, is the `.DS_Store` Finder writes,
+so no job can regenerate it byte for byte (it records dates and the disk image's location).
+After changing `DMG_LAYOUT` in `tools/package/macos-icons.mjs` or the background, run
+`tools/package/macos-dsstore.sh` on a Mac, logged in, with no volume named Vimma mounted: it lays
+out a scratch disk image in Finder through AppleScript (macOS asks once to let the terminal
+control Finder) and copies the `.DS_Store` into place. `tools/package/test/macos.test.mjs` checks
+that it places `Vimma.app` and the Applications link where `DMG_LAYOUT` says and shows the
+background from the Vimma volume.
 
 `actool` names the catalog's flattened fallback images with a fresh UUID and writes them anew on
 every run, so the check compares `assetutil --info` without those names and digests, and

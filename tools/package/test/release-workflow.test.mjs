@@ -333,6 +333,14 @@ esac
       expect(block).toContain('tools/package/macos-app-check.sh "$APP"');
     });
 
+    // Spec macos-homebrew, decision 14: the repacked dmg keeps Vimma's window art and icon.
+    it("macos-smoke checks the mounted dmg's window art and volume icon", () => {
+      const mount = runOf(all.get("macos-smoke") ?? "", "Mount the dmg and copy the app out");
+      const check = mount.indexOf('tools/package/macos-dmg-check.sh "$RUNNER_TEMP/vimma-dmg"');
+      expect(check).toBeGreaterThan(mount.indexOf("hdiutil attach"));
+      expect(check).toBeLessThan(mount.indexOf("hdiutil detach"));
+    });
+
     // Spec macos-homebrew, decision 9: Homebrew lints the cask and installs the release's dmg
     // through it before anything is signed.
     it("macos-smoke checks the cask with brew and installs the dmg through it", () => {

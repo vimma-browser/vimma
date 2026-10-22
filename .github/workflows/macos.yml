@@ -17,6 +17,7 @@ on:
       - .github/workflows/macos.yml
       - tools/package/fetch-rcodesign.sh
       - tools/package/macos-app-check.sh
+      - tools/package/macos-dmg-check.sh
       - tools/package/macos-dmg.sh
       - tools/package/macos-icons.mjs
       - tools/package/render-icon.swift
@@ -171,6 +172,8 @@ jobs:
           [ "$#" -eq 1 ] || { echo "::error::want one dmg, got $*"; exit 1; }
           hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/vimma-dmg" "$1"
           ls -la "$RUNNER_TEMP/vimma-dmg"
+          # Spec macos-homebrew, decision 14: Vimma's window art and volume icon
+          tools/package/macos-dmg-check.sh "$RUNNER_TEMP/vimma-dmg"
           ditto "$RUNNER_TEMP/vimma-dmg/Vimma.app" "$RUNNER_TEMP/Vimma.app"
           hdiutil detach "$RUNNER_TEMP/vimma-dmg"
           echo "APP=$RUNNER_TEMP/Vimma.app" >> "$GITHUB_ENV"
