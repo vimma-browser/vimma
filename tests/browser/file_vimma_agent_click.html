@@ -10,8 +10,9 @@
    - click handler sends it elsewhere, one whose submit listener does, and a dialog form with a
    - hidden posting button; buttons whose script submits a form by itself, at once, a moment later,
    - after Firefox cached an earlier verdict, and through that hidden button; a link that changes
-   - its address on mousedown, an SVG link to another site, and a form whose destination
-   - redirects. Everything fits the test window. -->
+   - its address on mousedown, an SVG link to another site, a form whose destination
+   - redirects, and one whose button moves the form's destination while it is pressed, then puts
+   - it back and sends the form itself. Everything fits the test window. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -69,6 +70,10 @@
     </form>
     <form id="trick" method="dialog" action="file_vimma_agent_page.html?trick">
       <button id="trick-post" type="submit" formmethod="post" hidden>Hidden post</button>
+    </form>
+    <form id="bounce" method="get" action="file_vimma_agent_page.html">
+      <input name="bounce-note" aria-label="Bounce note" />
+      <button id="bounce-send" type="submit">Bounce</button>
     </form>
     <p>
       <button id="save" type="button">Save draft</button>
@@ -131,6 +136,18 @@
       // A link that points elsewhere once it is pressed.
       document.getElementById("swap-link").addEventListener("mousedown", (e) => {
         e.currentTarget.href = "https://example.org/swapped";
+      });
+      // A button that moves its form's destination as it is pressed, so the click is skipped,
+      // then puts the destination back and sends the form itself a moment later.
+      const bounce = document.getElementById("bounce");
+      document.getElementById("bounce-send").addEventListener("mousedown", () => {
+        const action = bounce.action;
+        bounce.action = "https://example.org/bounce";
+        setTimeout(() => {
+          bounce.action = action;
+          bounce.submit();
+          window.bounced = true;
+        }, 100);
       });
       document
         .getElementById("later")

@@ -146,6 +146,24 @@ async function activate(c, tab, label, answer = { kind: "once" }) {
   return r;
 }
 
+/**
+ * The status of the next request to a URL starting with `prefix`, once every observer of it
+ * has run: NS_BINDING_ABORTED when Vimma cancelled it.
+ * @param {string} prefix
+ * @returns {Promise<number>}
+ */
+function requestStatus(prefix) {
+  return new Promise((resolve) => {
+    const observe = (/** @type {any} */ subject) => {
+      const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+      if (!channel.URI.spec.startsWith(prefix)) return;
+      Services.obs.removeObserver(observe, "http-on-modify-request");
+      Services.tm.dispatchToMainThread(() => resolve(channel.status));
+    };
+    Services.obs.addObserver(observe, "http-on-modify-request");
+  });
+}
+
 add_task(async function setup() {
   // The default wait after a click: a page's submission a moment later is still in its result.
   AgentAct._settleMs = null;
@@ -209,6 +227,32 @@ addTidyTask(async function test_page_script_submit_after_a_click_is_cancelled() 
     Assert.equal(r.result.blocked, "example.com", `${button}: the result says Vimma stopped it`);
     Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, `${button}: the page stayed`);
   }
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_a_skipped_submit_lets_no_later_submission_through() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const sent = requestStatus(`${PAGE}?bounce-note=`);
+  // The page moves the destination as the button is pressed, so the click is skipped; 100 ms
+  // later it puts the destination back and calls submit(), which matches what was allowed.
+  const r = await activate(c, tab, by.Bounce);
+  Assert.equal(
+    r.error?.message,
+    "the element changed as it was clicked; nothing was clicked",
+    "the click was skipped",
+  );
+  Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's own submission was cancelled (M28)");
+  await until(
+    async () =>
+      await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.wrappedJSObject.bounced),
+    "the page sent the form itself",
+  );
+  Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "the page stayed");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

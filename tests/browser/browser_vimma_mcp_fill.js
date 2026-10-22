@@ -51,6 +51,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const FILL = `${DIR}file_vimma_agent_fill.html`;
 const PAGE = `${DIR}file_vimma_agent_page.html`;
+const CLICK = `${DIR}file_vimma_agent_click.html`;
 const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
@@ -162,6 +163,24 @@ async function fill(c, tab, fields, { answer = { kind: "once" }, submit, asked }
     Assert.deepEqual(v.errors, [], "a valid agent-fill result");
   }
   return r;
+}
+
+/**
+ * The status of the next request to a URL starting with `prefix`, once every observer of it
+ * has run: NS_BINDING_ABORTED when Vimma cancelled it.
+ * @param {string} prefix
+ * @returns {Promise<number>}
+ */
+function requestStatus(prefix) {
+  return new Promise((resolve) => {
+    const observe = (/** @type {any} */ subject) => {
+      const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+      if (!channel.URI.spec.startsWith(prefix)) return;
+      Services.obs.removeObserver(observe, "http-on-modify-request");
+      Services.tm.dispatchToMainThread(() => resolve(channel.status));
+    };
+    Services.obs.addObserver(observe, "http-on-modify-request");
+  });
 }
 
 /** What the page's fields hold, and the events they got. @param {any} tab */
@@ -459,6 +478,34 @@ addTidyTask(async function test_fill_submit_asks_under_a_grant() {
   });
   Assert.ok(r.error?.message.includes("one form"), `refused: ${r.error?.message}`);
   Assert.equal(AgentGate.waiting.length, 0, "nothing was asked");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_a_skipped_submit_is_not_sent_and_allows_nothing_after_it() {
+  await mcp(true);
+  AgentAct._settleMs = null;
+  const tab = await openAgentTab(CLICK);
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const sent = requestStatus(`${PAGE}?bounce-note=`);
+  // The page moves the destination as its submit button is pressed, so the click is skipped;
+  // 100 ms later it puts the destination back and calls submit(), which matches what was allowed.
+  const r = await fill(c, tab, [{ label: by["Bounce note"], value: "hello" }], {
+    submit: by.Bounce,
+  });
+  Assert.ok(
+    r.error?.message.startsWith("the form changed since the user was asked; it was not sent"),
+    `the fill says the form was not sent: ${r.error?.message}`,
+  );
+  Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's own submission was cancelled (M28)");
+  await until(
+    async () =>
+      await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.wrappedJSObject.bounced),
+    "the page sent the form itself",
+  );
+  Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "the page stayed");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
