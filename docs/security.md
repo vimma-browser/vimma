@@ -298,13 +298,19 @@ text that pages, add-ons and bookmarks choose.
   to exit and then runs `$APPIMAGE` with no arguments, the process id and the path passed as
   positional parameters the script **never** reads as shell text, started from one call site
   only once a quit can no longer be cancelled. Chrome code **never** calls
-  native code, with one exception: `statx(2)` from libc through js-ctypes, for the owner of
-  clamd's socket (M13). [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
+  native code, with one exception: the owner and type of clamd's socket (M13), read through
+  js-ctypes with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
+  `/usr/lib/libSystem.B.dylib` on macOS (`lstat` on arm64, `lstat$INODE64` on x86_64, the same
+  144-byte `struct stat`), neither following a symlink. libSystem is opened by its absolute path,
+  which dyld resolves from its shared cache, because for a bare name dyld also searches the
+  working directory of a process without the hardened runtime, so a library planted where Vimma
+  starts would be loaded. Any other system or architecture, a failed call or a struct of
+  another size gives no owner, so clamd is not used. [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
   [`never starts a process, but ClamAV on an agent download and an AppImage's restart`](../tools/security/test/chrome-source.test.mjs),
   [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
   [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../packages/vimma-core/test/restart.test.mjs),
   [`starts the AppImage only once the old process has exited, with no arguments`](../packages/vimma-core/test/restart.test.mjs),
-  [`never calls native code, but statx on clamd's socket`](../tools/security/test/chrome-source.test.mjs)
+  [`never calls native code, but statx or lstat on clamd's socket`](../tools/security/test/chrome-source.test.mjs)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
   - The status bar **must** always show the selected page's real address with its registrable
@@ -840,7 +846,8 @@ M30, M31, M32), in force.
   reported clean: keeping the file is asked the same way, and a yes says "scanned with outdated
   definitions". `clamdscan` is used only when it passes clamscan's checks, the system's
   clamd.conf passes them too and sets a local socket, no TCP socket and both alerts, and the
-  socket is owned by root or `clamav`; on any failure the file is scanned by `clamscan`. Vimma has no download reputation service of its
+  socket is a socket (not a symlink) owned by root or `clamav`, on Linux and macOS alike (C2);
+  on any failure the file is scanned by `clamscan`. Vimma has no download reputation service of its
   own: Firefox's Safe Browsing checks downloads only in a build with a Google key (P6), so in a
   keyless build these checks and ClamAV are all there is.
   [`test_a_dangerous_file_needs_bang_for_that_one_file`](../tests/browser/browser_vimma_mcp_downloads.js),

@@ -272,8 +272,6 @@ support-files = [
 ]
 
 ["browser_vimma_mcp_downloads.js"]
-# macOS: the clamd socket owner check uses Linux statx, so clamd is never used (#387)
-skip-if = ["os == 'mac'"]
 support-files = [
   "file_vimma_agent_page.html",
   "file_vimma_agent_download.sjs",
@@ -298,8 +296,6 @@ support-files = [
 ]
 
 ["browser_vimma_private_swap.js"]
-# macOS: on the hosted runner the fake Hyprland's openwindow event can come after REPLY_MS (#422)
-skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_title.html"]
 
 ["browser_vimma_private_swap_native.js"]
@@ -311,13 +307,9 @@ support-files = ["file_vimma_title.html"]
 ["browser_vimma_side_panel_unsplit.js"]
 
 ["browser_vimma_firefox_keys.js"]
-# macOS: the Firefox key inventory lists Linux chords; macOS uses cmd as accel (#384)
-skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_firefox_coverage.js"]
-# macOS: the Firefox key inventory lists Linux chords; macOS uses cmd as accel (#384)
-skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_edit_keys.js"]
