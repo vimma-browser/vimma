@@ -75,7 +75,7 @@ pay unasked.
    lock screens and in screen shares.
 8. **The guide and the grant's wording say it.** Once this is built, the question's hint
    (mcp-grants G3) becomes
-   `y once · 10a all tools for 10 min (sending a form or paying still asks) · n deny · x mute`,
+   `y once · 10a 10 min, all but forms and paying · n deny · x mute`,
    and the grant's notice ends `…; sending a form or paying still asks (ctrl+b shift+a ends it)`.
 
 ## Research
