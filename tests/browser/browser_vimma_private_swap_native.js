@@ -108,10 +108,24 @@ async function teardown() {
 
 /** The workspace the test starts in: leaving private by ctrl+b ) can show another one. */
 const startWorkspace = WindowWorkspaces.get(window)?.model?.active;
+/**
+ * The frame the test starts at, and the persisted frame attributes it overwrites: the tests that
+ * run after it lay out the bar at the window's own width (browser_vimma_statusbar.js).
+ */
+const startFrame = frameOf(window);
+const FRAME_ATTRS = ["screenX", "screenY", "width", "height"];
+const startAttrs = FRAME_ATTRS.map((a) => document.documentElement.getAttribute(a));
 
 registerCleanupFunction(async () => {
   await teardown();
   if (startWorkspace) WindowWorkspaces.get(window)?.switchTo({ id: startWorkspace });
+  if (window.windowState !== window.STATE_NORMAL) window.restore();
+  await place(window, startFrame);
+  FRAME_ATTRS.forEach((a, i) => {
+    const v = startAttrs[i];
+    if (v === null) document.documentElement.removeAttribute(a);
+    else document.documentElement.setAttribute(a, v);
+  });
   while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
 });
 
