@@ -325,23 +325,24 @@ describe("urgency (spec §7)", () => {
   });
 });
 
-describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
-  /** An error as execFileSync throws it when gh exits non-zero. */
-  const ghError = (/** @type {string} */ stderr) =>
-    Object.assign(new Error("Command failed: gh api"), { stderr });
-  const HTTP_500 = ghError("unexpected end of JSON input\n");
-  /** A gh that answers with `replies` in turn (an Error is thrown), and the waits it was given. */
-  const fake = (/** @type {(string | Error)[]} */ ...replies) => {
-    const calls = /** @type {string[][]} */ ([]);
-    const waits = /** @type {number[]} */ ([]);
-    const run = (/** @type {string[]} */ args) => {
-      calls.push(args);
-      const r = replies[Math.min(calls.length, replies.length) - 1];
-      if (r instanceof Error) throw r;
-      return r ?? "";
-    };
-    return { run, sleep: async (/** @type {number} */ ms) => void waits.push(ms), calls, waits };
+/** An error as execFileSync throws it when gh exits non-zero. */
+const ghError = (/** @type {string} */ stderr) =>
+  Object.assign(new Error("Command failed: gh api"), { stderr });
+/** A gh that answers with `replies` in turn (an Error is thrown), and the waits it was given. */
+const fake = (/** @type {(string | Error)[]} */ ...replies) => {
+  const calls = /** @type {string[][]} */ ([]);
+  const waits = /** @type {number[]} */ ([]);
+  const run = (/** @type {string[]} */ args) => {
+    calls.push(args);
+    const r = replies[Math.min(calls.length, replies.length) - 1];
+    if (r instanceof Error) throw r;
+    return r ?? "";
   };
+  return { run, sleep: async (/** @type {number} */ ms) => void waits.push(ms), calls, waits };
+};
+
+describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
+  const HTTP_500 = ghError("unexpected end of JSON input\n");
 
   /** The commits/<sha>/pulls response for pull requests carrying these labels. */
   const pulls = (/** @type {string[][]} */ ...labels) =>
@@ -391,7 +392,9 @@ describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
     ["a label without a string name", '[{"labels":[{"name":7}]}]'],
   ])("throws at once on %s instead of answering no labels", async (_, body) => {
     const gh = fake(body, pulls(["security"]));
-    await expect(commitLabels("abc", "o/r", gh)).rejects.toThrow(/labels of abc/);
+    await expect(commitLabels("abc", "o/r", gh)).rejects.toThrow(
+      /labels of abc: unexpected response/,
+    );
     expect(gh.calls).toHaveLength(1);
   });
 
@@ -411,19 +414,6 @@ describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
 });
 
 describe("reading the published releases (spec §7: the range of commits)", () => {
-  const ghError = (/** @type {string} */ stderr) =>
-    Object.assign(new Error("Command failed: gh api"), { stderr });
-  const fake = (/** @type {(string | Error)[]} */ ...replies) => {
-    const calls = /** @type {string[][]} */ ([]);
-    const waits = /** @type {number[]} */ ([]);
-    const run = (/** @type {string[]} */ args) => {
-      calls.push(args);
-      const r = replies[Math.min(calls.length, replies.length) - 1];
-      if (r instanceof Error) throw r;
-      return r ?? "";
-    };
-    return { run, sleep: async (/** @type {number} */ ms) => void waits.push(ms), calls, waits };
-  };
   /** One entry of the releases list. */
   const release = (/** @type {string} */ tag_name, draft = false, prerelease = false) => ({
     tag_name,
@@ -460,7 +450,9 @@ describe("reading the published releases (spec §7: the range of commits)", () =
     ["a list with the current tag only as a draft", pages([release("v0.1.7", true)])],
   ])("throws at once on %s instead of widening the range", async (_, body) => {
     const gh = fake(body, pages([release("v0.1.7")]));
-    await expect(publishedTags("v0.1.7", "o/r", gh)).rejects.toThrow(/published releases/);
+    await expect(publishedTags("v0.1.7", "o/r", gh)).rejects.toThrow(
+      /published releases: unexpected response/,
+    );
     expect(gh.calls).toHaveLength(1);
   });
 });

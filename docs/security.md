@@ -1982,8 +1982,9 @@ _Pages_ and _extensions_ cannot reach it.
   a normal one. The responses are parsed as raw JSON in `manifest.mjs`, not through jq, and their
   shape is checked: a pulls response that is not a list of pull requests, each with a list of
   labels with string names, fails the run (jq would read `{}` as no labels), and so does a
-  releases list that does not contain the tag being published (a truncated list would widen the
-  range of commits to the whole history). The push uses a deploy key that can write only to
+  releases list that does not contain the tag being published (such a list is malformed or cut
+  short, and counting from it could widen the range of commits to the whole history; a wider
+  range can only raise the urgency, but costs a label read per commit). The push uses a deploy key that can write only to
   `vimma-updates`, kept in the `update-publish` environment (deployment branch `main` alone),
   reached only by the push step, to a pinned github.com host key, and **never** forced; nothing is
   pushed unless `UPDATES_ENABLED` is `true`. **⚠ setting:** the environments' branch rules and the

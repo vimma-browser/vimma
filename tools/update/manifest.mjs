@@ -620,6 +620,8 @@ function pullLabels(data) {
 /**
  * The labels of the pull requests that merged a commit. Urgency (spec §7) depends on them, so
  * labels that cannot be read, or a response of another shape, throw instead of counting as none.
+ * One page is enough: for a commit on the default branch GitHub lists only the pull request
+ * that merged it, and `--paginate --slurp` would change the shape to a list of pages.
  * @param {string} sha
  * @param {string} repo
  * @param {Gh} [gh]
@@ -636,8 +638,9 @@ export function commitLabels(sha, repo, gh) {
 
 /**
  * The tags of the published releases (not drafts or pre-releases), which must include `tag`:
- * a list without it is truncated or malformed, and counting from it could widen the range of
- * commits to the whole history.
+ * a list without it is malformed or cut short, and counting from it could widen the range of
+ * commits to the whole history. A wider range only adds labels, so it can raise the urgency but
+ * never lower it; the check keeps a broken list from costing hundreds of label reads.
  * @param {string} tag
  * @param {string} repo
  * @param {Gh} [gh]

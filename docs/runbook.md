@@ -2150,8 +2150,10 @@ JSON input`) or a network error is tried again after 2, 4 and 8 s; any other fai
 transient one, fails the run, because an unread label could hide a security release. A response
 of the wrong shape fails the run at once, with `unexpected response` in the log: a pulls answer
 that is not a list of pull requests each with a list of named labels, or a releases list that
-does not include the tag being published (a truncated list would count from the start of the
-history). During a GitHub incident, wait for it to pass and re-run the failed jobs.
+does not include the tag being published (such a list is malformed or cut short, and counting
+from it could reach back to the start of the history). During a GitHub incident, wait for it to
+pass and re-run the failed jobs. A `... is not among them` failure seconds after a release was
+published can be the releases list lagging behind the release itself: re-run the failed jobs.
 
 One-time setup, in order (each step can be checked before the next):
 
