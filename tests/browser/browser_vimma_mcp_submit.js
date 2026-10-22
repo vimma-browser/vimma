@@ -11,8 +11,12 @@
 "use strict";
 
 /* global Client, tidyTask -- from head_vimma_control.js */
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
+// Every click and submission now also asks each frame of the tab for card fields and the
+// total (mcp-checkpoints C6, C7): on a loaded macOS runner the file outgrows the default time.
+requestLongerTimeout(2);
 
 const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
