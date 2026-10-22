@@ -1,6 +1,6 @@
 # Spec: mcp-checkpoints
 
-Status: draft · Area: `packages/vimma-core/src/` (`agent-prompt.mjs`, `agent-act.mjs`, new
+Status: accepted · Area: `packages/vimma-core/src/` (`agent-prompt.mjs`, `agent-act.mjs`, new
 `agent-checkpoint.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
 `ctl/AgentAct.sys.mjs`, `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`,
 `actors/agent-fields.mjs`, `ui/agent-prompt.mjs`, `host/agent-ui.mjs`); `tools/vimma-ctl`
@@ -22,9 +22,8 @@ Under a grant, an agent works without questions, except at two checkpoints: befo
 form and before it pays. A checkpoint is one question that shows what will happen (where a form
 goes and what it sends; what is bought, on which site, and the total if the page states one),
 answered with `y` or `n`, after which the agent goes on under the same grant. Paying is
-recognised from what the page holds (payment card fields), what the step does (leaving the shop
-for another site) and what the button says, so that a button that does not submit a form cannot
-pay unasked.
+recognised from what the page holds (payment card fields) and what the button says, so that a
+button that does not submit a form cannot pay unasked when either signal is there.
 
 ## Problem
 
@@ -50,9 +49,8 @@ pay unasked.
    `y send it · n stop` for a form and `y pay · n stop` for a payment; `Esc`, `Enter`, `n` and `x`
    stop. The arming delay (1 s) and every guard of the question line apply (vimma-mcp 13-14).
 3. **A payment step** is a click (`vimma_activate`), a fill that submits, or a key that acts
-   (a follow, `gu`, `gU`, `H` or `L`; `vimma_keys` sends no key events, mcp-drive D8-D9) in an agent tab, when the signals of open question 1
-   say it may pay. Its question names the agent, the button's text, the site, and what the page
-   says about the amount (open question 2):
+   (a follow, `gu`, `gU`, `H` or `L`; `vimma_keys` sends no key events, mcp-drive D8-D9) in an agent tab, when a signal of C6 says it may pay. Its question names the agent, the
+   button's text, the site, and the amount the page states (C7):
    `▲ claude-code wants to pay: "Confirm order" on shop.example · the page says "Total 42,90 €"`.
 4. **A form submission's question shows what is sent:** the destination, then each field that
    goes, by name and value, as a fill's question shows them (mcp-forms F14): values cut at 40
@@ -110,8 +108,8 @@ One shop was checked through `vimma-ctl mcp` and Vimma's agent workspace: S-kaup
 `type=submit` buttons outside any form. Its checkout was not completed, and no survey of shops
 was made. The checkout designs this spec plans for are the three common ones: card fields,
 often in a payment provider's frame; a load of a payment provider's or bank's own site (a hosted
-payment page); and, with a saved card, one button. Each is one of the signals in open
-question 1.
+payment page); and, with a saved card, one button. C6 covers the first and the third directly,
+and the second at the provider's own card fields or pay button.
 
 ## Design
 
@@ -132,9 +130,36 @@ question 1.
    (mcp-grants G4).
 5. **Paying is recognised by several signals, any of which asks** (C5), because a wrong question
    costs one key and a missed payment costs money, and each signal alone misses a common
-   checkout (Research, Shops). Which signals, and how they combine, is open question 1. Rejected
-   in every option: the Payment Request API, which Firefox does not enable; asking the agent
-   whether a step pays, because the agent is the party being checked.
+   checkout (Research, Shops). Rejected: the Payment Request API, which Firefox does not enable;
+   asking the agent whether a step pays, because the agent is the party being checked.
+6. **The signals are card fields and the button's words** (C6). A step is a payment step when
+   the tab's page, in any frame (payment providers' cross-site frames included), holds a payment
+   card field (an `autocomplete` `cc-*` name or form autofill's card heuristics), or when the
+   control the step acts on has a pay phrase in its text, accessible name or value: a fixed list
+   in English, Finnish, Swedish, German, French and Spanish (`pay`, `buy now`, `place order`,
+   `confirm order`, `complete purchase`, `maksa`, `osta`, `tilaa`, `vahvista tilaus`, `betala`,
+   `köp`, `jetzt kaufen`, `zahlungspflichtig bestellen`, `payer`, `commander`, `pagar`,
+   `comprar`, …), matched as whole words, case-insensitively, after NFKC. Card fields catch a
+   checkout where a card is typed, and the button's words catch a saved card's one-button
+   checkout, which card fields never see because the agent cannot fill them (mcp-forms F6). The
+   cost is an extra question on a button such as "Buy now" that only leads to a checkout.
+   Rejected: card fields alone, because they miss the one-button checkout, the case with the
+   most risk; a cancel-and-ask rule for a load of another site from a checkout page (a hosted
+   payment page or a bank), because shops, logins and payment providers move between sites all
+   through a purchase, so the rule would ask often where nothing is paid, and cancelling a load
+   that a same-site POST started and then repeating the step could place an order twice, while
+   a hosted payment page still holds card fields or a pay button of its own, where the
+   checkpoint stops the agent; `[mcp] pay_words` and `[mcp] pay_sites` in config.toml, because
+   a fixed list keeps the rule the same for every user and the config surface small, and a
+   missed phrase is better added to the list for everyone.
+7. **The question quotes the total the page states** (C7). The amount is the text of the nearest
+   element, in reading order before the control, that holds a currency amount and a total word
+   (`total`, `yhteensä`, `summa`, `totalt`, `gesamt`, `importe`, …), cleaned as page text,
+   quoted after "the page says", cut at 40 columns, and left out when none is found. The amount
+   is what the user most needs to judge a payment, and quoting it as the page's claim keeps it
+   honest, since the page chooses it. Rejected: the button and site only, because the user would
+   have to look at the page to judge the step; the basket's lines too, because they do not fit
+   one line and are better read on the page through `vimma_show`.
 
 ## Security and privacy
 
@@ -145,24 +170,27 @@ could not already get, and a card field's value is never read (mcp-forms F6).
 
 Threats and what stops them (additions to mcp-grants' and mcp-forms'):
 
-| Threat                                                                                  | Mitigation                                                                                                                                                                                                                                           |
-| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A prompt-injected or mistaken agent buys under a grant.**                             | A payment step asks under any grant (C1, C5), showing the site and the stated amount (C2).                                                                                                                                                           |
-| **A shop's page hides its payment step** (no card fields, a neutral button, same site). | Not stopped when no signal matches. The shop is the party that charges, so a shop that hides its checkout from Vimma could equally charge without one; the threat this guards against is the agent, not the shop. The guide says what is recognised. |
-| **A page states a false amount.**                                                       | The question says "the page says" and quotes it; the user's bank or card statement is the authority, and the guide says so.                                                                                                                          |
-| **A page floods checkpoints** to train `y`.                                             | Each is an agent's call, so the agent's rates and the mute (vimma-mcp 18) bound them; a page cannot ask by itself.                                                                                                                                   |
+| Threat                                                                                                                                   | Mitigation                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A prompt-injected or mistaken agent buys under a grant.**                                                                              | A payment step asks under any grant (C1, C5), showing the site and the stated amount (C2).                                                                                                                                                                                        |
+| **A shop's page hides its payment step** (no card fields, a neutral button, same site).                                                  | Not stopped when no signal matches. The shop is the party that charges, so a shop that hides its checkout from Vimma could equally charge without one; the threat this guards against is the agent, not the shop. The guide says what is recognised.                              |
+| **A page states a false amount.**                                                                                                        | The question says "the page says" and quotes it; the user's bank or card statement is the authority, and the guide says so.                                                                                                                                                       |
+| **A hosted payment page reached without a signal**: a button whose text is not on the list leads to a payment provider's or bank's site. | The load itself is not stopped (C6 rejects a rule for loads of another site). The checkpoint stops the agent on that site instead, at its card fields or its pay button; a provider page that shows neither, such as a bank's confirm button worded otherwise, is not recognised. |
+| **A page floods checkpoints** to train `y`.                                                                                              | Each is an agent's call, so the agent's rates and the mute (vimma-mcp 18) bound them; a page cannot ask by itself.                                                                                                                                                                |
 
-`docs/security.md` gains a rule in §12 (next free M number): a payment step, by the signals
-decided in open question 1, **must** ask under any grant with only `y` and `n`, and its yes
-**never** makes or ends a grant; M28 gains that the question shows each field's name and value,
-never a sensitive field's value.
+`docs/security.md` gains a rule in §12 (next free M number): a payment step, by the signals of
+C6, **must** ask under any grant with only `y` and `n`, and its yes **never** makes or ends a
+grant; the rule says what it does not cover: a load of another site is not stopped, so a hosted
+payment page reached by a button whose text is not on the list stops the agent only at that
+page's own card fields or pay button. M28 gains that the question shows each field's name and
+value, never a sensitive field's value.
 
 ## Tests
 
 ### Vitest (`packages/vimma-core`)
 
-- `agent-checkpoint.test.mjs`: each signal of open question 1 alone makes a payment step; none
-  makes none; the button phrase list matches whole words in each listed language and not inside
+- `agent-checkpoint.test.mjs`: card fields alone, and a pay phrase alone, make a payment step;
+  neither makes none; the button phrase list matches whole words in each listed language and not inside
   other words; the amount found near a total word, or none.
 - `agent-prompt.test.mjs`: `a payment checkpoint names the button, site and stated amount`;
   `a form checkpoint lists the fields it sends, sensitive ones as •••`; `a checkpoint offers y
@@ -172,10 +200,8 @@ and n only, and x is a plain no`; the new grant hint and notice.
 ### Mochitests (`tests/browser/`)
 
 - `browser_vimma_mcp_checkpoint.js` (new): `test_card_fields_in_a_cross_site_frame_make_a_pay_step`,
-  `test_pay_button_outside_a_form_asks_under_a_grant`,
-  `test_leaving_for_another_site_from_checkout_asks`, `test_basket_button_does_not_ask`,
-  `test_a_no_stops_the_step_and_keeps_the_grant`, `test_a_late_redirect_to_another_site_asks`,
-  `test_a_yes_to_a_cancelled_post_is_refused_not_repeated`,
+  `test_pay_button_outside_a_form_asks_under_a_grant`, `test_basket_button_does_not_ask`,
+  `test_a_no_stops_the_step_and_keeps_the_grant`, `test_the_stated_total_is_quoted`,
   `test_checkpoint_notice_log_row_and_notification`.
 - `browser_vimma_mcp_submit.js`: `test_submit_question_lists_the_fields_it_sends` (hidden fields
   counted, values cleaned).
@@ -195,53 +221,9 @@ and n only, and x is a plain no`; the new grant hint and notice.
 ## Delivery
 
 1. `feat(mcp): a form submission's question shows the fields it sends` (Behaviour 4, C2 for
-   forms): needs no answer to the open questions.
-2. `feat(mcp): paying asks under any grant` (Behaviour 1-3, 5-8, C1, C3-C5), after open
-   questions 1 and 2 are answered.
+   forms).
+2. `feat(mcp): paying asks under any grant` (Behaviour 1-3, 5-8, C1, C3-C7).
 
 ## Open questions
 
-1. **Which signals make a step a payment step?** A step is a click, a fill that submits, or an
-   acting key (a follow, `gu`, `gU`, `H`, `L`) in an agent tab. In every option the signals are
-   read in every frame of the tab, payment providers' cross-site frames included, for buttons
-   as for fields.
-   - (a) **Card fields only:** the tab's page, in any frame, holds a payment card field (an
-     `autocomplete` `cc-*` name or form autofill's card heuristics). Catches checkouts where the
-     card is typed; misses a saved card's one-button checkout and hosted payment pages.
-   - (b) **(a), and leaving for another site from a checkout:** also a step that would load
-     another site in the tab's top level while the page holds card fields, or its URL or title
-     has a checkout word (`checkout`, `cart`, `basket`, `payment`, `kassa`, `maksu`, …). The
-     load is cancelled before it is sent and asked about, also when a script, a timer or a meta
-     refresh starts it up to 10 s after the step, or it opens in a new window. A yes loads the
-     cancelled URL when it was a GET; a POST or a 307 or 308 redirect is refused instead with a
-     note to the agent to ask the user to continue, because repeating the step that led there
-     could place the order twice. Catches hosted payment pages and bank redirects; misses a
-     saved card's one-button checkout.
-   - (c) **(b), and the button's words:** also a click on a control whose text, accessible name
-     or value contains a pay phrase from a fixed list in English, Finnish, Swedish, German,
-     French and Spanish (`pay`, `buy now`, `place order`, `confirm order`, `complete purchase`,
-     `maksa`, `osta`, `tilaa`, `vahvista tilaus`, `betala`, `köp`, `jetzt kaufen`,
-     `zahlungspflichtig bestellen`, `payer`, `commander`, `pagar`, `comprar`, …), matched as whole
-     words, case-insensitively, after NFKC. Catches one-button checkouts in those languages.
-     Costs an extra question on buttons such as "Buy now" that lead to a checkout rather than
-     pay.
-   - (d) **(c), and a config list:** `[mcp] pay_words` and `[mcp] pay_sites` add phrases and
-     sites (a user's own shop or bank) to the built-in ones.
-   - **Recommendation: (c).** Each signal covers a checkout the others miss (Research, Shops),
-     and a false positive costs one key while a miss costs money. Card fields alone protect
-     least: the agent can never fill them (mcp-forms F6), so a card form holds a card only when
-     the user typed it, and the real risk is a saved card's one-button checkout, which only the
-     button words catch. Button words are not enough
-     alone, since a button can be an icon or in another language, but together with card fields
-     and the cross-site rule they cover the common checkouts. (d) can follow when a real shop is
-     missed; starting without it keeps the config surface small.
-2. **What does the payment question show about the amount?**
-   - (i) The button's text and the site only.
-   - (ii) Also the amount the page states: the text of the nearest element, in reading order
-     before the button, that holds a currency amount and a total word (`total`, `yhteensä`,
-     `summa`, `totalt`, `gesamt`, `importe`, …), quoted as "the page says", cut at 40 columns,
-     left out when none is found.
-   - (iii) Also the basket's lines (items and prices).
-   - **Recommendation: (ii).** The amount is what the user most needs to judge a payment, and
-     quoting it as the page's claim keeps it honest; (iii) does not fit one line and is better
-     read on the page with `vimma_show` before answering.
+None: the signals (C6) and what the question shows (C7) are decided above.
