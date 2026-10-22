@@ -13,8 +13,14 @@ use std::cmp::Ordering;
 /// by build.rs.
 pub const VERSION: &str = env!("VIMMA_VERSION");
 
+/// Longest version compared, as vimma-core's `MAX_CTL_VERSION`.
+const MAX_VERSION: usize = 64;
+
 /// Major, minor and patch, and whether it has a pre-release.
 fn parse(version: &str) -> Option<([u64; 3], bool)> {
+    if version.len() > MAX_VERSION {
+        return None;
+    }
     let (core, pre) = match version.split_once('-') {
         Some((core, pre)) => (core, Some(pre)),
         None => (version, None),
@@ -103,6 +109,16 @@ mod tests {
         ] {
             assert_eq!(compare(bad, "0.1.8"), None, "{bad:?}");
         }
+    }
+
+    // As vimma-core's isCtlVersion: at most 64 characters, so a long pre-release from the
+    // discovery file or the welcome never reaches the agent's note.
+    #[test]
+    fn at_most_64_characters() {
+        let fits = format!("0.1.8-{}", "a".repeat(58));
+        let over = format!("0.1.8-{}", "a".repeat(59));
+        assert!(compare(&fits, "0.1.8").is_some());
+        assert_eq!(compare(&over, "0.1.8"), None);
     }
 
     #[test]

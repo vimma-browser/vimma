@@ -379,7 +379,7 @@ export function appRun() {
     'if [ -n "${APPIMAGE:-}" ]; then export MOZ_APP_LAUNCHER="$APPIMAGE"; fi',
     `# A link named ${CTL_NAME} runs the control client shipped inside (spec ship-vimma-ctl):`,
     "# $ARGV0 is the name the AppImage runtime was started by, $0 that of an extracted AppRun.",
-    'case "$(basename "${ARGV0:-$0}")" in',
+    'case "$(basename -- "${ARGV0:-$0}")" in',
     `  ${CTL_NAME}) exec "$HERE/usr/lib/${APP}/${CTL_NAME}" "$@" ;;`,
     "esac",
     "# One link (the desktop entry's %u) through vimma-open, which names the app that opened it",

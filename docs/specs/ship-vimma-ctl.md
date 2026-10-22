@@ -121,8 +121,10 @@ that it cannot click or fill, although the browser can.
    pre-releases of one release compare equal, so nightlies of one release never warn about
    each other. vimma-core's `compareVersions` and vimma-ctl's `version::compare` implement the
    same rule, each with its own tests.
-9. **The notice is per connection, and waits for the question line.** Each MCP session opens
-   one connection and keeps it, so a notice per connection names each stale session once. The
+9. **The notice is once per client and version, and waits for the question line.** Each MCP
+   session opens one connection and keeps it; the notice is shown once per client name and
+   `ctl` a Vimma session, so a client that reconnects, or an agent that opens connection after
+   connection, cannot keep the notice line from the notices of what its grants ran. The
    connection opens at the agent's first call, whose question follows the hello at once, and a
    notice shown then would cover the question's answer keys; so `AgentGate.notify` marks it
    `hold`, and `host/agent-ui.mjs` shows it 1.6 s after no question waits (after an answer's own
@@ -156,6 +158,10 @@ that it cannot click or fill, although the browser can.
   version pinned in `rust-toolchain.toml`, and no crate is downloaded. The binary reaches users
   only inside packages that `SHA256SUMS` lists and the `sign` jobs sign (docs/security.md, B13).
 - The agent-facing note is text `vimma-ctl` writes itself, never page content.
+- Licences: the static Linux binary links musl (MIT) and Rust's standard library (MIT OR
+  Apache-2.0), both on the licence allowlist. Shipping their notices with the packages and
+  listing `vimma-ctl` in the release SBOM is tracked in
+  [#516](https://github.com/vimma-browser/vimma/issues/516).
 
 ## Tests
 

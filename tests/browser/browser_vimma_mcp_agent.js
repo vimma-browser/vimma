@@ -718,6 +718,11 @@ add_task(async function test_an_older_vimma_ctl_gets_a_notice_and_still_works() 
     Assert.equal(refused?.error?.code, "invalid-args", "a ctl that is not a version is refused");
     Assert.equal(notices.length, 2, "and gives no notice");
     bad.close();
+    // Once per client name and version a session: a client reconnecting, or an agent opening
+    // connection after connection, cannot keep the notice line for itself.
+    const again = await hello({ ctl: "0.0.1" });
+    Assert.equal(notices.length, 2, "no second notice for the same client and version");
+    again.close();
   } finally {
     AgentGate.removeListener(collect);
   }
@@ -733,7 +738,7 @@ add_task(async function test_the_older_client_notice_waits_for_the_question_line
   if (notice) notice.textContent = "";
   const c = new Client(/** @type {number} */ (VimmaControl.port));
   await c.handshake({ protocol: 2, role: "agent" });
-  await c.call("agent-hello", { client: { name: "example-agent" }, ctl: "0.0.1" });
+  await c.call("agent-hello", { client: { name: "held-agent" }, ctl: "0.0.1" });
   const tabs = c.call("agent-tabs");
   const q = await question();
   await new Promise((r) => setTimeout(r, 1000));

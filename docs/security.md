@@ -1360,7 +1360,8 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   version **must** be refused with the rest of the hello. The discovery file's `version` is
   Vimma's own version, which the `welcome` gives any client anyway.
   [`test_an_older_vimma_ctl_gets_a_notice_and_still_works`](../tests/browser/browser_vimma_mcp_agent.js),
-  [`says older for a client that names no version: it predates the check`](../packages/vimma-core/test/ctl-version.test.mjs)
+  [`says older for a client that names no version: it predates the check`](../packages/vimma-core/test/ctl-version.test.mjs),
+  [`is optional, and refused with the whole hello when it is not a version`](../packages/vimma-core/test/ctl-version.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 

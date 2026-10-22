@@ -1,6 +1,7 @@
 // Spec: docs/specs/ship-vimma-ctl.md, behaviours 4-6: an agent connection names its vimma-ctl's
 // version, and a client older than Vimma gets a one-line notice, never a refusal.
 import { describe, expect, it } from "vitest";
+import { validateMessage } from "../src/control.mjs";
 import { compareVersions, ctlVersionNotice, isCtlVersion } from "../src/ctl-version.mjs";
 
 describe("compareVersions", () => {
@@ -60,5 +61,24 @@ describe("ctlVersionNotice", () => {
   it("says nothing when Vimma's own version is not one it can compare", () => {
     expect(ctlVersionNotice("0.1.7", "")).toBeNull();
     expect(ctlVersionNotice(undefined, "dev")).toBeNull();
+  });
+});
+
+describe("agent-hello's ctl", () => {
+  /** @param {Record<string, unknown>} args */
+  const hello = (args) =>
+    validateMessage(
+      { type: "request", id: 1, command: "agent-hello", args: { client: { name: "a" }, ...args } },
+      { kind: "request" },
+    );
+
+  it("is optional, and refused with the whole hello when it is not a version", () => {
+    expect(hello({}).valid).toBe(true);
+    expect(hello({ ctl: "0.1.8" }).valid).toBe(true);
+    for (const ctl of ["v0.1.8", "", 8, "0.1.8\u001b[2J"]) {
+      expect(hello({ ctl }).errors, JSON.stringify(ctl)).toContain(
+        "ctl must be a Vimma version (X.Y.Z)",
+      );
+    }
   });
 });

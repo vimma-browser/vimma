@@ -352,6 +352,9 @@ const wf = (s) => /** @type {string} */ (/** @type {any} */ (String(s)).toWellFo
 /** UTF-8 length of `value` as JSON. @param {unknown} value */
 const jsonBytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
 
+/** The clients (name and vimma-ctl version) told about once this session. */
+const ctlNoticed = new Set();
+
 const COMMANDS = {
   /**
    * The connection's first command (decision 4): labels for the question. Neither is proof.
@@ -366,8 +369,14 @@ const COMMANDS = {
     AgentGate.connect(conn, state.agent);
     // An older vimma-ctl keeps its own tools, since every command is checked here all the same;
     // the user learns why an agent lacks newer ones (spec ship-vimma-ctl, decision 6).
+    // Once per client name and version a session, so a client that reconnects, or opens
+    // connection after connection, cannot keep the notice line for itself.
     const notice = ctlVersionNotice(ctl, lazy.AppConstants.MOZ_APP_VERSION_DISPLAY);
-    if (notice) AgentGate.notify(notice, { hold: true });
+    const key = `${client.name}\0${ctl ?? ""}`;
+    if (notice && !ctlNoticed.has(key)) {
+      ctlNoticed.add(key);
+      AgentGate.notify(notice, { hold: true });
+    }
     const agent = WorkspaceStore.agent;
     return { workspace: agent?.name ?? WorkspaceStore.agentName ?? "agent", exists: !!agent };
   },
