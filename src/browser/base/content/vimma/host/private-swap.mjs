@@ -30,6 +30,9 @@ import {
   repliesOk,
 } from "../core/hyprswap.mjs";
 import { HyprIpc, REPLY_MS } from "./hypr/HyprIpc.sys.mjs";
+import { NativeSwap } from "./native-swap.mjs";
+
+export { isBrowserWindow } from "./native-swap.mjs";
 
 /** @import { Client, Command, Dialect, Pair, PairEvent, ShowOp } from "../core/hyprswap.mjs" */
 /** @import { PrivatePlacement } from "../core/config.mjs" */
@@ -554,7 +557,7 @@ function track(win) {
   });
 }
 
-export const PrivateSwap = {
+const HyprSwap = {
   /**
    * Once per browser window (vimma.js): its address is learnt while swap placement applies,
    * and its close, activation and new tabs are watched (decision 7).
@@ -718,3 +721,45 @@ export const PrivateSwap = {
     return chain;
   },
 };
+
+/**
+ * The backend switch (docs/specs/private-swap-macos.md, decision 3): the native swap on macOS
+ * (native-swap.mjs), Hyprland's everywhere else. Both watch every window and read the config,
+ * so a switch goes to whichever applies. Only HyprSwap's test hooks (`_` names) may be
+ * inherited: every public member (init, configure, enter, show, beforeClose, status) is routed
+ * here, and a new one must be too, or it would reach macOS through the prototype.
+ * browser_vimma_private_swap_native.js fails on a public member that is not routed.
+ * @type {typeof HyprSwap & { openFeatures(from: Window): string | null }}
+ */
+export const PrivateSwap = Object.create(HyprSwap, {
+  init: {
+    value(/** @type {Window} */ win) {
+      NativeSwap.init(win);
+      HyprSwap.init(win);
+    },
+  },
+  configure: {
+    value(/** @type {PrivatePlacement} */ next) {
+      NativeSwap.configure(next);
+      HyprSwap.configure(next);
+    },
+  },
+  // Where a new private window opens to take a window's place; null: as before.
+  openFeatures: {
+    value: (/** @type {Window} */ from) =>
+      NativeSwap.selected ? NativeSwap.openFeatures(from) : null,
+  },
+  enter: {
+    value: (/** @type {Window} */ from, /** @type {Window} */ priv, /** @type {boolean} */ fresh) =>
+      (NativeSwap.selected ? NativeSwap : HyprSwap).enter(from, priv, fresh),
+  },
+  show: {
+    value: (/** @type {Window} */ win) => (NativeSwap.selected ? NativeSwap : HyprSwap).show(win),
+  },
+  beforeClose: {
+    value: () => (NativeSwap.selected ? NativeSwap : HyprSwap).beforeClose(),
+  },
+  status: {
+    get: () => (NativeSwap.selected ? NativeSwap : HyprSwap).status,
+  },
+});
