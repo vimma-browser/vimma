@@ -296,7 +296,12 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     - **Its own collection.** The agent's collection must not use the window's `liveGen`
       (`VimmaActors.sys.mjs:209-213`): it is keyed by the agent tab's `<browser>`, so an agent's
       `f` never cancels the user's hint mode in the same window, and the user's `f` never
-      cancels the agent's. Sub-PR 3 adds that key to `collectHints`.
+      cancels the agent's. Sub-PR 3 adds that key to `collectHints`. (Since changed: every
+      frame of an agent's collection has up to 4 s from its start to answer, where the user's
+      hint mode gives a subframe 150 ms and the top frame 2 s, because an agent tab is in the
+      background, where a frame's process may be busy or newly started, and an agent cannot tell
+      that a frame was left out; `AGENT_FRAMES_MS` in `actors/VimmaActors.sys.mjs`, and
+      mcp-forms F2.)
     - **Labels.** `DEFAULT_HINT_CHARS`, not the user's `hint_chars`, for the same reason as D10.
       At most 200 links are returned, in the reading order `orderTargets` gives; the rest are
       dropped and the result says how many.
