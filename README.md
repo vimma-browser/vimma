@@ -26,10 +26,11 @@ and workspaces, and your hands never leave the keyboard.
   `config.toml`, Firefox's own keys too: every Firefox shortcut is a Vimma binding with
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.
 - **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through
-  MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies, and every request asks
-  you first. There they read and open pages, scroll, search and follow links with Vimma's own
-  keys, click buttons and fill forms by hint label (never a password or payment card field, and
-  a form they send asks every time), see a page as a screenshot, read its errors, and show you a
+  MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies. Every request asks you
+  first, and one answer (`10a`) lets an agent work through a task for that many minutes. There
+  they read and open pages, scroll, search and follow links with Vimma's own keys, click buttons
+  and fill forms by hint label (never a password or payment card field, and a form they send
+  asks every time, under any grant), see a page as a screenshot, read its errors, and show you a
   page when they want you to look at it.
 
 ## Install

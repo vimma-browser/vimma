@@ -1,6 +1,6 @@
 # Spec: mcp-grants
 
-Status: accepted · Area: `packages/vimma-core/src/` (`agent.mjs`, `agent-prompt.mjs`);
+Status: implemented · Area: `packages/vimma-core/src/` (`agent.mjs`, `agent-prompt.mjs`);
 `src/browser/base/content/vimma/` (`ctl/AgentGate.sys.mjs`, `host/agent-ui.mjs`); `tests/e2e`
 · Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged: the gate
 stays in the browser, and this spec changes only what one answer allows). No new dependency.
@@ -46,8 +46,10 @@ changed) are already asked separately, whatever is granted.
    `vimma_read_page`, `vimma_open`, `vimma_close_tab`, `vimma_keys`, `vimma_elements`,
    `vimma_activate`, `vimma_fill`, `vimma_screenshot`, `vimma_console` and the agent's own
    downloads (`vimma_download`). The connection's questions already waiting, other than those in
-   item 3, run at once, each with the notice and `:mcp log` row of a call under a grant
-   (item 6), since the user answered only the one on the line.
+   item 3, run at once, each a `:mcp log` row of a call under a grant, and the grant's notice
+   ends `· it also ran 2 waiting calls (:mcp log)`, since the user answered only the one on the
+   line. They get no notice each, because notices replace each other and the grant's would be
+   gone at once.
 2. **Other connections still ask.** A grant belongs to one connection (one `vimma-ctl mcp`
    process, one agent session), as in vimma-mcp 21; another agent, or the same agent after a
    reconnect, asks again.
@@ -239,9 +241,11 @@ on disconnect, and are listed shortest first`; `a grant does not run it, whateve
 waits` (a dangerous download); the vimma_show tests; the per-tool tests become `… and its grant
 covers the other tools`.
 - `agent-prompt.test.mjs`: the hint in the question tests; `a grant names its scope, its
-length, the cap, and the key that ends it`.
-- `fuzz/agent.fuzz.test.mjs`: unchanged properties (no limit broken, no request resolved twice)
-  hold with one grant per connection.
+length, the cap, and the key that ends it`; `a grant names the waiting calls it let run, which
+the user did not see asked`.
+- `fuzz/agent.fuzz.test.mjs`: the old properties (no limit broken, no request resolved twice)
+  hold with one grant per connection, and `no sequence of events runs an always-ask request
+under a grant or makes a grant from one`.
 
 ### Mochitests (`tests/browser/`)
 
@@ -249,7 +253,7 @@ length, the cap, and the key that ends it`.
   `test_grants_per_connection_and_tool`): a read granted for 15 minutes lets the tab list and
   an open of that connection run with log rows, while a second connection asks;
   `test_queued_calls_a_grant_releases_show_as_granted`: a waiting open released by a grant given
-  to a read is a `:mcp log` row run under the grant, with its notice.
+  to a read is a `:mcp log` row run under the grant, and the grant's notice counts it.
 - `browser_vimma_mcp_prompt.js`: the hint's wording; in
   `test_a_count_and_a_grant_minutes_shown_in_the_status_bar`, the grant's notice and
   `ctrl+b shift+a` ending the grant at once.

@@ -72,6 +72,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Agents (MCP): `vimma_screenshot` shows an agent tab as an image, taken in the background, with its `vimma_elements` labels drawn on it if asked; it is never taken while a password, one-time-code or card field on screen has a value.
 - Agents (MCP): `vimma_console` reads an agent tab's script errors, console errors and warnings, and failed requests, without running page code.
 - Packaging: an `.rpm` for Fedora and openSUSE, installed and checked with dnf and zypper; `:update` shows the dnf and zypper commands for it.
+- Agents (MCP): one answer covers a task. `10a` lets that agent use every tool for 10 minutes, not only the one it asked about; sending a form, showing a page and a dangerous or unscanned download still ask. The question's hint reads `y once · 10a 10 min, all but forms · n deny · x mute`, the grant's notice names what still asks and that `ctrl+b shift+a` ends it, and `ctrl+b shift+a` with nothing waiting now ends every grant at once. The e2e baselines `m0-mcp-stdio-question`, `m0-mcp-drive-keys-question` and `m0-mcp-forms-fill-question` change with the hint.
 
 ### Changed
 

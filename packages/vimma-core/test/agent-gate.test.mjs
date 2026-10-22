@@ -1,6 +1,7 @@
 // docs/specs/vimma-mcp.md, sub-PR 2a: the agent role's gate in core. Every request asks
 // (decision 12), one at a time and capped (17), three denials mute (18), grants per connection
-// and tool, capped and in memory (20-22), and page text marked untrusted ("Marking content").
+// (docs/specs/mcp-grants.md G1), capped and in memory (20-22), and page text marked untrusted
+// ("Marking content").
 import { describe, test, expect } from "vitest";
 import {
   AgentQueue,
@@ -171,34 +172,53 @@ describe("answers", () => {
   });
 });
 
-describe("grants (decisions 20-22)", () => {
-  test("15 min for (conn 1, read): reads run unasked until 15:00; opens and conn 2 ask", () => {
+describe("grants (decisions 20-22, mcp-grants G1)", () => {
+  test("a grant covers every tool of its connection, not another connection's", () => {
     const q = queue();
     const a = q.ask(1, READ, 0);
     expect(q.answer(a.id, { kind: "grant", minutes: 15 }, 0)).toEqual({
       resolved: [{ id: a.id, allow: true }],
-      grant: { conn: 1, tool: READ, until: 15 * MIN },
+      grant: { conn: 1, until: 15 * MIN },
     });
-    expect(q.ask(1, READ, 15 * MIN - 1000)).toEqual({
-      kind: "run",
-      grant: { conn: 1, tool: READ, until: 15 * MIN },
-    });
-    expect(q.ask(1, OPEN, 1000).kind).toBe("wait");
+    for (const tool of Object.values(AGENT_TOOLS).filter((t) => !ALWAYS_ASK.includes(t))) {
+      expect(q.ask(1, tool, 15 * MIN - 1000)).toEqual({
+        kind: "run",
+        grant: { conn: 1, until: 15 * MIN },
+      });
+    }
+    expect(q.ask(1, "vimma_download", 1000).kind).toBe("run");
     expect(q.ask(2, READ, 1000).kind).toBe("wait");
-    expect(q.ask(1, READ, 15 * MIN).kind).toBe("wait");
+    expect(q.ask(1, OPEN, 15 * MIN).kind).toBe("wait");
   });
 
-  test("a grant also lets that connection's queued calls of the tool run", () => {
+  test("a grant lets the connection's queued calls of every tool run, not an always-ask one", () => {
     const q = queue();
     const a = q.ask(1, READ, 0);
     const b = q.ask(1, OPEN, 0);
-    const c = q.ask(1, READ, 0);
+    const c = q.ask(1, "vimma_activate", 0, { always: true });
     const d = q.ask(2, READ, 0);
+    const e = q.ask(1, "vimma_show", 0);
     expect(q.answer(a.id, { kind: "grant", minutes: 5 }, 0).resolved).toEqual([
       { id: a.id, allow: true },
-      { id: c.id, allow: true },
+      { id: b.id, allow: true },
     ]);
-    expect(q.waiting.map((r) => r.id)).toEqual([b.id, d.id]);
+    expect(q.waiting.map((r) => r.id)).toEqual([c.id, d.id, e.id]);
+  });
+
+  test("a reconnect asks again", () => {
+    const q = queue();
+    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 5 }, 0);
+    q.disconnect(1);
+    q.connect(1);
+    expect(q.ask(1, READ, 1000).kind).toBe("wait");
+  });
+
+  test("a connection holds at most one grant", () => {
+    const q = queue();
+    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 5 }, 0);
+    expect(q.grants(0)).toEqual([{ conn: 1, until: 5 * MIN }]);
+    q.answer(q.ask(1, OPEN, 6 * MIN).id, { kind: "grant", minutes: 10 }, 6 * MIN);
+    expect(q.grants(6 * MIN)).toEqual([{ conn: 1, until: 16 * MIN }]);
   });
 
   test("grants end on revoke and on disconnect, and are listed shortest first", () => {
@@ -332,7 +352,7 @@ describe("clicks and submissions (mcp-forms F15, F25, F26)", () => {
     expect(ok.filter(Boolean)).toHaveLength(30);
   });
 
-  test("vimma_activate can be granted; a submit asks under that grant and makes none", () => {
+  test("vimma_activate can be granted; a submit asks under any grant and makes none", () => {
     expect(ALWAYS_ASK).not.toContain("vimma_activate");
     const q = new AgentQueue();
     q.connect(1);
@@ -351,23 +371,20 @@ describe("clicks and submissions (mcp-forms F15, F25, F26)", () => {
 // docs/specs/mcp-forms.md F15, F25 (security.md M28): fills are granted like clicks, apart from
 // them, and a fill that submits asks under a fill grant and makes none.
 describe("fills (mcp-forms F15, F25)", () => {
-  test("vimma_fill can be granted, not by a click grant; a submit asks under it", () => {
+  test("a click grant covers fills; a fill that submits asks under it", () => {
     expect(ALWAYS_ASK).not.toContain("vimma_fill");
     const q = new AgentQueue();
     q.connect(1);
     const click = q.ask(1, "vimma_activate", 0);
     q.answer(/** @type {any} */ (click).id, { kind: "grant", minutes: 10 }, 0);
-    expect(q.ask(1, "vimma_fill", 1000).kind).toBe("wait");
-    const fill = q.ask(1, "vimma_fill", 2000);
-    q.answer(/** @type {any} */ (fill).id, { kind: "grant", minutes: 10 }, 2000);
-    expect(q.ask(1, "vimma_fill", 3000).kind).toBe("run");
+    expect(q.ask(1, "vimma_fill", 1000).kind).toBe("run");
     expect(q.ask(1, "vimma_fill", 4000, { always: true }).kind).toBe("wait");
   });
 });
 
 // docs/specs/mcp-forms.md F21, F26 (security.md M32): at most 12 screenshots a minute per
 // connection, counted when asked, because each is a large reply and a paint in the content
-// process; a screenshot is granted like any read-only tool.
+// process; a screenshot is granted like any other tool (mcp-grants G1).
 describe("the screenshot rate (mcp-forms F21)", () => {
   test("at most 12 agent-screenshot per connection a minute", () => {
     expect(SCREENSHOT_RATE).toEqual({ max: 12, ms: 60_000 });
@@ -379,20 +396,20 @@ describe("the screenshot rate (mcp-forms F21)", () => {
     expect(r.take(1, 60_001)).toBe(true);
   });
 
-  test("vimma_screenshot can be granted, and its grant covers no other tool", () => {
+  test("vimma_screenshot can be granted, and its grant covers the other tools", () => {
     expect(ALWAYS_ASK).not.toContain("vimma_screenshot");
     const q = new AgentQueue();
     q.connect(1);
     const a = q.ask(1, "vimma_screenshot", 0);
     q.answer(/** @type {any} */ (a).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.ask(1, "vimma_screenshot", 1000).kind).toBe("run");
-    expect(q.ask(1, "vimma_activate", 1000).kind).not.toBe("run");
+    expect(q.ask(1, "vimma_activate", 1000).kind).toBe("run");
   });
 });
 
 // docs/specs/mcp-forms.md F26 (security.md M32): at most 30 console reads a minute per
-// connection, counted when asked; a console read is granted like any read-only tool, and its
-// grant covers no other tool (F25).
+// connection, counted when asked; a console read is granted like any other tool, and its grant
+// covers the others (mcp-grants G1).
 describe("the console rate (mcp-forms F26)", () => {
   test("at most 30 agent-console per connection a minute", () => {
     expect(CONSOLE_RATE).toEqual({ max: 30, ms: 60_000 });
@@ -404,14 +421,14 @@ describe("the console rate (mcp-forms F26)", () => {
     expect(r.take(1, 60_001)).toBe(true);
   });
 
-  test("vimma_console can be granted, and its grant covers no other tool", () => {
+  test("vimma_console can be granted, and its grant covers the other tools", () => {
     expect(ALWAYS_ASK).not.toContain("vimma_console");
     const q = new AgentQueue();
     q.connect(1);
     const a = q.ask(1, "vimma_console", 0);
     q.answer(/** @type {any} */ (a).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.ask(1, "vimma_console", 1000).kind).toBe("run");
-    expect(q.ask(1, "vimma_screenshot", 1000).kind).not.toBe("run");
+    expect(q.ask(1, "vimma_screenshot", 1000).kind).toBe("run");
   });
 });
 
@@ -522,21 +539,21 @@ describe(":mcp revoke and :mcp's status", () => {
   });
 });
 
-// docs/specs/vimma-mcp.md, decision 31 d (sub-PR 2c): a dangerous download asks even under a
-// grant of its tool, a grant never covers it, and an answer to it never makes a grant.
+// docs/specs/vimma-mcp.md, decision 31 d (sub-PR 2c), mcp-grants G2: a dangerous download asks
+// under any grant, and an answer to it never makes a grant.
 describe("questions that always ask", () => {
   const DOWNLOAD = "vimma_download";
-  test("a grant of the tool does not run it: it waits", () => {
+  test("a grant does not run it, whatever was asked: it waits", () => {
     const q = queue();
-    q.answer(q.ask(1, DOWNLOAD, 0).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.ask(1, DOWNLOAD, MIN).kind).toBe("run");
     expect(q.ask(1, DOWNLOAD, MIN, { always: true }).kind).toBe("wait");
     expect(q.ask(1, DOWNLOAD, MIN).kind).toBe("run"); // the grant still stands
   });
 
-  test("a grant given to another question of the tool leaves it waiting", () => {
+  test("a grant given to another question leaves it waiting", () => {
     const q = queue();
-    const a = q.ask(1, DOWNLOAD, 0);
+    const a = q.ask(1, READ, 0);
     const b = q.ask(1, DOWNLOAD, 0, { always: true });
     expect(q.answer(a.id, { kind: "grant", minutes: 5 }, 0).resolved).toEqual([
       { id: a.id, allow: true },

@@ -346,11 +346,10 @@ add_task(async function test_console_under_a_grant_notice_log_and_rate() {
   );
   Assert.equal(AgentGate.log[0].tool, "vimma_console", "and a row in :mcp log (M23)");
   Assert.equal(AgentGate.log[0].outcome, "grant", "that ran under the grant");
-  // A console grant is no screenshot grant (F25).
-  const shot = c.request("agent-screenshot", { tab: idOf(tab) });
-  Assert.equal((await question()).tool, "vimma_screenshot", "a screenshot still asks");
-  AgentGate.answer(AgentGate.waiting[0].id, { kind: "deny" });
-  await c.response(shot);
+  // The grant covers screenshots too (mcp-grants G1).
+  const shot = await c.call("agent-screenshot", { tab: idOf(tab) });
+  Assert.notEqual(shot.error?.code, "denied", "a screenshot runs under it, unasked");
+  Assert.equal(AgentGate.waiting.length, 0, "with no question");
   // 30 a minute, counted when asked (F26): 2 so far.
   let busy = null;
   for (let i = 0; i < 29 && !busy; i++) {

@@ -715,10 +715,30 @@ card field on screen has a value: M25, M31, M32) and `vimma_console` (an agent t
 errors, console errors and warnings and failed requests, read without running page code: M25,
 M30, M31, M32), in force.
 
+[mcp-grants](specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a
+grant given in answer to any question, a read included, lets that agent open URLs, follow links,
+press keys, click buttons that do not submit a form, fill fields, take screenshots and download
+(not dangerous or unscanned files) without asking until it ends. An open can carry in its URL
+what the agent read, so a grant is a grant to fetch any http or https address from the agent
+workspace. What limits it: the agent workspace's container holds none of your other logins
+(vimma-mcp decision 7), so what an agent can read is what the agent workspace holds; every call
+under a grant shows a notice (an open names its host) and is a `:mcp log` row with its whole URL
+(M23); at most 10 opens a minute (M3); `ctrl+b shift+a` ends every grant at once; and an agent
+with a shell can send what it read over its own network without Vimma anyway. A form submission,
+a show, a dangerous or unscanned download and a page's own download still ask under any grant
+(M11, M13, M19, M28). Paying is not yet recognised apart from a form submission: until
+[mcp-checkpoints](specs/mcp-checkpoints.md) is built, a button that pays without submitting a
+form (a saved card's one-button checkout) runs unasked under a grant.
+
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
-  your yes, or run under an unexpired grant of that connection and tool.
-  [`test_grants_per_connection_and_tool`](../tests/browser/browser_vimma_mcp_agent.js),
-  [`15 min for (conn 1, read): reads run unasked until 15:00; opens and conn 2 ask`](../packages/vimma-core/test/agent-gate.test.mjs)
+  your yes, or run under an unexpired grant of that connection, which covers every tool but those
+  that always ask (M11, M13, M19, M28); another connection's grant **never** covers it. A
+  waiting call a grant releases **must** be logged as run under the grant, and the grant's
+  notice **must** count it, since the user never saw it asked.
+  [`test_one_grant_covers_every_tool_of_its_connection`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`a grant covers every tool of its connection, not another connection's`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a grant lets the connection's queued calls of every tool run, not an always-ask one`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_queued_calls_a_grant_releases_show_as_granted`](../tests/browser/browser_vimma_mcp_agent.js)
 - M2. Agent commands **must** see only tabs of the agent workspace in its container, checked
   when each command runs; **never** another workspace's tab, a foreign or pinned tab, or a
   private window's.
@@ -754,12 +774,14 @@ M30, M31, M32), in force.
   [`test_a_window_not_in_front_gets_attention_and_a_notification`](../tests/browser/browser_vimma_mcp_control.js),
   [`any other key neither allows nor denies`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a hostile title of 300 characters is literal text cut at 60 columns`](../packages/vimma-core/test/agent-prompt.test.mjs)
-- M5. Grants **must** be per connection and tool, capped at `[mcp] grant_max_minutes`, held in
-  memory only, and end on `:mcp revoke`, when their connection closes, on `:mcp off` and at
-  expiry.
+- M5. Grants **must** be per connection, at most one each, capped at `[mcp] grant_max_minutes`,
+  held in memory only, and end on `:mcp revoke`, on `ctrl+b shift+a` with no question waiting
+  (one key, no second question), when their connection closes, on `:mcp off` and at expiry.
   [`grants end on revoke and on disconnect, and are listed shortest first`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a connection holds at most one grant`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`the length: a count, or the default for a bare a, capped at grant_max_minutes`](../packages/vimma-core/test/agent-gate.test.mjs),
-  [`test_grants_per_connection_and_tool`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_one_grant_covers_every_tool_of_its_connection`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_a_count_and_a_grant_minutes_shown_in_the_status_bar`](../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_agent_role_has_its_own_switch`](../tests/browser/browser_vimma_mcp_agent.js)
 - M6. `agent-open` **must** load only http and https, in the agent container, never routed and
   never in the foreground: your window keeps its workspace, selected tab and focus.
@@ -862,7 +884,7 @@ M30, M31, M32), in force.
   [`stale past the set age, or with no date; never otherwise`](../packages/vimma-core/test/agent-downloads.test.mjs),
   [`clamd.conf: a local socket, no TCP, alerting as clamscan is asked to`](../packages/vimma-core/test/agent-downloads.test.mjs),
   [`the socket: a socket owned by root or clamav, never by the user or anyone else`](../packages/vimma-core/test/agent-downloads.test.mjs),
-  [`a grant of the tool does not run it: it waits`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a grant does not run it, whatever was asked: it waits`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`! allows a dangerous one; y, a and counts do nothing there`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a dangerous name inside makes the zip dangerous, and says which`](../packages/vimma-core/test/agent-downloads.test.mjs),
   [`any bytes: the zip lister and the magic check never throw, and stay inside the file`](../packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs)
@@ -926,7 +948,7 @@ M30, M31, M32), in force.
 labels: send f again`. The label names the href captured when `f` ran, so a frame that
   changed its URL without a new document cannot change where a follow goes. A follow to another site (another
   registrable domain, eTLD+1) **must** be asked as a `vimma_open` of its whole URL, unless the
-  connection holds a `vimma_open` grant, and a no stops the call (`stopped: "denied"`); it is
+  connection holds a grant, and a no stops the call (`stopped: "denied"`); it is
   not asked when the open rate has no slot left, and the question is withdrawn when the call's
   60 s run out. Labels
   are over Vimma's default hint characters, never the user's, and the agent's collection is
@@ -941,7 +963,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_links_only_on_web_pages`](../tests/browser/browser_vimma_mcp_follow.js),
   [`f at the end lists the links; f<label> follows one`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`a collection for an agent carries each link's text, capped, and only links`](../packages/vimma-core/test/hints.test.mjs)
-- M19. `agent-show` (mcp-drive D2-D7) **must** always ask: no grant of any tool covers it, a
+- M19. `agent-show` (mcp-drive D2-D7) **must** always ask: no grant covers it, a
   grant given as its answer is refused and `x` is a plain no, so no grant of `vimma_show` ever
   exists (core's `ALWAYS_ASK`, whatever the caller passes). It **must** name only an agent tab
   (M2), checked before the question and again after the yes with the URL asked about, and switch
@@ -992,8 +1014,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   are quoted (a fullwidth quote cannot end the text's JSON string), with control,
   bidirectional and invisible characters (tag characters and variation selectors among them)
   dropped, the text one line cut at 80 characters, the href cut at 2,048; the rest are dropped
-  and counted. No page text beyond link texts is returned, so a
-  `vimma_keys` grant is never a read grant.
+  and counted. No page text beyond link texts is returned.
   [`test_f_lists_links_with_labels_marked_untrusted`](../tests/browser/browser_vimma_mcp_follow.js),
   [`at most 200 links; the rest are dropped and counted`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`one line per link: the label, the text as JSON cut at 80, the href cut at 2,048`](../packages/vimma-core/test/agent-keys.test.mjs),
@@ -1147,10 +1168,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`vimma_fill: each field and value in the question, how many in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M28. A click that submits a form (a submit button or a submit or image input in a form whose
   method is not `dialog`, the element itself, the button it is in or its label's control)
-  **must** ask every time, also under a `vimma_activate` grant, with only `y` and `n`, naming
+  **must** ask every time, also under any grant, with only `y` and `n`, naming
   the form's method, destination and the number of fields it sends; its yes **never** makes a
   grant; so **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
-  label or the form's default submission), under a `vimma_fill` grant too, naming the same and
+  label or the form's default submission), under a grant too, naming the same and
   the fields it fills, only through a submit button of the filled fields' own form or that
   form's default submission, and it is not sent when the page put back a value the question
   showed. A fill allows its submission only after its last field is set, so a form the page
@@ -1193,7 +1214,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_an_allowed_submit_follows_its_redirect`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_the_users_earlier_input_does_not_cover_an_agents_click`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_page_submitting_with_no_agent_step_is_untouched`](../tests/browser/browser_vimma_mcp_submit.js),
-  [`vimma_activate can be granted; a submit asks under that grant and makes none`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`vimma_activate can be granted; a submit asks under any grant and makes none`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a submit: method and host in bold, the field count, y or n only`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a submit button, a submit or image input in a form is a submit`](../packages/vimma-core/test/agent-act.test.mjs),
   [`test_fill_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_fill.js),
@@ -1204,7 +1225,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_a_page_submit_during_a_fill_is_not_the_asked_one`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_selects_ranges_and_a_submit_button_of_another_form`](../tests/browser/browser_vimma_mcp_fill.js),
   [`a fill that submits: the destination, then the fields, y or n only`](../packages/vimma-core/test/agent-prompt.test.mjs),
-  [`vimma_fill can be granted, not by a click grant; a submit asks under it`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a click grant covers fills; a fill that submits asks under it`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a plain button, a reset, one outside a form or one closing a dialog is not`](../packages/vimma-core/test/agent-act.test.mjs)
 - M29. `agent-activate` **must** refuse, before anything is asked, a link to another site than
   the tab's (by registrable domain, mcp-drive D18; the agent follows it with `vimma_keys`, which
@@ -1267,8 +1288,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   password type and these names are counted in the parent too, whatever the child says), and
   one form autofill's heuristics infer as a payment card field, with, in a card form, any field
   they leave to their machine-learning model; if the heuristics fail, every field of that form
-  counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned, so a
-  `vimma_elements` grant is never a read grant.
+  counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned.
   [`test_password_and_card_fields_are_sensitive_without_values`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
   [`passwords, one-time codes and every cc-* name are sensitive; email is not`](../packages/vimma-core/test/agent-act.test.mjs),
@@ -1346,11 +1366,11 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_fill_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_fills_take_labels_only_from_elements_and_share_the_click_rate`](../tests/browser/browser_vimma_mcp_fill.js),
   [`at most 12 agent-screenshot per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
-  [`vimma_screenshot can be granted, and its grant covers no other tool`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`vimma_screenshot can be granted, and its grant covers the other tools`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_screenshot_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`vimma_screenshot: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`at most 30 agent-console per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
-  [`vimma_console can be granted, and its grant covers no other tool`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`vimma_console can be granted, and its grant covers the other tools`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_console_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_console.js),
   [`vimma_console: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 

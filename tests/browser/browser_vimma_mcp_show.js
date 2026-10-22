@@ -194,10 +194,11 @@ add_task(async function test_show_always_asks_even_under_a_grant() {
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
-  // A grant of vimma_tabs for this connection.
+  // A grant for this connection, which covers every tool but a show (mcp-grants G2).
   const listed = c.request("agent-tabs");
   AgentGate.answer((await question()).id, { kind: "grant", minutes: 10 });
   Assert.ok((await c.response(listed)).ok, "the tab list ran under its grant");
+  const [granted] = AgentGate.grants();
 
   const id = c.request("agent-show", { tab: idOf(tab) });
   const q = await question();
@@ -208,9 +209,10 @@ add_task(async function test_show_always_asks_even_under_a_grant() {
   const r = await c.response(id);
   Assert.equal(r.error?.reason, "user", "x is a plain no");
   Assert.equal(activeName(), "main", "and nothing was shown");
-  Assert.ok(
-    AgentGate.grants().every((g) => g.tool !== "vimma_show"),
-    "and no grant of vimma_show exists",
+  Assert.deepEqual(
+    AgentGate.grants().map((g) => g.until),
+    [granted.until],
+    "and the grant is the one given before, unchanged",
   );
 
   Assert.ok((await show(c, tab)).ok, "a yes shows it");

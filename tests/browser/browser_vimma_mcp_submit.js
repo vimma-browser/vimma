@@ -115,7 +115,8 @@ async function question() {
 /** The list's elements by what they say. @param {any} c @param {any} tab */
 async function labels(c, tab) {
   const id = c.request("agent-elements", { tab: idOf(tab) });
-  AgentGate.answer((await question()).id, { kind: "once" });
+  // Under a grant the list runs unasked (mcp-grants G1).
+  if (!AgentGate.grants().length) AgentGate.answer((await question()).id, { kind: "once" });
   const r = await c.response(id);
   Assert.ok(r.ok, "vimma_elements runs");
   /** @type {Record<string, string>} */
