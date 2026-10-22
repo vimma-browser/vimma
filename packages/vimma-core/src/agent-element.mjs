@@ -50,6 +50,18 @@ export function isSensitiveAutocomplete(name) {
 }
 
 /**
+ * Whether a control submits its form when clicked (F15): a `button` or an `input` of type
+ * `submit` (a `<button>`'s default) or `image`, in a form that sends somewhere. A form whose
+ * method (or the button's `formmethod`) is `dialog` only closes its dialog.
+ * @param {{ localName: string, type?: string, inForm: boolean, method?: string }} c
+ */
+export function isSubmitControl({ localName, type, inForm, method }) {
+  if (!inForm || method === "dialog") return false;
+  if (localName === "button") return type === "submit";
+  return localName === "input" && (type === "submit" || type === "image");
+}
+
+/**
  * @typedef {{ value: string, text: string }} ElementOption
  * @typedef {object} AgentElementInfo  one element as its child describes it (F5)
  * @property {string} kind  one of ELEMENT_KINDS

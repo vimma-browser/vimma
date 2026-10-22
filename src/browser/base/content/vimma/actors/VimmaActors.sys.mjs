@@ -6,6 +6,7 @@
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
 import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
+import { parseActTarget } from "../core/agent-act.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
 
@@ -123,6 +124,79 @@ function framesFor(browser) {
   const top = browser.browsingContext;
   const focused = Services.focus.focusedContentBrowsingContext;
   return focused && focused !== top && focused.top === top ? [focused, top] : [top];
+}
+
+/**
+ * Agent tabs an agent just stepped in (docs/specs/mcp-forms.md F16; security.md M28), by their
+ * browserId, which survives a move to another window: the top document of the step, the one
+ * submission a question allowed during the running call (its method and destination without
+ * query), and the hosts of the submissions stopped since the step began.
+ * @type {Map<number, { doc: number, allowed: { method: string, where: string } | null,
+ *   blocked: string[] }>}
+ */
+const submitMarks = new Map();
+/** @type {((subject: any) => void) | null} */
+let submitObserver = null;
+
+/** A URI's destination as a submission is compared: scheme, host, port and path. @param {any} uri */
+const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
+
+/**
+ * Every navigating form submission's request passes here, in the parent, whatever started it
+ * (a submit button, `requestSubmit`, a later `submit()`, any frame): in a tab an agent stepped
+ * in, while its page is the one of the step, a submission without the user's activation is
+ * cancelled unless it is the one the question allowed, to the method and destination it named.
+ * The request carries its document's transient user activation, which an agent's click never
+ * gives, so a submission with it is the user's, and it ends the mark.
+ * @param {any} subject
+ */
+function onRequest(subject) {
+  let channel;
+  try {
+    channel = subject.QueryInterface(Ci.nsIHttpChannel);
+  } catch {
+    return;
+  }
+  const info = channel.loadInfo;
+  if (!info?.isFormSubmission) return;
+  const top = info.browsingContext?.top;
+  const id = top?.browserId;
+  const mark = id ? submitMarks.get(id) : undefined;
+  if (!mark) return;
+  if (top.currentWindowGlobal?.innerWindowId !== mark.doc || info.hasValidUserGestureActivation) {
+    forgetMark(id);
+    return;
+  }
+  // A redirect of a submission that was let through (the allowed one, or the user's): its first
+  // request was checked here, and the server has already received it.
+  if (info.redirectChainIncludingInternalRedirects?.length) return;
+  const uri = channel.URI;
+  const allowed = mark.allowed;
+  if (
+    allowed &&
+    allowed.method === String(channel.requestMethod).toLowerCase() &&
+    allowed.where === whereOf(uri)
+  ) {
+    mark.allowed = null;
+    return;
+  }
+  channel.cancel(Cr.NS_BINDING_ABORTED);
+  let host = "";
+  try {
+    host = String(uri.asciiHost);
+  } catch {
+    // no host to name
+  }
+  if (host && mark.blocked.length < 16) mark.blocked.push(host);
+}
+
+/** @param {number} id  a browserId whose mark ends; the observer goes with the last mark */
+function forgetMark(id) {
+  submitMarks.delete(id);
+  if (!submitMarks.size && submitObserver) {
+    Services.obs.removeObserver(submitObserver, "http-on-modify-request");
+    submitObserver = null;
+  }
 }
 
 export const VimmaActors = {
@@ -355,6 +429,9 @@ export const VimmaActors = {
    */
   activateHint(target) {
     if (target.bc.currentWindowGlobal !== target.wg) return;
+    // The user's own step through their hints: a submission it causes is theirs (mcp-forms F16).
+    const id = target.bc.top?.browserId;
+    if (id) forgetMark(id);
     actorFor(target.bc)
       ?.sendQuery("Vimma:ActivateHint", { gen: target.gen, id: target.id })
       .catch(() => {});
@@ -378,6 +455,144 @@ export const VimmaActors = {
       return reply === true;
     } catch {
       return false; // the frame navigated or its process went away
+    }
+  },
+
+  /**
+   * What the element of a target from an agent's `vimma_elements` is now, just before a click
+   * (docs/specs/mcp-forms.md F4, F9, F10, F15), checked like any reply from a content process;
+   * `{ alive: false }` when it is gone, its frame shows another document or did not answer.
+   * @param {HintTarget} target
+   * @returns {Promise<import("../core/agent-act.mjs").ActTarget | null>} null: a malformed reply
+   */
+  async agentInspect(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return { alive: false };
+    try {
+      const raw = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "inspect",
+        gen: target.gen,
+        id: target.id,
+      });
+      return raw === undefined ? { alive: false } : parseActTarget(raw);
+    } catch {
+      return { alive: false }; // the frame navigated or its process went away
+    }
+  },
+
+  /**
+   * Clicks the element of a target from an agent's `vimma_elements` with the child's `click()`
+   * (docs/specs/mcp-forms.md F8; security.md M26), once the child has seen it is still what the
+   * user was asked about: a submit only when `submit`, to the method and destination it names,
+   * and the same link. The child answers before it clicks, so a dialog the click opens never
+   * holds the reply.
+   * @param {HintTarget} target
+   * @param {{ submit: { method: string, action: string } | null, href: string | null,
+   *   until: number }} asked  `until`: ms since the epoch; the child clicks nothing later
+   * @returns {Promise<"ok" | "gone" | "changed">}
+   */
+  async agentActivate(target, { submit, href, until }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "activate",
+        gen: target.gen,
+        id: target.id,
+        submit,
+        href,
+        until,
+      });
+      return reply === "ok" || reply === "changed" ? reply : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * An agent is about to act in the browser's page (docs/specs/mcp-forms.md F16; security.md
+   * M28): from now until the user's own activation or another page, a form submission there is
+   * cancelled, but for `allowed`, the one the question named, once, during this call. The
+   * user's activation from before the step is consumed in every frame first, so that only their
+   * input after it counts as theirs.
+   * @param {any} browser XULBrowserElement
+   * @param {{ method: string, action: string } | null} allowed
+   * @returns {Promise<boolean>} false when the page has no document to mark
+   */
+  async agentMark(browser, allowed) {
+    const top = browser.browsingContext;
+    const doc = top?.currentWindowGlobal?.innerWindowId ?? 0;
+    if (!top || !doc) return false;
+    /** @type {any[]} */
+    let contexts;
+    try {
+      contexts = top.getAllBrowsingContextsInSubtree();
+    } catch {
+      return false;
+    }
+    await Promise.all(
+      contexts.map((bc) =>
+        actorFor(bc)
+          ?.sendQuery("Vimma:AgentElement", { op: "consume" })
+          .catch(() => {}),
+      ),
+    );
+    // Marks of tabs that closed or moved to another page are dropped here.
+    for (const [id, mark] of submitMarks) {
+      const other = /** @type {any} */ (BrowsingContext).getCurrentTopByBrowserId(id);
+      if (other?.currentWindowGlobal?.innerWindowId !== mark.doc) submitMarks.delete(id);
+    }
+    if (!submitObserver) {
+      submitObserver = onRequest;
+      Services.obs.addObserver(submitObserver, "http-on-modify-request");
+    }
+    let where = null;
+    if (allowed) {
+      try {
+        where = whereOf(Services.io.newURI(allowed.action));
+      } catch {
+        // not a URL: nothing is allowed
+      }
+    }
+    submitMarks.set(top.browserId, {
+      doc,
+      allowed: allowed && where ? { method: allowed.method, where } : null,
+      blocked: [],
+    });
+    return true;
+  },
+
+  /**
+   * The agent's call is over: the allowed submission is no longer allowed, and the hosts of the
+   * submissions stopped since the mark are returned (the mark stays).
+   * @param {any} browser XULBrowserElement
+   * @returns {string[]}
+   */
+  agentSettle(browser) {
+    const mark = submitMarks.get(browser.browsingContext?.browserId);
+    if (!mark) return [];
+    mark.allowed = null;
+    const blocked = mark.blocked;
+    mark.blocked = [];
+    return blocked;
+  },
+
+  /**
+   * Whether the agent's last click on `target` ran, or was skipped because the page changed
+   * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away
+   * (the click loaded a page) ran it.
+   * @param {HintTarget} target
+   * @returns {Promise<"clicked" | "skipped" | "pending">}
+   */
+  async agentClickOutcome(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "clicked";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "outcome",
+        gen: target.gen,
+        id: target.id,
+      });
+      return reply === "skipped" || reply === "pending" ? reply : "clicked";
+    } catch {
+      return "clicked";
     }
   },
 

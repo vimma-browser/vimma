@@ -81,15 +81,17 @@ function record(conn, tool, what, outcome, why) {
   if (conn === FULL_CONN) return;
   const w = what ?? {};
   const detail =
-    typeof w.keys === "string"
-      ? w.keys
-      : typeof w.url === "string"
-        ? w.url
-        : typeof w.name === "string"
-          ? w.name
-          : Number.isInteger(w.count)
-            ? `${w.count} tabs`
-            : "";
+    typeof w.detail === "string"
+      ? w.detail
+      : typeof w.keys === "string"
+        ? w.keys
+        : typeof w.url === "string"
+          ? w.url
+          : typeof w.name === "string"
+            ? w.name
+            : Number.isInteger(w.count)
+              ? `${w.count} tabs`
+              : "";
   log.add({
     at: Date.now(),
     client: labels.get(conn)?.client ?? "",

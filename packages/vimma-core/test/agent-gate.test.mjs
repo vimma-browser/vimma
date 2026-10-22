@@ -4,7 +4,9 @@
 import { describe, test, expect } from "vitest";
 import {
   AgentQueue,
+  ACT_RATE,
   AGENT_TOOLS,
+  ALWAYS_ASK,
   AgentLog,
   CallRate,
   ELEMENTS_RATE,
@@ -47,6 +49,7 @@ describe("the tools", () => {
       "agent-keys": "vimma_keys",
       "agent-show": "vimma_show",
       "agent-elements": "vimma_elements",
+      "agent-activate": "vimma_activate",
     });
   });
 });
@@ -310,6 +313,33 @@ describe("the elements rate (mcp-forms F26)", () => {
     expect(ok.filter(Boolean)).toHaveLength(30);
     expect(r.take(2, 3300)).toBe(true);
     expect(r.take(1, 60_001)).toBe(true);
+  });
+});
+
+// docs/specs/mcp-forms.md F25, F26 (security.md M28, M32): clicks are granted like other tools,
+// at most 30 a minute (shared with fills), and a submission asks under a grant and makes none.
+describe("clicks and submissions (mcp-forms F15, F25, F26)", () => {
+  test("at most 30 agent-activate per connection a minute", () => {
+    expect(ACT_RATE).toEqual({ max: 30, ms: 60_000 });
+    const r = new CallRate(ACT_RATE);
+    const ok = [];
+    for (let i = 0; i < 31; i++) ok.push(r.take(1, i * 100));
+    expect(ok.filter(Boolean)).toHaveLength(30);
+  });
+
+  test("vimma_activate can be granted; a submit asks under that grant and makes none", () => {
+    expect(ALWAYS_ASK).not.toContain("vimma_activate");
+    const q = new AgentQueue();
+    q.connect(1);
+    const a = q.ask(1, "vimma_activate", 0);
+    q.answer(/** @type {any} */ (a).id, { kind: "grant", minutes: 10 }, 0);
+    expect(q.ask(1, "vimma_activate", 1000).kind).toBe("run");
+    const submit = q.ask(1, "vimma_activate", 2000, { always: true });
+    expect(submit.kind).toBe("wait");
+    q.answer(/** @type {any} */ (submit).id, { kind: "grant", minutes: 60 }, 2000);
+    // The yes to a submit is that one submission: the grant is still the first one's.
+    expect(q.grants(3000)).toEqual([expect.objectContaining({ conn: 1, until: 600_000 })]);
+    expect(q.ask(1, "vimma_activate", 4000, { always: true }).kind).toBe("wait");
   });
 });
 

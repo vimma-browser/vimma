@@ -75,6 +75,7 @@ describe("protocol 2 constants", () => {
       "agent-keys",
       "agent-show",
       "agent-elements",
+      "agent-activate",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
@@ -244,6 +245,26 @@ describe("agent commands: args", () => {
     ]);
   });
 
+  // docs/specs/mcp-forms.md F8: a click names one tab and one label from vimma_elements.
+  test("agent-activate: a tab and a label of hint characters, nothing else", () => {
+    expect(errorsOf(req("agent-activate", { tab: "12", label: "sd" }))).toEqual([]);
+    expect(errorsOf(req("agent-activate", { tab: "12" }))).toEqual([
+      "label must be 1 to 3 of the hint characters asdfghjkl",
+    ]);
+    for (const label of ["", "x", "SD", "asdf", 3]) {
+      expect(errorsOf(req("agent-activate", { tab: "12", label })), String(label)).toEqual([
+        "label must be 1 to 3 of the hint characters asdfghjkl",
+      ]);
+    }
+    expect(errorsOf(req("agent-activate", { label: "sd" }))).toEqual([
+      "tab must be a tab id (digits)",
+    ]);
+    expect(errorsOf(req("agent-activate", { tab: "12", label: "sd", x: 1, y: 2 }))).toEqual([
+      'unknown field "args.x"',
+      'unknown field "args.y"',
+    ]);
+  });
+
   test("agent-tabs and agent-ping take no args", () => {
     expect(errorsOf(req("agent-tabs"))).toEqual([]);
     expect(errorsOf(req("agent-ping", { x: 1 }))).toEqual(['unknown field "args.x"']);
@@ -307,6 +328,39 @@ describe("agent commands: results and errors", () => {
     expect(errorsOf(ok({ ...result, screenshot: "x" }), cmd)).toEqual([
       'unknown field "result.screenshot"',
     ]);
+  });
+
+  // docs/specs/mcp-forms.md F11, F16: the page after the click, a dialog's text inside the
+  // untrusted delimiters, a submission Vimma stopped, and why the wait stopped.
+  test("agent-activate: the page after the click, a dialog, a stopped submission", () => {
+    const cmd = { command: "agent-activate" };
+    const result = { url: "https://a/", title: "A", loading: false, navigated: true };
+    expect(errorsOf(ok(result), cmd)).toEqual([]);
+    const dialog = {
+      type: "confirm",
+      text: "<untrusted-web-content>\nSure?\n</untrusted-web-content>",
+    };
+    const full = { ...result, dialog, blocked: "example.com", stopped: "in-use" };
+    expect(errorsOf(ok(full), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, navigated: "yes" }), cmd)).toEqual([
+      "result.navigated must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...result, dialog: { type: "print", text: dialog.text } }), cmd)).toEqual([
+      "result.dialog.type must be one of alert, confirm, prompt",
+    ]);
+    expect(errorsOf(ok({ ...result, dialog: { type: "alert", text: "Sure?" } }), cmd)).toEqual([
+      "result.dialog.text must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...result, dialog: { ...dialog, x: 1 } }), cmd)).toEqual([
+      'unknown field "result.dialog.x"',
+    ]);
+    expect(errorsOf(ok({ ...result, blocked: "a b" }), cmd)).toEqual([
+      "result.blocked must be a host",
+    ]);
+    expect(errorsOf(ok({ ...result, stopped: "bored" }), cmd)).toEqual([
+      "result.stopped must be in-use",
+    ]);
+    expect(errorsOf(ok({ ...result, steps: [] }), cmd)).toEqual(['unknown field "result.steps"']);
   });
 
   test("agent-keys: the page after the steps, and why it stopped", () => {

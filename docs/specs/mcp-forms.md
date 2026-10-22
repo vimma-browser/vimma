@@ -1,6 +1,6 @@
 # Spec: mcp-forms
 
-Status: accepted (sub-PR 1 of 6 built: `vimma_elements`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
+Status: accepted (sub-PRs 1 and 2 of 6 built: `vimma_elements`, `vimma_activate`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
 `agent-prompt.mjs`, `control.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
 `ctl/AgentAct.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`, `actors/agent-fields.mjs` new);
@@ -351,24 +351,31 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    reason: a text field, text area, select or editable root (`use vimma_fill`); a file field
    (it would open a file chooser for the user, and `setUserInput` from system code can set a
    file from a path, `HTMLInputElement.cpp:2533-2546`); a disabled control; a target in a page
-   that is not http or https (mcp-drive D12, "Web pages only"). A checkbox or radio is clicked,
-   which toggles it and fires its events as a user's click does.
+   that is not http or https (mcp-drive D12, "Web pages only"). Each counts when the click would
+   reach it through a `<label>` too, because a click on a label clicks or focuses its control. A
+   checkbox or radio is clicked, which toggles it and fires its events as a user's click does.
 10. **Links.** A link whose `href` is http or https on another site (registrable domain,
     mcp-drive D18) is refused with `that link goes to another site: follow it with vimma_keys`,
     because a cross-site follow is asked as a `vimma_open` there and a click must not be a way
     around that question. A same-site link, or one whose `href` is empty, `#…` or
     `javascript:`, is clicked, because single-page apps route such clicks in script and a load of
-    the href would miss that. A navigation the page's own script starts after a click is the
+    the href would miss that. A link with any other scheme (`mailto:`, an app's) is refused,
+    because it leaves the web pages of the agent workspace. A navigation the page's own script
+    starts after a click is the
     page's, as a redirect is; the result names where the tab ended up.
 11. **After the click.** Vimma waits up to 20 s for a load the click started (mcp-drive D13), then
-    returns `{ url, title, loading, navigated, dialog?, stopped? }`: `navigated` when the
-    top-level document changed, `dialog` when a tab-modal `alert`, `confirm` or `prompt` opened in
-    the tab (`common-dialog-loaded`), with its type and text (cut at 200, untrusted). Agents
+    returns `{ url, title, loading, navigated, dialog?, blocked?, stopped? }`: `navigated` when
+    the top-level document changed, `dialog` when a tab-modal `alert`, `confirm` or `prompt`
+    opened in the tab (`common-dialog-loaded`), with its type and text (cut at 200, untrusted),
+    `blocked` the host of a submission F16 stopped, and `stopped: "in-use"` when the user started
+    using the tab during the wait. A click that has started no load within a second is taken to
+    have none. Agents
     cannot answer dialogs: no tool does, because a `confirm` is often the page asking "are you
     sure", which is the user's to answer. The dialog waits in the tab until the user shows it.
     Every navigation an activation causes takes a slot of the open rate (`OPEN_RATE`), shared
     with `vimma_open` and follows, so that a granted click loop cannot load pages faster than
-    opens can.
+    opens can; while that rate is used up no click is made, because a click that loads cannot be
+    told from one that does not until it has run.
 
 ### D. Filling: `vimma_fill`
 
@@ -411,18 +418,31 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     so one question per submission is the price of keeping them in the hands of the person at
     the keyboard; the grant for `vimma_fill` or `vimma_activate` (F25) covers only what does not
     submit.
-16. **Submissions the agent did not ask for are stopped.** `VimmaChild` listens for the chrome-only
-    `DOMFormBeforeSubmit` (`HTMLFormElement.cpp:286`, `:840`) in agent tabs and cancels a
-    submission when an agent activated or filled something in that document and the user has
-    not given input there since (its `lastUserGestureTimeStamp` is older than the agent's last
-    step), unless it is the submission an F15 question just allowed: the same form, within that
-    call. This catches a page whose script submits after an agent's click, by `submit()` or
-    `requestSubmit()`, whatever element was clicked. The result says
+16. **Submissions the agent did not ask for are stopped.** Before each agent step the parent
+    consumes the page's transient user activation in every frame and marks the tab; an
+    `http-on-modify-request` observer then cancels, before it is sent, the request of a
+    navigating form submission there (`loadInfo.isFormSubmission`) while the tab's top document
+    is the one of the step, when it carries no transient user activation
+    (`loadInfo.hasValidUserGestureActivation`, from the form's document or the target frame,
+    `HTMLFormElement.cpp:884-887`, `nsDocShell.cpp:10036-10039`), unless it is the submission an
+    F15 question just allowed: once, within that call, to the method and destination (scheme,
+    host, port and path) the question named. A redirect of a submission let through follows on,
+    because the server already has it and cancelling the redirect would only invite a second
+    submission. Clicks on one tab run one at a time, so that one call never takes another's
+    allowance. This catches a page whose script submits after an agent's click, by `submit()`
+    or `requestSubmit()`, from any frame, whatever element was clicked, and a submission the
+    page moved elsewhere in its `submit` listener. The result says
     `the page tried to submit a form to <host>; Vimma stopped it: activate its submit button`,
-    so the agent can ask properly. A form the user submits themselves, or a page that submits
-    with no agent step in it, is untouched, because the agent did not cause it. Rejected:
-    setting `SANDBOXED_FORMS` on agent tabs, because it would stop the user's own logins and
-    searches in the agent workspace too.
+    so the agent can ask properly. A form the user submits themselves (with activation they gave
+    after the step, or through their hints, which end the mark), or a page that submits with no
+    agent step in it, is untouched, because the agent did not cause it. A page the agent's click
+    loaded is a new document, unmarked: its own submissions are the page's, as its redirects
+    are. Rejected: the chrome-only `DOMFormBeforeSubmit` in the child, because Firefox caches its
+    verdict for the form (`mNotifiedObservers`, `HTMLFormElement.cpp:286-289`, `:837-838`), so a
+    page that once prevented a submission could later `submit()` without it, and because it
+    fires before the page's `submit` listener can change the destination; setting
+    `SANDBOXED_FORMS` on agent tabs, because it would stop the user's own logins and searches in
+    the agent workspace too.
 17. **What cannot be caught.** A page that sends data with `fetch` from a button's click
     listener, without a form submission, cannot be told apart from any other button. Such a click
     is an ordinary `vimma_activate`, whose question names the element's text; the guide says

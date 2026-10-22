@@ -143,7 +143,38 @@ export const SHOW_TOOL = "vimma_show";
  * download, an unscanned file (decision 31) and `vimma_show` (mcp-drive D4).
  * @param {Asked} q
  */
-export const noGrant = (q) => isPage(q) || q.tool === SHOW_TOOL || !!q.what?.unscanned;
+export const noGrant = (q) =>
+  isPage(q) || q.tool === SHOW_TOOL || !!q.what?.unscanned || !!q.what?.submit;
+
+/**
+ * A form submission as the question shows it (docs/specs/mcp-forms.md F15): its method and the
+ * host of its destination in bold, and how many fields it sends.
+ * @param {Record<string, any>} s
+ * @returns {Part[]}
+ */
+function submitParts(s) {
+  const fields = Number(s.fields) || 0;
+  return [
+    { text: " → " },
+    { text: clean(s.method).toUpperCase(), strong: true },
+    { text: " " },
+    ...urlParts(displayUrl(clean(s.action)), clean(s.host)),
+    { text: ` (${fields} field${fields === 1 ? "" : "s"})` },
+  ];
+}
+
+/**
+ * An element as an activation's question shows it (F28): its label, kind and text.
+ * @param {Record<string, any>} w
+ * @returns {Part[]}
+ */
+function elementParts(w) {
+  return [
+    { text: `  ${clean(w.label)} ${clean(w.kind)} "` },
+    { text: cutTitle(w.text), isolate: "auto" },
+    { text: '"' },
+  ];
+}
 
 /**
  * The question line: its text in parts (the host of an open in bold), the hint shown once the
@@ -218,6 +249,20 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
         { text: '")' },
       ];
       hint = "y show it · n deny";
+    } else if (q.tool === "vimma_activate" && w.submit) {
+      // mcp-forms F15: a submission asks every time, so there is nothing to grant.
+      const place = Number.isInteger(w.index) ? `${w.index} ` : "";
+      parts = [
+        { text: `${AGENT_GLYPH} ` },
+        { text: who, isolate: "auto" },
+        { text: ` wants to submit a form: ${place}"` },
+        { text: cutTitle(w.title), isolate: "auto" },
+        { text: '"' },
+        ...submitParts(w.submit),
+      ];
+      hint = "y submit once · n deny";
+    } else if (q.tool === "vimma_activate") {
+      parts = [...head, ...tabParts(w), ...elementParts(w)];
     } else if (q.tool === "vimma_tabs") {
       parts = [...head, { text: `the list of agent tabs (${Number(w.count) || 0})` }];
     } else if (q.tool === "vimma_keys") {
@@ -302,9 +347,11 @@ export function ranNotice(q, until, now) {
                 ? `pressed ${clean(w.keys)} in "${cutTitle(w.title)}"`
                 : q.tool === "vimma_elements"
                   ? `listed the buttons and fields of "${cutTitle(w.title)}"`
-                  : q.tool === DOWNLOAD_TOOL
-                    ? `downloads "${cutTitle(w.name)}"`
-                    : `used ${q.tool}`;
+                  : q.tool === "vimma_activate"
+                    ? `clicked ${clean(w.kind)} "${cutTitle(w.text)}" in "${cutTitle(w.title)}"`
+                    : q.tool === DOWNLOAD_TOOL
+                      ? `downloads "${cutTitle(w.name)}"`
+                      : `used ${q.tool}`;
   return `${clientName(q.label)} ${did} (grant, ${left}m left)`;
 }
 
@@ -345,6 +392,7 @@ const ASKS = Object.freeze({
   vimma_keys: "move around a page",
   [SHOW_TOOL]: "show you a page",
   vimma_elements: "list a page's buttons and fields",
+  vimma_activate: "click on a page",
   [DOWNLOAD_TOOL]: "download a file",
 });
 
@@ -356,7 +404,8 @@ const ASKS = Object.freeze({
 export function agentAlertText(q) {
   const who = clientName(q.label);
   if (q.tool === FULL_CONTROL) return `${who} asks for full control of Vimma (every workspace)`;
-  const what = /** @type {Record<string, string>} */ (ASKS)[q.tool] ?? "use a tool";
+  const asks = /** @type {Record<string, string>} */ (ASKS);
+  const what = q.what?.submit ? "submit a form" : (asks[q.tool] ?? "use a tool");
   return `${who} asks to use Vimma's agent workspace (${what})`;
 }
 

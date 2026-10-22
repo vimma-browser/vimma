@@ -9,7 +9,7 @@
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
 import { collectTargets, linkText } from "./hint-collect.mjs";
-import { describeAgentElements } from "./agent-fields.mjs";
+import { actTargetOf, describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
@@ -165,6 +165,12 @@ export class VimmaChild extends JSWindowActorChild {
    * user's collection, never in its place, so neither voids the other.
    */
   #agentEls = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
+  /**
+   * The agent's last click here (docs/specs/mcp-forms.md F8): its element and whether it ran or
+   * was skipped because the page changed the element under the mouse events before it.
+   * @type {{ gen: number, id: number, outcome: "pending" | "clicked" | "skipped" } | null}
+   */
+  #agentClick = null;
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
   #emptySearchAt = 0;
   /** Copy mode in this document (m1-copy-mode). */
@@ -646,13 +652,72 @@ export class VimmaChild extends JSWindowActorChild {
    * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
-   * @param {{ op: string, gen: number, id: number }} data
+   * @param {{ op: string, gen: number, id: number, submit?: any, href?: unknown,
+   *   until?: unknown }} data
    */
   #agentElement(data) {
-    if (!isIndex(data?.gen) || !isIndex(data?.id) || data.gen !== this.#agentEls.gen) return false;
-    const el = this.#agentEls.els[data.id]?.deref();
-    if (data.op === "alive") return !!el?.isConnected;
+    const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
+    const el = known ? this.#agentEls.els[data.id]?.deref() : undefined;
+    switch (data?.op) {
+      case "alive":
+        return !!el?.isConnected;
+      case "inspect":
+        return actTargetOf(el);
+      case "activate":
+        return this.#agentActivate(el, data);
+      case "consume":
+        // An agent is about to act here (mcp-forms F16): the user's activation from before its
+        // step must not count as the user's for what the page does after it.
+        /** @type {any} */ (this.document)?.consumeTransientUserGestureActivation();
+        return true;
+      case "outcome": {
+        const last = this.#agentClick;
+        return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
+      }
+    }
     return false;
+  }
+
+  /**
+   * An agent's click (docs/specs/mcp-forms.md F8; security.md M26): the element must still be
+   * what the user was asked about, then the user's hint sequence runs on it, after this reply,
+   * so that a dialog the page opens in its handler never holds the parent's call. The page may
+   * change the element in its handlers of the untrusted mouse events, so it is checked again
+   * before click(), which is skipped if it changed. Nothing is focused, and no event goes
+   * through the widget or nsIDOMWindowUtils, so the page gets no user activation. A request
+   * whose time is up (`until`, ms since the epoch) clicks nothing: the parent stopped waiting.
+   * @param {Element | undefined} el
+   * @param {{ gen: number, id: number, submit?: any, href?: unknown, until?: unknown }} asked
+   *   `submit`: the method and destination the question named, or null
+   * @returns {"ok" | "gone" | "changed"}
+   */
+  #agentActivate(el, asked) {
+    if (!el || !actTargetOf(el).alive) return "gone";
+    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
+    if (!this.#asAsked(el, asked)) return "changed";
+    const click = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    this.#agentClick = click;
+    Services.tm.dispatchToMainThread(() => {
+      const ran = el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
+      click.outcome = ran ? "clicked" : "skipped";
+    });
+    return "ok";
+  }
+
+  /**
+   * Whether `el` is still what the agent's question showed: nothing an agent may not click, a
+   * submit only if asked as one and to the same method and destination, the same link.
+   * @param {Element} el @param {{ submit?: any, href?: unknown }} asked
+   */
+  #asAsked(el, asked) {
+    const now = /** @type {any} */ (actTargetOf(el));
+    if (!now.alive || now.field || now.disabled) return false;
+    const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
+    if (!!now.submit !== !!named) return false;
+    if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
+      return false;
+    }
+    return (now.href ?? null) === (asked.href ?? null);
   }
 
   /**
@@ -679,8 +744,21 @@ export class VimmaChild extends JSWindowActorChild {
       }
       return true;
     }
-    // Events created by privileged code are trusted: mousedown and mouseup for pages that act
-    // on them (menus, Google's jsaction), then click(), whose activation behaviour follows links.
+    this.#press(el);
+    return true;
+  }
+
+  /**
+   * A click as the user's hints and an agent's `vimma_activate` make it: mouseover, mousedown
+   * and mouseup built with the page's constructor (untrusted), for pages that act on them (menus,
+   * Google's jsaction), then click(), which the page sees as trusted and whose activation
+   * behaviour follows links. No transient user activation (docs/specs/mcp-forms.md F8).
+   * `still`: checked after the mouse events; when false, no click.
+   * @param {Element} el @param {() => boolean} [still]
+   * @returns {boolean} whether it clicked
+   */
+  #press(el, still = () => true) {
+    const html = /** @type {HTMLElement} */ (el);
     const r = el.getBoundingClientRect();
     const init = {
       bubbles: true,
@@ -696,7 +774,7 @@ export class VimmaChild extends JSWindowActorChild {
       const buttons = type === "mousedown" ? 1 : 0;
       el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));
     }
-    if (!el.isConnected) return true;
+    if (!el.isConnected || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();
     else el.dispatchEvent(new win.MouseEvent("click", init));
