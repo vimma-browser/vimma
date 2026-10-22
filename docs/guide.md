@@ -83,18 +83,19 @@ version; for a Mac, see [macOS](#macos) below):
 | File                              | Install                                                                 |
 | --------------------------------- | ----------------------------------------------------------------------- |
 | `vimma_X.Y.Z_amd64.deb`           | `sudo apt install ./vimma_X.Y.Z_amd64.deb` (Debian 12+, Ubuntu 22.04+)  |
+| `vimma-X.Y.Z-1.x86_64.rpm`        | the commands in [Fedora and openSUSE](#fedora-and-opensuse) below       |
 | `vimma-X.Y.Z-x86_64.AppImage`     | `chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage` |
 | `vimma-X.Y.Z-linux-x86_64.tar.xz` | `tar -xJf vimma-X.Y.Z-linux-x86_64.tar.xz && ./vimma/vimma`             |
 | `PKGBUILD` (Arch Linux)           | the command in [Arch Linux](#arch-linux) below                          |
 
-The `.deb` and the Arch Linux package add Vimma to your application menu and offer it for web links,
+The `.deb`, the `.rpm` and the Arch Linux package add Vimma to your application menu and offer it for web links,
 but never make it your default browser on their own: `xdg-settings set default-web-browser
 vimma-vimma.desktop` does that. Next to the files are `SHA256SUMS`, a CycloneDX SBOM
 (`vimma-X.Y.Z.cdx.json`) and cosign signatures (`*.sigstore.json`); how to check them is in
 [runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging) ("Verify a release").
 
 **Updating.** Install the newer release the way you installed this one: on Arch Linux, run the
-install command again; otherwise, install the newer `.deb`, AppImage or
+install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
 tarball over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
 command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so update it this way once.
 An AppImage from a release that includes the self-update replaces its own file when a newer
@@ -104,6 +105,32 @@ release is out; the next start runs it.
 `npx surfer download`, `npx surfer bootstrap`, `npm run import`, `npx surfer build`. The first
 build takes about 40 minutes on a 16-thread machine and needs about 35 GB of disk space
 (`engine/` 27 GB, the sccache compiler cache 6.8 GB, `~/.mozbuild` 3.1 GB, `.surfer/` 0.8 GB).
+
+#### Fedora and openSUSE
+
+One `.rpm` installs on both, and its package manager pulls in the libraries it needs:
+
+```sh
+sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm                           # Fedora
+sudo zypper install --allow-unsigned-rpm ./vimma-X.Y.Z-1.x86_64.rpm   # openSUSE
+```
+
+It installs to `/usr/lib/vimma`, with `vimma` and `vimma-open` in `/usr/bin`, as the `.deb` does.
+The package carries no OpenPGP signature, so dnf says it skipped the OpenPGP check and zypper
+needs `--allow-unsigned-rpm`. What vouches for it is the release's `SHA256SUMS` and its cosign
+signature; check them before installing ("Verify a release" in
+[runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging)):
+
+```sh
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS   # vimma-X.Y.Z-1.x86_64.rpm: OK
+```
+
+There is no Vimma repository for dnf or zypper, so `dnf upgrade` and `zypper update` do not
+update it: install the newer `.rpm` the same way, or run the command `:update` shows. To remove
+it, `sudo dnf remove vimma` or `sudo zypper remove vimma`.
 
 #### macOS
 
@@ -216,10 +243,10 @@ Homebrew cask in `SHA256SUMS-macos` ("Verify a release" in
 [runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging)).
 
 The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as
-Firefox's own distribution packages do; the `.deb` and the AppImage carry the same file in
-`usr/lib/vimma/`, and only the tarball has none. The file tells Vimma's update check which
-commands to show, so a `.deb` is updated with apt and never by unpacking a tarball over the files
-dpkg owns. Like Firefox's packages, a marked install does not show Firefox's warning that "some
+Firefox's own distribution packages do; the `.deb`, the `.rpm` and the AppImage carry the same
+file in `usr/lib/vimma/`, and only the tarball has none. The file tells Vimma's update check which
+commands to show, so a `.deb` is updated with apt and an `.rpm` with dnf or zypper, never by
+unpacking a tarball over the files the package manager owns. Like Firefox's packages, a marked install does not show Firefox's warning that "some
 security features may offer less protection" when your kernel does not allow unprivileged user
 namespaces, which the content sandbox uses. On Ubuntu 24.04 that means the `.deb` and the
 AppImage run with a weaker content sandbox without saying so; the tarball still shows the warning
@@ -2646,6 +2673,7 @@ Except for the AppImage, it installs nothing; it tells you.
   | The release's `PKGBUILD` | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`  |
   | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
   | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
+  | `.rpm`                   | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
   | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                               |
   | AppImage                 | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
   | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |

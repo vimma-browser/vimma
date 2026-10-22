@@ -135,7 +135,7 @@ describe("update-publish.yml", () => {
       const run = runOf(job(id), "Download the release's files");
       expect(run, id).toContain('macos) files=("vimma-$v-macos-aarch64.dmg") ;;');
       expect(run, id).toContain(
-        'linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb") ;;',
+        'linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb" "vimma-$v-1.x86_64.rpm") ;;',
       );
     }
     expect(runOf(job("prepare"), "Download the release's files")).toContain(
@@ -432,6 +432,7 @@ esac
           tarball: { size: 1, sha512: "a".repeat(128) },
           appimage: { size: 2, sha512: "b".repeat(128) },
           deb: { size: 3, sha512: "c".repeat(128) },
+          rpm: { size: 4, sha512: "d".repeat(128) },
         },
       },
     });

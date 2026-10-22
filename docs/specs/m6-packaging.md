@@ -17,6 +17,9 @@ Since changed: the `vimma-bin` PKGBUILD is also a release asset that installs Vi
 Linux without the AUR, writes the desktop file and `vimma-open` inline, and records its install
 source; see [Arch Linux without the AUR](#arch-linux-without-the-aur).
 
+Since changed: each release also carries an `.rpm` for Fedora and openSUSE, built and
+smoke-tested in the `package` job; see spec [rpm-package](rpm-package.md).
+
 ## User story
 
 As a Linux user I install Vimma from a GitHub Release as a tarball, an AppImage or a `.deb`, or

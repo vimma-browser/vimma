@@ -155,6 +155,7 @@ it.each([
   ".github/workflows/release.yml",
   ".github/workflows/nightly.yml",
   "tools/package/arch-smoke.sh",
+  "tools/package/rpm-smoke.sh",
 ])("%s never merges stderr into a captured --version", (file) => {
   const text = readFileSync(join(repo, file), "utf8");
   expect(text).toContain("--version");

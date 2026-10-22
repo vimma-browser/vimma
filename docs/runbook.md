@@ -1547,16 +1547,19 @@ same call as the manual re-run, so one path is exercised every time.
 | `vimma-X.Y.Z-linux-x86_64.tar.xz` | `./mach package`'s tarball, renamed (one `vimma/` directory)    |
 | `vimma-X.Y.Z-x86_64.AppImage`     | AppImage (appimagetool 1.9.1, runtime 20251108, both pinned)    |
 | `vimma_X.Y.Z_amd64.deb`           | `/usr/lib/vimma`, `/usr/bin/vimma`, desktop file, icons         |
+| `vimma-X.Y.Z-1.x86_64.rpm`        | the same layout as the `.deb`, for Fedora and openSUSE          |
 | `vimma-X.Y.Z.cdx.json`            | CycloneDX 1.6 SBOM (`tools/package/sbom.mjs`)                   |
 | `PKGBUILD`                        | `vimma-bin` for Arch Linux; its only source is the tarball      |
 | `SRCINFO`                         | its `.SRCINFO` (GitHub renames an asset with a leading period)  |
-| `SHA256SUMS`                      | checksums of the six files above                                |
+| `SHA256SUMS`                      | checksums of the seven files above                              |
 | `*.sigstore.json`                 | cosign keyless bundles, one per file above (when signing is on) |
 
 Jobs: `build` (read-only token and the Safe Browsing key; first checks that the tag is
-`vX.Y.Z` and that its commit is on `main`) → `package` (AppImage, `.deb`, `PKGBUILD`, the
-AUR variant, checksums; installs the `.deb` and starts it headless, and runs `makepkg -si` on
-the `PKGBUILD` in an Arch Linux container with `tools/package/arch-smoke.sh`) → `sign` (only job with
+`vX.Y.Z` and that its commit is on `main`) → `package` (AppImage, `.deb`, `.rpm`, `PKGBUILD`,
+the AUR variant, checksums; installs the `.deb` and starts it headless, installs the `.rpm` with
+dnf in a Fedora container and with zypper in an openSUSE container and starts it headless there
+with `tools/package/rpm-smoke.sh`, and runs `makepkg -si` on the `PKGBUILD` in an Arch Linux
+container with `tools/package/arch-smoke.sh`) → `sign` (only job with
 `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
 `release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
@@ -1570,10 +1573,18 @@ node tools/package/package.mjs --tarball engine/obj-x86_64-pc-linux-gnu/dist/vim
   --runtime /tmp/ait/runtime-x86_64 --no-deb   # dpkg-deb only exists on Debian/Ubuntu
 node tools/package/sbom.mjs --engine engine --out dist/vimma-$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion').cdx.json
 tools/package/arch-smoke.sh dist "$(node tools/release/version-line.mjs)"   # needs docker
+tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"    # needs docker
 ```
 
+`package.mjs` builds the `.rpm` with `rpmbuild` (on Arch, the `rpm-tools` package; on
+Debian and Ubuntu, `rpm`); without it, pass `--no-rpm`. `rpmbuild` reads the binaries'
+requirements as sonames, which Fedora and openSUSE both provide, and the spec it is given keeps
+the libraries Vimma bundles out of them (spec [rpm-package](specs/rpm-package.md)).
+
 `tools/package/arch-smoke.sh --stub` runs the same Arch Linux check on a stub tarball in about
-half a minute; the `pkgbuild.yml` workflow runs it on every change to `tools/package/`. Its
+half a minute; the `pkgbuild.yml` workflow runs it on every change to `tools/package/`, and its
+`rpm` job runs `tools/package/rpm-smoke.sh --stub`, the Fedora and openSUSE check on a stub
+`.rpm`, which needs `rpmbuild` on the host as well as docker. Its
 `cask` job does the same for the Homebrew cask on a hosted Mac with
 `tools/package/cask-check.sh --stub`: `brew style`, `brew audit --cask --strict`, then
 `brew install --cask` of a stub `.dmg` and `brew uninstall --zap`. The install check refuses to
@@ -1601,7 +1612,7 @@ neither needs another file.
 3. Safe Browsing key: the `SAFEBROWSING_API_KEY` secret of the `build` environment ("Google
    Safe Browsing key" above);
    the `build` job fails without it, and its smoke check fails a build that lacks the key.
-4. Maintainer line for the `.deb` and the PKGBUILD:
+4. Maintainer line for the `.deb`, the `.rpm` (its `Packager`) and the PKGBUILD:
    `gh variable set PACKAGE_MAINTAINER --body 'Your Name <you@example.org>'` (public in every
    package; the `package` job fails without it).
 5. Signing (recommended: keyless, no key to keep): `gh variable set SIGNING_ENABLED --body true`.
@@ -1737,7 +1748,7 @@ The regexp is `IDENTITY_REGEXP` in `tools/package/package.mjs`, and a test keeps
    `tools/package/package.mjs` (`dist/notes/`). The update steps are there on every release,
    with or without macOS: the Mac update notice of 0.1.6 shows a Linux command and links to these
    notes, and the macOS jobs upload the `.dmg` after this edit.
-3. When the run is green, the draft lists the tarball, AppImage, `.deb`, SBOM, `PKGBUILD`,
+3. When the run is green, the draft lists the tarball, AppImage, `.deb`, `.rpm`, SBOM, `PKGBUILD`,
    `SRCINFO`, `SHA256SUMS` and, with signing on, a `.sigstore.json` for each. Optionally check
    them as in "Verify a release" (above), with `gh release download v0.1.2` (it finds drafts).
 4. Publish: Releases → the draft → Edit → "Publish release". Nothing is rebuilt; `aur.yml` runs
@@ -2023,7 +2034,7 @@ until the release gate lifts: an accepted serial is remembered, so a later manif
 **7. Publishing manifests** (`update-publish.yml`). When a release is published, the workflow's
 `start` job starts the same workflow on `main` with the tag; the jobs that sign and push run
 only there. `prepare` (no secret) checks that the release is published, not a pre-release and on
-`main`, downloads its tarball, AppImage and `.deb`, checks them against `SHA256SUMS` and
+`main`, downloads its tarball, AppImage, `.deb` and `.rpm`, checks them against `SHA256SUMS` and
 `SHA256SUMS` against release.yml's cosign signature (an unsigned release gets no manifest), and builds the manifest
 with `tools/update/manifest.mjs`: Firefox's version and the build ID from the tarball's
 `application.ini`, each file's size and SHA-512, the urgency, and a serial (the UTC time) that
@@ -2123,7 +2134,9 @@ each with the file's SHA-512.
 - Re-publish a release's manifest (after a failure, or after `release.yml -f
 replace_published=true` changed its files, whose hashes the old manifest no longer matches):
   `gh workflow run update-publish.yml -f tag=vX.Y.Z`, and `-f target=macos` for the Mac
-  manifest. Every run gets a new, newer serial.
+  manifest. Every run gets a new, newer serial. The Linux manifest lists the `.rpm`, so a
+  release from before the `.rpm` (0.1.6 and earlier) cannot be re-published from `main`; ship a
+  new release instead.
 - After two releases in quick succession, check `gh run list --workflow update-publish.yml`:
   GitHub keeps one waiting run per concurrency group (one per target), so a third run started meanwhile replaces
   the waiting one, which ends cancelled without a `release-failure` issue; start it again by hand.

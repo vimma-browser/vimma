@@ -53,8 +53,8 @@ export const HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/vimma";
  * How Vimma was installed (spec §3): `source` is a build run from its objdir, `packaged` an
  * `is-packaged-app` marker this version does not know; on macOS, `homebrew` is the cask and `dmg`
  * any other copy of the app (spec macos-homebrew, decision 19).
- * @typedef {"source" | "tarball" | "appimage" | "deb" | "aur" | "pkgbuild-release" | "packaged"
- *   | "homebrew" | "dmg"} InstallType
+ * @typedef {"source" | "tarball" | "appimage" | "deb" | "rpm" | "aur" | "pkgbuild-release"
+ *   | "packaged" | "homebrew" | "dmg"} InstallType
  */
 /** @typedef {{ id: string, slot: "primary" | "secondary", spki: string }} PinnedKey */
 /**
@@ -72,7 +72,10 @@ export const HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/vimma";
  * version that did not keep it.
  * @typedef {{ size: number, sha512: string, url?: string }} Asset
  */
-/** @typedef {{ tarball?: Asset, appimage?: Asset, deb?: Asset, dmg?: Asset }} Assets */
+/**
+ * @typedef {{ tarball?: Asset, appimage?: Asset, deb?: Asset, rpm?: Asset, dmg?: Asset }}
+ *   Assets
+ */
 /**
  * @typedef {{ channel: string, target: string, serial: string, update: Offer | null }} Manifest
  */
@@ -306,6 +309,7 @@ export const ASSET_ELEMENTS = Object.freeze({
   tarball: "vimmaTarball",
   appimage: "vimmaAppImage",
   deb: "vimmaDeb",
+  rpm: "vimmaRpm",
   dmg: "vimmaDmg",
 });
 
@@ -583,7 +587,13 @@ export function installTypeFrom({ packaged, marker, appImage, platform, appPath,
   if (marker === null) return appImage ? "appimage" : "tarball";
   const m = /^vimma-package=([a-z-]+)\s*$/m.exec(marker);
   const name = m?.[1];
-  if (name === "deb" || name === "aur" || name === "pkgbuild-release" || name === "appimage") {
+  if (
+    name === "deb" ||
+    name === "rpm" ||
+    name === "aur" ||
+    name === "pkgbuild-release" ||
+    name === "appimage"
+  ) {
     return name;
   }
   return appImage ? "appimage" : "packaged";
@@ -650,6 +660,20 @@ export function updateSteps(type, offer, where) {
         text: "Download the new .deb and install it over this one:",
         commands: [
           `${fetchChecked(`${dl}/${file}`, file, assets.deb)} && sudo apt install ./${file}`,
+        ],
+        link,
+      };
+    }
+    case "rpm": {
+      // One .rpm for Fedora and openSUSE (spec rpm-package). It carries no OpenPGP signature,
+      // which zypper refuses unless told; the SHA-512 from the signed manifest checks it instead.
+      const file = `vimma-${v.replace("-", "~")}-1.x86_64.rpm`;
+      const fetch = fetchChecked(`${dl}/${file}`, file, assets.rpm);
+      return {
+        text: "Download the new .rpm and install it over this one, with dnf on Fedora or zypper on openSUSE:",
+        commands: [
+          `${fetch} && sudo dnf install ./${file}`,
+          `${fetch} && sudo zypper install --allow-unsigned-rpm ./${file}`,
         ],
         link,
       };

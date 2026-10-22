@@ -54,6 +54,7 @@ const INSTALL_TYPES = /** @type {Record<string, string>} */ ({
   tarball: "tarball",
   appimage: "AppImage",
   deb: ".deb",
+  rpm: ".rpm",
   aur: "AUR vimma-bin",
   "pkgbuild-release": "the release's PKGBUILD",
   packaged: "a package this version does not know",

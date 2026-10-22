@@ -79,6 +79,7 @@ const offer = () => ({
     tarball: { size: 86804240, sha512: HASH("a") },
     appimage: { size: 111966712, sha512: HASH("b") },
     deb: { size: 87718612, sha512: HASH("c") },
+    rpm: { size: 87921340, sha512: HASH("d") },
   },
 });
 
@@ -105,6 +106,8 @@ describe("buildManifest (spec §2)", () => {
         ` URL="${RELEASES}/download/v0.3.1/vimma-0.3.1-x86_64.AppImage"/>\n` +
         `    <vimmaDeb size="87718612" hashFunction="sha512" hashValue="${HASH("c")}"` +
         ` URL="${RELEASES}/download/v0.3.1/vimma_0.3.1_amd64.deb"/>\n` +
+        `    <vimmaRpm size="87921340" hashFunction="sha512" hashValue="${HASH("d")}"` +
+        ` URL="${RELEASES}/download/v0.3.1/vimma-0.3.1-1.x86_64.rpm"/>\n` +
         "  </update>\n" +
         "</updates>\n",
     );
@@ -134,6 +137,7 @@ describe("buildManifest (spec §2)", () => {
               url: `${DL}/vimma-0.3.1-x86_64.AppImage`,
             },
             deb: { size: 87718612, sha512: HASH("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
+            rpm: { size: 87921340, sha512: HASH("d"), url: `${DL}/vimma-0.3.1-1.x86_64.rpm` },
           },
         },
       },
@@ -197,6 +201,7 @@ describe("buildManifest (spec §2)", () => {
       tarball: "vimma-0.3.1-linux-x86_64.tar.xz",
       appimage: "vimma-0.3.1-x86_64.AppImage",
       deb: "vimma_0.3.1_amd64.deb",
+      rpm: "vimma-0.3.1-1.x86_64.rpm",
     });
   });
 
@@ -375,6 +380,7 @@ function fakeRelease(version, { ini } = {}) {
   execFileSync("tar", ["-cJf", join(dir, names.tarball), "-C", src, "vimma"]);
   writeFileSync(join(dir, names.appimage), `appimage ${version}`);
   writeFileSync(join(dir, names.deb), `deb ${version}`);
+  writeFileSync(join(dir, names.rpm), `rpm ${version}`);
   const sha = (/** @type {string} */ n) =>
     createHash("sha256")
       .update(readFileSync(join(dir, n)))
@@ -420,6 +426,12 @@ describe("prepareRelease and checkSigned (the jobs' checks)", () => {
       size: deb.length,
       sha512: createHash("sha512").update(deb).digest("hex"),
       url: "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/vimma_0.3.1_amd64.deb",
+    });
+    const rpm = readFileSync(join(dir, "vimma-0.3.1-1.x86_64.rpm"));
+    expect(m.update.assets.rpm).toEqual({
+      size: rpm.length,
+      sha512: createHash("sha512").update(rpm).digest("hex"),
+      url: "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/vimma-0.3.1-1.x86_64.rpm",
     });
   });
 
