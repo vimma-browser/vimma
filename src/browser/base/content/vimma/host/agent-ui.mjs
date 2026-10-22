@@ -13,9 +13,11 @@
 import {
   agentAlertText,
   agentState,
+  checkpointNotice,
   deniedNotice,
   FULL_CONTROL,
   grantNotice,
+  isCheckpoint,
   mayOpenByItself,
   noGrant,
   promptKey,
@@ -205,6 +207,13 @@ function onGate(event) {
   if (event && w) {
     if (event.kind === "answered" && event.answer === "grant" && event.length) {
       w.notice(grantNotice(event.question, event.length, event.released ?? 0));
+    } else if (
+      event.kind === "answered" &&
+      event.answer === "once" &&
+      isCheckpoint(event.question)
+    ) {
+      // mcp-checkpoints Behaviour 6: where the form went, or where the payment was made.
+      w.notice(checkpointNotice(event.question));
     } else if (event.kind === "answered" && event.answer === "deny") {
       w.notice(deniedNotice(event.question, "user"));
     } else if (event.kind === "answered" && event.answer === "mute") {

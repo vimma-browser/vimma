@@ -1,0 +1,76 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- m0-mcp-checkpoints: a grocery shop's basket built as some real shops build theirs, every
+     button a type=submit button outside any form, so none of them submits a form. "Lisää
+     ostoskoriin" (add to basket) runs under a grant unasked; "Vahvista tilaus" (confirm order)
+     places the order from a click listener and is a payment checkpoint by its words, quoting the
+     total before it. -->
+<html lang="fi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ostoskori · Kauppa</title>
+    <style>
+      body {
+        margin: 0 auto;
+        max-width: 560px;
+        padding: 24px;
+        font: 16px/1.5 sans-serif;
+        color: #222;
+        background: #fafafa;
+      }
+      li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 8px 0;
+      }
+      .sum {
+        display: flex;
+        justify-content: space-between;
+        margin: 4px 0;
+      }
+      .total {
+        font-weight: bold;
+        border-top: 1px solid #ccc;
+        padding-top: 4px;
+      }
+      #confirm {
+        margin-top: 16px;
+        font: inherit;
+        padding: 6px 16px;
+      }
+      #placed {
+        color: #2a7a2a;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Ostoskori</h1>
+    <ul>
+      <li>
+        <span>Maito 1 l · 1,29 €</span>
+        <button id="add" type="submit">Lisää ostoskoriin</button>
+      </li>
+      <li>
+        <span>Ruisleipä · 2,49 € <span id="count">× 1</span></span>
+      </li>
+    </ul>
+    <p class="sum"><span>Välisumma</span><span>40,00 €</span></p>
+    <p class="sum"><span>Toimitus</span><span>2,90 €</span></p>
+    <p class="sum total"><span>Yhteensä</span><span>42,90&nbsp;€</span></p>
+    <button id="confirm" type="submit">Vahvista tilaus</button>
+    <p id="placed"></p>
+    <script>
+      let milk = 0;
+      document.getElementById("add").addEventListener("click", () => {
+        milk++;
+        document.getElementById("count").textContent = `× 1, maito × ${milk}`;
+      });
+      document.getElementById("confirm").addEventListener("click", () => {
+        document.getElementById("placed").textContent = "Tilaus vahvistettu.";
+      });
+    </script>
+  </body>
+</html>

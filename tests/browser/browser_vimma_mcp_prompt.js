@@ -130,7 +130,7 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
   await until(hintShown, "armed after the delay");
   Assert.equal(
     line().querySelector(".vimma-agent-prompt-hint").textContent,
-    "y once · 10a 10 min, all but forms · n deny · x mute",
+    "y once · 10a 10 min, all but forms and paying · n deny · x mute",
     "the hint says what a grant covers and what still asks",
   );
   EventUtils.synthesizeKey("y", { repeat: true });
@@ -199,7 +199,7 @@ add_task(async function test_a_count_and_a_grant_minutes_shown_in_the_status_bar
   await until(
     () =>
       noticeText() ===
-      "example-agent may use the agent workspace for 15 min; sending a form still asks " +
+      "example-agent may use the agent workspace for 15 min; sending a form or paying still asks " +
         "(ctrl+b shift+a ends it)",
     "the grant notice names its scope and the key that ends it",
   );

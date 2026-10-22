@@ -234,6 +234,16 @@ support-files = [
   "file_vimma_agent_click.html",
   "file_vimma_agent_page.html",
   "file_vimma_agent_redirect.sjs",
+  "file_vimma_agent_signup.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_checkpoint.js"]
+support-files = [
+  "file_vimma_agent_checkout.html",
+  "file_vimma_agent_page.html",
+  "file_vimma_agent_shop.html",
+  "file_vimma_agent_shot_card.html",
   "head_vimma_control.js",
 ]
 

@@ -7,6 +7,7 @@
 
 import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
 import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
+import { parsePayInfo, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { ACTIVATE_CHANGES } from "../core/control.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
@@ -845,6 +846,106 @@ export const VimmaActors = {
       return reply === "ok" || reply === "changed" ? reply : "gone";
     } catch {
       return "gone";
+    }
+  },
+
+  /**
+   * Whether any frame of `browser` shows a payment card field (docs/specs/mcp-checkpoints.md C6),
+   * payment providers' frames of other sites included: each frame answers in its own process.
+   * A frame that fails or does not answer within `ms` counts as one, so that a doubt asks; one
+   * that navigated away mid-check, or has no actor (a data: or blob: document), does not.
+   * @param {any} browser XULBrowserElement
+   * @param {number} ms
+   * @returns {Promise<boolean>}
+   */
+  async agentCards(browser, ms) {
+    /** @type {any[]} BrowsingContexts */
+    const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
+    /** @type {number | undefined} */
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms, "late");
+    });
+    try {
+      const answers = await Promise.all(
+        frames
+          .filter((bc) => bc.currentWindowGlobal)
+          .map(async (bc) => {
+            const actor = actorFor(bc);
+            if (!actor) return false;
+            try {
+              const r = await Promise.race([actor.sendQuery("Vimma:AgentCards"), late]);
+              return r !== false;
+            } catch {
+              return false; // the frame navigated or its process went away
+            }
+          }),
+      );
+      return answers.includes(true);
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
+   * What a payment's question needs of the control an agent's step presses (docs/specs/
+   * mcp-checkpoints.md C6, C7): its words and the total the page states before it, checked like
+   * any reply from a content process; null when it is gone or the reply is malformed.
+   * @param {HintTarget} target  an element of the agent's `vimma_elements`
+   * @param {"click" | "form"} by  `form`: its form's default button is pressed
+   * @returns {Promise<{ texts: string[], total?: string } | null>}
+   */
+  async agentPayInfo(target, by) {
+    if (target.bc.currentWindowGlobal !== target.wg) return null;
+    try {
+      const raw = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "pay",
+        gen: target.gen,
+        id: target.id,
+        by,
+      });
+      return parsePayInfo(raw);
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * The total the top page of `browser` states last (docs/specs/mcp-checkpoints.md C7), for a
+   * key step, which presses no control; null when none, or the reply is malformed.
+   * @param {any} browser XULBrowserElement
+   * @returns {Promise<string | null>}
+   */
+  async agentPageTotal(browser) {
+    try {
+      const raw = await actorFor(browser.browsingContext)?.sendQuery("Vimma:AgentTotal");
+      return parsePayInfo({ texts: [], total: raw ?? undefined })?.total ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * What a submission by the control an agent's step presses sends (docs/specs/
+   * mcp-checkpoints.md Behaviour 4): the form's fields by name and value, no sensitive value,
+   * hidden ones counted, but for `skip`, the fields of that frame's list the same call fills.
+   * Checked like any reply from a content process; null when it is gone or malformed.
+   * @param {HintTarget} target @param {"click" | "form"} by @param {number[]} skip
+   * @returns {Promise<import("../core/agent-checkpoint.mjs").SentFields | null>}
+   */
+  async agentSent(target, by, skip) {
+    if (target.bc.currentWindowGlobal !== target.wg) return null;
+    try {
+      const raw = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "sent",
+        gen: target.gen,
+        id: target.id,
+        by,
+        skip,
+      });
+      return parseSentFields(raw);
+    } catch {
+      return null;
     }
   },
 

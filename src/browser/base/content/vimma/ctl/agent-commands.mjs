@@ -271,6 +271,54 @@ async function ask(conn, command, what, state, rid, until, always = false) {
   }
 }
 
+/** @param {any} browser  the id of its top document */
+const docOf = (browser) => browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
+
+/** Key steps that load a page: payment steps where the page may pay (mcp-checkpoints Behaviour 3). */
+const LOADS = new Set(["history.back", "history.forward", "page.url_up", "page.url_root"]);
+
+/**
+ * The first step of a `vimma_keys` call that acts (a follow, `gu`, `gU`, `H` or `L`), when it
+ * acts on the page in the tab now: only scrolls and finds come before it. An `f` before it lists
+ * new labels, so its target is known only as the call runs.
+ * @param {import("../core/agent-keys.mjs").AgentStep[]} list
+ */
+function firstActing(list) {
+  for (const [index, step] of list.entries()) {
+    if (LOADS.has(step.action)) return { index, step };
+    if (step.action === "hint.follow") return step.label === undefined ? null : { index, step };
+  }
+  return null;
+}
+
+/**
+ * The link a follow names now, in the connection's current labels of the page, or null.
+ * @param {any} browser @param {ConnId} conn @param {import("../core/agent-keys.mjs").AgentStep} step
+ */
+function linkOf(browser, conn, step) {
+  const session = AgentDrive.current(conn, browser);
+  const target = session?.byLabel.get(/** @type {string} */ (step.label));
+  return target ? { target, elements: session?.source === "elements" } : null;
+}
+
+/**
+ * Whether a key step may pay, and its question's payment part (mcp-checkpoints C6, C7): a
+ * follow by the link's words and the page's card fields, a load by the card fields.
+ * @param {any} browser @param {ConnId} conn @param {import("../core/agent-keys.mjs").AgentStep} step
+ * @param {{ target: any, elements: boolean } | null} [found]  the follow's link, as the run
+ *   resolved it; else it is looked up in the connection's labels now
+ */
+async function payStep(browser, conn, step, found = null) {
+  if (step.action !== "hint.follow") return AgentAct.payment(browser, { keys: step.keys });
+  const link = found ?? linkOf(browser, conn, step);
+  // No such link: the follow is refused as it runs, before anything loads.
+  if (!link) return null;
+  if (link.elements) {
+    return AgentAct.payment(browser, { target: link.target, text: link.target.info?.text ?? "" });
+  }
+  return AgentAct.payment(browser, { text: link.target.text ?? "", keys: step.keys });
+}
+
 /**
  * After the yes: the tab must still be the agent's with the URL asked about (decision 19).
  * @param {AgentWorkspace} asked @param {string} id @param {string} url
@@ -545,7 +593,21 @@ const COMMANDS = {
       throw refuse("busy", new AgentError("denied", message, "busy"));
     }
     if (inUse(asked.tab.linkedBrowser)) throw refuse("in-use");
-    const outcome = await ask(conn, "agent-keys", what, state, rid);
+    // mcp-checkpoints C6: a key that acts (a follow, gu, gU, H, L) on a page where it may pay
+    // asks as a payment. The first such step, on the page as it is now, is asked in the call's
+    // own question, so one step never asks twice; later ones ask when they come (`askPay`).
+    const first = firstActing(parsed.steps);
+    const firstPay = first ? await payStep(asked.tab.linkedBrowser, conn, first.step) : null;
+    // The link the question named: a list made while it waits may give its label to another.
+    const firstLink =
+      first?.step.action === "hint.follow"
+        ? linkOf(asked.tab.linkedBrowser, conn, first.step)
+        : null;
+    const pageAsked = docOf(asked.tab.linkedBrowser);
+    // A key step shows the call's keys, not only its own, so the yes covers nothing unseen.
+    if (firstPay)
+      Object.assign(what, { pay: firstPay.keys ? { ...firstPay, keys: what.keys } : firstPay });
+    const outcome = await ask(conn, "agent-keys", what, state, rid, undefined, !!firstPay);
     let found;
     try {
       found = stillAsAsked(agent, id, what.url);
@@ -599,6 +661,25 @@ const COMMANDS = {
               { ...what, followed: uri.host },
               outcome.grant.until,
             );
+          }
+        },
+        // mcp-checkpoints C1, C6: a step that may pay asks under any grant, y or n only.
+        askPay: async (step, index, found, until) => {
+          const browser = tab.linkedBrowser;
+          const already =
+            firstPay &&
+            first?.index === index &&
+            docOf(browser) === pageAsked &&
+            (step.action !== "hint.follow" || found?.target === firstLink?.target);
+          if (already) return null;
+          const pay = await payStep(browser, conn, step, found);
+          if (!pay) return null;
+          const at = { ...describeTab(tab), index: what.index, keys: step.keys, pay };
+          try {
+            await ask(conn, "agent-keys", at, state, rid, until, true);
+            return null;
+          } catch (e) {
+            return /** @type {AgentError} */ (e).reason ?? "user";
           }
         },
         canLoad: () => opens.can(conn, Date.now()),
@@ -861,8 +942,9 @@ const COMMANDS = {
   /**
    * A click on one element of an agent tab, by its label from the connection's last
    * `vimma_elements` there (mcp-forms F8-F11, F15-F17; security.md M26, M28, M29): refused
-   * before the question when it is not clickable, asked every time when it submits a form, and
-   * run in the background with the child's `click()`. A tab the user is using is `in-use` (F27).
+   * before the question when it is not clickable, asked every time when it submits a form or may
+   * pay (mcp-checkpoints C1, C6; M33), and run in the background with the child's `click()`. A
+   * tab the user is using is `in-use` (F27).
    * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
    */
   async "agent-activate"(conn, state, { tab: id, label }, rid) {
@@ -914,15 +996,21 @@ const COMMANDS = {
       }
       submit = { ...element.submit, action: wf(element.submit.action), host: wf(host) };
     }
+    // mcp-checkpoints C6: a click that may pay; Behaviour 4: what a submission sends.
+    const pay = await AgentAct.payment(browser, { target: found.target, text: element.text });
+    const sent = submit ? await AgentAct.sent(found.target, "click") : null;
     const what = {
       ...base,
       kind: element.kind,
       text: wf(element.text ?? ""),
       detail: wf(actDetail(label, element)),
       ...(submit ? { submit } : {}),
+      ...(sent ? { sent } : {}),
+      ...(pay ? { pay } : {}),
     };
-    // F15: a submission asks every time, also under a grant, and its yes makes no grant.
-    await ask(conn, "agent-activate", what, state, rid, undefined, !!submit);
+    // F15, mcp-checkpoints C1: a submission or a payment asks every time, also under a grant,
+    // and its yes neither makes nor ends a grant.
+    await ask(conn, "agent-activate", what, state, rid, undefined, !!submit || !!pay);
     let found2;
     try {
       found2 = stillAsAsked(agent, id, what.url);
@@ -1088,11 +1176,25 @@ const COMMANDS = {
       name: wf(s.name),
       value: typeof s.value === "string" ? wf(s.value) : s.value,
     }));
+    // mcp-checkpoints C6: a fill that submits through a control that may pay; Behaviour 4: what
+    // else the form sends besides the fields this call fills.
+    const pay = submitting
+      ? await AgentAct.payment(browser, { target: submitting.target, by: submitting.by })
+      : null;
+    const sent = submitting
+      ? await AgentAct.sent(
+          submitting.target,
+          submitting.by,
+          steps.map((s) => s.target),
+        )
+      : null;
     const what = {
       ...base,
       fields: shownFields,
       detail: wf(fillDetail(shownFields, submitting?.submit)),
       ...(submit ? { submit } : {}),
+      ...(sent ? { sent } : {}),
+      ...(pay ? { pay } : {}),
     };
     // F15: one yes sends what the question shows, so it must show every value whole.
     if (submit && !fillFits(what)) {
@@ -1100,7 +1202,8 @@ const COMMANDS = {
         "a fill that submits must show every value whole in its question, and this one does not fit: fill first with vimma_fill, then submit with fewer or shorter values, or activate the submit button";
       throw refuse("failed", new AgentError("failed", message), what);
     }
-    // F15: a submission asks every time, also under a grant, and its yes makes no grant.
+    // F15, mcp-checkpoints C1: a submission asks every time, also under a grant, and its yes
+    // neither makes nor ends a grant.
     await ask(conn, "agent-fill", what, state, rid, undefined, !!submit);
     let found2;
     try {

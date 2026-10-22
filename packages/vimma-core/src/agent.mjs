@@ -231,10 +231,11 @@ export const LOG_SIZE = 100;
 
 /**
  * @typedef {"yes" | "grant" | "user" | "timeout" | "busy" | "muted" | "cancelled" | "in-use"
- *   | "changed" | "stopped" | "followed" | "failed"} LogOutcome  allowed once, run under a grant, why it
- *   was denied, that it stopped while it ran (`why`: changed, in-use, timeout, denied), a
- *   follow it made (`detail`: the URL loaded), or that it failed after the yes (a show whose
- *   window could not switch)
+ *   | "changed" | "stopped" | "followed" | "failed" | "checkpoint-yes" | "checkpoint-no"} LogOutcome
+ *   allowed once, run under a grant, why it was denied, that it stopped while it ran (`why`:
+ *   changed, in-use, timeout, denied), a follow it made (`detail`: the URL loaded), that it
+ *   failed after the yes (a show whose window could not switch), or the user's yes or no at a
+ *   payment or form checkpoint (docs/specs/mcp-checkpoints.md Behaviour 6)
  * @typedef {{ at: number, client: string, tool: string, title: string, detail: string,
  *   outcome: LogOutcome, why?: string }} LogEntry  `detail`: the keys or URL, as the question
  *   showed them
