@@ -51,7 +51,8 @@ What works today, each with the section that explains it:
   open, scroll and search pages, follow their links, list and click their buttons, fill their
   fields (never a password or card number), take a screenshot, read a page's errors and show
   you a page. Every request asks you first, one answer can let an agent work through a task for
-  some minutes, and a form they submit asks every time.
+  some minutes, and sending a form or paying asks every time, showing what is sent or the total
+  the page states.
 
 ## Every key is yours
 
@@ -1361,7 +1362,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_keys`       | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
 | `vimma_show`       | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
 | `vimma_elements`   | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
-| `vimma_activate`   | Click a button, link or checkbox from that list; a form it would send asks you every time.               |
+| `vimma_activate`   | Click a button, link or checkbox from that list; sending a form or paying asks you every time.           |
 | `vimma_fill`       | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
 | `vimma_screenshot` | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
 | `vimma_console`    | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
@@ -1481,7 +1482,7 @@ with the rest of your computer.
 
 - **Grants are wide.** A grant lets that agent use every tool without asking until it ends:
   read, open, press keys, click, fill, take screenshots and download. Only sending a form,
-  showing you a page and a dangerous or unscanned download still ask
+  paying, showing you a page and a dangerous or unscanned download still ask
   ([What a grant covers](#what-a-grant-covers)). A grant given for a read therefore also means
   "let it fetch any address", and an address can carry what the agent has read elsewhere. Every
   call under a grant shows a notice and a row in `:mcp log`, so you can see where it went; give
@@ -1595,18 +1596,23 @@ page around it reads as no change.
   another site (the agent follows those with `vimma_keys`, which asks as an open of that site)
   and links that are not web pages. These are refused before you are asked.
 - **A form submission asks every time**, also under a grant, with only `y` and `n`, naming where
-  the form goes and how many fields it sends:
-  `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)`.
-  A `y` sends that one form; it never makes a grant.
+  the form goes and what it sends
+  ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)):
+  `▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", password •••, + 1 hidden`.
+  A `y` sends that one form; it never makes or ends a grant.
+- **A click that may pay asks every time** too: on a page that shows a payment card field, or
+  on a button that says it pays (`Pay now`, `Place order`, `Vahvista tilaus` and the like),
+  even when the button sends no form.
 - **A form the page sends by itself after an agent's click is stopped**: the agent is told
   `the page tried to submit a form to example.com; Vimma stopped it`, and asks you properly by
   clicking the form's submit button. Your own submissions in an agent tab, and those of a page
   the agent has not touched, go through. A button whose script sends data without a form (with
-  `fetch`) cannot be told apart from any other button: under a grant the agent can press it
-  unasked, with a notice and a row in `:mcp log`.
+  `fetch`) cannot be told apart from any other button by what it sends: under a grant the agent
+  can press it unasked, with a notice and a row in `:mcp log`, unless its words or the page's
+  card fields say it may pay.
 - **Agents cannot answer dialogs.** An `alert`, `confirm` or `prompt` the page opens waits in the
   tab for you; the agent only learns its text, as untrusted content.
-- **A grant covers clicks** (not submissions): each shows
+- **A grant covers clicks** (not submissions or payments): each shows
   `claude-code clicked button "Add to list" in "List · Example" (grant, 12m left)`. A click that
   loads a page counts as one of the 10 opens a minute, and no click is made while those are used
   up. At most 30 clicks a minute, none while you are typing in the tab, and each is in
@@ -1632,15 +1638,17 @@ pages react to key presses only, which Vimma never sends).
   stops the fill there.
 - **Sending the form asks every time.** With `submit`, the agent asks to fill the fields and
   then send their form, through one of its submit buttons or as its first submit button would;
-  that question comes also under a grant, with only `y` and `n`, naming where the form goes and the fields:
-  `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)  after filling 1 field: sd Email = "ada@example.com"`.
+  that question comes also under a grant, with only `y` and `n`, naming where the form goes, the
+  fields it fills and what else the form sends:
+  `▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  after filling 1 field: sd Email = "ada@example.com"  also plan "pro", password •••, + 1 hidden`.
+  When its submit button may pay, it asks as a payment.
   It must show every value whole, or the agent is told to fill first and submit apart. If the
   page puts back a value you were shown, the form is not sent. A form the page sends by itself
   during or after a fill is stopped, as after a click.
 - **Nothing hidden in a value.** Values with characters that draw nothing (zero-width spaces,
   direction marks and the like) are refused, so the question shows all a value holds; values
   longer than the line are cut with `…`, and `:mcp log` keeps them whole.
-- **A grant covers fills** (not submissions): each shows
+- **A grant covers fills** (not submissions or payments): each shows
   `claude-code filled 2 fields in "Sign up · Example" (grant, 12m left)`, and `:mcp log` keeps
   every value. At most 32 fields a call, 30 clicks and fills a minute, none while you are typing
   in the tab.
@@ -1764,7 +1772,7 @@ on it.
 Each request an agent makes appears as one line at the foot of the window, above the status bar:
 
 ```
-◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a 10 min, all but forms · n deny · x mute
+◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a 10 min, all but forms and paying · n deny · x mute
 ```
 
 It names the agent (as the agent calls itself), the tool, and what it touches: the tab's place,
@@ -1809,22 +1817,66 @@ One grant covers a task. Answer any request with `15a`, and that agent may use e
 15 minutes without asking: read pages, list tabs, open and close tabs, press keys and follow
 links, list a page's buttons and fields, click, fill, take screenshots, read a page's errors and
 download. The notice says so:
-`claude-code may use the agent workspace for 15 min; sending a form still asks (ctrl+b shift+a ends it)`.
+`claude-code may use the agent workspace for 15 min; sending a form or paying still asks (ctrl+b shift+a ends it)`.
 Requests that wait when you answer run at once.
 
 These still ask under any grant, and your yes allows that one step without making a grant or
 ending the one in force:
 
-- **Sending a form** ([Clicking on a page](#clicking-on-a-page),
-  [Filling in a form](#filling-in-a-form)): it sends data to a server, where sign-ups, messages
-  and purchases happen.
+- **Sending a form and paying**
+  ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)): a form
+  sends data to a server, where sign-ups, messages and purchases happen, and a payment spends
+  your money.
 - **Showing you a page** ([Showing you a page](#showing-you-a-page)): it changes what you see.
 - **A dangerous or unscanned download**, and a download a page started by itself
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
 
 A grant belongs to one agent session: another agent, or the same one after it reconnects, asks
-again. Buttons that pay without sending a form are not yet recognised as payments: a grant lets
-the agent press them like any button.
+again.
+
+#### Checkpoints: sending a form and paying
+
+Under a grant an agent works through its task without asking, except at two checkpoints: before
+it sends a form and before it pays. A checkpoint is one question that shows what the step will
+do, answered with one key, after which the agent goes on under the grant it had:
+
+```
+▲ claude-code wants to pay: "Vahvista tilaus" on shop.example · the page says "Yhteensä 42,90 €"   y pay · n stop
+▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", name "Ada", password •••, + 2 hidden   y send it · n stop
+```
+
+- **It stands out.** A checkpoint starts with `▲` instead of `◇`, and its `▲` and verb are in
+  your theme's warning colour, so it is not taken for a routine question.
+- **One key.** `y` runs that one step. `n`, `Esc`, `Enter` or `x` stops it: the agent is told
+  no for that step and may go on with others under its grant (`ctrl+b shift+a` ends the grant).
+  No count or grant is offered, and neither answer makes, lengthens or ends a grant. Three noes
+  in a row ignore the agent for a minute, as for any question.
+- **What a payment shows.** The button's text (for a key, such as `H` on a checkout page, the
+  keys), the site in bold, and the total the page states, quoted after "the page says". The
+  amount is the page's own claim: your bank or card statement is what counts. When the page
+  states no total, none is shown.
+- **What a form shows.** Where it goes, then each field it sends with its value, cut to fit the
+  line (`… (3 more)`); a password, payment card or one-time-code field by its name and `•••`,
+  never its value; hidden fields (such as anti-forgery tokens) counted, `+ 2 hidden`. A fill
+  that sends a form shows the fields it fills, then `also` and the rest.
+- **What counts as paying.** A click, a fill that sends a form, or a key that loads a page (a
+  followed link, `gu`, `gU`, `H`, `L`) when the page shows a payment card field, also inside a
+  payment provider's frame, or when the button or link says it pays: `pay`, `buy`,
+  `place order`, `confirm order`, `complete purchase` and their Finnish, Swedish, German, French
+  and Spanish counterparts (`maksa`, `osta`, `tilaa`, `vahvista tilaus`, `betala`, `köp`,
+  `jetzt kaufen`, `zahlungspflichtig bestellen`, `payer`, `commander`, `pagar`, `comprar`, …),
+  as whole words. A button such as `Buy now` that only leads to a checkout asks too; that costs
+  one key. Adding to a basket (`Add to basket`, `Lisää ostoskoriin`) does not ask.
+- **What is not recognised.** A page that hides its checkout: no card field on screen and a
+  button worded otherwise (`Continue`, an icon with no name). A load of another site is not
+  stopped, so a payment provider's or bank's own page, reached through such a button, stops the
+  agent only at that page's card fields or pay button. Keep grants short on sites where you
+  have a saved card, and read `:mcp log` after a task.
+- **Afterwards.** A yes shows `paid on shop.example` or `sent the form to example.com`, a no
+  `stopped claude-code's payment on shop.example`, and `:mcp log` marks the row
+  `allowed (checkpoint)` or `denied (checkpoint)`. When Vimma is not in front, the desktop
+  notification says only `claude-code asks to pay` or `claude-code asks to send a form`, never
+  the site or the amount.
 
 #### Full control while agents are on
 

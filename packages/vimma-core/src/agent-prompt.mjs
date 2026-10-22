@@ -6,11 +6,13 @@
  * The agent question line, pure (docs/specs/vimma-mcp.md, sub-PR 2b): when it may open by
  * itself (decision 14), what it says (13), what each key does (13, 20), the notices and the
  * desktop notification's text (15, 16, 23), the status bar's agent state (24), full control's
- * question (29 C) and `:control` (29 D). The browser's ui/agent-prompt.mjs draws it and
+ * question (29 C) and `:control` (29 D), and the checkpoints' questions and notices, for
+ * sending a form and paying (docs/specs/mcp-checkpoints.md). The browser's ui/agent-prompt.mjs draws it and
  * host/agent-ui.mjs runs it; every value here is plain text, set as text there (security.md C1).
  */
 
 import { AGENT_GLYPH } from "./agent.mjs";
+import { pageText } from "./agent-checkpoint.mjs";
 import { DOWNLOAD_TOOL, formatBytes } from "./agent-downloads.mjs";
 import { displayUrl, truncate } from "./statusbar.mjs";
 import { textWidth } from "./textwidth.mjs";
@@ -38,9 +40,10 @@ const MAX_COUNT_DIGITS = 4;
 /**
  * @typedef {{ client?: string, version?: string, via?: string } | null | undefined} Label
  * @typedef {{ tool: string, label: Label, what: Record<string, any> }} Asked
- * @typedef {{ text: string, strong?: boolean, isolate?: "auto" | "ltr" }} Part  `isolate`: text an
- *   agent or a page chose, drawn as its own bidi run (security.md M4): `auto` for names and
- *   titles (<bdi>), `ltr` for URLs
+ * @typedef {{ text: string, strong?: boolean, warn?: boolean, isolate?: "auto" | "ltr" }} Part
+ *   `isolate`: text an agent or a page chose, drawn as its own bidi run (security.md M4): `auto`
+ *   for names and titles (<bdi>), `ltr` for URLs; `warn`: a checkpoint's glyph and verb, in the
+ *   theme's warning colour (docs/specs/mcp-checkpoints.md C3)
  * @typedef {{ kind: "once" } | { kind: "deny" } | { kind: "mute" }
  *   | { kind: "grant", minutes: number | null }} PromptAnswer
  */
@@ -137,12 +140,18 @@ function downloadParts(w) {
 export const isPage = (q) => q.tool === DOWNLOAD_TOOL && q.label?.client === PAGE_CLIENT;
 
 /**
- * What a grant leaves asked that a task meets on its way, as the grant's notice says it, and as
- * the question's hint says it in short, so the usual question still fits one line
- * (docs/specs/mcp-grants.md G3).
+ * What a grant leaves asked that a task meets on its way, the checkpoints, as the grant's notice
+ * says it, and as the question's hint says it in short, so the usual question still fits one
+ * line (docs/specs/mcp-grants.md G3, mcp-checkpoints Behaviour 8).
  */
-export const STILL_ASKS = "sending a form still asks";
-export const GRANT_SCOPE = "all but forms";
+export const STILL_ASKS = "sending a form or paying still asks";
+export const GRANT_SCOPE = "all but forms and paying";
+
+/**
+ * A checkpoint's glyph in place of the agent glyph (docs/specs/mcp-checkpoints.md C3): used
+ * nowhere else in Vimma's chrome, so it means one thing without its colour.
+ */
+export const CHECKPOINT_GLYPH = "▲";
 
 /** The tool that brings the agent workspace to the front (docs/specs/mcp-drive.md D2). */
 export const SHOW_TOOL = "vimma_show";
@@ -153,22 +162,30 @@ export const SHOW_TOOL = "vimma_show";
  * @param {Asked} q
  */
 export const noGrant = (q) =>
-  isPage(q) || q.tool === SHOW_TOOL || !!q.what?.unscanned || !!q.what?.submit;
+  isPage(q) || q.tool === SHOW_TOOL || !!q.what?.unscanned || isCheckpoint(q);
+
+/**
+ * Whether the question is a checkpoint (docs/specs/mcp-checkpoints.md C1): a step that pays
+ * (`pay`) or sends a form (`submit`), asked under any grant with `y` and `n` only.
+ * @param {Asked} q
+ */
+export const isCheckpoint = (q) => !!q.what?.pay || !!q.what?.submit;
 
 /**
  * A form submission as the question shows it (docs/specs/mcp-forms.md F15): its method and the
- * host of its destination in bold, and how many fields it sends.
- * @param {Record<string, any>} s
+ * host of its destination in bold, and how many fields it sends when the fields themselves are
+ * not known (`counted`; mcp-checkpoints Behaviour 4 lists them after).
+ * @param {Record<string, any>} s @param {boolean} counted
  * @returns {Part[]}
  */
-function submitParts(s) {
+function submitParts(s, counted) {
   const fields = Number(s.fields) || 0;
   return [
     { text: " → " },
     { text: clean(s.method).toUpperCase(), strong: true },
     { text: " " },
     ...urlParts(displayUrl(clean(s.action)), clean(s.host)),
-    { text: ` (${fields} field${fields === 1 ? "" : "s"})` },
+    ...(counted ? [{ text: ` (${fields} field${fields === 1 ? "" : "s"})` }] : []),
   ];
 }
 
@@ -189,6 +206,118 @@ function elementParts(w) {
 const FILL_VALUE_COLUMNS = 40;
 const FILL_NAME_COLUMNS = 24;
 const FILL_COLUMNS = 160;
+
+/** The page's text, cleaned for the question (mcp-checkpoints Behaviour 4). @param {unknown} s */
+const pageClean = (s) => clean(pageText(s));
+
+/**
+ * What a form submission sends, as a checkpoint shows it (docs/specs/mcp-checkpoints.md
+ * Behaviour 4): each field's name and value, cut as a fill's are; a sensitive field as its name
+ * and `•••`, a file field as its name; hidden fields counted, not listed; the list cut with
+ * `… (N more)` where the line ends. Empty when there is nothing to say.
+ * @param {Record<string, any>} sent @param {string} lead  what comes before the fields
+ * @returns {Part[]}
+ */
+function sentParts(sent, lead) {
+  const fields = Array.isArray(sent.fields) ? sent.fields : [];
+  const hidden = Number(sent.hidden) || 0;
+  let left = Number(sent.more) || 0;
+  if (!fields.length && !left && !hidden) return [];
+  /** @type {Part[]} */
+  const parts = [{ text: lead }];
+  let width = 0;
+  let said = false;
+  for (const [i, f] of fields.entries()) {
+    const name = truncate(pageClean(f?.name), FILL_NAME_COLUMNS, "end");
+    const value = truncate(pageClean(f?.value), FILL_VALUE_COLUMNS, "end");
+    /** @type {Part[]} */
+    const piece = [
+      ...(i ? [{ text: ", " }] : []),
+      { text: name, isolate: /** @type {const} */ ("auto") },
+      ...(f?.secret
+        ? [{ text: " •••" }]
+        : f?.file
+          ? [{ text: " (file)" }]
+          : [
+              { text: ' "' },
+              { text: value, isolate: /** @type {const} */ ("auto") },
+              { text: '"' },
+            ]),
+    ];
+    const wide = textWidth(piece.map((p) => p.text).join(""));
+    if (width + wide > FILL_COLUMNS) {
+      // The fields left out are counted, so the user knows the line does not show them all.
+      left += fields.length - i;
+      break;
+    }
+    width += wide;
+    parts.push(...piece);
+    said = true;
+  }
+  if (left) {
+    parts.push({ text: `${said ? ", " : ""}… (${left} more)` });
+    said = true;
+  }
+  if (hidden) parts.push({ text: `${said ? ", " : ""}+ ${hidden} hidden` });
+  return parts;
+}
+
+/** A payment's question quotes the page's total cut at this many columns (C7). */
+const TOTAL_COLUMNS = 40;
+
+/**
+ * A checkpoint's question (docs/specs/mcp-checkpoints.md Behaviour 2-4, C2, C3, C7): `▲` and
+ * the verb in the warning colour; a payment names the button (the keys of a key step), the site
+ * in bold and the total the page states; a form its place, title and destination, then what it
+ * sends. A payment that also sends a form says so after the payment.
+ * @param {Asked} q @param {string} who
+ * @returns {{ parts: Part[], hint: string }}
+ */
+function checkpointLine(q, who) {
+  const w = q.what ?? {};
+  const pay = w.pay && typeof w.pay === "object" ? w.pay : null;
+  /** @type {Part[]} */
+  const parts = [
+    { text: CHECKPOINT_GLYPH, warn: true },
+    { text: " " },
+    { text: who, isolate: "auto" },
+    { text: " " },
+    { text: pay ? "wants to pay" : "wants to send a form", warn: true },
+    { text: ": " },
+  ];
+  if (pay) {
+    const keys = clean(pay.keys);
+    if (keys) parts.push({ text: "keys " }, { text: keys, isolate: "ltr" });
+    else {
+      parts.push({ text: '"' }, { text: cutTitle(pageText(pay.text)), isolate: "auto" });
+      parts.push({ text: '"' });
+    }
+    parts.push({ text: " on " }, { text: clean(pay.site), strong: true, isolate: "ltr" });
+    // The page's claim, quoted as such: the user's bank is the authority on what is charged.
+    const total = truncate(pageClean(pay.total), TOTAL_COLUMNS, "end");
+    if (total) {
+      parts.push({ text: ' · the page says "' }, { text: total, isolate: "auto" }, { text: '"' });
+    }
+    // A key call that follows a link shows its keys too (mcp-drive D14): none runs unseen.
+    if (!keys && q.tool === "vimma_keys" && clean(w.keys)) {
+      parts.push({ text: "  keys: " }, { text: clean(w.keys), isolate: "ltr" });
+    }
+  } else {
+    const place = Number.isInteger(w.index) ? `${w.index} ` : "";
+    parts.push({ text: `${place}"` }, { text: cutTitle(w.title), isolate: "auto" }, { text: '"' });
+  }
+  const sent = w.sent && typeof w.sent === "object" ? w.sent : null;
+  if (w.submit) {
+    parts.push(...submitParts(w.submit, !sent));
+    if (q.tool === "vimma_fill") {
+      parts.push(...fillParts(w, "  after filling ", true));
+      if (sent) parts.push(...sentParts(sent, "  also "));
+    } else if (sent) {
+      parts.push(...sentParts(sent, "  "));
+    }
+  }
+  return { parts, hint: pay ? "y pay · n stop" : "y send it · n stop" };
+}
 
 /**
  * A fill's fields as its question shows them (docs/specs/mcp-forms.md F14): each label, the
@@ -286,6 +415,8 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
       parts = [{ text: `${AGENT_GLYPH} a client with no code` }, ...reach];
       hint = "y allow · n deny";
     }
+  } else if (isCheckpoint(q)) {
+    ({ parts, hint } = checkpointLine(q, who));
   } else {
     /** @type {Part[]} */
     const head = [
@@ -322,33 +453,8 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
         { text: '")' },
       ];
       hint = "y show it · n deny";
-    } else if (q.tool === "vimma_fill" && w.submit) {
-      // mcp-forms F15: a fill that submits asks every time; the fields come after where they go.
-      const place = Number.isInteger(w.index) ? `${w.index} ` : "";
-      parts = [
-        { text: `${AGENT_GLYPH} ` },
-        { text: who, isolate: "auto" },
-        { text: ` wants to submit a form: ${place}"` },
-        { text: cutTitle(w.title), isolate: "auto" },
-        { text: '"' },
-        ...submitParts(w.submit),
-        ...fillParts(w, "  after filling ", true),
-      ];
-      hint = "y fill and submit once · n deny";
     } else if (q.tool === "vimma_fill") {
       parts = [...head, ...tabParts(w), ...fillParts(w, "  ")];
-    } else if (q.tool === "vimma_activate" && w.submit) {
-      // mcp-forms F15: a submission asks every time, so there is nothing to grant.
-      const place = Number.isInteger(w.index) ? `${w.index} ` : "";
-      parts = [
-        { text: `${AGENT_GLYPH} ` },
-        { text: who, isolate: "auto" },
-        { text: ` wants to submit a form: ${place}"` },
-        { text: cutTitle(w.title), isolate: "auto" },
-        { text: '"' },
-        ...submitParts(w.submit),
-      ];
-      hint = "y submit once · n deny";
     } else if (q.tool === "vimma_activate") {
       parts = [...head, ...tabParts(w), ...elementParts(w)];
     } else if (q.tool === "vimma_tabs") {
@@ -488,8 +594,23 @@ export function deniedNotice(q, why) {
   if (why === "timeout") return "agent request timed out (denied)";
   const who = clientName(q.label);
   if (q.tool === FULL_CONTROL) return `denied ${who} full control`;
+  const w = q.what ?? {};
+  // mcp-checkpoints Behaviour 5: a no stops that step only, and `x` is a plain no there.
+  if (w.pay) return `stopped ${who}'s payment on ${clean(w.pay.site)}`;
+  if (w.submit) return `stopped ${who}'s form to ${clean(w.submit.host)}`;
   const muted = why === "mute" ? "; muted until it reconnects" : "";
   return `denied ${who}'s ${q.tool}${muted}`;
+}
+
+/**
+ * The notice after a checkpoint's yes (docs/specs/mcp-checkpoints.md Behaviour 6): where the
+ * form went, or the site the payment was on.
+ * @param {Asked} q
+ */
+export function checkpointNotice(q) {
+  const w = q.what ?? {};
+  if (w.pay) return `paid on ${clean(w.pay.site)}`;
+  return `sent the form to ${clean(w.submit?.host) || displayUrl(clean(w.submit?.action))}`;
 }
 
 /** What each tool asks for, in the desktop notification (no URL, no title). */
@@ -516,9 +637,11 @@ const ASKS = Object.freeze({
 export function agentAlertText(q) {
   const who = clientName(q.label);
   if (q.tool === FULL_CONTROL) return `${who} asks for full control of Vimma (every workspace)`;
+  // mcp-checkpoints Behaviour 7: no site, amount or URL, as for every question.
+  if (q.what?.pay) return `${who} asks to pay`;
+  if (q.what?.submit) return `${who} asks to send a form`;
   const asks = /** @type {Record<string, string>} */ (ASKS);
-  const what = q.what?.submit ? "submit a form" : (asks[q.tool] ?? "use a tool");
-  return `${who} asks to use Vimma's agent workspace (${what})`;
+  return `${who} asks to use Vimma's agent workspace (${asks[q.tool] ?? "use a tool"})`;
 }
 
 /** What `:mcp log` says of each outcome (mcp-drive D14). */
@@ -533,6 +656,8 @@ const OUTCOMES = Object.freeze({
   "in-use": "denied (the user was using the tab)",
   changed: "denied (the tab changed)",
   followed: "followed a link",
+  "checkpoint-yes": "allowed (checkpoint)",
+  "checkpoint-no": "denied (checkpoint)",
   failed: "failed",
 });
 

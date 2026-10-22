@@ -3,6 +3,7 @@
 // (docs/specs/mcp-grants.md G1), capped and in memory (20-22), and page text marked untrusted
 // ("Marking content").
 import { describe, test, expect } from "vitest";
+import fc from "fast-check";
 import {
   AgentQueue,
   ACT_RATE,
@@ -368,6 +369,67 @@ describe("clicks and submissions (mcp-forms F15, F25, F26)", () => {
   });
 });
 
+// docs/specs/mcp-checkpoints.md C1, C4 (security.md M33): a payment step or a form submission
+// asks under any grant, and neither its yes nor its no makes, lengthens or ends a grant: the
+// agent goes on under the grant it had.
+describe("checkpoints (mcp-checkpoints C1, C4)", () => {
+  test("a checkpoint asks under a grant, its yes leaves the grant as it was", () => {
+    const q = new AgentQueue();
+    q.connect(1);
+    q.answer(/** @type {any} */ (q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    const pay = q.ask(1, "vimma_activate", 1000, { always: true });
+    expect(pay.kind).toBe("wait");
+    expect(q.answer(/** @type {any} */ (pay).id, { kind: "once" }, 2000).resolved).toEqual([
+      { id: /** @type {any} */ (pay).id, allow: true },
+    ]);
+    expect(q.grants(3000)).toEqual([{ conn: 1, until: 10 * MIN }]);
+    expect(q.ask(1, "vimma_activate", 3000).kind).toBe("run");
+  });
+
+  test("a no stops only the step: the grant stays, and three in a row mute", () => {
+    const q = new AgentQueue();
+    q.connect(1);
+    q.answer(/** @type {any} */ (q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    const no = (/** @type {number} */ at) =>
+      q.answer(
+        /** @type {any} */ (q.ask(1, "vimma_fill", at, { always: true })).id,
+        { kind: "deny" },
+        at,
+      );
+    no(1000);
+    expect(q.grants(1000)).toEqual([{ conn: 1, until: 10 * MIN }]);
+    expect(q.ask(1, READ, 1500).kind).toBe("run");
+    no(2000);
+    no(3000);
+    expect(q.ask(1, READ, 4000)).toEqual({ kind: "deny", reason: "muted" });
+  });
+
+  test("property: no answer to a checkpoint makes, lengthens or ends a grant", () => {
+    const answer = fc.oneof(
+      fc.constant(/** @type {any} */ ({ kind: "once" })),
+      fc.constant(/** @type {any} */ ({ kind: "deny" })),
+      fc.integer({ min: 1, max: 1440 }).map((minutes) => ({ kind: "grant", minutes })),
+    );
+    fc.assert(
+      fc.property(fc.boolean(), fc.array(answer, { maxLength: 8 }), (granted, answers) => {
+        const q = new AgentQueue();
+        q.connect(1);
+        if (granted) {
+          q.answer(/** @type {any} */ (q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+        }
+        const before = q.grants(1);
+        let at = 1;
+        for (const a of answers) {
+          const asked = q.ask(1, "vimma_activate", at, { always: true });
+          if (asked.kind === "wait") q.answer(asked.id, a, at);
+          at += 1;
+        }
+        expect(q.grants(at)).toEqual(before);
+      }),
+    );
+  });
+});
+
 // docs/specs/mcp-forms.md F15, F25 (security.md M28): fills are granted like clicks, apart from
 // them, and a fill that submits asks under a fill grant and makes none.
 describe("fills (mcp-forms F15, F25)", () => {
@@ -474,6 +536,9 @@ describe(":mcp log (mcp-drive D14)", () => {
       ["cancelled", "cancelled"],
       ["in-use", "denied (the user was using the tab)"],
       ["changed", "denied (the tab changed)"],
+      // mcp-checkpoints Behaviour 6: a payment or a form's yes and no are told apart.
+      ["checkpoint-yes", "allowed (checkpoint)"],
+      ["checkpoint-no", "denied (checkpoint)"],
     ]) {
       const row = logRow({ ...entry(), outcome: /** @type {any} */ (outcome) });
       expect(row.endsWith(` · ${said}`), row).toBe(true);

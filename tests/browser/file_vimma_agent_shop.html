@@ -1,0 +1,63 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_checkpoint.js and the e2e checkpoint scenario: a grocery
+   - shop's basket built as some real shops build theirs, with every button a type=submit button
+   - outside any form, so that none of them submits a form. "Lisää ostoskoriin" adds to the
+   - basket; "Vahvista tilaus" (confirm order) and an arrow button named "Pay now" only by its
+   - aria-label place the order from a click listener. The basket states a subtotal, delivery
+   - and a total before the confirm button, and a decoy total after it; a link "Maksa nyt" (pay
+   - now) goes to another page of the shop. Each click is counted in #log. Everything fits the
+   - test window. -->
+<html lang="fi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ostoskori · Kauppa</title>
+    <style>
+      body {
+        margin: 8px 16px;
+        font: 14px sans-serif;
+        max-width: 560px;
+      }
+      li,
+      p {
+        margin: 4px 0;
+      }
+      .sum {
+        display: flex;
+        justify-content: space-between;
+      }
+      .total {
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Ostoskori</h1>
+    <ul>
+      <li>Maito 1 l · 1,29 € <button id="add" type="submit">Lisää ostoskoriin</button></li>
+      <li>Ruisleipä · 2,49 €</li>
+    </ul>
+    <p class="sum"><span>Välisumma</span><span>40,00 €</span></p>
+    <p class="sum"><span>Toimitus</span><span>2,90 €</span></p>
+    <p class="sum total"><span>Yhteensä</span><span>42,90&nbsp;€</span></p>
+    <p>
+      <button id="confirm" type="submit">Vahvista tilaus</button>
+      <button id="arrow" type="submit" aria-label="Pay now">→</button>
+      <a id="paylink" href="file_vimma_agent_page.html?paid">Maksa nyt</a>
+    </p>
+    <p class="sum"><span>Total next month</span><span>99,00 €</span></p>
+    <ol id="log"></ol>
+    <script>
+      const log = document.getElementById("log");
+      for (const id of ["add", "confirm", "arrow"]) {
+        document.getElementById(id).addEventListener("click", () => {
+          const li = document.createElement("li");
+          li.textContent = id;
+          log.append(li);
+        });
+      }
+    </script>
+  </body>
+</html>

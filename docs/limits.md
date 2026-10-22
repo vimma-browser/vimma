@@ -119,10 +119,15 @@ the [user guide](guide.md); planned work is on the
   in the parent process.
 - The agent's name in a question (`claude-code`) is what the agent says it is; Vimma cannot check
   it. Grants belong to the connection, and `:mcp` shows the program that started it.
-- A grant covers every agent tool for its minutes. Only form submissions are recognised as
-  steps that send or spend: a button whose script sends data without a form, such as a saved
-  card's one-button checkout, runs unasked under a grant until the payment checkpoint
-  ([#508](https://github.com/vimma-browser/vimma/issues/508)) is built.
+- A grant covers every agent tool for its minutes, but for the checkpoints: sending a form and
+  paying. Paying is recognised by a payment card field the page shows, in any frame, or by the
+  pressed button's or followed link's words (a fixed list in six languages). A checkout that
+  shows neither, such as a one-button checkout whose button is an icon with no name or says
+  `Continue`, runs unasked under a grant, and so does a load of a payment provider's or bank's
+  site from such a button, up to that site's own card fields or pay button
+  ([checkpoints](guide.md#checkpoints-sending-a-form-and-paying)). A button whose script sends
+  data without a form, and whose words do not say it pays, is an ordinary click. The total a
+  payment's question quotes is what the page states.
 - Each agent tool's own approvals, sandbox and timeouts are its own; Vimma neither reads nor
   changes them. What an agent does outside Vimma, with its shell and files, is up to that tool
   ([what Vimma protects](guide.md#what-vimma-protects-and-what-it-does-not)).

@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- m0-mcp-checkpoints: a payment provider's frame inside checkout.html, with one card number
+     field named by its autocomplete attribute. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Card payment</title>
+    <style>
+      body {
+        margin: 8px;
+        font: 14px sans-serif;
+      }
+      input {
+        font: inherit;
+        width: 220px;
+      }
+    </style>
+  </head>
+  <body>
+    <label>Card number <input name="number" autocomplete="cc-number" /></label>
+  </body>
+</html>

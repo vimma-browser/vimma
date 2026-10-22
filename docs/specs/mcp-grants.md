@@ -64,8 +64,12 @@ changed) are already asked separately, whatever is granted.
    - paying, once [mcp-checkpoints](mcp-checkpoints.md) is built.
 4. **The question's hint names the scope.** Once armed, a grantable question shows
    `y once · 10a 10 min, all but forms · n deny · x mute` (10 being `[mcp] grant_minutes`). The hint of a question in item 3 is unchanged.
+   (Since changed: the hint says `all but forms and paying`; [mcp-checkpoints](mcp-checkpoints.md)
+   Behaviour 8.)
 5. **The grant's notice names the scope and the way out.**
    `claude-code may use the agent workspace for 10 min; sending a form still asks (ctrl+b shift+a ends it)`.
+   (Since changed: the notice says `sending a form or paying still asks`; mcp-checkpoints
+   Behaviour 8.)
    A count over `[mcp] grant_max_minutes` adds `, the most [mcp] grant_max_minutes allows`
    after the minutes, as today.
 6. **Live while it runs.** Unchanged from vimma-mcp 23-24 and mcp-drive D14: the status bar

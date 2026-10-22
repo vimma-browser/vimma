@@ -29,9 +29,10 @@ and workspaces, and your hands never leave the keyboard.
   MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies. Every request asks you
   first, and one answer (`10a`) lets an agent work through a task for that many minutes. There
   they read and open pages, scroll, search and follow links with Vimma's own keys, click buttons
-  and fill forms by hint label (never a password or payment card field, and a form they send
-  asks every time, under any grant), see a page as a screenshot, read its errors, and show you a
-  page when they want you to look at it.
+  and fill forms by hint label (never a password or payment card field), see a page as a
+  screenshot, read its errors, and show you a page when they want you to look at it. Sending a
+  form and paying are checkpoints, asked every time under any grant: the question shows what the
+  form sends, or the button, the site and the total the page states.
 
 ## Install
 

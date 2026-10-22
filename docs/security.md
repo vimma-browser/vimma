@@ -725,14 +725,14 @@ workspace. What limits it: the agent workspace's container holds none of your ot
 under a grant shows a notice (an open names its host) and is a `:mcp log` row with its whole URL
 (M23); at most 10 opens a minute (M3); `ctrl+b shift+a` ends every grant at once; and an agent
 with a shell can send what it read over its own network without Vimma anyway. A form submission,
-a show, a dangerous or unscanned download and a page's own download still ask under any grant
-(M11, M13, M19, M28). Paying is not yet recognised apart from a form submission: until
-[mcp-checkpoints](specs/mcp-checkpoints.md) is built, a button that pays without submitting a
-form (a saved card's one-button checkout) runs unasked under a grant.
+a step that may pay, a show, a dangerous or unscanned download and a page's own download still
+ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
+makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
+spends and leaves the grant as it was (M28, M33).
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection, which covers every tool but those
-  that always ask (M11, M13, M19, M28); another connection's grant **never** covers it. A
+  that always ask (M11, M13, M19, M28, M33); another connection's grant **never** covers it. A
   waiting call a grant releases **must** be logged as run under the grant, and the grant's
   notice **must** count it, since the user never saw it asked.
   [`test_one_grant_covers_every_tool_of_its_connection`](../tests/browser/browser_vimma_mcp_agent.js),
@@ -1179,8 +1179,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
 - M28. A click that submits a form (a submit button or a submit or image input in a form whose
   method is not `dialog`, the element itself, the button it is in or its label's control)
   **must** ask every time, also under any grant, with only `y` and `n`, naming
-  the form's method, destination and the number of fields it sends; its yes **never** makes a
-  grant; so **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
+  the form's method, destination and each field it sends by name and value (hidden fields
+  counted, a file field by its name), **never** a password, payment card or one-time-code
+  field's value, only its name and `•••`, or the number of fields when the page did not say in
+  time; its yes **never** makes or ends a grant, and its `x` is a plain no; so **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
   label or the form's default submission), under a grant too, naming the same and
   the fields it fills, only through a submit button of the filled fields' own form or that
   form's default submission, and it is not sent when the page put back a value the question
@@ -1238,6 +1240,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_a_page_submit_during_a_fill_is_not_the_asked_one`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_selects_ranges_and_a_submit_button_of_another_form`](../tests/browser/browser_vimma_mcp_fill.js),
   [`a fill that submits: the destination, then the fields, y or n only`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`test_submit_question_lists_the_fields_it_sends`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`a form checkpoint lists the fields it sends, sensitive ones as •••`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a form checkpoint cleans the page's names and values and cuts them to fit`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a malformed fields reply is refused, and a secret never carries a value`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
   [`a click grant covers fills; a fill that submits asks under it`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a plain button, a reset, one outside a form or one closing a dialog is not`](../packages/vimma-core/test/agent-act.test.mjs)
 - M29. `agent-activate` **must** refuse, before anything is asked, a link to another site than
@@ -1386,6 +1392,36 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`vimma_console can be granted, and its grant covers the other tools`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_console_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_console.js),
   [`vimma_console: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
+- M33. A payment step (mcp-checkpoints C6) **must** ask under any grant, with only `y` and `n`
+  (`x` is a plain no), and its yes **never** makes, lengthens or ends a grant; its no denies that
+  step only. A payment step is a `vimma_activate` click, a `vimma_fill` that submits, or a
+  `vimma_keys` follow, `gu`, `gU`, `H` or `L`, in an agent tab whose page shows a payment card
+  field in any frame (a `cc-*` autocomplete name or form autofill's card heuristics; a frame
+  that fails or does not answer within 5 s counts as one), or whose pressed control has a phrase
+  of the fixed list (`PAY_PHRASES`, six languages) as whole words in its text, accessible name,
+  title or value. Its question **must** name the button (for a key step, its keys), the tab's
+  host and the total the page states, quoted after "the page says" and cut at 40 columns; a
+  card field's value is **never** read, and the desktop notification names no site, amount or
+  URL. Not covered: a load of another site is not stopped, so a hosted payment page reached
+  through a button whose words are not on the list stops the agent only at that page's own card
+  fields or pay button; a page that hides its checkout (no card field shown, a button worded
+  otherwise) is not recognised; a frame Vimma's actor does not cover (a data: or blob: document)
+  is not asked for card fields; and the total is the page's own claim, which the user's bank or
+  card statement settles.
+  [`test_pay_button_outside_a_form_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_card_fields_in_a_cross_site_frame_make_a_pay_step`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_basket_button_does_not_ask`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_no_stops_the_step_and_keeps_the_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_the_stated_total_is_quoted`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_key_that_acts_where_it_may_pay_asks`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_checkpoint_notice_log_row_and_notification`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`card fields alone, and a pay phrase alone, make a payment step; neither makes none`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`a phrase inside another word is not one`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`property: a phrase of the list, with any text around it apart by a space, matches`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`a payment checkpoint names the button, site and stated amount`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a checkpoint offers y and n only, and x is a plain no`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a checkpoint asks under a grant, its yes leaves the grant as it was`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`property: no answer to a checkpoint makes, lengthens or ends a grant`](../packages/vimma-core/test/agent-gate.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 

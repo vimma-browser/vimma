@@ -63,6 +63,12 @@ const FIND_WRAPPED = 2;
  *   at `until`; null when it may load, else the denial's reason
  * @property {(url: string, keys: string) => void} followed  a follow loaded `url`: into
  *   `:mcp log`, and a grant's notice names its host (D14, M23)
+ * @property {(step: AgentStep, index: number, found: { target: any, elements: boolean } | null,
+ *   until: number) => Promise<string | null>} askPay  a step that acts (a follow, `gu`, `gU`,
+ *   `H`, `L`) on a page where it may pay asks as a payment, under any grant
+ *   (docs/specs/mcp-checkpoints.md C1, C6), withdrawn at `until`; null when it may run (no
+ *   payment, or the user's yes), else the denial's reason. `found`: a follow's link and whether
+ *   it is from a `vimma_elements` list
  * @property {() => boolean} canLoad  whether the open rate has a slot left, without taking it
  * @property {() => boolean} stillAgent  the tab is still an agent tab (M2), checked before
  *   each step
@@ -83,6 +89,15 @@ const NOT_ALLOWED = /** @type {Record<string, string>} */ ({
   muted: "this agent is muted in Vimma; it did not load",
   busy: "too many agent requests wait in Vimma; it did not load",
   cancelled: "the question was withdrawn; it did not load",
+});
+
+/** What a step says when the user did not allow it at a payment checkpoint, by the reason. */
+const NOT_PAID = /** @type {Record<string, string>} */ ({
+  user: "the user said no at the payment checkpoint; nothing was loaded",
+  timeout: "no answer in Vimma at the payment checkpoint; nothing was loaded",
+  muted: "this agent is muted in Vimma; nothing was loaded",
+  busy: "too many agent requests wait in Vimma; nothing was loaded",
+  cancelled: "the payment question was withdrawn; nothing was loaded",
 });
 
 /**
@@ -318,7 +333,7 @@ export const AgentDrive = {
   async run(
     tab,
     steps,
-    { conn, askOpen, followed, canLoad, stillAgent, load, countLoad, deadline },
+    { conn, askOpen, askPay, followed, canLoad, stillAgent, load, countLoad, deadline },
   ) {
     const browser = tab.linkedBrowser;
     /** @type {StepResult[]} */
@@ -351,7 +366,30 @@ export const AgentDrive = {
             ? "in-use"
             : null;
 
-    for (const step of steps) {
+    /**
+     * A step that may pay asks first (mcp-checkpoints C1, C6): true when it may not run, its note
+     * said and the call stopped.
+     * @param {AgentStep} step @param {number} index
+     * @param {{ target: any, elements: boolean } | null} found @param {StepResult} result
+     */
+    const payStops = async (step, index, found, result) => {
+      const refused = await askPay(step, index, found, deadline);
+      if (refused === null) {
+        // The question took a while: the call may have run out, or the tab moved on.
+        const why = halt();
+        if (!why) return false;
+        Object.assign(result, { ok: false, note: "the call stopped while it was asked" });
+        stopped = why;
+      } else {
+        const note = NOT_PAID[refused] ?? `Vimma did not load (${refused})`;
+        Object.assign(result, { ok: false, note });
+        stopped = refused === "cancelled" && Date.now() >= deadline ? "timeout" : "denied";
+      }
+      done.push(result);
+      return true;
+    };
+
+    for (const [index, step] of steps.entries()) {
       const why = halt();
       if (why) {
         stopped = why;
@@ -381,6 +419,8 @@ export const AgentDrive = {
           } else if (!/^https?:/i.test(String(history.getEntryAtIndex(target)?.URI?.spec ?? ""))) {
             // An entry the user reached in this tab before it was the agent's (about:, file:).
             Object.assign(result, { ok: false, note: "that history entry is not a web page" });
+          } else if (await payStops(step, index, null, result)) {
+            break;
           } else if (!countLoad(String(history.getEntryAtIndex(target).URI.spec))) {
             Object.assign(result, {
               ok: false,
@@ -401,6 +441,8 @@ export const AgentDrive = {
           const url = id === "page.url_up" ? urlUp(here, count) : urlRoot(here);
           if (!url || !/^https?:/i.test(url)) {
             Object.assign(result, { ok: false, note: "already at the top of the site" });
+          } else if (await payStops(step, index, null, result)) {
+            break;
           } else {
             const mark = pageMark(browser);
             if (!load(url)) {
@@ -487,6 +529,15 @@ export const AgentDrive = {
               });
               done.push(result);
               stopped = "denied";
+              break;
+            } else if (
+              await payStops(
+                step,
+                index,
+                { target, elements: session?.source === "elements" },
+                result,
+              )
+            ) {
               break;
             } else if (elsewhere && (refused = await askOpen(url.href, deadline)) !== null) {
               // D18: another site is a vimma_open of its URL; a no stops the call.

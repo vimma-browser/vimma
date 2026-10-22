@@ -8,6 +8,8 @@ import {
   FULL_CONTROL,
   QUIET_MS,
   agentAlertText,
+  checkpointNotice,
+  isCheckpoint,
   agentState,
   clientName,
   controlOnQuestion,
@@ -82,7 +84,7 @@ describe("the question's text (decision 13)", () => {
       '◇ example-agent wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" ' +
         "github.com/vimma-browser/vimma/pulls",
     );
-    expect(line.hint).toBe("y once · 15a 15 min, all but forms · n deny · x mute");
+    expect(line.hint).toBe("y once · 15a 15 min, all but forms and paying · n deny · x mute");
     expect(line.label).toBe(text(line));
   });
 
@@ -111,7 +113,7 @@ describe("the question's text (decision 13)", () => {
       '◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys: ' +
         '3j /"pricing"⏎ gg',
     );
-    expect(line.hint).toBe("y once · 15a 15 min, all but forms · n deny · x mute");
+    expect(line.hint).toBe("y once · 15a 15 min, all but forms and paying · n deny · x mute");
     const shown = line.parts.find((p) => p.text === '3j /"pricing"⏎ gg');
     expect(shown?.isolate).toBe("ltr");
   });
@@ -252,7 +254,7 @@ describe("the keys (decisions 13 and 20)", () => {
 describe("notices and notifications (decisions 15, 16 and 23)", () => {
   test("a grant names the waiting calls it let run, which the user did not see asked", () => {
     expect(grantNotice(read, { minutes: 15, capped: false }, 2)).toBe(
-      "example-agent may use the agent workspace for 15 min; sending a form still asks " +
+      "example-agent may use the agent workspace for 15 min; sending a form or paying still asks " +
         "(ctrl+b shift+a ends it) · it also ran 2 waiting calls (:mcp log)",
     );
     expect(grantNotice(read, { minutes: 15, capped: false }, 1)).toMatch(
@@ -262,12 +264,12 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
 
   test("a grant names its scope, its length, the cap, and the key that ends it", () => {
     expect(grantNotice(read, { minutes: 15, capped: false })).toBe(
-      "example-agent may use the agent workspace for 15 min; sending a form still asks " +
+      "example-agent may use the agent workspace for 15 min; sending a form or paying still asks " +
         "(ctrl+b shift+a ends it)",
     );
     expect(grantNotice(read, { minutes: 480, capped: true })).toBe(
       "example-agent may use the agent workspace for 480 min, the most [mcp] grant_max_minutes " +
-        "allows; sending a form still asks (ctrl+b shift+a ends it)",
+        "allows; sending a form or paying still asks (ctrl+b shift+a ends it)",
     );
   });
 
@@ -384,22 +386,189 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
         },
       },
     };
+    // Without the fields the child read (it did not answer), the question counts them.
     const line = questionLine(submit, { grantMinutes: 10 });
     expect(text(line)).toBe(
-      '◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)',
+      '▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)',
     );
     expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["POST", "example.com"]);
-    expect(line.hint).toBe("y submit once · n deny");
+    expect(line.hint).toBe("y send it · n stop");
     expect(noGrant(submit)).toBe(true);
     expect(promptKey({ count: "" }, "a", { noGrant: noGrant(submit) })).toEqual({ kind: "ignore" });
-    expect(agentAlertText(submit)).toBe(
-      "claude-code asks to use Vimma's agent workspace (submit a form)",
-    );
+    expect(agentAlertText(submit)).toBe("claude-code asks to send a form");
     const one = {
       ...submit,
       what: { ...submit.what, submit: { ...submit.what.submit, fields: 1 } },
     };
     expect(text(questionLine(one, { grantMinutes: 10 }))).toMatch(/\(1 field\)$/);
+  });
+
+  // docs/specs/mcp-checkpoints.md Behaviour 2-4, 6-7, C2, C3, C7: a checkpoint stands out
+  // (▲ and the warning colour on its glyph and verb), shows the content of its step and is
+  // answered with y or n only.
+  const signup = {
+    tool: "vimma_activate",
+    label: { client: "claude-code" },
+    what: {
+      tab: "7",
+      index: 2,
+      title: "Sign up · Example",
+      url: "https://example.com/signup",
+      label: "sg",
+      kind: "button",
+      text: "Sign up",
+      submit: {
+        method: "post",
+        action: "https://example.com/api/signup",
+        host: "example.com",
+        fields: 6,
+      },
+      sent: {
+        fields: [
+          { name: "email", value: "a@example.com" },
+          { name: "name", value: "Ada" },
+          { name: "password", secret: true },
+          { name: "cv", file: true },
+        ],
+        hidden: 2,
+        more: 0,
+      },
+    },
+  };
+
+  test("a form checkpoint lists the fields it sends, sensitive ones as •••", () => {
+    const line = questionLine(signup, { grantMinutes: 10 });
+    expect(text(line)).toBe(
+      '▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup' +
+        '  email "a@example.com", name "Ada", password •••, cv (file), + 2 hidden',
+    );
+    expect(line.parts.filter((p) => p.warn).map((p) => p.text)).toEqual([
+      "▲",
+      "wants to send a form",
+    ]);
+    // The page's names and the values are their own bidi runs (security.md M4).
+    expect(line.parts.find((p) => p.text === "a@example.com")?.isolate).toBe("auto");
+    expect(line.parts.find((p) => p.text === "email")?.isolate).toBe("auto");
+    expect(line.hint).toBe("y send it · n stop");
+    expect(line.label).toBe(text(line));
+  });
+
+  test("a form checkpoint cleans the page's names and values and cuts them to fit", () => {
+    const what = {
+      ...signup.what,
+      sent: {
+        fields: [
+          { name: "bio‮", value: `${"x".repeat(100)}\n` },
+          ...Array.from({ length: 30 }, (_, i) => ({ name: `f${i}`, value: "v" })),
+        ],
+        hidden: 0,
+        more: 3,
+      },
+    };
+    const line = text(questionLine({ ...signup, what }, { grantMinutes: 10 }));
+    expect(line).toContain(`  bio "${"x".repeat(39)}…", f0 "v"`);
+    expect(line).not.toContain("‮");
+    // Cut where the line ends, and the fields past the child's cap are counted too.
+    expect(line).toMatch(/, … \(\d+ more\)$/);
+    const more = Number(/\((\d+) more\)$/.exec(line)?.[1]);
+    expect(more).toBeGreaterThan(3);
+    const fields = line.slice(line.indexOf("  bio"));
+    expect(textWidth(fields)).toBeLessThanOrEqual(175);
+  });
+
+  const pay = {
+    tool: "vimma_activate",
+    label: { client: "claude-code" },
+    what: {
+      tab: "7",
+      index: 2,
+      title: "Checkout · Shop",
+      url: "https://shop.example/checkout",
+      label: "sg",
+      kind: "button",
+      text: "Confirm order",
+      pay: { text: "Confirm order", site: "shop.example", total: "Total 42,90 €" },
+    },
+  };
+
+  test("a payment checkpoint names the button, site and stated amount", () => {
+    const line = questionLine(pay, { grantMinutes: 10 });
+    expect(text(line)).toBe(
+      '▲ claude-code wants to pay: "Confirm order" on shop.example · the page says "Total 42,90 €"',
+    );
+    expect(line.parts.filter((p) => p.warn).map((p) => p.text)).toEqual(["▲", "wants to pay"]);
+    expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["shop.example"]);
+    expect(line.parts.find((p) => p.text === "Total 42,90 €")?.isolate).toBe("auto");
+    expect(line.parts.find((p) => p.text === "Confirm order")?.isolate).toBe("auto");
+    expect(line.hint).toBe("y pay · n stop");
+    expect(noGrant(pay)).toBe(true);
+    expect(agentAlertText(pay)).toBe("claude-code asks to pay");
+    // No total on the page: none is quoted.
+    const bare = { ...pay, what: { ...pay.what, pay: { text: "Pay", site: "shop.example" } } };
+    expect(text(questionLine(bare, { grantMinutes: 10 }))).toBe(
+      '▲ claude-code wants to pay: "Pay" on shop.example',
+    );
+    // A key step has no button: the keys stand in for it.
+    const keyed = {
+      ...keys,
+      what: { ...keys.what, keys: "H", pay: { text: "", site: "shop.example", keys: "H" } },
+    };
+    expect(text(questionLine(keyed, { grantMinutes: 10 }))).toBe(
+      "▲ claude-code wants to pay: keys H on shop.example",
+    );
+    // A follow names its link, and the call's keys follow, so none runs unseen.
+    const followed = {
+      ...keys,
+      what: { ...keys.what, keys: "3j fsd", pay: { text: "Maksa nyt", site: "shop.example" } },
+    };
+    expect(text(questionLine(followed, { grantMinutes: 10 }))).toBe(
+      '▲ claude-code wants to pay: "Maksa nyt" on shop.example  keys: 3j fsd',
+    );
+  });
+
+  test("a payment that also sends a form: the payment wording, then the fields", () => {
+    const both = {
+      ...pay,
+      what: { ...pay.what, submit: signup.what.submit, sent: signup.what.sent },
+    };
+    expect(text(questionLine(both, { grantMinutes: 10 }))).toBe(
+      '▲ claude-code wants to pay: "Confirm order" on shop.example · the page says "Total 42,90 €"' +
+        ' → POST example.com/api/signup  email "a@example.com", name "Ada", password •••, cv (file), + 2 hidden',
+    );
+    expect(questionLine(both, { grantMinutes: 10 }).hint).toBe("y pay · n stop");
+    expect(agentAlertText(both)).toBe("claude-code asks to pay");
+  });
+
+  test("a checkpoint offers y and n only, and x is a plain no", () => {
+    for (const q of [pay, signup]) {
+      const plain = { noGrant: noGrant(q) };
+      expect(promptKey({ count: "" }, "y", plain)).toEqual({
+        kind: "answer",
+        answer: { kind: "once" },
+      });
+      expect(promptKey({ count: "" }, "x", plain)).toEqual({
+        kind: "answer",
+        answer: { kind: "deny" },
+      });
+      expect(promptKey({ count: "" }, "a", plain)).toEqual({ kind: "ignore" });
+      expect(promptKey({ count: "" }, "5", plain)).toEqual({ kind: "ignore" });
+      for (const key of ["n", "esc", "enter"]) {
+        expect(promptKey({ count: "" }, key, plain)).toEqual({
+          kind: "answer",
+          answer: { kind: "deny" },
+        });
+      }
+    }
+  });
+
+  test("a checkpoint's yes and no say what happened to the step", () => {
+    expect(isCheckpoint(pay)).toBe(true);
+    expect(isCheckpoint(signup)).toBe(true);
+    expect(isCheckpoint(read)).toBe(false);
+    expect(checkpointNotice(pay)).toBe("paid on shop.example");
+    expect(checkpointNotice(signup)).toBe("sent the form to example.com");
+    expect(deniedNotice(pay, "user")).toBe("stopped claude-code's payment on shop.example");
+    expect(deniedNotice(signup, "user")).toBe("stopped claude-code's form to example.com");
   });
 
   // docs/specs/mcp-forms.md F14, F28: vimma_fill asks with the tab and each field's label, name
@@ -484,13 +653,33 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     };
     const line = questionLine(submit, { grantMinutes: 10 });
     expect(text(line)).toBe(
-      '◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)  after filling 1 field: sd Email = "ada@example.com"',
+      '▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)  after filling 1 field: sd Email = "ada@example.com"',
     );
     expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["POST", "example.com"]);
-    expect(line.hint).toBe("y fill and submit once · n deny");
+    expect(line.hint).toBe("y send it · n stop");
     expect(noGrant(submit)).toBe(true);
-    expect(agentAlertText(submit)).toBe(
-      "claude-code asks to use Vimma's agent workspace (submit a form)",
+    expect(agentAlertText(submit)).toBe("claude-code asks to send a form");
+    // Behaviour 4: what else the form sends follows what the fill puts in.
+    const sent = {
+      ...submit,
+      what: {
+        ...submit.what,
+        sent: {
+          fields: [
+            { name: "plan", value: "pro" },
+            { name: "pin", secret: true },
+          ],
+          hidden: 1,
+          more: 0,
+        },
+      },
+    };
+    expect(text(questionLine(sent, { grantMinutes: 10 }))).toBe(
+      '▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  after filling 1 field: sd Email = "ada@example.com"  also plan "pro", pin •••, + 1 hidden',
+    );
+    const only = { ...sent, what: { ...sent.what, sent: { fields: [], hidden: 0, more: 0 } } };
+    expect(text(questionLine(only, { grantMinutes: 10 }))).toBe(
+      '▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  after filling 1 field: sd Email = "ada@example.com"',
     );
   });
 
@@ -645,7 +834,7 @@ describe("a download's question (decision 31 a, d)", () => {
         "from example.com",
     );
     expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["example.com"]);
-    expect(line.hint).toBe("y once · 10a 10 min, all but forms · n deny · x mute");
+    expect(line.hint).toBe("y once · 10a 10 min, all but forms and paying · n deny · x mute");
   });
 
   test("an unknown size and type say so", () => {

@@ -35,6 +35,9 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 const { validateMessage } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
+const { questionLine } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/agent-prompt.mjs",
+);
 
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -42,6 +45,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const CLICK = `${DIR}file_vimma_agent_click.html`;
 const PAGE = `${DIR}file_vimma_agent_page.html`;
+const SIGNUP = `${DIR}file_vimma_agent_signup.html`;
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
 registerCleanupFunction(async () => {
@@ -396,4 +400,60 @@ addTidyTask(async function test_a_page_submitting_with_no_agent_step_is_untouche
   Assert.ok(true, "a page's own submission, with no agent step, went through");
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
+});
+
+// docs/specs/mcp-checkpoints.md Behaviour 4 (security.md M28): a submission's question lists
+// what it sends, by name and value, a password by its name only, hidden fields counted; a fill
+// that submits lists what it sends besides the fields it fills.
+addTidyTask(async function test_submit_question_lists_the_fields_it_sends() {
+  await mcp(true);
+  const tab = await openAgentTab(SIGNUP);
+  const c = await agentClient("claude-code");
+  const by = await labels(c, tab);
+  let id = c.request("agent-activate", { tab: idOf(tab), label: by.Join });
+  let q = await question();
+  Assert.deepEqual(
+    q.what.sent,
+    {
+      fields: [
+        { name: "email", value: "ada@example.com" },
+        { name: "name", value: "Ada ‮ecalevoL" },
+        { name: "password", secret: true },
+        { name: "terms", value: "ok" },
+        { name: "plan", value: "pro" },
+        { name: "action", value: "join" },
+      ],
+      hidden: 2,
+      more: 0,
+    },
+    "each field it sends, the password without its value, the hidden ones counted",
+  );
+  Assert.ok(!JSON.stringify(q.what).includes("hunter2"), "a password's value is never read");
+  const line = questionLine(q, { grantMinutes: 10 }).label;
+  Assert.ok(
+    line.startsWith("▲ claude-code wants to send a form: ") && line.includes(" → POST "),
+    `the question names the form and where it goes: ${line}`,
+  );
+  Assert.ok(
+    line.endsWith(
+      '  email "ada@example.com", name "Ada ecalevoL", password •••, terms "ok", plan "pro", ' +
+        'action "join", + 2 hidden',
+    ),
+    "and shows what it sends, cleaned of the override",
+  );
+  AgentGate.answer(q.id, { kind: "deny" });
+  await c.response(id);
+  id = c.request("agent-fill", {
+    tab: idOf(tab),
+    fields: [{ label: by.Email, value: "grace@example.com" }],
+    submit: true,
+  });
+  q = await question();
+  Assert.ok(
+    !q.what.sent.fields.some((/** @type {any} */ f) => f.name === "email"),
+    "a fill's question lists the field it fills once, with its new value",
+  );
+  Assert.equal(q.what.sent.fields.length, 5, "and what else the form sends");
+  AgentGate.answer(q.id, { kind: "deny" });
+  await c.response(id);
 });

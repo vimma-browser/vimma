@@ -70,6 +70,7 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 5. Activating a submit button, or a `vimma_fill` with `submit`, asks every time, also under a
    grant, with only `y` and `n`:
    `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)`.
+   (Since changed: a checkpoint that lists the fields it sends; mcp-checkpoints Behaviour 4.)
 6. A page whose script submits a form on its own after an agent's click does not submit it:
    Vimma cancels that submission, and the result says
    `the page tried to submit a form to example.com; Vimma stopped it`. A form the user submits
@@ -439,6 +440,9 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     yes makes no grant. The question names the form's method and action host in bold and the
     number of fields it sends:
     `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)`.
+    (Since changed: the question is a checkpoint, `▲ claude-code wants to send a form: …`, and
+    lists each field it sends by name and value; [mcp-checkpoints](mcp-checkpoints.md)
+    Behaviour 2, 4.)
     A submission sends data to a server and is where sign-ups, messages and purchases happen,
     so one question per submission is the price of keeping them in the hands of the person at
     the keyboard; the grant for `vimma_fill` or `vimma_activate` (F25) covers only what does not
