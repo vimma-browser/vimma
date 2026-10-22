@@ -8,6 +8,9 @@ import {
   ELEMENT_KINDS,
   actDetail,
   actRefusal,
+  fillDetail,
+  fillRefusal,
+  parseFillTarget,
   agentElementList,
   isAgentLabel,
   isSubmitControl,
@@ -516,6 +519,195 @@ describe("what a click says it does (F28)", () => {
     ).toBe('sg button "Sign up" → POST https://example.com/api/signup (3 fields)');
     expect(actDetail("a", { alive: true, kind: "click", text: "x".repeat(100) })).toBe(
       `a click "${"x".repeat(79)}…"`,
+    );
+  });
+});
+
+// docs/specs/mcp-forms.md, sub-PR 3: `vimma_fill` sets fields by their labels (F12-F14;
+// security.md M27). The child's account of each field is checked like any reply from a content
+// process, and what it never fills is refused before anything is asked, naming the field.
+describe("the child's account of a field before a fill (F12, F13)", () => {
+  const email = { alive: true, kind: "field", field: "text", type: "email", accepts: true };
+
+  test("a known shape comes back as a fresh copy with only its fields", () => {
+    const raw = {
+      ...email,
+      text: "",
+      name: "email",
+      caption: "Email address",
+      autocomplete: "email",
+      required: true,
+      submit: { method: "post", action: "https://example.com/api/signup", fields: 3 },
+      extra: 1,
+    };
+    const t = parseFillTarget(raw);
+    expect(t).toEqual({
+      alive: true,
+      kind: "field",
+      field: "text",
+      type: "email",
+      accepts: true,
+      name: "email",
+      caption: "Email address",
+      autocomplete: "email",
+      submit: { method: "post", action: "https://example.com/api/signup", fields: 3 },
+    });
+    expect(t).not.toBe(raw);
+    expect(parseFillTarget({ alive: false })).toEqual({ alive: false });
+    const box = { alive: true, kind: "checkbox", field: "checkbox", checked: false };
+    expect(parseFillTarget({ ...box, secret: "card", disabled: true, readonly: true })).toEqual({
+      ...box,
+      secret: "card",
+      disabled: true,
+      readonly: true,
+    });
+  });
+
+  test("anything malformed or over its cap is refused", () => {
+    for (const bad of [
+      null,
+      [],
+      { ...email, alive: 1 },
+      { ...email, kind: "teleport" },
+      { ...email, field: "password" },
+      { ...email, secret: "pin" },
+      { ...email, accepts: "yes" },
+      { ...email, checked: "no" },
+      { ...email, name: "x".repeat(513) },
+      { ...email, caption: 1 },
+      { ...email, autocomplete: "x".repeat(65) },
+      { ...email, submit: { method: "put", action: "https://a/", fields: 1 } },
+      { ...email, submit: { method: "post", action: "https://a/", fields: -1 } },
+    ]) {
+      expect(parseFillTarget(bad), JSON.stringify(bad)).toBe(null);
+    }
+  });
+});
+
+describe("what a fill refuses (F6, F13; security.md M27)", () => {
+  const text = { alive: true, kind: "field", field: "text", type: "text", accepts: true };
+  const area = { alive: true, kind: "field", field: "textarea", type: "textarea", accepts: true };
+  const select = { alive: true, kind: "select", field: "select", accepts: true };
+  const box = { alive: true, kind: "checkbox", field: "checkbox", accepts: true, checked: false };
+  const radio = { alive: true, kind: "radio", field: "radio", accepts: true, checked: false };
+
+  test("text, a text area, a select, a checkbox and a radio are filled", () => {
+    expect(fillRefusal("sd", text, "ada@example.com")).toBe(null);
+    expect(fillRefusal("sd", area, "two\nlines")).toBe(null);
+    expect(fillRefusal("sd", select, "se")).toBe(null);
+    expect(fillRefusal("sd", box, true)).toBe(null);
+    expect(fillRefusal("sd", box, false)).toBe(null);
+    expect(fillRefusal("sd", radio, true)).toBe(null);
+  });
+
+  test("a gone element is refused", () => {
+    expect(fillRefusal("sd", { alive: false }, "x")).toBe(
+      "that element is gone: call vimma_elements again",
+    );
+  });
+
+  test("password, payment card and one-time-code fields are never filled", () => {
+    expect(fillRefusal("sf", { ...text, secret: "password" }, "x")).toBe(
+      'field "sf" is a password field; Vimma never fills it: ask the user to type it',
+    );
+    expect(fillRefusal("sf", { ...text, secret: "card" }, "4111")).toBe(
+      'field "sf" is a payment card field; Vimma never fills it: ask the user to type it',
+    );
+    expect(fillRefusal("sf", { ...text, secret: "code" }, "123456")).toBe(
+      'field "sf" is a one-time-code field; Vimma never fills it: ask the user to type it',
+    );
+    // The autocomplete name counts whatever the child says (F6).
+    for (const [autocomplete, what] of [
+      ["current-password", "password"],
+      ["new-password", "password"],
+      ["one-time-code", "one-time-code"],
+      ["cc-number", "payment card"],
+      ["cc-csc", "payment card"],
+      ["cc-exp", "payment card"],
+    ]) {
+      expect(fillRefusal("sf", { ...text, autocomplete }, "x"), autocomplete).toBe(
+        `field "sf" is a ${what} field; Vimma never fills it: ask the user to type it`,
+      );
+    }
+    expect(fillRefusal("sf", { ...text, autocomplete: "email" }, "x")).toBe(null);
+    // A password input is one whatever else the child says.
+    expect(fillRefusal("sf", { ...text, type: "password" }, "x")).toBe(
+      'field "sf" is a password field; Vimma never fills it: ask the user to type it',
+    );
+    // A sensitive select or checkbox is refused just the same.
+    expect(fillRefusal("sf", { ...select, secret: "card" }, "12")).toMatch(/payment card field/);
+  });
+
+  test("file fields, rich text editors, hidden, disabled and read-only fields are refused", () => {
+    expect(fillRefusal("sg", { alive: true, kind: "field", field: "file" }, "/etc/passwd")).toBe(
+      'field "sg" is a file field; Vimma never fills it: ask the user to choose the file',
+    );
+    expect(fillRefusal("sg", { alive: true, kind: "field", field: "editable" }, "x")).toBe(
+      'label "sg" is a rich text editor; Vimma does not fill those',
+    );
+    expect(fillRefusal("sg", { alive: true, kind: "field", field: "hidden" }, "x")).toBe(
+      'field "sg" is hidden',
+    );
+    expect(fillRefusal("sg", { ...text, disabled: true }, "x")).toBe('field "sg" is disabled');
+    expect(fillRefusal("sg", { ...text, readonly: true }, "x")).toBe('field "sg" is read-only');
+  });
+
+  test("what is not a field is refused: vimma_activate clicks it", () => {
+    expect(fillRefusal("sg", { alive: true, kind: "button", field: "none" }, "x")).toBe(
+      'label "sg" is a button, not a field: use vimma_activate',
+    );
+    expect(fillRefusal("sg", { alive: true, kind: "checkbox", field: "none" }, true)).toBe(
+      'label "sg" is a checkbox, not a field: use vimma_activate',
+    );
+  });
+
+  test("a value of the wrong kind, a line break in one line, a value that does not parse", () => {
+    expect(fillRefusal("sd", box, "yes")).toBe(
+      'field "sd" is a checkbox: its value is true or false',
+    );
+    expect(fillRefusal("sd", radio, "on")).toBe('field "sd" is a radio button: its value is true');
+    expect(fillRefusal("sd", radio, false)).toBe(
+      'field "sd" is a radio button: to unselect it, fill another of its group with true',
+    );
+    expect(fillRefusal("sd", text, true)).toBe('field "sd" takes text, not true or false');
+    expect(fillRefusal("sd", select, false)).toBe('field "sd" takes text, not true or false');
+    expect(fillRefusal("sd", text, "a\nb")).toBe(
+      'field "sd" is one line: its value must not contain a line break',
+    );
+    expect(fillRefusal("sd", { ...select, accepts: false }, "Norway")).toBe(
+      'select "sd" has no option with the value or text "Norway"',
+    );
+    expect(fillRefusal("sd", { ...text, type: "date", accepts: false }, "tomorrow")).toBe(
+      'field "sd" does not take "tomorrow" as a date',
+    );
+    expect(fillRefusal("sd", { ...select, accepts: false }, "x".repeat(200))).toBe(
+      `select "sd" has no option with the value or text "${"x".repeat(79)}…"`,
+    );
+  });
+});
+
+describe("what a fill says it does (F14, F28)", () => {
+  const fields = [
+    { label: "sd", name: "Email address", value: "ada@example.com" },
+    { label: "sf", name: "remember", value: true },
+    { label: "sg", name: "", value: "two\nlines" },
+  ];
+
+  test("each field's label, name and value in full, for :mcp log", () => {
+    expect(fillDetail(fields)).toBe(
+      'sd Email address = "ada@example.com", sf remember = checked, sg = "two\\nlines"',
+    );
+    const long = "x".repeat(1024);
+    expect(fillDetail([{ label: "sd", name: "Bio", value: long }])).toBe(`sd Bio = "${long}"`);
+    expect(fillDetail([{ label: "sd", name: "Remember", value: false }])).toBe(
+      "sd Remember = unchecked",
+    );
+  });
+
+  test("a submit names where it sends", () => {
+    const submit = { method: "post", action: "https://example.com/api/signup", fields: 3 };
+    expect(fillDetail(fields.slice(0, 1), submit)).toBe(
+      'sd Email address = "ada@example.com" → POST https://example.com/api/signup (3 fields)',
     );
   });
 });

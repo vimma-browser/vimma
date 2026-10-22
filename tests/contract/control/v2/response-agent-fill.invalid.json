@@ -1,0 +1,16 @@
+{
+  "description": "A fill's result without the number of fields filled",
+  "kind": "response",
+  "command": "agent-fill",
+  "message": {
+    "type": "response",
+    "id": 13,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/signup",
+      "title": "Sign up · Example",
+      "loading": false,
+      "navigated": false
+    }
+  }
+}

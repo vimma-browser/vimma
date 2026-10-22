@@ -20,6 +20,7 @@ import {
   promptKey,
   questionLine,
   logRow,
+  fillFits,
   ranNotice,
   shownNotice,
 } from "../src/agent-prompt.mjs";
@@ -360,6 +361,98 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
       what: { ...submit.what, submit: { ...submit.what.submit, fields: 1 } },
     };
     expect(text(questionLine(one, { grantMinutes: 10 }))).toMatch(/\(1 field\)$/);
+  });
+
+  // docs/specs/mcp-forms.md F14, F28: vimma_fill asks with the tab and each field's label, name
+  // and value, cut with … to fit; a fill that submits asks with the form's destination too and
+  // offers no grant (F15).
+  test("vimma_fill: each field and value in the question, how many in the notice", () => {
+    const fill = {
+      tool: "vimma_fill",
+      label: { client: "claude-code" },
+      what: {
+        tab: "7",
+        index: 2,
+        title: "Sign up · Example",
+        url: "https://example.com/signup",
+        fields: [{ label: "sd", name: "Email", value: "ada@example.com" }],
+      },
+    };
+    const line = questionLine(fill, { grantMinutes: 10 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants vimma_fill: 2 "Sign up · Example" example.com/signup  sd Email = "ada@example.com"',
+    );
+    // The agent's values and the page's names are their own bidi runs (security.md M4).
+    expect(line.parts.find((p) => p.text === "ada@example.com")?.isolate).toBe("auto");
+    expect(noGrant(fill)).toBe(false);
+    expect(ranNotice(fill, 12 * MIN, 0)).toBe(
+      'claude-code filled 1 field in "Sign up · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(fill)).toBe(
+      "claude-code asks to use Vimma's agent workspace (fill in a form)",
+    );
+    const three = {
+      ...fill,
+      what: {
+        ...fill.what,
+        fields: [
+          { label: "sd", name: "Email", value: "x".repeat(100) },
+          { label: "sf", name: "", value: "two\nlines" },
+          { label: "sg", name: "Remember me", value: true },
+        ],
+      },
+    };
+    expect(text(questionLine(three, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_fill: 2 "Sign up · Example" example.com/signup  3 fields: ' +
+        `sd Email = "${"x".repeat(39)}…", sf = "two lines", sg Remember me = checked`,
+    );
+    expect(ranNotice(three, 12 * MIN, 0)).toBe(
+      'claude-code filled 3 fields in "Sign up · Example" (grant, 12m left)',
+    );
+    // Thirty-two fields still fit one line: the list is cut with …, and :mcp log has it all.
+    const many = {
+      ...fill,
+      what: {
+        ...fill.what,
+        fields: Array.from({ length: 32 }, (_, i) => ({ label: "sd", name: `F${i}`, value: "v" })),
+      },
+    };
+    const cut = text(questionLine(many, { grantMinutes: 10 }));
+    expect(cut).toMatch(/ {2}32 fields: sd F0 = "v", .*, … \(\d+ more\)$/);
+    expect(fillFits(many.what)).toBe(false);
+    expect(fillFits(three.what)).toBe(false);
+    expect(fillFits(fill.what)).toBe(true);
+    expect(textWidth(cut.slice(cut.indexOf("32 fields: ")))).toBeLessThanOrEqual(185);
+  });
+
+  test("a fill that submits: the destination, then the fields, y or n only", () => {
+    const submit = {
+      tool: "vimma_fill",
+      label: { client: "claude-code" },
+      what: {
+        tab: "7",
+        index: 2,
+        title: "Sign up · Example",
+        url: "https://example.com/signup",
+        fields: [{ label: "sd", name: "Email", value: "ada@example.com" }],
+        submit: {
+          method: "post",
+          action: "https://example.com/api/signup",
+          host: "example.com",
+          fields: 3,
+        },
+      },
+    };
+    const line = questionLine(submit, { grantMinutes: 10 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)  after filling 1 field: sd Email = "ada@example.com"',
+    );
+    expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["POST", "example.com"]);
+    expect(line.hint).toBe("y fill and submit once · n deny");
+    expect(noGrant(submit)).toBe(true);
+    expect(agentAlertText(submit)).toBe(
+      "claude-code asks to use Vimma's agent workspace (submit a form)",
+    );
   });
 
   test("denials and timeouts", () => {

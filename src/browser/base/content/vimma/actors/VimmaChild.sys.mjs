@@ -8,8 +8,15 @@
 
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
+import { isSensitiveAutocomplete } from "../core/agent-element.mjs";
 import { collectTargets, linkText } from "./hint-collect.mjs";
-import { actTargetOf, describeAgentElements } from "./agent-fields.mjs";
+import {
+  actTargetOf,
+  defaultSubmitOf,
+  describeAgentElements,
+  fillField,
+  fillTargetOf,
+} from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
@@ -171,6 +178,13 @@ export class VimmaChild extends JSWindowActorChild {
    * @type {{ gen: number, id: number, outcome: "pending" | "clicked" | "skipped" } | null}
    */
   #agentClick = null;
+  /**
+   * The agent's last fill of one field here (docs/specs/mcp-forms.md F12): its element and
+   * whether it is still to run, kept its value, was put back by the page, or was skipped because
+   * the field changed before it.
+   * @type {{ gen: number, id: number, outcome: "pending" | "kept" | "reset" | "skipped" } | null}
+   */
+  #agentFill = null;
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
   #emptySearchAt = 0;
   /** Copy mode in this document (m1-copy-mode). */
@@ -653,7 +667,7 @@ export class VimmaChild extends JSWindowActorChild {
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
    * @param {{ op: string, gen: number, id: number, submit?: any, href?: unknown,
-   *   until?: unknown }} data
+   *   until?: unknown, value?: unknown, expect?: any }} data
    */
   #agentElement(data) {
     const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
@@ -674,8 +688,90 @@ export class VimmaChild extends JSWindowActorChild {
         const last = this.#agentClick;
         return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
       }
+      case "inspect-fill":
+        return fillTargetOf(el, data.value);
+      case "fill":
+        return this.#agentFillField(el, data);
+      case "fill-outcome": {
+        const last = this.#agentFill;
+        return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
+      }
+      case "submit":
+        return this.#agentSubmit(el, data);
     }
     return false;
+  }
+
+  /**
+   * An agent's fill of one field (docs/specs/mcp-forms.md F12, F13; security.md M27): the field
+   * must still be what the user was asked about and not sensitive, then it is set after this
+   * reply, so that a dialog the page opens in its `input` or `change` handler never holds the
+   * parent's call. It is checked again just before the set, which is skipped if it changed.
+   * @param {Element | undefined} el
+   * @param {{ gen: number, id: number, value?: unknown, expect?: any, until?: unknown }} asked
+   *   `expect`: how the field was to be set (`field`) and its type, when the question was asked
+   * @returns {"ok" | "gone" | "changed"}
+   */
+  #agentFillField(el, asked) {
+    if (!el?.isConnected) return "gone";
+    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
+    const value = asked.value;
+    if (typeof value !== "string" && typeof value !== "boolean") return "changed";
+    if (!this.#fillAsAsked(el, asked)) return "changed";
+    const fill = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    this.#agentFill = fill;
+    const until = asked.until;
+    Services.tm.dispatchToMainThread(() => {
+      // A busy page can delay this past the parent's wait: then nothing is set.
+      if (Date.now() > until || !el.isConnected || !this.#fillAsAsked(el, asked)) {
+        fill.outcome = "skipped";
+        return;
+      }
+      fill.outcome = fillField(el, value) ? "kept" : "reset";
+    });
+    return "ok";
+  }
+
+  /**
+   * Whether `el` is still the field the agent's question showed: set the same way, of the same
+   * type, not sensitive, disabled or read-only, and taking the value.
+   * @param {Element} el @param {{ value?: unknown, expect?: any }} asked
+   */
+  #fillAsAsked(el, asked) {
+    const now = /** @type {any} */ (fillTargetOf(el, asked.value));
+    const expect = asked.expect && typeof asked.expect === "object" ? asked.expect : {};
+    if (!now.alive || now.secret || isSensitiveAutocomplete(now.autocomplete)) return false;
+    if (now.disabled || now.readonly || now.accepts === false) return false;
+    if (!["text", "textarea", "select", "checkbox", "radio"].includes(now.field)) return false;
+    return now.field === expect.field && (now.type ?? null) === (expect.type ?? null);
+  }
+
+  /**
+   * An agent's submission of a field's form with its default button (docs/specs/mcp-forms.md
+   * F15; security.md M28), after its fill: only to the method and destination the question
+   * named, by `requestSubmit`, after this reply. No user activation is given: the parent lets
+   * through only the submission the question allowed.
+   * @param {Element | undefined} el
+   * @param {{ submit?: any, until?: unknown }} asked
+   * @returns {"ok" | "gone" | "changed"}
+   */
+  #agentSubmit(el, asked) {
+    if (!el?.isConnected) return "gone";
+    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
+    const form = /** @type {any} */ (el).form;
+    const now = form ? defaultSubmitOf(form) : null;
+    const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
+    if (!now || !named || now.method !== named.method || now.action !== named.action) {
+      return "changed";
+    }
+    const until = asked.until;
+    Services.tm.dispatchToMainThread(() => {
+      if (Date.now() > until) return;
+      const again = form.isConnected ? defaultSubmitOf(form) : null;
+      if (!again || again.method !== named.method || again.action !== named.action) return;
+      form.requestSubmit(again.submitter ?? undefined);
+    });
+    return "ok";
   }
 
   /**
@@ -697,8 +793,11 @@ export class VimmaChild extends JSWindowActorChild {
     if (!this.#asAsked(el, asked)) return "changed";
     const click = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
     this.#agentClick = click;
+    const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
-      const ran = el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
+      // A busy page can delay this past the parent's wait: then nothing is clicked.
+      const ran =
+        Date.now() <= until && el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
       click.outcome = ran ? "clicked" : "skipped";
     });
     return "ok";

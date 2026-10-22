@@ -118,6 +118,7 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-show": "vimma_show",
   "agent-elements": "vimma_elements",
   "agent-activate": "vimma_activate",
+  "agent-fill": "vimma_fill",
 });
 /**
  * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a

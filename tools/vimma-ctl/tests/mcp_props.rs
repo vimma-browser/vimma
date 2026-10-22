@@ -13,7 +13,9 @@ use proptest::test_runner::RngSeed;
 use std::collections::BTreeMap;
 use std::time::Duration;
 use vimma_ctl::json::{self, Value};
-use vimma_ctl::mcp::{Action, Call, Era, Failure, Protocol, ToolCall, tool_result};
+use vimma_ctl::mcp::{
+    Action, Call, Era, Failure, FillField, FillValue, Protocol, ToolCall, tool_result,
+};
 
 const FIXED_SEED: u64 = 20_261_014;
 
@@ -41,6 +43,9 @@ fn key() -> impl Strategy<Value = String> {
             "max_chars",
             "keys",
             "label",
+            "fields",
+            "value",
+            "submit",
             "requestId",
             "protocolVersion",
             "clientInfo",
@@ -81,6 +86,7 @@ fn scalar() -> impl Strategy<Value = Value> {
             "vimma_show",
             "vimma_elements",
             "vimma_activate",
+            "vimma_fill",
             "sdf",
             "3j /pricing<CR> gg",
             "/x",
@@ -181,6 +187,16 @@ fn tool() -> impl Strategy<Value = ToolCall> {
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Close { tab }),
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Show { tab }),
         ("[0-9]{1,20}", any::<String>()).prop_map(|(tab, keys)| ToolCall::Keys { tab, keys }),
+        ("[0-9]{1,20}", "[asdfghjkl]{1,3}", any::<String>()).prop_map(|(tab, label, value)| {
+            ToolCall::Fill {
+                tab,
+                fields: vec![FillField {
+                    label,
+                    value: FillValue::Text(value),
+                }],
+                submit: None,
+            }
+        }),
     ]
 }
 
@@ -224,6 +240,16 @@ proptest! {
                         prop_assert!((1..=vimma_ctl::mcp::MAX_KEYS).contains(&n));
                         prop_assert!(!keys.chars().any(|c| c.is_control() && c != '\t'));
                         prop_assert!(!tab.is_empty() && tab.bytes().all(|b| b.is_ascii_digit()));
+                    }
+                    // mcp-forms F14 (security.md M27): a fill's fields within their limits.
+                    if let ToolCall::Fill { fields, .. } = &call.tool {
+                        prop_assert!((1..=32).contains(&fields.len()));
+                        for f in fields {
+                            if let FillValue::Text(v) = &f.value {
+                                prop_assert!(v.chars().count() <= 1024);
+                                prop_assert!(!v.chars().any(|c| c.is_control() && c != '\n'));
+                            }
+                        }
                     }
                     if let ToolCall::Open { url, .. } = &call.tool {
                         prop_assert!(url.encode_utf16().count() <= vimma_ctl::mcp::MAX_URL);

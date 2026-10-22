@@ -6,7 +6,7 @@
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
 import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
-import { parseActTarget } from "../core/agent-act.mjs";
+import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
 
@@ -561,6 +561,27 @@ export const VimmaActors = {
   },
 
   /**
+   * Opens the one submission a question allowed, on a tab already marked (docs/specs/
+   * mcp-forms.md F15, F16): a fill marks the tab before its first field and allows the
+   * submission only for its last step, so a page that submits the form while it is being
+   * filled sends nothing in its place.
+   * @param {any} browser XULBrowserElement
+   * @param {{ method: string, action: string }} allowed
+   * @returns {boolean} false when the tab has no mark of this page
+   */
+  agentAllow(browser, allowed) {
+    const top = browser.browsingContext;
+    const mark = submitMarks.get(top?.browserId);
+    if (!mark || top.currentWindowGlobal?.innerWindowId !== mark.doc) return false;
+    try {
+      mark.allowed = { method: allowed.method, where: whereOf(Services.io.newURI(allowed.action)) };
+    } catch {
+      return false;
+    }
+    return true;
+  },
+
+  /**
    * The agent's call is over: the allowed submission is no longer allowed, and the hosts of the
    * submissions stopped since the mark are returned (the mark stays).
    * @param {any} browser XULBrowserElement
@@ -593,6 +614,100 @@ export const VimmaActors = {
       return reply === "skipped" || reply === "pending" ? reply : "clicked";
     } catch {
       return "clicked";
+    }
+  },
+
+  /**
+   * What the field of a target from an agent's `vimma_elements` is now, for a fill with `value`
+   * (docs/specs/mcp-forms.md F4, F6, F12, F13), checked like any reply from a content process;
+   * `{ alive: false }` when it is gone, its frame shows another document or did not answer.
+   * @param {HintTarget} target @param {string | boolean} value
+   * @returns {Promise<import("../core/agent-act.mjs").FillTarget | null>} null: a malformed reply
+   */
+  async agentInspectFill(target, value) {
+    if (target.bc.currentWindowGlobal !== target.wg) return { alive: false };
+    try {
+      const raw = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "inspect-fill",
+        gen: target.gen,
+        id: target.id,
+        value,
+      });
+      return raw === undefined ? { alive: false } : parseFillTarget(raw);
+    } catch {
+      return { alive: false };
+    }
+  },
+
+  /**
+   * Sets the field of a target from an agent's `vimma_elements` to `value` (docs/specs/
+   * mcp-forms.md F12; security.md M27), once the child has seen it is still what the user was
+   * asked about and not sensitive. The child answers before it sets the field, so a dialog the
+   * page opens never holds the reply; `agentFillOutcome` says how it went.
+   * @param {HintTarget} target
+   * @param {{ value: string | boolean, expect: { field: string, type: string | null },
+   *   until: number }} asked  `until`: ms since the epoch; the child sets nothing later
+   * @returns {Promise<"ok" | "gone" | "changed">}
+   */
+  async agentFill(target, { value, expect, until }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "fill",
+        gen: target.gen,
+        id: target.id,
+        value,
+        expect,
+        until,
+      });
+      return reply === "ok" || reply === "changed" ? reply : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * How the agent's last fill of `target`'s field went (docs/specs/mcp-forms.md F12): still to
+   * run, the field kept its value, the page put it back, or it was skipped because the field
+   * changed. A frame that went away is `gone`.
+   * @param {HintTarget} target
+   * @returns {Promise<"pending" | "kept" | "reset" | "skipped" | "gone">}
+   */
+  async agentFillOutcome(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "fill-outcome",
+        gen: target.gen,
+        id: target.id,
+      });
+      return ["pending", "kept", "reset", "skipped"].includes(reply) ? reply : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * Submits the form of `target`'s field with its default button (docs/specs/mcp-forms.md F15;
+   * security.md M28), once the child has seen that it still goes to the method and destination
+   * the question named; the child answers before it submits.
+   * @param {HintTarget} target
+   * @param {{ submit: { method: string, action: string }, until: number }} asked
+   * @returns {Promise<"ok" | "gone" | "changed">}
+   */
+  async agentSubmit(target, { submit, until }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "submit",
+        gen: target.gen,
+        id: target.id,
+        submit,
+        until,
+      });
+      return reply === "ok" || reply === "changed" ? reply : "gone";
+    } catch {
+      return "gone";
     }
   },
 

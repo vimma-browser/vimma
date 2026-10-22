@@ -1,0 +1,18 @@
+{
+  "description": "Three fields filled, one of which the page put back, and the form sent: a new page loaded",
+  "kind": "response",
+  "command": "agent-fill",
+  "message": {
+    "type": "response",
+    "id": 13,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/welcome",
+      "title": "Welcome · Example",
+      "filled": 3,
+      "reset": ["sf"],
+      "loading": false,
+      "navigated": true
+    }
+  }
+}

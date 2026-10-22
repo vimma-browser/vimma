@@ -48,8 +48,9 @@ What works today, each with the section that explains it:
   uploads; Safe Browsing on.
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
   local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
-  open, scroll and search pages, follow their links, list and click their buttons and show you
-  a page, and every request asks you first; a form they submit asks every time.
+  open, scroll and search pages, follow their links, list and click their buttons, fill their
+  fields (never a password or card number) and show you a page, and every request asks you
+  first; a form they submit asks every time.
 
 ## Every key is yours
 
@@ -1334,7 +1335,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers eight tools:
+and output, connects to Vimma as an agent (never with full control), and offers nine tools:
 
 | Tool              | What the agent can do                                                                                    |
 | ----------------- | -------------------------------------------------------------------------------------------------------- |
@@ -1346,6 +1347,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_show`      | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
 | `vimma_elements`  | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
 | `vimma_activate`  | Click a button, link or checkbox from that list; a form it would send asks you every time.               |
+| `vimma_fill`      | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1445,7 +1447,7 @@ with the rest of your computer.
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
-  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and 6 `vimma_show` calls a minute, and a minute of silence after three noes
+  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills and 6 `vimma_show` calls a minute, and a minute of silence after three noes
   in a row. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -1577,6 +1579,39 @@ page opened.
   loads a page counts as one of the 10 opens a minute, and no click is made while those are used
   up. At most 30 clicks a minute, none while you are typing in the tab, and each is in
   `:mcp log` with the element, a submission with its destination.
+
+#### Filling in a form
+
+`vimma_fill` lets an agent fill fields of an agent tab by their labels from `vimma_elements`:
+text fields, text areas, selects (by an option's value or text), checkboxes and radio buttons.
+The question names the tab and every field with its value,
+`◇ claude-code wants vimma_fill: 2 "Sign up · Example" example.com/signup  sd Email = "ada@example.com"`,
+and on `y` the fields are set in the background, in order, as Firefox's own form autofill sets
+them: the page gets its `input` and `change` events, nothing in it is focused, and no key is
+pressed. The agent learns how many fields were filled and which values the page put back (some
+pages react to key presses only, which Vimma never sends).
+
+- **Never your secrets.** Password fields (also one a "show password" button turned into text),
+  fields the page draws as dots, one-time codes and payment card fields (by their autocomplete
+  name, or because Firefox's form autofill recognises them as card fields) are never filled, and
+  neither are file fields: the agent is told to ask you to type or choose those yourself. Hidden,
+  disabled and read-only fields and rich text editors are not filled either. These are refused
+  before you are asked. A field the page turns into a password or card field after you answered
+  stops the fill there.
+- **Sending the form asks every time.** With `submit`, the agent asks to fill the fields and
+  then send their form, through one of its submit buttons or as its first submit button would;
+  that question comes also under a grant, with only `y` and `n`, naming where the form goes and the fields:
+  `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)  after filling 1 field: sd Email = "ada@example.com"`.
+  It must show every value whole, or the agent is told to fill first and submit apart. If the
+  page puts back a value you were shown, the form is not sent. A form the page sends by itself
+  during or after a fill is stopped, as after a click.
+- **Nothing hidden in a value.** Values with characters that draw nothing (zero-width spaces,
+  direction marks and the like) are refused, so the question shows all a value holds; values
+  longer than the line are cut with `…`, and `:mcp log` keeps them whole.
+- **A grant covers fills** (not submissions): each shows
+  `claude-code filled 2 fields in "Sign up · Example" (grant, 12m left)`, and `:mcp log` keeps
+  every value. At most 32 fields a call, 30 clicks and fills a minute, none while you are typing
+  in the tab.
 
 #### Showing you a page
 
