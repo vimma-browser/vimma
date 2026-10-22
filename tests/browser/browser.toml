@@ -296,8 +296,6 @@ support-files = [
 ]
 
 ["browser_vimma_private_swap.js"]
-# macOS: on the hosted runner the fake Hyprland's openwindow event can come after REPLY_MS (#422)
-skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_title.html"]
 
 ["browser_vimma_side_panel.js"]
