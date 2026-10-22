@@ -135,14 +135,14 @@ export const ALWAYS_ASK = Object.freeze(["vimma_show"]);
 /** Questions that may wait: per connection and in all (decision 17). */
 export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
 /**
- * `agent-open`s per connection in any window of `ms` (security.md M3): a `vimma_open` grant
- * runs unasked, and must not open thousands of tabs.
+ * `agent-open`s per connection in any window of `ms` (security.md M3): a grant runs
+ * opens unasked, and must not open thousands of tabs.
  */
 export const OPEN_RATE = Object.freeze({ max: 10, ms: 60_000 });
 
 /**
  * `agent-keys` requests per connection in any window of `ms` (mcp-drive D15, security.md M20),
- * counted when asked: a `vimma_keys` grant runs unasked, and a refused call must not loop.
+ * counted when asked: a grant runs keys unasked, and a refused call must not loop.
  */
 export const KEYS_RATE = Object.freeze({ max: 30, ms: 60_000 });
 
@@ -154,7 +154,7 @@ export const SHOW_RATE = Object.freeze({ max: 6, ms: 60_000 });
 
 /**
  * `agent-elements` requests per connection in any window of `ms` (mcp-forms F26, security.md
- * M31), counted when asked: a `vimma_elements` grant runs unasked and must not flood a page, and
+ * M31), counted when asked: a grant runs lists unasked and must not flood a page, and
  * a refused call must not loop.
  */
 export const ELEMENTS_RATE = Object.freeze({ max: 30, ms: 60_000 });

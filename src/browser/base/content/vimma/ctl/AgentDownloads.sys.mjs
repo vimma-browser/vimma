@@ -987,7 +987,7 @@ export const AgentDownloads = {
 
   /**
    * An agent connection started loading `url` in this tab (agent-open): a download of that load,
-   * soon after, is that connection's, and a grant of its vimma_download covers it.
+   * soon after, is that connection's, and its grant covers it.
    * @param {Element} browser @param {string | number} conn @param {string} url
    */
   openedBy(browser, conn, url) {
