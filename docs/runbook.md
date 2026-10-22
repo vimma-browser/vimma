@@ -2143,6 +2143,12 @@ pull request has the `security` label (the autopilot puts it on a bump whose adv
 not read), a `fix(security)` commit, or any change whose pull request has the `security` label.
 Installs then show the update in red (`⇡ X.Y.Z security: :update`).
 
+`prepare` reads those labels with `gh api`, one call per commit. A call that fails with an HTTP
+5xx, a body gh cannot parse (GitHub's 500 with an empty body shows as `unexpected end of JSON
+input`) or a network error is tried again after 2, 4 and 8 s; any other failure, or a fourth
+transient one, fails the run, because an unread label could hide a security release. During a
+GitHub incident, wait for it to pass and re-run the failed jobs.
+
 One-time setup, in order (each step can be checked before the next):
 
 ```sh
