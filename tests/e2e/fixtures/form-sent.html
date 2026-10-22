@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- m0-mcp-forms: the page form.html's form posts to. It asks the fixture server for a file that
+     does not exist, so vimma_console has a failed request (404) to report. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Form sent</title>
+    <style>
+      body {
+        margin: 0 auto;
+        max-width: 720px;
+        padding: 24px;
+        font: 16px/1.5 sans-serif;
+        color: #222;
+        background: #fafafa;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Form sent</h1>
+    <p id="status">Checking the account…</p>
+    <script>
+      fetch("form-status.json").then((r) => {
+        document.getElementById("status").textContent = `Status: ${r.status}`;
+      });
+    </script>
+  </body>
+</html>

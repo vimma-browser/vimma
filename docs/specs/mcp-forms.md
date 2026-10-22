@@ -1,6 +1,6 @@
 # Spec: mcp-forms
 
-Status: accepted (sub-PRs 1 to 5 of 6 built: `vimma_elements`, `vimma_activate`, `vimma_fill`, `vimma_screenshot`, `vimma_console`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
+Status: implemented · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
 `agent-prompt.mjs`, `control.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
 `ctl/AgentAct.sys.mjs` new, `ctl/AgentShot.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`, `actors/agent-fields.mjs` new);
@@ -728,7 +728,9 @@ Written first and seen to fail, by layer. Each names the rule it holds.
 - `m0-mcp-forms`: the real `vimma-ctl mcp` over stdio against a local fixture form:
   `vimma_elements`, `vimma_fill`, the submit question and its `y`, `vimma_console` after a
   failing request, and `vimma_screenshot` with labels. Screenshots `m0-mcp-forms-fill-question`
-  and `m0-mcp-forms-submit-question` with the Omarchy theme, baselines from CI's runner.
+  and `m0-mcp-forms-submit-question`, baselines from CI's runner. They use the harness's
+  built-in theme, as every e2e baseline does: the harness pins it so that a machine's Omarchy
+  theme cannot change a baseline.
 
 ## Docs and changelog
 

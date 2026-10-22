@@ -49,8 +49,8 @@ What works today, each with the section that explains it:
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
   local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
   open, scroll and search pages, follow their links, list and click their buttons, fill their
-  fields (never a password or card number) and show you a page, and every request asks you
-  first; a form they submit asks every time.
+  fields (never a password or card number), take a screenshot, read a page's errors and show
+  you a page, and every request asks you first; a form they submit asks every time.
 
 ## Every key is yours
 
