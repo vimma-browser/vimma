@@ -42,6 +42,9 @@
           },
         },
       );
+      // ?noisy=N: a page that logs N errors, more than a reply holds.
+      const noisy = Number(new URLSearchParams(location.search).get("noisy"));
+      for (let i = 0; i < noisy; i++) console.error(`noise ${i}`, "x".repeat(5000));
       console.error("Failed to save", 42, true, null, trap, proxy);
       console.warn("deprecated call");
       console.log("plain log line");

@@ -639,16 +639,21 @@ export const VimmaActors = {
 
   /**
    * Each frame's own script errors and console errors and warnings, for an agent's
-   * `vimma_console` (docs/specs/mcp-forms.md F22): every frame is asked in its own process, and
-   * its answer is the child's, which the caller checks entry by entry. A frame that has no actor
+   * `vimma_console` (docs/specs/mcp-forms.md F22, F24): the first `frames` frames are asked, each
+   * in its own process, for its newest `max` entries after `since` and how many more it holds.
+   * The answer is the child's, which the caller checks entry by entry. A frame that has no actor
    * (a data: or blob: document), fails or does not answer within `ms` answers nothing.
    * @param {any} browser XULBrowserElement
    * @param {number} ms
-   * @returns {Promise<unknown[][]>}
+   * @param {{ since: number, max: number, frames?: number }} ask
+   * @returns {Promise<{ entries: unknown[], omitted: number }[]>}
    */
-  async agentConsole(browser, ms) {
+  async agentConsole(browser, ms, { since, max, frames: most = 100 }) {
     /** @type {any[]} BrowsingContexts */
-    const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
+    const frames = (browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []).slice(
+      0,
+      most,
+    );
     /** @type {number | undefined} */
     let timer;
     const late = new Promise((resolve) => {
@@ -657,13 +662,19 @@ export const VimmaActors = {
     try {
       return await Promise.all(
         frames.map(async (bc) => {
+          const none = { entries: [], omitted: 0 };
           const actor = actorFor(bc);
-          if (!actor) return [];
+          if (!actor) return none;
           try {
-            const r = await Promise.race([actor.sendQuery("Vimma:AgentConsole"), late]);
-            return Array.isArray(r) ? r : [];
+            const r = await Promise.race([
+              actor.sendQuery("Vimma:AgentConsole", { since, max }),
+              late,
+            ]);
+            if (!r || !Array.isArray(r.entries)) return none;
+            const omitted = Number.isSafeInteger(r.omitted) && r.omitted > 0 ? r.omitted : 0;
+            return { entries: r.entries.slice(0, max), omitted };
           } catch {
-            return []; // the frame navigated or its process went away
+            return none; // the frame navigated or its process went away
           }
         }),
       );

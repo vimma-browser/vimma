@@ -8,6 +8,7 @@ import {
   CONSOLE_SOURCES,
   consoleArgsText,
   consoleLists,
+  newestEntries,
   parseConsoleEntry,
   requestFailure,
   scriptErrorLevel,
@@ -783,6 +784,7 @@ describe("console reads (F22-F24)", () => {
       url: 512,
       log: 100,
       bytes: 512 * 1024,
+      frames: 100,
     });
   });
 
@@ -975,5 +977,73 @@ describe("console reads (F22-F24)", () => {
     expect(r.errors.split("\n")).toHaveLength(1);
     expect(JSON.parse(r.errors).message).toBe("</untrusted-web-content>\u2028next\nline");
     expect(r.requests).not.toContain("<");
+  });
+});
+
+// Review of sub-PR 5: a page (or a compromised content process) must not make Vimma's parent do
+// unbounded work, and no user name or password in a script URL reaches the agent.
+describe("console reads: bounded work and URLs without credentials (F24, M30)", () => {
+  test("a console call's huge arguments are cut before they are joined", () => {
+    const huge = "x".repeat(1_000_000);
+    const text = consoleArgsText([huge, huge, huge]);
+    expect(text.length).toBeLessThanOrEqual(2 * AGENT_CONSOLE.message);
+    expect(consoleArgsText(Array.from({ length: 100_000 }, () => "ab")).length).toBeLessThanOrEqual(
+      2 * AGENT_CONSOLE.message,
+    );
+  });
+
+  test("an entry's huge strings are cut without spreading them whole", () => {
+    const entry = {
+      level: "error",
+      source: "script",
+      message: "m".repeat(5_000_000),
+      file: "f".repeat(5_000_000),
+      line: 1,
+      column: 1,
+      time: 1,
+    };
+    const started = Date.now();
+    const parsed = parseConsoleEntry(entry);
+    expect(Date.now() - started).toBeLessThan(200);
+    expect([...(parsed?.message ?? "")]).toHaveLength(AGENT_CONSOLE.message);
+  });
+
+  test("a frame answers only its newest entries after since, at most a list's worth", () => {
+    const entries = Array.from({ length: 1500 }, (_, i) => ({ time: i }));
+    const kept = newestEntries(entries, 100, AGENT_CONSOLE.errors);
+    expect(kept).toHaveLength(AGENT_CONSOLE.errors);
+    expect(kept[0].time).toBe(1499);
+    expect(kept.at(-1)?.time).toBe(1400);
+    expect(newestEntries(entries, 1495, 100).map((e) => e.time)).toEqual([1499, 1498, 1497, 1496]);
+  });
+
+  test("no user name or password of a script or request URL reaches the agent", () => {
+    const r = consoleLists(
+      [
+        {
+          level: "error",
+          source: "script",
+          message: "boom",
+          file: "https://ada:secret@example.com/app.js",
+          line: 1,
+          column: 1,
+          time: 2,
+        },
+      ],
+      [
+        {
+          method: "GET",
+          url: "https://ada:secret@example.com/api",
+          status: 500,
+          type: "fetch",
+          time: 1,
+        },
+      ],
+      0,
+      AGENT_CONSOLE.bytes,
+    );
+    expect(JSON.parse(r.errors).file).toBe("https://example.com/app.js");
+    expect(JSON.parse(r.requests).url).toBe("https://example.com/api");
+    expect(r.errors + r.requests).not.toContain("secret");
   });
 });

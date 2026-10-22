@@ -17,6 +17,7 @@
 import {
   AGENT_CONSOLE,
   consoleLists,
+  newestEntries,
   parseConsoleEntry,
   requestFailure,
   scriptErrorLevel,
@@ -32,8 +33,6 @@ import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
 /** How long the frames may take to answer: a hung page must not hold the read. */
 const FRAME_TIMEOUT_MS = 5000;
-/** The most entries taken from one frame's answer; the reply keeps far fewer. */
-const FRAME_ENTRIES_MAX = 2000;
 
 /** Each agent tab's failed requests, by its browser id, oldest first. @type {Map<number, RequestEntry[]>} */
 const logs = new Map();
@@ -100,9 +99,12 @@ function onStopRequest(subject) {
     return;
   }
   const loadInfo = channel.loadInfo;
-  if (!isAgentContainer(loadInfo?.originAttributes?.userContextId)) return;
+  const attrs = loadInfo?.originAttributes;
+  // Never a private window's request, even one that carried the agent's container.
+  if (!isAgentContainer(attrs?.userContextId) || attrs?.privateBrowsingId) return;
   const browserId = loadInfo.browsingContext?.top?.browserId;
-  if (!browserId) return;
+  // A tab that is gone gets no new log (F24).
+  if (!browserId || !BrowsingContext.getCurrentTopByBrowserId(browserId)) return;
   let status = 0;
   try {
     status = channel.responseStatus;
@@ -123,7 +125,7 @@ function onStopRequest(subject) {
   }
   const entry = {
     method: String(channel.requestMethod),
-    url: cutTo(String(uri.spec), AGENT_CONSOLE.url),
+    url: cutTo(String(uri.spec).slice(0, 4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url),
     ...failed,
     type: TYPES.get(loadInfo.externalContentPolicyType) ?? "other",
     time: Date.now(),
@@ -141,7 +143,10 @@ function onStopRequest(subject) {
 function prune() {
   for (const id of logs.keys()) {
     const top = BrowsingContext.getCurrentTopByBrowserId(id);
-    if (!top || !isAgentContainer(top.originAttributes?.userContextId)) logs.delete(id);
+    const attrs = top?.originAttributes;
+    if (!top || !isAgentContainer(attrs?.userContextId) || attrs?.privateBrowsingId) {
+      logs.delete(id);
+    }
   }
 }
 
@@ -156,21 +161,32 @@ function observe(subject, topic) {
 }
 
 /**
- * The script errors of every frame of `browser`'s page: each frame's child answers for its own
- * document, and the parent's console service adds what Firefox logged there for those documents.
- * A frame that has no actor, fails or does not answer in time adds nothing.
- * @param {any} browser
- * @returns {Promise<ConsoleEntry[]>}
+ * The script errors after `since` of the first AGENT_CONSOLE.frames frames of `browser`'s page:
+ * each frame's child answers for its own document, at most a reply's worth, and the parent's
+ * console service adds what Firefox logged there for those documents. A frame that has no actor,
+ * fails or does not answer in time adds nothing. `omitted` counts what the frames left out.
+ * @param {any} browser @param {number} since
+ * @returns {Promise<{ errors: ConsoleEntry[], omitted: number }>}
  */
-async function pageErrors(browser) {
-  const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
+async function pageErrors(browser, since) {
+  const frames = (browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []).slice(
+    0,
+    AGENT_CONSOLE.frames,
+  );
   const ids = new Set(
     frames.map((/** @type {any} */ bc) => bc.currentWindowGlobal?.innerWindowId).filter(Boolean),
   );
   /** @type {ConsoleEntry[]} */
   const out = [];
-  for (const raw of await VimmaActors.agentConsole(browser, FRAME_TIMEOUT_MS)) {
-    for (const item of raw.slice(0, FRAME_ENTRIES_MAX)) {
+  let omitted = 0;
+  const answers = await VimmaActors.agentConsole(browser, FRAME_TIMEOUT_MS, {
+    since,
+    max: AGENT_CONSOLE.errors,
+    frames: AGENT_CONSOLE.frames,
+  });
+  for (const answer of answers) {
+    omitted += answer.omitted;
+    for (const item of answer.entries) {
       const entry = parseConsoleEntry(item);
       if (entry) out.push(entry);
     }
@@ -182,22 +198,24 @@ async function pageErrors(browser) {
     const entry = parseConsoleEntry({
       level,
       source: scriptErrorSource(m.category),
-      message: cutTo(String(m.errorMessage), AGENT_CONSOLE.message),
-      file: cutTo(String(m.sourceName), AGENT_CONSOLE.url),
+      message: String(m.errorMessage),
+      file: String(m.sourceName),
       line: m.lineNumber,
       column: m.columnNumber,
       time: m.timeStamp,
     });
     if (entry) out.push(entry);
   }
-  // A message both a child and the parent hold is listed once.
+  // A message both a child and the parent hold is listed once; the newest, as the reply keeps.
   const seen = new Set();
-  return out.filter((e) => {
+  const unique = out.filter((e) => {
     const key = JSON.stringify(e);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+  const errors = newestEntries(unique, since, AGENT_CONSOLE.errors);
+  return { errors, omitted: omitted + unique.filter((e) => e.time > since).length - errors.length };
 }
 
 /**
@@ -226,7 +244,7 @@ export const AgentConsole = {
    */
   async read(browser, since) {
     const time = Date.now();
-    const errors = await pageErrors(browser);
+    const { errors, omitted } = await pageErrors(browser, since);
     prune();
     const requests = logs.get(browser.browserId) ?? [];
     const lists = consoleLists(errors, requests, since, AGENT_CONSOLE.bytes);
@@ -234,7 +252,7 @@ export const AgentConsole = {
       time,
       errors: wrapUntrusted(wf(lists.errors)),
       requests: wrapUntrusted(wf(lists.requests)),
-      dropped: lists.dropped,
+      dropped: lists.dropped + omitted,
     };
   },
 

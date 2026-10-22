@@ -12,6 +12,7 @@ import { isSensitiveAutocomplete } from "../core/agent-element.mjs";
 import {
   AGENT_CONSOLE,
   consoleArgsText,
+  newestEntries,
   scriptErrorLevel,
   scriptErrorSource,
 } from "../core/agent-act.mjs";
@@ -554,10 +555,10 @@ export class VimmaChild extends JSWindowActorChild {
       case "Vimma:AgentConsole":
         // An agent's vimma_console (docs/specs/mcp-forms.md F22, F23): this frame's own errors.
         try {
-          return this.#agentConsole();
+          return this.#agentConsole(msg.data);
         } catch (e) {
           console.error("vimma agent-console:", e);
-          return [];
+          return { entries: [], omitted: 0 };
         }
       case "Vimma:AgentSensitiveShown": {
         // An agent's screenshot is about to be taken (docs/specs/mcp-forms.md F21): whether a
@@ -854,13 +855,23 @@ export class VimmaChild extends JSWindowActorChild {
    * process's console service and ConsoleAPIStorage, both of which Firefox fills whether or not
    * anyone asks, by this document's inner window id. Nothing runs in the page: a console call's
    * arguments are read only with `typeof` (consoleArgsText), and of a script error only its text
-   * and position, never its exception or stack.
+   * and position, never its exception or stack. Only the newest `max` entries after `since` are
+   * answered, each string cut, with how many more there are, so a noisy page cannot make the
+   * parent copy everything it logged.
+   * @param {{ since?: unknown, max?: unknown }} data
    */
-  #agentConsole() {
+  #agentConsole(data) {
+    const since = Number.isSafeInteger(data?.since) ? /** @type {number} */ (data.since) : 0;
+    const max = Math.min(
+      Number.isSafeInteger(data?.max) ? /** @type {number} */ (data.max) : AGENT_CONSOLE.errors,
+      AGENT_CONSOLE.errors,
+    );
     /** A count from Firefox's event, else 0. @param {unknown} v */
     const n = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
     const id = this.manager?.innerWindowId;
-    if (!id) return [];
+    if (!id) return { entries: [], omitted: 0 };
+    /** @param {unknown} s @param {number} most */
+    const cut = (s, most) => cutTo(String(s ?? "").slice(0, 4 * most), most);
     const out = [];
     for (const m of Services.console.getMessageArray() ?? []) {
       if (!(m instanceof Ci.nsIScriptError) || m.innerWindowID !== id) continue;
@@ -869,8 +880,8 @@ export class VimmaChild extends JSWindowActorChild {
       out.push({
         level,
         source: scriptErrorSource(m.category),
-        message: cutTo(String(m.errorMessage), AGENT_CONSOLE.message),
-        file: cutTo(String(m.sourceName), AGENT_CONSOLE.url),
+        message: cut(m.errorMessage, AGENT_CONSOLE.message),
+        file: cut(m.sourceName, AGENT_CONSOLE.url),
         line: m.lineNumber,
         column: m.columnNumber,
         time: m.timeStamp,
@@ -885,14 +896,16 @@ export class VimmaChild extends JSWindowActorChild {
       out.push({
         level,
         source: "console",
-        message: cutTo(consoleArgsText(event.arguments), AGENT_CONSOLE.message),
-        file: typeof event.filename === "string" ? cutTo(event.filename, AGENT_CONSOLE.url) : "",
+        message: cut(consoleArgsText(event.arguments), AGENT_CONSOLE.message),
+        file: typeof event.filename === "string" ? cut(event.filename, AGENT_CONSOLE.url) : "",
         line: n(event.lineNumber),
         column: n(event.columnNumber),
         time: n(event.timeStamp),
       });
     }
-    return out;
+    const after = out.filter((e) => e.time > since);
+    const entries = newestEntries(after, since, max);
+    return { entries, omitted: after.length - entries.length };
   }
 
   /**

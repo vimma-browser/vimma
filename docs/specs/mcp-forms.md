@@ -546,7 +546,8 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
       refused connection) leaves an error page whose document is newer than the failure the
       agent needs to see.
       `since` (ms since the epoch) returns only newer entries, so an agent can check what a click
-      caused; the `time` of a result is the `since` of the next.
+      caused; the `time` of a result is the `since` of the next (an entry logged while a read
+      was being made may come again in the next).
 23. **Read-only by construction.** It runs no code in the page. It never starts the DevTools
     server, the Remote Agent or Marionette, never evaluates an expression and never calls a page
     function, because each of those could run script with the browser's privileges or the
@@ -558,8 +559,11 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     request log holds the last 100 failed requests per agent tab, in memory, cleared when the tab
     closes, leaves the agent workspace or `:mcp off` runs. A reply holds at most 100 errors and
     100 requests, newest first, inside the untrusted-content delimiters, at most 512 KiB; the rest
-    are counted in `dropped`. URLs and messages are untrusted text and can carry tokens a page
-    put there; they come only from the agent's own tab.
+    are counted in `dropped`. Each frame's child answers only its newest 100 entries after
+    `since`, its strings already cut, and counts the rest, and at most 100 frames are asked,
+    because a page that logs without end must not make the parent copy and sort all of it. URLs
+    and messages are untrusted text and can carry tokens a page put there; they come only from
+    the agent's own tab, and a URL's user name and password are removed.
 
 ### H. Gate, grants and audit
 

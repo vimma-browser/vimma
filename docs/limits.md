@@ -108,8 +108,10 @@ the [user guide](guide.md); planned work is on the
   other text, or draws on a canvas, is not recognised, nor one the user or the page shows only
   for the moment of the drawing. A page with a data: or blob: frame, which Vimma cannot check, is never captured.
   Only http and https pages are captured.
-- `vimma_console` returns the last 250 script errors Firefox keeps per process and the last
-  1,000 console calls per page, so on a busy page older ones may be gone. A request blocked
+- `vimma_console` returns what Firefox still keeps: the last 250 console messages of any kind
+  per content process, shared with the other tabs of the same site, and the last 1,000 console
+  calls per page, so on a busy page older ones may be gone. It reads at most 100 frames of a
+  page. A request blocked
   before it is sent (by the page's content security policy, CORS or mixed-content rules) is
   reported as a script error, not as a failed request; request and response bodies and headers
   are never read. A page can empty its own console calls with `console.clear()`, and a frame

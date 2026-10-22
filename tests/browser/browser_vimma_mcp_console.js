@@ -20,6 +20,9 @@ const { VimmaControl } = ChromeUtils.importESModule(
 const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
 );
+const { VimmaActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
+);
 const { AgentConsole } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentConsole.sys.mjs",
 );
@@ -242,6 +245,29 @@ add_task(async function test_console_runs_no_page_code() {
     Array.from(content.wrappedJSObject.touched),
   );
   Assert.deepEqual(touched, [], "no getter, toString or proxy trap of the page ran (M30)");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+add_task(async function test_a_noisy_page_sends_one_replys_worth() {
+  await mcp(true);
+  const url = `${PAGE}?noisy=400`;
+  const tab = await openAgentTab(url);
+  // Each frame answers only its newest entries after `since`, cut, and counts the rest, so a page
+  // cannot make the parent copy and sort everything it logged (F24).
+  const answers = await VimmaActors.agentConsole(tab.linkedBrowser, 5000, { since: 0, max: 100 });
+  const top = answers[0];
+  Assert.equal(top.entries.length, 100, "the top frame answers 100 entries");
+  Assert.ok(top.omitted >= 300, `and counts the rest: ${top.omitted}`);
+  Assert.ok(
+    top.entries.every((e) => e.message.length <= 1000),
+    "each message cut in the child",
+  );
+  const c = await agentClient();
+  const r = await readConsole(c, tab);
+  Assert.equal(lines(r.result.errors).length, 100, "the reply holds 100 errors");
+  Assert.ok(r.result.dropped >= 300, `and counts what the frames left out: ${r.result.dropped}`);
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

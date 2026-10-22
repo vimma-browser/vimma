@@ -570,6 +570,7 @@ export const AGENT_CONSOLE = Object.freeze({
   url: 512,
   log: 100,
   bytes: 512 * 1024,
+  frames: 100,
 });
 
 /** Where an error entry comes from: a script error's category, or the page's own console call. */
@@ -625,18 +626,23 @@ export function scriptErrorSource(category) {
  */
 export function consoleArgsText(args) {
   if (!Array.isArray(args)) return "";
-  /** @type {string[]} */
-  const out = [];
-  for (let i = 0; i < args.length; i++) {
+  // A page may log a string of any size, or any number of arguments: each is cut, and the
+  // joining stops, once there is more than a message's worth (the caller cuts it to size).
+  const room = 2 * AGENT_CONSOLE.message;
+  let out = "";
+  for (let i = 0; i < args.length && out.length < room; i++) {
     const v = args[i];
     const type = typeof v;
-    if (type === "string") out.push(/** @type {string} */ (v));
-    else if (v === null) out.push("null");
+    /** @type {string} */
+    let text;
+    if (type === "string") text = /** @type {string} */ (v).slice(0, room);
+    else if (v === null) text = "null";
     else if (type === "number" || type === "boolean" || type === "bigint" || type === "undefined") {
-      out.push(String(v));
-    } else out.push(`[${type}]`);
+      text = String(v);
+    } else text = `[${type}]`;
+    out = out ? `${out} ${text}` : text;
   }
-  return out.join(" ");
+  return out.slice(0, room);
 }
 
 /**
@@ -695,12 +701,34 @@ export function parseConsoleEntry(raw) {
   return {
     level: r.level,
     source: /** @type {ConsoleEntry["source"]} */ (r.source),
-    message: cutTo(r.message, AGENT_CONSOLE.message),
-    file: cutTo(r.file, AGENT_CONSOLE.url),
+    // Sliced first: a content process's string of any size is never spread whole.
+    message: cutTo(r.message.slice(0, 4 * AGENT_CONSOLE.message), AGENT_CONSOLE.message),
+    file: cutTo(r.file.slice(0, 4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url),
     line: /** @type {number} */ (r.line),
     column: /** @type {number} */ (r.column),
     time: /** @type {number} */ (r.time),
   };
+}
+
+/**
+ * `url` without a user name and password, which a script's or request's URL may carry and which
+ * are never the agent's (security.md M30).
+ * @param {string} url
+ */
+const withoutUserinfo = (url) => url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#@]*@/i, "$1");
+
+/**
+ * A frame's entries as it answers them (F24): only those after `since`, newest first, at most
+ * `max`, so that no frame sends more than one reply's worth to the parent.
+ * @template {{ time: number }} T
+ * @param {readonly T[]} entries @param {number} since @param {number} max
+ * @returns {T[]}
+ */
+export function newestEntries(entries, since, max) {
+  return entries
+    .filter((e) => e.time > since)
+    .sort((a, b) => b.time - a.time)
+    .slice(0, max);
 }
 
 /** @param {ConsoleEntry} e */
@@ -709,7 +737,7 @@ const errorLine = (e) =>
     level: e.level,
     source: e.source,
     message: valueText(e.message, AGENT_CONSOLE.message),
-    file: cutTo(shown(e.file).replace(/\s/g, ""), AGENT_CONSOLE.url),
+    file: cutTo(withoutUserinfo(shown(e.file).replace(/\s/g, "")), AGENT_CONSOLE.url),
     line: e.line,
     column: e.column,
     time: e.time,
@@ -719,7 +747,7 @@ const errorLine = (e) =>
 const requestLine = (r) =>
   jsonLine({
     method: line(r.method, 16),
-    url: cutTo(shown(r.url).replace(/\s/g, ""), AGENT_CONSOLE.url),
+    url: cutTo(withoutUserinfo(shown(r.url).replace(/\s/g, "")), AGENT_CONSOLE.url),
     ...(r.status !== undefined ? { status: r.status } : {}),
     ...(r.error !== undefined ? { error: line(r.error, 64) } : {}),
     type: line(r.type, 32),

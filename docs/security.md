@@ -1200,9 +1200,13 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   otherwise named by their `typeof` alone, so no getter, `toString` or proxy trap of the page
   runs); the parent adds what its own console service logged for those documents. A frame's
   answer is checked entry by entry (core's `parseConsoleEntry`) and cut, as any reply from a
-  content process. Failed requests (HTTP status 400 and above, or a channel error other than a
+  content process; at most 100 frames are asked, and each answers only its newest 100 entries
+  after `since`, cut in the child and counted beyond, so a page that logs without end cannot
+  make the parent copy and sort all of it. No user name or password of a script, file or
+  request URL reaches the agent. Failed requests (HTTP status 400 and above, or a channel error other than a
   cancel, a redirect or a load turned download) **must** be logged only for channels whose top
-  browsing context is a tab of the agent workspace's container, only while MCP is on, the last
+  browsing context is a live tab of the agent workspace's container outside private windows,
+  only while MCP is on, the last
   100 per tab in memory, with the URL's user name and password removed; a tab's log goes when it
   closes, and every log goes when MCP turns off.
   [`test_console_runs_no_page_code`](../tests/browser/browser_vimma_mcp_console.js),
@@ -1212,7 +1216,11 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`a request failed at status 400 and above, or with a channel error but a cancel`](../packages/vimma-core/test/agent-act.test.mjs),
   [`an entry from a content process is checked, and its strings cut`](../packages/vimma-core/test/agent-act.test.mjs),
   [`agent-console: a tab and an optional since, nothing else`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`console_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp.rs)
+  [`console_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp.rs),
+  [`test_a_noisy_page_sends_one_replys_worth`](../tests/browser/browser_vimma_mcp_console.js),
+  [`a console call's huge arguments are cut before they are joined`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a frame answers only its newest entries after since, at most a list's worth`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`no user name or password of a script or request URL reaches the agent`](../packages/vimma-core/test/agent-act.test.mjs)
 - M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,
   wrapped by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the
   protocol validator **must** refuse a list that is not, or that holds a second delimiter. At
