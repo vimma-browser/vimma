@@ -60,7 +60,7 @@ changed) are already asked separately, whatever is granted.
    - full control (vimma-mcp 29), which is not an agent tool;
    - paying, once [mcp-checkpoints](mcp-checkpoints.md) is built.
 4. **The question's hint names the scope.** Once armed, a grantable question shows
-   `y once · 10a all tools 10 min, sending a form still asks · n deny · x mute` (10 being
+   `y once · 10a all tools for 10 min (sending a form still asks) · n deny · x mute` (10 being
    `[mcp] grant_minutes`). The hint of a question in item 3 is unchanged.
 5. **The grant's notice names the scope and the way out.**
    `claude-code may use the agent workspace for 10 min; sending a form still asks (ctrl+b shift+a ends it)`.
