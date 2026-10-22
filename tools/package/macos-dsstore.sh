@@ -50,8 +50,10 @@ hdiutil create -quiet -srcfolder "$stage" -volname Vimma -fs HFS+ -format UDRW -
 hdiutil attach -quiet -noautoopen -mountpoint "$volume" "$work/rw.dmg"
 attached=1
 
-# Finder's window bounds are its frame, so the title bar is added to the height of the content
-# the background fills.
+# The bounds are the background's size, and Finder stores them as given (WindowBounds 640 x 400).
+# Whether Finder reads them as the frame or the content is not known: on macOS 27.0.1 the open
+# window keeps the last Finder window's frame (System Events reports it unchanged), so it could
+# not be measured.
 osascript - "$width" "$height" "$icon" "$app_x" "$app_y" "$link_x" "$link_y" << 'EOF'
 on run argv
   set {w, h, iconSize, appX, appY, linkX, linkY} to argv

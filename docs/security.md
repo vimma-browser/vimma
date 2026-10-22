@@ -1461,10 +1461,14 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   `vimma.rb` are listed in their own `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the
   update manifest read, never changes when they are added; `macos-sign` signs all three with the
   same identity, after a hosted Mac has checked the checksum, the signature, the version line,
-  Vimma's icon catalog and the bundle identifier, and has installed the `.dmg` through the cask.
+  Vimma's icon catalog, the bundle identifier and the mounted volume's window art and icon
+  against the committed files, and has installed the `.dmg` through the cask.
   The macOS icon files in `configs/branding/vimma/` are binaries in the tree;
   `macos.yml` regenerates them from their sources and fails if they differ. `firefox.icns`,
-  `document.icns` and the layer image inside `Assets.car` are compared byte for byte. The
+  `document.icns`, `disk.icns`, `background.png` and the layer image inside `Assets.car` are
+  compared byte for byte. The dmg's `dsstore` is a binary nothing regenerates: Finder writes it
+  (`tools/package/macos-dsstore.sh`), review reads it as a binary, and a test parses it and
+  checks the layout, the background alias and that it names no home directory. The
   flattened fallback images inside `Assets.car`, which macOS 15 and earlier draw, differ on
   every `actool` run, so the check compares only their names, pixel sizes and sizes on disk; a
   change to their pixels that keeps the size is left to review, which reads `Assets.car` as a
@@ -1476,6 +1480,9 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`macos-publish adds only the macOS files, and replaces them only when told`](../tools/package/test/release-workflow.test.mjs),
   [`regenerates the icon files on a Mac with a pinned Xcode and fails on drift`](../tools/package/test/macos.test.mjs),
   [`fails an app that still carries Firefox's unofficial icon`](../tools/package/test/macos.test.mjs),
+  [`macos-smoke checks the mounted dmg's window art and volume icon`](../tools/package/test/release-workflow.test.mjs),
+  [`fails a volume with other art, such as Firefox's`](../tools/package/test/macos.test.mjs),
+  [`names no home directory or Firefox volume`](../tools/package/test/macos.test.mjs),
   [`builds and installs the release PKGBUILD on Arch Linux before anything is signed`](../tools/package/test/release-workflow.test.mjs),
   [`signs and uploads the .rpm with the other vimma* assets`](../tools/package/test/rpm-smoke.test.mjs),
   [`smoke-tests the .rpm on Fedora and openSUSE before the files are uploaded for signing`](../tools/package/test/rpm-smoke.test.mjs),

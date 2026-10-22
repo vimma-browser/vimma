@@ -392,8 +392,6 @@ describe("macOS icons", () => {
   });
 });
 
-// Both smoke jobs (macos.yml and release.yml) run it on the app from the dmg, so a release cannot
-// publish a dmg that shows Firefox's icon or carries Surfer's bundle identifier.
 // Spec macos-homebrew, decision 14: toolkit/moz.configure passes the branding directory's
 // dsstore, background.png and disk.icns to mach package, and Surfer copies the files of
 // configs/branding/vimma over Firefox's unofficial ones, whose dsstore lays out "Nightly.app".
@@ -552,6 +550,8 @@ describe("macos-dmg-check.sh", () => {
   });
 });
 
+// Both smoke jobs (macos.yml and release.yml) run it on the app from the dmg, so a release cannot
+// publish a dmg that shows Firefox's icon or carries Surfer's bundle identifier.
 describe("macos-app-check.sh", () => {
   const CHECK = join(repo, "tools/package/macos-app-check.sh");
   /**
