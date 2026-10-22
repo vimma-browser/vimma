@@ -48,7 +48,6 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const CLICK = `${DIR}file_vimma_agent_click.html`;
 const PAGE = `${DIR}file_vimma_agent_page.html`;
-const BASKET = `${DIR}file_vimma_agent_basket.html`;
 const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
@@ -342,38 +341,6 @@ addTidyTask(async function test_activate_reports_a_dialog() {
       false,
     "the user's answer reached the page",
   );
-  c.close();
-  BrowserTestUtils.removeTab(tab);
-  await mcp(false);
-});
-
-// #510: a click that loads no page says which parts of it changed in place: the clicked element,
-// the other listed elements, the page's text, a dialog of the page; or that nothing did. Fixed
-// words only, never the page's text.
-addTidyTask(async function test_activate_says_what_changed_in_place() {
-  await mcp(true);
-  // The real waits: a hidden tab's timers run at most once a second, as the agent's always do.
-  AgentAct._settleMs = null;
-  const tab = await openAgentTab(BASKET);
-  const c = await agentClient();
-  const by = await labels(c, tab);
-  /** @param {string} text */
-  const changedBy = async (text) => {
-    Assert.ok(by[text], `"${text}" is listed`);
-    const r = await activate(c, tab, by[text]);
-    Assert.ok(r.ok, `"${text}" was clicked`);
-    Assert.equal(r.result.navigated, false, `"${text}" loaded no page`);
-    return r.result.changed;
-  };
-  Assert.deepEqual(
-    await changedBy("Add to basket (0)"),
-    ["element", "text"],
-    "a button that counts itself and updates the total",
-  );
-  Assert.deepEqual(await changedBy("Lock"), ["elements"], "a button that disables another");
-  Assert.deepEqual(await changedBy("Delivery"), ["dialog"], "a button that opens a dialog");
-  Assert.deepEqual(await changedBy("Later"), ["text"], "a total updated a moment later");
-  Assert.deepEqual(await changedBy("Nothing"), [], "a style sheet is no text the page shows");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

@@ -1114,7 +1114,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   more second after the submission allowance of M28 is closed, so it opens nothing, and a
   submission the page tries meanwhile is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../tests/browser/browser_vimma_mcp_activate.js),
-  [`test_activate_says_what_changed_in_place`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_activate_says_what_changed_in_place`](../tests/browser/browser_vimma_mcp_activate_changes.js),
   [`activate_says_what_changed_in_place`](../tools/vimma-ctl/src/mcp.rs),
   [`agent-activate: what changed in place, from a fixed list`](../packages/vimma-core/test/control-v2.test.mjs),
   [`agent_clicks_never_synthesise_input_or_user_activation`](../tests/browser/browser_vimma_security_invariants.js),
