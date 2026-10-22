@@ -973,6 +973,7 @@ const COMMANDS = {
       ...(result.dialog ? { dialog: result.dialog } : {}),
       ...(result.blocked ? { blocked: result.blocked } : {}),
       ...(result.stopped ? { stopped: result.stopped } : {}),
+      ...(result.changed ? { changed: result.changed } : {}),
     };
   },
 

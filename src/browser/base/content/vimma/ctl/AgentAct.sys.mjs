@@ -239,13 +239,14 @@ export const AgentAct = {
   /**
    * Clicks `target`'s element in the background (F8, F11, F16; security.md M26, M28), once
    * `clickable` said it may be and the user allowed it, then waits for a page the click started
-   * (up to 20 s), a dialog it opened, or the user starting to use the tab.
+   * (up to 20 s), a dialog it opened, or the user starting to use the tab; when none came, what
+   * changed in place (`changed`).
    * @param {any} browser XULBrowserElement @param {HintTarget} target
    * @param {{ submit: { method: string, action: string } | null, href: string | null,
    *   inUse: () => boolean }} asked  `submit`: the submission the question named
    * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
    *   loading: boolean, dialog?: { type: string, text: string }, blocked?: string,
-   *   stopped?: "in-use" }>}
+   *   stopped?: "in-use", changed?: string[] }>}
    */
   activate(browser, target, asked) {
     const last = running.get(browser) ?? Promise.resolve();
@@ -264,7 +265,7 @@ export const AgentAct = {
    *   inUse: () => boolean }} asked
    * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
    *   loading: boolean, dialog?: { type: string, text: string }, blocked?: string,
-   *   stopped?: "in-use" }>}
+   *   stopped?: "in-use", changed?: string[] }>}
    */
   async activateNow(browser, target, { submit, href, inUse }) {
     const before = pageOf(browser);
@@ -296,7 +297,9 @@ export const AgentAct = {
           ...(blocked.length ? { blocked: blocked[0] } : {}),
         };
       }
-      return afterStep(browser, before, dialogs.dialog, blocked, stopped);
+      const changed = stopped ? null : await this.changesAfter(browser, before, dialogs, target);
+      const after = afterStep(browser, before, dialogs.dialog, blocked, stopped);
+      return after.navigated || after.loading || !changed ? after : { ...after, changed };
     } finally {
       // On every path: no allowance outlives its call.
       VimmaActors.agentSettle(browser);
@@ -342,6 +345,29 @@ export const AgentAct = {
       }
       if (!started && ran && Date.now() - ran >= settle) return undefined;
       if (Date.now() - start >= LOAD_TIMEOUT_MS) return undefined;
+    }
+  },
+
+  /**
+   * After a click that started no load (#510): which parts of the page changed in place, asked
+   * of the clicked element's frame until something has, for up to another second after the
+   * settle, so the result never says "nothing changed" of a page that updated itself a moment
+   * late. Null when a page or a dialog of the browser came instead, or the frame cannot say;
+   * the allowance is closed by then, so the extra wait opens nothing.
+   * @param {any} browser XULBrowserElement @param {{ doc: number, url: string }} before
+   * @param {{ dialog: { type: string, text: string } | null }} dialogs
+   * @param {HintTarget} target
+   * @returns {Promise<string[] | null>}
+   */
+  async changesAfter(browser, before, dialogs, target) {
+    const end = Date.now() + (this._settleMs ?? SETTLE_MS);
+    for (;;) {
+      // A URL the page's script changed (history.pushState) loads nothing: its changes count.
+      const moved = docOf(browser) !== before.doc;
+      if (dialogs.dialog || moved || browser.webProgress?.isLoadingDocument) return null;
+      const changed = await bounded(VimmaActors.agentChanges(target), null, 1000);
+      if (!changed || changed.length || Date.now() >= end) return changed;
+      await sleep(150);
     }
   },
 

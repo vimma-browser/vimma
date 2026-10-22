@@ -24,6 +24,8 @@ import {
   describeAgentElements,
   fillField,
   fillTargetOf,
+  pageChanges,
+  pageMarks,
   sensitiveValueShown,
 } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
@@ -195,6 +197,12 @@ export class VimmaChild extends JSWindowActorChild {
    * @type {{ gen: number, id: number, outcome: "pending" | "clicked" | "skipped" } | null}
    */
   #agentClick = null;
+  /**
+   * The page as it was just before the agent's last click here (#510), for `changes`: what
+   * changed in place when the click loaded no page.
+   * @type {{ gen: number, id: number, before: ReturnType<typeof pageMarks> } | null}
+   */
+  #agentWatch = null;
   /**
    * The agent's last fill of one field here (docs/specs/mcp-forms.md F12): its element and
    * whether it is still to run, kept its value, was put back by the page, or was skipped because
@@ -726,6 +734,12 @@ export class VimmaChild extends JSWindowActorChild {
         const last = this.#agentClick;
         return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
       }
+      case "changes": {
+        const watch = this.#agentWatch;
+        // Against the same list as before the click: a newer `vimma_elements` here ends it.
+        if (!known || !watch || watch.gen !== data.gen || watch.id !== data.id) return null;
+        return pageChanges(watch.before, this.#pageMarks(data.id));
+      }
       case "inspect-fill":
         return fillTargetOf(el, data.value);
       case "fill":
@@ -851,8 +865,12 @@ export class VimmaChild extends JSWindowActorChild {
     if (!this.#asAsked(el, asked)) return "changed";
     const click = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
     this.#agentClick = click;
+    this.#agentWatch = null;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
+      if (Date.now() <= until && el.isConnected) {
+        this.#agentWatch = { gen: asked.gen, id: asked.id, before: this.#pageMarks(asked.id) };
+      }
       // A busy page can delay this past the parent's wait: then nothing is clicked.
       const ran =
         Date.now() <= until && el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
@@ -860,6 +878,15 @@ export class VimmaChild extends JSWindowActorChild {
       click.outcome = ran ? "clicked" : "skipped";
     });
     return "ok";
+  }
+
+  /**
+   * This frame's page as a click on the listed element `id` could change it in place (#510).
+   * @param {number} id
+   */
+  #pageMarks(id) {
+    const listed = this.#agentEls.els.map((ref) => ref.deref());
+    return pageMarks(/** @type {Document} */ (this.document), listed, id);
   }
 
   /**

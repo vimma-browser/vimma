@@ -221,6 +221,7 @@ support-files = [
 
 ["browser_vimma_mcp_activate.js"]
 support-files = [
+  "file_vimma_agent_basket.html",
   "file_vimma_agent_click.html",
   "file_vimma_agent_page.html",
   "head_vimma_control.js",
