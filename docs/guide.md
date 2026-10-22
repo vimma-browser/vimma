@@ -1898,6 +1898,14 @@ is fast. It does so only when `/etc/clamav/clamd.conf` is root's, clamd listens 
 `AlertEncrypted yes` and `AlertExceedsMax yes`, so clamd reports what it cannot look inside.
 Otherwise, or if clamd fails or its definitions are old, Vimma uses `clamscan`.
 
+On macOS the same rules apply. Vimma looks for `clamscan` and `clamdscan` only in `/usr/bin`
+and `/usr/local/bin`, owned by root, and for the config only at `/etc/clamav/clamd.conf`.
+macOS's own ClamAV account is listed as `_clamav`, not `clamav`, in `/etc/passwd`, so the socket
+must be root's. The common installs are
+not used: Homebrew (`/opt/homebrew`), MacPorts (`/opt/local`) and the official installer
+(`/usr/local/clamav`) put ClamAV elsewhere. So on macOS, ClamAV, and clamd especially, is
+usually not used.
+
 ### Side panel
 
 `ctrl+b b` or `:sidebar` opens a panel on the left of the window. It is closed when Vimma
