@@ -7,7 +7,9 @@
    - and a date field; a password field, a one-time code, a card number named by autocomplete and
    - one only form autofill's heuristics recognise; a file field, a read-only and a disabled field,
    - a rich text editor and a button; a field the page puts back; a search form; a field whose
-   - change handler submits its form; and a field whose change handler opens an alert. Every
+   - change handler submits its form; a field whose change handler opens an alert; a form whose
+   - first field submits it on change; a multiple select, a select with a disabled group and a
+   - range. Every
    - input, change and focus event the fields get is recorded. Everything fits the test window. -->
 <html lang="en">
   <head>
@@ -73,6 +75,22 @@
     <form id="auto" method="post" action="file_vimma_agent_page.html?auto">
       <input id="note" name="note" aria-label="Note" />
     </form>
+    <form id="early" method="post" action="file_vimma_agent_page.html?early">
+      <input id="first" name="first" aria-label="First" />
+      <input id="second" name="second" aria-label="Second" />
+      <button id="send-early" type="submit">Send early</button>
+    </form>
+    <p>
+      <select id="tags" name="tags" multiple size="2" aria-label="Tags">
+        <option value="a" selected>Alpha</option>
+        <option value="b">Beta</option>
+      </select>
+      <select id="size" name="size" aria-label="Size">
+        <optgroup label="Sold out" disabled><option value="xl">XL</option></optgroup>
+        <option value="m">M</option>
+      </select>
+      <input id="volume" name="volume" type="range" min="0" max="10" aria-label="Volume" />
+    </p>
     <script>
       window.events = [];
       for (const el of document.querySelectorAll("input, select, textarea")) {
@@ -89,6 +107,10 @@
       document
         .getElementById("note")
         .addEventListener("change", () => document.getElementById("auto").submit());
+      // A change here submits its form at once, before the other field is filled.
+      document
+        .getElementById("first")
+        .addEventListener("change", () => document.getElementById("early").submit());
       document.getElementById("alerting").addEventListener("change", () => alert("Saved"));
     </script>
   </body>

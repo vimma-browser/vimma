@@ -10,7 +10,7 @@
  */
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./agent.mjs";
-import { AGENT_FILL, isAgentLabel } from "./agent-act.mjs";
+import { AGENT_FILL, hasInvisible, isAgentLabel } from "./agent-act.mjs";
 import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
@@ -348,7 +348,10 @@ const FILL_CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
 /** @param {unknown} v  a fill's value: true, false, or a text within its cap (mcp-forms F14) */
 const isFillValue = (v) =>
   typeof v === "boolean" ||
-  (typeof v === "string" && [...v].length <= AGENT_FILL.value && !FILL_CONTROL.test(v));
+  (typeof v === "string" &&
+    [...v].length <= AGENT_FILL.value &&
+    !FILL_CONTROL.test(v) &&
+    !hasInvisible(v));
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentFillArgs(args, errors) {
@@ -374,7 +377,7 @@ function checkAgentFillArgs(args, errors) {
       if (!isFillValue(f.value)) {
         errors.push(
           `${at}.value must be true, false or a text of at most ${AGENT_FILL.value} characters ` +
-            "without control characters but line breaks",
+            "without control or invisible characters but line breaks",
         );
       }
     });

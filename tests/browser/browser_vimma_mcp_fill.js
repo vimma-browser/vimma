@@ -463,6 +463,74 @@ add_task(async function test_page_script_submit_after_a_fill_is_cancelled() {
   await mcp(false);
 });
 
+add_task(async function test_a_page_submit_during_a_fill_is_not_the_asked_one() {
+  await mcp(true);
+  AgentAct._settleMs = null;
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // The first field's change submits the form before the second is filled: that submission is
+  // the page's, with half the values, and only the one after the last field is allowed.
+  const r = await fill(
+    c,
+    tab,
+    [
+      { label: by.First, value: "one" },
+      { label: by.Second, value: "two" },
+    ],
+    { submit: true },
+  );
+  Assert.ok(r.ok, `the fill ran: ${JSON.stringify(r.error)}`);
+  Assert.equal(r.result.filled, 2, "both fields were filled");
+  Assert.equal(r.result.blocked, "example.com", "the page's own submission was stopped (M28)");
+  Assert.equal(r.result.navigated, true, "the asked submission, after the last field, was sent");
+  Assert.equal(r.result.url, `${PAGE}?early`, "to its destination");
+  AgentAct._settleMs = 50;
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+add_task(async function test_selects_ranges_and_a_submit_button_of_another_form() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  let r = await fill(c, tab, [{ label: by.Tags, value: "Beta" }]);
+  Assert.ok(r.ok, "a multiple select is filled");
+  const picked = await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
+    [.../** @type {any} */ (content.document.getElementById("tags")).selectedOptions].map(
+      (o) => o.value,
+    ),
+  );
+  Assert.deepEqual(picked, ["b"], "with that option alone, as the question showed");
+  for (const [field, value, message] of [
+    [by.Size, "XL", `select "${by.Size}" has no option with the value or text "XL"`],
+    [by.Volume, "50", `field "${by.Volume}" does not take "50" as a range`],
+  ]) {
+    r = await c.call("agent-fill", { tab: idOf(tab), fields: [{ label: field, value }] });
+    Assert.ok(r.error?.message.startsWith(message), `${r.error?.message} says ${message}`);
+  }
+  // A submit button must send the filled fields' own form.
+  r = await c.call("agent-fill", {
+    tab: idOf(tab),
+    fields: [{ label: by.Query, value: "cats" }],
+    submit: by["Sign up"],
+  });
+  Assert.ok(r.error?.message.includes("same form"), `refused: ${r.error?.message}`);
+  // A fill that submits must show every value whole in its question.
+  r = await c.call("agent-fill", {
+    tab: idOf(tab),
+    fields: [{ label: by.Query, value: "x".repeat(60) }],
+    submit: true,
+  });
+  Assert.ok(r.error?.message.includes("does not fit"), `refused: ${r.error?.message}`);
+  Assert.equal(AgentGate.waiting.length, 0, "nothing was asked");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 add_task(async function test_fill_reports_a_dialog_and_stops() {
   await mcp(true);
   const tab = await openAgentTab();

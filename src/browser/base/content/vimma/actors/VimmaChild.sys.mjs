@@ -720,8 +720,10 @@ export class VimmaChild extends JSWindowActorChild {
     if (!this.#fillAsAsked(el, asked)) return "changed";
     const fill = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
     this.#agentFill = fill;
+    const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
-      if (!el.isConnected || !this.#fillAsAsked(el, asked)) {
+      // A busy page can delay this past the parent's wait: then nothing is set.
+      if (Date.now() > until || !el.isConnected || !this.#fillAsAsked(el, asked)) {
         fill.outcome = "skipped";
         return;
       }
@@ -762,7 +764,9 @@ export class VimmaChild extends JSWindowActorChild {
     if (!now || !named || now.method !== named.method || now.action !== named.action) {
       return "changed";
     }
+    const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
+      if (Date.now() > until) return;
       const again = form.isConnected ? defaultSubmitOf(form) : null;
       if (!again || again.method !== named.method || again.action !== named.action) return;
       form.requestSubmit(again.submitter ?? undefined);
@@ -789,8 +793,11 @@ export class VimmaChild extends JSWindowActorChild {
     if (!this.#asAsked(el, asked)) return "changed";
     const click = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
     this.#agentClick = click;
+    const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
-      const ran = el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
+      // A busy page can delay this past the parent's wait: then nothing is clicked.
+      const ran =
+        Date.now() <= until && el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
       click.outcome = ran ? "clicked" : "skipped";
     });
     return "ok";

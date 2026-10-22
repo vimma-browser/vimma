@@ -473,7 +473,8 @@ function fillFieldOf(el) {
  * @param {any} select @param {string} value
  */
 function optionOf(select, value) {
-  const options = [...select.options].filter((/** @type {any} */ o) => !o.disabled);
+  // `:disabled` counts a disabled group too, which the user cannot choose from either.
+  const options = [...select.options].filter((/** @type {any} */ o) => !o.matches(":disabled"));
   return (
     options.find((/** @type {any} */ o) => o.value === value) ??
     options.find((/** @type {any} */ o) => o.text === value) ??
@@ -490,6 +491,11 @@ function optionOf(select, value) {
 function inputTakes(input, value) {
   const probe = /** @type {any} */ (input.ownerDocument.createElement("input"));
   probe.type = input.type;
+  // A range clamps to its bounds and step, an email field with `multiple` takes a list.
+  for (const name of ["min", "max", "step", "multiple"]) {
+    const v = input.getAttribute(name);
+    if (v !== null) probe.setAttribute(name, v);
+  }
   probe.value = value;
   return probe.value === value;
 }
@@ -581,10 +587,13 @@ export function fillField(el, value) {
     if (typeof value !== "string") return false;
     const option = optionOf(html, value);
     if (!option) return false;
-    const changed = !option.selected;
+    // A multiple select gets that option alone, as the question showed it, not one more.
+    const others = [...html.options].filter((/** @type {any} */ o) => o !== option && o.selected);
+    const changed = !option.selected || others.length > 0;
+    for (const o of others) o.selected = false;
     option.selected = true;
     html.userFinishedInteracting(changed);
-    return option.selected === true;
+    return option.selected === true && html.selectedOptions.length === 1;
   }
   if (field === "checkbox" || field === "radio") {
     if (typeof value !== "boolean") return false;

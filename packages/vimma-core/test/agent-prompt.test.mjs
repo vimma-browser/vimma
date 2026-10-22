@@ -20,6 +20,7 @@ import {
   promptKey,
   questionLine,
   logRow,
+  fillFits,
   ranNotice,
   shownNotice,
 } from "../src/agent-prompt.mjs";
@@ -417,8 +418,11 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
       },
     };
     const cut = text(questionLine(many, { grantMinutes: 10 }));
-    expect(cut).toMatch(/ {2}32 fields: sd F0 = "v", .*…$/);
-    expect(textWidth(cut.slice(cut.indexOf("32 fields: ")))).toBeLessThanOrEqual(171);
+    expect(cut).toMatch(/ {2}32 fields: sd F0 = "v", .*, … \(\d+ more\)$/);
+    expect(fillFits(many.what)).toBe(false);
+    expect(fillFits(three.what)).toBe(false);
+    expect(fillFits(fill.what)).toBe(true);
+    expect(textWidth(cut.slice(cut.indexOf("32 fields: ")))).toBeLessThanOrEqual(185);
   });
 
   test("a fill that submits: the destination, then the fields, y or n only", () => {

@@ -640,20 +640,58 @@ fn activate_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall, String
 pub const MAX_FILL_FIELDS: usize = 32;
 pub const MAX_FILL_VALUE: usize = 1024;
 
-/// vimma-core's `isFillValue`: true, false, or a text within its limit with no control
-/// character but a line break.
+/// vimma-core's `FILL_INVISIBLE`: characters that draw nothing (format characters, line and
+/// paragraph separators, variation selectors, fillers), so text hidden in them would pass the
+/// question unseen (mcp-forms F14, security.md M27).
+const FILL_INVISIBLE: [(u32, u32); 27] = [
+    (0xAD, 0xAD),
+    (0x34F, 0x34F),
+    (0x600, 0x605),
+    (0x61C, 0x61C),
+    (0x6DD, 0x6DD),
+    (0x70F, 0x70F),
+    (0x890, 0x891),
+    (0x8E2, 0x8E2),
+    (0x115F, 0x1160),
+    (0x17B4, 0x17B5),
+    (0x180B, 0x180F),
+    (0x200B, 0x200F),
+    (0x2028, 0x202E),
+    (0x2060, 0x206F),
+    (0x3164, 0x3164),
+    (0xFE00, 0xFE0F),
+    (0xFEFF, 0xFEFF),
+    (0xFFA0, 0xFFA0),
+    (0xFFF0, 0xFFFB),
+    (0x110BD, 0x110BD),
+    (0x110CD, 0x110CD),
+    (0x13430, 0x1343F),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0000, 0xE0FFF),
+    // Control characters but the line break, as is_control has them.
+    (0x0, 0x9),
+    (0xB, 0x1F),
+];
+
+fn fill_char_ok(c: char) -> bool {
+    let n = u32::from(c);
+    !(0x7F..=0x9F).contains(&n) && !FILL_INVISIBLE.iter().any(|&(a, b)| (a..=b).contains(&n))
+}
+
+/// vimma-core's `isFillValue`: true, false, or a text within its limit with no control or
+/// invisible character but a line break.
 fn fill_value(value: Option<&Value>) -> Result<FillValue, String> {
     match value {
         Some(Value::Bool(b)) => Ok(FillValue::Flag(*b)),
         Some(Value::String(v))
-            if v.chars().count() <= MAX_FILL_VALUE
-                && !v.chars().any(|c| c.is_control() && c != '\n') =>
+            if v.chars().count() <= MAX_FILL_VALUE && v.chars().all(fill_char_ok) =>
         {
             Ok(FillValue::Text(v.clone()))
         }
         _ => Err(format!(
             "each field's value must be true, false (a checkbox or radio) or a text of at most \
-             {MAX_FILL_VALUE} characters without control characters but line breaks"
+             {MAX_FILL_VALUE} characters without control or invisible characters but line breaks"
         )),
     }
 }
@@ -1210,8 +1248,8 @@ fn fill_tool() -> Value {
         (
             "description",
             text(
-                "Submit the form after filling: true for the fields' form as Enter would send \
-                 it, or a submit button's label from vimma_elements. The user is asked every \
+                "Submit the form after filling: true for the fields' form, as its first submit \
+                 button sends it, or a submit button's label from vimma_elements. The user is asked every \
                  time, naming where the form is sent.",
             ),
         ),
@@ -3070,6 +3108,32 @@ mod tests {
             assert_eq!(at(&r, &["id"]), &Value::Number(5.0));
             let text = tool_error_text(&r);
             assert!(text.contains(says), "{name} {arguments}: {text}");
+        }
+    }
+
+    // mcp-forms F14 (security.md M27): characters that draw nothing could hide text in the
+    // question, so a value holding one never reaches Vimma.
+    #[test]
+    fn fill_values_with_invisible_characters_are_tool_errors() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        for c in [
+            "\\u200b",
+            "\\u200d",
+            "\\u2060",
+            "\\ufeff",
+            "\\u202e",
+            "\\u2028",
+            "\\ufe0f",
+            "\\udb40\\udc41",
+            "\\udb40\\udd00",
+            "\\u00ad",
+            "\\u034f",
+            "\\u3164",
+        ] {
+            let arguments = format!(r#"{{"tab":"1","fields":[{{"label":"sd","value":"a{c}b"}}]}}"#);
+            let r = reply(&mut p, &call_line(5, "vimma_fill", &arguments));
+            assert!(tool_error_text(&r).contains("invisible"), "{c}: {r}");
         }
     }
 

@@ -1599,11 +1599,15 @@ pages react to key presses only, which Vimma never sends).
   before you are asked. A field the page turns into a password or card field after you answered
   stops the fill there.
 - **Sending the form asks every time.** With `submit`, the agent asks to fill the fields and
-  then send their form, through a submit button or as Enter in a field would; that question
-  comes also under a grant, with only `y` and `n`, naming where the form goes and the fields:
+  then send their form, through one of its submit buttons or as its first submit button would;
+  that question comes also under a grant, with only `y` and `n`, naming where the form goes and the fields:
   `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)  after filling 1 field: sd Email = "ada@example.com"`.
-  If the page puts back a value you were shown, the form is not sent. A form the page sends by
-  itself after a fill is stopped, as after a click.
+  It must show every value whole, or the agent is told to fill first and submit apart. If the
+  page puts back a value you were shown, the form is not sent. A form the page sends by itself
+  during or after a fill is stopped, as after a click.
+- **Nothing hidden in a value.** Values with characters that draw nothing (zero-width spaces,
+  direction marks and the like) are refused, so the question shows all a value holds; values
+  longer than the line are cut with `…`, and `:mcp log` keeps them whole.
 - **A grant covers fills** (not submissions): each shows
   `claude-code filled 2 fields in "Sign up · Example" (grant, 12m left)`, and `:mcp log` keeps
   every value. At most 32 fields a call, 30 clicks and fills a minute, none while you are typing

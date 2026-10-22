@@ -408,8 +408,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     since the question stops the call, as the yes no longer stands for it (vimma-mcp 19); the
     error says how many fields were filled before it.
 14. **Limits.** At most 32 fields per call, each value at most 1,024 characters with no control
-    characters except a newline in a text area, checked in `vimma-ctl mcp` and again in the
-    browser (as mcp-drive D15). The question shows each field's label, its name or label text and
+    characters except a newline in a text area, and no character that draws nothing (format,
+    zero-width, bidirectional and tag characters, variation selectors, fillers), because text in
+    them would pass the question unseen; checked in `vimma-ctl mcp` and again in the browser (as
+    mcp-drive D15). The question shows each field's label, its name or label text and
     its value in quotes, cut to fit the line with `…`; `:mcp log` keeps the values in full
     (in memory only, mcp-drive D14), because a value is what an exfiltrating fill would carry and
     the user has to be able to check it afterwards.
@@ -428,7 +430,11 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     so one question per submission is the price of keeping them in the hands of the person at
     the keyboard; the grant for `vimma_fill` or `vimma_activate` (F25) covers only what does not
     submit. A fill that submits shows its fields after the destination, and is not sent when the
-    page put back a value the question showed, because the yes was for the values shown.
+    page put back a value the question showed, because the yes was for the values shown. For the
+    same reason a fill that submits is refused when its question cannot show every name and
+    value whole, its submit button must belong to the filled fields' form, and the submission
+    is allowed only after the last field is set: a page that submits the form from a field's
+    `change` handler while it is being filled sends nothing.
 16. **Submissions the agent did not ask for are stopped.** Before each agent step the parent
     consumes the page's transient user activation in every frame and marks the tab; an
     `http-on-modify-request` observer then cancels, before it is sent, the request of a

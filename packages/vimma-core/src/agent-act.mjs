@@ -301,6 +301,51 @@ export function actDetail(label, t) {
  */
 export const AGENT_FILL = Object.freeze({ fields: 32, value: 1024 });
 
+/**
+ * Characters a fill's value must not hold because they draw nothing (F14; security.md M27):
+ * format characters (zero-width, bidirectional, tags), line and paragraph separators, variation
+ * selectors and fillers. Text hidden in them would pass the question unseen. The same list is in
+ * vimma-ctl's mcp.rs.
+ */
+export const FILL_INVISIBLE = Object.freeze(
+  /** @type {[number, number][]} */ ([
+    [0xad, 0xad],
+    [0x34f, 0x34f],
+    [0x600, 0x605],
+    [0x61c, 0x61c],
+    [0x6dd, 0x6dd],
+    [0x70f, 0x70f],
+    [0x890, 0x891],
+    [0x8e2, 0x8e2],
+    [0x115f, 0x1160],
+    [0x17b4, 0x17b5],
+    [0x180b, 0x180f],
+    [0x200b, 0x200f],
+    [0x2028, 0x202e],
+    [0x2060, 0x206f],
+    [0x3164, 0x3164],
+    [0xfe00, 0xfe0f],
+    [0xfeff, 0xfeff],
+    [0xffa0, 0xffa0],
+    [0xfff0, 0xfffb],
+    [0x110bd, 0x110bd],
+    [0x110cd, 0x110cd],
+    [0x13430, 0x1343f],
+    [0x1bca0, 0x1bca3],
+    [0x1d173, 0x1d17a],
+    [0xe0000, 0xe0fff],
+  ]),
+);
+
+/** Whether `s` holds a character of FILL_INVISIBLE. @param {string} s */
+export function hasInvisible(s) {
+  for (const c of s) {
+    const n = /** @type {number} */ (c.codePointAt(0));
+    if (FILL_INVISIBLE.some(([a, b]) => n >= a && n <= b)) return true;
+  }
+  return false;
+}
+
 /** What a field is to a fill (F12, F13): how it is set, or why it is not. */
 const FILL_FIELDS = Object.freeze([
   "text",
@@ -403,7 +448,8 @@ const shownValue = (s) => cutTo(String(s).replace(/\s+/g, " "), AGENT_ELEMENTS.t
  */
 export function fillRefusal(label, t, value) {
   if (!t.alive) return "that element is gone: call vimma_elements again";
-  const secret = t.secret ?? secretOf(t.autocomplete);
+  const secret =
+    t.secret ?? secretOf(t.autocomplete) ?? (t.type === "password" ? "password" : undefined);
   if (secret) {
     return `field "${label}" is a ${SECRETS[secret]} field; Vimma never fills it: ask the user to type it`;
   }

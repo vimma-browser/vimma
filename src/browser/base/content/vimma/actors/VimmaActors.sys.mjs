@@ -561,6 +561,27 @@ export const VimmaActors = {
   },
 
   /**
+   * Opens the one submission a question allowed, on a tab already marked (docs/specs/
+   * mcp-forms.md F15, F16): a fill marks the tab before its first field and allows the
+   * submission only for its last step, so a page that submits the form while it is being
+   * filled sends nothing in its place.
+   * @param {any} browser XULBrowserElement
+   * @param {{ method: string, action: string }} allowed
+   * @returns {boolean} false when the tab has no mark of this page
+   */
+  agentAllow(browser, allowed) {
+    const top = browser.browsingContext;
+    const mark = submitMarks.get(top?.browserId);
+    if (!mark || top.currentWindowGlobal?.innerWindowId !== mark.doc) return false;
+    try {
+      mark.allowed = { method: allowed.method, where: whereOf(Services.io.newURI(allowed.action)) };
+    } catch {
+      return false;
+    }
+    return true;
+  },
+
+  /**
    * The agent's call is over: the allowed submission is no longer allowed, and the hosts of the
    * submissions stopped since the mark are returned (the mark stays).
    * @param {any} browser XULBrowserElement

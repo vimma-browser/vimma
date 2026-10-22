@@ -1090,18 +1090,24 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   or one form autofill's heuristics take for a payment card field (every field of its group when
   they fail). Nor a file field, a hidden, disabled or read-only field, an editable root, or a
   value a field does not take (a line break outside a text area, an option a select does not
-  have, a date or number that does not parse). These are refused before anything is asked, and
-  the parent counts a sensitive autocomplete name whatever the child says. In the field's own
+  have or only in a disabled group, a date, number or range that does not parse or is out of
+  bounds). These are refused before anything is asked, and the parent counts a password input
+  and a sensitive autocomplete name whatever the child says. In the field's own
   frame the child checks again, when the yes comes and once more just before the set, that the
   field is still set the same way, of the same type and not sensitive; a field that changed
   stops the call, says how many fields were filled, and is not set. The one call of
   `setUserInput` (text fields and text areas) sits behind those checks, and no code the agent
-  role reaches gives an input a file. A select is set to its option and ends the choice as its
-  popup does (`userFinishedInteracting`); a checkbox or radio is clicked, with no user
+  role reaches gives an input a file. A select is set to its option alone (a multiple select
+  loses its other options) and ends the choice as its popup does (`userFinishedInteracting`); a checkbox or radio is clicked, with no user
   activation (M26). Nothing is focused and no key event is sent. At most 32 fields a call, each
-  value at most 1,024 characters with no control character but a line break, checked in
-  `vimma-ctl mcp` and again in the browser. The question shows every field's label, name and
-  value (cut to fit), and `:mcp log` keeps the values in full in memory.
+  value at most 1,024 characters with no control character but a line break and no character
+  that draws nothing (format, zero-width, bidirectional and tag characters, variation
+  selectors, fillers), which could hide text from the question; checked in `vimma-ctl mcp` and
+  again in the browser. The question shows each field's label, name and value, cut with `…` to
+  fit and the fields it leaves out counted; a fill that submits is refused unless its question
+  shows every name and value whole. `:mcp log` keeps the values of the calls asked or run in
+  full, in memory; a call refused before its question is logged with its labels. A child
+  request that runs after the parent stopped waiting sets nothing.
   [`test_fill_refuses_password_card_otp_and_file_fields`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_fill_stops_when_a_field_turns_sensitive`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_fill_sets_values_and_fires_input_and_change`](../tests/browser/browser_vimma_mcp_fill.js),
@@ -1110,6 +1116,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`file fields, rich text editors, hidden, disabled and read-only fields are refused`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a value of the wrong kind, a line break in one line, a value that does not parse`](../packages/vimma-core/test/agent-act.test.mjs),
   [`fill_limits_are_tool_errors`](../tools/vimma-ctl/src/mcp.rs),
+  [`fill_values_with_invisible_characters_are_tool_errors`](../tools/vimma-ctl/src/mcp.rs),
   [`vimma_fill: each field and value in the question, how many in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M28. A click that submits a form (a submit button or a submit or image input in a form whose
   method is not `dialog`, the element itself, the button it is in or its label's control)
@@ -1117,7 +1124,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   the form's method, destination and the number of fields it sends; its yes **never** makes a
   grant; so **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
   label or the form's default submission), under a `vimma_fill` grant too, naming the same and
-  the fields it fills, and it is not sent when the page put back a value the question showed.
+  the fields it fills, only through a submit button of the filled fields' own form or that
+  form's default submission, and it is not sent when the page put back a value the question
+  showed. A fill allows its submission only after its last field is set, so a form the page
+  submits while it is being filled is cancelled like any other.
   Before every click and every fill the tab is marked in the parent, after the page's transient user
   activation is consumed in every frame, and from then on, while its top document is the same,
   the request of every navigating form submission in it (any frame, a submit button,
@@ -1146,6 +1156,8 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`a submit button, a submit or image input in a form is a submit`](../packages/vimma-core/test/agent-act.test.mjs),
   [`test_fill_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_page_script_submit_after_a_fill_is_cancelled`](../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_page_submit_during_a_fill_is_not_the_asked_one`](../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_selects_ranges_and_a_submit_button_of_another_form`](../tests/browser/browser_vimma_mcp_fill.js),
   [`a fill that submits: the destination, then the fields, y or n only`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`vimma_fill can be granted, not by a click grant; a submit asks under it`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a plain button, a reset, one outside a form or one closing a dialog is not`](../packages/vimma-core/test/agent-act.test.mjs)
@@ -1199,8 +1211,8 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   together, of one connection a minute (mcp-forms F26), counted when asked and before the
   question, **must** be denied as `busy`, so a grant cannot flood a page and a refused call
   cannot loop; every call, asked, under a grant or denied, **must** be in `:mcp log` (M23), a
-  click with its element, a fill with its fields and values, and a submission with its
-  destination, and a call under a grant shows a notice naming the page (and for a click, the
+  click with its element, a fill with its fields and values (one refused before its question,
+  with its labels), and a submission with its destination, and a call under a grant shows a notice naming the page (and for a click, the
   element; for a fill, how many fields). The rates of screenshots and console reads join this
   rule with their sub-PRs.
   [`at most 30 agent-elements per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),

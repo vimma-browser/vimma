@@ -630,6 +630,10 @@ describe("what a fill refuses (F6, F13; security.md M27)", () => {
       );
     }
     expect(fillRefusal("sf", { ...text, autocomplete: "email" }, "x")).toBe(null);
+    // A password input is one whatever else the child says.
+    expect(fillRefusal("sf", { ...text, type: "password" }, "x")).toBe(
+      'field "sf" is a password field; Vimma never fills it: ask the user to type it',
+    );
     // A sensitive select or checkbox is refused just the same.
     expect(fillRefusal("sf", { ...select, secret: "card" }, "12")).toMatch(/payment card field/);
   });

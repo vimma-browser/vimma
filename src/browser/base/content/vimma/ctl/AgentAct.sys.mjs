@@ -150,7 +150,8 @@ function hostOf(principal) {
 }
 
 /**
- * @typedef {{ refused: string, filled: number, changed?: boolean, blocked?: string }
+ * @typedef {{ refused: string, filled: number, changed?: boolean, navigated?: boolean,
+ *   blocked?: string }
  *   | { filled: number, reset?: string[], navigated: boolean, loading: boolean,
  *   dialog?: { type: string, text: string }, blocked?: string, stopped?: "in-use" }} FillResult
  */
@@ -397,11 +398,8 @@ export const AgentAct = {
    */
   async fillNow(browser, steps, { submit, inUse, still }) {
     const before = pageOf(browser);
-    const marked = await bounded(
-      VimmaActors.agentMark(browser, submit?.submit ?? null),
-      false,
-      COLLECT_TIMEOUT_MS,
-    );
+    // No submission is allowed while the fields are set: only the last step's (F15, F16).
+    const marked = await bounded(VimmaActors.agentMark(browser, null), false, COLLECT_TIMEOUT_MS);
     if (!marked) return { refused: "the page did not answer in time", filled: 0 };
     const dialogs = watchDialogs(browser);
     let filled = 0;
@@ -418,6 +416,7 @@ export const AgentAct = {
         refused: `${label ? `field "${label}" ` : ""}${why}; ${n} filled, nothing more was done`,
         filled,
         changed: true,
+        navigated: docOf(browser) !== before.doc,
         ...(blocked.length ? { blocked: blocked[0] } : {}),
       };
     };
@@ -461,7 +460,9 @@ export const AgentAct = {
         if (reset.length) return stop("was put back by the page; the form was not sent", reset[0]);
         if (inUse()) stopped = "in-use";
         else if (!still()) return stop("the tab changed before the form was sent");
-        else {
+        else if (!VimmaActors.agentAllow(browser, submit.submit)) {
+          return stop("the page changed before the form was sent");
+        } else {
           const until = Date.now() + COLLECT_TIMEOUT_MS - 1000;
           const reply = await bounded(
             submit.by === "click"

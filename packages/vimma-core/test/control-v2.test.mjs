@@ -294,8 +294,29 @@ describe("agent commands: args", () => {
     ]);
     const value =
       "args.fields[0].value must be true, false or a text of at most 1024 characters " +
-      "without control characters but line breaks";
-    for (const v of ["x".repeat(1025), "a\u0000b", "a\rb", "a\tb", 3, null, ["x"]]) {
+      "without control or invisible characters but line breaks";
+    // Characters that draw nothing could hide text in the question (M27).
+    for (const v of [
+      "x".repeat(1025),
+      "a\u0000b",
+      "a\rb",
+      "a\tb",
+      "a\u200bb",
+      "a\u200db",
+      "a\u2060b",
+      "a\ufeffb",
+      "a\u202eb",
+      "a\u2028b",
+      "a\ufe0fb",
+      "a\u{e0041}b",
+      "a\u{e0100}b",
+      "a\u00adb",
+      "a\u034fb",
+      "a\u3164b",
+      3,
+      null,
+      ["x"],
+    ]) {
       expect(fill({ tab: "12", fields: [{ label: "sd", value: v }] }), JSON.stringify(v)).toEqual([
         value,
       ]);

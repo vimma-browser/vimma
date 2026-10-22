@@ -240,7 +240,7 @@
           },
           "submit": {
             "type": ["boolean", "string"],
-            "description": "Submit the form after filling: true for the fields' form as Enter would send it, or a submit button's label from vimma_elements. The user is asked every time, naming where the form is sent."
+            "description": "Submit the form after filling: true for the fields' form, as its first submit button sends it, or a submit button's label from vimma_elements. The user is asked every time, naming where the form is sent."
           }
         },
         "additionalProperties": false,

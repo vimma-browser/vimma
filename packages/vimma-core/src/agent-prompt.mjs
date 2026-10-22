@@ -191,39 +191,54 @@ const FILL_COLUMNS = 160;
  * @returns {Part[]}
  */
 function fillParts(w, lead, count = false) {
+  return fillLine(w, lead, count).parts;
+}
+
+/**
+ * `fillParts`, and whether every field's name and value fits the question whole.
+ * @param {Record<string, any>} w @param {string} lead @param {boolean} count
+ * @returns {{ parts: Part[], fits: boolean }}
+ */
+function fillLine(w, lead, count) {
   const fields = Array.isArray(w.fields) ? w.fields : [];
   const n = fields.length;
   /** @type {Part[]} */
   const parts = [{ text: n === 1 && !count ? lead : `${lead}${n} field${n === 1 ? "" : "s"}: ` }];
   let width = 0;
+  let fits = true;
   for (const [i, f] of fields.entries()) {
-    const name = truncate(clean(f?.name), FILL_NAME_COLUMNS, "end");
+    const fullName = clean(f?.name);
+    const name = truncate(fullName, FILL_NAME_COLUMNS, "end");
     const flag = typeof f?.value === "boolean";
+    const fullValue = flag ? "" : clean(f?.value);
+    const value = truncate(fullValue, FILL_VALUE_COLUMNS, "end");
+    if (name !== fullName || value !== fullValue) fits = false;
     /** @type {Part[]} */
     const piece = [
       { text: `${i ? ", " : ""}${clean(f?.label)}${name ? " " : ""}` },
       ...(name ? [{ text: name, isolate: /** @type {const} */ ("auto") }] : []),
       { text: flag ? ` = ${f.value ? "checked" : "unchecked"}` : ' = "' },
-      ...(flag
-        ? []
-        : [
-            {
-              text: truncate(clean(f?.value), FILL_VALUE_COLUMNS, "end"),
-              isolate: /** @type {const} */ ("auto"),
-            },
-            { text: '"' },
-          ]),
+      ...(flag ? [] : [{ text: value, isolate: /** @type {const} */ ("auto") }, { text: '"' }]),
     ].filter((p) => p.text);
     const more = textWidth(piece.map((p) => p.text).join(""));
     if (width + more > FILL_COLUMNS) {
-      parts.push({ text: i ? ", …" : "…" });
+      // The fields left out are counted, so the user knows the line does not show them all.
+      parts.push({ text: `${i ? ", " : ""}… (${n - i} more)` });
+      fits = false;
       break;
     }
     width += more;
     parts.push(...piece);
   }
-  return parts;
+  return { parts, fits };
 }
+
+/**
+ * Whether a fill's question shows every field's name and value whole (docs/specs/mcp-forms.md
+ * F14, F15): a fill that submits must, because its one yes sends them.
+ * @param {Record<string, any>} what
+ */
+export const fillFits = (what) => fillLine(what, "", false).fits;
 
 /**
  * The question line: its text in parts (the host of an open in bold), the hint shown once the

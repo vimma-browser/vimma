@@ -24,7 +24,7 @@ import {
 } from "../core/agent.mjs";
 import { actDetail, fillDetail } from "../core/agent-act.mjs";
 import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
-import { shownNotice } from "../core/agent-prompt.mjs";
+import { fillFits, shownNotice } from "../core/agent-prompt.mjs";
 import { MAX_LINE_LENGTH, MAX_READ_CHARS } from "../core/control.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { workspaceOfTab } from "../core/workspaces.mjs";
@@ -891,6 +891,12 @@ const COMMANDS = {
         const message = `label "${submitArg}" is not a submit button: submit takes a submit button's label, or true`;
         throw refuse("failed", new AgentError("failed", message));
       }
+      // The question names the button's form: it must be the one whose fields are filled.
+      const key = found.target.form?.key;
+      if (!key || steps.some((s) => s.target.form?.key !== key)) {
+        const message = `label "${submitArg}" submits another form: submit takes a submit button of the same form as the fields`;
+        throw refuse("failed", new AgentError("failed", message));
+      }
       submitting = { by: "click", target: found.target, submit: checked.element.submit };
     } else if (submitArg === true) {
       const first = steps[0];
@@ -938,6 +944,12 @@ const COMMANDS = {
       detail: wf(fillDetail(shownFields, submitting?.submit)),
       ...(submit ? { submit } : {}),
     };
+    // F15: one yes sends what the question shows, so it must show every value whole.
+    if (submit && !fillFits(what)) {
+      const message =
+        "a fill that submits must show every value whole in its question, and this one does not fit: fill first with vimma_fill, then submit with fewer or shorter values, or activate the submit button";
+      throw refuse("failed", new AgentError("failed", message), what);
+    }
     // F15: a submission asks every time, also under a grant, and its yes makes no grant.
     await ask(conn, "agent-fill", what, state, rid, undefined, !!submit);
     let found2;
@@ -987,8 +999,15 @@ const COMMANDS = {
       );
     if ("refused" in result) {
       if (result.blocked) noteBlocked(result.blocked);
-      const outcome = result.changed ? "stopped" : "failed";
-      throw refuse(outcome, new AgentError("failed", result.refused), what, "changed");
+      if (result.navigated) {
+        // A page the fill's handlers loaded is an open of this connection's all the same (F11).
+        AgentDrive.drop(conn, tab.linkedBrowser);
+        opens.take(conn, Date.now());
+      }
+      if (result.changed) {
+        throw refuse("stopped", new AgentError("failed", result.refused), what, "changed");
+      }
+      throw refuse("failed", new AgentError("failed", result.refused), what);
     }
     if (result.navigated) {
       // The page the labels named is gone, and the load was an open of this connection's.

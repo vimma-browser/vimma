@@ -100,6 +100,9 @@ the [user guide](guide.md); planned work is on the
 ## Agents (MCP)
 
 - Agents can list, read, open and close tabs of the agent workspace, and download through it.
+- `vimma_fill` knows a one-time-code field by its `autocomplete="one-time-code"` only, and a
+  password field by its type (or a past type, or dots drawn by the page): a text field merely
+  labelled "Password" or "Code" is filled like any other, with its value shown in the question.
   They cannot press keys, click, fill forms or take screenshots.
 - The agent's name in a question (`claude-code`) is what the agent says it is; Vimma cannot check
   it. Grants belong to the connection, and `:mcp` shows the program that started it.
