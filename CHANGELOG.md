@@ -16,6 +16,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Agents (MCP): `vimma_keys` scrolls, finds and goes back or forward in an agent tab without bringing it to the front, from a fixed set of Vimma's default keys; it asks first, shows the keys it will run, and `:mcp log` lists the last 100 agent calls.
 - Agents (MCP): `vimma_keys` lists an agent tab's visible links by hint label and follows one in the same tab, never as a click and with no referrer; a link to another site asks first unless the agent holds an open grant.
 - Updates: with update checks off, a dim `updates: off` segment shows for a few seconds at startup, once per session.
+- Agents (MCP): `vimma_elements` lists the buttons, fields and links on screen in an agent tab by hint label; password, one-time-code and payment card fields are marked sensitive and never show a value.
+- Agents (MCP): `vimma_activate` clicks buttons, links and checkboxes in an agent tab by hint label, in the background and without user activation; a form submission asks every time, and one a page makes by itself after an agent's click is stopped.
+- Agents (MCP): `vimma_fill` fills form fields in an agent tab, never passwords, payment card, one-time-code or file fields; a fill that submits asks every time and shows every value.
+- Agents (MCP): `vimma_screenshot` shows an agent tab as an image, taken in the background, with its `vimma_elements` labels drawn on it if asked; it is never taken while a password, one-time-code or card field on screen has a value.
+- Agents (MCP): `vimma_console` reads an agent tab's script errors, console errors and warnings, and failed requests, without running page code.
+- Packaging: an `.rpm` for Fedora and openSUSE, installed and checked with dnf and zypper; `:update` shows the dnf and zypper commands for it.
 
 ### Changed
 
