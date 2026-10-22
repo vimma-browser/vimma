@@ -59,6 +59,7 @@ const SECRETS = [
   "12/31",
   "737",
   "5555444433331111",
+  "4321",
 ];
 
 registerCleanupFunction(async () => {
@@ -243,6 +244,8 @@ add_task(async function test_elements_lists_kinds_fields_and_forms() {
   Assert.equal(menu.kind, "button", "a role=button element is a button");
   const like = one(items, (e) => e.text === "Like", "button in a frame of another site");
   Assert.equal(like.frame, "example.org", "names the frame's host");
+  const inline = one(items, (e) => e.text === "Inline", "button in a srcdoc frame");
+  Assert.ok(!("frame" in inline), "a srcdoc frame is the page's own site");
   Assert.deepEqual(
     { workspace: activeName(), selected: gBrowser.selectedTab },
     before,
@@ -262,7 +265,7 @@ add_task(async function test_password_and_card_fields_are_sensitive_without_valu
   const c = await agentClient();
   const r = await elements(c, tab);
   const items = parsed(r.result.elements).filter((e) => "label" in e);
-  for (const name of ["password", "old", "code", "cardnumber", "expiry", "cvc", "card2"]) {
+  for (const name of ["password", "old", "code", "cardnumber", "expiry", "cvc", "card2", "pin"]) {
     const field = one(items, (e) => e.name === name, `${name} field`);
     Assert.equal(field.sensitive, true, `${name} is sensitive (M27)`);
     Assert.ok(!("value" in field), `${name} has no value`);

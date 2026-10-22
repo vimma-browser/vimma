@@ -117,6 +117,7 @@ const KIND_NAMES = /** @type {Record<string, string>} */ ({
   radio: "a radio button",
   select: "a select",
   click: "a clickable element",
+  link: "a link without an address",
 });
 
 /** How long one query to the page's child may take: a hung content process must not hold a call. */

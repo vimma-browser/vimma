@@ -1054,20 +1054,27 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   protocol validator **must** refuse a list that is not, or that holds a second delimiter. At
   most 200 elements, in reading order, and no more than fit 768 KiB of the reply line, as one
   JSON object a line with the forms they name first (at most 64); every page string is
-  NFKC-normalised and stripped of control, bidirectional and invisible characters before it is
-  quoted, texts and captions cut at 80 characters, values at 256, hrefs and form actions at
-  2,048, at most 50 options a select; the rest are dropped and counted. The child's description
+  NFKC-normalised and stripped of bidirectional and invisible characters before it is quoted,
+  and of control characters too except a value's tabs and line breaks, which JSON escapes; no
+  page `<`, line separator or paragraph separator appears literally in the list (each is
+  escaped as `\u003c`, `\u2028`, `\u2029`), so no page string can spell a delimiter; texts and
+  captions are cut at 80 characters, values at 256, hrefs and form actions at 2,048, at most 50
+  options a select; the rest are dropped and counted, and the reply's URL and title are capped. The child's description
   of each element is a fresh, checked copy (core's `parseAgentElement`). A sensitive field **must
-  never** be listed with its value or its selected option: a field that was ever a password
-  field, one whose autocomplete field name is `current-password`, `new-password`,
-  `one-time-code` or any `cc-*` name (counted in the parent too, whatever the child says), and
-  one form autofill's heuristics infer as a payment card field; if the heuristics fail, every
-  field of that form counts. No page text beyond the elements' own is returned, so a
+  never** be listed with its value or its selected option: a field that is or was ever a
+  password field, one the page draws as dots (`-webkit-text-security`), one whose autocomplete
+  field name is `current-password`, `new-password`, `one-time-code` or any `cc-*` name (a
+  password type and these names are counted in the parent too, whatever the child says), and
+  one form autofill's heuristics infer as a payment card field, with, in a card form, any field
+  they leave to their machine-learning model; if the heuristics fail, every field of that form
+  counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned, so a
   `vimma_elements` grant is never a read grant.
   [`test_password_and_card_fields_are_sensitive_without_values`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
   [`passwords, one-time codes and every cc-* name are sensitive; email is not`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a sensitive field carries no value and no selected option`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a password input is sensitive whatever the child says`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`no page < appears literally, and values keep no raw line or paragraph separator`](../packages/vimma-core/test/agent-act.test.mjs),
   [`an autocomplete name that is sensitive makes the field sensitive whatever the child says`](../packages/vimma-core/test/agent-act.test.mjs),
   [`anything malformed, over its cap or naming a form not reported is refused`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a sensitive field says so and never carries a value`](../packages/vimma-core/test/agent-act.test.mjs),

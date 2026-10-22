@@ -70,6 +70,19 @@ const line = (s, max) =>
 const valueText = (s, max) => cutTo(shown(String(s ?? "")), max);
 
 /**
+ * One line of the list: no page `<` appears literally, so no page string can spell a delimiter
+ * in any escaping, and line and paragraph separators, which JSON.stringify leaves raw, are
+ * escaped too, so a value cannot look like a line of its own (security.md M31). JSON.parse reads
+ * them back as they were.
+ * @param {unknown} o
+ */
+const jsonLine = (o) =>
+  JSON.stringify(o)
+    .replaceAll("<", "\\u003c")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
+
+/**
  * One element's JSON object, keys in a fixed order: the label, kind and text; for a link its
  * href; the frame of another site; a field's details; its state; its form's number.
  * @param {string} label @param {AgentElementTarget} t @param {number | undefined} form
@@ -131,14 +144,14 @@ export function agentElementList(elements, maxBytes) {
     let formLine = null;
     if (f && !form && forms.size < AGENT_ELEMENTS.forms) {
       const n = forms.size + 1;
-      formLine = JSON.stringify({
+      formLine = jsonLine({
         form: n,
         method: line(f.method, 8),
         action: cutTo(shown(f.action).replace(/\s/g, ""), AGENT_ELEMENTS.href),
       });
       form = { n, line: formLine };
     }
-    const own = JSON.stringify(elementObject(label, target, form?.n));
+    const own = jsonLine(elementObject(label, target, form?.n));
     const more = cost(own) + (formLine ? cost(formLine) : 0);
     if (bytes + more > maxBytes) break;
     bytes += more;

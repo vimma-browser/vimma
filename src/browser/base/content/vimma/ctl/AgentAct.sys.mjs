@@ -8,13 +8,12 @@
 // keeps the agent's elements apart from the user's hint mode (F4), described there with
 // sensitive fields' values left out (F6), labelled and written out by core (agent-act.mjs),
 // inside the untrusted-content delimiters. Nothing on the page is touched: no element is
-// focused, clicked or changed, and the tab is never selected or shown. The labels go into
-// AgentDrive's store, where `f<label>` follows only links (F3). agent-commands.mjs asked first.
+// focused, clicked or changed, and the tab is never selected or shown. agent-commands.mjs asked
+// first, and puts the labels into AgentDrive's store, where `f<label>` follows only links (F3).
 
 import { AGENT_ELEMENTS, agentElementList, labelAgentElements } from "../core/agent-act.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
-import { AgentDrive } from "./AgentDrive.sys.mjs";
 
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
 
@@ -38,26 +37,37 @@ const onTheWeb = (principal) =>
   !!principal?.isContentPrincipal && (principal.schemeIs("http") || principal.schemeIs("https"));
 
 /**
- * A URI's site, its registrable domain (eTLD+1, mcp-drive D18); its host when it has none.
- * @param {any} uri nsIURI
+ * A document's site, from its principal (mcp-drive D18): a srcdoc or about:blank frame inherits
+ * its parent's, which its URI does not say. Empty when it has none.
+ * @param {any} principal nsIPrincipal
  */
-function siteOf(uri) {
+function siteOf(principal) {
   try {
-    return Services.eTLD.getBaseDomain(uri);
+    return String(principal?.baseDomain || principal?.host || "");
   } catch {
-    return String(uri?.asciiHost ?? "");
+    return "";
+  }
+}
+
+/** @param {any} principal nsIPrincipal  its host, or "" */
+function hostOf(principal) {
+  try {
+    return String(principal?.asciiHost ?? "");
+  } catch {
+    return "";
   }
 }
 
 export const AgentAct = {
   /**
-   * The elements on screen in `tab`, labelled, as the reply's `elements` and `dropped`; or why
-   * nothing is listed.
+   * The elements on screen in `tab`, labelled, as the reply's `elements` and `dropped`, with the
+   * labels for AgentDrive.remember once the caller has checked the tab again; or why nothing is
+   * listed.
    * @param {any} tab
-   * @param {{ conn: unknown }} ctx  the agent connection: its labels are its own
-   * @returns {Promise<{ elements: string, dropped: number } | { refused: string }>}
+   * @returns {Promise<{ elements: string, dropped: number, labels: Map<string, HintTarget> }
+   *   | { refused: string }>}
    */
-  async elements(tab, { conn }) {
+  async elements(tab) {
     const browser = tab.linkedBrowser;
     if (!onTheWeb(browser.contentPrincipal)) {
       return { refused: "elements are listed only on http and https pages" };
@@ -67,13 +77,14 @@ export const AgentAct = {
       VimmaActors.collectHints(browser, "hint.follow", { agent: true, elements: true }),
       late,
     ]);
-    const targets = /** @type {HintTarget[]} */ (collected ?? []).filter((t) => t.info);
+    if (!collected) return { refused: "the page did not answer in time" };
+    const targets = /** @type {HintTarget[]} */ (collected).filter((t) => t.info);
     const top = browser.browsingContext?.currentWindowGlobal;
-    const site = siteOf(browser.currentURI);
+    const site = siteOf(top?.documentPrincipal);
     // An element in a frame of another site says so (F5): its text is that site's.
     const items = targets.map((hint) => {
-      const uri = hint.wg?.documentURI;
-      const frame = hint.wg !== top && uri && siteOf(uri) !== site ? String(uri.host ?? "") : "";
+      const principal = hint.wg?.documentPrincipal;
+      const frame = hint.wg !== top && siteOf(principal) !== site ? hostOf(principal) : "";
       return {
         rect: hint.rect,
         href: hint.href,
@@ -87,12 +98,10 @@ export const AgentAct = {
     const list = agentElementList(elements, AGENT_ELEMENTS.bytes);
     // The reply is one line: elements past its room are left out, and their labels too.
     const listed = elements.slice(0, elements.length - list.omitted);
-    AgentDrive.remember(
-      conn,
-      browser,
-      new Map(listed.map((l) => [l.label, l.target.hint])),
-      "elements",
-    );
-    return { elements: wrapUntrusted(wf(list.text)), dropped: dropped + list.omitted };
+    return {
+      elements: wrapUntrusted(wf(list.text)),
+      dropped: dropped + list.omitted,
+      labels: new Map(listed.map((l) => [l.label, l.target.hint])),
+    };
   },
 };

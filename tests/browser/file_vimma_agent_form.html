@@ -6,7 +6,9 @@
    - password field, one switched from password to text, a one-time code, a select, a checkbox, a
    - disabled button and a submit button; a card form without autocomplete attributes, which only
    - form autofill's heuristics recognise; a search form; a link; a script-only button; and a
-   - frame of another site with a button. Everything fits the test window's viewport. -->
+   - frame of another site with a button; a srcdoc frame with a button, which has no host; and a
+   - masked PIN field, which pages draw as dots without type=password. Everything fits the test
+   - window's viewport. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -63,7 +65,12 @@
       <a id="plans" href="file_vimma_agent_page.html?plans">Plans</a>
       <span id="menu" role="button" tabindex="0">Menu</span>
     </p>
+    <p>
+      <label for="pin">PIN</label>
+      <input id="pin" name="pin" value="4321" style="-webkit-text-security: disc" />
+    </p>
     <iframe id="frame" title="Widget"></iframe>
+    <iframe id="inline" title="Inline" srcdoc="<button>Inline</button>"></iframe>
     <script>
       // A "show password" toggle: the field was a password field and now shows its text.
       const shown = document.getElementById("shown");

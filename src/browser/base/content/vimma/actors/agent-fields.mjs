@@ -7,10 +7,12 @@
 // Reads only: nothing here focuses, clicks or changes an element. The parent checks every field
 // again (core agent-element.mjs) and builds the list.
 //
-// A field is sensitive, and its value is never read into the reply, when it was ever a password
-// field, when its autocomplete field name is a password, one-time-code or payment card one, or
-// when Firefox's form autofill heuristics infer a payment card field name for it. A failure of
-// the heuristics makes every field of that form sensitive: it refuses rather than fills.
+// A field is sensitive, and its value is never read into the reply, when it is or was ever a
+// password field, when the page draws it as dots (`-webkit-text-security`), when its autocomplete
+// field name is a password, one-time-code or payment card one, or when Firefox's form autofill
+// heuristics infer a payment card field name for it (in a card form, also a field they leave to
+// their machine-learning model). A failure of the heuristics makes every field of that form
+// sensitive: it refuses rather than fills.
 
 import { isSensitiveAutocomplete } from "../core/agent-element.mjs";
 import { linkText } from "./hint-collect.mjs";
@@ -142,10 +144,20 @@ function cardFields(fields) {
       if (done.has(formLike.rootElement)) continue;
       done.add(formLike.rootElement);
       const details = lazy.FormAutofillHeuristics.getFormInfo(formLike, false) ?? [];
+      /** Fields whose name form autofill leaves to its machine-learning model, decided later. */
+      const undecided = [];
+      let card = false;
       for (const d of details) {
         const names = /** @type {unknown[]} */ ([]).concat(d?.fieldName ?? []);
-        if (names.some((n) => lazy.FormAutofillUtils.isCreditCardField(n))) out.add(d.element);
+        if (names.some((n) => lazy.FormAutofillUtils.isCreditCardField(n))) {
+          out.add(d.element);
+          card = true;
+        } else if (!names.length) {
+          undecided.push(d.element);
+        }
       }
+      // In a card form, a field the synchronous heuristics could not name may be a card field.
+      if (card) for (const el of undecided) out.add(el);
     } catch (e) {
       console.error("vimma agent-elements: form autofill heuristics", e);
       const group = formLike?.elements ? [...formLike.elements] : [field];
@@ -156,13 +168,22 @@ function cardFields(fields) {
 }
 
 /**
- * Whether a field is sensitive now (F6), without the heuristics: it was ever a password field,
- * or its autocomplete field name says so.
+ * Whether a field is sensitive now (F6), without the heuristics: it is or was ever a password
+ * field, the page draws it as dots, or its autocomplete field name says so.
  * @param {Element} el
  */
 export function plainlySensitive(el) {
   const html = /** @type {any} */ (el);
-  if (html.hasBeenTypePassword === true) return true;
+  if (html.hasBeenTypePassword === true || html.type === "password") return true;
+  // Drawn as dots without type=password (PIN and card code widgets): the page treats it as secret.
+  try {
+    const masked = el.ownerDocument?.defaultView
+      ?.getComputedStyle(el)
+      ?.getPropertyValue("-webkit-text-security");
+    if (masked && masked !== "none") return true;
+  } catch {
+    // no style: not masked
+  }
   try {
     return isSensitiveAutocomplete(html.getAutocompleteInfo?.()?.fieldName);
   } catch {

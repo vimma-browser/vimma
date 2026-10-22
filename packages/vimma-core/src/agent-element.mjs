@@ -5,7 +5,8 @@
 /**
  * What a page's child says of one element for `vimma_elements` (docs/specs/mcp-forms.md F5, F6;
  * security.md M31), checked like any reply from a content process: a fresh copy with only the
- * known fields, each of its type and within its cap, or null. Imports nothing, so hints.mjs can
+ * known fields, each of its type and within its cap, or null. A password input and a sensitive
+ * autocomplete name make a field sensitive whatever the child says. Imports nothing, so hints.mjs can
  * check a collection's reply with it; agent-act.mjs builds the list from what passes.
  */
 
@@ -105,7 +106,8 @@ export function parseAgentElement(value, forms) {
       if (typeof v[key] !== "boolean") return null;
       out[key] = /** @type {boolean} */ (v[key]);
     }
-    if (isSensitiveAutocomplete(out.autocomplete)) out.sensitive = true;
+    // A password input is sensitive whatever the child says, as is a sensitive autocomplete name.
+    if (isSensitiveAutocomplete(out.autocomplete) || out.type === "password") out.sensitive = true;
     if (v.value !== undefined) {
       if (!isText(v.value, caps.value) || out.sensitive) return null;
       out.value = /** @type {string} */ (v.value);

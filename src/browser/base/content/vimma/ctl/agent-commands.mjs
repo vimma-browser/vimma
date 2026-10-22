@@ -62,6 +62,9 @@ const keyCalls = new CallRate(KEYS_RATE);
 const showCalls = new CallRate(SHOW_RATE);
 /** Each connection's `agent-elements`: at most ELEMENTS_RATE a minute, counted when asked (F26). */
 const elementCalls = new CallRate(ELEMENTS_RATE);
+/** The longest URL and title an `agent-elements` reply carries, in code points. */
+const ELEMENTS_URL_MAX = 8192;
+const ELEMENTS_TITLE_MAX = 1024;
 /** The longest an `agent-keys` call runs after the yes (mcp-drive D15). */
 const KEYS_CALL_MS = 60000;
 
@@ -676,12 +679,25 @@ const COMMANDS = {
     if (!tab.linkedPanel || tab.hasAttribute("pending")) {
       await loadedPage(win, tab, what.url, agent.userContextId);
     }
-    const listed = await AgentAct.elements(tab, { conn });
-    if ("refused" in listed) throw new AgentError("failed", listed.refused);
+    let listed;
+    try {
+      listed = await AgentAct.elements(tab);
+    } catch (e) {
+      // Fixed text: an error's message could carry the page's words past the untrusted header.
+      console.error("vimma agent-elements:", e);
+      listed = { refused: "Vimma could not list this page's elements" };
+    }
+    if ("refused" in listed) {
+      AgentGate.note(conn, "vimma_elements", what, "failed");
+      throw new AgentError("failed", listed.refused);
+    }
     still();
+    // Only once the tab is as asked: a list of a page that moved on leaves no labels (M25).
+    AgentDrive.remember(conn, tab.linkedBrowser, listed.labels, "elements");
+    // A page sets its URL and title: capped, so the reply stays within its 1 MiB line.
     return {
-      url: wf(what.url),
-      title: wf(tab.label ?? ""),
+      url: wf(cut(what.url, ELEMENTS_URL_MAX).text),
+      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
       elements: listed.elements,
       dropped: listed.dropped,
     };

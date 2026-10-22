@@ -305,12 +305,16 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    whose quotes the page cannot end, and a target cut by the size limit never names a form that
    is not in the list. Each string is NFKC-normalised and stripped of control, bidirectional and
    invisible characters first, as `f`'s link texts are (security.md M21).
-6. **Sensitive fields.** A field is sensitive when any of these holds: it `hasBeenTypePassword`;
+6. **Sensitive fields.** A field is sensitive when any of these holds: it `hasBeenTypePassword`
+   or is `type=password`; the page draws it as dots with `-webkit-text-security`, as PIN and
+   card-code widgets do without `type=password`;
    its autocomplete field name is `current-password`, `new-password`, `one-time-code` or any
    `cc-*` name; or form autofill's heuristics infer a credit-card field name for it
    (`FormAutofillHandler.collectFormFieldDetails`, which runs `FormAutofillHeuristics.getFormInfo`
    over the field's form-like group from `AutofillFormFactory.createFromField`, and
-   `FormAutofillUtils.isCreditCardField` on each field name). The heuristics count because many
+   `FormAutofillUtils.isCreditCardField` on each field name; in a group with a card field, a
+   field the synchronous heuristics leave unnamed for form autofill's machine-learning model
+   counts too). The heuristics count because many
    shops omit `autocomplete` on card forms, and a refused field costs the user one typed value
    while a missed card field costs much more. If the heuristics throw, every field of that group
    counts as sensitive, so that a failure refuses rather than fills. Rejected: `autocomplete`
