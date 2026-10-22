@@ -276,10 +276,13 @@ text that pages, add-ons and bookmarks choose.
   one call with arguments from three fixed builders (the scan, clamd's scan with `--fdpass`, and
   `--version`), the path after `--` and no shell, on an agent download in the quarantine folder
   (M13; [vimma-mcp](specs/vimma-mcp.md) decisions 31 g, 43-45). Chrome code **never** calls
-  native code, with one exception: `statx(2)` from libc through js-ctypes, for the owner of
-  clamd's socket (M13). [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
+  native code, with one exception: the owner and type of clamd's socket (M13), read through
+  js-ctypes with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from `libSystem.B.dylib`
+  on macOS (`lstat` on arm64, `lstat$INODE64` on x86_64, the same 144-byte `struct stat`),
+  neither following a symlink. Any other system or architecture, a failed call or a struct of
+  another size gives no owner, so clamd is not used. [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
   [`never starts a process, but ClamAV on an agent download`](../tools/security/test/chrome-source.test.mjs),
-  [`never calls native code, but statx on clamd's socket`](../tools/security/test/chrome-source.test.mjs)
+  [`never calls native code, but statx or lstat on clamd's socket`](../tools/security/test/chrome-source.test.mjs)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
   - The status bar **must** always show the selected page's real address with its registrable
@@ -790,7 +793,8 @@ control's wording, the audit) enter this section with their tests in the sub-PR 
   reported clean: keeping the file is asked the same way, and a yes says "scanned with outdated
   definitions". `clamdscan` is used only when it passes clamscan's checks, the system's
   clamd.conf passes them too and sets a local socket, no TCP socket and both alerts, and the
-  socket is owned by root or `clamav`; on any failure the file is scanned by `clamscan`. Vimma has no download reputation service of its
+  socket is a socket (not a symlink) owned by root or `clamav`, on Linux and macOS alike (C2);
+  on any failure the file is scanned by `clamscan`. Vimma has no download reputation service of its
   own: Firefox's Safe Browsing checks downloads only in a build with a Google key (P6), so in a
   keyless build these checks and ClamAV are all there is.
   [`test_a_dangerous_file_needs_bang_for_that_one_file`](../tests/browser/browser_vimma_mcp_downloads.js),

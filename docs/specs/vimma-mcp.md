@@ -911,7 +911,11 @@ outdated definitions (ClamAV)`. An infected verdict is refused however old the d
     root or by `clamav` (its uid from /etc/passwd). The owner is read with `statx(2)` through
     js-ctypes, not following a symlink, because no Firefox file API gives it and the no-op chmod
     proves only "not the user's"; statx, not stat, because struct statx has one layout on every
-    Linux architecture. clamdscan runs with `--config-file=<that file> --fdpass --no-summary
+    Linux architecture. macOS has no statx, so there the owner is read with `lstat(2)` from
+    `libSystem.B.dylib`, because Darwin's `struct stat` (64-bit inodes) has one 144-byte layout
+    on arm64 and x86_64 (`sys/stat.h`, `__DARWIN_STRUCT_STAT64`, checked against the macOS 26.5
+    SDK); x86_64 exports it as `lstat$INODE64`, since its plain `lstat` takes the 32-bit-inode
+    struct. Any other platform gives no owner, so clamd is not used there. clamdscan runs with `--config-file=<that file> --fdpass --no-summary
 --stdout --` and the path; `--fdpass` because clamd runs as another user and may not be able
     to open the quarantine. Its exit codes read as clamscan's. On any failure (no clamd, an
     error, a timeout, stale or undated definitions) the file is scanned by clamscan, with

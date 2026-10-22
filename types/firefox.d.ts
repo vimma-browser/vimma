@@ -69,6 +69,7 @@ declare const Services: {
     readonly version: string;
     readonly appBuildID: string;
     readonly OS: string;
+    readonly XPCOMABI: string;
   };
   // engine/xpcom/base/nsIVersionComparator.idl
   vc: { compare(a: string, b: string): number };

@@ -110,15 +110,23 @@ describe("chrome code", () => {
     );
   });
 
-  // js-ctypes reaches any native function. Its one use is statx(2) on clamd's socket, for its
-  // owner (security.md C2, M13): nothing else may load a library or declare a function.
-  test("never calls native code, but statx on clamd's socket", () => {
+  // js-ctypes reaches any native function. Its one use is the owner of clamd's socket, read with
+  // statx(2) on Linux and lstat(2) on macOS (security.md C2, M13): nothing else may load a
+  // library or declare a function. lstat's symbol is named in one table, by architecture.
+  test("never calls native code, but statx or lstat on clamd's socket", () => {
     const CLAM = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
     const all = hits(/ctypes/);
     expect(all.filter((h) => !h.startsWith(`${CLAM}:`))).toEqual([]);
     const text = readFileSync(join(ROOT, CLAM), "utf8");
-    expect(text.match(/ctypes\.open\([^)]*\)/g)).toEqual(['ctypes.open("libc.so.6")']);
-    expect(text.match(/\.declare\(\s*"?\w*/g)).toEqual(['.declare(\n      "statx']);
+    expect(text.match(/ctypes\.open\([^)]*\)/g)).toEqual([
+      'ctypes.open("libc.so.6")',
+      'ctypes.open("libSystem.B.dylib")',
+    ]);
+    expect(text.match(/\.declare\(\s*"?[\w$]*/g)).toEqual([
+      '.declare(\n      "statx',
+      ".declare(symbol",
+    ]);
+    expect(text).toContain('const LSTAT = { aarch64: "lstat", x86_64: "lstat$INODE64" };');
   });
 
   // Only the setup page's summary installs, through Firefox's AMO path (security.md A1).

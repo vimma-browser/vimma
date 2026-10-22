@@ -518,16 +518,33 @@ function findClam() {
   return findSystemFile(hook?.paths ?? CLAM_PATHS, !!hook?.trusted);
 }
 
+/** lstat's symbol in libSystem by architecture (XPCOMABI's first part): on x86_64 the plain
+ * `lstat` takes the old 32-bit-inode struct; on arm64 there is only the 64-bit-inode one. */
+const LSTAT = { aarch64: "lstat", x86_64: "lstat$INODE64" };
+
 /**
- * A socket's type and owner, from statx(2), or null. Neither IOUtils nor nsIFile gives a file's
- * owner, and the no-op chmod of `ownedByAnother` proves only "not the user's", not "root or
- * clamav". statx is used, not stat, because struct statx has one layout on every architecture
- * (linux/include/uapi/linux/stat.h), where struct stat differs between x86_64 and aarch64. A
+ * A socket's type and owner, or null. Neither IOUtils nor nsIFile gives a file's owner, and the
+ * no-op chmod of `ownedByAnother` proves only "not the user's", not "root or clamav". Linux
+ * uses statx(2), macOS lstat(2); any other system gives null, so clamd is not used there. A
  * symlink is not followed, so it never counts as a socket.
  * @param {string} path
  * @returns {{ isSocket: boolean, uid: number } | null}
  */
 function socketOwner(path) {
+  const os = Services.appinfo.OS;
+  if (os === "Linux") return statxOwner(path);
+  if (os === "Darwin") return lstatOwner(path);
+  return null;
+}
+
+/**
+ * statx(2) from glibc. statx is used, not stat, because struct statx has one layout on every
+ * architecture (linux/include/uapi/linux/stat.h), where struct stat differs between x86_64 and
+ * aarch64.
+ * @param {string} path
+ * @returns {{ isSocket: boolean, uid: number } | null}
+ */
+function statxOwner(path) {
   const ctypes = lazy.ctypes;
   /** @type {any} */
   let libc;
@@ -564,6 +581,46 @@ function socketOwner(path) {
     return { isSocket: (st.stx_mode & 0o170000) === 0o140000, uid: st.stx_uid };
   } catch (e) {
     console.error("vimma: statx failed", e);
+    return null;
+  } finally {
+    libc?.close();
+  }
+}
+
+/**
+ * lstat(2) from libSystem. Darwin's struct stat with 64-bit inodes (`__DARWIN_STRUCT_STAT64` in
+ * the SDK's sys/stat.h) is 144 bytes on arm64 and x86_64 alike: st_dev (int32), st_mode
+ * (uint16), st_nlink (uint16), st_ino (uint64), st_uid (uint32), st_gid (uint32), then fields
+ * this does not read. An architecture not in LSTAT, or a struct of another size, gives null.
+ * @param {string} path
+ * @returns {{ isSocket: boolean, uid: number } | null}
+ */
+function lstatOwner(path) {
+  const ctypes = lazy.ctypes;
+  /** @type {any} */
+  let libc;
+  try {
+    // XPCOMABI throws when it is not known.
+    const arch = Services.appinfo.XPCOMABI.split("-")[0] ?? "";
+    if (!Object.hasOwn(LSTAT, arch)) return null;
+    const symbol = LSTAT[/** @type {keyof typeof LSTAT} */ (arch)];
+    libc = ctypes.open("libSystem.B.dylib");
+    const Stat = new ctypes.StructType("stat", [
+      { st_dev: ctypes.int32_t },
+      { st_mode: ctypes.uint16_t },
+      { st_nlink: ctypes.uint16_t },
+      { st_ino: ctypes.uint64_t },
+      { st_uid: ctypes.uint32_t },
+      { st_gid: ctypes.uint32_t },
+      { rest: ctypes.uint8_t.array(120) },
+    ]);
+    if (Stat.size !== 144) return null;
+    const lstat = libc.declare(symbol, ctypes.default_abi, ctypes.int, ctypes.char.ptr, Stat.ptr);
+    const st = new Stat();
+    if (lstat(path, st.address()) !== 0) return null;
+    return { isSocket: (st.st_mode & 0o170000) === 0o140000, uid: st.st_uid };
+  } catch (e) {
+    console.error("vimma: lstat failed", e);
     return null;
   } finally {
     libc?.close();

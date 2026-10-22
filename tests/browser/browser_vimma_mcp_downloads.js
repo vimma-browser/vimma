@@ -722,9 +722,17 @@ add_task(async function test_clamav_stale_definitions_and_clamd() {
   Assert.ok(r.ok, "saved");
   Assert.deepEqual(await dscanned(), [], "a clamdscan and config of the user's own are not used");
 
-  // The socket's owner, from statx: root's folder is root's and not a socket.
+  // The socket's owner, from statx (Linux) or lstat (macOS): root's folder is root's and not
+  // a socket; a Unix socket of the user's is a socket, owned by someone other than root.
   Assert.deepEqual(AgentDownloads._socketOwnerForTests("/"), { isSocket: false, uid: 0 });
   Assert.equal(AgentDownloads._socketOwnerForTests(PathUtils.join(clamDir, "none")), null);
+  const sock = new FileUtils.File(PathUtils.join(clamDir, "s.ctl"));
+  const server = Cc["@mozilla.org/network/server-socket;1"].createInstance(Ci.nsIServerSocket);
+  server.initWithFilename(sock, 0o600, -1);
+  const owner = AgentDownloads._socketOwnerForTests(sock.path);
+  server.close();
+  Assert.equal(owner?.isSocket, true, "a Unix socket is a socket");
+  Assert.ok(Number.isInteger(owner?.uid) && owner?.uid !== 0, "the user's socket is not root's");
   BrowserTestUtils.removeTab(tab);
   await clean();
 });
