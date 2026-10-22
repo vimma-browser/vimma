@@ -193,6 +193,63 @@ export function plainlySensitive(el) {
 }
 
 /**
+ * Whether a form control shows a value: text in a field or text area, a select's choice other
+ * than the page's own default. A file field's value is a fake path and a button's its text.
+ * @param {Element} el
+ */
+function showsValue(el) {
+  const html = /** @type {any} */ (el);
+  if (el.localName === "textarea") return html.value !== "";
+  if (el.localName === "input") {
+    return !NO_VALUE.has(html.type) && html.type !== "hidden" && html.value !== "";
+  }
+  if (el.localName === "select") {
+    const chosen = html.selectedOptions?.[0];
+    if (!chosen || chosen.value === "") return false;
+    const options = [...html.options];
+    return chosen !== (options.find((o) => o.defaultSelected) ?? options[0]);
+  }
+  return false;
+}
+
+/**
+ * Whether a sensitive field (F6) with a value is in `win`'s viewport, before an agent's
+ * screenshot (docs/specs/mcp-forms.md F21): a card number the user typed shows in clear, and the
+ * element list keeps such values from the agent too. Every form control of the document and its
+ * shadow trees (open and closed) is visited, not only those a click reaches, and one whose box
+ * meets the viewport counts even if the page hides it otherwise, so that a doubt refuses.
+ * @param {Window} win
+ * @returns {boolean}
+ */
+export function sensitiveValueShown(win) {
+  const doc = win.document;
+  const vw = win.innerWidth;
+  const vh = win.innerHeight;
+  /** @type {Element[]} */
+  const shown = [];
+  /** @param {Node} root */
+  const visit = (root) => {
+    const walker = doc.createTreeWalker(root, 1 /* NodeFilter.SHOW_ELEMENT */);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const el = /** @type {Element} */ (node);
+      if (["input", "select", "textarea"].includes(el.localName) && showsValue(el)) {
+        const r = el.getBoundingClientRect();
+        const onScreen =
+          r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
+        if (onScreen) shown.push(el);
+      }
+      const shadow = /** @type {any} */ (el).openOrClosedShadowRoot;
+      if (shadow) visit(shadow);
+    }
+  };
+  visit(doc);
+  if (!shown.length) return false;
+  if (shown.some(plainlySensitive)) return true;
+  const cards = cardFields(shown);
+  return shown.some((el) => cards.has(el));
+}
+
+/**
  * Each element as `vimma_elements` lists it, in the same order, and the forms they belong to,
  * each once, by index (F5). A sensitive field's value and selected option are never read.
  * @param {Element[]} els

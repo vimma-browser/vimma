@@ -51,9 +51,10 @@ const FIND_WRAPPED = 2;
  *   steps: StepResult[], stopped?: "changed" | "in-use" | "timeout" | "denied",
  *   find?: FindResult, links?: string, dropped?: number }} KeysResult
  * @typedef {{ mark: { doc: number, url: string }, at: number, source: "links" | "elements",
- *   byLabel: Map<string, import("../actors/VimmaActors.sys.mjs").HintTarget> }} LinkSession
- *   one `f`'s or `vimma_elements`' labels: the page they were collected on, when, and by which
- *   (D12; mcp-forms F3)
+ *   byLabel: Map<string, import("../actors/VimmaActors.sys.mjs").HintTarget>,
+ *   scroll?: { x: number, y: number } | null }} LinkSession
+ *   one `f`'s or `vimma_elements`' labels: the page they were collected on, when, by which
+ *   (D12; mcp-forms F3), and for a list, where the top frame was scrolled to (F20)
  * @typedef {object} DriveContext
  * @property {unknown} conn  the agent connection: its labels are its own
  * @property {(url: string, until: number) => Promise<string | null>} askOpen  asks a cross-site
@@ -233,11 +234,46 @@ export const AgentDrive = {
    * @param {unknown} conn @param {Browser} browser
    * @param {Map<string, import("../actors/VimmaActors.sys.mjs").HintTarget>} byLabel
    * @param {"links" | "elements"} source
+   * @param {{ x: number, y: number } | null} [scroll]  the top frame's scroll position when they
+   *   were collected
    */
-  remember(conn, browser, byLabel, source) {
+  remember(conn, browser, byLabel, source, scroll = null) {
     let labels = sessions.get(conn);
     if (!labels) sessions.set(conn, (labels = new WeakMap()));
-    labels.set(browser, { mark: pageMark(browser), at: Date.now(), source, byLabel });
+    labels.set(browser, { mark: pageMark(browser), at: Date.now(), source, byLabel, scroll });
+  },
+
+  /**
+   * The connection's labels for the page now in `browser`, while they are current: collected on
+   * this document and URL less than their lifetime ago (D12; mcp-forms F3); else null.
+   * @param {unknown} conn @param {Browser} browser
+   * @returns {LinkSession | null}
+   */
+  current(conn, browser) {
+    const session = sessions.get(conn)?.get(browser);
+    const ttl = this._linkTtlMs ?? AGENT_LINKS.ttlMs;
+    const now = pageMark(browser);
+    if (
+      !session ||
+      Date.now() - session.at >= ttl ||
+      now.doc !== session.mark.doc ||
+      now.url !== session.mark.url
+    ) {
+      return null;
+    }
+    return session;
+  },
+
+  /**
+   * The labels of the connection's current `vimma_elements` list of the page now in `browser`,
+   * to draw on a screenshot (mcp-forms F20), with the top frame's scroll position when it was
+   * listed; null when there is none: `f`'s link list, an old list, or one of another page.
+   * @param {unknown} conn @param {Browser} browser
+   */
+  elementLabels(conn, browser) {
+    const session = this.current(conn, browser);
+    if (session?.source !== "elements") return null;
+    return { byLabel: session.byLabel, scroll: session.scroll ?? null };
   },
 
   /**
@@ -248,17 +284,8 @@ export const AgentDrive = {
    * @returns {{ target: import("../actors/VimmaActors.sys.mjs").HintTarget } | { refused: string }}
    */
   element(conn, browser, label) {
-    const session = sessions.get(conn)?.get(browser);
-    const ttl = this._linkTtlMs ?? AGENT_LINKS.ttlMs;
-    const now = pageMark(browser);
-    if (
-      !session ||
-      Date.now() - session.at >= ttl ||
-      now.doc !== session.mark.doc ||
-      now.url !== session.mark.url
-    ) {
-      return { refused: "stale labels: call vimma_elements again" };
-    }
+    const session = this.current(conn, browser);
+    if (!session) return { refused: "stale labels: call vimma_elements again" };
     if (session.source !== "elements") {
       return {
         refused:

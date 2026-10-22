@@ -597,6 +597,43 @@ export const VimmaActors = {
   },
 
   /**
+   * Whether any frame of `browser` shows a sensitive field with a value in its viewport, just
+   * before an agent's screenshot (docs/specs/mcp-forms.md F21). Every frame is asked in its own
+   * process; a frame that has no actor, fails or does not answer within `ms` counts as showing
+   * one, so that a screenshot is refused rather than taken unchecked.
+   * @param {any} browser XULBrowserElement
+   * @param {number} ms
+   * @returns {Promise<boolean>}
+   */
+  async agentSensitiveShown(browser, ms) {
+    /** @type {any[]} BrowsingContexts */
+    const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
+    /** @type {number | undefined} */
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms, true);
+    });
+    try {
+      const answers = frames
+        .filter((bc) => bc.currentWindowGlobal)
+        .map(async (bc) => {
+          const actor = actorFor(bc);
+          if (!actor) return true;
+          try {
+            return (
+              (await Promise.race([actor.sendQuery("Vimma:AgentSensitiveShown"), late])) !== false
+            );
+          } catch {
+            return true; // the frame navigated or its process went away mid-check
+          }
+        });
+      return (await Promise.all(answers)).some(Boolean);
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
    * Whether the agent's last click on `target` ran, or was skipped because the page changed
    * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away
    * (the click loaded a page) ran it.

@@ -6,7 +6,8 @@
 // tabs of the agent workspace, run Vimma's own page keys in one, following its links by label
 // (docs/specs/mcp-drive.md, `agent-keys`), show one to the user (`agent-show`), and list one's
 // buttons, fields and links with labels (docs/specs/mcp-forms.md, `agent-elements`), click one
-// by its label (`agent-activate`), fill fields by their labels (`agent-fill`), and nothing else. What an agent can reach is decided here, in
+// by its label (`agent-activate`), fill fields by their labels (`agent-fill`), take a screenshot
+// of one (`agent-screenshot`), and nothing else. What an agent can reach is decided here, in
 // the browser, when each command runs (decision 7): a tab of the agent workspace **and** of its
 // container, in a normal window (private windows have no workspaces and are never enumerated).
 // Every command but hello and ping asks through AgentGate first (decision 12), and after the
@@ -19,6 +20,7 @@ import {
   ELEMENTS_RATE,
   KEYS_RATE,
   OpenRate,
+  SCREENSHOT_RATE,
   SHOW_RATE,
   wrapUntrusted,
 } from "../core/agent.mjs";
@@ -38,6 +40,7 @@ import { AgentAct } from "./AgentAct.sys.mjs";
 import { AgentDownloads } from "./AgentDownloads.sys.mjs";
 import { AgentDrive } from "./AgentDrive.sys.mjs";
 import { AgentGate } from "./AgentGate.sys.mjs";
+import { AgentShot } from "./AgentShot.sys.mjs";
 
 /** @import { ConnId } from "../core/agent.mjs" */
 
@@ -70,6 +73,8 @@ const elementCalls = new CallRate(ELEMENTS_RATE);
  * counted when asked (F26).
  */
 const actCalls = new CallRate(ACT_RATE);
+/** Each connection's `agent-screenshot`: at most SCREENSHOT_RATE a minute, counted when asked (F21). */
+const shotCalls = new CallRate(SCREENSHOT_RATE);
 /** The longest URL and title an `agent-elements` reply carries, in code points. */
 const ELEMENTS_URL_MAX = 8192;
 const ELEMENTS_TITLE_MAX = 1024;
@@ -687,6 +692,9 @@ const COMMANDS = {
     if (!tab.linkedPanel || tab.hasAttribute("pending")) {
       await loadedPage(win, tab, what.url, agent.userContextId);
     }
+    // Where the page is scrolled before the list is made: labels are drawn on a screenshot only
+    // while it has not moved since (F20).
+    const scroll = await VimmaActors.scrollPosition(tab.linkedBrowser);
     let listed;
     try {
       listed = await AgentAct.elements(tab);
@@ -701,13 +709,83 @@ const COMMANDS = {
     }
     still();
     // Only once the tab is as asked: a list of a page that moved on leaves no labels (M25).
-    AgentDrive.remember(conn, tab.linkedBrowser, listed.labels, "elements");
+    AgentDrive.remember(conn, tab.linkedBrowser, listed.labels, "elements", scroll);
     // A page sets its URL and title: capped, so the reply stays within its 1 MiB line.
     return {
       url: wf(cut(what.url, ELEMENTS_URL_MAX).text),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
       elements: listed.elements,
       dropped: listed.dropped,
+    };
+  },
+
+  /**
+   * An image of an agent tab's viewport (mcp-forms F18-F21): read-only, so it runs while the user
+   * uses the tab (F27); taken in the background, the tab never selected or shown (M25), and
+   * refused while a sensitive field on screen has a value. With `labels`, the labels of the
+   * connection's current `vimma_elements` list of the page are drawn on it, if it has not
+   * scrolled since.
+   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   */
+  async "agent-screenshot"(conn, state, { tab: id, labels = false }, rid) {
+    const agent = agentWorkspace();
+    const asked = findAgentTab(agent, id);
+    const what = { ...describeTab(asked.tab), index: asked.index };
+    // Counted when asked, before the question, so a refused screenshot cannot loop (F21).
+    if (!shotCalls.take(conn, Date.now())) {
+      AgentGate.note(conn, "vimma_screenshot", what, "busy");
+      const message = "too many vimma_screenshot calls from this agent in the last minute";
+      throw new AgentError("denied", message, "busy");
+    }
+    await ask(conn, "agent-screenshot", what, state, rid);
+    /** After the yes, and once the image is made, the tab must still be as asked (M8). */
+    const still = () => {
+      try {
+        return stillAsAsked(agent, id, what.url);
+      } catch (e) {
+        AgentGate.note(conn, "vimma_screenshot", what, "changed");
+        throw e;
+      }
+    };
+    const { win, tab } = still();
+    // A lazy tab (restored, or unloaded under memory pressure) loads first, in the background.
+    if (!tab.linkedPanel || tab.hasAttribute("pending")) {
+      await loadedPage(win, tab, what.url, agent.userContextId);
+    }
+    const browser = tab.linkedBrowser;
+    /** @type {Map<string, any> | null} */
+    let drawn = null;
+    let stale = false;
+    if (labels) {
+      const list = AgentDrive.elementLabels(conn, browser);
+      const now = list ? await VimmaActors.scrollPosition(browser) : null;
+      const moved = !list?.scroll || !now || now.x !== list.scroll.x || now.y !== list.scroll.y;
+      if (list && !moved) drawn = list.byLabel;
+      else stale = true;
+    }
+    let shot;
+    try {
+      shot = await AgentShot.capture(win, tab, drawn);
+    } catch (e) {
+      // Fixed text: an error's message could carry the page's words past the untrusted header.
+      console.error("vimma agent-screenshot:", e);
+      shot = { refused: "Vimma could not take a screenshot of this page" };
+    }
+    if ("refused" in shot) {
+      AgentGate.note(conn, "vimma_screenshot", what, "failed");
+      throw new AgentError("failed", shot.refused);
+    }
+    // Last, once the image is made (M8): a page that moved on meanwhile is not sent.
+    still();
+    return {
+      url: wf(cut(what.url, ELEMENTS_URL_MAX).text),
+      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      mimeType: shot.mimeType,
+      data: shot.data,
+      width: shot.width,
+      height: shot.height,
+      ...(labels ? { labels: shot.drawn } : {}),
+      ...(stale ? { stale: true } : {}),
     };
   },
 

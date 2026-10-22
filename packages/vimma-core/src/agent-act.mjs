@@ -507,3 +507,50 @@ export function fillDetail(fields, submit) {
   const { method, action, fields: n } = submit;
   return `${what} → ${method.toUpperCase()} ${action} (${n} field${n === 1 ? "" : "s"})`;
 }
+
+/**
+ * `vimma_screenshot` (F18, F19): the image is at most `width` pixels wide and `height` high, its
+ * base64 at most `base64` characters, so the reply fits the protocol's 1 MiB line; a PNG that
+ * does not fit is encoded as JPEG at each of `jpeg`'s qualities in turn.
+ */
+export const AGENT_SCREENSHOT = Object.freeze({
+  width: 1280,
+  height: 16384,
+  base64: 700 * 1024,
+  jpeg: Object.freeze([0.8, 0.6]),
+});
+
+/**
+ * The scale a viewport `width` by `height` CSS pixels is drawn at (F18): the device pixel ratio,
+ * or less so the image is at most AGENT_SCREENSHOT.width pixels wide and AGENT_SCREENSHOT.height
+ * high; null when there is nothing to draw. Without a height only the width limits it.
+ * @param {number} width @param {number} dpr @param {number} [height]
+ * @returns {number | null}
+ */
+export function screenshotScale(width, dpr, height = 1) {
+  if (!(width > 0) || !(height > 0)) return null;
+  const ratio = dpr > 0 ? dpr : 1;
+  return Math.min(ratio, AGENT_SCREENSHOT.width / width, AGENT_SCREENSHOT.height / height);
+}
+
+/**
+ * Where each label of an element list is drawn on a screenshot (F20): at its element's top left
+ * corner (top-frame CSS pixels, scaled), kept inside the image; a label whose element is not on
+ * the image is left out.
+ * @param {Map<string, { rect: { x: number, y: number, width: number, height: number } }>} labels
+ * @param {number} scale
+ * @param {{ width: number, height: number }} size  the image's, in pixels
+ * @returns {{ label: string, x: number, y: number }[]}
+ */
+export function screenshotLabels(labels, scale, size) {
+  const out = [];
+  for (const [label, { rect }] of labels) {
+    const x = rect.x * scale;
+    const y = rect.y * scale;
+    const right = (rect.x + rect.width) * scale;
+    const bottom = (rect.y + rect.height) * scale;
+    if (right <= 0 || bottom <= 0 || x >= size.width || y >= size.height) continue;
+    out.push({ label, x: Math.max(0, x), y: Math.max(0, y) });
+  }
+  return out;
+}

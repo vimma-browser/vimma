@@ -295,6 +295,20 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
   });
 
+  // docs/specs/mcp-forms.md F18, F28: vimma_screenshot asks with the tab, and its notice names it.
+  test("vimma_screenshot: the tab in the question, the page in the notice", () => {
+    const shot = { ...keys, tool: "vimma_screenshot", what: { ...keys.what, keys: undefined } };
+    expect(text(questionLine(shot, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_screenshot: 2 "Pricing · Example" example.com/pricing',
+    );
+    expect(ranNotice(shot, 12 * MIN, 0)).toBe(
+      'claude-code took a screenshot of "Pricing · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(shot)).toBe(
+      "claude-code asks to use Vimma's agent workspace (take a screenshot of a page)",
+    );
+  });
+
   // docs/specs/mcp-forms.md F28: vimma_activate asks with the tab and the element; a submit
   // asks with the form's method and destination, offers no grant (F15) and names its fields.
   test("vimma_activate: the element in the question, what it clicked in the notice", () => {
