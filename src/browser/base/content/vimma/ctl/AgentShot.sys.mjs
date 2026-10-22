@@ -10,7 +10,10 @@
 // field with a value is on screen, and if one is, or a frame cannot say, nothing is drawn. The
 // labels of the connection's current `vimma_elements` list may be drawn on the image in the
 // theme's hint colours. The image is a PNG, or a JPEG when the PNG's base64 does not fit the
-// reply line. agent-commands.mjs asked first and checks the tab again afterwards.
+// reply line. Only an http or https page is captured, and the check of secret fields runs
+// again after the drawing; meanwhile the agent's own keys, clicks and fills on that tab are
+// `in-use`, and while one of them runs a screenshot is refused. agent-commands.mjs asked first
+// and checks the tab again afterwards.
 
 import { AGENT_SCREENSHOT, screenshotLabels, screenshotScale } from "../core/agent-act.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
@@ -30,10 +33,22 @@ const DRAW_TIMEOUT_MS = 10000;
 /** Why a screenshot is refused (F18, F19, F21). */
 export const SHOT_REFUSALS = Object.freeze({
   sensitive: "a payment or password field on screen has a value; Vimma does not capture it",
+  unchecked: "Vimma could not check every frame of this page for payment fields",
+  notWeb: "screenshots are taken only of http and https pages",
+  scrolled: "the page scrolled while the screenshot was taken; try again",
+  acting: "the agent is acting on this tab; try again when that call is done",
   unpainted: "the tab is not painted in the background: call vimma_show first",
   tooLarge: "the screenshot is too large",
   failed: "Vimma could not take a screenshot of this page",
 });
+
+/**
+ * A page screenshots are taken of: a web page, as for `vimma_elements` (F2). A tab moved into the
+ * agent workspace may show a privileged about: page, the start page or a local file.
+ * @param {any} principal nsIPrincipal
+ */
+const onTheWeb = (principal) =>
+  !!principal?.isContentPrincipal && (principal.schemeIs("http") || principal.schemeIs("https"));
 
 /** The built-in vimma hint colours (hints.css), for a theme that sets none. */
 const HINT_BG = "#1bf587";
@@ -89,10 +104,12 @@ function drawLabels(ctx, labels, scale, colours) {
  */
 function hintColours(win) {
   const style = win.getComputedStyle(win.document.documentElement);
-  return {
-    bg: style.getPropertyValue("--vimma-hint-bg").trim() || HINT_BG,
-    fg: style.getPropertyValue("--vimma-hint-fg").trim() || HINT_FG,
+  /** A canvas keeps its last colour for one it cannot parse: the default instead. */
+  const colour = (/** @type {string} */ name, /** @type {string} */ fallback) => {
+    const v = style.getPropertyValue(name).trim();
+    return v && win.CSS.supports("color", v) ? v : fallback;
   };
+  return { bg: colour("--vimma-hint-bg", HINT_BG), fg: colour("--vimma-hint-fg", HINT_FG) };
 }
 
 /**
@@ -116,9 +133,20 @@ async function encode(canvas, max) {
   return null;
 }
 
+/**
+ * Tabs, by <browser>, whose screenshot runs from its first check to its last, and those an
+ * agent's keys, click or fill runs in, with how many: the two exclude each other, so the agent
+ * cannot scroll or change a tab between the checks of its own screenshot (F21).
+ */
+const capturing = new WeakSet();
+/** @type {WeakMap<object, number>} */
+const acting = new WeakMap();
+
 export const AgentShot = {
   /** Test-only: the longest base64 in place of AGENT_SCREENSHOT.base64. */
   _base64Max: /** @type {number | null} */ (null),
+  /** Test-only: runs between the check and the drawing. */
+  _beforeDraw: /** @type {(() => unknown) | null} */ (null),
 
   /**
    * A screenshot of `tab`'s viewport, in the background (F18-F21), with `labels` drawn on it;
@@ -131,8 +159,55 @@ export const AgentShot = {
    */
   async capture(win, tab, labels) {
     const browser = tab.linkedBrowser;
+    if (!onTheWeb(browser.contentPrincipal)) return { refused: SHOT_REFUSALS.notWeb };
+    if (acting.get(browser) || capturing.has(browser)) return { refused: SHOT_REFUSALS.acting };
+    capturing.add(browser);
+    try {
+      return await this.draw(win, browser, labels);
+    } finally {
+      capturing.delete(browser);
+    }
+  },
+
+  /**
+   * Whether a screenshot of the tab of `browser` is being taken: the agent's keys, clicks and
+   * fills there are then `in-use`.
+   * @param {any} browser
+   */
+  capturing(browser) {
+    return capturing.has(browser);
+  },
+
+  /**
+   * Runs an agent's keys, click or fill on the tab of `browser`; a screenshot of it meanwhile
+   * is refused.
+   * @template T
+   * @param {any} browser @param {() => Promise<T>} run
+   * @returns {Promise<T>}
+   */
+  async acting(browser, run) {
+    acting.set(browser, (acting.get(browser) ?? 0) + 1);
+    try {
+      return await run();
+    } finally {
+      const n = (acting.get(browser) ?? 1) - 1;
+      if (n > 0) acting.set(browser, n);
+      else acting.delete(browser);
+    }
+  },
+
+  /**
+   * The drawing of `capture`, once the tab is held.
+   * @param {any} win @param {any} browser @param {Map<string, HintTarget> | null} labels
+   * @returns {Promise<{ mimeType: string, data: string, width: number, height: number,
+   *   drawn: number } | { refused: string }>}
+   */
+  async draw(win, browser, labels) {
+    const web = () => onTheWeb(browser.contentPrincipal);
     // The <browser>'s box is the viewport's size in the chrome's CSS pixels; a hidden tab
-    // panel keeps it (Firefox lays out background tabs). A box with no room draws nothing.
+    // panel keeps it (Firefox lays out background tabs). Reading it also flushes the chrome's
+    // layout, which `drawSnapshot` needs (as `tabs.captureTab` does). A box with no room draws
+    // nothing.
     const box = browser.getBoundingClientRect();
     const fit = screenshotScale(box.width, win.devicePixelRatio, box.height);
     const wg = browser.browsingContext?.currentWindowGlobal;
@@ -141,15 +216,33 @@ export const AgentShot = {
     // image shows the zoomed page at the viewport's size, and labels' rects scale the same way.
     const zoom = browser.fullZoom > 0 ? browser.fullZoom : 1;
     const scale = fit * zoom;
-    if (await VimmaActors.agentSensitiveShown(browser, FRAME_TIMEOUT_MS)) {
-      return { refused: SHOT_REFUSALS.sensitive };
-    }
+    /** Checked before and again after the drawing: a value typed meanwhile is not sent. */
+    const secret = async () => {
+      const found = await VimmaActors.agentSensitiveShown(browser, FRAME_TIMEOUT_MS);
+      if (found === "shown") return SHOT_REFUSALS.sensitive;
+      return found === "unchecked" ? SHOT_REFUSALS.unchecked : null;
+    };
+    const before = await secret();
+    if (before) return { refused: before };
+    const scrolled = await VimmaActors.scrollPosition(browser);
+    await this._beforeDraw?.();
     const bitmap = await within(
       wg.drawSnapshot(null, scale, "white").catch(() => null),
       DRAW_TIMEOUT_MS,
       null,
     );
     if (!bitmap) return { refused: SHOT_REFUSALS.unpainted };
+    const after = await secret();
+    const now = await VimmaActors.scrollPosition(browser);
+    // The drawing shows the page between the two checks; a scroll between them may have shown
+    // what neither check saw.
+    const moved = !scrolled || !now || now.x !== scrolled.x || now.y !== scrolled.y;
+    const refused =
+      after ?? (moved ? SHOT_REFUSALS.scrolled : null) ?? (web() ? null : SHOT_REFUSALS.notWeb);
+    if (refused) {
+      bitmap.close();
+      return { refused };
+    }
     const width = Math.min(bitmap.width, AGENT_SCREENSHOT.width);
     const height = Math.min(bitmap.height, AGENT_SCREENSHOT.height);
     const canvas = new win.OffscreenCanvas(width, height);

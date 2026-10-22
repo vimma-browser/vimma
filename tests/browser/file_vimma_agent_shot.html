@@ -5,8 +5,8 @@
 <!-- Fixture for browser_vimma_mcp_screenshot.js: what vimma_screenshot captures. A coloured band
    - at the top whose pixels the test reads back, a button and a search field on screen, and far
    - below the fold a card form without autocomplete attributes (form autofill's heuristics
-   - recognise it) and a password field; on screen, a hosted payment frame of another site
-   - with a card number field. With ?noise=N, random blocks cover the viewport. -->
+   - recognise it), a number field for a card number and a password field; on screen, a hosted payment frame of another site
+   - with a card number field. With ?noise=N, random blocks cover the viewport; ?dataframe adds a data: frame. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -46,6 +46,8 @@
         <input id="cardname" name="ccname" />
         <label for="cvc">Security code (CVC)</label>
         <input id="cvc" name="cvc" />
+        <label for="ccnum">Card number (digits)</label>
+        <input id="ccnum" type="number" name="ccnum" autocomplete="cc-number" />
       </form>
       <form id="login" method="post" action="/api/login">
         <label for="pw">Password</label>
@@ -57,6 +59,12 @@
       const dir = location.pathname.replace(/[^/]*$/, "");
       document.getElementById("hosted").src =
         `https://example.org${dir}file_vimma_agent_shot_card.html`;
+      // ?dataframe adds a frame Vimma's actor does not cover.
+      if (new URLSearchParams(location.search).has("dataframe")) {
+        const f = document.createElement("iframe");
+        f.src = "data:text/html,<p>data frame</p>";
+        document.body.prepend(f);
+      }
       // ?noise=N covers the viewport with random blocks of N pixels: an image that compresses
       // badly, to test the encoding's limits.
       const block = Number(new URLSearchParams(location.search).get("noise"));

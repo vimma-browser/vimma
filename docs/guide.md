@@ -1628,9 +1628,11 @@ has not scrolled since.
 - **Not while a secret shows.** While a password field or payment card field on screen, in the
   page or any of its frames, has a value, the screenshot is refused, because a card number shows
   in clear: the agent is told to scroll past it or to ask you. A card number the page copies into
-  other text, or draws itself, is not recognised.
+  other text, or draws itself, is not recognised. A page with a frame Vimma cannot check (a
+  data: or blob: frame) is refused too.
 - **Untrusted, like page text.** The agent is told that text in the image is web content, not
-  yours. Only the viewport is captured, never the browser around it or another tab.
+  yours. Only the viewport of an http or https page is captured, never the browser around it,
+  another tab, or a settings page or local file opened in the agent workspace.
 - **A grant covers screenshots** only: each shows
   `claude-code took a screenshot of "Sign up · Example" (grant, 12m left)`. At most 12 a minute.
 

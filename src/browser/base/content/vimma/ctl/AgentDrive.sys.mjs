@@ -26,6 +26,7 @@ import { isCaseSensitive } from "../core/find.mjs";
 import { urlRoot, urlUp } from "../core/pageurl.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
+import { AgentShot } from "./AgentShot.sys.mjs";
 
 /** @import { AgentStep } from "../core/agent-keys.mjs" */
 
@@ -346,7 +347,7 @@ export const AgentDrive = {
         ? "timeout"
         : !stillAgent()
           ? "changed"
-          : VimmaHost.inUse(browser)
+          : VimmaHost.inUse(browser) || AgentShot.capturing(browser)
             ? "in-use"
             : null;
 

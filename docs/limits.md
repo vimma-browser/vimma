@@ -105,7 +105,9 @@ the [user guide](guide.md); planned work is on the
   labelled "Password" or "Code" is filled like any other, with its value shown in the question.
 - `vimma_screenshot` captures the viewport only, never the whole page. It is refused while a
   password or payment card field on screen has a value, but a card number the page copies into
-  other text, or draws on a canvas, is not recognised.
+  other text, or draws on a canvas, is not recognised, nor one the user or the page shows only
+  for the moment of the drawing. A page with a data: or blob: frame, which Vimma cannot check, is never captured.
+  Only http and https pages are captured.
 - The agent's name in a question (`claude-code`) is what the agent says it is; Vimma cannot check
   it. Grants belong to the connection, and `:mcp` shows the program that started it.
 - Each agent tool's own approvals, sandbox and timeouts are its own; Vimma neither reads nor

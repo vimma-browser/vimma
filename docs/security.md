@@ -1054,7 +1054,9 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   (F18) is held the same way, checked before the question, after the yes and once the image is
   made: the tab's own top window global draws its viewport with `drawSnapshot`, frames of other
   sites included and **never** the browser's chrome, the status bar or another tab, and a tab in
-  the background draws its current page, so the tab is never selected or shown. It changes
+  the background draws its current page, so the tab is never selected or shown. It captures
+  only an http or https page, checked before and after the drawing, never a privileged about:
+  page, the start page or a local file a tab moved into the agent workspace may show. It changes
   nothing on the page, so it runs while you use the tab. The console reads of mcp-forms join this
   rule with the sub-PR that builds them.
   [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
@@ -1226,15 +1228,25 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   connection's current `vimma_elements` list of that page, and only while its top frame has
   not scrolled since the list was made; else none is drawn and the result says the list is
   stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
-  meets the viewport of any frame of the tab: each frame's child checks, just before the
-  drawing, every form control of its document and its open and closed shadow trees, a select
-  counting when its choice differs from the page's default; a field counts even if the page
-  covers or hides it otherwise, and a frame that has no Vimma actor, fails or does not answer in
-  5 s counts as showing one, so a doubt refuses. A value the page copies out of such a field
-  into other text, or draws on a canvas, is not recognised.
+  meets the viewport of any frame of the tab: each frame's child checks, just before and again
+  just after the drawing, every form control of its document and its open and closed shadow
+  trees, a number field showing text it cannot parse and an autofill preview counting as a
+  value, a select counting when its choice differs from the page's default; a field counts even
+  if the page covers or hides it otherwise, and a frame that fails counts as showing one. A
+  frame that has no Vimma actor (a data: or blob: document) or does not answer in 5 s refuses
+  the screenshot too, saying that Vimma could not check every frame. A scroll of the top frame
+  between the two checks discards the image. The agent's own steps on that tab and its
+  screenshot exclude each other: from the first check to the second, `agent-keys`,
+  `agent-activate` and `agent-fill` there are denied as `in-use` (a running `agent-keys` stops
+  before its next step), and a screenshot is refused while one of them runs, so the agent cannot
+  scroll or change the tab between its checks. A page that is not http or https is refused
+  before the question. A value the page copies out of such a field into
+  other text, or draws on a canvas, is not recognised, and a value that appears and goes again
+  within the moment of the drawing, between the two checks, is not seen by either.
   [`test_screenshot_refused_while_a_sensitive_value_is_on_screen`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`test_screenshot_fits_the_reply_line`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`test_screenshot_draws_labels`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`test_screenshot_and_the_agents_own_steps_exclude_each_other`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`the scale: at most 1,280 pixels wide, at most the device pixel ratio`](../packages/vimma-core/test/agent-act.test.mjs),
   [`labels at their element's corner, scaled; those off the image are left out`](../packages/vimma-core/test/agent-act.test.mjs),
   [`agent-screenshot: the image, its size, the page, and the labels drawn`](../packages/vimma-core/test/control-v2.test.mjs),

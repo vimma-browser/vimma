@@ -81,6 +81,13 @@ const ELEMENTS_TITLE_MAX = 1024;
 /** The longest an `agent-keys` call runs after the yes (mcp-drive D15). */
 const KEYS_CALL_MS = 60000;
 
+/**
+ * Whether the user is using the tab of `browser` (mcp-drive D13), or a screenshot of it is
+ * being taken, which the agent's own steps must not change (mcp-forms F21).
+ * @param {any} browser
+ */
+const inUse = (browser) => VimmaHost.inUse(browser) || AgentShot.capturing(browser);
+
 /** A refusal with a protocol error code (and, for `denied`, its reason). */
 export class AgentError extends Error {
   /** @param {string} code @param {string} message @param {string} [reason] */
@@ -532,7 +539,7 @@ const COMMANDS = {
       const message = "too many vimma_keys calls from this agent in the last minute";
       throw refuse("busy", new AgentError("denied", message, "busy"));
     }
-    if (VimmaHost.inUse(asked.tab.linkedBrowser)) throw refuse("in-use");
+    if (inUse(asked.tab.linkedBrowser)) throw refuse("in-use");
     const outcome = await ask(conn, "agent-keys", what, state, rid);
     let found;
     try {
@@ -541,7 +548,7 @@ const COMMANDS = {
       throw refuse("changed", e);
     }
     const { win, tab } = found;
-    if (VimmaHost.inUse(tab.linkedBrowser)) throw refuse("in-use");
+    if (inUse(tab.linkedBrowser)) throw refuse("in-use");
     const deadline = Date.now() + KEYS_CALL_MS;
     // A lazy tab (restored, or unloaded under memory pressure) loads first, in the background.
     if (!tab.linkedPanel || tab.hasAttribute("pending")) {
@@ -554,60 +561,62 @@ const COMMANDS = {
       AgentDownloads.openedBy(tab.linkedBrowser, conn, url);
       return true;
     };
-    const result = await AgentDrive.run(tab, parsed.steps, {
-      conn,
-      // D18: a follow to another site is a vimma_open of its URL, asked unless a vimma_open
-      // grant is in force; the tab and the page it replaces are shown as for any open.
-      askOpen: async (url, until) => {
-        const uri = agentUri(url);
-        const now = describeTab(tab);
-        const open = { url: uri.spec, host: uri.host, tab: now.tab, title: now.title };
-        try {
-          await ask(conn, "agent-open", { ...open, current: now.url }, state, rid, until);
-          return null;
-        } catch (e) {
-          return /** @type {AgentError} */ (e).reason ?? "user";
-        }
-      },
-      // D14, M23: a follow goes into `:mcp log` with the URL it loaded, and under a grant its
-      // notice names the host.
-      followed: (url, keys) => {
-        const uri = agentUri(url);
-        AgentGate.note(
-          conn,
-          "vimma_keys",
-          { title: what.title, keys: `${keys} → ${uri.spec}` },
-          "followed",
-        );
-        if (outcome.grant) {
-          AgentGate.announce(
+    const result = await AgentShot.acting(tab.linkedBrowser, () =>
+      AgentDrive.run(tab, parsed.steps, {
+        conn,
+        // D18: a follow to another site is a vimma_open of its URL, asked unless a vimma_open
+        // grant is in force; the tab and the page it replaces are shown as for any open.
+        askOpen: async (url, until) => {
+          const uri = agentUri(url);
+          const now = describeTab(tab);
+          const open = { url: uri.spec, host: uri.host, tab: now.tab, title: now.title };
+          try {
+            await ask(conn, "agent-open", { ...open, current: now.url }, state, rid, until);
+            return null;
+          } catch (e) {
+            return /** @type {AgentError} */ (e).reason ?? "user";
+          }
+        },
+        // D14, M23: a follow goes into `:mcp log` with the URL it loaded, and under a grant its
+        // notice names the host.
+        followed: (url, keys) => {
+          const uri = agentUri(url);
+          AgentGate.note(
             conn,
             "vimma_keys",
-            { ...what, followed: uri.host },
-            outcome.grant.until,
+            { title: what.title, keys: `${keys} → ${uri.spec}` },
+            "followed",
           );
-        }
-      },
-      canLoad: () => opens.can(conn, Date.now()),
-      stillAgent: () => {
-        const now = WorkspaceStore.agent;
-        return (
-          !!now &&
-          now.id === agent.id &&
-          now.userContextId === agent.userContextId &&
-          !win.closed &&
-          isAgentTab(win, tab, agent)
-        );
-      },
-      load: (url) => {
-        const uri = agentUri(url);
-        if (!countLoad(uri.spec)) return false;
-        tab.linkedBrowser.loadURI(uri, { triggeringPrincipal: principal });
-        return true;
-      },
-      countLoad,
-      deadline,
-    });
+          if (outcome.grant) {
+            AgentGate.announce(
+              conn,
+              "vimma_keys",
+              { ...what, followed: uri.host },
+              outcome.grant.until,
+            );
+          }
+        },
+        canLoad: () => opens.can(conn, Date.now()),
+        stillAgent: () => {
+          const now = WorkspaceStore.agent;
+          return (
+            !!now &&
+            now.id === agent.id &&
+            now.userContextId === agent.userContextId &&
+            !win.closed &&
+            isAgentTab(win, tab, agent)
+          );
+        },
+        load: (url) => {
+          const uri = agentUri(url);
+          if (!countLoad(uri.spec)) return false;
+          tab.linkedBrowser.loadURI(uri, { triggeringPrincipal: principal });
+          return true;
+        },
+        countLoad,
+        deadline,
+      }),
+    );
     // A call that stopped early says so in the log, after its yes or grant (M23).
     if (result.stopped) AgentGate.note(conn, "vimma_keys", what, "stopped", result.stopped);
     return result;
@@ -731,6 +740,11 @@ const COMMANDS = {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id);
     const what = { ...describeTab(asked.tab), index: asked.index };
+    // Only a web page is captured (F18): refused before anything is asked or counted, and
+    // AgentShot checks the page's principal again around the drawing.
+    if (!/^https?:/i.test(what.url)) {
+      throw new AgentError("failed", "screenshots are taken only of http and https pages");
+    }
     // Counted when asked, before the question, so a refused screenshot cannot loop (F21).
     if (!shotCalls.take(conn, Date.now())) {
       AgentGate.note(conn, "vimma_screenshot", what, "busy");
@@ -814,7 +828,7 @@ const COMMANDS = {
       const message = "too many vimma_activate calls from this agent in the last minute";
       throw refuse("busy", new AgentError("denied", message, "busy"));
     }
-    if (VimmaHost.inUse(browser)) throw refuse("in-use", denied("in-use"));
+    if (inUse(browser)) throw refuse("in-use", denied("in-use"));
     const found = AgentDrive.element(conn, browser, label);
     if ("refused" in found) throw refuse("failed", new AgentError("failed", found.refused));
     let checked;
@@ -861,15 +875,17 @@ const COMMANDS = {
       throw refuse("changed", e, what);
     }
     const { win, tab } = found2;
-    if (VimmaHost.inUse(tab.linkedBrowser)) throw refuse("in-use", denied("in-use"), what);
-    const result = await AgentAct.activate(tab.linkedBrowser, found.target, {
-      // The child clicks only if the element still submits there, and lets only that through.
-      submit: element.submit
-        ? { method: element.submit.method, action: element.submit.action }
-        : null,
-      href: element.href ?? null,
-      inUse: () => VimmaHost.inUse(tab.linkedBrowser),
-    });
+    if (inUse(tab.linkedBrowser)) throw refuse("in-use", denied("in-use"), what);
+    const result = await AgentShot.acting(tab.linkedBrowser, () =>
+      AgentAct.activate(tab.linkedBrowser, found.target, {
+        // The child clicks only if the element still submits there, and lets only that through.
+        submit: element.submit
+          ? { method: element.submit.method, action: element.submit.action }
+          : null,
+        href: element.href ?? null,
+        inUse: () => inUse(tab.linkedBrowser),
+      }),
+    );
     if ("refused" in result) {
       if (result.blocked) {
         const stopped = { ...what, detail: `${what.detail} · stopped a form to ${result.blocked}` };
@@ -933,7 +949,7 @@ const COMMANDS = {
         "too many vimma_activate and vimma_fill calls from this agent in the last minute";
       throw refuse("busy", new AgentError("denied", message, "busy"));
     }
-    if (VimmaHost.inUse(browser)) throw refuse("in-use", denied("in-use"));
+    if (inUse(browser)) throw refuse("in-use", denied("in-use"));
     /** @type {{ label: string, target: any, value: string | boolean, name: string,
      *   field: import("../core/agent-act.mjs").FillTarget }[]} */
     const steps = [];
@@ -1037,34 +1053,36 @@ const COMMANDS = {
       throw refuse("changed", e, what);
     }
     const { win, tab } = found2;
-    if (VimmaHost.inUse(tab.linkedBrowser)) throw refuse("in-use", denied("in-use"), what);
-    const result = await AgentAct.fill(
-      tab.linkedBrowser,
-      steps.map((s) => ({
-        label: s.label,
-        target: s.target,
-        value: s.value,
-        expect: { field: /** @type {string} */ (s.field.field), type: s.field.type ?? null },
-      })),
-      {
-        submit: submitting
-          ? {
-              by: submitting.by,
-              target: submitting.target,
-              // Only that submission is let through, to the method and destination asked about.
-              submit: { method: submitting.submit.method, action: submitting.submit.action },
+    if (inUse(tab.linkedBrowser)) throw refuse("in-use", denied("in-use"), what);
+    const result = await AgentShot.acting(tab.linkedBrowser, () =>
+      AgentAct.fill(
+        tab.linkedBrowser,
+        steps.map((s) => ({
+          label: s.label,
+          target: s.target,
+          value: s.value,
+          expect: { field: /** @type {string} */ (s.field.field), type: s.field.type ?? null },
+        })),
+        {
+          submit: submitting
+            ? {
+                by: submitting.by,
+                target: submitting.target,
+                // Only that submission is let through, to the method and destination asked about.
+                submit: { method: submitting.submit.method, action: submitting.submit.action },
+              }
+            : null,
+          inUse: () => inUse(tab.linkedBrowser),
+          still: () => {
+            try {
+              stillAsAsked(agent, id, what.url);
+              return true;
+            } catch {
+              return false;
             }
-          : null,
-        inUse: () => VimmaHost.inUse(tab.linkedBrowser),
-        still: () => {
-          try {
-            stillAsAsked(agent, id, what.url);
-            return true;
-          } catch {
-            return false;
-          }
+          },
         },
-      },
+      ),
     );
     /** M23, M28: a submission Vimma stopped is a row of its own, naming where it would have gone. */
     const noteBlocked = (/** @type {string} */ host) =>

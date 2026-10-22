@@ -24,6 +24,9 @@ const { AgentGate } = ChromeUtils.importESModule(
 const { AgentShot } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentShot.sys.mjs",
 );
+const { AgentDrive } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs",
+);
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
@@ -45,6 +48,7 @@ const SHOT = `${DIR}file_vimma_agent_shot.html`;
 const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 const SENSITIVE = "a payment or password field on screen has a value; Vimma does not capture it";
+const UNCHECKED = "Vimma could not check every frame of this page for payment fields";
 
 registerCleanupFunction(async () => {
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
@@ -327,6 +331,64 @@ add_task(async function test_screenshot_refused_while_a_sensitive_value_is_on_sc
   await typeInto(tab, "hosted", "", { frame: true });
   r = await screenshot(c, tab);
   Assert.ok(r.ok, "and once it is empty, the page is captured");
+  // A card number a number field cannot parse shows, though its value is empty.
+  await typeInto(tab, "ccnum", "4111 1111 1111 1111");
+  r = await screenshot(c, tab);
+  Assert.equal(r.error?.message, SENSITIVE, "a number field showing a card number is refused");
+  await typeInto(tab, "ccnum", "", { scroll: false });
+  // A value typed into the viewport while the image is drawn is not sent (the check runs again).
+  AgentShot._beforeDraw = () => typeInto(tab, "cardno", "4111111111111111");
+  r = await screenshot(c, tab);
+  AgentShot._beforeDraw = null;
+  Assert.equal(r.error?.message, SENSITIVE, "a value that appears during the drawing too");
+  await typeInto(tab, "cardno", "", { scroll: false });
+  // The page scrolled during the drawing: what was checked is not what was drawn.
+  AgentShot._beforeDraw = () =>
+    SpecialPowers.spawn(tab.linkedBrowser, [], () => content.scrollTo(0, 30));
+  r = await screenshot(c, tab);
+  AgentShot._beforeDraw = null;
+  Assert.equal(r.error?.message, "the page scrolled while the screenshot was taken; try again");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+add_task(async function test_screenshot_and_the_agents_own_steps_exclude_each_other() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  // Grants, so the calls below run unasked.
+  let r = await screenshot(c, tab, {}, { kind: "grant", minutes: 5 });
+  Assert.ok(r.ok, "a screenshot grant");
+  const k = c.request("agent-keys", { tab: idOf(tab), keys: "gg" });
+  AgentGate.answer((await question()).id, { kind: "grant", minutes: 5 });
+  Assert.ok((await c.response(k)).ok, "a keys grant");
+  // While a screenshot is taken, the agent's keys on that tab are refused: it could scroll a
+  // filled card field into view between the checks and back (F21).
+  /** @type {any} */
+  let during = null;
+  AgentShot._beforeDraw = async () => {
+    during = await c.call("agent-keys", { tab: idOf(tab), keys: "G" });
+  };
+  r = await screenshot(c, tab, {}, null);
+  AgentShot._beforeDraw = null;
+  Assert.ok(r.ok, "the screenshot runs");
+  Assert.equal(during?.error?.reason, "in-use", "keys during it are denied as in-use");
+  // While the agent's keys run on the tab, a screenshot of it is refused.
+  /** @type {any} */
+  let shot = null;
+  AgentDrive._onStep = async () => {
+    AgentDrive._onStep = null;
+    shot = await c.call("agent-screenshot", { tab: idOf(tab) });
+  };
+  r = await c.call("agent-keys", { tab: idOf(tab), keys: "j" });
+  AgentDrive._onStep = null;
+  Assert.ok(r.ok, "the keys run");
+  Assert.equal(shot?.error?.code, "failed", "a screenshot meanwhile is refused");
+  Assert.equal(
+    shot?.error?.message,
+    "the agent is acting on this tab; try again when that call is done",
+  );
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
@@ -341,6 +403,24 @@ add_task(async function test_screenshot_only_of_agent_tabs() {
   Assert.equal(r.error?.code, "invalid-args", "the user's tab is refused");
   Assert.equal(AgentGate.waiting.length, 0, "unasked");
   BrowserTestUtils.removeTab(mine);
+  // A tab the user moved into the agent workspace may show a page that is not on the web, such
+  // as a privileged about: page: never captured.
+  const about = gBrowser.addTab("about:robots", {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.browserLoaded(about.linkedBrowser, false, "about:robots");
+  await until(() => about.hidden, "the agent tab is hidden in its workspace");
+  let x = await c.call("agent-screenshot", { tab: idOf(about) });
+  Assert.equal(AgentGate.waiting.length, 0, "before anything is asked");
+  Assert.equal(x.error?.code, "failed", "an about: page is refused");
+  Assert.equal(x.error?.message, "screenshots are taken only of http and https pages");
+  BrowserTestUtils.removeTab(about);
+  // A frame Vimma cannot check refuses, and says so.
+  const framed = await openAgentTab(`${SHOT}?dataframe`);
+  x = await screenshot(c, framed);
+  Assert.equal(x.error?.message, UNCHECKED, "a page with a data: frame is refused");
+  BrowserTestUtils.removeTab(framed);
   c.close();
   await mcp(false);
 });

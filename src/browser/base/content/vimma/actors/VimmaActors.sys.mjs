@@ -598,12 +598,13 @@ export const VimmaActors = {
 
   /**
    * Whether any frame of `browser` shows a sensitive field with a value in its viewport, just
-   * before an agent's screenshot (docs/specs/mcp-forms.md F21). Every frame is asked in its own
-   * process; a frame that has no actor, fails or does not answer within `ms` counts as showing
-   * one, so that a screenshot is refused rather than taken unchecked.
+   * before and just after an agent's screenshot is drawn (docs/specs/mcp-forms.md F21). Every
+   * frame is asked in its own process: `shown` when one says so or fails; `unchecked` when a
+   * frame has no actor (a data: or blob: document) or does not answer within `ms`, which refuses
+   * too; else `clear`.
    * @param {any} browser XULBrowserElement
    * @param {number} ms
-   * @returns {Promise<boolean>}
+   * @returns {Promise<"shown" | "unchecked" | "clear">}
    */
   async agentSensitiveShown(browser, ms) {
     /** @type {any[]} BrowsingContexts */
@@ -611,23 +612,26 @@ export const VimmaActors = {
     /** @type {number | undefined} */
     let timer;
     const late = new Promise((resolve) => {
-      timer = setTimeout(resolve, ms, true);
+      timer = setTimeout(resolve, ms, "late");
     });
     try {
-      const answers = frames
-        .filter((bc) => bc.currentWindowGlobal)
-        .map(async (bc) => {
-          const actor = actorFor(bc);
-          if (!actor) return true;
-          try {
-            return (
-              (await Promise.race([actor.sendQuery("Vimma:AgentSensitiveShown"), late])) !== false
-            );
-          } catch {
-            return true; // the frame navigated or its process went away mid-check
-          }
-        });
-      return (await Promise.all(answers)).some(Boolean);
+      const answers = await Promise.all(
+        frames
+          .filter((bc) => bc.currentWindowGlobal)
+          .map(async (bc) => {
+            const actor = actorFor(bc);
+            if (!actor) return "unchecked";
+            try {
+              const r = await Promise.race([actor.sendQuery("Vimma:AgentSensitiveShown"), late]);
+              if (r === "late") return "unchecked";
+              return r === false ? "clear" : "shown";
+            } catch {
+              return "shown"; // the frame navigated or its process went away mid-check
+            }
+          }),
+      );
+      if (answers.includes("shown")) return "shown";
+      return answers.includes("unchecked") ? "unchecked" : "clear";
     } finally {
       clearTimeout(timer);
     }

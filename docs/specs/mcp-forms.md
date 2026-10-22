@@ -475,7 +475,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `agent-screenshot`) asks, and on a yes calls `drawSnapshot(null, scale, "white")` on the agent
     tab's top window global, in the parent: the visible viewport, frames of other sites included,
     never the browser's chrome, the status bar or another tab. It is read-only and is asked and
-    granted as its own tool, because it shows the same page that `vimma_read_page` reads.
+    granted as its own tool, because it shows the same page that `vimma_read_page` reads. Like
+    `vimma_elements` (F2) it captures only an http or https page, checked before and after the
+    drawing, because a privileged about: page, the start page or a local file moved into the
+    agent workspace is not the agent's to see.
     `scale` is chosen so that the image is at most 1,280 pixels wide, at most the device pixel
     ratio, and at most 16,384 pixels high. The tab is not selected or shown: a background tab
     draws its current page (Research). If the tab has no size or the drawing fails, the tool
@@ -501,10 +504,18 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     value, with `a payment or password field on screen has a value; Vimma does not capture it`,
     because a card number the user typed into an agent tab shows on screen in clear (only
     `type=password` is masked) and the list keeps such values from the agent too; the check runs
-    in each frame's child just before the snapshot, over every form control of the document and
-    its shadow trees whose box meets that frame's viewport, a select counting when its choice
-    differs from the page's default. A frame that has no Vimma actor, fails or does not answer
-    in 5 s counts as showing such a value, so that a doubt refuses. It costs nothing on pages without such
+    in each frame's child just before and again just after the snapshot, over every form control
+    of the document and its shadow trees whose box meets that frame's viewport, a number
+    field's unparsed text and an autofill preview counting as values, a select counting when its
+    choice differs from the page's default; a scroll of the top frame between the checks
+    discards the image, and the agent's own `vimma_keys`, `vimma_activate` and `vimma_fill` on
+    that tab are `in-use` from the first check to the second, while a screenshot is refused
+    while one of them runs, because the agent could otherwise scroll a filled field into view
+    and back between the checks. A frame that
+    fails counts as showing such a value; one that has no Vimma actor (a data: or blob:
+    document) or does not answer in 5 s refuses with
+    `Vimma could not check every frame of this page for payment fields`, so that a doubt
+    refuses and says why. It costs nothing on pages without such
     values, and the agent can scroll past the field or ask the user. Rejected: capturing what
     the tab shows, because it would break F6's promise for images; asking every screenshot with
     no grant, because questions asked that often stop being read.

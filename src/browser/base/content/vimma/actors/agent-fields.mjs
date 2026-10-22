@@ -194,15 +194,18 @@ export function plainlySensitive(el) {
 }
 
 /**
- * Whether a form control shows a value: text in a field or text area, a select's choice other
- * than the page's own default. A file field's value is a fake path and a button's its text.
+ * Whether a form control shows a value: text in a field or text area (a number field's text it
+ * cannot parse, an autofill preview), a select's choice other than the page's own default. A file field's value is a fake path and a button's its text.
  * @param {Element} el
  */
 function showsValue(el) {
   const html = /** @type {any} */ (el);
   if (el.localName === "textarea") return html.value !== "";
   if (el.localName === "input") {
-    return !NO_VALUE.has(html.type) && html.type !== "hidden" && html.value !== "";
+    if (NO_VALUE.has(html.type) || html.type === "hidden") return false;
+    // A number field shows text it cannot parse with an empty value, and form autofill's
+    // preview shows text before it is a value.
+    return html.value !== "" || html.validity?.badInput === true || !!html.previewValue;
   }
   if (el.localName === "select") {
     const chosen = html.selectedOptions?.[0];
