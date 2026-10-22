@@ -1335,7 +1335,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers ten tools:
+and output, connects to Vimma as an agent (never with full control), and offers eleven tools:
 
 | Tool               | What the agent can do                                                                                    |
 | ------------------ | -------------------------------------------------------------------------------------------------------- |
@@ -1349,6 +1349,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_activate`   | Click a button, link or checkbox from that list; a form it would send asks you every time.               |
 | `vimma_fill`       | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
 | `vimma_screenshot` | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
+| `vimma_console`    | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1448,7 +1449,7 @@ with the rest of your computer.
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
-  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots and 6 `vimma_show` calls a minute, and a minute of silence after three noes
+  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots, 30 console reads and 6 `vimma_show` calls a minute, and a minute of silence after three noes
   in a row. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -1635,6 +1636,32 @@ has not scrolled since.
   another tab, or a settings page or local file opened in the agent workspace.
 - **A grant covers screenshots** only: each shows
   `claude-code took a screenshot of "Sign up · Example" (grant, 12m left)`. At most 12 a minute.
+
+#### Reading a page's errors
+
+`vimma_console` lets an agent that builds or tests a web app see why a page in the agent
+workspace fails. The question names the tab,
+`◇ claude-code wants vimma_console: 2 "Sign up · Example" example.com/signup`, and on `y` the
+agent gets, newest first:
+
+- the page's script errors and warnings (uncaught exceptions, blocked content, security
+  warnings), from the page and each of its frames;
+- what the page itself reported with `console.error` and `console.warn` (never `console.log` or
+  `console.info`, which are mostly noise);
+- the tab's recent failed requests: an HTTP status of 400 or above, or a network error such as
+  an unknown host, with the method, address and type of each.
+
+Nothing runs in the page to get them: Vimma reads what Firefox already keeps, and logs failed
+requests of agent tabs only while MCP is on, the last 100 per tab, in memory; a tab's log goes
+when it closes, and every log goes with `:mcp off`. A console call's text arguments are passed on,
+any other argument only as its type (`[object]`). The result gives Vimma's clock, which the agent
+can pass back as `since` to see only what a later click or fill caused.
+
+- **Untrusted, like page text.** Messages and addresses are the page's own: they may carry
+  instructions, which the agent is told are not yours, or tokens the page put in a URL. Only an
+  http or https page's are read.
+- **A grant covers console reads** only: each shows
+  `claude-code read the errors of "Sign up · Example" (grant, 12m left)`. At most 30 a minute.
 
 #### Showing you a page
 

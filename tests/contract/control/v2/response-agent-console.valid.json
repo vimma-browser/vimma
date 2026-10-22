@@ -1,0 +1,18 @@
+{
+  "description": "An uncaught error and a failed request, each list inside the untrusted-content delimiters, with Vimma's clock",
+  "kind": "response",
+  "command": "agent-console",
+  "message": {
+    "type": "response",
+    "id": 15,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/signup",
+      "title": "Sign up · Example",
+      "time": 1761000005000,
+      "errors": "<untrusted-web-content>\n{\"level\":\"error\",\"source\":\"script\",\"message\":\"Uncaught TypeError: form is null\",\"file\":\"https://example.com/app.js\",\"line\":12,\"column\":5,\"time\":1761000001000}\n</untrusted-web-content>",
+      "requests": "<untrusted-web-content>\n{\"method\":\"POST\",\"url\":\"https://example.com/api/signup\",\"status\":500,\"type\":\"fetch\",\"time\":1761000002000}\n</untrusted-web-content>",
+      "dropped": 0
+    }
+  }
+}

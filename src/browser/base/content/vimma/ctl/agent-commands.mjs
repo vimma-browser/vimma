@@ -7,7 +7,8 @@
 // (docs/specs/mcp-drive.md, `agent-keys`), show one to the user (`agent-show`), and list one's
 // buttons, fields and links with labels (docs/specs/mcp-forms.md, `agent-elements`), click one
 // by its label (`agent-activate`), fill fields by their labels (`agent-fill`), take a screenshot
-// of one (`agent-screenshot`), and nothing else. What an agent can reach is decided here, in
+// of one (`agent-screenshot`), read its script errors and failed requests (`agent-console`), and
+// nothing else. What an agent can reach is decided here, in
 // the browser, when each command runs (decision 7): a tab of the agent workspace **and** of its
 // container, in a normal window (private windows have no workspaces and are never enumerated).
 // Every command but hello and ping asks through AgentGate first (decision 12), and after the
@@ -17,6 +18,7 @@ import {
   ACT_RATE,
   AGENT_TOOLS,
   CallRate,
+  CONSOLE_RATE,
   ELEMENTS_RATE,
   KEYS_RATE,
   OpenRate,
@@ -37,6 +39,7 @@ import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { AgentAct } from "./AgentAct.sys.mjs";
+import { AgentConsole } from "./AgentConsole.sys.mjs";
 import { AgentDownloads } from "./AgentDownloads.sys.mjs";
 import { AgentDrive } from "./AgentDrive.sys.mjs";
 import { AgentGate } from "./AgentGate.sys.mjs";
@@ -75,6 +78,8 @@ const elementCalls = new CallRate(ELEMENTS_RATE);
 const actCalls = new CallRate(ACT_RATE);
 /** Each connection's `agent-screenshot`: at most SCREENSHOT_RATE a minute, counted when asked (F21). */
 const shotCalls = new CallRate(SCREENSHOT_RATE);
+/** Each connection's `agent-console`: at most CONSOLE_RATE a minute, counted when asked (F26). */
+const consoleCalls = new CallRate(CONSOLE_RATE);
 /** The longest URL and title an `agent-elements` reply carries, in code points. */
 const ELEMENTS_URL_MAX = 8192;
 const ELEMENTS_TITLE_MAX = 1024;
@@ -804,6 +809,56 @@ const COMMANDS = {
   },
 
   /**
+   * An agent tab's script errors, its page's console errors and warnings, and its failed requests
+   * (mcp-forms F22-F24; security.md M30, M31): read-only, so it runs while the user uses the tab
+   * (F27). Nothing runs in the page: the errors come from Firefox's own caches and the requests
+   * from AgentConsole's log; the tab stays in the background (M25).
+   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   */
+  async "agent-console"(conn, state, { tab: id, since = 0 }, rid) {
+    const agent = agentWorkspace();
+    const asked = findAgentTab(agent, id);
+    const what = { ...describeTab(asked.tab), index: asked.index };
+    // Only a web page's (as F2): a privileged about: page, the start page or a local file moved
+    // into the agent workspace is not the agent's to read. Refused before anything is asked.
+    if (!/^https?:/i.test(what.url)) {
+      throw new AgentError("failed", "console output is read only of http and https pages");
+    }
+    // Counted when asked, before the question, so a refused read cannot loop (F26).
+    if (!consoleCalls.take(conn, Date.now())) {
+      AgentGate.note(conn, "vimma_console", what, "busy");
+      const message = "too many vimma_console calls from this agent in the last minute";
+      throw new AgentError("denied", message, "busy");
+    }
+    await ask(conn, "agent-console", what, state, rid);
+    /** After the yes, and once the lists are made, the tab must still be as asked (M8). */
+    const still = () => {
+      try {
+        return stillAsAsked(agent, id, what.url);
+      } catch (e) {
+        AgentGate.note(conn, "vimma_console", what, "changed");
+        throw e;
+      }
+    };
+    const { tab } = still();
+    let read;
+    try {
+      read = await AgentConsole.read(tab.linkedBrowser, since);
+    } catch (e) {
+      // Fixed text: an error's message could carry the page's words past the untrusted header.
+      console.error("vimma agent-console:", e);
+      AgentGate.note(conn, "vimma_console", what, "failed");
+      throw new AgentError("failed", "Vimma could not read this page's errors");
+    }
+    still();
+    return {
+      url: wf(cut(what.url, ELEMENTS_URL_MAX).text),
+      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      ...read,
+    };
+  },
+
+  /**
    * A click on one element of an agent tab, by its label from the connection's last
    * `vimma_elements` there (mcp-forms F8-F11, F15-F17; security.md M26, M28, M29): refused
    * before the question when it is not clickable, asked every time when it submits a form, and
@@ -1153,6 +1208,8 @@ export function forgetAgentConnection(conn) {
   showCalls.forget(conn);
   elementCalls.forget(conn);
   actCalls.forget(conn);
+  shotCalls.forget(conn);
+  consoleCalls.forget(conn);
   AgentDrive.forget(conn);
 }
 

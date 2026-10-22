@@ -1,0 +1,13 @@
+{
+  "description": "An agent tab's script errors and failed requests since a time (mcp-forms F22)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 15,
+    "command": "agent-console",
+    "args": {
+      "tab": "12",
+      "since": 1761000000000
+    }
+  }
+}

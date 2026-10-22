@@ -9,6 +9,14 @@
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
 import { isSensitiveAutocomplete } from "../core/agent-element.mjs";
+import {
+  AGENT_CONSOLE,
+  consoleArgsText,
+  newestEntries,
+  scriptErrorLevel,
+  scriptErrorSource,
+} from "../core/agent-act.mjs";
+import { cutTo } from "../core/agent-keys.mjs";
 import { collectTargets, linkText } from "./hint-collect.mjs";
 import {
   actTargetOf,
@@ -544,6 +552,14 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#activateHint(msg.data);
       case "Vimma:AgentElement":
         return this.#agentElement(msg.data);
+      case "Vimma:AgentConsole":
+        // An agent's vimma_console (docs/specs/mcp-forms.md F22, F23): this frame's own errors.
+        try {
+          return this.#agentConsole(msg.data);
+        } catch (e) {
+          console.error("vimma agent-console:", e);
+          return { entries: [], omitted: 0 };
+        }
       case "Vimma:AgentSensitiveShown": {
         // An agent's screenshot is about to be taken (docs/specs/mcp-forms.md F21): whether a
         // sensitive field with a value is in this frame's viewport. A failure answers yes, so
@@ -831,6 +847,65 @@ export class VimmaChild extends JSWindowActorChild {
       return false;
     }
     return (now.href ?? null) === (asked.href ?? null);
+  }
+
+  /**
+   * This frame's script errors and its page's console.error and console.warn calls, for an
+   * agent's `vimma_console` (docs/specs/mcp-forms.md F22, F23; security.md M30): read from this
+   * process's console service and ConsoleAPIStorage, both of which Firefox fills whether or not
+   * anyone asks, by this document's inner window id. Nothing runs in the page: a console call's
+   * arguments are read only with `typeof` (consoleArgsText), and of a script error only its text
+   * and position, never its exception or stack. Only the newest `max` entries after `since` are
+   * answered, each string cut, with how many more there are, so a noisy page cannot make the
+   * parent copy everything it logged.
+   * @param {{ since?: unknown, max?: unknown }} data
+   */
+  #agentConsole(data) {
+    const since = Number.isSafeInteger(data?.since) ? /** @type {number} */ (data.since) : 0;
+    const max = Math.min(
+      Number.isSafeInteger(data?.max) ? /** @type {number} */ (data.max) : AGENT_CONSOLE.errors,
+      AGENT_CONSOLE.errors,
+    );
+    /** A count from Firefox's event, else 0. @param {unknown} v */
+    const n = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+    const id = this.manager?.innerWindowId;
+    if (!id) return { entries: [], omitted: 0 };
+    /** @param {unknown} s @param {number} most */
+    const cut = (s, most) => cutTo(String(s ?? "").slice(0, 4 * most), most);
+    const out = [];
+    for (const m of Services.console.getMessageArray() ?? []) {
+      if (!(m instanceof Ci.nsIScriptError) || m.innerWindowID !== id) continue;
+      const level = scriptErrorLevel(m.flags);
+      if (!level) continue;
+      out.push({
+        level,
+        source: scriptErrorSource(m.category),
+        message: cut(m.errorMessage, AGENT_CONSOLE.message),
+        file: cut(m.sourceName, AGENT_CONSOLE.url),
+        line: m.lineNumber,
+        column: m.columnNumber,
+        time: m.timeStamp,
+      });
+    }
+    const storage = Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage);
+    for (const event of storage.getEvents(String(id)) ?? []) {
+      // The event is Firefox's own object, made in a privileged scope (dom/console/Console.cpp);
+      // only its `arguments` are the page's.
+      const level = event?.level;
+      if (level !== "error" && level !== "warn") continue;
+      out.push({
+        level,
+        source: "console",
+        message: cut(consoleArgsText(event.arguments), AGENT_CONSOLE.message),
+        file: typeof event.filename === "string" ? cut(event.filename, AGENT_CONSOLE.url) : "",
+        line: n(event.lineNumber),
+        column: n(event.columnNumber),
+        time: n(event.timeStamp),
+      });
+    }
+    const after = out.filter((e) => e.time > since);
+    const entries = newestEntries(after, since, max);
+    return { entries, omitted: after.length - entries.length };
   }
 
   /**

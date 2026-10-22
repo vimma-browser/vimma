@@ -700,10 +700,11 @@ is on (M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements`
 tab's buttons, fields and links listed with hint labels, sensitive values left out: M25, M31,
 M32), `vimma_activate` (a click on one of them, with no user activation, every form
 submission asked: M25, M26, M28, M29, M32) and `vimma_fill` (fields set as form autofill sets
-them, never a password, payment card, one-time-code or file field: M25, M27, M28, M32) and
+them, never a password, payment card, one-time-code or file field: M25, M27, M28, M32),
 `vimma_screenshot` (an image of an agent tab's viewport, refused while a password or payment
-card field on screen has a value: M25, M31, M32), in force; its console output enters this page
-with the sub-PR that builds it.
+card field on screen has a value: M25, M31, M32) and `vimma_console` (an agent tab's script
+errors, console errors and warnings and failed requests, read without running page code: M25,
+M30, M31, M32), in force.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
@@ -1057,8 +1058,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   the background draws its current page, so the tab is never selected or shown. It captures
   only an http or https page, checked before and after the drawing, never a privileged about:
   page, the start page or a local file a tab moved into the agent workspace may show. It changes
-  nothing on the page, so it runs while you use the tab. The console reads of mcp-forms join this
-  rule with the sub-PR that builds them.
+  nothing on the page, so it runs while you use the tab. `agent-console` (F22) is held the same
+  way, checked before the question, after the yes and once its lists are made, and like
+  `agent-screenshot` reads only an http or https page and runs while you use the tab: it reads
+  Firefox's caches and Vimma's request log and touches nothing in the tab.
   [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_only_on_web_pages_and_agent_tabs`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_agent_labels_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_elements.js),
@@ -1075,7 +1078,9 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`agent-fill: a tab, fields by label and value, an optional submit`](../packages/vimma-core/test/control-v2.test.mjs),
   [`test_screenshot_of_a_background_tab_shows_its_page`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`test_screenshot_only_of_agent_tabs`](../tests/browser/browser_vimma_mcp_screenshot.js),
-  [`agent-screenshot: a tab and an optional labels flag, nothing else`](../packages/vimma-core/test/control-v2.test.mjs)
+  [`agent-screenshot: a tab and an optional labels flag, nothing else`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`test_console_returns_uncaught_errors_and_console_errors`](../tests/browser/browser_vimma_mcp_console.js),
+  [`test_console_only_of_agent_tabs_and_web_pages`](../tests/browser/browser_vimma_mcp_console.js)
 - M26. An agent's click (`agent-activate`, mcp-forms F8) **must** be the frame's child calling
   the element's `click()` after the same untrusted `mouseover`, `mousedown` and `mouseup` your
   `f` hints send, with no event through `nsIDOMWindowUtils` or the widget, so the page gets no
@@ -1185,6 +1190,37 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`a link to another site is refused: vimma_keys follows it (M29)`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a link to something other than a web page is refused`](../packages/vimma-core/test/agent-act.test.mjs),
   [`anything malformed or over its cap is refused`](../packages/vimma-core/test/agent-act.test.mjs)
+- M30. `agent-console` (mcp-forms F22, F23) **must not** evaluate code, call a page function,
+  start the DevTools server, the Remote Agent or Marionette, or read a property of a page object.
+  It reads only what Firefox keeps whether or not anyone asks: each frame's child reads its
+  process's `nsIConsoleService` (script errors at error and warning level, by its document's
+  inner window id, their text and position only, never their exception or stack) and
+  `ConsoleAPIStorage` (the page's `console.error` and `console.warn` calls, whose arguments are
+  copied only when they are strings, numbers, booleans, bigints, null or undefined, and are
+  otherwise named by their `typeof` alone, so no getter, `toString` or proxy trap of the page
+  runs); the parent adds what its own console service logged for those documents. A frame's
+  answer is checked entry by entry (core's `parseConsoleEntry`) and cut, as any reply from a
+  content process; at most 100 frames are asked, and each answers only its newest 100 entries
+  after `since`, cut in the child and counted beyond, so a page that logs without end cannot
+  make the parent copy and sort all of it. No user name or password of a script, file or
+  request URL reaches the agent. Failed requests (HTTP status 400 and above, or a channel error other than a
+  cancel, a redirect or a load turned download) **must** be logged only for channels whose top
+  browsing context is a live tab of the agent workspace's container outside private windows,
+  only while MCP is on, the last
+  100 per tab in memory, with the URL's user name and password removed; a tab's log goes when it
+  closes, and every log goes when MCP turns off.
+  [`test_console_runs_no_page_code`](../tests/browser/browser_vimma_mcp_console.js),
+  [`test_console_returns_failed_requests_with_status`](../tests/browser/browser_vimma_mcp_console.js),
+  [`test_request_log_cleared_when_the_tab_closes_or_mcp_turns_off`](../tests/browser/browser_vimma_mcp_console.js),
+  [`a console call's arguments: primitives as text, anything else as its type`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a request failed at status 400 and above, or with a channel error but a cancel`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`an entry from a content process is checked, and its strings cut`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`agent-console: a tab and an optional since, nothing else`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`console_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp.rs),
+  [`test_a_noisy_page_sends_one_replys_worth`](../tests/browser/browser_vimma_mcp_console.js),
+  [`a console call's huge arguments are cut before they are joined`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a frame answers only its newest entries after since, at most a list's worth`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`no user name or password of a script or request URL reaches the agent`](../packages/vimma-core/test/agent-act.test.mjs)
 - M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,
   wrapped by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the
   protocol validator **must** refuse a list that is not, or that holds a second delimiter. At
@@ -1253,14 +1289,26 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`a_screenshot_is_an_image_after_the_untrusted_header`](../tools/vimma-ctl/src/mcp.rs),
   [`screenshot_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp.rs)
 
+  `agent-console`'s errors and failed requests (F24) **must** each be one string inside the
+  untrusted-content delimiters, wrapped by the browser as above, and the protocol validator and
+  `vimma-ctl mcp` **must** refuse either list when it is not. At most 100 errors and 100 failed
+  requests, newest first, one JSON object a line, and no more than fit 512 KiB of the reply
+  line together, the oldest left out and counted; messages are cut at 1,000 characters and URLs
+  and files at 512, page strings are NFKC-normalised and stripped of invisible characters, and
+  no page `<`, line separator or paragraph separator appears literally. Messages and URLs are
+  the page's own and can carry tokens it put there; they come only from the agent's own tab.
+  [`the lists: newest first, only after since, at most 100 each, within the bytes`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`no page string can spell a delimiter or a line of its own`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`agent-console: the page, its errors and requests inside the delimiters, the time`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`console_lists_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
+
 - M32. More than 30 `agent-elements` calls, 30 `agent-activate` and `agent-fill` calls
-  together, or 12 `agent-screenshot` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
+  together, 12 `agent-screenshot` calls, or 30 `agent-console` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
   question, **must** be denied as `busy`, so a grant cannot flood a page and a refused call
   cannot loop; every call, asked, under a grant or denied, **must** be in `:mcp log` (M23), a
   click with its element, a fill with its fields and values (one refused before its question,
   with its labels), and a submission with its destination, and a call under a grant shows a notice naming the page (and for a click, the
-  element; for a fill, how many fields). The rate of console reads joins this rule with its
-  sub-PR.
+  element; for a fill, how many fields).
   [`at most 30 agent-elements per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_elements_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_elements.js),
   [`vimma_elements: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
@@ -1272,7 +1320,11 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`at most 12 agent-screenshot per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`vimma_screenshot can be granted, and its grant covers no other tool`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_screenshot_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_screenshot.js),
-  [`vimma_screenshot: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
+  [`vimma_screenshot: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`at most 30 agent-console per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`vimma_console can be granted, and its grant covers no other tool`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_console_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_console.js),
+  [`vimma_console: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 

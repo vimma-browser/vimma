@@ -78,6 +78,7 @@ describe("protocol 2 constants", () => {
       "agent-activate",
       "agent-fill",
       "agent-screenshot",
+      "agent-console",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
@@ -256,6 +257,21 @@ describe("agent commands: args", () => {
     expect(shot({})).toEqual(["tab must be a tab id (digits)"]);
     expect(shot({ tab: "12", labels: "yes" })).toEqual(["labels must be a boolean"]);
     expect(shot({ tab: "12", rect: { x: 0 } })).toEqual(['unknown field "args.rect"']);
+  });
+
+  // docs/specs/mcp-forms.md F22: a console read names one tab, and optionally a time.
+  test("agent-console: a tab and an optional since, nothing else", () => {
+    const read = (args) => errorsOf(req("agent-console", args));
+    expect(read({ tab: "12" })).toEqual([]);
+    expect(read({ tab: "12", since: 0 })).toEqual([]);
+    expect(read({ tab: "12", since: 1_761_000_000_000 })).toEqual([]);
+    expect(read({})).toEqual(["tab must be a tab id (digits)"]);
+    const since = "since must be a non-negative integer (ms since the epoch)";
+    expect(read({ tab: "12", since: -1 })).toEqual([since]);
+    expect(read({ tab: "12", since: 1.5 })).toEqual([since]);
+    expect(read({ tab: "12", since: "1" })).toEqual([since]);
+    expect(read({ tab: "12", since: 2 ** 53 })).toEqual([since]);
+    expect(read({ tab: "12", expression: "1+1" })).toEqual(['unknown field "args.expression"']);
   });
 
   // docs/specs/mcp-forms.md F8: a click names one tab and one label from vimma_elements.
@@ -451,6 +467,36 @@ describe("agent commands: results and errors", () => {
       "result.stale must be true when present",
     ]);
     expect(errorsOf(ok({ ...result, html: "<p>" }), cmd)).toEqual(['unknown field "result.html"']);
+  });
+
+  // docs/specs/mcp-forms.md F22, F24 (security.md M31): both lists inside the untrusted
+  // delimiters, Vimma's clock, and how many entries were left out.
+  test("agent-console: the page, its errors and requests inside the delimiters, the time", () => {
+    const cmd = { command: "agent-console" };
+    const wrap = (t) => `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
+    const result = {
+      url: "https://a/",
+      title: "A",
+      time: 1_761_000_000_000,
+      errors: wrap('{"level":"error","source":"script","message":"boom"}'),
+      requests: wrap(""),
+      dropped: 0,
+    };
+    expect(errorsOf(ok(result), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, errors: '{"level":"error"}' }), cmd)).toEqual([
+      "result.errors must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...result, requests: `${wrap("")}${wrap("")}` }), cmd)).toEqual([
+      "result.requests must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...result, time: -1 }), cmd)).toEqual([
+      "result.time must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, dropped: 0.5 }), cmd)).toEqual([
+      "result.dropped must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, url: 1 }), cmd)).toEqual(["result.url must be a string"]);
+    expect(errorsOf(ok({ ...result, value: "42" }), cmd)).toEqual(['unknown field "result.value"']);
   });
 
   // docs/specs/mcp-forms.md F11, F16: the page after the click, a dialog's text inside the

@@ -33,8 +33,9 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
  * `agent-show` brings the agent workspace to the front with one agent tab selected
  * (docs/specs/mcp-drive.md D2, D8, D19). `agent-elements` lists an agent tab's buttons, fields
  * and links with hint labels (docs/specs/mcp-forms.md F2), `agent-activate` clicks one by its
- * label (F8), `agent-fill` fills fields by their labels (F12), and `agent-screenshot` returns an
- * image of an agent tab's viewport (F18).
+ * label (F8), `agent-fill` fills fields by their labels (F12), `agent-screenshot` returns an
+ * image of an agent tab's viewport (F18), and `agent-console` its script errors and failed
+ * requests (F22).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -50,6 +51,7 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-activate",
   "agent-fill",
   "agent-screenshot",
+  "agent-console",
 ]);
 /** Why `agent-activate`'s wait after the click stopped early (mcp-forms F27). */
 export const ACTIVATE_STOPS = Object.freeze(["in-use"]);
@@ -418,6 +420,13 @@ function checkRequest(m, errors) {
     if ("labels" in args && typeof args.labels !== "boolean") {
       errors.push("labels must be a boolean");
     }
+  } else if (command === "agent-console") {
+    // A tab and a time, never an expression: nothing runs in the page (mcp-forms F23).
+    noExtraFields(args, ["tab", "since"], errors, "args.");
+    checkTabArg(args, errors);
+    if ("since" in args && !isCount(args.since)) {
+      errors.push("since must be a non-negative integer (ms since the epoch)");
+    }
   } else if (
     command === "agent-close" ||
     command === "agent-show" ||
@@ -481,6 +490,29 @@ function checkElementsResult(result, errors) {
   checkFields(result, "result", { strings: ["url", "title"] }, errors);
   if (!insideDelimiters(result.elements)) {
     errors.push("result.elements must be inside the untrusted-content delimiters");
+  }
+  if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+}
+
+/**
+ * `agent-console`'s result (mcp-forms F22, F24; security.md M31): the page, Vimma's clock when
+ * it read them, its errors and its failed requests each inside the untrusted-content
+ * delimiters, and how many entries were left out.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkConsoleResult(result, errors) {
+  noExtraFields(
+    result,
+    ["url", "title", "time", "errors", "requests", "dropped"],
+    errors,
+    "result.",
+  );
+  checkFields(result, "result", { strings: ["url", "title"] }, errors);
+  if (!isCount(result.time)) errors.push("result.time must be a non-negative integer");
+  for (const key of ["errors", "requests"]) {
+    if (!insideDelimiters(result[key])) {
+      errors.push(`result.${key} must be inside the untrusted-content delimiters`);
+    }
   }
   if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
 }
@@ -689,6 +721,8 @@ function checkAgentResult(result, command, errors) {
     checkFillResult(result, errors);
   } else if (command === "agent-screenshot") {
     checkScreenshotResult(result, errors);
+  } else if (command === "agent-console") {
+    checkConsoleResult(result, errors);
   }
 }
 
