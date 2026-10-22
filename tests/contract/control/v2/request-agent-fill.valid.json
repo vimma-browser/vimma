@@ -1,0 +1,18 @@
+{
+  "description": "Fill fields of an agent tab by their labels from agent-elements, then submit the form with its default button (mcp-forms F12, F15)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 13,
+    "command": "agent-fill",
+    "args": {
+      "tab": "12",
+      "fields": [
+        { "label": "sd", "value": "ada@example.com" },
+        { "label": "sf", "value": "fi" },
+        { "label": "sg", "value": true }
+      ],
+      "submit": true
+    }
+  }
+}

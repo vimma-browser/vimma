@@ -1,8 +1,9 @@
 # Spec: bookmarks-toolbar-hidden
 
-Status: draft · Area: `src/browser/branding/vimma/pref/firefox-branding.js`,
-`packages/vimma-core/src/config.mjs`, `actions.mjs`, `cmdline.mjs`, `defaults.mjs`;
-`src/browser/base/content/vimma/ui/bookmarks-toolbar.mjs` (new), `config/ConfigHost.sys.mjs`,
+Status: implemented · Area: `src/browser/branding/vimma/pref/firefox-branding.js`,
+`packages/vimma-core/src/bookmarks-toolbar.mjs` (new), `config.mjs`, `cmdline.mjs`,
+`defaults.mjs`; `src/browser/base/content/vimma/ui/bookmarks-toolbar.mjs` (new),
+`config/ConfigHost.sys.mjs`,
 `host/VimmaHost.sys.mjs`, `start/start.html` · Upstream patches:
 `src/browser/components/places/PlacesUIUtils-sys-mjs.patch` (new, decision 6), with its ADR-003
 register line: budget 1 hunk, 4 lines, "`maybeToggleBookmarkToolbarVisibility` returns early while
@@ -46,9 +47,10 @@ changes.
    page's key hint names `ctrl+b shift+b` for bookmarks.
 2. **Existing profile.** As a Vimma user whose profile showed the toolbar before this change, it is
    hidden after the update, once, and a notice says how to open bookmarks and how to bring the
-   toolbar back. (Subject to open question 2.)
-3. **Turning it on.** As a Vimma user who likes the toolbar, `:bookmarkstoolbar show`, Firefox's
-   View → Toolbars → Bookmarks Toolbar, or the toolbar context menu shows it, and it stays shown
+   toolbar back.
+3. **Turning it on.** As a Vimma user who likes the toolbar, `:bookmarkstoolbar show`,
+   `ctrl+shift+b`, Firefox's View → Toolbars → Bookmarks Toolbar, or the toolbar context menu
+   shows it, and it stays shown
    across restarts. `:bookmarkstoolbar newtab` shows it on new tabs only; `:bookmarkstoolbar hide`
    hides it; bare `:bookmarkstoolbar` toggles between shown and hidden.
 4. **Config.** As a Vimma user who keeps settings in a file, `[ui] bookmarks_toolbar = "shown"`
@@ -145,19 +147,16 @@ changes.
   Toolbar folder (`toolbar_____`). The toolbar folder is the store; the toolbar widget is one view
   of it. The bookmarks spec lists "the bookmarks toolbar's visibility" as out of scope
   (`bookmarks.md:149`); this spec is that item.
-- **`ctrl+shift+b`.** The firefox-keys inventory gives `viewBookmarksToolbarKb` fate c (no Vimma
-  binding, "`ctrl+b u` hides the whole toolbar"; `docs/specs/firefox-keys.md:225`,
-  `packages/vimma-core/src/firefox-keys.mjs:309`), and `docs/bindings.md:352` lists it as
-  unbound. Firefox-keys sub-PR 1 (#171) is built; the default `[firefox] disable` is still
-  `OVERLAP_CHORDS` (`firefox-keys.mjs:21–32`), which does not list `ctrl+shift+b`, so on main the
-  key is still Firefox's own toggle. Firefox-keys sub-PR 2 (default `disable = "all"`) turns every
-  fate-c key off by default; `[firefox] enable = ["ctrl+shift+b"]` then gives it back.
+- **`ctrl+shift+b`.** Since firefox-keys made Firefox's own keys the defaults for every shortcut
+  (`docs/specs/firefox-keys.md:232`), `ctrl+shift+b` is the Vimma action
+  `toggle_bookmarks_toolbar` (id `browser.bookmarks_toolbar`, `actions.mjs:210`,
+  `defaults.mjs:147`), page first, which runs Firefox's `viewBookmarksToolbarKb`
+  (`host/browser-ops.mjs:59`). It is named in `ctrl+b ?` and rebindable.
 - **Defaults** are Firefox prefs in `src/browser/branding/vimma/pref/firefox-branding.js`, checked
   by `tools/branding/test/branding-prefs.test.mjs` (Vitest). They are defaults, never locked, so
   the user's own value wins.
-- **Config.** `config.toml` has no `[ui]` table on main (`TOP_KEYS`,
-  `packages/vimma-core/src/config.mjs:155–169`). [toolbar-toggle](toolbar-toggle.md) (ready,
-  not built) introduces `[ui] toolbar = "shown" | "hidden"` (decision 3, schema 2), held in
+- **Config.** [toolbar-toggle](toolbar-toggle.md) (implemented) added the `[ui]` table with
+  `[ui] toolbar = "shown" | "hidden"` (decision 3, schema 2, `config.mjs:220–224`), held in
   `vimma.ui.toolbar.hidden`, written by `ConfigHost` at startup and on a reload only when that
   value changed; a toggle lasts until the next restart or edit of that line (decision 4). Its
   decision 5 hides `#PersonalToolbar` with `#nav-bar`; its minimal bar never shows the bookmarks
@@ -183,8 +182,10 @@ changes.
 ## Design
 
 `ui/bookmarks-toolbar.mjs` owns the feature in the chrome: it applies a value to every window,
-runs the one-time migration and posts the notices. Core adds the config key, the action and the
-command. The branding file adds the default; one patch stops the import's forced reveal.
+runs the one-time migration and knows what config.toml sets. Core adds the config key, the
+command, the words, the notices and the migration rule (`bookmarks-toolbar.mjs`). The host runs
+the action and posts the notices. The branding file adds the default; one patch stops the
+import's forced reveal.
 
 ### Decisions
 
@@ -206,10 +207,15 @@ command. The branding file adds the default; one patch stops the import's forced
    toolbar-toggle (schema 2), with its words: `"hidden"` is `"never"`, `"shown"` is `"always"`,
    `"newtab"` is Firefox's "only on new tab" (Vimma's start page, a new tab, a private window's
    `about:privatebrowsing`). Anything else is an error with the closest value, and the last good
-   config stays. It is not written in `defaults.toml` (a comment only), as `[theme] appearance`:
-   left out, the setting is the pref of decision 1. Whichever of this spec and toolbar-toggle is
-   built first adds `[ui]` to `TOP_KEYS` and the schema-2 gate; the second adds its key.
-   (`"newtab"` is subject to open question 3.)
+   config stays; Firefox's own words `"always"` and `"never"` suggest `"shown"` and `"hidden"`.
+   The words are toolbar-toggle's, so one `[ui]` table reads the same for both toolbars; the
+   resolved config keeps the word (`ui.bookmarksToolbar`, null when unset) and core's
+   `visibilityFor` maps it to Firefox's value. It is not written in `defaults.toml` (a comment
+   only), as `[theme] appearance`: left out, the setting is the pref of decision 1, so a choice
+   made in Firefox's menus is not overridden by a default line. `"newtab"` is offered because it
+   is Firefox's own third state, already in its View menu: without it `:bookmarkstoolbar` and
+   `[ui]` could not express what the menu can, and it shows the toolbar only on Vimma's start
+   page, the one place a row of shortcuts helps.
 4. **Config wins, at the moments config applies.**
    - Without the key, the pref is the setting. Firefox's menus, `:bookmarkstoolbar` and the toggle
      change it for good.
@@ -218,13 +224,16 @@ command. The branding file adds the default; one patch stops the import's forced
      that line, as toolbar-toggle's `ctrl+b u` does; the notice says so (Behaviour 6).
    - Applying always goes through `CustomizableUI.setToolbarVisibility("PersonalToolbar", value)`,
      never the pref alone, because the pref has no change callback in open windows (Research).
-5. **An action and a command, no default key here.** `toggle_bookmarks_toolbar` (id
-   `bookmarks.toolbar_toggle`, "Show / hide Firefox's Bookmarks Toolbar"), group "Bookmarks",
-   unbound. It runs exactly `BookmarkingUI.toggleBookmarksToolbar("shortcut")`, as firefox-keys
-   decision 4 has every Firefox-derived action run what Firefox's key ran, so it flips between
-   `"always"` and `"never"`. `:bookmarkstoolbar` toggles; `:bookmarkstoolbar show|hide|newtab`
-   sets a known state (Tab completes the three words; an unknown word is refused with the
-   closest). A default key is open question 1.
+5. **The action keeps Firefox's key; a command sets a state.** `toggle_bookmarks_toolbar` (id
+   `browser.bookmarks_toolbar`) on `ctrl+shift+b`, page first, as firefox-keys gives every
+   Firefox key with a named Vimma equivalent (Research): Firefox's muscle memory stays, and the
+   key is named in `ctrl+b ?` and rebindable. It runs exactly Firefox's `viewBookmarksToolbarKb`
+   (`BookmarkingUI.toggleBookmarksToolbar("shortcut")`), as firefox-keys decision 4 has every
+   Firefox-derived action run what Firefox's key ran, so it flips between `"always"` and
+   `"never"`; the host adds the notice (Behaviour 6). `:bookmarkstoolbar` runs the same action;
+   `:bookmarkstoolbar show|hide|newtab` sets a known state (Tab completes the three words; an
+   unknown word is refused with the closest), so a user or a `:` binding can reach a state
+   without knowing the current one, as `:toolbar show|hide` does.
 6. **Import does not show it while it is `"never"`.** A one-hunk patch to
    `PlacesUIUtils.maybeToggleBookmarkToolbarVisibility` (`PlacesUIUtils.sys.mjs:1293`) returns
    early when `browser.toolbars.bookmarks.visibility` is `"never"`, the rule `editBookmark.js`
@@ -235,7 +244,9 @@ command. The branding file adds the default; one patch stops the import's forced
    on a rebase (and in the Beta canary's patch dry-run, [upstream-beta-canary](upstream-beta-canary.md)
    B4), a wrap of upstream internals breaks silently at runtime, and the order of observers of
    one topic is not a contract. This is the reasoning m0-tabstrip-hidden applied to its patch.
-   ADR-003 gains the register line in the header. (Subject to open question 4.)
+   ADR-003 gains the register line in the header. Rejected: leaving the import as in Firefox,
+   because the first import would override the hidden default to `"always"`; and undoing it
+   afterwards from an observer, because that relies on observer order and flashes the toolbar.
 7. **Existing profiles: hidden once on upgrade.** At the first start with this change, when
    `[ui] bookmarks_toolbar` is not set and the pref has a user value other than `"never"`
    (`"always"` from an import or an old Firefox profile, `"newtab"` from Restore Defaults), Vimma
@@ -243,19 +254,23 @@ command. The branding file adds the default; one patch stops the import's forced
    opens your bookmarks; :bookmarkstoolbar show brings it back". The bool pref
    `vimma.ui.bookmarksToolbar.migrated` records it, so it never runs again and a later choice
    stands. A profile with no user value needs nothing: decision 1's default hides it. With the
-   config key set, the key decides and the migration only records itself. (Subject to open
-   question 2.)
+   config key set, the key decides and the migration only records itself. One bool pref and one
+   test cover profiles that an earlier import or Restore Defaults left showing the toolbar, so
+   the default means the same in every profile; a later choice stands because the pref is set
+   whether or not anything was hidden.
 8. **With toolbar-toggle.** When the nav bar is hidden (`ctrl+b u`, `[ui] toolbar = "hidden"`), the
    bookmarks toolbar is hidden with it (toolbar-toggle decision 5), whatever this setting says; the
    minimal URL bar never shows it (7a); the full reveal on hover or for an add-on popup shows it
    only when this setting would (shown, or newtab on a new tab). The two settings stay
-   independent: neither writes the other's pref. Whichever spec is built second adds the
-   combined mochitest (Tests, mochitest 10).
+   independent: neither writes the other's pref, because each is its own config key and command
+   and a user can want either without the other. This spec, built second, adds the combined
+   mochitest (Tests, mochitest 10).
 9. **Private workspace.** The pref is per profile, so private windows follow it. With `"newtab"`,
    a private window's `about:privatebrowsing` counts as a new tab (Firefox's rule). A private
    window's bookmarks panel shows the toolbar folder (bookmarks decision 11); nothing else
    changes.
-10. **Theme and keyboard when shown.** Unchanged from Firefox: the toolbar takes the nav bar's look
+10. **Theme and keyboard when shown.** Unchanged from Firefox, because theming the toolbar is out
+    of scope and Firefox's own navigation already reaches it: the toolbar takes the nav bar's look
     (Research → Theme); keyboard reach is Firefox's toolbar navigation (its `toolbartabstop`,
     `navigator-toolbox.inc.xhtml:553`, and arrow keys within, `browser.toolbars.keyboard_navigation`,
     `firefox.js:3094`). Vimma's panel stays the keyboard way to bookmarks.
@@ -290,18 +305,20 @@ Written first and seen to fail (red, then green, per CONTRIBUTING.md).
   - `tools/branding/test/branding-prefs.test.mjs`: given the branding pref file, then
     `browser.toolbars.bookmarks.visibility` is `"never"` and not locked.
   - `config.test.mjs` / `config-v2.test.mjs`: given `schema = 2` and
-    `[ui] bookmarks_toolbar = "shown"`, then it parses to `"always"`; `"hidden"` → `"never"`,
-    `"newtab"` → `"newtab"`; given `"always"` (Firefox's word), then an error suggesting
+    `[ui] bookmarks_toolbar = "shown"`, then it parses to `"shown"` (and `"hidden"`,
+    `"newtab"` to themselves); given `"always"` (Firefox's word), then an error suggesting
     `"shown"`; given `[ui]` in a schema-1 file, then the "new in schema 2" error; given no key,
     then the parsed config has none (the pref decides); given an unknown `[ui]` key, then an error
     with the closest name.
-  - `cmdline.test.mjs`: `:bookmarkstoolbar` → `bookmarks.toolbar_toggle`; `show`, `hide`,
-    `newtab` → the set action with that value; Tab completes the three; Tab after
+  - `bookmarks-toolbar.test.mjs`: each word maps to Firefox's value and back; the three notices
+    and their "until restart" suffix; the migration runs only for an unmigrated profile with a
+    user value other than `"never"` and no config key.
+  - `cmdline.test.mjs`: `:bookmarkstoolbar` → `browser.bookmarks_toolbar`, with the word as its
+    text; `show`, `hide`, `newtab` parse to the setting; Tab completes the three; Tab after
     `:bookmarkstoolbar sho` gives `show`; `:bookmarkstoolbar blue` is refused with the closest.
-  - `actions.test.mjs` / `defaults.test.mjs`: `toggle_bookmarks_toolbar` exists, group
-    "Bookmarks", unbound; no default key collides. Snapshots: `help.test.mjs.snap` gains one row;
-    `defaults.toml` gains the commented `[ui] bookmarks_toolbar` line (regenerated by
-    `npm run gen-docs`, not hand-edited).
+  - `defaults.test.mjs`: the `defaults.toml` snapshot gains the commented
+    `[ui] bookmarks_toolbar` line (regenerated by `npm run gen-docs`, not hand-edited). No
+    binding changes, so `help.test.mjs.snap` does not.
 - **Mochitest `tests/browser/browser_vimma_bookmarks_toolbar.js`**
   1. Fresh profile: given default prefs and no user value, when a window opens on the start page,
      then `#PersonalToolbar` is collapsed; when a new tab opens, then still collapsed; in a private
@@ -320,6 +337,7 @@ Written first and seen to fail (red, then green, per CONTRIBUTING.md).
      is collapsed; given `"newtab"`, then the import shows the toolbar as in Firefox (`"always"`).
   6. Star panel: given `"never"`, when a page is bookmarked into the toolbar folder through the
      star panel, then the toolbar does not show.
+     (Mochitest 7 also checks `ctrl+shift+b`: Firefox's toggle in every window, with a notice.)
   7. Action and command: `:bookmarkstoolbar` shows it in two windows at once and the pref is
      `"always"`; again hides it; `:bookmarkstoolbar newtab` shows it on a new tab and not on a
      loaded page; each notice reaches the polite region.
@@ -330,19 +348,19 @@ Written first and seen to fail (red, then green, per CONTRIBUTING.md).
      `"shown"`, then shown.
   9. Firefox's own controls: View → Toolbars' "Always show" item (`onViewToolbarCommand`) shows
      it and writes `"always"`, with no Vimma interference.
-  10. With toolbar-toggle (in whichever is built second): given `"shown"` and the nav bar hidden,
-      then `#PersonalToolbar` is collapsed and the minimal URL bar does not show it; on the full
-      hover reveal it shows.
-  11. Workspace folders: given `root = "workspace"` and a bookmark in the workspace's folder, when
-      the toolbar is hidden, then `ctrl+b shift+b` lists it and `ctrl+b a` files into it,
-      unchanged.
+  10. With toolbar-toggle: given `"shown"` and the nav bar hidden, then `#PersonalToolbar` is
+      collapsed and the minimal URL bar does not show it; on the full reveal it shows, and with
+      `"never"` it does not.
+  11. Workspace folders: `browser_vimma_bookmarks.js` and `browser_vimma_bookmarks_workspaces.js`
+      run on the hidden default unchanged: `ctrl+b shift+b` lists the workspace's folder and
+      `ctrl+b a` files into it.
 - **e2e:** no existing baseline changes from the hidden toolbar: the e2e profile already sets
   `"never"` (`tools/e2e/launcher.mjs:107`). That line stays, so the e2e profile does not depend on
   the branding default. A baseline that shows the start page's hint line changes with decision 2
   and gets its changelog line. The start page and the shown toolbar are screenshot-verified under
   Xvfb with the built-in and an Omarchy theme before merge.
 - **Mutation check:** without the patch's early return, mochitest 5 fails (`"always"`); without
-  the migrated pref, mochitest 3's second start hides the toolbar again.
+  the migrated pref, mochitest 3 fails (startup recorded nothing).
 
 ## Docs and changelog
 
@@ -356,63 +374,14 @@ Written first and seen to fail (red, then green, per CONTRIBUTING.md).
 - **`CHANGELOG.md` `[Unreleased]`** (added by the maintainer at merge time). Suggested: "Changed:
   Firefox's Bookmarks Toolbar is hidden by default, also on the start page and after an import;
   `ctrl+b shift+b` opens your bookmarks, and `:bookmarkstoolbar show` or `[ui] bookmarks_toolbar`
-  brings the toolbar back." If open question 1 is answered yes, the keymap PR adds: "Added:
-  `ctrl+shift+b` shows or hides the bookmarks toolbar, as in Firefox."
+  brings the toolbar back." `ctrl+shift+b` already shows or hides it, from firefox-keys.
 - **`docs/adr/003-own-files-minimal-patches.md`:** the register line in the header.
 
 ## Delivery
 
-1. **`feat(bookmarks): firefox's bookmarks toolbar hidden by default`** (about 300 lines with
-   tests, no default binding): decisions 1–7 and 9–11: the branding default,
-   `[ui] bookmarks_toolbar`, `toggle_bookmarks_toolbar` unbound, `:bookmarkstoolbar`,
-   `ui/bookmarks-toolbar.mjs` (apply, migrate once, notices), the `PlacesUIUtils` patch and its
-   ADR-003 line, the start page's hint, gen-docs and the guide. It adds no default key, so it is
-   not a keymap PR and need not wait for the keymap queue; it adds one `actions.mjs` row, so it
-   merges `origin/main` and regenerates `docs/bindings.md` and the snapshots before merging.
-2. **`feat(keys): ctrl+shift+b shows or hides the bookmarks toolbar`** (small; only if open
-   question 1 is answered yes): a keymap PR after firefox-keys sub-PR 2. It binds `ctrl+shift+b`
-   to `toggle_bookmarks_toolbar`, page first as in Firefox; the firefox-keys inventory row
-   (`firefox-keys.mjs:309`, `firefox-keys.md:225`) moves from fate c to fate a, and
-   `docs/bindings.md` "Firefox's shortcuts" says `toggle_bookmarks_toolbar`, page first.
-
-Decision 8 adds no code here; it is mochitest 10 in whichever of this spec and toolbar-toggle is
-built second.
-
-## Open questions
-
-1. **Default key for `toggle_bookmarks_toolbar`.** Firefox's `ctrl+shift+b` is fate c in the
-   firefox-keys inventory: on main it is still Firefox's own toggle, and firefox-keys sub-PR 2 turns
-   it off by default.
-   - (a) Bind `ctrl+shift+b` to `toggle_bookmarks_toolbar` (delivery 2, fate c → a, a keymap PR
-     after firefox-keys sub-PR 2). It keeps Firefox's muscle memory, gives the key a name in
-     `ctrl+b ?` and makes it rebindable, as firefox-keys decision 1 does for every key it keeps.
-     Cost: one more keymap PR in the queue.
-   - (b) Leave it fate c: off by default after firefox-keys sub-PR 2; `[firefox] enable =
-["ctrl+shift+b"]` gives Firefox's key back, and `:bookmarkstoolbar` works without a key. No
-     extra PR, but the action has no default key for a toolbar that is now hidden by default.
-   - Recommendation: (a), because once the action exists, fate a is how firefox-keys treats a
-     Firefox key with a named Vimma equivalent, and the key runs exactly Firefox's toggle.
-2. **Hide it once for existing profiles that show it (decision 7)?**
-   - (a) Yes: one migration, guarded by `vimma.ui.bookmarksToolbar.migrated`, with a notice. The
-     default applies to every profile, and a later choice stands.
-   - (b) No: only profiles without a user value change (through decision 1's default). No
-     migration code or pref; profiles that imported bookmarks before this change keep the
-     toolbar.
-   - Recommendation: (a), because it is one bool pref and one test, and it covers profiles that an
-     earlier import or Restore Defaults left showing the toolbar. No release has been published
-     yet, so the migration affects only development and test profiles today; (b) is acceptable if
-     the code is not wanted for that reason.
-3. **Offer `"newtab"` as a config and command value?**
-   - (a) Yes: `[ui] bookmarks_toolbar = "newtab"` and `:bookmarkstoolbar newtab`.
-   - (b) No: `"shown"` and `"hidden"` only; Firefox's View menu still sets "only on new tab".
-   - Recommendation: (a), because it is Firefox's own third state, already in its View menu, and
-     without it `:bookmarkstoolbar` and `[ui]` cannot express what the menu can; it also shows
-     the toolbar only on Vimma's start page, the one place a row of shortcuts helps.
-4. **Should importing bookmarks show the toolbar while it is hidden (decision 6)?**
-   - (a) No while `"never"`: the one-hunk `PlacesUIUtils` patch; with `"shown"` or `"newtab"` the
-     import behaves as in Firefox.
-   - (b) Yes, as Firefox: no patch, but the first import overrides the default to `"always"`.
-   - (c) Undo it afterwards from an observer: no patch, but it relies on observer order and
-     flashes the toolbar.
-   - Recommendation: (a), because an explicit `"never"` should survive an import, as Firefox's
-     own star panel already respects it, and a one-hunk patch fails loudly on a rebase.
+1. **`feat(bookmarks): firefox's bookmarks toolbar hidden by default`**: decisions 1–11: the
+   branding default, `[ui] bookmarks_toolbar`, `:bookmarkstoolbar`, the notice on
+   `ctrl+shift+b`, `ui/bookmarks-toolbar.mjs` (apply, migrate once), the `PlacesUIUtils` patch
+   and its ADR-003 line, the start page's hint, mochitest 10 with toolbar-toggle, gen-docs and the
+   guide. No binding changes: `ctrl+shift+b` became `toggle_bookmarks_toolbar` with firefox-keys,
+   which delivered the default key this spec first planned as a second pull request.

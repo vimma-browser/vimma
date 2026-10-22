@@ -1,0 +1,16 @@
+{
+  "description": "The visible elements, one JSON object a line, inside the untrusted-content delimiters; a password field has no value",
+  "kind": "response",
+  "command": "agent-elements",
+  "message": {
+    "type": "response",
+    "id": 11,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/signup",
+      "title": "Sign up · Example",
+      "elements": "<untrusted-web-content>\n{\"form\":1,\"method\":\"post\",\"action\":\"https://example.com/api/signup\"}\n{\"label\":\"a\",\"kind\":\"field\",\"text\":\"\",\"type\":\"email\",\"name\":\"email\",\"caption\":\"Email\",\"value\":\"\",\"form\":1}\n{\"label\":\"s\",\"kind\":\"field\",\"text\":\"\",\"type\":\"password\",\"name\":\"password\",\"caption\":\"Password\",\"sensitive\":true,\"form\":1}\n{\"label\":\"d\",\"kind\":\"button\",\"text\":\"Sign up\",\"form\":1}\n</untrusted-web-content>",
+      "dropped": 0
+    }
+  }
+}

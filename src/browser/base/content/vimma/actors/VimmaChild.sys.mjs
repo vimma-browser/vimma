@@ -8,8 +8,26 @@
 
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
-import { collectTargets } from "./hint-collect.mjs";
+import { isSensitiveAutocomplete } from "../core/agent-element.mjs";
+import {
+  AGENT_CONSOLE,
+  consoleArgsText,
+  newestEntries,
+  scriptErrorLevel,
+  scriptErrorSource,
+} from "../core/agent-act.mjs";
+import { cutTo } from "../core/agent-keys.mjs";
+import { collectTargets, linkText } from "./hint-collect.mjs";
+import {
+  actTargetOf,
+  defaultSubmitOf,
+  describeAgentElements,
+  fillField,
+  fillTargetOf,
+  sensitiveValueShown,
+} from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
+import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
 import { textOfDocument } from "./text-model.mjs";
 import { GrepMatcher } from "./grep-matcher.mjs";
@@ -158,10 +176,30 @@ export class VimmaChild extends JSWindowActorChild {
   #largest = null;
   /** The last hint collection (m1-hints): its generation and its elements, by target id. */
   #hints = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
+  /**
+   * An agent's last `vimma_elements` in this frame (docs/specs/mcp-forms.md F4): beside the
+   * user's collection, never in its place, so neither voids the other.
+   */
+  #agentEls = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
+  /**
+   * The agent's last click here (docs/specs/mcp-forms.md F8): its element and whether it ran or
+   * was skipped because the page changed the element under the mouse events before it.
+   * @type {{ gen: number, id: number, outcome: "pending" | "clicked" | "skipped" } | null}
+   */
+  #agentClick = null;
+  /**
+   * The agent's last fill of one field here (docs/specs/mcp-forms.md F12): its element and
+   * whether it is still to run, kept its value, was put back by the page, or was skipped because
+   * the field changed before it.
+   * @type {{ gen: number, id: number, outcome: "pending" | "kept" | "reset" | "skipped" } | null}
+   */
+  #agentFill = null;
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
   #emptySearchAt = 0;
   /** Copy mode in this document (m1-copy-mode). */
   #caret = new Caret();
+  /** Element focus in this document (docs/specs/element-focus.md). */
+  #block = new BlockFocus();
   /**
    * Live grep (docs/specs/live-grep.md decision 14): this document's text model while the
    * picker is open, marked stale by any change to the document until the next query rebuilds it.
@@ -187,6 +225,12 @@ export class VimmaChild extends JSWindowActorChild {
   #blurGen = 0;
   /** @type {WeakRef<HTMLInputElement> | null} the text field a find focused and we blurred */
   #findMatchField = null;
+  /**
+   * @type {WeakRef<Element> | null} the text field whose focus the current find step gave back
+   * (#442): the finder still names it as its match, but it focuses it only once per step, so a
+   * later focus there (the page's script) is not the find's. Vimma:FindStep starts a step.
+   */
+  #findGaveBack = null;
   /** Tells the parent about a selection the user made with the mouse (spec m1-copy-mode). */
   #selectionListener = {
     QueryInterface: ChromeUtils.generateQI(["nsISelectionListener"]),
@@ -214,6 +258,7 @@ export class VimmaChild extends JSWindowActorChild {
 
   didDestroy() {
     this.#grepEnd();
+    this.#block.destroy();
     try {
       this.#watched?.removeSelectionListener(this.#selectionListener);
     } catch {
@@ -303,7 +348,7 @@ export class VimmaChild extends JSWindowActorChild {
    */
   #focusedByFind(el) {
     if (this.#focusing || this.contentWindow?.windowUtils.isHandlingUserInput) return false;
-    return this.#foundEditable() === el;
+    return this.#foundEditable() === el && this.#findGaveBack?.deref() !== el;
   }
 
   /** The text field the finder's last match is in, if this frame has searched. */
@@ -334,6 +379,9 @@ export class VimmaChild extends JSWindowActorChild {
         el.setSelectionRange(start, end);
       }
       el.blur();
+      // Only from the blur on: until then the step's focus can still reach the field again (the
+      // close's Finder.focusContent, and the window's activation when the page gets focus back).
+      this.#findGaveBack = new WeakRef(el);
       this.#findMatchField = new WeakRef(el);
       this.#showFindMatch(el);
     });
@@ -435,7 +483,15 @@ export class VimmaChild extends JSWindowActorChild {
   receiveMessage(msg) {
     switch (msg.name) {
       case "Vimma:Scroll":
-        return this.#scroll(msg.data.kind, msg.data.count);
+        return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+      case "Vimma:ScrollFraction": {
+        // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16): the element `j`
+        // scrolls, as a fraction of how far it can go.
+        const el = this.#scrollTarget(true);
+        if (!el) return 0;
+        const max = el.scrollHeight - el.clientHeight;
+        return max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
+      }
       case "Vimma:Blur": {
         if (isIndex(msg.data?.gen)) this.#blurGen = msg.data.gen;
         const el = deepActiveElement(this.document);
@@ -462,6 +518,9 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#findAnchor();
       case "Vimma:FindClosed":
         return this.#findClosed();
+      case "Vimma:FindStep":
+        this.#findGaveBack = null;
+        return undefined;
       case "Vimma:Selection": {
         // An agent's read (docs/specs/vimma-mcp.md, decision 4): the page's selected text, if
         // any, cut at `max` characters; a copy, nothing in the page changes.
@@ -491,19 +550,67 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#collectHints(msg.data);
       case "Vimma:ActivateHint":
         return this.#activateHint(msg.data);
+      case "Vimma:AgentElement":
+        return this.#agentElement(msg.data);
+      case "Vimma:AgentConsole":
+        // An agent's vimma_console (docs/specs/mcp-forms.md F22, F23): this frame's own errors.
+        try {
+          return this.#agentConsole(msg.data);
+        } catch (e) {
+          console.error("vimma agent-console:", e);
+          return { entries: [], omitted: 0 };
+        }
+      case "Vimma:AgentSensitiveShown": {
+        // An agent's screenshot is about to be taken (docs/specs/mcp-forms.md F21): whether a
+        // sensitive field with a value is in this frame's viewport. A failure answers yes, so
+        // that it refuses rather than captures.
+        const win = this.contentWindow;
+        if (!win) return true;
+        try {
+          return sensitiveValueShown(win);
+        } catch (e) {
+          console.error("vimma agent-screenshot: sensitive fields", e);
+          return true;
+        }
+      }
       case "Vimma:Caret": {
         // Only the frame with focus has the user's caret (the parent sends to that one).
         const win = this.contentWindow;
         if (!isCaretMessage(msg.data) || !win || !this.document.hasFocus()) return false;
-        // The frame's nsISelectionController, got as ViewSourcePageChild gets it.
-        const selCon = this.docShell
-          .QueryInterface(Ci.nsIInterfaceRequestor)
-          .getInterface(Ci.nsISelectionDisplay)
-          .QueryInterface(Ci.nsISelectionController);
-        return this.#caret.run(win, selCon, msg.data);
+        return this.#caret.run(win, this.#selCon(), msg.data);
+      }
+      case "Vimma:Block": {
+        // Element focus (docs/specs/element-focus.md): the parent sends to the frame whose
+        // block a label chose, and to the frames around it, which only report their scrolls.
+        const win = this.contentWindow;
+        if (!win) return null;
+        return this.#block.run(win, msg.data, {
+          take: (gen, id) => {
+            if (gen !== this.#hints.gen) return null;
+            const el = this.#hints.els[id]?.deref() ?? null;
+            this.#hints = { gen: -1, els: [] };
+            return el;
+          },
+          // `v` on a block: copy mode starts with the block selected, as with a mouse selection.
+          enterCopyMode: (line) => {
+            const selCon = this.#selCon();
+            if (this.#caret.run(win, selCon, { op: "enter" }) !== true) return false;
+            if (line) this.#caret.run(win, selCon, { op: "line" });
+            return true;
+          },
+          send: (name, data) => this.sendAsyncMessage(name, data),
+        });
       }
     }
     return undefined;
+  }
+
+  /** The frame's nsISelectionController, got as ViewSourcePageChild gets it. */
+  #selCon() {
+    return this.docShell
+      .QueryInterface(Ci.nsIInterfaceRequestor)
+      .getInterface(Ci.nsISelectionDisplay)
+      .QueryInterface(Ci.nsISelectionController);
   }
 
   /**
@@ -543,23 +650,262 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * The hint targets of this frame (m1-hints). Rects are in this frame's CSS pixels; the parent
-   * offsets them by the frame rects the embedding frame's child reports.
-   * @param {{ gen: number, linksOnly: boolean }} data
+   * offsets them by the frame rects the embedding frame's child reports. An agent's collection
+   * (`texts`, docs/specs/mcp-drive.md D12) gets each link's text too; an agent's
+   * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
+   * controls included, each described, with the frame's forms, and keeps its elements apart from
+   * the user's (F4).
+   * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
+   *   elements?: boolean }} data
    */
   #collectHints(data) {
     const gen = data?.gen;
     const win = this.contentWindow;
     if (!isIndex(gen) || !win) return null;
     const t0 = ChromeUtils.now();
+    const elements = data.elements === true;
     const { targets, frames } = collectTargets(win, {
-      linksOnly: data.linksOnly === true,
+      linksOnly: data.linksOnly === true && !elements,
+      blocks: data.blocks === true && !elements,
+      disabled: elements,
     });
-    this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    const texts = data.texts === true && !elements;
+    // An agent's collection is never followed through the user's targets: the user's targets of
+    // this frame stay as they were, and an agent's elements are kept apart.
+    if (elements) this.#agentEls = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    else if (!texts) this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    const described = elements ? describeAgentElements(targets.map((t) => t.el)) : null;
     return {
-      targets: targets.map((t, id) => ({ id, rect: t.rect, kind: t.kind, href: t.href })),
+      targets: targets.map((t, id) => ({
+        id,
+        rect: t.rect,
+        kind: t.kind,
+        href: t.href,
+        text: texts ? linkText(t.el) : undefined,
+        blockKind: t.blockKind,
+        box: t.box,
+        agent: described?.elements[id],
+      })),
       frames: frames.map((f) => ({ id: f.bc.id, rect: f.rect })),
       ms: ChromeUtils.now() - t0,
+      ...(described ? { forms: described.forms } : {}),
     };
+  }
+
+  /**
+   * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
+   * says whether it is still in the document, so a label never names an element the page has
+   * replaced since.
+   * @param {{ op: string, gen: number, id: number, submit?: any, href?: unknown,
+   *   until?: unknown, value?: unknown, expect?: any }} data
+   */
+  #agentElement(data) {
+    const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
+    const el = known ? this.#agentEls.els[data.id]?.deref() : undefined;
+    switch (data?.op) {
+      case "alive":
+        return !!el?.isConnected;
+      case "inspect":
+        return actTargetOf(el);
+      case "activate":
+        return this.#agentActivate(el, data);
+      case "consume":
+        // An agent is about to act here (mcp-forms F16): the user's activation from before its
+        // step must not count as the user's for what the page does after it.
+        /** @type {any} */ (this.document)?.consumeTransientUserGestureActivation();
+        return true;
+      case "outcome": {
+        const last = this.#agentClick;
+        return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
+      }
+      case "inspect-fill":
+        return fillTargetOf(el, data.value);
+      case "fill":
+        return this.#agentFillField(el, data);
+      case "fill-outcome": {
+        const last = this.#agentFill;
+        return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
+      }
+      case "submit":
+        return this.#agentSubmit(el, data);
+    }
+    return false;
+  }
+
+  /**
+   * An agent's fill of one field (docs/specs/mcp-forms.md F12, F13; security.md M27): the field
+   * must still be what the user was asked about and not sensitive, then it is set after this
+   * reply, so that a dialog the page opens in its `input` or `change` handler never holds the
+   * parent's call. It is checked again just before the set, which is skipped if it changed.
+   * @param {Element | undefined} el
+   * @param {{ gen: number, id: number, value?: unknown, expect?: any, until?: unknown }} asked
+   *   `expect`: how the field was to be set (`field`) and its type, when the question was asked
+   * @returns {"ok" | "gone" | "changed"}
+   */
+  #agentFillField(el, asked) {
+    if (!el?.isConnected) return "gone";
+    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
+    const value = asked.value;
+    if (typeof value !== "string" && typeof value !== "boolean") return "changed";
+    if (!this.#fillAsAsked(el, asked)) return "changed";
+    const fill = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    this.#agentFill = fill;
+    const until = asked.until;
+    Services.tm.dispatchToMainThread(() => {
+      // A busy page can delay this past the parent's wait: then nothing is set.
+      if (Date.now() > until || !el.isConnected || !this.#fillAsAsked(el, asked)) {
+        fill.outcome = "skipped";
+        return;
+      }
+      fill.outcome = fillField(el, value) ? "kept" : "reset";
+    });
+    return "ok";
+  }
+
+  /**
+   * Whether `el` is still the field the agent's question showed: set the same way, of the same
+   * type, not sensitive, disabled or read-only, and taking the value.
+   * @param {Element} el @param {{ value?: unknown, expect?: any }} asked
+   */
+  #fillAsAsked(el, asked) {
+    const now = /** @type {any} */ (fillTargetOf(el, asked.value));
+    const expect = asked.expect && typeof asked.expect === "object" ? asked.expect : {};
+    if (!now.alive || now.secret || isSensitiveAutocomplete(now.autocomplete)) return false;
+    if (now.disabled || now.readonly || now.accepts === false) return false;
+    if (!["text", "textarea", "select", "checkbox", "radio"].includes(now.field)) return false;
+    return now.field === expect.field && (now.type ?? null) === (expect.type ?? null);
+  }
+
+  /**
+   * An agent's submission of a field's form with its default button (docs/specs/mcp-forms.md
+   * F15; security.md M28), after its fill: only to the method and destination the question
+   * named, by `requestSubmit`, after this reply. No user activation is given: the parent lets
+   * through only the submission the question allowed.
+   * @param {Element | undefined} el
+   * @param {{ submit?: any, until?: unknown }} asked
+   * @returns {"ok" | "gone" | "changed"}
+   */
+  #agentSubmit(el, asked) {
+    if (!el?.isConnected) return "gone";
+    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
+    const form = /** @type {any} */ (el).form;
+    const now = form ? defaultSubmitOf(form) : null;
+    const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
+    if (!now || !named || now.method !== named.method || now.action !== named.action) {
+      return "changed";
+    }
+    const until = asked.until;
+    Services.tm.dispatchToMainThread(() => {
+      if (Date.now() > until) return;
+      const again = form.isConnected ? defaultSubmitOf(form) : null;
+      if (!again || again.method !== named.method || again.action !== named.action) return;
+      form.requestSubmit(again.submitter ?? undefined);
+    });
+    return "ok";
+  }
+
+  /**
+   * An agent's click (docs/specs/mcp-forms.md F8; security.md M26): the element must still be
+   * what the user was asked about, then the user's hint sequence runs on it, after this reply,
+   * so that a dialog the page opens in its handler never holds the parent's call. The page may
+   * change the element in its handlers of the untrusted mouse events, so it is checked again
+   * before click(), which is skipped if it changed. Nothing is focused, and no event goes
+   * through the widget or nsIDOMWindowUtils, so the page gets no user activation. A request
+   * whose time is up (`until`, ms since the epoch) clicks nothing: the parent stopped waiting.
+   * @param {Element | undefined} el
+   * @param {{ gen: number, id: number, submit?: any, href?: unknown, until?: unknown }} asked
+   *   `submit`: the method and destination the question named, or null
+   * @returns {"ok" | "gone" | "changed"}
+   */
+  #agentActivate(el, asked) {
+    if (!el || !actTargetOf(el).alive) return "gone";
+    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
+    if (!this.#asAsked(el, asked)) return "changed";
+    const click = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    this.#agentClick = click;
+    const until = asked.until;
+    Services.tm.dispatchToMainThread(() => {
+      // A busy page can delay this past the parent's wait: then nothing is clicked.
+      const ran =
+        Date.now() <= until && el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
+      click.outcome = ran ? "clicked" : "skipped";
+    });
+    return "ok";
+  }
+
+  /**
+   * Whether `el` is still what the agent's question showed: nothing an agent may not click, a
+   * submit only if asked as one and to the same method and destination, the same link.
+   * @param {Element} el @param {{ submit?: any, href?: unknown }} asked
+   */
+  #asAsked(el, asked) {
+    const now = /** @type {any} */ (actTargetOf(el));
+    if (!now.alive || now.field || now.disabled) return false;
+    const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
+    if (!!now.submit !== !!named) return false;
+    if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
+      return false;
+    }
+    return (now.href ?? null) === (asked.href ?? null);
+  }
+
+  /**
+   * This frame's script errors and its page's console.error and console.warn calls, for an
+   * agent's `vimma_console` (docs/specs/mcp-forms.md F22, F23; security.md M30): read from this
+   * process's console service and ConsoleAPIStorage, both of which Firefox fills whether or not
+   * anyone asks, by this document's inner window id. Nothing runs in the page: a console call's
+   * arguments are read only with `typeof` (consoleArgsText), and of a script error only its text
+   * and position, never its exception or stack. Only the newest `max` entries after `since` are
+   * answered, each string cut, with how many more there are, so a noisy page cannot make the
+   * parent copy everything it logged.
+   * @param {{ since?: unknown, max?: unknown }} data
+   */
+  #agentConsole(data) {
+    const since = Number.isSafeInteger(data?.since) ? /** @type {number} */ (data.since) : 0;
+    const max = Math.min(
+      Number.isSafeInteger(data?.max) ? /** @type {number} */ (data.max) : AGENT_CONSOLE.errors,
+      AGENT_CONSOLE.errors,
+    );
+    /** A count from Firefox's event, else 0. @param {unknown} v */
+    const n = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+    const id = this.manager?.innerWindowId;
+    if (!id) return { entries: [], omitted: 0 };
+    /** @param {unknown} s @param {number} most */
+    const cut = (s, most) => cutTo(String(s ?? "").slice(0, 4 * most), most);
+    const out = [];
+    for (const m of Services.console.getMessageArray() ?? []) {
+      if (!(m instanceof Ci.nsIScriptError) || m.innerWindowID !== id) continue;
+      const level = scriptErrorLevel(m.flags);
+      if (!level) continue;
+      out.push({
+        level,
+        source: scriptErrorSource(m.category),
+        message: cut(m.errorMessage, AGENT_CONSOLE.message),
+        file: cut(m.sourceName, AGENT_CONSOLE.url),
+        line: m.lineNumber,
+        column: m.columnNumber,
+        time: m.timeStamp,
+      });
+    }
+    const storage = Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage);
+    for (const event of storage.getEvents(String(id)) ?? []) {
+      // The event is Firefox's own object, made in a privileged scope (dom/console/Console.cpp);
+      // only its `arguments` are the page's.
+      const level = event?.level;
+      if (level !== "error" && level !== "warn") continue;
+      out.push({
+        level,
+        source: "console",
+        message: cut(consoleArgsText(event.arguments), AGENT_CONSOLE.message),
+        file: typeof event.filename === "string" ? cut(event.filename, AGENT_CONSOLE.url) : "",
+        line: n(event.lineNumber),
+        column: n(event.columnNumber),
+        time: n(event.timeStamp),
+      });
+    }
+    const after = out.filter((e) => e.time > since);
+    const entries = newestEntries(after, since, max);
+    return { entries, omitted: after.length - entries.length };
   }
 
   /**
@@ -586,8 +932,21 @@ export class VimmaChild extends JSWindowActorChild {
       }
       return true;
     }
-    // Events created by privileged code are trusted: mousedown and mouseup for pages that act
-    // on them (menus, Google's jsaction), then click(), whose activation behaviour follows links.
+    this.#press(el);
+    return true;
+  }
+
+  /**
+   * A click as the user's hints and an agent's `vimma_activate` make it: mouseover, mousedown
+   * and mouseup built with the page's constructor (untrusted), for pages that act on them (menus,
+   * Google's jsaction), then click(), which the page sees as trusted and whose activation
+   * behaviour follows links. No transient user activation (docs/specs/mcp-forms.md F8).
+   * `still`: checked after the mouse events; when false, no click.
+   * @param {Element} el @param {() => boolean} [still]
+   * @returns {boolean} whether it clicked
+   */
+  #press(el, still = () => true) {
+    const html = /** @type {HTMLElement} */ (el);
     const r = el.getBoundingClientRect();
     const init = {
       bubbles: true,
@@ -603,7 +962,7 @@ export class VimmaChild extends JSWindowActorChild {
       const buttons = type === "mousedown" ? 1 : 0;
       el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));
     }
-    if (!el.isConnected) return true;
+    if (!el.isConnected || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();
     else el.dispatchEvent(new win.MouseEvent("click", init));
@@ -829,15 +1188,16 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * @param {ScrollKind} kind
    * @param {number} count
+   * @param {boolean} [instant]  no smooth scroll: an agent's tab in the background, whose
+   *   refresh driver is throttled (docs/specs/mcp-drive.md D8)
    * @returns {boolean} whether this frame had something to scroll
    */
-  #scroll(kind, count) {
+  #scroll(kind, count, instant = false) {
     const vertical = kind !== "left" && kind !== "right";
     const el = this.#scrollTarget(vertical);
     if (!el) return false;
-    const behavior = Services.prefs.getBoolPref("general.smoothScroll", true)
-      ? "smooth"
-      : "instant";
+    const behavior =
+      !instant && Services.prefs.getBoolPref("general.smoothScroll", true) ? "smooth" : "instant";
     const n = Math.max(1, Number(count) || 1);
     // Whole pixels, so d then u returns to the same place.
     const half = Math.round(el.clientHeight / 2) * n;

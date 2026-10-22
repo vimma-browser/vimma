@@ -220,8 +220,8 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # AppImage, .deb, PKGBUILD and SRCINFO, the AUR variant, SHA256SUMS; then install and start
-  # what was built.
+  # AppImage, .deb, .rpm, PKGBUILD and SRCINFO, the AUR variant, SHA256SUMS; then install and
+  # start what was built.
   package:
     needs: build
     if: >-
@@ -250,11 +250,12 @@ jobs:
           name: build
           path: build
 
-      - name: Tools (appimagetool and runtime pinned by SHA-256; desktop-file-validate)
+      # rpmbuild comes from Ubuntu's archive, as dpkg-deb does from the image (spec rpm-package).
+      - name: Tools (appimagetool and runtime pinned by SHA-256; desktop-file-validate; rpmbuild)
         run: |
           tools/package/fetch-appimagetool.sh "$RUNNER_TEMP/appimagetool"
           sudo apt-get update -q
-          sudo apt-get install -y -q desktop-file-utils
+          sudo apt-get install -y -q desktop-file-utils rpm
 
       - name: Package
         run: |
@@ -295,6 +296,12 @@ jobs:
           # Without $APPIMAGE, so the type comes from the AppDir's marker alone (decision 34).
           type=$(env -u APPIMAGE node tools/package/install-type.mjs "$RUNNER_TEMP/squashfs-root/usr/lib/vimma")
           [ "$type" = appimage ] || { echo "::error::AppImage: install type $type"; exit 1; }
+
+      # dnf on Fedora and zypper on openSUSE, each in a container pinned by digest (spec
+      # rpm-package): the requirements rpmbuild read from the binaries resolve on both, and the
+      # installed Vimma starts.
+      - name: Smoke test the .rpm on Fedora and openSUSE
+        run: tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"
 
       # makepkg -si in an Arch Linux container, with the tarball served from dist/ on localhost
       # (the draft has no assets yet, and a draft's download URLs answer 404 to anyone); the

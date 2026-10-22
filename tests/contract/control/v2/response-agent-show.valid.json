@@ -1,0 +1,13 @@
+{
+  "description": "agent-show says it showed the tab",
+  "kind": "response",
+  "command": "agent-show",
+  "message": {
+    "type": "response",
+    "id": 9,
+    "ok": true,
+    "result": {
+      "shown": true
+    }
+  }
+}

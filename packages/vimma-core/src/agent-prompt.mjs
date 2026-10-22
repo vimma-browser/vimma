@@ -13,6 +13,7 @@
 import { AGENT_GLYPH } from "./agent.mjs";
 import { DOWNLOAD_TOOL, formatBytes } from "./agent-downloads.mjs";
 import { displayUrl, truncate } from "./statusbar.mjs";
+import { textWidth } from "./textwidth.mjs";
 
 /** No key for this long before the question may open by itself (decision 14). */
 export const QUIET_MS = 1500;
@@ -54,6 +55,11 @@ const clean = (s) =>
     .replace(UNSAFE, " ")
     .replace(/ {2,}/g, " ")
     .trim();
+
+/** `[mcp] workspace`'s default. */
+const AGENT_WORKSPACE = "agent";
+/** The agent workspace's name as a question shows it: one line, never empty. @param {string} s */
+const workspaceName = (s) => clean(s) || AGENT_WORKSPACE;
 
 /**
  * What the question calls the agent: its self-reported name, else its parent process, else
@@ -130,14 +136,119 @@ function downloadParts(w) {
 /** A download no agent connection asked for (PAGE_CLIENT). @param {Asked} q */
 export const isPage = (q) => q.tool === DOWNLOAD_TOOL && q.label?.client === PAGE_CLIENT;
 
+/** The tool that brings the agent workspace to the front (docs/specs/mcp-drive.md D2). */
+export const SHOW_TOOL = "vimma_show";
+
+/**
+ * Whether the question is one yes or no, with no count or grant and `x` a plain no: a page's
+ * download, an unscanned file (decision 31) and `vimma_show` (mcp-drive D4).
+ * @param {Asked} q
+ */
+export const noGrant = (q) =>
+  isPage(q) || q.tool === SHOW_TOOL || !!q.what?.unscanned || !!q.what?.submit;
+
+/**
+ * A form submission as the question shows it (docs/specs/mcp-forms.md F15): its method and the
+ * host of its destination in bold, and how many fields it sends.
+ * @param {Record<string, any>} s
+ * @returns {Part[]}
+ */
+function submitParts(s) {
+  const fields = Number(s.fields) || 0;
+  return [
+    { text: " → " },
+    { text: clean(s.method).toUpperCase(), strong: true },
+    { text: " " },
+    ...urlParts(displayUrl(clean(s.action)), clean(s.host)),
+    { text: ` (${fields} field${fields === 1 ? "" : "s"})` },
+  ];
+}
+
+/**
+ * An element as an activation's question shows it (F28): its label, kind and text.
+ * @param {Record<string, any>} w
+ * @returns {Part[]}
+ */
+function elementParts(w) {
+  return [
+    { text: `  ${clean(w.label)} ${clean(w.kind)} "` },
+    { text: cutTitle(w.text), isolate: "auto" },
+    { text: '"' },
+  ];
+}
+
+/** A fill's question cuts each value, each field's name and the whole list at these columns. */
+const FILL_VALUE_COLUMNS = 40;
+const FILL_NAME_COLUMNS = 24;
+const FILL_COLUMNS = 160;
+
+/**
+ * A fill's fields as its question shows them (docs/specs/mcp-forms.md F14): each label, the
+ * field's name or label text and the value in quotes (a checkbox's checked or unchecked), values
+ * and names cut with …, the list cut with … where the line ends; `:mcp log` keeps them whole.
+ * @param {Record<string, any>} w @param {string} lead  what comes before the fields
+ * @param {boolean} [count]  name how many fields there are also when there is one
+ * @returns {Part[]}
+ */
+function fillParts(w, lead, count = false) {
+  return fillLine(w, lead, count).parts;
+}
+
+/**
+ * `fillParts`, and whether every field's name and value fits the question whole.
+ * @param {Record<string, any>} w @param {string} lead @param {boolean} count
+ * @returns {{ parts: Part[], fits: boolean }}
+ */
+function fillLine(w, lead, count) {
+  const fields = Array.isArray(w.fields) ? w.fields : [];
+  const n = fields.length;
+  /** @type {Part[]} */
+  const parts = [{ text: n === 1 && !count ? lead : `${lead}${n} field${n === 1 ? "" : "s"}: ` }];
+  let width = 0;
+  let fits = true;
+  for (const [i, f] of fields.entries()) {
+    const fullName = clean(f?.name);
+    const name = truncate(fullName, FILL_NAME_COLUMNS, "end");
+    const flag = typeof f?.value === "boolean";
+    const fullValue = flag ? "" : clean(f?.value);
+    const value = truncate(fullValue, FILL_VALUE_COLUMNS, "end");
+    if (name !== fullName || value !== fullValue) fits = false;
+    /** @type {Part[]} */
+    const piece = [
+      { text: `${i ? ", " : ""}${clean(f?.label)}${name ? " " : ""}` },
+      ...(name ? [{ text: name, isolate: /** @type {const} */ ("auto") }] : []),
+      { text: flag ? ` = ${f.value ? "checked" : "unchecked"}` : ' = "' },
+      ...(flag ? [] : [{ text: value, isolate: /** @type {const} */ ("auto") }, { text: '"' }]),
+    ].filter((p) => p.text);
+    const more = textWidth(piece.map((p) => p.text).join(""));
+    if (width + more > FILL_COLUMNS) {
+      // The fields left out are counted, so the user knows the line does not show them all.
+      parts.push({ text: `${i ? ", " : ""}… (${n - i} more)` });
+      fits = false;
+      break;
+    }
+    width += more;
+    parts.push(...piece);
+  }
+  return { parts, fits };
+}
+
+/**
+ * Whether a fill's question shows every field's name and value whole (docs/specs/mcp-forms.md
+ * F14, F15): a fill that submits must, because its one yes sends them.
+ * @param {Record<string, any>} what
+ */
+export const fillFits = (what) => fillLine(what, "", false).fits;
+
 /**
  * The question line: its text in parts (the host of an open in bold), the hint shown once the
  * line is armed, and the accessible name (the whole question).
  * @param {Asked} q
- * @param {{ grantMinutes: number }} config
+ * @param {{ grantMinutes: number, agentWorkspace?: string }} config  `agentWorkspace`: the agent
+ *   workspace's name, which full control's question says it reaches beyond (mcp-drive D23)
  * @returns {{ parts: Part[], hint: string, label: string }}
  */
-export function questionLine(q, { grantMinutes }) {
+export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE }) {
   const who = clientName(q.label);
   /** @type {Part[]} */
   let parts;
@@ -147,15 +258,23 @@ export function questionLine(q, { grantMinutes }) {
     // The code the client printed on its own terminal (security.md S13): the user answers
     // the question of the vimma-ctl they ran, not one a racing client slipped in.
     const code = typeof w.code === "string" && FULL_CODE.test(w.code) ? w.code : null;
+    // Asked only while MCP is on (decision 29 C), when an agent with a shell could be the one
+    // asking: the line says that a yes reaches past the agent workspace (mcp-drive D23).
+    /** @type {Part[]} */
+    const reach = [
+      { text: ' wants full control (every workspace, not only "' },
+      { text: workspaceName(agentWorkspace), isolate: "auto" },
+      { text: '") — y/N' },
+    ];
     if (code) {
       parts = [
         { text: `${AGENT_GLYPH} vimma-ctl with code ` },
         { text: code, strong: true },
-        { text: " wants full control — y/N" },
+        ...reach,
       ];
       hint = "y if the code is the one vimma-ctl printed · n deny";
     } else {
-      parts = [{ text: `${AGENT_GLYPH} a client with no code wants full control — y/N` }];
+      parts = [{ text: `${AGENT_GLYPH} a client with no code` }, ...reach];
       hint = "y allow · n deny";
     }
   } else {
@@ -183,8 +302,56 @@ export function questionLine(q, { grantMinutes }) {
       } else if (isPage(q)) {
         hint = "y once · n deny";
       }
+    } else if (q.tool === SHOW_TOOL) {
+      // mcp-drive D4: a show is asked every time, so there is nothing to grant.
+      // The question says that a yes changes the user's view, and to which workspace (D2).
+      parts = [
+        ...head,
+        ...tabParts(w),
+        { text: ' (switches you to "' },
+        { text: workspaceName(agentWorkspace), isolate: "auto" },
+        { text: '")' },
+      ];
+      hint = "y show it · n deny";
+    } else if (q.tool === "vimma_fill" && w.submit) {
+      // mcp-forms F15: a fill that submits asks every time; the fields come after where they go.
+      const place = Number.isInteger(w.index) ? `${w.index} ` : "";
+      parts = [
+        { text: `${AGENT_GLYPH} ` },
+        { text: who, isolate: "auto" },
+        { text: ` wants to submit a form: ${place}"` },
+        { text: cutTitle(w.title), isolate: "auto" },
+        { text: '"' },
+        ...submitParts(w.submit),
+        ...fillParts(w, "  after filling ", true),
+      ];
+      hint = "y fill and submit once · n deny";
+    } else if (q.tool === "vimma_fill") {
+      parts = [...head, ...tabParts(w), ...fillParts(w, "  ")];
+    } else if (q.tool === "vimma_activate" && w.submit) {
+      // mcp-forms F15: a submission asks every time, so there is nothing to grant.
+      const place = Number.isInteger(w.index) ? `${w.index} ` : "";
+      parts = [
+        { text: `${AGENT_GLYPH} ` },
+        { text: who, isolate: "auto" },
+        { text: ` wants to submit a form: ${place}"` },
+        { text: cutTitle(w.title), isolate: "auto" },
+        { text: '"' },
+        ...submitParts(w.submit),
+      ];
+      hint = "y submit once · n deny";
+    } else if (q.tool === "vimma_activate") {
+      parts = [...head, ...tabParts(w), ...elementParts(w)];
     } else if (q.tool === "vimma_tabs") {
       parts = [...head, { text: `the list of agent tabs (${Number(w.count) || 0})` }];
+    } else if (q.tool === "vimma_keys") {
+      // mcp-drive D14: the keys exactly as they will run, after parsing.
+      parts = [
+        ...head,
+        ...tabParts(w),
+        { text: "  keys: " },
+        { text: clean(w.keys), isolate: "ltr" },
+      ];
     } else {
       parts = [...head, ...tabParts(w)];
     }
@@ -236,6 +403,12 @@ export function grantNotice(q, { minutes, capped }) {
   return `${clientName(q.label)} may use ${q.tool} for ${minutes} min${cap} (:mcp revoke ends it)`;
 }
 
+/** @param {unknown} fields  "1 field", "3 fields" */
+const fieldCount = (fields) => {
+  const n = Array.isArray(fields) ? fields.length : 0;
+  return `${n} field${n === 1 ? "" : "s"}`;
+};
+
 /**
  * The notice for a call made under a grant (decision 23).
  * @param {Asked} q @param {number} until  the grant's end @param {number} now
@@ -252,10 +425,41 @@ export function ranNotice(q, until, now) {
           ? `closed "${cutTitle(w.title)}"`
           : q.tool === "vimma_tabs"
             ? "listed the agent tabs"
-            : q.tool === DOWNLOAD_TOOL
-              ? `downloads "${cutTitle(w.name)}"`
-              : `used ${q.tool}`;
+            : q.tool === "vimma_keys" && w.followed
+              ? // mcp-drive D14: a follow under a grant names the host it loaded.
+                `followed a link to ${clean(w.followed)} in "${cutTitle(w.title)}"`
+              : q.tool === "vimma_keys"
+                ? `pressed ${clean(w.keys)} in "${cutTitle(w.title)}"`
+                : q.tool === "vimma_elements"
+                  ? `listed the buttons and fields of "${cutTitle(w.title)}"`
+                  : q.tool === "vimma_activate"
+                    ? `clicked ${clean(w.kind)} "${cutTitle(w.text)}" in "${cutTitle(w.title)}"`
+                    : q.tool === "vimma_fill"
+                      ? `filled ${fieldCount(w.fields)} in "${cutTitle(w.title)}"`
+                      : q.tool === "vimma_screenshot"
+                        ? `took a screenshot of "${cutTitle(w.title)}"`
+                        : q.tool === "vimma_console"
+                          ? `read the errors of "${cutTitle(w.title)}"`
+                          : q.tool === DOWNLOAD_TOOL
+                            ? `downloads "${cutTitle(w.name)}"`
+                            : `used ${q.tool}`;
   return `${clientName(q.label)} ${did} (grant, ${left}m left)`;
+}
+
+/**
+ * The notice after `vimma_show` switched a window to the agent workspace (mcp-drive D3, D6):
+ * `ctrl+^` returns, because the switch is an ordinary one. `otherWindow`: the tab is in a window
+ * other than the one where the user answered, which switched instead. `switched: false`: the
+ * window was on the agent workspace already, so the show only selected the tab and `ctrl+^`
+ * would not go back to where the user was.
+ * @param {Asked} q @param {{ otherWindow: boolean, switched?: boolean }} where
+ */
+export function shownNotice(q, { otherWindow, switched = true }) {
+  const whose = `${clientName(q.label)}'s tab`;
+  if (!switched) return otherWindow ? `showing ${whose} in the other window` : `showing ${whose}`;
+  return otherWindow
+    ? `showing ${whose}, shown in the other window · ctrl+^ there goes back`
+    : `showing ${whose} · ctrl+^ goes back`;
 }
 
 /**
@@ -276,6 +480,13 @@ const ASKS = Object.freeze({
   vimma_read_page: "read a page",
   vimma_open: "open a page",
   vimma_close_tab: "close a tab",
+  vimma_keys: "move around a page",
+  [SHOW_TOOL]: "show you a page",
+  vimma_elements: "list a page's buttons and fields",
+  vimma_activate: "click on a page",
+  vimma_fill: "fill in a form",
+  vimma_screenshot: "take a screenshot of a page",
+  vimma_console: "read a page's errors and failed requests",
   [DOWNLOAD_TOOL]: "download a file",
 });
 
@@ -286,9 +497,68 @@ const ASKS = Object.freeze({
  */
 export function agentAlertText(q) {
   const who = clientName(q.label);
-  if (q.tool === FULL_CONTROL) return `${who} asks for full control of Vimma`;
-  const what = /** @type {Record<string, string>} */ (ASKS)[q.tool] ?? "use a tool";
+  if (q.tool === FULL_CONTROL) return `${who} asks for full control of Vimma (every workspace)`;
+  const asks = /** @type {Record<string, string>} */ (ASKS);
+  const what = q.what?.submit ? "submit a form" : (asks[q.tool] ?? "use a tool");
   return `${who} asks to use Vimma's agent workspace (${what})`;
+}
+
+/** What `:mcp log` says of each outcome (mcp-drive D14). */
+const OUTCOMES = Object.freeze({
+  yes: "allowed",
+  grant: "ran under a grant",
+  user: "denied",
+  timeout: "no answer (denied)",
+  busy: "denied (busy)",
+  muted: "denied (muted)",
+  cancelled: "cancelled",
+  "in-use": "denied (the user was using the tab)",
+  changed: "denied (the tab changed)",
+  followed: "followed a link",
+  failed: "failed",
+});
+
+/** @type {Readonly<Record<string, string>>} */
+const OUTCOME_TEXT = OUTCOMES;
+
+/** FSI…PDI: text an agent or a page chose, as its own bidi run (security.md M4). */
+const isolate = (/** @type {string} */ t) => (t ? `\u2068${t}\u2069` : "");
+
+/**
+ * One row of `:mcp log` (mcp-drive D14) in its three cells: the time; the client, the tool, the
+ * tab's title and the keys or URL; and what came of it. Plain text.
+ * @param {import("./agent.mjs").LogEntry} e
+ * @returns {{ time: string, text: string, outcome: string }}
+ */
+export function logCells(e) {
+  const d = new Date(e.at);
+  const time = [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+  const title = cutTitle(e.title);
+  const detail = truncate(clean(e.detail), 120, "end");
+  const text = [
+    isolate(clientName({ client: e.client })),
+    clean(e.tool),
+    title ? `"${isolate(title)}"` : "",
+    isolate(detail),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const outcome =
+    e.outcome === "stopped"
+      ? `stopped (${clean(e.why) || "early"})`
+      : (OUTCOME_TEXT[e.outcome] ?? clean(e.outcome));
+  return { time, text, outcome };
+}
+
+/**
+ * One row of `:mcp log` as one line: `17:05:09 claude-code vimma_keys "Pricing" 3j · allowed`.
+ * @param {import("./agent.mjs").LogEntry} e
+ */
+export function logRow(e) {
+  const { time, text, outcome } = logCells(e);
+  return `${time} ${text} · ${outcome}`;
 }
 
 /**
@@ -336,8 +606,21 @@ export function parseControlCommand(text) {
   };
 }
 
-/** `:control on <minutes>`'s question. @param {number} minutes */
-export function controlOnQuestion(minutes) {
+/**
+ * `:control on <minutes>`'s question. While MCP is on, an agent with a shell can use full control
+ * too, so the question says that it reaches past the agent workspace (mcp-drive D22).
+ * @param {number} minutes
+ * @param {string | null} [agentWorkspace]  the agent workspace's name while MCP is on, else null
+ */
+export function controlOnQuestion(minutes, agentWorkspace = null) {
+  if (agentWorkspace !== null) {
+    return (
+      `Turn on full control for ${minutes} min? It reaches every workspace and tab, not only ` +
+      // FSI…PDI: the name is its own bidi run (security.md M4), as the question line's <bdi>.
+      `"\u2068${workspaceName(agentWorkspace)}\u2069", and any local AI agent with a shell can ` +
+      "use it. y/N"
+    );
+  }
   return (
     "Turn on full control (vimma-ctl: keys in this window, every workspace) for " +
     `${minutes} min? y/N`

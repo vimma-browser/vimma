@@ -24,6 +24,11 @@ declare const Services: {
       observer: (subject: unknown, topic: string, data: string) => void,
     ): void;
   };
+  // engine/xpcom/base/nsIConsoleService.idl: its cached messages, of any kind (each use checks
+  // for nsIScriptError, engine/dom/bindings/nsIScriptError.idl).
+  console: {
+    getMessageArray(): any[] | null;
+  };
   // engine/netwerk/base/nsIIOService.idl
   io: {
     createExposableURI(uri: { spec: string }): { spec: string; displaySpec: string };
@@ -130,6 +135,11 @@ declare const IOUtils: {
     data: string,
     options?: { mode?: "overwrite" | "append" | "appendOrCreate" | "create"; tmpPath?: string },
   ): Promise<number>;
+  write(
+    path: string,
+    data: Uint8Array,
+    options?: { mode?: "overwrite" | "append" | "appendOrCreate" | "create"; flush?: boolean },
+  ): Promise<number>;
   setPermissions(path: string, permissions: number, honorUmask?: boolean): Promise<void>;
   makeDirectory(
     path: string,
@@ -142,15 +152,26 @@ declare const IOUtils: {
     lastModified: number;
     creationTime?: number;
     permissions: number;
+    type: "regular" | "directory" | "other";
   }>;
   exists(path: string): Promise<boolean>;
+  getChildren(path: string): Promise<string[]>;
   copy(from: string, to: string): Promise<void>;
   move(from: string, to: string): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
 };
 
-// engine/js/xpconnect/idl/xpccomponents.idl (nsIXPCComponents_Utils)
-declare const Cu: { readonly isInAutomation: boolean };
+// engine/js/xpconnect/idl/xpccomponents.idl (nsIXPCComponents_Utils); the encoder is
+// engine/dom/serializers/nsIDocumentEncoder.idl.
+declare const Cu: {
+  readonly isInAutomation: boolean;
+  createDocumentEncoder(type: string): {
+    init(doc: Document, type: string, flags: number): void;
+    setRange(range: Range): void;
+    setContainerNode(node: Node): void;
+    encodeToString(): string;
+  };
+};
 
 // XPCOM in system modules: interface constants and component constructors.
 declare const Ci: any;
@@ -158,10 +179,14 @@ declare const Components: {
   Constructor(cid: string, iface: string, init?: string): any;
   ID(id: string): unknown;
   readonly manager: any;
+  isSuccessCode(code: number): boolean;
 };
 
 // engine/dom/chrome-webidl/BrowsingContext.webidl
-declare const BrowsingContext: { get(id: number): any };
+declare const BrowsingContext: {
+  get(id: number): any;
+  getCurrentTopByBrowserId(id: number): any;
+};
 
 // engine/dom/webidl/URL.webidl (chrome-only)
 interface URL {
@@ -175,6 +200,7 @@ declare const ChromeUtils: {
   registerWindowActor(name: string, options: object): void;
   generateQI(interfaces: string[]): (iid: unknown) => any;
   now(): number;
+  getXPCOMErrorName(code: number): string;
 };
 
 // engine/dom/webidl/Window.webidl (chrome-only part)
@@ -197,7 +223,7 @@ declare class JSWindowActorChild {
   readonly document: Document;
   readonly contentWindow: Window | null;
   // WindowGlobalChild: the other actors of this frame (spec m1-find: Firefox's FinderChild)
-  readonly manager: { getActor(name: string): any };
+  readonly manager: { getActor(name: string): any; readonly innerWindowId: number };
   // The frame's nsIDocShell (spec m1-copy-mode: its nsISelectionController)
   readonly docShell: any;
   sendAsyncMessage(name: string, data?: unknown): void;

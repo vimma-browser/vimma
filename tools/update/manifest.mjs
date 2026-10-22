@@ -13,7 +13,7 @@
  *   manifest.mjs commits --tag vX.Y.Z --repo owner/name  > commits.json
  *       the subjects and pull-request labels since the previous published release (git, gh)
  *   manifest.mjs build --tag vX.Y.Z --assets DIR --commits FILE [--published FILE]... --out FILE
- *       the body for the release's files in DIR (the three Linux packages and SHA256SUMS, or
+ *       the body for the release's files in DIR (the four Linux packages and SHA256SUMS, or
  *       with --target macos the .dmg and SHA256SUMS-macos)
  *   manifest.mjs build --offer nothing [--published FILE]... --out FILE
  *       a body that offers nothing (pulls an update; docs/runbook.md)
@@ -55,7 +55,7 @@ export const CHANNEL = "vimma";
 export const TARGETS = Object.freeze({
   linux: {
     target: "Linux_x86_64-gcc3",
-    kinds: /** @type {AssetKind[]} */ (["tarball", "appimage", "deb"]),
+    kinds: /** @type {AssetKind[]} */ (["tarball", "appimage", "deb", "rpm"]),
     sums: "SHA256SUMS",
   },
   macos: {
@@ -119,6 +119,7 @@ export function assetNames(version, os = "linux") {
     tarball: `vimma-${version}-linux-x86_64.tar.xz`,
     appimage: `vimma-${version}-x86_64.AppImage`,
     deb: `vimma_${version.replace("-", "~")}_amd64.deb`,
+    rpm: `vimma-${version.replace("-", "~")}-1.x86_64.rpm`,
     dmg: `vimma-${version}-macos-aarch64.dmg`,
   };
   return Object.fromEntries(targetOf(os).kinds.map((k) => [k, all[k]]));

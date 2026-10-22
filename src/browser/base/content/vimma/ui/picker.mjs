@@ -15,10 +15,12 @@ import { accessibleName, countText, rowRange, sectionHeading } from "../core/tab
 
 /** @import { AnyItem, AddonOp, PickerItem, PickerState, WorkspaceItem } from "../core/picker.mjs" */
 /** @import { AddonItem } from "../core/addons.mjs" */
+/** @import { LogItem } from "../core/picker.mjs" */
 
 export const PICKER_ID = "vimma-picker";
 export const WORKSPACE_PICKER_ID = "vimma-workspace-picker";
 export const ADDON_PICKER_ID = "vimma-addon-picker";
+export const MCP_LOG_ID = "vimma-mcp-log";
 const STYLESHEET = "chrome://browser/skin/vimma/picker.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<Window>} windows our stylesheet is loaded into */
@@ -114,6 +116,16 @@ const ADDONS = {
   hint: "Enter popup · o options · x on/off · d remove · u update · P private · / search",
   cells: (/** @type {AddonItem} */ item) => [item.enabled ? "●" : "○", addonRowText(item)],
   empty: "No add-ons installed. Get them at addons.mozilla.org.",
+};
+
+/** @type {PickerLook} `:mcp log` (docs/specs/mcp-drive.md D14): newest first, read only. */
+export const MCP_LOG = {
+  id: MCP_LOG_ID,
+  title: "Agent calls",
+  listLabel: "Agent calls, newest first",
+  hint: "j/k move · / search · Esc close",
+  cells: (/** @type {LogItem} */ item) => [item.time, item.outcome],
+  empty: "No agent calls since :mcp on.",
 };
 
 /**

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * Release packages from a `./mach package` tarball (spec m6-packaging): the release tarball, the
- * AppImage, the .deb, the vimma-bin PKGBUILD + SRCINFO (a release asset, and an AUR variant in
- * aur/), and SHA256SUMS.
+ * AppImage, the .deb, the .rpm (spec rpm-package), the vimma-bin PKGBUILD + SRCINFO (a release
+ * asset, and an AUR variant in aur/), and SHA256SUMS.
  *
  * Usage:
  *   node tools/package/package.mjs --tarball <vimma-*.linux-x86_64.tar.xz> --out <dir>
  *     --maintainer "Name <email>" [--tag vX.Y.Z] [--repo vimma-browser/vimma] [--sbom <file>]
- *     [--appimagetool <path> --runtime <path>] [--no-deb]
+ *     [--appimagetool <path> --runtime <path>] [--no-deb] [--no-rpm]
  * Without --appimagetool no AppImage is built (its AppDir still is, in the work dir).
  * The version is surfer.json brands.vimma.release.displayVersion; --tag must be exactly v<that>.
  */
@@ -27,7 +27,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.mjs";
@@ -147,6 +147,15 @@ export function releaseVersion(config, tag) {
 export const debVersion = (version) => version.replace("-", "~");
 
 /**
+ * rpm allows no `-` in a Version, and sorts `~` before the release as dpkg does (rpm 4.10+).
+ * @param {string} version SemVer
+ */
+export const rpmVersion = (version) => version.replace("-", "~");
+
+/** The .rpm's Release: every Vimma version is packaged once. */
+const RPM_RELEASE = "1";
+
+/**
  * The AUR gets releases only: release.yml accepts vX.Y.Z tags only, and a pre-release would need
  * a pkgver without its hyphen but a download URL with it.
  * @param {string} version
@@ -231,6 +240,7 @@ export function artifactNames(version) {
     tarball: `${APP}-${version}-linux-x86_64.tar.xz`,
     appimage: `${APP}-${version}-x86_64.AppImage`,
     deb: `${APP}_${debVersion(version)}_amd64.deb`,
+    rpm: `${APP}-${rpmVersion(version)}-${RPM_RELEASE}.x86_64.rpm`,
     sbom: `${APP}-${version}.cdx.json`,
     // Not `.SRCINFO`: GitHub renames an asset whose name starts with a period
     // (docs.github.com, REST "Upload a release asset"), so SHA256SUMS would name a missing file.
@@ -441,10 +451,101 @@ License: MPL-2.0
 `;
 
 /**
+ * The .spec rpmbuild turns into the .rpm (spec rpm-package): it copies `stage`, the root laid out
+ * as the .deb's, into the build root and lists what it owns. Requirements come from rpmbuild's
+ * ELF scan, as sonames such as `libgtk-3.so.0()(64bit)`, which Fedora and openSUSE both provide,
+ * where package names would differ between them. The libraries Vimma bundles in /usr/lib/vimma
+ * are neither offered to the system (a dnf or zypper resolve could pick Vimma's libnss3.so for
+ * another package) nor required from it.
+ * @param {{ version: string, maintainer: string, stage: string, bundled: string[] }} options
+ *   stage: the absolute path of the staged root; bundled: the base names of the shared libraries
+ *   under it
+ * @returns {string}
+ */
+export function rpmSpec({ version, maintainer, stage, bundled }) {
+  checkMaintainer(maintainer);
+  // rpm expands macros in tag values, so a % in Packager could run a command in rpmbuild.
+  if (maintainer.includes("%"))
+    throw new Error(`rpm: maintainer must not contain %: ${maintainer}`);
+  // The path goes into a shell command and through rpm's macro expander unquoted.
+  if (!/^\/[A-Za-z0-9._/-]+$/.test(stage)) {
+    throw new Error(`rpm stage must be an absolute path of [A-Za-z0-9._/-], got: ${stage}`);
+  }
+  for (const lib of bundled) {
+    if (!/^[A-Za-z0-9._+-]+$/.test(lib)) throw new Error(`bundled library name: ${lib}`);
+  }
+  // A regex as rpm reads it after macro expansion, which turns `\\` into one backslash. Each name
+  // ends at the `(` that starts its soname's qualifiers, so libnss3.so matches
+  // `libnss3.so(NSS_3.2)(64bit)` and not libnss3.so.1.
+  const escape = (/** @type {string} */ name) => name.replace(/[.+]/g, (c) => `\\\\${c}`);
+  const names = [...new Set(bundled)].sort().map(escape);
+  const icons = ICON_SIZES.map(
+    (size) => `/usr/share/icons/hicolor/${size}x${size}/apps/${APP}.png`,
+  );
+  return [
+    `Name: ${APP}`,
+    `Version: ${rpmVersion(version)}`,
+    `Release: ${RPM_RELEASE}`,
+    `Summary: ${DESCRIPTION}`,
+    "License: MPL-2.0",
+    "URL: https://github.com/vimma-browser/vimma",
+    `Packager: ${maintainer}`,
+    "Requires: hicolor-icon-theme",
+    // Firefox loads libpulse at run time, so the ELF scan does not see it.
+    "Recommends: libpulse.so.0()(64bit)",
+    // What Fedora's firefox provides: a web browser.
+    "Provides: webclient",
+    `%global __provides_exclude_from ^/usr/lib/${APP}/`,
+    ...(names.length ? [`%global __requires_exclude ^(${names.join("|")})\\\\(`] : []),
+    // The binaries go in as mach built them: rpmbuild's strip and debuginfo passes would change
+    // them, and its /usr/lib/.build-id links could clash with another package's.
+    "%global debug_package %{nil}",
+    "%global __os_install_post %{nil}",
+    "%global _build_id_links none",
+    // xz, as the .deb: every supported Fedora and openSUSE reads it.
+    "%global _binary_payload w6.xzdio",
+    "",
+    "%description",
+    "Vimma is a Firefox fork driven from the keyboard: a modal page layer, a",
+    "prefix keymap, workspaces as containers and an always-visible status bar.",
+    "",
+    "%install",
+    `cp -a ${stage}/. %{buildroot}/`,
+    "",
+    "%files",
+    "%defattr(-,root,root,-)",
+    `/usr/lib/${APP}`,
+    `/usr/bin/${APP}`,
+    `/usr/bin/${LAUNCHER_NAME}`,
+    `/usr/share/applications/${APP}-${APP}.desktop`,
+    ...icons,
+    `/usr/share/icons/hicolor/scalable/apps/${APP}.svg`,
+    `/usr/share/doc/${APP}`,
+    "",
+  ].join("\n");
+}
+
+/**
+ * The base names of the shared libraries in `dir` and below, as the ELF scan names them.
+ * @param {string} dir
+ * @returns {string[]}
+ */
+function sharedLibraries(dir) {
+  /** @type {string[]} */
+  const libs = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) libs.push(...sharedLibraries(join(dir, entry.name)));
+    else if (/\.so(?:\.|$)/.test(entry.name)) libs.push(entry.name);
+  }
+  return libs;
+}
+
+/**
  * How the package was installed, written to /opt/vimma/is-packaged-app as `vimma-package=<it>`
  * so the updater can show the matching hint (spec m6a-updater, section 3): `pkgbuild-release`
- * for the PKGBUILD downloaded from the release, `aur` for the copy pushed to the AUR. The .deb
- * and the AppImage carry `deb` and `appimage` (packageMarker); the tarball carries none.
+ * for the PKGBUILD downloaded from the release, `aur` for the copy pushed to the AUR. The .deb,
+ * the .rpm and the AppImage carry `deb`, `rpm` and `appimage` (packageMarker); the tarball
+ * carries none.
  * @typedef {"pkgbuild-release" | "aur"} InstallSource
  */
 const INSTALL_SOURCES = ["pkgbuild-release", "aur"];
@@ -458,7 +559,7 @@ export const PACKAGED_APP_FILE = "is-packaged-app";
 
 /**
  * The marker's content for a package type, the line the PKGBUILD's package() also writes.
- * @param {"deb" | "appimage" | InstallSource} type
+ * @param {"deb" | "rpm" | "appimage" | InstallSource} type
  */
 export function packageMarker(type) {
   return `vimma-package=${type}\n`;
@@ -700,19 +801,19 @@ function installedKiB(dir) {
  * @typedef {{
  *   tarball: string, outDir: string, config: SurferConfig, maintainer: string, repo: string,
  *   brandDir: string, tag?: string, sbom?: string, appimagetool?: string, runtime?: string,
- *   buildDeb?: boolean, workDir?: string,
+ *   buildDeb?: boolean, buildRpm?: boolean, workDir?: string,
  * }} PackageOptions
  */
 
 /**
- * @typedef {{ version: string, files: string[], appDir: string, debRoot: string, aurDir: string }}
- *   PackageResult
+ * @typedef {{ version: string, files: string[], appDir: string, debRoot: string,
+ *   rpmRoot: string, aurDir: string }} PackageResult
  */
 
 /**
  * Every release file from one `./mach package` tarball; see the file comment. The AppDir and the
- * deb root are built in `workDir`, which stays; without one they are built in a temp dir that is
- * removed before this returns or throws, and `appDir`/`debRoot` no longer exist.
+ * deb and rpm roots are built in `workDir`, which stays; without one they are built in a temp dir
+ * that is removed before this returns or throws, and `appDir`/`debRoot`/`rpmRoot` no longer exist.
  * @param {PackageOptions} options
  * @returns {PackageResult}
  */
@@ -727,7 +828,7 @@ export function packageRelease(options) {
 }
 
 /**
- * @param {string} work scratch dir for the extracted tarball, the AppDir and the deb root
+ * @param {string} work scratch dir for the extracted tarball, the AppDir and the package roots
  * @param {PackageOptions} options
  * @returns {PackageResult}
  */
@@ -823,6 +924,60 @@ function packageIn(work, options) {
     files.push(deb);
   }
 
+  // .rpm: the .deb's layout, with its own marker and without dpkg's control files
+  const rpmRoot = join(work, "rpm");
+  rmSync(rpmRoot, { recursive: true, force: true });
+  mkdirSync(rpmRoot, { recursive: true, mode: 0o755 });
+  copyApp(app, join(rpmRoot, `usr/lib/${APP}`));
+  installShare(rpmRoot, options.brandDir, desktop, desktopId);
+  mkdirSync(join(rpmRoot, "usr/bin"), { recursive: true, mode: 0o755 });
+  symlinkSync(`../lib/${APP}/${APP}`, join(rpmRoot, `usr/bin/${APP}`));
+  installLauncher(join(rpmRoot, `usr/lib/${APP}/${LAUNCHER_NAME}`));
+  writeFile(join(rpmRoot, `usr/lib/${APP}/${PACKAGED_APP_FILE}`), packageMarker("rpm"));
+  symlinkSync(`../lib/${APP}/${LAUNCHER_NAME}`, join(rpmRoot, `usr/bin/${LAUNCHER_NAME}`));
+  writeFile(join(rpmRoot, `usr/share/doc/${APP}/copyright`), COPYRIGHT);
+  if (options.buildRpm !== false) {
+    // rpmbuild macro-expands its --define values too.
+    const rpmOut = resolve(out);
+    if (!/^\/[A-Za-z0-9._/-]+$/.test(rpmOut)) {
+      throw new Error(`rpm output dir must be a path of [A-Za-z0-9._/-], got: ${rpmOut}`);
+    }
+    const top = join(work, "rpmbuild");
+    rmSync(top, { recursive: true, force: true });
+    mkdirSync(top, { recursive: true });
+    const spec = join(top, `${APP}.spec`);
+    writeFile(
+      spec,
+      rpmSpec({
+        version,
+        maintainer: options.maintainer,
+        stage: rpmRoot,
+        bundled: sharedLibraries(join(rpmRoot, `usr/lib/${APP}`)),
+      }),
+    );
+    execFileSync(
+      "rpmbuild",
+      [
+        "-bb",
+        "--target",
+        "x86_64",
+        "--define",
+        `_topdir ${top}`,
+        "--define",
+        `_rpmdir ${rpmOut}`,
+        // Straight into the output dir under the release name, not RPMS/x86_64/.
+        "--define",
+        "_build_name_fmt %{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}.rpm",
+        spec,
+      ],
+      { stdio: "inherit" },
+    );
+    const rpm = join(out, names.rpm);
+    if (!existsSync(rpm)) throw new Error(`rpmbuild wrote no ${names.rpm}`);
+    chmodSync(rpm, 0o644);
+    files.push(rpm);
+  }
+
   if (options.sbom) {
     const sbom = join(out, names.sbom);
     if (options.sbom !== sbom) copyFileSync(options.sbom, sbom);
@@ -857,7 +1012,14 @@ function packageIn(work, options) {
   writeFile(join(out, "notes/third-party.md"), thirdPartyNotes());
 
   writeFile(join(out, names.checksums), sha256sums(files));
-  return { version, files: [...files, join(out, names.checksums)], appDir, debRoot, aurDir };
+  return {
+    version,
+    files: [...files, join(out, names.checksums)],
+    appDir,
+    debRoot,
+    rpmRoot,
+    aurDir,
+  };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -872,6 +1034,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       appimagetool: { type: "string" },
       runtime: { type: "string" },
       "no-deb": { type: "boolean", default: false },
+      "no-rpm": { type: "boolean", default: false },
     },
   });
   if (!values.tarball || !values.out || !values.maintainer) {
@@ -889,6 +1052,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     appimagetool: values.appimagetool,
     runtime: values.runtime,
     buildDeb: !values["no-deb"],
+    buildRpm: !values["no-rpm"],
     config: JSON.parse(readFileSync(new URL("surfer.json", root), "utf8")),
     brandDir: fileURLToPath(new URL("configs/branding/vimma/", root)),
   });

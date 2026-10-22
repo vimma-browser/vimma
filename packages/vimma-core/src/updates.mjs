@@ -53,8 +53,8 @@ export const HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/vimma";
  * How Vimma was installed (spec §3): `source` is a build run from its objdir, `packaged` an
  * `is-packaged-app` marker this version does not know; on macOS, `homebrew` is the cask and `dmg`
  * any other copy of the app (spec macos-homebrew, decision 19).
- * @typedef {"source" | "tarball" | "appimage" | "deb" | "aur" | "pkgbuild-release" | "packaged"
- *   | "homebrew" | "dmg"} InstallType
+ * @typedef {"source" | "tarball" | "appimage" | "deb" | "rpm" | "aur" | "pkgbuild-release"
+ *   | "packaged" | "homebrew" | "dmg"} InstallType
  */
 /** @typedef {{ id: string, slot: "primary" | "secondary", spki: string }} PinnedKey */
 /**
@@ -67,8 +67,15 @@ export const HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/vimma";
  * @property {string[]} advisories    MFSA IDs
  * @property {Assets} assets          each package's size and SHA-512, as the manifest signs them
  */
-/** @typedef {{ size: number, sha512: string }} Asset */
-/** @typedef {{ tarball?: Asset, appimage?: Asset, deb?: Asset, dmg?: Asset }} Assets */
+/**
+ * A package's download as the signed manifest gives it; `url` is absent in a result saved by a
+ * version that did not keep it.
+ * @typedef {{ size: number, sha512: string, url?: string }} Asset
+ */
+/**
+ * @typedef {{ tarball?: Asset, appimage?: Asset, deb?: Asset, rpm?: Asset, dmg?: Asset }}
+ *   Assets
+ */
 /**
  * @typedef {{ channel: string, target: string, serial: string, update: Offer | null }} Manifest
  */
@@ -302,6 +309,7 @@ export const ASSET_ELEMENTS = Object.freeze({
   tarball: "vimmaTarball",
   appimage: "vimmaAppImage",
   deb: "vimmaDeb",
+  rpm: "vimmaRpm",
   dmg: "vimmaDmg",
 });
 
@@ -328,10 +336,11 @@ function readAssets(content) {
       return { ok: false, why: `<${element}> hashFunction is not sha512` };
     }
     if (!SHA512_HEX.test(hash)) return { ok: false, why: `<${element}> hashValue is not SHA-512` };
-    if (!(attrs.get("URL") ?? "").startsWith("https://")) {
+    const url = attrs.get("URL") ?? "";
+    if (!url.startsWith("https://")) {
       return { ok: false, why: `<${element}> URL is not https` };
     }
-    assets[/** @type {keyof Assets} */ (key)] = { size: Number(size), sha512: hash };
+    assets[/** @type {keyof Assets} */ (key)] = { size: Number(size), sha512: hash, url };
   }
   return { ok: true, assets };
 }
@@ -351,6 +360,7 @@ export function offerAssets(value) {
     const a = record[key];
     if (a && Number.isSafeInteger(a.size) && a.size >= 0 && SHA512_HEX.test(a.sha512)) {
       out[key] = { size: a.size, sha512: a.sha512 };
+      if (typeof a.url === "string" && a.url.startsWith("https://")) out[key].url = a.url;
     }
   }
   return out;
@@ -507,16 +517,45 @@ export function staleDays(serial, channel, now) {
   return days > limit ? days : null;
 }
 
+/** How long `updates: off` shows once checks are seen off (decision 38). */
+export const OFF_NOTICE_MS = 5000;
+
 /**
- * What the status bar shows (spec §5, the rows a check alone produces), or null.
+ * The once-per-session `updates: off` notice (decision 38): its clock starts the first time
+ * checks are seen off on an install that checks, and the notice shows until OFF_NOTICE_MS later.
+ * Turning checks off again later in the session does not restart it.
+ * @param {{ enabled: boolean, installType: InstallType | null, since: number | null,
+ *   now: number }} input  `since`: when the clock started, null before
+ * @returns {{ since: number | null, shown: boolean }}
+ */
+export function offNotice({ enabled, installType, since, now }) {
+  const checks = installType !== null && installType !== "source";
+  const start = since ?? (!enabled && checks ? now : null);
+  return {
+    since: start,
+    shown: !enabled && checks && start !== null && now - start < OFF_NOTICE_MS,
+  };
+}
+
+/**
+ * What the status bar shows (spec §5: the rows a check produces, and an AppImage replaced), or
+ * null.
  * @param {{ enabled: boolean, installType: InstallType,
  *   offer: { displayVersion: string, urgent: boolean } | null, refusals: number,
- *   staleDays: number | null }} state
+ *   staleDays: number | null, staged?: boolean, offShown?: boolean }} state  `staged`: the
+ *   AppImage was replaced with the offer; `offShown`: the startup `updates: off` notice lasts
+ *   (offNotice)
  * @returns {UpdateNotice | null}
  */
 export function updateNotice(state) {
-  if (!state.enabled || state.installType === "source") return null;
+  if (state.installType === "source") return null;
+  if (!state.enabled) return state.offShown ? { text: "updates: off", tone: "info" } : null;
   const { offer } = state;
+  if (offer && state.staged) {
+    return offer.urgent
+      ? { text: `⇡ ${offer.displayVersion} security: :restart`, tone: "urgent" }
+      : { text: `⇡ ${offer.displayVersion} on restart`, tone: "info" };
+  }
   if (offer) {
     return offer.urgent
       ? { text: `⇡ ${offer.displayVersion} security: :update`, tone: "urgent" }
@@ -548,7 +587,13 @@ export function installTypeFrom({ packaged, marker, appImage, platform, appPath,
   if (marker === null) return appImage ? "appimage" : "tarball";
   const m = /^vimma-package=([a-z-]+)\s*$/m.exec(marker);
   const name = m?.[1];
-  if (name === "deb" || name === "aur" || name === "pkgbuild-release" || name === "appimage") {
+  if (
+    name === "deb" ||
+    name === "rpm" ||
+    name === "aur" ||
+    name === "pkgbuild-release" ||
+    name === "appimage"
+  ) {
     return name;
   }
   return appImage ? "appimage" : "packaged";
@@ -615,6 +660,20 @@ export function updateSteps(type, offer, where) {
         text: "Download the new .deb and install it over this one:",
         commands: [
           `${fetchChecked(`${dl}/${file}`, file, assets.deb)} && sudo apt install ./${file}`,
+        ],
+        link,
+      };
+    }
+    case "rpm": {
+      // One .rpm for Fedora and openSUSE (spec rpm-package). It carries no OpenPGP signature,
+      // which zypper refuses unless told; the SHA-512 from the signed manifest checks it instead.
+      const file = `vimma-${v.replace("-", "~")}-1.x86_64.rpm`;
+      const fetch = fetchChecked(`${dl}/${file}`, file, assets.rpm);
+      return {
+        text: "Download the new .rpm and install it over this one, with dnf on Fedora or zypper on openSUSE:",
+        commands: [
+          `${fetch} && sudo dnf install ./${file}`,
+          `${fetch} && sudo zypper install --allow-unsigned-rpm ./${file}`,
         ],
         link,
       };

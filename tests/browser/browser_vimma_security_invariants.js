@@ -8,6 +8,9 @@
 "use strict";
 
 /* global focusContent -- from head.js */
+/* global Client -- from head_vimma_control.js */
+
+Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 
 const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
@@ -100,4 +103,101 @@ add_task(async function route_add_creates_a_private_config_toml() {
   await SpecialPowers.popPrefEnv();
   await ConfigHost.reload();
   await IOUtils.remove(dir, { recursive: true });
+});
+
+// docs/specs/mcp-drive.md D9 (security.md M16): `agent-keys` runs only its whitelist, so the
+// agent role never reaches `ctrl+b shift+a` (mcp.answer: an agent answering its own question),
+// the command line or any prefix binding, and nothing is asked or changes.
+add_task(async function agent_keys_never_reach_the_prefix_the_command_line_or_mcp_answer() {
+  const { AgentGate } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  );
+  const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/mcp-ops.mjs",
+  );
+  const { WorkspaceStore } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
+  );
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await VimmaControl.settled();
+  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  const tab = gBrowser.addTab(PAGE, {
+    userContextId: agent.userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, PAGE);
+  await focusContent(gBrowser.selectedBrowser);
+  const before = snapshot();
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "x" } });
+  for (const keys of ["ctrl+b A", "<C-b>A", "prefix+shift+a", ":", ":mcp revoke<CR>", "ctrl+b"]) {
+    const r = await c.call("agent-keys", { tab: String(tab.linkedBrowser.browserId), keys });
+    Assert.equal(r.error?.code, "invalid-args", `${keys}: refused`);
+  }
+  Assert.equal(AgentGate.waiting.length, 0, "nothing was asked");
+  Assert.equal(snapshot(), before, "nothing changed in the window");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+  await VimmaControl.settled();
+});
+
+// docs/specs/mcp-forms.md F8 (security.md M26): an agent's click is the child's click(), so the
+// code the agent role reaches never synthesises input through nsIDOMWindowUtils or the widget,
+// and never gives a page user activation. Comments are left out: they may name what is avoided.
+add_task(async function agent_clicks_never_synthesise_input_or_user_activation() {
+  const base = "chrome://browser/content/vimma/";
+  const files = [
+    "ctl/agent-commands.mjs",
+    "ctl/AgentAct.sys.mjs",
+    "ctl/AgentDrive.sys.mjs",
+    "actors/VimmaActors.sys.mjs",
+    "actors/VimmaChild.sys.mjs",
+    "actors/agent-fields.mjs",
+    "actors/hint-collect.mjs",
+  ];
+  const forbidden =
+    /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b/g;
+  for (const file of files) {
+    const source = await (await fetch(base + file)).text();
+    Assert.greater(source.length, 0, `${file} is read`);
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+    Assert.deepEqual(code.match(forbidden) ?? [], [], `${file} synthesises no input (M26)`);
+  }
+});
+
+// docs/specs/mcp-forms.md F13 (security.md M27): an agent's fill never sets a file field. The
+// code the agent role reaches has no way to give a file input a file, and the one place that
+// calls setUserInput refuses a file field, an editable root and a sensitive field just before.
+add_task(async function agent_fills_never_set_a_file() {
+  const base = "chrome://browser/content/vimma/";
+  const files = [
+    "ctl/agent-commands.mjs",
+    "ctl/AgentAct.sys.mjs",
+    "ctl/AgentDrive.sys.mjs",
+    "actors/VimmaActors.sys.mjs",
+    "actors/VimmaChild.sys.mjs",
+    "actors/agent-fields.mjs",
+  ];
+  const forbidden = /\bmozSet\w*|\.files\s*=|\bmozFileOrDirectory\w*|\bDataTransfer\b/g;
+  /** @type {string[]} */
+  const setters = [];
+  for (const file of files) {
+    const source = await (await fetch(base + file)).text();
+    Assert.greater(source.length, 0, `${file} is read`);
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+    Assert.deepEqual(code.match(forbidden) ?? [], [], `${file} gives no input a file (M27)`);
+    for (const m of code.matchAll(/\bsetUserInput\(/g)) setters.push(`${file}@${m.index}`);
+  }
+  Assert.equal(setters.length, 1, `one call of setUserInput: ${setters.join(", ")}`);
+  Assert.ok(setters[0].startsWith("actors/agent-fields.mjs@"), "in agent-fields.mjs");
+  const fields = await (await fetch(`${base}actors/agent-fields.mjs`)).text();
+  const fill = fields.slice(fields.indexOf("export function fillField("));
+  const body = fill.slice(0, fill.indexOf("\n}\n"));
+  Assert.ok(
+    body.indexOf("if (secretOf(el)) return false;") < body.indexOf("setUserInput(") &&
+      body.indexOf('field === "text" || field === "textarea"') < body.indexOf("setUserInput("),
+    "fillField checks the field is no secret and is text before it sets it",
+  );
 });

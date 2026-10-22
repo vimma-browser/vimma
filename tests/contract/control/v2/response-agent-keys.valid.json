@@ -1,0 +1,21 @@
+{
+  "description": "The page after the keys: where it is scrolled to, each step, the find's result",
+  "kind": "response",
+  "command": "agent-keys",
+  "message": {
+    "type": "response",
+    "id": 3,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/pricing",
+      "title": "Pricing · Example",
+      "loading": false,
+      "scroll": { "y": 0.42 },
+      "steps": [
+        { "keys": "3j", "action": "scroll.down", "ok": true },
+        { "keys": "/\"pricing\"⏎", "action": "find.forward", "ok": true }
+      ],
+      "find": { "query": "pricing", "found": true, "wrapped": false }
+    }
+  }
+}

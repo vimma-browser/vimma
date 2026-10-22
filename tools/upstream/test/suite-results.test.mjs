@@ -72,6 +72,7 @@ describe("suiteResults", () => {
         "artifact-build": OK,
         mochitest: FAILED,
         e2e: FAILED,
+        "sites-offline": FAILED,
       },
       mochitestLog: LOG,
       e2eReport,
@@ -85,6 +86,7 @@ describe("suiteResults", () => {
       "artifact-build": "success",
       mochitest: "failure",
       e2e: "failure",
+      "sites-offline": "failure",
     });
     expect(r.mochitest.failures).toHaveLength(3);
     expect(r.e2e).toEqual(e2eReport);
@@ -106,10 +108,15 @@ describe("suiteResults", () => {
 
   it("is ok only when every step succeeded", () => {
     const steps = Object.fromEntries(
-      ["import", "branding", "upstream-prefs", "artifact-build", "mochitest", "e2e"].map((s) => [
-        s,
-        OK,
-      ]),
+      [
+        "import",
+        "branding",
+        "upstream-prefs",
+        "artifact-build",
+        "mochitest",
+        "e2e",
+        "sites-offline",
+      ].map((s) => [s, OK]),
     );
     const r = suiteResults({
       version: "159.0b2",

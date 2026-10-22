@@ -18,21 +18,21 @@ export const MCP_FORGET_QUESTION =
 
 /**
  * @typedef {{ kind: "status" } | { kind: "on" } | { kind: "off" } | { kind: "forget" }
- *   | { kind: "revoke" } | { kind: "refuse", text: string }} McpCommand
+ *   | { kind: "revoke" } | { kind: "log" } | { kind: "refuse", text: string }} McpCommand
  */
 
 /**
- * `:mcp [on|off|revoke|forget]`.
+ * `:mcp [on|off|revoke|forget|log]` (`log`: docs/specs/mcp-drive.md D14).
  * @param {string | undefined} text
  * @returns {McpCommand}
  */
 export function parseMcpCommand(text) {
   const word = (text ?? "").trim().toLowerCase();
   if (!word) return { kind: "status" };
-  if (word === "on" || word === "off" || word === "forget" || word === "revoke") {
-    return { kind: word };
+  if (["on", "off", "forget", "revoke", "log"].includes(word)) {
+    return /** @type {McpCommand} */ ({ kind: word });
   }
-  return { kind: "refuse", text: ":mcp takes on, off, revoke or forget" };
+  return { kind: "refuse", text: ":mcp takes on, off, revoke, forget or log" };
 }
 
 /**
@@ -114,7 +114,20 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-read": "vimma_read_page",
   "agent-open": "vimma_open",
   "agent-close": "vimma_close_tab",
+  "agent-keys": "vimma_keys",
+  "agent-show": "vimma_show",
+  "agent-elements": "vimma_elements",
+  "agent-activate": "vimma_activate",
+  "agent-fill": "vimma_fill",
+  "agent-screenshot": "vimma_screenshot",
+  "agent-console": "vimma_console",
 });
+/**
+ * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
+ * page changes what the user sees, so no grant may let an agent do it at any moment
+ * (docs/specs/mcp-drive.md D4, security.md M19).
+ */
+export const ALWAYS_ASK = Object.freeze(["vimma_show"]);
 /** Questions that may wait: per connection and in all (decision 17). */
 export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
 /**
@@ -123,20 +136,61 @@ export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
  */
 export const OPEN_RATE = Object.freeze({ max: 10, ms: 60_000 });
 
-/** A sliding window of each connection's opens. */
-export class OpenRate {
-  constructor() {
+/**
+ * `agent-keys` requests per connection in any window of `ms` (mcp-drive D15, security.md M20),
+ * counted when asked: a `vimma_keys` grant runs unasked, and a refused call must not loop.
+ */
+export const KEYS_RATE = Object.freeze({ max: 30, ms: 60_000 });
+
+/**
+ * `agent-show` requests per connection in any window of `ms` (mcp-drive D7, security.md M20),
+ * counted when asked, so a refused show cannot be retried in a loop.
+ */
+export const SHOW_RATE = Object.freeze({ max: 6, ms: 60_000 });
+
+/**
+ * `agent-elements` requests per connection in any window of `ms` (mcp-forms F26, security.md
+ * M31), counted when asked: a `vimma_elements` grant runs unasked and must not flood a page, and
+ * a refused call must not loop.
+ */
+export const ELEMENTS_RATE = Object.freeze({ max: 30, ms: 60_000 });
+
+/**
+ * `agent-activate` requests per connection in any window of `ms` (mcp-forms F26, security.md
+ * M32), counted when asked, and shared with `agent-fill`: a grant runs clicks unasked and must
+ * not flood a page, and a refused call must not loop.
+ */
+export const ACT_RATE = Object.freeze({ max: 30, ms: 60_000 });
+
+/**
+ * `agent-screenshot` requests per connection in any window of `ms` (mcp-forms F21, security.md
+ * M32), counted when asked: each is a large reply and a paint in the content process.
+ */
+export const SCREENSHOT_RATE = Object.freeze({ max: 12, ms: 60_000 });
+
+/**
+ * `agent-console` requests per connection in any window of `ms` (mcp-forms F26, security.md
+ * M32), counted when asked.
+ */
+export const CONSOLE_RATE = Object.freeze({ max: 30, ms: 60_000 });
+
+/** A sliding window of each connection's calls of one kind, at most `max` in any `ms`. */
+export class CallRate {
+  /** @param {{ max: number, ms: number }} limit */
+  constructor(limit) {
+    this.limit = limit;
     /** @type {Map<string | number, number[]>} */
     this.times = new Map();
   }
 
   /**
-   * Whether connection `conn` may open one more now; if so, it is counted.
+   * Whether connection `conn` may make one more call now; if so, it is counted.
    * @param {string | number} conn @param {number} now
    */
   take(conn, now) {
-    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - OPEN_RATE.ms);
-    if (recent.length >= OPEN_RATE.max) {
+    const { max, ms } = this.limit;
+    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
+    if (recent.length >= max) {
       this.times.set(conn, recent);
       return false;
     }
@@ -145,9 +199,68 @@ export class OpenRate {
     return true;
   }
 
+  /**
+   * Whether connection `conn` could make one more call now, without counting it: a step that
+   * asks first checks here, so a yes is not followed by "too many".
+   * @param {string | number} conn @param {number} now
+   */
+  can(conn, now) {
+    const { max, ms } = this.limit;
+    return (this.times.get(conn) ?? []).filter((t) => t > now - ms).length < max;
+  }
+
   /** @param {string | number} conn  closed */
   forget(conn) {
     this.times.delete(conn);
+  }
+}
+
+/** Each connection's opens (security.md M3). */
+export class OpenRate extends CallRate {
+  constructor() {
+    super(OPEN_RATE);
+  }
+}
+
+/** How many calls `:mcp log` keeps (mcp-drive D14). */
+export const LOG_SIZE = 100;
+
+/**
+ * @typedef {"yes" | "grant" | "user" | "timeout" | "busy" | "muted" | "cancelled" | "in-use"
+ *   | "changed" | "stopped" | "followed" | "failed"} LogOutcome  allowed once, run under a grant, why it
+ *   was denied, that it stopped while it ran (`why`: changed, in-use, timeout, denied), a
+ *   follow it made (`detail`: the URL loaded), or that it failed after the yes (a show whose
+ *   window could not switch)
+ * @typedef {{ at: number, client: string, tool: string, title: string, detail: string,
+ *   outcome: LogOutcome, why?: string }} LogEntry  `detail`: the keys or URL, as the question
+ *   showed them
+ */
+
+/**
+ * The last LOG_SIZE agent calls, asked or under a grant (mcp-drive D14, security.md M23). In
+ * memory only, like grants (vimma-mcp decision 22): it would hold the agent workspace's
+ * browsing, which nothing writes to disk.
+ */
+export class AgentLog {
+  constructor() {
+    /** @type {LogEntry[]} oldest first */
+    this.rows = [];
+  }
+
+  /** @param {LogEntry} entry */
+  add(entry) {
+    this.rows.push(entry);
+    if (this.rows.length > LOG_SIZE) this.rows.splice(0, this.rows.length - LOG_SIZE);
+  }
+
+  /** Newest first. */
+  entries() {
+    return [...this.rows].reverse();
+  }
+
+  /** `:mcp off`. */
+  clear() {
+    this.rows = [];
   }
 }
 
@@ -214,10 +327,11 @@ export class AgentQueue {
    * A request arrives: it runs under a grant, waits for an answer, or is denied at once.
    * @param {ConnId} conn @param {string} tool @param {number} now
    * @param {{ always?: boolean }} [options]  `always`: ask even under a grant (a dangerous
-   *   download, decision 31 d)
+   *   download, decision 31 d); an ALWAYS_ASK tool always does
    * @returns {Admission}
    */
-  ask(conn, tool, now, { always = false } = {}) {
+  ask(conn, tool, now, { always: asked = false } = {}) {
+    const always = asked || ALWAYS_ASK.includes(tool);
     const c = this.conns.get(conn);
     if (!c) return { kind: "deny", reason: "busy" };
     if (c.mutedUntil > now) return { kind: "deny", reason: "muted" };

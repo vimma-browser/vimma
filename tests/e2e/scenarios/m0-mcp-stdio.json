@@ -42,7 +42,14 @@
               { "name": "vimma_tabs", "annotations": { "readOnlyHint": true } },
               { "name": "vimma_read_page", "annotations": { "openWorldHint": true } },
               { "name": "vimma_open", "annotations": { "readOnlyHint": false } },
-              { "name": "vimma_close_tab", "annotations": { "destructiveHint": true } }
+              { "name": "vimma_close_tab", "annotations": { "destructiveHint": true } },
+              { "name": "vimma_keys", "annotations": { "openWorldHint": true } },
+              { "name": "vimma_show", "annotations": { "idempotentHint": true } },
+              { "name": "vimma_elements", "annotations": { "readOnlyHint": true } },
+              { "name": "vimma_activate", "annotations": { "destructiveHint": true } },
+              { "name": "vimma_fill", "annotations": { "destructiveHint": true } },
+              { "name": "vimma_screenshot", "annotations": { "readOnlyHint": true } },
+              { "name": "vimma_console", "annotations": { "readOnlyHint": true } }
             ]
           }
         }

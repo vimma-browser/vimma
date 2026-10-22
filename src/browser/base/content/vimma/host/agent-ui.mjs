@@ -16,8 +16,8 @@ import {
   deniedNotice,
   FULL_CONTROL,
   grantNotice,
-  isPage,
   mayOpenByItself,
+  noGrant,
   promptKey,
   questionLine,
   RAN_MS,
@@ -110,7 +110,11 @@ function onWindowChange(win, e) {
 function open(win, q) {
   const w = windows.get(win);
   if (!w) return false;
-  const shown = w.prompt.show(questionLine(q, { grantMinutes: grantMinutes() }), armMs());
+  const line = questionLine(q, {
+    grantMinutes: grantMinutes(),
+    agentWorkspace: McpHost.workspaceName,
+  });
+  const shown = w.prompt.show(line, armMs());
   if (!shown) return false;
   current = { id: q.id, win, count: "", question: q };
   return true;
@@ -289,7 +293,7 @@ export const AgentUi = {
     const q = current.question;
     const result = promptKey({ count: current.count }, formatKey(chord), {
       full: q.tool === FULL_CONTROL,
-      noGrant: isPage(q) || !!(/** @type {any} */ (q.what)?.unscanned),
+      noGrant: noGrant(q),
       dangerous: !!(/** @type {any} */ (q.what)?.danger),
     });
     if (result.kind === "count") {
@@ -356,6 +360,15 @@ export const AgentUi = {
       ranAt: AgentGate.ranAt,
       now: Date.now(),
     });
+  },
+
+  /**
+   * The window that asks and shows the notices: where the user answers (mcp-drive D6 names
+   * another window that a show switched).
+   * @returns {Window | null}
+   */
+  askingWindow() {
+    return askingWindow();
   },
 
   /** Test-only: the question on screen. */

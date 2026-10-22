@@ -87,7 +87,7 @@ if [ "${1:-}" = "--stub" ]; then
   done
   tar -cJf "$work/vimma-stub.en-US.linux-x86_64.tar.xz" -C "$work/stub" vimma
   node "$here/package.mjs" --tarball "$work/vimma-stub.en-US.linux-x86_64.tar.xz" \
-    --out "$work/dist" --maintainer 'Vimma CI <ci@example.invalid>' --no-deb
+    --out "$work/dist" --maintainer 'Vimma CI <ci@example.invalid>' --no-deb --no-rpm
   dist="$work/dist"
   real=0
 else

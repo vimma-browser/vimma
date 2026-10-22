@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_screenshot.js: what vimma_screenshot captures. A coloured band
+   - at the top whose pixels the test reads back, a button and a search field on screen, and far
+   - below the fold a card form without autocomplete attributes (form autofill's heuristics
+   - recognise it), a number field for a card number and a password field; on screen, a hosted payment frame of another site
+   - with a card number field. With ?noise=N, random blocks cover the viewport; ?dataframe adds a data: frame. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Screenshot agent fixture</title>
+    <style>
+      body {
+        margin: 0;
+        font: 14px sans-serif;
+        background: #fff;
+      }
+      #band {
+        height: 120px;
+        background: rgb(0, 128, 255);
+      }
+      iframe {
+        width: 300px;
+        height: 30px;
+        border: 0;
+      }
+      #below {
+        margin-top: 4000px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="band"></div>
+    <p>
+      <button id="go" type="button">Go</button>
+      <input id="q" type="search" name="q" aria-label="Search" />
+    </p>
+    <iframe id="hosted" title="Payment"></iframe>
+    <div id="below">
+      <form id="pay" method="post" action="/api/pay">
+        <label for="cardno">Card number</label>
+        <input id="cardno" name="cardnumber" />
+        <label for="cardname">Name on card</label>
+        <input id="cardname" name="ccname" />
+        <label for="cvc">Security code (CVC)</label>
+        <input id="cvc" name="cvc" />
+        <label for="ccnum">Card number (digits)</label>
+        <input id="ccnum" type="number" name="ccnum" autocomplete="cc-number" />
+      </form>
+      <form id="login" method="post" action="/api/login">
+        <label for="pw">Password</label>
+        <input id="pw" name="password" type="password" />
+      </form>
+    </div>
+    <script>
+      // A frame of another site: the test directory on example.org.
+      const dir = location.pathname.replace(/[^/]*$/, "");
+      document.getElementById("hosted").src =
+        `https://example.org${dir}file_vimma_agent_shot_card.html`;
+      // ?dataframe adds a frame Vimma's actor does not cover.
+      if (new URLSearchParams(location.search).has("dataframe")) {
+        const f = document.createElement("iframe");
+        f.src = "data:text/html,<p>data frame</p>";
+        document.body.prepend(f);
+      }
+      // ?noise=N covers the viewport with random blocks of N pixels: an image that compresses
+      // badly, to test the encoding's limits.
+      const block = Number(new URLSearchParams(location.search).get("noise"));
+      if (block > 0) {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(innerWidth * devicePixelRatio);
+        canvas.height = Math.ceil(innerHeight * devicePixelRatio);
+        canvas.style = "position: fixed; inset: 0; width: 100vw; height: 100vh";
+        const ctx = canvas.getContext("2d");
+        for (let y = 0; y < canvas.height; y += block) {
+          for (let x = 0; x < canvas.width; x += block) {
+            const c = () => Math.floor(Math.random() * 256);
+            ctx.fillStyle = `rgb(${c()}, ${c()}, ${c()})`;
+            ctx.fillRect(x, y, block, block);
+          }
+        }
+        document.body.append(canvas);
+      }
+    </script>
+  </body>
+</html>

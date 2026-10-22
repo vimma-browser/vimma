@@ -1,6 +1,6 @@
 # Spec: element-focus
 
-Status: draft · Area: `packages/vimma-core/src/hints.mjs`, `blocks.mjs` (new), `actions.mjs`,
+Status: implemented · Area: `packages/vimma-core/src/hints.mjs`, `blocks.mjs` (new), `actions.mjs`,
 `defaults.mjs`, `modes.mjs`, `theme.mjs`, `statusbar.mjs`; `actors/hint-collect.mjs`,
 `actors/block.mjs` (new), `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`,
 `actors/caret.mjs`; `host/VimmaHost.sys.mjs`, `host/copy-mode.mjs`; `ui/hint-overlay.mjs`;
@@ -10,12 +10,9 @@ Status: draft · Area: `packages/vimma-core/src/hints.mjs`, `blocks.mjs` (new), 
 
 Issue: [#213](https://github.com/vimma-browser/vimma/issues/213)
 
-The key that starts element focus is not fixed by this spec (decision 2; open question 1). Until
-it is, the spec writes it as `<element-hint key>`.
-
 ## Summary
 
-`<element-hint key>` is a hint mode like `f`: the same labels, characters, typing, `Backspace` and
+`F` is a hint mode like `f`: the same labels, characters, typing, `Backspace` and
 `Esc`, but on text blocks (paragraphs, headings, list items, quotes, code blocks, table cells,
 captions) instead of links. Typing a label **focuses** that block: Vimma draws an outline around it
 in the browser chrome, where the page cannot see it, and the status bar badge says `ELEMENT`. `v`
@@ -36,7 +33,7 @@ solve "point at something on screen in two keys" for links; text blocks have no 
 
 ## Behaviour
 
-1. As a Vimma user, `<element-hint key>` puts a label on every paragraph, heading, list item,
+1. As a Vimma user, `F` puts a label on every paragraph, heading, list item,
    quote, code block, table cell and caption on screen, with the same look and characters as
    `f`'s. Typing a label outlines that block, and the badge says `ELEMENT`. `Esc` instead of a
    label leaves with nothing changed; `Backspace` takes back a typed key.
@@ -114,7 +111,7 @@ solve "point at something on screen in two keys" for links; text blocks have no 
 - **Firefox's own keys** ([firefox-keys](firefox-keys.md)): Firefox's shortcuts are Vimma
   bindings, configurable and listed in `ctrl+b ?`. They are all chords (`ctrl`, `alt`, function
   keys), apart from normal mode's `Esc` (`page.stop`, firefox-keys decision 7) and `ctrl+[` /
-  `ctrl+]`. None of the start-key candidates in open question 1 (`F`, `V`, `gF`, `;v`, `zv`)
+  `ctrl+]`. None of the start-key candidates decision 2 weighs (`F`, `V`, `gF`, `;v`, `zv`)
   collides with them. `F7` (caret browsing) stays unbound (firefox-keys Q4); copy mode does not use
   it.
 - **Modes**: `MODES` in `modes.mjs:13-22`; counts only in `COUNT_MODES` (`modes.mjs:26`). The
@@ -182,7 +179,7 @@ solve "point at something on screen in two keys" for links; text blocks have no 
   tab), `;V` `hint -V`. Element text and element focus are hint modes there, as in this spec.
 - **Surfingkeys** (`src/content_scripts/common/default.js`): `zv` "Enter visual mode, and select
   whole element", `yv` "Yank text of an element", `ymv` "Yank text of multiple elements", `yq`
-  "Copy pre text", `v` "Toggle visual mode". `zv` is this spec's `<element-hint key>` then `v`.
+  "Copy pre text", `v` "Toggle visual mode". `zv` is this spec's `F` then `v`.
 - **qutebrowser** (`doc/help/settings.asciidoc`, `bindings.default`): `;y` `hint links yank`,
   `;Y` `hint links yank-primary`, `;h` `hint all hover`; `hints.selectors` groups
   `all, links, images, media, url, inputs`. No text-block group.
@@ -195,7 +192,7 @@ solve "point at something on screen in two keys" for links; text blocks have no 
 
 1. **It is a hint mode, a sibling of `f`.** Pointing at something on screen is what hints
    already do, with labels users know; a second pointing mechanism would duplicate the
-   collection, the overlay and the key handling. `<element-hint key>` runs `hint.element` ("Focus
+   collection, the overlay and the key handling. `F` runs `hint.element` ("Focus
    a text block: v selects it, y copies it", config name `focus_element`, group "Hints"). It
    reuses the hint machinery whole:
    - the same collection pass (`collectTargets` with a `blocks: true` option beside `linksOnly`),
@@ -210,12 +207,28 @@ solve "point at something on screen in two keys" for links; text blocks have no 
    on-screen targets (for example a page-action spec for agents, which [vimma-mcp](vimma-mcp.md)
    decision 6 leaves to a later spec) shares the same pass and the same reply checks.
 
-2. **The start key is chosen when implementation starts, not in this spec.** Only the last sub-PR
-   (Delivery, sub-PR 4) binds it; sub-PRs 1-3 ship `hint.element` unbound but reachable as
-   `:focus_element` and through `config.toml`. Choosing the key then lets it be tried on real
-   pages first, and keeps a default-keymap change out of a spec that does not need it. The
-   candidates and their costs are in open question 1. Until then the spec writes
-   `<element-hint key>`.
+2. **`F` starts element focus; background-tab link hints move to `gF`.** `f` follows links and
+   `F` focuses text blocks: one letter each and an obvious pair, for the key this feature is
+   started with every time. `hint.follow_new_tab` keeps its name and config name
+   (`follow_link_new_tab`); only its default key moves, to `gF`, which is free and sits beside
+   `gf`. The cost is that `F` changes for every Vimma user and Vimium's `F` habit no longer
+   applies; the CHANGELOG's "Changed:" line and `ctrl+b ?` say where background-tab hints went. A
+   `config.toml` that binds `F` explicitly (`[modal.normal] F = "hint.follow_new_tab"`) keeps it,
+   because user bindings win over defaults ([m5-config-load](m5-config-load.md)); element focus
+   is then reachable as `:focus_element` or on a key the user binds. Rejected:
+   - shift on the label's last key for a background tab (Vimium's way), because caps lock sends
+     shift (`hints.mjs:173`), so caps-lock users would always get background tabs;
+   - Tridactyl's `;b` for background tabs, because a common action would take two keys and `;`
+     alone would become a prefix;
+   - `V` to start element focus, because it is not `f`-shaped and `V` in copy mode means
+     line-wise selection, a different thing in another mode;
+   - `;v`, because it takes two keys and `;` is `caret.find_repeat` in copy mode;
+   - Surfingkeys' `zv`, because `z` has no other use in Vimma and carries little mnemonic.
+
+   Only the last sub-PR (Delivery, sub-PR 4) binds `F` and moves `hint.follow_new_tab` to `gF`.
+   Sub-PRs 1-3 ship `hint.element` unbound but reachable as `:focus_element` and through
+   `config.toml`, because a default-keymap change regenerates the bindings docs and the help
+   snapshot and so lands alone, once the feature behind the key is complete.
 
 3. **What a text block is** (core `blocks.mjs`, pure: `classifyBlock(descriptor)` and
    `pickBlocks(descriptors)`; the child sends descriptors, core decides, so the rules are unit
@@ -266,8 +279,10 @@ solve "point at something on screen in two keys" for links; text blocks have no 
    - 2 px outside the block's border box, clipped to the browser;
    - it follows the block: the child reports a new rect on `scroll` and `resize` of the block's
      window, at most once per animation frame, through a system-group listener
-     (`Services.els.addSystemEventListener`), so the page cannot see or stop it;
-   - in a frame, the rect is offset by the frame chain as hint rects are;
+     (`addEventListener` with `mozSystemGroup`), so the page cannot see or stop it;
+   - in a frame, the rect is offset by the frame chain as hint rects are, and each frame around
+     the block reports its own scrolls the same way, because scrolling the page around a frame
+     moves the block too (`j` and `k` scroll every frame up to the top to show it);
    - a block that scrolls fully out of view keeps its focus (the outline is clipped away; `j` /
      `k` or `v` still work).
 
@@ -275,39 +290,44 @@ solve "point at something on screen in two keys" for links; text blocks have no 
    consumed, as in hint and copy mode; chords keep their bindings, including Firefox's keys from
    firefox-keys):
 
-   | Key                  | Action                          | Does                                                                                  |
-   | -------------------- | ------------------------------- | ------------------------------------------------------------------------------------- |
-   | `v`                  | `element.visual`                | selects the block's text and enters copy mode with it selected (decision 8)           |
-   | `V`                  | `element.visual_line`           | the same, line-wise (copy mode's `V` state), so `j` / `k` extend by lines             |
-   | `y`                  | `element.yank`                  | copies the block's text and goes back to normal mode (decision 9)                     |
-   | `+`                  | `element.parent`                | focus the nearest block-level ancestor that holds more text (up to `body`, exclusive) |
-   | `-`                  | `element.child`                 | back down the way `+` came; otherwise the first candidate inside                      |
-   | `j` / `k`            | `element.next` / `element.prev` | the next / previous candidate in document order, scrolled into view (`nearest`)       |
-   | `<element-hint key>` | `hint.element`                  | labels again, to pick another block                                                   |
-   | `Esc`                | `mode.normal`                   | removes the outline; nothing selected                                                 |
+   | Key       | Action                          | Does                                                                                  |
+   | --------- | ------------------------------- | ------------------------------------------------------------------------------------- |
+   | `v`       | `element.visual`                | selects the block's text and enters copy mode with it selected (decision 8)           |
+   | `V`       | `element.visual_line`           | the same, line-wise (copy mode's `V` state), so `j` / `k` extend by lines             |
+   | `y`       | `element.yank`                  | copies the block's text and goes back to normal mode (decision 9)                     |
+   | `+`       | `element.parent`                | focus the nearest block-level ancestor that holds more text (up to `body`, exclusive) |
+   | `-`       | `element.child`                 | back down the way `+` came; otherwise the first candidate inside                      |
+   | `j` / `k` | `element.next` / `element.prev` | the next / previous candidate in document order, scrolled into view (`nearest`)       |
+   | `F`       | `hint.element`                  | labels again, to pick another block                                                   |
+   | `Esc`     | `mode.normal`                   | removes the outline; nothing selected                                                 |
 
    Counts work on `+`, `-`, `j`, `k`. `Esc` here is `[modal.element]`'s and never reaches normal
    mode's `Esc` (`page.stop`), so leaving `ELEMENT` does not stop a loading page. A tab switch, a
    navigation, focus leaving the page, or another binding (a `ctrl+b` sequence) leaves `ELEMENT`
    mode, as hint mode does.
 
-8. **`v` enters copy mode with the block selected** (proposed; open question 2):
+8. **`v` enters copy mode with the block selected**, because copy mode already has the motions,
+   `o`, `V` and `y`, so the highlight can be adjusted before copying with nothing new to learn:
    - the child sets the selection from the block's first to its last visible text position (a
      range from `selectNodeContents`, trimmed to text that is rendered, so the caret does not sit
-     in trailing white space), anchor at the start, focus at the end, without scrolling;
+     in trailing white space), anchor at the start, focus at the end, without scrolling unless the
+     block is off screen (copy mode starts from a selection it can see);
    - the host then runs the existing `mode.visual` path: `Caret.run` `enter` keeps an on-screen
      selection and sets `selecting` (`caret.mjs:180-193`), so copy mode starts with the
      highlight, `VISUAL` in the badge, and every motion, `o`, `V` and `y` work on it;
    - in a frame, the frame is focused first (the block's window `focus()` from the child), since
      copy mode lives in the focused frame;
-   - rejected: "`v` selects and stays in `ELEMENT`". It needs a second set of selection keys and
-     a second yank; copy mode already has both.
+   - rejected: "`v` selects and stays in `ELEMENT`", so that `+` / `-` / `j` / `k` keep working
+     on the selection. It needs a second set of selection keys and a second yank, duplicating
+     copy mode.
 
 9. **`y` from `ELEMENT` copies without selecting.** The child serializes the block with the
-   plain-text document encoder (`Cu.createDocumentEncoder("text/plain")`, `setContainerNode`,
-   flags `SkipInvisibleContent | OutputLFLineBreak`), the serializer `Selection.toString` uses, so
-   the text is what `v` then `y` gives, but the page's selection is untouched and no
-   `selectionchange` fires. The parent writes it with `copyString` and says "yanked N chars" (or
+   plain-text document encoder (`Cu.createDocumentEncoder("text/plain")`, `setRange` with the
+   range `v` would select, flags `SkipInvisibleContent | OutputLFLineBreak`), the serializer
+   `Selection.toString` uses, so the text is what `v` then `y` gives, but the page's selection is
+   untouched and no `selectionchange` fires. That range's ends lie in text the page lets be
+   selected: the encoder writes a boundary text node whole, so a range starting in a
+   `user-select: none` gutter would copy its first number. The parent writes it with `copyString` and says "yanked N chars" (or
    "nothing to yank").
    - `pre` / code: the encoder keeps preformatted white space as rendered; nothing is trimmed
      inside the block, only one trailing newline is dropped. Tested against a fixture with tabs,
@@ -319,11 +339,17 @@ solve "point at something on screen in two keys" for links; text blocks have no 
      reader chose that block with a key, so Vimma copies it; `v` on such a block shows no
      highlight (Firefox paints none), and the notice says so.
 
-10. **Plain text only** (proposed; open question 3). Plain text is what `ctrl+c` and copy mode's
-    `y` give. The yank path is one function (`blockText(range, format)`), so a Markdown flavour
-    later is one argument.
+10. **Plain text only.** Plain text is what `ctrl+c` and copy mode's `y` give, and code blocks
+    copy exactly. The yank path is one function (`blockText(range, format)`), so a Markdown
+    flavour later is one argument, on a key of its own (for example `Y` in `ELEMENT`: links as
+    `[text](url)`, `pre` fenced, lists with `-`). Rejected: a config switch that makes `y` yank
+    Markdown, because `y` would then mean different things depending on config; a separate key
+    keeps `y` predictable.
 
-11. **`ip` / `ap` in copy mode** (proposed; open question 4):
+11. **`ip` / `ap` in copy mode**, because they reuse the block rules and walks at little cost and
+    let the two entries (hint, caret) reach the same whole-block selection. Rejected: leaving copy
+    mode's key set as m1-copy-mode left it, which keeps "the paragraph the caret is already in"
+    a caret walk.
     - `ip` (`selection.inner_block`): selects the innermost text block (decision 3's classifier,
       run in the child on the caret's ancestors) around the selection's focus, exactly as `v` from
       `ELEMENT` would;
@@ -343,7 +369,7 @@ solve "point at something on screen in two keys" for links; text blocks have no 
     the host itself is a block. The range for `v` and `y` stays within the block's own tree.
 
 14. **PDFs (pdf.js)**: the text layer has spans per line and no paragraphs. The pdf.js viewer gets
-    **no** element hints: `<element-hint key>` there says "no text blocks here (PDF: use v)", and
+    **no** element hints: `F` there says "no text blocks here (PDF: use v)", and
     copy mode remains the way to copy from a PDF. A line-grouping heuristic for `.textLayer` is
     out of scope.
 
@@ -364,7 +390,10 @@ solve "point at something on screen in two keys" for links; text blocks have no 
     `element: "bright_magenta"` to `BADGE_COLORS`. `bright_magenta` places `ELEMENT` next to
     `VISUAL` (`magenta`), the mode it leads into, while keeping the two badges distinct; plain
     `magenta` was rejected because `v` would then change the badge text but not its colour. The
-    Omarchy adapter fills the tokens like the others.
+    Omarchy adapter fills the tokens like the others. (Since changed: a theme can give
+    `bright_magenta` and `magenta` one colour, as Catppuccin does; `ELEMENT` then takes a shade of
+    it, lighter or darker, so the two badges stay apart; `badgeColors` in `theme.mjs` describes it
+    now.)
 
 ### Limits
 
@@ -379,7 +408,7 @@ solve "point at something on screen in two keys" for links; text blocks have no 
 
 ### Out of scope
 
-- Markdown or HTML yank formats (open question 3).
+- Markdown or HTML yank formats (decision 10).
 - Multi-block marks (Surfingkeys' `ymv`), killing elements (Tridactyl's `;k`), yanking anchors
   (`;#`).
 - A paragraph heuristic for pdf.js's text layer.
@@ -395,8 +424,10 @@ solve "point at something on screen in two keys" for links; text blocks have no 
   asked; anything else is refused.
 - Text from `y` goes to the clipboard and nowhere else. It is not logged and not sent over the
   control socket.
-- What the page can observe: nothing while a block is focused (the outline is chrome, the scroll
-  listener is in the system group). `v` sets a real selection, so the page sees `selectionchange`
+- What the page can observe while a block is focused: only the scrolls `j` and `k` make to show
+  the next block, in its document and the documents around it (the outline is chrome, the scroll
+  listener is in the system group). `v` scrolls an off-screen block into view and, in a frame,
+  focuses that frame. `v` sets a real selection, so the page sees `selectionchange`
   and can read the selection, as with a mouse selection; it gets no `selectstart` for the initial
   range (Research, Firefox), and copy-mode motions afterwards behave as they do today. `y` from
   `ELEMENT` is not observable by the page.
@@ -423,7 +454,8 @@ Written first; red pasted, then green (CONTRIBUTING.md).
   - `dispatcher.test.mjs`: `[modal.element]` keys (`v V y + - j k Esc`, counts on `+ - j k`),
     plain keys consumed, chords passed; `ip` / `ap` in `visual` beside `iw` / `aw`.
   - `actions.test.mjs` / `defaults.test.mjs`: the new actions exist and are grouped; in the keymap
-    sub-PR, `<element-hint key>` reaches `hint.element` and no default collides, including the
+    sub-PR, `F` reaches `hint.element`, `gF` reaches `hint.follow_new_tab`, and no default
+    collides, including the
     firefox-keys bindings.
   - `statusbar.test.mjs`: the `ELEMENT` badge and the kind · length segment; `theme.test.mjs`: the
     new tokens and contrast pairs, and `--vimma-mode-element` differs from `--vimma-mode-visual`
@@ -461,14 +493,14 @@ Written first; red pasted, then green (CONTRIBUTING.md).
       remove the outline.
   13. `ip` / `ap`: in copy mode inside the second paragraph, `ip` selects it, `ap` the `section`,
       `ap` again its parent.
-  14. PDF: `<element-hint key>` in the pdf.js viewer gives the "no text blocks" notice and stays
+  14. PDF: `F` in the pdf.js viewer gives the "no text blocks" notice and stays
       in normal mode.
   15. Malformed `Vimma:Block` messages (`null`, a string, unknown `op`, stale `gen`, a frame that
       was not asked) are refused.
   16. Performance: the 2,000-paragraph fixture collects under 1,000 ms at the top and 250 ms down
       the page (generous, as m1-hints).
 - **e2e** (`tests/e2e/scenarios/element-focus.json`, with the real Omarchy theme in the
-  screenshot-verify run): open a fixture article, `<element-hint key>` → baseline
+  screenshot-verify run): open a fixture article, `F` → baseline
   `element-hints.png` (labels on blocks); a label → baseline `element-focus.png` (outline,
   `ELEMENT` badge, kind segment); `v` → baseline `element-visual.png` (block highlighted,
   `VISUAL`); `y`. New baselines need their changelog line.
@@ -480,76 +512,33 @@ Written first; red pasted, then green (CONTRIBUTING.md).
 
 - `docs/guide.md`: a "Copying a paragraph (element focus)" section after "Link hints": the key,
   labels, the `ELEMENT` keys table, `v` into copy mode, `y`, code blocks, `user-select: none`,
-  frames, PDFs. The "Copy mode" section gains `ip` / `ap`. If `F` moves (open question 1), the
-  "Link hints" section says where background-tab hints went.
+  frames, PDFs. The "Copy mode" section gains `ip` / `ap`. The "Link hints" section says that
+  background-tab hints are on `gF` (sub-PR 4).
 - `docs/bindings.md`, `docs/bindings.json`, `defaults.toml`: `npm run gen-docs`.
 - `docs/limits.md`: the Limits above.
 - README feature list: "Copy a paragraph, list item or code block in three keys: hint it, then
   `y` (or `v` to adjust first)."
 - CHANGELOG `[Unreleased]` (the maintainer adds it at merge time), suggested:
-  - "Added: element focus: `<element-hint key>` labels the paragraphs, headings, list items, code
+  - "Added: element focus: `F` labels the paragraphs, headings, list items, code
     blocks and cells on screen; a label outlines one, `v` selects it in copy mode and `y` copies
     it. Copy mode gains `ip` and `ap`."
-  - If `F` moves: "Changed: `F` now starts element focus; background-tab link hints moved to `gF`
+  - With sub-PR 4: "Changed: `F` now starts element focus; background-tab link hints moved to `gF`
     (a `config.toml` that binds `F` keeps it)."
   - "Added: e2e baselines `element-hints.png`, `element-focus.png` and `element-visual.png`."
 
 ## Delivery
 
-One sub-PR at a time, after the open questions are answered. Only sub-PR 4 changes the default
+One sub-PR at a time. Only sub-PR 4 changes the default
 keymap, and it waits until no other keymap PR is open.
 
-| #   | PR                                                                | Contents                                                                                                                                                                                                                                                                                                                                                           | Size                      |
-| --- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
-| 1   | `feat(hints): text blocks as hint targets`                        | Core `blocks.mjs` (classifier, innermost, atomic, parent/child walks) with Vitest; `collectTargets` `blocks` option; `parseHintReply` `kind: "block"`; `hint.element` in `HINT_ACTIONS` and `actions.mjs`, **unbound** (reachable as `:focus_element` and through config); labels only, choosing one outlines it until `Esc`. Mochitests 1, 2, 10-11 (labels), 16. | M (~700 lines with tests) |
-| 2   | `feat(element): focus a block, then v selects it and y copies it` | `ELEMENT` mode, `[modal.element]`, `actors/block.mjs`, `Vimma:Block`, `parseBlockReply`, the outline layer and its tracking, `v` / `V` / `y` / `+` / `-` / `j` / `k`, theme tokens, status segment, live-region text. Mochitests 3-12, 14-15.                                                                                                                      | L (~1,200)                |
-| 3   | `feat(copy): ip and ap select the block around the caret`         | `selection.inner_block` / `selection.a_block` in `[modal.visual]`, reusing sub-PR 2's walks. Mochitest 13.                                                                                                                                                                                                                                                         | S (~250)                  |
-| 4   | `feat(keys): <element-hint key> starts element focus` (keymap PR) | The chosen key; if `F`, the move of `hint.follow_new_tab`; gen-docs, help and defaults snapshots, `defaults.toml`; e2e scenario and three baselines; guide and README.                                                                                                                                                                                             | S (~200 plus baselines)   |
+| #   | PR                                                                                  | Contents                                                                                                                                                                                                                                                                                                                                                           | Size                      |
+| --- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| 1   | `feat(hints): text blocks as hint targets`                                          | Core `blocks.mjs` (classifier, innermost, atomic, parent/child walks) with Vitest; `collectTargets` `blocks` option; `parseHintReply` `kind: "block"`; `hint.element` in `HINT_ACTIONS` and `actions.mjs`, **unbound** (reachable as `:focus_element` and through config); labels only, choosing one outlines it until `Esc`. Mochitests 1, 2, 10-11 (labels), 16. | M (~700 lines with tests) |
+| 2   | `feat(element): focus a block, then v selects it and y copies it`                   | `ELEMENT` mode, `[modal.element]`, `actors/block.mjs`, `Vimma:Block`, `parseBlockReply`, the outline layer and its tracking, `v` / `V` / `y` / `+` / `-` / `j` / `k`, theme tokens, status segment, live-region text. Mochitests 3-12, 14-15.                                                                                                                      | L (~1,200)                |
+| 3   | `feat(copy): ip and ap select the block around the caret`                           | `selection.inner_block` / `selection.a_block` in `[modal.visual]`, reusing sub-PR 2's walks. Mochitest 13.                                                                                                                                                                                                                                                         | S (~250)                  |
+| 4   | `feat(keys): F starts element focus, gF opens a link in the background` (keymap PR) | `F` bound to `hint.element` and `hint.follow_new_tab` moved to `gF`; gen-docs, help and defaults snapshots, `defaults.toml`; e2e scenario and three baselines; guide and README.                                                                                                                                                                                   | S (~200 plus baselines)   |
 
 ## Open questions
 
-1. **Which key starts element focus?** Decided at the start of implementation (decision 2), before
-   sub-PR 4. The answer becomes decision 2 and replaces `<element-hint key>` throughout. All
-   options are normal-mode keys, and none collides with a firefox-keys binding.
-
-   | Option | Start key                                 | Background-tab link hints                    | For                                                                                                       | Against                                                                                                |
-   | ------ | ----------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-   | A      | `F`                                       | move to `gF`                                 | `f` links, `F` elements: one letter, an obvious pair                                                      | Changes `F` for every Vimma user; Vimium's `F` muscle memory breaks                                    |
-   | A2     | `F`                                       | shift on the label's last key (Vimium-style) | No new key                                                                                                | Caps lock sends shift (`hints.mjs:173`), so caps-lock users would always get background tabs           |
-   | A3     | `F`                                       | `;b` (Tridactyl's)                           | Starts a `;` family                                                                                       | Two keys for a common action; `;` alone becomes a prefix                                               |
-   | B      | `V`                                       | `F` stays                                    | Leaves `F`; Vim's `V` is "visual on a whole line", this is "visual on a whole block"; free in normal mode | Not `f`-shaped; `V` in copy mode means line-wise, a different thing in another mode                    |
-   | C      | `;v` (and `;y` to yank a block in one go) | `F` stays                                    | Tridactyl / qutebrowser's `;` hint prefix; room for `;y`, `;k` later                                      | Two keys; `;` is `caret.find_repeat` in copy mode (different mode, but the same key reads differently) |
-   | D      | `zv`                                      | `F` stays                                    | Surfingkeys' exact key for this                                                                           | `z` is otherwise unused in Vimma; little mnemonic                                                      |
-
-   If `F` is chosen (A, A2, A3):
-   - `hint.follow_new_tab` keeps its name and config name (`follow_link_new_tab`); only its
-     default key moves. `docs/bindings.md` (gen-docs), the help overlay snapshot
-     (`help.test.mjs.snap`), `defaults.test.mjs.snap` and `defaults.toml` change.
-   - A `config.toml` that binds `F` explicitly (`[modal.normal] F = "hint.follow_new_tab"`) keeps
-     it: user bindings win over defaults ([m5-config-load](m5-config-load.md)), and the element
-     hint is then on its other key or unbound.
-   - The guide's "Link hints" section, the README feature list and m1-hints' user story change,
-     and the CHANGELOG gets a "Changed:" line (Docs and changelog). Existing Vimma users learn it
-     from the changelog and `ctrl+b ?`.
-
-   Recommendation: **A with `gF`** if `F` is wanted: a one-letter start that pairs with `f`, and
-   `gF` is free and next to `gf`. Otherwise **B (`V`)**, which changes no existing key.
-
-2. **`v` after focusing: enter copy mode with the block selected, or select the block and stay in
-   `ELEMENT`?** (a) Copy mode (decision 8): no new selection keys, every motion, `o` and `y` work
-   at once; the badge changes to `VISUAL`. (b) Stay in `ELEMENT`: `+` / `-` / `j` / `k` keep
-   working on the selection, but `ELEMENT` then needs its own selection adjustments and yank,
-   duplicating copy mode. Recommendation: (a), because copy mode already has the motions, `o`,
-   `V` and `y`, so the highlight can be adjusted before copying with nothing new to learn.
-
-3. **Yank as plain text or Markdown?** (a) Plain text only (decision 10): matches `ctrl+c` and
-   copy mode's `y`, code blocks exact. (b) A config switch for Markdown: changes what `y` means
-   depending on config. (c) Plain text for `y`, and Markdown later on a separate key (for example
-   `Y` in `ELEMENT`: links as `[text](url)`, `pre` fenced, lists with `-`). Recommendation: (a)
-   now, with (c) as a later addition if wanted; a separate key keeps `y` predictable, and
-   `blockText(range, format)` makes it a small change.
-
-4. **Include `ip` / `ap` in copy mode?** (a) Yes, as sub-PR 3 (decision 11): reuses the block
-   rules and walks, small, covers "the paragraph the caret is already in" without hints. (b) No:
-   keeps copy mode's key set as m1-copy-mode left it. Recommendation: (a), because it costs little
-   and makes the two entries (hint, caret) reach the same whole-block selection.
+None. The start key, `v`'s result, the yank format and copy mode's `ip` / `ap` are decided in
+decisions 2, 8, 10 and 11.

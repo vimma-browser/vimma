@@ -1,0 +1,117 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_fill.js: what vimma_fill fills and refuses. A sign-up form
+   - with an email field, a name field, a select, a checkbox, two radios, a text area, a number
+   - and a date field; a password field, a one-time code, a card number named by autocomplete and
+   - one only form autofill's heuristics recognise; a file field, a read-only and a disabled field,
+   - a rich text editor and a button; a field the page puts back; a search form; a field whose
+   - change handler submits its form; a field whose change handler opens an alert; a form whose
+   - first field submits it on change; a multiple select, a select with a disabled group and a
+   - range. Every
+   - input, change and focus event the fields get is recorded. Everything fits the test window. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fill agent fixture</title>
+    <style>
+      body {
+        margin: 4px;
+        font: 11px sans-serif;
+      }
+      form,
+      p {
+        margin: 1px 0;
+      }
+      input,
+      select,
+      textarea {
+        font: 11px sans-serif;
+        width: 90px;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="signup" method="post" action="file_vimma_agent_page.html?signup">
+      <input id="email" name="email" type="email" aria-label="Email" />
+      <input id="name" name="fullname" aria-label="Name" value="old" />
+      <select id="country" name="country" aria-label="Country">
+        <option value="fi" selected>Finland</option>
+        <option value="se">Sweden</option>
+      </select>
+      <input id="remember" type="checkbox" name="remember" aria-label="Remember" checked />
+      <input id="free" type="radio" name="plan" value="free" aria-label="Free" checked />
+      <input id="pro" type="radio" name="plan" value="pro" aria-label="Pro" />
+      <textarea id="bio" name="bio" rows="1" aria-label="Bio"></textarea>
+      <input id="age" name="age" type="number" aria-label="Age" />
+      <input id="day" name="day" type="date" aria-label="Day" />
+      <button id="go" type="submit">Sign up</button>
+    </form>
+    <form id="secrets" method="post" action="file_vimma_agent_page.html?secrets">
+      <input id="pw" name="password" type="password" aria-label="Password" />
+      <input id="otp" name="otp" autocomplete="one-time-code" aria-label="Code" />
+      <input id="cc" name="cc" autocomplete="cc-number" aria-label="Card" />
+      <input id="upload" name="upload" type="file" aria-label="Upload" />
+      <input id="ro" name="ro" readonly aria-label="Readonly" value="fixed" />
+      <input id="off" name="off" disabled aria-label="Off" />
+      <span id="rich" contenteditable="true" aria-label="Rich">rich</span>
+      <button id="plain" type="button">Plain</button>
+    </form>
+    <form id="pay" method="post" action="file_vimma_agent_page.html?pay">
+      <label for="cardno">Card number</label>
+      <input id="cardno" name="cardnumber" />
+      <label for="cvc">Security code (CVC)</label>
+      <input id="cvc" name="cvc" />
+    </form>
+    <p>
+      <input id="stubborn" name="stubborn" aria-label="Stubborn" value="keep" />
+      <input id="alerting" name="alerting" aria-label="Alerting" />
+    </p>
+    <form id="search" method="get" action="file_vimma_agent_page.html">
+      <input id="q" name="q" aria-label="Query" />
+      <button id="find" type="submit">Search</button>
+    </form>
+    <form id="auto" method="post" action="file_vimma_agent_page.html?auto">
+      <input id="note" name="note" aria-label="Note" />
+    </form>
+    <form id="early" method="post" action="file_vimma_agent_page.html?early">
+      <input id="first" name="first" aria-label="First" />
+      <input id="second" name="second" aria-label="Second" />
+      <button id="send-early" type="submit">Send early</button>
+    </form>
+    <p>
+      <select id="tags" name="tags" multiple size="2" aria-label="Tags">
+        <option value="a" selected>Alpha</option>
+        <option value="b">Beta</option>
+      </select>
+      <select id="size" name="size" aria-label="Size">
+        <optgroup label="Sold out" disabled><option value="xl">XL</option></optgroup>
+        <option value="m">M</option>
+      </select>
+      <input id="volume" name="volume" type="range" min="0" max="10" aria-label="Volume" />
+    </p>
+    <script>
+      window.events = [];
+      for (const el of document.querySelectorAll("input, select, textarea")) {
+        for (const type of ["input", "change", "focus", "keydown"]) {
+          el.addEventListener(type, (e) =>
+            window.events.push(`${el.id}:${type}:${e.isTrusted ? "trusted" : "untrusted"}`),
+          );
+        }
+      }
+      // The page puts this field's value back on every input.
+      const stubborn = document.getElementById("stubborn");
+      stubborn.addEventListener("input", () => (stubborn.value = "keep"));
+      // A change here submits its form from the page's script, as some autosave forms do.
+      document
+        .getElementById("note")
+        .addEventListener("change", () => document.getElementById("auto").submit());
+      // A change here submits its form at once, before the other field is filled.
+      document
+        .getElementById("first")
+        .addEventListener("change", () => document.getElementById("early").submit());
+      document.getElementById("alerting").addEventListener("change", () => alert("Saved"));
+    </script>
+  </body>
+</html>

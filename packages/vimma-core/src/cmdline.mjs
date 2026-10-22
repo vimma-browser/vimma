@@ -132,6 +132,13 @@ export const COMMANDS = Object.freeze([
   // docs/specs/bookmarks.md: with a path, files the page without the prompt.
   cmd("bookmark", "optional", "bookmark.add", "Bookmark this page (optionally folders/title)"),
   cmd("bookmarks", "none", "bookmarks.toggle", "Open / close the bookmarks panel"),
+  // docs/specs/bookmarks-toolbar-hidden.md decision 5: Firefox's toggle; a word sets a state.
+  cmd(
+    "bookmarkstoolbar",
+    "optional",
+    "browser.bookmarks_toolbar",
+    "Firefox's Bookmarks Toolbar (show | hide | newtab)",
+  ),
   cmd("map", "none", "help.show", "Show all bindings"),
   cmd("help", "none", "help.show", "Show all bindings", { aliases: ["h"] }),
   // m5-config-load: with a path, that file replaces the config in force (all or nothing).
@@ -147,18 +154,20 @@ export const COMMANDS = Object.freeze([
   }),
   // docs/specs/m6a-updater.md: checks now; an update opens about:vimma's steps.
   cmd("update", "none", "app.update_check", "Check for a newer Vimma and how to update"),
+  cmd("restart", "none", "app.restart", "Restart Vimma (tabs come back); applies an update"),
   cmd("bug", "none", "tab.new", "Copy a redacted about:vimma report", {
     text: "about:vimma#bug",
   }),
   // docs/specs/addon-manager.md. Without a name, :addon asks on the command line.
   cmd("addons", "none", "addons.picker", "Add-on picker"),
   cmd("addon", "optional", "addons.popup", "Open an add-on's popup (Tab completes names)"),
-  // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget).
+  // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget);
+  // log: docs/specs/mcp-drive.md D14.
   cmd(
     "mcp",
     "optional",
     "mcp.command",
-    "Agents (MCP): on, off, revoke, forget; without: the status",
+    "Agents (MCP): on, off, revoke, forget, log; without: the status",
   ),
   // docs/specs/vimma-mcp.md decision 29 D: full control (vimma.control.enabled) for a while.
   cmd(
@@ -189,6 +198,33 @@ export function parseToolbarCommand(text) {
   if (word === "show" || word === "hide") return { kind: word };
   const near = closest(word, [...TOOLBAR_WORDS]);
   const refusal = ':toolbar takes "show", "hide" or nothing';
+  return { kind: "refuse", text: near ? `${refusal}: did you mean "${near}"?` : refusal };
+}
+
+/** `:bookmarkstoolbar`'s words, in completion order, and the `[ui]` word each sets. */
+const BOOKMARKS_TOOLBAR_WORDS = Object.freeze(
+  /** @type {const} */ ({ show: "shown", hide: "hidden", newtab: "newtab" }),
+);
+
+/**
+ * `:bookmarkstoolbar [show|hide|newtab]` (docs/specs/bookmarks-toolbar-hidden.md decision 5):
+ * Firefox's own toggle without a word.
+ * @param {string | undefined} text
+ * @returns {{ kind: "toggle" }
+ *   | { kind: "set", setting: import("./bookmarks-toolbar.mjs").BookmarksToolbarSetting }
+ *   | { kind: "refuse", text: string }}
+ */
+export function parseBookmarksToolbarCommand(text) {
+  const word = (text ?? "").trim().toLowerCase();
+  if (!word) return { kind: "toggle" };
+  if (Object.hasOwn(BOOKMARKS_TOOLBAR_WORDS, word)) {
+    return {
+      kind: "set",
+      setting: BOOKMARKS_TOOLBAR_WORDS[/** @type {keyof typeof BOOKMARKS_TOOLBAR_WORDS} */ (word)],
+    };
+  }
+  const near = closest(word, Object.keys(BOOKMARKS_TOOLBAR_WORDS));
+  const refusal = ':bookmarkstoolbar takes "show", "hide", "newtab" or nothing';
   return { kind: "refuse", text: near ? `${refusal}: did you mean "${near}"?` : refusal };
 }
 
@@ -374,6 +410,11 @@ const ARGUMENT_KINDS = Object.freeze({
   // The two a first-time user reaches for, then back to following the system.
   theme: { names: "theme", kind: "appearance", fixed: ["dark", "light", "system"] },
   toolbar: { names: "toolbar", kind: "toolbar", fixed: TOOLBAR_WORDS },
+  bookmarkstoolbar: {
+    names: "bookmarkstoolbar",
+    kind: "bookmarks toolbar",
+    fixed: Object.keys(BOOKMARKS_TOOLBAR_WORDS),
+  },
   workspace: { names: "workspace", kind: "workspace" },
   wsdelete: { names: "workspace", kind: "workspace" },
   wsmove: { names: "workspace", kind: "workspace" },

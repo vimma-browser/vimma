@@ -405,7 +405,7 @@ describe("mergeWithDefaults", () => {
         downloadMaxMb: 200,
         clamavMaxAgeDays: 7,
       },
-      ui: { toolbar: "shown" },
+      ui: { toolbar: "shown", bookmarksToolbar: null },
       updates: { check: true },
       search: null,
     });

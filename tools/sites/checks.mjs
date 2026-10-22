@@ -26,9 +26,11 @@ import {
   contentReaction,
   contentRecorder,
   contentScrollSnapshot,
+  contentSnapshot,
   probe,
 } from "./probes.mjs";
 import { completeChecks, siteStatus, statusbarCheck } from "./results.mjs";
+import { FOLLOW_TARGET, SNAPSHOT_CSP } from "./snapshot.mjs";
 
 /** @typedef {import("./results.mjs").CheckResult} CheckResult */
 /** @typedef {import("./results.mjs").SiteResult} SiteResult */
@@ -91,9 +93,10 @@ class Tab {
   /**
    * @param {Function} fn a content probe
    * @param {unknown} [arg]
+   * @param {{ timeoutMs?: number }} [options]
    * @returns {Promise<any>}
    */
-  async eval(fn, arg) {
+  async eval(fn, arg, options) {
     for (let attempt = 0; ; attempt++) {
       try {
         if (!this.actor) {
@@ -101,7 +104,7 @@ class Tab {
           if (!tab) throw new Error("no selected tab");
           this.actor = await this.ctx.rdp.tabConsole(Number(tab.id));
         }
-        return JSON.parse(await this.ctx.rdp.evaluate(this.actor, probe(fn, arg)));
+        return JSON.parse(await this.ctx.rdp.evaluate(this.actor, probe(fn, arg), options));
       } catch (e) {
         this.actor = null;
         if (attempt >= 1) throw e;
@@ -111,12 +114,14 @@ class Tab {
 }
 
 /**
- * Run every check on `site`, filling `result`.
+ * Run every check on `site`, filling `result`. `offline`: the site is a snapshot (snapshot.mjs),
+ * which has none of the site's scripts, so its shortcuts are not probed.
  * @param {Site} site
  * @param {Context} ctx
  * @param {SiteResult} result
+ * @param {{ offline?: boolean }} [options]
  */
-export async function runSite(site, ctx, result) {
+export async function runSite(site, ctx, result, { offline = false } = {}) {
   const { ctl, rdp, parent, log } = ctx;
   const tab = new Tab(ctx);
   /** @type {CheckResult[]} */
@@ -445,6 +450,12 @@ export async function runSite(site, ctx, result) {
 
   // 7. shortcuts (info) ----------------------------------------------------------------------
   await check("shortcuts", async () => {
+    if (offline)
+      return {
+        id: "shortcuts",
+        status: "skip",
+        reason: "live only: a snapshot has none of the site's scripts",
+      };
     await toNormal();
     const startUrl = selectedTab(await ctl.state())?.url;
     /** @type {Array<{ key: string, reaction: string, to?: string }>} */
@@ -614,4 +625,39 @@ export async function runSite(site, ctx, result) {
     result.status = siteStatus(result);
     return result;
   }
+}
+
+/**
+ * Load `url` and take its snapshot (snapshot.mjs, contentSnapshot) once it has loaded and
+ * settled, as the checks would see it.
+ * @param {string} url
+ * @param {Context} ctx
+ * @returns {Promise<{ html: string, skippedSheets: number, cssBytes: number, title: string }>}
+ */
+export async function recordSnapshot(url, ctx) {
+  const tab = new Tab(ctx);
+  /** @param {Function} fn */
+  const chrome = async (fn) => JSON.parse(await ctx.rdp.evaluate(ctx.parent, probe(fn)));
+  const loaded = async (/** @type {number} */ timeoutMs) =>
+    poll(
+      async () => {
+        const info = await tab.eval(contentPageInfo, { consentSelectors: CONSENT_SELECTORS });
+        if (info.url === "about:blank" || info.readyState !== "complete") return null;
+        return (await chrome(chromeTabBusy)) ? null : info;
+      },
+      { timeoutMs, intervalMs: 250 },
+    );
+  await ctx.ctl.open(url);
+  if (!(await loaded(LOAD_TIMEOUT_MS))) throw new Error(`${url} did not load`);
+  await sleep(SETTLE_MS);
+  const info = await loaded(20_000);
+  if (!info) throw new Error(`${url} did not settle`);
+  const block = classifyPage(info);
+  if (block.kind) throw new Error(`${url}: ${block.kind} (${block.reason}), not recorded`);
+  const snap = await tab.eval(
+    contentSnapshot,
+    { csp: SNAPSHOT_CSP, follow: FOLLOW_TARGET },
+    { timeoutMs: 60_000 },
+  );
+  return { ...snap, title: info.title };
 }
