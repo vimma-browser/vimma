@@ -18,6 +18,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -144,6 +145,18 @@ function fakeMachTarball(
   const tarball = join(dir, "vimma-157.0.1.en-US.linux-x86_64.tar.xz");
   execFileSync("tar", ["-cJf", tarball, "-C", dir, "vimma"]);
   return tarball;
+}
+
+/**
+ * A vimma-ctl stand-in, as release.yml's ctl job builds it (spec ship-vimma-ctl).
+ * @param {string} [dir] where to put it (default: a temp dir removed after the test)
+ * @returns {string} its path
+ */
+function fakeCtl(dir = tempDir("vimma-fake-ctl-")) {
+  const ctl = join(dir, "vimma-ctl");
+  writeFileSync(ctl, '#!/bin/sh\necho "vimma-ctl 0.1.0 (protocol 2)"\n');
+  chmodSync(ctl, 0o755);
+  return ctl;
 }
 
 /**
@@ -320,6 +333,40 @@ describe("AppRun", () => {
     expect(run(["https://example.com/"])).toBe("https://example.com/\n");
     expect(run([])).toBe("\n");
   });
+  // Spec ship-vimma-ctl, behaviour 2: a link named vimma-ctl to the AppImage (its runtime sets
+  // $ARGV0) or to an extracted AppRun ($0) runs the shipped vimma-ctl, one argument or many.
+  it("runs vimma-ctl when started through a link named vimma-ctl", () => {
+    const dir = tempDir("vimma-apprun-");
+    mkdirSync(join(dir, "usr/lib/vimma"), { recursive: true });
+    writeFileSync(join(dir, "AppRun"), script, { mode: 0o755 });
+    writeFileSync(join(dir, "usr/lib/vimma/vimma"), '#!/bin/sh\necho "vimma $*"\n', {
+      mode: 0o755,
+    });
+    writeFileSync(join(dir, "usr/lib/vimma/vimma-open"), '#!/bin/sh\necho "open $*"\n', {
+      mode: 0o755,
+    });
+    writeFileSync(join(dir, "usr/lib/vimma/vimma-ctl"), '#!/bin/sh\necho "ctl $*"\n', {
+      mode: 0o755,
+    });
+    const env = { PATH: process.env.PATH ?? "" };
+    const run = (
+      /** @type {string} */ file,
+      /** @type {string[]} */ args,
+      /** @type {Record<string, string>} */ extra = {},
+    ) => execFileSync(file, args, { env: { ...env, ...extra }, encoding: "utf8" });
+    const appRun = join(dir, "AppRun");
+    expect(run(appRun, ["mcp"], { ARGV0: "/home/u/.local/bin/vimma-ctl" })).toBe("ctl mcp\n");
+    expect(run(appRun, ["--profile", "/p", "state"], { ARGV0: "vimma-ctl" })).toBe(
+      "ctl --profile /p state\n",
+    );
+    const link = join(tempDir("vimma-apprun-link-"), "vimma-ctl");
+    symlinkSync(appRun, link);
+    expect(run(link, ["mcp"])).toBe("ctl mcp\n");
+    expect(run(appRun, ["mcp"], { ARGV0: "/home/u/Apps/vimma-0.1.0-x86_64.AppImage" })).toBe(
+      "open mcp\n",
+    );
+    expect(run(appRun, ["--version"], { ARGV0: "/home/u/bin/vimma" })).toBe("vimma --version\n");
+  });
 });
 
 describe("Debian control", () => {
@@ -420,13 +467,14 @@ describe("RPM spec", () => {
         "/usr/lib/vimma",
         "/usr/bin/vimma",
         "/usr/bin/vimma-open",
+        "/usr/bin/vimma-ctl",
         "/usr/share/applications/vimma-vimma.desktop",
         "/usr/share/icons/hicolor/scalable/apps/vimma.svg",
         "/usr/share/doc/vimma",
         ...ICON_SIZES.map((s) => `/usr/share/icons/hicolor/${s}x${s}/apps/vimma.png`),
       ]),
     );
-    expect(files).toHaveLength(7 + ICON_SIZES.length);
+    expect(files).toHaveLength(8 + ICON_SIZES.length);
   });
 
   it("runs no scriptlets: rpm's file triggers refresh the desktop and icon caches", () => {
@@ -550,6 +598,11 @@ describe("PKGBUILD and .SRCINFO", () => {
     expect(build).toContain('ln -s /opt/vimma/vimma-open "$pkgdir/usr/bin/vimma-open"');
   });
 
+  // Spec ship-vimma-ctl, behaviour 1: the release tarball carries vimma-ctl next to vimma.
+  it("puts the tarball's vimma-ctl on PATH", () => {
+    expect(build).toContain('ln -s /opt/vimma/vimma-ctl "$pkgdir/usr/bin/vimma-ctl"');
+  });
+
   it("marks the install source in is-packaged-app, per variant", () => {
     expect(build).toContain(
       `printf '%s\\n' 'vimma-package=pkgbuild-release' > "$pkgdir/opt/vimma/is-packaged-app"`,
@@ -638,6 +691,8 @@ describe("packageRelease on a fake ./mach package tarball", () => {
   let tool;
   /** @type {string} */
   let out;
+  /** @type {string} */
+  let ctl;
   const deb = has("dpkg-deb");
   const rpm = has("rpmbuild");
 
@@ -648,6 +703,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     );
     const [tarDir, toolDir, outDir, rtDir, work] = /** @type {string[]} */ (dirs);
     tarball = fakeMachTarball({}, tarDir);
+    ctl = fakeCtl(toolDir);
     tool = fakeAppimagetool(toolDir);
     out = outDir;
     const runtime = join(rtDir, "runtime-x86_64");
@@ -663,6 +719,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
       brandDir: BRAND_DIR,
       appimagetool: tool.tool,
       runtime,
+      ctl,
       buildDeb: deb,
       buildRpm: rpm,
     });
@@ -671,9 +728,40 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     };
   });
 
-  it("copies the mach tarball unchanged under the release name", () => {
-    const copy = join(out, "vimma-0.1.0-linux-x86_64.tar.xz");
-    expect(sha256(readFileSync(copy))).toBe(sha256(readFileSync(tarball)));
+  // Spec ship-vimma-ctl, behaviour 1: the release tarball is mach's with vimma-ctl added next
+  // to vimma, so an update that unpacks it replaces both together.
+  it("repacks the mach tarball under the release name with vimma-ctl next to vimma", () => {
+    const listing = (/** @type {string} */ file) =>
+      execFileSync("tar", ["-tJf", file], { encoding: "utf8" })
+        .trim()
+        .split("\n")
+        .filter((p) => !p.endsWith("/"))
+        .sort();
+    const release = join(out, "vimma-0.1.0-linux-x86_64.tar.xz");
+    expect(listing(release)).toEqual([...listing(tarball), "vimma/vimma-ctl"].sort());
+    const mach = tempDir("vimma-mach-x-");
+    const ours = tempDir("vimma-release-x-");
+    execFileSync("tar", ["-xJf", tarball, "-C", mach]);
+    execFileSync("tar", ["-xJf", release, "-C", ours]);
+    for (const path of listing(tarball)) {
+      expectSameBytes(join(ours, path), join(mach, path));
+      expect(mode(join(ours, path)), path).toBe(mode(join(mach, path)));
+    }
+    expectSameBytes(join(ours, "vimma/vimma-ctl"), ctl);
+    expect(mode(join(ours, "vimma/vimma-ctl"))).toBe(0o755);
+    const owners = execFileSync("tar", ["-tvJf", release], { encoding: "utf8" });
+    for (const line of owners.trim().split("\n")) expect(line).toMatch(/^\S+ 0\/0 /);
+  });
+
+  it("puts vimma-ctl next to vimma in the AppDir, and on PATH in the .deb and the .rpm", () => {
+    const lib = (/** @type {string} */ root) => join(root, "usr/lib/vimma/vimma-ctl");
+    for (const root of [result.appDir, result.debRoot, result.rpmRoot]) {
+      expectSameBytes(lib(root), ctl);
+      expect(mode(lib(root))).toBe(0o755);
+    }
+    for (const root of [result.debRoot, result.rpmRoot]) {
+      expect(readlinkSync(join(root, "usr/bin/vimma-ctl"))).toBe("../lib/vimma/vimma-ctl");
+    }
   });
 
   it("lays out the AppDir with AppRun, desktop file, icon and the app", () => {
@@ -774,6 +862,8 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     const contents = execFileSync("dpkg-deb", ["--contents", file], { encoding: "utf8" });
     expect(contents).toMatch(/root\/root .* \.\/usr\/lib\/vimma\/vimma\n/);
     expect(contents).toMatch(/\.\/usr\/bin\/vimma -> \.\.\/lib\/vimma\/vimma/);
+    expect(contents).toMatch(/^-rwxr-xr-x root\/root .* \.\/usr\/lib\/vimma\/vimma-ctl$/m);
+    expect(contents).toMatch(/\.\/usr\/bin\/vimma-ctl -> \.\.\/lib\/vimma\/vimma-ctl/);
   });
 
   it("stages the .rpm root as the .deb's, without dpkg's control files", () => {
@@ -807,6 +897,8 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     expect(list).toMatch(/^-rwxr-xr-x +1 root +root .* \/usr\/lib\/vimma\/vimma$/m);
     expect(list).toMatch(/^-rw-r--r-- +1 root +root .* \/usr\/lib\/vimma\/is-packaged-app$/m);
     expect(list).toMatch(/ \/usr\/bin\/vimma -> \.\.\/lib\/vimma\/vimma$/m);
+    expect(list).toMatch(/^-rwxr-xr-x +1 root +root .* \/usr\/lib\/vimma\/vimma-ctl$/m);
+    expect(list).toMatch(/ \/usr\/bin\/vimma-ctl -> \.\.\/lib\/vimma\/vimma-ctl$/m);
     expect(q(["--requires"])).toMatch(/^hicolor-icon-theme$/m);
     expect(q(["--provides"])).not.toMatch(/libxul/);
     const x = tempDir("vimma-rpm-x-");
@@ -970,6 +1062,7 @@ describe("packageRelease includes an SBOM given next to it", () => {
       repo: REPO,
       brandDir: BRAND_DIR,
       sbom,
+      ctl: fakeCtl(),
       buildDeb: false,
       buildRpm: false,
     });
@@ -988,6 +1081,7 @@ describe("packageRelease cleans up after itself", () => {
     maintainer: MAINTAINER,
     repo: REPO,
     brandDir: BRAND_DIR,
+    ctl: fakeCtl(),
     buildDeb: false,
     buildRpm: false,
   });
@@ -996,6 +1090,17 @@ describe("packageRelease cleans up after itself", () => {
     const before = scratch();
     packageRelease(opts(fakeMachTarball()));
     expect(scratch()).toEqual(before);
+  });
+
+  // Spec ship-vimma-ctl, behaviour 1: no release goes out without the client.
+  it("refuses to package without an executable vimma-ctl", () => {
+    const withoutCtl = { ...opts(fakeMachTarball()), ctl: undefined };
+    expect(() => packageRelease(withoutCtl)).toThrow(/vimma-ctl/);
+    const missing = join(tempDir("vimma-no-ctl-"), "vimma-ctl");
+    expect(() => packageRelease({ ...opts(fakeMachTarball()), ctl: missing })).toThrow(/vimma-ctl/);
+    const plain = join(tempDir("vimma-plain-ctl-"), "vimma-ctl");
+    writeFileSync(plain, "not executable\n");
+    expect(() => packageRelease({ ...opts(fakeMachTarball()), ctl: plain })).toThrow(/vimma-ctl/);
   });
 
   it("removes it when packaging fails too", () => {
@@ -1049,6 +1154,7 @@ describe("packageRelease refuses bad input", () => {
         maintainer: MAINTAINER,
         repo: REPO,
         brandDir: BRAND_DIR,
+        ctl: fakeCtl(),
         buildDeb: false,
         buildRpm: true,
       }),

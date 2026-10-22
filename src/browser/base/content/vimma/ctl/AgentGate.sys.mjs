@@ -45,7 +45,7 @@ const DEFAULT_GRANT = { grantMinutes: 10, grantMaxMinutes: 480 };
  *   | { kind: "timeout", question: Question }
  *   | { kind: "ran", conn: ConnId, tool: string, what: object, label: AgentLabel,
  *       until: number }
- *   | { kind: "notice", text: string }} GateEvent  what listeners hear, for the notices
+ *   | { kind: "notice", text: string, hold?: boolean }} GateEvent  what listeners hear, for the notices
  *   (decisions 16, 20, 23; `notice`: an agent download's, decision 31)
  */
 
@@ -275,9 +275,10 @@ export const AgentGate = {
   /**
    * A notice for the window that asks (an agent download's, decision 31).
    * @param {string} text
+   * @param {{ hold?: boolean }} [options]  hold: until no question waits (spec ship-vimma-ctl)
    */
-  notify(text) {
-    changed({ kind: "notice", text });
+  notify(text, options) {
+    changed({ kind: "notice", text, ...options });
   },
 
   /**

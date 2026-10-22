@@ -7,6 +7,8 @@
 # Usage: tools/package/macos-dmg.sh <in.dmg> <out.dmg>
 #   MACH       mach to run (default: engine/mach); MOZ_OBJDIR as for the build
 #   RCODESIGN  rcodesign to run (default: rcodesign on PATH)
+#   VIMMA_CTL  a vimma-ctl built for the Mac, put next to vimma in Contents/MacOS before signing
+#              (spec ship-vimma-ctl); release.yml sets it, the weekly macOS build does not
 set -eu
 
 in=${1:?usage: macos-dmg.sh <in.dmg> <out.dmg>}
@@ -41,6 +43,15 @@ for art in .DS_Store .background/background.png .VolumeIcon.icns; do
     exit 1
   fi
 done
+
+if [ -n "${VIMMA_CTL:-}" ]; then
+  [ -f "$VIMMA_CTL" ] && [ -x "$VIMMA_CTL" ] || {
+    echo "macos-dmg.sh: VIMMA_CTL=$VIMMA_CTL is not an executable file" >&2
+    exit 1
+  }
+  cp "$VIMMA_CTL" "$app/Contents/MacOS/vimma-ctl"
+  chmod 755 "$app/Contents/MacOS/vimma-ctl"
+fi
 
 # A disk image mounted on a Mac leaves Finder attributes that a strict verify rejects.
 if command -v xattr > /dev/null 2>&1; then xattr -cr "$app"; fi

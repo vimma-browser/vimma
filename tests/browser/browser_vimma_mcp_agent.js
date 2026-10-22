@@ -46,6 +46,9 @@ const { validateMessage, MAX_LINE_LENGTH } = ChromeUtils.importESModule(
 const { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent.mjs",
 );
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+/** Vimma's version: what a vimma-ctl shipped with this build names in its agent-hello. */
+const VIMMA_VERSION = AppConstants.MOZ_APP_VERSION_DISPLAY;
 
 const CONTROL = "vimma.control.enabled";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
@@ -97,7 +100,7 @@ async function agentClient(name = "example-agent") {
   const welcome = await c.handshake({ protocol: 2, role: "agent" });
   Assert.equal(welcome.type, "welcome", "an agent connection is welcomed");
   Assert.equal(welcome.role, "agent", "as the agent role");
-  const hi = await c.call("agent-hello", { client: { name }, via: "example" });
+  const hi = await c.call("agent-hello", { client: { name }, via: "example", ctl: VIMMA_VERSION });
   Assert.deepEqual(hi.result, { workspace: agent().name, exists: true }, "agent-hello answers");
   return c;
 }
@@ -660,5 +663,87 @@ add_task(async function test_agents_cannot_take_every_connection() {
   Assert.equal((await welcomed).type, "welcome", "while vimma-ctl still gets in");
   full.close();
   for (const a of agents) a.close();
+  await setSwitches({});
+});
+
+// Spec: docs/specs/ship-vimma-ctl.md, behaviours 4-6. The discovery file names Vimma's version;
+// an agent connection whose vimma-ctl is older, or names no version, still gets in and runs its
+// commands, and Vimma shows a one-line notice; one as new as Vimma shows none.
+add_task(async function test_an_older_vimma_ctl_gets_a_notice_and_still_works() {
+  await setSwitches({ mcp: true });
+  Assert.equal((await discovery()).version, VIMMA_VERSION, "the discovery file names the version");
+  /** @type {string[]} */
+  const notices = [];
+  /** @param {any} e */
+  const collect = (e) => {
+    if (e?.kind === "notice") notices.push(e.text);
+  };
+  AgentGate.addListener(collect);
+  try {
+    const hello = async (/** @type {object} */ args) => {
+      const c = new Client(/** @type {number} */ (VimmaControl.port));
+      await c.handshake({ protocol: 2, role: "agent" });
+      const hi = await c.call("agent-hello", { client: { name: "example-agent" }, ...args });
+      Assert.equal(hi.ok, true, `${JSON.stringify(args)}: welcomed all the same`);
+      const ping = await c.call("agent-ping");
+      Assert.equal(ping.ok, true, "and its commands run");
+      return c;
+    };
+
+    const current = await hello({ ctl: VIMMA_VERSION });
+    const older = await hello({ ctl: "0.0.1" });
+    await until(() => notices.length === 1, "one notice, for the older client");
+    Assert.equal(
+      notices[0],
+      `vimma-ctl 0.0.1 is older than Vimma ${VIMMA_VERSION}: agents get fewer tools until you update it`,
+    );
+    const unnamed = await hello({});
+    await until(() => notices.length === 2, "and one for a client that names no version");
+    Assert.equal(
+      notices[1],
+      `vimma-ctl is older than Vimma ${VIMMA_VERSION}: agents get fewer tools until you update it`,
+    );
+    const newer = await hello({ ctl: "999.0.0" });
+    Assert.equal(notices.length, 2, "none for a newer client");
+    await until(
+      () => document.getElementById(NOTICE_ID)?.textContent === notices[1],
+      "the notice line shows it",
+    );
+    // Four agent connections at most: close these before the fifth.
+    for (const c of [current, older, unnamed, newer]) c.close();
+    await until(() => [current, older, unnamed, newer].every((c) => c.closed), "all closed");
+    const bad = new Client(/** @type {number} */ (VimmaControl.port));
+    await bad.handshake({ protocol: 2, role: "agent" });
+    const refused = await bad.call("agent-hello", { client: { name: "x" }, ctl: "v1" });
+    Assert.equal(refused?.error?.code, "invalid-args", "a ctl that is not a version is refused");
+    Assert.equal(notices.length, 2, "and gives no notice");
+    bad.close();
+  } finally {
+    AgentGate.removeListener(collect);
+  }
+  await setSwitches({});
+});
+
+// Spec ship-vimma-ctl, decision 9: an agent connects at its first call, so its question follows
+// the hello at once. The notice waits until no question waits, so it never covers the line.
+add_task(async function test_the_older_client_notice_waits_for_the_question_line() {
+  await setSwitches({ mcp: true });
+  const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
+  const notice = document.getElementById(NOTICE_ID);
+  if (notice) notice.textContent = "";
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "example-agent" }, ctl: "0.0.1" });
+  const tabs = c.call("agent-tabs");
+  const q = await question();
+  await new Promise((r) => setTimeout(r, 1000));
+  Assert.ok(!noticeText().includes("is older than"), "no notice over the waiting question");
+  AgentGate.answer(q.id, { kind: "once" });
+  Assert.equal((await tabs).ok, true, "the older client's call runs");
+  await until(
+    () => noticeText().startsWith("vimma-ctl 0.0.1 is older than Vimma"),
+    "the notice once the line is free",
+  );
+  c.close();
   await setSwitches({});
 });

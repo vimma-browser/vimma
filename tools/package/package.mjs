@@ -2,12 +2,13 @@
 /**
  * Release packages from a `./mach package` tarball (spec m6-packaging): the release tarball, the
  * AppImage, the .deb, the .rpm (spec rpm-package), the vimma-bin PKGBUILD + SRCINFO (a release
- * asset, and an AUR variant in aur/), and SHA256SUMS.
+ * asset, and an AUR variant in aur/), and SHA256SUMS. Each carries vimma-ctl next to the vimma
+ * binary (spec ship-vimma-ctl), so whatever updates the browser updates the client with it.
  *
  * Usage:
- *   node tools/package/package.mjs --tarball <vimma-*.linux-x86_64.tar.xz> --out <dir>
- *     --maintainer "Name <email>" [--tag vX.Y.Z] [--repo vimma-browser/vimma] [--sbom <file>]
- *     [--appimagetool <path> --runtime <path>] [--no-deb] [--no-rpm]
+ *   node tools/package/package.mjs --tarball <vimma-*.linux-x86_64.tar.xz> --ctl <vimma-ctl>
+ *     --out <dir> --maintainer "Name <email>" [--tag vX.Y.Z] [--repo vimma-browser/vimma]
+ *     [--sbom <file>] [--appimagetool <path> --runtime <path>] [--no-deb] [--no-rpm]
  * Without --appimagetool no AppImage is built (its AppDir still is, in the work dir).
  * The version is surfer.json brands.vimma.release.displayVersion; --tag must be exactly v<that>.
  */
@@ -23,6 +24,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -45,6 +47,9 @@ const DESCRIPTION =
  */
 export const LAUNCHER = fileURLToPath(new URL("vimma-open.sh", import.meta.url));
 const LAUNCHER_NAME = `${APP}-open`;
+
+/** The control client (spec ship-vimma-ctl), installed next to the `vimma` binary. */
+const CTL_NAME = `${APP}-ctl`;
 
 /** GNU LGPL 2.1 text (gnu.org/licenses/old-licenses/lgpl-2.1.txt), for the AppImage runtime. */
 const LGPL_TEXT = fileURLToPath(new URL("notices/LGPL-2.1.txt", import.meta.url));
@@ -372,6 +377,11 @@ export function appRun() {
     '# "Make default browser" and remoting record the .AppImage, not the temporary mount.',
     "# Set only when the AppImage runtime started us ($APPIMAGE), never to an empty value.",
     'if [ -n "${APPIMAGE:-}" ]; then export MOZ_APP_LAUNCHER="$APPIMAGE"; fi',
+    `# A link named ${CTL_NAME} runs the control client shipped inside (spec ship-vimma-ctl):`,
+    "# $ARGV0 is the name the AppImage runtime was started by, $0 that of an extracted AppRun.",
+    'case "$(basename "${ARGV0:-$0}")" in',
+    `  ${CTL_NAME}) exec "$HERE/usr/lib/${APP}/${CTL_NAME}" "$@" ;;`,
+    "esac",
     "# One link (the desktop entry's %u) through vimma-open, which names the app that opened it",
     "# (spec workspace-routing); anything else, such as a desktop action's flag, straight to vimma.",
     'if [ "$#" -eq 1 ]; then',
@@ -517,6 +527,7 @@ export function rpmSpec({ version, maintainer, stage, bundled }) {
     `/usr/lib/${APP}`,
     `/usr/bin/${APP}`,
     `/usr/bin/${LAUNCHER_NAME}`,
+    `/usr/bin/${CTL_NAME}`,
     `/usr/share/applications/${APP}-${APP}.desktop`,
     ...icons,
     `/usr/share/icons/hicolor/scalable/apps/${APP}.svg`,
@@ -668,6 +679,8 @@ package() {
   install -d "$pkgdir/opt" "$pkgdir/usr/bin" "$pkgdir/usr/share/applications"
   cp -a "$srcdir/${APP}" "$pkgdir/opt/${APP}"
   ln -s /opt/${APP}/${APP} "$pkgdir/usr/bin/${APP}"
+  # The tarball's control client (spec ship-vimma-ctl).
+  ln -s /opt/${APP}/${CTL_NAME} "$pkgdir/usr/bin/${CTL_NAME}"
   # Tells Vimma how it was installed (spec m6a-updater, section 3).
   printf '%s\\n' 'vimma-package=${input.installSource}' > "$pkgdir/opt/${APP}/${PACKAGED_APP_FILE}"
 ${heredoc(launcherPath, "VIMMA_OPEN_EOF", input.launcher)}  chmod 755 "${launcherPath}"
@@ -751,6 +764,44 @@ function installLauncher(to) {
 }
 
 /**
+ * vimma-ctl as release.yml's ctl job built it, into the unpacked app next to `vimma`, so every
+ * package below and the release tarball carry it (spec ship-vimma-ctl).
+ * @param {string | undefined} from
+ * @param {string} to
+ */
+function installCtl(from, to) {
+  if (!from) throw new Error(`--ctl: the ${CTL_NAME} binary to ship is required`);
+  const stat = existsSync(from) ? statSync(from) : null;
+  if (!stat?.isFile() || !(stat.mode & 0o111)) {
+    throw new Error(`--ctl ${from}: not an executable ${CTL_NAME} file`);
+  }
+  if (existsSync(to)) throw new Error(`the mach tarball already has ${APP}/${CTL_NAME}`);
+  copyFileSync(from, to);
+  chmodSync(to, 0o755);
+}
+
+/**
+ * The release tarball: mach's top-level `vimma/`, now with vimma-ctl, packed again. Owner and
+ * group 0, names sorted, so it unpacks as mach's did and its listing does not depend on the
+ * runner's file system.
+ * @param {string} extract the directory holding `vimma/`
+ * @param {string} to
+ */
+function packTarball(extract, to) {
+  execFileSync("tar", [
+    "--sort=name",
+    "--owner=0",
+    "--group=0",
+    "--numeric-owner",
+    "-cJf",
+    to,
+    "-C",
+    extract,
+    APP,
+  ]);
+}
+
+/**
  * `cp -a` keeps modes and symlinks of the packaged app exactly as mach made them.
  * @param {string} appDir
  * @param {string} to
@@ -799,9 +850,9 @@ function installedKiB(dir) {
 
 /**
  * @typedef {{
- *   tarball: string, outDir: string, config: SurferConfig, maintainer: string, repo: string,
- *   brandDir: string, tag?: string, sbom?: string, appimagetool?: string, runtime?: string,
- *   buildDeb?: boolean, buildRpm?: boolean, workDir?: string,
+ *   tarball: string, ctl: string, outDir: string, config: SurferConfig, maintainer: string,
+ *   repo: string, brandDir: string, tag?: string, sbom?: string, appimagetool?: string,
+ *   runtime?: string, buildDeb?: boolean, buildRpm?: boolean, workDir?: string,
  * }} PackageOptions
  */
 
@@ -863,10 +914,12 @@ function packageIn(work, options) {
   const problems = checkDesktopEntry(desktop);
   if (problems.length) throw new Error(`desktop file: ${problems.join("; ")}`);
 
+  installCtl(options.ctl, join(app, CTL_NAME));
+
   /** @type {string[]} */
   const files = [];
   const tarball = join(out, names.tarball);
-  copyFileSync(options.tarball, tarball);
+  packTarball(extract, tarball);
   chmodSync(tarball, 0o644);
   files.push(tarball);
 
@@ -906,6 +959,7 @@ function packageIn(work, options) {
   installLauncher(join(debRoot, `usr/lib/${APP}/${LAUNCHER_NAME}`));
   writeFile(join(debRoot, `usr/lib/${APP}/${PACKAGED_APP_FILE}`), packageMarker("deb"));
   symlinkSync(`../lib/${APP}/${LAUNCHER_NAME}`, join(debRoot, `usr/bin/${LAUNCHER_NAME}`));
+  symlinkSync(`../lib/${APP}/${CTL_NAME}`, join(debRoot, `usr/bin/${CTL_NAME}`));
   writeFile(join(debRoot, `usr/share/doc/${APP}/copyright`), COPYRIGHT);
   const size = installedKiB(debRoot);
   mkdirSync(join(debRoot, "DEBIAN"), { mode: 0o755 });
@@ -935,6 +989,7 @@ function packageIn(work, options) {
   installLauncher(join(rpmRoot, `usr/lib/${APP}/${LAUNCHER_NAME}`));
   writeFile(join(rpmRoot, `usr/lib/${APP}/${PACKAGED_APP_FILE}`), packageMarker("rpm"));
   symlinkSync(`../lib/${APP}/${LAUNCHER_NAME}`, join(rpmRoot, `usr/bin/${LAUNCHER_NAME}`));
+  symlinkSync(`../lib/${APP}/${CTL_NAME}`, join(rpmRoot, `usr/bin/${CTL_NAME}`));
   writeFile(join(rpmRoot, `usr/share/doc/${APP}/copyright`), COPYRIGHT);
   if (options.buildRpm !== false) {
     // rpmbuild macro-expands its --define values too.
@@ -1026,6 +1081,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({
     options: {
       tarball: { type: "string" },
+      ctl: { type: "string" },
       out: { type: "string" },
       maintainer: { type: "string" },
       tag: { type: "string" },
@@ -1037,13 +1093,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       "no-rpm": { type: "boolean", default: false },
     },
   });
-  if (!values.tarball || !values.out || !values.maintainer) {
-    console.error("usage: package.mjs --tarball <file> --out <dir> --maintainer 'Name <email>' …");
+  if (!values.tarball || !values.ctl || !values.out || !values.maintainer) {
+    console.error(
+      "usage: package.mjs --tarball <file> --ctl <vimma-ctl> --out <dir> --maintainer 'Name <email>' …",
+    );
     process.exit(2);
   }
   const root = new URL("../../", import.meta.url);
   const result = packageRelease({
     tarball: values.tarball,
+    ctl: values.ctl,
     outDir: values.out,
     maintainer: values.maintainer,
     tag: values.tag,

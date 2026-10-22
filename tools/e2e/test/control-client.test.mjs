@@ -1,7 +1,7 @@
 // The harness's own control-protocol client (docs/specs/vimma-mcp.md, sub-PR 2b): a held full
 // connection and an agent connection, against a minimal protocol 2 server here.
 import { createHmac } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -93,7 +93,15 @@ describe("ControlSessions", () => {
     expect(await sessions.agentResult("t1")).toMatchObject({ ok: true, result: { tabs: [] } });
     const requests = seen.filter((m) => m.type === "request");
     expect(requests.map((m) => m.command)).toEqual(["agent-hello", "agent-tabs"]);
-    expect(requests[0].args).toEqual({ client: { name: "example-agent" } });
+    // As the vimma-ctl built from this tree names itself, so a build shows no older-client
+    // notice in an e2e screenshot (docs/specs/ship-vimma-ctl.md).
+    const surfer = JSON.parse(
+      readFileSync(new URL("../../../surfer.json", import.meta.url), "utf8"),
+    );
+    expect(requests[0].args).toEqual({
+      client: { name: "example-agent" },
+      ctl: surfer.brands.vimma.release.displayVersion,
+    });
   });
 });
 

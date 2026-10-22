@@ -229,7 +229,7 @@ pub fn run_with_input(
             let _ = writeln!(
                 out,
                 "vimma-ctl {} (protocol {PROTOCOL})",
-                env!("CARGO_PKG_VERSION")
+                crate::version::VERSION
             );
             return EXIT_OK;
         }
@@ -455,7 +455,7 @@ mod tests {
         );
         assert_eq!(
             String::from_utf8(out).unwrap(),
-            format!("vimma-ctl {} (protocol 2)\n", env!("CARGO_PKG_VERSION"))
+            format!("vimma-ctl {} (protocol 2)\n", crate::version::VERSION)
         );
     }
 

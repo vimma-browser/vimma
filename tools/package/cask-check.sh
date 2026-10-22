@@ -10,12 +10,14 @@
 #   tools/package/cask-check.sh <vimma.rb> <dmg>
 #       also installs the cask with the dmg placed in Homebrew's download cache, so brew fetches
 #       nothing but still checks the dmg against the cask's sha256; checks the installed app's
-#       signature, its bundle identifier and the `vimma` link; then uninstalls with --zap and
+#       signature, its bundle identifier and the `vimma` and `vimma-ctl` links; then uninstalls
+#       with --zap and
 #       checks the zap paths are gone and ~/.config/vimma is not. release.yml's macos-smoke job
 #       runs this on the release's dmg before anything is signed. GitHub Actions only: --zap
 #       deletes ~/Library/Application Support/Vimma, which on a developer's Mac is their profile.
 #   tools/package/cask-check.sh --stub
-#       renders a cask for a stub app (a shell script for `vimma`) in a dmg made here, then runs
+#       renders a cask for a stub app (shell scripts for `vimma` and `vimma-ctl`) in a dmg made
+#       here, then runs
 #       the install check; pkgbuild.yml runs this on pull requests, so a broken cask fails before
 #       a release.
 set -euo pipefail
@@ -49,7 +51,8 @@ if [ "${1:-}" = "--stub" ]; then
   app="$work/stage/Vimma.app"
   mkdir -p "$app/Contents/MacOS"
   printf '#!/bin/sh\necho stub\n' > "$app/Contents/MacOS/vimma"
-  chmod 755 "$app/Contents/MacOS/vimma"
+  printf '#!/bin/sh\necho stub\n' > "$app/Contents/MacOS/vimma-ctl"
+  chmod 755 "$app/Contents/MacOS/vimma" "$app/Contents/MacOS/vimma-ctl"
   plist="$app/Contents/Info.plist"
   plutil -create xml1 "$plist"
   plutil -insert CFBundleExecutable -string vimma "$plist"
@@ -92,6 +95,8 @@ installed=$(plutil -extract CFBundleIdentifier raw "$APP/Contents/Info.plist")
 [ "$installed" = "$id" ] || die "the app's bundle identifier is $installed, the cask quits and zaps $id"
 [ "$(readlink "$(brew --prefix)/bin/vimma")" = "$APP/Contents/MacOS/vimma" ] \
   || die "$(brew --prefix)/bin/vimma does not link to $APP/Contents/MacOS/vimma"
+[ "$(readlink "$(brew --prefix)/bin/vimma-ctl")" = "$APP/Contents/MacOS/vimma-ctl" ] \
+  || die "$(brew --prefix)/bin/vimma-ctl does not link to $APP/Contents/MacOS/vimma-ctl"
 
 zapped=(
   "$HOME/Library/Application Support/Vimma"
@@ -104,9 +109,10 @@ touch "${zapped[2]}" "$HOME/.config/vimma/cask-check"
 brew uninstall --zap --cask "$TAP/vimma"
 [ ! -e "$APP" ] || die "brew uninstall left $APP"
 [ ! -e "$(brew --prefix)/bin/vimma" ] || die "brew uninstall left $(brew --prefix)/bin/vimma"
+[ ! -e "$(brew --prefix)/bin/vimma-ctl" ] || die "brew uninstall left $(brew --prefix)/bin/vimma-ctl"
 for path in "${zapped[@]}"; do
   [ ! -e "$path" ] || die "--zap left $path"
 done
 test -f "$HOME/.config/vimma/cask-check" || die "--zap removed ~/.config/vimma"
 rm "$HOME/.config/vimma/cask-check"
-echo "cask-check: the cask installs $APP, links vimma, and uninstalls with --zap"
+echo "cask-check: the cask installs $APP, links vimma and vimma-ctl, and uninstalls with --zap"

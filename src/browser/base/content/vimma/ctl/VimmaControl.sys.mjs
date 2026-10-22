@@ -27,6 +27,7 @@ import {
   validateMessage,
   CHALLENGE_CONTEXT,
 } from "../core/control.mjs";
+import { isCtlVersion } from "../core/ctl-version.mjs";
 import { parseKey } from "../core/keys.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
@@ -932,14 +933,20 @@ function removeDiscoveryFile() {
   return true;
 }
 
-/** The discovery file's contents for `s`: protocol 2 lists the roles (vimma-mcp decision 2). */
+/**
+ * The discovery file's contents for `s`: protocol 2 lists the roles (vimma-mcp decision 2), and
+ * Vimma's version lets `vimma-ctl mcp` say it is older before it connects (spec ship-vimma-ctl,
+ * behaviour 5). A build whose display version is not X.Y.Z leaves it out.
+ */
 function discoveryOf(/** @type {Server} */ s) {
+  const version = lazy.AppConstants.MOZ_APP_VERSION_DISPLAY;
   return {
     protocol: LATEST_PROTOCOL,
     port: s.port,
     token: s.token,
     pid: Services.appinfo.processID,
     roles: s.roles,
+    ...(isCtlVersion(version) ? { version } : {}),
   };
 }
 
