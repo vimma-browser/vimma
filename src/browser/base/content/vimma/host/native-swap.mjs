@@ -232,9 +232,10 @@ function showInPlace(op) {
   const x = windowOf(op.show);
   const y = byId.get(op.place)?.deref() ?? null;
   if (!x) {
-    // The window to show is gone: whatever is hidden comes back.
-    if (y && !y.closed && hidden.has(y)) setVisible(y, true);
+    // The window to show is gone: whatever is hidden comes back, the pair forgotten first so
+    // that its activation finds nothing to swap.
     forget();
+    if (y && !y.closed && hidden.has(y)) setVisible(y, true);
     return false;
   }
   // A slot window that is closing reports no frame: its last known one stands in.
@@ -390,7 +391,20 @@ export const NativeSwap = {
     failed = false;
     // Never stranded: with "window" placement nothing may stay hidden, or a hidden private
     // window could not be reached (focus() does not show a hidden window on macOS).
-    if (next === "window") revealAll();
+    if (next === "window") {
+      // Shown, a window is raised and made key. The private window must not come to the front
+      // by itself (a screen being shared), so the window in front stays there: in the slot it
+      // covers the private window, which is one key away. Minimizing the private window
+      // instead was rejected, because it animates into the Dock and what AppKit does with a
+      // hidden window that is minimized is unverified.
+      const front = /** @type {any} */ (Services.focus).activeWindow;
+      const shown = [...byId.values()].some((r) => {
+        const w = r.deref();
+        return w && !w.closed && hidden.has(w);
+      });
+      revealAll();
+      if (shown && front && !front.closed && !hidden.has(front)) front.focus();
+    }
   },
 
   /**
@@ -400,7 +414,7 @@ export const NativeSwap = {
    * @returns {string | null}
    */
   openFeatures(from) {
-    if (!wanted()) return null;
+    if (!wanted() || !isBrowserWindow(from)) return null;
     const f = openFrame(frameOf(from));
     if (!f) return null;
     return [
@@ -429,7 +443,7 @@ export const NativeSwap = {
     const mine = ++switches;
     const go = () => {
       // Another switch began meanwhile: this one would hide a window under the user.
-      if (mine !== switches || from.closed || priv.closed) return;
+      if (mine !== switches || !wanted() || from.closed || priv.closed) return;
       const p = idOf(priv);
       // A private window shown somewhere else (a second one from ctrl+n): focused, as today.
       if (!fresh && p !== pair?.private) {

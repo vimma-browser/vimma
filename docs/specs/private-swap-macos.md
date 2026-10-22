@@ -294,7 +294,13 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
    `toolbar.visible` is false) and shows the private workspace as a window. Whenever the native
    backend declines while the private window is hidden (a pop-up, `"window"` placement, a
    failure), it shows every hidden window first, because the caller's `focus()` cannot show a
-   hidden window on macOS.
+   hidden window on macOS. A reload to `"window"` shows the hidden windows and then focuses the
+   window that was in front again, so that the private window never comes to the front by
+   itself (a screen may be shared); in the slot it stays behind that window, one key away.
+   Rejected: showing it minimized, because it animates into the Dock and what AppKit does when
+   a hidden window is minimized is unverified. A switch still waiting for a new private window
+   to start up does nothing once the swap no longer applies. A new private window opened from a
+   pop-up does not take the pop-up's frame from the swap.
 5. **Focus.** Showing a window with `visibility = true` makes it key (Research), so the swap
    calls no `focus()`. When the swap runs while Vimma is not the active app (a link, or
    `vimma-ctl send-keys` from a terminal), Vimma then calls `focus()` on the shown window so that

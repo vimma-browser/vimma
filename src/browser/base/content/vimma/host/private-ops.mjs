@@ -22,7 +22,7 @@ import {
 } from "../core/privatews.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
-import { PrivateSwap, startedUp } from "./private-swap.mjs";
+import { PrivateSwap, isBrowserWindow, startedUp } from "./private-swap.mjs";
 import { workspacePickerItems } from "./workspace-ops.mjs";
 
 /** @import { WorkspaceItem } from "../core/picker.mjs" */
@@ -67,9 +67,6 @@ const isPrivate = isPrivateBrowsing;
 export function isPrivateWorkspace(win) {
   return isPrivate(win) && !lazy.PrivateBrowsingUtils.permanentPrivateBrowsing;
 }
-
-/** @param {any} w */
-const isBrowserWindow = (w) => !w.closed && w.toolbar?.visible !== false;
 
 /**
  * Every open private browser window, most recent first: together, the private workspace

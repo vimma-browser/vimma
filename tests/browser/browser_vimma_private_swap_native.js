@@ -64,6 +64,16 @@ const frameOf = (win) => ({
 /** @param {Window} win */
 const hidden = (win) => NativeSwap._windowForTests(win).hidden;
 
+/**
+ * The fields SessionStore keeps for the normal window. `zIndex` is SessionStore's own z-order,
+ * added whenever it collects every window's state (a periodic save, SessionStore.sys.mjs), so it
+ * comes and goes with timing and is not compared.
+ */
+const stateKeys = () =>
+  Object.keys(SessionStore.getWindowState(window).windows[0])
+    .filter((k) => k !== "zIndex")
+    .sort();
+
 /** @param {Window} win @param {{ x: number, y: number, width: number, height: number }} f */
 async function place(win, f) {
   win.moveTo(f.x, f.y);
@@ -133,7 +143,7 @@ async function enter(from = window) {
 add_task(async function entering_shows_private_at_the_frame_and_every_way_back_swaps_again() {
   await start();
   const spy = spyHiddenFocus(window);
-  const before = Object.keys(SessionStore.getWindowState(window).windows[0]).sort();
+  const before = stateKeys();
   const priv = await enter();
   Assert.equal(privateWindows().length, 1, "one private window");
   Assert.deepEqual(frameOf(priv), FRAME, "private has the normal window's position and size");
@@ -194,7 +204,7 @@ add_task(async function entering_shows_private_at_the_frame_and_every_way_back_s
   }
   Assert.equal(spy.calls, 0, "no focus() on a hidden window");
   spy.restore();
-  const after = Object.keys(SessionStore.getWindowState(window).windows[0]).sort();
+  const after = stateKeys();
   Assert.deepEqual(after, before, "SessionStore saves no new field for the normal window");
 });
 
@@ -396,6 +406,8 @@ add_task(async function nothing_is_written_to_the_profile() {
   await SimpleTest.promiseFocus(priv);
   prefix("P", { shiftKey: true }, priv);
   await until(() => hidden(priv), "back");
+  // And past it again: a write the swap itself scheduled would land by now.
+  await new Promise((r) => setTimeout(r, 2000));
   Assert.deepEqual(names(), before, "the profile directory has no new file");
 });
 
@@ -422,9 +434,10 @@ add_task(async function placement_window_from_a_reload_shows_a_hidden_private_wi
   PrivateSwap.configure("window");
   Assert.ok(!hidden(priv), "the hidden private window is shown again");
   Assert.equal(NativeSwap._pair, null, "and the pair is forgotten");
-  // Shown again, the private window was raised; its activation swapped nothing back.
   Assert.ok(!hidden(window), "the normal window stays shown");
-  await SimpleTest.promiseFocus(window);
+  // Shown, the private window is raised: it must not come to the front by itself.
+  await turns();
+  Assert.equal(Services.focus.activeWindow, window, "the normal window stays in front");
   prefix("P", { shiftKey: true });
   await until(() => Services.focus.activeWindow === priv, "the private workspace is there");
   Assert.equal(privateWindows().length, 1, "the same private window, no new one");
@@ -449,6 +462,12 @@ add_task(async function a_pop_up_never_swaps_or_hides() {
   );
   const popup = await opened;
   Assert.ok(!popup.toolbar.visible, "a pop-up");
+  Assert.equal(
+    PrivateSwap.openFeatures(popup),
+    null,
+    "a new private window takes no pop-up's place",
+  );
+  Assert.notEqual(PrivateSwap.openFeatures(window), null, "but a normal window's");
   log.length = 0;
   await SimpleTest.promiseFocus(popup);
   prefix("P", { shiftKey: true }, popup);
@@ -583,4 +602,18 @@ add_task(async function every_public_member_is_routed_by_the_backend_switch() {
     (k) => !k.startsWith("_") && !Object.hasOwn(PrivateSwap, k),
   );
   Assert.deepEqual(unrouted, [], "every public member of HyprSwap is routed");
+});
+
+add_task(async function a_reload_while_a_new_window_starts_up_hides_nothing() {
+  await start();
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  // config.toml set to "window" before the new private window's delayed startup.
+  PrivateSwap.configure("window");
+  const priv = await opened;
+  await until(() => priv.gBrowserInit?.delayedStartupFinished, "the window started up");
+  await turns();
+  Assert.deepEqual(writes(window), [], "the normal window is never hidden");
+  Assert.equal(NativeSwap._pair, null, "no pair");
+  PrivateSwap.configure("swap");
 });

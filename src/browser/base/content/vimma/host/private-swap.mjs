@@ -32,6 +32,8 @@ import {
 import { HyprIpc, REPLY_MS } from "./hypr/HyprIpc.sys.mjs";
 import { NativeSwap } from "./native-swap.mjs";
 
+export { isBrowserWindow } from "./native-swap.mjs";
+
 /** @import { Client, Command, Dialect, Pair, PairEvent, ShowOp } from "../core/hyprswap.mjs" */
 /** @import { PrivatePlacement } from "../core/config.mjs" */
 
