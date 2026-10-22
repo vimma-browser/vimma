@@ -42,6 +42,10 @@ Read plan.md once per milestone; read docs/specs/<current>.md every session.
   before the merge, chained with `&&` so a failure blocks it.
 - User-visible change → update docs/guide.md (and the guide's Features at a glance, or the README status,
   if it changes what works).
+- Any change → every doc that describes what it touches is current in the same PR: guide.md, README,
+  CONTRIBUTING.md (build, test and release steps), security.md, limits.md, runbook.md, the spec's
+  status, and code comments. Stale text found while working there gets fixed too. A change that
+  makes vimma.dev wrong gets a vimma-site issue.
 - User-visible change → a line in CHANGELOG.md [Unreleased] (the maintainer adds it at merge time, so
   parallel PRs do not conflict). Exception: a PR that changes a snapshot or baseline adds its own line.
 - Keymap changes (actions.mjs, defaults.mjs) go one PR at a time: each regenerates bindings docs and
