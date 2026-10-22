@@ -10,11 +10,18 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Element focus: a text block chosen with `:focus_element` (or a key bound to `focus_element`) is in the new `ELEMENT` mode, where `y` copies it, `v` / `V` select it in copy mode, `+` / `-` and `j` / `k` move the focus and `F` picks another block. The help and `defaults.toml` snapshots gain the `[modal.element]` keys and the full `focus_element` description.
 - Agents (MCP): `vimma_show` lets an agent show you one of the agent workspace's tabs. It asks every time, with only `y` and `n`; on `y` the window that holds the tab switches to the agent workspace with that tab selected, never raising or focusing a window, and `ctrl+^` brings you back to your workspace and split. The e2e baselines `m0-mcp-drive-keys-question` and `m0-mcp-drive-shown` are new, from the `m0-mcp-drive` scenario that drives the real `vimma-ctl mcp` through `vimma_keys` and `vimma_show`.
 - Copy mode: `ip` selects the text block around the caret, the one element focus would select, and `ap` grows the selection to the block around it on each press. The help and `defaults.toml` snapshots gain the two keys.
+- e2e baselines `m0-mcp-forms-fill-question` and `m0-mcp-forms-submit-question` (scenario `m0-mcp-forms`): the question line asking to fill two fields of a sign-up form, and the question asking to submit it, as the real `vimma-ctl mcp` lists the form, is refused its password field, fills it, takes a labelled screenshot, submits it and reads the failed request that follows.
 - e2e baselines `element-hints.png`, `element-focus.png` and `element-visual.png` (scenario `issue-213-element-focus`): `F`'s labels on an article's text blocks, a focused paragraph with its outline and `ELEMENT` badge, and that paragraph selected in copy mode.
 - The AppImage updates itself: it replaces its own file with a newer release checked against the signed update file, and runs it from the next start.
 - Agents (MCP): `vimma_keys` scrolls, finds and goes back or forward in an agent tab without bringing it to the front, from a fixed set of Vimma's default keys; it asks first, shows the keys it will run, and `:mcp log` lists the last 100 agent calls.
 - Agents (MCP): `vimma_keys` lists an agent tab's visible links by hint label and follows one in the same tab, never as a click and with no referrer; a link to another site asks first unless the agent holds an open grant.
 - Updates: with update checks off, a dim `updates: off` segment shows for a few seconds at startup, once per session.
+- Agents (MCP): `vimma_elements` lists the buttons, fields and links on screen in an agent tab by hint label; password, one-time-code and payment card fields are marked sensitive and never show a value.
+- Agents (MCP): `vimma_activate` clicks buttons, links and checkboxes in an agent tab by hint label, in the background and without user activation; a form submission asks every time, and one a page makes by itself after an agent's click is stopped.
+- Agents (MCP): `vimma_fill` fills form fields in an agent tab, never passwords, payment card, one-time-code or file fields; a fill that submits asks every time and shows every value.
+- Agents (MCP): `vimma_screenshot` shows an agent tab as an image, taken in the background, with its `vimma_elements` labels drawn on it if asked; it is never taken while a password, one-time-code or card field on screen has a value.
+- Agents (MCP): `vimma_console` reads an agent tab's script errors, console errors and warnings, and failed requests, without running page code.
+- Packaging: an `.rpm` for Fedora and openSUSE, installed and checked with dnf and zypper; `:update` shows the dnf and zypper commands for it.
 
 ### Changed
 

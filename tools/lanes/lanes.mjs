@@ -73,10 +73,24 @@ export function copyEntries(names) {
  * @typedef {(args: string[]) => Promise<{ code: number, stderr: string }>} Cp
  */
 
+/**
+ * GNU cp's reflink flags as BSD cp (macOS) spells them: `-c` clones with clonefile(2) on APFS
+ * and fails where it cannot, like --reflink=always; --reflink=auto is a plain copy.
+ * @param {string[]} args GNU cp arguments
+ * @param {NodeJS.Platform} [platform]
+ * @returns {string[]}
+ */
+export function cpArgs(args, platform = process.platform) {
+  if (platform !== "darwin") return args;
+  return args.flatMap((a) =>
+    a === "--reflink=always" ? ["-c"] : a === "--reflink=auto" ? [] : [a],
+  );
+}
+
 /** @type {Cp} */
 function runCp(args) {
   return new Promise((done) => {
-    const child = spawn("cp", args, { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn("cp", cpArgs(args), { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
     child.stderr.on("data", (d) => (stderr += d));
     child.on("close", (code) => done({ code: code ?? 1, stderr }));

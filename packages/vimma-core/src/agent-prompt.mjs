@@ -13,6 +13,7 @@
 import { AGENT_GLYPH } from "./agent.mjs";
 import { DOWNLOAD_TOOL, formatBytes } from "./agent-downloads.mjs";
 import { displayUrl, truncate } from "./statusbar.mjs";
+import { textWidth } from "./textwidth.mjs";
 
 /** No key for this long before the question may open by itself (decision 14). */
 export const QUIET_MS = 1500;
@@ -176,6 +177,69 @@ function elementParts(w) {
   ];
 }
 
+/** A fill's question cuts each value, each field's name and the whole list at these columns. */
+const FILL_VALUE_COLUMNS = 40;
+const FILL_NAME_COLUMNS = 24;
+const FILL_COLUMNS = 160;
+
+/**
+ * A fill's fields as its question shows them (docs/specs/mcp-forms.md F14): each label, the
+ * field's name or label text and the value in quotes (a checkbox's checked or unchecked), values
+ * and names cut with …, the list cut with … where the line ends; `:mcp log` keeps them whole.
+ * @param {Record<string, any>} w @param {string} lead  what comes before the fields
+ * @param {boolean} [count]  name how many fields there are also when there is one
+ * @returns {Part[]}
+ */
+function fillParts(w, lead, count = false) {
+  return fillLine(w, lead, count).parts;
+}
+
+/**
+ * `fillParts`, and whether every field's name and value fits the question whole.
+ * @param {Record<string, any>} w @param {string} lead @param {boolean} count
+ * @returns {{ parts: Part[], fits: boolean }}
+ */
+function fillLine(w, lead, count) {
+  const fields = Array.isArray(w.fields) ? w.fields : [];
+  const n = fields.length;
+  /** @type {Part[]} */
+  const parts = [{ text: n === 1 && !count ? lead : `${lead}${n} field${n === 1 ? "" : "s"}: ` }];
+  let width = 0;
+  let fits = true;
+  for (const [i, f] of fields.entries()) {
+    const fullName = clean(f?.name);
+    const name = truncate(fullName, FILL_NAME_COLUMNS, "end");
+    const flag = typeof f?.value === "boolean";
+    const fullValue = flag ? "" : clean(f?.value);
+    const value = truncate(fullValue, FILL_VALUE_COLUMNS, "end");
+    if (name !== fullName || value !== fullValue) fits = false;
+    /** @type {Part[]} */
+    const piece = [
+      { text: `${i ? ", " : ""}${clean(f?.label)}${name ? " " : ""}` },
+      ...(name ? [{ text: name, isolate: /** @type {const} */ ("auto") }] : []),
+      { text: flag ? ` = ${f.value ? "checked" : "unchecked"}` : ' = "' },
+      ...(flag ? [] : [{ text: value, isolate: /** @type {const} */ ("auto") }, { text: '"' }]),
+    ].filter((p) => p.text);
+    const more = textWidth(piece.map((p) => p.text).join(""));
+    if (width + more > FILL_COLUMNS) {
+      // The fields left out are counted, so the user knows the line does not show them all.
+      parts.push({ text: `${i ? ", " : ""}… (${n - i} more)` });
+      fits = false;
+      break;
+    }
+    width += more;
+    parts.push(...piece);
+  }
+  return { parts, fits };
+}
+
+/**
+ * Whether a fill's question shows every field's name and value whole (docs/specs/mcp-forms.md
+ * F14, F15): a fill that submits must, because its one yes sends them.
+ * @param {Record<string, any>} what
+ */
+export const fillFits = (what) => fillLine(what, "", false).fits;
+
 /**
  * The question line: its text in parts (the host of an open in bold), the hint shown once the
  * line is armed, and the accessible name (the whole question).
@@ -249,6 +313,21 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
         { text: '")' },
       ];
       hint = "y show it · n deny";
+    } else if (q.tool === "vimma_fill" && w.submit) {
+      // mcp-forms F15: a fill that submits asks every time; the fields come after where they go.
+      const place = Number.isInteger(w.index) ? `${w.index} ` : "";
+      parts = [
+        { text: `${AGENT_GLYPH} ` },
+        { text: who, isolate: "auto" },
+        { text: ` wants to submit a form: ${place}"` },
+        { text: cutTitle(w.title), isolate: "auto" },
+        { text: '"' },
+        ...submitParts(w.submit),
+        ...fillParts(w, "  after filling ", true),
+      ];
+      hint = "y fill and submit once · n deny";
+    } else if (q.tool === "vimma_fill") {
+      parts = [...head, ...tabParts(w), ...fillParts(w, "  ")];
     } else if (q.tool === "vimma_activate" && w.submit) {
       // mcp-forms F15: a submission asks every time, so there is nothing to grant.
       const place = Number.isInteger(w.index) ? `${w.index} ` : "";
@@ -324,6 +403,12 @@ export function grantNotice(q, { minutes, capped }) {
   return `${clientName(q.label)} may use ${q.tool} for ${minutes} min${cap} (:mcp revoke ends it)`;
 }
 
+/** @param {unknown} fields  "1 field", "3 fields" */
+const fieldCount = (fields) => {
+  const n = Array.isArray(fields) ? fields.length : 0;
+  return `${n} field${n === 1 ? "" : "s"}`;
+};
+
 /**
  * The notice for a call made under a grant (decision 23).
  * @param {Asked} q @param {number} until  the grant's end @param {number} now
@@ -349,9 +434,15 @@ export function ranNotice(q, until, now) {
                   ? `listed the buttons and fields of "${cutTitle(w.title)}"`
                   : q.tool === "vimma_activate"
                     ? `clicked ${clean(w.kind)} "${cutTitle(w.text)}" in "${cutTitle(w.title)}"`
-                    : q.tool === DOWNLOAD_TOOL
-                      ? `downloads "${cutTitle(w.name)}"`
-                      : `used ${q.tool}`;
+                    : q.tool === "vimma_fill"
+                      ? `filled ${fieldCount(w.fields)} in "${cutTitle(w.title)}"`
+                      : q.tool === "vimma_screenshot"
+                        ? `took a screenshot of "${cutTitle(w.title)}"`
+                        : q.tool === "vimma_console"
+                          ? `read the errors of "${cutTitle(w.title)}"`
+                          : q.tool === DOWNLOAD_TOOL
+                            ? `downloads "${cutTitle(w.name)}"`
+                            : `used ${q.tool}`;
   return `${clientName(q.label)} ${did} (grant, ${left}m left)`;
 }
 
@@ -393,6 +484,9 @@ const ASKS = Object.freeze({
   [SHOW_TOOL]: "show you a page",
   vimma_elements: "list a page's buttons and fields",
   vimma_activate: "click on a page",
+  vimma_fill: "fill in a form",
+  vimma_screenshot: "take a screenshot of a page",
+  vimma_console: "read a page's errors and failed requests",
   [DOWNLOAD_TOOL]: "download a file",
 });
 

@@ -48,8 +48,9 @@ What works today, each with the section that explains it:
   uploads; Safe Browsing on.
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
   local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
-  open, scroll and search pages, follow their links, list and click their buttons and show you
-  a page, and every request asks you first; a form they submit asks every time.
+  open, scroll and search pages, follow their links, list and click their buttons, fill their
+  fields (never a password or card number), take a screenshot, read a page's errors and show
+  you a page, and every request asks you first; a form they submit asks every time.
 
 ## Every key is yours
 
@@ -710,7 +711,9 @@ these buttons) with no key pressed in between; the line `y allow · n block · T
 prompt shows when they do. Any key you press meanwhile starts the wait again, so typing that was
 meant for the page never answers a prompt. While you type in a text field of the page or the
 address bar, `y` and `n` are text, and the line starts with `Esc, then`: `Esc` leaves the field
-and keeps the prompt open, and then `y` and `n` answer it. Vimma never moves focus onto the prompt. The same keys answer Firefox's
+and keeps the prompt open, and then `y` and `n` answer it. The same holds while one of Vimma's
+own pickers, live grep, the command line or a search you are typing is open: what you type is
+theirs. Vimma never moves focus onto the prompt. The same keys answer Firefox's
 other prompts in that panel, such as "Save password?" (`y` saves, `n` is Not now), and the "Add
 <name>?" prompt for installing an add-on, which Firefox opens with focus on the prompt itself.
 
@@ -1346,18 +1349,21 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers eight tools:
+and output, connects to Vimma as an agent (never with full control), and offers eleven tools:
 
-| Tool              | What the agent can do                                                                                    |
-| ----------------- | -------------------------------------------------------------------------------------------------------- |
-| `vimma_tabs`      | List the agent workspace's tabs: id, address, title, whether it is loading.                              |
-| `vimma_read_page` | Read a tab's text, as Markdown or plain text, marked as untrusted web content.                           |
-| `vimma_open`      | Open an http or https address in a new background tab there, or in one of its tabs.                      |
-| `vimma_close_tab` | Close one of its tabs.                                                                                   |
-| `vimma_keys`      | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
-| `vimma_show`      | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
-| `vimma_elements`  | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
-| `vimma_activate`  | Click a button, link or checkbox from that list; a form it would send asks you every time.               |
+| Tool               | What the agent can do                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `vimma_tabs`       | List the agent workspace's tabs: id, address, title, whether it is loading.                              |
+| `vimma_read_page`  | Read a tab's text, as Markdown or plain text, marked as untrusted web content.                           |
+| `vimma_open`       | Open an http or https address in a new background tab there, or in one of its tabs.                      |
+| `vimma_close_tab`  | Close one of its tabs.                                                                                   |
+| `vimma_keys`       | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
+| `vimma_show`       | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
+| `vimma_elements`   | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
+| `vimma_activate`   | Click a button, link or checkbox from that list; a form it would send asks you every time.               |
+| `vimma_fill`       | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
+| `vimma_screenshot` | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
+| `vimma_console`    | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
 
 1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
    on your `PATH`.
@@ -1457,7 +1463,7 @@ with the rest of your computer.
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
-  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and 6 `vimma_show` calls a minute, and a minute of silence after three noes
+  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots, 30 console reads and 6 `vimma_show` calls a minute, and a minute of silence after three noes
   in a row. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -1589,6 +1595,87 @@ page opened.
   loads a page counts as one of the 10 opens a minute, and no click is made while those are used
   up. At most 30 clicks a minute, none while you are typing in the tab, and each is in
   `:mcp log` with the element, a submission with its destination.
+
+#### Filling in a form
+
+`vimma_fill` lets an agent fill fields of an agent tab by their labels from `vimma_elements`:
+text fields, text areas, selects (by an option's value or text), checkboxes and radio buttons.
+The question names the tab and every field with its value,
+`◇ claude-code wants vimma_fill: 2 "Sign up · Example" example.com/signup  sd Email = "ada@example.com"`,
+and on `y` the fields are set in the background, in order, as Firefox's own form autofill sets
+them: the page gets its `input` and `change` events, nothing in it is focused, and no key is
+pressed. The agent learns how many fields were filled and which values the page put back (some
+pages react to key presses only, which Vimma never sends).
+
+- **Never your secrets.** Password fields (also one a "show password" button turned into text),
+  fields the page draws as dots, one-time codes and payment card fields (by their autocomplete
+  name, or because Firefox's form autofill recognises them as card fields) are never filled, and
+  neither are file fields: the agent is told to ask you to type or choose those yourself. Hidden,
+  disabled and read-only fields and rich text editors are not filled either. These are refused
+  before you are asked. A field the page turns into a password or card field after you answered
+  stops the fill there.
+- **Sending the form asks every time.** With `submit`, the agent asks to fill the fields and
+  then send their form, through one of its submit buttons or as its first submit button would;
+  that question comes also under a grant, with only `y` and `n`, naming where the form goes and the fields:
+  `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)  after filling 1 field: sd Email = "ada@example.com"`.
+  It must show every value whole, or the agent is told to fill first and submit apart. If the
+  page puts back a value you were shown, the form is not sent. A form the page sends by itself
+  during or after a fill is stopped, as after a click.
+- **Nothing hidden in a value.** Values with characters that draw nothing (zero-width spaces,
+  direction marks and the like) are refused, so the question shows all a value holds; values
+  longer than the line are cut with `…`, and `:mcp log` keeps them whole.
+- **A grant covers fills** (not submissions): each shows
+  `claude-code filled 2 fields in "Sign up · Example" (grant, 12m left)`, and `:mcp log` keeps
+  every value. At most 32 fields a call, 30 clicks and fills a minute, none while you are typing
+  in the tab.
+
+#### Seeing a page
+
+`vimma_screenshot` lets an agent see what an agent tab shows, to check the effect of a click or
+a fill. The question names the tab,
+`◇ claude-code wants vimma_screenshot: 2 "Sign up · Example" example.com/signup`, and on `y`
+the agent gets an image of the tab's viewport (what you would see with the tab selected), at
+most 1,280 pixels wide, taken in the background: the tab is not selected or shown, and your
+window keeps its workspace, tab and mode. With `labels`, the labels of the agent's last
+`vimma_elements` list of that page are drawn on it in your theme's hint colours, while the page
+has not scrolled since.
+
+- **Not while a secret shows.** While a password field or payment card field on screen, in the
+  page or any of its frames, has a value, the screenshot is refused, because a card number shows
+  in clear: the agent is told to scroll past it or to ask you. A card number the page copies into
+  other text, or draws itself, is not recognised. A page with a frame Vimma cannot check (a
+  data: or blob: frame) is refused too.
+- **Untrusted, like page text.** The agent is told that text in the image is web content, not
+  yours. Only the viewport of an http or https page is captured, never the browser around it,
+  another tab, or a settings page or local file opened in the agent workspace.
+- **A grant covers screenshots** only: each shows
+  `claude-code took a screenshot of "Sign up · Example" (grant, 12m left)`. At most 12 a minute.
+
+#### Reading a page's errors
+
+`vimma_console` lets an agent that builds or tests a web app see why a page in the agent
+workspace fails. The question names the tab,
+`◇ claude-code wants vimma_console: 2 "Sign up · Example" example.com/signup`, and on `y` the
+agent gets, newest first:
+
+- the page's script errors and warnings (uncaught exceptions, blocked content, security
+  warnings), from the page and each of its frames;
+- what the page itself reported with `console.error` and `console.warn` (never `console.log` or
+  `console.info`, which are mostly noise);
+- the tab's recent failed requests: an HTTP status of 400 or above, or a network error such as
+  an unknown host, with the method, address and type of each.
+
+Nothing runs in the page to get them: Vimma reads what Firefox already keeps, and logs failed
+requests of agent tabs only while MCP is on, the last 100 per tab, in memory; a tab's log goes
+when it closes, and every log goes with `:mcp off`. A console call's text arguments are passed on,
+any other argument only as its type (`[object]`). The result gives Vimma's clock, which the agent
+can pass back as `since` to see only what a later click or fill caused.
+
+- **Untrusted, like page text.** Messages and addresses are the page's own: they may carry
+  instructions, which the agent is told are not yours, or tokens the page put in a URL. Only an
+  http or https page's are read.
+- **A grant covers console reads** only: each shows
+  `claude-code read the errors of "Sign up · Example" (grant, 12m left)`. At most 30 a minute.
 
 #### Showing you a page
 
@@ -2081,11 +2168,17 @@ to disk.
   `private: the window manager refused the swap; showing it as a window`, and opens the private
   workspace as a window of its own until the config is next reloaded. `about:vimma` shows the
   Hyprland version and which placement is in force, or why it is not swapping.
-- **If Hyprland never names a Vimma window** (its random title does not show up), that switch
-  shows the private workspace as a window of its own, the Browser Console says
+- **On a busy machine** Hyprland can take a moment to see a new window's random title. While
+  Vimma waits for it, up to 2 seconds, the fresh private window shows beside your Vimma window
+  as a tile titled `vimma-` and 32 hex digits, then takes your window's place.
+- **If Hyprland never names a Vimma window** (its random title does not show up within 2
+  seconds), that switch shows the private workspace as a window of its own, the Browser
+  Console says
 
   `private: Hyprland did not name the Vimma window; showing it as a window` once, and
-  `about:vimma` adds `(last switch: window not named)`. The next switch tries again.
+  `about:vimma` adds `(last switch: window not named)`. The next switch tries again, waiting
+  only half a second so that switches are not held up, until Hyprland names a window again or
+  the config is next reloaded.
 
 - **Never stuck:** if a swap cannot be done, for example because you moved the private window
   to a scratchpad, going back brings your normal window out of `special:vimma` to the

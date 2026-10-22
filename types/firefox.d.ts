@@ -24,6 +24,11 @@ declare const Services: {
       observer: (subject: unknown, topic: string, data: string) => void,
     ): void;
   };
+  // engine/xpcom/base/nsIConsoleService.idl: its cached messages, of any kind (each use checks
+  // for nsIScriptError, engine/dom/bindings/nsIScriptError.idl).
+  console: {
+    getMessageArray(): any[] | null;
+  };
   // engine/netwerk/base/nsIIOService.idl
   io: {
     createExposableURI(uri: { spec: string }): { spec: string; displaySpec: string };
@@ -174,10 +179,14 @@ declare const Components: {
   Constructor(cid: string, iface: string, init?: string): any;
   ID(id: string): unknown;
   readonly manager: any;
+  isSuccessCode(code: number): boolean;
 };
 
 // engine/dom/chrome-webidl/BrowsingContext.webidl
-declare const BrowsingContext: { get(id: number): any };
+declare const BrowsingContext: {
+  get(id: number): any;
+  getCurrentTopByBrowserId(id: number): any;
+};
 
 // engine/dom/webidl/URL.webidl (chrome-only)
 interface URL {
@@ -191,6 +200,7 @@ declare const ChromeUtils: {
   registerWindowActor(name: string, options: object): void;
   generateQI(interfaces: string[]): (iid: unknown) => any;
   now(): number;
+  getXPCOMErrorName(code: number): string;
 };
 
 // engine/dom/webidl/Window.webidl (chrome-only part)
@@ -213,7 +223,7 @@ declare class JSWindowActorChild {
   readonly document: Document;
   readonly contentWindow: Window | null;
   // WindowGlobalChild: the other actors of this frame (spec m1-find: Firefox's FinderChild)
-  readonly manager: { getActor(name: string): any };
+  readonly manager: { getActor(name: string): any; readonly innerWindowId: number };
   // The frame's nsIDocShell (spec m1-copy-mode: its nsISelectionController)
   readonly docShell: any;
   sendAsyncMessage(name: string, data?: unknown): void;

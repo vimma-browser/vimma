@@ -152,14 +152,15 @@ describe("upstream-beta.yml report job", () => {
     if (issue) writeFileSync(join(tmp, "canary", "issue.json"), JSON.stringify(issue));
     writeFileSync(join(tmp, "open.json"), JSON.stringify(open));
     writeFileSync(join(tmp, "tracking.json"), JSON.stringify(tracking));
-    // Records argv (one call per line) and copies each --body-file it is given.
+    // Records argv (one call per line) and copies each --body-file it is given. $((...)) strips
+    // the padding BSD wc (macOS) puts before the count; GNU wc's bare count passes unchanged.
     writeFileSync(
       join(bin, "gh"),
       `#!/usr/bin/env bash
 echo "$*" >> "${tmp}/calls"
 args=("$@")
 for ((i = 0; i < \${#args[@]}; i++)); do
-  if [ "\${args[i]}" = --body-file ]; then cp "\${args[i+1]}" "${tmp}/body-$(wc -l < "${tmp}/calls")"; fi
+  if [ "\${args[i]}" = --body-file ]; then cp "\${args[i+1]}" "${tmp}/body-$(($(wc -l < "${tmp}/calls")))"; fi
 done
 case "$1 $2" in
   "issue list") if [[ "$*" == *"--label upstream "* ]]; then cat "${tmp}/tracking.json"; else cat "${tmp}/open.json"; fi ;;

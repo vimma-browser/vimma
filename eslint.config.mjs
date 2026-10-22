@@ -134,6 +134,12 @@ export default [
     languageOptions: { globals: { BrowsingContext: "readonly", Components: "readonly" } },
   },
   {
+    // vimma_console (docs/specs/mcp-forms.md F22, F24): a failed request's channel status, and
+    // whether a tab whose request log is kept still exists.
+    files: ["src/**/vimma/ctl/AgentConsole.sys.mjs"],
+    languageOptions: { globals: { BrowsingContext: "readonly", Components: "readonly" } },
+  },
+  {
     // about:vimma-setup registers its nsIAboutModule through the component registrar, and is
     // never offered under a test harness: Cu.isInAutomation (docs/specs/first-run-setup.md).
     files: ["src/**/vimma/setup/SetupHost.sys.mjs"],

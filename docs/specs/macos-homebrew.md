@@ -1,6 +1,6 @@
 # Spec: macos-homebrew
 
-Status: draft (sub-PRs 1 to 3 implemented; sub-PR 4 in #408, sub-PR 5 in #409) · Area: `configs/branding/vimma/` (macOS icon
+Status: draft (sub-PRs 1 to 3 and 5 implemented; sub-PR 4 in #408) · Area: `configs/branding/vimma/` (macOS icon
 files, new), `configs/macos/AppIcon.icon/` (icon source, new), `configs/macos/mozconfig`,
 `src/browser/branding/vimma/configure.sh`, `tools/package/` (cask generator and icon
 generator, new), `packages/vimma-core/src/updates.mjs`,
@@ -288,8 +288,15 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     deploy key reaches only the one repository. The tap repository's branch rules allow pushes by
     the deploy key and pull requests by others.
 11. **The tap holds only generated files and a README,** so that every cask change is visible in
-    this repository's review, and the tap cannot drift from the generator. The tap's own CI runs
-    `brew style` and `brew audit` on pull requests.
+    this repository's review, and the tap cannot drift from the generator. The tap's own CI,
+    `check.yml`, runs the same checks as `cask-check.sh`, `brew style` and an offline
+    `brew audit --cask --strict`, on the latest stable Homebrew, on the tap's pull requests and
+    pushes to `main`, so that a cask passes the same rules in both places and a network failure
+    cannot fail the tap with no cask change. `cask-check.sh` runs the runner image's Homebrew on
+    the one cask, so a new Homebrew audit rule can turn the tap red before this repository's
+    `cask` job. It is not a required check, so it never holds `homebrew.yml`'s push. Rejected: `--online`, because it
+    downloads the `.dmg` and queries GitHub, and `macos-smoke` already installs the `.dmg`
+    through the cask.
 
 ### Icon parity
 
@@ -518,8 +525,9 @@ joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
    Closes the feature's issue; sub-PRs 4 and 5 then have issues of their own.
 4. **`build(macos): dmg window art`** (#408). Decision 14: `background.png`, `dsstore`, `disk.icns`
    and `MOZ_PACKAGE_EXTRA_ARGS`.
-5. **The tap's own CI** (decision 11, #409), in `vimma-browser/homebrew-tap`: `brew style` and
-   `brew audit` on its pull requests.
+5. **The tap's own CI** (decision 11, #409), in `vimma-browser/homebrew-tap`: `check.yml`, with
+   `brew style` and `brew audit --cask --strict` on its pull requests and pushes, and the runbook
+   and `docs/security.md`.
 
 ## Open questions
 

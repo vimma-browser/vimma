@@ -1,12 +1,12 @@
 # Spec: macos-build
 
-Status: draft (sub-PRs 3 and 6 built; sub-PR 2 built except its two macOS mochitests, which need
-sub-PR 1's Mac job; sub-PR 5's macOS key inventory built, #384) · Area:
-`configs/macos/mozconfig`, `tools/package/macos-dmg.sh` (new), `configs/branding/vimma/`,
-`tools/artifact-build/`, `tools/e2e/`, `tools/mochitest.mjs`, `tools/start.mjs`,
-`tools/vimma-ctl/src/discovery.rs`, `tools/vimma-ctl/src/mcp_serve.rs`,
-`.github/workflows/ci.yml`, `e2e.yml`, `macos.yml` (new); `docs/guide.md`, `docs/limits.md`,
-`CONTRIBUTING.md`, `docs/runbook.md` · Upstream patches: none (decision 7) · ADR:
+Status: draft (sub-PRs 1, 3 and 6 built; sub-PR 2 built except its two macOS mochitests;
+sub-PR 5's macOS key inventory built, #384) · Area: `configs/macos/mozconfig`,
+`tools/package/macos-dmg.sh` (new), `configs/branding/vimma/`, `tools/artifact-build/`,
+`tools/e2e/`, `tools/mochitest.mjs`, `tools/start.mjs`, `tools/vimma-ctl/src/discovery.rs`,
+`tools/vimma-ctl/src/mcp_serve.rs`, `.github/workflows/ci.yml`, `e2e.yml`, `macos.yml` (new);
+`docs/guide.md`, `docs/limits.md`, `CONTRIBUTING.md`, `docs/runbook.md` · Upstream patches: none
+(decision 7) · ADR:
 [ADR-018](../adr/018-macos-cross-build.md) ("macOS is cross-compiled on Linux, arm64 first")
 
 Issue: [#238](https://github.com/vimma-browser/vimma/issues/238)

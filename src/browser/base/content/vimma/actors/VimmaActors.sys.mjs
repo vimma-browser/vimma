@@ -6,7 +6,7 @@
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
 import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
-import { parseActTarget } from "../core/agent-act.mjs";
+import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
 
@@ -561,6 +561,27 @@ export const VimmaActors = {
   },
 
   /**
+   * Opens the one submission a question allowed, on a tab already marked (docs/specs/
+   * mcp-forms.md F15, F16): a fill marks the tab before its first field and allows the
+   * submission only for its last step, so a page that submits the form while it is being
+   * filled sends nothing in its place.
+   * @param {any} browser XULBrowserElement
+   * @param {{ method: string, action: string }} allowed
+   * @returns {boolean} false when the tab has no mark of this page
+   */
+  agentAllow(browser, allowed) {
+    const top = browser.browsingContext;
+    const mark = submitMarks.get(top?.browserId);
+    if (!mark || top.currentWindowGlobal?.innerWindowId !== mark.doc) return false;
+    try {
+      mark.allowed = { method: allowed.method, where: whereOf(Services.io.newURI(allowed.action)) };
+    } catch {
+      return false;
+    }
+    return true;
+  },
+
+  /**
    * The agent's call is over: the allowed submission is no longer allowed, and the hosts of the
    * submissions stopped since the mark are returned (the mark stays).
    * @param {any} browser XULBrowserElement
@@ -573,6 +594,93 @@ export const VimmaActors = {
     const blocked = mark.blocked;
     mark.blocked = [];
     return blocked;
+  },
+
+  /**
+   * Whether any frame of `browser` shows a sensitive field with a value in its viewport, just
+   * before and just after an agent's screenshot is drawn (docs/specs/mcp-forms.md F21). Every
+   * frame is asked in its own process: `shown` when one says so or fails; `unchecked` when a
+   * frame has no actor (a data: or blob: document) or does not answer within `ms`, which refuses
+   * too; else `clear`.
+   * @param {any} browser XULBrowserElement
+   * @param {number} ms
+   * @returns {Promise<"shown" | "unchecked" | "clear">}
+   */
+  async agentSensitiveShown(browser, ms) {
+    /** @type {any[]} BrowsingContexts */
+    const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
+    /** @type {number | undefined} */
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms, "late");
+    });
+    try {
+      const answers = await Promise.all(
+        frames
+          .filter((bc) => bc.currentWindowGlobal)
+          .map(async (bc) => {
+            const actor = actorFor(bc);
+            if (!actor) return "unchecked";
+            try {
+              const r = await Promise.race([actor.sendQuery("Vimma:AgentSensitiveShown"), late]);
+              if (r === "late") return "unchecked";
+              return r === false ? "clear" : "shown";
+            } catch {
+              return "shown"; // the frame navigated or its process went away mid-check
+            }
+          }),
+      );
+      if (answers.includes("shown")) return "shown";
+      return answers.includes("unchecked") ? "unchecked" : "clear";
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
+   * Each frame's own script errors and console errors and warnings, for an agent's
+   * `vimma_console` (docs/specs/mcp-forms.md F22, F24): the first `frames` frames are asked, each
+   * in its own process, for its newest `max` entries after `since` and how many more it holds.
+   * The answer is the child's, which the caller checks entry by entry. A frame that has no actor
+   * (a data: or blob: document), fails or does not answer within `ms` answers nothing.
+   * @param {any} browser XULBrowserElement
+   * @param {number} ms
+   * @param {{ since: number, max: number, frames?: number }} ask
+   * @returns {Promise<{ entries: unknown[], omitted: number }[]>}
+   */
+  async agentConsole(browser, ms, { since, max, frames: most = 100 }) {
+    /** @type {any[]} BrowsingContexts */
+    const frames = (browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []).slice(
+      0,
+      most,
+    );
+    /** @type {number | undefined} */
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms, null);
+    });
+    try {
+      return await Promise.all(
+        frames.map(async (bc) => {
+          const none = { entries: [], omitted: 0 };
+          const actor = actorFor(bc);
+          if (!actor) return none;
+          try {
+            const r = await Promise.race([
+              actor.sendQuery("Vimma:AgentConsole", { since, max }),
+              late,
+            ]);
+            if (!r || !Array.isArray(r.entries)) return none;
+            const omitted = Number.isSafeInteger(r.omitted) && r.omitted > 0 ? r.omitted : 0;
+            return { entries: r.entries.slice(0, max), omitted };
+          } catch {
+            return none; // the frame navigated or its process went away
+          }
+        }),
+      );
+    } finally {
+      clearTimeout(timer);
+    }
   },
 
   /**
@@ -593,6 +701,100 @@ export const VimmaActors = {
       return reply === "skipped" || reply === "pending" ? reply : "clicked";
     } catch {
       return "clicked";
+    }
+  },
+
+  /**
+   * What the field of a target from an agent's `vimma_elements` is now, for a fill with `value`
+   * (docs/specs/mcp-forms.md F4, F6, F12, F13), checked like any reply from a content process;
+   * `{ alive: false }` when it is gone, its frame shows another document or did not answer.
+   * @param {HintTarget} target @param {string | boolean} value
+   * @returns {Promise<import("../core/agent-act.mjs").FillTarget | null>} null: a malformed reply
+   */
+  async agentInspectFill(target, value) {
+    if (target.bc.currentWindowGlobal !== target.wg) return { alive: false };
+    try {
+      const raw = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "inspect-fill",
+        gen: target.gen,
+        id: target.id,
+        value,
+      });
+      return raw === undefined ? { alive: false } : parseFillTarget(raw);
+    } catch {
+      return { alive: false };
+    }
+  },
+
+  /**
+   * Sets the field of a target from an agent's `vimma_elements` to `value` (docs/specs/
+   * mcp-forms.md F12; security.md M27), once the child has seen it is still what the user was
+   * asked about and not sensitive. The child answers before it sets the field, so a dialog the
+   * page opens never holds the reply; `agentFillOutcome` says how it went.
+   * @param {HintTarget} target
+   * @param {{ value: string | boolean, expect: { field: string, type: string | null },
+   *   until: number }} asked  `until`: ms since the epoch; the child sets nothing later
+   * @returns {Promise<"ok" | "gone" | "changed">}
+   */
+  async agentFill(target, { value, expect, until }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "fill",
+        gen: target.gen,
+        id: target.id,
+        value,
+        expect,
+        until,
+      });
+      return reply === "ok" || reply === "changed" ? reply : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * How the agent's last fill of `target`'s field went (docs/specs/mcp-forms.md F12): still to
+   * run, the field kept its value, the page put it back, or it was skipped because the field
+   * changed. A frame that went away is `gone`.
+   * @param {HintTarget} target
+   * @returns {Promise<"pending" | "kept" | "reset" | "skipped" | "gone">}
+   */
+  async agentFillOutcome(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "fill-outcome",
+        gen: target.gen,
+        id: target.id,
+      });
+      return ["pending", "kept", "reset", "skipped"].includes(reply) ? reply : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * Submits the form of `target`'s field with its default button (docs/specs/mcp-forms.md F15;
+   * security.md M28), once the child has seen that it still goes to the method and destination
+   * the question named; the child answers before it submits.
+   * @param {HintTarget} target
+   * @param {{ submit: { method: string, action: string }, until: number }} asked
+   * @returns {Promise<"ok" | "gone" | "changed">}
+   */
+  async agentSubmit(target, { submit, until }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "submit",
+        gen: target.gen,
+        id: target.id,
+        submit,
+        until,
+      });
+      return reply === "ok" || reply === "changed" ? reply : "gone";
+    } catch {
+      return "gone";
     }
   },
 

@@ -76,6 +76,9 @@ describe("protocol 2 constants", () => {
       "agent-show",
       "agent-elements",
       "agent-activate",
+      "agent-fill",
+      "agent-screenshot",
+      "agent-console",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
@@ -245,6 +248,32 @@ describe("agent commands: args", () => {
     ]);
   });
 
+  // docs/specs/mcp-forms.md F18, F20: a screenshot names one tab, and whether to draw the labels.
+  test("agent-screenshot: a tab and an optional labels flag, nothing else", () => {
+    const shot = (args) => errorsOf(req("agent-screenshot", args));
+    expect(shot({ tab: "12" })).toEqual([]);
+    expect(shot({ tab: "12", labels: true })).toEqual([]);
+    expect(shot({ tab: "12", labels: false })).toEqual([]);
+    expect(shot({})).toEqual(["tab must be a tab id (digits)"]);
+    expect(shot({ tab: "12", labels: "yes" })).toEqual(["labels must be a boolean"]);
+    expect(shot({ tab: "12", rect: { x: 0 } })).toEqual(['unknown field "args.rect"']);
+  });
+
+  // docs/specs/mcp-forms.md F22: a console read names one tab, and optionally a time.
+  test("agent-console: a tab and an optional since, nothing else", () => {
+    const read = (args) => errorsOf(req("agent-console", args));
+    expect(read({ tab: "12" })).toEqual([]);
+    expect(read({ tab: "12", since: 0 })).toEqual([]);
+    expect(read({ tab: "12", since: 1_761_000_000_000 })).toEqual([]);
+    expect(read({})).toEqual(["tab must be a tab id (digits)"]);
+    const since = "since must be a non-negative integer (ms since the epoch)";
+    expect(read({ tab: "12", since: -1 })).toEqual([since]);
+    expect(read({ tab: "12", since: 1.5 })).toEqual([since]);
+    expect(read({ tab: "12", since: "1" })).toEqual([since]);
+    expect(read({ tab: "12", since: 2 ** 53 })).toEqual([since]);
+    expect(read({ tab: "12", expression: "1+1" })).toEqual(['unknown field "args.expression"']);
+  });
+
   // docs/specs/mcp-forms.md F8: a click names one tab and one label from vimma_elements.
   test("agent-activate: a tab and a label of hint characters, nothing else", () => {
     expect(errorsOf(req("agent-activate", { tab: "12", label: "sd" }))).toEqual([]);
@@ -263,6 +292,74 @@ describe("agent commands: args", () => {
       'unknown field "args.x"',
       'unknown field "args.y"',
     ]);
+  });
+
+  // docs/specs/mcp-forms.md F12, F14, F15: a fill names one tab, 1 to 32 fields by label with a
+  // text or a true or false, and an optional submit: true or a submit button's label.
+  test("agent-fill: a tab, fields by label and value, an optional submit", () => {
+    const fill = (args) => errorsOf(req("agent-fill", args));
+    const sd = { label: "sd", value: "ada@example.com" };
+    expect(fill({ tab: "12", fields: [sd] })).toEqual([]);
+    expect(fill({ tab: "12", fields: [sd, { label: "sf", value: true }], submit: true })).toEqual(
+      [],
+    );
+    expect(fill({ tab: "12", fields: [sd], submit: "sg" })).toEqual([]);
+    expect(fill({ tab: "12", fields: [{ label: "sd", value: "two\nlines" }] })).toEqual([]);
+    expect(fill({ tab: "12", fields: [{ label: "sd", value: "x".repeat(1024) }] })).toEqual([]);
+    // 1,024 characters are code points: an emoji is one.
+    expect(fill({ tab: "12", fields: [{ label: "sd", value: "😀".repeat(1024) }] })).toEqual([]);
+    const list = "fields must be a list of 1 to 32 fields";
+    expect(fill({ tab: "12" })).toEqual([list]);
+    expect(fill({ tab: "12", fields: [] })).toEqual([list]);
+    expect(fill({ tab: "12", fields: sd })).toEqual([list]);
+    const many = Array.from({ length: 33 }, (_, i) => ({ label: "asdfghjkl"[i % 9], value: "x" }));
+    expect(fill({ tab: "12", fields: many })).toEqual([list]);
+    expect(fill({ tab: "12", fields: [sd, { ...sd, value: "y" }] })).toEqual([
+      "fields must name each label once",
+    ]);
+    expect(fill({ tab: "12", fields: [{ label: "x", value: "y" }] })).toEqual([
+      "args.fields[0].label must be 1 to 3 of the hint characters asdfghjkl",
+    ]);
+    const value =
+      "args.fields[0].value must be true, false or a text of at most 1024 characters " +
+      "without control or invisible characters but line breaks";
+    // Characters that draw nothing could hide text in the question (M27).
+    for (const v of [
+      "x".repeat(1025),
+      "a\u0000b",
+      "a\rb",
+      "a\tb",
+      "a\u200bb",
+      "a\u200db",
+      "a\u2060b",
+      "a\ufeffb",
+      "a\u202eb",
+      "a\u2028b",
+      "a\ufe0fb",
+      "a\u{e0041}b",
+      "a\u{e0100}b",
+      "a\u00adb",
+      "a\u034fb",
+      "a\u3164b",
+      3,
+      null,
+      ["x"],
+    ]) {
+      expect(fill({ tab: "12", fields: [{ label: "sd", value: v }] }), JSON.stringify(v)).toEqual([
+        value,
+      ]);
+    }
+    expect(fill({ tab: "12", fields: [{ ...sd, selector: "#email" }] })).toEqual([
+      'unknown field "args.fields[0].selector"',
+    ]);
+    expect(fill({ tab: "12", fields: ["sd"] })).toEqual(["args.fields[0] must be an object"]);
+    for (const submit of [false, "x", "#go", 1, null]) {
+      expect(fill({ tab: "12", fields: [sd], submit }), String(submit)).toEqual([
+        "submit must be true or a label of 1 to 3 of the hint characters asdfghjkl",
+      ]);
+    }
+    expect(fill({ fields: [sd] })).toEqual(["tab must be a tab id (digits)"]);
+    expect(fill({ tab: "12", fields: [sd], x: 1 })).toEqual(['unknown field "args.x"']);
   });
 
   test("agent-tabs and agent-ping take no args", () => {
@@ -330,6 +427,78 @@ describe("agent commands: results and errors", () => {
     ]);
   });
 
+  // docs/specs/mcp-forms.md F19, F20 (security.md M31): a PNG or JPEG in base64 that fits the
+  // reply line, its size, the page, and with labels how many were drawn and whether the list was
+  // stale.
+  test("agent-screenshot: the image, its size, the page, and the labels drawn", () => {
+    const cmd = { command: "agent-screenshot" };
+    const result = {
+      url: "https://a/",
+      title: "A",
+      mimeType: "image/png",
+      data: "iVBORw0KGgo=",
+      width: 1280,
+      height: 662,
+    };
+    expect(errorsOf(ok(result), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, mimeType: "image/jpeg" }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, labels: 4 }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, labels: 0, stale: true }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, mimeType: "image/svg+xml" }), cmd)).toEqual([
+      "result.mimeType must be one of image/png, image/jpeg",
+    ]);
+    const base64 = "result.data must be base64 of at most 716800 characters";
+    expect(errorsOf(ok({ ...result, data: "" }), cmd)).toEqual([base64]);
+    expect(errorsOf(ok({ ...result, data: "not base64!" }), cmd)).toEqual([base64]);
+    expect(errorsOf(ok({ ...result, data: "A".repeat(716804) }), cmd)).toEqual([base64]);
+    expect(errorsOf(ok({ ...result, width: 1281 }), cmd)).toEqual([
+      "result.width must be an integer from 1 to 1280",
+    ]);
+    expect(errorsOf(ok({ ...result, height: 0 }), cmd)).toEqual([
+      "result.height must be an integer from 1 to 16384",
+    ]);
+    expect(errorsOf(ok({ ...result, labels: -1 }), cmd)).toEqual([
+      "result.labels must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, stale: true }), cmd)).toEqual([
+      "result.stale comes only with result.labels",
+    ]);
+    expect(errorsOf(ok({ ...result, stale: false, labels: 0 }), cmd)).toEqual([
+      "result.stale must be true when present",
+    ]);
+    expect(errorsOf(ok({ ...result, html: "<p>" }), cmd)).toEqual(['unknown field "result.html"']);
+  });
+
+  // docs/specs/mcp-forms.md F22, F24 (security.md M31): both lists inside the untrusted
+  // delimiters, Vimma's clock, and how many entries were left out.
+  test("agent-console: the page, its errors and requests inside the delimiters, the time", () => {
+    const cmd = { command: "agent-console" };
+    const wrap = (t) => `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
+    const result = {
+      url: "https://a/",
+      title: "A",
+      time: 1_761_000_000_000,
+      errors: wrap('{"level":"error","source":"script","message":"boom"}'),
+      requests: wrap(""),
+      dropped: 0,
+    };
+    expect(errorsOf(ok(result), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, errors: '{"level":"error"}' }), cmd)).toEqual([
+      "result.errors must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...result, requests: `${wrap("")}${wrap("")}` }), cmd)).toEqual([
+      "result.requests must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...result, time: -1 }), cmd)).toEqual([
+      "result.time must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, dropped: 0.5 }), cmd)).toEqual([
+      "result.dropped must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, url: 1 }), cmd)).toEqual(["result.url must be a string"]);
+    expect(errorsOf(ok({ ...result, value: "42" }), cmd)).toEqual(['unknown field "result.value"']);
+  });
+
   // docs/specs/mcp-forms.md F11, F16: the page after the click, a dialog's text inside the
   // untrusted delimiters, a submission Vimma stopped, and why the wait stopped.
   test("agent-activate: the page after the click, a dialog, a stopped submission", () => {
@@ -361,6 +530,40 @@ describe("agent commands: results and errors", () => {
       "result.stopped must be in-use",
     ]);
     expect(errorsOf(ok({ ...result, steps: [] }), cmd)).toEqual(['unknown field "result.steps"']);
+  });
+
+  // docs/specs/mcp-forms.md F12, F16: how many fields were filled, which did not keep their
+  // value, then the page as after a click.
+  test("agent-fill: the fields filled, those the page reset, the page after it", () => {
+    const cmd = { command: "agent-fill" };
+    const result = { url: "https://a/", title: "A", filled: 2, loading: false, navigated: false };
+    expect(errorsOf(ok(result), cmd)).toEqual([]);
+    const dialog = {
+      type: "alert",
+      text: "<untrusted-web-content>\nSaved\n</untrusted-web-content>",
+    };
+    const full = { ...result, reset: ["sd"], dialog, blocked: "example.com", stopped: "in-use" };
+    expect(errorsOf(ok(full), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, filled: -1 }), cmd)).toEqual([
+      "result.filled must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, filled: undefined }), cmd)).toEqual([
+      "result.filled must be a non-negative integer",
+    ]);
+    for (const reset of ["sd", ["x"], [1]]) {
+      expect(errorsOf(ok({ ...result, reset }), cmd), JSON.stringify(reset)).toEqual([
+        "result.reset must be a list of labels",
+      ]);
+    }
+    expect(errorsOf(ok({ ...result, dialog: { type: "alert", text: "Saved" } }), cmd)).toEqual([
+      "result.dialog.text must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...result, navigated: "no" }), cmd)).toEqual([
+      "result.navigated must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...result, elements: "" }), cmd)).toEqual([
+      'unknown field "result.elements"',
+    ]);
   });
 
   test("agent-keys: the page after the steps, and why it stopped", () => {

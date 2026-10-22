@@ -17,8 +17,8 @@
 // handler runs (M18). A link to another site is asked as a `vimma_open` of its URL first (D18).
 // `vimma_elements` (ctl/AgentAct.sys.mjs, docs/specs/mcp-forms.md F3) keeps its labels in the
 // same store, each list replacing the other; `f<label>` follows only a link from either, and from
-// an element list only while the link is still in the page (F4). `vimma_activate` clicks only an
-// element of a `vimma_elements` list (`element`).
+// an element list only while the link is still in the page (F4). `vimma_activate` clicks, and
+// `vimma_fill` fills, only an element of a `vimma_elements` list (`element`).
 
 import { AGENT_LINKS, agentLinkList, labelAgentLinks } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
@@ -26,6 +26,7 @@ import { isCaseSensitive } from "../core/find.mjs";
 import { urlRoot, urlUp } from "../core/pageurl.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
+import { AgentShot } from "./AgentShot.sys.mjs";
 
 /** @import { AgentStep } from "../core/agent-keys.mjs" */
 
@@ -51,9 +52,10 @@ const FIND_WRAPPED = 2;
  *   steps: StepResult[], stopped?: "changed" | "in-use" | "timeout" | "denied",
  *   find?: FindResult, links?: string, dropped?: number }} KeysResult
  * @typedef {{ mark: { doc: number, url: string }, at: number, source: "links" | "elements",
- *   byLabel: Map<string, import("../actors/VimmaActors.sys.mjs").HintTarget> }} LinkSession
- *   one `f`'s or `vimma_elements`' labels: the page they were collected on, when, and by which
- *   (D12; mcp-forms F3)
+ *   byLabel: Map<string, import("../actors/VimmaActors.sys.mjs").HintTarget>,
+ *   scroll?: { x: number, y: number } | null }} LinkSession
+ *   one `f`'s or `vimma_elements`' labels: the page they were collected on, when, by which
+ *   (D12; mcp-forms F3), and for a list, where the top frame was scrolled to (F20)
  * @typedef {object} DriveContext
  * @property {unknown} conn  the agent connection: its labels are its own
  * @property {(url: string, until: number) => Promise<string | null>} askOpen  asks a cross-site
@@ -233,21 +235,22 @@ export const AgentDrive = {
    * @param {unknown} conn @param {Browser} browser
    * @param {Map<string, import("../actors/VimmaActors.sys.mjs").HintTarget>} byLabel
    * @param {"links" | "elements"} source
+   * @param {{ x: number, y: number } | null} [scroll]  the top frame's scroll position when they
+   *   were collected
    */
-  remember(conn, browser, byLabel, source) {
+  remember(conn, browser, byLabel, source, scroll = null) {
     let labels = sessions.get(conn);
     if (!labels) sessions.set(conn, (labels = new WeakMap()));
-    labels.set(browser, { mark: pageMark(browser), at: Date.now(), source, byLabel });
+    labels.set(browser, { mark: pageMark(browser), at: Date.now(), source, byLabel, scroll });
   },
 
   /**
-   * The element a label of the connection's last `vimma_elements` on the page now in `browser`
-   * names (mcp-forms F3), for `vimma_activate`; or why there is none. Only a `vimma_elements`
-   * list's labels are clicked: it showed the agent each element's kind and details.
-   * @param {unknown} conn @param {Browser} browser @param {string} label
-   * @returns {{ target: import("../actors/VimmaActors.sys.mjs").HintTarget } | { refused: string }}
+   * The connection's labels for the page now in `browser`, while they are current: collected on
+   * this document and URL less than their lifetime ago (D12; mcp-forms F3); else null.
+   * @param {unknown} conn @param {Browser} browser
+   * @returns {LinkSession | null}
    */
-  element(conn, browser, label) {
+  current(conn, browser) {
     const session = sessions.get(conn)?.get(browser);
     const ttl = this._linkTtlMs ?? AGENT_LINKS.ttlMs;
     const now = pageMark(browser);
@@ -257,8 +260,33 @@ export const AgentDrive = {
       now.doc !== session.mark.doc ||
       now.url !== session.mark.url
     ) {
-      return { refused: "stale labels: call vimma_elements again" };
+      return null;
     }
+    return session;
+  },
+
+  /**
+   * The labels of the connection's current `vimma_elements` list of the page now in `browser`,
+   * to draw on a screenshot (mcp-forms F20), with the top frame's scroll position when it was
+   * listed; null when there is none: `f`'s link list, an old list, or one of another page.
+   * @param {unknown} conn @param {Browser} browser
+   */
+  elementLabels(conn, browser) {
+    const session = this.current(conn, browser);
+    if (session?.source !== "elements") return null;
+    return { byLabel: session.byLabel, scroll: session.scroll ?? null };
+  },
+
+  /**
+   * The element a label of the connection's last `vimma_elements` on the page now in `browser`
+   * names (mcp-forms F3), for `vimma_activate` and `vimma_fill`; or why there is none. Only a `vimma_elements`
+   * list's labels are clicked: it showed the agent each element's kind and details.
+   * @param {unknown} conn @param {Browser} browser @param {string} label
+   * @returns {{ target: import("../actors/VimmaActors.sys.mjs").HintTarget } | { refused: string }}
+   */
+  element(conn, browser, label) {
+    const session = this.current(conn, browser);
+    if (!session) return { refused: "stale labels: call vimma_elements again" };
     if (session.source !== "elements") {
       return {
         refused:
@@ -319,7 +347,7 @@ export const AgentDrive = {
         ? "timeout"
         : !stillAgent()
           ? "changed"
-          : VimmaHost.inUse(browser)
+          : VimmaHost.inUse(browser) || AgentShot.capturing(browser)
             ? "in-use"
             : null;
 

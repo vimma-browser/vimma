@@ -1,8 +1,8 @@
 # Spec: mcp-forms
 
-Status: accepted (sub-PRs 1 and 2 of 6 built: `vimma_elements`, `vimma_activate`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
+Status: implemented · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
 `agent-prompt.mjs`, `control.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
-`ctl/AgentAct.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
+`ctl/AgentAct.sys.mjs` new, `ctl/AgentShot.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`, `actors/agent-fields.mjs` new);
 `tools/vimma-ctl` (`src/mcp.rs`, `tests/fixtures/mcp/tools-list.json`); `tests/contract/control/v2/`
 · Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged: it leaves
@@ -211,8 +211,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
   (`remote/shared/Capture.sys.mjs:183`).
 - **Background tabs keep their size.** Tab panels that are not selected are hidden only visually
   (mcp-drive, Research, "Background tabs are laid out"), so an agent tab has the content area's
-  viewport. Whether `drawSnapshot` of a background agent tab shows the current page or a stale or
-  blank one is measured by sub-PR 4's first test.
+  viewport. Measured by sub-PR 4's first test: `drawSnapshot` of a hidden, inactive agent tab
+  (its docshell inactive, its layers not rendered) draws the page as it is at the call,
+  including a change the page made after its load
+  (`test_screenshot_of_a_background_tab_shows_its_page`).
 
 ### Firefox (158.0.1): console and network, read-only
 
@@ -381,26 +383,37 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 
 12. **A fill is `setUserInput`, as form autofill fills.** `vimma_fill { tab, fields, submit? }`
     (control command `agent-fill`) asks, and on a yes sets each field in its frame, in order:
-    text-like inputs and text areas with `setUserInput(value)`, which dispatches `input` and
-    `change` without focusing the field (`HTMLInputElement.cpp:2529-2569`); a select by option
-    value or exact option text, then `input` and `change`, as `FormAutofillHandler.fillFieldValue`
-    does (`FormAutofillHandler.sys.mjs:1115-1133`); a checkbox or radio given `true` or `false`
-    with `click()` when its state differs. Unlike autofill, Vimma never focuses the field first,
-    because focus would move the page's focus and run its focus handlers in a tab the user may
-    be watching. No key event is sent, so pages that act only on `keydown` (some autocomplete
-    widgets) do not see the fill; the result says when a field's value did not stick (the page
-    reset it), so the agent can tell.
+    text-like inputs and text areas with `setUserInput(value)`, which dispatches `input`, and for
+    an input also `change`, without focusing the field (`HTMLInputElement.cpp:2529-2569`; a text
+    area gets `input` only, as when form autofill fills it, `HTMLTextAreaElement.cpp:242-247`); a
+    select by option value or exact option text (never a disabled option), then the select's own
+    chrome-only `userFinishedInteracting(changed)`, which dispatches trusted `input` and `change`
+    as its popup does (`HTMLSelectElement.cpp:1637-1660`), rather than the untrusted events
+    `FormAutofillHandler.fillFieldValue` constructs (`FormAutofillHandler.sys.mjs:1115-1133`),
+    which pages that check `isTrusted` ignore; a checkbox given `true` or `false`, and a radio
+    given `true`, with `click()` when its state differs. A radio given `false` is refused,
+    because a click never unchecks a radio: the agent fills another of its group. Unlike
+    autofill, Vimma never focuses the field first, because focus would move the page's focus
+    and run its focus handlers in a tab the user may be watching. No key event is sent, so pages
+    that act only on `keydown` (some autocomplete widgets) do not see the fill; the result
+    `{ url, title, filled, reset?, loading, navigated, dialog?, blocked?, stopped? }` names in
+    `reset` the fields whose value did not stick (the page put it back), so the agent can tell,
+    and otherwise reads as after a click (F11). Each field is set after the child's reply, as a
+    click is, so a dialog the page opens in its `change` handler never holds the call: the
+    fields after it are not filled and the result names the dialog.
 13. **What it never fills.** Refused before anything is asked, naming the field: sensitive fields
     (F6), file fields, hidden and disabled fields, read-only fields, editable roots
     (`contenteditable`; rich editors keep their own model, and no Firefox API sets their text as
     user input without editor commands; a later spec may add them), and a field whose value does
     not parse for its type (a `date`, `number` or `color` input rejects it). The sensitivity
     check runs again in the child just before each set, and a field that has turned sensitive
-    since the question stops the call with `changed`, as the yes no longer stands for it
-    (vimma-mcp 19).
+    since the question stops the call, as the yes no longer stands for it (vimma-mcp 19); the
+    error says how many fields were filled before it.
 14. **Limits.** At most 32 fields per call, each value at most 1,024 characters with no control
-    characters except a newline in a text area, checked in `vimma-ctl mcp` and again in the
-    browser (as mcp-drive D15). The question shows each field's label, its name or label text and
+    characters except a newline in a text area, and no character that draws nothing (format,
+    zero-width, bidirectional and tag characters, variation selectors, fillers), because text in
+    them would pass the question unseen; checked in `vimma-ctl mcp` and again in the browser (as
+    mcp-drive D15). The question shows each field's label, its name or label text and
     its value in quotes, cut to fit the line with `…`; `:mcp log` keeps the values in full
     (in memory only, mcp-drive D14), because a value is what an exfiltrating fill would carry and
     the user has to be able to check it afterwards.
@@ -409,7 +422,8 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 
 15. **A submit always asks.** Activating a submit control (a `button` whose type is `submit` in a
     form, `input type=submit` or `type=image`), and a `vimma_fill` with `submit` (a label of a
-    submit control, or `true` for the form's default button through `requestSubmit`), are asked
+    submit control, or `true` for the form's default button through `requestSubmit`, when every
+    filled field is in that one form and its default button is not disabled), are asked
     with `always` (`ALWAYS_ASK`, `agent.mjs:125`): under any grant, with only `y` and `n`, and a
     yes makes no grant. The question names the form's method and action host in bold and the
     number of fields it sends:
@@ -417,7 +431,12 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     A submission sends data to a server and is where sign-ups, messages and purchases happen,
     so one question per submission is the price of keeping them in the hands of the person at
     the keyboard; the grant for `vimma_fill` or `vimma_activate` (F25) covers only what does not
-    submit.
+    submit. A fill that submits shows its fields after the destination, and is not sent when the
+    page put back a value the question showed, because the yes was for the values shown. For the
+    same reason a fill that submits is refused when its question cannot show every name and
+    value whole, its submit button must belong to the filled fields' form, and the submission
+    is allowed only after the last field is set: a page that submits the form from a field's
+    `change` handler while it is being filled sends nothing.
 16. **Submissions the agent did not ask for are stopped.** Before each agent step the parent
     consumes the page's transient user activation in every frame and marks the tab; an
     `http-on-modify-request` observer then cancels, before it is sent, the request of a
@@ -456,12 +475,16 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `agent-screenshot`) asks, and on a yes calls `drawSnapshot(null, scale, "white")` on the agent
     tab's top window global, in the parent: the visible viewport, frames of other sites included,
     never the browser's chrome, the status bar or another tab. It is read-only and is asked and
-    granted as its own tool, because it shows the same page that `vimma_read_page` reads.
+    granted as its own tool, because it shows the same page that `vimma_read_page` reads. Like
+    `vimma_elements` (F2) it captures only an http or https page, checked before and after the
+    drawing, because a privileged about: page, the start page or a local file moved into the
+    agent workspace is not the agent's to see.
     `scale` is chosen so that the image is at most 1,280 pixels wide, at most the device pixel
-    ratio. The tab is not selected or shown; if the snapshot of a background tab turns out blank
-    or stale (Research), the tool reports `the tab is not painted in the background: call
-vimma_show first` rather than switching anything itself, because changing what the user sees
-    is `vimma_show`'s, and always asks (mcp-drive D4).
+    ratio, and at most 16,384 pixels high. The tab is not selected or shown: a background tab
+    draws its current page (Research). If the tab has no size or the drawing fails, the tool
+    reports `the tab is not painted in the background: call vimma_show first` rather than
+    switching anything itself, because changing what the user sees is `vimma_show`'s, and always
+    asks (mcp-drive D4).
 19. **Encoding and size.** The image is encoded in the parent with `OffscreenCanvas.convertToBlob`,
     as `tabs.captureTab` does: PNG when its base64 fits 700 KiB, else JPEG at quality 0.8, then
     0.6, else the tool error `the screenshot is too large`. That keeps the reply within the
@@ -472,14 +495,27 @@ vimma_show first` rather than switching anything itself, because changing what t
 20. **Labels drawn on it.** With `labels: true`, the labels of the tab's current
     `vimma_elements` session are drawn at their rects (`HintTarget.rect`, top-frame CSS pixels,
     scaled), in the theme's hint colours, so that a model looking at the image can name the
-    button it sees. A session that is not current (F3) draws nothing and the result says so.
+    button it sees. A session that is not current (F3), or whose top frame has scrolled since
+    the list was made, draws nothing and the result says the list is stale, because labels at
+    the old places would name the wrong elements.
 21. **Limits and sensitive values.** At most 12 `agent-screenshot` requests per connection a
     minute (`busy` beyond), counted when asked, because each is a large reply and a paint in the
     content process. A screenshot is refused while a sensitive field (F6) in the viewport has a
     value, with `a payment or password field on screen has a value; Vimma does not capture it`,
     because a card number the user typed into an agent tab shows on screen in clear (only
     `type=password` is masked) and the list keeps such values from the agent too; the check runs
-    in each frame's child just before the snapshot. It costs nothing on pages without such
+    in each frame's child just before and again just after the snapshot, over every form control
+    of the document and its shadow trees whose box meets that frame's viewport, a number
+    field's unparsed text and an autofill preview counting as values, a select counting when its
+    choice differs from the page's default; a scroll of the top frame between the checks
+    discards the image, and the agent's own `vimma_keys`, `vimma_activate` and `vimma_fill` on
+    that tab are `in-use` from the first check to the second, while a screenshot is refused
+    while one of them runs, because the agent could otherwise scroll a filled field into view
+    and back between the checks. A frame that
+    fails counts as showing such a value; one that has no Vimma actor (a data: or blob:
+    document) or does not answer in 5 s refuses with
+    `Vimma could not check every frame of this page for payment fields`, so that a doubt
+    refuses and says why. It costs nothing on pages without such
     values, and the agent can scroll past the field or ask the user. Rejected: capturing what
     the tab shows, because it would break F6's promise for images; asking every screenshot with
     no grant, because questions asked that often stop being read.
@@ -487,7 +523,10 @@ vimma_show first` rather than switching anything itself, because changing what t
 ### G. `vimma_console`
 
 22. **What it returns.** `vimma_console { tab, since? }` (control command `agent-console`) asks,
-    and on a yes returns the agent tab's current page's `errors` and `requests`:
+    and on a yes returns the agent tab's current page's `errors` and the tab's `requests`, with
+    `time`, Vimma's clock when it read them. Like `vimma_elements` (F2) it reads only an http or
+    https page, refused before anything is asked, because a privileged about: page, the start
+    page or a local file moved into the agent workspace is not the agent's to read:
     - `errors`: script errors from `nsIScriptError` (uncaught exceptions, CSP and mixed-content
       reports, network security warnings) at error and warning level, read in each frame's
       process and in the parent by the frame's inner window id, as BiDi's `ConsoleListener` does;
@@ -499,10 +538,16 @@ vimma_show first` rather than switching anything itself, because changing what t
     - `requests`: failed requests of the tab, recorded by an `http-on-stop-request` observer in
       the parent for channels whose top browsing context is an agent tab: HTTP status 400 and
       above, or a failed channel status (by its error name, such as `NS_ERROR_UNKNOWN_HOST`).
-      Each has its method, URL (cut at 512), status or error, resource type and time. Requests
-      cancelled by a navigation (`NS_BINDING_ABORTED`) are left out.
+      Each has its method, URL (cut at 512, without a user name or password), status or error,
+      resource type and time. Requests cancelled by a navigation (`NS_BINDING_ABORTED`), the
+      first leg of a redirect (`NS_BINDING_REDIRECTED`) and a load handed to a download
+      (`NS_BINDING_RETARGETED`) are left out, because none of them failed. The log is the tab's,
+      not only its current page's, because a top-level load that fails (an unknown host, a
+      refused connection) leaves an error page whose document is newer than the failure the
+      agent needs to see.
       `since` (ms since the epoch) returns only newer entries, so an agent can check what a click
-      caused.
+      caused; the `time` of a result is the `since` of the next (an entry logged while a read
+      was being made may come again in the next).
 23. **Read-only by construction.** It runs no code in the page. It never starts the DevTools
     server, the Remote Agent or Marionette, never evaluates an expression and never calls a page
     function, because each of those could run script with the browser's privileges or the
@@ -514,8 +559,11 @@ vimma_show first` rather than switching anything itself, because changing what t
     request log holds the last 100 failed requests per agent tab, in memory, cleared when the tab
     closes, leaves the agent workspace or `:mcp off` runs. A reply holds at most 100 errors and
     100 requests, newest first, inside the untrusted-content delimiters, at most 512 KiB; the rest
-    are counted in `dropped`. URLs and messages are untrusted text and can carry tokens a page
-    put there; they come only from the agent's own tab.
+    are counted in `dropped`. Each frame's child answers only its newest 100 entries after
+    `since`, its strings already cut, and counts the rest, and at most 100 frames are asked,
+    because a page that logs without end must not make the parent copy and sort all of it. URLs
+    and messages are untrusted text and can carry tokens a page put there; they come only from
+    the agent's own tab, and a URL's user name and password are removed.
 
 ### H. Gate, grants and audit
 
@@ -680,7 +728,9 @@ Written first and seen to fail, by layer. Each names the rule it holds.
 - `m0-mcp-forms`: the real `vimma-ctl mcp` over stdio against a local fixture form:
   `vimma_elements`, `vimma_fill`, the submit question and its `y`, `vimma_console` after a
   failing request, and `vimma_screenshot` with labels. Screenshots `m0-mcp-forms-fill-question`
-  and `m0-mcp-forms-submit-question` with the Omarchy theme, baselines from CI's runner.
+  and `m0-mcp-forms-submit-question`, baselines from CI's runner. They use the harness's
+  built-in theme, as every e2e baseline does: the harness pins it so that a machine's Omarchy
+  theme cannot change a baseline.
 
 ## Docs and changelog
 

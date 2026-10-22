@@ -1,0 +1,373 @@
+{
+  "name": "m0-mcp-forms",
+  "description": "docs/specs/mcp-forms.md, sub-PR 6: the real vimma-ctl mcp over stdio acts on a sign-up form in the agent workspace on a real build, while the window stays on main with its own page selected. vimma_open opens form.html in the background; vimma_elements lists its email, name and password fields and its submit button as labels a, s, d and f, the password field as sensitive. vimma_fill of the password field is refused before anything is asked; vimma_fill of the email and name fields asks with every value in the question line (m0-mcp-forms-fill-question) and fills them on y. vimma_screenshot with labels returns a PNG after y. vimma_activate of the submit button asks the submit question with only y and n (m0-mcp-forms-submit-question), and on y the form posts to form-sent.html, whose fetch of a missing file fails with 404; vimma_console then returns the errors and the failed requests. The status bar and question line show the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "timeoutSeconds": 120,
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:long.html"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "selected": true,
+            "title": "long top navigate"
+          }
+        ]
+      }
+    },
+    {
+      "hold": true
+    },
+    {
+      "mcp": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-11-25",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "claude-code",
+            "version": "2.1.0"
+          }
+        },
+        "as": "init"
+      }
+    },
+    {
+      "mcp-result": {
+        "of": "init",
+        "expect": {
+          "result": {
+            "protocolVersion": "2025-11-25"
+          }
+        }
+      }
+    },
+    {
+      "mcp": {
+        "method": "notifications/initialized"
+      }
+    },
+    {
+      "keys": ": m c p space o n enter"
+    },
+    {
+      "sleep": 0.5
+    },
+    {
+      "keys": "y"
+    },
+    {
+      "sleep": 1.8
+    },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_open",
+          "arguments": {
+            "url": "fixture:form.html"
+          }
+        },
+        "as": "open1"
+      }
+    },
+    {
+      "sleep": 1.5
+    },
+    {
+      "keys": "y"
+    },
+    {
+      "mcp-result": {
+        "of": "open1",
+        "expect": {
+          "result": {
+            "content": [
+              {
+                "type": "text"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "sleep": 1.8
+    },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_elements",
+          "arguments": {
+            "tab": "$open1.result.structuredContent.tab"
+          }
+        },
+        "as": "elems"
+      }
+    },
+    {
+      "sleep": 1.5
+    },
+    {
+      "keys": "y"
+    },
+    {
+      "mcp-result": {
+        "of": "elems",
+        "expect": {
+          "result": {
+            "content": [
+              {
+                "type": "text"
+              },
+              {
+                "type": "text"
+              },
+              {
+                "type": "text"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "sleep": 1.8
+    },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_fill",
+          "arguments": {
+            "tab": "$open1.result.structuredContent.tab",
+            "fields": [
+              {
+                "label": "d",
+                "value": "hunter2"
+              }
+            ]
+          }
+        },
+        "as": "secret"
+      }
+    },
+    {
+      "mcp-result": {
+        "of": "secret",
+        "expect": {
+          "result": {
+            "isError": true,
+            "content": [
+              {
+                "type": "text",
+                "text": "Vimma could not do it: field \"d\" is a password field; Vimma never fills it: ask the user to type it."
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_fill",
+          "arguments": {
+            "tab": "$open1.result.structuredContent.tab",
+            "fields": [
+              {
+                "label": "a",
+                "value": "ada@example.com"
+              },
+              {
+                "label": "s",
+                "value": "Ada Lovelace"
+              }
+            ]
+          }
+        },
+        "as": "fill"
+      }
+    },
+    {
+      "sleep": 1.5
+    },
+    {
+      "screenshot": "m0-mcp-forms-fill-question"
+    },
+    {
+      "keys": "y"
+    },
+    {
+      "mcp-result": {
+        "of": "fill",
+        "expect": {
+          "result": {
+            "content": [
+              {
+                "type": "text"
+              },
+              {
+                "type": "text"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "sleep": 1.8
+    },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_screenshot",
+          "arguments": {
+            "tab": "$open1.result.structuredContent.tab",
+            "labels": true
+          }
+        },
+        "as": "shot"
+      }
+    },
+    {
+      "sleep": 1.5
+    },
+    {
+      "keys": "y"
+    },
+    {
+      "mcp-result": {
+        "of": "shot",
+        "expect": {
+          "result": {
+            "content": [
+              {
+                "type": "text"
+              },
+              {
+                "type": "text"
+              },
+              {
+                "type": "image",
+                "mimeType": "image/png"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "sleep": 1.8
+    },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_activate",
+          "arguments": {
+            "tab": "$open1.result.structuredContent.tab",
+            "label": "f"
+          }
+        },
+        "as": "submit"
+      }
+    },
+    {
+      "sleep": 1.5
+    },
+    {
+      "screenshot": "m0-mcp-forms-submit-question"
+    },
+    {
+      "keys": "y"
+    },
+    {
+      "mcp-result": {
+        "of": "submit",
+        "expect": {
+          "result": {
+            "content": [
+              {
+                "type": "text"
+              },
+              {
+                "type": "text"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "sleep": 2
+    },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_console",
+          "arguments": {
+            "tab": "$open1.result.structuredContent.tab"
+          }
+        },
+        "as": "console"
+      }
+    },
+    {
+      "sleep": 1.5
+    },
+    {
+      "keys": "y"
+    },
+    {
+      "mcp-result": {
+        "of": "console",
+        "expect": {
+          "result": {
+            "content": [
+              {
+                "type": "text"
+              },
+              {
+                "type": "text"
+              },
+              {
+                "type": "text"
+              },
+              {
+                "type": "text"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "assert-state": {
+        "workspace": "main",
+        "tabs": [
+          {},
+          {
+            "selected": true,
+            "title": "long top navigate"
+          }
+        ]
+      }
+    },
+    {
+      "keys": ": m c p space o f f enter"
+    }
+  ]
+}
