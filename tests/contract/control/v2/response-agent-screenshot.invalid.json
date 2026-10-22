@@ -1,0 +1,18 @@
+{
+  "description": "An image type a model client does not take as a screenshot, and wider than 1,280 pixels",
+  "kind": "response",
+  "command": "agent-screenshot",
+  "message": {
+    "type": "response",
+    "id": 14,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/signup",
+      "title": "Sign up · Example",
+      "mimeType": "image/svg+xml",
+      "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgaPgPAAIDAYAkYfWXAAAAAElFTkSuQmCC",
+      "width": 2560,
+      "height": 1
+    }
+  }
+}

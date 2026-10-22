@@ -16,6 +16,7 @@ import {
   describeAgentElements,
   fillField,
   fillTargetOf,
+  sensitiveValueShown,
 } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
@@ -543,6 +544,19 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#activateHint(msg.data);
       case "Vimma:AgentElement":
         return this.#agentElement(msg.data);
+      case "Vimma:AgentSensitiveShown": {
+        // An agent's screenshot is about to be taken (docs/specs/mcp-forms.md F21): whether a
+        // sensitive field with a value is in this frame's viewport. A failure answers yes, so
+        // that it refuses rather than captures.
+        const win = this.contentWindow;
+        if (!win) return true;
+        try {
+          return sensitiveValueShown(win);
+        } catch (e) {
+          console.error("vimma agent-screenshot: sensitive fields", e);
+          return true;
+        }
+      }
       case "Vimma:Caret": {
         // Only the frame with focus has the user's caret (the parent sends to that one).
         const win = this.contentWindow;

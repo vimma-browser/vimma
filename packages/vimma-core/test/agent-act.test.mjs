@@ -5,6 +5,9 @@
 import { describe, expect, test } from "vitest";
 import {
   AGENT_ELEMENTS,
+  AGENT_SCREENSHOT,
+  screenshotLabels,
+  screenshotScale,
   ELEMENT_KINDS,
   actDetail,
   actRefusal,
@@ -709,5 +712,54 @@ describe("what a fill says it does (F14, F28)", () => {
     expect(fillDetail(fields.slice(0, 1), submit)).toBe(
       'sd Email address = "ada@example.com" → POST https://example.com/api/signup (3 fields)',
     );
+  });
+});
+
+// docs/specs/mcp-forms.md F18-F20 (security.md M31): the image is at most 1,280 pixels wide and
+// never larger than the screen draws it; its base64 fits the reply line; labels are drawn where
+// their elements are, scaled, and only those on the image.
+describe("screenshots (F18-F20)", () => {
+  test("the limits", () => {
+    expect(AGENT_SCREENSHOT).toEqual({
+      width: 1280,
+      height: 16384,
+      base64: 700 * 1024,
+      jpeg: [0.8, 0.6],
+    });
+  });
+
+  test("the scale: at most 1,280 pixels wide, at most the device pixel ratio", () => {
+    expect(screenshotScale(1280, 1)).toBe(1);
+    expect(screenshotScale(640, 2)).toBe(2);
+    expect(screenshotScale(800, 2)).toBe(1.6);
+    expect(screenshotScale(2560, 1)).toBe(0.5);
+    expect(screenshotScale(1366, 1) * 1366).toBeLessThanOrEqual(1280);
+    // A device pixel ratio that is no number counts as 1.
+    expect(screenshotScale(640, Number.NaN)).toBe(1);
+    expect(screenshotScale(640, 0)).toBe(1);
+    // Nor higher than AGENT_SCREENSHOT.height, however narrow the window.
+    expect(screenshotScale(100, 2, 20000)).toBe(16384 / 20000);
+    expect(screenshotScale(1280, 1, 700)).toBe(1);
+    // A viewport with no width or height has nothing to draw.
+    expect(screenshotScale(1280, 1, 0)).toBe(null);
+    expect(screenshotScale(0, 1)).toBe(null);
+    expect(screenshotScale(Number.NaN, 1)).toBe(null);
+  });
+
+  test("labels at their element's corner, scaled; those off the image are left out", () => {
+    const size = { width: 640, height: 300 };
+    const labels = new Map([
+      ["a", { rect: { x: 10, y: 20, width: 40, height: 10 } }],
+      ["s", { rect: { x: -100, y: 20, width: 40, height: 10 } }],
+      ["d", { rect: { x: 10, y: 900, width: 40, height: 10 } }],
+      ["f", { rect: { x: -10, y: -4, width: 40, height: 10 } }],
+      ["g", { rect: { x: 1270, y: 590, width: 40, height: 10 } }],
+    ]);
+    expect(screenshotLabels(labels, 0.5, size)).toEqual([
+      { label: "a", x: 5, y: 10 },
+      { label: "f", x: 0, y: 0 },
+      { label: "g", x: 635, y: 295 },
+    ]);
+    expect(screenshotLabels(new Map(), 1, size)).toEqual([]);
   });
 });

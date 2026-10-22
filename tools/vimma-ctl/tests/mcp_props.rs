@@ -46,6 +46,7 @@ fn key() -> impl Strategy<Value = String> {
             "fields",
             "value",
             "submit",
+            "labels",
             "requestId",
             "protocolVersion",
             "clientInfo",
@@ -87,6 +88,7 @@ fn scalar() -> impl Strategy<Value = Value> {
             "vimma_elements",
             "vimma_activate",
             "vimma_fill",
+            "vimma_screenshot",
             "sdf",
             "3j /pricing<CR> gg",
             "/x",
@@ -187,6 +189,8 @@ fn tool() -> impl Strategy<Value = ToolCall> {
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Close { tab }),
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Show { tab }),
         ("[0-9]{1,20}", any::<String>()).prop_map(|(tab, keys)| ToolCall::Keys { tab, keys }),
+        ("[0-9]{1,20}", any::<bool>())
+            .prop_map(|(tab, labels)| ToolCall::Screenshot { tab, labels }),
         ("[0-9]{1,20}", "[asdfghjkl]{1,3}", any::<String>()).prop_map(|(tab, label, value)| {
             ToolCall::Fill {
                 tab,

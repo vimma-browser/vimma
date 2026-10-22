@@ -1,8 +1,8 @@
 # Spec: mcp-forms
 
-Status: accepted (sub-PRs 1 to 3 of 6 built: `vimma_elements`, `vimma_activate`, `vimma_fill`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
+Status: accepted (sub-PRs 1 to 4 of 6 built: `vimma_elements`, `vimma_activate`, `vimma_fill`, `vimma_screenshot`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
 `agent-prompt.mjs`, `control.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
-`ctl/AgentAct.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
+`ctl/AgentAct.sys.mjs` new, `ctl/AgentShot.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`, `actors/agent-fields.mjs` new);
 `tools/vimma-ctl` (`src/mcp.rs`, `tests/fixtures/mcp/tools-list.json`); `tests/contract/control/v2/`
 · Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged: it leaves
@@ -211,8 +211,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
   (`remote/shared/Capture.sys.mjs:183`).
 - **Background tabs keep their size.** Tab panels that are not selected are hidden only visually
   (mcp-drive, Research, "Background tabs are laid out"), so an agent tab has the content area's
-  viewport. Whether `drawSnapshot` of a background agent tab shows the current page or a stale or
-  blank one is measured by sub-PR 4's first test.
+  viewport. Measured by sub-PR 4's first test: `drawSnapshot` of a hidden, inactive agent tab
+  (its docshell inactive, its layers not rendered) draws the page as it is at the call,
+  including a change the page made after its load
+  (`test_screenshot_of_a_background_tab_shows_its_page`).
 
 ### Firefox (158.0.1): console and network, read-only
 
@@ -473,12 +475,16 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `agent-screenshot`) asks, and on a yes calls `drawSnapshot(null, scale, "white")` on the agent
     tab's top window global, in the parent: the visible viewport, frames of other sites included,
     never the browser's chrome, the status bar or another tab. It is read-only and is asked and
-    granted as its own tool, because it shows the same page that `vimma_read_page` reads.
+    granted as its own tool, because it shows the same page that `vimma_read_page` reads. Like
+    `vimma_elements` (F2) it captures only an http or https page, checked before and after the
+    drawing, because a privileged about: page, the start page or a local file moved into the
+    agent workspace is not the agent's to see.
     `scale` is chosen so that the image is at most 1,280 pixels wide, at most the device pixel
-    ratio. The tab is not selected or shown; if the snapshot of a background tab turns out blank
-    or stale (Research), the tool reports `the tab is not painted in the background: call
-vimma_show first` rather than switching anything itself, because changing what the user sees
-    is `vimma_show`'s, and always asks (mcp-drive D4).
+    ratio, and at most 16,384 pixels high. The tab is not selected or shown: a background tab
+    draws its current page (Research). If the tab has no size or the drawing fails, the tool
+    reports `the tab is not painted in the background: call vimma_show first` rather than
+    switching anything itself, because changing what the user sees is `vimma_show`'s, and always
+    asks (mcp-drive D4).
 19. **Encoding and size.** The image is encoded in the parent with `OffscreenCanvas.convertToBlob`,
     as `tabs.captureTab` does: PNG when its base64 fits 700 KiB, else JPEG at quality 0.8, then
     0.6, else the tool error `the screenshot is too large`. That keeps the reply within the
@@ -489,14 +495,27 @@ vimma_show first` rather than switching anything itself, because changing what t
 20. **Labels drawn on it.** With `labels: true`, the labels of the tab's current
     `vimma_elements` session are drawn at their rects (`HintTarget.rect`, top-frame CSS pixels,
     scaled), in the theme's hint colours, so that a model looking at the image can name the
-    button it sees. A session that is not current (F3) draws nothing and the result says so.
+    button it sees. A session that is not current (F3), or whose top frame has scrolled since
+    the list was made, draws nothing and the result says the list is stale, because labels at
+    the old places would name the wrong elements.
 21. **Limits and sensitive values.** At most 12 `agent-screenshot` requests per connection a
     minute (`busy` beyond), counted when asked, because each is a large reply and a paint in the
     content process. A screenshot is refused while a sensitive field (F6) in the viewport has a
     value, with `a payment or password field on screen has a value; Vimma does not capture it`,
     because a card number the user typed into an agent tab shows on screen in clear (only
     `type=password` is masked) and the list keeps such values from the agent too; the check runs
-    in each frame's child just before the snapshot. It costs nothing on pages without such
+    in each frame's child just before and again just after the snapshot, over every form control
+    of the document and its shadow trees whose box meets that frame's viewport, a number
+    field's unparsed text and an autofill preview counting as values, a select counting when its
+    choice differs from the page's default; a scroll of the top frame between the checks
+    discards the image, and the agent's own `vimma_keys`, `vimma_activate` and `vimma_fill` on
+    that tab are `in-use` from the first check to the second, while a screenshot is refused
+    while one of them runs, because the agent could otherwise scroll a filled field into view
+    and back between the checks. A frame that
+    fails counts as showing such a value; one that has no Vimma actor (a data: or blob:
+    document) or does not answer in 5 s refuses with
+    `Vimma could not check every frame of this page for payment fields`, so that a doubt
+    refuses and says why. It costs nothing on pages without such
     values, and the agent can scroll past the field or ask the user. Rejected: capturing what
     the tab shows, because it would break F6's promise for images; asking every screenshot with
     no grant, because questions asked that often stop being read.
