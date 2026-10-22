@@ -468,6 +468,18 @@ function segment(id) {
   return document.querySelector(`#vimma-statusbar [data-segment="${id}"]`)?.textContent ?? null;
 }
 
+/**
+ * Waits until segment `id` of the status bar passes `test`. The bar renders on the animation
+ * frame after the host changes (ui/statusbar.mjs, schedule), so a frame's reply and the outline
+ * it draws can come before the segment does; the live region is written in that same render.
+ * @param {string} id
+ * @param {(text: string | null) => boolean} test
+ * @param {string} msg
+ */
+function waitForSegment(id, test, msg) {
+  return TestUtils.waitForCondition(() => test(segment(id)), msg).catch(() => {});
+}
+
 function notice() {
   return document.getElementById("vimma-notice")?.textContent ?? "";
 }
@@ -515,7 +527,9 @@ add_task(async function a_label_enters_element_mode_and_the_status_bar_names_the
       "the frame says the block's kind and length",
     );
     await TestUtils.waitForCondition(() => segment("mode") === "ELEMENT", "the ELEMENT badge");
-    Assert.equal(segment("element"), "paragraph · 21 chars", "the kind and length segment");
+    const want = "paragraph · 21 chars";
+    await waitForSegment("element", (t) => t === want, "the kind and length segment");
+    Assert.equal(segment("element"), want, "the kind and length segment");
     const live = document.querySelector("#vimma-statusbar .vimma-sb-live");
     Assert.equal(
       live?.textContent,
@@ -639,7 +653,9 @@ add_task(async function plus_minus_j_and_k_move_the_focus() {
     EventUtils.synthesizeKey("+");
     await TestUtils.waitForCondition(() => VimmaHost._element(window)?.kind === "list item", "+");
     await waitForRingOn(browser, "li1");
-    Assert.equal(segment("element")?.startsWith("list item · "), true, "the segment follows");
+    const follows = (/** @type {string | null} */ t) => t?.startsWith("list item · ") ?? false;
+    await waitForSegment("element", follows, "the segment follows");
+    Assert.equal(follows(segment("element")), true, "the segment follows");
     EventUtils.synthesizeKey("+");
     await waitForRingOn(browser, "ul");
     Assert.equal(VimmaHost._element(window)?.kind, "block", "a list is a block");

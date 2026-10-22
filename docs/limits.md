@@ -136,8 +136,10 @@ the [user guide](guide.md); planned work is on the
 - The macOS `.dmg` is ad hoc signed, not notarised, until Vimma has an Apple Developer ID:
   macOS asks once, under Privacy & Security, before it first opens, and passkeys do not work.
   It has no update notices (no update manifest exists for macOS): install a newer `.dmg` by hand.
-- The mounted macOS `.dmg` is a plain Finder window, without a background or a volume icon
-  (spec macos-homebrew, decision 14).
+- Finder on recent macOS (checked on 27.0.1) opens the mounted `.dmg`'s window at the frame of
+  the last Finder window and ignores the size the `.dmg` stores, as it does for Firefox's: a
+  small last window can cut off the Applications link, and a large one shows blank space past
+  the background.
 - On macOS, Omarchy theming and the Omarchy hook do nothing.
 - On macOS, the normal window hidden while the private workspace is shown still runs its pages
   (audio keeps playing), and scripts still see it: `vimma-ctl state` lists both windows. A
