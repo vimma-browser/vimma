@@ -184,6 +184,26 @@ publishes a list of what still asks.
 7. **The rates and confinement do not change** (G7), because they are per connection already
    (Research), so a grant over every tool cannot do more of any one thing than a grant of that
    tool could.
+8. **The agent workspace is for everyday tasks done on the user's behalf, so one grant per task
+   with hard checkpoints is the core of the feature** (G8). Vimma's agents shop, fill in forms,
+   book and look things up for the user, in the user's own daily browser: in a workspace of its
+   own container, with only the logins the user puts there; in a real, visible browser the user
+   can watch and interrupt with one key; with checkpoints before sending a form (and paying,
+   mcp-checkpoints); with every call in `:mcp log`; and with compact lists of labelled elements
+   instead of page source, so the agent needs few calls. A task like that runs for minutes and
+   uses every tool, so it needs one answer that covers it and stops only where a step cannot be
+   taken back. Vimma is deliberately not a test-automation or scraping tool, because those need
+   headless, parallel and scripted control that a confined, watched workspace cannot give.
+   Rejected as the way to give agents a browser: driving a browser profile through Playwright or
+   the Chrome DevTools MCP server, because that gives the agent full control of the profile,
+   every login and cookie in it included, with no checkpoint before it sends or pays, no
+   confinement to part of the profile and no log the user reads. Playwright drives Firefox
+   through its own patched build (its Juggler protocol); support for stock Firefox through
+   WebDriver BiDi was experimental when checked, tracked by Mozilla's WebDriver BiDi milestones
+   (wiki.mozilla.org, "WebDriver/RemoteProtocol/WebDriver BiDi", milestone 19; read on
+   2026-10-22, not tried), so it cannot drive the Vimma the user browses with. The guide's
+   "When to use Playwright instead" points users with those needs to it, on a throwaway
+   profile.
 
 ## Security and privacy
 

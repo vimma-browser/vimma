@@ -1428,6 +1428,14 @@ denied.` Codex CLI gives up on a tool call
   (or Vimma restarts), they end, and the next session asks again.
 - **Cancelling** a call in the agent (`Esc` in Claude Code) takes its question off the line.
 
+#### When to use Playwright instead
+
+Vimma's agent tools are for tasks an agent does for you in your own browser: shopping, filling in
+forms, bookings, looking things up. For testing your own site, CI, headless or parallel runs,
+scripting a page, intercepting network requests or uploading files, use Playwright or a similar
+tool against a throwaway browser profile, never your daily one: a profile driven that way gives
+the agent every login and cookie in it, with no question before it sends or pays.
+
 #### Timeouts in agent tools
 
 A call waits for your answer up to `[mcp] ask_timeout` (50 s by default, 10 to 300), and
