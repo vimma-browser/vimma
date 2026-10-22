@@ -107,7 +107,7 @@ class FakeHypr {
    *   many of those openwindow events are lost; listAfter: j/clients shows a title once it has
    *   been the window's title this many ms, as Hyprland does once the title reaches it;
    *   holdNames: open-on-nonce's openwindow is sent only while a j/clients request is being
-   *   answered, once the title has been set this many ms, and that reply then comes 100 ms
+   *   answered, once the title has been set this many ms, and that reply then comes 300 ms
    *   late (the event arrives during the request); slowClients: j/clients replies this late
    */
   constructor({
@@ -343,7 +343,7 @@ class FakeHypr {
       if (due.length) {
         this.held = this.held.filter((h) => !due.includes(h));
         for (const { line } of due) this.emit(line);
-        this.lateReply = Math.max(this.lateReply, 100);
+        this.lateReply = Math.max(this.lateReply, 300); // under HyprIpc's REPLY_MS
       }
       // An unrelated app's window, whose title must never travel further.
       const other = {
@@ -1036,7 +1036,25 @@ add_task(async function a_second_switch_while_the_first_is_naming_still_swaps() 
   prefix("P", { shiftKey: true });
   await until(() => parked(window) && inSlot(priv), "the private window takes the slot");
   await PrivateSwap._settled();
-  Assert.ok(f.batches.length >= 1);
+  Assert.ok(f.batches.length >= 1, "the swap was sent to Hyprland");
+});
+
+// A switch whose naming gave up showed the window as a window: a later switch whose naming
+// succeeds still swaps it in (the guide's "The next switch tries again").
+add_task(async function a_window_shown_after_a_give_up_is_swapped_in_by_a_later_switch() {
+  const f = await start({ mode: "nameless" });
+  await SimpleTest.promiseFocus(window);
+  const opened = BrowserTestUtils.waitForNewWindow();
+  prefix("P", { shiftKey: true });
+  const priv = await opened;
+  await until(() => /window not named/.test(PrivateSwap.status), "the switch gave up");
+  await until(() => Services.focus.activeWindow === priv, "the private window, as a window");
+  await SimpleTest.promiseFocus(priv);
+  prefix("P", { shiftKey: true }, priv);
+  await until(() => Services.focus.activeWindow === window, "back to the normal window");
+  f.mode = "lua";
+  Assert.equal(await enter(), priv, "the same private window");
+  Assert.ok(inSlot(priv) && parked(window), "it takes the normal window's place");
 });
 
 // A switch dropped by a later one does not decide how long later namings wait.
@@ -1088,12 +1106,14 @@ add_task(async function a_slow_j_clients_does_not_stretch_the_wait() {
   prefix("P", { shiftKey: true });
   const priv = await opened;
   await until(() => NONCE.test(priv.document.title), "the private window is being named");
+  await until(() => NONCE.test(f.titles.get(f.addr.get(priv)) ?? ""), "Hyprland has the nonce");
+  const titled = f.titledAt.get(f.addr.get(priv));
   await until(() => !NONCE.test(priv.document.title), "the naming gave up");
   const asked = f.clientsAt.slice(from);
   Assert.equal(asked.length, 2, "j/clients at REPLY_MS and at the deadline");
-  // From one deadline the second comes NAME_MS - REPLY_MS after the first (1.5 s); counted
-  // from the first's reply it comes REPLY_MS later (2 s).
-  Assert.less(asked[1] - asked[0], NAME_MS - REPLY_MS / 2, "the deadline is not pushed back");
+  // From one deadline the second comes NAME_MS after the title; counted from the first's
+  // reply, which times out, it comes REPLY_MS later (2.5 s).
+  Assert.less(asked[1], titled + NAME_MS + REPLY_MS / 2, "the deadline is not pushed back");
 });
 
 add_task(async function a_fresh_private_window_is_named_once_its_document_is_up() {

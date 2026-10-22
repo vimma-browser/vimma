@@ -120,8 +120,9 @@ let unnamed = false;
 /** Bumped by every switch (enter, show): a switch still naming when another began is dropped. */
 let switches = 0;
 /**
- * Private windows a switch opened that no switch has swapped in yet: a dropped switch leaves
- * its window here, so the next switch to it still swaps it in rather than only focusing it.
+ * Private windows a switch opened that no switch has swapped in yet: a dropped switch, or one
+ * whose naming gave up, leaves its window here, so the next switch to it still swaps it in
+ * rather than only focusing it.
  * @type {WeakSet<Window>}
  */
 let unswapped = new WeakSet();
@@ -602,9 +603,8 @@ export const PrivateSwap = {
     (async () => {
       const [normal, p] = await Promise.all([addressOf(from, mine), addressOf(priv, mine)]);
       // The user switched again meanwhile (back to normal): this swap would park it under them.
-      // A fresh window stays in `unswapped` for the next switch.
+      // A fresh window stays in `unswapped` for the next switch, as it does after a give-up.
       if (mine !== switches) return;
-      const opened = unswapped.delete(priv);
       if (!normal || !p) {
         // Hyprland is there but did not name a window: never silent (decision 7).
         if (wm.state === "ok" && !from.closed && !priv.closed) {
@@ -615,6 +615,7 @@ export const PrivateSwap = {
         return;
       }
       skipped = null;
+      const opened = unswapped.delete(priv);
       // A private window shown somewhere else (a second one from ctrl+n): focus it, as today.
       if (!opened && p !== pair?.private) {
         if (!priv.closed) priv.focus();
