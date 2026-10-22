@@ -82,9 +82,7 @@ describe("the question's text (decision 13)", () => {
       '◇ example-agent wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" ' +
         "github.com/vimma-browser/vimma/pulls",
     );
-    expect(line.hint).toBe(
-      "y once · 15a 15 min, all but forms · n deny · x mute",
-    );
+    expect(line.hint).toBe("y once · 15a 15 min, all but forms · n deny · x mute");
     expect(line.label).toBe(text(line));
   });
 
@@ -113,9 +111,7 @@ describe("the question's text (decision 13)", () => {
       '◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys: ' +
         '3j /"pricing"⏎ gg',
     );
-    expect(line.hint).toBe(
-      "y once · 15a 15 min, all but forms · n deny · x mute",
-    );
+    expect(line.hint).toBe("y once · 15a 15 min, all but forms · n deny · x mute");
     const shown = line.parts.find((p) => p.text === '3j /"pricing"⏎ gg');
     expect(shown?.isolate).toBe("ltr");
   });
@@ -639,9 +635,7 @@ describe("a download's question (decision 31 a, d)", () => {
         "from example.com",
     );
     expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["example.com"]);
-    expect(line.hint).toBe(
-      "y once · 10a 10 min, all but forms · n deny · x mute",
-    );
+    expect(line.hint).toBe("y once · 10a 10 min, all but forms · n deny · x mute");
   });
 
   test("an unknown size and type say so", () => {

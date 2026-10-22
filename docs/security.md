@@ -726,7 +726,9 @@ under a grant shows a notice (an open names its host) and is a `:mcp log` row wi
 (M23); at most 10 opens a minute (M3); `ctrl+b shift+a` ends every grant at once; and an agent
 with a shell can send what it read over its own network without Vimma anyway. A form submission,
 a show, a dangerous or unscanned download and a page's own download still ask under any grant
-(M11, M13, M19, M28).
+(M11, M13, M19, M28). Paying is not yet recognised apart from a form submission: until
+[mcp-checkpoints](specs/mcp-checkpoints.md) is built, a button that pays without submitting a
+form (a saved card's one-button checkout) runs unasked under a grant.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection, which covers every tool but those
