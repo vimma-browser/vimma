@@ -497,7 +497,13 @@ export const AgentAct = {
         }
       }
       const waited = await this.waitForPage(browser, before, dialogs, inUse, sent);
-      if (waited === "skipped") {
+      // Asked again as a click's outcome is: a busy page can answer the wait's poll too late.
+      const skipped =
+        waited === "skipped" ||
+        (sent !== null &&
+          (await bounded(VimmaActors.agentClickOutcome(sent), "clicked", COLLECT_TIMEOUT_MS)) ===
+            "skipped");
+      if (skipped) {
         return stop("the form changed since the user was asked; it was not sent");
       }
       stopped = waited ?? stopped;

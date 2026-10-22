@@ -596,6 +596,18 @@ export const VimmaActors = {
   },
 
   /**
+   * The child skipped the agent's click or submission (VimmaParent, `Vimma:AgentSkipped`): the
+   * submission the question allowed is withdrawn at once, before the call ends, so the page cannot
+   * send it by itself (docs/specs/mcp-forms.md F16; security.md M28). The mark stays.
+   * @param {any} bc  the frame that skipped it (BrowsingContext)
+   */
+  agentSkipped(bc) {
+    const id = bc?.top?.browserId;
+    const mark = id ? submitMarks.get(id) : undefined;
+    if (mark) mark.allowed = null;
+  },
+
+  /**
    * The agent's call is over: the allowed submission is no longer allowed, and the hosts of the
    * submissions stopped since the mark are returned (the mark stays).
    * @param {any} browser XULBrowserElement

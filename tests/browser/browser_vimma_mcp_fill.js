@@ -483,31 +483,47 @@ addTidyTask(async function test_fill_submit_asks_under_a_grant() {
   await mcp(false);
 });
 
+/** The click fixture's forms whose button is skipped, then sends the form itself (M28). */
+const BOUNCES = [
+  { form: "bounce", button: "Bounce", field: "Bounce note", how: "100 ms later" },
+  { form: "bounce-now", button: "Bounce now", field: "Bounce now note", how: "at once" },
+  {
+    form: "bounce-busy",
+    button: "Bounce busy",
+    field: "Bounce busy note",
+    how: "after 1.2 s busy",
+  },
+];
+
 addTidyTask(async function test_a_skipped_submit_is_not_sent_and_allows_nothing_after_it() {
   await mcp(true);
   AgentAct._settleMs = null;
-  const tab = await openAgentTab(CLICK);
   const c = await agentClient();
-  const by = await labels(c, tab);
-  const sent = requestStatus(`${PAGE}?bounce-note=`);
-  // The page moves the destination as its submit button is pressed, so the click is skipped;
-  // 100 ms later it puts the destination back and calls submit(), which matches what was allowed.
-  const r = await fill(c, tab, [{ label: by["Bounce note"], value: "hello" }], {
-    submit: by.Bounce,
-  });
-  Assert.ok(
-    r.error?.message.startsWith("the form changed since the user was asked; it was not sent"),
-    `the fill says the form was not sent: ${r.error?.message}`,
-  );
-  Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's own submission was cancelled (M28)");
-  await until(
-    async () =>
-      await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.wrappedJSObject.bounced),
-    "the page sent the form itself",
-  );
-  Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "the page stayed");
+  for (const { form, button, field, how } of BOUNCES) {
+    const tab = await openAgentTab(CLICK);
+    const by = await labels(c, tab);
+    const sent = requestStatus(`${PAGE}?${form}-note=`);
+    // The page moves the destination as its submit button is pressed, so the click is skipped;
+    // then it puts the destination back and calls submit(), which matches what was allowed.
+    const r = await fill(c, tab, [{ label: by[field], value: "hello" }], { submit: by[button] });
+    Assert.ok(
+      r.error?.message.startsWith("the form changed since the user was asked; it was not sent"),
+      `${how}: the fill says the form was not sent: ${r.error?.message}`,
+    );
+    Assert.equal(await sent, Cr.NS_BINDING_ABORTED, `${how}: the page's submission was cancelled`);
+    await until(
+      async () =>
+        await SpecialPowers.spawn(
+          tab.linkedBrowser,
+          [form],
+          (f) => content.wrappedJSObject.bounced[f],
+        ),
+      `${how}: the page sent the form itself`,
+    );
+    Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, `${how}: the page stayed`);
+    BrowserTestUtils.removeTab(tab);
+  }
   c.close();
-  BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });
 

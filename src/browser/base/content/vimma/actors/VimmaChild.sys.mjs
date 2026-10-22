@@ -806,6 +806,7 @@ export class VimmaChild extends JSWindowActorChild {
         again.method !== named.method ||
         again.action !== named.action
       ) {
+        this.#skipped();
         sent.outcome = "skipped";
         return;
       }
@@ -839,9 +840,26 @@ export class VimmaChild extends JSWindowActorChild {
       // A busy page can delay this past the parent's wait: then nothing is clicked.
       const ran =
         Date.now() <= until && el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
+      if (!ran) this.#skipped();
       click.outcome = ran ? "clicked" : "skipped";
     });
     return "ok";
+  }
+
+  /**
+   * The agent's click or submission was skipped here: the parent withdraws the one submission
+   * the question allowed (security.md M28). Sent in the task that decided it, before any page
+   * script runs again, so it reaches the parent ahead of every later navigation or request this
+   * process starts for the page: the actor's messages and the page's loads (DocumentChannel)
+   * go over the same PContent channel, in order. A page that puts the form back and submits by
+   * itself afterwards is then cancelled like any other submission.
+   */
+  #skipped() {
+    try {
+      this.sendAsyncMessage("Vimma:AgentSkipped", {});
+    } catch {
+      // the actor is going away with its document, and the mark with it
+    }
   }
 
   /**

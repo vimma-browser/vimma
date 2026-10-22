@@ -1166,9 +1166,17 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   from the child's reply before it, so that the allowance is still open when a busy process runs
   the step late; it still ends with the call. That wait is bounded: a child that does not answer
   whether the step ran is taken as having run after 1 s, one that keeps answering that it has not
-  run yet after 5 s, and the whole wait ends after 20 s. A step the child skipped, because the
-  page changed the element or the form as it was pressed, ends the call and the allowance at once,
-  and a fill whose submission was skipped says the form was not sent. The result
+  run yet after 5 s, and the whole wait ends after 20 s. When the child skips a step, because the
+  page changed the element or the form as it was pressed, it tells the parent in the same task,
+  before any page script runs again, and the parent withdraws the allowance on that message: the
+  message and every load or request the page's process starts later go over the same IPC
+  channel, in order, so a page that puts the form back and submits by itself, at once or after
+  keeping its process busy, is cancelled. The call then refuses the click, and a fill says the
+  form was not sent. A submission the page starts while the element is being pressed, before
+  the child's check, cannot be told from the click's own: it is let through only to the asked
+  method and destination, as the click's would be. A frame of another process in the tab is
+  not ordered with that message, and until the call ends it too can send only the asked
+  submission. The result
   and `:mcp log` name the host it was going to. Clicks and fills on one tab run one at a time, so no call
   takes another's allowance. Your activation after the step (a click or a key of yours in that
   page) and your `f` hints end the mark, so your own submissions in an agent tab go through, and
