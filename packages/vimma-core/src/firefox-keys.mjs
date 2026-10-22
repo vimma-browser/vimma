@@ -914,9 +914,9 @@ const MAC_ONLY = {
   ]),
   devtools: rowsOf("devtools", [["shift+meta+c", "key_inspectorMac", "", "Inspector", "c"]]),
   // ShortcutUtils.getSystemActionForEvent (toolkit/modules/ShortcutUtils.sys.mjs:380-445):
-  // cmd+alt+arrow in tabbox.js, cmd+{ and cmd+} in Tabbrowser's keypress handler. It matches
-  // those two by charCode and ignores ctrl (ShortcutUtils.sys.mjs:430-443), so ctrl+cmd+{ and
-  // ctrl+cmd+} switch tabs too.
+  // cmd+alt+arrow in tabbox.js, cmd+{ and cmd+} in Tabbrowser's keypress handler.
+  // getSystemActionForEvent matches cmd+{ and cmd+} by charCode and ignores ctrl
+  // (ShortcutUtils.sys.mjs:430-443), so ctrl+cmd+{ and ctrl+cmd+} switch tabs too.
   chrome: rowsOf("chrome", [
     ["alt+meta+left", "tabbox.js", "", "previous tab", "c"],
     ["alt+meta+up", "tabbox.js", "", "previous tab", "c"],
