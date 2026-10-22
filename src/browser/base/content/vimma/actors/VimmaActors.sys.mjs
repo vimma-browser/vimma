@@ -5,7 +5,10 @@
 // Registers the Vimma JSWindowActor pair and sends it commands (spec:
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
-import { HINT_REPLY_MAX_TARGETS, parseHintReply } from "../core/hints.mjs";
+import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
+import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
+
+/** @import { BlockReply } from "../core/hints.mjs" */
 
 // System modules have no timer globals; Firefox's actors import them the same way.
 const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
@@ -24,8 +27,15 @@ const START_PAGE_MATCH = "chrome://browser/content/vimma/start/start.html";
  * A hint target in the parent: where to draw it and how to reach its element again.
  * @typedef {object} HintTarget
  * @property {Rect} rect  in the top frame's CSS pixels
- * @property {"link" | "input" | "click"} kind
+ * @property {"link" | "input" | "click" | "block"} kind
  * @property {string} [href]  links only
+ * @property {string} [text]  an agent's links only: what the link says (mcp-drive D12)
+ * @property {import("../core/blocks.mjs").BlockKind} [blockKind]  text blocks only
+ * @property {Rect} [box]  text blocks only: the border box, for the outline
+ * @property {import("../core/agent-element.mjs").AgentElementInfo} [info]  an agent's
+ *   `vimma_elements` only: what the element is (docs/specs/mcp-forms.md F5)
+ * @property {{ key: string, method: string, action: string }} [form]  an agent's
+ *   `vimma_elements` only: the element's form; `key` tells forms of different frames apart
  * @property {number} gen  the collection it came from
  * @property {number} id  the element's index in its frame's collection
  * @property {any} bc  its frame's BrowsingContext
@@ -42,8 +52,12 @@ let hintGen = 0;
  * @type {WeakMap<object, number>}
  */
 const blurGens = new WeakMap();
-/** The live collection of each window; another window's `f` must not void it. */
-/** @type {WeakMap<object, number>} */
+/**
+ * The live collection of each window, and of each agent tab (docs/specs/mcp-drive.md D12):
+ * another window's `f` must not void a window's, and an agent's `f`, keyed by its tab's
+ * <browser>, neither voids the user's hint mode in the same window nor is voided by it.
+ * @type {WeakMap<object, number>}
+ */
 const liveGen = new WeakMap();
 
 /** How long a subframe may take to answer (ms) before its targets are left out. */
@@ -56,7 +70,7 @@ const TOP_TIMEOUT_MS = 2000;
 const MAX_HINTS = HINT_REPLY_MAX_TARGETS;
 /** At most this deep in frames. */
 const MAX_FRAME_DEPTH = 8;
-/** Schemes `F` opens; the page's principal must be allowed to load them too. */
+/** Schemes `gF` opens; the page's principal must be allowed to load them too. */
 const OPENABLE = new Set(["http:", "https:", "file:"]);
 
 const ReferrerInfo = Components.Constructor(
@@ -112,6 +126,79 @@ function framesFor(browser) {
   return focused && focused !== top && focused.top === top ? [focused, top] : [top];
 }
 
+/**
+ * Agent tabs an agent just stepped in (docs/specs/mcp-forms.md F16; security.md M28), by their
+ * browserId, which survives a move to another window: the top document of the step, the one
+ * submission a question allowed during the running call (its method and destination without
+ * query), and the hosts of the submissions stopped since the step began.
+ * @type {Map<number, { doc: number, allowed: { method: string, where: string } | null,
+ *   blocked: string[] }>}
+ */
+const submitMarks = new Map();
+/** @type {((subject: any) => void) | null} */
+let submitObserver = null;
+
+/** A URI's destination as a submission is compared: scheme, host, port and path. @param {any} uri */
+const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
+
+/**
+ * Every navigating form submission's request passes here, in the parent, whatever started it
+ * (a submit button, `requestSubmit`, a later `submit()`, any frame): in a tab an agent stepped
+ * in, while its page is the one of the step, a submission without the user's activation is
+ * cancelled unless it is the one the question allowed, to the method and destination it named.
+ * The request carries its document's transient user activation, which an agent's click never
+ * gives, so a submission with it is the user's, and it ends the mark.
+ * @param {any} subject
+ */
+function onRequest(subject) {
+  let channel;
+  try {
+    channel = subject.QueryInterface(Ci.nsIHttpChannel);
+  } catch {
+    return;
+  }
+  const info = channel.loadInfo;
+  if (!info?.isFormSubmission) return;
+  const top = info.browsingContext?.top;
+  const id = top?.browserId;
+  const mark = id ? submitMarks.get(id) : undefined;
+  if (!mark) return;
+  if (top.currentWindowGlobal?.innerWindowId !== mark.doc || info.hasValidUserGestureActivation) {
+    forgetMark(id);
+    return;
+  }
+  // A redirect of a submission that was let through (the allowed one, or the user's): its first
+  // request was checked here, and the server has already received it.
+  if (info.redirectChainIncludingInternalRedirects?.length) return;
+  const uri = channel.URI;
+  const allowed = mark.allowed;
+  if (
+    allowed &&
+    allowed.method === String(channel.requestMethod).toLowerCase() &&
+    allowed.where === whereOf(uri)
+  ) {
+    mark.allowed = null;
+    return;
+  }
+  channel.cancel(Cr.NS_BINDING_ABORTED);
+  let host = "";
+  try {
+    host = String(uri.asciiHost);
+  } catch {
+    // no host to name
+  }
+  if (host && mark.blocked.length < 16) mark.blocked.push(host);
+}
+
+/** @param {number} id  a browserId whose mark ends; the observer goes with the last mark */
+function forgetMark(id) {
+  submitMarks.delete(id);
+  if (!submitMarks.size && submitObserver) {
+    Services.obs.removeObserver(submitObserver, "http-on-modify-request");
+    submitObserver = null;
+  }
+}
+
 export const VimmaActors = {
   /** Registers the actor pair once per process; vimma.js calls this before VimmaHost.init. */
   register() {
@@ -156,10 +243,31 @@ export const VimmaActors = {
    * @param {any} browser XULBrowserElement
    * @param {ScrollKind} kind
    * @param {number} [count]
+   * @param {{ instant?: boolean, top?: boolean }} [options]  `instant`: no smooth scroll;
+   *   `top`: the top frame's scroller only, whatever frame has focus (an agent's tab,
+   *   docs/specs/mcp-drive.md D8)
+   * @returns {Promise<boolean>} whether a frame had something to scroll
    */
-  async scroll(browser, kind, count = 1) {
-    for (const bc of framesFor(browser)) {
-      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count })) return;
+  async scroll(browser, kind, count = 1, { instant = false, top = false } = {}) {
+    const frames = top ? [browser.browsingContext] : framesFor(browser);
+    for (const bc of frames) {
+      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count, instant })) return true;
+    }
+    return false;
+  },
+
+  /**
+   * How far the top frame is scrolled down, from 0 to 1 (docs/specs/mcp-drive.md D16). The
+   * page's child answers, so the number is checked here.
+   * @param {any} browser XULBrowserElement
+   * @returns {Promise<number>}
+   */
+  async scrollFraction(browser) {
+    try {
+      const y = await actorFor(browser.browsingContext)?.sendQuery("Vimma:ScrollFraction");
+      return typeof y === "number" && Number.isFinite(y) ? Math.min(1, Math.max(0, y)) : 0;
+    } catch {
+      return 0;
     }
   },
 
@@ -219,18 +327,25 @@ export const VimmaActors = {
    * reported and clipped to them. Replies are from content processes and checked like any
    * other message: a malformed one drops that frame.
    * @param {any} browser XULBrowserElement
-   * @param {string} action "hint.follow" or "hint.follow_new_tab" (links only)
+   * @param {string} action "hint.follow", "hint.follow_new_tab" (links only) or "hint.element"
+   *   (text blocks, docs/specs/element-focus.md)
+   * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an agent's `f` in its
+   *   tab (docs/specs/mcp-drive.md D12): links only, each with its text, live per tab, not per
+   *   window; with `elements`, an agent's `vimma_elements` (docs/specs/mcp-forms.md F2): every
+   *   kind but blocks, disabled controls too, each described, kept apart from the user's
    * @returns {Promise<HintTarget[]>}
    */
-  async collectHints(browser, action) {
+  async collectHints(browser, action, { agent = false, elements = false } = {}) {
     const gen = ++hintGen;
-    const win = browser.ownerDocument.defaultView;
-    liveGen.set(win, gen);
-    const live = () => liveGen.get(win) === gen;
+    const key = agent ? browser : browser.ownerDocument.defaultView;
+    liveGen.set(key, gen);
+    const live = () => liveGen.get(key) === gen;
     const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
     /** Each frame at most once, whatever its embedder reports. */
     const visited = new Set();
-    const linksOnly = action === "hint.follow_new_tab";
+    const linksOnly = (agent && !elements) || action === "hint.follow_new_tab";
+    const blocks = !agent && action === "hint.element";
+    const texts = agent && !elements;
     /** @type {HintTarget[]} */
     const out = [];
     let ms = 0;
@@ -253,7 +368,13 @@ export const VimmaActors = {
         const late = new Promise((resolve) => {
           timer = setTimeout(resolve, depth === 0 ? TOP_TIMEOUT_MS : frameTimeout, null);
         });
-        const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", { gen, linksOnly });
+        const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", {
+          gen,
+          linksOnly,
+          blocks,
+          texts,
+          elements: agent && elements,
+        });
         raw = await Promise.race([query, late]);
       } catch {
         return; // the frame navigated or its process went away
@@ -261,14 +382,28 @@ export const VimmaActors = {
         clearTimeout(timer);
       }
       // From a content process, which may be compromised: a fresh, checked copy or nothing.
-      const reply = parseHintReply(raw);
+      const reply = parseHintReply(raw, { blocks, texts, elements: agent && elements });
       if (!reply || !live()) return;
       ms += reply.ms;
       for (const t of reply.targets) {
         if (out.length >= MAX_HINTS) break;
         const rect = intersect(offset(t.rect, origin), frame);
         if (!rect) continue;
-        out.push({ gen, bc, wg, id: t.id, kind: t.kind, href: t.href, rect });
+        /** @type {HintTarget} */
+        const target = { gen, bc, wg, id: t.id, kind: t.kind, href: t.href, rect };
+        if (texts) target.text = t.text ?? "";
+        if (t.agent) {
+          target.info = t.agent;
+          const form = t.agent.form === undefined ? undefined : reply.forms?.[t.agent.form];
+          if (form) target.form = { key: `${bc.id}:${t.agent.form}`, ...form };
+        }
+        if (t.box) {
+          const box = intersect(offset(t.box, origin), frame);
+          if (!box) continue;
+          target.blockKind = t.blockKind;
+          target.box = box;
+        }
+        out.push(target);
       }
       if (depth >= MAX_FRAME_DEPTH) return;
       const children = reply.frames.map((f) => {
@@ -294,9 +429,373 @@ export const VimmaActors = {
    */
   activateHint(target) {
     if (target.bc.currentWindowGlobal !== target.wg) return;
+    // The user's own step through their hints: a submission it causes is theirs (mcp-forms F16).
+    const id = target.bc.top?.browserId;
+    if (id) forgetMark(id);
     actorFor(target.bc)
       ?.sendQuery("Vimma:ActivateHint", { gen: target.gen, id: target.id })
       .catch(() => {});
+  },
+
+  /**
+   * Whether the element of a target from an agent's `vimma_elements` is still in its document
+   * (docs/specs/mcp-forms.md F4): false when its frame shows another document, the page removed
+   * or replaced it, or the frame did not answer.
+   * @param {HintTarget} target
+   * @returns {Promise<boolean>}
+   */
+  async agentElementAlive(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return false;
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "alive",
+        gen: target.gen,
+        id: target.id,
+      });
+      return reply === true;
+    } catch {
+      return false; // the frame navigated or its process went away
+    }
+  },
+
+  /**
+   * What the element of a target from an agent's `vimma_elements` is now, just before a click
+   * (docs/specs/mcp-forms.md F4, F9, F10, F15), checked like any reply from a content process;
+   * `{ alive: false }` when it is gone, its frame shows another document or did not answer.
+   * @param {HintTarget} target
+   * @returns {Promise<import("../core/agent-act.mjs").ActTarget | null>} null: a malformed reply
+   */
+  async agentInspect(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return { alive: false };
+    try {
+      const raw = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "inspect",
+        gen: target.gen,
+        id: target.id,
+      });
+      return raw === undefined ? { alive: false } : parseActTarget(raw);
+    } catch {
+      return { alive: false }; // the frame navigated or its process went away
+    }
+  },
+
+  /**
+   * Clicks the element of a target from an agent's `vimma_elements` with the child's `click()`
+   * (docs/specs/mcp-forms.md F8; security.md M26), once the child has seen it is still what the
+   * user was asked about: a submit only when `submit`, to the method and destination it names,
+   * and the same link. The child answers before it clicks, so a dialog the click opens never
+   * holds the reply.
+   * @param {HintTarget} target
+   * @param {{ submit: { method: string, action: string } | null, href: string | null,
+   *   until: number }} asked  `until`: ms since the epoch; the child clicks nothing later
+   * @returns {Promise<"ok" | "gone" | "changed">}
+   */
+  async agentActivate(target, { submit, href, until }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "activate",
+        gen: target.gen,
+        id: target.id,
+        submit,
+        href,
+        until,
+      });
+      return reply === "ok" || reply === "changed" ? reply : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * An agent is about to act in the browser's page (docs/specs/mcp-forms.md F16; security.md
+   * M28): from now until the user's own activation or another page, a form submission there is
+   * cancelled, but for `allowed`, the one the question named, once, during this call. The
+   * user's activation from before the step is consumed in every frame first, so that only their
+   * input after it counts as theirs.
+   * @param {any} browser XULBrowserElement
+   * @param {{ method: string, action: string } | null} allowed
+   * @returns {Promise<boolean>} false when the page has no document to mark
+   */
+  async agentMark(browser, allowed) {
+    const top = browser.browsingContext;
+    const doc = top?.currentWindowGlobal?.innerWindowId ?? 0;
+    if (!top || !doc) return false;
+    /** @type {any[]} */
+    let contexts;
+    try {
+      contexts = top.getAllBrowsingContextsInSubtree();
+    } catch {
+      return false;
+    }
+    await Promise.all(
+      contexts.map((bc) =>
+        actorFor(bc)
+          ?.sendQuery("Vimma:AgentElement", { op: "consume" })
+          .catch(() => {}),
+      ),
+    );
+    // Marks of tabs that closed or moved to another page are dropped here.
+    for (const [id, mark] of submitMarks) {
+      const other = /** @type {any} */ (BrowsingContext).getCurrentTopByBrowserId(id);
+      if (other?.currentWindowGlobal?.innerWindowId !== mark.doc) submitMarks.delete(id);
+    }
+    if (!submitObserver) {
+      submitObserver = onRequest;
+      Services.obs.addObserver(submitObserver, "http-on-modify-request");
+    }
+    let where = null;
+    if (allowed) {
+      try {
+        where = whereOf(Services.io.newURI(allowed.action));
+      } catch {
+        // not a URL: nothing is allowed
+      }
+    }
+    submitMarks.set(top.browserId, {
+      doc,
+      allowed: allowed && where ? { method: allowed.method, where } : null,
+      blocked: [],
+    });
+    return true;
+  },
+
+  /**
+   * Opens the one submission a question allowed, on a tab already marked (docs/specs/
+   * mcp-forms.md F15, F16): a fill marks the tab before its first field and allows the
+   * submission only for its last step, so a page that submits the form while it is being
+   * filled sends nothing in its place.
+   * @param {any} browser XULBrowserElement
+   * @param {{ method: string, action: string }} allowed
+   * @returns {boolean} false when the tab has no mark of this page
+   */
+  agentAllow(browser, allowed) {
+    const top = browser.browsingContext;
+    const mark = submitMarks.get(top?.browserId);
+    if (!mark || top.currentWindowGlobal?.innerWindowId !== mark.doc) return false;
+    try {
+      mark.allowed = { method: allowed.method, where: whereOf(Services.io.newURI(allowed.action)) };
+    } catch {
+      return false;
+    }
+    return true;
+  },
+
+  /**
+   * The agent's call is over: the allowed submission is no longer allowed, and the hosts of the
+   * submissions stopped since the mark are returned (the mark stays).
+   * @param {any} browser XULBrowserElement
+   * @returns {string[]}
+   */
+  agentSettle(browser) {
+    const mark = submitMarks.get(browser.browsingContext?.browserId);
+    if (!mark) return [];
+    mark.allowed = null;
+    const blocked = mark.blocked;
+    mark.blocked = [];
+    return blocked;
+  },
+
+  /**
+   * Whether any frame of `browser` shows a sensitive field with a value in its viewport, just
+   * before and just after an agent's screenshot is drawn (docs/specs/mcp-forms.md F21). Every
+   * frame is asked in its own process: `shown` when one says so or fails; `unchecked` when a
+   * frame has no actor (a data: or blob: document) or does not answer within `ms`, which refuses
+   * too; else `clear`.
+   * @param {any} browser XULBrowserElement
+   * @param {number} ms
+   * @returns {Promise<"shown" | "unchecked" | "clear">}
+   */
+  async agentSensitiveShown(browser, ms) {
+    /** @type {any[]} BrowsingContexts */
+    const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
+    /** @type {number | undefined} */
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms, "late");
+    });
+    try {
+      const answers = await Promise.all(
+        frames
+          .filter((bc) => bc.currentWindowGlobal)
+          .map(async (bc) => {
+            const actor = actorFor(bc);
+            if (!actor) return "unchecked";
+            try {
+              const r = await Promise.race([actor.sendQuery("Vimma:AgentSensitiveShown"), late]);
+              if (r === "late") return "unchecked";
+              return r === false ? "clear" : "shown";
+            } catch {
+              return "shown"; // the frame navigated or its process went away mid-check
+            }
+          }),
+      );
+      if (answers.includes("shown")) return "shown";
+      return answers.includes("unchecked") ? "unchecked" : "clear";
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
+   * Each frame's own script errors and console errors and warnings, for an agent's
+   * `vimma_console` (docs/specs/mcp-forms.md F22, F24): the first `frames` frames are asked, each
+   * in its own process, for its newest `max` entries after `since` and how many more it holds.
+   * The answer is the child's, which the caller checks entry by entry. A frame that has no actor
+   * (a data: or blob: document), fails or does not answer within `ms` answers nothing.
+   * @param {any} browser XULBrowserElement
+   * @param {number} ms
+   * @param {{ since: number, max: number, frames?: number }} ask
+   * @returns {Promise<{ entries: unknown[], omitted: number }[]>}
+   */
+  async agentConsole(browser, ms, { since, max, frames: most = 100 }) {
+    /** @type {any[]} BrowsingContexts */
+    const frames = (browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []).slice(
+      0,
+      most,
+    );
+    /** @type {number | undefined} */
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms, null);
+    });
+    try {
+      return await Promise.all(
+        frames.map(async (bc) => {
+          const none = { entries: [], omitted: 0 };
+          const actor = actorFor(bc);
+          if (!actor) return none;
+          try {
+            const r = await Promise.race([
+              actor.sendQuery("Vimma:AgentConsole", { since, max }),
+              late,
+            ]);
+            if (!r || !Array.isArray(r.entries)) return none;
+            const omitted = Number.isSafeInteger(r.omitted) && r.omitted > 0 ? r.omitted : 0;
+            return { entries: r.entries.slice(0, max), omitted };
+          } catch {
+            return none; // the frame navigated or its process went away
+          }
+        }),
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
+   * Whether the agent's last click on `target` ran, or was skipped because the page changed
+   * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away
+   * (the click loaded a page) ran it.
+   * @param {HintTarget} target
+   * @returns {Promise<"clicked" | "skipped" | "pending">}
+   */
+  async agentClickOutcome(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "clicked";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "outcome",
+        gen: target.gen,
+        id: target.id,
+      });
+      return reply === "skipped" || reply === "pending" ? reply : "clicked";
+    } catch {
+      return "clicked";
+    }
+  },
+
+  /**
+   * What the field of a target from an agent's `vimma_elements` is now, for a fill with `value`
+   * (docs/specs/mcp-forms.md F4, F6, F12, F13), checked like any reply from a content process;
+   * `{ alive: false }` when it is gone, its frame shows another document or did not answer.
+   * @param {HintTarget} target @param {string | boolean} value
+   * @returns {Promise<import("../core/agent-act.mjs").FillTarget | null>} null: a malformed reply
+   */
+  async agentInspectFill(target, value) {
+    if (target.bc.currentWindowGlobal !== target.wg) return { alive: false };
+    try {
+      const raw = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "inspect-fill",
+        gen: target.gen,
+        id: target.id,
+        value,
+      });
+      return raw === undefined ? { alive: false } : parseFillTarget(raw);
+    } catch {
+      return { alive: false };
+    }
+  },
+
+  /**
+   * Sets the field of a target from an agent's `vimma_elements` to `value` (docs/specs/
+   * mcp-forms.md F12; security.md M27), once the child has seen it is still what the user was
+   * asked about and not sensitive. The child answers before it sets the field, so a dialog the
+   * page opens never holds the reply; `agentFillOutcome` says how it went.
+   * @param {HintTarget} target
+   * @param {{ value: string | boolean, expect: { field: string, type: string | null },
+   *   until: number }} asked  `until`: ms since the epoch; the child sets nothing later
+   * @returns {Promise<"ok" | "gone" | "changed">}
+   */
+  async agentFill(target, { value, expect, until }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "fill",
+        gen: target.gen,
+        id: target.id,
+        value,
+        expect,
+        until,
+      });
+      return reply === "ok" || reply === "changed" ? reply : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * How the agent's last fill of `target`'s field went (docs/specs/mcp-forms.md F12): still to
+   * run, the field kept its value, the page put it back, or it was skipped because the field
+   * changed. A frame that went away is `gone`.
+   * @param {HintTarget} target
+   * @returns {Promise<"pending" | "kept" | "reset" | "skipped" | "gone">}
+   */
+  async agentFillOutcome(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "fill-outcome",
+        gen: target.gen,
+        id: target.id,
+      });
+      return ["pending", "kept", "reset", "skipped"].includes(reply) ? reply : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * Submits the form of `target`'s field with its default button (docs/specs/mcp-forms.md F15;
+   * security.md M28), once the child has seen that it still goes to the method and destination
+   * the question named; the child answers before it submits.
+   * @param {HintTarget} target
+   * @param {{ submit: { method: string, action: string }, until: number }} asked
+   * @returns {Promise<"ok" | "gone" | "changed">}
+   */
+  async agentSubmit(target, { submit, until }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "submit",
+        gen: target.gen,
+        id: target.id,
+        submit,
+        until,
+      });
+      return reply === "ok" || reply === "changed" ? reply : "gone";
+    } catch {
+      return "gone";
+    }
   },
 
   /**
@@ -335,6 +834,24 @@ export const VimmaActors = {
       referrerInfo: new ReferrerInfo(Ci.nsIReferrerInfo.EMPTY, true, wg.documentURI),
     });
     return true;
+  },
+
+  /**
+   * Loads a link target's href in `browser` itself, as the page would load it: the page's
+   * principal triggers the load and no event fires on the link, so no page handler runs (an
+   * agent's follow, docs/specs/mcp-drive.md D12). It sends no referrer: the child does not
+   * report the page's referrer policy or the link's `rel`, and none is the strictest of them.
+   * The caller checked the scheme, the document and checkLoadURIWithPrincipal.
+   * @param {any} browser XULBrowserElement
+   * @param {HintTarget} target
+   * @param {any} uri nsIURI of the target's href
+   */
+  loadLink(browser, target, uri) {
+    const wg = target.wg;
+    browser.loadURI(uri, {
+      triggeringPrincipal: wg.documentPrincipal,
+      referrerInfo: new ReferrerInfo(Ci.nsIReferrerInfo.NO_REFERRER, false, wg.documentURI),
+    });
   },
 
   /**
@@ -409,6 +926,19 @@ export const VimmaActors = {
   },
 
   /**
+   * Tells every frame of `browser` that a find step starts (a search, `n` or `N`): the finder
+   * may focus a text field it matches in again, even one whose focus an earlier step gave back
+   * (VimmaChild #focusedByFind, #442). Sent before the step's own Finder messages, on the same
+   * channel per frame, so each frame gets it first.
+   * @param {any} browser XULBrowserElement
+   */
+  findStep(browser) {
+    for (const bc of browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []) {
+      actorFor(bc)?.sendAsyncMessage("Vimma:FindStep");
+    }
+  },
+
+  /**
    * Tells the frame a find bar closed on that the close is through (VimmaChild #findClosed).
    * Sent after the find bar's close(), so the frame gets it after the finder's own messages.
    * @param {any} bc BrowsingContext the finder sent its close to
@@ -479,6 +1009,85 @@ export const VimmaActors = {
     } finally {
       clearTimeout(timer);
     }
+  },
+
+  /**
+   * Element focus (docs/specs/element-focus.md): one `Vimma:Block` op in the frame of a block,
+   * for the collection `gen`. The reply is from a content process and checked (core
+   * parseBlockReply): null for none, a malformed one, or a frame that since shows another
+   * document.
+   * @param {{ bc: any, wg: any }} frame  the frame and its WindowGlobalParent when the block
+   *   was chosen
+   * @param {number} gen
+   * @param {string} op
+   * @param {object} [extra]
+   * @returns {Promise<BlockReply | null>}
+   */
+  async block(frame, gen, op, extra = {}) {
+    if (frame.bc.currentWindowGlobal !== frame.wg) return null;
+    try {
+      const raw = await actorFor(frame.bc)?.sendQuery("Vimma:Block", { ...extra, op, gen });
+      return parseBlockReply(raw, op);
+    } catch {
+      return null; // the frame navigated or its process went away
+    }
+  },
+
+  /**
+   * A `Vimma:Block` op with no reply (`track`, `blur`) to a frame, if it still shows the same
+   * document.
+   * @param {{ bc: any, wg: any }} frame
+   * @param {number} gen
+   * @param {"track" | "blur"} op
+   */
+  blockNotify(frame, gen, op) {
+    if (frame.bc.currentWindowGlobal !== frame.wg) return;
+    try {
+      actorFor(frame.bc)?.sendAsyncMessage("Vimma:Block", { op, gen });
+    } catch {
+      // the frame went away: nothing to tell
+    }
+  },
+
+  /**
+   * A frame and the frames around it up to the top, each with its WindowGlobalParent now.
+   * @param {any} bc BrowsingContext
+   * @returns {{ bc: any, wg: any }[]}  the frame first, the top last
+   */
+  frameChain(bc) {
+    /** @type {{ bc: any, wg: any }[]} */
+    const out = [];
+    for (let c = bc; c && out.length <= MAX_FRAME_DEPTH; c = c.parent) {
+      out.push({ bc: c, wg: c.currentWindowGlobal });
+    }
+    return out;
+  },
+
+  /**
+   * Where a box in the first frame of `chain` is in the top frame's CSS pixels, clipped to
+   * every frame around it, as hint rects are: each frame's embedder is asked for its viewport.
+   * Null when it shows in none of them, or a frame did not answer.
+   * @param {{ bc: any, wg: any }[]} chain  from frameChain
+   * @param {number} gen
+   * @param {Rect} box
+   * @returns {Promise<Rect | null>}
+   */
+  async blockBox(chain, gen, box) {
+    let origin = { x: 0, y: 0 };
+    let clip = /** @type {Rect | null} */ ({ x: 0, y: 0, width: Infinity, height: Infinity });
+    for (let i = chain.length - 1; i > 0; i--) {
+      const outer = /** @type {{ bc: any, wg: any }} */ (chain[i]);
+      const inner = /** @type {{ bc: any, wg: any }} */ (chain[i - 1]);
+      const reply = /** @type {{ rect: Rect } | null} */ (
+        await this.block(outer, gen, "frame", { id: inner.bc.id })
+      );
+      if (!reply || !clip) return null;
+      const rect = offset(reply.rect, origin);
+      clip = intersect(clip, rect);
+      origin = { x: rect.x, y: rect.y };
+    }
+    if (!clip) return null;
+    return chain.length > 1 ? intersect(offset(box, origin), clip) : box;
   },
 
   /**

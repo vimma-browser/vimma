@@ -20,7 +20,7 @@
 #            key the browser pins and with openssl, then commits it and pushes, never forced.
 #
 # One manifest per build target (spec macos-homebrew, decision 16): `target` linux (the tarball,
-# AppImage and .deb, SHA256SUMS) or macos (the .dmg, SHA256SUMS-macos; prepare runs on macOS,
+# AppImage, .deb and .rpm, SHA256SUMS) or macos (the .dmg, SHA256SUMS-macos; prepare runs on macOS,
 # where hdiutil reads the build ID of the app inside it). The Linux run starts when the release
 # is published; the macOS run when its .dmg is on the published release, which is usually
 # later, from release.yml's macos-tap job, or here when the .dmg was there first.
@@ -173,7 +173,7 @@ jobs:
           v=${TAG#v}
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
           case "$TARGET_OS" in
-            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb") ;;
+            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb" "vimma-$v-1.x86_64.rpm") ;;
             macos) files=("vimma-$v-macos-aarch64.dmg") ;;
           esac
           mkdir -p assets && cd assets
@@ -357,7 +357,7 @@ jobs:
           v=${TAG#v}
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
           case "$TARGET_OS" in
-            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb") ;;
+            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb" "vimma-$v-1.x86_64.rpm") ;;
             macos) files=("vimma-$v-macos-aarch64.dmg") ;;
           esac
           mkdir -p assets && cd assets

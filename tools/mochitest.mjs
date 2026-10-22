@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { refreshAppIni } from "./artifact-build/artifact-build.mjs";
+import { machPythonOrExit } from "./mach-python.mjs";
 
 const ENGINE_TESTS = "browser/base/zen-components/";
 
@@ -84,7 +85,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { args, env } = mochitestCommand(process.argv.slice(2), engine, expectKey);
   // A bare `./mach build` since the artifact build regenerates application.ini, not our copy.
   if (env.MOZCONFIG) refreshAppIni(engine);
-  const res = spawnSync("./mach", args, {
+  const python = machPythonOrExit(engine, "npm run mochitest");
+  const command = python ? [python, "./mach"] : ["./mach"];
+  const res = spawnSync(command[0], [...command.slice(1), ...args], {
     cwd: engine,
     stdio: "inherit",
     env: childEnv(process.env, env),

@@ -17,6 +17,8 @@ export const ALLOWED = new Set([
   "BSD-3-Clause",
   "Apache-2.0",
   "MPL-2.0",
+  "PSF-2.0",
+  "Python-2.0",
 ]);
 
 /**

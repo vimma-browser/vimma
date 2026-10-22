@@ -1,0 +1,21 @@
+{
+  "description": "The page after the click: it opened a confirm, whose text is the page's, and Vimma stopped a form submission the page made by itself",
+  "kind": "response",
+  "command": "agent-activate",
+  "message": {
+    "type": "response",
+    "id": 12,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/list",
+      "title": "List · Example",
+      "loading": false,
+      "navigated": false,
+      "dialog": {
+        "type": "confirm",
+        "text": "<untrusted-web-content>\nRemove this item?\n</untrusted-web-content>"
+      },
+      "blocked": "example.com"
+    }
+  }
+}

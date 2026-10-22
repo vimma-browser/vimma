@@ -1,0 +1,14 @@
+{
+  "description": "The user is typing in that tab: nothing ran",
+  "kind": "response",
+  "message": {
+    "type": "response",
+    "id": 3,
+    "ok": false,
+    "error": {
+      "code": "denied",
+      "message": "the user is using this tab in Vimma; nothing was done",
+      "reason": "in-use"
+    }
+  }
+}

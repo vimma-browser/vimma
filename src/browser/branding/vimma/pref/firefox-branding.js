@@ -176,3 +176,8 @@ pref("services.sync.prefs.sync.privacy.userContext.enabled", false);
 // alt+letter menu keys still open their menus.
 pref("ui.key.menuAccessKeyFocuses", false);
 pref("accessibility.typeaheadfind.manual", false);
+
+// docs/specs/bookmarks-toolbar-hidden.md decision 1: Firefox's Bookmarks Toolbar is hidden, on
+// the start page too; the bookmarks panel (ctrl+b shift+b) is the way in. A default, not
+// locked: View > Toolbars, ctrl+shift+b, :bookmarkstoolbar and [ui] bookmarks_toolbar change it.
+pref("browser.toolbars.bookmarks.visibility", "never");

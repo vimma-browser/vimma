@@ -1,14 +1,15 @@
 # Spec: private-swap-macos
 
-Status: draft · Area: `packages/vimma-core/src/` (`hyprswap.mjs`'s pair state machine made
-backend-neutral, `nativeswap.mjs` new); `host/private-swap.mjs` (a backend switch),
+Status: draft (Delivery 1 built; open question 1 waits for the hand checks) · Area:
+`packages/vimma-core/src/` (`hyprswap.mjs`'s pair state machine moved to a backend-neutral
+`privatepair.mjs`, `nativeswap.mjs` new); `host/private-swap.mjs` (a backend switch),
 `host/native-swap.mjs` (new), `host/private-ops.mjs`, `about/AboutVimma.sys.mjs`; `docs/guide.md`,
 `docs/limits.md` · Upstream patches: none · ADR: none (no window manager IPC, so
 [ADR-017](../adr/017-window-manager-ipc.md) does not apply)
 
 Issue: [#415](https://github.com/vimma-browser/vimma/issues/415)
 
-Engine paths are relative to `engine/` and were read in Firefox 158.0 (`config/milestone.txt`,
+Engine paths are relative to `engine/` and were read in Firefox 158.0.1 (`config/milestone.txt`,
 the version in `surfer.json`). Facts about macOS that this spec could not check against source
 are marked **unverified**, with the check that settles them.
 
@@ -42,7 +43,7 @@ special workspace, Vimma can do on macOS by hiding the normal window.
 1. As a user on macOS, `ctrl+b shift+p` (or `ctrl+shift+p`, `:private`, the picker) shows the
    private workspace exactly where my Vimma window was: the same screen, position and size, and
    zoomed if it was zoomed. My normal window is no longer on screen (whether macOS still lists it
-   in the Window menu is open question 4). Going back (the toggle, `ctrl+^`, `ctrl+b (`,
+   in the Window menu is open question 1). Going back (the toggle, `ctrl+^`, `ctrl+b (`,
    `ctrl+b )`, the picker, `:ws`) shows my normal window in the private window's place and hides
    the private window.
 2. As a user, the windows do not animate: no zoom-in of a new window, no fade-out of the hidden
@@ -59,7 +60,8 @@ special workspace, Vimma can do on macOS by hiding the normal window.
    macOS lists it, see Research), it comes back in the private window's place, as if I had
    switched back.
 7. As a user whose Vimma window is in full screen (its own Space), going to the private workspace
-   follows the fullscreen decision (open question 2).
+   opens it in a fullscreen Space of its own, and going back switches to my normal window's
+   Space. A window in full screen is never hidden (decision 7).
 8. As a user, if Vimma quits or crashes while the private workspace is shown, the next start shows
    my normal window as usual. Nothing about the swap is written to disk.
 9. As a user, if a swap cannot be done, Vimma shows my normal window, says
@@ -68,7 +70,7 @@ special workspace, Vimma can do on macOS by hiding the normal window.
 10. As a user, `[private] placement = "window"` in `config.toml` keeps today's behaviour, and
     `about:vimma` says which placement is in force on macOS and why.
 11. As a user on Linux, nothing changes: Hyprland keeps private-swap's design, and other systems
-    keep the second window (open question 1).
+    keep the second window (decision 14).
 
 ## Research
 
@@ -275,8 +277,10 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
    that it looks the same and only un-zooming differs.
 3. **Same backend switch, same state machine.** `private-swap.mjs` picks a backend once per
    config load: Hyprland (unchanged) on Wayland with Hyprland, native on macOS, none elsewhere.
-   Core's `pairStep` becomes backend-neutral (window identifiers are opaque strings; the native
-   backend uses a per-window counter), so that both backends share one tested state machine and
+   Core's `pairStep` becomes backend-neutral in `privatepair.mjs` (window identifiers are opaque
+   strings; the native backend uses a per-window counter; the user moving Hyprland's parked
+   window out is the neutral `unparked` event, which `hyprswap.mjs` maps its `moved` event to),
+   so that both backends share one tested state machine and
    `private-ops.mjs` keeps calling `PrivateSwap.enter`, `show` and `beforeClose` unchanged.
    Rejected: a second, macOS-only module wired into `private-ops.mjs`, because the two backends
    follow the same rules for which window swaps and when.
@@ -309,11 +313,20 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
      SessionStore saves the normal window as an ordinary window (Research), so the next start
      shows it. This is private-swap's "nothing written to disk", for the same reason: no flag is
      needed.
-7. **Native full screen** follows open question 2. Until it is answered, the recommendation is
-   the design: Vimma never hides a window that is in a native fullscreen Space, because what
-   macOS does with an ordered-out fullscreen window is unverified. A private window entered from
-   a fullscreen normal window is opened and put in full screen of its own; going back focuses
-   the other window, and macOS switches Spaces.
+7. **Native full screen: never hide a fullscreen window.** Vimma never hides a window that is in
+   a native fullscreen Space, because what macOS does with an ordered-out fullscreen window is
+   unverified (Research), and this is the only way that needs no unverified AppKit behaviour and
+   no repeated native transitions. A private window entered from a fullscreen normal window is
+   opened and put in full screen of its own; going back focuses the other window, and macOS
+   switches Spaces, with its own animation. A window that goes full screen while it is the slot
+   window is not hidden either: going back shows the hidden window as a window of its own and
+   forgets the pair. Rejected: leaving full screen on the normal window, swapping and entering
+   full screen on the private window, because every switch would then take two native
+   transitions, which Firefox serializes and each of which lasts as long as macOS's Space
+   animation; no swap at all in full screen, because the private workspace would then be a
+   plain second window exactly where full screen makes it most visible; hiding the fullscreen window like
+   any other, because it depends on the unverified behaviour above. The last can be revisited
+   once the hand check shows what macOS does.
 8. **Multiple normal windows.** Only the window the private workspace was entered from is
    hidden. Other normal windows stay on screen, so the private window replaces one window, not
    the app's windows, the same as on Hyprland.
@@ -324,8 +337,11 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
    must leave the user with visible windows and a working private workspace.
 10. **Config.** `[private] placement` keeps its values and its `"swap"` default (schema 2,
     `config.mjs`), so that existing configs keep working: `"swap"` means the native swap on
-    macOS (open question 3) and Hyprland's swap on Hyprland; `"window"` opts out everywhere. No
-    new key, action or binding. The comment that `defaults.mjs` writes into the generated
+    macOS and Hyprland's swap on Hyprland; `"window"` opts out everywhere. No new key, action or
+    binding. macOS gets the swap by default, since the hand checks run before the delivering PR
+    merges and `"window"` stays one line away. Rejected: `"window"` on macOS until the hand
+    checks have run on a released build, because that needs a per-platform default, so the same
+    `config.toml` would mean different things on Linux and macOS. The comment that `defaults.mjs` writes into the generated
     `config.toml` names macOS next to Hyprland.
 11. **`about:vimma`.** The window manager line reads, on macOS,
     `Window manager: none needed (macOS), private placement: swap`, or `window (config)`, or
@@ -340,6 +356,13 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
     whether X must be restored first, and whether the swap is refused (a fullscreen window, a
     minimized window, a zero-size frame). The host reads and applies frames; core decides, so that
     every frame rule is covered by Vitest without a browser.
+14. **Scope: macOS only.** The native backend is selected on macOS alone. On Linux nothing
+    changes: Hyprland keeps private-swap's design, because unmapping a tiled window would close
+    its tile and re-tile the workspace (Research), and every other system keeps the second
+    window, because on Wayland a client cannot place its window and a re-shown window is placed
+    by the compositor, and on X11 the window manager may re-place a re-mapped window, so "exactly
+    where it was" cannot be kept there. Rejected: the native mechanism on X11 or on every
+    non-Hyprland system, for that reason.
 
 ## Security and privacy
 
@@ -392,7 +415,7 @@ component (the control socket, MCP, the agent gate, content actors) is touched.
   picking it there swaps back; a link from another app while Vimma is in the background; the
   red close button, `cmd+w` on the last tab and File → Close Window; `cmd+h` and unhide; a Dock
   click; two Spaces (the window shown on the active Space); two displays with different scale
-  factors; a zoomed window, un-zoomed afterwards; a native fullscreen window (open question 2),
+  factors; a zoomed window, un-zoomed afterwards; a native fullscreen window (decision 7),
   including what macOS does if a fullscreen window is ordered out; `kill -9` while the normal
   window is hidden, then a restart; `document.hidden` in the hidden window.
 
@@ -400,12 +423,12 @@ component (the control socket, MCP, the agent gate, content actors) is touched.
 
 - `docs/guide.md`, "Private workspace": the paragraph "On Hyprland it takes your Vimma window's
   place" becomes "On Hyprland and macOS …", with a short macOS item (how: Vimma hides the normal
-  window itself, no window manager involved; full screen per open question 2; the Window menu
+  window itself, no window manager involved; a fullscreen window is never hidden (decision 7); the Window menu
   behaviour found by the hand checks). "Elsewhere" lists other Linux systems and
   `placement = "window"`. The `config.toml` section's `[private] placement` text names macOS.
 - `docs/limits.md`: the macOS line drops "the Hyprland private-window swap"; a new line says that
   on macOS the hidden normal window still runs its pages and still appears to scripts
-  (`vimma-ctl state`), and states the fullscreen limit if open question 2 keeps one.
+  (`vimma-ctl state`), and states the fullscreen limit (decision 7).
 - README status, if it lists the private workspace's swap as Hyprland-only.
 - `CHANGELOG.md` [Unreleased]: added by the maintainer at merge time, except the line for the
   `defaults` snapshot, which the PR that changes it adds.
@@ -418,32 +441,12 @@ component (the control socket, MCP, the agent gate, content actors) is touched.
 2. **feat(private): swap in place on macOS.** `native-swap.mjs`, the backend switch in
    `private-swap.mjs`, the `about:vimma` line, the `defaults.mjs` comment and its snapshot, the
    headless mochitest, the guide and limits, and the hand checks recorded in Results. Mergeable
-   alone; it sets the status to `implemented` unless a follow-up from open question 1 stays open.
+   alone; it sets the status to `implemented` once the Results record the hand checks and
+   open question 1 is settled.
 
 ## Open questions
 
-1. **Scope: macOS only, or every system without Hyprland?** (a) macOS only. (b) macOS, then X11
-   window managers. (c) Every non-Hyprland system, Wayland included (GNOME, KDE, Sway). The
-   mechanism needs no window manager, but on Wayland a client cannot set its position and a
-   re-shown window is placed by the compositor (Research), so "exactly where it was" cannot be
-   kept; on X11 the window manager may still re-place a re-mapped window. **Recommendation: (a)**,
-   with X11 as a separate spec after a hand survey of common X11 window managers; GNOME and KDE on
-   Wayland keep the second window.
-2. **Native full screen.** (a) Never hide a fullscreen window: the private window gets a
-   fullscreen Space of its own and switching moves between the two Spaces (macOS animates it).
-   (b) Leave full screen on the normal window, swap, and enter full screen on the private window:
-   one Space, but two native transitions per switch, serialized by Firefox, each the length of
-   macOS's Space animation. (c) No swap while full screen: the private window opens as a window,
-   as today. (d) Hide the fullscreen window with `orderOut:` like any other, if the hand check
-   shows macOS keeps or closes its Space cleanly. **Recommendation: (a)**, because it is the only
-   option that needs no unverified AppKit behaviour and no repeated transitions; revisit (d) after
-   the hand check.
-3. **Default on macOS.** (a) `"swap"`, the existing default value, so macOS gets the swap without
-   a config change. (b) `"window"` on macOS until the hand checks have run on a released build,
-   then `"swap"`; this needs a per-platform default, so `config.toml` would mean different things
-   on Linux and macOS. **Recommendation: (a)**, since the hand checks run before delivery PR 2
-   merges and `"window"` stays one line away.
-4. **The hidden window in the Window menu and the Dock menu.** If the hand check shows that macOS
+1. **The hidden window in the Window menu and the Dock menu.** If the hand check shows that macOS
    still lists the hidden window: (a) leave it listed; picking it swaps back (decision 6). (b) Keep
    it out with `NSWindow.excludedFromWindowsMenu`, which needs an upstream patch and an ADR-003
    register line, because chrome JavaScript cannot set it. **Recommendation: (a)**, because the

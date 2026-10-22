@@ -1,6 +1,6 @@
 # Spec: mcp-drive
 
-Status: accepted · Area: `packages/vimma-core/src/` (`agent-keys.mjs` new, `agent.mjs`,
+Status: implemented · Area: `packages/vimma-core/src/` (`agent-keys.mjs` new, `agent.mjs`,
 `agent-prompt.mjs`, `control.mjs`, `cmdline.mjs`); `src/browser/base/content/vimma/`
 (`ctl/agent-commands.mjs`, `ctl/AgentDrive.sys.mjs` new, `actors/VimmaActors.sys.mjs`,
 `host/agent-ui.mjs`, `host/control-ops.mjs`, `host/workspace-ops.mjs`); `tools/vimma-ctl`
@@ -73,7 +73,8 @@ The user is asked once, for minutes, and after that nothing confines what the ke
    says why. Nothing is ever typed into a page.
 8. While MCP is on, `:control on 15` asks
    `Turn on full control for 15 min? It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use it. y/N`,
-   and each new full-control connection's question ends with `(every workspace, not only "agent")`.
+   and each new full-control connection's question says
+   `◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N`.
 9. Under a grant, each `vimma_keys` call shows a notice such as
    `claude-code pressed /"pricing"⏎ in "Pricing · Example" (grant, 12m left)`, and `:mcp log`
    lists the last 100 agent calls, asked or granted (D14).
@@ -165,9 +166,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
   `fastFind(searchString, linksOnly, drawOutline)` (`toolkit/modules/FinderParent.sys.mjs:408`),
   `findAgain(searchString, findBackwards, linksOnly, drawOutline)` (`:417`) and
   `requestMatchesCount` (`:447`), with results through `addResultListener` (`:50`). It searches
-  frames, cross-origin ones too, without the window's find bar. **Not checked:** whether a match
-  in a tab that is not selected is scrolled into view and selected as in a selected one;
-  sub-PR 2 measures it before relying on it.
+  frames, cross-origin ones too, without the window's find bar. Measured in sub-PR 2
+  (`test_keys_find_uses_the_tabs_finder`): in a tab that is not selected the match becomes the
+  page's selection and is scrolled into view, as in a selected one.
 
 ## Design
 
@@ -230,6 +231,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
    mode, find bar or hint mode, and never sends a key event to the page: each key is resolved to
    an action by core and run by the browser on that tab's `<browser>`, as `CONTENT_RUNNERS` do.
    No page script sees a keydown, so nothing can be typed into a page through this tool.
+   Scrolls are instant and go to the top frame's scroller: a background tab's refresh driver is
+   throttled, so a smooth scroll there would not have finished when the result reports where
+   the page is, and the frame that has the user's focus is not the agent's to choose.
 9. **The whitelist.** `keys` is parsed by `packages/vimma-core/src/agent-keys.mjs` with a
    dispatcher of its own (`createDispatcher`, one per call, never the window's) over a fixed
    agent keymap: Vimma's default normal-mode keys (`defaults.mjs:160-224`) restricted to these
@@ -273,7 +277,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     `packages/vimma-core/src/find.mjs:24`). The window's find bar, its `Find` state and the
     user's last search are never touched. The match becomes the page's selection, which
     `vimma_read_page` already returns (vimma-mcp decision 4), so "find, then read the
-    selection" works without a new tool.
+    selection" works without a new tool. A find does not run in a tab that has the user's focus
+    (shown and focused in the focused window): there the finder focuses a text field its match
+    is in, and the page's focus handlers would run; the step says so and the call goes on.
 12. **Following links.** `f` at the end of `keys` collects the visible links of the agent tab
     (links only, as `hint.follow_new_tab` collects) and returns them with labels; `f<label>`
     follows one. The labels are kept in a hint session per agent tab and connection, tied to the
@@ -294,8 +300,22 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     - **Labels.** `DEFAULT_HINT_CHARS`, not the user's `hint_chars`, for the same reason as D10.
       At most 200 links are returned, in the reading order `orderTargets` gives; the rest are
       dropped and the result says how many.
-    - **Counting.** Every follow, and every `gu`/`gU`, takes a slot of the connection's open rate
-      (10 a minute, `OPEN_RATE`), shared with `vimma_open`, because each one loads a URL.
+    - **Grammar.** A label is the hint characters right after `f`, up to a space or any other
+      key: labels are prefix-free, so `fsdG` follows `sd`, then runs `G`. A label longer than
+      200 links need (3 characters) and a count before `f` are refused before anything is asked.
+      `f` without a label is allowed only as the call's last key, because a list made in the
+      middle of a call would describe a page that the steps after it may leave. A link's text is
+      its rendered text, else its `aria-label`, `title` or an image's `alt`.
+    - **Web pages only, no referrer.** `f` lists and follows links only on an http or https
+      page: a file, about: or start page moved into the agent workspace has a principal that
+      may load anything. A follow sends no referrer, because the browser does not learn the
+      page's referrer policy or the link's `rel` from the collection, and none is the strictest
+      of them. A list takes at most 768 KiB of the reply line; links past that are dropped and
+      counted with the rest, so the line stays within the protocol's 1 MiB.
+    - **Counting.** Every follow, every `gu`/`gU` and every history step that loads a page takes
+      a slot of the connection's open rate (10 a minute, `OPEN_RATE`), shared with `vimma_open`,
+      because each one loads a URL; a history step to an entry that is not http or https (one
+      the user reached in that tab before) is refused.
 13. **Within one call.** Actions run in order. After an action that loads a page (a follow,
     back, forward, `gu`, `gU`), the next one waits for that load, up to 20 s (`LOAD_TIMEOUT_MS`,
     `agent-commands.mjs:33`). Before each action the tab must still be an agent tab; if it has
@@ -303,7 +323,8 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     If the user is using the tab (it is the selected tab of a focused window and its mode is
     insert, hint or copy mode, or a key sequence is pending there), the call is denied with the
     new reason `in-use` before it runs, so an agent never scrolls or navigates a page under the
-    user's cursor while they type in it. Watching is fine: in normal mode the user sees the agent
+    user's cursor while they type in it. A call already running stops with `stopped: "in-use"`
+    when the user starts using the tab. Watching is fine: in normal mode the user sees the agent
     scroll and navigate.
 14. **The audit.** The question shows the keys exactly as they will run, after parsing, with
     `⏎` for `<CR>` and find queries in quotes:
@@ -317,7 +338,8 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     way to check afterwards. Rejected: no log, because notices alone leave no record; a log in
     the profile, because it would store the agent workspace's browsing history on disk, which
     vimma-mcp keeps off disk for grants.
-15. **Limits.** Checked in `vimma-ctl mcp` (vimma-mcp decision 38) and again in the browser:
+15. **Limits.** Checked in `vimma-ctl mcp` (vimma-mcp decision 38) and again in the browser,
+    except the number of actions, which needs the keymap and is the browser's alone:
     `keys` at most 512 characters; at most 32 actions per call; a count at most 99; a find query
     at most 256 characters, with no control characters; at most 30 `agent-keys` requests per
     connection a minute (`busy` beyond), counted when asked, in a rate class shared with D7's;
@@ -340,14 +362,19 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     }
     ```
 
-    `note`, `stopped`, `find`, `links` and `dropped` appear only when they apply. `scroll.y` is
+    `note`, `stopped`, `find`, `links` and `dropped` appear only when they apply. `stopped` is
+    `changed` (the tab left the agent workspace or closed), `in-use` (D13), `timeout` (D15) or
+    `denied` (a load refused: the open rate, or a cross-site follow refused, D18). `scroll.y` is
     the top frame's vertical position as a fraction from 0 to 1. `links` is one string already
     inside the untrusted-content delimiters, wrapped by the browser (`wrapUntrusted`,
     `agent.mjs:393-396`; vimma-mcp decision 34), one link per line: the label, the link text as
     a JSON string cut at 80 characters, and the href cut at 2,048 characters. The URL and title
     are untrusted too, and `vimma-ctl mcp` puts them under `untrustedHeader`'s wording as it
     does for reads. No page text is returned beyond link texts; reading stays `vimma_read_page`,
-    with its own question and grant, so that a `vimma_keys` grant is never a read grant. Find's
+    with its own question and grant, so that a `vimma_keys` grant is never a read grant. A
+    find's yes or no, with the scroll position, still tells whether a word is on the page: at 30
+    calls of 32 steps a minute that is a slow way to learn a page's text, which is accepted,
+    since the agent tab's text is one `vimma_read_page` away for an agent the user lets read. Find's
     match already lands in the selection that `vimma_read_page` returns, so "find, then read"
     needs no text here. Rejected: up to 2,000 characters of the viewport's text, because it would
     make a keys grant a partial read grant; that text only while a `vimma_read_page` grant is
@@ -394,20 +421,28 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
 21. **The server's instructions** (`mcp.rs:50-55`) gain one sentence: to show the user a page,
     call `vimma_show`; to move around a page, call `vimma_keys`; never ask the user to turn on
     full control or to run `vimma-ctl send-keys`, which reach beyond the agent workspace. The
-    model's route of least effort is then the confined one.
+    model's route of least effort is then the confined one. The advice against full control
+    ships with sub-PR 1, and each tool's name joins the sentence in the sub-PR that adds the
+    tool, because instructions that name a tool `tools/list` does not offer would send the model
+    looking for it.
 
 ### E. Full control while MCP is on
 
-22. **`:control on` says what it gives away.** While MCP is on (`vimma.mcp.enabled`), its
+22. **`:control on` says what it gives away.** While MCP is on (`[mcp] enabled`, else the pref
+    `vimma.mcp.enabled`), its
     question becomes
     `Turn on full control for <N> min? It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use it. y/N`.
-    With MCP off it stays as it is. The arming of an ordinary y/N applies; the question line's
+    With MCP off it stays as it is. A yes given after MCP went on or off while the question was
+    open turns nothing on, because it answered a question that no longer says what full control
+    reaches. The arming of an ordinary y/N applies; the question line's
     1 s arming delay is not added, because `:control on` is typed by the user, not sent by an
     agent. `:control` stays the user's tool: no agent command can turn it on, and the agent role
     never reaches `send-keys` (security.md S12).
 23. **Each full connection says it too.** While MCP is on, the question a new full connection
-    asks (vimma-mcp decision 29) ends with `(every workspace, not only "agent")`, in the line's
-    text and its accessible name, and the desktop notification says
+    asks (vimma-mcp decision 29) says `wants full control (every workspace, not only "agent")`,
+    naming the agent workspace as `[mcp] workspace` sets it, in the line's text and its
+    accessible name, before the `— y/N` that ends every such line, and the desktop notification
+    says
     `vimma-ctl asks for full control of Vimma (every workspace)`.
 
 ## Security and privacy
@@ -555,7 +590,7 @@ They share three pieces, built once in this spec's sub-PRs: the agent-tab confin
 `in-use` rule (D13), the per-tab hint session keyed by browser with labels bound to their
 document (D12), and the whitelist in `agent-keys.mjs`, which #231 does not widen: its actions are
 separate tools with separate questions and grants, so a `vimma_keys` grant never lets an agent
-click or type. #231's spec builds on this one rather than adding to vimma-mcp.md.
+click or type. #231's spec, [mcp-forms](mcp-forms.md), builds on this one rather than adding to vimma-mcp.md.
 
 Out of scope: clicks, typing and form filling (#231); screenshots of agent tabs; page keys of
 the site itself (an agent cannot press GitHub's `t`, since keys never reach the page); several

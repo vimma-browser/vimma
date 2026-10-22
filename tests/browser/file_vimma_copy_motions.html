@@ -4,8 +4,9 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!-- Fixture for browser_vimma_copy_motions.js and browser_vimma_copy_mouse.js: known words,
    - an indented preformatted line, a line of separators, two paragraphs (one with inline
-   - markup), lines broken by <br>, a text field, a link and a paragraph that selects itself
-   - when clicked (a page's own, programmatic selection). -->
+   - markup), a paragraph laid out over several source lines before a list, lines broken by
+   - <br>, a text field, a link and a paragraph that selects itself when clicked (a page's own,
+   - programmatic selection). -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -27,6 +28,14 @@
     <p id="find">one,two,three;four</p>
     <p id="para1">first paragraph <b>bold</b>word end.</p>
     <p id="para2">second paragraph here.</p>
+    <!-- prettier-ignore -->
+    <p id="intro">
+      a paragraph before a list
+    </p>
+    <ul id="list">
+      <li id="item1">first item</li>
+      <li id="item2">second item</li>
+    </ul>
     <p id="lines">line one<br />line two<br />line three</p>
     <p><input id="field" value="field text here" /></p>
     <p><a id="link" href="#linked">a link to follow</a></p>

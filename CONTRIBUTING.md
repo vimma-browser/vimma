@@ -10,7 +10,9 @@ How to build, run and test Vimma, and how changes get in. For why Vimma exists, 
 - About 35 GB of free disk space, as measured on one machine: `engine/` 27 GB (source and the
   full build), the sccache compiler cache 6.8 GB, toolchains in `~/.mozbuild` 3.1 GB and the
   Firefox source download in `.surfer/` 0.8 GB.
-- Node.js 20.19 or later in the 20 line, or 22.12 or later; Python 3, git.
+- Node.js 20.19 or later in the 20 line, or 22.12 or later; git.
+- Python 3.10 to 3.14: the range `engine/mach` declares it supports. A newer Python breaks mach in
+  places; Python 3.15 cannot parse the test manifests.
 - Time: the first full build took 39 min on a 16-thread Ryzen with 58 GB RAM. The Firefox source
   download took 12.5 min. See [docs/runbook.md](docs/runbook.md).
 
@@ -49,8 +51,17 @@ npm run verify-source   # that tarball against Mozilla's signed SHA512SUMS (need
                         # npm run import refuses an engine/ it has not verified
 npx surfer bootstrap    # Mozilla's toolchains into ~/.mozbuild (once)
 npm run import          # apply Vimma's files and patches, select the vimma brand
-npx surfer build        # full build
+npm run build           # full build (npx surfer build under a supported Python)
 ```
+
+`npm run build` runs `npx surfer build` with a Python inside the range `engine/mach` declares,
+chosen as `npm run mochitest` chooses one (see [Testing](#testing)), so a newer `python3` first
+on `PATH`, for example 3.15 from mise, does not break the build. It stops with the range and the
+interpreters it found when none fits. `npm run build -- --ui` rebuilds only the front end,
+`npm run build -- --mach` runs `./mach build` (after a `moz.build` change), and
+`npm run build -- --dry-run` prints the command and the Python it would use. It also adds
+`~/.mozbuild/sccache`, where `npx surfer bootstrap` puts sccache, to the end of `PATH`, so
+configure finds the compiler cache the mozconfig names.
 
 Google Safe Browsing (phishing and malware protection) needs an API key, which is not in this
 repository. A build without one works but shows the protection as off. To turn it on, get a free
@@ -75,9 +86,9 @@ front-end files are symlinks into `src/`, outside the Firefox tree, and without 
 content sandbox refuses them, so Vimma's page actor never loads (packaged builds copy the files
 and do not need it). `npx surfer run` uses a scratch profile without it.
 
-After editing JavaScript or CSS under `src/`, run `npm run import && npx surfer build --ui`. That
-rebuilds only the front end. Changes to branding, `configs/` or `moz.configure` need a full
-`npx surfer build`.
+After editing JavaScript or CSS under `src/`, run `npm run import && npm run build -- --ui`.
+That rebuilds only the front end. Changes to branding, `configs/` or `moz.configure` need a full
+`npm run build`.
 
 `npm run import` first restores the upstream files our `.patch` files touch
 (`tools/import/restore-patched.mjs`, the `+++ b/` paths, `--dry-run` to list them), so an edited
@@ -96,7 +107,13 @@ npm run lint             # eslint + prettier --check + no process wording in Mar
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
 npm run sites -- --filter github                          # live sites, a report (docs/runbook.md)
+npm run sites -- --offline --artifact                     # recorded pages, no network: the PR gate
 ```
+
+`npm run mochitest` runs mach with the first `python3`, then `python3.N`, on `PATH` whose
+version is inside the range `engine/mach` declares, and says which one it chose when it skipped
+another. It stops with the interpreters it found when none fits. Set `VIMMA_MACH_PYTHON` to an
+interpreter's path to choose one yourself.
 
 A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/temp-dir.mjs`,
 which removes it when the test ends, also when it fails. `npm test` runs with a `TMPDIR` of its
@@ -248,8 +265,9 @@ its Rust toolchain and the GitHub Actions current:
 
 - **Weekly, grouped.** On Monday mornings (Helsinki) it opens one PR per ecosystem with every
   minor and patch update, and one PR per major update. A release must be three days old first.
-  Titles read `build(deps): Bump …`. Dependabot's casing and long release-note lines are not
-  configurable, so commitlint skips its commits and their squashes (`tools/commitlint`).
+  Titles read `build(deps): bump …` (older Dependabot versions wrote `Bump`). Dependabot's
+  casing, title length and long release-note lines are not configurable, so commitlint skips its
+  commits and their squashes (`tools/commitlint`).
 - **Security fixes come at once.** A Dependabot alert gets its fix PR as soon as there is one,
   outside the schedule. When a parent package pins the vulnerable version, add an `overrides`
   entry to the root `package.json` instead (as for `sharp` and `qs`) and say why in the PR.

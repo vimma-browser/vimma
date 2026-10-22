@@ -5,12 +5,14 @@
 // Link-hint labels (spec: docs/specs/m1-hints.md), drawn in the chrome document over the
 // page's <browser>, never in the page: the page cannot see, restyle or remove them. The layer
 // is a child of the browser's .browserStack (a XUL stack, so it covers exactly the browser),
-// ignores the mouse and clips to the content area.
+// ignores the mouse and clips to the content area. Element focus outlines the chosen text block
+// in a layer of its own beside it (docs/specs/element-focus.md, decision 6).
 
 /** @import { Hint } from "../core/hints.mjs" */
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
 
 export const HINT_OVERLAY_ID = "vimma-hints";
+export const ELEMENT_OUTLINE_ID = "vimma-element";
 const STYLESHEET = "chrome://browser/skin/vimma/hints.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<Window>} windows our stylesheet is loaded into */
@@ -24,6 +26,55 @@ export class HintOverlay {
     this.layer = null;
     /** @type {Map<string, HTMLElement>} label → its element */
     this.labels = new Map();
+    /** @type {HTMLElement | null} the element-focus outline's layer */
+    this.ring = null;
+  }
+
+  #style() {
+    if (styled.has(this.win)) return;
+    this.win.windowUtils.loadSheetUsingURIString(STYLESHEET, this.win.windowUtils.AUTHOR_SHEET);
+    styled.add(this.win);
+  }
+
+  /**
+   * Outlines a text block: a ring just outside its border box, in chrome over the page. Called
+   * again as the block moves (a scroll, `j`), it moves the same ring; a null box (the block is
+   * scrolled out of its frame) hides it until the next.
+   * @param {any} browser XULBrowserElement
+   * @param {{ x: number, y: number, width: number, height: number } | null} box  in the top
+   *   frame's CSS pixels
+   */
+  outline(browser, box) {
+    const parent = browser.closest(".browserStack") ?? browser.parentNode;
+    if (this.ring?.parentNode !== parent) this.clearOutline();
+    this.#style();
+    const doc = this.win.document;
+    if (!this.ring) {
+      const layer = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
+      layer.id = ELEMENT_OUTLINE_ID;
+      // The status bar says what is focused (m7-a11y); the ring is a picture of where.
+      layer.setAttribute("aria-hidden", "true");
+      const ring = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
+      ring.className = "vimma-element-ring";
+      layer.append(ring);
+      parent.append(layer);
+      this.ring = layer;
+    }
+    const ring = /** @type {HTMLElement} */ (this.ring.firstElementChild);
+    ring.hidden = !box;
+    if (!box) return;
+    const zoom = Number(browser.fullZoom) || 1;
+    // 2 px outside the border box, which is the ring's own width.
+    ring.style.left = `${Math.round(box.x * zoom) - 2}px`;
+    ring.style.top = `${Math.round(box.y * zoom) - 2}px`;
+    ring.style.width = `${Math.round(box.width * zoom) + 4}px`;
+    ring.style.height = `${Math.round(box.height * zoom) + 4}px`;
+  }
+
+  /** Removes the element-focus outline. */
+  clearOutline() {
+    this.ring?.remove();
+    this.ring = null;
   }
 
   /**
@@ -34,10 +85,7 @@ export class HintOverlay {
   show(browser, hints) {
     this.hide();
     const doc = this.win.document;
-    if (!styled.has(this.win)) {
-      this.win.windowUtils.loadSheetUsingURIString(STYLESHEET, this.win.windowUtils.AUTHOR_SHEET);
-      styled.add(this.win);
-    }
+    this.#style();
     const layer = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
     layer.id = HINT_OVERLAY_ID;
     // Labels drawn over a page are a picture of where to type, thousands of them: out of the
@@ -76,6 +124,7 @@ export class HintOverlay {
     }
   }
 
+  /** Removes the labels. */
   hide() {
     this.layer?.remove();
     this.layer = null;

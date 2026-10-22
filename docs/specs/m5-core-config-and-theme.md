@@ -133,6 +133,10 @@ keeps this list.)
 
 Picking badge text by contrast is what makes one rule work for light and dark themes.
 
+(Since changed: a badge whose slot gives a colour within delta E 10 of an earlier badge's takes
+that colour a shade lighter or darker; `badgeColors` in `theme.mjs` and the guide's Status bar
+section describe it now.)
+
 - `TOKYO_NIGHT`: identical to Omarchy's stock tokyo-night `colors.toml`; the built-in palette
   until `VIMMA_DARK` / `VIMMA_LIGHT` (vimma.dev's colours) replaced it as the default.
   `BUILTIN_THEMES` maps `[theme] name` to `{ dark, light? }`.

@@ -13,7 +13,9 @@ use proptest::test_runner::RngSeed;
 use std::collections::BTreeMap;
 use std::time::Duration;
 use vimma_ctl::json::{self, Value};
-use vimma_ctl::mcp::{Action, Call, Era, Failure, Protocol, ToolCall, tool_result};
+use vimma_ctl::mcp::{
+    Action, Call, Era, Failure, FillField, FillValue, Protocol, ToolCall, tool_result,
+};
 
 const FIXED_SEED: u64 = 20_261_014;
 
@@ -39,6 +41,13 @@ fn key() -> impl Strategy<Value = String> {
             "url",
             "format",
             "max_chars",
+            "keys",
+            "label",
+            "fields",
+            "value",
+            "submit",
+            "labels",
+            "since",
             "requestId",
             "protocolVersion",
             "clientInfo",
@@ -75,6 +84,17 @@ fn scalar() -> impl Strategy<Value = Value> {
             "vimma_read_page",
             "vimma_open",
             "vimma_close_tab",
+            "vimma_keys",
+            "vimma_show",
+            "vimma_elements",
+            "vimma_activate",
+            "vimma_fill",
+            "vimma_screenshot",
+            "vimma_console",
+            "sdf",
+            "3j /pricing<CR> gg",
+            "/x",
+            "100j",
             "2026-07-28",
             "2025-11-25",
             "2025-06-18",
@@ -169,6 +189,25 @@ fn tool() -> impl Strategy<Value = ToolCall> {
         }),
         any::<String>().prop_map(|url| ToolCall::Open { url, tab: None }),
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Close { tab }),
+        ("[0-9]{1,20}").prop_map(|tab| ToolCall::Show { tab }),
+        ("[0-9]{1,20}", any::<String>()).prop_map(|(tab, keys)| ToolCall::Keys { tab, keys }),
+        ("[0-9]{1,20}", any::<bool>())
+            .prop_map(|(tab, labels)| ToolCall::Screenshot { tab, labels }),
+        (
+            "[0-9]{1,20}",
+            proptest::option::of(0u64..=9_007_199_254_740_991)
+        )
+            .prop_map(|(tab, since)| ToolCall::Console { tab, since }),
+        ("[0-9]{1,20}", "[asdfghjkl]{1,3}", any::<String>()).prop_map(|(tab, label, value)| {
+            ToolCall::Fill {
+                tab,
+                fields: vec![FillField {
+                    label,
+                    value: FillValue::Text(value),
+                }],
+                submit: None,
+            }
+        }),
     ]
 }
 
@@ -206,6 +245,23 @@ proptest! {
                     let (command, args) = call.tool.command();
                     prop_assert!(command.starts_with("agent-"));
                     prop_assert!(matches!(args, Value::Object(_)));
+                    // mcp-drive D15 (security.md M20): keys within their limits, or a tool error.
+                    if let ToolCall::Keys { keys, tab } = &call.tool {
+                        let n = keys.chars().count();
+                        prop_assert!((1..=vimma_ctl::mcp::MAX_KEYS).contains(&n));
+                        prop_assert!(!keys.chars().any(|c| c.is_control() && c != '\t'));
+                        prop_assert!(!tab.is_empty() && tab.bytes().all(|b| b.is_ascii_digit()));
+                    }
+                    // mcp-forms F14 (security.md M27): a fill's fields within their limits.
+                    if let ToolCall::Fill { fields, .. } = &call.tool {
+                        prop_assert!((1..=32).contains(&fields.len()));
+                        for f in fields {
+                            if let FillValue::Text(v) = &f.value {
+                                prop_assert!(v.chars().count() <= 1024);
+                                prop_assert!(!v.chars().any(|c| c.is_control() && c != '\n'));
+                            }
+                        }
+                    }
                     if let ToolCall::Open { url, .. } = &call.tool {
                         prop_assert!(url.encode_utf16().count() <= vimma_ctl::mcp::MAX_URL);
                         let lower = url.to_ascii_lowercase();

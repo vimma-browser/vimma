@@ -12,9 +12,12 @@
 // `◇ agent 1?`, `ctrl+b shift+a`) watches the gate through `addListener` and answers through
 // `answer`. While MCP is on, a new full-control connection asks here too (`askFull`, decision
 // 29 C), as a question of its own that no grant can cover.
+//
+// Every agent request that is answered, runs under a grant or is denied goes into `:mcp log`
+// (docs/specs/mcp-drive.md D14), the last 100, in memory only like the grants.
 
-import { AgentQueue, grantLength } from "../core/agent.mjs";
-import { FULL_CONTROL, PAGE_CLIENT } from "../core/agent-prompt.mjs";
+import { AgentLog, AgentQueue, grantLength } from "../core/agent.mjs";
+import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL } from "../core/agent-prompt.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 
 /** @import { Answer, ConnId } from "../core/agent.mjs" */
@@ -64,6 +67,42 @@ const FULL_CONN = "full";
  * agent workspace, or one whose agent is gone. Never granted; `x` is a plain no.
  */
 const PAGE_CONN = "page";
+/** `:mcp log`: the agents' calls and what came of them. */
+const log = new AgentLog();
+
+/**
+ * One call into the log: who, what it touched as its question showed it, and the outcome.
+ * Full control's questions are not an agent's calls (it has `:control` and its own notices).
+ * @param {ConnId} conn @param {string} tool @param {any} what
+ * @param {import("../core/agent.mjs").LogOutcome} outcome
+ * @param {string} [why]  what stopped a call that ran (`stopped`)
+ */
+function record(conn, tool, what, outcome, why) {
+  if (conn === FULL_CONN) return;
+  const w = what ?? {};
+  const detail =
+    typeof w.detail === "string"
+      ? w.detail
+      : typeof w.keys === "string"
+        ? w.keys
+        : typeof w.url === "string"
+          ? w.url
+          : typeof w.name === "string"
+            ? w.name
+            : Number.isInteger(w.count)
+              ? `${w.count} tabs`
+              : "";
+  log.add({
+    at: Date.now(),
+    client: labels.get(conn)?.client ?? "",
+    tool,
+    title: typeof w.title === "string" ? w.title : "",
+    detail,
+    outcome,
+    ...(why ? { why } : {}),
+  });
+}
+
 /** Connections that are not an agent's: no grant, and not listed. */
 /** @type {Set<ConnId>} */
 const NOT_AGENTS = new Set([FULL_CONN, PAGE_CONN]);
@@ -77,6 +116,7 @@ function cancel(id) {
   if (!p || !queue.cancel(id)) return;
   pending.delete(id);
   lazy.clearTimeout(p.timer);
+  record(p.conn, p.tool, p.what, "cancelled");
   p.resolve({ allow: false, reason: "cancelled" });
   changed();
 }
@@ -117,6 +157,12 @@ function settle(resolved, grant) {
     if (!p) continue;
     pending.delete(r.id);
     lazy.clearTimeout(p.timer);
+    record(
+      p.conn,
+      p.tool,
+      p.what,
+      r.allow ? "yes" : /** @type {any} */ (r.reason === "muted" ? "muted" : r.reason),
+    );
     if (r.allow) ranAt = Date.now();
     p.resolve(
       r.allow
@@ -149,6 +195,7 @@ export const AgentGate = {
       if (!p) continue;
       pending.delete(id);
       lazy.clearTimeout(p.timer);
+      record(p.conn, p.tool, p.what, "cancelled");
       p.resolve({ allow: false, reason: "cancelled" });
     }
     if (had) changed();
@@ -172,11 +219,13 @@ export const AgentGate = {
     const now = Date.now();
     const admission = queue.ask(conn, tool, now, { always });
     if (admission.kind === "run") {
+      record(conn, tool, what, "grant");
       ranAt = now;
       changed({ kind: "ran", conn, tool, what, label, until: admission.grant.until });
       return Promise.resolve({ allow: true, grant: { until: admission.grant.until } });
     }
     if (admission.kind === "deny") {
+      record(conn, tool, what, admission.reason);
       return Promise.resolve({ allow: false, reason: admission.reason });
     }
     const { id } = admission;
@@ -266,9 +315,13 @@ export const AgentGate = {
     let length = null;
     /** @type {Answer} */
     let final = /** @type {Answer} */ (answer);
-    // Full control and a page's download are one yes or no: no grant covers them, and `x` is a
-    // plain no.
-    if (question?.tool === FULL_CONTROL || question?.conn === PAGE_CONN) {
+    // Full control, a page's download and a show (mcp-drive D4) are one yes or no: no grant
+    // covers them, and `x` is a plain no.
+    if (
+      question?.tool === FULL_CONTROL ||
+      question?.tool === SHOW_TOOL ||
+      question?.conn === PAGE_CONN
+    ) {
       if (answer.kind === "grant") return null;
       if (answer.kind === "mute") final = { kind: "deny" };
     }
@@ -311,6 +364,39 @@ export const AgentGate = {
       const { id, conn, tool, what, label, asked, deadline } = p;
       return [{ id, conn, tool, what, label, asked, deadline }];
     });
+  },
+
+  /**
+   * A notice for a step of a call that runs under a grant (mcp-drive D14: a follow names the
+   * host it loaded), shown like the call's own.
+   * @param {ConnId} conn @param {string} tool @param {object} what @param {number} until
+   */
+  announce(conn, tool, what, until) {
+    const label = labels.get(conn);
+    // A grant revoked while the call ran shows no "(grant, …left)".
+    const grant = queue.grants(Date.now()).find((g) => g.conn === conn && g.tool === tool);
+    if (!label || !grant) return;
+    changed({ kind: "ran", conn, tool, what, label, until: Math.min(until, grant.until) });
+  },
+
+  /** `:mcp log`'s rows, newest first (mcp-drive D14). */
+  get log() {
+    return log.entries();
+  },
+
+  /**
+   * A call's outcome decided outside the gate, for `:mcp log` (mcp-drive D14, M23): denied
+   * before or after the question (`busy`, `in-use`, `changed`), or stopped while it ran.
+   * @param {ConnId} conn @param {string} tool @param {object} what
+   * @param {import("../core/agent.mjs").LogOutcome} outcome @param {string} [why]
+   */
+  note(conn, tool, what, outcome, why) {
+    record(conn, tool, what, outcome, why);
+  },
+
+  /** `:mcp off`: the log goes with the agents. */
+  clearLog() {
+    log.clear();
   },
 
   /** When an allowed request last ran, or null. */

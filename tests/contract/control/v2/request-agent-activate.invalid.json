@@ -1,0 +1,13 @@
+{
+  "description": "A click names a label of hint characters, never a CSS selector",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 12,
+    "command": "agent-activate",
+    "args": {
+      "tab": "12",
+      "label": "#submit"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "description": "A fill names fields by label, never by a CSS selector",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 13,
+    "command": "agent-fill",
+    "args": {
+      "tab": "12",
+      "fields": [{ "selector": "#password", "value": "hunter2" }]
+    }
+  }
+}

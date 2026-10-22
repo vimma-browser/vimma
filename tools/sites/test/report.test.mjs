@@ -135,3 +135,18 @@ describe("renderHtml", () => {
     expect(html).toMatch(/title="hints: no label &lt;b&gt;"/);
   });
 });
+
+describe("retried sites (decision 11)", () => {
+  it("lists each retried site with both outcomes", () => {
+    const r = run();
+    r.sites[0].retry = { status: "blocked", block: { kind: "bot-check", reason: "Cloudflare" } };
+    const md = renderMarkdown(r);
+    expect(md).toContain("### Retried");
+    expect(md).toMatch(/- Wikipedia: blocked \(bot check\), then ok on the retry/);
+    expect(renderHtml(r)).toContain("retried: blocked (bot check) at first");
+  });
+
+  it("has no section when nothing was retried", () => {
+    expect(renderMarkdown(run())).not.toContain("### Retried");
+  });
+});

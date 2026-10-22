@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1 and sub-PR 4's release manifest implemented; sub-PRs 2, 3 and 5, and sub-PR 4's MAR and nightly parts open) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question, `:restart` and `updates: off` notice, and sub-PR 4's release manifest implemented; Firefox's updater for tarball installs, that is sub-PRs 2 and 5, the rest of sub-PR 3 and sub-PR 4's MAR and nightly parts, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -15,7 +15,8 @@ the update manifest before Firefox parses it (m6a-updater)") · ADR: ADR-016 (ne
 update channel"; the number is free on `main` and reserved for this spec), ADR-003 (three register
 lines), ADR-010 (the artifact-build gap, unchanged)
 
-Issue: [#217](https://github.com/vimma-browser/vimma/issues/217)
+Issues: [#217](https://github.com/vimma-browser/vimma/issues/217) (delivered parts),
+[#456](https://github.com/vimma-browser/vimma/issues/456) (Firefox's updater for tarball installs)
 
 Prerequisites: m0-updater (whose `--disable-updater` this reverses for release and nightly
 builds), m6-packaging (the artifacts), build-supply-chain delivery 4
@@ -93,6 +94,7 @@ https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && make
    its urgency, the manifest serial and the key that signed it.
 10. **Off switch.** `config.toml` `[updates] check = false` (or the pref `vimma.update.enabled` =
     `false`) stops every update request; the status bar shows `updates: off` once per session.
+    (Since changed: for a few seconds after startup, then it hides; decision 38.)
 11. **Refusals.** An unsigned or wrongly signed manifest, a manifest for another channel or
     target, an older manifest than one already accepted, and an offer of an older or equal build
     are refused; no update is downloaded. The reason is shown in about:vimma.
@@ -414,6 +416,29 @@ run, so updates are not automatic) and MAR-patching an extracted copy (the AppIm
 being one file). The file keeps its old name (`vimma-0.1.0-x86_64.AppImage` now holding 0.3.1);
 the guide says so, and about:vimma shows the real version.
 
+(Since changed: the replacement is built in `packages/vimma-core/src/appimage-update.mjs` and
+`VimmaUpdates.sys.mjs`, with these rules. It runs only when the GRE directory's
+`is-packaged-app` says `vimma-package=appimage` and lies inside `$APPDIR`, because `$APPIMAGE` is
+inherited by every program an AppImage starts (decision 34). The download URL must be one of the
+project's release downloads (`https://github.com/vimma-browser/vimma/releases/download/…`, path
+segments only), because a leaked manifest key would otherwise be enough to point every AppImage at
+a file of its own; with that rule it also needs a release asset in the project. Only an offer
+verified by a check in the running process is installed, because the saved result it may be
+restored from is a pref anyone can edit. The part file gets a name no other file has
+(`.vimma-update-<buildID>.AppImage.part`, numbered when taken), created by one process alone, so
+two Vimma processes running the same AppImage never write or remove each other's download; part
+files older than a day are leftovers of a killed run and are removed. A symbolic link at
+`$APPIMAGE` is refused, because the rename would replace the link and not the file it names. Every write is synced, and the size and SHA-512 are
+checked on the file as written, before the rename. A target that already has the offered size
+and SHA-512 counts as replaced without a download. An urgent replaced update shows
+`⇡ 0.3.1 security: restart` until `:restart` exists (since changed: `⇡ 0.3.1 security: :restart`,
+§5), the one-time message says
+`Vimma 0.3.1 is installed · restart Vimma to use it` (or `fixes security issues · …`) once the
+file is replaced and not before, and the `Show the update command?` question of spec
+update-notices is not asked, because an AppImage that replaced its file has no command left to
+run. A failed replacement keeps the offer and its manual steps and is tried again at the next
+check.)
+
 ### 4. Client: verification, downgrade and replay
 
 `UpdateVerifier` (pure logic in `packages/vimma-core/src/updates.mjs`, WebCrypto passed in) is
@@ -475,7 +500,7 @@ updater state, offered and running versions, urgency, last check, now); the host
 | AppImage replaced                                            | `⇡ 0.3.1 on restart`                                    | as staged                               | as staged                                                                                                                 |
 | Manifest refused 3 times in a row (decision 27)              | `updates: check failed`                                 | `--vimma-text-yellow`                   | reason in about:vimma                                                                                                     |
 | Stale feed (rule 5)                                          | `updates: no news for N days`                           | `--vimma-text-yellow`                   | once a day                                                                                                                |
-| Checks off                                                   | `updates: off`                                          | `--vimma-fg-dim`                        | once per session                                                                                                          |
+| Checks off                                                   | `updates: off`                                          | `--vimma-fg-dim`                        | once per session, for 5 seconds (decision 38)                                                                             |
 
 (Since changed: an offer is also announced once per version by a short message, and an urgent
 offer asks `Show the update command? (y/N)` once per session; spec
@@ -483,10 +508,14 @@ offer asks `Show the update command? (y/N)` once per session; spec
 
 - The urgent question uses the command line's `y/N` form, as the add-on picker's removal
   question does (`packages/vimma-core/src/addons.mjs:100`). `y` runs `app.restart`.
+  (Since changed: it is the question line of spec [update-notices](update-notices.md), with its
+  guards and arming delay, because it opens without a key from the user; decision 35.)
 - `:restart` (action `app.restart`) is Firefox's restart path: `quit-application-requested`
   (add-ons and unsaved-form prompts can cancel), then `eAttemptQuit | eRestart`; the session comes
   back through SessionStore as on any restart (workspaces, panes, scroll). The private workspace
   is a private window, whose tabs a restart closes, hence the extra sentence in the question.
+  (Since changed: the AppImage quits and starts its own file again instead, decision 36; `:restart`
+  asks first while private tabs are open, decision 37.)
 - Firefox's own badge and doorhanger stay as Firefox has them (`badgeWaitTime` 0,
   `promptWaitTime` 24 h); they are the mouse path to the same restart.
 - **Interval**: `app.update.interval` becomes 43200 (12 h, Mozilla's release branding value)
@@ -697,7 +726,8 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     install up to a day later); shorter than 12 hours (no Firefox release cadence needs it).
 14. **`[updates] check = false` also hides the stale-feed warning**, because with checks off
     there is no feed to be stale, and the warning would be noise after an explicit opt-out; the
-    once-per-session `updates: off` stays, so the state is never invisible.
+    once-per-session `updates: off` stays, so the state is never invisible. (Since changed: it
+    shows for a few seconds and hides; decision 38.)
 15. **Checks are on by default**, as in Firefox, because an install that never hears of a security
     release stays vulnerable, and a check sends no identifier (Security and privacy). The guide's
     "Updates" section names the off switch. Rejected: off by default, because the people who never
@@ -838,12 +868,76 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     starts, so a tarball Vimma launched from another AppImage sees it as well. The marker lets
     detection require the AppDir's own `vimma-package=appimage` before it offers to replace
     `$APPIMAGE`; today `installTypeFrom` still accepts `$APPIMAGE` without a marker, and making
-    the marker required is a separate change. The cost is that Firefox, which reads the marker
+    the marker required is a separate change (since changed: replacing the file requires the
+    marker and a GRE directory inside `$APPDIR`; the install type shown and the manual steps
+    still accept `$APPIMAGE` alone). The cost is that Firefox, which reads the marker
     as "packaged app" (`isPackagedApp`), stops showing its warning that the content sandbox runs
     without unprivileged user namespaces (`security/sandbox/common/SandboxUtils.sys.mjs:25`,
     Firefox 158.0), as it already does for the `.deb` and the PKGBUILD; `docs/limits.md` states
     this. Rejected: an AppImage without the marker, detected by `$APPIMAGE` only, because nothing
     would then tell this build's AppImage from a tarball started by another AppImage.
+35. **The urgent restart question is the question line of update-notices, not a `y/N` that
+    takes focus**, because it opens at a moment the user did not choose, as the security question
+    of that spec does: it never takes focus, opens only after 1,500 ms without a key, out of
+    fields and overlays, and counts keys only after `security.dialog_enable_delay`, so a page
+    cannot have the user restart Vimma by asking for `y` as the line appears. It is asked only
+    once the update is in place (today, an AppImage that replaced its file), because before that
+    a restart applies nothing; an ordinary update asks nothing, because the dim segment says it
+    applies at the next start. An answer lasts for the session and for 24 hours in a session that
+    runs on (decision 21); a clock set back since the answer asks again, so a wrong clock never
+    silences it. Rejected: also asking before the file is in place, because `y` would restart
+    into the old version.
+36. **An AppImage restarts by quitting and starting `$APPIMAGE` again, not through Firefox's
+    restart**, because Firefox's restart starts the same binary path
+    (`toolkit/xre/nsAppRunner.cpp:2675`, `LaunchChild`), which in an AppImage lies inside the
+    image mounted at this start: it would run the old version even after the file was replaced,
+    and keep the old mount alive (checked with the 0.1.6 and 0.1.5 AppImages). Vimma asks
+    `quit-application-requested` with `restart` as Firefox's restart does, quits with
+    `eAttemptQuit`, and in `quit-application`, once no window can refuse, starts `/bin/sh` with a
+    fixed script that waits for this process to exit (up to 120 s, longer than Firefox's
+    shutdown watchdog, `toolkit.asyncshutdown.crash_timeout` 60 s plus 10 s) and then runs
+    `$APPIMAGE` with no arguments; the process id and the path are positional parameters, never
+    script text. The profile goes in `XRE_PROFILE_PATH` and `XRE_PROFILE_LOCAL_PATH`, as
+    `AppShutdown::MaybeDoRestart` passes it, and `browser.sessionstore.resume_session_once` is set
+    before the quit so the session comes back, as SessionStore sets it for a restart; a quit that
+    a window refused restores that pref, drops the observer and starts nothing. Only the AppImage this Vimma is (the marker rule of
+    decision 34) is started, never one whose `$APPIMAGE` it inherited, and a missing or
+    non-executable file falls back to Firefox's restart. It is the second process chrome code may
+    start (`docs/security.md` C2, UP11). Rejected: starting the AppImage at once, because the new
+    instance would meet the old one's profile lock and remote server; teaching the AppImage's
+    `AppRun` to wait, because the replaced file is the new release, so the waiting would depend on
+    what the next release's `AppRun` does. The costs: the restart is a quit, so with history
+    cleared on close (`privacy.sanitize.sanitizeOnShutdown`) SessionStore's purge observer stays
+    and the session is cleared (`SessionStore.sys.mjs` `#onQuitApplication` removes it only for a
+    restart), so no tab comes back, which the questions say first (decision 37); and the new
+    process gets none of the old one's command-line arguments, as a launch from the desktop.
+37. **`:restart` asks `Restart Vimma? N private tabs will close. (y/N)` while the private
+    workspace has tabs, and `Restart Vimma? Tabs will not come back. (y/N)` when session restore
+    will bring none back** (an AppImage with history cleared on close, or permanent private
+    browsing), as `:private close` asks before it closes them, because the command is otherwise
+    one keystroke from losing them. The urgent question says the same in its text, and `y` there
+    restarts without a second question unless a loss appeared while the line was open, which
+    `y` then asks about first.
+38. **With checks off, `updates: off` shows for 5 seconds, once per session, then hides**: the
+    clock starts the first time a status bar draws while checks are off on an install that checks
+    (not a source build), and turning checks on and off again later in the session does not start
+    it again (core `offNotice`). The reason: the notice exists so that an install that never
+    checks says so (decision 14), and seeing it once at startup is enough for that; kept on the
+    bar all session, the segment takes room on the right side for a state set on purpose.
+    Rejected: a permanent segment
+    (noise after an explicit opt-out), and no segment at all (an install that stopped checking by
+    an old config line would then never say so). about:vimma's Updates section shows the state
+    at any time.
+39. **Until the offline ceremony makes the cold secondary (decision 17), the updater's secondary
+    certificate slot holds the primary certificate a second time**, and the slot gets the cold
+    secondary's certificate in a later release. The updater is built with a certificate in each
+    slot (§6), and the secondary does not exist yet. The primary twice makes the updater trust
+    exactly the one key the manifest check pins (`update-keys.mjs`, runbook step 5), so the two
+    verifiers agree. Rejected: a throwaway key generated for the slot, because it is either
+    held by someone, which adds a party who can sign a Vimma update, or discarded, which adds
+    nothing; and waiting for the ceremony, because it would hold back every tarball update
+    without making a lost primary any more recoverable than it is with the AppImage and the
+    manifest today.
 
 ### 9. Not in this spec
 

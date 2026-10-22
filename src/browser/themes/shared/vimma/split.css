@@ -21,6 +21,8 @@
   /* Space between neighbouring panes, on interior edges only, half from each side:
    * --vimma-pane-i{l,t,r,b} are 1 on an interior edge, 0 on the area's border. */
   --vimma-pane-gap: 2px;
+  /* The focused pane's border (docs/specs/pane-focus-highlight.md, decision 3). */
+  --vimma-pane-focus-width: 3px;
   position: relative;
   /* What shows through the gap: the pane border, in the theme's colours (m5-omarchy-theme). */
   background-color: var(--vimma-muted, #414868);
@@ -55,8 +57,7 @@
   /* A page fills its pane's rect. Under Nova, Firefox 158's content-area.css gives every panel's
    * .browserContainer a 1px border, which shrinks each page by 2px inside core's rect, and trims
    * the focused panel's outline to 1px. Drawn as on Firefox 157 instead: no border; the other
-   * panes keep an inset 1px separator outline, which leaves the content box alone; the focused
-   * pane gets the whole --focus-outline (2px, the theme's focus colour, focus.css). */
+   * panes keep an inset 1px separator outline, which leaves the content box alone. */
   & > .split-view-panel > .browserContainer {
     border: none !important;
   }
@@ -66,8 +67,24 @@
     outline-offset: calc(-1 * var(--border-width)) !important;
   }
 
+  /* The focused pane's border (docs/specs/pane-focus-highlight.md) is a frame over its page, not
+   * an outline: an inset outline on .browserContainer is painted under the remote page and never
+   * shows, and an outer one has no room in the 2px gap. The frame is absolutely positioned in the
+   * container (position: relative, content-area.css), so the page never reflows when focus
+   * moves. Its colour is --focus-outline-color, the theme's --vimma-focus except under
+   * prefers-contrast and forced colours, where Firefox's own stays (focus.css). None while a
+   * pane is zoomed: one page shows, and the zoomed panel's siblings are the only mark of zoom. */
   & > .split-view-panel.deck-selected > .browserContainer {
-    outline: var(--focus-outline) !important;
+    outline: none !important;
+  }
+
+  &:not(:has(> [vimma-zoomed-away])) > .split-view-panel.deck-selected > .browserContainer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border: var(--vimma-pane-focus-width) solid var(--focus-outline-color);
+    border-radius: inherit;
+    pointer-events: none;
   }
 
   & > .split-view-splitter,

@@ -26,8 +26,9 @@ pub struct Settings {
     /// An `agent-ping` after this long without a request: Vimma closes an agent connection
     /// after 60 s without a line, and its grants with it.
     pub ping_every: Duration,
-    /// How long a call may wait for Vimma's answer: the longest `[mcp] ask_timeout` (300 s)
-    /// plus 10 s (decision 4). Vimma itself denies at its own ask timeout first.
+    /// How long a call may wait for Vimma's answer: the longest `[mcp] ask_timeout` (300 s), a
+    /// lazy tab's load (20 s) and the longest `vimma_keys` run (60 s, mcp-drive D15), plus 10 s
+    /// (decision 4). Vimma itself denies at its own ask timeout first.
     pub answer_wait: Duration,
     /// Connecting and the handshake, and each write to the socket.
     pub connect_timeout: Duration,
@@ -39,7 +40,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             ping_every: Duration::from_secs(30),
-            answer_wait: Duration::from_secs(310),
+            answer_wait: Duration::from_secs(390),
             connect_timeout: Duration::from_secs(5),
             max_pending: 16,
         }
@@ -263,7 +264,7 @@ impl Server<'_> {
         let now = Instant::now();
         let deadline = now
             .checked_add(self.settings.answer_wait)
-            .unwrap_or(now + Duration::from_secs(310));
+            .unwrap_or(now + Duration::from_secs(390));
         self.pending.insert(
             id,
             Pending {

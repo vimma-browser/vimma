@@ -50,8 +50,18 @@ import { graphemes } from "./textwidth.mjs";
  * @property {boolean} active        the window's active workspace
  * @property {true} [agent]          the agent workspace (docs/specs/vimma-mcp.md, decision 9)
  */
+/**
+ * A row of `:mcp log` (docs/specs/mcp-drive.md D14): read only, Enter and Esc close.
+ * @typedef {object} LogItem
+ * @property {"log"} kind
+ * @property {string} logId
+ * @property {string} display  what was called (core agent-prompt.mjs logCells)
+ * @property {string} time
+ * @property {string} outcome
+ * @property {boolean} active  never
+ */
 /** @import { AddonItem } from "./addons.mjs" */
-/** @typedef {PickerItem | WorkspaceItem | AddonItem} AnyItem */
+/** @typedef {PickerItem | WorkspaceItem | AddonItem | LogItem} AnyItem */
 /** @typedef {"display" | "title" | "url" | "workspace" | "markers"} Field */
 /** @typedef {[start: number, end: number]} Range */
 /** @typedef {{ tier: number, score: number, ranges: Range[] }} FieldMatch */
@@ -355,6 +365,7 @@ function mergeRanges(a, b) {
  */
 export function itemId(item) {
   if (!("kind" in item)) return item.tabId;
+  if (item.kind === "log") return item.logId;
   return item.kind === "addon" ? item.addonId : item.workspaceId;
 }
 

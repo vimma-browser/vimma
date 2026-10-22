@@ -3,6 +3,8 @@ import {
   CHECKS,
   completeChecks,
   exitCode,
+  mergeRetry,
+  retryTargets,
   siteStatus,
   statusbarCheck,
   summarize,
@@ -127,5 +129,50 @@ describe("exitCode", () => {
 
   it("1 when the harness itself failed", () => {
     expect(exitCode({ sites: [], harnessError: "no build" })).toBe(1);
+  });
+});
+
+// Decision 11: a blocked site is loaded once more at the end of the run.
+describe("retry of blocked sites", () => {
+  /** @param {string} id @param {any} status @param {any} [extra] @returns {any} */
+  const site = (id, status, extra = {}) => ({
+    id,
+    name: id,
+    url: `https://${id}.example/`,
+    status,
+    checks: [c("load", "pass")],
+    latency: {},
+    screenshots: [{ label: "load", file: `${id}-1-load.png` }],
+    durationMs: 10_000,
+    ...extra,
+  });
+
+  it("retries the sites a bot check blocked, not consent walls, failures or errors", () => {
+    const sites = [
+      site("a", "ok"),
+      site("b", "blocked", { block: { kind: "bot-check", reason: "Cloudflare" } }),
+      site("c", "consent", { block: { kind: "consent", reason: "Google" } }),
+      site("d", "fail"),
+      site("e", "error"),
+      site("f", "blocked", { block: { kind: "bot-check", reason: "reCAPTCHA" } }),
+    ];
+    expect(retryTargets(sites).map((s) => s.id)).toEqual(["b", "f"]);
+  });
+
+  it("the retry's result replaces the first and keeps its status, block and screenshots", () => {
+    const first = site("b", "blocked", { block: { kind: "bot-check", reason: "Cloudflare" } });
+    const second = site("b", "ok", {
+      screenshots: [{ label: "load", file: "b-retry-1-load.png" }],
+      durationMs: 20_000,
+    });
+    expect(mergeRetry(first, second)).toEqual({
+      ...second,
+      retry: { status: "blocked", block: { kind: "bot-check", reason: "Cloudflare" } },
+      screenshots: [
+        { label: "load", file: "b-1-load.png" },
+        { label: "load", file: "b-retry-1-load.png" },
+      ],
+      durationMs: 30_000,
+    });
   });
 });

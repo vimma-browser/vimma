@@ -15,10 +15,14 @@ import {
   deniedNotice,
   grantNotice,
   mayOpenByItself,
+  noGrant,
   parseControlCommand,
   promptKey,
   questionLine,
+  logRow,
+  fillFits,
   ranNotice,
+  shownNotice,
 } from "../src/agent-prompt.mjs";
 import { textWidth } from "../src/textwidth.mjs";
 
@@ -40,6 +44,17 @@ const open = {
   what: { url: "https://docs.rs/serde/latest/serde/", host: "docs.rs" },
 };
 const full = { tool: FULL_CONTROL, label: { client: "vimma-ctl" }, what: {} };
+const keys = {
+  tool: "vimma_keys",
+  label: { client: "claude-code" },
+  what: {
+    tab: "7",
+    index: 2,
+    title: "Pricing · Example",
+    url: "https://example.com/pricing",
+    keys: '3j /"pricing"⏎ gg',
+  },
+};
 /** @param {{ parts: { text: string }[] }} line */
 const text = (line) => line.parts.map((p) => p.text).join("");
 
@@ -89,6 +104,18 @@ describe("the question's text (decision 13)", () => {
     );
   });
 
+  // mcp-drive D14: the keys exactly as they will run, after parsing.
+  test("vimma_keys shows the tab and the keys as they will run", () => {
+    const line = questionLine(keys, { grantMinutes: 15 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys: ' +
+        '3j /"pricing"⏎ gg',
+    );
+    expect(line.hint).toBe("y once · 15a for 15 min · n deny · x mute");
+    const shown = line.parts.find((p) => p.text === '3j /"pricing"⏎ gg');
+    expect(shown?.isolate).toBe("ltr");
+  });
+
   test("the tab list and a close", () => {
     const tabs = { tool: "vimma_tabs", label, what: { count: 4 } };
     expect(text(questionLine(tabs, { grantMinutes: 10 }))).toBe(
@@ -103,14 +130,32 @@ describe("the question's text (decision 13)", () => {
 
   test("full control asks y/N, with no grant (decision 29)", () => {
     const line = questionLine(full, { grantMinutes: 10 });
-    expect(text(line)).toBe("◇ a client with no code wants full control — y/N");
+    expect(text(line)).toBe(
+      '◇ a client with no code wants full control (every workspace, not only "agent") — y/N',
+    );
     expect(line.hint).toBe("y allow · n deny");
+  });
+
+  // mcp-drive D23 (security.md M22): the question is asked only while MCP is on, so it always
+  // says that full control reaches past the agent workspace, by the workspace's own name.
+  test("full control names the agent workspace it reaches beyond", () => {
+    const line = questionLine(
+      { ...full, what: { code: "7F3K" } },
+      { grantMinutes: 10, agentWorkspace: "bots\u202e" },
+    );
+    expect(text(line)).toBe(
+      '◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "bots") — y/N',
+    );
+    expect(line.parts.find((p) => p.text === "bots")?.isolate).toBe("auto");
+    expect(line.label).toBe(text(line));
   });
 
   // The code vimma-ctl printed tells a racing client's question apart.
   test("full control shows the client's code, in bold", () => {
     const line = questionLine({ ...full, what: { code: "7F3K" } }, { grantMinutes: 10 });
-    expect(text(line)).toBe("◇ vimma-ctl with code 7F3K wants full control — y/N");
+    expect(text(line)).toBe(
+      '◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N',
+    );
     expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["7F3K"]);
     expect(line.hint).toBe("y if the code is the one vimma-ctl printed · n deny");
   });
@@ -223,8 +268,218 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(ranNotice({ ...read, tool: "vimma_tabs", what: { count: 2 } }, MIN, 0)).toBe(
       "example-agent listed the agent tabs (grant, 1m left)",
     );
+    expect(ranNotice(keys, 12 * MIN, 0)).toBe(
+      'claude-code pressed 3j /"pricing"⏎ gg in "Pricing · Example" (grant, 12m left)',
+    );
+    // mcp-drive D14: a follow under a grant names the host it loaded.
+    const followed = { ...keys, what: { ...keys.what, keys: "fsd", followed: "docs.example.com" } };
+    expect(ranNotice(followed, 12 * MIN, 0)).toBe(
+      'claude-code followed a link to docs.example.com in "Pricing · Example" (grant, 12m left)',
+    );
     expect(ranNotice({ ...read, tool: "vimma_close_tab" }, MIN, 0)).toBe(
       'example-agent closed "Pull requests · vimma-browser/vimma" (grant, 1m left)',
+    );
+  });
+
+  // docs/specs/mcp-forms.md F28: vimma_elements asks with the tab, and its notice names it.
+  test("vimma_elements: the tab in the question, the page in the notice", () => {
+    const elements = { ...keys, tool: "vimma_elements", what: { ...keys.what, keys: undefined } };
+    expect(text(questionLine(elements, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_elements: 2 "Pricing · Example" example.com/pricing',
+    );
+    expect(ranNotice(elements, 12 * MIN, 0)).toBe(
+      'claude-code listed the buttons and fields of "Pricing · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(elements)).toBe(
+      "claude-code asks to use Vimma's agent workspace (list a page's buttons and fields)",
+    );
+  });
+
+  // docs/specs/mcp-forms.md F22, F28: vimma_console asks with the tab, and its notice names it.
+  test("vimma_console: the tab in the question, the page in the notice", () => {
+    const read = { ...keys, tool: "vimma_console", what: { ...keys.what, keys: undefined } };
+    expect(text(questionLine(read, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_console: 2 "Pricing · Example" example.com/pricing',
+    );
+    expect(ranNotice(read, 12 * MIN, 0)).toBe(
+      'claude-code read the errors of "Pricing · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(read)).toBe(
+      "claude-code asks to use Vimma's agent workspace (read a page's errors and failed requests)",
+    );
+  });
+
+  // docs/specs/mcp-forms.md F18, F28: vimma_screenshot asks with the tab, and its notice names it.
+  test("vimma_screenshot: the tab in the question, the page in the notice", () => {
+    const shot = { ...keys, tool: "vimma_screenshot", what: { ...keys.what, keys: undefined } };
+    expect(text(questionLine(shot, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_screenshot: 2 "Pricing · Example" example.com/pricing',
+    );
+    expect(ranNotice(shot, 12 * MIN, 0)).toBe(
+      'claude-code took a screenshot of "Pricing · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(shot)).toBe(
+      "claude-code asks to use Vimma's agent workspace (take a screenshot of a page)",
+    );
+  });
+
+  // docs/specs/mcp-forms.md F28: vimma_activate asks with the tab and the element; a submit
+  // asks with the form's method and destination, offers no grant (F15) and names its fields.
+  test("vimma_activate: the element in the question, what it clicked in the notice", () => {
+    const activate = {
+      tool: "vimma_activate",
+      label: { client: "claude-code" },
+      what: {
+        tab: "7",
+        index: 2,
+        title: "List · Example",
+        url: "https://example.com/list",
+        label: "sg",
+        kind: "button",
+        text: "Add to list",
+      },
+    };
+    expect(text(questionLine(activate, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_activate: 2 "List · Example" example.com/list  sg button "Add to list"',
+    );
+    expect(noGrant(activate)).toBe(false);
+    expect(ranNotice(activate, 12 * MIN, 0)).toBe(
+      'claude-code clicked button "Add to list" in "List · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(activate)).toBe(
+      "claude-code asks to use Vimma's agent workspace (click on a page)",
+    );
+    const long = { ...activate, what: { ...activate.what, text: "x".repeat(100) } };
+    expect(text(questionLine(long, { grantMinutes: 10 }))).toMatch(/ sg button "x{59}…"$/);
+  });
+
+  test("a submit: method and host in bold, the field count, y or n only", () => {
+    const submit = {
+      tool: "vimma_activate",
+      label: { client: "claude-code" },
+      what: {
+        tab: "7",
+        index: 2,
+        title: "Sign up · Example",
+        url: "https://example.com/signup",
+        label: "sg",
+        kind: "button",
+        text: "Sign up",
+        submit: {
+          method: "post",
+          action: "https://example.com/api/signup",
+          host: "example.com",
+          fields: 3,
+        },
+      },
+    };
+    const line = questionLine(submit, { grantMinutes: 10 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)',
+    );
+    expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["POST", "example.com"]);
+    expect(line.hint).toBe("y submit once · n deny");
+    expect(noGrant(submit)).toBe(true);
+    expect(promptKey({ count: "" }, "a", { noGrant: noGrant(submit) })).toEqual({ kind: "ignore" });
+    expect(agentAlertText(submit)).toBe(
+      "claude-code asks to use Vimma's agent workspace (submit a form)",
+    );
+    const one = {
+      ...submit,
+      what: { ...submit.what, submit: { ...submit.what.submit, fields: 1 } },
+    };
+    expect(text(questionLine(one, { grantMinutes: 10 }))).toMatch(/\(1 field\)$/);
+  });
+
+  // docs/specs/mcp-forms.md F14, F28: vimma_fill asks with the tab and each field's label, name
+  // and value, cut with … to fit; a fill that submits asks with the form's destination too and
+  // offers no grant (F15).
+  test("vimma_fill: each field and value in the question, how many in the notice", () => {
+    const fill = {
+      tool: "vimma_fill",
+      label: { client: "claude-code" },
+      what: {
+        tab: "7",
+        index: 2,
+        title: "Sign up · Example",
+        url: "https://example.com/signup",
+        fields: [{ label: "sd", name: "Email", value: "ada@example.com" }],
+      },
+    };
+    const line = questionLine(fill, { grantMinutes: 10 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants vimma_fill: 2 "Sign up · Example" example.com/signup  sd Email = "ada@example.com"',
+    );
+    // The agent's values and the page's names are their own bidi runs (security.md M4).
+    expect(line.parts.find((p) => p.text === "ada@example.com")?.isolate).toBe("auto");
+    expect(noGrant(fill)).toBe(false);
+    expect(ranNotice(fill, 12 * MIN, 0)).toBe(
+      'claude-code filled 1 field in "Sign up · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(fill)).toBe(
+      "claude-code asks to use Vimma's agent workspace (fill in a form)",
+    );
+    const three = {
+      ...fill,
+      what: {
+        ...fill.what,
+        fields: [
+          { label: "sd", name: "Email", value: "x".repeat(100) },
+          { label: "sf", name: "", value: "two\nlines" },
+          { label: "sg", name: "Remember me", value: true },
+        ],
+      },
+    };
+    expect(text(questionLine(three, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_fill: 2 "Sign up · Example" example.com/signup  3 fields: ' +
+        `sd Email = "${"x".repeat(39)}…", sf = "two lines", sg Remember me = checked`,
+    );
+    expect(ranNotice(three, 12 * MIN, 0)).toBe(
+      'claude-code filled 3 fields in "Sign up · Example" (grant, 12m left)',
+    );
+    // Thirty-two fields still fit one line: the list is cut with …, and :mcp log has it all.
+    const many = {
+      ...fill,
+      what: {
+        ...fill.what,
+        fields: Array.from({ length: 32 }, (_, i) => ({ label: "sd", name: `F${i}`, value: "v" })),
+      },
+    };
+    const cut = text(questionLine(many, { grantMinutes: 10 }));
+    expect(cut).toMatch(/ {2}32 fields: sd F0 = "v", .*, … \(\d+ more\)$/);
+    expect(fillFits(many.what)).toBe(false);
+    expect(fillFits(three.what)).toBe(false);
+    expect(fillFits(fill.what)).toBe(true);
+    expect(textWidth(cut.slice(cut.indexOf("32 fields: ")))).toBeLessThanOrEqual(185);
+  });
+
+  test("a fill that submits: the destination, then the fields, y or n only", () => {
+    const submit = {
+      tool: "vimma_fill",
+      label: { client: "claude-code" },
+      what: {
+        tab: "7",
+        index: 2,
+        title: "Sign up · Example",
+        url: "https://example.com/signup",
+        fields: [{ label: "sd", name: "Email", value: "ada@example.com" }],
+        submit: {
+          method: "post",
+          action: "https://example.com/api/signup",
+          host: "example.com",
+          fields: 3,
+        },
+      },
+    };
+    const line = questionLine(submit, { grantMinutes: 10 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)  after filling 1 field: sd Email = "ada@example.com"',
+    );
+    expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(["POST", "example.com"]);
+    expect(line.hint).toBe("y fill and submit once · n deny");
+    expect(noGrant(submit)).toBe(true);
+    expect(agentAlertText(submit)).toBe(
+      "claude-code asks to use Vimma's agent workspace (submit a form)",
     );
   });
 
@@ -244,7 +499,10 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(agentAlertText(open)).toBe(
       "example-agent asks to use Vimma's agent workspace (open a page)",
     );
-    expect(agentAlertText(full)).toBe("vimma-ctl asks for full control of Vimma");
+    expect(agentAlertText(keys)).toBe(
+      "claude-code asks to use Vimma's agent workspace (move around a page)",
+    );
+    expect(agentAlertText(full)).toBe("vimma-ctl asks for full control of Vimma (every workspace)");
     for (const q of [read, open]) expect(agentAlertText(q)).not.toMatch(/github|docs\.rs|http/);
   });
 });
@@ -290,10 +548,24 @@ describe(":control (decision 29 D)", () => {
       expect(parseControlCommand(t).kind).toBe("refuse");
     },
   );
+  // mcp-drive D22 (security.md M22): while MCP is on, an agent with a shell can use full
+  // control too, so the question says what it gives away.
+  test("while MCP is on, the question says full control reaches beyond the agent workspace", () => {
+    // The name is set apart as its own bidi run (security.md M4), as in the question line.
+    expect(controlOnQuestion(15, "agent")).toBe(
+      'Turn on full control for 15 min? It reaches every workspace and tab, not only "\u2068agent\u2069", ' +
+        "and any local AI agent with a shell can use it. y/N",
+    );
+    expect(controlOnQuestion(1, "bots\n\u202e")).toBe(
+      'Turn on full control for 1 min? It reaches every workspace and tab, not only "\u2068bots\u2069", ' +
+        "and any local AI agent with a shell can use it. y/N",
+    );
+  });
   test("the question and the status", () => {
     expect(controlOnQuestion(15)).toBe(
       "Turn on full control (vimma-ctl: keys in this window, every workspace) for 15 min? y/N",
     );
+    expect(controlOnQuestion(15, null)).toBe(controlOnQuestion(15));
     expect(controlStatus({ enabled: false, until: null, now: 0 })).toBe(
       "full control off (:control on <minutes>)",
     );
@@ -432,5 +704,72 @@ describe("a download's question (decision 31 a, d)", () => {
     expect(agentAlertText(download)).toBe(
       "example-agent asks to use Vimma's agent workspace (download a file)",
     );
+  });
+});
+
+// docs/specs/mcp-drive.md D2-D6 (security.md M19): vimma_show asks y or n for one agent tab, no
+// grant, and the notice after it says how to get back.
+describe("vimma_show's question and notice (mcp-drive D2-D6)", () => {
+  const show = { ...keys, tool: "vimma_show", what: { ...keys.what, keys: undefined } };
+  const none = { count: "" };
+
+  test("it names the tab it would show, and offers only y and n", () => {
+    const line = questionLine(show, { grantMinutes: 15 });
+    expect(text(line)).toBe(
+      '◇ claude-code wants vimma_show: 2 "Pricing · Example" example.com/pricing ' +
+        '(switches you to "agent")',
+    );
+    expect(line.hint).toBe("y show it · n deny");
+    expect(line.label).toBe(text(line));
+    const named = questionLine(show, { grantMinutes: 15, agentWorkspace: "bots" });
+    expect(text(named)).toMatch(/\(switches you to "bots"\)$/);
+    expect(named.parts.find((p) => p.text === "bots")?.isolate).toBe("auto");
+  });
+
+  test("no grant: a, counts and x do not grant or mute", () => {
+    expect(noGrant(show)).toBe(true);
+    expect(noGrant(keys)).toBe(false);
+    expect(noGrant(read)).toBe(false);
+    const p = { noGrant: noGrant(show) };
+    expect(promptKey(none, "y", p)).toEqual({ kind: "answer", answer: { kind: "once" } });
+    expect(promptKey(none, "a", p)).toEqual({ kind: "ignore" });
+    expect(promptKey(none, "1", p)).toEqual({ kind: "ignore" });
+    expect(promptKey(none, "x", p)).toEqual({ kind: "answer", answer: { kind: "deny" } });
+  });
+
+  test("the notice after the switch says ctrl+^ goes back, and names another window", () => {
+    expect(shownNotice(show, { otherWindow: false })).toBe(
+      "showing claude-code's tab · ctrl+^ goes back",
+    );
+    expect(shownNotice(show, { otherWindow: true })).toBe(
+      "showing claude-code's tab, shown in the other window · ctrl+^ there goes back",
+    );
+    expect(shownNotice({ ...show, label: null }, { otherWindow: false })).toBe(
+      "showing an agent's tab · ctrl+^ goes back",
+    );
+    // Already on the agent workspace: a plain tab selection, so ctrl+^ would not go back.
+    expect(shownNotice(show, { otherWindow: false, switched: false })).toBe(
+      "showing claude-code's tab",
+    );
+  });
+
+  test("the desktop notification names no title or URL", () => {
+    expect(agentAlertText(show)).toBe(
+      "claude-code asks to use Vimma's agent workspace (show you a page)",
+    );
+  });
+});
+
+describe(":mcp log of a show that failed after the yes (mcp-drive D14)", () => {
+  test("it reads as failed, not as allowed", () => {
+    const e = {
+      at: 0,
+      client: "claude-code",
+      tool: "vimma_show",
+      title: "A",
+      detail: "",
+      outcome: "failed",
+    };
+    expect(logRow(e)).toMatch(/ · failed$/);
   });
 });

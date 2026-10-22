@@ -5,7 +5,7 @@
   "binaryName": "vimma",
   "version": {
     "product": "firefox",
-    "version": "158.0"
+    "version": "158.0.1"
   },
   "buildOptions": {
     "windowsUseSymbolicLinks": false

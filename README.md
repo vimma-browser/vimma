@@ -18,7 +18,8 @@ memory; Vimma puts it to work on the web. Bare keys drive the page, `ctrl+b` dri
 and workspaces, and your hands never leave the keyboard.
 
 - **Vim on the page:** `j`/`k` to scroll, `f` for link hints, `/` to find, `:` for commands, and
-  `Esc` to get back to normal mode.
+  `Esc` to get back to normal mode. Copy a paragraph, list item or code block in three keys: `F`,
+  its label, then `y` (or `v` to adjust it first).
 - **tmux for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab, `v` to split,
   `w` to switch workspace. If your fingers know tmux, they already know Vimma.
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
@@ -26,7 +27,10 @@ and workspaces, and your hands never leave the keyboard.
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.
 - **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through
   MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies, and every request asks
-  you first.
+  you first. There they read and open pages, scroll, search and follow links with Vimma's own
+  keys, click buttons and fill forms by hint label (never a password or payment card field, and
+  a form they send asks every time), see a page as a screenshot, read its errors, and show you a
+  page when they want you to look at it.
 
 ## Install
 
@@ -55,6 +59,11 @@ alternative.
 **Debian 12+, Ubuntu 22.04+:** download `vimma_X.Y.Z_amd64.deb`, then
 `sudo apt install ./vimma_X.Y.Z_amd64.deb`.
 
+**Fedora, openSUSE:** download `vimma-X.Y.Z-1.x86_64.rpm`, then
+`sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm` on Fedora, or
+`sudo zypper install --allow-unsigned-rpm ./vimma-X.Y.Z-1.x86_64.rpm` on openSUSE. The package
+carries no OpenPGP signature; check it with `SHA256SUMS` and cosign instead, as the guide shows.
+
 **Any other distribution:** download `vimma-X.Y.Z-x86_64.AppImage`, then
 `chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage`.
 
@@ -80,11 +89,13 @@ the hours slip by. It also happens to start with _Vim_.
 
 Early, for Linux x86_64 and macOS on Apple Silicon. Releases are on
 [GitHub Releases](https://github.com/vimma-browser/vimma/releases), with a tarball, an AppImage, a
-`.deb` and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
+`.deb`, an `.rpm` for Fedora and openSUSE and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
 ([Install](#install)); you can also
 [build it from source](CONTRIBUTING.md#build-and-run). Update notices are live: Vimma 0.1.2 and
-later check a signed update file every 12 hours and show a newer release in the status bar. They
-notify only; installing the update is up to you.
+later check a signed update file every 12 hours and show a newer release in the status bar. The
+AppImage, from the first release that includes its self-update, then replaces its own file with
+the newer release once its size and SHA-512 match the signed file, and the next start runs it.
+The other packages notify only; installing the update is up to you.
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>
 
