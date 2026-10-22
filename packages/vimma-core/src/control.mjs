@@ -574,7 +574,7 @@ const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
 /**
  * `agent-activate`'s result (mcp-forms F11, F16): the page after the click, a dialog it opened
  * with its text inside the untrusted-content delimiters, the host of a submission Vimma stopped,
- * and why the wait stopped early.
+ * why the wait stopped early, and what changed in place when no page loaded (#510).
  * @param {Obj} result @param {string[]} errors
  */
 function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([])) {

@@ -2051,7 +2051,8 @@ fn in_place(changed: Option<&Value>) -> Result<String, String> {
     })
 }
 
-/// The page after an agent's step (mcp-forms F11, F16): whether a new page loaded, a form
+/// The page after an agent's step (mcp-forms F11, F16): whether a new page loaded or else what
+/// changed in place (#510), a form
 /// submission Vimma stopped, why the wait stopped, and a dialog the page opened, its text as
 /// Vimma wrapped it, after `lines`.
 fn after_step(result: &Value, mut lines: Vec<String>) -> Result<Vec<Value>, String> {

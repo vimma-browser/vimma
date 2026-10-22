@@ -17,7 +17,9 @@
 // click the tab is marked in the parent, so that a form submission there afterwards, from any
 // frame and however started, without the user's own activation and other than the one the
 // question allowed, is cancelled at its request; the result names the hosts of those, whether a
-// page loaded, and a dialog the page opened, which no agent answers.
+// page loaded, and a dialog the page opened, which no agent answers. When no page loaded, the
+// child compares the page with its state just before the click and the result names, in fixed
+// words, what changed in place (#510), so an agent never reads an in-place update as a failure.
 //
 // `fill` sets fields of that list (F12-F14; security.md M27) as form autofill does: the field's
 // child checks that it is still what the question showed and not sensitive, just before each

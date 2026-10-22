@@ -65,7 +65,8 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 4. `vimma_activate { tab: "7", label: "sg" }` on a button `Add to list` asks
    `◇ claude-code wants vimma_activate: 2 "List · Example"  sg button "Add to list"`. On `y` the
    button is clicked. The result gives the tab's URL, title, whether a page loaded, and whether a
-   dialog opened.
+   dialog opened. (Since changed: when no page loaded, it also names what changed in place, here
+   `the page's text changed`; F11.)
 5. Activating a submit button, or a `vimma_fill` with `submit`, asks every time, also under a
    grant, with only `y` and `n`:
    `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)`.
