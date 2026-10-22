@@ -29,7 +29,8 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
  * `agent-cancel` withdraws one of the connection's waiting questions (decision 17, MCP's
  * `notifications/cancelled`). `agent-keys` runs Vimma's own page keys in an agent tab, and
  * `agent-show` brings the agent workspace to the front with one agent tab selected
- * (docs/specs/mcp-drive.md D2, D8, D19).
+ * (docs/specs/mcp-drive.md D2, D8, D19). `agent-elements` lists an agent tab's buttons, fields
+ * and links with hint labels (docs/specs/mcp-forms.md F2).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -41,6 +42,7 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-cancel",
   "agent-keys",
   "agent-show",
+  "agent-elements",
 ]);
 /**
  * Why an agent request was `denied` (vimma-mcp decision 4). `in-use`: the user is typing in that
@@ -339,8 +341,8 @@ function checkRequest(m, errors) {
   else if (command === "agent-read") checkAgentReadArgs(args, errors);
   else if (command === "agent-open") checkAgentOpenArgs(args, errors);
   else if (command === "agent-keys") checkAgentKeysArgs(args, errors);
-  else if (command === "agent-close" || command === "agent-show") {
-    // A show names its tab only, never a workspace (mcp-drive D2).
+  else if (command === "agent-close" || command === "agent-show" || command === "agent-elements") {
+    // A show names its tab only, never a workspace (mcp-drive D2); a list takes no selector.
     noExtraFields(args, ["tab"], errors, "args.");
     checkTabArg(args, errors);
   } else if (command === "agent-cancel") {
@@ -371,6 +373,35 @@ function checkFields(result, prefix, { strings = [], flags = [], nullable = [] }
       errors.push(`${prefix}.${key} must be a string or null`);
     }
   }
+}
+
+/**
+ * A list of the page's (`f`'s links, `vimma_elements`' elements): one string inside the
+ * untrusted-content delimiters, each exactly once (security.md M21, M31).
+ * @param {unknown} list
+ */
+const insideDelimiters = (list) =>
+  typeof list === "string" &&
+  list.startsWith(`${UNTRUSTED_OPEN}\n`) &&
+  list.endsWith(`\n${UNTRUSTED_CLOSE}`) &&
+  list.split(UNTRUSTED_OPEN).length === 2 &&
+  list.split(UNTRUSTED_CLOSE).length === 2;
+
+/** @param {unknown} n */
+const isCount = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
+
+/**
+ * `agent-elements`' result (mcp-forms F2, F5): the page, its element list inside the
+ * untrusted-content delimiters, and how many elements were left out (security.md M31).
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkElementsResult(result, errors) {
+  noExtraFields(result, ["url", "title", "elements", "dropped"], errors, "result.");
+  checkFields(result, "result", { strings: ["url", "title"] }, errors);
+  if (!insideDelimiters(result.elements)) {
+    errors.push("result.elements must be inside the untrusted-content delimiters");
+  }
+  if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
 }
 
 /**
@@ -416,19 +447,10 @@ function checkKeysResult(result, errors) {
   if ("links" in result !== "dropped" in result) {
     errors.push("result.links and result.dropped come together");
   } else if ("links" in result) {
-    const { links, dropped } = result;
-    if (
-      typeof links !== "string" ||
-      !links.startsWith(`${UNTRUSTED_OPEN}\n`) ||
-      !links.endsWith(`\n${UNTRUSTED_CLOSE}`) ||
-      links.split(UNTRUSTED_OPEN).length !== 2 ||
-      links.split(UNTRUSTED_CLOSE).length !== 2
-    ) {
+    if (!insideDelimiters(result.links)) {
       errors.push("result.links must be inside the untrusted-content delimiters");
     }
-    if (!Number.isSafeInteger(dropped) || /** @type {number} */ (dropped) < 0) {
-      errors.push("result.dropped must be a non-negative integer");
-    }
+    if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
   }
   if ("find" in result) {
     if (!isObject(result.find)) errors.push("result.find must be an object");
@@ -473,6 +495,8 @@ function checkAgentResult(result, command, errors) {
     checkFields(result, "result", { flags: ["cancelled"] }, errors);
   } else if (command === "agent-keys") {
     checkKeysResult(result, errors);
+  } else if (command === "agent-elements") {
+    checkElementsResult(result, errors);
   }
 }
 

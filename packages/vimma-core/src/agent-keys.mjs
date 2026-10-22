@@ -422,7 +422,7 @@ const UNSHOWN = /** @type {const} */ ([
  * the invisible characters.
  * @param {string} s
  */
-const shown = (s) =>
+export const shown = (s) =>
   [...s.normalize("NFKC")]
     .filter((c) => {
       const cp = /** @type {number} */ (c.codePointAt(0));
@@ -431,7 +431,7 @@ const shown = (s) =>
     .join("");
 
 /** @param {string} s @param {number} max  at most `max` code points, `…` the last when cut */
-function cutTo(s, max) {
+export function cutTo(s, max) {
   const chars = [...s];
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : s;
 }

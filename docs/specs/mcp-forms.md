@@ -1,6 +1,6 @@
 # Spec: mcp-forms
 
-Status: draft · Area: `packages/vimma-core/src/` (`agent-act.mjs` new, `agent.mjs`,
+Status: accepted (sub-PR 1 of 6 built: `vimma_elements`) · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `agent-element.mjs` new, `agent.mjs`, `hints.mjs`,
 `agent-prompt.mjs`, `control.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
 `ctl/AgentAct.sys.mjs` new, `ctl/AgentConsole.sys.mjs` new, `ctl/AgentDrive.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/VimmaChild.sys.mjs`, `actors/agent-fields.mjs` new);
@@ -263,21 +263,28 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 2. **What it does.** `vimma_elements { tab }` (control command `agent-elements`) asks, and on a
    yes collects the visible hint targets of that agent tab and its frames, with all kinds, under
    the tab's own key (`collectHints(browser, "hint.follow", { agent: true })` extended to every
-   kind), and returns them with labels. It is read-only: nothing on the page is touched, so it is
-   asked and granted like `vimma_read_page`, under its own tool name.
+   kind), and returns them with labels: `{ url, title, elements, dropped }`. It is read-only:
+   nothing on the page is touched, so it is asked and granted like `vimma_read_page`, under its
+   own tool name. Like `f`, it lists nothing on a page that is not http or https (mcp-drive D12,
+   "Web pages only"), because a file, about: page or the start page moved into the agent
+   workspace is not the agent's to act on; the call fails with
+   `elements are listed only on http and https pages`.
 3. **One session per tab and connection.** The labels go into the same session store as
    `vimma_keys`' `f` (`ctl/AgentDrive.sys.mjs:89-90`), bound to the document and URL and valid
    for 120 s, so a label never names an element of another page. `vimma_elements` and `f` each
    replace the session. `vimma_activate` and `vimma_fill` take labels only from a
    `vimma_elements` session, because only that list showed the agent each element's kind and
    field details; `vimma_keys`' `f<label>` keeps following only link targets, as loads
-   (mcp-drive D12), from either list.
+   (mcp-drive D12), from either list, so that a label of a button never becomes a load. A label
+   from a `vimma_elements` list that names no link is refused with
+   `label "sg" is a button, not a link: f follows links only`.
 4. **The child keeps the agent's elements apart.** `VimmaChild` stores the agent's collection per
    frame under its own generation, beside and never in place of the user's `#hints`
    (`actors/VimmaChild.sys.mjs:161`), so an agent's `vimma_elements` never voids the user's hint
    mode and the user's `f` never voids the agent's labels. Elements are held as `WeakRef`s, as the
    user's are; a label whose element is gone or disconnected is refused with
-   `that element is gone: call vimma_elements again`.
+   `that element is gone: call vimma_elements again`, before a follow from that list as before
+   a click or a fill, because the page may have replaced the element since it was listed.
 5. **What is listed.** Per target: `label`; `kind` (`link`, `button`, `field`, `checkbox`,
    `radio`, `select`, `click`); `text` (its rendered text, else `aria-label`, `title` or `alt`,
    cut at 80 characters); for links the `href`; and when it is in a frame of another site, that
@@ -288,15 +295,33 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    index, and the result lists the forms with `method` and `action` URL. At most 200 targets, in
    `orderTargets`' reading order, labels from `DEFAULT_HINT_CHARS` (as mcp-drive D12); the rest
    are counted in `dropped`. Only the viewport is listed, as for the user's hints, so the labels
-   match what a screenshot of the tab shows; the agent scrolls with `vimma_keys` for more. The
-   whole list is one string inside the untrusted-content delimiters, at most 768 KiB.
+   match what a screenshot of the tab shows; the agent scrolls with `vimma_keys` for more.
+   Disabled controls are listed with `disabled`, unlike the user's hints, so that the agent can
+   tell a button it must wait for from one that is missing. The whole list is one string inside
+   the untrusted-content delimiters, at most 768 KiB, one JSON object a line: the forms first
+   (`{"form":1,"method":"post","action":"https://example.com/api/signup"}`, at most 64), then
+   the targets (`{"label":"sd","kind":"field","text":"","type":"email","name":"email",
+"caption":"Email address","value":"","form":1}`), so that every page string is a JSON string
+   whose quotes the page cannot end, and a target cut by the size limit never names a form that
+   is not in the list. Each string is NFKC-normalised and stripped of control, bidirectional and
+   invisible characters first, as `f`'s link texts are (security.md M21).
 6. **Sensitive fields.** A field is sensitive when any of these holds: it `hasBeenTypePassword`;
    its autocomplete field name is `current-password`, `new-password`, `one-time-code` or any
    `cc-*` name; or form autofill's heuristics infer a credit-card field name for it
-   (`FormAutofillHeuristics.getFormInfo` over the field's form-like group, open question 2). The
-   check runs in the child, in the field's own frame, at listing and again at filling, because a
-   page can change a field's type or attributes in between. A sensitive field is listed, with
-   `"sensitive": true` and no value, so that the agent can tell the user what to type and where.
+   (`FormAutofillHandler.collectFormFieldDetails`, which runs `FormAutofillHeuristics.getFormInfo`
+   over the field's form-like group from `AutofillFormFactory.createFromField`, and
+   `FormAutofillUtils.isCreditCardField` on each field name). The heuristics count because many
+   shops omit `autocomplete` on card forms, and a refused field costs the user one typed value
+   while a missed card field costs much more. If the heuristics throw, every field of that group
+   counts as sensitive, so that a failure refuses rather than fills. Rejected: `autocomplete`
+   alone, because it misses those shops; every field inside a frame of another site, because it
+   would also refuse embedded sign-up and search widgets, and hosted payment frames usually set
+   `autocomplete`, which the rule above catches. The check runs in the child, in the field's own
+   frame, at listing and again at filling, because a page can change a field's type or
+   attributes in between; the parent counts a field whose autocomplete name is sensitive as
+   sensitive whatever the child says. A sensitive field is listed, with `"sensitive": true` and
+   no value (a sensitive select lists its options but not which is selected), so that the agent
+   can tell the user what to type and where.
 7. **Values.** A field's current value is listed, cut at 256 characters, except for sensitive
    fields, because a screenshot of the same tab shows it anyway and an agent checking its own
    fill needs it. Rejected: hiding values the user typed, because a value set by `setUserInput`
@@ -379,9 +404,9 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     number of fields it sends:
     `◇ claude-code wants to submit a form: 2 "Sign up · Example" → POST example.com/api/signup (3 fields)`.
     A submission sends data to a server and is where sign-ups, messages and purchases happen,
-    so one question per submission is the price of keeping them in the hands of the person at the keyboard; the grant
-    for `vimma_fill` or `vimma_activate` covers only what does not submit. The open question 1
-    decides whether those two tools are grantable at all.
+    so one question per submission is the price of keeping them in the hands of the person at
+    the keyboard; the grant for `vimma_fill` or `vimma_activate` (F25) covers only what does not
+    submit.
 16. **Submissions the agent did not ask for are stopped.** `VimmaChild` listens for the chrome-only
     `DOMFormBeforeSubmit` (`HTMLFormElement.cpp:286`, `:840`) in agent tabs and cancels a
     submission when an agent activated or filled something in that document and the user has
@@ -424,8 +449,16 @@ vimma_show first` rather than switching anything itself, because changing what t
     `vimma_elements` session are drawn at their rects (`HintTarget.rect`, top-frame CSS pixels,
     scaled), in the theme's hint colours, so that a model looking at the image can name the
     button it sees. A session that is not current (F3) draws nothing and the result says so.
-21. **Limits.** At most 12 `agent-screenshot` requests per connection a minute (`busy` beyond),
-    counted when asked, because each is a large reply and a paint in the content process.
+21. **Limits and sensitive values.** At most 12 `agent-screenshot` requests per connection a
+    minute (`busy` beyond), counted when asked, because each is a large reply and a paint in the
+    content process. A screenshot is refused while a sensitive field (F6) in the viewport has a
+    value, with `a payment or password field on screen has a value; Vimma does not capture it`,
+    because a card number the user typed into an agent tab shows on screen in clear (only
+    `type=password` is masked) and the list keeps such values from the agent too; the check runs
+    in each frame's child just before the snapshot. It costs nothing on pages without such
+    values, and the agent can scroll past the field or ask the user. Rejected: capturing what
+    the tab shows, because it would break F6's promise for images; asking every screenshot with
+    no grant, because questions asked that often stop being read.
 
 ### G. `vimma_console`
 
@@ -434,8 +467,10 @@ vimma_show first` rather than switching anything itself, because changing what t
     - `errors`: script errors from `nsIScriptError` (uncaught exceptions, CSP and mixed-content
       reports, network security warnings) at error and warning level, read in each frame's
       process and in the parent by the frame's inner window id, as BiDi's `ConsoleListener` does;
-      and the page's own `console.error` and `console.warn` calls from `ConsoleAPIStorage`
-      (open question 4). Each entry has its level, source (`script`, `csp`, `network`,
+      and the page's own `console.error` and `console.warn` calls from `ConsoleAPIStorage`,
+      because web apps report most of their own failures with `console.error`, which an agent
+      testing one needs, while `log`, `info` and `debug` are mostly noise that fills the reply
+      (every level is equally untrusted). Each entry has its level, source (`script`, `csp`, `network`,
       `console`, …), message (cut at 1,000), file, line and column, and time.
     - `requests`: failed requests of the tab, recorded by an `http-on-stop-request` observer in
       the parent for channels whose top browsing context is an agent tab: HTTP status 400 and
@@ -464,8 +499,15 @@ vimma_show first` rather than switching anything itself, because changing what t
     `agent-activate: vimma_activate`, `agent-fill: vimma_fill`,
     `agent-screenshot: vimma_screenshot` and `agent-console: vimma_console`. Each is granted per
     connection and tool (vimma-mcp 20-22), and no grant of one covers another, so that a
-    screenshot grant never lets an agent click. Submissions ask under any grant (F15).
-    Recommended, pending open question 1: all five are grantable.
+    screenshot grant never lets an agent click. Submissions ask under any grant (F15). All five
+    are grantable for N minutes like the other tools, `vimma_activate` and `vimma_fill`
+    included, because the riskiest steps ask or are refused without any grant (submissions F15,
+    secrets F6 and F13, uploads F9, cross-site links F10), the agent workspace has none of the
+    user's logins (vimma-mcp 7), and questions asked too often stop being read. Under a
+    `vimma_activate` grant a script-only button that sends data runs unasked, with a notice and
+    a log row (F17, F28). Rejected: `vimma_activate` asking every time, because a task with ten
+    clicks would ask ten times and invite answering by reflex; neither tool grantable, for the
+    same reason.
 26. **Rates.** `vimma_activate` and `vimma_fill` share one rate of 30 requests per connection a
     minute, `vimma_elements` and `vimma_console` 30 each, `vimma_screenshot` 12 (F21), all
     counted when asked, with `busy` beyond, as mcp-drive D15's rate is, so that a refused call
@@ -520,13 +562,13 @@ vimma_show first` rather than switching anything itself, because changing what t
 | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **A prompt-injected page makes the agent type a secret into it**, or into a field it then submits. | Password, one-time-code and card fields are never filled (F6, F13); every submission asks, with its destination (F15); every fill's values are shown in the question or logged under a grant (F14). The agent workspace has none of the user's logins or saved passwords (vimma-mcp 7). |
 | **A page steals the user's activation** from an agent's click: clipboard, passkeys, permissions.   | A click is `click()`, never synthesised input, so the page gets no transient activation (F8). Permission prompts and pop-ups are already refused in agent tabs (vimma-mcp 30).                                                                                                          |
-| **A click starts a purchase or sends a message.**                                                  | Form submissions ask every time and unasked ones are cancelled (F15, F16). A script-only button is an ordinary activation, shown in its question or notice and logged (F17); open question 1 decides whether it can run under a grant.                                                  |
+| **A click starts a purchase or sends a message.**                                                  | Form submissions ask every time and unasked ones are cancelled (F15, F16). A script-only button is an ordinary activation, shown in its question or notice and logged (F17); under a `vimma_activate` grant it runs unasked, with a notice and a log row (F25).                         |
 | **A local file is uploaded.**                                                                      | File fields are never filled or clicked (F9, F13).                                                                                                                                                                                                                                      |
 | **A click is a way around the cross-site question.**                                               | Links to another site are refused in `vimma_activate` and asked as `vimma_open` through `vimma_keys` (F10). Navigations a click causes count in the open rate (F11).                                                                                                                    |
 | **A label names a different element than the agent saw.**                                          | Labels are bound to the document, expire after 120 s, and their element must still be connected (F3, F4).                                                                                                                                                                               |
 | **The agent acts under the user's cursor.**                                                        | `in-use` (F27). Nothing is focused or selected (F8, F12).                                                                                                                                                                                                                               |
 | **A screenshot or console entry carries instructions**, or a token a page logged.                  | Both are labelled untrusted (F19, F24); they reach only the agent's own tab. Console reading runs no page code (F23).                                                                                                                                                                   |
-| **A screenshot shows a card number the user typed** in an agent tab.                               | Open question 3.                                                                                                                                                                                                                                                                        |
+| **A screenshot shows a card number the user typed** in an agent tab.                               | A screenshot is refused while a sensitive field on screen has a value (F21).                                                                                                                                                                                                            |
 | **Flooding.**                                                                                      | Rates per tool (F21, F26) and the open rate for navigations (F11).                                                                                                                                                                                                                      |
 
 ### docs/security.md (§12, rules added by the sub-PR that builds each)
@@ -581,8 +623,12 @@ Written first and seen to fail, by layer. Each names the rule it holds.
 
 - `browser_vimma_mcp_elements.js`: `test_elements_lists_kinds_fields_and_forms`;
   `test_password_and_card_fields_are_sensitive_without_values` (including a field switched from
-  `password` to `text`; M27); `test_agent_labels_leave_the_users_hint_mode_alone` (F4);
-  `test_labels_of_a_gone_element_are_refused`.
+  `password` to `text`, and a card form without `autocomplete`; M31);
+  `test_agent_labels_leave_the_users_hint_mode_alone` (F4);
+  `test_f_follows_only_links_from_an_elements_list` (F3);
+  `test_labels_of_a_gone_element_are_refused` (F4, through a follow from the list);
+  `test_elements_only_on_web_pages_and_agent_tabs` (F2, M25);
+  `test_elements_under_a_grant_notice_log_and_rate` (F26, F28; M32).
 - `browser_vimma_mcp_activate.js`: `test_activate_clicks_a_button_in_a_background_tab` (the
   window's tab, focus and mode unchanged; M25);
   `test_activate_gives_the_page_no_user_activation` (a `navigator.clipboard.writeText` in the
@@ -625,17 +671,17 @@ Written first and seen to fail, by layer. Each names the rule it holds.
 ## Delivery
 
 One sub-PR at a time, each with its own security review by a fresh agent, as mcp-drive's had.
-Issue [#231](https://github.com/vimma-browser/vimma/issues/231) tracks them. The status becomes
-`accepted` when the open questions are answered.
+Issue [#231](https://github.com/vimma-browser/vimma/issues/231) tracks them, and the status line
+names the sub-PRs built.
 
-| #   | PR                                                                          | Contents                                                                                                                                 |
-| --- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `feat(mcp): vimma_elements lists a page's buttons and fields by hint label` | F2-F7: every kind in the agent collection, the child's agent store, sensitivity, the tool, protocol and fixture; M25, M31.               |
-| 2   | `feat(mcp): vimma_activate clicks by hint label`                            | F8-F11, F15-F17 for clicks: the click, refusals, links, dialogs, the submit question and the `DOMFormBeforeSubmit` guard; M26, M28, M29. |
-| 3   | `feat(mcp): vimma_fill fills fields, never passwords or payment fields`     | F12-F14 and `submit`; M27.                                                                                                               |
-| 4   | `feat(mcp): vimma_screenshot shows an agent tab`                            | F18-F21, starting with the background-tab measurement; the MCP image item.                                                               |
-| 5   | `feat(mcp): vimma_console reads a page's errors and failed requests`        | F22-F24; M30.                                                                                                                            |
-| 6   | `docs(guide): act on pages in the agent workspace`                          | The guide's section, README line and the `m0-mcp-forms` e2e scenario with its baselines, if not already written by sub-PRs 1-5.          |
+| #   | PR                                                                          | Contents                                                                                                                                             |
+| --- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `feat(mcp): vimma_elements lists a page's buttons and fields by hint label` | F2-F7: every kind in the agent collection, the child's agent store, sensitivity, the tool, protocol and fixture; M25, M31, the elements rate of M32. |
+| 2   | `feat(mcp): vimma_activate clicks by hint label`                            | F8-F11, F15-F17 for clicks: the click, refusals, links, dialogs, the submit question and the `DOMFormBeforeSubmit` guard; M26, M28, M29.             |
+| 3   | `feat(mcp): vimma_fill fills fields, never passwords or payment fields`     | F12-F14 and `submit`; M27.                                                                                                                           |
+| 4   | `feat(mcp): vimma_screenshot shows an agent tab`                            | F18-F21, starting with the background-tab measurement; the MCP image item.                                                                           |
+| 5   | `feat(mcp): vimma_console reads a page's errors and failed requests`        | F22-F24; M30.                                                                                                                                        |
+| 6   | `docs(guide): act on pages in the agent workspace`                          | The guide's section, README line and the `m0-mcp-forms` e2e scenario with its baselines, if not already written by sub-PRs 1-5.                      |
 
 Out of scope: typing key by key and pages' own keyboard shortcuts (keys never reach the page,
 mcp-drive D8); rich-text editors (F13); answering page dialogs (F11); drag and drop; uploads;
@@ -644,48 +690,5 @@ question line follows the macOS spec).
 
 ## Open questions
 
-1. **Can `vimma_activate` and `vimma_fill` run under a grant?** Submissions ask every time in
-   every option (F15).
-   - (a) Both grantable for N minutes, like the other tools. Multi-step tasks (a filter, a
-     search, a wizard) run without a question per click. A script-only button that sends data
-     (F17) runs unasked under the grant, shown in a notice and logged.
-   - (b) `vimma_fill` grantable, `vimma_activate` asks every time. Fills stay cheap, every click
-     is seen; a task with ten clicks asks ten times, which invites answering by reflex.
-   - (c) Neither grantable. Most control, most questions.
-
-   Recommendation: (a). The riskiest steps are covered without grants (submissions, secrets,
-   uploads, cross-site links), the agent workspace has none of the user's logins, and questions
-   asked too often stop being read.
-
-2. **Which fields count as payment fields?** Passwords (`hasBeenTypePassword`, the password
-   `autocomplete` names) and `one-time-code` are sensitive in every option.
-   - (a) Only fields whose `autocomplete` names a `cc-*` field. Precise, but many shops omit the
-     attribute.
-   - (b) (a), plus fields that Firefox's form-autofill heuristics infer as card fields
-     (`FormAutofillHeuristics`). Catches most unlabelled card forms, with a few false positives
-     (a field that is then refused and the user fills).
-   - (c) (b), plus every field inside a frame of another site. Catches hosted payment frames
-     whatever their markup, but also refuses embedded sign-up and search widgets.
-
-   Recommendation: (b). A refused field costs the user one typed value; a missed card field
-   costs much more. Hosted payment frames usually set `autocomplete`, which (a) already catches.
-
-3. **May a screenshot show sensitive values?** A user may have typed a card number into an agent
-   tab; `type=password` is masked on screen, card fields are not.
-   - (a) Allow: the screenshot shows what the tab shows.
-   - (b) Refuse while a sensitive field in the viewport has a value, with
-     `a payment or password field on screen has a value; Vimma does not capture it`.
-   - (c) Screenshots ask every time, with no grant.
-
-   Recommendation: (b). It keeps F6's promise for the image as for the list, costs nothing on
-   pages without such values, and the agent can scroll past the field or ask the user.
-
-4. **What does `vimma_console` return besides script errors and failed requests?**
-   - (a) Only Firefox's own reports (`nsIScriptError`: exceptions, CSP, mixed content) at error
-     and warning level.
-   - (b) (a), plus the page's `console.error` and `console.warn` calls.
-   - (c) Every console level, `log` and `debug` included.
-
-   Recommendation: (b). Web apps report most of their own failures with `console.error`, which an
-   agent testing one needs; `log` and `debug` are mostly noise that fills the reply, and every
-   level is equally untrusted.
+None. Grants of `vimma_activate` and `vimma_fill` (F25), which fields count as payment fields
+(F6), sensitive values in screenshots (F21) and the console levels returned (F22) are decided.

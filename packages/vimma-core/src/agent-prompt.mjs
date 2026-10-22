@@ -300,9 +300,11 @@ export function ranNotice(q, until, now) {
                 `followed a link to ${clean(w.followed)} in "${cutTitle(w.title)}"`
               : q.tool === "vimma_keys"
                 ? `pressed ${clean(w.keys)} in "${cutTitle(w.title)}"`
-                : q.tool === DOWNLOAD_TOOL
-                  ? `downloads "${cutTitle(w.name)}"`
-                  : `used ${q.tool}`;
+                : q.tool === "vimma_elements"
+                  ? `listed the buttons and fields of "${cutTitle(w.title)}"`
+                  : q.tool === DOWNLOAD_TOOL
+                    ? `downloads "${cutTitle(w.name)}"`
+                    : `used ${q.tool}`;
   return `${clientName(q.label)} ${did} (grant, ${left}m left)`;
 }
 
@@ -342,6 +344,7 @@ const ASKS = Object.freeze({
   vimma_close_tab: "close a tab",
   vimma_keys: "move around a page",
   [SHOW_TOOL]: "show you a page",
+  vimma_elements: "list a page's buttons and fields",
   [DOWNLOAD_TOOL]: "download a file",
 });
 

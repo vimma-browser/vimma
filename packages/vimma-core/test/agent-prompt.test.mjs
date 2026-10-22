@@ -280,6 +280,20 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
   });
 
+  // docs/specs/mcp-forms.md F28: vimma_elements asks with the tab, and its notice names it.
+  test("vimma_elements: the tab in the question, the page in the notice", () => {
+    const elements = { ...keys, tool: "vimma_elements", what: { ...keys.what, keys: undefined } };
+    expect(text(questionLine(elements, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_elements: 2 "Pricing · Example" example.com/pricing',
+    );
+    expect(ranNotice(elements, 12 * MIN, 0)).toBe(
+      'claude-code listed the buttons and fields of "Pricing · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(elements)).toBe(
+      "claude-code asks to use Vimma's agent workspace (list a page's buttons and fields)",
+    );
+  });
+
   test("denials and timeouts", () => {
     expect(deniedNotice(read, "user")).toBe("denied example-agent's vimma_read_page");
     expect(deniedNotice(read, "timeout")).toBe("agent request timed out (denied)");

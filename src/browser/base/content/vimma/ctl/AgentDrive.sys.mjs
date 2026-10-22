@@ -15,6 +15,9 @@
 // the document they were collected from, for AGENT_LINKS.ttlMs. `f<label>` follows one as a load
 // of its href with the page's own principal, in the same tab: no click event fires, so no page
 // handler runs (M18). A link to another site is asked as a `vimma_open` of its URL first (D18).
+// `vimma_elements` (ctl/AgentAct.sys.mjs, docs/specs/mcp-forms.md F3) keeps its labels in the
+// same store, each list replacing the other; `f<label>` follows only a link from either, and from
+// an element list only while the link is still in the page (F4).
 
 import { AGENT_LINKS, agentLinkList, labelAgentLinks } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
@@ -46,9 +49,10 @@ const FIND_WRAPPED = 2;
  * @typedef {{ url: string, title: string, loading: boolean, scroll: { y: number },
  *   steps: StepResult[], stopped?: "changed" | "in-use" | "timeout" | "denied",
  *   find?: FindResult, links?: string, dropped?: number }} KeysResult
- * @typedef {{ mark: { doc: number, url: string }, at: number,
+ * @typedef {{ mark: { doc: number, url: string }, at: number, source: "links" | "elements",
  *   byLabel: Map<string, import("../actors/VimmaActors.sys.mjs").HintTarget> }} LinkSession
- *   one `f`'s labels: the page they were collected on and when (D12)
+ *   one `f`'s or `vimma_elements`' labels: the page they were collected on, when, and by which
+ *   (D12; mcp-forms F3)
  * @typedef {object} DriveContext
  * @property {unknown} conn  the agent connection: its labels are its own
  * @property {(url: string, until: number) => Promise<string | null>} askOpen  asks a cross-site
@@ -104,6 +108,16 @@ function siteOf(uri) {
 
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
+
+/** What a label of something other than a link names, in a refused follow (mcp-forms F3). */
+const KIND_NAMES = /** @type {Record<string, string>} */ ({
+  button: "a button",
+  field: "a field",
+  checkbox: "a checkbox",
+  radio: "a radio button",
+  select: "a select",
+  click: "a clickable element",
+});
 
 /** How long one query to the page's child may take: a hung content process must not hold a call. */
 const ACTOR_TIMEOUT_MS = 5000;
@@ -209,6 +223,19 @@ export const AgentDrive = {
    */
   forget(conn) {
     sessions.delete(conn);
+  },
+
+  /**
+   * A connection's labels for the page now in `browser`, in place of its last `f`'s or list's
+   * (D12; mcp-forms F3).
+   * @param {unknown} conn @param {Browser} browser
+   * @param {Map<string, import("../actors/VimmaActors.sys.mjs").HintTarget>} byLabel
+   * @param {"links" | "elements"} source
+   */
+  remember(conn, browser, byLabel, source) {
+    let labels = sessions.get(conn);
+    if (!labels) sessions.set(conn, (labels = new WeakMap()));
+    labels.set(browser, { mark: pageMark(browser), at: Date.now(), source, byLabel });
   },
 
   /**
@@ -333,11 +360,7 @@ export const AgentDrive = {
           // The reply is one line: links past its room are left out, and their labels too.
           const list = agentLinkList(labelled, LINKS_BYTES);
           const listed = labelled.slice(0, labelled.length - list.omitted);
-          labels.set(browser, {
-            mark: pageMark(browser),
-            at: Date.now(),
-            byLabel: new Map(listed.map((l) => [l.label, l.target])),
-          });
+          this.remember(conn, browser, new Map(listed.map((l) => [l.label, l.target])), "links");
           links = { text: wrapUntrusted(wf(list.text)), dropped: dropped + list.omitted };
           if (!labelled.length) result.note = "no links on screen";
         } else if (id === "hint.follow") {
@@ -350,6 +373,20 @@ export const AgentDrive = {
             Object.assign(result, { ok: false, note: "stale labels: send f again" });
           } else if (!target) {
             Object.assign(result, { ok: false, note: `no link has the label "${label}"` });
+          } else if (target.kind !== "link") {
+            // mcp-forms F3: a label of a button never becomes a load.
+            const what = KIND_NAMES[target.info?.kind ?? "click"] ?? "a clickable element";
+            const note = `label "${label}" is ${what}, not a link: f follows links only`;
+            Object.assign(result, { ok: false, note });
+          } else if (
+            session?.source === "elements" &&
+            !(await bounded(VimmaActors.agentElementAlive(target), false, deadline))
+          ) {
+            // mcp-forms F4: the page replaced the link since it was listed.
+            Object.assign(result, {
+              ok: false,
+              note: "that element is gone: call vimma_elements again",
+            });
           } else if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
             Object.assign(result, { ok: false, note: "only http and https links are followed" });
           } else {

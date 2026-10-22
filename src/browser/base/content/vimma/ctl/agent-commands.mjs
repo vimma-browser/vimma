@@ -4,7 +4,8 @@
 
 // The agent role's commands (docs/specs/vimma-mcp.md, decision 4): list, read, open and close
 // tabs of the agent workspace, run Vimma's own page keys in one, following its links by label
-// (docs/specs/mcp-drive.md, `agent-keys`), and show one to the user (`agent-show`), and nothing
+// (docs/specs/mcp-drive.md, `agent-keys`), show one to the user (`agent-show`), and list one's
+// buttons, fields and links with labels (docs/specs/mcp-forms.md, `agent-elements`), and nothing
 // else. What an agent can reach is decided here, in
 // the browser, when each command runs (decision 7): a tab of the agent workspace **and** of its
 // container, in a normal window (private windows have no workspaces and are never enumerated).
@@ -14,6 +15,7 @@
 import {
   AGENT_TOOLS,
   CallRate,
+  ELEMENTS_RATE,
   KEYS_RATE,
   OpenRate,
   SHOW_RATE,
@@ -29,6 +31,7 @@ import { McpHost } from "../host/mcp-ops.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
+import { AgentAct } from "./AgentAct.sys.mjs";
 import { AgentDownloads } from "./AgentDownloads.sys.mjs";
 import { AgentDrive } from "./AgentDrive.sys.mjs";
 import { AgentGate } from "./AgentGate.sys.mjs";
@@ -57,6 +60,8 @@ const opens = new OpenRate();
 const keyCalls = new CallRate(KEYS_RATE);
 /** Each connection's `agent-show`: at most SHOW_RATE a minute, counted when asked (D7). */
 const showCalls = new CallRate(SHOW_RATE);
+/** Each connection's `agent-elements`: at most ELEMENTS_RATE a minute, counted when asked (F26). */
+const elementCalls = new CallRate(ELEMENTS_RATE);
 /** The longest an `agent-keys` call runs after the yes (mcp-drive D15). */
 const KEYS_CALL_MS = 60000;
 
@@ -640,6 +645,48 @@ const COMMANDS = {
     return { shown: true };
   },
 
+  /**
+   * The buttons, fields, links and other clickable elements on screen in an agent tab, with
+   * labels (mcp-forms F2-F7): read-only, so it runs while the user uses the tab (F27); nothing
+   * on the page is touched and the tab stays in the background (M25).
+   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   */
+  async "agent-elements"(conn, state, { tab: id }, rid) {
+    const agent = agentWorkspace();
+    const asked = findAgentTab(agent, id);
+    const what = { ...describeTab(asked.tab), index: asked.index };
+    // Counted when asked, before the question, so a refused list cannot loop (F26).
+    if (!elementCalls.take(conn, Date.now())) {
+      AgentGate.note(conn, "vimma_elements", what, "busy");
+      const message = "too many vimma_elements calls from this agent in the last minute";
+      throw new AgentError("denied", message, "busy");
+    }
+    await ask(conn, "agent-elements", what, state, rid);
+    /** After the yes, and once the list is made, the tab must still be as asked (M8). */
+    const still = () => {
+      try {
+        return stillAsAsked(agent, id, what.url);
+      } catch (e) {
+        AgentGate.note(conn, "vimma_elements", what, "changed");
+        throw e;
+      }
+    };
+    const { win, tab } = still();
+    // A lazy tab (restored, or unloaded under memory pressure) loads first, in the background.
+    if (!tab.linkedPanel || tab.hasAttribute("pending")) {
+      await loadedPage(win, tab, what.url, agent.userContextId);
+    }
+    const listed = await AgentAct.elements(tab, { conn });
+    if ("refused" in listed) throw new AgentError("failed", listed.refused);
+    still();
+    return {
+      url: wf(what.url),
+      title: wf(tab.label ?? ""),
+      elements: listed.elements,
+      dropped: listed.dropped,
+    };
+  },
+
   /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
   async "agent-close"(conn, state, { tab: id }, rid) {
     const agent = agentWorkspace();
@@ -660,6 +707,7 @@ export function forgetAgentConnection(conn) {
   opens.forget(conn);
   keyCalls.forget(conn);
   showCalls.forget(conn);
+  elementCalls.forget(conn);
   AgentDrive.forget(conn);
 }
 

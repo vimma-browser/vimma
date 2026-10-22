@@ -7,6 +7,7 @@ import {
   AGENT_TOOLS,
   AgentLog,
   CallRate,
+  ELEMENTS_RATE,
   KEYS_RATE,
   LOG_SIZE,
   SHOW_RATE,
@@ -45,6 +46,7 @@ describe("the tools", () => {
       "agent-close": "vimma_close_tab",
       "agent-keys": "vimma_keys",
       "agent-show": "vimma_show",
+      "agent-elements": "vimma_elements",
     });
   });
 });
@@ -293,6 +295,20 @@ describe("the show rate (mcp-drive D7)", () => {
     expect(ok.filter(Boolean)).toHaveLength(6);
     expect(ok.slice(6)).toEqual([false, false]);
     expect(r.take(2, 900)).toBe(true);
+    expect(r.take(1, 60_001)).toBe(true);
+  });
+});
+
+// docs/specs/mcp-forms.md F26 (security.md M31): at most 30 element lists a minute per connection,
+// counted when asked, so a grant cannot flood a page and a refused call cannot loop.
+describe("the elements rate (mcp-forms F26)", () => {
+  test("at most 30 agent-elements per connection a minute", () => {
+    expect(ELEMENTS_RATE).toEqual({ max: 30, ms: 60_000 });
+    const r = new CallRate(ELEMENTS_RATE);
+    const ok = [];
+    for (let i = 0; i < 32; i++) ok.push(r.take(1, i * 100));
+    expect(ok.filter(Boolean)).toHaveLength(30);
+    expect(r.take(2, 3300)).toBe(true);
     expect(r.take(1, 60_001)).toBe(true);
   });
 });

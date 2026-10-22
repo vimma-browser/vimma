@@ -334,11 +334,12 @@ function collectBlocks(onScreen, win, vw, vh) {
  * The hint targets of one frame, in no particular order (core orders them), and its visible
  * subframes.
  * @param {Window} win  the frame's content window
- * @param {{ linksOnly: boolean, blocks?: boolean }} options  `F` hints links only; `blocks`
- *   hints text blocks instead of what can be clicked (element focus)
+ * @param {{ linksOnly: boolean, blocks?: boolean, disabled?: boolean }} options  `F` hints
+ *   links only; `blocks` hints text blocks instead of what can be clicked (element focus);
+ *   `disabled` keeps disabled controls (an agent's `vimma_elements`, docs/specs/mcp-forms.md F5)
  * @returns {{ targets: Found[], frames: FoundFrame[] }}
  */
-export function collectTargets(win, { linksOnly, blocks = false }) {
+export function collectTargets(win, { linksOnly, blocks = false, disabled = false }) {
   const doc = win.document;
   const vw = doc.documentElement?.clientWidth || win.innerWidth;
   const vh = doc.documentElement?.clientHeight || win.innerHeight;
@@ -404,7 +405,7 @@ export function collectTargets(win, { linksOnly, blocks = false }) {
     ) {
       continue; // only the editing host of a contenteditable region
     }
-    if (/** @type {HTMLInputElement} */ (el).disabled) continue;
+    if (!disabled && /** @type {HTMLInputElement} */ (el).disabled) continue;
     const rect = visibleRect(el, vw, vh);
     if (!rect) continue;
     if (!unoccluded(el, rect)) continue;

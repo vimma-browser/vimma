@@ -31,6 +31,10 @@ const START_PAGE_MATCH = "chrome://browser/content/vimma/start/start.html";
  * @property {string} [text]  an agent's links only: what the link says (mcp-drive D12)
  * @property {import("../core/blocks.mjs").BlockKind} [blockKind]  text blocks only
  * @property {Rect} [box]  text blocks only: the border box, for the outline
+ * @property {import("../core/agent-element.mjs").AgentElementInfo} [info]  an agent's
+ *   `vimma_elements` only: what the element is (docs/specs/mcp-forms.md F5)
+ * @property {{ key: string, method: string, action: string }} [form]  an agent's
+ *   `vimma_elements` only: the element's form; `key` tells forms of different frames apart
  * @property {number} gen  the collection it came from
  * @property {number} id  the element's index in its frame's collection
  * @property {any} bc  its frame's BrowsingContext
@@ -251,11 +255,13 @@ export const VimmaActors = {
    * @param {any} browser XULBrowserElement
    * @param {string} action "hint.follow", "hint.follow_new_tab" (links only) or "hint.element"
    *   (text blocks, docs/specs/element-focus.md)
-   * @param {{ agent?: boolean }} [options]  `agent`: an agent's `f` in its tab
-   *   (docs/specs/mcp-drive.md D12): links only, each with its text, live per tab, not per window
+   * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an agent's `f` in its
+   *   tab (docs/specs/mcp-drive.md D12): links only, each with its text, live per tab, not per
+   *   window; with `elements`, an agent's `vimma_elements` (docs/specs/mcp-forms.md F2): every
+   *   kind but blocks, disabled controls too, each described, kept apart from the user's
    * @returns {Promise<HintTarget[]>}
    */
-  async collectHints(browser, action, { agent = false } = {}) {
+  async collectHints(browser, action, { agent = false, elements = false } = {}) {
     const gen = ++hintGen;
     const key = agent ? browser : browser.ownerDocument.defaultView;
     liveGen.set(key, gen);
@@ -263,9 +269,9 @@ export const VimmaActors = {
     const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
     /** Each frame at most once, whatever its embedder reports. */
     const visited = new Set();
-    const linksOnly = agent || action === "hint.follow_new_tab";
+    const linksOnly = (agent && !elements) || action === "hint.follow_new_tab";
     const blocks = !agent && action === "hint.element";
-    const texts = agent;
+    const texts = agent && !elements;
     /** @type {HintTarget[]} */
     const out = [];
     let ms = 0;
@@ -293,6 +299,7 @@ export const VimmaActors = {
           linksOnly,
           blocks,
           texts,
+          elements: agent && elements,
         });
         raw = await Promise.race([query, late]);
       } catch {
@@ -301,7 +308,7 @@ export const VimmaActors = {
         clearTimeout(timer);
       }
       // From a content process, which may be compromised: a fresh, checked copy or nothing.
-      const reply = parseHintReply(raw, { blocks, texts });
+      const reply = parseHintReply(raw, { blocks, texts, elements: agent && elements });
       if (!reply || !live()) return;
       ms += reply.ms;
       for (const t of reply.targets) {
@@ -311,6 +318,11 @@ export const VimmaActors = {
         /** @type {HintTarget} */
         const target = { gen, bc, wg, id: t.id, kind: t.kind, href: t.href, rect };
         if (texts) target.text = t.text ?? "";
+        if (t.agent) {
+          target.info = t.agent;
+          const form = t.agent.form === undefined ? undefined : reply.forms?.[t.agent.form];
+          if (form) target.form = { key: `${bc.id}:${t.agent.form}`, ...form };
+        }
         if (t.box) {
           const box = intersect(offset(t.box, origin), frame);
           if (!box) continue;
@@ -346,6 +358,27 @@ export const VimmaActors = {
     actorFor(target.bc)
       ?.sendQuery("Vimma:ActivateHint", { gen: target.gen, id: target.id })
       .catch(() => {});
+  },
+
+  /**
+   * Whether the element of a target from an agent's `vimma_elements` is still in its document
+   * (docs/specs/mcp-forms.md F4): false when its frame shows another document, the page removed
+   * or replaced it, or the frame did not answer.
+   * @param {HintTarget} target
+   * @returns {Promise<boolean>}
+   */
+  async agentElementAlive(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return false;
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "alive",
+        gen: target.gen,
+        id: target.id,
+      });
+      return reply === true;
+    } catch {
+      return false; // the frame navigated or its process went away
+    }
   },
 
   /**

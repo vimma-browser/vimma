@@ -696,9 +696,10 @@ a shell can run `vimma-ctl` itself, or speak the protocol directly.
 [mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16,
 M17, M20, M23), following its links by hint label (M18, M21), `vimma_show` (the agent workspace
 brought to the front with one agent tab selected: M19, M20) and full control's wording while MCP
-is on (M22), all in force. [mcp-forms](specs/mcp-forms.md), a draft, plans clicks, form filling,
-screenshots and console output for agents; its rules enter this page with the sub-PRs that
-build them.
+is on (M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements` (an agent
+tab's buttons, fields and links listed with hint labels, sensitive values left out: M25, M31,
+M32), in force; its clicks, form filling, screenshots and console output enter this page with
+the sub-PRs that build them.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection and tool.
@@ -1032,6 +1033,57 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`a_new_windows_first_tab_and_the_startup_cache_skip_the_agent`](../tests/browser/browser_vimma_agent_outside_opens.js),
   [`with_no_normal_workspace_used_yet_the_first_one_is_taken`](../tests/browser/browser_vimma_agent_outside_opens.js),
   [`never the agent workspace, even when it is all there is with a container`](../packages/vimma-core/test/workspacedefs.test.mjs)
+- M25. `agent-elements` (mcp-forms F2-F4) **must** act only on an agent tab (M2), checked before
+  the question, after the yes and again once the list is made, with the URL asked about, and in
+  the background: it **never** selects, shows or focuses the tab or an element in it, and changes
+  nothing on the page (no click, no focus, no event). It lists nothing on a page that is not http
+  or https. Each frame's child keeps the agent's elements apart from the user's hint targets, so
+  a list never cancels the user's hint mode in the same window and never takes the user's targets
+  from the page; its labels replace the connection's last `f` on that tab and live by M18's
+  rules, and `f<label>` follows only a link from the list, as a load (M18), and only while the
+  link is still in its document. The clicks, fills, screenshots and console reads of mcp-forms
+  join this rule with the sub-PRs that build them.
+  [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_elements_only_on_web_pages_and_agent_tabs`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_agent_labels_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_f_follows_only_links_from_an_elements_list`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_labels_of_a_gone_element_are_refused`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`agent-elements: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs)
+- M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,
+  wrapped by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the
+  protocol validator **must** refuse a list that is not, or that holds a second delimiter. At
+  most 200 elements, in reading order, and no more than fit 768 KiB of the reply line, as one
+  JSON object a line with the forms they name first (at most 64); every page string is
+  NFKC-normalised and stripped of control, bidirectional and invisible characters before it is
+  quoted, texts and captions cut at 80 characters, values at 256, hrefs and form actions at
+  2,048, at most 50 options a select; the rest are dropped and counted. The child's description
+  of each element is a fresh, checked copy (core's `parseAgentElement`). A sensitive field **must
+  never** be listed with its value or its selected option: a field that was ever a password
+  field, one whose autocomplete field name is `current-password`, `new-password`,
+  `one-time-code` or any `cc-*` name (counted in the parent too, whatever the child says), and
+  one form autofill's heuristics infer as a payment card field; if the heuristics fail, every
+  field of that form counts. No page text beyond the elements' own is returned, so a
+  `vimma_elements` grant is never a read grant.
+  [`test_password_and_card_fields_are_sensitive_without_values`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`passwords, one-time codes and every cc-* name are sensitive; email is not`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a sensitive field carries no value and no selected option`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`an autocomplete name that is sensitive makes the field sensitive whatever the child says`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`anything malformed, over its cap or naming a form not reported is refused`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a sensitive field says so and never carries a value`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`texts and captions cut at 80, values at 256, hrefs at 2,048, at most 50 options`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`page strings are NFKC, one line, without bidi, control or invisible characters`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`elements past the byte budget are left out and counted; their forms too`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`agent-elements: the page, its list inside the untrusted delimiters, how many dropped`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`elements_list_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
+- M32. More than 30 `agent-elements` calls of one connection a minute (mcp-forms F26), counted
+  when asked and before the question, **must** be denied as `busy`, so a grant cannot flood a
+  page and a refused call cannot loop; every call, asked, under a grant or denied, **must** be in
+  `:mcp log` (M23), and a call under a grant shows a notice naming the page. The rates of
+  clicks, fills, screenshots and console reads join this rule with their sub-PRs.
+  [`at most 30 agent-elements per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_elements_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`vimma_elements: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 

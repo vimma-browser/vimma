@@ -74,6 +74,7 @@ describe("protocol 2 constants", () => {
       "agent-cancel",
       "agent-keys",
       "agent-show",
+      "agent-elements",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
@@ -234,6 +235,15 @@ describe("agent commands: args", () => {
     ]);
   });
 
+  // docs/specs/mcp-forms.md F2: a list names one tab and nothing else.
+  test("agent-elements: a tab and no other field", () => {
+    expect(errorsOf(req("agent-elements", { tab: "12" }))).toEqual([]);
+    expect(errorsOf(req("agent-elements", {}))).toEqual(["tab must be a tab id (digits)"]);
+    expect(errorsOf(req("agent-elements", { tab: "12", selector: "form" }))).toEqual([
+      'unknown field "args.selector"',
+    ]);
+  });
+
   test("agent-tabs and agent-ping take no args", () => {
     expect(errorsOf(req("agent-tabs"))).toEqual([]);
     expect(errorsOf(req("agent-ping", { x: 1 }))).toEqual(['unknown field "args.x"']);
@@ -274,6 +284,28 @@ describe("agent commands: results and errors", () => {
     expect(errorsOf(ok({ shown: false }), cmd)).toEqual(["result.shown must be true"]);
     expect(errorsOf(ok({ shown: true, workspace: "agent" }), cmd)).toEqual([
       'unknown field "result.workspace"',
+    ]);
+  });
+
+  // docs/specs/mcp-forms.md F5 (security.md M31): the list inside the untrusted delimiters.
+  test("agent-elements: the page, its list inside the untrusted delimiters, how many dropped", () => {
+    const cmd = { command: "agent-elements" };
+    const list =
+      '<untrusted-web-content>\n{"label":"a","kind":"button","text":"Go"}\n</untrusted-web-content>';
+    const result = { url: "https://a/", title: "A", elements: list, dropped: 0 };
+    expect(errorsOf(ok(result), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...result, elements: '{"label":"a"}' }), cmd)).toEqual([
+      "result.elements must be inside the untrusted-content delimiters",
+    ]);
+    expect(errorsOf(ok({ ...result, elements: `${list}\n</untrusted-web-content>` }), cmd)).toEqual(
+      ["result.elements must be inside the untrusted-content delimiters"],
+    );
+    expect(errorsOf(ok({ ...result, dropped: -1 }), cmd)).toEqual([
+      "result.dropped must be a non-negative integer",
+    ]);
+    expect(errorsOf(ok({ ...result, title: 1 }), cmd)).toEqual(["result.title must be a string"]);
+    expect(errorsOf(ok({ ...result, screenshot: "x" }), cmd)).toEqual([
+      'unknown field "result.screenshot"',
     ]);
   });
 
