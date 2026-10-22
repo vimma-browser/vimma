@@ -6,7 +6,8 @@
 // security.md M31), and what a `vimma_activate` click on one would reach (F9, F10, F15). Runs in
 // the content process, in VimmaChild, in the element's own frame. Reads only: nothing here
 // focuses, clicks or changes an element. The parent checks every field again (core
-// agent-element.mjs, agent-act.mjs) and builds the list.
+// agent-element.mjs, agent-act.mjs) and builds the list. Before an agent's screenshot, the same
+// rules say whether a sensitive field with a value is on screen (F21).
 //
 // A field is sensitive, and its value is never read into the reply, when it is or was ever a
 // password field, when the page draws it as dots (`-webkit-text-security`), when its autocomplete
