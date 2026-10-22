@@ -164,7 +164,8 @@ function pageMark(browser) {
 }
 
 /**
- * Waits until the page left `mark` and finished loading, or until `until`.
+ * Waits until the page left `mark` and finished loading, or until `until`. An initial
+ * about:blank (a process switch makes one in the tab) is a step on the way, not the page.
  * @param {Browser} browser @param {{ doc: number, url: string }} mark @param {number} until
  * @returns {Promise<boolean>} whether it loaded in time
  */
@@ -172,7 +173,8 @@ async function loaded(browser, mark, until) {
   for (;;) {
     const now = pageMark(browser);
     const moved = now.doc !== mark.doc || now.url !== mark.url;
-    if (moved && !browser.webProgress?.isLoadingDocument) return true;
+    const initial = browser.browsingContext?.currentWindowGlobal?.isInitialDocument ?? true;
+    if (moved && !initial && !browser.webProgress?.isLoadingDocument) return true;
     if (Date.now() > until) return false;
     await sleep(50);
   }
@@ -220,6 +222,8 @@ export const AgentDrive = {
   _onStep: /** @type {((n: number) => void | Promise<void>) | null} */ (null),
   /** Test-only: how long labels live, in place of AGENT_LINKS.ttlMs. */
   _linkTtlMs: /** @type {number | null} */ (null),
+  /** Test-only: the wait for the page a step loaded. */
+  _loaded: loaded,
 
   /**
    * The connection closed: its labels go.
