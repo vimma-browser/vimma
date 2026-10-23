@@ -4,7 +4,7 @@
 # check (spec macos-build, sub-PR 2).
 # Issue #245: on a docs-only pull request (tools/ci/docs-only.mjs) the steps that Markdown cannot
 # affect skip with `if:`, and the job still reports. The steps that read Markdown (prettier,
-# md-wording, spec-lint, security-links, gen-docs, test:py, the Vitest files in
+# md-wording, spec-lint, changelog-lint, security-links, gen-docs, test:py, the Vitest files in
 # MARKDOWN_TESTS) and commitlint always run.
 name: CI
 
@@ -135,6 +135,11 @@ jobs:
       # (docs/specs/README.md).
       - name: Spec statuses and decision reasons (npm run spec-lint)
         run: npm run spec-lint
+
+      # CHANGELOG.md's [Unreleased] is its first heading, appears once and holds only what the
+      # release PR's firefox-notes job can move into the new version's entry (issue #529).
+      - name: Hand-written changelog lines in order (npm run changelog-lint)
+        run: npm run changelog-lint
 
       # docs/bindings.md, docs/bindings.json and defaults.toml are generated: a hand edit fails here.
       - name: Generated docs are current (npm run gen-docs)

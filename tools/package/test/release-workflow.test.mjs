@@ -1026,6 +1026,14 @@ describe("release-please-config.json", () => {
     expect(config.prerelease).toBeUndefined();
   });
 
+  // Issue #529: firefox-notes moves main's hand-written [Unreleased] lines into the release PR's
+  // entry. release-please otherwise rebuilds its branch only when its own notes change, so a
+  // merge that adds only a changelog line would leave the branch with the old lines, and the
+  // PR would conflict with main on CHANGELOG.md.
+  it("rebuilds the release PR from main on every run", () => {
+    expect(config["always-update"]).toBe(true);
+  });
+
   it("keeps the manifest at surfer.json's displayVersion", () => {
     expect(manifest["."]).toBe(surfer.brands.vimma.release.displayVersion);
   });
@@ -1222,9 +1230,37 @@ describe("release-please.yml", () => {
     expect(notes).toContain("BRANCH: release-please--branches--main");
     expect(notes).toContain("node tools/release/firefox-notes.mjs");
     expect(notes).toMatch(/if \[ -z "\$PUSH_TOKEN" \]; then\n\s+echo "::notice::/);
-    expect(notes).toContain("chore(release): firefox $firefox in the changelog heading");
+    expect(notes).toContain(
+      "chore(release): unreleased lines and firefox $firefox in the changelog entry",
+    );
     // the push names the blob it replaces, so a force-push by release-please in between fails it
     expect(notes).toContain("sha: $sha");
+  });
+
+  // Issue #529: the hand-written [Unreleased] lines become part of the release's entry, first in
+  // the release PR's CHANGELOG.md, then in the GitHub release's notes from the tag's changelog.
+  it("firefox-notes moves [Unreleased] into the new entry before naming the Firefox version", () => {
+    const notes = job("firefox-notes");
+    const move = notes.indexOf(
+      'node tools/release/changelog.mjs move "$dir/CHANGELOG.md" > "$dir/moved.md"',
+    );
+    const name = notes.indexOf(
+      'node tools/release/firefox-notes.mjs "$dir/moved.md" --surfer "$dir/surfer.json"',
+    );
+    expect(move).toBeGreaterThan(-1);
+    expect(name).toBeGreaterThan(move);
+  });
+
+  it("release-title adds the tag's hand-written lines to the release notes", () => {
+    const title = job("release-title");
+    const add = title.indexOf(
+      'node tools/release/changelog.mjs notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"',
+    );
+    const name = title.indexOf(
+      'node tools/release/firefox-notes.mjs "$dir/hand.md" --surfer surfer.json > "$dir/new.md"',
+    );
+    expect(add).toBeGreaterThan(-1);
+    expect(name).toBeGreaterThan(add);
   });
 
   it("release-title runs only when a release was created and titles it with versionLine", () => {

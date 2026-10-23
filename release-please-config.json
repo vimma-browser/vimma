@@ -6,6 +6,7 @@
   "versioning": "always-bump-patch",
   "draft": true,
   "draft-pull-request": true,
+  "always-update": true,
   "force-tag-creation": true,
   "changelog-sections": [
     { "type": "feat", "section": "Added" },
