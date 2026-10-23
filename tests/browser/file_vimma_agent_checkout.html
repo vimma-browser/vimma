@@ -5,7 +5,8 @@
 <!-- Fixture for browser_vimma_mcp_checkpoint.js and the e2e checkpoint scenario: a shop's
    - checkout whose card number field is in a payment provider's frame of another site
    - (file_vimma_agent_shot_card.html on example.org), with an "Apply coupon" button that pays
-   - nothing by its words, and the order total before it. Each click is counted in #log. -->
+   - nothing by its words, and the order total before it. Each click is counted in #log.
+   - ?frame=hosted_pay loads file_vimma_agent_hosted_pay.html in the frame instead. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -37,8 +38,9 @@
     <script>
       // A frame of another site: the test directory on example.org.
       const dir = location.pathname.replace(/[^/]*$/, "");
+      const name = new URLSearchParams(location.search).get("frame") ?? "shot_card";
       document.getElementById("hosted").src =
-        `https://example.org${dir}file_vimma_agent_shot_card.html`;
+        `https://example.org${dir}file_vimma_agent_${name}.html`;
       document.getElementById("apply").addEventListener("click", () => {
         const li = document.createElement("li");
         li.textContent = "apply";

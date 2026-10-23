@@ -733,7 +733,10 @@ with a shell can send what it read over its own network without Vimma anyway. A 
 a step that may pay, a show, a dangerous or unscanned download and a page's own download still
 ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
 makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
-spends and leaves the grant as it was (M28, M33).
+spends and leaves the grant as it was (M28, M33). The question's hint names only the keys
+(`10a 10 min`), so that the question fits one line; the guide's key table says that `a` covers
+every tool, and the grant's notice, shown the moment it is made, says so and names what still
+asks and the key that ends it.
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection, which covers every tool but those
@@ -1409,17 +1412,23 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   whose check fails or that does not answer within 5 s counts as one, a frame that navigates
   away or whose process ends during the check does not), or whose pressed control has a phrase
   of the fixed list (`PAY_PHRASES`, six languages) as whole words in its text, accessible name,
-  title or value. Its question **must** name the button (for a key step, its keys), the tab's
-  host and the total the page states, quoted after "the page says" and cut at 40 columns; a
-  card field's value is **never** read, and the desktop notification names no site, amount or
-  URL. Not covered: a load of another site is not stopped, so a hosted payment page reached
-  through a button whose words are not on the list stops the agent only at that page's own card
+  title or value. Its question **must** name the button (for a key step, its keys), the host of
+  the frame of the control or link the step presses or follows, followed by the tab's host in
+  parentheses when that frame is of another site (a payment provider's hosted frame; a key step
+  that presses nothing, and a frame with no host of its own, such as about:srcdoc, data: or
+  blob:, name the tab's host), and the total the page states, quoted after "the page says" and
+  cut at 40 columns; a card field's value is **never** read, and the desktop notification names
+  no site, amount or URL. Not covered: a load of another site is not stopped, so a hosted
+  payment page reached through a button whose words are not on the list stops the agent only at that page's own card
   fields or pay button; a page that hides its checkout (no card field shown, a button worded
   otherwise) is not recognised; a frame Vimma's actor does not cover (a data: or blob: document)
   is not asked for card fields; and the total is the page's own claim, which the user's bank or
   card statement settles.
   [`test_pay_button_outside_a_form_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_card_fields_in_a_cross_site_frame_make_a_pay_step`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_pay_button_in_a_cross_site_frame_names_the_frames_site`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_followed_pay_link_in_a_cross_site_frame_names_the_frames_site`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`a pay button in a frame of another site names that site, then the tab's`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`test_basket_button_does_not_ask`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_a_no_stops_the_step_and_keeps_the_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_the_stated_total_is_quoted`](../tests/browser/browser_vimma_mcp_checkpoint.js),

@@ -130,8 +130,8 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
   await until(hintShown, "armed after the delay");
   Assert.equal(
     line().querySelector(".vimma-agent-prompt-hint").textContent,
-    "y once · 10a 10 min, all but forms and paying · n deny · x mute",
-    "the hint says what a grant covers and what still asks",
+    "y once · 10a 10 min · n deny · x mute",
+    "the hint names the keys; the grant's notice says what still asks",
   );
   EventUtils.synthesizeKey("y", { repeat: true });
   for (const key of ["j", "q", " "]) EventUtils.synthesizeKey(key);
