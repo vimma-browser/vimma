@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
+import { CTL_LICENSE_FILES, IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
 
 // release.yml's gates (spec m6-packaging; docs/runbook.md, "Release packages"). It starts only
 // by workflow_dispatch: release-please.yml's release-build job starts it for the draft release it
@@ -478,6 +478,47 @@ esac
       expect(block).toMatch(/name: ctl\n {10}path: ctl\/\n/);
     });
 
+    // #516: the notices and the SBOM entry come from the toolchain that built the binary, so
+    // they are made in the same job, after the binary is checked.
+    it("ctl gathers vimma-ctl's notices and SBOM entry from the toolchain that built it", () => {
+      const block = all.get("ctl") ?? "";
+      const notices = runOf(block, "Notices and SBOM entry for vimma-ctl");
+      expect(notices).toContain(
+        "node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \\\n" +
+          "  --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json",
+      );
+      expect(block.indexOf("- name: Check the binary")).toBeLessThan(
+        block.indexOf("- name: Notices and SBOM entry for vimma-ctl"),
+      );
+      expect(block).toContain("uses: actions/setup-node@");
+    });
+
+    it("package ships vimma-ctl's notices, lists it in the SBOM and checks both", () => {
+      const block = all.get("package") ?? "";
+      const pack = runOf(block, "Package");
+      expect(pack).toContain("--ctl-licenses ctl/vimma-ctl-licenses");
+      expect(pack).toContain("--ctl-component ctl/vimma-ctl.cdx.json");
+      expect(pack).toContain('node tools/package/validate-sbom.mjs "dist/vimma-$v.cdx.json"');
+      expect(block).toMatch(/- name: npm ci\n {8}run: npm ci --ignore-scripts\n/);
+      const smoke = runOf(block, "Smoke test the .deb and the AppImage");
+      expect(smoke).toContain("test -s /usr/lib/vimma/vimma-ctl-licenses/musl-COPYRIGHT");
+      expect(smoke).toContain('case "$listing" in *"vimma/vimma-ctl-licenses/musl-COPYRIGHT"*) ;;');
+    });
+
+    it("the Mac vimma-ctl's notices go into the app and the smoke check finds them", () => {
+      const ctl = all.get("macos-ctl") ?? "";
+      expect(runOf(ctl, "Notices for vimma-ctl")).toContain(
+        "node tools/package/ctl-notices.mjs --out ctl/vimma-ctl-licenses",
+      );
+      expect(ctl).toContain("uses: actions/setup-node@");
+      expect(all.get("macos-build")).toContain(
+        "VIMMA_CTL_LICENSES: ${{ github.workspace }}/ctl/vimma-ctl-licenses",
+      );
+      expect(runOf(all.get("macos-smoke") ?? "", "Smoke check")).toContain(
+        'test -s "$APP/Contents/Resources/vimma-ctl-licenses/rust-std-COPYRIGHT.html"',
+      );
+    });
+
     it("package puts vimma-ctl into every package and checks it in each", () => {
       const block = all.get("package") ?? "";
       expect(block).toMatch(/^ {4}needs: \[build, ctl\]$/m);
@@ -560,6 +601,21 @@ esac
     expect(script).toContain('docker run --rm --network host -e ARCH_SMOKE_PORT="$PORT"');
     expect(script).not.toMatch(/-e PORT=/);
   });
+
+  // #516: package.mjs refuses vimma-ctl without its notices, so the pull-request stub brings
+  // every file it requires, and the installed package must carry them.
+  it.each(["arch-smoke.sh", "rpm-smoke.sh"])(
+    "%s packages its stub with vimma-ctl's notices",
+    (name) => {
+      const script = readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
+      const stub = script.slice(script.indexOf('if [ "${1:-}" = "--stub" ]; then'));
+      expect(stub).toMatch(/package\.mjs" .*--ctl-licenses "\$work\/vimma-ctl-licenses"/s);
+      for (const file of CTL_LICENSE_FILES)
+        expect(stub, file).toContain(`vimma-ctl-licenses/${file}`);
+      const lib = name === "arch-smoke.sh" ? "/opt/vimma" : "/usr/lib/vimma";
+      expect(script).toContain(`test -s ${lib}/vimma-ctl-licenses/musl-COPYRIGHT`);
+    },
+  );
 });
 
 // aur.yml: pushes vimma-bin to the AUR, which is public at once, so only for a published

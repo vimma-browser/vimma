@@ -71,11 +71,13 @@ case "$3" in
   mozbuild.action.unpack_dmg)
     for name in $(seq 1 ${apps}); do
       [ "$name" = 1 ] && name=Vimma || name="Other$name"
-      mkdir -p "$5/$name.app/Contents/MacOS"
+      mkdir -p "$5/$name.app/Contents/MacOS" "$5/$name.app/Contents/Resources"
     done
     for file in ${art.join(" ")}; do mkdir -p "$(dirname "$5/$file")"; echo art > "$5/$file"; done
     ;;
-  mozbuild.action.make_dmg) for last; do :; done; echo dmg > "$last" ;;
+  mozbuild.action.make_dmg)
+    (cd "$6" && find . -path '*vimma-ctl*' -type f | sort) > "${log}.ctl"
+    for last; do :; done; echo dmg > "$last" ;;
 esac
 `,
   );
@@ -92,13 +94,14 @@ esac
 /**
  * @param {string} dir
  * @param {{ mach: string, rcodesign: string }} tools
+ * @param {Record<string, string>} [env] more environment, such as VIMMA_CTL
  */
-function sign(dir, { mach, rcodesign }) {
+function sign(dir, { mach, rcodesign }, env = {}) {
   const tmp = join(dir, "tmp");
   mkdirSync(tmp);
   const result = spawnSync(SCRIPT, [join(dir, "in.dmg"), join(dir, "out/Vimma.dmg")], {
     encoding: "utf8",
-    env: { PATH: process.env.PATH, MACH: mach, RCODESIGN: rcodesign, TMPDIR: tmp },
+    env: { PATH: process.env.PATH, MACH: mach, RCODESIGN: rcodesign, TMPDIR: tmp, ...env },
   });
   return { ...result, tmp };
 }
@@ -155,6 +158,58 @@ describe("macos-dmg.sh", () => {
       expect(stderr, missing).toContain(missing);
       expect(readFileSync(tools.log, "utf8")).not.toMatch(/rcodesign|make_dmg/);
       expect(readdirSync(tmp)).toEqual([]);
+    }
+  });
+
+  /**
+   * A Mac vimma-ctl and its notices, as the macos-ctl job uploads them.
+   * @param {string} dir
+   */
+  const macCtl = (dir) => {
+    const ctl = join(dir, "ctl");
+    mkdirSync(join(ctl, "vimma-ctl-licenses/licenses"), { recursive: true });
+    writeFileSync(join(ctl, "vimma-ctl"), "#!/bin/sh\n");
+    chmodSync(join(ctl, "vimma-ctl"), 0o755);
+    for (const file of ["README.txt", "rust-std-COPYRIGHT.html", "licenses/MIT.txt"]) {
+      writeFileSync(join(ctl, "vimma-ctl-licenses", file), `${file}\n`);
+    }
+    return {
+      VIMMA_CTL: join(ctl, "vimma-ctl"),
+      VIMMA_CTL_LICENSES: join(ctl, "vimma-ctl-licenses"),
+    };
+  };
+
+  // Spec ship-vimma-ctl and #516: the binary goes next to vimma, signed before the app; its
+  // notices go into Resources, where a bundle keeps files that are not code.
+  it("signs vimma-ctl into Contents/MacOS and puts its notices in Contents/Resources", () => {
+    const dir = tempDir("vimma-macos-dmg-");
+    const tools = stubs(dir);
+    mkdirSync(join(dir, "out"));
+    const { status, stderr } = sign(dir, tools, macCtl(dir));
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    const lines = readFileSync(tools.log, "utf8").trim().split("\n");
+    expect(lines[1]).toMatch(/^rcodesign sign \S+\/Vimma\.app\/Contents\/MacOS\/vimma-ctl$/);
+    expect(lines[2]).toMatch(/^rcodesign sign \S+\/Vimma\.app$/);
+    expect(readFileSync(`${tools.log}.ctl`, "utf8").trim().split("\n")).toEqual([
+      "./Vimma.app/Contents/MacOS/vimma-ctl",
+      "./Vimma.app/Contents/Resources/vimma-ctl-licenses/README.txt",
+      "./Vimma.app/Contents/Resources/vimma-ctl-licenses/licenses/MIT.txt",
+      "./Vimma.app/Contents/Resources/vimma-ctl-licenses/rust-std-COPYRIGHT.html",
+    ]);
+  });
+
+  it("refuses vimma-ctl without its notices", () => {
+    for (const licenses of [undefined, "/nonexistent/vimma-ctl-licenses"]) {
+      const dir = tempDir("vimma-macos-dmg-");
+      const tools = stubs(dir);
+      mkdirSync(join(dir, "out"));
+      const { VIMMA_CTL } = macCtl(dir);
+      const env = licenses ? { VIMMA_CTL, VIMMA_CTL_LICENSES: licenses } : { VIMMA_CTL };
+      const { status, stderr } = sign(dir, tools, env);
+      expect(status, String(licenses)).not.toBe(0);
+      expect(stderr).toMatch(/VIMMA_CTL_LICENSES/);
+      expect(readFileSync(tools.log, "utf8")).not.toMatch(/rcodesign|make_dmg/);
     }
   });
 

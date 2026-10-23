@@ -162,7 +162,11 @@ that it cannot click or fill, although the browser can.
 - Licences: the static Linux binary links musl (MIT) and Rust's standard library (MIT OR
   Apache-2.0), both on the licence allowlist. Shipping their notices with the packages and
   listing `vimma-ctl` in the release SBOM is tracked in
-  [#516](https://github.com/vimma-browser/vimma/issues/516).
+  [#516](https://github.com/vimma-browser/vimma/issues/516). (Since changed: every package
+  carries `vimma-ctl-licenses/` next to `vimma-ctl`, in `Vimma.app/Contents/Resources` on
+  macOS, from `tools/package/ctl-notices.mjs`, and the release SBOM lists `vimma-ctl` with
+  musl, Rust's standard library and LLVM's libunwind; docs/runbook.md, "Release packages", and
+  docs/security.md, B13.)
 
 ## Tests
 
