@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
+import { CTL_LICENSE_FILES, IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
 
 // release.yml's gates (spec m6-packaging; docs/runbook.md, "Release packages"). It starts only
 // by workflow_dispatch: release-please.yml's release-build job starts it for the draft release it
@@ -601,6 +601,21 @@ esac
     expect(script).toContain('docker run --rm --network host -e ARCH_SMOKE_PORT="$PORT"');
     expect(script).not.toMatch(/-e PORT=/);
   });
+
+  // #516: package.mjs refuses vimma-ctl without its notices, so the pull-request stub brings
+  // every file it requires, and the installed package must carry them.
+  it.each(["arch-smoke.sh", "rpm-smoke.sh"])(
+    "%s packages its stub with vimma-ctl's notices",
+    (name) => {
+      const script = readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
+      const stub = script.slice(script.indexOf('if [ "${1:-}" = "--stub" ]; then'));
+      expect(stub).toMatch(/package\.mjs" .*--ctl-licenses "\$work\/vimma-ctl-licenses"/s);
+      for (const file of CTL_LICENSE_FILES)
+        expect(stub, file).toContain(`vimma-ctl-licenses/${file}`);
+      const lib = name === "arch-smoke.sh" ? "/opt/vimma" : "/usr/lib/vimma";
+      expect(script).toContain(`test -s ${lib}/vimma-ctl-licenses/musl-COPYRIGHT`);
+    },
+  );
 });
 
 // aur.yml: pushes vimma-bin to the AUR, which is public at once, so only for a published

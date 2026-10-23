@@ -56,7 +56,7 @@ const CTL_NAME = `${APP}-ctl`;
 /** Its notices (#516), from tools/package/ctl-notices.mjs, in a directory next to it. */
 const CTL_LICENSES = `${CTL_NAME}-licenses`;
 /** What the static Linux vimma-ctl's notices must hold: it links musl and Rust's std. */
-const CTL_LICENSE_FILES = ["README.txt", "rust-std-COPYRIGHT.html", "musl-COPYRIGHT"];
+export const CTL_LICENSE_FILES = ["README.txt", "rust-std-COPYRIGHT.html", "musl-COPYRIGHT"];
 
 /** GNU LGPL 2.1 text (gnu.org/licenses/old-licenses/lgpl-2.1.txt), for the AppImage runtime. */
 const LGPL_TEXT = fileURLToPath(new URL("notices/LGPL-2.1.txt", import.meta.url));
