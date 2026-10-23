@@ -331,7 +331,7 @@ export function addCtlComponent(bom, ctl) {
     p.name === "vimma:sbom:scope"
       ? {
           ...p,
-          value: `${p.value} vimma-ctl, with the libraries its toolchain linked into it.`,
+          value: `${p.value} Also vimma-ctl, as built, with the libraries its toolchain linked into it.`,
         }
       : p,
   );

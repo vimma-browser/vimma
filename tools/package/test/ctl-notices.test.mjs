@@ -239,6 +239,15 @@ describe("writeCtlNotices for the static Linux binary", () => {
     for (const line of readme.split("\n")) expect(line.length, line).toBeLessThanOrEqual(80);
   });
 
+  it("names vimma-ctl's own licence as its Cargo.toml does, as the SBOM entry does", () => {
+    const cargoToml = CARGO_TOML.replace('"MPL-2.0"', '"Apache-2.0"');
+    const { out, component } = notices({ cargoToml });
+    const readme = readFileSync(join(out, "README.txt"), "utf8");
+    expect(readme).toContain("is licensed under Apache-2.0.");
+    expect(readme).not.toContain("MPL-2.0");
+    expect(component.licenses).toEqual([{ license: { id: "Apache-2.0" } }]);
+  });
+
   it("describes vimma-ctl and what it links as one SBOM component", () => {
     const binary = join(tempDir("vimma-ctl-bin-"), "vimma-ctl");
     writeFileSync(binary, "static binary");
@@ -311,8 +320,10 @@ describe("writeCtlNotices for the static Linux binary", () => {
     expect(() => notices({ sysroot: fakeSysroot({ copyright: noTopLicence }) })).toThrow(
       /COPYRIGHT-library\.html/,
     );
-    for (const missing of ["MIT", "Apache-2.0", "LLVM-exception"]) {
-      const licenses = ["Apache-2.0", "MIT", "LLVM-exception"].filter((id) => id !== missing);
+    for (const missing of ["MIT", "Apache-2.0", "LLVM-exception", "Unicode-3.0"]) {
+      const licenses = ["Apache-2.0", "MIT", "LLVM-exception", "Unicode-3.0"].filter(
+        (id) => id !== missing,
+      );
       expect(() => notices({ sysroot: fakeSysroot({ licenses }) }), missing).toThrow(
         new RegExp(`licenses/${missing}\\.txt`),
       );

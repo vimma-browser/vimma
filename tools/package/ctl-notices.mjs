@@ -160,12 +160,12 @@ const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest(
 
 /**
  * @param {{ version: string, rustc: ReturnType<typeof parseRustcVersion>, target: string,
- *   rustLicense: string, musl?: { version: string, license: string } }} input
+ *   ctlLicense: string, rustLicense: string, musl?: { version: string, license: string } }} input
  */
-function readme({ version, rustc, target, rustLicense, musl }) {
+function readme({ version, rustc, target, ctlLicense, rustLicense, musl }) {
   const lines = [
-    `vimma-ctl ${version}, the command-line client for Vimma's control socket, is`,
-    "MPL-2.0 (https://mozilla.org/MPL/2.0/). It was built with",
+    `vimma-ctl ${version}, the command-line client for Vimma's control socket,`,
+    `is licensed under ${ctlLicense}. It was built with`,
     `${rustc.line} for ${target},`,
     "which put these libraries into it; their notices are in this directory.",
     "",
@@ -198,6 +198,8 @@ function readme({ version, rustc, target, rustLicense, musl }) {
  * @returns {Component & { components?: Component[], properties?: { name: string, value: string }[] }}
  */
 export function writeCtlNotices({ sysroot, rustc, target, out, cargoToml, config, repo, binary }) {
+  const license = /^license = "([^"]+)"$/m.exec(cargoToml)?.[1];
+  if (!license) throw new Error("tools/vimma-ctl/Cargo.toml has no license");
   const version = String(config.brands?.vimma?.release?.displayVersion ?? "");
   const toolchain = parseRustcVersion(rustc);
   const triple = target ?? toolchain.host;
@@ -234,7 +236,8 @@ export function writeCtlNotices({ sysroot, rustc, target, out, cargoToml, config
   const texts = join(doc, "licenses");
   const available = existsSync(texts) ? readdirSync(texts) : [];
   const ids = [...licenseIds(html)].filter((id) => available.includes(`${id}.txt`)).sort();
-  for (const id of ["MIT", "Apache-2.0", ...(musl ? ["LLVM-exception"] : [])]) {
+  // Unicode-3.0 covers core's Unicode tables, an AND term next to the library's own licence.
+  for (const id of ["MIT", "Apache-2.0", ...(musl ? ["LLVM-exception"] : []), "Unicode-3.0"]) {
     if (!ids.includes(id)) throw new Error(`${texts}/${id}.txt is missing`);
   }
 
@@ -245,7 +248,7 @@ export function writeCtlNotices({ sysroot, rustc, target, out, cargoToml, config
   if (musl) copyFileSync(musl.copyright, join(out, "musl-COPYRIGHT"));
   writeFileSync(
     join(out, "README.txt"),
-    readme({ version, rustc: toolchain, target: triple, rustLicense, musl }),
+    readme({ version, rustc: toolchain, target: triple, ctlLicense: license, rustLicense, musl }),
   );
 
   const stdPurl = `pkg:generic/rust-lang/rust-std@${toolchain.release}`;
@@ -289,8 +292,6 @@ export function writeCtlNotices({ sysroot, rustc, target, out, cargoToml, config
       },
     );
   }
-  const license = /^license = "([^"]+)"$/m.exec(cargoToml)?.[1];
-  if (!license) throw new Error("tools/vimma-ctl/Cargo.toml has no license");
   const purl = `pkg:github/${repo}@v${version}#tools/vimma-ctl`;
   return {
     type: "application",
