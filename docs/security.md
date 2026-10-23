@@ -1432,6 +1432,15 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`a checkpoint offers y and n only, and x is a plain no`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a checkpoint asks under a grant, its yes leaves the grant as it was`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`property: no answer to a checkpoint makes, lengthens or ends a grant`](../packages/vimma-core/test/agent-gate.test.mjs)
+- M34. The `vimma-ctl` version an `agent-hello` names (`ctl`, spec
+  [ship-vimma-ctl](specs/ship-vimma-ctl.md)) is a label, as `client` and `via` are: it **must**
+  change only whether Vimma shows the older-client notice, **never** what the connection may do,
+  so an older or a lying client gets every check any other gets. A `ctl` that is not a Vimma
+  version **must** be refused with the rest of the hello. The discovery file's `version` is
+  Vimma's own version, which the `welcome` gives any client anyway.
+  [`test_an_older_vimma_ctl_gets_a_notice_and_still_works`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`says older for a client that names no version: it predates the check`](../packages/vimma-core/test/ctl-version.test.mjs),
+  [`is optional, and refused with the whole hello when it is not a version`](../packages/vimma-core/test/ctl-version.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 
@@ -1833,6 +1842,19 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`puts no input into a build command, so none can change what the build runs`](../tools/package/test/flatpak.test.mjs),
   [`pins the Fedora image by digest and the runtime and SDK by commit`](../tools/package/test/flatpak.test.mjs),
   [`grants Firefox's Flatpak permissions and the Omarchy theme read-only, never the home`](../tools/package/test/flatpak.test.mjs)
+- B13. `vimma-ctl` ships inside the release packages (spec
+  [ship-vimma-ctl](specs/ship-vimma-ctl.md)). `release.yml`'s `ctl` job builds it from the
+  commit `build` checked, and `macos-ctl` from the commit it checks as `build` does; `macos-build`
+  **must** refuse a Mac binary built from any other commit. Both jobs **must** hold only a
+  read-only token, no environment and no secret, since compiling the client needs none. The
+  crate has no dependencies, so cargo downloads no crate, and the toolchain comes through the
+  runner's rustup at the version `rust-toolchain.toml` pins. The binary reaches users only inside
+  the packages, which `SHA256SUMS` lists and the `sign` jobs sign (B9, B10); it is never an asset
+  of its own.
+  [`ctl builds the checked commit's vimma-ctl, static, without the build environment`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-ctl builds vimma-ctl on a Mac from the commit it checked, like build`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-build signs the Mac vimma-ctl into the app, from the same commit`](../tools/package/test/release-workflow.test.mjs),
+  [`package puts vimma-ctl into every package and checks it in each`](../tools/package/test/release-workflow.test.mjs)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 

@@ -227,6 +227,8 @@ pub enum Failure {
 pub struct Protocol {
     legacy: Option<String>,
     client: Option<ClientLabel>,
+    /// Said after [`INSTRUCTIONS`]: that this vimma-ctl is older than Vimma.
+    note: Option<String>,
 }
 
 impl Protocol {
@@ -239,6 +241,20 @@ impl Protocol {
     #[must_use]
     pub fn client(&self) -> Option<&ClientLabel> {
         self.client.as_ref()
+    }
+
+    /// Add `note` to the server instructions (docs/specs/ship-vimma-ctl.md, behaviour 5).
+    pub fn set_note(&mut self, note: Option<String>) {
+        self.note = note;
+    }
+
+    /// The server instructions: [`INSTRUCTIONS`], and the note if there is one.
+    #[must_use]
+    pub fn instructions(&self) -> String {
+        match &self.note {
+            Some(note) => format!("{INSTRUCTIONS} {note}"),
+            None => INSTRUCTIONS.to_string(),
+        }
     }
 
     /// The legacy revision `initialize` chose.
@@ -318,7 +334,7 @@ impl Protocol {
                 ("protocolVersion", text(chosen)),
                 ("capabilities", capabilities()),
                 ("serverInfo", server_info()),
-                ("instructions", text(INSTRUCTIONS)),
+                ("instructions", Value::String(self.instructions())),
             ]),
         )
     }
@@ -383,7 +399,7 @@ impl Protocol {
             "server/discover" => object([
                 ("supportedVersions", supported()),
                 ("capabilities", capabilities()),
-                ("instructions", text(INSTRUCTIONS)),
+                ("instructions", Value::String(self.instructions())),
                 ("ttlMs", Value::Number(TTL_MS)),
                 ("cacheScope", text("public")),
             ]),
@@ -465,7 +481,7 @@ fn capabilities() -> Value {
 fn server_info() -> Value {
     object([
         ("name", text("vimma")),
-        ("version", text(env!("CARGO_PKG_VERSION"))),
+        ("version", text(crate::version::VERSION)),
     ])
 }
 
@@ -1568,6 +1584,20 @@ fn finish(era: Era, result: Value) -> Value {
     }
 }
 
+/// `reply`, a `tools/call` response, with `note` as its first text item.
+#[must_use]
+pub fn with_note(reply: Value, note: &str) -> Value {
+    let Value::Object(mut message) = reply else {
+        return reply;
+    };
+    if let Some(Value::Object(result)) = message.get_mut("result") {
+        if let Some(Value::Array(content)) = result.get_mut("content") {
+            content.insert(0, text_item(note));
+        }
+    }
+    Value::Object(message)
+}
+
 fn tool_error(message: &str) -> Value {
     object([
         ("content", Value::Array(vec![text_item(message)])),
@@ -2336,7 +2366,7 @@ mod tests {
         assert_eq!(at(&r, &["result", "serverInfo", "name"]), &s("vimma"));
         assert_eq!(
             at(&r, &["result", "serverInfo", "version"]),
-            &s(env!("CARGO_PKG_VERSION"))
+            &s(crate::version::VERSION)
         );
         assert_eq!(at(&r, &["result", "instructions"]), &s(INSTRUCTIONS));
         assert!(r.get("result").unwrap().get("resultType").is_none());

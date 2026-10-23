@@ -11,6 +11,7 @@
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./agent.mjs";
 import { AGENT_FILL, AGENT_SCREENSHOT, hasInvisible, isAgentLabel } from "./agent-act.mjs";
+import { isCtlVersion } from "./ctl-version.mjs";
 import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
@@ -219,6 +220,11 @@ function checkDiscovery(m, errors) {
       new Set(roles).size === roles.length;
     if (!ok) errors.push('roles must be a list of "agent" and "full", each once');
   }
+  // Vimma's version, so `vimma-ctl mcp` can tell before it connects that it is older
+  // (docs/specs/ship-vimma-ctl.md, behaviour 5).
+  if ("version" in m && !isCtlVersion(m.version)) {
+    errors.push("version must be a Vimma version (X.Y.Z)");
+  }
 }
 
 /** @param {Obj} args @param {string[]} errors */
@@ -281,7 +287,7 @@ function checkTabArg(args, errors) {
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentHelloArgs(args, errors) {
-  noExtraFields(args, ["client", "via"], errors, "args.");
+  noExtraFields(args, ["client", "via", "ctl"], errors, "args.");
   const { client } = args;
   if (!isObject(client)) errors.push("client must be an object");
   else {
@@ -293,6 +299,9 @@ function checkAgentHelloArgs(args, errors) {
   }
   if ("via" in args && !isLabel(args.via, 32))
     errors.push("via must be 1 to 32 printable characters");
+  // vimma-ctl's own version (docs/specs/ship-vimma-ctl.md, behaviour 4); a client from before
+  // it sends none.
+  if ("ctl" in args && !isCtlVersion(args.ctl)) errors.push("ctl must be a Vimma version (X.Y.Z)");
 }
 
 /** @param {Obj} args @param {string[]} errors */

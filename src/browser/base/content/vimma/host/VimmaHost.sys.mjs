@@ -1511,7 +1511,8 @@ export const VimmaHost = {
       inField: () => this._mode(state) === "insert",
       otherOpen: () => keysHeld(state) || UpdateUi.isOpen(win),
       pending: () => state.dispatcher.pending().length > 0,
-      notice: (text) => state.notice.show(text),
+      notice: (text, ms) => state.notice.show(text, ms ? { ms } : undefined),
+      noticeOpen: () => !!state.notice.el?.matches(":popover-open"),
       ask: (question, yes) => state.rename.ask(question, yes),
       emit: () => this._emit(state),
     });

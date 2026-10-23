@@ -20,8 +20,13 @@ use vimma_ctl::json::{Value, parse};
 use vimma_ctl::mcp_serve::{Settings, serve};
 
 const TOKEN: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+// Vimma's version in the welcome is older than this vimma-ctl's, so only the version tests at
+// the end see the note for an older client (docs/specs/ship-vimma-ctl.md).
 const WELCOME: &str =
-    r#"{"type":"welcome","protocol":2,"app":"Vimma","version":"157.0.1","role":"agent"}"#;
+    r#"{"type":"welcome","protocol":2,"app":"Vimma","version":"0.1.0","role":"agent"}"#;
+/// A Vimma newer than any vimma-ctl.
+const NEWER_WELCOME: &str =
+    r#"{"type":"welcome","protocol":2,"app":"Vimma","version":"999.0.0","role":"agent"}"#;
 const INIT: &str = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"claude-code","version":"2.1.0"}}}"#;
 
 struct TempDir(PathBuf);
@@ -95,6 +100,11 @@ type Answer = Box<dyn FnMut(&Value) -> Option<String> + Send>;
 
 impl FakeVimma {
     fn start(answer: Answer) -> Self {
+        Self::start_as(WELCOME, answer)
+    }
+
+    /// [`FakeVimma::start`] with its own `welcome` line, which names Vimma's version.
+    fn start_as(welcome: &'static str, answer: Answer) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let profile = temp_profile();
@@ -108,7 +118,7 @@ impl FakeVimma {
                 let Ok(stream) = stream else { break };
                 *l.lock().unwrap() = Some(stream.try_clone().unwrap());
                 let (s, answer) = (s.clone(), answer.clone());
-                thread::spawn(move || serve_one(stream, &s, &answer));
+                thread::spawn(move || serve_one(stream, welcome, &s, &answer));
             }
         });
         Self {
@@ -162,7 +172,7 @@ impl FakeVimma {
     }
 }
 
-fn serve_one(stream: TcpStream, seen: &Mutex<Seen>, answer: &Mutex<Answer>) {
+fn serve_one(stream: TcpStream, welcome: &str, seen: &Mutex<Seen>, answer: &Mutex<Answer>) {
     let mut writer = stream.try_clone().unwrap();
     let mut reader = BufReader::new(stream);
     let mut n = 0;
@@ -186,7 +196,7 @@ fn serve_one(stream: TcpStream, seen: &Mutex<Seen>, answer: &Mutex<Answer>) {
                     msg.get("code").is_none(),
                     "an agent sends no full-control code"
                 );
-                Some(WELCOME.to_string())
+                Some(welcome.to_string())
             }
             _ => {
                 seen.lock().unwrap().requests.push(msg.clone());
@@ -843,4 +853,110 @@ fn a_timeout_denial_names_the_wait() {
         ["No answer in Vimma within 1 s; treated as denied. Ask the user before trying again."]
     );
     mcp.finish();
+}
+
+/// The note an older vimma-ctl adds for a Vimma of version 999.0.0.
+fn older_note() -> String {
+    format!(
+        "This vimma-ctl ({}) is older than Vimma (999.0.0), so it offers fewer tools than Vimma \
+         has. Tell the user to update vimma-ctl: it ships with Vimma, and the user guide's \
+         \"Agent workspace\" section says where.",
+        vimma_ctl::version::VERSION
+    )
+}
+
+// Spec: docs/specs/ship-vimma-ctl.md, behaviour 4: agent-hello names this vimma-ctl's version,
+// which is Vimma's version of the tree it was built from (surfer.json's displayVersion).
+#[test]
+fn agent_hello_names_this_vimma_ctl_version() {
+    let surfer =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../surfer.json"))
+            .unwrap();
+    let surfer = parse(&surfer).unwrap();
+    let release = surfer
+        .get("brands")
+        .and_then(|b| b.get("vimma"))
+        .and_then(|b| b.get("release"))
+        .unwrap();
+    let display = str_of(release, "displayVersion").to_string();
+    assert_eq!(vimma_ctl::version::VERSION, display);
+
+    let vimma = FakeVimma::answering(r#"{"tabs":[]}"#);
+    let mut mcp = Mcp::start(&vimma.profile);
+    mcp.send(INIT);
+    mcp.next();
+    mcp.call(2, "vimma_tabs", "{}");
+    let hello = &vimma.seen().requests[0];
+    assert_eq!(str_of(hello, "command"), "agent-hello");
+    assert_eq!(str_of(hello.get("args").unwrap(), "ctl"), display);
+    let (code, _) = mcp.finish();
+    assert_eq!(code, Some(0));
+}
+
+// Spec: behaviour 5: a vimma-ctl older than the Vimma it reaches still serves its tools, and
+// says so once, at the top of the first tool result after it connects.
+#[test]
+fn an_older_client_says_so_in_its_first_tool_result() {
+    let vimma = FakeVimma::start_as(
+        NEWER_WELCOME,
+        Box::new(|req| {
+            Some(format!(
+                r#"{{"type":"response","id":{},"ok":true,"result":{{"tabs":[]}}}}"#,
+                id_of(req)
+            ))
+        }),
+    );
+    let mut mcp = Mcp::start(&vimma.profile);
+    mcp.send(INIT);
+    mcp.next();
+    let first = mcp.call(2, "vimma_tabs", "{}");
+    assert!(!is_error(&first), "{first}");
+    let texts = content_texts(&first);
+    assert_eq!(texts.len(), 2, "{first}");
+    assert_eq!(texts[0], older_note());
+    assert!(texts[1].contains("no tabs"), "{first}");
+    let second = mcp.call(3, "vimma_tabs", "{}");
+    assert_eq!(
+        content_texts(&second).len(),
+        1,
+        "only the first result: {second}"
+    );
+    let (code, _) = mcp.finish();
+    assert_eq!(code, Some(0));
+}
+
+// Spec: behaviour 5: when the discovery file already names a newer Vimma, the server
+// instructions say so too; without a version, or for a Vimma no newer, they are unchanged.
+#[test]
+fn the_instructions_name_an_older_client_when_the_discovery_file_does() {
+    let instructions = |discovery: Option<String>| {
+        let profile = temp_profile();
+        if let Some(text) = discovery {
+            write_discovery(&profile, &text);
+        }
+        let mut mcp = Mcp::start(&profile);
+        mcp.send(INIT);
+        let r = mcp.next();
+        let text = str_of(r.get("result").unwrap(), "instructions").to_string();
+        mcp.finish();
+        text
+    };
+    let with_version = |version: &str| {
+        Some(format!(
+            r#"{{"protocol":2,"port":1,"token":"{TOKEN}","pid":1,"roles":["agent"],"version":"{version}"}}"#
+        ))
+    };
+    assert_eq!(instructions(None), vimma_ctl::mcp::INSTRUCTIONS);
+    assert_eq!(
+        instructions(Some(discovery_v2(1, r#"["agent"]"#))),
+        vimma_ctl::mcp::INSTRUCTIONS
+    );
+    assert_eq!(
+        instructions(with_version(vimma_ctl::version::VERSION)),
+        vimma_ctl::mcp::INSTRUCTIONS
+    );
+    assert_eq!(
+        instructions(with_version("999.0.0")),
+        format!("{} {}", vimma_ctl::mcp::INSTRUCTIONS, older_note())
+    );
 }
