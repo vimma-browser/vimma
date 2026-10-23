@@ -2654,7 +2654,10 @@ defaults, with every URL replaced by `<url>` and your home directory by `~`. It 
 page titles or addresses.
 
 The licences of Firefox's third-party code are in `about:license`; the third-party code Vimma
-adds (the smol-toml TOML parser, BSD-3-Clause) is listed there too, under Vimma.
+adds (the smol-toml TOML parser, BSD-3-Clause) is listed there too, under Vimma. `vimma-ctl` is
+one file with Rust's standard library in it, and on Linux musl and LLVM's libunwind too; their
+notices are in `vimma-ctl-licenses/` next to it (`/usr/lib/vimma/vimma-ctl-licenses/` from the
+`.deb` or `.rpm`), or in `Vimma.app/Contents/Resources/vimma-ctl-licenses/` on a Mac.
 
 ## Settings (about:config)
 

@@ -147,16 +147,31 @@ function fakeMachTarball(
   return tarball;
 }
 
+/** The notices ctl-notices.mjs writes for the static Linux vimma-ctl (#516). */
+const CTL_LICENSE_FILES = [
+  "README.txt",
+  "licenses/MIT.txt",
+  "musl-COPYRIGHT",
+  "rust-std-COPYRIGHT.html",
+];
+
 /**
- * A vimma-ctl stand-in, as release.yml's ctl job builds it (spec ship-vimma-ctl).
- * @param {string} [dir] where to put it (default: a temp dir removed after the test)
- * @returns {string} its path
+ * A vimma-ctl stand-in and its notices, as release.yml's ctl job builds them (spec
+ * ship-vimma-ctl, #516).
+ * @param {string} [dir] where to put them (default: a temp dir removed after the test)
+ * @param {{ omit?: string }} [options] a notices file to leave out
+ * @returns {{ ctl: string, ctlLicenses: string }} their paths
  */
-function fakeCtl(dir = tempDir("vimma-fake-ctl-")) {
+function fakeCtl(dir = tempDir("vimma-fake-ctl-"), { omit } = {}) {
   const ctl = join(dir, "vimma-ctl");
   writeFileSync(ctl, '#!/bin/sh\necho "vimma-ctl 0.1.0 (protocol 2)"\n');
   chmodSync(ctl, 0o755);
-  return ctl;
+  const ctlLicenses = join(dir, "vimma-ctl-licenses");
+  mkdirSync(join(ctlLicenses, "licenses"), { recursive: true });
+  for (const file of CTL_LICENSE_FILES) {
+    if (file !== omit) writeFileSync(join(ctlLicenses, file), `${file}\n`);
+  }
+  return { ctl, ctlLicenses };
 }
 
 /**
@@ -693,6 +708,8 @@ describe("packageRelease on a fake ./mach package tarball", () => {
   let out;
   /** @type {string} */
   let ctl;
+  /** @type {string} */
+  let ctlLicenses;
   const deb = has("dpkg-deb");
   const rpm = has("rpmbuild");
 
@@ -703,7 +720,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     );
     const [tarDir, toolDir, outDir, rtDir, work] = /** @type {string[]} */ (dirs);
     tarball = fakeMachTarball({}, tarDir);
-    ctl = fakeCtl(toolDir);
+    ({ ctl, ctlLicenses } = fakeCtl(toolDir));
     tool = fakeAppimagetool(toolDir);
     out = outDir;
     const runtime = join(rtDir, "runtime-x86_64");
@@ -720,6 +737,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
       appimagetool: tool.tool,
       runtime,
       ctl,
+      ctlLicenses,
       buildDeb: deb,
       buildRpm: rpm,
     });
@@ -738,7 +756,8 @@ describe("packageRelease on a fake ./mach package tarball", () => {
         .filter((p) => !p.endsWith("/"))
         .sort();
     const release = join(out, "vimma-0.1.0-linux-x86_64.tar.xz");
-    expect(listing(release)).toEqual([...listing(tarball), "vimma/vimma-ctl"].sort());
+    const notices = CTL_LICENSE_FILES.map((f) => `vimma/vimma-ctl-licenses/${f}`);
+    expect(listing(release)).toEqual([...listing(tarball), "vimma/vimma-ctl", ...notices].sort());
     const mach = tempDir("vimma-mach-x-");
     const ours = tempDir("vimma-release-x-");
     execFileSync("tar", ["-xJf", tarball, "-C", mach]);
@@ -749,6 +768,12 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     }
     expectSameBytes(join(ours, "vimma/vimma-ctl"), ctl);
     expect(mode(join(ours, "vimma/vimma-ctl"))).toBe(0o755);
+    for (const file of CTL_LICENSE_FILES) {
+      const path = join(ours, "vimma/vimma-ctl-licenses", file);
+      expectSameBytes(path, join(ctlLicenses, file));
+      expect(mode(path), file).toBe(0o644);
+    }
+    expect(mode(join(ours, "vimma/vimma-ctl-licenses/licenses"))).toBe(0o755);
     // GNU tar lists `0/0`, bsdtar (macOS) `0 0`: owner and group 0 either way.
     const owners = execFileSync("tar", ["--numeric-owner", "-tvJf", release], { encoding: "utf8" });
     for (const line of owners.trim().split("\n"))
@@ -764,6 +789,24 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     for (const root of [result.debRoot, result.rpmRoot]) {
       expect(readlinkSync(join(root, "usr/bin/vimma-ctl"))).toBe("../lib/vimma/vimma-ctl");
     }
+  });
+
+  // #516: the libraries the static vimma-ctl links come with their notices, next to it.
+  it("puts vimma-ctl's notices next to it in the AppDir, the .deb and the .rpm", () => {
+    for (const root of [result.appDir, result.debRoot, result.rpmRoot]) {
+      for (const file of CTL_LICENSE_FILES) {
+        expectSameBytes(
+          join(root, "usr/lib/vimma/vimma-ctl-licenses", file),
+          join(ctlLicenses, file),
+        );
+      }
+    }
+    for (const root of [result.debRoot, result.rpmRoot]) {
+      expect(readFileSync(join(root, "usr/share/doc/vimma/copyright"), "utf8")).toContain(
+        "/usr/lib/vimma/vimma-ctl-licenses/",
+      );
+    }
+    expect(thirdPartyNotes()).toContain("vimma-ctl-licenses/");
   });
 
   it("lays out the AppDir with AppRun, desktop file, icon and the app", () => {
@@ -866,6 +909,9 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     expect(contents).toMatch(/\.\/usr\/bin\/vimma -> \.\.\/lib\/vimma\/vimma/);
     expect(contents).toMatch(/^-rwxr-xr-x root\/root .* \.\/usr\/lib\/vimma\/vimma-ctl$/m);
     expect(contents).toMatch(/\.\/usr\/bin\/vimma-ctl -> \.\.\/lib\/vimma\/vimma-ctl/);
+    expect(contents).toMatch(
+      /^-rw-r--r-- root\/root .* \.\/usr\/lib\/vimma\/vimma-ctl-licenses\/musl-COPYRIGHT$/m,
+    );
   });
 
   it("stages the .rpm root as the .deb's, without dpkg's control files", () => {
@@ -901,6 +947,9 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     expect(list).toMatch(/ \/usr\/bin\/vimma -> \.\.\/lib\/vimma\/vimma$/m);
     expect(list).toMatch(/^-rwxr-xr-x +1 root +root .* \/usr\/lib\/vimma\/vimma-ctl$/m);
     expect(list).toMatch(/ \/usr\/bin\/vimma-ctl -> \.\.\/lib\/vimma\/vimma-ctl$/m);
+    expect(list).toMatch(
+      /^-rw-r--r-- +1 root +root .* \/usr\/lib\/vimma\/vimma-ctl-licenses\/musl-COPYRIGHT$/m,
+    );
     expect(q(["--requires"])).toMatch(/^hicolor-icon-theme$/m);
     expect(q(["--provides"])).not.toMatch(/libxul/);
     const x = tempDir("vimma-rpm-x-");
@@ -1052,10 +1101,27 @@ describe("packageRelease on a fake ./mach package tarball", () => {
 });
 
 describe("packageRelease includes an SBOM given next to it", () => {
-  it("adds the SBOM to SHA256SUMS", () => {
+  const bom = {
+    bomFormat: "CycloneDX",
+    specVersion: "1.6",
+    metadata: {
+      component: { name: "vimma", version: "0.1.0" },
+      properties: [{ name: "vimma:sbom:scope", value: "Components vendored in the tree." }],
+    },
+    components: [{ type: "application", "bom-ref": "firefox", name: "firefox" }],
+  };
+  const ctlComponent = {
+    type: "application",
+    "bom-ref": "ctl",
+    name: "vimma-ctl",
+    version: "0.1.0",
+  };
+  /** @param {{ ctlComponent?: string }} extra */
+  const run = (extra) => {
     const out = tempDir("vimma-out-");
-    const sbom = join(tempDir("vimma-sbom-"), "vimma-0.1.0.cdx.json");
-    writeFileSync(sbom, "{}\n");
+    const dir = tempDir("vimma-sbom-");
+    const sbom = join(dir, "vimma-0.1.0.cdx.json");
+    writeFileSync(sbom, `${JSON.stringify(bom)}\n`);
     packageRelease({
       tarball: fakeMachTarball(),
       outDir: out,
@@ -1064,12 +1130,29 @@ describe("packageRelease includes an SBOM given next to it", () => {
       repo: REPO,
       brandDir: BRAND_DIR,
       sbom,
-      ctl: fakeCtl(),
+      ...fakeCtl(),
       buildDeb: false,
       buildRpm: false,
+      ...extra,
     });
+    return out;
+  };
+
+  // #516: the SBOM lists the vimma-ctl every package carries, as the ctl job described it.
+  it("adds vimma-ctl to the SBOM and the SBOM to SHA256SUMS", () => {
+    const component = join(tempDir("vimma-ctl-component-"), "vimma-ctl.cdx.json");
+    writeFileSync(component, JSON.stringify(ctlComponent));
+    const out = run({ ctlComponent: component });
     expect(readFileSync(join(out, "SHA256SUMS"), "utf8")).toContain("  vimma-0.1.0.cdx.json\n");
-    expect(readFileSync(join(out, "vimma-0.1.0.cdx.json"), "utf8")).toBe("{}\n");
+    const written = JSON.parse(readFileSync(join(out, "vimma-0.1.0.cdx.json"), "utf8"));
+    expect(written.components.map((/** @type {{ name: string }} */ c) => c.name)).toEqual([
+      "firefox",
+      "vimma-ctl",
+    ]);
+  });
+
+  it("refuses an SBOM without vimma-ctl's component", () => {
+    expect(() => run({})).toThrow(/--ctl-component/);
   });
 });
 
@@ -1083,7 +1166,7 @@ describe("packageRelease cleans up after itself", () => {
     maintainer: MAINTAINER,
     repo: REPO,
     brandDir: BRAND_DIR,
-    ctl: fakeCtl(),
+    ...fakeCtl(),
     buildDeb: false,
     buildRpm: false,
   });
@@ -1103,6 +1186,17 @@ describe("packageRelease cleans up after itself", () => {
     const plain = join(tempDir("vimma-plain-ctl-"), "vimma-ctl");
     writeFileSync(plain, "not executable\n");
     expect(() => packageRelease({ ...opts(fakeMachTarball()), ctl: plain })).toThrow(/vimma-ctl/);
+  });
+
+  // #516: the static vimma-ctl links musl and Rust's standard library, whose MIT terms ask for
+  // their notices in every copy.
+  it("refuses to package without vimma-ctl's notices", () => {
+    const without = { ...opts(fakeMachTarball()), ctlLicenses: undefined };
+    expect(() => packageRelease(without)).toThrow(/--ctl-licenses/);
+    for (const omit of ["README.txt", "musl-COPYRIGHT", "rust-std-COPYRIGHT.html"]) {
+      const partial = { ...opts(fakeMachTarball()), ...fakeCtl(undefined, { omit }) };
+      expect(() => packageRelease(partial), omit).toThrow(new RegExp(omit.replace(".", "\\.")));
+    }
   });
 
   it("removes it when packaging fails too", () => {
@@ -1156,7 +1250,7 @@ describe("packageRelease refuses bad input", () => {
         maintainer: MAINTAINER,
         repo: REPO,
         brandDir: BRAND_DIR,
-        ctl: fakeCtl(),
+        ...fakeCtl(),
         buildDeb: false,
         buildRpm: true,
       }),

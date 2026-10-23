@@ -478,6 +478,47 @@ esac
       expect(block).toMatch(/name: ctl\n {10}path: ctl\/\n/);
     });
 
+    // #516: the notices and the SBOM entry come from the toolchain that built the binary, so
+    // they are made in the same job, after the binary is checked.
+    it("ctl gathers vimma-ctl's notices and SBOM entry from the toolchain that built it", () => {
+      const block = all.get("ctl") ?? "";
+      const notices = runOf(block, "Notices and SBOM entry for vimma-ctl");
+      expect(notices).toContain(
+        "node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \\\n" +
+          "  --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json",
+      );
+      expect(block.indexOf("- name: Check the binary")).toBeLessThan(
+        block.indexOf("- name: Notices and SBOM entry for vimma-ctl"),
+      );
+      expect(block).toContain("uses: actions/setup-node@");
+    });
+
+    it("package ships vimma-ctl's notices, lists it in the SBOM and checks both", () => {
+      const block = all.get("package") ?? "";
+      const pack = runOf(block, "Package");
+      expect(pack).toContain("--ctl-licenses ctl/vimma-ctl-licenses");
+      expect(pack).toContain("--ctl-component ctl/vimma-ctl.cdx.json");
+      expect(pack).toContain('node tools/package/validate-sbom.mjs "dist/vimma-$v.cdx.json"');
+      expect(block).toMatch(/- name: npm ci\n {8}run: npm ci --ignore-scripts\n/);
+      const smoke = runOf(block, "Smoke test the .deb and the AppImage");
+      expect(smoke).toContain("test -s /usr/lib/vimma/vimma-ctl-licenses/musl-COPYRIGHT");
+      expect(smoke).toContain('case "$listing" in *"vimma/vimma-ctl-licenses/musl-COPYRIGHT"*) ;;');
+    });
+
+    it("the Mac vimma-ctl's notices go into the app and the smoke check finds them", () => {
+      const ctl = all.get("macos-ctl") ?? "";
+      expect(runOf(ctl, "Notices for vimma-ctl")).toContain(
+        "node tools/package/ctl-notices.mjs --out ctl/vimma-ctl-licenses",
+      );
+      expect(ctl).toContain("uses: actions/setup-node@");
+      expect(all.get("macos-build")).toContain(
+        "VIMMA_CTL_LICENSES: ${{ github.workspace }}/ctl/vimma-ctl-licenses",
+      );
+      expect(runOf(all.get("macos-smoke") ?? "", "Smoke check")).toContain(
+        'test -s "$APP/Contents/Resources/vimma-ctl-licenses/rust-std-COPYRIGHT.html"',
+      );
+    });
+
     it("package puts vimma-ctl into every package and checks it in each", () => {
       const block = all.get("package") ?? "";
       expect(block).toMatch(/^ {4}needs: \[build, ctl\]$/m);

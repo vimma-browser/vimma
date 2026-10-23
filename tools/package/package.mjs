@@ -7,8 +7,10 @@
  *
  * Usage:
  *   node tools/package/package.mjs --tarball <vimma-*.linux-x86_64.tar.xz> --ctl <vimma-ctl>
- *     --out <dir> --maintainer "Name <email>" [--tag vX.Y.Z] [--repo vimma-browser/vimma]
- *     [--sbom <file>] [--appimagetool <path> --runtime <path>] [--no-deb] [--no-rpm]
+ *     --ctl-licenses <dir> --out <dir> --maintainer "Name <email>" [--tag vX.Y.Z]
+ *     [--repo vimma-browser/vimma] [--sbom <file> --ctl-component <file>]
+ *     [--appimagetool <path> --runtime <path>] [--no-deb] [--no-rpm]
+ * --ctl-licenses and --ctl-component are what tools/package/ctl-notices.mjs writes for --ctl.
  * Without --appimagetool no AppImage is built (its AppDir still is, in the work dir).
  * The version is surfer.json brands.vimma.release.displayVersion; --tag must be exactly v<that>.
  */
@@ -34,6 +36,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.mjs";
 import { PKGBUILD_INSTALL_COMMAND } from "../../packages/vimma-core/src/updates.mjs";
+import { addCtlComponent } from "./sbom.mjs";
 
 /** SemVer with an optional pre-release, as version-files.mjs accepts (plan §7). */
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
@@ -50,6 +53,10 @@ const LAUNCHER_NAME = `${APP}-open`;
 
 /** The control client (spec ship-vimma-ctl), installed next to the `vimma` binary. */
 const CTL_NAME = `${APP}-ctl`;
+/** Its notices (#516), from tools/package/ctl-notices.mjs, in a directory next to it. */
+const CTL_LICENSES = `${CTL_NAME}-licenses`;
+/** What the static Linux vimma-ctl's notices must hold: it links musl and Rust's std. */
+const CTL_LICENSE_FILES = ["README.txt", "rust-std-COPYRIGHT.html", "musl-COPYRIGHT"];
 
 /** GNU LGPL 2.1 text (gnu.org/licenses/old-licenses/lgpl-2.1.txt), for the AppImage runtime. */
 const LGPL_TEXT = fileURLToPath(new URL("notices/LGPL-2.1.txt", import.meta.url));
@@ -218,8 +225,10 @@ export function thirdPartyNotes() {
 The AppImage starts with the unmodified AppImage type-2 runtime ${RUNTIME_RELEASE} (MIT), which
 statically links libfuse 3.15.0 under the LGPL-2.1-or-later. Its source:
 ${RUNTIME_SOURCE}. The licence text and how to relink or replace the runtime are in
-\`usr/share/doc/vimma/\` inside the AppImage (\`--appimage-extract\`). Vimma is MPL-2.0; the
-CycloneDX SBOM lists the other components.
+\`usr/share/doc/vimma/\` inside the AppImage (\`--appimage-extract\`). \`vimma-ctl\` links Rust's
+standard library, and on Linux musl and LLVM's libunwind, into its binary; their notices are in
+\`vimma-ctl-licenses/\` next to it, or in \`Vimma.app/Contents/Resources/\` on macOS. Vimma is
+MPL-2.0; the CycloneDX SBOM lists the other components.
 `;
 }
 
@@ -452,7 +461,8 @@ Files: *
 Copyright: Vimma contributors; Mozilla Foundation and contributors (Firefox)
 License: MPL-2.0
  Third-party components and their licences are listed in about:license and in
- the release's CycloneDX SBOM (vimma-<version>.cdx.json).
+ the release's CycloneDX SBOM (vimma-<version>.cdx.json). vimma-ctl is static:
+ the notices of the libraries in it are in /usr/lib/vimma/vimma-ctl-licenses/.
 
 License: MPL-2.0
  This Source Code Form is subject to the terms of the Mozilla Public License,
@@ -780,6 +790,36 @@ function installCtl(from, to) {
   chmodSync(to, 0o755);
 }
 
+/**
+ * vimma-ctl's notices as ctl-notices.mjs wrote them in the ctl job, next to the binary (#516):
+ * the static binary links musl and Rust's standard library, whose MIT terms ask for their
+ * notices in every copy. Files 0644 and directories 0755, as download-artifact keeps no modes.
+ * @param {string | undefined} from
+ * @param {string} to
+ */
+function installCtlLicenses(from, to) {
+  if (!from) throw new Error(`--ctl-licenses: the ${CTL_LICENSES} directory to ship is required`);
+  for (const file of CTL_LICENSE_FILES) {
+    if (!existsSync(join(from, file))) throw new Error(`--ctl-licenses ${from}: no ${file}`);
+  }
+  if (existsSync(to)) throw new Error(`the mach tarball already has ${APP}/${CTL_LICENSES}`);
+  /**
+   * @param {string} src
+   * @param {string} dest
+   */
+  const copy = (src, dest) => {
+    mkdirSync(dest, { mode: 0o755 });
+    chmodSync(dest, 0o755);
+    for (const entry of readdirSync(src, { withFileTypes: true })) {
+      const path = join(src, entry.name);
+      if (entry.isDirectory()) copy(path, join(dest, entry.name));
+      else if (entry.isFile()) installFile(path, join(dest, entry.name));
+      else throw new Error(`--ctl-licenses: ${path} is neither a file nor a directory`);
+    }
+  };
+  copy(from, to);
+}
+
 /** Whether `tar` is GNU tar, as on the release runner; macOS has bsdtar. */
 export const gnuTar = () =>
   execFileSync("tar", ["--version"], { encoding: "utf8" }).includes("GNU");
@@ -848,8 +888,9 @@ function installedKiB(dir) {
 
 /**
  * @typedef {{
- *   tarball: string, ctl: string, outDir: string, config: SurferConfig, maintainer: string,
- *   repo: string, brandDir: string, tag?: string, sbom?: string, appimagetool?: string,
+ *   tarball: string, ctl: string, ctlLicenses: string, outDir: string, config: SurferConfig,
+ *   maintainer: string, repo: string, brandDir: string, tag?: string, sbom?: string,
+ *   ctlComponent?: string, appimagetool?: string,
  *   runtime?: string, buildDeb?: boolean, buildRpm?: boolean, workDir?: string,
  * }} PackageOptions
  */
@@ -913,6 +954,10 @@ function packageIn(work, options) {
   if (problems.length) throw new Error(`desktop file: ${problems.join("; ")}`);
 
   installCtl(options.ctl, join(app, CTL_NAME));
+  installCtlLicenses(options.ctlLicenses, join(app, CTL_LICENSES));
+  if (options.sbom && !options.ctlComponent) {
+    throw new Error("--sbom needs --ctl-component: the SBOM lists the vimma-ctl every package has");
+  }
 
   /** @type {string[]} */
   const files = [];
@@ -1031,9 +1076,13 @@ function packageIn(work, options) {
     files.push(rpm);
   }
 
-  if (options.sbom) {
+  if (options.sbom && options.ctlComponent) {
     const sbom = join(out, names.sbom);
-    if (options.sbom !== sbom) copyFileSync(options.sbom, sbom);
+    const bom = addCtlComponent(
+      JSON.parse(readFileSync(options.sbom, "utf8")),
+      JSON.parse(readFileSync(options.ctlComponent, "utf8")),
+    );
+    writeFile(sbom, `${JSON.stringify(bom, null, 2)}\n`);
     files.push(sbom);
   }
 
@@ -1080,6 +1129,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     options: {
       tarball: { type: "string" },
       ctl: { type: "string" },
+      "ctl-licenses": { type: "string" },
+      "ctl-component": { type: "string" },
       out: { type: "string" },
       maintainer: { type: "string" },
       tag: { type: "string" },
@@ -1091,9 +1142,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       "no-rpm": { type: "boolean", default: false },
     },
   });
-  if (!values.tarball || !values.ctl || !values.out || !values.maintainer) {
+  if (
+    !values.tarball ||
+    !values.ctl ||
+    !values["ctl-licenses"] ||
+    !values.out ||
+    !values.maintainer
+  ) {
     console.error(
-      "usage: package.mjs --tarball <file> --ctl <vimma-ctl> --out <dir> --maintainer 'Name <email>' …",
+      "usage: package.mjs --tarball <file> --ctl <vimma-ctl> --ctl-licenses <dir> --out <dir> " +
+        "--maintainer 'Name <email>' …",
     );
     process.exit(2);
   }
@@ -1101,6 +1159,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const result = packageRelease({
     tarball: values.tarball,
     ctl: values.ctl,
+    ctlLicenses: values["ctl-licenses"],
+    ctlComponent: values["ctl-component"],
     outDir: values.out,
     maintainer: values.maintainer,
     tag: values.tag,

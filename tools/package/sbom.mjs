@@ -21,7 +21,8 @@ import { REPO } from "../repo.mjs";
  * @typedef {{ license: { id: string } } | { license: { name: string } } | { expression: string }} License
  * @typedef {{ type: string, "bom-ref": string, name: string, version?: string, purl?: string,
  *   group?: string, hashes?: { alg: string, content: string }[], licenses?: License[],
- *   externalReferences?: { type: string, url: string }[] }} Component
+ *   externalReferences?: { type: string, url: string }[],
+ *   properties?: { name: string, value: string }[], components?: Component[] }} Component
  */
 
 /**
@@ -304,6 +305,40 @@ export function buildSbom({ engineDir, config, repo, vimmaRoot, serialNumber, ti
       ],
     },
     components,
+  };
+}
+
+/**
+ * The release SBOM with vimma-ctl, which every package ships next to the browser (#516; spec
+ * ship-vimma-ctl): the component ctl-notices.mjs wrote in release.yml's ctl job, with the
+ * libraries its toolchain linked into it as its own components. The SBOM is built where the
+ * engine tree is and the binary where its toolchain is, so release.yml's package job joins them.
+ * @template {ReturnType<typeof buildSbom>} T
+ * @param {T} bom
+ * @param {Component} ctl
+ * @returns {T} a new SBOM; `bom` is unchanged
+ */
+export function addCtlComponent(bom, ctl) {
+  if (ctl.name !== "vimma-ctl") throw new Error(`not vimma-ctl's component: ${ctl.name}`);
+  const version = bom.metadata.component.version;
+  if (ctl.version !== version) {
+    throw new Error(`vimma-ctl ${ctl.version} is not this release's version ${version}`);
+  }
+  if (bom.components.some((c) => c.name === "vimma-ctl")) {
+    throw new Error("the SBOM already lists vimma-ctl");
+  }
+  const properties = bom.metadata.properties.map((p) =>
+    p.name === "vimma:sbom:scope"
+      ? {
+          ...p,
+          value: `${p.value} vimma-ctl, with the libraries its toolchain linked into it.`,
+        }
+      : p,
+  );
+  return {
+    ...bom,
+    metadata: { ...bom.metadata, properties },
+    components: [...bom.components, ctl],
   };
 }
 
