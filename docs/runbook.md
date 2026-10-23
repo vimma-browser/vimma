@@ -2303,11 +2303,15 @@ replace_published=true` changed its files, whose hashes the old manifest no long
 its `?` overlay. A push to `main` that changes it sends a `repository_dispatch`
 (`vimma-bindings`) to vimma-browser/vimma-site, whose workflow fetches the file at that commit and opens
 a pull request. Publishing a release (not a pre-release) sends `vimma-release`, and the site's
-`release-sync.yml` syncs the latest published release at once instead of at its daily run.
-Until the secret exists the job skips with a notice. To set it up: create a
-fine-grained token with access to vimma-browser/vimma-site only and "Contents: read and write", then
-`gh secret set SITE_DISPATCH_TOKEN`. Re-send by hand with `gh workflow run site-dispatch.yml`
-(`-f release=true` for a release).
+`release-sync.yml` syncs the latest published release at once instead of at its scheduled run.
+It authenticates as the org's GitHub App **vimma-site-dispatch** (Organization settings →
+Developer settings → GitHub Apps), installed on vimma-browser/vimma-site only with "Contents: read
+and write": the variable `SITE_DISPATCH_APP_ID` holds its client ID and the secret
+`SITE_DISPATCH_APP_KEY` its private key, and each run mints a one-hour token. Nothing expires.
+To rotate the key, generate a new one on the app's page, `gh secret set SITE_DISPATCH_APP_KEY <
+new-key.pem`, then delete the old key there. Until the variable exists the job skips with a
+notice. Re-send by hand with `gh workflow run site-dispatch.yml` (`-f release=true` for a
+release).
 
 ### Security scanning (`semgrep.yml`, `codeql.yml`)
 
