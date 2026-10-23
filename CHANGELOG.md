@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.9](https://github.com/vimma-browser/vimma/compare/v0.1.8...v0.1.9) (2026-10-23)
+
+
+### Added
+
+* **mcp:** paying and sending a form are checkpoints ([#522](https://github.com/vimma-browser/vimma/issues/522)) ([c2dadf6](https://github.com/vimma-browser/vimma/commit/c2dadf62faede2bdf84a1c7fccb335d62490f950)), closes [#508](https://github.com/vimma-browser/vimma/issues/508)
+* **release:** packages carry vimma-ctl's licence notices and the sbom lists it ([#528](https://github.com/vimma-browser/vimma/issues/528)) ([5e26f06](https://github.com/vimma-browser/vimma/commit/5e26f0681fcc29323ca4aed8aba65033fe4c6643))
+* **release:** ship vimma-ctl in every package, and an older vimma-ctl says it is older ([#517](https://github.com/vimma-browser/vimma/issues/517)) ([5741ea7](https://github.com/vimma-browser/vimma/commit/5741ea7b000f9d46f9f54ec286e4765981a3de06))
+
+
+### Fixed
+
+* **mcp:** a one-line grant hint, an honest yes notice and a framed pay button's site ([#526](https://github.com/vimma-browser/vimma/issues/526)) ([cd5d275](https://github.com/vimma-browser/vimma/commit/cd5d275642f453248c35e16088ad3a3357f0f52c)), closes [#525](https://github.com/vimma-browser/vimma/issues/525)
+
 ## [Unreleased]
 
 ### Added
