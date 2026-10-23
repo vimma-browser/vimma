@@ -2,10 +2,16 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.9](https://github.com/vimma-browser/vimma/compare/v0.1.8...v0.1.9) (2026-10-23)
+## [Unreleased]
+
+## [0.1.9](https://github.com/vimma-browser/vimma/compare/v0.1.8...v0.1.9) · Firefox 158.0.1 (2026-10-23)
 
 
 ### Added
+
+- Agents (MCP): sending a form and paying are checkpoints. Under any grant they ask with `y` and `n` only, marked `▲` in the theme's warning colour, and the agent goes on under its grant after either answer. A step pays when the page shows a payment card field (also in a payment provider's frame) or the pressed button or followed link says it pays (`Pay now`, `Place order`, `Vahvista tilaus`, … in six languages), also a button that sends no form; its question names the button, the site and the total the page states (`▲ claude-code wants to pay: "Vahvista tilaus" on shop.example · the page says "Yhteensä 42,90 €"`), and a button in a payment provider's frame of another site names that site, then the shop's (`on pay.provider.example (in shop.example)`). A form's question lists each field it sends with its value, a password as `•••`, hidden fields counted. A yes shows `allowed payment on shop.example` or `allowed sending the form to example.com`. The grant's hint is `y once · 10a 10 min · n deny · x mute`, so that a usual question fits one line at 1,280 pixels, and the grant's notice says that sending a form or paying still asks. The e2e baselines `m0-mcp-stdio-question`, `m0-mcp-drive-keys-question`, `m0-mcp-forms-fill-question` and `m0-mcp-forms-submit-question` change with the shorter hint and the form question, and `m0-mcp-checkpoints-basket-ran`, `m0-mcp-checkpoints-pay-question`, `m0-mcp-checkpoints-card-question`, `m0-mcp-checkpoints-hosted-question` (a payment provider's pay button in a frame of another site) and `m0-mcp-checkpoints-hosted-allowed` (the notice at its yes) are new.
+- Releases: `vimma-ctl` ships in every package (the tarball, the AppImage, the `.deb`, the `.rpm`, the PKGBUILD and the macOS app with its Homebrew cask), so each update replaces it together with Vimma. A `vimma-ctl` older than Vimma keeps the tools it knows: `vimma-ctl mcp` tells the agent it is older, and Vimma shows a one-line notice once per client and version.
+- Release packages carry the licence notices of what vimma-ctl links (Rust's standard library, musl, LLVM's libunwind) in `vimma-ctl-licenses/`, and the release SBOM lists vimma-ctl with them.
 
 * **mcp:** paying and sending a form are checkpoints ([#522](https://github.com/vimma-browser/vimma/issues/522)) ([c2dadf6](https://github.com/vimma-browser/vimma/commit/c2dadf62faede2bdf84a1c7fccb335d62490f950)), closes [#508](https://github.com/vimma-browser/vimma/issues/508)
 * **release:** packages carry vimma-ctl's licence notices and the sbom lists it ([#528](https://github.com/vimma-browser/vimma/issues/528)) ([5e26f06](https://github.com/vimma-browser/vimma/commit/5e26f0681fcc29323ca4aed8aba65033fe4c6643))
@@ -15,14 +21,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 ### Fixed
 
 * **mcp:** a one-line grant hint, an honest yes notice and a framed pay button's site ([#526](https://github.com/vimma-browser/vimma/issues/526)) ([cd5d275](https://github.com/vimma-browser/vimma/commit/cd5d275642f453248c35e16088ad3a3357f0f52c)), closes [#525](https://github.com/vimma-browser/vimma/issues/525)
-
-## [Unreleased]
-
-### Added
-
-- Agents (MCP): sending a form and paying are checkpoints. Under any grant they ask with `y` and `n` only, marked `▲` in the theme's warning colour, and the agent goes on under its grant after either answer. A step pays when the page shows a payment card field (also in a payment provider's frame) or the pressed button or followed link says it pays (`Pay now`, `Place order`, `Vahvista tilaus`, … in six languages), also a button that sends no form; its question names the button, the site and the total the page states (`▲ claude-code wants to pay: "Vahvista tilaus" on shop.example · the page says "Yhteensä 42,90 €"`), and a button in a payment provider's frame of another site names that site, then the shop's (`on pay.provider.example (in shop.example)`). A form's question lists each field it sends with its value, a password as `•••`, hidden fields counted. A yes shows `allowed payment on shop.example` or `allowed sending the form to example.com`. The grant's hint is `y once · 10a 10 min · n deny · x mute`, so that a usual question fits one line at 1,280 pixels, and the grant's notice says that sending a form or paying still asks. The e2e baselines `m0-mcp-stdio-question`, `m0-mcp-drive-keys-question`, `m0-mcp-forms-fill-question` and `m0-mcp-forms-submit-question` change with the shorter hint and the form question, and `m0-mcp-checkpoints-basket-ran`, `m0-mcp-checkpoints-pay-question`, `m0-mcp-checkpoints-card-question`, `m0-mcp-checkpoints-hosted-question` (a payment provider's pay button in a frame of another site) and `m0-mcp-checkpoints-hosted-allowed` (the notice at its yes) are new.
-- Releases: `vimma-ctl` ships in every package (the tarball, the AppImage, the `.deb`, the `.rpm`, the PKGBUILD and the macOS app with its Homebrew cask), so each update replaces it together with Vimma. A `vimma-ctl` older than Vimma keeps the tools it knows: `vimma-ctl mcp` tells the agent it is older, and Vimma shows a one-line notice once per client and version.
-- Release packages carry the licence notices of what vimma-ctl links (Rust's standard library, musl, LLVM's libunwind) in `vimma-ctl-licenses/`, and the release SBOM lists vimma-ctl with them.
 
 ## [0.1.8](https://github.com/vimma-browser/vimma/compare/v0.1.7...v0.1.8) · Firefox 158.0.1 (2026-10-22)
 
