@@ -170,6 +170,8 @@ pub struct Discovery {
     pub pid: u64,
     /// The roles the server serves: `[Full]` for protocol 1.
     pub roles: Vec<Role>,
+    /// Vimma's version, when the file names it (docs/specs/ship-vimma-ctl.md, behaviour 5).
+    pub version: Option<String>,
 }
 
 /// Why a message does not follow the protocol.
@@ -499,12 +501,18 @@ pub fn decode_discovery(value: &Value) -> Result<Discovery, DecodeError> {
     } else {
         vec![Role::Full]
     };
+    let version = match map.get("version") {
+        None => None,
+        Some(Value::String(v)) if crate::version::compare(v, v).is_some() => Some(v.clone()),
+        Some(_) => return Err(fail("version must be a Vimma version (X.Y.Z)")),
+    };
     Ok(Discovery {
         protocol,
         port,
         token,
         pid,
         roles,
+        version,
     })
 }
 
@@ -1014,6 +1022,7 @@ mod tests {
                 token: TOKEN.into(),
                 pid: 1,
                 roles: vec![Role::Full],
+                version: None,
             })
         );
         assert!(decode_discovery(&file("0", TOKEN, "1")).is_err());

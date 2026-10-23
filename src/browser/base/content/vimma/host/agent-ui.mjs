@@ -43,6 +43,14 @@ const ARMING_PREF = "security.dialog_enable_delay";
 const POLL_MS = 250;
 /** How often the status bar's grant minutes are redrawn while a grant runs. */
 const TICK_MS = 15_000;
+/**
+ * A held notice (spec ship-vimma-ctl, decision 9) shows this long after the line is free, so the
+ * agent's first question, which follows its hello at once, comes first, and an answer's own
+ * notice (NOTICE_MS, ui/notice.mjs) is read before it.
+ */
+const HELD_DELAY_MS = 1600;
+/** How long a held notice stays: as long as an update announcement. */
+const HELD_MS = 6000;
 
 /**
  * What the host tells the agent UI about one window.
@@ -51,7 +59,8 @@ const TICK_MS = 15_000;
  * @property {() => boolean} inField  focus is in an editable field (insert mode)
  * @property {() => boolean} otherOpen  a picker, prompt, panel or the command line is open
  * @property {() => boolean} pending  a key sequence is under way (after ctrl+b)
- * @property {(text: string) => void} notice
+ * @property {(text: string, ms?: number) => void} notice  `ms`: how long it stays
+ * @property {() => boolean} noticeOpen  a notice is on screen
  * @property {(question: string, yes: () => void) => void} ask  a y/N on the prompt line
  * @property {() => void} emit  redraw the status bar
  */
@@ -67,6 +76,11 @@ let current = null;
 const alerted = new Set();
 let poll = /** @type {any} */ (null);
 let tick = /** @type {any} */ (null);
+/** A notice that waits until no question waits, and its timer. @type {string | null} */
+let held = null;
+let heldTimer = /** @type {any} */ (null);
+/** Since when no question has waited (0 while one waits). */
+let freeSince = 0;
 let listening = false;
 
 /** The window that asks: the most recent normal (non-private) browser window. */
@@ -167,6 +181,11 @@ function sync() {
       sync();
     }, POLL_MS);
   }
+  if (head) freeSince = 0;
+  else freeSince ||= Date.now();
+  if (held !== null) {
+    heldTimer ??= lazy.setTimeout(showHeld, HELD_DELAY_MS);
+  }
   if (AgentGate.grants().length) {
     tick ??= lazy.setTimeout(() => {
       tick = null;
@@ -174,6 +193,25 @@ function sync() {
     }, TICK_MS);
   }
   redraw();
+}
+
+/**
+ * The held notice, once no question has waited for HELD_DELAY_MS and no other notice is on
+ * screen, so it never cuts short the notice of what an agent just did; until then, it tries
+ * again.
+ */
+function showHeld() {
+  heldTimer = null;
+  if (held === null || AgentGate.waiting.length) return;
+  const win = askingWindow();
+  const w = win && windows.get(win);
+  const wait = freeSince ? freeSince + HELD_DELAY_MS - Date.now() : HELD_DELAY_MS;
+  if (!w || wait > 0 || w.noticeOpen()) {
+    heldTimer = lazy.setTimeout(showHeld, Math.max(wait, POLL_MS));
+    return;
+  }
+  w.notice(held, HELD_MS);
+  held = null;
 }
 
 /**
@@ -222,6 +260,8 @@ function onGate(event) {
       w.notice(deniedNotice(event.question, "timeout"));
     } else if (event.kind === "ran") {
       w.notice(ranNotice(event, event.until, Date.now()));
+    } else if (event.kind === "notice" && event.hold) {
+      held = event.text;
     } else if (event.kind === "notice") {
       w.notice(event.text);
     }

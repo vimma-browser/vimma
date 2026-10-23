@@ -29,6 +29,7 @@ import {
 import { actDetail, fillDetail } from "../core/agent-act.mjs";
 import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
 import { fillFits, shownNotice } from "../core/agent-prompt.mjs";
+import { ctlVersionNotice } from "../core/ctl-version.mjs";
 import { MAX_LINE_LENGTH, MAX_READ_CHARS } from "../core/control.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { workspaceOfTab } from "../core/workspaces.mjs";
@@ -49,6 +50,7 @@ import { AgentShot } from "./AgentShot.sys.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
@@ -402,18 +404,31 @@ const wf = (s) => /** @type {string} */ (/** @type {any} */ (String(s)).toWellFo
 /** UTF-8 length of `value` as JSON. @param {unknown} value */
 const jsonBytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
 
+/** The clients (name and vimma-ctl version) told about once this session. */
+const ctlNoticed = new Set();
+
 const COMMANDS = {
   /**
    * The connection's first command (decision 4): labels for the question. Neither is proof.
    * @param {ConnId} conn @param {AgentConn} state @param {any} args
    */
-  "agent-hello"(conn, state, { client, via }) {
+  "agent-hello"(conn, state, { client, via, ctl }) {
     state.agent = {
       client: client.name,
       ...(client.version ? { version: client.version } : {}),
       ...(via ? { via } : {}),
     };
     AgentGate.connect(conn, state.agent);
+    // An older vimma-ctl keeps its own tools, since every command is checked here all the same;
+    // the user learns why an agent lacks newer ones (spec ship-vimma-ctl, decision 6).
+    // Once per client name and version a session, so a client that reconnects, or opens
+    // connection after connection, cannot keep the notice line for itself.
+    const notice = ctlVersionNotice(ctl, lazy.AppConstants.MOZ_APP_VERSION_DISPLAY);
+    const key = `${client.name}\0${ctl ?? ""}`;
+    if (notice && !ctlNoticed.has(key)) {
+      ctlNoticed.add(key);
+      AgentGate.notify(notice, { hold: true });
+    }
     const agent = WorkspaceStore.agent;
     return { workspace: agent?.name ?? WorkspaceStore.agentName ?? "agent", exists: !!agent };
   },

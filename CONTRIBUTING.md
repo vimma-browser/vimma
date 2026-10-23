@@ -98,6 +98,22 @@ reset. After moving the checkout to another path, run
 `engine/`'s absolute symlinks and rewrites the old path in the objdir
 ([runbook](docs/runbook.md#moving-the-checkout)).
 
+### vimma-ctl from source
+
+Every release package ships `vimma-ctl` (spec [ship-vimma-ctl](docs/specs/ship-vimma-ctl.md)).
+To build it yourself, for a source build of Vimma or while changing it (Rust, no dependencies;
+`rust-toolchain.toml` pins the toolchain):
+
+```sh
+cd tools/vimma-ctl
+cargo build --release --locked   # → target/release/vimma-ctl
+```
+
+Its version is Vimma's, read from `surfer.json`'s `displayVersion` by `build.rs`, so a client
+and a browser built from one checkout match and the agent notice for an older `vimma-ctl` stays
+quiet. Release builds are static Linux binaries (`--target x86_64-unknown-linux-musl`) and
+native arm64 ones on macOS; `release.yml`'s `ctl` and `macos-ctl` jobs build them.
+
 ## Testing
 
 ```sh

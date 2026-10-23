@@ -90,6 +90,8 @@ pub struct Client {
     deadline: Instant,
     timeout: Duration,
     next_id: u32,
+    /// Vimma's version, from its `welcome`.
+    vimma_version: String,
 }
 
 impl Client {
@@ -131,6 +133,7 @@ impl Client {
             deadline,
             timeout,
             next_id: 1,
+            vimma_version: String::new(),
         };
         let nonce = random_nonce().map_err(|e| {
             Error::Protocol(format!("cannot read random bytes for the handshake: {e}"))
@@ -200,7 +203,14 @@ impl Client {
                 role.name()
             )));
         }
+        client.vimma_version = welcome.version;
         Ok(client)
+    }
+
+    /// Vimma's version, as its `welcome` gave it.
+    #[must_use]
+    pub fn vimma_version(&self) -> &str {
+        &self.vimma_version
     }
 
     /// The next handshake line: an error response becomes [`Error::Busy`] or [`Error::Auth`].
@@ -515,6 +525,7 @@ mod tests {
             token: "0".repeat(64),
             pid: 1,
             roles: vec![Role::Full],
+            version: None,
         };
         let result = Client::connect(&discovery, Duration::MAX);
         assert!(matches!(result, Err(Error::NotRunning(_))), "{result:?}");

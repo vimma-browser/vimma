@@ -14,3 +14,4 @@ pub mod json;
 pub mod mcp;
 pub mod mcp_serve;
 pub mod protocol;
+pub mod version;

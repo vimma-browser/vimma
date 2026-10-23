@@ -75,6 +75,7 @@ export function cask({ version, dmgSha256, repo }) {
 
   app "Vimma.app"
   binary "#{appdir}/Vimma.app/Contents/MacOS/vimma"
+  binary "#{appdir}/Vimma.app/Contents/MacOS/vimma-ctl"
 
   uninstall quit: "${BUNDLE_ID}"
 

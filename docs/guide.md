@@ -46,13 +46,13 @@ What works today, each with the section that explains it:
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
   uploads; Safe Browsing on.
-- **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl)): a token-protected control socket;
-  local AI agents reach one [agent workspace](#agent-workspace) through MCP, where they can read,
-  open, scroll and search pages, follow their links, list and click their buttons, fill their
-  fields (never a password or card number), take a screenshot, read a page's errors and show
-  you a page. Every request asks you first, one answer can let an agent work through a task for
-  some minutes, and sending a form or paying asks every time, showing what is sent or the total
-  the page states.
+- **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl), shipped and updated with Vimma): a
+  token-protected control socket; local AI agents reach one [agent workspace](#agent-workspace)
+  through MCP, where they can read, open, scroll and search pages, follow their links, list and
+  click their buttons, fill their fields (never a password or card number), take a screenshot,
+  read a page's errors and show you a page. Every request asks you first, one answer can let an
+  agent work through a task for some minutes, and sending a form or paying asks every time,
+  showing what is sent or the total the page states.
 
 ## Every key is yours
 
@@ -91,6 +91,21 @@ version; for a Mac, see [macOS](#macos) below):
 | `vimma-X.Y.Z-linux-x86_64.tar.xz` | `tar -xJf vimma-X.Y.Z-linux-x86_64.tar.xz && ./vimma/vimma`             |
 | `PKGBUILD` (Arch Linux)           | the command in [Arch Linux](#arch-linux) below                          |
 
+Each of them, and the Mac's `.dmg`, also carries `vimma-ctl`, the client for
+[scripting](#scripting-with-vimma-ctl) and [agents](#connecting-an-agents-tool), next to the
+`vimma` binary, so updating Vimma updates it too:
+
+| Installed from             | `vimma-ctl` is                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `.deb`, `.rpm`, Arch Linux | on your `PATH`: `/usr/bin/vimma-ctl`                                                                                |
+| tarball                    | `vimma/vimma-ctl` next to `vimma/vimma`; link it onto your `PATH`                                                   |
+| AppImage                   | a link named `vimma-ctl` to the AppImage runs it: `ln -s ~/Apps/vimma-X.Y.Z-x86_64.AppImage ~/.local/bin/vimma-ctl` |
+| Homebrew (macOS)           | on your `PATH`, linked by the cask                                                                                  |
+| `.dmg` (macOS)             | `/Applications/Vimma.app/Contents/MacOS/vimma-ctl`                                                                  |
+
+The AppImage keeps its file name when it updates itself (it renames the new one over it), so the
+link keeps working.
+
 The `.deb`, the `.rpm` and the Arch Linux package add Vimma to your application menu and offer it for web links,
 but never make it your default browser on their own: `xdg-settings set default-web-browser
 vimma-vimma.desktop` does that. Next to the files are `SHA256SUMS`, a CycloneDX SBOM
@@ -118,7 +133,8 @@ sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm                           # Fedora
 sudo zypper install --allow-unsigned-rpm ./vimma-X.Y.Z-1.x86_64.rpm   # openSUSE
 ```
 
-It installs to `/usr/lib/vimma`, with `vimma` and `vimma-open` in `/usr/bin`, as the `.deb` does.
+It installs to `/usr/lib/vimma`, with `vimma`, `vimma-open` and `vimma-ctl` in `/usr/bin`, as the
+`.deb` does.
 The package carries no OpenPGP signature, so dnf says it skipped the OpenPGP check and zypper
 needs `--allow-unsigned-rpm`. What vouches for it is the release's `SHA256SUMS` and its cosign
 signature; check them before installing ("Verify a release" in
@@ -1369,8 +1385,11 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_screenshot` | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
 | `vimma_console`    | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
 
-1. Build `vimma-ctl` ([Scripting with vimma-ctl](#scripting-with-vimma-ctl), step 2) and put it
-   on your `PATH`.
+1. Use the `vimma-ctl` that came with Vimma, so it is updated with it: it is on your `PATH`
+   from the `.deb`, the `.rpm`, the Arch Linux package and Homebrew; for the tarball, the
+   AppImage and the `.dmg`, see [Installing](#installing) for where it is. With the tarball or
+   the `.dmg`, give your tool its full path instead of `vimma-ctl` in the commands below if it
+   is not on your `PATH`.
 2. In Vimma, `:mcp on` and `y`. Leave full control (`vimma.control.enabled`) off: agents do not
    need it ([why](#what-vimma-protects-and-what-it-does-not)).
 3. Add the server to your tool, with one of the commands below. Each was run against the version
@@ -1430,6 +1449,14 @@ denied.` Codex CLI gives up on a tool call
   session runs; `◇ agent` in the status bar shows it. Grants belong to it: when the session ends
   (or Vimma restarts), they end, and the next session asks again.
 - **Cancelling** a call in the agent (`Esc` in Claude Code) takes its question off the line.
+- **An older `vimma-ctl`.** A `vimma-ctl` older than Vimma still works, with the tools it knows,
+  since Vimma checks every request whichever client sends it. When the agent connects, Vimma
+  says so once its first question is answered:
+  `vimma-ctl 0.1.7 is older than Vimma 0.1.8: agents get fewer tools until you update it`.
+  `vimma-ctl mcp` tells the agent too, in its instructions and at the top of its first answer,
+  so neither of you takes a missing tool for one Vimma lacks. A `vimma-ctl` built before releases
+  shipped it names no version, and the notice says `vimma-ctl is older than Vimma`. Point your
+  tool at the `vimma-ctl` that came with Vimma (step 1) to end it.
 
 #### When to use Playwright instead
 
@@ -2778,8 +2805,9 @@ is **off by default**.
 1. Turn the socket on: in `about:config`, set `vimma.control.enabled` to `true`. It starts at
    once and writes `vimma-control.json` into your profile directory. Setting it back to `false`
    stops it and deletes the file.
-2. Build the client (Rust, no dependencies): `cargo build --release` in `tools/vimma-ctl/`; the
-   binary is `tools/vimma-ctl/target/release/vimma-ctl`. Packages will ship it later.
+2. Use the `vimma-ctl` that came with Vimma: [Installing](#installing) says where each package
+   puts it. `vimma-ctl --version` names the Vimma version it came with. Building it from source
+   is for contributors ([CONTRIBUTING.md](../CONTRIBUTING.md#vimma-ctl-from-source)).
 3. Use it:
 
    ```sh

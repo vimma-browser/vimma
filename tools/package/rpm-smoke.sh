@@ -8,11 +8,12 @@
 #       dist-dir holds package.mjs's output with exactly one vimma-*.x86_64.rpm. release.yml's
 #       package job runs this on the release build.
 #   tools/package/rpm-smoke.sh --stub
-#       packages a stub tarball (a shell script for `vimma`) first; pkgbuild.yml runs this on
-#       pull requests, so a broken .rpm fails before a release. Needs rpmbuild on the host.
+#       packages a stub tarball (shell scripts for `vimma` and `vimma-ctl`) first; pkgbuild.yml
+#       runs this on pull requests, so a broken .rpm fails before a release. Needs rpmbuild on the host.
 #
 # Needs docker on the host. Checks, on each distribution: the package manager resolves every
-# requirement and installs the .rpm; `vimma --version` prints the expected line;
+# requirement and installs the .rpm; `vimma --version` prints the expected line, and vimma-ctl on
+# PATH names the same Vimma version;
 # /usr/lib/vimma/is-packaged-app says vimma-package=rpm; vimma-open is the repository's launcher
 # byte for byte; the desktop file passes desktop-file-validate; rpm -V finds every file as
 # packaged; for a real build (not --stub), Vimma starts headless and takes a screenshot, so the
@@ -43,6 +44,11 @@ if [ "${1:-}" = "--inside" ]; then
   rpm -qi vimma
   version=$(vimma --version)
   [ "$version" = "$expected" ] || { echo "rpm-smoke: $distro: vimma --version is '$version', want '$expected'"; exit 1; }
+  # vimma-ctl ships with the browser and carries its version (spec ship-vimma-ctl).
+  release=${expected#Vimma }
+  release=${release%% *}
+  ctl=$(vimma-ctl --version)
+  case "$ctl" in "vimma-ctl $release "*) ;; *) echo "rpm-smoke: $distro: vimma-ctl --version is '$ctl', want vimma-ctl $release"; exit 1 ;; esac
   marker=$(cat /usr/lib/vimma/is-packaged-app)
   [ "$marker" = "vimma-package=rpm" ] || { echo "rpm-smoke: $distro: is-packaged-app says '$marker'"; exit 1; }
   test -x /usr/bin/vimma-open
@@ -61,6 +67,7 @@ if [ "${1:-}" = "--inside" ]; then
   rpm -e vimma
   test ! -e /usr/lib/vimma
   test ! -e /usr/bin/vimma
+  test ! -e /usr/bin/vimma-ctl
   echo "rpm-smoke: $distro: OK: $version, $marker"
   exit 0
 fi
@@ -77,8 +84,11 @@ if [ "${1:-}" = "--stub" ]; then
   chmod 755 "$app/vimma"
   printf '[App]\nVendor=Vimma\nName=Vimma\nRemotingName=vimma-vimma\n' > "$app/application.ini"
   tar -cJf "$work/vimma-stub.en-US.linux-x86_64.tar.xz" -C "$work/stub" vimma
+  release=$(echo "$expected" | sed 's/^Vimma \([^ ]*\) .*/\1/')
+  printf '#!/bin/sh\necho "vimma-ctl %s (protocol 2)"\n' "$release" > "$work/vimma-ctl"
+  chmod 755 "$work/vimma-ctl"
   node "$here/package.mjs" --tarball "$work/vimma-stub.en-US.linux-x86_64.tar.xz" \
-    --out "$work/dist" --maintainer 'Vimma CI <ci@example.invalid>' --no-deb
+    --ctl "$work/vimma-ctl" --out "$work/dist" --maintainer 'Vimma CI <ci@example.invalid>' --no-deb
   dist="$work/dist"
   real=0
 else

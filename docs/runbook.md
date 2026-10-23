@@ -1119,11 +1119,13 @@ build used 44 GB of the runner's disk, the 16 GB swap file included, and left 42
 
 #### macOS in a release
 
-`release.yml` has five macOS jobs, which run only while the repository variable
+`release.yml` has six macOS jobs, which run only while the repository variable
 `MACOS_RELEASE_ENABLED` is `true` (spec [macos-build](specs/macos-build.md), decision 12):
-`macos-build` builds as `macos.yml` does, from the release tag's commit and with the Safe
+`macos-ctl` builds `vimma-ctl` on a hosted Mac from the tag's commit (spec
+[ship-vimma-ctl](specs/ship-vimma-ctl.md)); `macos-build` builds as `macos.yml` does, from the release tag's commit and with the Safe
 Browsing key, and renders the Homebrew cask `vimma.rb` for the `.dmg`
-(`tools/package/cask.mjs`); `macos-smoke` checks the `.dmg` on a hosted Mac against the tag, and
+(`tools/package/cask.mjs`), with that `vimma-ctl` signed into `Vimma.app/Contents/MacOS`;
+`macos-smoke` checks the `.dmg` on a hosted Mac against the tag, and
 installs it through the cask (`tools/package/cask-check.sh`); `macos-sign` signs both and
 `SHA256SUMS-macos` with cosign while `SIGNING_ENABLED` is `true`; `macos-publish` uploads them
 to the tag's release; `macos-tap` starts `homebrew.yml` on `main` for the tag once the release
@@ -1442,7 +1444,8 @@ maintainer's one click.
   turn the open one into a draft, run `gh pr ready --undo <n>` (no run starts, and the results
   on its head stay as they are).
 - **Version source:** `surfer.json` `brands.vimma.release.displayVersion`, the version
-  `vimma --version` and the About dialog show (spec m0-app-version). The release
+  `vimma --version` and the About dialog show (spec m0-app-version), and `vimma-ctl --version`
+  too, since `tools/vimma-ctl/build.rs` reads it (spec ship-vimma-ctl). The release
   PR bumps it through `extra-files` (jsonpath `$.brands.vimma.release.displayVersion`), plus
   `.release-please-manifest.json`, which must always match it (tested in
   `tools/package/test/release-workflow.test.mjs`). The Firefox pin `version.version` is never
@@ -1614,8 +1617,11 @@ same call as the manual re-run, so one path is exercised every time.
 | `*.sigstore.json`                 | cosign keyless bundles, one per file above (when signing is on) |
 
 Jobs: `build` (read-only token and the Safe Browsing key; first checks that the tag is
-`vX.Y.Z` and that its commit is on `main`) → `package` (AppImage, `.deb`, `.rpm`, `PKGBUILD`,
-the AUR variant, checksums; installs the `.deb` and starts it headless, installs the `.rpm` with
+`vX.Y.Z` and that its commit is on `main`) → `ctl` (`vimma-ctl` from the same commit, static for
+`x86_64-unknown-linux-musl`; read-only token, no secret; spec
+[ship-vimma-ctl](specs/ship-vimma-ctl.md)) → `package` (AppImage, `.deb`, `.rpm`, `PKGBUILD`,
+the AUR variant, checksums, each with `vimma-ctl` next to `vimma`, and the release tarball
+repacked with it; installs the `.deb` and starts it headless, installs the `.rpm` with
 dnf in a Fedora container and with zypper in an openSUSE container and starts it headless there
 with `tools/package/rpm-smoke.sh`, and runs `makepkg -si` on the `PKGBUILD` in an Arch Linux
 container with `tools/package/arch-smoke.sh`) → `sign` (only job with
@@ -1627,7 +1633,9 @@ token; the tap's deploy key only) → `failure`. Locally, from a mach tarball:
 
 ```sh
 tools/package/fetch-appimagetool.sh /tmp/ait
+(cd tools/vimma-ctl && cargo build --release --locked)   # or the ctl job's static binary
 node tools/package/package.mjs --tarball engine/obj-x86_64-pc-linux-gnu/dist/vimma-*.tar.xz \
+  --ctl tools/vimma-ctl/target/release/vimma-ctl \
   --out dist --maintainer 'Name <email>' --appimagetool /tmp/ait/appimagetool \
   --runtime /tmp/ait/runtime-x86_64 --no-deb   # dpkg-deb only exists on Debian/Ubuntu
 node tools/package/sbom.mjs --engine engine --out dist/vimma-$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion').cdx.json
@@ -2309,7 +2317,9 @@ exceptions there (unicode-ident's Unicode-3.0 tables, and two WASI-only crates w
 
 Spec m0-control-protocol-and-vimma-ctl, ADR-007, ADR-011. A std-only Rust binary in
 `tools/vimma-ctl/`; the toolchain is pinned in its `rust-toolchain.toml` (rustup honours it; a
-system Rust of the same version works too).
+system Rust of the same version works too). Users get it with Vimma: every release package
+ships it next to `vimma` (spec [ship-vimma-ctl](specs/ship-vimma-ctl.md)); the commands below
+are for working on it.
 
 ```sh
 cd tools/vimma-ctl

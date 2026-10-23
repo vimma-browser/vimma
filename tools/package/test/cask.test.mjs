@@ -43,6 +43,8 @@ describe("cask", () => {
     expect(text).toContain("  depends_on macos: :sequoia\n");
     expect(text).toContain('  app "Vimma.app"\n');
     expect(text).toContain('  binary "#{appdir}/Vimma.app/Contents/MacOS/vimma"\n');
+    // vimma-ctl ships inside the app (spec ship-vimma-ctl) and goes on the PATH beside vimma
+    expect(text).toContain('  binary "#{appdir}/Vimma.app/Contents/MacOS/vimma-ctl"\n');
     // Vimma has no macOS updater, so brew upgrade replaces the app (decision 7)
     expect(text).not.toMatch(/auto_updates true/);
     expect(text).not.toMatch(/preflight|postflight|installer |script:/);
@@ -124,6 +126,9 @@ describe("cask-check.sh", () => {
     expect(script).toContain('codesign --verify --deep --strict "$APP"');
     expect(script).toContain(
       '[ "$(readlink "$(brew --prefix)/bin/vimma")" = "$APP/Contents/MacOS/vimma" ]',
+    );
+    expect(script).toContain(
+      '[ "$(readlink "$(brew --prefix)/bin/vimma-ctl")" = "$APP/Contents/MacOS/vimma-ctl" ]',
     );
   });
 

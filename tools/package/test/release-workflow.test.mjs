@@ -64,9 +64,11 @@ describe("release.yml", () => {
   it("has the jobs the spec lists", () => {
     expect([...all.keys()]).toEqual([
       "build",
+      "ctl",
       "package",
       "sign",
       "publish",
+      "macos-ctl",
       "macos-build",
       "macos-smoke",
       "macos-sign",
@@ -267,7 +269,14 @@ esac
   // Spec macos-build, decisions 12 and 13: the macOS .dmg joins the release through jobs of its
   // own, which no Linux job waits for, so a macOS failure cannot hold back a Linux release.
   describe("the macOS jobs", () => {
-    const MACOS = ["macos-build", "macos-smoke", "macos-sign", "macos-publish", "macos-tap"];
+    const MACOS = [
+      "macos-ctl",
+      "macos-build",
+      "macos-smoke",
+      "macos-sign",
+      "macos-publish",
+      "macos-tap",
+    ];
 
     it.each(MACOS)("%s also needs MACOS_RELEASE_ENABLED", (id) => {
       expect(condition(all.get(id) ?? "")).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
@@ -432,15 +441,94 @@ esac
           .map((n) => n.replace(/^ {6}- /, "")),
       ).toEqual([
         "build",
+        "ctl",
         "package",
         "sign",
         "publish",
+        "macos-ctl",
         "macos-build",
         "macos-smoke",
         "macos-sign",
         "macos-publish",
         "macos-tap",
       ]);
+    });
+  });
+
+  // Spec ship-vimma-ctl: vimma-ctl is built from the commit the browser was built from, with no
+  // secret in reach, static so it runs on every distribution the packages support, and every
+  // package carries it.
+  describe("vimma-ctl", () => {
+    it("ctl builds the checked commit's vimma-ctl, static, without the build environment", () => {
+      const block = all.get("ctl") ?? "";
+      expect(block).toMatch(/^ {4}needs: build$/m);
+      expect(block).toMatch(/^ {4}runs-on: ubuntu-24\.04$/m);
+      expect(block).not.toMatch(/^ {4}environment:/m);
+      expect(block).not.toContain("secrets.");
+      expect(block).toMatch(/^ {4}permissions:\n {6}contents: read\n {4}\S/m);
+      expect(block).toContain("ref: ${{ needs.build.outputs.sha }}");
+      expect(block).toContain("persist-credentials: false");
+      const build = runOf(block, "Build vimma-ctl (static, musl)");
+      expect(build).toContain("rustup toolchain install");
+      expect(build).toContain("rustup target add x86_64-unknown-linux-musl");
+      expect(build).toContain("cargo build --release --locked --target x86_64-unknown-linux-musl");
+      const check = runOf(block, "Check the binary");
+      expect(check).toContain("static-pie linked");
+      expect(check).toContain('[ "$version" = "vimma-ctl ${TAG#v} (protocol 2)" ]');
+      expect(block).toMatch(/name: ctl\n {10}path: ctl\/\n/);
+    });
+
+    it("package puts vimma-ctl into every package and checks it in each", () => {
+      const block = all.get("package") ?? "";
+      expect(block).toMatch(/^ {4}needs: \[build, ctl\]$/m);
+      expect(block).toMatch(/name: ctl\n {10}path: ctl\n/);
+      const pack = runOf(block, "Package");
+      expect(pack).toContain("--ctl ctl/vimma-ctl");
+      const smoke = runOf(block, "Smoke test the .deb and the AppImage");
+      expect(smoke).toContain('[ "$(vimma-ctl --version)" = "$ctl" ]');
+      expect(smoke).toContain('case "$listing" in *"vimma/vimma-ctl"*) ;;');
+      // a link named vimma-ctl to the AppImage runs the client inside (AppRun, $ARGV0)
+      expect(smoke).toContain('ln -s "$appimage" "$RUNNER_TEMP/bin/vimma-ctl"');
+      expect(smoke).toContain(
+        '[ "$(APPIMAGE_EXTRACT_AND_RUN=1 "$RUNNER_TEMP/bin/vimma-ctl" --version)" = "$ctl" ]',
+      );
+    });
+
+    it("macos-ctl builds vimma-ctl on a Mac from the commit it checked, like build", () => {
+      const block = all.get("macos-ctl") ?? "";
+      expect(condition(block)).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
+      expect(block).toMatch(/^ {4}runs-on: macos-15$/m);
+      expect(block).not.toMatch(/^ {4}environment:/m);
+      expect(block).not.toContain("secrets.");
+      expect(runOf(block, "Check the tag's form")).toBe(
+        runOf(all.get("build") ?? "", "Check the tag's form"),
+      );
+      expect(runOf(block, "The tag is on main")).toBe(
+        runOf(all.get("build") ?? "", "The tag is on main"),
+      );
+      expect(block).toContain("ref: ${{ steps.tag.outputs.sha }}");
+      expect(block).toMatch(/^ {4}outputs:\n {6}sha: \$\{\{ steps\.tag\.outputs\.sha \}\}$/m);
+      const build = runOf(block, "Build vimma-ctl");
+      expect(build).toContain("cargo build --release --locked");
+      const check = runOf(block, "Check the binary");
+      expect(check).toContain("lipo -archs");
+      expect(check).toContain('[ "$version" = "vimma-ctl ${TAG#v} (protocol 2)" ]');
+    });
+
+    it("macos-build signs the Mac vimma-ctl into the app, from the same commit", () => {
+      const block = all.get("macos-build") ?? "";
+      expect(block).toMatch(/^ {4}needs: macos-ctl$/m);
+      expect(runOf(block, "vimma-ctl comes from the same commit")).toContain(
+        '[ "$CTL_SHA" = "$SHA" ]',
+      );
+      expect(block).toMatch(/name: macos-ctl\n {10}path: ctl\n/);
+      expect(block).toContain("VIMMA_CTL: ${{ github.workspace }}/ctl/vimma-ctl");
+    });
+
+    it("macos-smoke runs the app's vimma-ctl", () => {
+      const smoke = runOf(all.get("macos-smoke") ?? "", "Smoke check");
+      expect(smoke).toContain('ctl=$("$APP/Contents/MacOS/vimma-ctl" --version)');
+      expect(smoke).toContain('[ "$ctl" = "vimma-ctl ${TAG#v} (protocol 2)" ]');
     });
   });
 

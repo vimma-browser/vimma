@@ -1,0 +1,12 @@
+{
+  "description": "The discovery file's version is a Vimma version (X.Y.Z)",
+  "kind": "discovery",
+  "message": {
+    "protocol": 2,
+    "port": 43817,
+    "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "pid": 12345,
+    "roles": ["agent"],
+    "version": "0.1.8 (dev)"
+  }
+}
