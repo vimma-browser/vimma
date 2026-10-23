@@ -246,7 +246,13 @@ Vimma follows a spec-first, test-first loop ([plan.md](plan.md) §4–§5):
   commits without a body.
 - **Changelog.** A user-visible change gets a line in `CHANGELOG.md` `[Unreleased]`. The
   maintainer adds it at merge time, so parallel pull requests do not conflict; a pull request that
-  changes a baseline or snapshot adds its own line (next item).
+  changes a baseline or snapshot adds its own line (next item). Write it as a `- ` item under
+  `### Added`, `### Changed` or `### Fixed` (or another Keep a Changelog heading), saying what
+  users see. `## [Unreleased]` stays the first `## ` heading and appears once; `npm run lint`
+  checks both. You never move the lines yourself: when release-please opens or updates its
+  release pull request, its `CHANGELOG.md` gets them in the new version's entry, above
+  release-please's list from the commit subjects, and the GitHub release's notes show both
+  ([docs/runbook.md](docs/runbook.md), Releases).
 - **Screenshot baselines and snapshots.** Never change one without a changelog line that says
   why it changed: an updated baseline is a visible change, and the line is how a reviewer knows it
   was meant. `npm run e2e -- --update-baselines` writes new baselines and reminds you of this.

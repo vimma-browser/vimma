@@ -712,14 +712,17 @@ min, e2e ≈ 13 min, Semgrep ≈ 1 min, CodeQL ≈ 1 min (JavaScript) plus 2 min
 A push to `main` repeats only CodeQL and, when the merged tree differs from the pull request
 head's, the rest ("Once per tree" above).
 
-The release pull request is rebuilt by release-please after each merge to `main` that adds a
-changelog line. It is opened as a draft, so a rebuild runs only CI and the key guard (about 4
+The release pull request is rebuilt by release-please after every merge to `main`
+(`"always-update"`, so that it carries `main`'s hand-written `[Unreleased]` lines, "Releases"
+below). It is opened as a draft, so a rebuild runs only CI and the key guard (about 4
 min) and skips the mochitests, Semgrep and CodeQL ("Draft pull requests" above). Marking it
 ready for review runs them once on the final state, `browser_vimma_app_version.js` included,
 which checks the display version the build carries; the docs-only path never applies, because
 the version in `surfer.json` changes. With `RELEASE_PLEASE_TOKEN` set, a rebuild pushes twice
 (release-please, then the `firefox-notes` commit), and the second push cancels the first run;
-without it, the release PR's pushes start no runs.
+without it, the release PR's pushes start no runs. Once the release PR is ready for review (by
+hand, or by `security-release`), every merge to `main` runs its slow checks again too, so mark
+it ready only when you mean to release.
 
 e2e.yml has no paths filter: "mochitest (artifact build)" is a required check, so the workflow
 starts on every PR, and on a docs-only one the job skips by `if:` in seconds (above). The upstream autopilot runs 6 × 1 min a day, plus ≈ 16 min (issue, patch check, the
@@ -1486,6 +1489,36 @@ maintainer's one click.
 - **The changelog line is the commit subject; the body explains why** (CONTRIBUTING.md). release-please
   writes subjects only. Firefox bumps are `upstream: firefox X.Y.Z (MFSA YYYY-N)` (upstream.yml),
   so a security dot release alone still produces a release PR (ADR-015: merged within 3 days).
+- **A release shows the hand-written lines first, then release-please's list** (issue #529).
+  `CHANGELOG.md` on `main` starts with `## [Unreleased]`, whose `- ` items under `### Added`,
+  `### Changed`, `### Fixed` (or another Keep a Changelog heading) say what users see.
+  release-please puts its new entry above that heading, so `tools/release/changelog.mjs` moves
+  the items in two places:
+  - `move`, in the `firefox-notes` job, on every rebuild of the release PR: each item goes into
+    the same section of the new entry, above release-please's `* ` items (a section release-please
+    did not write is added after its own), and an empty `## [Unreleased]` stays at the top. It is
+    part of that job's one `chore(release)` commit, with the Firefox edit below.
+    `"always-update": true` in `release-please-config.json` makes release-please rebuild the branch
+    from `main` on every run, not only when its own notes change: without it, a merge that adds
+    only a changelog line would leave the release PR with the old lines and a conflict with `main`
+    on `CHANGELOG.md`.
+  - `notes`, in the `release-title` job, when the release is created: release-please writes a
+    release's notes from the release PR's body, which holds only its own list, so the job adds
+    the hand-written items of that version's entry in the tag's `CHANGELOG.md`, above the list.
+    The update steps and third-party notice `release.yml` adds later go around them.
+
+  `npm run changelog-lint` (part of `npm run lint`) fails when `## [Unreleased]` is not the first
+  `## ` heading, appears twice, or holds anything but those headings and `- ` items (an item may
+  continue on lines indented by two spaces), since `move` refuses what it cannot carry whole.
+  Check by hand: `node tools/release/changelog.mjs move CHANGELOG.md` on the release branch's file
+  prints the edited file. The release PR's head without the `firefox-notes` commit fails CI's
+  `changelog-lint` step, so it cannot be merged by hand or by auto-merge. If the job failed (a
+  `move` error, or a 409 because release-please rebuilt the branch meanwhile), fix `[Unreleased]`
+  on `main` if `move` named a line, then run release-please again: `gh workflow run
+release-please.yml`. If `release-title` warns that a release's notes lack the hand-written
+  lines, add them by hand: `node tools/release/changelog.mjs notes <notes.md> --changelog
+CHANGELOG.md --version X.Y.Z` on the tag's checkout prints the notes to paste.
+
 - **The Firefox version in titles and headings** (spec firefox-versions). release-please can only
   title a release `vX.Y.Z` and head its entry `## [X.Y.Z](compare) (date)`, so two jobs after it
   edit both with `tools/release/firefox-notes.mjs` (idempotent: a second pass changes nothing):
@@ -1496,7 +1529,7 @@ maintainer's one click.
     `Firefox <version> ([MFSA YYYY-N](advisory))`. The push uses `RELEASE_PLEASE_TOKEN` (a
     `GITHUB_TOKEN` push would leave the release PR without required checks); without the token the
     job logs a notice and does nothing. release-please rebuilds the branch (dropping the commit)
-    only when the notes change, and the job then adds it back in the same run. The PR body keeps
+    on every run, and the job then adds it back in the same run. The PR body keeps
     release-please's heading.
   - `release-title`, when a release was created: checks out its tag, titles it with
     `node tools/release/version-line.mjs` (`Vimma X.Y.Z · Firefox <version>`, which must start

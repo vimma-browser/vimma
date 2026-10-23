@@ -1,11 +1,22 @@
 # Changelog
 
-All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. From the first release on, release-please writes each release's entry from the Conventional Commits on `main` ([docs/runbook.md](docs/runbook.md), Releases).
+All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
+
+## [Unreleased]
+
+### Added
+
+- Agents (MCP): sending a form and paying are checkpoints. Under any grant they ask with `y` and `n` only, marked `▲` in the theme's warning colour, and the agent goes on under its grant after either answer. A step pays when the page shows a payment card field (also in a payment provider's frame) or the pressed button or followed link says it pays (`Pay now`, `Place order`, `Vahvista tilaus`, … in six languages), also a button that sends no form; its question names the button, the site and the total the page states (`▲ claude-code wants to pay: "Vahvista tilaus" on shop.example · the page says "Yhteensä 42,90 €"`), and a button in a payment provider's frame of another site names that site, then the shop's (`on pay.provider.example (in shop.example)`). A form's question lists each field it sends with its value, a password as `•••`, hidden fields counted. A yes shows `allowed payment on shop.example` or `allowed sending the form to example.com`. The grant's hint is `y once · 10a 10 min · n deny · x mute`, so that a usual question fits one line at 1,280 pixels, and the grant's notice says that sending a form or paying still asks. The e2e baselines `m0-mcp-stdio-question`, `m0-mcp-drive-keys-question`, `m0-mcp-forms-fill-question` and `m0-mcp-forms-submit-question` change with the shorter hint and the form question, and `m0-mcp-checkpoints-basket-ran`, `m0-mcp-checkpoints-pay-question`, `m0-mcp-checkpoints-card-question`, `m0-mcp-checkpoints-hosted-question` (a payment provider's pay button in a frame of another site) and `m0-mcp-checkpoints-hosted-allowed` (the notice at its yes) are new.
+- Releases: `vimma-ctl` ships in every package (the tarball, the AppImage, the `.deb`, the `.rpm`, the PKGBUILD and the macOS app with its Homebrew cask), so each update replaces it together with Vimma. A `vimma-ctl` older than Vimma keeps the tools it knows: `vimma-ctl mcp` tells the agent it is older, and Vimma shows a one-line notice once per client and version.
+- Release packages carry the licence notices of what vimma-ctl links (Rust's standard library, musl, LLVM's libunwind) in `vimma-ctl-licenses/`, and the release SBOM lists vimma-ctl with them.
 
 ## [0.1.8](https://github.com/vimma-browser/vimma/compare/v0.1.7...v0.1.8) · Firefox 158.0.1 (2026-10-22)
 
 
 ### Added
+
+- macOS: the private workspace takes the Vimma window's place, as on Hyprland: the private window opens at the normal window's frame with window animations turned off and the normal window is hidden until you switch back, close the private window or open a link from another app. A window in full screen is never hidden; `[private] placement = "window"` opts out. The `defaults.toml` snapshot's `[private]` comment names macOS.
+- Agents (MCP): one answer covers a task. `10a` lets that agent use every tool for 10 minutes, not only the one it asked about; sending a form, showing a page and a dangerous or unscanned download still ask. The question's hint reads `y once · 10a 10 min, all but forms · n deny · x mute`, the grant's notice names what still asks and that `ctrl+b shift+a` ends it, and `ctrl+b shift+a` with nothing waiting now ends every grant at once. The e2e baselines `m0-mcp-stdio-question`, `m0-mcp-drive-keys-question` and `m0-mcp-forms-fill-question` change with the hint.
 
 * **keys:** a firefox key inventory for macos ([f46e554](https://github.com/vimma-browser/vimma/commit/f46e554e3b077f26aed7800697eaddde73a487c9))
 * **mcp:** one grant covers every agent tool of its connection ([#515](https://github.com/vimma-browser/vimma/issues/515)) ([e4273b9](https://github.com/vimma-browser/vimma/commit/e4273b903138c46402cba24a2b887df050bbb032))
@@ -27,6 +38,24 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 
 ### Added
+
+- `:restart` restarts Vimma with its tabs, asking first while private tabs are open; an AppImage restarts into the file it replaced. Once a security update is installed, Vimma asks once per session, and again a day later, `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, and its status-bar segment reads `⇡ 0.3.1 security: :restart`. The help snapshot gains the unbound `restart` row.
+- Element focus: a text block chosen with `:focus_element` (or a key bound to `focus_element`) is in the new `ELEMENT` mode, where `y` copies it, `v` / `V` select it in copy mode, `+` / `-` and `j` / `k` move the focus and `F` picks another block. The help and `defaults.toml` snapshots gain the `[modal.element]` keys and the full `focus_element` description.
+- Agents (MCP): `vimma_show` lets an agent show you one of the agent workspace's tabs. It asks every time, with only `y` and `n`; on `y` the window that holds the tab switches to the agent workspace with that tab selected, never raising or focusing a window, and `ctrl+^` brings you back to your workspace and split. The e2e baselines `m0-mcp-drive-keys-question` and `m0-mcp-drive-shown` are new, from the `m0-mcp-drive` scenario that drives the real `vimma-ctl mcp` through `vimma_keys` and `vimma_show`.
+- Copy mode: `ip` selects the text block around the caret, the one element focus would select, and `ap` grows the selection to the block around it on each press. The help and `defaults.toml` snapshots gain the two keys.
+- e2e baselines `m0-mcp-forms-fill-question` and `m0-mcp-forms-submit-question` (scenario `m0-mcp-forms`): the question line asking to fill two fields of a sign-up form, and the question asking to submit it, as the real `vimma-ctl mcp` lists the form, is refused its password field, fills it, takes a labelled screenshot, submits it and reads the failed request that follows.
+- e2e baselines `element-hints.png`, `element-focus.png` and `element-visual.png` (scenario `issue-213-element-focus`): `F`'s labels on an article's text blocks, a focused paragraph with its outline and `ELEMENT` badge, and that paragraph selected in copy mode.
+- The AppImage updates itself: it replaces its own file with a newer release checked against the signed update file, and runs it from the next start.
+- Agents (MCP): `vimma_keys` scrolls, finds and goes back or forward in an agent tab without bringing it to the front, from a fixed set of Vimma's default keys; it asks first, shows the keys it will run, and `:mcp log` lists the last 100 agent calls.
+- Agents (MCP): `vimma_keys` lists an agent tab's visible links by hint label and follows one in the same tab, never as a click and with no referrer; a link to another site asks first unless the agent holds an open grant.
+- Updates: with update checks off, a dim `updates: off` segment shows for a few seconds at startup, once per session.
+- Agents (MCP): `vimma_elements` lists the buttons, fields and links on screen in an agent tab by hint label; password, one-time-code and payment card fields are marked sensitive and never show a value.
+- Agents (MCP): `vimma_activate` clicks buttons, links and checkboxes in an agent tab by hint label, in the background and without user activation; a form submission asks every time, and one a page makes by itself after an agent's click is stopped.
+- Agents (MCP): `vimma_fill` fills form fields in an agent tab, never passwords, payment card, one-time-code or file fields; a fill that submits asks every time and shows every value.
+- Agents (MCP): `vimma_screenshot` shows an agent tab as an image, taken in the background, with its `vimma_elements` labels drawn on it if asked; it is never taken while a password, one-time-code or card field on screen has a value.
+- Agents (MCP): `vimma_console` reads an agent tab's script errors, console errors and warnings, and failed requests, without running page code.
+- Packaging: an `.rpm` for Fedora and openSUSE, installed and checked with dnf and zypper; `:update` shows the dnf and zypper commands for it.
+- Split panes: the focused pane has a 3 px border in the theme's focus colour (on Omarchy, the theme's accent) on all four edges, drawn over the edge of its page so pages never move or resize when focus does; unfocused panes are not dimmed, and there is no border with one pane, on a zoomed pane, while the split is hidden or in fullscreen. The e2e baseline `m4-split-panes` was re-recorded, since its focused pane now shows the border, and the baselines `issue-362-pane-focus-highlight-2` and `-3` are new.
 
 * **bookmarks:** firefox's bookmarks toolbar hidden by default ([#438](https://github.com/vimma-browser/vimma/issues/438)) ([3e5fed1](https://github.com/vimma-browser/vimma/commit/3e5fed1f29b96bcd42ec80d93a7786f89cef2122)), closes [#214](https://github.com/vimma-browser/vimma/issues/214)
 * **copy:** ip and ap select the block around the caret ([#451](https://github.com/vimma-browser/vimma/issues/451)) ([ed08a47](https://github.com/vimma-browser/vimma/commit/ed08a47b8203dd9dfe91a7a0c83de65a396246b0))
@@ -54,6 +83,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Fixed
 
+- Link hints: every entry of an open dropdown menu gets a label, also when the page puts a click handler on the list around them.
+- Save-password prompt: its own fields keep the keys you type, and when focus is in a page field the keys line says to press Esc first, then `y` or `n`.
+- Workspaces: keys typed right after switching to a workspace whose start page is still loading reach Vimma instead of being lost.
+- Find: when a page focuses its search field after a find matched in it, Vimma enters insert mode (YouTube, Google, DuckDuckGo).
+- Copy mode: `}` and `{` step over a paragraph's invisible source white space, so `}` at the end of a paragraph moves into the list that follows it.
+
 * **build:** npm run build runs surfer build under a python mach supports ([#460](https://github.com/vimma-browser/vimma/issues/460)) ([a84946d](https://github.com/vimma-browser/vimma/commit/a84946d6c690dacaaf24141e67f8c55f6ee8f448)), closes [#458](https://github.com/vimma-browser/vimma/issues/458)
 * **commitlint:** skip dependabot commits that write bump in lower case ([#421](https://github.com/vimma-browser/vimma/issues/421)) ([0ee6c71](https://github.com/vimma-browser/vimma/commit/0ee6c71155b68f10898227827c53e8db19cfdd64))
 * **copy:** { and } step past a paragraph's source white space ([#463](https://github.com/vimma-browser/vimma/issues/463)) ([60c463c](https://github.com/vimma-browser/vimma/commit/60c463c6935d8a514b15b2425bb81d103b256b16)), closes [#461](https://github.com/vimma-browser/vimma/issues/461)
@@ -70,51 +105,20 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
-* Firefox 158.0.1 ([MFSA 2026-111](https://www.mozilla.org/en-US/security/advisories/mfsa2026-111/)) ([#425](https://github.com/vimma-browser/vimma/issues/425)) ([7748419](https://github.com/vimma-browser/vimma/commit/7748419063371dd7b8878f2d4b36e46c198572b7))
-
-## [Unreleased]
-
-### Added
-
-- macOS: the private workspace takes the Vimma window's place, as on Hyprland: the private window opens at the normal window's frame with window animations turned off and the normal window is hidden until you switch back, close the private window or open a link from another app. A window in full screen is never hidden; `[private] placement = "window"` opts out. The `defaults.toml` snapshot's `[private]` comment names macOS.
-- `:restart` restarts Vimma with its tabs, asking first while private tabs are open; an AppImage restarts into the file it replaced. Once a security update is installed, Vimma asks once per session, and again a day later, `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, and its status-bar segment reads `⇡ 0.3.1 security: :restart`. The help snapshot gains the unbound `restart` row.
-- Element focus: a text block chosen with `:focus_element` (or a key bound to `focus_element`) is in the new `ELEMENT` mode, where `y` copies it, `v` / `V` select it in copy mode, `+` / `-` and `j` / `k` move the focus and `F` picks another block. The help and `defaults.toml` snapshots gain the `[modal.element]` keys and the full `focus_element` description.
-- Agents (MCP): `vimma_show` lets an agent show you one of the agent workspace's tabs. It asks every time, with only `y` and `n`; on `y` the window that holds the tab switches to the agent workspace with that tab selected, never raising or focusing a window, and `ctrl+^` brings you back to your workspace and split. The e2e baselines `m0-mcp-drive-keys-question` and `m0-mcp-drive-shown` are new, from the `m0-mcp-drive` scenario that drives the real `vimma-ctl mcp` through `vimma_keys` and `vimma_show`.
-- Copy mode: `ip` selects the text block around the caret, the one element focus would select, and `ap` grows the selection to the block around it on each press. The help and `defaults.toml` snapshots gain the two keys.
-- e2e baselines `m0-mcp-forms-fill-question` and `m0-mcp-forms-submit-question` (scenario `m0-mcp-forms`): the question line asking to fill two fields of a sign-up form, and the question asking to submit it, as the real `vimma-ctl mcp` lists the form, is refused its password field, fills it, takes a labelled screenshot, submits it and reads the failed request that follows.
-- e2e baselines `element-hints.png`, `element-focus.png` and `element-visual.png` (scenario `issue-213-element-focus`): `F`'s labels on an article's text blocks, a focused paragraph with its outline and `ELEMENT` badge, and that paragraph selected in copy mode.
-- The AppImage updates itself: it replaces its own file with a newer release checked against the signed update file, and runs it from the next start.
-- Agents (MCP): `vimma_keys` scrolls, finds and goes back or forward in an agent tab without bringing it to the front, from a fixed set of Vimma's default keys; it asks first, shows the keys it will run, and `:mcp log` lists the last 100 agent calls.
-- Agents (MCP): `vimma_keys` lists an agent tab's visible links by hint label and follows one in the same tab, never as a click and with no referrer; a link to another site asks first unless the agent holds an open grant.
-- Updates: with update checks off, a dim `updates: off` segment shows for a few seconds at startup, once per session.
-- Agents (MCP): `vimma_elements` lists the buttons, fields and links on screen in an agent tab by hint label; password, one-time-code and payment card fields are marked sensitive and never show a value.
-- Agents (MCP): `vimma_activate` clicks buttons, links and checkboxes in an agent tab by hint label, in the background and without user activation; a form submission asks every time, and one a page makes by itself after an agent's click is stopped.
-- Agents (MCP): `vimma_fill` fills form fields in an agent tab, never passwords, payment card, one-time-code or file fields; a fill that submits asks every time and shows every value.
-- Agents (MCP): `vimma_screenshot` shows an agent tab as an image, taken in the background, with its `vimma_elements` labels drawn on it if asked; it is never taken while a password, one-time-code or card field on screen has a value.
-- Agents (MCP): `vimma_console` reads an agent tab's script errors, console errors and warnings, and failed requests, without running page code.
-- Packaging: an `.rpm` for Fedora and openSUSE, installed and checked with dnf and zypper; `:update` shows the dnf and zypper commands for it.
-- Agents (MCP): one answer covers a task. `10a` lets that agent use every tool for 10 minutes, not only the one it asked about; sending a form, showing a page and a dangerous or unscanned download still ask. The question's hint reads `y once · 10a 10 min, all but forms · n deny · x mute`, the grant's notice names what still asks and that `ctrl+b shift+a` ends it, and `ctrl+b shift+a` with nothing waiting now ends every grant at once. The e2e baselines `m0-mcp-stdio-question`, `m0-mcp-drive-keys-question` and `m0-mcp-forms-fill-question` change with the hint.
-- Agents (MCP): sending a form and paying are checkpoints. Under any grant they ask with `y` and `n` only, marked `▲` in the theme's warning colour, and the agent goes on under its grant after either answer. A step pays when the page shows a payment card field (also in a payment provider's frame) or the pressed button or followed link says it pays (`Pay now`, `Place order`, `Vahvista tilaus`, … in six languages), also a button that sends no form; its question names the button, the site and the total the page states (`▲ claude-code wants to pay: "Vahvista tilaus" on shop.example · the page says "Yhteensä 42,90 €"`), and a button in a payment provider's frame of another site names that site, then the shop's (`on pay.provider.example (in shop.example)`). A form's question lists each field it sends with its value, a password as `•••`, hidden fields counted. A yes shows `allowed payment on shop.example` or `allowed sending the form to example.com`. The grant's hint is `y once · 10a 10 min · n deny · x mute`, so that a usual question fits one line at 1,280 pixels, and the grant's notice says that sending a form or paying still asks. The e2e baselines `m0-mcp-stdio-question`, `m0-mcp-drive-keys-question`, `m0-mcp-forms-fill-question` and `m0-mcp-forms-submit-question` change with the shorter hint and the form question, and `m0-mcp-checkpoints-basket-ran`, `m0-mcp-checkpoints-pay-question`, `m0-mcp-checkpoints-card-question`, `m0-mcp-checkpoints-hosted-question` (a payment provider's pay button in a frame of another site) and `m0-mcp-checkpoints-hosted-allowed` (the notice at its yes) are new.
-
-### Changed
-
 - `F` now starts element focus; background-tab link hints moved to `gF` (a `config.toml` that binds `F` keeps it). The help and `defaults.toml` snapshots show `F` on `focus_element` and `gF` on `follow_link_new_tab`.
 - Firefox's Bookmarks Toolbar is hidden by default, also on the start page and after an import; `ctrl+b shift+b` opens your bookmarks, the start page names it, and `:bookmarkstoolbar [show|hide|newtab]`, `ctrl+shift+b` or `[ui] bookmarks_toolbar` brings the toolbar back. A profile that showed it has it hidden once, with a notice. The `defaults.toml` snapshot gains the commented `[ui] bookmarks_toolbar` line.
 - While agents are on, full control's questions say that it reaches every workspace, not only the agent workspace, and `vimma-ctl mcp` tells agents never to ask for it.
 - Themes: mode badges keep distinct colours when a theme maps two palette slots to one colour; under Catppuccin the `ELEMENT` and `HINT` badges get a shade of their own, and every badge keeps AA text contrast.
 
-### Fixed
-
-- Link hints: every entry of an open dropdown menu gets a label, also when the page puts a click handler on the list around them.
-- Save-password prompt: its own fields keep the keys you type, and when focus is in a page field the keys line says to press Esc first, then `y` or `n`.
-- Workspaces: keys typed right after switching to a workspace whose start page is still loading reach Vimma instead of being lost.
-- Find: when a page focuses its search field after a find matched in it, Vimma enters insert mode (YouTube, Google, DuckDuckGo).
-- Copy mode: `}` and `{` step over a paragraph's invisible source white space, so `}` at the end of a paragraph moves into the list that follows it.
+* Firefox 158.0.1 ([MFSA 2026-111](https://www.mozilla.org/en-US/security/advisories/mfsa2026-111/)) ([#425](https://github.com/vimma-browser/vimma/issues/425)) ([7748419](https://github.com/vimma-browser/vimma/commit/7748419063371dd7b8878f2d4b36e46c198572b7))
 
 ## [0.1.6](https://github.com/vimma-browser/vimma/compare/v0.1.5...v0.1.6) · Firefox 158.0 (2026-10-19)
 
 
 ### Added
+
+- Releases: a macOS `.dmg` for Apple Silicon, ad hoc signed, with its own `SHA256SUMS-macos` and cosign signatures, joins a release when the repository variable `MACOS_RELEASE_ENABLED` is set. It shows Vimma's icon, as do the documents it opens, and its bundle identifier is `dev.vimma.browser`. It is not notarised yet, so macOS asks once before it first opens; the guide's macOS section says how.
+- Keys: every Firefox shortcut is now a Vimma binding on Firefox's own key (`ctrl+j`, `ctrl+shift+b`, `ctrl+shift+d`, `F7`, `shift+esc` in normal mode, the sidebar keys and more), listed in `ctrl+b ?` and rebindable; `ctrl+f` is a second find key. `[firefox] disable` now defaults to `"all"`, so Firefox's own shortcuts are off and only Vimma's bindings run; `enable` gives one back. The `defaults.toml` and help snapshots gain the new rows and the new `[firefox]` default.
 
 * **keymap:** bind the rest of Firefox's keys on Firefox's chords ([#352](https://github.com/vimma-browser/vimma/issues/352)) ([256c52c](https://github.com/vimma-browser/vimma/commit/256c52c85162eb9b4be3d4db4ae6745ff4a53016)), closes [#234](https://github.com/vimma-browser/vimma/issues/234)
 * **macos:** vimma's app icon and the dev.vimma.browser bundle id ([783c0ed](https://github.com/vimma-browser/vimma/commit/783c0ed6d439fbddf320d6bea9a6ed9cc15ec449))
@@ -140,6 +144,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
+- Agent downloads: a ClamAV scan with definitions older than `[mcp] clamav_max_age_days` (default 7) is never reported clean, and clamd is used through `clamdscan` when it can be trusted, with `clamscan` as the fallback. The `defaults.toml` snapshot gains the new key.
+
 * **mcp:** clamav definitions age and clamdscan ([#355](https://github.com/vimma-browser/vimma/issues/355)) ([9b1d74b](https://github.com/vimma-browser/vimma/commit/9b1d74b08c2f3be4d3684456e3ad82fda93277e0)), closes [#232](https://github.com/vimma-browser/vimma/issues/232)
 
 
@@ -148,15 +154,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **bench:** measure the baseline commit in the same run, sample by sample ([#356](https://github.com/vimma-browser/vimma/issues/356)) ([c86bbfb](https://github.com/vimma-browser/vimma/commit/c86bbfbba54a27fd48f9b78f1de3e1c421411b4e)), closes [#342](https://github.com/vimma-browser/vimma/issues/342)
 * **keys:** keep a capital letter whose lower case is two characters as typed ([#349](https://github.com/vimma-browser/vimma/issues/349)) ([8d17eb0](https://github.com/vimma-browser/vimma/commit/8d17eb0ef4fa04c8903406a7ee290ab6d53ff438)), closes [#313](https://github.com/vimma-browser/vimma/issues/313)
 * **prompt-keys:** arm y and n on firefox's own prompt delay, and fix two test races ([#346](https://github.com/vimma-browser/vimma/issues/346)) ([d100a04](https://github.com/vimma-browser/vimma/commit/d100a04c37135c7647c1e7b07c85dcfd829bd405)), closes [#334](https://github.com/vimma-browser/vimma/issues/334) [#307](https://github.com/vimma-browser/vimma/issues/307)
-
-## [Unreleased]
-
-### Added
-
-- Releases: a macOS `.dmg` for Apple Silicon, ad hoc signed, with its own `SHA256SUMS-macos` and cosign signatures, joins a release when the repository variable `MACOS_RELEASE_ENABLED` is set. It shows Vimma's icon, as do the documents it opens, and its bundle identifier is `dev.vimma.browser`. It is not notarised yet, so macOS asks once before it first opens; the guide's macOS section says how.
-- Keys: every Firefox shortcut is now a Vimma binding on Firefox's own key (`ctrl+j`, `ctrl+shift+b`, `ctrl+shift+d`, `F7`, `shift+esc` in normal mode, the sidebar keys and more), listed in `ctrl+b ?` and rebindable; `ctrl+f` is a second find key. `[firefox] disable` now defaults to `"all"`, so Firefox's own shortcuts are off and only Vimma's bindings run; `enable` gives one back. The `defaults.toml` and help snapshots gain the new rows and the new `[firefox]` default.
-- Split panes: the focused pane has a 3 px border in the theme's focus colour (on Omarchy, the theme's accent) on all four edges, drawn over the edge of its page so pages never move or resize when focus does; unfocused panes are not dimmed, and there is no border with one pane, on a zoomed pane, while the split is hidden or in fullscreen. The e2e baseline `m4-split-panes` was re-recorded, since its focused pane now shows the border, and the baselines `issue-362-pane-focus-highlight-2` and `-3` are new.
-- Agent downloads: a ClamAV scan with definitions older than `[mcp] clamav_max_age_days` (default 7) is never reported clean, and clamd is used through `clamdscan` when it can be trusted, with `clamscan` as the fallback. The `defaults.toml` snapshot gains the new key.
 
 ## [0.1.4](https://github.com/vimma-browser/vimma/compare/v0.1.3...v0.1.4) · Firefox 158.0 (2026-10-17)
 
