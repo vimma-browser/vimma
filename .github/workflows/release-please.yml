@@ -156,7 +156,11 @@ jobs:
             exit 1
           fi
           jq -j '.body // ""' "$dir/release.json" > "$dir/body.md"
-          node tools/release/changelog.mjs notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"
+          # Without the hand-written lines the release is still titled; the warning says to add them.
+          if ! node tools/release/changelog.mjs notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"; then
+            echo "::warning::$TAG's notes lack the hand-written CHANGELOG.md lines (docs/runbook.md, Releases)"
+            cp "$dir/body.md" "$dir/hand.md"
+          fi
           node tools/release/firefox-notes.mjs "$dir/hand.md" --surfer surfer.json > "$dir/new.md"
           if [ "$(jq -r .name "$dir/release.json")" = "$title" ] && cmp -s "$dir/body.md" "$dir/new.md"; then
             echo "$TAG is already titled \"$title\"."

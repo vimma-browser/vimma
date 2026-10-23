@@ -96,7 +96,8 @@ function mergeInto(entry, sections) {
   let out = [...entry];
   const text = () => out.join("\n");
   for (const { name, items } of sections) {
-    const fresh = items.filter((item) => !text().includes(item));
+    // Whole lines, so that an item that only starts a longer line is still moved.
+    const fresh = items.filter((item) => !`\n${text()}\n`.includes(`\n${item}\n`));
     if (fresh.length === 0) continue;
     const at = out.indexOf(`### ${name}`);
     if (at === -1) {

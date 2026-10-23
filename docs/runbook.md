@@ -720,7 +720,9 @@ ready for review runs them once on the final state, `browser_vimma_app_version.j
 which checks the display version the build carries; the docs-only path never applies, because
 the version in `surfer.json` changes. With `RELEASE_PLEASE_TOKEN` set, a rebuild pushes twice
 (release-please, then the `firefox-notes` commit), and the second push cancels the first run;
-without it, the release PR's pushes start no runs.
+without it, the release PR's pushes start no runs. Once the release PR is ready for review (by
+hand, or by `security-release`), every merge to `main` runs its slow checks again too, so mark
+it ready only when you mean to release.
 
 e2e.yml has no paths filter: "mochitest (artifact build)" is a required check, so the workflow
 starts on every PR, and on a docs-only one the job skips by `if:` in seconds (above). The upstream autopilot runs 6 × 1 min a day, plus ≈ 16 min (issue, patch check, the
@@ -1509,7 +1511,13 @@ maintainer's one click.
   `## ` heading, appears twice, or holds anything but those headings and `- ` items (an item may
   continue on lines indented by two spaces), since `move` refuses what it cannot carry whole.
   Check by hand: `node tools/release/changelog.mjs move CHANGELOG.md` on the release branch's file
-  prints the edited file.
+  prints the edited file. The release PR's head without the `firefox-notes` commit fails CI's
+  `changelog-lint` step, so it cannot be merged by hand or by auto-merge. If the job failed (a
+  `move` error, or a 409 because release-please rebuilt the branch meanwhile), fix `[Unreleased]`
+  on `main` if `move` named a line, then run release-please again: `gh workflow run
+release-please.yml`. If `release-title` warns that a release's notes lack the hand-written
+  lines, add them by hand: `node tools/release/changelog.mjs notes <notes.md> --changelog
+CHANGELOG.md --version X.Y.Z` on the tag's checkout prints the notes to paste.
 
 - **The Firefox version in titles and headings** (spec firefox-versions). release-please can only
   title a release `vX.Y.Z` and head its entry `## [X.Y.Z](compare) (date)`, so two jobs after it

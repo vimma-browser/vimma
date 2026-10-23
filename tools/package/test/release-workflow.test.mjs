@@ -1261,6 +1261,10 @@ describe("release-please.yml", () => {
     );
     expect(add).toBeGreaterThan(-1);
     expect(name).toBeGreaterThan(add);
+    // a changelog the step cannot read never leaves the release untitled
+    expect(title).toMatch(
+      /if ! node tools\/release\/changelog\.mjs notes [^\n]*; then\n\s+echo "::warning::[^\n]*"\n\s+cp "\$dir\/body\.md" "\$dir\/hand\.md"\n\s+fi\n/,
+    );
   });
 
   it("release-title runs only when a release was created and titles it with versionLine", () => {

@@ -621,7 +621,11 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   `firefox-notes` job's `CHANGELOG.md` edit (the hand-written `[Unreleased]` lines and the Firefox
   version), is made by `main`'s code from the release branch's files read as data, names the blob
   it replaces so that a rebuild in between makes it fail rather than overwrite, and is pushed
-  before this job pins the head.
+  before this job pins the head. The pin is checked when auto-merge is set: a later push to
+  `main` rebuilds the release PR, and auto-merge then merges the newest head once its required
+  checks pass. A head that release-please pushed without the `firefox-notes` commit fails CI's
+  `changelog-lint` step (its `[Unreleased]` is not the first heading), so it cannot merge.
+  [`fails when [Unreleased] is not the first version heading`](../tools/release/test/changelog.test.mjs),
   [`firefox-notes reads the release branch as data and does nothing without the token`](../tools/package/test/release-workflow.test.mjs),
   [`firefox-notes moves [Unreleased] into the new entry before naming the Firefox version`](../tools/package/test/release-workflow.test.mjs),
   [`sets auto-merge only once the slow checks of the ready run have replaced the draft's`](../tools/release/test/security-release.test.mjs),

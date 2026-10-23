@@ -142,6 +142,26 @@ describe("moveUnreleased", () => {
     );
   });
 
+  it("moves a line that is the start of a longer line already in the entry", () => {
+    const short = "- Keys: `gx` opens the thing";
+    const again = moved.replace(
+      "## [Unreleased]\n\n",
+      `## [Unreleased]\n\n### Added\n\n${short}\n\n`,
+    );
+    expect(moveUnreleased(again)).toContain(`\n  continued on an indented line.\n${short}\n`);
+  });
+
+  it("moves what release-please 17.6.0's changelog updater really writes", () => {
+    // src/updaters/changelog.ts updateContent, with DEFAULT_VERSION_HEADER_REGEX
+    const i = onMain.search(/\n###? v?[0-9[]/s);
+    const real = `${onMain.slice(0, i)}\n${entry}\n${onMain.slice(i)}`.trim() + "\n";
+    expect(checkChangelog(real)).not.toEqual([]);
+    const out = moveUnreleased(real);
+    expect(checkChangelog(out)).toEqual([]);
+    expect(out).toContain("### Fixed\n\n- Hints: a hand-written fix line.\n\n* **hints:** a fix");
+    expect(moveUnreleased(out)).toBe(out);
+  });
+
   it("leaves a changelog whose [Unreleased] is empty unchanged", () => {
     const empty = `${header}## [Unreleased]\n\n${entry}\n${previous}`;
     expect(moveUnreleased(empty)).toBe(empty);
