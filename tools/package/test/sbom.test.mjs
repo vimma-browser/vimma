@@ -3,8 +3,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildSbom, canonicalLicense, parseCargoLock, parseMozYaml } from "../sbom.mjs";
+import {
+  addCtlComponent,
+  buildSbom,
+  canonicalLicense,
+  parseCargoLock,
+  parseMozYaml,
+} from "../sbom.mjs";
 import { cyclonedxValidator as validator } from "../validate-sbom.mjs";
+import { tempDir } from "../../test/temp-dir.mjs";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -284,6 +291,70 @@ describe("buildSbom", () => {
   it("gives every component a unique bom-ref", () => {
     const refs = bom.components.map((c) => c["bom-ref"]);
     expect(new Set(refs).size).toBe(refs.length);
+  });
+});
+
+// Issue #516: the release packages ship vimma-ctl, so the release SBOM lists it with the libraries
+// its toolchain linked into it, as ctl-notices.mjs describes them in release.yml's ctl job.
+describe("addCtlComponent", () => {
+  const ctl = {
+    type: "application",
+    "bom-ref": "pkg:github/vimma-browser/vimma@v0.1.0#tools/vimma-ctl",
+    name: "vimma-ctl",
+    version: "0.1.0",
+    purl: "pkg:github/vimma-browser/vimma@v0.1.0#tools/vimma-ctl",
+    licenses: [{ license: { id: "MPL-2.0" } }],
+    hashes: [{ alg: "SHA-256", content: "a".repeat(64) }],
+    properties: [{ name: "vimma:rust-target", value: "x86_64-unknown-linux-musl" }],
+    components: [
+      {
+        type: "library",
+        "bom-ref": "pkg:generic/rust-lang/rust-std@1.99.1#vimma-ctl",
+        group: "rust-lang",
+        name: "rust-std",
+        version: "1.99.1",
+        purl: "pkg:generic/rust-lang/rust-std@1.99.1",
+        licenses: [{ expression: "Apache-2.0 OR MIT" }],
+      },
+      {
+        type: "library",
+        "bom-ref": "pkg:generic/musl@1.2.5#vimma-ctl",
+        name: "musl",
+        version: "1.2.5",
+        purl: "pkg:generic/musl@1.2.5",
+        licenses: [{ license: { id: "MIT" } }],
+      },
+    ],
+  };
+  const base = () =>
+    buildSbom({
+      engineDir: tempDir("vimma-engine-"),
+      config: {
+        version: { product: "firefox", version: "157.0.1" },
+        brands: { vimma: { release: { displayVersion: "0.1.0" } } },
+      },
+      repo: "vimma-browser/vimma",
+      serialNumber: "urn:uuid:00000000-0000-4000-8000-000000000000",
+      timestamp: "2026-10-09T00:00:00Z",
+    });
+
+  it("lists vimma-ctl with what it links, and says so in the scope", () => {
+    const bom = addCtlComponent(base(), ctl);
+    expect(bom.components.at(-1)).toEqual(ctl);
+    const scope = bom.metadata.properties.find((p) => p.name === "vimma:sbom:scope");
+    expect(scope?.value).toMatch(/superset/);
+    expect(scope?.value).toMatch(/vimma-ctl/);
+    const validate = validator();
+    expect(validate(bom), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it("refuses anything but vimma-ctl of the release's version", () => {
+    expect(() => addCtlComponent(base(), { ...ctl, name: "other" })).toThrow(/vimma-ctl/);
+    expect(() => addCtlComponent(base(), { ...ctl, version: "0.0.9" })).toThrow(/0\.0\.9.*0\.1\.0/);
+  });
+
+  it("refuses a second vimma-ctl", () => {
+    expect(() => addCtlComponent(addCtlComponent(base(), ctl), ctl)).toThrow(/already/);
   });
 });
 

@@ -154,6 +154,9 @@ almost nothing. Firefox's own inventory is in the tree:
   without the trailing "(date)." Mozilla's tooling writes.
 - smol-toml, which `packages/vimma-core` vendors (`pkg:npm/smol-toml@1.9.0`, BSD-3-Clause; the
   version is read from the vendored file's header).
+- (Since changed: `vimma-ctl`, which every package ships, with musl, Rust's standard library
+  and LLVM's libunwind as its components, added by the `package` job and checked against the
+  schema there; [ship-vimma-ctl](ship-vimma-ctl.md), Security and privacy.)
 
 Licences: a single id is looked up case-insensitively in the SPDX License List 3.24.0 (the
 version CycloneDX 1.6.2's `spdx.schema.json` enumerates) and written in SPDX's spelling

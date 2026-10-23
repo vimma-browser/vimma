@@ -1652,9 +1652,12 @@ same call as the manual re-run, so one path is exercised every time.
 Jobs: `build` (read-only token and the Safe Browsing key; first checks that the tag is
 `vX.Y.Z` and that its commit is on `main`) → `ctl` (`vimma-ctl` from the same commit, static for
 `x86_64-unknown-linux-musl`; read-only token, no secret; spec
-[ship-vimma-ctl](specs/ship-vimma-ctl.md)) → `package` (AppImage, `.deb`, `.rpm`, `PKGBUILD`,
-the AUR variant, checksums, each with `vimma-ctl` next to `vimma`, and the release tarball
-repacked with it; installs the `.deb` and starts it headless, installs the `.rpm` with
+[ship-vimma-ctl](specs/ship-vimma-ctl.md); then `tools/package/ctl-notices.mjs` writes
+`vimma-ctl-licenses/`, the notices of musl, Rust's standard library and LLVM's libunwind, from
+that toolchain, and `vimma-ctl`'s SBOM entry) → `package` (AppImage, `.deb`, `.rpm`, `PKGBUILD`,
+the AUR variant, checksums, each with `vimma-ctl` and `vimma-ctl-licenses/` next to `vimma`, and
+the release tarball repacked with them; adds `vimma-ctl` to the SBOM and checks it against the
+CycloneDX schema; installs the `.deb` and starts it headless, installs the `.rpm` with
 dnf in a Fedora container and with zypper in an openSUSE container and starts it headless there
 with `tools/package/rpm-smoke.sh`, and runs `makepkg -si` on the `PKGBUILD` in an Arch Linux
 container with `tools/package/arch-smoke.sh`) → `sign` (only job with
@@ -1666,12 +1669,19 @@ token; the tap's deploy key only) → `failure`. Locally, from a mach tarball:
 
 ```sh
 tools/package/fetch-appimagetool.sh /tmp/ait
-(cd tools/vimma-ctl && cargo build --release --locked)   # or the ctl job's static binary
+# as the ctl job: rustup's pinned toolchain with the musl target (or download the job's artifact)
+(cd tools/vimma-ctl && rustup target add x86_64-unknown-linux-musl &&
+  cargo build --release --locked --target x86_64-unknown-linux-musl)
+mkdir ctl && cp tools/vimma-ctl/target/x86_64-unknown-linux-musl/release/vimma-ctl ctl/
+node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
+  --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json
+node tools/package/sbom.mjs --engine engine --out /tmp/vimma.cdx.json
 node tools/package/package.mjs --tarball engine/obj-x86_64-pc-linux-gnu/dist/vimma-*.tar.xz \
-  --ctl tools/vimma-ctl/target/release/vimma-ctl \
+  --ctl ctl/vimma-ctl --ctl-licenses ctl/vimma-ctl-licenses \
+  --sbom /tmp/vimma.cdx.json --ctl-component ctl/vimma-ctl.cdx.json \
   --out dist --maintainer 'Name <email>' --appimagetool /tmp/ait/appimagetool \
   --runtime /tmp/ait/runtime-x86_64 --no-deb   # dpkg-deb only exists on Debian/Ubuntu
-node tools/package/sbom.mjs --engine engine --out dist/vimma-$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion').cdx.json
+node tools/package/validate-sbom.mjs dist/vimma-*.cdx.json
 tools/package/arch-smoke.sh dist "$(node tools/release/version-line.mjs)"   # needs docker
 tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"    # needs docker
 ```

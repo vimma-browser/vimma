@@ -260,6 +260,17 @@ jobs:
           mkdir ctl
           cp "$bin" ctl/vimma-ctl
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # The notices of what the toolchain linked into the binary (musl, Rust's standard library,
+      # libunwind), and its SBOM entry, from the toolchain that built it (#516).
+      - name: Notices and SBOM entry for vimma-ctl
+        run: |
+          node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
+            --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ctl
@@ -302,6 +313,10 @@ jobs:
           name: ctl
           path: ctl
 
+      # For validate-sbom.mjs (ajv), which checks the SBOM once vimma-ctl is in it.
+      - name: npm ci
+        run: npm ci --ignore-scripts
+
       # rpmbuild comes from Ubuntu's archive, as dpkg-deb does from the image (spec rpm-package).
       - name: Tools (appimagetool and runtime pinned by SHA-256; desktop-file-validate; rpmbuild)
         run: |
@@ -316,10 +331,13 @@ jobs:
           tarball=$(echo build/vimma-*.en-US.linux-x86_64.tar.xz)
           # download-artifact does not keep the mode
           chmod 755 ctl/vimma-ctl
-          node tools/package/package.mjs --tarball "$tarball" --ctl ctl/vimma-ctl --out dist --tag "$TAG" \
+          node tools/package/package.mjs --tarball "$tarball" --ctl ctl/vimma-ctl \
+            --ctl-licenses ctl/vimma-ctl-licenses --out dist --tag "$TAG" \
             --maintainer "$MAINTAINER" --repo "$GITHUB_REPOSITORY" --sbom "build/vimma-$v.cdx.json" \
+            --ctl-component ctl/vimma-ctl.cdx.json \
             --appimagetool "$RUNNER_TEMP/appimagetool/appimagetool" \
             --runtime "$RUNNER_TEMP/appimagetool/runtime-x86_64"
+          node tools/package/validate-sbom.mjs "dist/vimma-$v.cdx.json"
           (cd dist && sha256sum -c SHA256SUMS)
 
       - name: Smoke test the .deb and the AppImage
@@ -331,6 +349,7 @@ jobs:
           # vimma-ctl ships in every package with the browser's version (spec ship-vimma-ctl).
           ctl="vimma-ctl $v (protocol 2)"
           [ "$(vimma-ctl --version)" = "$ctl" ] || { echo "::error::.deb: $(vimma-ctl --version)"; exit 1; }
+          test -s /usr/lib/vimma/vimma-ctl-licenses/musl-COPYRIGHT
           desktop-file-validate /usr/share/applications/vimma-vimma.desktop
           test -x /usr/bin/vimma-open
           # The update check's install type (spec m6a-updater §3): a .deb is updated by apt, an
@@ -341,6 +360,7 @@ jobs:
           listing=$(tar -tJf "./dist/vimma-$v-linux-x86_64.tar.xz")
           case "$listing" in *is-packaged-app*) echo "::error::the tarball carries is-packaged-app"; exit 1 ;; esac
           case "$listing" in *"vimma/vimma-ctl"*) ;; *) echo "::error::the tarball has no vimma/vimma-ctl"; exit 1 ;; esac
+          case "$listing" in *"vimma/vimma-ctl-licenses/musl-COPYRIGHT"*) ;; *) echo "::error::the tarball has no vimma-ctl notices"; exit 1 ;; esac
           p=$(mktemp -d)
           # First run creates the profile; --screenshot on a fresh profile races the bookmarks
           # import (docs/runbook.md, Smoke check). timeout exits 124.
@@ -543,6 +563,16 @@ jobs:
           mkdir ctl
           cp "$bin" ctl/vimma-ctl
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Rust's standard library notices, from the toolchain that built the binary (#516); macOS
+      # provides libc and the unwinder. The release SBOM describes the Linux packages only.
+      - name: Notices for vimma-ctl
+        run: |
+          node tools/package/ctl-notices.mjs --out ctl/vimma-ctl-licenses
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-ctl
@@ -686,6 +716,8 @@ jobs:
           RCODESIGN: ${{ runner.temp }}/rcodesign/rcodesign
           # signed into Vimma.app/Contents/MacOS with the app (spec ship-vimma-ctl)
           VIMMA_CTL: ${{ github.workspace }}/ctl/vimma-ctl
+          # its notices, into Vimma.app/Contents/Resources (#516)
+          VIMMA_CTL_LICENSES: ${{ github.workspace }}/ctl/vimma-ctl-licenses
         run: |
           # download-artifact does not keep the mode
           chmod 755 "$VIMMA_CTL"
@@ -761,6 +793,7 @@ jobs:
           [ "$version" = "$expected" ] || { echo "::error::--version is '$version', want '$expected'"; exit 1; }
           ctl=$("$APP/Contents/MacOS/vimma-ctl" --version)
           [ "$ctl" = "vimma-ctl ${TAG#v} (protocol 2)" ] || { echo "::error::vimma-ctl --version is '$ctl'"; exit 1; }
+          test -s "$APP/Contents/Resources/vimma-ctl-licenses/rust-std-COPYRIGHT.html"
           appconstants=$(unzip -p "$APP/Contents/Resources/omni.ja" modules/AppConstants.sys.mjs)
           echo "$appconstants" | grep -q 'MOZ_GOOGLE_SAFEBROWSING_API_KEY' \
             || { echo "::error::no Safe Browsing key constant in AppConstants"; exit 1; }

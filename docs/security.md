@@ -1870,8 +1870,15 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   crate has no dependencies, so cargo downloads no crate, and the toolchain comes through the
   runner's rustup at the version `rust-toolchain.toml` pins. The binary reaches users only inside
   the packages, which `SHA256SUMS` lists and the `sign` jobs sign (B9, B10); it is never an asset
-  of its own.
+  of its own. Its notices, and on Linux its SBOM entry, come from the same jobs, after the binary is
+  checked: `tools/package/ctl-notices.mjs` copies the notices from the toolchain's sysroot and
+  musl's `COPYRIGHT` from the repository (pinned by SHA-256 in `tools/package/vendor/README.md`),
+  and reads every version from the build, so the SBOM names what is in the binary; `package`
+  checks the merged SBOM against the CycloneDX schema before it is signed.
   [`ctl builds the checked commit's vimma-ctl, static, without the build environment`](../tools/package/test/release-workflow.test.mjs),
+  [`ctl gathers vimma-ctl's notices and SBOM entry from the toolchain that built it`](../tools/package/test/release-workflow.test.mjs),
+  [`package ships vimma-ctl's notices, lists it in the SBOM and checks both`](../tools/package/test/release-workflow.test.mjs),
+  [`refuses a musl version it has no COPYRIGHT for`](../tools/package/test/ctl-notices.test.mjs),
   [`macos-ctl builds vimma-ctl on a Mac from the commit it checked, like build`](../tools/package/test/release-workflow.test.mjs),
   [`macos-build signs the Mac vimma-ctl into the app, from the same commit`](../tools/package/test/release-workflow.test.mjs),
   [`package puts vimma-ctl into every package and checks it in each`](../tools/package/test/release-workflow.test.mjs)

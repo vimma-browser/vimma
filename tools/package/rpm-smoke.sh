@@ -49,6 +49,7 @@ if [ "${1:-}" = "--inside" ]; then
   release=${release%% *}
   ctl=$(vimma-ctl --version)
   case "$ctl" in "vimma-ctl $release "*) ;; *) echo "rpm-smoke: $distro: vimma-ctl --version is '$ctl', want vimma-ctl $release"; exit 1 ;; esac
+  test -s /usr/lib/vimma/vimma-ctl-licenses/musl-COPYRIGHT
   marker=$(cat /usr/lib/vimma/is-packaged-app)
   [ "$marker" = "vimma-package=rpm" ] || { echo "rpm-smoke: $distro: is-packaged-app says '$marker'"; exit 1; }
   test -x /usr/bin/vimma-open
@@ -87,8 +88,14 @@ if [ "${1:-}" = "--stub" ]; then
   release=$(echo "$expected" | sed 's/^Vimma \([^ ]*\) .*/\1/')
   printf '#!/bin/sh\necho "vimma-ctl %s (protocol 2)"\n' "$release" > "$work/vimma-ctl"
   chmod 755 "$work/vimma-ctl"
+  # Stand-ins for what ctl-notices.mjs writes in the ctl job (#516).
+  mkdir "$work/vimma-ctl-licenses"
+  echo stub > "$work/vimma-ctl-licenses/README.txt"
+  echo stub > "$work/vimma-ctl-licenses/rust-std-COPYRIGHT.html"
+  echo stub > "$work/vimma-ctl-licenses/musl-COPYRIGHT"
   node "$here/package.mjs" --tarball "$work/vimma-stub.en-US.linux-x86_64.tar.xz" \
-    --ctl "$work/vimma-ctl" --out "$work/dist" --maintainer 'Vimma CI <ci@example.invalid>' --no-deb
+    --ctl "$work/vimma-ctl" --ctl-licenses "$work/vimma-ctl-licenses" --out "$work/dist" \
+    --maintainer 'Vimma CI <ci@example.invalid>' --no-deb
   dist="$work/dist"
   real=0
 else
