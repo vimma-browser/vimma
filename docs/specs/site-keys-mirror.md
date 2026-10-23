@@ -61,10 +61,12 @@ cannot fall behind the browser.
 4. **Telling the site.** `.github/workflows/site-dispatch.yml` runs on a push to `main` that
    changes `docs/bindings.json` (and by hand), and sends a `repository_dispatch`
    (`event_type: vimma-bindings`, `client_payload.sha`) to vimma-browser/vimma-site with `gh api`. It
-   needs a fine-grained token in the secret `SITE_DISPATCH_TOKEN`: repository vimma-browser/vimma-site
-   only, permission "Contents: read and write" (the dispatch endpoint requires it). Without the
-   secret the job logs a notice and succeeds, so main does not go red before it is set. No
-   third-party action; `actions/checkout` is not needed.
+   authenticates as the org's GitHub App vimma-site-dispatch, installed on vimma-browser/vimma-site
+   only with "Contents: read and write" (the dispatch endpoint requires it): the variable
+   `SITE_DISPATCH_APP_ID` (client ID) and the secret `SITE_DISPATCH_APP_KEY` (private key), from
+   which GitHub's `actions/create-github-app-token` mints a one-hour token for that repository
+   alone. Without the variable the job logs a notice and succeeds, so main does not go red before
+   it is set. No third-party action; `actions/checkout` is not needed.
 5. **The site** (vimma-browser/vimma-site) fetches `docs/bindings.json` at a fixed commit from
    `raw.githubusercontent.com`, commits it with the commit it came from, and builds both its
    keys page and its `?` overlay from it. Its own workflow answers the dispatch with a pull
