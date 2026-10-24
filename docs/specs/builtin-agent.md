@@ -63,8 +63,8 @@ mcp` on a real grocery shop (the shop of [mcp-checkpoints](mcp-checkpoints.md), 
    timeout of 1 s. It lists the models those servers report as `ollama · qwen3:14b`, and the
    user picks one. When none answers, setup shows how to start one (`ollama serve`, then
    `ollama pull <model>`) and accepts an address such as `http://127.0.0.1:8000/v1` (vLLM's
-   default port) instead. No key is asked. The probe runs only while setup is open and the user
-   chose this option, never in the background.
+   default port) instead. No key is asked. The probe runs only while setup is open with this option
+   picked, never in the background.
 3. **External provider.** The user picks Anthropic (the Messages API) or an OpenAI-compatible
    endpoint (an `https://` address), a model name, and pastes the API key into a masked field.
    The key goes straight into Firefox's login storage (B8) and is never shown again; setup shows
@@ -367,8 +367,8 @@ agent to a part of the profile, or publishes which steps always ask.
 
 ## Security and privacy
 
-What is new: a model client inside the browser that sends page text to an endpoint the user
-chose, an API key stored in the profile, and a window that shows the model's output. The reach
+What is new: a model client inside the browser that sends page text to an endpoint picked in
+setup, an API key stored in the profile, and a window that shows the model's output. The reach
 on pages is unchanged: the same agent tools, gate, checkpoints and rates as an MCP agent
 (B2, B3).
 
