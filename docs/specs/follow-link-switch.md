@@ -186,8 +186,8 @@ the background accordingly; the status bar shows the choice.
    first, as a `ctrl+shift+click` foreground open is; selected later it would be a pick that hides
    the split. `addTab` then makes the hinted tab its owner, so closing the new tab returns to it.
 5. **`browser.tabs.loadInBackground` does not apply.** Vimma passes `inBackground` explicitly in
-   both cases, so the pref changes neither outcome, because the user chose the outcome with the
-   case of the key; the pref is the default for opens that carry no such choice. Rejected: following
+   both cases, so the pref changes neither outcome, because the case of the last key already
+   states the outcome; the pref is the default for opens that carry no such choice. Rejected: following
    the pref for lower case, as qutebrowser's `tab` target does, because then `gF`'s documented
    meaning would depend on a pref the user may have set for mouse clicks.
 6. **The new tab stays where `gF`'s tab goes today.** Same window as the hinted browser, the hinted
