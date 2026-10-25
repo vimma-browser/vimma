@@ -137,7 +137,7 @@ none)`. By default the address is sent without its query and fragment, which can
    command runs only when its key is pressed, only on the page the user is looking at, and may
    read and change that page (a command with only a style sheet changes how it looks); it runs
    on no other tab, never in a private window or the agent workspace, and never on a page with a
-   login or payment field. A page tweak, reader-style dimming or a style change needs no further
+   login or payment field that Vimma recognises (D20). A page tweak, reader-style dimming or a style change needs no further
    thought than the one approval that states this. What such a module could still do is said
    in the same words (Behaviour 16): code or a style sheet on a page can send what the page
    shows to other sites through the page itself, and Vimma blocks only part of that (D21).
@@ -153,7 +153,8 @@ none)`. By default the address is sent without its query and fragment, which can
     that ran stays in the page until it reloads, and activeTab outlives an in-page route change
     and a return from the back-forward cache, so a login form the page shows later is within its
     reach: when a password field appears in a page where a module ran, the status bar says
-    `module ran on this page: reload before typing a password`.
+    `module ran on this page: reload before typing a password`. Only a password field announces
+    itself; a card, one-time-code or masked field the page adds later gives no warning.
 11. **Its effect is the page's until it reloads.** A module changes the page it ran on; turning
     the module off or rolling it back stops it from running again but does not undo what it
     already changed in an open page. The notice of `:module off` says `reload pages to undo`.
@@ -192,10 +193,11 @@ none)`. By default the address is sent without its query and fragment, which can
     2. **what it may do**, in words Vimma writes from `module.toml`, never the agent's:
        `When you press <leader>d, it reads and changes the page you are on, and can send what
 that page shows to other sites through the page. It never runs in private windows, the
-agent workspace or on pages with a login or payment field.`; a permission an update adds is
+agent workspace or on pages where Vimma sees a login or payment field; Vimma does not
+recognise every such field.`; a permission an update adds is
        marked `new:`;
     3. **the test result**, from the sandbox's report: `tested on en.wikipedia.org (signed out):
-3 of 3 passed, no requests to other sites`, or `not tested`;
+3 of 3 passed, no requests blocked`, or `not tested`;
     4. **the diff**: for an update, the changed hunks of every file against the version in
        force, with `F` showing whole files; for a new module, every file whole; as text, with
        invisible and bidirectional characters, non-ASCII letters in identifiers and lines over
@@ -448,12 +450,23 @@ ctrl+b m ──▶ request (memory) ──▶ vimma_module_requests ──▶ us
 3. **Tier 1 proposes only keymap and display settings** (D3, Behaviour 4). An agent may propose
    edits to `[keys]`, `[modal]` and its mode tables, `[unbind]`, `[sites]`, `[panes]`, `[theme]`
    and `[modules.<name>]`, written with `setTomlKeys` and validated by `parseConfig` before the
-   diff is shown, so a proposal that would not load is never offered. Within those tables a
-   proposal is refused if it binds or unbinds `mcp.answer`, `mcp.command`, `control.command`,
-   `firefox.command`, `app.restart` or `workspace.route` (`actions.mjs:129-131`, `:188`, `:191`,
-   `:385-387`), or sets a `[modal.*]` value that starts with `:`, because such a value runs any
-   command line as if typed ([firefox-keys](firefox-keys.md) decision 5, `actions.mjs:23`), so a
-   binding could reach `:control on`, `:mcp on` or `:route add`. Rejected: any table, since an
+   diff is shown, so a proposal that would not load is never offered. Within those tables the
+   check compares the compiled keymap before and after the proposal, not the text: it is
+   refused unless every protected action keeps exactly its key sequences, and no protected
+   sequence is bound to anything else, so a proposal cannot unbind a protected action by giving
+   its keys to another one. The protected actions are `mcp.answer`, `mcp.command`,
+   `control.command`, `firefox.command`, `app.restart`, `workspace.route`,
+   `devtools.browser_console`, `devtools.browser_toolbox`, `addons.picker`, `addons.popup` and
+   `browser.addons` (`actions.mjs:129-131`, `:188`, `:191`, `:200`, `:223-224`, `:385-387`,
+   `:391-392`): the agent's answer key, MCP, full control, Firefox commands, restart, routing,
+   chrome-privileged tools and add-on management. A proposal is also refused if it sets a
+   `[modal.*]` value that starts with `:`, because such a value runs any command line as if
+   typed ([firefox-keys](firefox-keys.md) decision 5, `actions.mjs:23`), so a binding could
+   reach `:control on`, `:mcp on` or `:route add`. Accepted unprotected:
+   `workspace.move_tab`, which asks `y/N` before it moves a tab into the agent workspace
+   (`host/workspace-ops.mjs:274`), and `setup.open` (`actions.mjs:376`), which installs an
+   add-on only after the user's marks, a summary and Firefox's own prompt (security.md A1).
+   Rejected: any table, since an
    agent steered by a page could then propose turning on MCP or full control, moving the
    download quarantine, or turning off update checks (`[mcp]`, `[updates]`, `[agent]`,
    `[modules] enabled`); these stay the user's to type.
@@ -531,12 +544,17 @@ ctrl+b m ──▶ request (memory) ──▶ vimma_module_requests ──▶ us
     `<profile>/vimma/modules/<name>/<n>/` from the bytes the review showed (read once, held in
     memory, never re-read from disk between review and copy), with its SHA-256 and permissions
     recorded in `<profile>/vimma/modules.json`. The approved copy's files are mode 0400 in 0500
-    folders. Every install checks the files against the recorded hash first: at start, on
+    folders, which stops accidental edits only: any process of the user's can change the mode.
+    Vimma makes a folder writable itself before it prunes old versions or runs
+    `:module remove`, and the guide says that deleting a profile by hand needs `chmod -R u+w`
+    first. Every install checks the files against the recorded hash first: at start, on
     approval, on a rollback and on the theme reload of D23. So a change to the working copy, by
     the user, the agent or anything else, never loads without a review. This does not cover a
-    write to the approved copy after it was installed: `scripting.executeScript({ files })` reads
-    the file when the command runs, so a process that changes the mode and rewrites a file
-    changes what runs until the next install. That process runs as the user (Security and
+    write to the approved copy after it was installed. Whether `scripting.executeScript({ files })`
+    reads the file again on each run or serves a compiled copy from the content process's
+    `ScriptCache` (`ExtensionContent.sys.mjs:167`) is **unverified** (a mochitest that rewrites a
+    file between two runs settles it); in the first case a process that changes the mode and
+    rewrites a file changes what runs until the next install. That process runs as the user (Security and
     privacy, "Tampering on disk"). Rejected: loading the working copy directly, because any
     process could then change code that runs after approval.
 11. **Hot-loading and unloading** (D11, Behaviour 11, 18). Approval installs the new version
@@ -617,41 +635,71 @@ ctrl+b m ──▶ request (memory) ──▶ vimma_module_requests ──▶ us
 20. **A module command runs only where the user is, on the user's key** (D20, Behaviour 8, 10).
     The host checks the selected tab before it dispatches: not private, not in the agent
     workspace or its container, an http or https page inside `sites`, and no password, card or
-    one-time-code field in any frame, filled or empty (`plainlySensitive`,
-    `actors/agent-fields.mjs:181`, asked of every frame as for agent screenshots). The check
-    covers empty fields too because a script stays in the page and could read what is typed
-    later. Then it calls `ExtensionShortcuts.onCommand`, which grants activeTab on
-    `tabTracker.activeTab` (`ext-commands.js:17-21`, `ext-browser.js:775-781`). ModuleHost
-    asserts, in the same task and after the grant, that this is the tab and the inner window it
-    checked, and revokes activeTab and runs nothing if it is not (a focus change between the
-    check and the grant, or a split whose selected pane changed), so the grant never lands on a
-    tab that was not checked. activeTab then lasts for that document and is not cleared by an
-    in-page route change or a back-forward cache restore (`ext-tabs-base.js:2184-2187`); the
-    child watches `DOMInputPasswordAdded` and `DOMFormHasPassword` in a page where a module ran
-    and shows Behaviour 10's warning. Left: a module that ran can still read a login form the
-    page adds later if the user types before reloading; the guide and the permission words say
-    so. The agent workspace is excluded so that what agents read and the gate's checkpoint
-    signals (mcp-checkpoints) never depend on which modules are on. A shortcut given to a module
-    command in about:addons ("Manage Extension Shortcuts") would run it through Firefox's own key,
-    past these checks, so ModuleHost resets every module command's shortcut at install and on
-    each change (`resetCommand`, `ExtensionShortcuts.sys.mjs:209-217`). Persistent per-site
-    modules, which run on every load, are open question 2.
+    one-time-code field in any frame, filled or empty. The check is the one `vimma_fill` uses
+    (`secretOf`, `actors/agent-fields.mjs:498`): `plainlySensitive` (`:181`, password type now
+    or before, a masked field, a sensitive autocomplete name) and form autofill's card
+    heuristics over each field's form (`cardFields`, `:135-175`), asked of every frame as for
+    agent screenshots. It inherits M31's limits: a one-time-code field without that
+    autocomplete name or a mask, and a card field the heuristics miss, are not recognised, so
+    the permission words say "a login or payment field that Vimma recognises". The check covers
+    empty fields too because a script stays in the page and could read what is typed later.
+    Then it calls `ExtensionShortcuts.onCommand`, which emits `command` on the commands API
+    instance (`ext-commands.js:51`); `EventEmitter.emit` calls its listeners synchronously
+    (`toolkit/components/extensions/ExtensionCommon.sys.mjs:331-352`), and the listener grants
+    activeTab on `tabTracker.activeTab` before it fires the event to the extension
+    asynchronously (`ext-commands.js:17-21`, `ext-browser.js:775-781`). So when `onCommand`
+    returns, the grant is made, and ModuleHost asserts, in the same task, that it went to the
+    tab and inner window it checked, and revokes activeTab and runs nothing if not (a focus
+    change between the check and the grant, or a split whose selected pane changed). That the
+    grant is also synchronous while the extension's event page is not running and its listener
+    is a primed persistent one is **unverified** (a mochitest that sends a command to an idle
+    module settles it). activeTab then lasts for that document and is not cleared by an in-page
+    route change or a back-forward cache restore (`ext-tabs-base.js:2184-2187`). The child of
+    every frame, cross-origin frames included (the actor is registered with `allFrames: true`,
+    `actors/VimmaActors.sys.mjs:231`), watches `DOMInputPasswordAdded` and `DOMFormHasPassword`
+    in a page where a module ran and shows Behaviour 10's warning. Left: a module that ran can
+    still read a login form the page adds later if the user types before reloading; card,
+    one-time-code and masked fields added later fire no event, so they get no warning; the
+    guide and the permission words say so. The agent workspace is excluded so that what agents
+    read and the gate's checkpoint signals (mcp-checkpoints) never depend on which modules are
+    on. Generated commands have no `suggested_key` (`ExtensionShortcuts.sys.mjs:359-361`), so
+    Firefox binds no key of its own at install. A shortcut the user gives a module command in
+    about:addons ("Manage Extension Shortcuts", `updateCommand`, `:168`) works through
+    Firefox's own key, past these checks, until ModuleHost resets it with `resetCommand`
+    (`:217`). The change is reported through `onShortcutChanged` (`:209`), which the commands
+    API emits as `shortcutChanged` on its own instance (`ext-commands.js:52`), out of reach of
+    code outside the extension; so ModuleHost reads `shortcuts.allCommands()` (`:157`) and
+    resets any shortcut at install, when about:addons closes, and before it runs any module key.
+    Between a change and the next of these, Firefox's key runs the command unchecked. Whether
+    module commands can be kept out of that page altogether is **unverified**. Persistent
+    per-site modules, which run on every load, are open question 2.
 21. **Network: best effort, and said plainly** (D21, Behaviour 8, 16), because a module that
     reads a page could send what it read to any host, and Vimma cannot stop every way of doing
     so. The generated background makes no request, and content scripts in MV3 have only the
     page's own network capabilities (`ExtensionContent.sys.mjs:1067-1080`). On top,
     `modules/ModuleNet.sys.mjs` observes requests (`http-on-opening-request`) whose triggering
     principal is, or expands to, a module's, and cancels any to a host other than the page's
-    own, recording it for the test report and `:modules`. That catches the module's own `fetch`
-    and `XMLHttpRequest` and an absolute URL it sets as an attribute. It cannot catch what loads
-    as the page (`nsContentUtils.cpp:2549-2575`): a relative or protocol-relative URL, markup
+    own, recording it for the test report and `:modules`. In MV3 that is little: a content
+    script's sandbox gets its own `fetch` and `XMLHttpRequest` only in MV2
+    (`ExtensionContent.sys.mjs:1067-1080`), so a module's `fetch` is the page's, reached through
+    Xrays, and its request carries the document's principal
+    (`dom/fetch/Fetch.cpp:572-580`). What carries the module's principal is an absolute URL it
+    sets as an attribute, which an expanded principal that subsumes the page's may stand for
+    (`GetAttrTriggeringPrincipal`, `nsContentUtils.cpp:2549-2575`; `BasePrincipal::OverridesCSP`,
+    `caps/BasePrincipal.cpp:1266-1279`), and probably the `url()` loads of the module's own
+    style sheets inserted with `scripting.insertCSS`, since extension principals override a
+    page's CSP "primarily for the sake of their stylesheets" (`BasePrincipal.cpp:1275-1277`);
+    that those loads carry the module's principal is **unverified** (a mochitest settles it).
+    It cannot catch what loads as the page: a direct `fetch` or `XMLHttpRequest`, a relative or
+    protocol-relative URL, markup
     inserted with `innerHTML`, a `<script>` added to the page (which the MV3 CSP does not stop,
     since it covers only the content script's sandbox, `all.js:3166`), a change of `location`, a
     form submission, an `<a ping>`, and a style sheet's `url()`, including selectors that leak
     attribute values one request at a time. So the permission words for every command say
     `can send what that page shows to other sites through the page`, a style-only command
     included, and the guide lists these paths as known limits, each with a test that records
-    the current behaviour. Declared network hosts are open question 3.
+    the current behaviour. Declared network hosts are open question 3; since a module's own
+    `fetch` is not attributable, no mechanism exists yet to allow one host and refuse others.
 22. **Keys in a module layer, run through one action** (D22, Behaviour 9). The dispatcher gains
     one action, `module.run`, whose binding carries `module/command`; module keys compile into a
     layer under `config.toml`'s, so the user's keys always win, and a module key that would
@@ -730,7 +778,9 @@ can be prepared for a public issue.
   windows (`incognito: "not_allowed"`, and the host's check, D20), and never starts on a page
   with a password, card or one-time-code field (D20). It has no API to logins or form autofill.
   Not contained: a login form a page adds after a module ran, if the user types before
-  reloading (Behaviour 10 warns), and a field not recognised as sensitive (M31's limits).
+  reloading (Behaviour 10 warns for password fields only; card, one-time-code and masked fields
+  added later give no warning), and a field not recognised as sensitive (M31's limits: card
+  forms the autofill heuristics miss, one-time-code fields without the autocomplete name).
 - **Workspace isolation.** A module runs in the pages of every workspace but the agent's, and
   `storage = true` is one store across them, so a module with storage can carry what it saw in
   one workspace into another; the permission words say so (D9).
@@ -746,14 +796,44 @@ can be prepared for a public issue.
 - **Tampering on disk.** An agent with a shell is a semi-trusted process
   ([vimma-mcp](vimma-mcp.md), Security, the threat "A local process uses the socket"), not
   malware, so the module files are laid out for it to be confined. It writes only the working
-  copies; the approved copies and `modules.json` are in the profile, every install checks the
-  hash (D10), and the files are read-only. The guide's "Keeping agents out of your Vimma
-  profile" (`docs/guide.md:1754-1773`) denies the agent all of `~/.config/vimma/**`, which on
-  Linux also holds the profile; it changes to: the agent may read and write
-  `~/.config/vimma/modules/**`, and is denied the profile folders (`~/.config/vimma/vimma/`,
-  `~/.vimma/`, `~/Library/Application Support/Vimma/`) and `~/.config/vimma/config.toml`. An
-  agent that is not confined that way can rewrite an approved copy after it is installed (D10)
-  or its record; that is outside what Vimma can bound (security.md §11).
+  copies; the approved copies and `modules.json` are in the profile, and every install checks
+  the hash (D10). The files' read-only modes stop accidental edits only, since any process of
+  the user's can change a mode. The guide's "Keeping agents out of your Vimma profile"
+  (`docs/guide.md:1754-1773`) today denies only reads (`Read(...)` and `denyRead`) of all of
+  `~/.config/vimma/**`, which on Linux also holds the profile, and would also deny the module
+  folder. It changes to deny reads and writes of the profile folders and `config.toml`, and to
+  leave `~/.config/vimma/modules/` open. For Claude Code, in `~/.claude/settings.json` (on
+  macOS, `~/Library/Application Support/Vimma` is added to every list):
+
+  ```json
+  {
+    "permissions": {
+      "deny": [
+        "Read(~/.config/vimma/vimma/**)",
+        "Edit(~/.config/vimma/vimma/**)",
+        "Read(~/.vimma/**)",
+        "Edit(~/.vimma/**)",
+        "Read(~/.config/vimma/config.toml)",
+        "Edit(~/.config/vimma/config.toml)"
+      ]
+    },
+    "sandbox": {
+      "enabled": true,
+      "filesystem": {
+        "denyRead": ["~/.config/vimma/vimma", "~/.vimma", "~/.config/vimma/config.toml"],
+        "denyWrite": ["~/.config/vimma/vimma", "~/.vimma", "~/.config/vimma/config.toml"],
+        "allowWrite": ["~/.config/vimma/modules"]
+      }
+    }
+  }
+  ```
+
+  The `sandbox.filesystem` keys are those of Claude Code's sandboxing documentation
+  (code.claude.com/docs/en/sandboxing, read 2026-10-25); the rules are checked against a running
+  Claude Code before the guide changes. An agent that is not confined that way can rewrite an
+  approved copy after it is installed (D10) or its record; that is outside what Vimma can bound
+  (security.md §11).
+
 - **The sandbox.** `vimma-ctl` starts the Vimma binary next to it with fixed arguments and a
   folder it created; the sandbox role exists only in that instance (D26); the instance has no
   cookies, logins or history, loads only http and https, refuses local and private addresses
@@ -787,12 +867,16 @@ their tests:
 - MO5. A module command **must** run only on the user's key through `module.run`, only on the
   tab and document ModuleHost checked and activeTab was granted on, only on an http or https
   page inside its `sites`, and **never** in a private window, an agent-workspace tab or on a
-  page with a password, card or one-time-code field; a shortcut set for a module command
-  outside Vimma **must** be reset.
-- MO6. Requests a module's script makes with its own principal to a host other than the page's
-  own **must** be cancelled and recorded. This is best effort: what loads with the page's
-  principal is not caught (D21), and the permission words **must** say that every command can
-  send what the page shows to other sites.
+  page with a password, card or one-time-code field that `secretOf` recognises (with M31's
+  limits); generated commands **must** have no `suggested_key`, and a shortcut set for a module
+  command outside Vimma **must** be reset at install, when about:addons closes and before any
+  module key runs.
+- MO6. Requests that carry a module's principal (an absolute URL it sets as an attribute, and
+  its own style sheets' loads if D21's check confirms it) to a host other than the page's own
+  **must** be cancelled and recorded. This is best effort: in MV3 a module's `fetch` and
+  `XMLHttpRequest` and everything else that loads with the page's principal is not caught
+  (D21), and the permission words **must** say that every command can send what the page shows
+  to other sites.
 - MO7. Every update **must** be reviewed, and a permission it adds **must** be marked `new:`.
 - MO8. The permission words **must** be generated from the parsed `module.toml`, never taken from
   the agent; all review text **must** be set as text; files with bidirectional controls,
@@ -800,10 +884,10 @@ their tests:
   columns **must** be marked.
 - MO9. No module **must** be loaded in troubleshoot mode, with `[modules] enabled = false`, or
   after `:modules off`.
-- MO10. A tier-1 proposal **must** touch only the tables of D3, **must not** bind or unbind
-  `mcp.answer`, `mcp.command`, `control.command`, `firefox.command`, `app.restart` or
-  `workspace.route`, or set a `:` command value, and **must** parse before it is shown; `y`
-  writes it atomically, keeping comments and mode.
+- MO10. A tier-1 proposal **must** touch only the tables of D3, **must** leave every protected
+  action of D3 with exactly its key sequences in the compiled keymap and bind none of those
+  sequences to anything else, **must not** set a `:` command value, and **must** parse before
+  it is shown; `y` writes it atomically, keeping comments and mode.
 - MO11. The `sandbox` role **must** be served only by an instance started with
   `-vimma-module-sandbox` in a profile with `vimma-ctl`'s marker and no logins, cookies or
   history; the sandbox **must** load only http and https, and **must** refuse loopback, private,
@@ -842,8 +926,8 @@ address out`; `at most 8 requests wait`; `a refinement carries the module's file
 refused`; `[modules.<name>] keys rebinds and [] unbinds`; `module.run carries module/command`.
 - `config.test.mjs`: `[modules] enabled parses`; `a tier-1 proposal outside the allowed tables
 is refused`; `a tier-1 proposal that does not parse is refused`; `a tier-1 proposal that binds
-or unbinds mcp.answer, mcp.command, control.command, firefox.command, app.restart or
-workspace.route is refused`; `a tier-1 proposal with a : command value is refused`.
+or unbinds a protected action is refused`; `a tier-1 proposal that gives a protected action's
+keys to another action is refused`; `devtools and add-on actions are protected`; `a tier-1 proposal with a : command value is refused`.
 - `help.test.mjs`: `ctrl+b ? lists module keys in a Modules group, marked with the module`
   (Behaviour 9).
 - `control-v2.test.mjs`: `the sandbox role's commands, and no other role reaches them`.
@@ -857,14 +941,18 @@ vocabulary`.
   `test_key_runs_the_command_on_the_selected_tab_only`;
   `test_a_tab_change_between_check_and_grant_runs_nothing`;
   `test_not_in_private_windows_or_agent_tabs`; `test_not_on_a_page_with_an_empty_password_field`;
-  `test_a_password_field_added_later_warns`; `test_about_addons_shortcut_is_reset`;
+  `test_a_password_field_added_later_warns`; `test_a_password_field_in_a_cross_origin_frame_warns`;
+  `test_not_on_a_card_form_found_by_heuristics`; `test_execute_script_after_a_rewrite`
+  (settles D10's unverified point); `test_command_to_an_idle_module_grants_synchronously`
+  (settles D20's); `test_about_addons_shortcut_is_reset`;
   `test_a_permanent_addon_with_a_module_id_is_refused`; `test_approval_replaces_in_place`;
   `test_outside_sites_runs_nothing`; `test_module_is_never_privileged`;
   `test_hot_load_and_unload_without_restart`; `test_off_and_rollback`;
   `test_safe_mode_and_modules_off_load_none`; `test_theme_change_reloads_palette`;
   `test_addon_picker_leaves_modules_out`.
-- `browser_vimma_module_net.js` (new): `test_a_script_fetch_to_another_host_is_cancelled`;
-  `test_an_absolute_image_url_to_another_host_is_cancelled`; and the known limits of D21,
+- `browser_vimma_module_net.js` (new): `test_an_absolute_image_url_to_another_host_is_cancelled`;
+  `test_module_css_url_carries_the_module_principal` (settles D21's unverified point); and the
+  known limits of D21, `test_limit_script_fetch_and_xhr_load_as_the_page`,
   each recording what happens today: `test_limit_relative_url_loads_as_the_page`,
   `test_limit_inner_html_loads_as_the_page`, `test_limit_injected_script_runs_as_the_page`,
   `test_limit_location_form_and_ping`, `test_limit_css_url_and_selector_leak`;
@@ -970,7 +1058,9 @@ and the help snapshot, with a screenshot of `ctrl+b ?`.
    MV2 or a check of its own in each page.
 3. **Declared network hosts.** (a) None: a module reaches only the page's own host (D21).
    (b) `network = ["api.example.com"]`, shown in the permission words, allowed through
-   `ModuleNet`. **Recommendation: (a)** for the first release, because every common case of
+   `ModuleNet`; no mechanism for (b) exists today, because a module's own `fetch` in MV3 carries
+   the page's principal (D21). **Recommendation: (a)** for the first release, because every
+   common case of
    D1 needs no network, and (b) needs D21's attribution settled first.
 4. **A DOM snapshot of the user's page.** (a) Never (D15). (b) On a key in the request prompt,
    with the text shown before it is sent. **Recommendation: (a)**, because the snapshot carries
