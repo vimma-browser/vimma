@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { CTL_LICENSE_FILES, IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
-import { notariseJobProblems } from "./notarise-job.mjs";
+import { macosSignJobs, notariseJobProblems } from "./notarise-job.mjs";
 
 // release.yml's gates (spec m6-packaging; docs/runbook.md, "Release packages"). It starts only
 // by workflow_dispatch: release-please.yml's release-build job starts it for the draft release it
@@ -13,6 +14,7 @@ import { notariseJobProblems } from "./notarise-job.mjs";
 // release.yml of the branch it was started on, so every job refuses anything but a run from
 // main. That guard stops accidental runs; what no other branch can obtain is the signature's
 // identity, release.yml at refs/heads/main.
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const text = readFileSync(
   new URL("../../../.github/workflows/release.yml", import.meta.url),
   "utf8",
@@ -474,6 +476,20 @@ esac
       it("the Apple secrets come from the macos-sign environment, in macos-notarise alone", () => {
         expect(notarise).toMatch(/^ {4}environment: macos-sign$/m);
         expect(text.match(/environment: macos-sign/g)).toHaveLength(1);
+        // read from the parsed YAML, so `environment: { name: ... }` or a quoted name counts too
+        expect(macosSignJobs(text)).toEqual(["macos-notarise"]);
+        const pack = "  macos-pack:\n    needs: [macos-build, macos-unpack, macos-notarise]\n";
+        for (const form of [
+          "    environment:\n      name: macos-sign\n",
+          '    environment: "macos-sign"\n',
+          "    environment: { name: 'macos-sign' }\n",
+        ]) {
+          expect(text, "the mutation applies").toContain(pack);
+          expect(macosSignJobs(text.replace(pack, pack + form)), form).toEqual([
+            "macos-notarise",
+            "macos-pack",
+          ]);
+        }
         for (const name of SECRETS) {
           for (const [id, block] of all) {
             expect(block.includes(`secrets.${name}`), `${id} reads ${name}`).toBe(
@@ -513,6 +529,20 @@ esac
           "an action not pinned to a commit",
           (b) => b.replace(/actions\/checkout@[0-9a-f]{40}/, "actions/checkout@v7"),
           /not pinned/,
+        ],
+        [
+          "an action pinned to another commit than elsewhere in release.yml",
+          (b) =>
+            b.replace(
+              /actions\/checkout@[0-9a-f]{40}/,
+              "actions/checkout@0123456789abcdef0123456789abcdef01234567",
+            ),
+          /elsewhere/,
+        ],
+        [
+          "the job's shell default removed",
+          (b) => b.replace("    defaults:\n      run:\n        shell: bash\n", ""),
+          /golden/,
         ],
         [
           "the dmg tools downloaded",
@@ -725,10 +755,13 @@ esac
           /^ {10}MANIFEST_SHA256: \$\{\{ needs\.macos-build\.outputs\.manifest_sha256 \}\}$/m,
         );
         const run = runOf(notarise, "The unsigned app");
+        // the script's own status decides, not that of a pipe into sha256sum
         expect(run).toContain(
-          'sum=$(tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" | sha256sum)',
+          'if ! tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" > "$RUNNER_TEMP/unpacked.manifest"; then',
         );
+        expect(run).toContain('sum=$(sha256sum < "$RUNNER_TEMP/unpacked.manifest")');
         expect(run).toContain('[ "${sum%% *}" = "$MANIFEST_SHA256" ]');
+        expect(notarise).toMatch(/^ {4}defaults:\n {6}run:\n {8}shell: bash\n/m);
         expect(notarise).toMatch(/^ {4}needs: \[macos-build, macos-unpack\]$/m);
         expect(notarise.indexOf("- name: The unsigned app")).toBeLessThan(
           notarise.indexOf("- name: Signing credentials"),
@@ -745,6 +778,47 @@ esac
         expect(pack).toContain(
           'echo "manifest_sha256=$(sha256sum < "$VIMMA_APP_MANIFEST" | cut -d " " -f 1)" >> "$GITHUB_OUTPUT"',
         );
+      });
+
+      // Proof of concept: a directory whose name holds a newline makes the manifest script stop
+      // partway. If what it printed before stopping is hashed anyway, an attacker who has find
+      // visit that directory last matches the real manifest and gets the hidden files signed.
+      // The step runs here under plain `bash -e`, without pipefail, as GitHub's default shell.
+      it("a manifest script that stops partway never passes the hash check", () => {
+        const dir = mkdtempSync(join(tmpdir(), "vimma-poc-"));
+        try {
+          const volume = join(dir, "volume");
+          const app = join(volume, "Vimma.app");
+          mkdirSync(join(app, "Contents/MacOS/hidden\nsub"), { recursive: true });
+          writeFileSync(join(app, "Contents/MacOS/vimma"), "binary\n");
+          writeFileSync(join(app, "Contents/MacOS/hidden\nsub/payload"), "mach-o\n");
+          mkdirSync(join(dir, "macos-volume"));
+          execFileSync("tar", [
+            "-C",
+            volume,
+            "-cf",
+            join(dir, "macos-volume/macos-volume.tar"),
+            ".",
+          ]);
+          symlinkSync(join(REPO_ROOT, "tools"), join(dir, "tools"));
+          const partial = spawnSync(join(REPO_ROOT, "tools/package/macos-app-manifest.sh"), [app], {
+            encoding: "utf8",
+          }).stdout;
+          const runner = join(dir, "runner");
+          mkdirSync(runner);
+          const step = spawnSync("bash", ["-e", "-c", runOf(notarise, "The unsigned app")], {
+            cwd: dir,
+            encoding: "utf8",
+            env: {
+              PATH: process.env.PATH,
+              RUNNER_TEMP: runner,
+              MANIFEST_SHA256: createHash("sha256").update(partial).digest("hex"),
+            },
+          });
+          expect(step.status, "HASH MATCHES despite hidden subtree").not.toBe(0);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
       });
 
       it("writes the credentials to owner-only files and fails when one is missing", () => {

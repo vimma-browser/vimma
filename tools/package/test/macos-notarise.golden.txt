@@ -5,6 +5,10 @@
       vars.MACOS_RELEASE_ENABLED == 'true' &&
       vars.MACOS_SIGNING == 'developer-id'
     environment: macos-sign
+    # `shell: bash` runs each step with -eo pipefail; GitHub's default bash -e has no pipefail
+    defaults:
+      run:
+        shell: bash
     runs-on: ubuntu-24.04
     # Notarisation usually answers in minutes (Zen: 6.5 minutes); rcodesign waits up to an hour.
     timeout-minutes: 75
@@ -34,7 +38,12 @@
         run: |
           mkdir "$RUNNER_TEMP/volume"
           tar -xf macos-volume/macos-volume.tar --no-same-owner -C "$RUNNER_TEMP/volume" ./Vimma.app
-          sum=$(tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" | sha256sum)
+          # the script's own exit status decides: a manifest it stopped writing is never hashed
+          if ! tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" > "$RUNNER_TEMP/unpacked.manifest"; then
+            echo "::error::the manifest of Vimma.app from macos-unpack could not be made"
+            exit 1
+          fi
+          sum=$(sha256sum < "$RUNNER_TEMP/unpacked.manifest")
           [[ $MANIFEST_SHA256 =~ ^[0-9a-f]{64}$ ]] || { echo "::error::macos-build gave no manifest hash"; exit 1; }
           [ "${sum%% *}" = "$MANIFEST_SHA256" ] ||
             { echo "::error::Vimma.app from macos-unpack is not the app macos-build signed"; exit 1; }

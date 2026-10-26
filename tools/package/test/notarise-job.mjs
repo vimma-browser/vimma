@@ -41,9 +41,25 @@ export function normaliseJob(block) {
 export function notariseJobProblems(block, workflow) {
   /** @type {string[]} */
   const problems = [];
+  // Each action is pinned to a commit, and to the one release.yml uses for it everywhere, so the
+  // golden copy, which ignores the commit, cannot hide a different one; Dependabot moves them all
+  // together.
+  /** @type {Map<string, Set<string>>} */
+  const elsewhere = new Map();
+  for (const m of workflow.matchAll(/uses: ([^@\s]+)@(\S+)/g)) {
+    const shas = elsewhere.get(m[1] ?? "") ?? new Set();
+    shas.add(m[2] ?? "");
+    elsewhere.set(m[1] ?? "", shas);
+  }
   for (const m of block.matchAll(/uses: ([^@\s]+)@(\S+)/g)) {
-    if (!/^[0-9a-f]{40}$/.test(m[2] ?? ""))
+    if (!/^[0-9a-f]{40}$/.test(m[2] ?? "")) {
       problems.push(`${m[1]}@${m[2]} is not pinned to a commit`);
+      continue;
+    }
+    const shas = elsewhere.get(m[1] ?? "") ?? new Set();
+    if (shas.size !== 1 || !shas.has(m[2] ?? "")) {
+      problems.push(`${m[1]}@${m[2]} is not the commit used elsewhere: ${[...shas].join(", ")}`);
+    }
   }
   const got = normaliseJob(block).split("\n");
   const want = GOLDEN.split("\n");
@@ -64,4 +80,26 @@ export function notariseJobProblems(block, workflow) {
     problems.push(`the workflow env is ${JSON.stringify(parsed.env)}`);
   }
   return problems;
+}
+
+/**
+ * The jobs whose environment is macos-sign, read from the parsed workflow, so the
+ * `environment: { name: ... }` form and a quoted name count as well.
+ * @param {string} workflow
+ * @returns {string[]}
+ */
+export function macosSignJobs(workflow) {
+  const parsed = /** @type {{ jobs: Record<string, { environment?: unknown }> }} */ (
+    load(workflow, { schema: CORE_SCHEMA })
+  );
+  return Object.entries(parsed.jobs)
+    .filter(([, job]) => {
+      const env = job.environment;
+      const name =
+        env !== null && typeof env === "object"
+          ? /** @type {{ name?: unknown }} */ (env).name
+          : env;
+      return typeof name === "string" && name.trim() === "macos-sign";
+    })
+    .map(([id]) => id);
 }

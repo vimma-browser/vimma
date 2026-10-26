@@ -1909,7 +1909,11 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   credential is written, the app is unpacked and the SHA-256 of its manifest
   (`macos-app-manifest.sh`: every path, type, executable bit and SHA-256, computed with coreutils
   and `sha256sum` only) must equal `macos-build`'s job output `manifest_sha256`, the hash of the
-  manifest of the app `macos-dmg.sh` signed ad hoc there. Only the hash reaches this job, as a job
+  manifest of the app `macos-dmg.sh` signed ad hoc there. The script refuses any name that is not
+  printable ASCII before it prints anything, and the step hashes its output only when the script
+  succeeded, under `shell: bash` (`-eo pipefail`) for every step of the job, so a manifest it
+  stopped writing partway, which could otherwise match while hiding a subtree, is never accepted.
+  Only the hash reaches this job, as a job
   output, because an artifact can be deleted and uploaded again by any job of the run with its
   `ACTIONS_RUNTIME_TOKEN`, while a job's outputs cannot be changed by another job. So a replaced
   `macos-volume` artifact, or an app a replaced unpack tool changed, is refused before any
@@ -1937,7 +1941,8 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   the same release run as the build, so it guards against `macos-unpack`, not against a
   compromised build, which signs what it builds anyway. Nor does it catch a disk-image tool that
   is already malicious inside `macos-build`: `macos-dmg.sh` runs mach's `unpack_dmg` with the same
-  tools before it writes the manifest, so the manifest describes whatever that tool produced.
+  tools before it writes the manifest, so the manifest describes whatever that tool produced, and
+  such a tool, running inside `macos-build`, could also write the `manifest_sha256` output itself.
   **⚠ limit:** nothing pins the
   disk-image tools themselves. A replaced tool in `macos-pack` could pack a different app than
   the one notarised, which `macos-smoke`'s signature checks then fail; it could also add other
@@ -1964,6 +1969,8 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`changes when a byte, an executable bit or a file name changes`](../tools/package/test/macos-developer-id.test.mjs),
   [`macos-notarise checks the app against macos-build's manifest hash before the credentials`](../tools/package/test/release-workflow.test.mjs),
   [`the check catches %s`](../tools/package/test/release-workflow.test.mjs),
+  [`a manifest script that stops partway never passes the hash check`](../tools/package/test/release-workflow.test.mjs),
+  [`refuses a name with a newline, a control character or a non-ASCII byte, printing nothing`](../tools/package/test/macos-developer-id.test.mjs),
   [`%s runs only when MACOS_SIGNING is developer-id, after %s`](../tools/package/test/release-workflow.test.mjs),
   [`writes the credentials to owner-only files and fails when one is missing`](../tools/package/test/release-workflow.test.mjs),
   [`removes the credentials in an always() step before anything is uploaded`](../tools/package/test/release-workflow.test.mjs),

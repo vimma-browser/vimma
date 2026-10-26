@@ -293,6 +293,21 @@ describe("macos-app-manifest.sh", () => {
     expect(manifest(app).stdout).toContain("Contents/MacOS/extra");
   });
 
+  // It checks every name before it prints anything, so it can never stop partway with a
+  // manifest that looks complete.
+  it("refuses a name with a newline, a control character or a non-ASCII byte, printing nothing", () => {
+    for (const name of ["a\nb", "a\tb", "a\x01b", "café", "z\nlast"]) {
+      const dir = tempDir("vimma-manifest-");
+      const app = appTree(dir);
+      mkdirSync(join(app, "Contents/MacOS", name));
+      writeFileSync(join(app, "Contents/MacOS", name, "payload"), "x");
+      const result = manifest(app);
+      expect(result.status, JSON.stringify(name)).not.toBe(0);
+      expect(result.stdout, JSON.stringify(name)).toBe("");
+      expect(result.stderr).toMatch(/name/);
+    }
+  });
+
   it("refuses a symlink in the app, the app itself as a link, and a name with a newline", () => {
     const dir = tempDir("vimma-manifest-");
     const app = appTree(dir, { links: { "Contents/MacOS/x": "." } });
@@ -532,7 +547,19 @@ esac
     }
   });
 
+  it("skips a nested Info.plist without CFBundleExecutable", () => {
+    const { dir, app, env } = setup();
+    writeFileSync(
+      join(app, "Contents/MacOS/plugin-container.app/Contents/Info.plist"),
+      plist("x").replace("<key>CFBundleExecutable</key>\n  <string>x</string>\n", ""),
+    );
+    const { status, stderr } = run(SIGN, [app], dir, env);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+  });
+
   it("refuses a CFBundleExecutable with a / or .., and a binary Info.plist", () => {
+    /** @type {Array<string | Buffer>} */
     const plists = [
       plist("../../../secrets/p12-password"),
       plist("MacOS/../vimma"),
@@ -555,6 +582,17 @@ esac
       ),
       // the key is there, but its value is not a <string> that parses
       plist("vimma").replace("<string>vimma</string>", "<integer>1</integer>"),
+      // a second key spelled with a character reference, end tags with a space, and encodings
+      // the check would read with bytes dropped
+      plist("vimma").replace(
+        "</dict>",
+        "<key>CFBundle&#69;xecutable</key><string>../x</string></dict>",
+      ),
+      plist("vimma").replace("<key>CFBundleExecutable</key>", "<key>CFBundleExecutable</key >"),
+      plist("vimma").replace("<string>vimma</string>", "<string>../x</string >"),
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(plist("../x"), "utf16le")]),
+      Buffer.from(plist("vimma").replace("<dict>", "<dict>\0")),
+      plist("vimma").replace("<dict>", "<dict>é"),
     ];
     for (const [i, text] of plists.entries()) {
       for (const where of ["Contents", "Contents/MacOS/plugin-container.app/Contents"]) {
@@ -566,7 +604,8 @@ esac
         expect(existsSync(log)).toBe(false);
       }
     }
-  });
+    // about thirty runs of the script, each of which builds a stub app
+  }, 60_000);
 
   it("refuses an app that is already stapled", () => {
     const { dir, app, log, env } = setup(undefined, { stapled: true });

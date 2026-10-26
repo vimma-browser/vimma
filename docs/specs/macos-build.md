@@ -499,7 +499,10 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     The hash travels as a job output, not an artifact, because any job of the run can replace an
     artifact and no job can change another's outputs. It guards against `macos-unpack`, not a
     compromised build, nor a tool already malicious in `macos-build`, whose `unpack_dmg` runs
-    before the manifest is written. Vimma.app has no
+    before the manifest is written and which could set the output itself. The job runs every
+    step under `shell: bash` (`-eo pipefail`), the manifest script checks every name before it
+    prints anything, and the step hashes its output only when it succeeded, because a manifest
+    cut off partway could equal the real one while a subtree stays hidden. Vimma.app has no
     symlink (an installed Vimma.app on Firefox 158.0.1, inspected with `find -type l`, has none; its frameworks are
     flat), so the manifest and the sign script refuse any symlink, which a chain of links could
     otherwise use to lead rcodesign outside the bundle; the sign script also refuses a name
