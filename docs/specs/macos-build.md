@@ -489,12 +489,17 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     that. So the tools run only in `macos-unpack` and `macos-pack`, which hold no secret, and
     `macos-notarise` runs no binary from an artifact: only rcodesign, fetched and checked against
     its pinned SHA-256, through `tools/package/macos-sign-app.sh`, which calls rcodesign and
-    standard system tools. Its steps and actions are an exact list, and its shell blocks may start
-    only allowlisted commands. Before any credential exists, it compares the unpacked app with
-    the manifest `macos-build` wrote of the app it built and signed ad hoc
-    (`tools/package/macos-app-manifest.sh`: each path, type, executable bit and SHA-256, with
-    coreutils only), so the unpack tools cannot change the app unseen; that manifest comes from
-    the same run, so it guards against those tools, not a compromised build. Vimma.app has no
+    standard system tools. The job must equal a golden copy kept beside its test, apart from the
+    commits its actions are pinned to, because a check that parses its shell to allowlist
+    commands can always be bypassed (backticks, `&`, process substitution, tar's own exec
+    options, a step's `shell:` or `env:`). Before any credential exists, it compares the hash of
+    the unpacked app's manifest (`tools/package/macos-app-manifest.sh`: each path, type,
+    executable bit and SHA-256, with coreutils only) with `macos-build`'s job output
+    `manifest_sha256`, the hash of the manifest of the app `macos-dmg.sh` signed ad hoc there.
+    The hash travels as a job output, not an artifact, because any job of the run can replace an
+    artifact and no job can change another's outputs. It guards against `macos-unpack`, not a
+    compromised build, nor a tool already malicious in `macos-build`, whose `unpack_dmg` runs
+    before the manifest is written. Vimma.app has no
     symlink (an installed Vimma.app on Firefox 158.0.1, inspected with `find -type l`, has none; its frameworks are
     flat), so the manifest and the sign script refuse any symlink, which a chain of links could
     otherwise use to lead rcodesign outside the bundle; the sign script also refuses a name

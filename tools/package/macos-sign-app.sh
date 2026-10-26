@@ -53,12 +53,22 @@ link=$(find "$app" -type l -print -quit)
 [ -z "$link" ] || fail "a symlink is in the app: $link"
 
 # Each bundle's Info.plist names its executable, which rcodesign resolves inside the bundle: an
-# XML plist whose CFBundleExecutable, if present, is one plain file name.
+# XML plist whose CFBundleExecutable, if present, is one plain file name. Text this check could
+# read differently from a plist parser is refused first: comments, CDATA, a <key> or <string>
+# tag with attributes or spaces, and the key more than once. mach package writes none of these.
 while IFS= read -r -d '' plist; do
   [ "$(head -c 6 "$plist")" != bplist ] || fail "$plist is a binary Info.plist"
-  exe=$(tr -d '\n' < "$plist" |
-    sed -n 's|.*<key>CFBundleExecutable</key>[[:space:]]*<string>\([^<]*\)</string>.*|\1|p')
-  if [ -n "$exe" ] && { [[ ! $exe =~ ^[A-Za-z0-9._+-]+$ ]] || [ "$exe" = . ] || [ "$exe" = .. ]; }; then
+  flat=$(tr -d '\n' < "$plist")
+  case $flat in
+    *'<!--'* | *CDATA* | *'<string '* | *'<key '*)
+      fail "$plist has a comment, CDATA or a tag with attributes"
+      ;;
+  esac
+  keys=$(grep -o '<key>CFBundleExecutable</key>' <<< "$flat" | wc -l)
+  [ "$keys" -le 1 ] || fail "$plist names CFBundleExecutable more than once"
+  [ "$keys" -eq 1 ] || continue
+  exe=$(sed -n 's|.*<key>CFBundleExecutable</key>[[:space:]]*<string>\([^<]*\)</string>.*|\1|p' <<< "$flat")
+  if [[ ! $exe =~ ^[A-Za-z0-9._+-]+$ ]] || [ "$exe" = . ] || [ "$exe" = .. ]; then
     fail "$plist names the executable '$exe', not a plain file name"
   fi
 done < <(find "$app" -name Info.plist -print0)

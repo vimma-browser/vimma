@@ -36,7 +36,12 @@ const API_KEY = '{"issuer_id":"never-on-a-command-line"}';
 function entitlements(xml) {
   /** @type {Record<string, string>} */
   const keys = {};
-  const body = xml.replace(/<!--[\s\S]*?-->/g, "");
+  // comments removed until none is left, so a removal cannot join two halves into a new one
+  let body = xml;
+  for (let before = ""; before !== body;) {
+    before = body;
+    body = body.replace(/<!--[\s\S]*?-->/g, "");
+  }
   for (const m of body.matchAll(
     /<key>([^<]+)<\/key>\s*(<true\/>|<false\/>|<string>[^<]*<\/string>)/g,
   )) {
@@ -533,6 +538,23 @@ esac
       plist("MacOS/../vimma"),
       plist(".."),
       "bplist00 binary",
+      // where sed and a real plist parser disagree: each is refused before it is parsed
+      plist("vimma").replace(
+        "</dict>",
+        "<!-- <key>CFBundleExecutable</key><string>../../x</string> --></dict>",
+      ),
+      plist("vimma").replace("<string>vimma</string>", "<string><![CDATA[../../x]]></string>"),
+      plist("vimma").replace(
+        "<string>vimma</string>",
+        '<string xml:space="preserve">../x</string>',
+      ),
+      plist("vimma").replace("<string>vimma</string>", "<string >../x</string>"),
+      plist("vimma").replace(
+        "</dict>",
+        "<key>CFBundleExecutable</key><string>../x</string></dict>",
+      ),
+      // the key is there, but its value is not a <string> that parses
+      plist("vimma").replace("<string>vimma</string>", "<integer>1</integer>"),
     ];
     for (const [i, text] of plists.entries()) {
       for (const where of ["Contents", "Contents/MacOS/plugin-container.app/Contents"]) {

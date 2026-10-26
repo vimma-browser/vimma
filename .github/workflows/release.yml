@@ -596,6 +596,9 @@ jobs:
       contents: read
     outputs:
       sha: ${{ steps.tag.outputs.sha }}
+      # The hash of the signed app's manifest, for macos-notarise: a job's outputs cannot be
+      # changed by another job, while an artifact can be replaced by any job of the run.
+      manifest_sha256: ${{ steps.package.outputs.manifest_sha256 }}
     steps:
       - name: Check the tag's form
         run: |
@@ -712,16 +715,16 @@ jobs:
       # the Homebrew cask for that dmg. Their own SHA256SUMS-macos keeps SHA256SUMS, which the AUR
       # and the updater read, as it is.
       - name: Package, ad hoc sign and checksum the dmg
+        id: package
         env:
           RCODESIGN: ${{ runner.temp }}/rcodesign/rcodesign
           # signed into Vimma.app/Contents/MacOS with the app (spec ship-vimma-ctl)
           VIMMA_CTL: ${{ github.workspace }}/ctl/vimma-ctl
           # its notices, into Vimma.app/Contents/Resources (#516)
           VIMMA_CTL_LICENSES: ${{ github.workspace }}/ctl/vimma-ctl-licenses
-          # the signed app's manifest, which macos-notarise checks the app it is handed against
-          VIMMA_APP_MANIFEST: ${{ vars.MACOS_SIGNING == 'developer-id' && format('{0}/app-manifest/vimma-app.manifest', github.workspace) || '' }}
+          # the signed app's manifest; its hash is the job output macos-notarise checks against
+          VIMMA_APP_MANIFEST: ${{ vars.MACOS_SIGNING == 'developer-id' && format('{0}/vimma-app.manifest', runner.temp) || '' }}
         run: |
-          if [ -n "$VIMMA_APP_MANIFEST" ]; then mkdir -p "$(dirname "$VIMMA_APP_MANIFEST")"; fi
           # download-artifact does not keep the mode
           chmod 755 "$VIMMA_CTL"
           (cd engine && ./mach package)
@@ -730,6 +733,9 @@ jobs:
           tools/package/macos-dmg.sh "$MOZ_OBJDIR"/dist/vimma-*.en-US.mac.dmg "release-macos/$dmg"
           node tools/package/cask.mjs --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb
           (cd release-macos && sha256sum "$dmg" vimma.rb > SHA256SUMS-macos && cat SHA256SUMS-macos)
+          if [ -n "$VIMMA_APP_MANIFEST" ]; then
+            echo "manifest_sha256=$(sha256sum < "$VIMMA_APP_MANIFEST" | cut -d " " -f 1)" >> "$GITHUB_OUTPUT"
+          fi
 
       # macos-unpack and macos-pack have no engine/ to run mach in, so they get the disk-image tools
       # this job's mach bootstrapped, found as make_dmg.py finds them
@@ -789,14 +795,6 @@ jobs:
         with:
           name: macos-dmg-tools
           path: dmg-tools/
-          retention-days: 1
-          if-no-files-found: error
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: vars.MACOS_SIGNING == 'developer-id'
-        with:
-          name: macos-app-manifest
-          path: app-manifest/
           retention-days: 1
           if-no-files-found: error
 
@@ -882,23 +880,22 @@ jobs:
           name: macos-volume
           path: macos-volume
 
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: macos-app-manifest
-          path: macos-app-manifest
-
       - name: rcodesign (pinned)
         run: |
           tools/package/fetch-rcodesign.sh "$RUNNER_TEMP/rcodesign"
 
-      # The app must be the one the build made and macos-dmg.sh signed, as macos-build listed it, so
-      # the unpack tools cannot have changed it; checked before any credential exists.
+      # The app must be the one macos-dmg.sh signed ad hoc in macos-build: the hash of its manifest
+      # is a job output of macos-build, which no other job can change, so a replaced unpack tool
+      # cannot have changed the app; checked before any credential exists.
       - name: The unsigned app
+        env:
+          MANIFEST_SHA256: ${{ needs.macos-build.outputs.manifest_sha256 }}
         run: |
           mkdir "$RUNNER_TEMP/volume"
           tar -xf macos-volume/macos-volume.tar --no-same-owner -C "$RUNNER_TEMP/volume" ./Vimma.app
-          tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" > "$RUNNER_TEMP/unpacked.manifest"
-          cmp macos-app-manifest/vimma-app.manifest "$RUNNER_TEMP/unpacked.manifest" ||
+          sum=$(tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" | sha256sum)
+          [[ $MANIFEST_SHA256 =~ ^[0-9a-f]{64}$ ]] || { echo "::error::macos-build gave no manifest hash"; exit 1; }
+          [ "${sum%% *}" = "$MANIFEST_SHA256" ] ||
             { echo "::error::Vimma.app from macos-unpack is not the app macos-build signed"; exit 1; }
 
       # Files only the runner's user can read, written by the shell's printf builtin, so no secret

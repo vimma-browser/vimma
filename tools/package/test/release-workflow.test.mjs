@@ -484,123 +484,266 @@ esac
       });
 
       // A compromised build could hand over a tool that waits for the key: the job with the
-      // secrets downloads the unpacked volume and the build's manifest as data, and runs only the
-      // pinned rcodesign (tools/package/test/notarise-job.mjs says exactly what it may run).
+      // secrets downloads only the unpacked volume, as data, and runs only the pinned rcodesign.
+      // It must equal its golden copy (tools/package/test/macos-notarise.golden.txt), so any change
+      // to it is a change to that file, which review reads (tools/package/test/notarise-job.mjs).
       it("the macos-sign job runs no binary of the build: only the pinned rcodesign", () => {
-        expect(notariseJobProblems(notarise)).toEqual([]);
+        expect(notariseJobProblems(notarise, text)).toEqual([]);
         expect(notarise).not.toMatch(
           /dmg-tools|DMG_TOOLS|macos-dmg-tools|chmod|mach|node |npm|npx/,
         );
       });
 
-      // Each rule of the check, shown to catch a change that breaks it.
-      it.each([
+      /**
+       * A mutation of the job, or of the whole workflow when `where` is "workflow".
+       * @type {Array<[string, (b: string) => string, RegExp, ("job" | "workflow")?]>}
+       */
+      const MUTATIONS = [
         [
           "another action",
-          (/** @type {string} */ b) =>
+          (b) =>
             b.replace(
               "      - name: rcodesign (pinned)",
               "      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4\n" +
                 "        with:\n          path: x\n          key: x\n\n      - name: rcodesign (pinned)",
             ),
-          /step 4 .*actions\/cache/,
+          /golden/,
         ],
         [
           "an action not pinned to a commit",
-          (/** @type {string} */ b) =>
-            b.replace(/actions\/checkout@[0-9a-f]{40}/, "actions/checkout@v7"),
+          (b) => b.replace(/actions\/checkout@[0-9a-f]{40}/, "actions/checkout@v7"),
           /not pinned/,
         ],
         [
           "the dmg tools downloaded",
-          (/** @type {string} */ b) =>
+          (b) =>
             b.replace(
               "name: macos-volume\n          path: macos-volume",
               "name: macos-dmg-tools\n          path: dmg-tools",
             ),
-          /downloads macos-dmg-tools/,
+          /golden/,
         ],
         [
           "a one-line run",
-          (/** @type {string} */ b) =>
+          (b) =>
             b.replace(
               'run: |\n          tools/package/fetch-rcodesign.sh "$RUNNER_TEMP/rcodesign"',
               "run: ./dmg-tools/dmg --version",
             ),
-          /not a \| block/,
+          /golden/,
         ],
         [
           "a command after a ;",
-          (/** @type {string} */ b) =>
-            b.replace('mkdir "$RUNNER_TEMP/volume"', 'mkdir "$RUNNER_TEMP/volume"; ./evil'),
-          /runs \.\/evil/,
+          (b) => b.replace('mkdir "$RUNNER_TEMP/volume"', 'mkdir "$RUNNER_TEMP/volume"; ./evil'),
+          /golden/,
         ],
         [
-          "a command after a pipe",
-          (/** @type {string} */ b) =>
+          "a pipe",
+          (b) =>
             b.replace(
               'rm -rf "$RUNNER_TEMP/apple-signing"',
               'rm -rf "$RUNNER_TEMP/apple-signing" | sh',
             ),
-          /runs sh/,
+          /golden/,
         ],
         [
-          "a command in a substitution",
-          (/** @type {string} */ b) =>
-            b.replace('mkdir "$RUNNER_TEMP/volume"', 'mkdir "$(curl -s x)"'),
-          /runs curl/,
+          "a substitution",
+          (b) => b.replace('mkdir "$RUNNER_TEMP/volume"', 'mkdir "$(curl -s x)"'),
+          /golden/,
         ],
         [
           "a command named by a variable",
-          (/** @type {string} */ b) =>
-            b.replace('mkdir "$RUNNER_TEMP/volume"', '"$RUNNER_TEMP/tool"'),
-          /runs "\$RUNNER_TEMP\/tool"/,
+          (b) => b.replace('mkdir "$RUNNER_TEMP/volume"', '"$RUNNER_TEMP/tool"'),
+          /golden/,
         ],
         [
-          "a command after an assignment",
-          (/** @type {string} */ b) =>
-            b.replace('mkdir "$RUNNER_TEMP/volume"', 'LD_PRELOAD=x ./evil "$RUNNER_TEMP/volume"'),
-          /runs \.\/evil/,
+          "an assignment prefix",
+          (b) => b.replace('mkdir "$RUNNER_TEMP/volume"', "LD_PRELOAD=x ./evil"),
+          /golden/,
+        ],
+        ["a command after then", (b) => b.replace("then\n", "then bash -c x\n"), /golden/],
+        // the bypasses the parsing check missed
+        [
+          "backticks",
+          (b) => b.replace('mkdir "$RUNNER_TEMP/volume"', 'mkdir "`./evil`"'),
+          /golden/,
         ],
         [
-          "a command after then or do",
-          (/** @type {string} */ b) => b.replace("then\n", "then bash -c x\n"),
-          /runs bash/,
+          "if ./evil; then",
+          (b) => b.replace('[ -z "$missing" ] || exit 1', "if ./evil; then exit 1; fi"),
+          /golden/,
+        ],
+        [
+          "else ./evil",
+          (b) =>
+            b.replace(
+              "              missing=1\n",
+              "              missing=1\n            else ./evil\n",
+            ),
+          /golden/,
+        ],
+        [
+          "a lone &",
+          (b) => b.replace('mkdir "$RUNNER_TEMP/volume"', './evil & mkdir "$RUNNER_TEMP/volume"'),
+          /golden/,
+        ],
+        [
+          "a process substitution",
+          (b) => b.replace('mkdir "$RUNNER_TEMP/volume"', "mkdir <(./evil)"),
+          /golden/,
+        ],
+        [
+          "tar -I",
+          (b) => b.replace("tar -xf macos-volume", "tar -I ./evil -xf macos-volume"),
+          /golden/,
+        ],
+        [
+          "tar --to-command",
+          (b) => b.replace("tar -xf macos-volume", "tar --to-command=./evil -xf macos-volume"),
+          /golden/,
+        ],
+        [
+          "tar --checkpoint-action",
+          (b) =>
+            b.replace(
+              "tar -xf macos-volume",
+              "tar --checkpoint=1 --checkpoint-action=exec=./evil -xf macos-volume",
+            ),
+          /golden/,
+        ],
+        [
+          "a step's shell:",
+          (b) =>
+            b.replace(
+              "      - name: The unsigned app\n",
+              "      - name: The unsigned app\n        shell: ./evil {0}\n",
+            ),
+          /golden/,
+        ],
+        [
+          "a step's BASH_ENV",
+          (b) =>
+            b.replace(
+              "      - name: The unsigned app\n",
+              "      - name: The unsigned app\n        env:\n          BASH_ENV: ./evil\n",
+            ),
+          /golden/,
+        ],
+        [
+          "LD_PRELOAD in the sign step",
+          (b) =>
+            b.replace(
+              "          RCODESIGN: ${{ runner.temp }}/rcodesign/rcodesign\n",
+              "          RCODESIGN: ${{ runner.temp }}/rcodesign/rcodesign\n          LD_PRELOAD: ./evil.so\n",
+            ),
+          /golden/,
+        ],
+        [
+          "a step's working-directory:",
+          (b) =>
+            b.replace(
+              "      - name: The unsigned app\n",
+              "      - name: The unsigned app\n        working-directory: macos-volume\n",
+            ),
+          /golden/,
+        ],
+        [
+          "job defaults.run.shell",
+          (b) =>
+            b.replace(
+              "    environment: macos-sign\n",
+              "    environment: macos-sign\n    defaults:\n      run:\n        shell: ./evil {0}\n",
+            ),
+          /golden/,
+        ],
+        [
+          "a job key behind a job-level comment",
+          (b) =>
+            b.replace(
+              "          if-no-files-found: error\n",
+              "          if-no-files-found: error\n\n  # a comment\n    defaults:\n      run:\n        shell: ./evil {0}\n",
+            ),
+          /golden/,
+        ],
+        [
+          "a job container:",
+          (b) =>
+            b.replace(
+              "    environment: macos-sign\n",
+              "    environment: macos-sign\n    container: evil/image\n",
+            ),
+          /golden/,
         ],
         [
           "a step added after the credentials",
-          (/** @type {string} */ b) =>
+          (b) =>
             b.replace(
               "      - name: Delete the signing credentials",
               "      - name: Extra\n        run: |\n          tar -cf x.tar .\n\n      - name: Delete the signing credentials",
             ),
-          /steps/,
+          /golden/,
         ],
-      ])("the check catches %s", (_name, mutate, problem) => {
-        const mutated = mutate(notarise);
-        expect(mutated, "the mutation applies").not.toBe(notarise);
-        expect(notariseJobProblems(mutated).join("\n")).toMatch(problem);
+        [
+          "workflow defaults.run.shell",
+          (b) =>
+            b.replace(
+              "\npermissions: {}\n",
+              "\npermissions: {}\n\ndefaults:\n  run:\n    shell: ./evil {0}\n",
+            ),
+          /workflow/,
+          "workflow",
+        ],
+        [
+          "a workflow env",
+          (b) =>
+            b.replace(
+              "  TAG: ${{ inputs.tag }}\n",
+              "  TAG: ${{ inputs.tag }}\n  BASH_ENV: ./evil\n",
+            ),
+          /workflow/,
+          "workflow",
+        ],
+      ];
+
+      // Each rule of the check, shown to catch a change that breaks it.
+      it.each([...MUTATIONS])("the check catches %s", (_name, mutate, problem, where = "job") => {
+        const mutatedText = where === "workflow" ? mutate(text) : text;
+        const mutated = where === "workflow" ? notarise : mutate(notarise);
+        expect(where === "workflow" ? mutatedText : mutated, "the mutation applies").not.toBe(
+          where === "workflow" ? text : notarise,
+        );
+        expect(notariseJobProblems(mutated, mutatedText).join("\n")).toMatch(problem);
       });
 
-      // The unpack tools write the volume that is signed: the app must be the one mach built and
-      // macos-dmg.sh signed ad hoc, as macos-build listed it, before any credential exists.
-      it("macos-notarise checks the app against macos-build's manifest before the credentials", () => {
-        const step = runOf(notarise, "The unsigned app");
-        expect(step).toContain(
-          'tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" > "$RUNNER_TEMP/unpacked.manifest"',
+      // The unpack tools write the volume that is signed. A job's outputs cannot be changed by
+      // another job, while an artifact can be replaced by any job of the run: macos-build hands
+      // over only the hash of its manifest, and macos-notarise compares its own, before any
+      // credential exists.
+      it("macos-notarise checks the app against macos-build's manifest hash before the credentials", () => {
+        const step = notarise.slice(notarise.indexOf("- name: The unsigned app"));
+        expect(step).toMatch(
+          /^ {10}MANIFEST_SHA256: \$\{\{ needs\.macos-build\.outputs\.manifest_sha256 \}\}$/m,
         );
-        expect(step).toContain(
-          'cmp macos-app-manifest/vimma-app.manifest "$RUNNER_TEMP/unpacked.manifest"',
+        const run = runOf(notarise, "The unsigned app");
+        expect(run).toContain(
+          'sum=$(tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" | sha256sum)',
         );
+        expect(run).toContain('[ "${sum%% *}" = "$MANIFEST_SHA256" ]');
+        expect(notarise).toMatch(/^ {4}needs: \[macos-build, macos-unpack\]$/m);
         expect(notarise.indexOf("- name: The unsigned app")).toBeLessThan(
           notarise.indexOf("- name: Signing credentials"),
         );
+        expect(text).not.toContain("macos-app-manifest\n");
         const build = all.get("macos-build") ?? "";
-        expect(build).toContain(
-          "VIMMA_APP_MANIFEST: ${{ vars.MACOS_SIGNING == 'developer-id' && format('{0}/app-manifest/vimma-app.manifest', github.workspace) || '' }}",
+        expect(build).toMatch(
+          /^ {6}manifest_sha256: \$\{\{ steps\.package\.outputs\.manifest_sha256 \}\}$/m,
         );
         expect(build).toMatch(
-          /if: vars\.MACOS_SIGNING == 'developer-id'\n {8}with:\n {10}name: macos-app-manifest\n {10}path: app-manifest\//,
+          /- name: Package, ad hoc sign and checksum the dmg\n {8}id: package\n/,
+        );
+        const pack = runOf(build, "Package, ad hoc sign and checksum the dmg");
+        expect(pack).toContain(
+          'echo "manifest_sha256=$(sha256sum < "$VIMMA_APP_MANIFEST" | cut -d " " -f 1)" >> "$GITHUB_OUTPUT"',
         );
       });
 

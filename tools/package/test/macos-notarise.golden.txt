@@ -1,0 +1,92 @@
+    needs: [macos-build, macos-unpack]
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' &&
+      vars.MACOS_RELEASE_ENABLED == 'true' &&
+      vars.MACOS_SIGNING == 'developer-id'
+    environment: macos-sign
+    runs-on: ubuntu-24.04
+    # Notarisation usually answers in minutes (Zen: 6.5 minutes); rcodesign waits up to an hour.
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@<pinned>
+        with:
+          ref: ${{ needs.macos-build.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@<pinned>
+        with:
+          name: macos-volume
+          path: macos-volume
+
+      - name: rcodesign (pinned)
+        run: |
+          tools/package/fetch-rcodesign.sh "$RUNNER_TEMP/rcodesign"
+
+      # The app must be the one macos-dmg.sh signed ad hoc in macos-build: the hash of its manifest
+      # is a job output of macos-build, which no other job can change, so a replaced unpack tool
+      # cannot have changed the app; checked before any credential exists.
+      - name: The unsigned app
+        env:
+          MANIFEST_SHA256: ${{ needs.macos-build.outputs.manifest_sha256 }}
+        run: |
+          mkdir "$RUNNER_TEMP/volume"
+          tar -xf macos-volume/macos-volume.tar --no-same-owner -C "$RUNNER_TEMP/volume" ./Vimma.app
+          sum=$(tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" | sha256sum)
+          [[ $MANIFEST_SHA256 =~ ^[0-9a-f]{64}$ ]] || { echo "::error::macos-build gave no manifest hash"; exit 1; }
+          [ "${sum%% *}" = "$MANIFEST_SHA256" ] ||
+            { echo "::error::Vimma.app from macos-unpack is not the app macos-build signed"; exit 1; }
+
+      # Files only the runner's user can read, written by the shell's printf builtin, so no secret
+      # is on a command line, in the log or in an artifact.
+      - name: Signing credentials
+        env:
+          APPLE_DEVELOPER_ID_P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_NOTARY_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=
+          for name in APPLE_DEVELOPER_ID_P12 APPLE_DEVELOPER_ID_P12_PASSWORD APPLE_NOTARY_API_KEY APPLE_TEAM_ID; do
+            if [ -z "$(printenv "$name")" ]; then
+              echo "::error::secret $name is not set in the macos-sign environment, and MACOS_SIGNING is developer-id"
+              missing=1
+            fi
+          done
+          [ -z "$missing" ] || exit 1
+          dir="$RUNNER_TEMP/apple-signing"
+          (
+            umask 077
+            mkdir "$dir"
+            printf '%s' "$APPLE_DEVELOPER_ID_P12" | base64 -d > "$dir/developer-id.p12"
+            printf '%s' "$APPLE_DEVELOPER_ID_P12_PASSWORD" > "$dir/p12-password"
+            printf '%s' "$APPLE_NOTARY_API_KEY" > "$dir/notary-api-key.json"
+          )
+
+      - name: Sign with the Developer ID, notarise and staple
+        env:
+          RCODESIGN: ${{ runner.temp }}/rcodesign/rcodesign
+          APPLE_P12_FILE: ${{ runner.temp }}/apple-signing/developer-id.p12
+          APPLE_P12_PASSWORD_FILE: ${{ runner.temp }}/apple-signing/p12-password
+          APPLE_NOTARY_API_KEY_FILE: ${{ runner.temp }}/apple-signing/notary-api-key.json
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          tools/package/macos-sign-app.sh "$RUNNER_TEMP/volume/Vimma.app"
+
+      - name: Delete the signing credentials
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/apple-signing"
+
+      - name: The signed app
+        run: |
+          tar -C "$RUNNER_TEMP/volume" -cf macos-signed-app.tar Vimma.app
+
+      - uses: actions/upload-artifact@<pinned>
+        with:
+          name: macos-signed-app
+          path: macos-signed-app.tar
+          retention-days: 1
+          if-no-files-found: error

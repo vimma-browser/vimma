@@ -1167,8 +1167,9 @@ bootstrapped never run beside the Apple secrets:
 - `macos-unpack` opens `macos-build`'s ad hoc `.dmg` with those tools
   (`tools/package/macos-dmg-unpack.sh`) and uploads the volume as `macos-volume.tar`;
 - `macos-notarise`, the only job in the `macos-sign` environment, unpacks the tar, refuses the
-  app unless it matches the manifest `macos-build` wrote of the app it signed ad hoc
-  (`tools/package/macos-app-manifest.sh`; a mismatch means the unpack step changed it), runs
+  app unless the hash of its manifest (`tools/package/macos-app-manifest.sh`) equals
+  `macos-build`'s job output `manifest_sha256` (a mismatch means the unpack step changed it),
+  runs
   `tools/package/macos-sign-app.sh` (one `rcodesign sign` with the hardened runtime and
   `configs/macos/entitlements/`, then `rcodesign notary-submit --wait --staple` on the app) with
   the pinned rcodesign alone, and uploads the signed app;
@@ -1247,6 +1248,12 @@ the job stops at 75 minutes.
    gh variable set MACOS_SIGNING --body developer-id   # on; a missing secret now fails releases
    gh variable delete MACOS_SIGNING                    # off: releases go out ad hoc again
    ```
+
+**Changing `macos-notarise`.** The job must equal `tools/package/test/macos-notarise.golden.txt`
+apart from its pinned commits (docs/security.md, B14); a change to it fails the package tests
+until the golden copy is changed to match, so that the review of a pull request shows every
+line the job holding the Apple secrets runs. Copy the job's lines from `release.yml` without the
+commit SHAs, as the test's error message shows them.
 
 **Re-running signing.** A failed `macos-notarise` (for example Apple's notary service timing
 out) is re-run with the run's failed jobs, `gh run rerun <run-id> --failed`: it takes

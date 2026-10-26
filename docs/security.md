@@ -1901,12 +1901,21 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   not** run any binary from an artifact: it downloads the unpacked volume only as a tar file,
   fetches rcodesign by `fetch-rcodesign.sh`, which checks its SHA-256, and runs only that and
   `tools/package/macos-sign-app.sh`, which calls rcodesign and standard system tools. It holds a
-  read-only token and no OIDC permission, and checks out the commit `macos-build` built. Its
-  steps and actions are an exact list, and its shell blocks may start only allowlisted commands.
-  Before any credential is written, the app is unpacked and compared with the manifest
-  `macos-build` wrote of the app it built and signed ad hoc (`macos-app-manifest.sh`: every
-  path, type, executable bit and SHA-256, computed with coreutils and `sha256sum` only), so the
-  unpack tools cannot change it unseen; the manifest refuses any symlink, as Vimma.app has none,
+  read-only token and no OIDC permission, and checks out the commit `macos-build` built. The
+  job must equal its golden copy, `tools/package/test/macos-notarise.golden.txt`, line for line
+  apart from the commits its actions are pinned to, and the workflow's top-level keys and `env:`
+  are fixed, so any change to a command, a step key (`shell:`, `env:`, `working-directory:`) or a
+  job key (`defaults:`, `container:`) is a visible change to that file in review. Before any
+  credential is written, the app is unpacked and the SHA-256 of its manifest
+  (`macos-app-manifest.sh`: every path, type, executable bit and SHA-256, computed with coreutils
+  and `sha256sum` only) must equal `macos-build`'s job output `manifest_sha256`, the hash of the
+  manifest of the app `macos-dmg.sh` signed ad hoc there. Only the hash reaches this job, as a job
+  output, because an artifact can be deleted and uploaded again by any job of the run with its
+  `ACTIONS_RUNTIME_TOKEN`, while a job's outputs cannot be changed by another job. So a replaced
+  `macos-volume` artifact, or an app a replaced unpack tool changed, is refused before any
+  credential exists. A replaced `macos-signed-app` or `macos` artifact would have to carry
+  Vimma's Developer ID signature, notarised, for the tag's version line, or `macos-smoke`'s
+  signature, team and version checks fail. The manifest refuses any symlink, as Vimma.app has none,
   and the sign script refuses a symlink again, as well as a name rcodesign's scope syntax could
   misread and an `Info.plist` whose `CFBundleExecutable` is not one plain file name, so
   rcodesign cannot be led to read or write a file outside the bundle. The
@@ -1924,9 +1933,12 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   branch or tag can run an edited workflow that reads the secrets (as in B6), and no repository
   secret of these names exists. It has no required reviewer, since a Firefox security release
   ships without a person. **⚠ limit:** whoever can merge to `main` can change `release.yml` to
-  misuse the secrets, as for every other environment. **⚠ limit:** the manifest comes from
-  the same release run as the build, so it guards against the unpack tools, not against a
-  compromised build, which signs what it builds anyway. **⚠ limit:** nothing pins the
+  misuse the secrets, as for every other environment. **⚠ limit:** the manifest hash comes from
+  the same release run as the build, so it guards against `macos-unpack`, not against a
+  compromised build, which signs what it builds anyway. Nor does it catch a disk-image tool that
+  is already malicious inside `macos-build`: `macos-dmg.sh` runs mach's `unpack_dmg` with the same
+  tools before it writes the manifest, so the manifest describes whatever that tool produced.
+  **⚠ limit:** nothing pins the
   disk-image tools themselves. A replaced tool in `macos-pack` could pack a different app than
   the one notarised, which `macos-smoke`'s signature checks then fail; it could also add other
   entries to the `.dmg`, which is not signed, or point its Applications link elsewhere, and
@@ -1950,7 +1962,7 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`refuses a file name outside [A-Za-z0-9._+-] in a path it scopes a setting to`](../tools/package/test/macos-developer-id.test.mjs),
   [`refuses a CFBundleExecutable with a / or .., and a binary Info.plist`](../tools/package/test/macos-developer-id.test.mjs),
   [`changes when a byte, an executable bit or a file name changes`](../tools/package/test/macos-developer-id.test.mjs),
-  [`macos-notarise checks the app against macos-build's manifest before the credentials`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-notarise checks the app against macos-build's manifest hash before the credentials`](../tools/package/test/release-workflow.test.mjs),
   [`the check catches %s`](../tools/package/test/release-workflow.test.mjs),
   [`%s runs only when MACOS_SIGNING is developer-id, after %s`](../tools/package/test/release-workflow.test.mjs),
   [`writes the credentials to owner-only files and fails when one is missing`](../tools/package/test/release-workflow.test.mjs),
