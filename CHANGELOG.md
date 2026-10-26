@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Fixed
+
+- Workspaces: a workspace could lose its tab list (tab search and the side panel showing one "New Tab") while its tabs stayed open, when a restore into the window ended with a workspace rebuild that failed partway. The rebuild now replaces the window's model only once it is complete, a failed one keeps the current model, and selecting a tab the model does not know puts it back.
+
+
 ## [0.1.9](https://github.com/vimma-browser/vimma/compare/v0.1.8...v0.1.9) · Firefox 158.0.1 (2026-10-23)
 
 
