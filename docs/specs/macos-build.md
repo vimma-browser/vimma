@@ -1,10 +1,13 @@
 # Spec: macos-build
 
-Status: draft (sub-PRs 1, 3 and 6 built; sub-PR 2 built except its two macOS mochitests;
+Status: draft (sub-PRs 1, 3, 6 and 7 built; sub-PR 2 built except its two macOS mochitests;
 sub-PR 5's macOS key inventory built, #384) · Area: `configs/macos/mozconfig`,
-`tools/package/macos-dmg.sh` (new), `configs/branding/vimma/`, `tools/artifact-build/`,
+`configs/macos/entitlements/` (new), `tools/package/macos-dmg.sh` (new),
+`tools/package/macos-developer-id.sh` (new), `tools/package/macos-developer-id-check.sh` (new),
+`configs/branding/vimma/`, `tools/artifact-build/`,
 `tools/e2e/`, `tools/mochitest.mjs`, `tools/start.mjs`, `tools/vimma-ctl/src/discovery.rs`,
-`tools/vimma-ctl/src/mcp_serve.rs`, `.github/workflows/ci.yml`, `e2e.yml`, `macos.yml` (new);
+`tools/vimma-ctl/src/mcp_serve.rs`, `.github/workflows/ci.yml`, `e2e.yml`, `macos.yml` (new),
+`release.yml`;
 `docs/guide.md`, `docs/limits.md`, `CONTRIBUTING.md`, `docs/runbook.md` · Upstream patches: none
 (decision 7) · ADR:
 [ADR-018](../adr/018-macos-cross-build.md) ("macOS is cross-compiled on Linux, arm64 first")
@@ -20,10 +23,11 @@ from their documentation as cited; anything not confirmed from a primary source 
 ## Summary
 
 Vimma is built and tested on Linux x86_64 only. This spec makes macOS on Apple Silicon the second
-platform: a `.dmg` cross-compiled on a GitHub-hosted Linux runner, ad hoc signed, smoke-tested on
-a GitHub-hosted Mac, and Vimma's front-end tests run on a Mac on every pull request. It costs
-nothing until a Developer ID is bought, needs no Mac to build, and publishes nothing until the
-release gate opens. Windows is not a target platform.
+platform: a `.dmg` cross-compiled on a GitHub-hosted Linux runner, signed, smoke-tested on a
+GitHub-hosted Mac, and Vimma's front-end tests run on a Mac on every pull request. Test builds are
+ad hoc signed; a release is signed with Vimma's Developer ID and notarised by Apple once the
+repository variable `MACOS_SIGNING` is `developer-id`. It needs no Mac to build, and publishes
+nothing until the release gate opens. Windows is not a target platform.
 
 ## Problem
 
@@ -44,15 +48,18 @@ release gate opens. Windows is not a target platform.
 
 1. A `.dmg` for Apple Silicon (`aarch64-apple-darwin`) is built by CI from the same commit and the
    same Firefox release as the Linux build, and is available as a workflow artifact.
-2. The app in that `.dmg` launches on Apple Silicon. Before a Developer ID exists it is ad hoc
-   signed, and macOS asks once, in System Settings > Privacy & Security, before it first opens.
+2. The app in that `.dmg` launches on Apple Silicon. A release signed with Vimma's Developer ID
+   and notarised opens like any app: Gatekeeper accepts it, offline too, from its stapled ticket.
+   An ad hoc signed build (every `macos.yml` build, and a release while `MACOS_SIGNING` is not
+   `developer-id`) makes macOS ask once, in System Settings > Privacy & Security, before it first
+   opens.
 3. Every Vimma key works as on Linux: `ctrl+b` is the prefix, and the modal layer, hints,
    workspaces, panes, the side panel, the status bar and `ctrl+b ?` behave the same.
 4. `cmd+q` quits, as `ctrl+q` does on Linux: Firefox's `accel` is `cmd` (meta) on macOS, and
    `[firefox] disable = "all"` keeps `cmd+q` (fate d in the macOS inventory, decision 22).
 5. A character typed with Option matches a binding for that character: Option+shift+8 on a Finnish
    layout types `{` and fires a `{` binding. An `alt+<letter>` binding does not fire on a Mac
-   (open question 5).
+   (open question 4).
 6. Without Omarchy, Vimma uses its built-in palette and follows the system's light or dark
    setting live. Nothing mentions Omarchy or Hyprland, and no Omarchy path is polled.
 7. The private workspace opens as its own window, as on any non-Hyprland system.
@@ -64,10 +71,15 @@ release gate opens. Windows is not a target platform.
 10. `vimma --version` prints the same line as on Linux, `Vimma <vimma> · Firefox <firefox>`
     (firefox-versions).
 11. A pull request that breaks Vimma's front end on macOS shows a failing check from a hosted Mac.
-12. Once the maintainer sets the repository variable `MACOS_RELEASE_ENABLED`, every release has an
-    ad hoc signed `vimma-<vimma>-macos-aarch64.dmg`, its `SHA256SUMS-macos` and their Sigstore
-    bundles beside the Linux files. Before that, and always for Homebrew and vimma.dev, nothing
-    macOS-related is published.
+12. Once the maintainer sets the repository variable `MACOS_RELEASE_ENABLED`, every release has a
+    `vimma-<vimma>-macos-aarch64.dmg`, its `SHA256SUMS-macos` and their Sigstore bundles beside
+    the Linux files. Before that, and always for vimma.dev, nothing macOS-related is published.
+13. While `MACOS_SIGNING` is `developer-id`, the released app is signed with Vimma's Developer ID
+    Application certificate, under the hardened runtime with Vimma's production entitlements, with
+    a secure timestamp, notarised and stapled; a hosted Mac checks this with `codesign`, `spctl`
+    and `stapler` before anything is published. A missing signing secret then fails the release;
+    it never falls back to an ad hoc `.dmg`. Otherwise the release is ad hoc signed, and its run's
+    summary says so.
 
 ## Research
 
@@ -195,8 +207,34 @@ From GitHub's "GitHub-hosted runners" reference
 - **Notarisation** needs Developer ID signing, the hardened runtime and a secure timestamp
   ("Notarizing macOS software before distribution"); `xcrun notarytool submit … --wait`, then
   `xcrun stapler staple`. With an Apple ID it needs an app-specific password ("Customizing the
-  notarization workflow"). API-key authentication and rcodesign's notarisation from Linux are
-  **unverified** from the documents read.
+  notarization workflow").
+- **rcodesign on Linux** (apple-codesign 0.29.0, the pinned release; its `docs/` and
+  `src/cli/mod.rs` at tag `apple-codesign/0.29.0`): `rcodesign sign` signs a bundle's nested
+  bundles and Mach-O binaries recursively, inside-out, in one run ("Nested Signing By Default").
+  Settings without a scope apply to the main entity only; `<path>:<value>` scopes a setting to a
+  bundle-relative path, and to everything inside it when the path is a nested bundle
+  (`apple_codesign_settings_scope.rst`). The secure timestamp defaults to
+  `http://timestamp.apple.com/ts01` whenever a certificate signs (`APPLE_TIMESTAMP_URL`).
+  `--for-notarization` refuses a certificate that is not Apple-issued Developer ID or a signature
+  without a timestamp, and turns the hardened runtime on for every Mach-O
+  (`ensure_for_notarization_settings` in `signing_settings.rs`). `rcodesign notary-submit
+--api-key-file <json> --wait --staple <path>` notarises with an App Store Connect API key, the
+  JSON that `rcodesign encode-app-store-connect-api-key` writes, and staples a bundle's ticket into
+  `Contents/CodeResources` (`stapling.rs`); a `.dmg` and a `.pkg` can be notarised and stapled too.
+  `rcodesign analyze-certificate` prints a certificate's subject and team ID.
+- **How Mozilla signs and notarises Firefox** (Firefox 158.0): `mach macos-sign -r` signs with
+  rcodesign in one run, with the hardened runtime and entitlements scoped per helper
+  (`tools/signing/macos/mach_commands.py`, `sign_with_rcodesign`), from the list in
+  `taskcluster/config.yml` (`mac-signing.hardened-sign-config.production`): `plugin-container.app`
+  and `media-plugin-helper.app` with their own entitlement files, `security-module-helper.app` on
+  Nightly only, the runtime flag alone on the other helpers, `XUL` and the dylibs, and the browser
+  entitlements on the app. Its `production-without-restricted` option drops
+  `com.apple.application-identifier` and `com.apple.developer.web-browser.public-key-credential`
+  for "a Developer ID certificate not associated with an account approved for the restricted
+  entitlements"; with them, signing needs "a provisioning profile to be added to the bundle". The
+  release pipeline notarises the signed `.app` (`taskcluster/kinds/build-mac-notarization`) and
+  only then makes the `.dmg` (`taskcluster/kinds/repackage`, which depends on it); no signing
+  task takes the `.dmg`.
 - **Apple Silicon runs nothing unsigned**: "any executable must be signed before it's allowed to
   run … a simple ad-hoc signature is sufficient", but ad hoc binaries "cannot pass through
   Gatekeeper" (macOS Big Sur 11.0.1 universal apps release notes).
@@ -210,6 +248,12 @@ From GitHub's "GitHub-hosted runners" reference
 - **Secrets in CI** (GitHub's "Sign Xcode applications" guide): the p12 as a base64 secret and its
   password in a temporary keychain deleted in an `always()` step. With rcodesign the p12 needs no
   keychain.
+- **Checking a signed app on a Mac:** `codesign -dvv` prints the `Authority=` chain, the
+  `TeamIdentifier=`, `Timestamp=` for a secure timestamp, and the code directory's flags, which
+  include `runtime` under the hardened runtime; `spctl --assess --type execute -vv` prints
+  `source=Notarized Developer ID` for a notarised app; `xcrun stapler validate` checks a stapled
+  ticket. These output formats are **unverified** against a Vimma build: no Developer ID build
+  exists before the first signed release, whose smoke job confirms them.
 
 ### Homebrew
 
@@ -239,7 +283,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 | Agent attention         | `vimma/host/agent-ui.mjs:180-188` (vimma-mcp)                                                                       | `getAttention()` bounces the Dock icon (`widget/cocoa/nsCocoaWindow.mm:7338-7341`); `nsIAlertsService` posts through `widget/cocoa/MacOSNotificationCenter.mm`. Whether an ad hoc app may post is **unverified** | A hand check                                        |
 | `vimma-ctl mcp` caller  | `tools/vimma-ctl/src/mcp_serve.rs:508-519` (`parent_name`): `/proc/<ppid>/comm` on Linux only                       | No `/proc` on macOS; the caller gets no name label                                                                                                                                                               | The macOS process name (decision 21)                |
 | Keys: accel             | `vimma/host/firefox-keys.mjs:60-62`; `xulKeyChord`, `planFirefoxKeys` in `packages/vimma-core/src/firefox-keys.mjs` | `accel` is meta; `disable = "all"` keeps `cmd+q`                                                                                                                                                                 | The macOS key inventory (decision 22)               |
-| Keys: Option characters | `packages/vimma-core/src/keys.mjs:376-406`; `widget/cocoa/nsCocoaUtils.mm:725-731` (Option sets AltGraph)           | Option+shift+8 is `{` and matches a `{` binding (key-handling-batch). Option+j types `∆`, so an `alt+j` binding never fires                                                                                      | Open question 5                                     |
+| Keys: Option characters | `packages/vimma-core/src/keys.mjs:376-406`; `widget/cocoa/nsCocoaUtils.mm:725-731` (Option sets AltGraph)           | Option+shift+8 is `{` and matches a `{` binding (key-handling-batch). Option+j types `∆`, so an `alt+j` binding never fires                                                                                      | Open question 4                                     |
 | Keys: text bindings     | `packages/vimma-core/src/editable.mjs:119-121`; `vimma/host/VimmaHost.sys.mjs:144, 1691-1696`                       | On macOS Vimma leaves `ctrl+h` to Cocoa, which already deletes backward (`widget/cocoa/NativeKeyBindings.mm:87`)                                                                                                 | Nothing                                             |
 | Keys: native menu bar   | `widget/cocoa/nsMenuItemX.mm:316-357`                                                                               | Each menu item takes its key equivalent from its `<key>` element. Whether turning a `<key>` off (firefox-keys) also clears the menu's equivalent is **unverified**                                               | A hand check; the macOS key inventory               |
 | Dev tools               | `tools/start.mjs:40` (Linux objdir), 197 (`/proc/locks`); `tools/mochitest.mjs:53` (`dist/bin/…`)                   | Wrong paths on a Mac                                                                                                                                                                                             | Platform paths                                      |
@@ -273,7 +317,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
    clang (lld) and the DMG tools come through `--enable-bootstrap` and `bootstrap_toolchain`, and
    sub-PR 3 adds an explicit `mach artifact toolchain` fetch of cctools, libdmg and hfsplus only if
    bootstrap proves insufficient. The file stays usable on a Mac host for a contributor who builds
-   natively. The runner type follows build-supply-chain decision 6 (open question 7 confirms it for macOS):
+   natively. The runner type follows build-supply-chain decision 6 (open question 6 confirms it for macOS):
    - The standard `ubuntu-24.04` runner first: free, 16 GB RAM, and about 85 GB free disk
      measured against the 30 GB a build needs. A disk guard fails the job before the download when
      less than 40 GB is free (build-supply-chain decision 9). Freeing disk (`jlumbroso/free-disk-space`, as Zen
@@ -300,7 +344,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
    `mach package` with mach's `unpack_dmg`, runs `rcodesign sign` on the app (ad hoc now, a p12
    later) and packs it again with `make_dmg`. rcodesign 0.29.0 is a pinned download
    (`tools/package/fetch-rcodesign.sh`, MPL-2.0). Vimma's own production entitlements come with
-   the Developer ID (sub-PR 7).
+   the Developer ID (decisions 23 to 28).
 8. **Hosted Macs run what was built.** A `macos-15` job downloads the `.dmg` artifact, mounts it,
    verifies the signature, launches Vimma headless and runs a smoke e2e through `vimma-ctl`. It is
    free on a public repository.
@@ -312,13 +356,14 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 
 ### Signing, publishing and updates
 
-10. **Ad hoc signed until a Developer ID exists** (open question 2). The build is ad hoc signed
-    with no entitlements and no hardened runtime. Entitlements take effect only under the
-    hardened runtime, and an ad hoc app on Apple Silicon starts without it: checked in sub-PR 3,
-    where the ad hoc app passes `codesign --verify --deep --strict` and renders pages with its
-    content processes. Rejected: the `developer` entitlements, which would only matter under a
-    hardened runtime this build does not use. `docs/guide.md` tells testers about Open Anyway and
-    `xattr`. Passkeys need the production entitlements and do not work in these builds.
+10. **Test builds are ad hoc signed.** Every `macos.yml` build, and a release while
+    `MACOS_SIGNING` is not `developer-id` (decision 26), is ad hoc signed with no entitlements and
+    no hardened runtime, so that a fork or a pull request builds and runs with no Apple
+    credential. Entitlements take effect only under the hardened runtime, and an ad hoc app on
+    Apple Silicon starts without it: checked in sub-PR 3, where the ad hoc app passes
+    `codesign --verify --deep --strict` and renders pages with its content processes. Rejected:
+    the `developer` entitlements, which would only matter under a hardened runtime this build does
+    not use. `docs/guide.md` tells testers of such a build about Open Anyway and `xattr`.
 11. **Linux-only features stay Linux-only and fail quietly.** Omarchy theming, the Omarchy hook and
     the Hyprland private swap are inactive on macOS, as the table above shows, without warnings.
     No Omarchy wording appears where Omarchy is absent (theme-appearance), so `about:vimma` adds no
@@ -327,8 +372,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     jobs (`macos-build`, `macos-smoke`, `macos-sign`, `macos-publish`) that run only when the
     repository variable `MACOS_RELEASE_ENABLED` is `true`, on top of the Linux release's own
     conditions. They need no manual step, because a Firefox security release ships without a
-    person (firefox-versions; ADR-020, planned with its sub-PR 4). The gate opens with ad hoc
-    builds, before the Developer ID (open question 2): a tester who presses Open Anyway once gets
+    person (firefox-versions; ADR-020, planned with its sub-PR 4). The gate could open with ad hoc
+    builds, before the Developer ID (decision 26): a tester who presses Open Anyway once gets
     every release from the same page as Linux users, checksummed and signed with the same
     Sigstore identity, instead of a 90-day workflow artifact found through a run's page.
     Rejected: waiting for notarisation, which costs 99 USD a year before anyone outside has run
@@ -426,9 +471,92 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     its 149 rows would be kept in step with Linux's 140 by hand, where 77 rows change their
     chord, 12 go and 21 are macOS's own.
 
+### Developer ID and notarisation
+
+23. **A job of its own, `macos-notarise`, between `macos-build` and `macos-smoke`.** It runs on
+    `ubuntu-24.04` in the `macos-sign` environment, takes the ad hoc `.dmg` that `macos-build`
+    made and checksummed, re-signs the app with the Developer ID, notarises and staples it, packs
+    a new `.dmg`, renders the cask without its Open Anyway caveat and rewrites
+    `SHA256SUMS-macos`, and replaces the `macos` artifact. A GitHub job has one environment, and
+    `macos-build` is in `build` for the Safe Browsing key (decision 14), so the Apple secrets need
+    another job; this one runs for minutes, not the two hours of a Firefox build whose bootstrap
+    toolchains and npm packages would otherwise share a runner with the p12. It comes before
+    `macos-smoke` so that the hosted Mac checks the signed `.dmg` that is published.
+    `tools/package/macos-developer-id-check.sh` there runs `codesign --verify --deep --strict`,
+    reads `codesign -dvv` for the Developer ID Application authority, one team ID on the app and
+    its nested code, a secure timestamp and the `runtime` flag, and requires
+    `spctl --assess --type execute -vv` to answer `source=Notarized Developer ID` and
+    `xcrun stapler validate` to pass. Rejected: signing in `macos-build`, which would put the p12
+    in the `build` environment beside the build; signing in the cosign job `macos-sign`, which runs
+    after the smoke check, so the Mac would never see the Developer ID signature, and which runs no
+    repository code by design; signing on a hosted Mac with `codesign` and a temporary keychain,
+    because rcodesign signs on Linux from a p12 file with no keychain, as Mozilla does.
+24. **Vimma's production entitlements are Firefox's, without the two restricted ones.**
+    `configs/macos/entitlements/` holds `browser.xml` (Firefox 158.0's
+    `production/firefox.browser.xml`), `plugin-container.xml` and `media-plugin-helper.xml`
+    (Firefox's files unchanged), so that Vimma's content processes JIT, the CDM helper loads its
+    library and the browser keeps camera, microphone, location, USB, smart card and PKCS #11
+    access under the hardened runtime exactly as Firefox does. `browser.xml` leaves out
+    `com.apple.application-identifier` and `com.apple.developer.web-browser.public-key-credential`,
+    because those need Apple's approval for the team and a provisioning profile in the bundle,
+    which mach calls `production-without-restricted` (Research); so the files name no team and no
+    bundle identifier, and the team ID is used to check the certificate (decision 27). Platform
+    passkeys do not work until both are added
+    ([#544](https://github.com/vimma-browser/vimma/issues/544)). The files are compared with
+    Firefox's on a Firefox bump, as `docs/runbook.md` says. Rejected: Firefox's file with the
+    team ID swapped in, because without a provisioning profile the app would not start.
+25. **One `rcodesign sign` with mach's per-path settings, then the app is notarised, stapled and
+    packed.** `tools/package/macos-developer-id.sh` signs as `mach macos-sign -r` does for the
+    release channel: one run on the app, which rcodesign signs inside-out, with the runtime flag
+    scoped to each helper app, binary and dylib in Mozilla's production list that is present, the
+    two helper apps' entitlement files scoped to them, `vimma-ctl` added to the list, and
+    `browser.xml` and the runtime flag on the app. It adds `--for-notarization`, so rcodesign
+    refuses a certificate that is not Developer ID or a signature without Apple's timestamp, and
+    turns the runtime on for any Mach-O the list misses, since notarisation rejects such a binary.
+    `rcodesign notary-submit --wait --staple` then notarises the `.app` and staples its ticket into
+    `Contents/CodeResources`, and only then is the `.dmg` packed, as Mozilla does (Research), so
+    the installed app carries its ticket and Gatekeeper accepts it offline. The `.dmg` itself is
+    not signed, as Firefox's is not. The disk image is unpacked and packed with Mozilla's own tools
+    as `mozpack/dmg.py` calls them on Linux. Rejected: notarising the `.dmg` alone, which leaves
+    the app in `/Applications` without a stapled ticket, so a first start offline fails; and
+    `codesign`-style separate runs per path, which rcodesign does not need.
+26. **`MACOS_SIGNING=developer-id` turns Developer ID on, and then a missing secret fails the
+    release.** Vimma is enrolled in the Apple Developer Program (99 USD a year), because
+    Gatekeeper refuses an ad hoc app's first open and Homebrew disables casks that fail
+    Gatekeeper (Research), so a public Mac download needs notarisation. The repository variable,
+    not the presence of the secrets, decides, so that a
+    deleted, renamed or unreadable secret, or an environment that a misconfiguration hides from
+    the job, stops the release with an error instead of publishing an ad hoc `.dmg` to users who
+    installed a notarised one, which Gatekeeper would refuse and the Homebrew cask would install
+    without its caveat. While the variable is unset, `macos-build`'s ad hoc `.dmg` is released as
+    before, and the run's summary and a warning say it is ad hoc signed and not notarised.
+    `macos.yml`, forks and pull requests never sign with the Developer ID. Rejected: signing
+    whenever the secrets are present, because the absence of a secret is silent; and requiring the
+    secrets for every release, because a release must still be possible while the certificate is
+    being set up or replaced, as an ad hoc one that says so.
+27. **The `macos-sign` environment, `main` only, with no required reviewer.** It holds
+    `APPLE_DEVELOPER_ID_P12` (base64), `APPLE_DEVELOPER_ID_P12_PASSWORD`, `APPLE_NOTARY_API_KEY`
+    (the JSON of `rcodesign encode-app-store-connect-api-key`) and `APPLE_TEAM_ID`; only `main`
+    may deploy to it, as `build` and `homebrew` (docs/security.md, B14), so no branch or tag can
+    read the secrets by editing a workflow. No reviewer is required, because a Firefox security
+    release ships without a person (decision 12). The job writes the p12, its password and the key
+    with the shell's `printf` to files of mode 600 under `$RUNNER_TEMP`, passes only their paths
+    to rcodesign, and deletes them in an `always()` step before the cask script runs or anything
+    is uploaded. Before signing it checks that the certificate's subject is a Developer ID
+    Application and its team ID is `APPLE_TEAM_ID`, so a certificate from another team, or an
+    Apple Development certificate, never signs a release. Rejected: a required reviewer, which
+    would hold every security release for a person.
+28. **The disk-image tools come from `macos-build`.** `macos-notarise` has no `engine/` and no
+    `mach`, so `macos-build` copies the `dmg`, `hfsplus` and `newfs_hfs` that its `mach`
+    bootstrapped from Mozilla's Taskcluster, found as `make_dmg.py` finds them, into a one-day
+    artifact, only for a Developer ID release. They run on the same runner image they were built
+    for. Rejected: downloading the Firefox source again in `macos-notarise` for `mach`, which adds
+    gigabytes and minutes for three small binaries, and fetching the tools from Taskcluster by
+    hand, which would need a pin that changes with every Firefox release.
+
 ### Not in this spec
 
-A notarised macOS release, a vimma.dev download (decision 12); the Homebrew cask and tap
+A vimma.dev download (decision 12); platform passkeys (decision 24); the Homebrew cask and tap
 ([macos-homebrew](macos-homebrew.md)); x86_64 and
 universal builds (decision 3); PGO and LTO tuning; the macOS updater beyond decision 16; Mac App
 Store distribution; the Firefox Beta canary on macOS (upstream-beta-canary tests Linux only);
@@ -440,16 +568,22 @@ Mac-native integrations such as Handoff, the Services menu or a global hotkey.
   Linux builds in build-supply-chain: verified Firefox source, no restored caches, toolchains from Mozilla's
   Taskcluster through `mach` as trusted inputs. No self-hosted runner exists for pull request
   code to reach.
-- **Secrets.** The unsigned sub-PRs need none: no Safe Browsing key (decision 14), no Apple
-  credentials. Sub-PR 7 adds the Developer ID p12, its password and the notarisation credentials
-  to a protected `macos-signing` environment, limited to `main` and release tags, with the
-  maintainer as required reviewer. With rcodesign the p12 never enters a keychain.
+- **Secrets.** `macos.yml` needs none: no Safe Browsing key (decision 14), no Apple credentials.
+  The Developer ID p12, its password, the App Store Connect API key and the team ID are secrets of
+  the `macos-sign` environment, which only `main` may deploy from, read by `macos-notarise` alone
+  and written to owner-only files that an `always()` step deletes (decision 27). With rcodesign
+  the p12 never enters a keychain. A leaked p12 lets its holder sign software that Gatekeeper
+  accepts as Vimma's team until Apple revokes the certificate; a leaked API key lets its holder
+  notarise under the team until it is revoked in App Store Connect. `docs/security.md`, B14, and
+  `docs/runbook.md` describe the response.
 - **Ad hoc builds.** An ad hoc signature proves nothing about who built the app. Testers get the
   `.dmg` from this repository's GitHub Release, and check it with cosign against the same identity
   as the Linux files, `release.yml` at `refs/heads/main`; the guide says how. Open Anyway lowers Gatekeeper for that one app only.
 - **Entitlements.** Ad hoc builds carry none and run without the hardened runtime (decision
   10), so they get none of its protections against injected libraries and unsigned code. The
-  Developer ID build turns the hardened runtime on with Vimma's own production entitlements.
+  Developer ID build turns the hardened runtime on with Vimma's own production entitlements, which
+  keep Firefox's exceptions: JIT, and library validation off for PKCS #11 modules and the CDM
+  (decision 24).
 - **Privacy.** No new data leaves the machine. Keyless test builds have Safe Browsing off by
   default, which the guide's macOS section states.
 
@@ -487,7 +621,27 @@ any failure is a test that assumes Linux.
 - e2e `m0-happy-path` and `m0-content-actor` under `MOZ_HEADLESS=1`; no screenshot baselines on
   macOS
 
-**Hand checks on a real Mac (open question 4):** Open Anyway on the current macOS; `ctrl+b` and
+**Developer ID (sub-PR 7):** vitest in `tools/package/test/macos-developer-id.test.mjs`, with stub
+`rcodesign` and disk-image tools:
+
+- `the browser gets Firefox's production entitlements without the restricted pair`
+- `checks the certificate is a Developer ID Application of APPLE_TEAM_ID before signing`
+- `signs in one rcodesign run, nested code inside-out with mach macos-sign's settings`
+- `notarises and staples the app, then packs the dmg as mach's make_dmg does on Linux`
+- `passes the password and the API key as files, never on a command line`
+- `writes no dmg when signing or notarisation fails, or nothing was stapled`
+- `macos-developer-id-check.sh`: `passes a Developer ID app under the hardened runtime, notarised,
+stapled and accepted`, and fails an ad hoc signature, no hardened runtime, no secure timestamp, a
+  nested binary of another team, Gatekeeper's rejection and no stapled ticket
+
+and in `tools/package/test/release-workflow.test.mjs`: `the Apple secrets come from the macos-sign
+environment, in macos-notarise alone`, `writes the credentials to owner-only files and fails when
+one is missing`, `removes the credentials in an always() step before anything is uploaded`,
+`macos-smoke takes the ad hoc dmg only when Developer ID is off` and `macos-smoke checks the
+Developer ID, notarisation and Gatekeeper on a Mac`. The real signature, notarisation and
+Gatekeeper's verdict are checked by the first signed release's `macos-smoke`.
+
+**Hand checks on a real Mac (open question 3):** Open Anyway on the current macOS; `ctrl+b` and
 every `ctrl+b` key; Option-composed `{` `}` `[` `]` `@` `|` `~` on a Finnish layout; `cmd+q`,
 `cmd+w`, `cmd+t`, `cmd+l` with `[firefox] disable = "all"` and with the defaults; the native menu
 bar's key equivalents after firefox-keys turns keys off; fullscreen and split panes; system dark
@@ -510,8 +664,10 @@ With the sub-PRs:
 - README "Status": "Linux x86_64; macOS arm64 in CI" once sub-PR 4 is green.
 - `CONTRIBUTING.md`: building on a Mac (Xcode or the command line tools, `brew install gnu-tar`,
   30 GB disk) and the cross build.
-- `docs/runbook.md`: `macos.yml`, its measured time and disk; later, enrolling, rotating the
-  certificate and the signing environment.
+- `docs/runbook.md`: `macos.yml`, its measured time and disk; with sub-PR 7, setting up and
+  rotating the certificate and the API key, the `macos-sign` environment, and re-running signing.
+- `docs/security.md`, B14 with sub-PR 7: the Apple secrets, their environment, and a leaked p12 or
+  API key.
 - ADR-018 with sub-PR 3.
 - `CHANGELOG.md` `[Unreleased]`: one line per sub-PR that changes what a user can run (sub-PRs 2,
   3, 6 and 7); CI-only sub-PRs need none.
@@ -525,7 +681,7 @@ full build.
    `.app` layout by platform; `mochitest.mjs` and `start.mjs` learn the macOS paths and skip
    `/proc/locks` on macOS. A new `macos-15` job in `e2e.yml`: `npm ci`, Vitest, artifact build,
    the mochitests headless, and a `df` line recording the free disk. Not required at first (open
-   question 6).
+   question 5).
 2. **`fix(macos): platform fallbacks`.** vimma-ctl's macOS profile root and `kill(pid, 0)` stale
    check, with tests (decisions 19 and 20); the MCP caller's name (decision 21); a macOS cargo
    job in `ci.yml`, informational like sub-PR 1's; the config path stays (decision 18). The
@@ -549,10 +705,10 @@ full build.
    `MACOS_RELEASE_ENABLED` (decision 12): the cross build with the Safe Browsing key, the
    `macos-15` smoke check against the tag, cosign, and an add-only upload. The guide's macOS
    install section.
-7. **Gated: `build(macos): developer id and notarisation`.** Only after enrolment (open question
-   2). Secrets in the `macos-signing` environment; `rcodesign sign` with Vimma's production
-   entitlements (own team ID, provisioning profile for passkeys); `notarytool submit --wait`;
-   `stapler staple`, replacing the ad hoc signature in `macos-build`.
+7. **`build(macos): developer id and notarisation`** (built). The `macos-notarise` job behind
+   `MACOS_SIGNING` (decisions 23 to 28): secrets in the `macos-sign` environment; `rcodesign
+sign` with Vimma's production entitlements; `rcodesign notary-submit --wait --staple` on the
+   app; a new `.dmg` and cask; the Developer ID checks in `macos-smoke`. Passkeys follow in #544.
 
 Time and cost per run:
 
@@ -573,32 +729,26 @@ Time and cost per run:
    step) to merge. (c) separate x86_64 `.dmg`: covers Intel without unify, doubles the builds.
    **Recommendation: (a)**, and add x86_64 only if a tester has an Intel Mac, since GitHub's
    Intel images end in 2027.
-2. **Buy the Apple Developer ID (99 USD a year) now, or ship unsigned test builds first?**
-   (a) unsigned first: free, enough for the maintainer and a few testers who press Open Anyway
-   once; no passkeys, no updater. (b) enrol now: notarised builds from the start, but a yearly
-   cost before anyone outside uses the build. **Recommendation: (a)**, and start enrolment a few
-   weeks before the release gate opens, because a public Mac download without notarisation is a
-   poor first impression and the Homebrew cask requires it.
-3. **Change the roadmap order?** (a) macOS entirely after M6: nothing competes with the updater
+2. **Change the roadmap order?** (a) macOS entirely after M6: nothing competes with the updater
    and the daily-driver work. (b) sub-PRs 1 and 2 now, as a parallel lane, the rest after M6a:
    they cost nothing, need no full build and find Linux assumptions while the code is fresh.
    (c) all of it now: earliest Mac build, but competes with M6a. **Recommendation: (b)**, so the
    updater's MAR and manifest work is designed with a second platform in view; sub-PR 7 when the
    gate nears.
-4. **Is a Mac available for the hand checks?** (a) the maintainer's Apple Silicon Mac: enough.
+3. **Is a Mac available for the hand checks?** (a) the maintainer's Apple Silicon Mac: enough.
    (b) none: CI covers launch and smoke, but keys, Gatekeeper and the menu bar need a person, so a
    trusted tester runs the list. (c) a rented cloud Mac: last resort, slow for interactive key
    testing. **Recommendation: (a) if available, else (b)**, before a macOS build is called
    working.
-5. **`alt+<letter>` bindings on a Mac.** Option+j types `∆`, so a user's `alt+j` never fires.
+4. **`alt+<letter>` bindings on a Mac.** Option+j types `∆`, so a user's `alt+j` never fires.
    (a) document it: Option is for characters on a Mac, as in Mac terminals by default. (b) an
    "Option as alt" setting matching the physical key: more code and a second matching rule.
    **Recommendation: (a)** now; no default binding uses alt, and (b) can follow if users ask.
-6. **Is the macOS front-end job required for merging?** (a) required at once: catches every
+5. **Is the macOS front-end job required for merging?** (a) required at once: catches every
    macOS break, but a new and possibly flaky job blocks all pull requests. (b) informational,
    then required once green and not flaky for two weeks, as the Linux e2e job was.
    **Recommendation: (b).**
-7. **Which hosted runner runs the cross build?** No self-hosted machine is planned (decision 4).
+6. **Which hosted runner runs the cross build?** No self-hosted machine is planned (decision 4).
    (a) the standard `ubuntu-24.04` runner: free, 85 GB measured free disk, 1.5-3 hours estimated,
    within the 6-hour limit. (b) a larger hosted Linux runner: about 40 minutes, but paid and only
    for organisations on the Team plan. (c) a hosted Mac, natively: documented 14 GB disk, too

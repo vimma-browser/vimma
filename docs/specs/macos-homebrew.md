@@ -57,7 +57,9 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    profiles and caches (decision 5).
 6. The cask refuses to install on an Intel Mac and on a macOS older than the minimum (decision 6).
 7. Before Vimma is notarised, the cask's caveats tell the user how to open it the first time
-   (decision 7); after notarisation, it opens like any app.
+   (decision 7); after notarisation, it opens like any app. (Since changed: a release signed with
+   the Developer ID gets a cask with no caveats, `cask.mjs --notarised`; spec
+   [macos-build](macos-build.md), decisions 23 and 26.)
 8. Vimma on macOS shows the same update notices as on Linux when a newer release carries a
    `.dmg` (decisions 16 to 18). `:update` and `about:vimma` then suggest
    `brew upgrade --cask vimma` for a Homebrew install (decision 8), and for a `.dmg` installed by
@@ -287,7 +289,10 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    notarisation (macos-build sub-PR 6), because it would hold the tap back behind a yearly
    Developer ID cost while the `.dmg` itself is already public. When the macOS updater ships for
    signed builds, the cask switches to `auto_updates true`, as `zen` and `firefox` do, so that
-   Homebrew and the updater do not fight.
+   Homebrew and the updater do not fight. (Since changed: notarisation is macos-build's sub-PR 7;
+   while `MACOS_SIGNING` is `developer-id` the release's app is notarised, Gatekeeper accepts it
+   on the first open, and the cask has no caveats; spec [macos-build](macos-build.md), decisions
+   23 to 26.)
 8. **A Homebrew install is recognised by the Caskroom, not by a marker in the app.** The update
    check reports `homebrew` when the running app is `/Applications/Vimma.app` and
    `/opt/homebrew/Caskroom/vimma/` exists, and `updateSteps` gives `brew upgrade --cask vimma`.
@@ -491,7 +496,9 @@ Submitting to Homebrew/homebrew-cask (open question 1); Developer ID signing and
   can change the tap but not the release, and Homebrew still checks the pinned SHA-256 against
   the GitHub download.
 - **Gatekeeper.** The caveats never tell a user to remove quarantine or disable Gatekeeper; they
-  point to the per-app Open Anyway that macOS offers. A notarised build needs no caveat.
+  point to the per-app Open Anyway that macOS offers. A notarised build needs no caveat. (Since
+  changed: a Developer ID release's cask has none; spec [macos-build](macos-build.md), decision
+  23.)
 - **Tap trust.** The documented command trusts one cask, not the whole tap.
 - **Icons.** The committed `Assets.car` and `.icns` files are binaries in the tree; the
   regeneration check in `macos.yml` makes them reproducible from the committed sources, so a

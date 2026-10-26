@@ -7,8 +7,10 @@
  *
  * Usage:
  *   node tools/package/cask.mjs --dmg <vimma-X.Y.Z-macos-aarch64.dmg> --out <vimma.rb>
- *     [--tag vX.Y.Z] [--repo vimma-browser/vimma]
+ *     [--tag vX.Y.Z] [--repo vimma-browser/vimma] [--notarised]
  * The version is surfer.json brands.vimma.release.displayVersion; --tag must be exactly v<that>.
+ * --notarised is for a dmg that macos-notarise signed with Vimma's Developer ID: macOS opens that
+ * app without asking, so the cask has no caveats (spec macos-build, decision 23).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -30,8 +32,17 @@ const BUNDLE_ID = (() => {
   return id;
 })();
 
+/** The note an ad hoc signed release's cask shows, since Gatekeeper refuses its first open. */
+const ADHOC_CAVEATS = `
+  caveats <<~EOS
+    Vimma is not notarised by Apple yet, so macOS will not open it the first time.
+    Open it once, then go to System Settings → Privacy & Security, choose
+    Open Anyway next to Vimma, and confirm. macOS may ask again after an upgrade.
+  EOS
+`;
+
 /**
- * @typedef {{ version: string, dmgSha256: string, repo: string }} CaskInput
+ * @typedef {{ version: string, dmgSha256: string, repo: string, notarised?: boolean }} CaskInput
  */
 
 /**
@@ -41,7 +52,7 @@ const BUNDLE_ID = (() => {
  * @param {CaskInput} input
  * @returns {string}
  */
-export function cask({ version, dmgSha256, repo }) {
+export function cask({ version, dmgSha256, repo, notarised = false }) {
   if (/^\d+\.\d+\.\d+-/.test(version)) {
     throw new Error(`cask: ${version} is a pre-release; releases only`);
   }
@@ -85,13 +96,7 @@ export function cask({ version, dmgSha256, repo }) {
     "~/Library/Preferences/${BUNDLE_ID}.plist",
     "~/Library/Saved Application State/${BUNDLE_ID}.savedState",
   ]
-
-  caveats <<~EOS
-    Vimma is not notarised by Apple yet, so macOS will not open it the first time.
-    Open it once, then go to System Settings → Privacy & Security, choose
-    Open Anyway next to Vimma, and confirm. macOS may ask again after an upgrade.
-  EOS
-end
+${notarised ? "" : ADHOC_CAVEATS}end
 `;
 }
 
@@ -102,12 +107,18 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       out: { type: "string" },
       tag: { type: "string" },
       repo: { type: "string", default: REPO },
+      notarised: { type: "boolean", default: false },
     },
   });
   try {
     if (!values.dmg || !values.out) throw new Error("usage: cask.mjs --dmg <file> --out <file>");
     const version = releaseVersion(SURFER, values.tag);
-    const text = cask({ version, dmgSha256: sha256File(values.dmg), repo: values.repo });
+    const text = cask({
+      version,
+      dmgSha256: sha256File(values.dmg),
+      repo: values.repo,
+      notarised: values.notarised,
+    });
     writeFileSync(values.out, text);
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));

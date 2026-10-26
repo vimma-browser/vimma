@@ -1145,14 +1145,115 @@ gh variable set MACOS_RELEASE_ENABLED --body true      # on
 gh variable delete MACOS_RELEASE_ENABLED               # off
 ```
 
-The `.dmg` is ad hoc signed until the Developer ID exists (spec macos-build, open question 2),
-so Gatekeeper asks once before it first opens (docs/guide.md, "macOS"); the Homebrew cask says
-so in its caveats (spec macos-homebrew). vimma.dev is not affected (issue #393).
+While the repository variable `MACOS_SIGNING` is not `developer-id`, the `.dmg` is ad hoc
+signed, so Gatekeeper asks once before it first opens (docs/guide.md, "macOS"), the Homebrew cask
+says so in its caveats (spec macos-homebrew), and `macos-build`'s summary and a warning say the
+release is ad hoc signed and not notarised. With it, a seventh job, `macos-notarise`, signs the
+app with the Developer ID and notarises it between `macos-build` and `macos-smoke` ("Developer ID
+signing" below). vimma.dev is not affected (issue #393).
 
 To bump rcodesign: take the new release's SHA-256 for
 `apple-codesign-<version>-x86_64-unknown-linux-musl.tar.gz` from
 `gh release view apple-codesign/<version> -R indygreg/apple-platform-rs --json assets`, and change
 `RCODESIGN_RELEASE` and `RCODESIGN_SHA256` in `fetch-rcodesign.sh` together.
+
+#### Developer ID signing
+
+A release is signed with Vimma's Developer ID and notarised by `release.yml`'s `macos-notarise`
+job while `MACOS_SIGNING` is `developer-id` (spec [macos-build](specs/macos-build.md), decisions 23
+to 28; docs/security.md, B14). It takes `macos-build`'s ad hoc `.dmg` and the disk-image tools
+`macos-build`'s `mach` bootstrapped, runs `tools/package/macos-developer-id.sh` (one
+`rcodesign sign` with the hardened runtime and `configs/macos/entitlements/`, then
+`rcodesign notary-submit --wait --staple` on the app, then a new `.dmg`), renders the cask without
+its Open Anyway caveat and rewrites `SHA256SUMS-macos`, and replaces the run's `macos` artifact.
+`macos-smoke` then runs `tools/package/macos-developer-id-check.sh` on the app:
+`codesign --verify --deep --strict`, the Developer ID authority and one team ID in `codesign -dvv`
+on the app and its nested code, a secure timestamp, the `runtime` flag, `spctl --assess --type
+execute` answering `source=Notarized Developer ID`, and `xcrun stapler validate`. Notarisation
+usually takes minutes; rcodesign waits up to an hour, and the job stops at 75 minutes.
+
+**Setting it up.** Once, by the Account Holder of the Apple Developer Program membership:
+
+1. In the Apple Developer account, Certificates, Identifiers & Profiles, create a **Developer ID
+   Application** certificate (the G2 sub-CA). Create the key and the signing request on your own
+   machine, so the private key never leaves it until it becomes a secret:
+
+   ```sh
+   openssl genrsa -out vimma-developer-id.key.pem 2048
+   rcodesign generate-certificate-signing-request --pem-file vimma-developer-id.key.pem \
+     --csr-pem-file vimma-developer-id.csr.pem
+   ```
+
+   Upload the `.csr.pem`, download the `.cer`, and bundle key and certificate into a p12 with a
+   long random password:
+
+   ```sh
+   openssl x509 -inform DER -in developerID_application.cer -out vimma-developer-id.crt.pem
+   openssl pkcs12 -export -inkey vimma-developer-id.key.pem -in vimma-developer-id.crt.pem \
+     -out vimma-developer-id.p12   # asks for the export password
+   ```
+
+   A p12 exported from Keychain Access works too. Check it before uploading:
+   `rcodesign analyze-certificate --p12-file vimma-developer-id.p12 --p12-password-file p12-password.txt`
+   prints `Subject CN: Developer ID Application: …` and the `Team ID`.
+
+2. In App Store Connect, Users and Access, Integrations, App Store Connect API, create a **team
+   key** with the **Developer** role. Download the `.p8` (it can be downloaded once), note its key
+   ID and the issuer ID, and encode them:
+
+   ```sh
+   rcodesign encode-app-store-connect-api-key -o notary-api-key.json <issuer-id> <key-id> AuthKey_<key-id>.p8
+   ```
+
+3. Create the `macos-sign` environment (Settings, Environments) with **Deployment branches and
+   tags** set to the branch `main` only, and no required reviewers, since a security release is
+   unattended. Add its secrets from files, so nothing goes through the shell history:
+
+   ```sh
+   R=repos/vimma-browser/vimma
+   gh api -X PUT $R/environments/macos-sign --input - <<'JSON'
+   { "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
+   JSON
+   gh api -X POST $R/environments/macos-sign/deployment-branch-policies -f name=main -f type=branch
+   base64 -i vimma-developer-id.p12 | gh secret set APPLE_DEVELOPER_ID_P12 --env macos-sign
+   gh secret set APPLE_DEVELOPER_ID_P12_PASSWORD --env macos-sign < p12-password.txt
+   gh secret set APPLE_NOTARY_API_KEY --env macos-sign < notary-api-key.json
+   gh secret set APPLE_TEAM_ID --env macos-sign --body <team-id>
+   gh api $R/environments/macos-sign/deployment-branch-policies --jq '.branch_policies[].name'  # main
+   gh api $R/actions/secrets --jq '.secrets[].name'   # no APPLE_* here
+   ```
+
+   The team ID is the ten characters in the certificate's name, "Developer ID Application: Name
+   (TEAMID)". Then delete the local p12, `.p8`, JSON and password files, or keep them only in an
+   encrypted password manager.
+
+4. Turn it on, and check the first release's `macos-notarise` and `macos-smoke`:
+
+   ```sh
+   gh variable set MACOS_SIGNING --body developer-id   # on; a missing secret now fails releases
+   gh variable delete MACOS_SIGNING                    # off: releases go out ad hoc again
+   ```
+
+**Re-running signing.** A failed `macos-notarise` (for example Apple's notary service timing
+out) is re-run with the run's failed jobs, `gh run rerun <run-id> --failed`: it takes
+`macos-build`'s artifact again. Once `macos-notarise` has succeeded, the `macos` artifact holds the
+signed `.dmg`, which `macos-developer-id.sh` refuses as "already notarised and stapled"; re-run
+from `macos-build` (or the whole release, `gh workflow run release.yml -f tag=vX.Y.Z`) to sign
+again. `rcodesign notary-log --api-key-file notary-api-key.json <submission-id>` shows Apple's
+reasons for a rejection; the submission ID is in the job's log.
+
+**Rotating.** A Developer ID Application certificate is valid for five years. Put its expiry
+date in the maintainer's calendar with a reminder 60 days before; make a new certificate as in
+step 1 and replace `APPLE_DEVELOPER_ID_P12` and its password. Apps signed with the old one keep
+opening after it expires, since their signatures carry a secure timestamp. The API key does not
+expire; rotate it by creating a new key, replacing `APPLE_NOTARY_API_KEY`, and then revoking the
+old key in App Store Connect. Neither rotation needs a code change.
+
+**If a secret leaks.** Unset `MACOS_SIGNING` first, so the next release does not use it, and
+delete the secret from the environment. A leaked p12 (with or without its password): ask Apple to
+revoke the certificate through Apple Developer Support, make a new one and set the secrets again.
+A leaked API key: revoke it in App Store Connect, Users and Access, Integrations, and create a
+new one. Open a `security` issue that says which releases were signed with the old certificate.
 
 ### Mozilla's release key (ADR-021)
 

@@ -157,8 +157,14 @@ A release may also carry, for Macs with Apple Silicon (M1 or later), `vimma-X.Y.
 with its checksum file `SHA256SUMS-macos`. There is no build for Intel Macs. Open the `.dmg` and
 drag Vimma into Applications.
 
-**The first open.** The app is not yet notarised by Apple, so the first time you open it macOS
-says "Apple could not verify “Vimma” is free of malware". To open it:
+**The first open.** A release signed with Vimma's Developer ID and notarised by Apple opens like
+any other app: macOS asks only whether to open an app downloaded from the internet. To check
+which kind you have, run `spctl --assess -vv /Applications/Vimma.app`; a notarised release prints
+`accepted` and `source=Notarized Developer ID`, and its Homebrew cask shows no caveat.
+
+An older release, or a build from a pull request or `macos.yml`, is only ad hoc signed, so the
+first time you open it macOS says "Apple could not verify “Vimma” is free of malware". To open
+it:
 
 1. Choose **Done** in that dialog, not **Move to Trash**.
 2. Open System Settings → Privacy & Security and scroll down to Security.
@@ -169,9 +175,10 @@ Since macOS 15, Control-clicking the app and choosing Open no longer gets past t
 button in System Settings does. macOS remembers the choice for this copy of Vimma; a newer
 `.dmg`, or a `brew upgrade`, may ask again.
 
-From a terminal, the same result in one step: this removes the quarantine flag the download
-carries, which also switches off macOS's check of this copy, so use it only on a `.dmg` you
-downloaded from the release (or verified as below).
+For such an ad hoc signed build only, the same result in one step from a terminal: this removes
+the quarantine flag the download carries, which also switches off macOS's check of this copy, so
+use it only on a `.dmg` you downloaded from the release (or verified as below). A notarised
+release never needs it.
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Vimma.app && open -a Vimma
@@ -182,7 +189,7 @@ and the same `xattr` command clears it.
 
 Vimma on a Mac tells you when a newer release is out, as on Linux ([Updates](#updates)); to
 update, install the newer `.dmg` over the old one, or run `brew upgrade --cask vimma`. Passkeys
-do not work in these builds. Your profile lives in `~/Library/Application Support/Vimma/`, and
+stored in macOS (iCloud Keychain) do not work in Vimma yet, notarised or not. Your profile lives in `~/Library/Application Support/Vimma/`, and
 macOS keeps Vimma's window state under its bundle identifier, `dev.vimma.browser`. To
 check the `.dmg` before you open it, verify `SHA256SUMS-macos` with cosign as in "Arch Linux"
 below (same identity), then run `shasum -a 256 -c --ignore-missing SHA256SUMS-macos`.
@@ -195,8 +202,9 @@ brew install --cask vimma-browser/tap/vimma
 ```
 
 Homebrew checks the download against the SHA-256 the cask pins, puts Vimma in Applications and
-`vimma` on your `PATH`. The first open still needs **Open Anyway**, as in "The first open"
-above; `brew info vimma` shows that note again. The cask comes from the release itself: each
+`vimma` on your `PATH`. A notarised release opens at once; an ad hoc signed one still needs
+**Open Anyway** on its first open, as in "The first open" above, and `brew info vimma` shows that
+note again. The cask comes from the release itself: each
 release carries it as `vimma.rb`, listed and signed in `SHA256SUMS-macos`, and the tap gets that
 file once the release is published.
 
@@ -207,7 +215,8 @@ file once the release is published.
 | Remove Vimma and its profile, caches and prefs | `brew uninstall --zap --cask vimma` |
 
 Vimma does not update itself, so `brew upgrade` (or `brew upgrade --cask vimma`) is how a
-Homebrew install gets a new release; after an upgrade macOS may ask for **Open Anyway** again.
+Homebrew install gets a new release; after an upgrade to an ad hoc signed release, macOS may ask
+for **Open Anyway** again.
 When a newer release is out, Vimma's [update notice](#updates) says so, and `:update` shows that
 command; Vimma counts as a Homebrew install when it runs from `/Applications/Vimma.app` and
 `/opt/homebrew/Caskroom/vimma/` exists.

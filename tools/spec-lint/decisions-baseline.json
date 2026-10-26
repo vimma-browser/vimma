@@ -13,7 +13,6 @@
     "Cross-compile on a GitHub-hosted Linux runner; never build on a hosted Mac.",
     "No upstream patch for signing.",
     "Hosted Macs run what was built.",
-    "Ad hoc signed until a Developer ID exists",
     "Artifact names carry both versions."
   ]
 }

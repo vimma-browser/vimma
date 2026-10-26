@@ -1515,7 +1515,8 @@ Its ad hoc signature proves nothing about who built the app.
 `release.yml`'s macOS jobs, which run only while the variable `MACOS_RELEASE_ENABLED` is `true`,
 hold every rule below that the Linux jobs hold: the same tag checks, the `build` environment for
 the key, cosign under the same identity, and the same refusal to replace a published release's
-files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no Linux release.
+files (B6, B9, B10). Apple's Developer ID signing and notarisation add the `macos-sign`
+environment and its secrets (B14). No Linux job needs them, so a macOS failure holds back no Linux release.
 [`no Linux job needs a macOS job`](../tools/package/test/release-workflow.test.mjs),
 [`macos-build checks the tag like build, then cross-builds with the key`](../tools/package/test/release-workflow.test.mjs),
 [`the build jobs check out clean and restore nothing from the Actions cache`](../tools/test/full-build-workflows.test.mjs),
@@ -1813,9 +1814,10 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   permissions set `sha_pinning_required`, so GitHub refuses an action not pinned to a full
   commit SHA (docs/runbook.md, "Release packages", step 7, for both). The check is not
   required, so it never holds `homebrew.yml`'s push; it reports a pushed cask that Homebrew
-  would reject. **⚠ limit:** the `.dmg` is ad hoc signed and not
-  notarised, so Gatekeeper cannot vouch for it; the cask's caveats tell users to choose Open Anyway
-  in System Settings, and never to remove the quarantine flag.
+  would reject. **⚠ limit:** while `MACOS_SIGNING` is not `developer-id` (B14), the `.dmg` is
+  ad hoc signed and not notarised, so Gatekeeper cannot vouch for it; the cask's caveats then tell
+  users to choose Open Anyway in System Settings, and never to remove the quarantine flag. A
+  notarised release's cask has no caveats.
   [`names the release dmg for the version and pins its sha256`](../tools/package/test/cask.test.mjs),
   [`refuses a pre-release, a version that is not SemVer, and a bad sha256`](../tools/package/test/cask.test.mjs),
   [`refuses repo %j`](../tools/package/test/cask.test.mjs),
@@ -1882,6 +1884,49 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`macos-ctl builds vimma-ctl on a Mac from the commit it checked, like build`](../tools/package/test/release-workflow.test.mjs),
   [`macos-build signs the Mac vimma-ctl into the app, from the same commit`](../tools/package/test/release-workflow.test.mjs),
   [`package puts vimma-ctl into every package and checks it in each`](../tools/package/test/release-workflow.test.mjs)
+
+- B14. A macOS release is signed with Vimma's Apple Developer ID and notarised only while the
+  repository variable `MACOS_SIGNING` is `developer-id` (spec
+  [macos-build](specs/macos-build.md), decisions 23 to 28). The four Apple secrets,
+  `APPLE_DEVELOPER_ID_P12` (the Developer ID Application certificate and its private key, as
+  base64 PKCS #12), `APPLE_DEVELOPER_ID_P12_PASSWORD`, `APPLE_NOTARY_API_KEY` (an App Store
+  Connect API key, as the JSON `rcodesign encode-app-store-connect-api-key` writes) and
+  `APPLE_TEAM_ID`, **must** be secrets of the `macos-sign` environment only, and only
+  `release.yml`'s `macos-notarise` job reads them. That job holds a read-only token and no
+  OIDC permission, checks out the commit `macos-build` built, and runs only
+  `tools/package/macos-developer-id.sh` with the secrets: the shell's `printf` writes the p12,
+  its password and the key to files of mode 600 under `$RUNNER_TEMP`, rcodesign gets only their
+  paths, never a secret on a command line, and an `always()` step deletes them before the cask
+  script runs and before anything is uploaded; no step echoes a secret. Before signing, the
+  certificate's subject must be a Developer ID Application certificate whose team ID is
+  `APPLE_TEAM_ID`. rcodesign's `--for-notarization` refuses any other certificate and a signature
+  without Apple's timestamp. With `MACOS_SIGNING` set, a missing secret fails the release; it
+  never falls back to an ad hoc `.dmg`. A hosted Mac then checks the published app with
+  `codesign -dvv`, `spctl --assess` and `stapler validate` before `macos-sign` cosigns it.
+  **⚠ setting:** the `macos-sign` environment's only deployment policy is the branch `main`, so
+  no branch or tag can run an edited workflow that reads the secrets (as in B6), and no
+  repository secret of these names exists. It has no required reviewer, since a Firefox security
+  release ships without a person. **⚠ limit:** whoever can merge to `main` can change
+  `release.yml` to misuse the secrets, as for every other environment.
+  **A leaked p12** lets its holder sign any Mac software that Gatekeeper accepts as Vimma's team,
+  and, with any API key of the team, notarise it, until Apple revokes the certificate. The
+  response is in `docs/runbook.md`, "Developer ID signing": unset `MACOS_SIGNING` so releases go out
+  ad hoc, delete the secrets, ask Apple to revoke the certificate, then issue a new one. Once
+  Apple revokes it, Gatekeeper refuses software signed with it; whether Vimma releases signed
+  before the leak keep opening depends on the date Apple revokes it from (**unverified**: no
+  revocation has been tried). **A leaked API key**
+  lets its holder notarise and read the team's notarisation history, not sign: revoke it in App
+  Store Connect (Users and Access, Integrations) and create a new one.
+  [`the Apple secrets come from the macos-sign environment, in macos-notarise alone`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-notarise only reads the repository and checks out macos-build's commit`](../tools/package/test/release-workflow.test.mjs),
+  [`writes the credentials to owner-only files and fails when one is missing`](../tools/package/test/release-workflow.test.mjs),
+  [`removes the credentials in an always() step before anything is uploaded`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-smoke takes the ad hoc dmg only when Developer ID is off`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-smoke checks the Developer ID, notarisation and Gatekeeper on a Mac`](../tools/package/test/release-workflow.test.mjs),
+  [`checks the certificate is a Developer ID Application of APPLE_TEAM_ID before signing`](../tools/package/test/macos-developer-id.test.mjs),
+  [`passes the password and the API key as files, never on a command line`](../tools/package/test/macos-developer-id.test.mjs),
+  [`signs in one rcodesign run, nested code inside-out with mach macos-sign's settings`](../tools/package/test/macos-developer-id.test.mjs),
+  [`the browser gets Firefox's production entitlements without the restricted pair`](../tools/package/test/macos-developer-id.test.mjs)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 
