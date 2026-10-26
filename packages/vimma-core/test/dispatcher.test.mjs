@@ -350,6 +350,8 @@ describe("copy mode: Vim motions, selection and yank keys", () => {
     ["o", "selection.swap"],
     ["i w", "selection.inner_word"],
     ["a w", "selection.a_word"],
+    ["i p", "selection.inner_block"],
+    ["a p", "selection.a_block"],
     ["Y", "selection.yank_lines"],
   ])("%s in visual mode runs %s", (keys, id) => {
     expect(last(feed(make(), "visual", keys))).toEqual({ kind: "action", action: { id } });
@@ -439,6 +441,69 @@ describe("copy mode: Vim motions, selection and yank keys", () => {
     expect(feed(make(), "normal", "f")[0]).toEqual({
       kind: "action",
       action: { id: "hint.follow" },
+    });
+  });
+});
+
+describe("element focus keys (docs/specs/element-focus.md, decision 7)", () => {
+  test.each([
+    ["v", "element.visual"],
+    ["V", "element.visual_line"],
+    ["y", "element.yank"],
+    ["+", "element.parent"],
+    ["-", "element.child"],
+    ["j", "element.next"],
+    ["k", "element.prev"],
+    ["F", "hint.element"],
+    ["esc", "mode.normal"],
+  ])("%s in element mode runs %s", (keys, id) => {
+    expect(last(feed(make(), "element", keys))).toEqual({ kind: "action", action: { id } });
+  });
+
+  test.each([
+    ["3 j", "element.next", 3],
+    ["2 k", "element.prev", 2],
+    ["2 +", "element.parent", 2],
+    ["4 -", "element.child", 4],
+  ])("a count: %s runs %s %d times", (keys, id, count) => {
+    expect(last(feed(make(), "element", keys))).toEqual({
+      kind: "action",
+      action: { id, count },
+    });
+  });
+
+  test("F in normal mode starts element focus; gF opens a link in a background tab (decision 2)", () => {
+    expect(last(feed(make(), "normal", "F"))).toEqual({
+      kind: "action",
+      action: { id: "hint.element" },
+    });
+    expect(last(feed(make(), "normal", "g F"))).toEqual({
+      kind: "action",
+      action: { id: "hint.follow_new_tab" },
+    });
+    expect(last(feed(make(), "normal", "f"))).toEqual({
+      kind: "action",
+      action: { id: "hint.follow" },
+    });
+  });
+
+  test("a config.toml that binds F to background-tab hints keeps it", () => {
+    const d = make({ modal: { normal: { F: "hint.follow_new_tab" } } });
+    expect(last(feed(d, "normal", "F"))).toEqual({
+      kind: "action",
+      action: { id: "hint.follow_new_tab" },
+    });
+    expect(last(feed(d, "normal", "g F"))).toEqual({
+      kind: "action",
+      action: { id: "hint.follow_new_tab" },
+    });
+  });
+
+  test("another plain key is no binding there (the host consumes it); chords keep theirs", () => {
+    expect(last(feed(make(), "element", "x"))).toEqual({ kind: "pass" });
+    expect(last(feed(make(), "element", "ctrl+b ?"))).toEqual({
+      kind: "action",
+      action: { id: "help.show" },
     });
   });
 });

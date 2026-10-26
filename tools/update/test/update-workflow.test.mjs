@@ -135,7 +135,7 @@ describe("update-publish.yml", () => {
       const run = runOf(job(id), "Download the release's files");
       expect(run, id).toContain('macos) files=("vimma-$v-macos-aarch64.dmg") ;;');
       expect(run, id).toContain(
-        'linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb") ;;',
+        'linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb" "vimma-$v-1.x86_64.rpm") ;;',
       );
     }
     expect(runOf(job("prepare"), "Download the release's files")).toContain(
@@ -362,7 +362,9 @@ describe("update-publish.yml", () => {
   });
 });
 
-describe("the signing job's steps, run", () => {
+// The sign job runs on ubuntu-24.04 only, and its steps rely on GNU coreutils (`date -d`, an
+// unpadded `wc -c`): under BSD tools every step fails, so the refusals would pass for nothing.
+describe.skipIf(process.platform !== "linux")("the signing job's steps, run", () => {
   /**
    * A directory holding the prepare job's artifact and a stand-in `gcloud` that signs the way
    * RSA_SIGN_RAW_PKCS1_4096 does: PKCS#1 v1.5 type-1 padding over the bytes it is sent.
@@ -432,6 +434,7 @@ esac
           tarball: { size: 1, sha512: "a".repeat(128) },
           appimage: { size: 2, sha512: "b".repeat(128) },
           deb: { size: 3, sha512: "c".repeat(128) },
+          rpm: { size: 4, sha512: "d".repeat(128) },
         },
       },
     });

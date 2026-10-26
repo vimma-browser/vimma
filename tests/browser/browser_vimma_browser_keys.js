@@ -320,15 +320,21 @@ add_task(async function esc_in_normal_mode_stops_a_load_after_the_page() {
   const tab = BrowserTestUtils.addTab(gBrowser, SLOW);
   gBrowser.selectedTab = tab;
   const browser = tab.linkedBrowser;
+  // The load starts on the tab's initial about:blank: wait for the slow page itself, or the
+  // focus wait below runs in a document the slow page then replaces.
   await TestUtils.waitForCondition(
-    () => browser.webProgress?.isLoadingDocument && VimmaHost._browserMode(browser) === "normal",
-    "the slow page is loading",
+    () =>
+      browser.currentURI?.spec === SLOW &&
+      browser.webProgress?.isLoadingDocument &&
+      VimmaHost._browserMode(browser) === "normal",
+    "the slow page is shown and still loading",
   );
   await SimpleTest.promiseFocus(browser);
   await TestUtils.waitForCondition(
     () => !document.getElementById("Browser:Stop").hasAttribute("disabled"),
     "Stop is on",
   );
+  Assert.equal(browser.currentURI.spec, SLOW, "the slow page is shown");
   EventUtils.synthesizeKey("KEY_Escape");
   await TestUtils.waitForCondition(() => !browser.webProgress.isLoadingDocument, "Esc stopped it");
   BrowserTestUtils.removeTab(tab);

@@ -143,7 +143,9 @@ describe.each(Object.keys(steps))("the %s smoke check", (id) => {
   });
 
   it("fails when the binary crashes", () => {
-    expect(step(`echo '${line}'\nkill -SEGV $$`).status).not.toBe(0);
+    // SIGKILL, not SIGSEGV: a death by signal all the same, but it leaves no core dump for
+    // systemd-coredump to journal and desktop crash watchers to announce on every test run.
+    expect(step(`echo '${line}'\nkill -KILL $$`).status).not.toBe(0);
   });
 });
 
@@ -153,6 +155,7 @@ it.each([
   ".github/workflows/release.yml",
   ".github/workflows/nightly.yml",
   "tools/package/arch-smoke.sh",
+  "tools/package/rpm-smoke.sh",
 ])("%s never merges stderr into a captured --version", (file) => {
   const text = readFileSync(join(repo, file), "utf8");
   expect(text).toContain("--version");

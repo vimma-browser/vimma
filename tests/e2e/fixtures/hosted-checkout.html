@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- m0-mcp-checkpoints: a shop's checkout that hands the payment to a provider's hosted frame
+     of another site (hosted-pay.html from localhost, while the page is on 127.0.0.1), as with a
+     saved card: the frame's own "Pay" button is the only control, so the payment checkpoint
+     names the provider's site, then the shop's. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Payment · Shop</title>
+    <style>
+      body {
+        margin: 0 auto;
+        max-width: 560px;
+        padding: 24px;
+        font: 16px/1.5 sans-serif;
+        color: #222;
+        background: #fafafa;
+      }
+      iframe {
+        display: block;
+        width: 360px;
+        height: 96px;
+        margin: 12px 0;
+        border: 1px solid #ccc;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Payment</h1>
+    <p>Your order is paid through our payment provider.</p>
+    <iframe id="provider" title="Payment provider"></iframe>
+    <script>
+      // The payment provider is another site: the same server under another host name.
+      const frame = new URL("hosted-pay.html", location.href);
+      frame.hostname = "localhost";
+      document.getElementById("provider").src = frame.href;
+    </script>
+  </body>
+</html>

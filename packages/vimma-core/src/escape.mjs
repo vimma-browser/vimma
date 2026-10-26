@@ -24,6 +24,8 @@ const EXITS = {
   visual: { id: "mode.normal", extra: { collapseSelection: true } },
   command: { id: "command.cancel" },
   hint: { id: "hint.cancel" },
+  // Leaves a focused text block with nothing selected (docs/specs/element-focus.md decision 7).
+  element: { id: "mode.normal" },
   help: { id: "help.close", back: true },
   panel: { id: "panel.close", back: true },
   resize: { id: "pane.resize_exit", back: true },

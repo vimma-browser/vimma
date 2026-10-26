@@ -15,13 +15,22 @@
  * spec upstream-beta-canary) passes MOZ_ARTIFACT_TASK, the task this tool found in the
  * mozilla-beta index, because mach's revision search never reaches that tree for Vimma's 0.x
  * display version. Then it adapts two things Mozilla's binaries compile in:
- * - the launcher is `firefox`; dist/bin/<binaryName> becomes a symlink to it, as mach expects;
+ * - the launcher is `firefox`; dist/bin/<binaryName> becomes a symlink to it, as mach expects.
+ *   On macOS the link is made before `mach build` too: browser/app/moz.build copies it into the
+ *   .app and make stops without it;
  * - the launcher's built-in app data is Mozilla's (Name=Firefox, Vendor=Mozilla). Tests run with
  *   XUL_APP_FILE=dist/bin/browser/application.ini, our application.ini plus `UAName=` from
  *   MOZ_APP_UA_NAME, which a full build compiles into libxul instead.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -133,14 +142,32 @@ export function candidateTree(versionDisplay, sourceRepo) {
 }
 
 /**
+ * The Taskcluster job whose build mach unpacks, as artifacts.py's default job picks it from the
+ * target (XP_LINUX or XP_MACOSX, TARGET_CPU) for an `-opt` build. Only the platforms Vimma builds
+ * on: x86-64 Linux and Apple Silicon.
+ * @param {string} [platform] process.platform
+ * @param {string} [arch] process.arch
+ * @returns {string}
+ */
+export function artifactJob(platform = process.platform, arch = process.arch) {
+  if (platform === "linux" && arch === "x64") return "linux64-opt";
+  if (platform === "darwin" && arch === "arm64") return "macosx64-aarch64-opt";
+  throw new Error(
+    `no artifact build for ${platform}/${arch}: Vimma's take Mozilla's linux64-opt (linux/x64) ` +
+      "or macosx64-aarch64-opt (darwin/arm64) builds",
+  );
+}
+
+/**
  * The Taskcluster index namespace artifacts.py looks up (`TaskCache.artifacts`: the tree's last
  * path part, `.shippable` for `-opt` jobs, trust domain gecko, product firefox).
  * @param {SourceStamp} stamp
+ * @param {string} [job] see artifactJob
  */
-export function indexNamespace({ tree, revision }) {
+export function indexNamespace({ tree, revision }, job = "linux64-opt") {
   // A constant per accepted tree: nothing read from the tarball but the revision reaches the URL.
   const project = tree === "releases/mozilla-beta" ? "mozilla-beta" : "mozilla-release";
-  return `gecko.v2.${project}.shippable.revision.${revision}.firefox.linux64-opt`;
+  return `gecko.v2.${project}.shippable.revision.${revision}.firefox.${job}`;
 }
 
 /**
@@ -168,14 +195,16 @@ const REMEDY =
  * @param {number} status HTTP status of the findTask call
  * @param {unknown} body its JSON body
  * @param {Date} now
+ * @param {string} [job] see artifactJob
  * @returns {{ taskId: string, expires: string }}
  */
-export function indexTask(stamp, status, body, now) {
+export function indexTask(stamp, status, body, now, job = "linux64-opt") {
   const { revision } = stamp;
+  const build = job.replace(/-opt$/, "");
   if (status === 404) {
     throw new Error(
-      `Mozilla's linux64 build of ${revision} is not in the Taskcluster index ` +
-        `(${indexNamespace(stamp)}). ${REMEDY}`,
+      `Mozilla's ${build} build of ${revision} is not in the Taskcluster index ` +
+        `(${indexNamespace(stamp, job)}). ${REMEDY}`,
     );
   }
   if (status !== 200) throw new Error(`Taskcluster index: HTTP ${status} for ${revision}`);
@@ -184,9 +213,25 @@ export function indexTask(stamp, status, body, now) {
     throw new Error(`Taskcluster index: unexpected response for ${revision}`);
   }
   if (Date.parse(task.expires) <= now.getTime()) {
-    throw new Error(`Mozilla's linux64 build of ${revision} expired ${task.expires}. ${REMEDY}`);
+    throw new Error(`Mozilla's ${build} build of ${revision} expired ${task.expires}. ${REMEDY}`);
   }
   return { taskId: task.taskId, expires: task.expires };
+}
+
+/**
+ * Links dist/bin/<binaryName> to `firefox`, Mozilla's launcher, unless something is there already.
+ * Before `mach build` the link dangles until the artifact is unpacked; the install manifests only
+ * remove files they once installed, so it survives the build.
+ * @param {string} engine path of engine/
+ * @param {string} binaryName surfer.json's binaryName (MOZ_APP_NAME)
+ * @returns {string} the launcher's path
+ */
+export function linkLauncher(engine, binaryName) {
+  const bin = join(engine, ARTIFACT_OBJDIR, "dist", "bin");
+  const launcher = join(bin, binaryName);
+  mkdirSync(bin, { recursive: true });
+  if (!existsSync(launcher) && !isSymlink(launcher)) symlinkSync("firefox", launcher);
+  return launcher;
 }
 
 /**
@@ -232,14 +277,20 @@ async function main(root) {
   const { tree: stampTree, revision } = stamp;
   if (!TREES.includes(stampTree)) throw new Error(`unexpected tree ${stampTree}`);
   if (!/^[0-9a-f]{40}$/.test(revision)) throw new Error("the source revision is not 40 hex");
-  const res0 = await fetch(INDEX_URL + indexNamespace({ tree: stampTree, revision }));
-  const { taskId, expires } = indexTask(stamp, res0.status, await res0.json(), new Date());
+  // Linux keeps the job it always looked up; only macOS asks artifactJob.
+  const job = process.platform === "darwin" ? artifactJob() : "linux64-opt";
+  const res0 = await fetch(INDEX_URL + indexNamespace({ tree: stampTree, revision }, job));
+  const { taskId, expires } = indexTask(stamp, res0.status, await res0.json(), new Date(), job);
   const artifactEnv = machArtifactEnv(stamp, taskId);
   console.log(
     `artifact-build: Mozilla binaries of ${stamp.tree} ${stamp.revision} (task ${taskId}, ` +
       `indexed until ${expires}), ${Object.keys(artifactEnv)[0]}, objdir engine/${ARTIFACT_OBJDIR}`,
   );
 
+  // browser/app/moz.build copies dist/bin/<binaryName> into the .app; make stops without it.
+  if (process.platform === "darwin") {
+    linkLauncher(engine, JSON.parse(readFileSync(join(root, "surfer.json"), "utf8")).binaryName);
+  }
   const env = { ...process.env, MOZCONFIG: mozconfig, ...artifactEnv };
   if (!("MOZ_ARTIFACT_REVISION" in artifactEnv)) delete env.MOZ_ARTIFACT_REVISION;
   const res = spawnSync("./mach", ["--no-interactive", "build"], {

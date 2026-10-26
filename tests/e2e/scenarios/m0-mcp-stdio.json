@@ -1,6 +1,6 @@
 {
   "name": "m0-mcp-stdio",
-  "description": "docs/specs/vimma-mcp.md, sub-PR 3: the real vimma-ctl mcp, spoken to over stdio as an agent tool would, on a real build. MCP initialize and tools/list answer without asking; :mcp on and y; a tools/call of vimma_open waits on the question line until y, while the window stays on main with its page selected; vimma_read_page with 15a grants 15 minutes and returns the header and the delimited text, and a second read runs unasked, and once its notice and the status bar's ran mark are gone the segment shows the grant's minutes; vimma_close_tab is denied with n and comes back as a tool error; after :mcp off a call says MCP is off. stdout carries only MCP messages throughout.",
+  "description": "docs/specs/vimma-mcp.md, sub-PR 3: the real vimma-ctl mcp, spoken to over stdio as an agent tool would, on a real build. MCP initialize and tools/list answer without asking; :mcp on and y; a tools/call of vimma_open waits on the question line until y, while the window stays on main with its page selected; vimma_read_page with 15a grants every tool for 15 minutes (mcp-grants G1) and returns the header and the delimited text, and a second read runs unasked, and once its notice and the status bar's ran mark are gone the segment shows the grant's minutes; ctrl+b shift+a ends the grant at once (G4), so vimma_close_tab asks again and is denied with n and comes back as a tool error; after :mcp off a call says MCP is off. stdout carries only MCP messages throughout.",
   "timeoutSeconds": 90,
   "steps": [
     { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
@@ -42,7 +42,14 @@
               { "name": "vimma_tabs", "annotations": { "readOnlyHint": true } },
               { "name": "vimma_read_page", "annotations": { "openWorldHint": true } },
               { "name": "vimma_open", "annotations": { "readOnlyHint": false } },
-              { "name": "vimma_close_tab", "annotations": { "destructiveHint": true } }
+              { "name": "vimma_close_tab", "annotations": { "destructiveHint": true } },
+              { "name": "vimma_keys", "annotations": { "openWorldHint": true } },
+              { "name": "vimma_show", "annotations": { "idempotentHint": true } },
+              { "name": "vimma_elements", "annotations": { "readOnlyHint": true } },
+              { "name": "vimma_activate", "annotations": { "destructiveHint": true } },
+              { "name": "vimma_fill", "annotations": { "destructiveHint": true } },
+              { "name": "vimma_screenshot", "annotations": { "readOnlyHint": true } },
+              { "name": "vimma_console", "annotations": { "readOnlyHint": true } }
             ]
           }
         }
@@ -111,6 +118,7 @@
     },
     { "sleep": 3 },
     { "screenshot": "m0-mcp-stdio-grant" },
+    { "keys": "ctrl+b shift+a" },
     { "sleep": 1.8 },
     {
       "mcp": {

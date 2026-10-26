@@ -1,0 +1,15 @@
+diff --git a/browser/components/places/PlacesUIUtils.sys.mjs b/browser/components/places/PlacesUIUtils.sys.mjs
+index 43173a656ace8853ef4cd698d4fd8cdfe9422f36..9e3d321a4401145091935a588b2a2c51c4aab08c 100644
+--- a/browser/components/places/PlacesUIUtils.sys.mjs
++++ b/browser/components/places/PlacesUIUtils.sys.mjs
+@@ -1291,6 +1291,10 @@ export var PlacesUIUtils = {
+    */
+   NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE: 3,
+   async maybeToggleBookmarkToolbarVisibility(aForceVisible = false) {
++    // Vimma (bookmarks-toolbar-hidden): an import never shows a toolbar set to never.
++    if (Services.prefs.getCharPref("browser.toolbars.bookmarks.visibility") == "never") {
++      return;
++    }
+     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
+     let xulStore = Services.xulStore;
+ 

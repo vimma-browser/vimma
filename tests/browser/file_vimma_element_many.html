@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_element.js: a long article of 2,000 paragraphs in sections. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma 2000 paragraphs</title>
+    <style>
+      body {
+        margin: 0 8px;
+        font: 14px/1.4 sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <article id="article"></article>
+    <script>
+      const article = document.getElementById("article");
+      const words = "the quick brown fox jumps over the lazy dog and keeps on running".split(" ");
+      let html = "";
+      for (let s = 0; s < 100; s++) {
+        html += `<section><h2>Section ${s}</h2>`;
+        for (let i = 0; i < 20; i++) {
+          const n = 20 + ((s * 20 + i) % 40);
+          const text = Array.from({ length: n }, (_, k) => words[(k + i) % words.length]);
+          html += `<p>${s}.${i} ${text.join(" ")} <a href="#">link</a>.</p>`;
+        }
+        html += "</section>";
+      }
+      article.innerHTML = html;
+    </script>
+  </body>
+</html>

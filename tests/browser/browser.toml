@@ -35,6 +35,16 @@ support-files = [
   "file_vimma_hints.html",
   "file_vimma_hints_frame.html",
   "file_vimma_hints_many.html",
+  "file_vimma_hints_menu.html",
+]
+
+["browser_vimma_element.js"]
+support-files = [
+  "file_vimma_element.html",
+  "file_vimma_element_frame.html",
+  "file_vimma_element_many.html",
+  "file_vimma_element_paragraphs.html",
+  "file_vimma_test.pdf",
 ]
 
 ["browser_vimma_copy_mode.js"]
@@ -67,12 +77,16 @@ skip-if = ["artifact"]
 skip-if = ["artifact"]
 
 ["browser_vimma_tabstrip.js"]
+# macOS: cmd+t and cmd+l are off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_toolbar.js"]
 support-files = ["file_vimma_plain.html", "file_vimma_mixed.js"]
 
 ["browser_vimma_toolbar_theme.js"]
 support-files = ["file_vimma_plain.html"]
+
+["browser_vimma_bookmarks_toolbar.js"]
 
 ["browser_vimma_firefox_surfaces_theme.js"]
 support-files = ["file_vimma_plain.html"]
@@ -89,6 +103,8 @@ support-files = ["head_vimma_aus.js"]
 skip-if = ["artifact"]
 
 ["browser_vimma_split_contract.js"]
+# macOS: the zoom hit test's control needs Firefox's non-macOS z-index on column 0 (#389)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_split_layout.js"]
 
@@ -130,6 +146,7 @@ support-files = ["file_vimma_search_post.sjs"]
 support-files = [
   "file_vimma_find.html",
   "file_vimma_find_field.html",
+  "file_vimma_find_site_fields.html",
   "file_vimma_find_frame.html",
   "file_vimma_test.pdf",
 ]
@@ -139,6 +156,8 @@ support-files = [
 ["browser_vimma_tab_search.js"]
 
 ["browser_vimma_live_grep.js"]
+# macOS: on the hosted runner the list does not settle after a quick reopen (#419)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_grep.html"]
 
 ["browser_vimma_rename.js"]
@@ -150,11 +169,17 @@ support-files = ["file_vimma_grep.html"]
 ["browser_vimma_workspace_store.js"]
 
 ["browser_vimma_workspace_routes.js"]
+# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_workspace_routing.js"]
+# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_cookie.html"]
 
 ["browser_vimma_workspace_switching.js"]
+# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_workspace_ops.js"]
 
@@ -170,6 +195,85 @@ support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
 ["browser_vimma_mcp_control.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
+
+["browser_vimma_mcp_keys.js"]
+support-files = [
+  "file_vimma_agent_long.html",
+  "file_vimma_agent_page.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_follow.js"]
+support-files = [
+  "file_vimma_agent_links.html",
+  "file_vimma_agent_page.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_elements.js"]
+support-files = [
+  "file_vimma_agent_form.html",
+  "file_vimma_agent_page.html",
+  "file_vimma_agent_widget.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_activate.js"]
+support-files = [
+  "file_vimma_agent_click.html",
+  "file_vimma_agent_page.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_activate_changes.js"]
+support-files = ["file_vimma_agent_basket.html", "head_vimma_control.js"]
+
+["browser_vimma_mcp_submit.js"]
+support-files = [
+  "file_vimma_agent_click.html",
+  "file_vimma_agent_page.html",
+  "file_vimma_agent_redirect.sjs",
+  "file_vimma_agent_signup.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_checkpoint.js"]
+support-files = [
+  "file_vimma_agent_checkout.html",
+  "file_vimma_agent_hosted_pay.html",
+  "file_vimma_agent_page.html",
+  "file_vimma_agent_shop.html",
+  "file_vimma_agent_shot_card.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_fill.js"]
+support-files = [
+  "file_vimma_agent_fill.html",
+  "file_vimma_agent_page.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_screenshot.js"]
+support-files = [
+  "file_vimma_agent_shot.html",
+  "file_vimma_agent_shot_card.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_console.js"]
+support-files = [
+  "file_vimma_agent_console.html",
+  "file_vimma_agent_console_frame.html",
+  "file_vimma_agent_console.sjs",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_show.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
+
+["browser_vimma_mcp_log.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
 ["browser_vimma_agent_outside_opens.js"]
@@ -191,10 +295,14 @@ support-files = [
 ["browser_vimma_workspace_picker.js"]
 
 ["browser_vimma_workspace_edges.js"]
+# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_workspace_buffer_keys.js"]
 
 ["browser_vimma_private_workspace.js"]
+# macOS: keys sent at once after a workspace switch are lost (#388)
+skip-if = ["os == 'mac'"]
 support-files = [
   "file_vimma_private_form.html",
   "file_vimma_private_download.txt",
@@ -203,6 +311,8 @@ support-files = [
 
 ["browser_vimma_private_swap.js"]
 support-files = ["file_vimma_title.html"]
+
+["browser_vimma_private_swap_native.js"]
 
 ["browser_vimma_side_panel.js"]
 
@@ -257,12 +367,15 @@ run-if = ["os == 'linux'"] # ln -s for the omarchy-theme-set symlink swap
 support-files = ["file_vimma_addon_updates.json"]
 
 ["browser_vimma_security_invariants.js"]
+support-files = ["head_vimma_control.js"]
 
 ["browser_vimma_perf.js"]
 
 ["browser_vimma_a11y.js"]
 
 ["browser_vimma_browser_keys.js"]
+# macOS: the page takes Option+arrow and Option+digit first; undo is cmd+z (#386)
+skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_plain.html", "file_vimma_slow.sjs"]
 
 ["browser_vimma_update_check.js"]
@@ -272,5 +385,13 @@ support-files = [
   "file_vimma_update_bomb.gz^headers^",
 ]
 
+["browser_vimma_update_appimage.js"]
+support-files = ["file_vimma_update_manifest.sjs", "file_vimma_update_appimage.sjs"]
+
+["browser_vimma_restart.js"]
+
 ["browser_vimma_update_notices.js"]
 support-files = ["file_vimma_update_manifest.sjs", "file_vimma_plain.html"]
+
+["browser_vimma_password_prompt.js"]
+support-files = ["file_vimma_login.html", "file_vimma_plain.html"]

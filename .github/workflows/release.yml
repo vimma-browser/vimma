@@ -220,10 +220,68 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # AppImage, .deb, PKGBUILD and SRCINFO, the AUR variant, SHA256SUMS; then install and start
-  # what was built.
-  package:
+  # vimma-ctl (spec ship-vimma-ctl), from the commit build checked, after it so there is one
+  # sha. No environment, so no secret is in reach, and a read-only token. The crate has no
+  # dependencies (ADR-011): cargo reads the crates.io index for the lockfile but fetches no crate.
+  # musl, statically linked, so the one binary runs on every distribution the packages support,
+  # whatever their glibc; the AppImage, .deb, .rpm, PKGBUILD and tarball all carry it.
+  ctl:
     needs: build
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          persist-credentials: false
+
+      # The runner image ships rustup; it installs the toolchain pinned in rust-toolchain.toml.
+      - name: Build vimma-ctl (static, musl)
+        working-directory: tools/vimma-ctl
+        run: |
+          rustup toolchain install
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --locked --target x86_64-unknown-linux-musl
+
+      # Its version is surfer.json's displayVersion (build.rs), which the build job checked
+      # against the tag.
+      - name: Check the binary
+        run: |
+          bin=tools/vimma-ctl/target/x86_64-unknown-linux-musl/release/vimma-ctl
+          file "$bin"
+          file "$bin" | grep -q 'static-pie linked' || { echo "::error::vimma-ctl is not static"; exit 1; }
+          version=$("$bin" --version)
+          [ "$version" = "vimma-ctl ${TAG#v} (protocol 2)" ] || { echo "::error::vimma-ctl --version is '$version'"; exit 1; }
+          mkdir ctl
+          cp "$bin" ctl/vimma-ctl
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # The notices of what the toolchain linked into the binary (musl, Rust's standard library,
+      # libunwind), and its SBOM entry, from the toolchain that built it (#516).
+      - name: Notices and SBOM entry for vimma-ctl
+        run: |
+          node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
+            --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ctl
+          path: ctl/
+          retention-days: 7
+          if-no-files-found: error
+
+  # AppImage, .deb, .rpm, PKGBUILD and SRCINFO, the AUR variant, SHA256SUMS, each with vimma-ctl;
+  # then install and start what was built.
+  package:
+    needs: [build, ctl]
     if: >-
       vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main'
@@ -250,21 +308,36 @@ jobs:
           name: build
           path: build
 
-      - name: Tools (appimagetool and runtime pinned by SHA-256; desktop-file-validate)
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ctl
+          path: ctl
+
+      # For validate-sbom.mjs (ajv), which checks the SBOM once vimma-ctl is in it.
+      - name: npm ci
+        run: npm ci --ignore-scripts
+
+      # rpmbuild comes from Ubuntu's archive, as dpkg-deb does from the image (spec rpm-package).
+      - name: Tools (appimagetool and runtime pinned by SHA-256; desktop-file-validate; rpmbuild)
         run: |
           tools/package/fetch-appimagetool.sh "$RUNNER_TEMP/appimagetool"
           sudo apt-get update -q
-          sudo apt-get install -y -q desktop-file-utils
+          sudo apt-get install -y -q desktop-file-utils rpm
 
       - name: Package
         run: |
           [ -n "$MAINTAINER" ] || { echo "::error::set the PACKAGE_MAINTAINER variable ('Name <email>')"; exit 1; }
           v=${TAG#v}
           tarball=$(echo build/vimma-*.en-US.linux-x86_64.tar.xz)
-          node tools/package/package.mjs --tarball "$tarball" --out dist --tag "$TAG" \
+          # download-artifact does not keep the mode
+          chmod 755 ctl/vimma-ctl
+          node tools/package/package.mjs --tarball "$tarball" --ctl ctl/vimma-ctl \
+            --ctl-licenses ctl/vimma-ctl-licenses --out dist --tag "$TAG" \
             --maintainer "$MAINTAINER" --repo "$GITHUB_REPOSITORY" --sbom "build/vimma-$v.cdx.json" \
+            --ctl-component ctl/vimma-ctl.cdx.json \
             --appimagetool "$RUNNER_TEMP/appimagetool/appimagetool" \
             --runtime "$RUNNER_TEMP/appimagetool/runtime-x86_64"
+          node tools/package/validate-sbom.mjs "dist/vimma-$v.cdx.json"
           (cd dist && sha256sum -c SHA256SUMS)
 
       - name: Smoke test the .deb and the AppImage
@@ -273,6 +346,10 @@ jobs:
           line=$(node tools/release/version-line.mjs)
           sudo apt-get install -y -q "./dist/vimma_${v}_amd64.deb"
           [ "$(vimma --version)" = "$line" ] || { echo "::error::.deb: $(vimma --version)"; exit 1; }
+          # vimma-ctl ships in every package with the browser's version (spec ship-vimma-ctl).
+          ctl="vimma-ctl $v (protocol 2)"
+          [ "$(vimma-ctl --version)" = "$ctl" ] || { echo "::error::.deb: $(vimma-ctl --version)"; exit 1; }
+          test -s /usr/lib/vimma/vimma-ctl-licenses/musl-COPYRIGHT
           desktop-file-validate /usr/share/applications/vimma-vimma.desktop
           test -x /usr/bin/vimma-open
           # The update check's install type (spec m6a-updater §3): a .deb is updated by apt, an
@@ -282,6 +359,8 @@ jobs:
           # A separate assignment, so a tar failure stops the step under bash -e.
           listing=$(tar -tJf "./dist/vimma-$v-linux-x86_64.tar.xz")
           case "$listing" in *is-packaged-app*) echo "::error::the tarball carries is-packaged-app"; exit 1 ;; esac
+          case "$listing" in *"vimma/vimma-ctl"*) ;; *) echo "::error::the tarball has no vimma/vimma-ctl"; exit 1 ;; esac
+          case "$listing" in *"vimma/vimma-ctl-licenses/musl-COPYRIGHT"*) ;; *) echo "::error::the tarball has no vimma-ctl notices"; exit 1 ;; esac
           p=$(mktemp -d)
           # First run creates the profile; --screenshot on a fresh profile races the bookmarks
           # import (docs/runbook.md, Smoke check). timeout exits 124.
@@ -291,10 +370,21 @@ jobs:
           out=$(APPIMAGE_EXTRACT_AND_RUN=1 "./dist/vimma-$v-x86_64.AppImage" --version)
           [ "$out" = "$line" ] || { echo "::error::AppImage: $out"; exit 1; }
           appimage="$PWD/dist/vimma-$v-x86_64.AppImage"
+          # A link named vimma-ctl to the AppImage runs the client inside it (AppRun reads $ARGV0).
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -s "$appimage" "$RUNNER_TEMP/bin/vimma-ctl"
+          [ "$(APPIMAGE_EXTRACT_AND_RUN=1 "$RUNNER_TEMP/bin/vimma-ctl" --version)" = "$ctl" ] \
+            || { echo "::error::AppImage as vimma-ctl: wrong version"; exit 1; }
           (cd "$RUNNER_TEMP" && "$appimage" --appimage-extract > /dev/null)
           # Without $APPIMAGE, so the type comes from the AppDir's marker alone (decision 34).
           type=$(env -u APPIMAGE node tools/package/install-type.mjs "$RUNNER_TEMP/squashfs-root/usr/lib/vimma")
           [ "$type" = appimage ] || { echo "::error::AppImage: install type $type"; exit 1; }
+
+      # dnf on Fedora and zypper on openSUSE, each in a container pinned by digest (spec
+      # rpm-package): the requirements rpmbuild read from the binaries resolve on both, and the
+      # installed Vimma starts.
+      - name: Smoke test the .rpm on Fedora and openSUSE
+        run: tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"
 
       # makepkg -si in an Arch Linux container, with the tarball served from dist/ on localhost
       # (the draft has no assets yet, and a draft's download URLs answer 404 to anyone); the
@@ -419,8 +509,80 @@ jobs:
   # until the repository variable MACOS_RELEASE_ENABLED is `true` (docs/runbook.md, "macOS build").
   # The Homebrew cask, vimma.rb, is rendered beside the dmg and travels with it (spec
   # macos-homebrew, decision 9); homebrew.yml pushes the published release's copy to the tap.
+  # vimma-ctl for the Mac (spec ship-vimma-ctl), built natively on a hosted Mac, since the
+  # cross-build runner has no linker for a standalone Mach-O binary. It checks the tag as build
+  # does; macos-build then refuses a binary from any other commit and signs it into the app.
+  macos-ctl:
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' &&
+      vars.MACOS_RELEASE_ENABLED == 'true'
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+    steps:
+      - name: Check the tag's form
+        run: |
+          echo "$TAG" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+' \
+            || { echo "::error::'$TAG' is not a vX.Y.Z release tag"; exit 1; }
+
+      - name: The tag is on main
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)
+          echo "$sha" | grep -Eqx '[0-9a-f]{40}' || { echo "::error::$TAG: no commit"; exit 1; }
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...refs/heads/main" --jq .status)
+          case "$status" in
+            ahead|identical) ;;
+            *) echo "::error::$TAG ($sha) is not on main (compare: $status)"; exit 1 ;;
+          esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.tag.outputs.sha }}
+          persist-credentials: false
+
+      - name: Build vimma-ctl
+        working-directory: tools/vimma-ctl
+        run: |
+          rustup toolchain install
+          cargo build --release --locked
+
+      - name: Check the binary
+        run: |
+          bin=tools/vimma-ctl/target/release/vimma-ctl
+          lipo -archs "$bin" | grep -qx arm64 || { echo "::error::vimma-ctl is not arm64"; exit 1; }
+          version=$("$bin" --version)
+          [ "$version" = "vimma-ctl ${TAG#v} (protocol 2)" ] || { echo "::error::vimma-ctl --version is '$version'"; exit 1; }
+          mkdir ctl
+          cp "$bin" ctl/vimma-ctl
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Rust's standard library notices, from the toolchain that built the binary (#516); macOS
+      # provides libc and the unwinder. The release SBOM describes the Linux packages only.
+      - name: Notices for vimma-ctl
+        run: |
+          node tools/package/ctl-notices.mjs --out ctl/vimma-ctl-licenses
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-ctl
+          path: ctl/
+          retention-days: 7
+          if-no-files-found: error
+
   # As build: the same tag checks, verified source, no cache, the Safe Browsing key (B6).
   macos-build:
+    needs: macos-ctl
     if: >-
       vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
@@ -454,10 +616,22 @@ jobs:
           esac
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
+      - name: vimma-ctl comes from the same commit
+        env:
+          CTL_SHA: ${{ needs.macos-ctl.outputs.sha }}
+          SHA: ${{ steps.tag.outputs.sha }}
+        run: |
+          [ "$CTL_SHA" = "$SHA" ] || { echo "::error::macos-ctl built $CTL_SHA, the tag is now $SHA"; exit 1; }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.tag.outputs.sha }}
           persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-ctl
+          path: ctl
 
       # No `cache` input: a build restores nothing from the Actions cache (B2).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -540,7 +714,13 @@ jobs:
       - name: Package, ad hoc sign and checksum the dmg
         env:
           RCODESIGN: ${{ runner.temp }}/rcodesign/rcodesign
+          # signed into Vimma.app/Contents/MacOS with the app (spec ship-vimma-ctl)
+          VIMMA_CTL: ${{ github.workspace }}/ctl/vimma-ctl
+          # its notices, into Vimma.app/Contents/Resources (#516)
+          VIMMA_CTL_LICENSES: ${{ github.workspace }}/ctl/vimma-ctl-licenses
         run: |
+          # download-artifact does not keep the mode
+          chmod 755 "$VIMMA_CTL"
           (cd engine && ./mach package)
           rm -rf release-macos && mkdir release-macos
           dmg="vimma-${TAG#v}-macos-aarch64.dmg"
@@ -597,6 +777,8 @@ jobs:
           (cd release-macos && shasum -a 256 -c SHA256SUMS-macos)
           hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/vimma-dmg" \
             "release-macos/vimma-${TAG#v}-macos-aarch64.dmg"
+          # Vimma's window art and volume icon, kept through the repack (spec macos-homebrew)
+          tools/package/macos-dmg-check.sh "$RUNNER_TEMP/vimma-dmg"
           ditto "$RUNNER_TEMP/vimma-dmg/Vimma.app" "$RUNNER_TEMP/Vimma.app"
           hdiutil detach "$RUNNER_TEMP/vimma-dmg"
           echo "APP=$RUNNER_TEMP/Vimma.app" >> "$GITHUB_ENV"
@@ -609,6 +791,9 @@ jobs:
           expected=$(node tools/release/version-line.mjs)
           case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;; *) echo "::error::surfer.json gives '$expected', tag is $TAG"; exit 1 ;; esac
           [ "$version" = "$expected" ] || { echo "::error::--version is '$version', want '$expected'"; exit 1; }
+          ctl=$("$APP/Contents/MacOS/vimma-ctl" --version)
+          [ "$ctl" = "vimma-ctl ${TAG#v} (protocol 2)" ] || { echo "::error::vimma-ctl --version is '$ctl'"; exit 1; }
+          test -s "$APP/Contents/Resources/vimma-ctl-licenses/rust-std-COPYRIGHT.html"
           appconstants=$(unzip -p "$APP/Contents/Resources/omni.ja" modules/AppConstants.sys.mjs)
           echo "$appconstants" | grep -q 'MOZ_GOOGLE_SAFEBROWSING_API_KEY' \
             || { echo "::error::no Safe Browsing key constant in AppConstants"; exit 1; }
@@ -756,9 +941,11 @@ jobs:
   failure:
     needs:
       - build
+      - ctl
       - package
       - sign
       - publish
+      - macos-ctl
       - macos-build
       - macos-smoke
       - macos-sign

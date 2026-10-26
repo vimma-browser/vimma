@@ -1,0 +1,13 @@
+{
+  "description": "A list names its tab only, never a selector",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 11,
+    "command": "agent-elements",
+    "args": {
+      "tab": "12",
+      "selector": "form"
+    }
+  }
+}

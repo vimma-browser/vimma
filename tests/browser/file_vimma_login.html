@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_password_prompt.js: a login form. With ?stay it posts into a frame,
+   - as a single-page app's login does, so the page stays and focus stays in its field. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma login page</title>
+  </head>
+  <body>
+    <form id="form" action="file_vimma_plain.html" method="get">
+      <input id="user" name="user" autocomplete="username" />
+      <input id="pass" name="pass" type="password" autocomplete="current-password" />
+      <button id="submit" type="submit">log in</button>
+    </form>
+    <iframe name="sink" title="sink"></iframe>
+    <script>
+      if (location.search === "?stay") document.getElementById("form").target = "sink";
+    </script>
+  </body>
+</html>

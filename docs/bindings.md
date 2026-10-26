@@ -130,6 +130,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Reopen the last closed window                     | `restore_window`           | `ctrl+shift+n`            |
 | Quit (asks first)                                 | `quit`                     | `ctrl+q`                  |
 | Check for a newer Vimma                           | `check_updates`            | —                         |
+| Restart Vimma; an installed update applies        | `restart`                  | —                         |
 | Reload, bypassing the cache                       | `reload_hard`              | `ctrl+f5`, `ctrl+shift+r` |
 | Stop loading the page                             | `stop_loading`             | `esc`                     |
 | Run a Firefox command or key by its id (:firefox) | `firefox_command`          | —                         |
@@ -179,11 +180,24 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Hints
 
-| Action                 | Config name           | Bindings     |
-| ---------------------- | --------------------- | ------------ |
-| Follow link            | `follow_link`         | `f`          |
-| Follow link in new tab | `follow_link_new_tab` | `F`          |
-| Leave hint mode        | `hint_cancel`         | `esc [hint]` |
+| Action                                        | Config name           | Bindings           |
+| --------------------------------------------- | --------------------- | ------------------ |
+| Follow link                                   | `follow_link`         | `f`                |
+| Follow link in new tab                        | `follow_link_new_tab` | `gF`               |
+| Focus a text block: v selects it, y copies it | `focus_element`       | `F`, `F [element]` |
+| Leave hint mode                               | `hint_cancel`         | `esc [hint]`       |
+
+## Element focus
+
+| Action                                        | Config name           | Bindings      |
+| --------------------------------------------- | --------------------- | ------------- |
+| Select the focused block in copy mode         | `element_visual`      | `v [element]` |
+| Select the focused block's lines in copy mode | `element_visual_line` | `V [element]` |
+| Copy the focused block's text                 | `element_yank`        | `y [element]` |
+| Focus the block around this one               | `element_parent`      | `+ [element]` |
+| Focus back down, or the first block inside    | `element_child`       | `- [element]` |
+| Focus the next block                          | `element_next`        | `j [element]` |
+| Focus the previous block                      | `element_prev`        | `k [element]` |
 
 ## Find
 
@@ -200,49 +214,51 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Modes
 
-| Action                                 | Config name      | Bindings                       |
-| -------------------------------------- | ---------------- | ------------------------------ |
-| Back to normal mode                    | `normal_mode`    | `esc [insert]`, `esc [visual]` |
-| Insert mode: focus the last-used input | `insert_mode`    | `i`                            |
-| Copy mode (caret browsing + selection) | `copy_mode`      | `ctrl+b [`, `v`                |
-| Command line                           | `command_line`   | `:`                            |
-| Close the command line                 | `command_cancel` | `esc [command]`                |
+| Action                                 | Config name      | Bindings                                        |
+| -------------------------------------- | ---------------- | ----------------------------------------------- |
+| Back to normal mode                    | `normal_mode`    | `esc [insert]`, `esc [visual]`, `esc [element]` |
+| Insert mode: focus the last-used input | `insert_mode`    | `i`                                             |
+| Copy mode (caret browsing + selection) | `copy_mode`      | `ctrl+b [`, `v`                                 |
+| Command line                           | `command_line`   | `:`                                             |
+| Close the command line                 | `command_cancel` | `esc [command]`                                 |
 
 ## Copy mode
 
-| Action                                      | Config name           | Bindings      |
-| ------------------------------------------- | --------------------- | ------------- |
-| Move caret left                             | `caret_left`          | `h [visual]`  |
-| Move caret down                             | `caret_down`          | `j [visual]`  |
-| Move caret up                               | `caret_up`            | `k [visual]`  |
-| Move caret right                            | `caret_right`         | `l [visual]`  |
-| Move caret a word forward                   | `caret_word_forward`  | `w [visual]`  |
-| Move caret a word back                      | `caret_word_backward` | `b [visual]`  |
-| Move caret to the start of the line         | `caret_line_start`    | `0 [visual]`  |
-| Move caret to the end of the line           | `caret_line_end`      | `$ [visual]`  |
-| Move caret to the top of the page           | `caret_top`           | `gg [visual]` |
-| Move caret to the bottom of the page        | `caret_bottom`        | `G [visual]`  |
-| Move caret to the end of the word           | `caret_word_end`      | `e [visual]`  |
-| Move caret to the previous word's end       | `caret_prev_word_end` | `ge [visual]` |
-| Move caret to the next WORD (by spaces)     | `caret_bigword_next`  | `W [visual]`  |
-| Move caret to the WORD's start              | `caret_bigword_back`  | `B [visual]`  |
-| Move caret to the end of the WORD           | `caret_bigword_end`   | `E [visual]`  |
-| Move caret to the line's first non-blank    | `caret_first_char`    | `^ [visual]`  |
-| Move caret to the paragraph's start         | `caret_para_back`     | `{ [visual]`  |
-| Move caret to the paragraph's end           | `caret_para_next`     | `} [visual]`  |
-| Find a character forward on the line        | `caret_find_forward`  | `f [visual]`  |
-| Find a character backward on the line       | `caret_find_backward` | `F [visual]`  |
-| Till a character forward on the line        | `caret_till_forward`  | `t [visual]`  |
-| Till a character backward on the line       | `caret_till_backward` | `T [visual]`  |
-| Repeat the last f, F, t or T                | `caret_find_repeat`   | `; [visual]`  |
-| Repeat the last find, reversed              | `caret_find_reverse`  | `, [visual]`  |
-| Start or drop a selection at the caret      | `toggle_selection`    | `v [visual]`  |
-| Start or drop a line-wise selection         | `line_selection`      | `V [visual]`  |
-| Swap the selection's ends                   | `swap_selection_ends` | `o [visual]`  |
-| Select the word at the caret                | `select_inner_word`   | `iw [visual]` |
-| Select the word at the caret and its spaces | `select_a_word`       | `aw [visual]` |
-| Copy selection and leave copy mode          | `yank_selection`      | `y [visual]`  |
-| Copy the selection's whole lines and leave  | `yank_lines`          | `Y [visual]`  |
+| Action                                           | Config name           | Bindings      |
+| ------------------------------------------------ | --------------------- | ------------- |
+| Move caret left                                  | `caret_left`          | `h [visual]`  |
+| Move caret down                                  | `caret_down`          | `j [visual]`  |
+| Move caret up                                    | `caret_up`            | `k [visual]`  |
+| Move caret right                                 | `caret_right`         | `l [visual]`  |
+| Move caret a word forward                        | `caret_word_forward`  | `w [visual]`  |
+| Move caret a word back                           | `caret_word_backward` | `b [visual]`  |
+| Move caret to the start of the line              | `caret_line_start`    | `0 [visual]`  |
+| Move caret to the end of the line                | `caret_line_end`      | `$ [visual]`  |
+| Move caret to the top of the page                | `caret_top`           | `gg [visual]` |
+| Move caret to the bottom of the page             | `caret_bottom`        | `G [visual]`  |
+| Move caret to the end of the word                | `caret_word_end`      | `e [visual]`  |
+| Move caret to the previous word's end            | `caret_prev_word_end` | `ge [visual]` |
+| Move caret to the next WORD (by spaces)          | `caret_bigword_next`  | `W [visual]`  |
+| Move caret to the WORD's start                   | `caret_bigword_back`  | `B [visual]`  |
+| Move caret to the end of the WORD                | `caret_bigword_end`   | `E [visual]`  |
+| Move caret to the line's first non-blank         | `caret_first_char`    | `^ [visual]`  |
+| Move caret to the paragraph's start              | `caret_para_back`     | `{ [visual]`  |
+| Move caret to the paragraph's end                | `caret_para_next`     | `} [visual]`  |
+| Find a character forward on the line             | `caret_find_forward`  | `f [visual]`  |
+| Find a character backward on the line            | `caret_find_backward` | `F [visual]`  |
+| Till a character forward on the line             | `caret_till_forward`  | `t [visual]`  |
+| Till a character backward on the line            | `caret_till_backward` | `T [visual]`  |
+| Repeat the last f, F, t or T                     | `caret_find_repeat`   | `; [visual]`  |
+| Repeat the last find, reversed                   | `caret_find_reverse`  | `, [visual]`  |
+| Start or drop a selection at the caret           | `toggle_selection`    | `v [visual]`  |
+| Start or drop a line-wise selection              | `line_selection`      | `V [visual]`  |
+| Swap the selection's ends                        | `swap_selection_ends` | `o [visual]`  |
+| Select the word at the caret                     | `select_inner_word`   | `iw [visual]` |
+| Select the word at the caret and its spaces      | `select_a_word`       | `aw [visual]` |
+| Select the text block at the caret               | `select_inner_block`  | `ip [visual]` |
+| Select the block at the caret; again: its parent | `select_a_block`      | `ap [visual]` |
+| Copy selection and leave copy mode               | `yank_selection`      | `y [visual]`  |
+| Copy the selection's whole lines and leave       | `yank_lines`          | `Y [visual]`  |
 
 ## Side panel
 

@@ -5,13 +5,16 @@
 /**
  * The private workspace swapped in place on Hyprland (docs/specs/private-swap.md, ADR-017).
  * Pure: finding the sockets, the closed command set in both of Hyprland's dispatch dialects,
- * the reply and event parsers, the plan for "show X in Y's place", and the pair's state. The
- * host does the I/O (host/hypr/HyprIpc.sys.mjs, host/private-swap.mjs).
+ * the reply and event parsers, the plan for "show X in Y's place", and Hyprland's events for the
+ * pair (privatepair.mjs). The host does the I/O (host/hypr/HyprIpc.sys.mjs,
+ * host/private-swap.mjs).
  *
  * With a Lua config, Hyprland runs `dispatch X` as Lua in the compositor, so a command is code.
  * The encoder takes no free text: only window addresses, workspace ids, a workspace name from a
  * strict character set, integers and the constant PARK. Anything else refuses (decision 4).
  */
+
+import { pairStep as neutralStep, parkedWindow } from "./privatepair.mjs";
 
 /** Where the window not in use waits: a special workspace, hidden unless toggled. */
 export const PARK = "special:vimma";
@@ -512,85 +515,29 @@ export function planShow(dialect, show, place) {
 
 /**
  * The normal window private was entered from and the private window shown in its place; at most
- * one of them is parked. In memory only (decision 8).
- * @typedef {{ normal: string, private: string, parked: "normal" | "private" } | null} Pair
+ * one of them is parked. In memory only (decision 8). Window identifiers are Hyprland addresses.
+ * @typedef {import("./privatepair.mjs").Pair} Pair
  */
 
+/** @typedef {import("./privatepair.mjs").ShowOp} ShowOp */
+
 /**
- * @typedef {{ type: "enter", normal: string, private: string }
- *   | { type: "leave" }
- *   | { type: "closing", window: string }
- *   | { type: "activated", window: string }
- *   | { type: "moved", window: string, workspace: string }
- *   | { type: "failed" }} PairEvent
+ * Hyprland's pair events: core's backend-neutral ones (privatepair.mjs), and `moved` for a
+ * movewindowv2 event, which ends the pair only when the parked window left special:vimma.
+ * @typedef {import("./privatepair.mjs").PairEvent
+ *   | { type: "moved", window: string, workspace: string }} PairEvent
  */
 
-/** @typedef {{ show: string, place: string }} ShowOp */
-
-/** @param {Pair} pair @returns {string | null} the parked window's address */
-export function parkedWindow(pair) {
-  if (!pair) return null;
-  return pair.parked === "normal" ? pair.normal : pair.private;
-}
-
-/** @param {NonNullable<Pair>} pair @param {string} w */
-const otherOf = (pair, w) => (w === pair.normal ? pair.private : pair.normal);
+export { parkedWindow };
 
 /**
- * The pair's state machine (decisions 6, 7): what to show where, in order, and the next state.
+ * The pair's state machine (decisions 6, 7), privatepair.mjs's, for Hyprland's events.
  * @param {Pair} pair
  * @param {PairEvent} event
  * @returns {{ state: Pair, ops: ShowOp[] }}
  */
 export function pairStep(pair, event) {
-  const parked = parkedWindow(pair);
-  switch (event.type) {
-    case "enter": {
-      const next = /** @type {Pair} */ ({
-        normal: event.normal,
-        private: event.private,
-        parked: "normal",
-      });
-      if (pair?.parked === "normal") {
-        if (pair.normal === event.normal && pair.private === event.private) {
-          return { state: pair, ops: [] };
-        }
-        // Another normal window, or another private one: the parked window comes back first.
-        return {
-          state: next,
-          ops: [
-            { show: pair.normal, place: pair.private },
-            { show: event.private, place: event.normal },
-          ],
-        };
-      }
-      return { state: next, ops: [{ show: event.private, place: event.normal }] };
-    }
-    case "leave":
-      if (pair?.parked !== "normal") return { state: pair, ops: [] };
-      return {
-        state: { ...pair, parked: "private" },
-        ops: [{ show: pair.normal, place: pair.private }],
-      };
-    case "closing": {
-      if (!pair || (event.window !== pair.normal && event.window !== pair.private)) {
-        return { state: pair, ops: [] };
-      }
-      const other = otherOf(pair, event.window);
-      return { state: null, ops: other === parked ? [{ show: other, place: event.window }] : [] };
-    }
-    case "activated":
-      if (!pair || event.window !== parked) return { state: pair, ops: [] };
-      return {
-        state: { ...pair, parked: pair.parked === "normal" ? "private" : "normal" },
-        ops: [{ show: event.window, place: otherOf(pair, event.window) }],
-      };
-    case "moved":
-      if (!pair || event.window !== parked || event.workspace === PARK) {
-        return { state: pair, ops: [] };
-      }
-      return { state: null, ops: [] };
-    default:
-      return { state: null, ops: [] };
-  }
+  if (event.type !== "moved") return neutralStep(pair, event);
+  if (event.workspace === PARK) return { state: pair, ops: [] };
+  return neutralStep(pair, { type: "unparked", window: event.window });
 }

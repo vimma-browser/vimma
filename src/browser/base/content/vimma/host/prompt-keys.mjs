@@ -8,7 +8,8 @@
 // its buttons (where Firefox's own Tab, arrow keys, Enter and Space work), and Esc stays
 // Firefox's. As the agent question line (agent-ui.mjs), the prompt never takes focus by itself,
 // a key counts only once it is armed, and a key typed on through it (any key) starts the delay
-// again, so typing never answers it; keys typed in a field are the field's. The delay is
+// again, so typing never answers it; keys typed in a field are the field's, the prompt's own
+// fields included (the password prompt's username and password). The delay is
 // Firefox's own for these prompts (security.notification_enable_delay), whose buttons also
 // refuse a click before it (PopupNotifications._onButtonEvent). A line in the prompt names the
 // keys once it is armed.
@@ -37,6 +38,8 @@ const EVENTS = ["popupshowing", "popupshown", "popuppositioned", "popuphidden", 
  * @property {() => boolean} inField  focus is in an editable field (insert mode)
  * @property {() => boolean} otherOpen  a picker, prompt, panel or the command line of Vimma's
  * @property {() => boolean} pending  a key sequence is under way (after ctrl+b)
+ * @property {() => boolean} modeKeys  the mode types its own letters (hint, copy, element mode);
+ *   `otherOpen` covers it too, this only words the keys line
  */
 
 /** @param {any} node  an element, possibly in a shadow root */
@@ -145,15 +148,55 @@ export class PromptKeys {
       (n.buttonGroup ?? n).before(hint);
     }
     const secondaryHidden = n.hasAttribute("secondarybuttonhidden");
+    const focus = this.focusIn(n);
     const text = doorhangerHint({
       main: n.getAttribute("buttonlabel") ?? "",
       secondary: secondaryHidden ? "" : (n.getAttribute("secondarybuttonlabel") ?? ""),
+      // Hint, copy and element mode keep y and n as well; Esc leaves them too.
+      inField: (focus.inField || this.host.modeKeys()) && !focus.inPrompt,
     });
     if (hint.textContent !== text) {
       hint.removeAttribute(ARMED_ATTR);
       hint.textContent = text;
     }
     return hint;
+  }
+
+  /**
+   * Where focus is, as `doorhangerKey` needs it: in a field (insert mode), inside the prompt `n`,
+   * and in one of the prompt's own text fields.
+   * @param {any} n
+   */
+  focusIn(n) {
+    const focused = /** @type {any} */ (this.win.document).commandDispatcher?.focusedElement;
+    // A prompt opened with `autofocus` (the add-on install prompt, ExtensionsUI) focuses the
+    // panel itself and no element in it, so no field has focus; PopupNotifications sets
+    // `noautofocus` back on the panel when it closes.
+    const panelFocused = !focused && !n.parentNode?.hasAttribute("noautofocus");
+    const inPrompt = panelFocused || hostChain(focused).includes(n);
+    // The password prompt's fields keep their <input> in a shadow root.
+    let inner = focused;
+    while (inner?.shadowRoot?.activeElement) inner = inner.shadowRoot.activeElement;
+    const editable =
+      !!inner &&
+      (inner.mozIsTextField?.(false) || inner.localName === "textarea" || inner.isContentEditable);
+    return {
+      inField: !panelFocused && this.host.inField(),
+      inPrompt,
+      promptField: inPrompt && editable,
+    };
+  }
+
+  /**
+   * After the mode may have changed (focus left a field, or went into one): the keys line of an
+   * open prompt follows.
+   */
+  refresh() {
+    const n = this.notification;
+    const hint = n?.querySelector(`.${HINT_CLASS}`);
+    if (!hint) return;
+    const before = hint.textContent;
+    if (this.hintFor(n).textContent !== before) this.arm(n);
   }
 
   /**
@@ -190,17 +233,10 @@ export class PromptKeys {
     this.lastKeyAt = now;
     this.arm(n);
     if (this.host.otherOpen()) return false;
-    const focused = /** @type {any} */ (this.win.document).commandDispatcher?.focusedElement;
-    // A prompt opened with `autofocus` (the add-on install prompt, ExtensionsUI) focuses the
-    // panel itself and no element in it, so no field has focus; PopupNotifications sets
-    // `noautofocus` back on the panel when it closes.
-    const panelFocused = !focused && !n.parentNode?.hasAttribute("noautofocus");
-    const inPrompt = panelFocused || hostChain(focused).includes(n);
     const result = doorhangerKey(formatKey(chord), {
       open: true,
       armed,
-      inField: !panelFocused && this.host.inField(),
-      inPrompt,
+      ...this.focusIn(n),
       pending: this.host.pending(),
       repeat: e.repeat,
     });

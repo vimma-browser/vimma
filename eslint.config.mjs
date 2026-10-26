@@ -115,6 +115,19 @@ export default [
     languageOptions: { globals: { Cu: "readonly" } },
   },
   {
+    // Element focus (docs/specs/element-focus.md): `y` serializes a block with the plain-text
+    // document encoder (Cu.createDocumentEncoder), and a frame finds its subframe's element by
+    // its browsing context.
+    files: ["src/**/vimma/actors/block.mjs"],
+    languageOptions: { globals: { BrowsingContext: "readonly", Cu: "readonly" } },
+  },
+  {
+    // An agent submission's test hook is read only under a harness: Cu.isInAutomation
+    // (docs/security.md M28).
+    files: ["src/**/vimma/actors/VimmaChild.sys.mjs"],
+    languageOptions: { globals: { Cu: "readonly" } },
+  },
+  {
     // Agent pages launch no app: the component registrar wraps the external-protocol chooser
     // (docs/security.md M10).
     files: ["src/**/vimma/ctl/AgentPages.sys.mjs"],
@@ -124,6 +137,12 @@ export default [
     // Agent downloads (docs/specs/vimma-mcp.md decision 31): the registrar wraps the helper-app
     // dialog, and a download's browsing context says which tab and container it came from.
     files: ["src/**/vimma/ctl/AgentDownloads.sys.mjs"],
+    languageOptions: { globals: { BrowsingContext: "readonly", Components: "readonly" } },
+  },
+  {
+    // vimma_console (docs/specs/mcp-forms.md F22, F24): a failed request's channel status, and
+    // whether a tab whose request log is kept still exists.
+    files: ["src/**/vimma/ctl/AgentConsole.sys.mjs"],
     languageOptions: { globals: { BrowsingContext: "readonly", Components: "readonly" } },
   },
   {

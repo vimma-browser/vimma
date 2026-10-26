@@ -1,0 +1,66 @@
+[
+  {
+    "id": "wikipedia",
+    "licence": "CC BY-SA 4.0",
+    "recorded": "2026-10-21",
+    "expect": {
+      "load": "pass",
+      "scroll": "pass",
+      "find": "pass",
+      "yank": "pass",
+      "insert": "pass",
+      "prefix": "pass",
+      "hints": "pass",
+      "errors": "pass",
+      "statusbar": "pass"
+    }
+  },
+  {
+    "id": "mdn",
+    "licence": "CC BY-SA 2.5",
+    "recorded": "2026-10-21",
+    "expect": {
+      "load": "pass",
+      "scroll": "pass",
+      "find": "pass",
+      "yank": "pass",
+      "insert": "skip",
+      "prefix": "pass",
+      "hints": "pass",
+      "errors": "pass",
+      "statusbar": "pass"
+    }
+  },
+  {
+    "id": "python-docs",
+    "licence": "PSF-2.0",
+    "recorded": "2026-10-21",
+    "expect": {
+      "load": "pass",
+      "scroll": "pass",
+      "find": "pass",
+      "yank": "pass",
+      "insert": "pass",
+      "prefix": "pass",
+      "hints": "pass",
+      "errors": "pass",
+      "statusbar": "pass"
+    }
+  },
+  {
+    "id": "rust-std",
+    "licence": "MIT OR Apache-2.0",
+    "recorded": "2026-10-21",
+    "expect": {
+      "load": "pass",
+      "scroll": "pass",
+      "find": "pass",
+      "yank": "pass",
+      "insert": "skip",
+      "prefix": "pass",
+      "hints": "pass",
+      "errors": "pass",
+      "statusbar": "pass"
+    }
+  }
+]

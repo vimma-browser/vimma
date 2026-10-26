@@ -42,6 +42,7 @@ const { DownloadIntegration } = ChromeUtils.importESModule(
   "resource://gre/modules/DownloadIntegration.sys.mjs",
 );
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 const ARMING = "security.dialog_enable_delay";
@@ -136,8 +137,9 @@ async function fakeClam(mode, { owned = false, defs = 0 } = {}) {
  * @param {number | "none"} defs  days old, or no date
  */
 function version(defs) {
-  const date =
-    defs === "none" ? "" : `/28156/$(date -d '${defs} days ago' '+%a %b %e %H:%M:%S %Y')`;
+  // macOS has BSD date(1), without GNU's -d.
+  const ago = AppConstants.platform === "macosx" ? `-v-${defs}d` : `-d '${defs} days ago'`;
+  const date = defs === "none" ? "" : `/28156/$(date ${ago} '+%a %b %e %H:%M:%S %Y')`;
   return `for a; do [ "$a" = --version ] && { echo "ClamAV 1.5.4${date}"; exit 0; }; done`;
 }
 
@@ -720,9 +722,25 @@ add_task(async function test_clamav_stale_definitions_and_clamd() {
   Assert.ok(r.ok, "saved");
   Assert.deepEqual(await dscanned(), [], "a clamdscan and config of the user's own are not used");
 
-  // The socket's owner, from statx: root's folder is root's and not a socket.
+  // The socket's owner, from statx (Linux) or lstat (macOS): root's folder is root's and not
+  // a socket; a Unix socket of the user's is a socket, owned by someone other than root.
   Assert.deepEqual(AgentDownloads._socketOwnerForTests("/"), { isSocket: false, uid: 0 });
   Assert.equal(AgentDownloads._socketOwnerForTests(PathUtils.join(clamDir, "none")), null);
+  if (AppConstants.platform === "macosx") {
+    // root:admin (0:80), so reading st_gid for st_uid would fail here. Linux has no such path
+    // on every distribution, and its statx fields are named, not laid out by hand.
+    Assert.deepEqual(AgentDownloads._socketOwnerForTests("/Applications"), {
+      isSocket: false,
+      uid: 0,
+    });
+  }
+  const sock = new FileUtils.File(PathUtils.join(clamDir, "s.ctl"));
+  const server = Cc["@mozilla.org/network/server-socket;1"].createInstance(Ci.nsIServerSocket);
+  server.initWithFilename(sock, 0o600, -1);
+  const owner = AgentDownloads._socketOwnerForTests(sock.path);
+  server.close();
+  Assert.equal(owner?.isSocket, true, "a Unix socket is a socket");
+  Assert.ok(Number.isInteger(owner?.uid) && owner?.uid !== 0, "the user's socket is not root's");
   BrowserTestUtils.removeTab(tab);
   await clean();
 });
@@ -742,20 +760,17 @@ add_task(async function test_an_agents_download_is_its_and_a_grant_covers_it() {
   Assert.equal(AgentGate.answer(q.id, { kind: "grant", minutes: 10 })?.minutes, 10, "granted");
   Assert.ok(await settled(await added), "saved");
 
-  // Under the grant, the next one runs without a question; a dangerous one still asks.
+  // Under the grant, which covers opens too (mcp-grants G1), the next open and its download run
+  // without a question; a dangerous one still asks.
   added = nextDownload();
   const open2 = c.request("agent-open", { url: fileUrl({ name: "b.txt", type: "text/plain" }) });
-  await until(() => AgentGate.waiting.length === 1, "the open asks (no open grant)");
-  AgentGate.answer(/** @type {any} */ (AgentGate.waiting[0]).id, { kind: "once" });
-  await c.response(open2);
+  Assert.ok((await c.response(open2)).ok, "the open runs under the grant");
   Assert.ok(await settled(await added), "saved under the grant");
   Assert.equal(AgentGate.waiting.length, 0, "without a question");
 
   added = nextDownload();
   const open3 = c.request("agent-open", { url: fileUrl({ name: "c.sh", type: "text/x-sh" }) });
-  await until(() => AgentGate.waiting.length === 1, "the open asks");
-  AgentGate.answer(/** @type {any} */ (AgentGate.waiting[0]).id, { kind: "once" });
-  await c.response(open3);
+  Assert.ok((await c.response(open3)).ok, "the open runs under the grant");
   q = await downloadQuestion();
   Assert.equal(q.what.danger, "a script", "a dangerous one asks even under the grant");
   AgentGate.answer(q.id, { kind: "deny" });
@@ -775,11 +790,13 @@ add_task(async function test_an_agents_download_is_its_and_a_grant_covers_it() {
 // started, not what the page it opened downloads later.
 add_task(async function test_a_grant_never_covers_the_pages_own_downloads() {
   const c = await agentClient();
-  /** @param {string} url */
-  const open = async (url) => {
+  /** @param {string} url @param {boolean} [asked] */
+  const open = async (url, asked = true) => {
     const id = c.request("agent-open", { url });
-    await until(() => AgentGate.waiting.length === 1, "the open asks");
-    AgentGate.answer(/** @type {any} */ (AgentGate.waiting[0]).id, { kind: "once" });
+    if (asked) {
+      await until(() => AgentGate.waiting.length === 1, "the open asks");
+      AgentGate.answer(/** @type {any} */ (AgentGate.waiting[0]).id, { kind: "once" });
+    }
     return /** @type {any} */ (await c.response(id)).result.tab;
   };
   let added = nextDownload();
@@ -789,8 +806,9 @@ add_task(async function test_a_grant_never_covers_the_pages_own_downloads() {
   AgentGate.answer(q.id, { kind: "grant", minutes: 10 });
   Assert.ok(await settled(await added), "granted and saved");
 
-  // The agent opens a page; whatever that page downloads afterwards is the page's.
-  await open(PAGE);
+  // The agent opens a page, under the grant (mcp-grants G1); whatever that page downloads
+  // afterwards is the page's.
+  await open(PAGE, false);
   const agentTabs = () =>
     gBrowser.tabs.filter((t) => t.userContextId === WorkspaceStore.agent?.userContextId);
   const tab = /** @type {any} */ (
@@ -825,10 +843,7 @@ add_task(async function test_a_grant_never_covers_the_pages_own_downloads() {
   ]) {
     // The grant is still in force and its connection still open: without them the page's
     // download would be asked anyway, and the check below would prove nothing.
-    Assert.ok(
-      AgentGate.grants().some((g) => g.tool === "vimma_download"),
-      `${how}: the agent's vimma_download grant is in force`,
-    );
+    Assert.equal(AgentGate.grants().length, 1, `${how}: the agent's grant is in force`);
     added = nextDownload();
     const url = fileUrl({ name: `page-${how.replace(/\W/g, "")}.txt`, type: "text/plain" });
     await SpecialPowers.spawn(tab.linkedBrowser, [go(url)], (code) => {

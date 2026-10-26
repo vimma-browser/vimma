@@ -1,0 +1,191 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_activate.js and browser_vimma_mcp_submit.js: what
+   - vimma_activate clicks and refuses. A button that adds to a list and records what the page saw
+   - of the click (trusted, user activation, a clipboard write); a button that asks confirm(); a
+   - same-site link and a link to another site; a text field, a select, a file field with its
+   - label, and a disabled button; a search form with a submit button; a form whose button's
+   - click handler sends it elsewhere, one whose submit listener does, and a dialog form with a
+   - hidden posting button; buttons whose script submits a form by itself, at once, a moment later,
+   - after Firefox cached an earlier verdict, and through that hidden button; a link that changes
+   - its address on mousedown, an SVG link to another site, a form whose destination
+   - redirects, and three whose button moves the form's destination while it is pressed, then
+   - puts it back and sends the form itself: a moment later, at once, or after keeping the page
+   - busy. Everything fits the test window. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Click agent fixture</title>
+    <style>
+      body {
+        margin: 4px;
+        font: 12px sans-serif;
+      }
+      form,
+      p {
+        margin: 2px 0;
+      }
+      form.inline {
+        display: inline;
+      }
+    </style>
+  </head>
+  <body>
+    <p>
+      <button id="add" type="button">Add to list</button>
+      <button id="ask" type="button">Remove</button>
+      <span id="menu" role="button" tabindex="0">Menu</span>
+    </p>
+    <ul id="list"></ul>
+    <p>
+      <a id="same" href="file_vimma_agent_page.html?clicked">Same site</a>
+      <a id="other" href="https://example.org/">Other site</a>
+    </p>
+    <p>
+      <input id="field" name="field" aria-label="Field" />
+      <select id="pick" name="pick" aria-label="Pick">
+        <option>One</option>
+      </select>
+      <label id="upload-label" for="upload">Upload</label>
+      <input id="upload" name="upload" type="file" />
+      <button id="off" type="button" disabled>Off</button>
+    </p>
+    <form id="search" method="get" action="file_vimma_agent_page.html">
+      <input id="q" name="q" value="cats" aria-label="Query" />
+      <input type="hidden" name="from" value="fixture" />
+      <button id="go" type="submit">Search</button>
+    </form>
+    <form id="draft" method="post" action="file_vimma_agent_page.html?draft">
+      <input name="note" value="hello" aria-label="Note" />
+    </form>
+    <form id="swap" method="get" action="file_vimma_agent_page.html">
+      <input name="topic" value="news" aria-label="Topic" />
+      <button id="send" type="submit">Send</button>
+    </form>
+    <form id="checkout" method="post" action="file_vimma_agent_redirect.sjs">
+      <button id="pay" type="submit">Checkout</button>
+    </form>
+    <form id="cached" method="post" action="file_vimma_agent_page.html?cached"></form>
+    <form id="moved" method="get" action="file_vimma_agent_page.html">
+      <input name="item" value="tea" aria-label="Item" />
+      <button id="post" type="submit">Post</button>
+    </form>
+    <form id="trick" method="dialog" action="file_vimma_agent_page.html?trick">
+      <button id="trick-post" type="submit" formmethod="post" hidden>Hidden post</button>
+    </form>
+    <form id="bounce" method="get" action="file_vimma_agent_page.html" class="inline">
+      <input name="bounce-note" aria-label="Bounce note" size="4" />
+      <button type="submit">Bounce</button>
+    </form>
+    <form id="bounce-now" method="get" action="file_vimma_agent_page.html" class="inline">
+      <input name="bounce-now-note" aria-label="Bounce now note" size="4" />
+      <button type="submit">Bounce now</button>
+    </form>
+    <form id="bounce-busy" method="get" action="file_vimma_agent_page.html" class="inline">
+      <input name="bounce-busy-note" aria-label="Bounce busy note" size="4" />
+      <button type="submit">Bounce busy</button>
+    </form>
+    <p>
+      <button id="save" type="button">Save draft</button>
+      <button id="later" type="button">Save later</button>
+      <button id="resend" type="button">Resend</button>
+      <button id="dialog-trick" type="button">Close</button>
+      <a id="swap-link" href="file_vimma_agent_page.html?swap">Swap link</a>
+      <svg width="80" height="20">
+        <a href="https://example.org/svg">
+          <foreignObject width="80" height="20"><span role="button">Svg go</span></foreignObject>
+        </a>
+      </svg>
+    </p>
+    <script>
+      // What the page saw of each click, for the test to read.
+      window.seen = [];
+      document.getElementById("add").addEventListener("click", (e) => {
+        const item = document.createElement("li");
+        item.textContent = "added";
+        document.getElementById("list").append(item);
+        const saw = {
+          trusted: e.isTrusted,
+          active: navigator.userActivation.isActive,
+          beenActive: navigator.userActivation.hasBeenActive,
+          clipboard: "pending",
+        };
+        window.seen.push(saw);
+        navigator.clipboard.writeText("from the page").then(
+          () => (saw.clipboard = "written"),
+          () => (saw.clipboard = "refused"),
+        );
+      });
+      document.getElementById("ask").addEventListener("click", () => {
+        window.answer = confirm("Remove this item?");
+      });
+      document.getElementById("menu").addEventListener("click", () => {
+        document.title = "menu";
+      });
+      // A page that sends the form elsewhere than it said once the button is pressed.
+      document.getElementById("send").addEventListener("click", () => {
+        document.getElementById("swap").action = "https://example.org/collect";
+      });
+      const draft = document.getElementById("draft");
+      document.getElementById("save").addEventListener("click", () => draft.submit());
+      // Firefox remembers the verdict of a submission the page prevented: a later submit() of the
+      // same form reuses it.
+      const cached = document.getElementById("cached");
+      cached.addEventListener("submit", (e) => e.preventDefault(), { once: true });
+      cached.requestSubmit();
+      document.getElementById("resend").addEventListener("click", () => cached.submit());
+      // A submit listener that sends the form elsewhere than the question said.
+      const moved = document.getElementById("moved");
+      moved.addEventListener("submit", () => (moved.action = "https://example.org/moved"));
+      // A dialog form whose hidden button posts.
+      document
+        .getElementById("dialog-trick")
+        .addEventListener("click", () =>
+          document.getElementById("trick").requestSubmit(document.getElementById("trick-post")),
+        );
+      // A link that points elsewhere once it is pressed.
+      document.getElementById("swap-link").addEventListener("mousedown", (e) => {
+        e.currentTarget.href = "https://example.org/swapped";
+      });
+      // Buttons that move their form's destination as they are pressed, so the click is skipped,
+      // then put it back and send the form themselves: 100 ms later, at once (a zero timeout),
+      // or after keeping the page busy for 1.2 s, longer than the parent waits for an answer.
+      window.bounced = {};
+      for (const [id, wait, busy] of [
+        ["bounce", 100, 0],
+        ["bounce-now", 0, 0],
+        ["bounce-busy", 0, 1200],
+      ]) {
+        const form = document.getElementById(id);
+        form.querySelector("button").addEventListener("mousedown", () => {
+          const action = form.action;
+          form.action = "https://example.org/bounce";
+          setTimeout(() => {
+            for (const start = Date.now(); Date.now() - start < busy;);
+            form.action = action;
+            form.submit();
+            window.bounced[id] = true;
+          }, wait);
+        });
+      }
+      // Called by Vimma's child just before it checks an agent's form submission (a test sets
+      // VimmaChild._beforeSubmitCheck): moves the form's destination so the submission is
+      // skipped, then at once puts it back and sends the form itself.
+      window.bounceForm = () => {
+        const form = document.getElementById("bounce");
+        const action = form.action;
+        form.action = "https://example.org/bounce";
+        setTimeout(() => {
+          form.action = action;
+          form.submit();
+          window.bounced["bounce-form"] = true;
+        }, 0);
+      };
+      document
+        .getElementById("later")
+        .addEventListener("click", () => setTimeout(() => draft.requestSubmit(), 300));
+    </script>
+  </body>
+</html>

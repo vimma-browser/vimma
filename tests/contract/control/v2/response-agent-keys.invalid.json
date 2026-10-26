@@ -1,0 +1,17 @@
+{
+  "description": "steps must be a list",
+  "kind": "response",
+  "command": "agent-keys",
+  "message": {
+    "type": "response",
+    "id": 3,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/pricing",
+      "title": "Pricing · Example",
+      "loading": false,
+      "scroll": { "y": 0.42 },
+      "steps": "3j"
+    }
+  }
+}

@@ -54,6 +54,7 @@ const INSTALL_TYPES = /** @type {Record<string, string>} */ ({
   tarball: "tarball",
   appimage: "AppImage",
   deb: ".deb",
+  rpm: ".rpm",
   aur: "AUR vimma-bin",
   "pkgbuild-release": "the release's PKGBUILD",
   packaged: "a package this version does not know",
@@ -114,6 +115,22 @@ function renderUpdates(u) {
           )
         : "normal",
     ]);
+  }
+  // The AppImage replaces its own file (decision 19); a failure falls back to the steps below.
+  if (u.appImage) {
+    const { stage, reason } = u.appImage;
+    const failed = stage === "none" && !!reason;
+    const text =
+      stage === "staged"
+        ? "replaced: restart Vimma to run the new version"
+        : stage === "pending"
+          ? "downloading the new AppImage"
+          : failed
+            ? `not replaced: ${reason}`
+            : "not replaced yet";
+    /** @type {Record<string, string>} */
+    const attrs = failed ? { id: "update-appimage", class: "error" } : { id: "update-appimage" };
+    rows.push(["AppImage", el("span", attrs, text)]);
   }
   rows.push(
     ["Manifest serial", u.serial ?? "-"],

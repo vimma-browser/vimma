@@ -1,0 +1,125 @@
+# Spec flatpak: build Vimma's Flatpak with flatpak-builder from a release tarball, install it and
+# run it, as Flathub's builder would build the manifest (tools/package/flatpak.mjs). Nothing is
+# published: the Flatpak is not distributed until it is submitted to Flathub (docs/runbook.md,
+# "Flatpak"). Pull requests that change the packaging build a stub tarball; a published release
+# is built from its public download URL, pinned to the SHA-256 in its SHA256SUMS and, with signing
+# on, after SHA256SUMS's signature is checked against release.yml's identity. No job holds a
+# secret or more than a read-only token. Retry: gh workflow run flatpak.yml -f tag=vX.Y.Z.
+name: flatpak
+
+on:
+  pull_request:
+    paths:
+      - tools/package/**
+      - tools/release/version-line.mjs
+      - tools/version-files/version-files.mjs
+      - tools/repo.mjs
+      - configs/branding/vimma/**
+      - surfer.json
+      - .github/workflows/flatpak.yml
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published release tag to build the Flatpak of (vX.Y.Z)"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: flatpak-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  stub:
+    name: Flatpak from a stub tarball (flatpak-builder)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # flatpak.mjs and version-line.mjs use Node's built-in modules only: no npm install.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Build, install and run the Flatpak of a stub tarball
+        run: tools/package/flatpak-smoke.sh --stub
+
+  release:
+    name: Flatpak of the published release (flatpak-builder)
+    if: >-
+      github.event_name != 'pull_request' && vars.RELEASE_ENABLED == 'true' &&
+      github.repository == 'vimma-browser/vimma' &&
+      (github.event_name == 'release' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Check the tag's form
+        run: |
+          echo "$TAG" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+' \
+            || { echo "::error::'$TAG' is not a vX.Y.Z release tag"; exit 1; }
+
+      # releases/download/ serves a published release only; a draft's files are a 404 there.
+      - name: Download the published release's SHA256SUMS
+        run: |
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          for f in SHA256SUMS SHA256SUMS.sigstore.json; do
+            # The bundle exists only when the release was signed; the next step needs it then.
+            curl -fsSL --proto =https -o "$f" "$base/$f" || {
+              [ "$f" = SHA256SUMS.sigstore.json ] && continue
+              echo "::error::$base/$f: not found; is $TAG published, with its assets?"
+              exit 1
+            }
+          done
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: vars.SIGNING_ENABLED == 'true'
+
+      # The identity users verify (IDENTITY_REGEXP in tools/package/package.mjs; a test keeps
+      # the two equal), so the SHA-256 the manifest pins is the one release.yml built and signed.
+      - name: Verify the release's signature
+        if: vars.SIGNING_ENABLED == 'true'
+        run: |
+          cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            SHA256SUMS
+
+      # The tarball's line from SHA256SUMS: flatpak-builder downloads the tarball and refuses it
+      # unless it has that SHA-256. The version line comes from the tag's surfer.json, since
+      # main may have moved past it.
+      - name: Build, install and run the release's Flatpak
+        run: |
+          file="vimma-${TAG#v}-linux-x86_64.tar.xz"
+          line=$(awk -v f="$file" '$2 == f && $1 ~ /^[0-9a-f]{64}$/' SHA256SUMS)
+          [ -n "$line" ] || { echo "::error::SHA256SUMS does not list $file"; exit 1; }
+          sha=${line%% *}
+          git fetch --no-tags --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"
+          git show "$TAG:surfer.json" > "$RUNNER_TEMP/surfer.json"
+          expected=$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            import { versionLine } from "./tools/release/version-line.mjs";
+            console.log(versionLine(JSON.parse(readFileSync(process.argv[1], "utf8"))));
+          ' "$RUNNER_TEMP/surfer.json")
+          case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;; *) echo "::error::surfer.json gives '$expected', tag is $TAG"; exit 1 ;; esac
+          tools/package/flatpak-smoke.sh --release "$TAG" "$sha" "$expected"

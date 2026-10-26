@@ -1,6 +1,6 @@
 # Spec: pane-focus-highlight
 
-Status: draft · Area: `src/browser/themes/shared/vimma/split.css`,
+Status: implemented · Area: `src/browser/themes/shared/vimma/split.css`,
 `tests/browser/browser_vimma_split_contract.js`, `tests/e2e/` (one scenario and its baselines),
 `docs/guide.md` · Upstream patches: none · ADR: none
 
@@ -16,8 +16,7 @@ as imported by `npm run import`; Vimma file references are to `main`.
 In a split, the focused pane gets a border in the theme's focus colour, wide enough to find at a
 glance, drawn inside its rectangle. A single pane, a zoomed pane, a hidden split and a page in DOM
 fullscreen show no border. The pages do not move or reflow when focus changes, and the unfocused
-panes look as they do today. The border's width and whether unfocused panes may be dimmed as an
-option are the open questions.
+panes look as they do today. The border is 3 px wide, and unfocused panes are not dimmed.
 
 ## Problem
 
@@ -63,8 +62,7 @@ option are the open questions.
    built-in palette's focus colour: mint (`#1bf587`) on vimma dark, deep green (`#056536`) on vimma
    light, blue (`#7aa2f7`) on Tokyo Night. With the system's high-contrast setting on, it is
    Firefox's own high-contrast focus colour.
-8. As a Vimma user, no key, command or `config.toml` key changes with this spec (open question 2
-   may add one).
+8. As a Vimma user, no key, command or `config.toml` key changes with this spec.
 
 ## Research
 
@@ -165,35 +163,44 @@ every state the border has to respect (single pane, zoom, hidden split, DOM full
 an attribute or class on the panels or `:root`.
 
 1. **A border in the focus colour, not dimming and not a header.** The focused pane's
-   `.browserContainer` gets an inset outline `var(--vimma-pane-focus-width) solid var(--vimma-focus, var(--focus-outline-color))`
-   with `outline-offset: calc(-1 * var(--vimma-pane-focus-width))`, because a coloured border is
+   `.browserContainer::after` is a frame, `border: var(--vimma-pane-focus-width) solid var(--focus-outline-color)`,
+   absolutely positioned over the container (`inset: 0`, `border-radius: inherit`,
+   `pointer-events: none`), and the container's own outline is removed, because a coloured border is
    the cue tmux (`pane-active-border-style`), Hyprland (`col.active_border`) and Zen (its 2 px
    outline) all use, it costs no space, and it leaves the pages' rendering alone. Rejected:
    dimming or desaturating unfocused panes, because pages and video split precisely to be watched
    side by side would look washed out, their text would fall below AA contrast, and tmux and
-   Hyprland both ship with it off (offered as an option is open question 2). Rejected: a per-pane title strip, because it costs a
+   Hyprland both ship with it off (decision 12). Rejected: a per-pane title strip, because it costs a
    line of vertical space per pane, needs theming, truncation and title updates of its own, and
    [m4-split-panes](m4-split-panes.md) left headers out; tmux's `pane-border-status` is off by
    default for the same cost.
-2. **Inside the pane's rectangle.** The outline is inset (negative `outline-offset`), so it is
-   painted over the outermost pixels of the page, because the 2 px gap between panes is shared with
-   the neighbour's separator and the content area's outer edges meet the toolbar and status bar: an
-   outside outline, today's, has no room of its own. Rejected: shrinking the pane's rectangle by
-   the border, because the page would reflow on every focus change, and a video player or a
-   responsive layout would resize each time.
-3. **Width from one token.** `--vimma-pane-focus-width` is set once at the top of the scope (its
-   value is open question 1), so that the mochitest, the guide and a later `[panes]` key, if any,
-   name one number. It is at least 2 px, since that is the perimeter WCAG 2.2's 2.4.13 asks of a
-   focus indicator and Firefox's own ring, which the problem says is not enough.
-4. **Colour: `--vimma-focus`, with Firefox's as fallback.** The border is the theme's focus
-   colour, because it is already the accent moved to 3:1 against the chrome it touches (the pane
+2. **Inside the pane's rectangle, drawn over the page.** The frame covers the outermost pixels of
+   the page, because the 2 px gap between panes is shared with the neighbour's separator and the
+   content area's outer edges meet the toolbar and status bar: an outside outline, Firefox's, has
+   no room of its own. It is a positioned pseudo-element rather than an inset outline on
+   `.browserContainer`, because the container's outline is painted under the remote page: an
+   inset outline has the right computed style and never shows on screen. `.browserContainer` is
+   already `position: relative` (`content-area.css:171-174`), so the frame needs no new box and
+   takes no space. Rejected: shrinking the pane's rectangle by the border, because the page would
+   reflow on every focus change, and a video player or a responsive layout would resize each time.
+3. **3 px wide, from one token.** `--vimma-pane-focus-width: 3px` is set once at the top of the
+   scope, so that the mochitest, the guide and any later key name one number. 3 px is one step up
+   from the 2 px of Firefox's ring and Hyprland's `border_size`, because 2 px is the cue the
+   problem says is hard to find, and 3 px reads at a glance in a 1280 px window at 1x while
+   staying inside the margin most pages leave at their edges. It also exceeds the 2 CSS px
+   perimeter WCAG 2.2's 2.4.13 asks of a focus indicator. Rejected: 4 px, because it covers a
+   fifth of a 20 px page margin and starts to read as a frame around the page rather than a cue.
+4. **Colour: the theme's focus colour, through `--focus-outline-color`.** The border is
+   `--focus-outline-color`, which `focus.css` sets to `--vimma-focus`, the theme's focus colour, because it is already the accent moved to 3:1 against the chrome it touches (the pane
    gap in `--vimma-muted` included) and is what the address bar's focus ring and every chrome focus
    ring use, so the cue is consistent and passes 1.4.11 against the chrome without a new
    calculation. On Omarchy that is the theme's `accent` (or its 3:1 adjustment): the colour of
    Omarchy's own Kitty active border and the Hyprland active border fallback, so the pane border
-   matches the desktop's focused window. The fallback `var(--focus-outline-color)` covers a window
-   where the token sheet is not loaded, and under `prefers-contrast` or `forced-colors`
-   `focus.css` leaves Firefox's high-contrast colour in both tokens. Contrast against the page's
+   matches the desktop's focused window. The border reads `--focus-outline-color` rather than
+   `--vimma-focus` directly so that under `prefers-contrast` or `forced-colors`, where `focus.css`
+   leaves Firefox's own high-contrast colour in that token while `--vimma-focus` keeps the accent,
+   the border takes the high-contrast colour, and so that a window without the token sheet still
+   gets Firefox's accent. Contrast against the page's
    own edge cannot be promised: the page's colours are unknown.
 5. **Unfocused panes unchanged.** Their 1 px inset separator in `--chrome-content-separator-color`
    stays, because the gap already separates them and a second cue on the unfocused side would
@@ -219,7 +226,15 @@ an attribute or class on the panels or `:root`.
     cue the user is waiting for, and Vimma's own UI animates nothing (`docs/guide.md`,
     Accessibility, "Motion"), so `prefers-reduced-motion` has nothing to turn off here either.
 11. **No config key.** No `[panes]` key is added, because the width is one value for everyone
-    (decision 3) and a key only earns its place with an option to switch, which is open question 2.
+    (decision 3) and nothing else about the border is a choice to switch (decision 12).
+12. **No dimming of unfocused panes, not even as an option.** Unfocused pages keep their full
+    colours and opacity, and no `[panes] dim_unfocused` key is offered, because pages and video are
+    split precisely to be watched side by side, dimming lowers their text contrast below WCAG AA,
+    and tmux (`window-style`) and Hyprland (`decoration:dim_inactive`) both ship with it off; the
+    border alone is the cue. Rejected: an opt-in dimming percentage, because it adds a key, a
+    schema entry and tests for a look that works against the reason for splitting, and a later
+    spec can add it if the border proves not enough. Rejected: dimming by default, for the same
+    reasons and because it changes every split page's rendering.
 
 ## Security and privacy
 
@@ -232,23 +247,26 @@ exposes nothing to pages or to the control socket.
   `the_focus_outline_find_bar_and_notifications_belong_to_their_pane` changes its assertions from
   Firefox's 2 px outline to the spec's; written first and seen to fail on `main`):
   - `the_focused_pane_has_the_focus_border`: with three panes in an L shape, the focused panel's
-    `.browserContainer` has computed `outlineWidth` equal to `--vimma-pane-focus-width`,
-    `outlineStyle` `solid`, `outlineColor` equal to `--vimma-focus` and `outlineOffset` equal to
-    minus the width; the other two have `outlineWidth` `1px` and not the focus colour; after
-    `ctrl+b l` the border is on the new focused panel and gone from the old.
+    `.browserContainer::after` has a `solid` border of `--vimma-pane-focus-width` on every edge in
+    `--focus-outline-color`, `position: absolute`, `inset: 0` and `pointer-events: none`, and the
+    container has no outline; the other two have no frame and keep the 1 px separator outline in
+    another colour. The window's pixels (`drawSnapshot`, with the remote pages composited) show
+    the focus colour 1 px inside the focused pane's edge and not inside the others'. Picking
+    another pane's tab, and clicking into a pane, move the border at once.
   - `the_pages_keep_their_size_when_focus_moves`: each `<browser>`'s bounding rectangle is the
     same before and after a focus move, and equals the pane's rectangle from `layout()`.
   - `one_pane_zoom_hidden_split_and_fullscreen_show_no_border`: with one pane the container's
-    `outlineStyle` is `none`; after `ctrl+b z` the zoomed container has no focus-coloured outline
-    and after unzoom it has; after selecting a tab outside the split none of the panels has one,
+    `outlineStyle` is `none` and it has no frame; zoomed as the host zooms (one rectangle, the
+    other panels `vimma-zoomed-away`), the zoomed pane has no border and after unzoom it has; after selecting a tab outside the split none of the panels has one,
     and after going back to a split tab the focused one has; under `requestFullscreen` from the
     focused pane none has, and after `exitFullscreen` the same pane has.
-  - `the_border_follows_a_theme_colors_accent_override` (in
-    `tests/browser/browser_vimma_focus_accent.js`): after `[theme.colors] accent` changes in
-    `config.toml`, the border's `outlineColor` is the new `--vimma-focus` without a restart.
-- **e2e** (`tests/e2e/scenarios/pane-focus-highlight.json`, under Xvfb, the vimma light palette):
+  - `a_theme_colors_accent_override_applies_live` (in
+    `tests/browser/browser_vimma_focus_accent.js`, which already checks the focused pane's colour
+    per palette, now also its 3 px width): after `[theme.colors] accent` changes in
+    `config.toml`, the border's colour is the new `--vimma-focus` without a restart.
+- **e2e** (`tests/e2e/scenarios/issue-362-pane-focus-highlight.json`, under Xvfb, the vimma light palette):
   two fixture pages, `ctrl+b v`, `ctrl+b h` (the left pane focused), screenshot
-  `pane-focus-highlight-2`; `ctrl+b -`, screenshot `pane-focus-highlight-3` (the new bottom-left
+  `issue-362-pane-focus-highlight-2`; `ctrl+b -`, screenshot `issue-362-pane-focus-highlight-3` (the new bottom-left
   pane focused). The existing `m4-split-panes` baseline changes, since its screenshot shows a
   focused pane; it is re-taken from CI's actual image and committed with its own `CHANGELOG.md`
   line (`docs/runbook.md`, "Baselines"). Before the PR merges, the same scenario is run with
@@ -268,21 +286,4 @@ exposes nothing to pages or to the control socket.
 ## Delivery
 
 One PR: `split.css`, the mochitest changes, the e2e scenario with its two new baselines and the
-re-taken `m4-split-panes` baseline, the guide and the two changelog lines. If open question 2 adds
-dimming as an option, it is a second PR with its own `[panes]` key, schema note and tests.
-
-## Open questions
-
-1. **Border width (`--vimma-pane-focus-width`).** Options: (a) 2 px: Firefox's focus ring and
-   Hyprland's `border_size` under Omarchy, the least coverage of the page's edge, but the width the
-   problem says is hard to see; (b) 3 px: one step up, readable at a glance in a 1280 px window at
-   1x and inside the margin most pages leave at their edges; (c) 4 px: unmistakable, but a fifth of
-   a 20 px page margin and the start of a frame. Recommendation: (b) 3 px, because 2 px is what is
-   hard to see today and 4 px starts to look like a frame; the e2e screenshots at 2 and 3 panes are
-   the check.
-2. **Dimming unfocused panes as an option.** Options: (a) not offered: the border alone, no
-   config key; (b) an opt-in `[panes] dim_unfocused = <0..50>` (percent, default 0) that lowers the
-   unfocused pages' opacity toward the window background, in a second PR; (c) dimming by default.
-   Recommendation: (a), because dimming washes out pages and video that were split to be watched
-   side by side, lowers their text contrast below AA, and tmux and Hyprland both ship with it off;
-   a later spec can add (b) if the border alone proves not enough.
+re-taken `m4-split-panes` baseline, the guide and the two changelog lines.

@@ -1,20 +1,5 @@
 {
-  "bookmarks-toolbar-hidden.md": [
-    "Config: `[ui] bookmarks_toolbar = \"hidden\" | \"shown\" | \"newtab\"`.",
-    "Import does not show it while it is `\"never\"`.",
-    "With toolbar-toggle.",
-    "Theme and keyboard when shown."
-  ],
   "build-supply-chain.md": [],
-  "element-focus.md": [
-    "The start key is chosen when implementation starts, not in this spec.",
-    "Focus: the `ELEMENT` mode.",
-    "Frames",
-    "Shadow DOM",
-    "PDFs (pdf.js)",
-    "Performance",
-    "Accessibility"
-  ],
   "m6a-updater.md": [
     "Downgrade",
     "Complete MARs only",
@@ -30,39 +15,5 @@
     "Hosted Macs run what was built.",
     "Ad hoc signed until a Developer ID exists",
     "Artifact names carry both versions."
-  ],
-  "mcp-drive.md": [
-    "No grant covers it.",
-    "Limits.",
-    "Grants.",
-    "The server's instructions",
-    "Each full connection says it too."
-  ],
-  "site-compat.md": [
-    "A separate workflow, `sites.yml`, on `ubuntu-24.04`.",
-    "Drive with `vimma-ctl`, observe with RDP",
-    "One fresh profile and browser per site",
-    "Firefox's normal user agent",
-    "Latency",
-    "Statuses per site",
-    "Output",
-    "The list is data"
-  ],
-  "vimma-mcp.md": [
-    "`vimma-ctl mcp`",
-    "Two switches.",
-    "Queueing.",
-    "Prompt fatigue.",
-    "The yes stands for what was asked",
-    "A grant is per connection and per tool.",
-    "A grant ends",
-    "Visible while it runs.",
-    "Segment",
-    "Commands:",
-    "Config",
-    "Migration.",
-    "ADR-019, \"Agents reach Vimma over MCP, through a confined control-socket role\"",
-    "Replies always fit and always parse.",
-    "Arguments are checked before anything reaches Vimma."
   ]
 }

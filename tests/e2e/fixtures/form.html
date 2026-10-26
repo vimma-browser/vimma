@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- m0-mcp-forms: a sign-up form an agent lists with vimma_elements, fills with vimma_fill and
+     submits with vimma_activate. The password field is listed as sensitive and never filled. The
+     form posts to form-sent.html, which the fixture server answers whatever the method. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sign up fixture</title>
+    <style>
+      body {
+        margin: 0 auto;
+        max-width: 720px;
+        padding: 24px;
+        font: 16px/1.5 sans-serif;
+        color: #222;
+        background: #fafafa;
+      }
+      label {
+        display: block;
+        margin: 12px 0;
+      }
+      input {
+        display: block;
+        width: 320px;
+        font: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Sign up</h1>
+    <form method="post" action="form-sent.html">
+      <label>Email <input type="email" name="email" /></label>
+      <label>Name <input type="text" name="name" /></label>
+      <label>Password <input type="password" name="password" /></label>
+      <button type="submit">Create account</button>
+    </form>
+  </body>
+</html>

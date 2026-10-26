@@ -60,9 +60,12 @@ permissions:
 concurrency:
   # Keyed on the ref and the version: a call from upstream.yml or the Beta canary runs on main's
   # ref, and must never cancel, or be cancelled by, a manual run on main without a version or a
-  # manual run of the same version on another branch. A new push to a PR cancels its older run.
+  # manual run of the same version on another branch. A new push to a PR cancels its older run;
+  # nothing else cancels a run in progress (tools/test/workflow-concurrency.test.mjs), so a manual
+  # run of the version an upstream or Beta call is testing waits for it (GitHub still keeps one
+  # queued run per group, the newest). In a call, event_name is the caller's event.
   group: e2e-${{ github.ref }}-${{ inputs.firefox-version }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Issue #245: is this a docs-only pull request? (tools/ci/docs-only.mjs, as the base branch has
@@ -99,7 +102,10 @@ jobs:
   mochitest:
     name: mochitest (artifact build)
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
+    # Issue #443: a push to a draft pull request skips it too (the release PR, rebuilt after each
+    # merge), and reports success; marking it ready (ready_for_review above) runs it on the same
+    # head. Only opened and synchronize skip: they bring a new head, so no real result is replaced.
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' && !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -252,6 +258,23 @@ jobs:
           if [ "$BETA" = true ]; then report=(--report-json "$RUNNER_TEMP/e2e-report.json"); fi
           npm run e2e -- --artifact "${report[@]}"
 
+      # Spec site-compat, "Snapshot layer": the recorded pages in tests/e2e/fixtures/sites/ replayed
+      # offline (every host but 127.0.0.1 unreachable) with the site suite's checks. Fails when a
+      # check that passed on the recording does not pass now. Never a live site from here.
+      - name: Site snapshot gate (npm run sites -- --offline)
+        id: sites-offline
+        continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}
+        run: npm run sites -- --offline --artifact --out site-compat-offline/
+
+      - name: Upload site-compat-offline/ (the snapshot gate's report and screenshots)
+        if: failure() || (steps.mode.outputs.beta == 'true' && steps.sites-offline.outcome == 'failure')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-compat-offline
+          path: site-compat-offline/
+          if-no-files-found: ignore
+          retention-days: 7
+
       # The actual and diff screenshots of a failed comparison (tools/e2e/screenshot.mjs), for
       # judging a regression or taking a new baseline from the runner's fonts (runbook).
       - name: Upload e2e-output/ (screenshots of failed comparisons)
@@ -296,3 +319,79 @@ jobs:
             ${{ runner.temp }}/e2e-report.json
           if-no-files-found: warn
           retention-days: 30
+
+  # Spec macos-build, sub-PR 1: the same front end on Mozilla's macOS arm64 build of the same
+  # release (tools/artifact-build picks the macosx64-aarch64-opt job on an Apple Silicon host), on
+  # a hosted Apple Silicon Mac. Informational: not a required check (open question 6), so a red
+  # run here shows a macOS break without blocking the merge; branch protection must not list it.
+  # Not on a version run (upstream autopilot, Beta canary): macOS never blocks a Linux release
+  # (decision 13). No vimma-ctl build (its macOS tests are in ci.yml) and no e2e scenarios
+  # (sub-PR 4).
+  mochitest-macos:
+    name: mochitest (artifact build, macOS)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' && inputs.firefox-version == '' }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # npm test: tools/bench's baseline test reads the branch's history
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc # exact Node pin (docs/runbook.md, "Bench baseline")
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
+      # The whole suite, unchanged: vimma-core is pure, so a failure is a test that assumes Linux.
+      - name: Vitest (npm test)
+        run: npm test
+
+      # Surfer's download needs GNU tar on macOS; verify-sha512.py needs gpgv. The image may
+      # already have either.
+      - name: GNU tar and gpgv (Homebrew)
+        run: |
+          command -v gtar || brew install gnu-tar
+          command -v gpgv || brew install gnupg
+
+      # The free disk on hosted Macs is not documented beyond 14 GB (spec macos-build, "GitHub-
+      # hosted runners"): record it before and after the 5.5 GB download and unpack. macOS df has
+      # no --output.
+      - name: Free disk
+        run: df -k .
+
+      # As in the Linux job: verified against Mozilla's signed SHA512SUMS before Surfer unpacks it.
+      - name: Firefox source tarball (surfer.json), verified and unpacked without history
+        run: |
+          tools/upstream/firefox-source.sh
+          rm -f .surfer/engine/firefox-*.source.tar.xz
+          df -k .
+
+      - name: Import our patches and sources
+        run: npm run import
+
+      - name: Artifact build (tools/artifact-build)
+        run: node tools/artifact-build/artifact-build.mjs
+
+      # Headless. browser_vimma_control.js skips here: this job builds no vimma-ctl.
+      # Tests that cannot pass on macOS carry skip-if = ["os == 'mac'"] with an issue in
+      # tests/browser/browser.toml.
+      - name: Mochitests (npm run mochitest -- --artifact tests/browser/)
+        run: |
+          npm run mochitest -- --artifact "--log-tbpl=$RUNNER_TEMP/mochitest.tbpl.log" tests/browser/
+          df -k .
+
+      - name: Upload logs (TBPL log, configure log)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mochitest-macos-logs
+          path: |
+            ${{ runner.temp }}/mochitest.tbpl.log
+            engine/obj-artifact/config.log
+          if-no-files-found: ignore
+          retention-days: 7

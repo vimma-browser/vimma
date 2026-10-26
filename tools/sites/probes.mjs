@@ -113,7 +113,10 @@ export function contentScrollSnapshot() {
 }
 
 /**
- * Focus the site's search field: `selector`, else the first visible search-like input.
+ * Focus the site's search field: `selector`, else the first visible search-like input that takes
+ * the focus, else the first visible textarea or contenteditable text box that does (a code
+ * editor). A visible field can refuse the focus: a component library's hidden form input (a
+ * select's value on regex101) is one, so the next candidate is tried.
  * @param {{ selector: string | null }} arg
  */
 export function contentFocusField({ selector }) {
@@ -122,20 +125,29 @@ export function contentFocusField({ selector }) {
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
   };
-  const candidates = selector
-    ? [...document.querySelectorAll(selector)]
+  const lists = selector
+    ? [selector]
     : [
-        ...document.querySelectorAll(
-          "input[type=search], [role=searchbox], input[name=q], textarea[name=q], " +
-            "input[placeholder*='earch' i], input[aria-label*='earch' i], " +
-            "input[type=text], input:not([type])",
-        ),
+        "input[type=search], [role=searchbox], input[name=q], textarea[name=q], " +
+          "input[placeholder*='earch' i], input[aria-label*='earch' i], " +
+          "input[type=text], input:not([type])",
+        "textarea, [contenteditable=true][role=textbox], [contenteditable=''][role=textbox]",
       ];
-  const el = /** @type {HTMLElement | undefined} */ (candidates.find(visible));
-  if (!el) return { found: false, desc: null, focused: false };
-  el.focus();
-  const desc = `${el.tagName.toLowerCase()}${el.getAttribute("name") ? `[name=${el.getAttribute("name")}]` : ""}${el.id ? `#${el.id}` : ""}`;
-  return { found: true, desc, focused: document.activeElement === el };
+  const describe = (/** @type {Element} */ el) =>
+    `${el.tagName.toLowerCase()}${el.getAttribute("name") ? `[name=${el.getAttribute("name")}]` : ""}${el.id ? `#${el.id}` : ""}`;
+  /** @type {HTMLElement | null} */
+  let first = null;
+  for (const list of lists) {
+    for (const node of document.querySelectorAll(list)) {
+      const el = /** @type {HTMLElement} */ (node);
+      if (!visible(el)) continue;
+      first ??= el;
+      el.focus();
+      if (document.activeElement === el) return { found: true, desc: describe(el), focused: true };
+    }
+  }
+  if (!first) return { found: false, desc: null, focused: false };
+  return { found: true, desc: describe(first), focused: false };
 }
 
 /** The focused element: is it a text field? */
@@ -341,6 +353,186 @@ export function contentClickReject({ patterns }) {
     }
   }
   return null;
+}
+
+/**
+ * The page as a snapshot: the rendered DOM, with scripts, handlers, embedded content and network
+ * references removed, the stylesheets it uses inlined, media replaced by placeholders of the
+ * same size and inner scrollers kept at their rendered height. Reads the page and changes only
+ * a clone of it. Self-contained, like every probe.
+ * @param {{ csp: string, follow: string }} arg
+ */
+export function contentSnapshot({ csp, follow }) {
+  const doc = document;
+  const LOADS_CSS = [
+    /url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)/gi,
+    /(?:-webkit-)?image-set\((?:[^()]|\([^()]*\))*\)/gi,
+    /\bsrc\((?:[^()]|\([^()]*\))*\)/gi,
+  ];
+  // Until nothing changes: a replacement must not join the text around it into a new match.
+  const cleanCss = (/** @type {string} */ text) => {
+    for (let before = ""; before !== text;) {
+      before = text;
+      text = LOADS_CSS.reduce((t, re) => t.replace(re, "none"), text).replace(
+        /@import[^;]*;?/gi,
+        "/* import */",
+      );
+    }
+    return text;
+  };
+  // A style rule is kept when its selector, without pseudo-classes and pseudo-elements, matches
+  // something; a selector the engine cannot read that way is kept.
+  const used = (/** @type {string} */ selector) => {
+    const bare = selector.replace(/::?[\w-]+(\((?:[^()]|\([^()]*\))*\))?/g, "").trim();
+    if (!bare || /^[\s,>+~*]*$/.test(bare)) return true;
+    try {
+      return !!doc.querySelector(bare);
+    } catch {
+      return true;
+    }
+  };
+  let skippedSheets = 0;
+  /** @param {CSSRule} rule @returns {string} */
+  const ruleText = (rule) => {
+    const r = /** @type {any} */ (rule);
+    if (typeof r.selectorText === "string") return used(r.selectorText) ? r.cssText : "";
+    if (r.constructor?.name === "CSSFontFaceRule") return "";
+    if (r.constructor?.name === "CSSImportRule") {
+      const inner = r.styleSheet ? sheetText(r.styleSheet) : "";
+      const media = r.media?.mediaText;
+      return inner && media ? `@media ${media} {${inner}}` : inner;
+    }
+    if (r.cssRules && r.cssText.includes("{")) {
+      const inner = [...r.cssRules].map(ruleText).join("");
+      return inner ? `${r.cssText.slice(0, r.cssText.indexOf("{"))}{${inner}}` : "";
+    }
+    return r.cssText;
+  };
+  /** @param {CSSStyleSheet} sheet */
+  const sheetText = (sheet) => {
+    try {
+      if (sheet.disabled) return "";
+      const text = [...sheet.cssRules].map(ruleText).join("\n");
+      const media = sheet.media?.mediaText;
+      return media && text ? `@media ${media} {${text}}` : text;
+    } catch {
+      skippedSheets++; // cross-origin and not readable
+      return "";
+    }
+  };
+  const css = cleanCss(
+    [...doc.styleSheets, ...(doc.adoptedStyleSheets ?? [])].map(sheetText).join("\n"),
+  );
+
+  const clone = /** @type {HTMLElement} */ (doc.documentElement.cloneNode(true));
+  const originals = [...doc.documentElement.querySelectorAll("*")];
+  const copies = [...clone.querySelectorAll("*")];
+  const REMOVE = new Set(
+    "script noscript link base meta style source track animate set xmp plaintext noembed noframes".split(
+      " ",
+    ),
+  );
+  const MEDIA = new Set(
+    "img picture video audio canvas iframe frame frameset object embed applet portal fencedframe image feimage".split(
+      " ",
+    ),
+  );
+  const URL_ATTRS = new Set(
+    "src srcset action formaction poster background ping lowsrc dynsrc manifest codebase xlink:href integrity nonce download".split(
+      " ",
+    ),
+  );
+  const HTML_NS = "http://www.w3.org/1999/xhtml";
+  /** @type {Array<() => void>} */
+  const edits = [];
+  copies.forEach((copy, i) => {
+    const original = originals[i];
+    if (!original) return;
+    const tag = copy.localName.toLowerCase();
+    if (REMOVE.has(tag)) {
+      edits.push(() => copy.remove());
+      return;
+    }
+    if (MEDIA.has(tag)) {
+      if (copy.namespaceURI !== HTML_NS || tag === "image" || tag === "feimage") {
+        edits.push(() => copy.remove());
+        return;
+      }
+      const rect = original.getBoundingClientRect();
+      const style = getComputedStyle(original);
+      const box = doc.createElement("span");
+      if (original.id) box.id = original.id;
+      const cls = original.getAttribute("class");
+      if (cls) box.setAttribute("class", cls);
+      const display =
+        style.display === "inline"
+          ? "inline-block"
+          : style.display === "contents"
+            ? "none"
+            : style.display;
+      box.setAttribute(
+        "style",
+        `display: ${display}; box-sizing: border-box; width: ${Math.round(rect.width)}px; ` +
+          `height: ${Math.round(rect.height)}px; vertical-align: ${style.verticalAlign}; ` +
+          "background: rgba(128, 128, 128, 0.25)",
+      );
+      edits.push(() => copy.replaceWith(box));
+      return;
+    }
+    for (const name of copy.getAttributeNames()) {
+      const lower = name.toLowerCase();
+      const value = copy.getAttribute(name) ?? "";
+      if (lower.startsWith("on") || URL_ATTRS.has(lower)) copy.removeAttribute(name);
+      else if (lower === "href") {
+        if (value.startsWith("#")) continue;
+        const isLink = tag === "a" || tag === "area";
+        if (!isLink) copy.removeAttribute(name);
+        else copy.setAttribute(name, /^\s*javascript:/i.test(value) ? "#" : follow);
+      } else if (lower === "style") copy.setAttribute(name, cleanCss(value));
+    }
+    // An inner scroller keeps its overflow and the height it had, which scripts often set.
+    if (
+      copy.namespaceURI === HTML_NS &&
+      original !== doc.documentElement &&
+      original !== doc.body
+    ) {
+      const style = getComputedStyle(original);
+      if (
+        /^(auto|scroll|overlay)$/.test(style.overflowY) &&
+        original.scrollHeight > original.clientHeight + 1
+      ) {
+        const prev = copy.getAttribute("style");
+        copy.setAttribute(
+          "style",
+          `${prev ? `${prev}; ` : ""}overflow-y: ${style.overflowY}; height: ${style.height}`,
+        );
+      }
+    }
+  });
+  for (const edit of edits) edit();
+  // Comments: conditional markup and build notes, never needed to replay the page.
+  const walker = doc.createTreeWalker(clone, NodeFilter.SHOW_COMMENT);
+  /** @type {Node[]} */
+  const comments = [];
+  while (walker.nextNode()) comments.push(walker.currentNode);
+  for (const c of comments) c.parentNode?.removeChild(c);
+
+  let head = clone.querySelector("head");
+  if (!head) {
+    head = doc.createElement("head");
+    clone.prepend(head);
+  }
+  const meta = doc.createElement("meta");
+  meta.setAttribute("http-equiv", "Content-Security-Policy");
+  meta.setAttribute("content", csp);
+  const charset = doc.createElement("meta");
+  charset.setAttribute("charset", "utf-8");
+  const style = doc.createElement("style");
+  // A CSS string holding "</style" would end the element early in the file.
+  style.textContent = css.replace(/<\/(style)/gi, "<\\/$1");
+  head.prepend(meta, charset);
+  head.append(style);
+  return { html: clone.outerHTML, skippedSheets, cssBytes: css.length };
 }
 
 // ---------------------------------------------------------------------------------------------

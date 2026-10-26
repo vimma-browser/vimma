@@ -9,6 +9,10 @@
  * tests/contract/control/v2/). Pure: the browser-side server and the tests share it.
  */
 
+import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./agent.mjs";
+import { AGENT_FILL, AGENT_SCREENSHOT, hasInvisible, isAgentLabel } from "./agent-act.mjs";
+import { isCtlVersion } from "./ctl-version.mjs";
+import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
 
@@ -26,7 +30,13 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
 /**
  * The agent role's commands (protocol 2; vimma-mcp decision 4). No other role runs them.
  * `agent-cancel` withdraws one of the connection's waiting questions (decision 17, MCP's
- * `notifications/cancelled`).
+ * `notifications/cancelled`). `agent-keys` runs Vimma's own page keys in an agent tab, and
+ * `agent-show` brings the agent workspace to the front with one agent tab selected
+ * (docs/specs/mcp-drive.md D2, D8, D19). `agent-elements` lists an agent tab's buttons, fields
+ * and links with hint labels (docs/specs/mcp-forms.md F2), `agent-activate` clicks one by its
+ * label (F8), `agent-fill` fills fields by their labels (F12), `agent-screenshot` returns an
+ * image of an agent tab's viewport (F18), and `agent-console` its script errors and failed
+ * requests (F22).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -36,8 +46,27 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-close",
   "agent-ping",
   "agent-cancel",
+  "agent-keys",
+  "agent-show",
+  "agent-elements",
+  "agent-activate",
+  "agent-fill",
+  "agent-screenshot",
+  "agent-console",
 ]);
-/** Why an agent request was `denied` (vimma-mcp decision 4). */
+/** Why `agent-activate`'s wait after the click stopped early (mcp-forms F27). */
+export const ACTIVATE_STOPS = Object.freeze(["in-use"]);
+/** The page dialogs `agent-activate` reports (mcp-forms F11). */
+export const DIALOG_TYPES = Object.freeze(["alert", "confirm", "prompt"]);
+/**
+ * What a click that loaded no page changed in place (#510): the clicked element, the other
+ * listed elements, the page's text, a dialog of the page. Words only, never the page's text.
+ */
+export const ACTIVATE_CHANGES = Object.freeze(["element", "elements", "text", "dialog"]);
+/**
+ * Why an agent request was `denied` (vimma-mcp decision 4). `in-use`: the user is typing in that
+ * tab, or a key sequence or hint mode is under way there (mcp-drive D13).
+ */
 export const DENY_REASONS = Object.freeze([
   "user",
   "timeout",
@@ -45,7 +74,12 @@ export const DENY_REASONS = Object.freeze([
   "muted",
   "changed",
   "cancelled",
+  "in-use",
 ]);
+/** Why `agent-keys` stopped before its last step (mcp-drive D13, D15, D18). */
+export const KEYS_STOPS = Object.freeze(["changed", "in-use", "timeout", "denied"]);
+/** `agent-keys`'s keys, in code points (mcp-drive D15). */
+export const MAX_AGENT_KEYS = 512;
 export const ERROR_CODES = Object.freeze([
   "bad-request",
   "unauthorized",
@@ -186,6 +220,11 @@ function checkDiscovery(m, errors) {
       new Set(roles).size === roles.length;
     if (!ok) errors.push('roles must be a list of "agent" and "full", each once');
   }
+  // Vimma's version, so `vimma-ctl mcp` can tell before it connects that it is older
+  // (docs/specs/ship-vimma-ctl.md, behaviour 5).
+  if ("version" in m && !isCtlVersion(m.version)) {
+    errors.push("version must be a Vimma version (X.Y.Z)");
+  }
 }
 
 /** @param {Obj} args @param {string[]} errors */
@@ -248,7 +287,7 @@ function checkTabArg(args, errors) {
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentHelloArgs(args, errors) {
-  noExtraFields(args, ["client", "via"], errors, "args.");
+  noExtraFields(args, ["client", "via", "ctl"], errors, "args.");
   const { client } = args;
   if (!isObject(client)) errors.push("client must be an object");
   else {
@@ -260,6 +299,9 @@ function checkAgentHelloArgs(args, errors) {
   }
   if ("via" in args && !isLabel(args.via, 32))
     errors.push("via must be 1 to 32 printable characters");
+  // vimma-ctl's own version (docs/specs/ship-vimma-ctl.md, behaviour 4); a client from before
+  // it sends none.
+  if ("ctl" in args && !isCtlVersion(args.ctl)) errors.push("ctl must be a Vimma version (X.Y.Z)");
 }
 
 /** @param {Obj} args @param {string[]} errors */
@@ -290,6 +332,81 @@ function checkAgentOpenArgs(args, errors) {
   if ("tab" in args) checkTabArg(args, errors);
 }
 
+/** C0 but the tab, DEL and C1: the keys are one line, with tabs or spaces between keys. */
+// eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+const KEYS_CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f-\u009f]/;
+
+/**
+ * `agent-keys` (mcp-drive D15): which keys run is the browser's parse (core agent-keys.mjs);
+ * this checks only their size and characters.
+ * @param {Obj} args @param {string[]} errors
+ */
+function checkAgentKeysArgs(args, errors) {
+  noExtraFields(args, ["tab", "keys"], errors, "args.");
+  checkTabArg(args, errors);
+  const { keys } = args;
+  if (typeof keys !== "string" || !keys || [...keys].length > MAX_AGENT_KEYS) {
+    errors.push(`keys must be a string of 1 to ${MAX_AGENT_KEYS} characters`);
+  } else if (KEYS_CONTROL.test(keys)) errors.push("keys must not contain control characters");
+}
+
+/** @param {Obj} args @param {string[]} errors */
+function checkAgentActivateArgs(args, errors) {
+  noExtraFields(args, ["tab", "label"], errors, "args.");
+  checkTabArg(args, errors);
+  if (!isAgentLabel(args.label)) {
+    errors.push(`label must be 1 to 3 of the hint characters ${DEFAULT_HINT_CHARS}`);
+  }
+}
+
+/** Control characters a fill's value must not hold: all but the line break (mcp-forms F14). */
+// eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+const FILL_CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
+
+/** @param {unknown} v  a fill's value: true, false, or a text within its cap (mcp-forms F14) */
+const isFillValue = (v) =>
+  typeof v === "boolean" ||
+  (typeof v === "string" &&
+    [...v].length <= AGENT_FILL.value &&
+    !FILL_CONTROL.test(v) &&
+    !hasInvisible(v));
+
+/** @param {Obj} args @param {string[]} errors */
+function checkAgentFillArgs(args, errors) {
+  noExtraFields(args, ["tab", "fields", "submit"], errors, "args.");
+  checkTabArg(args, errors);
+  const { fields } = args;
+  if (!Array.isArray(fields) || fields.length < 1 || fields.length > AGENT_FILL.fields) {
+    errors.push(`fields must be a list of 1 to ${AGENT_FILL.fields} fields`);
+  } else {
+    const seen = new Set();
+    fields.forEach((f, i) => {
+      const at = `args.fields[${i}]`;
+      if (!isObject(f)) {
+        errors.push(`${at} must be an object`);
+        return;
+      }
+      noExtraFields(f, ["label", "value"], errors, `${at}.`);
+      if (!isAgentLabel(f.label)) {
+        errors.push(`${at}.label must be 1 to 3 of the hint characters ${DEFAULT_HINT_CHARS}`);
+      } else if (seen.has(f.label)) {
+        errors.push("fields must name each label once");
+      } else seen.add(f.label);
+      if (!isFillValue(f.value)) {
+        errors.push(
+          `${at}.value must be true, false or a text of at most ${AGENT_FILL.value} characters ` +
+            "without control or invisible characters but line breaks",
+        );
+      }
+    });
+  }
+  if ("submit" in args && args.submit !== true && !isAgentLabel(args.submit)) {
+    errors.push(
+      `submit must be true or a label of 1 to 3 of the hint characters ${DEFAULT_HINT_CHARS}`,
+    );
+  }
+}
+
 /** @param {Obj} m @param {string[]} errors */
 function checkRequest(m, errors) {
   noExtraFields(m, ["type", "id", "command", "args"], errors);
@@ -307,7 +424,29 @@ function checkRequest(m, errors) {
   else if (command === "agent-hello") checkAgentHelloArgs(args, errors);
   else if (command === "agent-read") checkAgentReadArgs(args, errors);
   else if (command === "agent-open") checkAgentOpenArgs(args, errors);
-  else if (command === "agent-close") {
+  else if (command === "agent-keys") checkAgentKeysArgs(args, errors);
+  else if (command === "agent-activate") checkAgentActivateArgs(args, errors);
+  else if (command === "agent-fill") checkAgentFillArgs(args, errors);
+  else if (command === "agent-screenshot") {
+    // The viewport of one tab, never an area of the page or another tab (mcp-forms F18).
+    noExtraFields(args, ["tab", "labels"], errors, "args.");
+    checkTabArg(args, errors);
+    if ("labels" in args && typeof args.labels !== "boolean") {
+      errors.push("labels must be a boolean");
+    }
+  } else if (command === "agent-console") {
+    // A tab and a time, never an expression: nothing runs in the page (mcp-forms F23).
+    noExtraFields(args, ["tab", "since"], errors, "args.");
+    checkTabArg(args, errors);
+    if ("since" in args && !isCount(args.since)) {
+      errors.push("since must be a non-negative integer (ms since the epoch)");
+    }
+  } else if (
+    command === "agent-close" ||
+    command === "agent-show" ||
+    command === "agent-elements"
+  ) {
+    // A show names its tab only, never a workspace (mcp-drive D2); a list takes no selector.
     noExtraFields(args, ["tab"], errors, "args.");
     checkTabArg(args, errors);
   } else if (command === "agent-cancel") {
@@ -340,6 +479,230 @@ function checkFields(result, prefix, { strings = [], flags = [], nullable = [] }
   }
 }
 
+/**
+ * A list of the page's (`f`'s links, `vimma_elements`' elements): one string inside the
+ * untrusted-content delimiters, each exactly once (security.md M21, M31).
+ * @param {unknown} list
+ */
+const insideDelimiters = (list) =>
+  typeof list === "string" &&
+  list.startsWith(`${UNTRUSTED_OPEN}\n`) &&
+  list.endsWith(`\n${UNTRUSTED_CLOSE}`) &&
+  list.split(UNTRUSTED_OPEN).length === 2 &&
+  list.split(UNTRUSTED_CLOSE).length === 2;
+
+/** @param {unknown} n */
+const isCount = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
+
+/**
+ * `agent-elements`' result (mcp-forms F2, F5): the page, its element list inside the
+ * untrusted-content delimiters, and how many elements were left out (security.md M31).
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkElementsResult(result, errors) {
+  noExtraFields(result, ["url", "title", "elements", "dropped"], errors, "result.");
+  checkFields(result, "result", { strings: ["url", "title"] }, errors);
+  if (!insideDelimiters(result.elements)) {
+    errors.push("result.elements must be inside the untrusted-content delimiters");
+  }
+  if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+}
+
+/**
+ * `agent-console`'s result (mcp-forms F22, F24; security.md M31): the page, Vimma's clock when
+ * it read them, its errors and its failed requests each inside the untrusted-content
+ * delimiters, and how many entries were left out.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkConsoleResult(result, errors) {
+  noExtraFields(
+    result,
+    ["url", "title", "time", "errors", "requests", "dropped"],
+    errors,
+    "result.",
+  );
+  checkFields(result, "result", { strings: ["url", "title"] }, errors);
+  if (!isCount(result.time)) errors.push("result.time must be a non-negative integer");
+  for (const key of ["errors", "requests"]) {
+    if (!insideDelimiters(result[key])) {
+      errors.push(`result.${key} must be inside the untrusted-content delimiters`);
+    }
+  }
+  if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+}
+
+/** The image types a screenshot comes in (mcp-forms F19). */
+const SCREENSHOT_TYPES = Object.freeze(["image/png", "image/jpeg"]);
+/** Base64 of at least one byte, padded: what `convertToBlob`'s bytes encode to. */
+const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+/**
+ * `agent-screenshot`'s result (mcp-forms F19, F20; security.md M31): the page, a PNG or JPEG in
+ * base64 that fits the reply line, its size in pixels, and with labels asked how many were drawn
+ * and whether the element list was stale.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkScreenshotResult(result, errors) {
+  noExtraFields(
+    result,
+    ["url", "title", "mimeType", "data", "width", "height", "labels", "stale"],
+    errors,
+    "result.",
+  );
+  checkFields(result, "result", { strings: ["url", "title"] }, errors);
+  if (!SCREENSHOT_TYPES.includes(/** @type {any} */ (result.mimeType))) {
+    errors.push(`result.mimeType must be one of ${SCREENSHOT_TYPES.join(", ")}`);
+  }
+  const data = result.data;
+  if (
+    typeof data !== "string" ||
+    !data ||
+    data.length > AGENT_SCREENSHOT.base64 ||
+    !BASE64.test(data)
+  ) {
+    errors.push(`result.data must be base64 of at most ${AGENT_SCREENSHOT.base64} characters`);
+  }
+  if (!isInt(result.width, 1, AGENT_SCREENSHOT.width)) {
+    errors.push(`result.width must be an integer from 1 to ${AGENT_SCREENSHOT.width}`);
+  }
+  if (!isInt(result.height, 1, AGENT_SCREENSHOT.height)) {
+    errors.push(`result.height must be an integer from 1 to ${AGENT_SCREENSHOT.height}`);
+  }
+  if ("labels" in result && !isCount(result.labels)) {
+    errors.push("result.labels must be a non-negative integer");
+  }
+  if ("stale" in result) {
+    if (!("labels" in result)) errors.push("result.stale comes only with result.labels");
+    else if (result.stale !== true) errors.push("result.stale must be true when present");
+  }
+}
+
+/** A host name: letters, digits, dots, hyphens and the brackets and colons of an IPv6 address. */
+const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
+
+/**
+ * `agent-activate`'s result (mcp-forms F11, F16): the page after the click, a dialog it opened
+ * with its text inside the untrusted-content delimiters, the host of a submission Vimma stopped,
+ * why the wait stopped early, and what changed in place when no page loaded (#510).
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([])) {
+  noExtraFields(
+    result,
+    ["url", "title", "loading", "navigated", "dialog", "blocked", "stopped", "changed", ...extra],
+    errors,
+    "result.",
+  );
+  checkFields(
+    result,
+    "result",
+    { strings: ["url", "title"], flags: ["loading", "navigated"] },
+    errors,
+  );
+  if ("dialog" in result) {
+    const d = result.dialog;
+    if (!isObject(d)) errors.push("result.dialog must be an object");
+    else {
+      noExtraFields(d, ["type", "text"], errors, "result.dialog.");
+      if (!DIALOG_TYPES.includes(/** @type {any} */ (d.type))) {
+        errors.push(`result.dialog.type must be one of ${DIALOG_TYPES.join(", ")}`);
+      }
+      if (!insideDelimiters(d.text)) {
+        errors.push("result.dialog.text must be inside the untrusted-content delimiters");
+      }
+    }
+  }
+  if ("blocked" in result && !(typeof result.blocked === "string" && HOST.test(result.blocked))) {
+    errors.push("result.blocked must be a host");
+  }
+  if ("stopped" in result && !ACTIVATE_STOPS.includes(/** @type {any} */ (result.stopped))) {
+    errors.push(`result.stopped must be ${ACTIVATE_STOPS.join(" or ")}`);
+  }
+  if (
+    "changed" in result &&
+    !(
+      Array.isArray(result.changed) &&
+      new Set(result.changed).size === result.changed.length &&
+      result.changed.every((c) => ACTIVATE_CHANGES.includes(/** @type {any} */ (c)))
+    )
+  ) {
+    errors.push(`result.changed must be a list of distinct ${ACTIVATE_CHANGES.join(", ")}`);
+  }
+}
+
+/**
+ * `agent-fill`'s result (mcp-forms F12): how many fields were set, the labels of those whose
+ * value the page put back, then the page as after a click (F11, F16).
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkFillResult(result, errors) {
+  checkActivateResult(result, errors, ["filled", "reset"]);
+  if (!isCount(result.filled)) errors.push("result.filled must be a non-negative integer");
+  if (
+    "reset" in result &&
+    !(Array.isArray(result.reset) && result.reset.every((l) => isAgentLabel(l)))
+  ) {
+    errors.push("result.reset must be a list of labels");
+  }
+}
+
+/**
+ * `agent-keys`'s result (mcp-drive D16): the page after the steps, each step, why it stopped,
+ * the last find's outcome, and `f`'s link list (D12) inside the untrusted-content delimiters
+ * with how many links were left out (security.md M21).
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkKeysResult(result, errors) {
+  noExtraFields(
+    result,
+    ["url", "title", "loading", "scroll", "steps", "stopped", "find", "links", "dropped"],
+    errors,
+    "result.",
+  );
+  checkFields(result, "result", { strings: ["url", "title"], flags: ["loading"] }, errors);
+  const y = isObject(result.scroll) ? result.scroll.y : undefined;
+  if (typeof y !== "number" || !(y >= 0 && y <= 1)) {
+    errors.push("result.scroll.y must be a number from 0 to 1");
+  }
+  if (!Array.isArray(result.steps)) errors.push("result.steps must be an array");
+  else {
+    result.steps.forEach((step, i) => {
+      if (!isObject(step)) {
+        errors.push(`result.steps[${i}] must be an object`);
+        return;
+      }
+      noExtraFields(step, ["keys", "action", "ok", "note"], errors, `result.steps[${i}].`);
+      checkFields(
+        step,
+        `result.steps[${i}]`,
+        { strings: ["keys", "action"], flags: ["ok"] },
+        errors,
+      );
+      if ("note" in step && typeof step.note !== "string") {
+        errors.push(`result.steps[${i}].note must be a string`);
+      }
+    });
+  }
+  if ("stopped" in result && !KEYS_STOPS.includes(/** @type {any} */ (result.stopped))) {
+    errors.push(`result.stopped must be one of ${KEYS_STOPS.join(", ")}`);
+  }
+  if ("links" in result !== "dropped" in result) {
+    errors.push("result.links and result.dropped come together");
+  } else if ("links" in result) {
+    if (!insideDelimiters(result.links)) {
+      errors.push("result.links must be inside the untrusted-content delimiters");
+    }
+    if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+  }
+  if ("find" in result) {
+    if (!isObject(result.find)) errors.push("result.find must be an object");
+    else {
+      const shape = { strings: ["query"], flags: ["found", "wrapped"] };
+      checkFields(result.find, "result.find", shape, errors);
+    }
+  }
+}
+
 /** @param {Obj} result @param {string | undefined} command @param {string[]} errors */
 function checkAgentResult(result, command, errors) {
   if (command === "agent-hello") {
@@ -367,8 +730,23 @@ function checkAgentResult(result, command, errors) {
     checkFields(result, "result", { strings: ["tab"] }, errors);
   } else if (command === "agent-close" && result.closed !== true) {
     errors.push("result.closed must be true");
+  } else if (command === "agent-show") {
+    noExtraFields(result, ["shown"], errors, "result.");
+    if (result.shown !== true) errors.push("result.shown must be true");
   } else if (command === "agent-cancel") {
     checkFields(result, "result", { flags: ["cancelled"] }, errors);
+  } else if (command === "agent-keys") {
+    checkKeysResult(result, errors);
+  } else if (command === "agent-elements") {
+    checkElementsResult(result, errors);
+  } else if (command === "agent-activate") {
+    checkActivateResult(result, errors);
+  } else if (command === "agent-fill") {
+    checkFillResult(result, errors);
+  } else if (command === "agent-screenshot") {
+    checkScreenshotResult(result, errors);
+  } else if (command === "agent-console") {
+    checkConsoleResult(result, errors);
   }
 }
 

@@ -17,6 +17,9 @@ Since changed: the `vimma-bin` PKGBUILD is also a release asset that installs Vi
 Linux without the AUR, writes the desktop file and `vimma-open` inline, and records its install
 source; see [Arch Linux without the AUR](#arch-linux-without-the-aur).
 
+Since changed: each release also carries an `.rpm` for Fedora and openSUSE, built and
+smoke-tested in the `package` job; see spec [rpm-package](rpm-package.md).
+
 ## User story
 
 As a Linux user I install Vimma from a GitHub Release as a tarball, an AppImage or a `.deb`, or
@@ -151,6 +154,9 @@ almost nothing. Firefox's own inventory is in the tree:
   without the trailing "(date)." Mozilla's tooling writes.
 - smol-toml, which `packages/vimma-core` vendors (`pkg:npm/smol-toml@1.9.0`, BSD-3-Clause; the
   version is read from the vendored file's header).
+- (Since changed: `vimma-ctl`, which every package ships, with musl, Rust's standard library
+  and LLVM's libunwind as its components, added by the `package` job and checked against the
+  schema there; [ship-vimma-ctl](ship-vimma-ctl.md), Security and privacy.)
 
 Licences: a single id is looked up case-insensitively in the SPDX License List 3.24.0 (the
 version CycloneDX 1.6.2's `spdx.schema.json` enumerates) and written in SPDX's spelling

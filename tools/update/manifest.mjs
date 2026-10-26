@@ -13,7 +13,7 @@
  *   manifest.mjs commits --tag vX.Y.Z --repo owner/name  > commits.json
  *       the subjects and pull-request labels since the previous published release (git, gh)
  *   manifest.mjs build --tag vX.Y.Z --assets DIR --commits FILE [--published FILE]... --out FILE
- *       the body for the release's files in DIR (the three Linux packages and SHA256SUMS, or
+ *       the body for the release's files in DIR (the four Linux packages and SHA256SUMS, or
  *       with --target macos the .dmg and SHA256SUMS-macos)
  *   manifest.mjs build --offer nothing [--published FILE]... --out FILE
  *       a body that offers nothing (pulls an update; docs/runbook.md)
@@ -55,7 +55,7 @@ export const CHANNEL = "vimma";
 export const TARGETS = Object.freeze({
   linux: {
     target: "Linux_x86_64-gcc3",
-    kinds: /** @type {AssetKind[]} */ (["tarball", "appimage", "deb"]),
+    kinds: /** @type {AssetKind[]} */ (["tarball", "appimage", "deb", "rpm"]),
     sums: "SHA256SUMS",
   },
   macos: {
@@ -119,6 +119,7 @@ export function assetNames(version, os = "linux") {
     tarball: `vimma-${version}-linux-x86_64.tar.xz`,
     appimage: `vimma-${version}-x86_64.AppImage`,
     deb: `vimma_${version.replace("-", "~")}_amd64.deb`,
+    rpm: `vimma-${version.replace("-", "~")}-1.x86_64.rpm`,
     dmg: `vimma-${version}-macos-aarch64.dmg`,
   };
   return Object.fromEntries(targetOf(os).kinds.map((k) => [k, all[k]]));
@@ -532,44 +533,165 @@ export async function checkSigned(text, { keys, tag, dir, published, now, os = "
 /** @param {string} path */
 const readOrNull = (path) => (existsSync(path) ? readFileSync(path, "utf8") : null);
 
+/** How often a gh read is tried, and the waits between the tries. */
+const GH_WAITS_MS = [2000, 4000, 8000];
+/**
+ * A gh failure worth another try: an HTTP 5xx, a body that is not JSON (GitHub answers a 500
+ * with an empty body, which gh reports as `unexpected end of JSON input`), or a network error.
+ */
+const TRANSIENT =
+  /HTTP 5\d\d|unexpected end of JSON input|invalid character|unexpected EOF|connection reset|i\/o timeout|TLS handshake timeout|dial tcp|ECONNRESET|ETIMEDOUT/i;
+
+/**
+ * @typedef {{ run?: (args: string[]) => string, sleep?: (ms: number) => Promise<void> }} Gh
+ * how gh is run and how a retry waits; the defaults run the real gh and wait
+ */
+
+/** @param {string[]} args */
+const runGh = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 << 20 });
+/** @param {number} ms */
+const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+
+/**
+ * gh's raw JSON response, parsed, and the result of `check` on it. A failed call or a body that
+ * is not JSON is tried again after 2, 4 and 8 s while it looks transient. Any other failure,
+ * the last transient one, and a response `check` rejects throw: the caller never reads a
+ * failure or an unexpected shape as an empty answer.
+ * @template T
+ * @param {string[]} args
+ * @param {string} what  what is read, for the error
+ * @param {(data: unknown) => T} check  throws unless `data` has the shape the caller reads
+ * @param {Gh} [gh]
+ * @returns {Promise<T>}
+ */
+async function ghRead(args, what, check, { run = runGh, sleep = wait } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    /** @type {unknown} */
+    let data;
+    try {
+      data = JSON.parse(run(args));
+    } catch (e) {
+      const err = /** @type {{ message?: string, stderr?: unknown }} */ (e);
+      const detail = `${String(err.stderr ?? "").trim()} ${err.message ?? ""}`.trim();
+      const transient = e instanceof SyntaxError || TRANSIENT.test(detail);
+      const delay = GH_WAITS_MS[attempt - 1];
+      if (!transient || delay === undefined) {
+        throw new Error(
+          `could not read ${what} after ${attempt} attempt${attempt > 1 ? "s" : ""}: ${detail}`,
+          { cause: e },
+        );
+      }
+      console.error(`gh: ${what}: ${detail}; trying again in ${delay / 1000} s`);
+      await sleep(delay);
+      continue;
+    }
+    try {
+      return check(data);
+    } catch (e) {
+      throw new Error(`${what}: unexpected response: ${/** @type {Error} */ (e).message}`, {
+        cause: e,
+      });
+    }
+  }
+}
+
+/** @param {unknown} v */
+const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * The label names in a commits/<sha>/pulls response. Anything but a list of pull requests, each
+ * with a list of named labels, throws: jq would read `{}` as a list with no labels.
+ * @param {unknown} data
+ */
+function pullLabels(data) {
+  need(Array.isArray(data), "not a list of pull requests");
+  /** @type {Set<string>} */
+  const names = new Set();
+  for (const pr of data) {
+    need(isObject(pr) && Array.isArray(pr.labels), "a pull request without a list of labels");
+    for (const label of pr.labels) {
+      need(isObject(label) && typeof label.name === "string", "a label without a name");
+      names.add(label.name);
+    }
+  }
+  return [...names].sort();
+}
+
+/**
+ * The labels of the pull requests that merged a commit. Urgency (spec §7) depends on them, so
+ * labels that cannot be read, or a response of another shape, throw instead of counting as none.
+ * One page is enough: for a commit on the default branch GitHub lists only the pull request
+ * that merged it, and `--paginate --slurp` would change the shape to a list of pages.
+ * @param {string} sha
+ * @param {string} repo
+ * @param {Gh} [gh]
+ * @returns {Promise<string[]>}
+ */
+export function commitLabels(sha, repo, gh) {
+  return ghRead(
+    ["api", `repos/${repo}/commits/${sha}/pulls`],
+    `the labels of ${sha}`,
+    pullLabels,
+    gh,
+  );
+}
+
+/**
+ * The tags of the published releases (not drafts or pre-releases), which must include `tag`:
+ * a list without it is malformed or cut short, and counting from it could widen the range of
+ * commits to the whole history. A wider range only adds labels, so it can raise the urgency but
+ * never lower it; the check keeps a broken list from costing hundreds of label reads.
+ * @param {string} tag
+ * @param {string} repo
+ * @param {Gh} [gh]
+ * @returns {Promise<string[]>}
+ */
+export function publishedTags(tag, repo, gh) {
+  return ghRead(
+    ["api", `repos/${repo}/releases`, "--paginate", "--slurp"],
+    "the published releases",
+    (pages) => {
+      need(Array.isArray(pages) && pages.length > 0, "not a list of pages");
+      /** @type {string[]} */
+      const tags = [];
+      for (const page of pages) {
+        need(Array.isArray(page), "a page that is not a list of releases");
+        for (const r of page) {
+          need(
+            isObject(r) &&
+              typeof r.tag_name === "string" &&
+              typeof r.draft === "boolean" &&
+              typeof r.prerelease === "boolean",
+            "a release without tag_name, draft and prerelease",
+          );
+          if (!r.draft && !r.prerelease) tags.push(r.tag_name);
+        }
+      }
+      need(tags.includes(tag), `${tag} is not among them`);
+      return tags;
+    },
+    gh,
+  );
+}
+
 /**
  * The subjects since the previous published release, each with its pull request's labels.
  * @param {string} tag
  * @param {string} repo
  */
-function commitsSince(tag, repo) {
-  /** @param {string[]} args */
-  const gh = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 << 20 });
-  const tags = gh([
-    "api",
-    `repos/${repo}/releases`,
-    "--paginate",
-    "--jq",
-    ".[] | select(.draft == false and .prerelease == false) | .tag_name",
-  ])
-    .split("\n")
-    .filter(Boolean);
-  const previous = previousRelease(tags, tag);
+async function commitsSince(tag, repo) {
+  const previous = previousRelease(await publishedTags(tag, repo), tag);
   const range = previous ? `${previous}..${tag}` : tag;
   const log = execFileSync("git", ["log", "--format=%H%x09%s", range], {
     encoding: "utf8",
     maxBuffer: 64 << 20,
   });
-  return log
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const [sha = "", subject = ""] = line.split("\t");
-      const labels = gh([
-        "api",
-        `repos/${repo}/commits/${sha}/pulls`,
-        "--jq",
-        "[.[].labels[].name] | unique | .[]",
-      ])
-        .split("\n")
-        .filter(Boolean);
-      return { sha, subject, labels };
-    });
+  const commits = [];
+  for (const line of log.split("\n").filter(Boolean)) {
+    const [sha = "", subject = ""] = line.split("\t");
+    commits.push({ sha, subject, labels: await commitLabels(sha, repo) });
+  }
+  return commits;
 }
 
 async function main() {
@@ -596,7 +718,8 @@ async function main() {
   switch (command) {
     case "commits": {
       need(!!values.tag && !!values.repo, "commits needs --tag and --repo");
-      process.stdout.write(`${JSON.stringify(commitsSince(values.tag, values.repo), null, 1)}\n`);
+      const commits = await commitsSince(values.tag, values.repo);
+      process.stdout.write(`${JSON.stringify(commits, null, 1)}\n`);
       return;
     }
     case "build": {

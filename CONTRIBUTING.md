@@ -5,11 +5,14 @@ How to build, run and test Vimma, and how changes get in. For why Vimma exists, 
 
 ## Requirements
 
-- Linux x86_64 (the only platform built and tested so far).
+- Linux x86_64 (the only platform with a full build so far; macOS on Apple Silicon runs the
+  front-end tests on an artifact build, see "Building on macOS").
 - About 35 GB of free disk space, as measured on one machine: `engine/` 27 GB (source and the
   full build), the sccache compiler cache 6.8 GB, toolchains in `~/.mozbuild` 3.1 GB and the
   Firefox source download in `.surfer/` 0.8 GB.
-- Node.js 20 or later, Python 3, git.
+- Node.js 20.19 or later in the 20 line, or 22.12 or later; git.
+- Python 3.10 to 3.14: the range `engine/mach` declares it supports. A newer Python breaks mach in
+  places; Python 3.15 cannot parse the test manifests.
 - Time: the first full build took 39 min on a 16-thread Ryzen with 58 GB RAM. The Firefox source
   download took 12.5 min. See [docs/runbook.md](docs/runbook.md).
 
@@ -48,8 +51,17 @@ npm run verify-source   # that tarball against Mozilla's signed SHA512SUMS (need
                         # npm run import refuses an engine/ it has not verified
 npx surfer bootstrap    # Mozilla's toolchains into ~/.mozbuild (once)
 npm run import          # apply Vimma's files and patches, select the vimma brand
-npx surfer build        # full build
+npm run build           # full build (npx surfer build under a supported Python)
 ```
+
+`npm run build` runs `npx surfer build` with a Python inside the range `engine/mach` declares,
+chosen as `npm run mochitest` chooses one (see [Testing](#testing)), so a newer `python3` first
+on `PATH`, for example 3.15 from mise, does not break the build. It stops with the range and the
+interpreters it found when none fits. `npm run build -- --ui` rebuilds only the front end,
+`npm run build -- --mach` runs `./mach build` (after a `moz.build` change), and
+`npm run build -- --dry-run` prints the command and the Python it would use. It also adds
+`~/.mozbuild/sccache`, where `npx surfer bootstrap` puts sccache, to the end of `PATH`, so
+configure finds the compiler cache the mozconfig names.
 
 Google Safe Browsing (phishing and malware protection) needs an API key, which is not in this
 repository. A build without one works but shows the protection as off. To turn it on, get a free
@@ -74,9 +86,9 @@ front-end files are symlinks into `src/`, outside the Firefox tree, and without 
 content sandbox refuses them, so Vimma's page actor never loads (packaged builds copy the files
 and do not need it). `npx surfer run` uses a scratch profile without it.
 
-After editing JavaScript or CSS under `src/`, run `npm run import && npx surfer build --ui`. That
-rebuilds only the front end. Changes to branding, `configs/` or `moz.configure` need a full
-`npx surfer build`.
+After editing JavaScript or CSS under `src/`, run `npm run import && npm run build -- --ui`.
+That rebuilds only the front end. Changes to branding, `configs/` or `moz.configure` need a full
+`npm run build`.
 
 `npm run import` first restores the upstream files our `.patch` files touch
 (`tools/import/restore-patched.mjs`, the `+++ b/` paths, `--dry-run` to list them), so an edited
@@ -85,6 +97,26 @@ reset. After moving the checkout to another path, run
 `node tools/import/relocate-checkout.mjs --from <old path>` before importing: it retargets
 `engine/`'s absolute symlinks and rewrites the old path in the objdir
 ([runbook](docs/runbook.md#moving-the-checkout)).
+
+### vimma-ctl from source
+
+Every release package ships `vimma-ctl` (spec [ship-vimma-ctl](docs/specs/ship-vimma-ctl.md)).
+To build it yourself, for a source build of Vimma or while changing it (Rust, no dependencies;
+`rust-toolchain.toml` pins the toolchain):
+
+```sh
+cd tools/vimma-ctl
+cargo build --release --locked   # → target/release/vimma-ctl
+```
+
+Its version is Vimma's, read from `surfer.json`'s `displayVersion` by `build.rs`, so a client
+and a browser built from one checkout match and the agent notice for an older `vimma-ctl` stays
+quiet. Release builds are static Linux binaries (`--target x86_64-unknown-linux-musl`) and
+native arm64 ones on macOS; `release.yml`'s `ctl` and `macos-ctl` jobs build them, and
+`tools/package/ctl-notices.mjs` gathers the notices of what the toolchain links into them (Rust's
+standard library, and musl and LLVM's libunwind on Linux) from that toolchain, for the packages,
+and the SBOM entry. A Rust update that brings a new musl stops that step until the new musl's
+`COPYRIGHT` is in `tools/package/notices/` (`tools/package/vendor/README.md`).
 
 ## Testing
 
@@ -95,7 +127,13 @@ npm run lint             # eslint + prettier --check + no process wording in Mar
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
 npm run sites -- --filter github                          # live sites, a report (docs/runbook.md)
+npm run sites -- --offline --artifact                     # recorded pages, no network: the PR gate
 ```
+
+`npm run mochitest` runs mach with the first `python3`, then `python3.N`, on `PATH` whose
+version is inside the range `engine/mach` declares, and says which one it chose when it skipped
+another. It stops with the interpreters it found when none fits. Set `VIMMA_MACH_PYTHON` to an
+interpreter's path to choose one yourself.
 
 A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/temp-dir.mjs`,
 which removes it when the test ends, also when it fails. `npm test` runs with a `TMPDIR` of its
@@ -115,6 +153,34 @@ npm run mochitest -- --artifact tests/browser/
 An artifact build cannot check compiled-in settings (the `--version` string, the crash reporter
 flag). A PR that touches patches, `configs/`, `moz.configure` or branding must report a
 mochitest run on a full build.
+
+### Building on macOS
+
+macOS support is in progress ([spec macos-build](docs/specs/macos-build.md)). On a Mac, Vimma's
+front end runs on an artifact build only, and only on Apple Silicon: the tool fetches Mozilla's
+macOS arm64 build of the release in `surfer.json`. A full build on a Mac is not supported.
+
+- **Tools.** Xcode's command line tools (`xcode-select --install`), Python 3 and
+  `brew install gnu-tar gnupg`: Surfer unpacks the Firefox source with GNU tar (`gtar`) on macOS,
+  and the source check needs `gpgv`.
+- **Node.js** 20.19 or later in the 20 line, or 22.12 or later: the native binding of rolldown,
+  which Vitest uses, refuses older versions. `.nvmrc` pins the version CI uses.
+
+```sh
+npm ci
+tools/upstream/firefox-source.sh                # download, verify, unpack into engine/
+npm run import
+node tools/artifact-build/artifact-build.mjs    # Mozilla's macosx64-aarch64 build
+npm run mochitest -- --artifact tests/browser/  # headless
+```
+
+`tools/upstream/firefox-source.sh` deletes `engine/` without asking, objdir included; in an
+existing checkout use `npx surfer download` and `npm run verify-source` instead, as in "Build and
+run". The artifact build's app is `engine/obj-artifact/dist/Vimma.app`.
+
+Pull requests run the same steps on a hosted Mac (`mochitest (artifact build, macOS)` in
+`e2e.yml`); that check is informational and does not block a merge
+([runbook](docs/runbook.md#macos-mochitests-e2eyml-spec-macos-build)).
 
 ## Project layout
 

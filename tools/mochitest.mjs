@@ -1,11 +1,12 @@
 // Runs our mochitests through mach. `surfer import` symlinks tests/ under this engine path.
 // --artifact: against the artifact build (ADR-010, tools/artifact-build/artifact-build.mjs).
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { refreshAppIni } from "./artifact-build/artifact-build.mjs";
+import { machPythonOrExit } from "./mach-python.mjs";
 
 const ENGINE_TESTS = "browser/base/zen-components/";
 
@@ -30,9 +31,11 @@ export function expectSafeBrowsingKey(env, home, exists) {
  * @param {string[]} argv arguments after `npm run mochitest --`
  * @param {string} engine absolute path of engine/, with a trailing slash
  * @param {boolean} [expectKey] passed to the tests as VIMMA_EXPECT_SAFEBROWSING_KEY
+ * @param {{ platform?: string, src?: string }} [host] the OS, and the real path of the repo's src/
  * @returns {{ args: string[], env: Record<string, string> }} mach arguments and extra env
  */
-export function mochitestCommand(argv, engine, expectKey) {
+export function mochitestCommand(argv, engine, expectKey, host = {}) {
+  const { platform = process.platform } = host;
   const flags = argv.filter((a) => a.startsWith("-"));
   const paths = argv.filter((a) => !a.startsWith("-"));
   const mapped = (paths.length ? paths : ["tests/browser/"]).map(
@@ -43,6 +46,12 @@ export function mochitestCommand(argv, engine, expectKey) {
     expectKey === undefined ? [] : [`--setenv=VIMMA_EXPECT_SAFEBROWSING_KEY=${expectKey ? 1 : 0}`];
   const artifact = flags.includes("--artifact");
   const rest = flags.filter((f) => f !== "--headed" && f !== "--artifact");
+  // engine/'s chrome files link into src/, outside the tree the mac content sandbox may read;
+  // mach turns this into security.sandbox.content.mac.testing_read_path2. Linux runs do not need it.
+  if (platform === "darwin") {
+    const src = host.src ?? realpathSync(fileURLToPath(new URL("../src", import.meta.url)));
+    rest.unshift(`--sandbox-read-whitelist=${src}`);
+  }
   if (!artifact)
     return { args: ["mochitest", ...headless, ...keyEnv, ...rest, ...mapped], env: {} };
   return {
@@ -76,7 +85,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { args, env } = mochitestCommand(process.argv.slice(2), engine, expectKey);
   // A bare `./mach build` since the artifact build regenerates application.ini, not our copy.
   if (env.MOZCONFIG) refreshAppIni(engine);
-  const res = spawnSync("./mach", args, {
+  const python = machPythonOrExit(engine, "npm run mochitest");
+  const command = python ? [python, "./mach"] : ["./mach"];
+  const res = spawnSync(command[0], [...command.slice(1), ...args], {
     cwd: engine,
     stdio: "inherit",
     env: childEnv(process.env, env),

@@ -14,6 +14,7 @@ use crate::client::{self, Client, read_message};
 use crate::json::Value;
 use crate::mcp::{self, Action, Call, Failure, MAX_INPUT_LINE, Protocol, tool_result};
 use crate::protocol::{self, Discovery, ErrorBody, Response, Role};
+use crate::version;
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, TcpStream};
@@ -26,8 +27,9 @@ pub struct Settings {
     /// An `agent-ping` after this long without a request: Vimma closes an agent connection
     /// after 60 s without a line, and its grants with it.
     pub ping_every: Duration,
-    /// How long a call may wait for Vimma's answer: the longest `[mcp] ask_timeout` (300 s)
-    /// plus 10 s (decision 4). Vimma itself denies at its own ask timeout first.
+    /// How long a call may wait for Vimma's answer: the longest `[mcp] ask_timeout` (300 s), a
+    /// lazy tab's load (20 s) and the longest `vimma_keys` run (60 s, mcp-drive D15), plus 10 s
+    /// (decision 4). Vimma itself denies at its own ask timeout first.
     pub answer_wait: Duration,
     /// Connecting and the handshake, and each write to the socket.
     pub connect_timeout: Duration,
@@ -39,7 +41,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             ping_every: Duration::from_secs(30),
-            answer_wait: Duration::from_secs(310),
+            answer_wait: Duration::from_secs(390),
             connect_timeout: Duration::from_secs(5),
             max_pending: 16,
         }
@@ -89,8 +91,14 @@ pub fn serve(
     let (tx, rx) = mpsc::channel();
     let input_tx = tx.clone();
     std::thread::spawn(move || read_input(input, &input_tx));
+    let mut protocol = Protocol::new();
+    // The discovery file names Vimma's version, so the instructions can say at once that this
+    // client is older (docs/specs/ship-vimma-ctl.md, behaviour 5). Not running yet: no note.
+    if let Ok(discovery) = find() {
+        protocol.set_note(discovery.version.as_deref().and_then(version::older_note));
+    }
     let mut server = Server {
-        protocol: Protocol::new(),
+        protocol,
         output,
         find,
         via,
@@ -99,6 +107,8 @@ pub fn serve(
         link: None,
         generations: 0,
         pending: BTreeMap::new(),
+        note: None,
+        noted: None,
     };
     let code = loop {
         let wait = server.next_wake(Instant::now());
@@ -207,6 +217,10 @@ struct Server<'a> {
     generations: u64,
     /// By control-protocol request id.
     pending: BTreeMap<u32, Pending>,
+    /// That this client is older than the Vimma it connected to, for the next tool result.
+    note: Option<String>,
+    /// The Vimma version a note was given for: once per version, not per connection.
+    noted: Option<String>,
 }
 
 impl Server<'_> {
@@ -263,7 +277,7 @@ impl Server<'_> {
         let now = Instant::now();
         let deadline = now
             .checked_add(self.settings.answer_wait)
-            .unwrap_or(now + Duration::from_secs(310));
+            .unwrap_or(now + Duration::from_secs(390));
         self.pending.insert(
             id,
             Pending {
@@ -293,13 +307,30 @@ impl Server<'_> {
         if let Some(version) = label.and_then(|l| l.version.clone()) {
             info.insert("version".into(), Value::String(version));
         }
-        let mut args = BTreeMap::from([("client".to_string(), Value::Object(info))]);
+        let mut args = BTreeMap::from([
+            ("client".to_string(), Value::Object(info)),
+            (
+                "ctl".to_string(),
+                Value::String(version::VERSION.to_string()),
+            ),
+        ]);
         if let Some(via) = &self.via {
             args.insert("via".into(), Value::String(via.clone()));
         }
         client
             .call_value("agent-hello", &Value::Object(args))
             .map_err(|e| failure_of(e, Duration::ZERO))?;
+        let vimma = client.vimma_version().to_string();
+        if self.noted.as_deref() != Some(vimma.as_str()) {
+            self.note = version::older_note(&vimma);
+            if self.note.is_some() {
+                log(&format!(
+                    "this vimma-ctl ({}) is older than Vimma ({vimma})",
+                    version::VERSION
+                ));
+                self.noted = Some(vimma);
+            }
+        }
         let (reader, writer, next_id) = client
             .into_parts()
             .map_err(|e| Failure::Protocol(format!("cannot keep the connection: {e}")))?;
@@ -397,6 +428,10 @@ impl Server<'_> {
                 let failure = failure_of(client::Error::Server(error), pending.sent.elapsed());
                 tool_result(&pending.call, Err(&failure))
             }
+        };
+        let reply = match self.note.take() {
+            Some(note) => mcp::with_note(reply, &note),
+            None => reply,
         };
         self.write(&reply)
     }

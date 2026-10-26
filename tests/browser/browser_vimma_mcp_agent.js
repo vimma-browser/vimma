@@ -7,8 +7,8 @@
 // the agent workspace's tabs in its container, never another workspace's or a private window's
 // (7), checked when each command runs; every request but hello and ping waits for an answer
 // (12), denied on timeout (16), capped (17), muted after three noes (18); the yes stands for the
-// tab and URL asked about (19); grants per connection and tool, ended by `:mcp revoke` and by
-// the connection closing (20-22); opens are background and never switch (10, B2); page text
+// tab and URL asked about (19); one grant per connection, for every tool (mcp-grants G1), ended
+// by `:mcp revoke` and by the connection closing (20-22); opens are background and never switch (10, B2); page text
 // comes back between the untrusted-content delimiters. The question line has its own tests
 // (browser_vimma_mcp_prompt.js): here the tests answer through AgentGate, as the line does.
 
@@ -46,6 +46,9 @@ const { validateMessage, MAX_LINE_LENGTH } = ChromeUtils.importESModule(
 const { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent.mjs",
 );
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+/** Vimma's version: what a vimma-ctl shipped with this build names in its agent-hello. */
+const VIMMA_VERSION = AppConstants.MOZ_APP_VERSION_DISPLAY;
 
 const CONTROL = "vimma.control.enabled";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
@@ -97,7 +100,7 @@ async function agentClient(name = "example-agent") {
   const welcome = await c.handshake({ protocol: 2, role: "agent" });
   Assert.equal(welcome.type, "welcome", "an agent connection is welcomed");
   Assert.equal(welcome.role, "agent", "as the agent role");
-  const hi = await c.call("agent-hello", { client: { name }, via: "example" });
+  const hi = await c.call("agent-hello", { client: { name }, via: "example", ctl: VIMMA_VERSION });
   Assert.deepEqual(hi.result, { workspace: agent().name, exists: true }, "agent-hello answers");
   return c;
 }
@@ -390,7 +393,7 @@ add_task(async function test_agent_cancel_withdraws_one_waiting_question() {
   await setSwitches({});
 });
 
-add_task(async function test_grants_per_connection_and_tool() {
+add_task(async function test_one_grant_covers_every_tool_of_its_connection() {
   await setSwitches({ mcp: true });
   const tab = await openAgentTab();
   const c = await agentClient();
@@ -398,19 +401,22 @@ add_task(async function test_grants_per_connection_and_tool() {
   await answer({ kind: "grant", minutes: 15 });
   Assert.equal((await c.response(id)).ok, true, "15a allows the read");
   Assert.deepEqual(
-    AgentGate.grants().map((g) => g.tool),
-    ["vimma_read_page"],
-    "and grants that tool",
+    AgentGate.grants().map((g) => [g.conn !== undefined, g.tool]),
+    [[true, undefined]],
+    "and makes one grant of the connection, for no one tool",
   );
 
   let r = await c.call("agent-read", { tab: idOf(tab) });
   Assert.equal(r.ok, true, "the next read runs unasked");
+  r = await c.call("agent-tabs");
+  Assert.equal(r.ok, true, "so does another tool");
+  r = await c.call("agent-open", { url: `${PAGE}?granted` });
+  Assert.equal(r.ok, true, "an open too");
   Assert.equal(AgentGate.waiting.length, 0, "with no question");
-
-  id = c.request("agent-tabs");
-  Assert.equal((await question()).tool, "vimma_tabs", "another tool still asks");
-  await answer({ kind: "once" });
-  await c.response(id);
+  Assert.ok(
+    AgentGate.log.some((e) => e.tool === "vimma_open" && e.outcome === "grant"),
+    "and the open is in :mcp log as run under the grant",
+  );
 
   const other = await agentClient("codex");
   id = other.request("agent-read", { tab: idOf(tab) });
@@ -433,7 +439,42 @@ add_task(async function test_grants_per_connection_and_tool() {
   await c.response(id);
   c.close();
   await until(() => AgentGate.grants().length === 0, "closing the connection ends its grant");
-  BrowserTestUtils.removeTab(tab);
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  await setSwitches({});
+});
+
+// mcp-grants behaviour 1: the user answered only the question on the line, so a waiting call
+// the grant releases shows as one run under it: a notice and a `:mcp log` row.
+add_task(async function test_queued_calls_a_grant_releases_show_as_granted() {
+  await setSwitches({ mcp: true });
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  /** @type {any[]} */
+  const events = [];
+  const listener = (/** @type {any} */ e) => e && events.push(e);
+  AgentGate.addListener(listener);
+  const read = c.request("agent-read", { tab: idOf(tab) });
+  const open = c.request("agent-open", { url: `${PAGE}?queued` });
+  await until(() => AgentGate.waiting.length === 2, "both wait");
+  AgentGate.answer(AgentGate.waiting[0].id, { kind: "grant", minutes: 5 });
+  Assert.equal((await c.response(read)).ok, true, "the read the user answered runs");
+  Assert.equal((await c.response(open)).ok, true, "the waiting open runs under the grant");
+  AgentGate.removeListener(listener);
+  const row = AgentGate.log.find((e) => e.tool === "vimma_open");
+  Assert.equal(row?.outcome, "grant", "logged as run under the grant, not as answered");
+  // One notice: a separate one for the released call would replace the grant's at once.
+  Assert.deepEqual(
+    events.filter((e) => e.kind === "ran" || e.kind === "answered").map((e) => e.kind),
+    ["answered"],
+    "the grant's notice is the only one",
+  );
+  Assert.equal(
+    events.find((e) => e.kind === "answered")?.released,
+    1,
+    "and it counts the waiting call the grant let run",
+  );
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   await setSwitches({});
 });
 
@@ -554,10 +595,8 @@ add_task(async function test_grants_cannot_flood() {
     "at most 4 agent requests of one connection run at once",
   );
 
-  // Opens under a grant: at most 10 a minute.
-  id = c.request("agent-open", { url: `${PAGE}?flood` });
-  await answer({ kind: "grant", minutes: 5 });
-  const opened = [await c.response(id)];
+  // Opens under the same grant: at most 10 a minute.
+  const opened = [];
   for (let i = 0; i < 11; i++) opened.push(await c.call("agent-open", { url: `${PAGE}?f${i}` }));
   Assert.equal(opened.filter((r) => r.ok).length, 10, "10 opens a minute");
   Assert.equal(opened.at(-1).error?.reason, "busy", "the rest are busy");
@@ -660,5 +699,102 @@ add_task(async function test_agents_cannot_take_every_connection() {
   Assert.equal((await welcomed).type, "welcome", "while vimma-ctl still gets in");
   full.close();
   for (const a of agents) a.close();
+  await setSwitches({});
+});
+
+// Spec: docs/specs/ship-vimma-ctl.md, behaviours 4-6. The discovery file names Vimma's version;
+// an agent connection whose vimma-ctl is older, or names no version, still gets in and runs its
+// commands, and Vimma shows a one-line notice; one as new as Vimma shows none.
+add_task(async function test_an_older_vimma_ctl_gets_a_notice_and_still_works() {
+  await setSwitches({ mcp: true });
+  Assert.equal((await discovery()).version, VIMMA_VERSION, "the discovery file names the version");
+  /** @type {string[]} */
+  const notices = [];
+  /** @param {any} e */
+  const collect = (e) => {
+    if (e?.kind === "notice") notices.push(e.text);
+  };
+  AgentGate.addListener(collect);
+  try {
+    // Names no other test uses: the notice is once per client name and version a session, and
+    // the suite's other files connect as example-agent with no version.
+    const hello = async (/** @type {string} */ name, /** @type {object} */ args) => {
+      const c = new Client(/** @type {number} */ (VimmaControl.port));
+      await c.handshake({ protocol: 2, role: "agent" });
+      const hi = await c.call("agent-hello", { client: { name }, ...args });
+      Assert.equal(hi.ok, true, `${JSON.stringify(args)}: welcomed all the same`);
+      const ping = await c.call("agent-ping");
+      Assert.equal(ping.ok, true, "and its commands run");
+      return c;
+    };
+
+    const current = await hello("ctl-current", { ctl: VIMMA_VERSION });
+    const older = await hello("ctl-older", { ctl: "0.0.1" });
+    await until(() => notices.length === 1, "one notice, for the older client");
+    Assert.equal(
+      notices[0],
+      `vimma-ctl 0.0.1 is older than Vimma ${VIMMA_VERSION}: agents get fewer tools until you update it`,
+    );
+    const unnamed = await hello("ctl-unnamed", {});
+    await until(() => notices.length === 2, "and one for a client that names no version");
+    Assert.equal(
+      notices[1],
+      `vimma-ctl is older than Vimma ${VIMMA_VERSION}: agents get fewer tools until you update it`,
+    );
+    const newer = await hello("ctl-newer", { ctl: "999.0.0" });
+    Assert.equal(notices.length, 2, "none for a newer client");
+    await until(
+      () => document.getElementById(NOTICE_ID)?.textContent === notices[1],
+      "the notice line shows it",
+    );
+    // Four agent connections at most: close these before the fifth.
+    for (const c of [current, older, unnamed, newer]) c.close();
+    await until(() => [current, older, unnamed, newer].every((c) => c.closed), "all closed");
+    const bad = new Client(/** @type {number} */ (VimmaControl.port));
+    await bad.handshake({ protocol: 2, role: "agent" });
+    const refused = await bad.call("agent-hello", { client: { name: "x" }, ctl: "v1" });
+    Assert.equal(refused?.error?.code, "invalid-args", "a ctl that is not a version is refused");
+    Assert.equal(notices.length, 2, "and gives no notice");
+    bad.close();
+    // Once per client name and version a session: a client reconnecting, or an agent opening
+    // connection after connection, cannot keep the notice line for itself.
+    const again = await hello("ctl-older", { ctl: "0.0.1" });
+    Assert.equal(notices.length, 2, "no second notice for the same client and version");
+    again.close();
+  } finally {
+    AgentGate.removeListener(collect);
+  }
+  await setSwitches({});
+});
+
+// Spec ship-vimma-ctl, decision 9: an agent connects at its first call, so its question follows
+// the hello at once. The notice waits until no question waits, so it never covers the line.
+add_task(async function test_the_older_client_notice_waits_for_the_question_line() {
+  await setSwitches({ mcp: true });
+  const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
+  const notice = document.getElementById(NOTICE_ID);
+  if (notice) notice.textContent = "";
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "held-agent" }, ctl: "0.0.1" });
+  const tabs = c.call("agent-tabs");
+  const q = await question();
+  await new Promise((r) => setTimeout(r, 1000));
+  Assert.ok(!noticeText().includes("is older than"), "no notice over the waiting question");
+  AgentGate.answer(q.id, { kind: "once" });
+  // A notice of what the agent did, shown just before the held one is due (1.6 s after the line
+  // frees), is never cut short: it stays its 1.5 s, and the held one follows.
+  const did = new Promise((r) => setTimeout(r, 1200)).then(() =>
+    AgentGate.notify("the agent did something"),
+  );
+  Assert.equal((await tabs).ok, true, "the older client's call runs");
+  await did;
+  await new Promise((r) => setTimeout(r, 800));
+  Assert.equal(noticeText(), "the agent did something", "the held notice waits for it");
+  await until(
+    () => noticeText().startsWith("vimma-ctl 0.0.1 is older than Vimma"),
+    "the notice once the line is free",
+  );
+  c.close();
   await setSwitches({});
 });

@@ -90,6 +90,17 @@
   padding-inline-end: 0.15rem;
 }
 
+/* The agent question wraps, so a long one (`vimma_keys`' keys, docs/specs/mcp-drive.md D14) is
+   shown whole: a word too long for the line breaks anywhere instead of running off it. */
+.vimma-agent-prompt-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vimma-agent-prompt-hint {
+  flex: none;
+}
+
 /* No focus ring on the line's input (docs/specs/m7-a11y.md, "Focus rings in Vimma's UI"): the line
    exists only while it has focus (it closes on focusout), like Vim's, and the accent prompt in
    front of the caret, at 3:1 or more, marks it. `outline: none` also keeps the UA's native blue

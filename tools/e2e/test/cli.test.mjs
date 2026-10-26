@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 const CLI = fileURLToPath(new URL("../e2e.mjs", import.meta.url));
+// macOS has no /bin/false or /bin/true, only /usr/bin's.
+const BIN = process.platform === "darwin" ? "/usr/bin" : "/bin";
 
 describe("npm run e2e", () => {
   it("refuses --update-baselines when CI is set (exit 2, before launching anything)", () => {
@@ -52,7 +54,7 @@ describe("npm run e2e -- --report-json", () => {
       [
         CLI,
         ...["--scenarios", scenarios, "--baselines", join(dir, "shots"), "--out", join(dir, "o")],
-        ...["--build", "/bin/false", "--vimma-ctl", "/bin/true", "--discovery-timeout", "1"],
+        ...["--build", `${BIN}/false`, "--vimma-ctl", `${BIN}/true`, "--discovery-timeout", "1"],
         ...["--report-json", out],
       ],
       { encoding: "utf8", env: { ...process.env, DISPLAY: ":0" }, timeout: 30_000 },

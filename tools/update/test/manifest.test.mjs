@@ -26,6 +26,7 @@ import {
   buildManifest,
   checkAssets,
   checkSigned,
+  commitLabels,
   digestInfo,
   dmgInfo,
   manifestPath,
@@ -34,6 +35,7 @@ import {
   pinnedPem,
   prepareRelease,
   previousRelease,
+  publishedTags,
   releaseInfo,
   serialAt,
   urgencyOf,
@@ -79,6 +81,7 @@ const offer = () => ({
     tarball: { size: 86804240, sha512: HASH("a") },
     appimage: { size: 111966712, sha512: HASH("b") },
     deb: { size: 87718612, sha512: HASH("c") },
+    rpm: { size: 87921340, sha512: HASH("d") },
   },
 });
 
@@ -87,6 +90,8 @@ const offer = () => ({
 beforeAll(async () => {
   [key, stranger] = await Promise.all([kmsKey(), kmsKey()]);
 }, 60_000);
+
+const DL = "https://github.com/vimma-browser/vimma/releases/download/v0.3.1";
 
 describe("buildManifest (spec §2)", () => {
   it("writes the format the client parses: channel, target and serial on <updates>, one <update>", () => {
@@ -103,6 +108,8 @@ describe("buildManifest (spec §2)", () => {
         ` URL="${RELEASES}/download/v0.3.1/vimma-0.3.1-x86_64.AppImage"/>\n` +
         `    <vimmaDeb size="87718612" hashFunction="sha512" hashValue="${HASH("c")}"` +
         ` URL="${RELEASES}/download/v0.3.1/vimma_0.3.1_amd64.deb"/>\n` +
+        `    <vimmaRpm size="87921340" hashFunction="sha512" hashValue="${HASH("d")}"` +
+        ` URL="${RELEASES}/download/v0.3.1/vimma-0.3.1-1.x86_64.rpm"/>\n` +
         "  </update>\n" +
         "</updates>\n",
     );
@@ -121,9 +128,18 @@ describe("buildManifest (spec §2)", () => {
           urgent: false,
           advisories: [],
           assets: {
-            tarball: { size: 86804240, sha512: HASH("a") },
-            appimage: { size: 111966712, sha512: HASH("b") },
-            deb: { size: 87718612, sha512: HASH("c") },
+            tarball: {
+              size: 86804240,
+              sha512: HASH("a"),
+              url: `${DL}/vimma-0.3.1-linux-x86_64.tar.xz`,
+            },
+            appimage: {
+              size: 111966712,
+              sha512: HASH("b"),
+              url: `${DL}/vimma-0.3.1-x86_64.AppImage`,
+            },
+            deb: { size: 87718612, sha512: HASH("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
+            rpm: { size: 87921340, sha512: HASH("d"), url: `${DL}/vimma-0.3.1-1.x86_64.rpm` },
           },
         },
       },
@@ -187,6 +203,7 @@ describe("buildManifest (spec §2)", () => {
       tarball: "vimma-0.3.1-linux-x86_64.tar.xz",
       appimage: "vimma-0.3.1-x86_64.AppImage",
       deb: "vimma_0.3.1_amd64.deb",
+      rpm: "vimma-0.3.1-1.x86_64.rpm",
     });
   });
 
@@ -308,6 +325,138 @@ describe("urgency (spec §7)", () => {
   });
 });
 
+/** An error as execFileSync throws it when gh exits non-zero. */
+const ghError = (/** @type {string} */ stderr) =>
+  Object.assign(new Error("Command failed: gh api"), { stderr });
+/** A gh that answers with `replies` in turn (an Error is thrown), and the waits it was given. */
+const fake = (/** @type {(string | Error)[]} */ ...replies) => {
+  const calls = /** @type {string[][]} */ ([]);
+  const waits = /** @type {number[]} */ ([]);
+  const run = (/** @type {string[]} */ args) => {
+    calls.push(args);
+    const r = replies[Math.min(calls.length, replies.length) - 1];
+    if (r instanceof Error) throw r;
+    return r ?? "";
+  };
+  return { run, sleep: async (/** @type {number} */ ms) => void waits.push(ms), calls, waits };
+};
+
+describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
+  const HTTP_500 = ghError("unexpected end of JSON input\n");
+
+  /** The commits/<sha>/pulls response for pull requests carrying these labels. */
+  const pulls = (/** @type {string[][]} */ ...labels) =>
+    JSON.stringify(
+      labels.map((names, i) => ({ number: i + 1, labels: names.map((name) => ({ name })) })),
+    );
+
+  it("retries a transient failure, then reads the labels", async () => {
+    const gh = fake(HTTP_500, pulls(["upstream", "security"], ["security"]));
+    await expect(commitLabels("abc", "vimma-browser/vimma", gh)).resolves.toEqual([
+      "security",
+      "upstream",
+    ]);
+    expect(gh.calls).toHaveLength(2);
+    expect(gh.calls[0]).toContain("repos/vimma-browser/vimma/commits/abc/pulls");
+    expect(gh.calls[0]).not.toContain("--jq");
+    expect(gh.waits).toEqual([2000]);
+  });
+
+  it("retries an HTTP 5xx and a network error as transient", async () => {
+    const gh = fake(
+      ghError("gh: Server Error (HTTP 502)\n"),
+      ghError("Get https://api.github.com/: dial tcp: i/o timeout\n"),
+      pulls(["security"]),
+    );
+    await expect(commitLabels("abc", "o/r", gh)).resolves.toEqual(["security"]);
+    expect(gh.waits).toEqual([2000, 4000]);
+  });
+
+  it("retries a successful exit whose body is not JSON", async () => {
+    const gh = fake("", '[{"labels":[{"na', pulls(["security"]));
+    await expect(commitLabels("abc", "o/r", gh)).resolves.toEqual(["security"]);
+    expect(gh.waits).toEqual([2000, 4000]);
+  });
+
+  it("a commit with no pull request or no labels has none", async () => {
+    await expect(commitLabels("abc", "o/r", fake(pulls()))).resolves.toEqual([]);
+    await expect(commitLabels("abc", "o/r", fake(pulls([])))).resolves.toEqual([]);
+  });
+
+  it.each([
+    ["an object", "{}"],
+    ["null", "null"],
+    ["a pull request without labels", '[{"number":1}]'],
+    ["a pull request that is not an object", "[null]"],
+    ["labels that are not a list", '[{"labels":{}}]'],
+    ["a label without a string name", '[{"labels":[{"name":7}]}]'],
+  ])("throws at once on %s instead of answering no labels", async (_, body) => {
+    const gh = fake(body, pulls(["security"]));
+    await expect(commitLabels("abc", "o/r", gh)).rejects.toThrow(
+      /labels of abc: unexpected response/,
+    );
+    expect(gh.calls).toHaveLength(1);
+  });
+
+  it("throws after four attempts that all fail, never answering no labels", async () => {
+    const gh = fake(HTTP_500);
+    await expect(commitLabels("abc", "o/r", gh)).rejects.toThrow(/abc.*4 attempts/s);
+    expect(gh.calls).toHaveLength(4);
+    expect(gh.waits).toEqual([2000, 4000, 8000]);
+  });
+
+  it("throws at once on a failure that is not transient", async () => {
+    const gh = fake(ghError("gh: Not Found (HTTP 404)\n"), pulls(["security"]));
+    await expect(commitLabels("abc", "o/r", gh)).rejects.toThrow(/HTTP 404/);
+    expect(gh.calls).toHaveLength(1);
+    expect(gh.waits).toEqual([]);
+  });
+});
+
+describe("reading the published releases (spec §7: the range of commits)", () => {
+  /** One entry of the releases list. */
+  const release = (/** @type {string} */ tag_name, draft = false, prerelease = false) => ({
+    tag_name,
+    draft,
+    prerelease,
+  });
+  /** The releases list as `gh api --paginate --slurp` prints it: a list of pages. */
+  const pages = (/** @type {object[][]} */ ...p) => JSON.stringify(p);
+
+  it("reads the published releases' tags from every page", async () => {
+    const gh = fake(
+      ghError("gh: Server Error (HTTP 500)\n"),
+      pages(
+        [release("v0.1.8", true), release("v0.1.7"), release("v0.1.7-rc.1", false, true)],
+        [release("v0.1.6")],
+      ),
+    );
+    await expect(publishedTags("v0.1.7", "o/r", gh)).resolves.toEqual(["v0.1.7", "v0.1.6"]);
+    expect(gh.calls[0]).toEqual(
+      expect.arrayContaining(["repos/o/r/releases", "--paginate", "--slurp"]),
+    );
+    expect(gh.calls[0]).not.toContain("--jq");
+    expect(gh.waits).toEqual([2000]);
+  });
+
+  it.each([
+    ["an object", "{}"],
+    ["null", "null"],
+    ["a page that is an object", "[{}]"],
+    ["a release without a tag", '[[{"draft":false,"prerelease":false}]]'],
+    ["a release without its draft flag", '[[{"tag_name":"v0.1.7","prerelease":false}]]'],
+    ["no pages", "[]"],
+    ["a list without the current tag", pages([release("v0.1.6")])],
+    ["a list with the current tag only as a draft", pages([release("v0.1.7", true)])],
+  ])("throws at once on %s instead of widening the range", async (_, body) => {
+    const gh = fake(body, pages([release("v0.1.7")]));
+    await expect(publishedTags("v0.1.7", "o/r", gh)).rejects.toThrow(
+      /published releases: unexpected response/,
+    );
+    expect(gh.calls).toHaveLength(1);
+  });
+});
+
 describe("signing round trip (the verifier the browser runs)", () => {
   it("a manifest signed as Cloud KMS signs verifies under the pinned key, and only it", async () => {
     const body = buildManifest({ serial: "20261028041207", update: offer() });
@@ -365,6 +514,7 @@ function fakeRelease(version, { ini } = {}) {
   execFileSync("tar", ["-cJf", join(dir, names.tarball), "-C", src, "vimma"]);
   writeFileSync(join(dir, names.appimage), `appimage ${version}`);
   writeFileSync(join(dir, names.deb), `deb ${version}`);
+  writeFileSync(join(dir, names.rpm), `rpm ${version}`);
   const sha = (/** @type {string} */ n) =>
     createHash("sha256")
       .update(readFileSync(join(dir, n)))
@@ -409,6 +559,13 @@ describe("prepareRelease and checkSigned (the jobs' checks)", () => {
     expect(m.update.assets.deb).toEqual({
       size: deb.length,
       sha512: createHash("sha512").update(deb).digest("hex"),
+      url: "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/vimma_0.3.1_amd64.deb",
+    });
+    const rpm = readFileSync(join(dir, "vimma-0.3.1-1.x86_64.rpm"));
+    expect(m.update.assets.rpm).toEqual({
+      size: rpm.length,
+      sha512: createHash("sha512").update(rpm).digest("hex"),
+      url: "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/vimma-0.3.1-1.x86_64.rpm",
     });
   });
 

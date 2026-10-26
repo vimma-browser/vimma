@@ -6,7 +6,8 @@
 // in the command line's look (cmdline.css), an alertdialog named by its question. It never
 // takes focus (decision 14): host/agent-ui.mjs gives it the keys from VimmaHost's capture
 // listener, and only once it is armed (security.dialog_enable_delay, as Firefox's own security
-// dialogs). Every value is set as text (security.md C1); the host of an open is a <b>.
+// dialogs). Every value is set as text (security.md C1); the host of an open is a <b>, and a
+// checkpoint's `▲` and verb are in the warning colour (docs/specs/mcp-checkpoints.md C3).
 
 import { loadCmdlineSheet } from "./cmdline.mjs";
 
@@ -68,6 +69,9 @@ export class AgentPrompt {
           node.dir = "auto";
           node.style.unicodeBidi = "isolate";
         }
+        // A checkpoint's glyph and verb (docs/specs/mcp-checkpoints.md C3): the theme's warning
+        // colour, so that a payment or a form is not taken for a routine question.
+        if (p.warn) node.style.color = "var(--vimma-text-yellow)";
         node.textContent = p.text;
         return node;
       }),

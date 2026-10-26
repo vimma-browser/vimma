@@ -1,0 +1,13 @@
+{
+  "description": "Click an element of an agent tab by its label from agent-elements (mcp-forms F8)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 12,
+    "command": "agent-activate",
+    "args": {
+      "tab": "12",
+      "label": "sd"
+    }
+  }
+}

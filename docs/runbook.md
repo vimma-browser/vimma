@@ -310,8 +310,35 @@ npm run sites -- --pref name=value             # an extra profile pref (repeatab
 - "blocked (bot check)" and "consent" are the site's doing (a Cloudflare or Google check, a
   consent wall it could not reject), not Vimma's. They depend on the network: run it from home
   when the nightly shows many.
+- `--retry-blocked` loads each blocked site once more at the end of the run. The nightly passes
+  it; leave it off at home, where every extra visit makes the next bot check more likely.
+- **The nightly diff and the `site-compat` issue.** After the run, `sites.yml` downloads the
+  previous scheduled run's artifact and runs `tools/sites/compare.mjs`: the changes go into the
+  job summary and `diff.md`, and the regressions it tracks (checks that passed before and fail
+  now) into `diff.json` for the next night. A new regression opens one issue labelled
+  `site-compat`; each scheduled run updates it and closes it once every tracked check passes
+  again. A check that has failed since before it was first compared opens no issue. To see what
+  a run compared with, open the compare job's summary; to start tracking afresh, close the issue
+  (it reopens only on a new regression). If a night could not compare (an expired, missing or
+  damaged artifact), the issue says the tracking was interrupted and is no longer closed
+  automatically: close it by hand once the report shows its checks passing. A night whose
+  harness failed fails the run and is skipped as a baseline; the next night compares with the
+  last successful one.
 - Adding a site: an entry in `sites.json` (`id`, `name`, an https `url`; optional `search`, a CSS
   selector for its search field, and `find`, a word on the page). `npm test` checks the file.
+- **The snapshot gate** (`npm run sites -- --offline`). e2e.yml replays the pages recorded in
+  `tests/e2e/fixtures/sites/` (Wikipedia, MDN, docs.python.org, doc.rust-lang.org: the ones
+  whose licence allows a copy here) from a page server on 127.0.0.1, with every other host
+  unreachable, and runs the same checks but the site's shortcuts. It fails the pull request when
+  a check that passed on the recording (`expect` in `snapshots.json`) does not pass now; its
+  report and screenshots are then the `site-compat-offline` artifact. About 25 s, safe to run
+  anywhere: it loads no live site. A failure is Vimma's, since the page cannot have changed.
+- **Recording a snapshot.** `npm run sites -- --record wikipedia` loads the live page once and
+  writes a checked snapshot into `site-compat-output/snapshots/`; `--record <id>=<url>` records
+  from a saved copy instead. Only the ids in `SNAPSHOT_LICENCES` (`tools/sites/snapshot.mjs`) are
+  accepted. Copy the file into the fixtures, set its `snapshots.json` entry from an offline run
+  and add its attribution row to the README there. A site whose licence allows no copy gets a
+  hand-written minimal fixture of the structure that broke instead.
 - Running it from a worktree against the main checkout's build: pass
   `--build <main>/engine/obj-x86_64-pc-linux-gnu/dist/bin` and
   `--pref security.sandbox.content.read_path_whitelist=<main>/src/`, or the content actor
@@ -435,6 +462,9 @@ these status checks must pass:
 - `semgrep (javascript, typescript, rust, secrets, github-actions)` (semgrep.yml)
 - `CodeQL (javascript-typescript)` and `CodeQL (rust)` (codeql.yml)
 
+`mochitest (artifact build, macOS)` (e2e.yml) is deliberately not in this list ("macOS
+mochitests" below).
+
 The ruleset also requires CodeQL code scanning results without errors or high-severity alerts.
 `vimma-ctl on macOS` (ci.yml, spec macos-build, sub-PR 2) runs vimma-ctl's clippy and tests on
 `macos-15` and is informational: it is not in the ruleset, so a red run shows on the pull
@@ -454,6 +484,7 @@ with a workflow token (docs/security.md, B5; spec build-supply-chain, decisions 
   once:
   `gh api -X PUT repos/vimma-browser/vimma/actions/permissions -F enabled=true -f allowed_actions=all -F sha_pinning_required=true`,
   and checks it with `gh api repos/vimma-browser/vimma/actions/permissions`.
+- The Homebrew tap takes the same two settings ("Release packages", step 7).
 
 An organization owner also confirms that the organization has no self-hosted runner:
 `gh api orgs/vimma-browser/actions/runners` must report `total_count` 0. A runner registered at
@@ -511,6 +542,45 @@ The gen-docs freshness step runs on every pull request: `npm run gen-docs`, then
 --exit-code` on `docs/bindings.md`, `docs/bindings.json` and `packages/vimma-core/defaults.toml`.
 A hand edit of a generated file fails there with the command to run.
 
+### Draft pull requests (issue #443)
+
+A push to a draft pull request skips the three slow required checks: `mochitest (artifact
+build)` with the e2e scenarios (e2e.yml), the Semgrep scan and both CodeQL analyses. Each still
+reports success, so the ruleset never waits on a check that will not come: e2e.yml and
+semgrep.yml skip the job by `if:`, and codeql.yml, a matrix job, skips every step instead,
+because a matrix job skipped by its own `if:` reports one check under the unexpanded
+`CodeQL (${{ matrix.language }})` and the required names would never appear. CI (`lint,
+typecheck, test, commitlint, licences`) and the key guard are cheap and run on drafts too.
+
+Only the `opened` and `synchronize` events of a draft skip. Both bring a head that has had no
+run, so a skipped success never replaces a real result. Every other event runs everything:
+`reopened` and `ready_for_review` on a draft, pushes to `main`, schedules, manual runs and
+`workflow_call` (where `github.event.pull_request` is null). Without that limit, converting a
+pull request with a failed mochitest to a draft and closing and reopening it would put newer
+skipped successes on the same head. For the same reason, never re-run a draft's run once the
+pull request is ready: a re-run keeps the event it started with and skips again.
+
+Marking the pull request ready for review (`gh pr ready <n>`) sends `ready_for_review`, which
+ci.yml, e2e.yml, semgrep.yml and codeql.yml list, and runs the skipped checks on the same head.
+A draft cannot be merged, and the skipped successes of its draft run cannot let it through
+afterwards: CodeQL uploaded no analysis for that head, and the ruleset's code scanning rule
+blocks a merge until one exists (seen on draft PR #249, "Docs-only pull requests" above). The
+analysis takes minutes, while the same event queues the run's other checks on that head within
+seconds, so they are pending, not green, by the time it lands. That margin is timing, not a
+rule of GitHub's, so merge by hand only once the new run's checks are green; the automatic
+security release waits for them before it sets auto-merge ("Releases" below). Converting a
+pull request to a draft (`gh pr ready --undo <n>`) starts no run and leaves its results as
+they are.
+
+`tools/ci/tree-covered.mjs` takes no run as a cover when a job other than its guard was
+skipped, so a draft's Semgrep run, which scanned nothing, never lets a push to `main` skip its
+scan ("Once per tree" below).
+
+The release pull request is the reason (below, "Releases"): release-please rebuilds it after
+each merge to `main`, and only the state that is merged is released. Other drafts follow the
+same rule: mark one ready to get the mochitests on it. `tools/test/draft-pull-requests.test.mjs`
+pins the wiring.
+
 ### Once per tree (issue #358)
 
 `ci.yml`, `semgrep.yml` and `pkgbuild.yml` run on pull requests and on pushes to `main`. A
@@ -518,9 +588,10 @@ squash merge usually gives `main` a commit whose tree is the pull request head's
 push run would check the same files again. Their first job on a push, `covered`, runs
 `tools/ci/tree-covered.mjs`: it reads the pushed commit's tree and the last 50 successful
 `pull_request` runs of the same workflow from the Actions API (both public; the job token holds
-`actions: read` and `contents: read`, nothing more), and compares each run's head tree. On a
-match it outputs `skip=true` and a notice on the run's summary names the covering run; the other
-jobs then skip by `if:`. Equal trees include `.github/workflows`, so the covering run used the
+`actions: read` and `contents: read`, nothing more), and compares each run's head tree. A run
+with the same tree counts only if every job but the guard ran (`actions/runs/<id>/jobs`): a
+draft's run skips the Semgrep scan and still succeeds. On a match it outputs `skip=true` and a
+notice on the run's summary names the covering run; the other jobs then skip by `if:`. Equal trees include `.github/workflows`, so the covering run used the
 same workflow definition. When `main` moved after the pull request's last run, the trees differ
 and the checks run as before: the ruleset does not require up-to-date branches
 (`strict_required_status_checks_policy: false`), so that run is the only check of the merged
@@ -541,6 +612,25 @@ and `release.yml` builds once per release, so neither was duplicated.
 
 To check a commit by hand:
 `GH_TOKEN=$(gh auth token) GITHUB_REPOSITORY=vimma-browser/vimma GITHUB_SHA=<sha> node tools/ci/tree-covered.mjs --workflow ci.yml`.
+
+### Superseded pull request runs
+
+A new push to a pull request makes the checks still running on its previous head worthless, so
+every workflow with a `pull_request` trigger sets a workflow-level `concurrency` group keyed on
+`github.ref` (`refs/pull/<n>/merge`) or the pull request number, and cancels the older run of
+that group. Only pull request runs are cancelled: a workflow that also runs on a push to `main`,
+a schedule, a manual run or `workflow_call` sets `cancel-in-progress: ${{ github.event_name ==
+'pull_request' }}`, so none of those runs is cut short once it runs (GitHub still keeps only
+the newest queued run of a group). In a called workflow `github.event_name`
+is the caller's event, so the upstream autopilot's and the Beta canary's calls of `e2e.yml` are
+never cancelled while they run. `tools/test/workflow-concurrency.test.mjs` holds every workflow with a
+`pull_request` trigger to this, and keeps concurrency groups distinct across workflows.
+`dependabot-automerge.yml` is the one exception: its runs take seconds and act on the pull
+request's merge state, so they keep their order.
+
+A cancelled run does not hold a merge back. Required checks belong to a commit: the cancelled
+run reported on the previous head, and the run of the newest head reports every required check
+for it.
 
 ### PR mochitests (`e2e.yml`, ADR-010)
 
@@ -573,15 +663,66 @@ Fork PRs run the same job with a read-only token and no secrets; GitHub asks you
 every run from an external contributor (Settings → Actions → General; the approval policy is
 `all_external_contributors`).
 
+### macOS mochitests (`e2e.yml`, spec macos-build)
+
+The job `mochitest (artifact build, macOS)` runs the front-end tests on a hosted Apple Silicon
+Mac (`macos-15`), as sub-PR 1 of [macos-build](specs/macos-build.md) describes. Its steps: `npm
+ci`; the whole Vitest suite (`npm test`); GNU tar and `gpgv` from Homebrew when the image lacks
+them; `tools/upstream/firefox-source.sh`; `npm run import`;
+`node tools/artifact-build/artifact-build.mjs`, which fetches Mozilla's `macosx64-aarch64-opt`
+build of the same release; and `npm run mochitest -- --artifact tests/browser/`, headless. `df
+-k .` records the free disk before the download, after the unpack and after the tests, because
+GitHub documents only 14 GB for hosted Macs. On a failure the run uploads `mochitest-macos-logs`
+(the mochitests' TBPL log and the objdir's `config.log`, kept 7 days).
+
+It runs on every pull request except a docs-only one, gated by the same `changes` job as the
+Linux job, and on a manual run without a `firefox-version`. It does not run when `upstream.yml` or
+`upstream-beta.yml` call `e2e.yml` with a version, because a macOS failure must never block a
+Linux release (spec macos-build, decision 13). It does not build `vimma-ctl`, so
+`browser_vimma_control.js` skips there; vimma-ctl's own macOS tests run in `ci.yml` (`vimma-ctl
+on macOS`). The e2e scenarios follow with the spec's sub-PR 4.
+
+**Informational, not required.** The job is new and its runner type has no history in this
+repository, so a flaky macOS run would otherwise block every pull request (spec macos-build, open
+question 6). It fails visibly, with no `continue-on-error`, and the ruleset "main" must not list
+it among the required checks ("Merging and branch protection" above). It becomes a candidate for
+a required check once it has been green and not flaky for about two weeks, as the Linux job was.
+
+When it fails:
+
+- **Vitest:** a test that assumes Linux (a path, `/proc`, a shell tool). Make the test or the
+  code portable, or gate the macOS difference on `process.platform === "darwin"`; never loosen a
+  Linux expectation.
+- **Source, import or artifact build:** compare with the Linux job in the same run. If only macOS
+  fails, read the step log and `config.log`; a missing Taskcluster index for
+  `macosx64-aarch64-opt` means Mozilla's build for that revision has expired or does not exist.
+- **Mochitests:** reproduce on a Mac with "Building on macOS" in
+  [CONTRIBUTING.md](../CONTRIBUTING.md). Fix the test or the code; a test that cannot pass on
+  macOS gets `skip-if = ["os == 'mac'"]` in `tests/browser/browser.toml` with a comment naming
+  its issue.
+- A merge with this check red is allowed; the failure then gets an issue of its own.
+
 ### Actions minutes budget
 
 The repo is public (since 2026-10-10), so standard GitHub-hosted runners cost nothing and have
 no monthly cap: minutes are no longer a reason to skip a job. What still matters is wall time
 (a PR waits for its slowest required check) and the concurrency limit on hosted runners (20
-jobs at once on the free plan), so keep jobs lean all the same. Rough use per PR push: CI ≈ 2
-min, e2e ≈ 6 min (5.5 min wall, ADR-010), Semgrep ≈ 1 min, CodeQL a few minutes per language.
+jobs at once on the free plan), so keep jobs lean all the same. Rough wall time per PR push: CI ≈ 3–4
+min, e2e ≈ 13 min, Semgrep ≈ 1 min, CodeQL ≈ 1 min (JavaScript) plus 2 min (Rust).
 A push to `main` repeats only CodeQL and, when the merged tree differs from the pull request
 head's, the rest ("Once per tree" above).
+
+The release pull request is rebuilt by release-please after every merge to `main`
+(`"always-update"`, so that it carries `main`'s hand-written `[Unreleased]` lines, "Releases"
+below). It is opened as a draft, so a rebuild runs only CI and the key guard (about 4
+min) and skips the mochitests, Semgrep and CodeQL ("Draft pull requests" above). Marking it
+ready for review runs them once on the final state, `browser_vimma_app_version.js` included,
+which checks the display version the build carries; the docs-only path never applies, because
+the version in `surfer.json` changes. With `RELEASE_PLEASE_TOKEN` set, a rebuild pushes twice
+(release-please, then the `firefox-notes` commit), and the second push cancels the first run;
+without it, the release PR's pushes start no runs. Once the release PR is ready for review (by
+hand, or by `security-release`), every merge to `main` runs its slow checks again too, so mark
+it ready only when you mean to release.
 
 e2e.yml has no paths filter: "mochitest (artifact build)" is a required check, so the workflow
 starts on every PR, and on a docs-only one the job skips by `if:` in seconds (above). The upstream autopilot runs 6 × 1 min a day, plus ≈ 16 min (issue, patch check, the
@@ -599,7 +740,8 @@ run gets too slow, narrow `mutate` in `stryker.config.mjs` or drop the monthly f
 `sites.yml` (spec site-compat) runs one job a night at 04:30 UTC, and by hand: about 3.6 min of
 setup (e2e.yml's steps up to the artifact build) plus the site list, about 15-20 min in all
 (≈ 600 min a month, free on a standard runner). It never runs on pull requests and is not a
-required check. To make it lighter, shorten `tools/sites/sites.json` or move its `cron` to fewer
+required check. A blocked site's retry adds about 30 s each, and the diff and the issue job
+under a minute. To make it lighter, shorten `tools/sites/sites.json` or move its `cron` to fewer
 nights.
 
 `fuzz.yml` runs one job of about 5 min a night (≈ 150 min a month), plus a one-minute report job
@@ -924,12 +1066,15 @@ SHA-256) and packs it again. The run's artifact is
 Mac, runs `codesign --verify --deep --strict`, checks the binary is arm64 and the version line,
 and renders a page headless; `tools/package/macos-app-check.sh` checks its `Assets.car` has
 Vimma's `AppIcon` and none of Firefox's, and that its bundle identifier is `surfer.json`'s
-`appId`. The rendered icon and the page are the run's `macos-smoke` artifact.
+`appId`. `tools/package/macos-dmg-check.sh` checks the mounted volume's `.DS_Store`,
+`.background/background.png` and `.VolumeIcon.icns` are the committed `dsstore`, `background.png`
+and `disk.icns`, and that the volume's custom icon flag is set. The rendered icon and the page are
+the run's `macos-smoke` artifact.
 
 The `icons` job, on a hosted `macos-26` runner with Xcode 26.6 pinned, regenerates the committed
-macOS icon files (`Assets.car`, `firefox.icns`, `document.icns` in `configs/branding/vimma/`)
-from `configs/branding/vimma/logo-mac.png` and the Icon Composer source
-`configs/macos/AppIcon.icon/icon.json`, and fails if they differ
+macOS icon files (`Assets.car`, `firefox.icns`, `document.icns`, and the `.dmg`'s `disk.icns`
+and `background.png`, in `configs/branding/vimma/`) from `configs/branding/vimma/logo-mac.png`
+and the Icon Composer source `configs/macos/AppIcon.icon/icon.json`, and fails if they differ
 (spec [macos-homebrew](specs/macos-homebrew.md), decision 13). `actool`, which compiles
 `Assets.car`, ships only with Xcode, not the Command Line Tools. After changing the logo or the
 icon source, either run `node tools/package/macos-icons.mjs` on a Mac with Xcode, or push and
@@ -937,8 +1082,21 @@ copy the files from the run's `macos-icons` artifact, which also holds their ren
 
 ```sh
 gh run download "$run" -n macos-icons -D /tmp/macos-icons
-cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns} configs/branding/vimma/
+cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns,disk.icns,background.png} \
+  configs/branding/vimma/
 ```
+
+The `.dmg` window's layout, `configs/branding/vimma/dsstore`, is the `.DS_Store` Finder writes,
+so no job can regenerate it byte for byte (it records dates and the disk image's location).
+After changing `DMG_LAYOUT` in `tools/package/macos-icons.mjs` or the background, run
+`tools/package/macos-dsstore.sh --out "$RUNNER_TEMP/dsstore"` on a GitHub-hosted `macos-15`
+runner (a short-lived workflow on the branch that uploads the file as an artifact, with
+`contents: read` and pinned actions, removed again before merge) and commit the downloaded file.
+It lays out a scratch disk image in Finder through AppleScript, which the hosted image allows
+without a prompt, and copies the `.DS_Store`. A developer's Mac is not used, because Finder
+records the machine's per-user temp-dir hash and volume UUIDs in the file.
+`tools/package/test/macos.test.mjs` checks that it places `Vimma.app` and the Applications link
+where `DMG_LAYOUT` says, shows the background from the Vimma volume, and names no home directory.
 
 `actool` names the catalog's flattened fallback images with a fresh UUID and writes them anew on
 every run, so the check compares `assetutil --info` without those names and digests, and
@@ -964,11 +1122,13 @@ build used 44 GB of the runner's disk, the 16 GB swap file included, and left 42
 
 #### macOS in a release
 
-`release.yml` has five macOS jobs, which run only while the repository variable
+`release.yml` has six macOS jobs, which run only while the repository variable
 `MACOS_RELEASE_ENABLED` is `true` (spec [macos-build](specs/macos-build.md), decision 12):
-`macos-build` builds as `macos.yml` does, from the release tag's commit and with the Safe
+`macos-ctl` builds `vimma-ctl` on a hosted Mac from the tag's commit (spec
+[ship-vimma-ctl](specs/ship-vimma-ctl.md)); `macos-build` builds as `macos.yml` does, from the release tag's commit and with the Safe
 Browsing key, and renders the Homebrew cask `vimma.rb` for the `.dmg`
-(`tools/package/cask.mjs`); `macos-smoke` checks the `.dmg` on a hosted Mac against the tag, and
+(`tools/package/cask.mjs`), with that `vimma-ctl` signed into `Vimma.app/Contents/MacOS`;
+`macos-smoke` checks the `.dmg` on a hosted Mac against the tag, and
 installs it through the cask (`tools/package/cask-check.sh`); `macos-sign` signs both and
 `SHA256SUMS-macos` with cosign while `SIGNING_ENABLED` is `true`; `macos-publish` uploads them
 to the tag's release; `macos-tap` starts `homebrew.yml` on `main` for the tag once the release
@@ -1271,14 +1431,24 @@ push runs of CI, Semgrep and release-please wait for the next ordinary push to `
 
 Plan §4/§7: [release-please](https://github.com/googleapis/release-please-action) (v5.0.0, pinned
 by SHA) keeps one release PR open, `chore(main): release X.Y.Z`, updated on every push to `main`.
-It holds the next version and that release's `CHANGELOG.md` entry. **Merging it is the release**:
+It holds the next version and that release's `CHANGELOG.md` entry, and opens as a draft
+(`"draft-pull-request": true`). **Merging it is the release**:
 release-please tags `vX.Y.Z` and creates the GitHub Release with the same notes, **as a draft**
 (below). Its `release-build` job then starts `release.yml`, which builds, signs and uploads the
 packages to that draft (below, "Release packages"). Publishing the finished draft is the
 maintainer's one click.
 
+- **Releasing, step by step:** mark the release PR ready for review (`gh pr ready <n>`, or
+  "Ready for review" on the PR); that runs the mochitests, Semgrep and CodeQL, which its draft
+  rebuilds skipped ("Draft pull requests" above). Merge it once every required check is green;
+  the code scanning rule keeps it blocked until CodeQL has analyzed the final head. If `main`
+  gets another merge first, release-please rebuilds the PR, which stays ready, and the full
+  checks run again on the new head. release-please opens only new release PRs as drafts: to
+  turn the open one into a draft, run `gh pr ready --undo <n>` (no run starts, and the results
+  on its head stay as they are).
 - **Version source:** `surfer.json` `brands.vimma.release.displayVersion`, the version
-  `vimma --version` and the About dialog show (spec m0-app-version). The release
+  `vimma --version` and the About dialog show (spec m0-app-version), and `vimma-ctl --version`
+  too, since `tools/vimma-ctl/build.rs` reads it (spec ship-vimma-ctl). The release
   PR bumps it through `extra-files` (jsonpath `$.brands.vimma.release.displayVersion`), plus
   `.release-please-manifest.json`, which must always match it (tested in
   `tools/package/test/release-workflow.test.mjs`). The Firefox pin `version.version` is never
@@ -1319,6 +1489,36 @@ maintainer's one click.
 - **The changelog line is the commit subject; the body explains why** (CONTRIBUTING.md). release-please
   writes subjects only. Firefox bumps are `upstream: firefox X.Y.Z (MFSA YYYY-N)` (upstream.yml),
   so a security dot release alone still produces a release PR (ADR-015: merged within 3 days).
+- **A release shows the hand-written lines first, then release-please's list** (issue #529).
+  `CHANGELOG.md` on `main` starts with `## [Unreleased]`, whose `- ` items under `### Added`,
+  `### Changed`, `### Fixed` (or another Keep a Changelog heading) say what users see.
+  release-please puts its new entry above that heading, so `tools/release/changelog.mjs` moves
+  the items in two places:
+  - `move`, in the `firefox-notes` job, on every rebuild of the release PR: each item goes into
+    the same section of the new entry, above release-please's `* ` items (a section release-please
+    did not write is added after its own), and an empty `## [Unreleased]` stays at the top. It is
+    part of that job's one `chore(release)` commit, with the Firefox edit below.
+    `"always-update": true` in `release-please-config.json` makes release-please rebuild the branch
+    from `main` on every run, not only when its own notes change: without it, a merge that adds
+    only a changelog line would leave the release PR with the old lines and a conflict with `main`
+    on `CHANGELOG.md`.
+  - `notes`, in the `release-title` job, when the release is created: release-please writes a
+    release's notes from the release PR's body, which holds only its own list, so the job adds
+    the hand-written items of that version's entry in the tag's `CHANGELOG.md`, above the list.
+    The update steps and third-party notice `release.yml` adds later go around them.
+
+  `npm run changelog-lint` (part of `npm run lint`) fails when `## [Unreleased]` is not the first
+  `## ` heading, appears twice, or holds anything but those headings and `- ` items (an item may
+  continue on lines indented by two spaces), since `move` refuses what it cannot carry whole.
+  Check by hand: `node tools/release/changelog.mjs move CHANGELOG.md` on the release branch's file
+  prints the edited file. The release PR's head without the `firefox-notes` commit fails CI's
+  `changelog-lint` step, so it cannot be merged by hand or by auto-merge. If the job failed (a
+  `move` error, or a 409 because release-please rebuilt the branch meanwhile), fix `[Unreleased]`
+  on `main` if `move` named a line, then run release-please again: `gh workflow run
+release-please.yml`. If `release-title` warns that a release's notes lack the hand-written
+  lines, add them by hand: `node tools/release/changelog.mjs notes <notes.md> --changelog
+CHANGELOG.md --version X.Y.Z` on the tag's checkout prints the notes to paste.
+
 - **The Firefox version in titles and headings** (spec firefox-versions). release-please can only
   title a release `vX.Y.Z` and head its entry `## [X.Y.Z](compare) (date)`, so two jobs after it
   edit both with `tools/release/firefox-notes.mjs` (idempotent: a second pass changes nothing):
@@ -1329,7 +1529,7 @@ maintainer's one click.
     `Firefox <version> ([MFSA YYYY-N](advisory))`. The push uses `RELEASE_PLEASE_TOKEN` (a
     `GITHUB_TOKEN` push would leave the release PR without required checks); without the token the
     job logs a notice and does nothing. release-please rebuilds the branch (dropping the commit)
-    only when the notes change, and the job then adds it back in the same run. The PR body keeps
+    on every run, and the job then adds it back in the same run. The PR body keeps
     release-please's heading.
   - `release-title`, when a release was created: checks out its tag, titles it with
     `node tools/release/version-line.mjs` (`Vimma X.Y.Z · Firefox <version>`, which must start
@@ -1360,9 +1560,13 @@ maintainer's one click.
   merge of the autopilot's `upstream/firefox-<version>` PR labelled `upstream` and `security`,
   `tools/release/security-release.mjs` sets the open release PR to auto-merge with
   `RELEASE_PLEASE_TOKEN`, pinned to its head commit (`--match-head-commit`), and comments on the
-  bump PR. GitHub merges it when the required checks pass; that merge's push starts this workflow
-  again, which tags and creates the draft release and starts `release.yml`. Publishing the draft
-  stays a click. Any other push logs a notice naming the check that did not hold (the run's
+  bump PR. A draft release PR is first marked ready for review through the same token, since
+  GitHub never merges a draft; that starts the full checks the draft skipped, and the job sets
+  auto-merge only once the newest mochitest and Semgrep checks on the head are no longer the
+  draft's skips (it polls the head's check runs for up to 3 minutes, and fails without setting
+  auto-merge if they do not start; a person then merges the ready PR). GitHub merges it
+  when the required checks pass; that merge's push starts this workflow again, which tags and
+  creates the draft release and starts `release.yml`. Publishing the draft stays a click. Any other push logs a notice naming the check that did not hold (the run's
   summary), and the job never merges the first release PR (it requires an existing release).
   Commits merged after the bump and before the checks finish ship in the same release.
   `RELEASE_PLEASE_TOKEN` is required: with the variable on and no token, the job fails.
@@ -1373,7 +1577,8 @@ One-time setup:
 
 1. Settings → Actions → General → Workflow permissions → tick "Allow GitHub Actions to create and
    approve pull requests" (the same setting as for upstream bumps).
-2. Optional: the release PR, opened with `GITHUB_TOKEN`, triggers no CI. Run
+2. Optional: the release PR, opened with `GITHUB_TOKEN`, triggers no CI until it is marked
+   ready for review (by a person, so the event starts the workflows). Run
    `gh workflow run ci.yml --ref release-please--branches--main` before merging, or store a
    fine-grained token for this repo only (Contents, Pull requests and Issues: read/write) as
    `gh secret set RELEASE_PLEASE_TOKEN`; the workflow uses it when present.
@@ -1437,16 +1642,25 @@ same call as the manual re-run, so one path is exercised every time.
 | `vimma-X.Y.Z-linux-x86_64.tar.xz` | `./mach package`'s tarball, renamed (one `vimma/` directory)    |
 | `vimma-X.Y.Z-x86_64.AppImage`     | AppImage (appimagetool 1.9.1, runtime 20251108, both pinned)    |
 | `vimma_X.Y.Z_amd64.deb`           | `/usr/lib/vimma`, `/usr/bin/vimma`, desktop file, icons         |
+| `vimma-X.Y.Z-1.x86_64.rpm`        | the same layout as the `.deb`, for Fedora and openSUSE          |
 | `vimma-X.Y.Z.cdx.json`            | CycloneDX 1.6 SBOM (`tools/package/sbom.mjs`)                   |
 | `PKGBUILD`                        | `vimma-bin` for Arch Linux; its only source is the tarball      |
 | `SRCINFO`                         | its `.SRCINFO` (GitHub renames an asset with a leading period)  |
-| `SHA256SUMS`                      | checksums of the six files above                                |
+| `SHA256SUMS`                      | checksums of the seven files above                              |
 | `*.sigstore.json`                 | cosign keyless bundles, one per file above (when signing is on) |
 
 Jobs: `build` (read-only token and the Safe Browsing key; first checks that the tag is
-`vX.Y.Z` and that its commit is on `main`) → `package` (AppImage, `.deb`, `PKGBUILD`, the
-AUR variant, checksums; installs the `.deb` and starts it headless, and runs `makepkg -si` on
-the `PKGBUILD` in an Arch Linux container with `tools/package/arch-smoke.sh`) → `sign` (only job with
+`vX.Y.Z` and that its commit is on `main`) → `ctl` (`vimma-ctl` from the same commit, static for
+`x86_64-unknown-linux-musl`; read-only token, no secret; spec
+[ship-vimma-ctl](specs/ship-vimma-ctl.md); then `tools/package/ctl-notices.mjs` writes
+`vimma-ctl-licenses/`, the notices of musl, Rust's standard library and LLVM's libunwind, from
+that toolchain, and `vimma-ctl`'s SBOM entry) → `package` (AppImage, `.deb`, `.rpm`, `PKGBUILD`,
+the AUR variant, checksums, each with `vimma-ctl` and `vimma-ctl-licenses/` next to `vimma`, and
+the release tarball repacked with them; adds `vimma-ctl` to the SBOM and checks it against the
+CycloneDX schema; installs the `.deb` and starts it headless, installs the `.rpm` with
+dnf in a Fedora container and with zypper in an openSUSE container and starts it headless there
+with `tools/package/rpm-smoke.sh`, and runs `makepkg -si` on the `PKGBUILD` in an Arch Linux
+container with `tools/package/arch-smoke.sh`) → `sign` (only job with
 `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
 `release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
@@ -1455,15 +1669,32 @@ token; the tap's deploy key only) → `failure`. Locally, from a mach tarball:
 
 ```sh
 tools/package/fetch-appimagetool.sh /tmp/ait
+# as the ctl job: rustup's pinned toolchain with the musl target (or download the job's artifact)
+(cd tools/vimma-ctl && rustup target add x86_64-unknown-linux-musl &&
+  cargo build --release --locked --target x86_64-unknown-linux-musl)
+mkdir ctl && cp tools/vimma-ctl/target/x86_64-unknown-linux-musl/release/vimma-ctl ctl/
+node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
+  --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json
+node tools/package/sbom.mjs --engine engine --out /tmp/vimma.cdx.json
 node tools/package/package.mjs --tarball engine/obj-x86_64-pc-linux-gnu/dist/vimma-*.tar.xz \
+  --ctl ctl/vimma-ctl --ctl-licenses ctl/vimma-ctl-licenses \
+  --sbom /tmp/vimma.cdx.json --ctl-component ctl/vimma-ctl.cdx.json \
   --out dist --maintainer 'Name <email>' --appimagetool /tmp/ait/appimagetool \
   --runtime /tmp/ait/runtime-x86_64 --no-deb   # dpkg-deb only exists on Debian/Ubuntu
-node tools/package/sbom.mjs --engine engine --out dist/vimma-$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion').cdx.json
+node tools/package/validate-sbom.mjs dist/vimma-*.cdx.json
 tools/package/arch-smoke.sh dist "$(node tools/release/version-line.mjs)"   # needs docker
+tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"    # needs docker
 ```
 
+`package.mjs` builds the `.rpm` with `rpmbuild` (on Arch, the `rpm-tools` package; on
+Debian and Ubuntu, `rpm`); without it, pass `--no-rpm`. `rpmbuild` reads the binaries'
+requirements as sonames, which Fedora and openSUSE both provide, and the spec it is given keeps
+the libraries Vimma bundles out of them (spec [rpm-package](specs/rpm-package.md)).
+
 `tools/package/arch-smoke.sh --stub` runs the same Arch Linux check on a stub tarball in about
-half a minute; the `pkgbuild.yml` workflow runs it on every change to `tools/package/`. Its
+half a minute; the `pkgbuild.yml` workflow runs it on every change to `tools/package/`, and its
+`rpm` job runs `tools/package/rpm-smoke.sh --stub`, the Fedora and openSUSE check on a stub
+`.rpm`, which needs `rpmbuild` on the host as well as docker. Its
 `cask` job does the same for the Homebrew cask on a hosted Mac with
 `tools/package/cask-check.sh --stub`: `brew style`, `brew audit --cask --strict`, then
 `brew install --cask` of a stub `.dmg` and `brew uninstall --zap`. The install check refuses to
@@ -1491,7 +1722,7 @@ neither needs another file.
 3. Safe Browsing key: the `SAFEBROWSING_API_KEY` secret of the `build` environment ("Google
    Safe Browsing key" above);
    the `build` job fails without it, and its smoke check fails a build that lacks the key.
-4. Maintainer line for the `.deb` and the PKGBUILD:
+4. Maintainer line for the `.deb`, the `.rpm` (its `Packager`) and the PKGBUILD:
    `gh variable set PACKAGE_MAINTAINER --body 'Your Name <you@example.org>'` (public in every
    package; the `package` job fails without it).
 5. Signing (recommended: keyless, no key to keep): `gh variable set SIGNING_ENABLED --body true`.
@@ -1544,6 +1775,28 @@ neither needs another file.
        "bypass_actors": [ { "actor_type": "DeployKey", "bypass_mode": "always" },
          { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request" } ] }
      JSON
+     ```
+
+   - The tap's check, `.github/workflows/check.yml` in the tap: `brew style` and an offline
+     `brew audit --cask --strict` on `macos-15`, on every pull request and every push to `main`:
+     the checks `tools/package/cask-check.sh` runs here, but on the latest stable Homebrew and
+     the whole tap, so a new Homebrew audit rule can turn the tap red before the `cask` job here. It is not a required check in the ruleset, so
+     `homebrew.yml`'s push lands first and the check then runs on it. When it fails on `main`,
+     the pushed cask came from a release: fix `tools/package/cask.mjs` here and ship a fixed
+     release, since `homebrew.yml` never replaces a newer cask with an older one. Its one action,
+     `Homebrew/actions/setup-homebrew`, is pinned by commit SHA with its tag in a comment, and
+     the tap has no Dependabot: bump it by hand from Homebrew's releases.
+
+   - The tap's Actions settings, as for this repository ("Actions settings", above), which an
+     administrator applies: `sha_pinning_required`, so GitHub refuses any action not pinned to
+     a full commit SHA, and fork pull request approval `all_external_contributors`, so a fork's
+     own workflow files run only once a person approves the run (docs/security.md, B11):
+
+     ```sh
+     gh api -X PUT repos/vimma-browser/homebrew-tap/actions/permissions \
+       -F enabled=true -f allowed_actions=all -F sha_pinning_required=true
+     gh api -X PUT repos/vimma-browser/homebrew-tap/actions/permissions/fork-pr-contributor-approval \
+       -f approval_policy=all_external_contributors
      ```
 
    - A key for the workflow only, with write access to the tap and nothing else:
@@ -1627,7 +1880,7 @@ The regexp is `IDENTITY_REGEXP` in `tools/package/package.mjs`, and a test keeps
    `tools/package/package.mjs` (`dist/notes/`). The update steps are there on every release,
    with or without macOS: the Mac update notice of 0.1.6 shows a Linux command and links to these
    notes, and the macOS jobs upload the `.dmg` after this edit.
-3. When the run is green, the draft lists the tarball, AppImage, `.deb`, SBOM, `PKGBUILD`,
+3. When the run is green, the draft lists the tarball, AppImage, `.deb`, `.rpm`, SBOM, `PKGBUILD`,
    `SRCINFO`, `SHA256SUMS` and, with signing on, a `.sigstore.json` for each. Optionally check
    them as in "Verify a release" (above), with `gh release download v0.1.2` (it finds drafts).
 4. Publish: Releases → the draft → Edit → "Publish release". Nothing is rebuilt; `aur.yml` runs
@@ -1667,6 +1920,59 @@ well; re-run it with `gh workflow run homebrew.yml -f tag=vX.Y.Z`, which, like e
 uses `main`'s `homebrew.yml`. To pull a bad release: `gh release edit vX.Y.Z --draft`
 (hides it); the AUR package cannot go back a version without an `epoch`, and `homebrew.yml`
 never replaces a newer cask in the tap with an older one, so ship a fixed release instead.
+
+### Flatpak (`flatpak.yml`, spec flatpak)
+
+`tools/package/flatpak.mjs` writes the Flatpak manifest `dev.vimma.browser.json` and the four
+files it names (launcher, desktop file, metainfo, icon); the manifest repackages a release
+tarball on `org.freedesktop.Platform` 25.08. `tools/package/flatpak-smoke.sh` builds it with
+flatpak-builder in a privileged Fedora container, installs it, and checks the version line,
+the `vimma-package=flatpak` marker, the desktop file and the metainfo. Nothing is published:
+Vimma is not on Flathub yet (issue #465).
+
+- **Pull requests** that change `tools/package/`, the branding, `surfer.json` or the workflow
+  run the `stub` job: a stub tarball, a few minutes, most of them downloading the runtime and
+  SDK (about 870 MB).
+- **A published release** runs the `release` job, which builds from the release's download URL
+  pinned to the SHA-256 in its `SHA256SUMS` (signature checked with signing on), and also starts
+  Vimma headless and takes a screenshot. It is not a release check: a failure leaves the
+  release as it is, and only the run is red. Re-run with
+  `gh workflow run flatpak.yml -f tag=vX.Y.Z`, which uses `main`'s workflow; the run a publish
+  starts uses the tag's copy.
+- **Locally:** `tools/package/flatpak-smoke.sh --stub`, or
+  `tools/package/flatpak-smoke.sh --release vX.Y.Z <sha256> "<version line>"` with the
+  tarball's line from the release's `SHA256SUMS`. Needs docker.
+- **Pins:** the Fedora image digest and the runtime and SDK commits are at the top of
+  `flatpak-smoke.sh`. Flathub prunes old commits in time; when `flatpak update --commit` cannot
+  find one, take the current ones from
+  `flatpak remote-info flathub runtime/org.freedesktop.Platform/x86_64/25.08` (and `…Sdk…`) and
+  update the script in a pull request. A new runtime branch (26.08) changes `RUNTIME_VERSION` in
+  `flatpak.mjs` and `RUNTIME` in the script together; a test keeps them equal.
+
+**Submitting to Flathub** (issue #465; only once its other items are done, and only when the
+maintainer decides to list Vimma):
+
+1. Generate the files for the release to submit, with the tarball's SHA-256 from its
+   `SHA256SUMS` and the release's date:
+   `node tools/package/flatpak.mjs --out flathub --version X.Y.Z --date YYYY-MM-DD --sha256 <hex>`.
+2. Build and lint them as Flathub does, on a machine with Flatpak:
+   `flatpak install flathub org.flatpak.Builder`, then
+   `flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir flathub/dev.vimma.browser.json`,
+   `flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flathub/dev.vimma.browser.json`
+   and `flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo`. Fix every
+   error in `flatpak.mjs`, not in the generated files.
+3. Fork `flathub/flathub`, branch from its `new-pr` branch, add the generated files at the top
+   level, and open a pull request against `new-pr` titled `Add dev.vimma.browser`. The
+   description explains the D-Bus names outside the app id (`org.mozilla.vimma.*` for Firefox's
+   remoting, `org.mpris.MediaPlayer2.firefox.*` for media keys) and the `~/.local/state/omarchy`
+   read-only grant (the theme).
+4. Answer the reviewers; `bot, build` in a comment starts a test build. Once merged, Flathub
+   creates `flathub/dev.vimma.browser`, and you get write access to it.
+5. Verify the app: on flathub.org, sign in, open the app's developer settings, choose
+   "Verify" for `vimma.dev`, and publish the token Flathub gives at
+   `https://vimma.dev/.well-known/org.flathub.VerifiedApps.txt` (the vimma-site repository).
+6. Each later release: a pull request to `flathub/dev.vimma.browser` with the new tarball URL,
+   SHA-256 and `<release>` line, generated as in step 1.
 
 ### Update signing keys and the update host (spec m6a-updater)
 
@@ -1860,7 +2166,7 @@ until the release gate lifts: an accepted serial is remembered, so a later manif
 **7. Publishing manifests** (`update-publish.yml`). When a release is published, the workflow's
 `start` job starts the same workflow on `main` with the tag; the jobs that sign and push run
 only there. `prepare` (no secret) checks that the release is published, not a pre-release and on
-`main`, downloads its tarball, AppImage and `.deb`, checks them against `SHA256SUMS` and
+`main`, downloads its tarball, AppImage, `.deb` and `.rpm`, checks them against `SHA256SUMS` and
 `SHA256SUMS` against release.yml's cosign signature (an unsigned release gets no manifest), and builds the manifest
 with `tools/update/manifest.mjs`: Firefox's version and the build ID from the tarball's
 `application.ini`, each file's size and SHA-512, the urgency, and a serial (the UTC time) that
@@ -1887,6 +2193,18 @@ The urgency is `security` when a commit since the previous published release is 
 pull request has the `security` label (the autopilot puts it on a bump whose advisories it could
 not read), a `fix(security)` commit, or any change whose pull request has the `security` label.
 Installs then show the update in red (`⇡ X.Y.Z security: :update`).
+
+`prepare` reads the published releases (to find the previous one) and then those labels with
+`gh api`, one call per commit, and parses each raw JSON response itself. A call that fails with
+an HTTP 5xx, a body that is not JSON (GitHub's 500 with an empty body shows as `unexpected end of
+JSON input`) or a network error is tried again after 2, 4 and 8 s; any other failure, or a fourth
+transient one, fails the run, because an unread label could hide a security release. A response
+of the wrong shape fails the run at once, with `unexpected response` in the log: a pulls answer
+that is not a list of pull requests each with a list of named labels, or a releases list that
+does not include the tag being published (such a list is malformed or cut short, and counting
+from it could reach back to the start of the history). During a GitHub incident, wait for it to
+pass and re-run the failed jobs. A `... is not among them` failure seconds after a release was
+published can be the releases list lagging behind the release itself: re-run the failed jobs.
 
 One-time setup, in order (each step can be checked before the next):
 
@@ -1960,7 +2278,9 @@ each with the file's SHA-512.
 - Re-publish a release's manifest (after a failure, or after `release.yml -f
 replace_published=true` changed its files, whose hashes the old manifest no longer matches):
   `gh workflow run update-publish.yml -f tag=vX.Y.Z`, and `-f target=macos` for the Mac
-  manifest. Every run gets a new, newer serial.
+  manifest. Every run gets a new, newer serial. The Linux manifest lists the `.rpm`, so a
+  release from before the `.rpm` (0.1.6 and earlier) cannot be re-published from `main`; ship a
+  new release instead.
 - After two releases in quick succession, check `gh run list --workflow update-publish.yml`:
   GitHub keeps one waiting run per concurrency group (one per target), so a third run started meanwhile replaces
   the waiting one, which ends cancelled without a `release-failure` issue; start it again by hand.
@@ -2040,7 +2360,9 @@ exceptions there (unicode-ident's Unicode-3.0 tables, and two WASI-only crates w
 
 Spec m0-control-protocol-and-vimma-ctl, ADR-007, ADR-011. A std-only Rust binary in
 `tools/vimma-ctl/`; the toolchain is pinned in its `rust-toolchain.toml` (rustup honours it; a
-system Rust of the same version works too).
+system Rust of the same version works too). Users get it with Vimma: every release package
+ships it next to `vimma` (spec [ship-vimma-ctl](specs/ship-vimma-ctl.md)); the commands below
+are for working on it.
 
 ```sh
 cd tools/vimma-ctl

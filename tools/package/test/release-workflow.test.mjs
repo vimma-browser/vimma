@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
+import { CTL_LICENSE_FILES, IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
 
 // release.yml's gates (spec m6-packaging; docs/runbook.md, "Release packages"). It starts only
 // by workflow_dispatch: release-please.yml's release-build job starts it for the draft release it
@@ -64,9 +64,11 @@ describe("release.yml", () => {
   it("has the jobs the spec lists", () => {
     expect([...all.keys()]).toEqual([
       "build",
+      "ctl",
       "package",
       "sign",
       "publish",
+      "macos-ctl",
       "macos-build",
       "macos-smoke",
       "macos-sign",
@@ -267,7 +269,14 @@ esac
   // Spec macos-build, decisions 12 and 13: the macOS .dmg joins the release through jobs of its
   // own, which no Linux job waits for, so a macOS failure cannot hold back a Linux release.
   describe("the macOS jobs", () => {
-    const MACOS = ["macos-build", "macos-smoke", "macos-sign", "macos-publish", "macos-tap"];
+    const MACOS = [
+      "macos-ctl",
+      "macos-build",
+      "macos-smoke",
+      "macos-sign",
+      "macos-publish",
+      "macos-tap",
+    ];
 
     it.each(MACOS)("%s also needs MACOS_RELEASE_ENABLED", (id) => {
       expect(condition(all.get(id) ?? "")).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
@@ -331,6 +340,14 @@ esac
       expect(block).toContain("--screenshot");
       // Vimma's icon and bundle identifier, as macos.yml's smoke checks them
       expect(block).toContain('tools/package/macos-app-check.sh "$APP"');
+    });
+
+    // Spec macos-homebrew, decision 14: the repacked dmg keeps Vimma's window art and icon.
+    it("macos-smoke checks the mounted dmg's window art and volume icon", () => {
+      const mount = runOf(all.get("macos-smoke") ?? "", "Mount the dmg and copy the app out");
+      const check = mount.indexOf('tools/package/macos-dmg-check.sh "$RUNNER_TEMP/vimma-dmg"');
+      expect(check).toBeGreaterThan(mount.indexOf("hdiutil attach"));
+      expect(check).toBeLessThan(mount.indexOf("hdiutil detach"));
     });
 
     // Spec macos-homebrew, decision 9: Homebrew lints the cask and installs the release's dmg
@@ -424,15 +441,135 @@ esac
           .map((n) => n.replace(/^ {6}- /, "")),
       ).toEqual([
         "build",
+        "ctl",
         "package",
         "sign",
         "publish",
+        "macos-ctl",
         "macos-build",
         "macos-smoke",
         "macos-sign",
         "macos-publish",
         "macos-tap",
       ]);
+    });
+  });
+
+  // Spec ship-vimma-ctl: vimma-ctl is built from the commit the browser was built from, with no
+  // secret in reach, static so it runs on every distribution the packages support, and every
+  // package carries it.
+  describe("vimma-ctl", () => {
+    it("ctl builds the checked commit's vimma-ctl, static, without the build environment", () => {
+      const block = all.get("ctl") ?? "";
+      expect(block).toMatch(/^ {4}needs: build$/m);
+      expect(block).toMatch(/^ {4}runs-on: ubuntu-24\.04$/m);
+      expect(block).not.toMatch(/^ {4}environment:/m);
+      expect(block).not.toContain("secrets.");
+      expect(block).toMatch(/^ {4}permissions:\n {6}contents: read\n {4}\S/m);
+      expect(block).toContain("ref: ${{ needs.build.outputs.sha }}");
+      expect(block).toContain("persist-credentials: false");
+      const build = runOf(block, "Build vimma-ctl (static, musl)");
+      expect(build).toContain("rustup toolchain install");
+      expect(build).toContain("rustup target add x86_64-unknown-linux-musl");
+      expect(build).toContain("cargo build --release --locked --target x86_64-unknown-linux-musl");
+      const check = runOf(block, "Check the binary");
+      expect(check).toContain("static-pie linked");
+      expect(check).toContain('[ "$version" = "vimma-ctl ${TAG#v} (protocol 2)" ]');
+      expect(block).toMatch(/name: ctl\n {10}path: ctl\/\n/);
+    });
+
+    // #516: the notices and the SBOM entry come from the toolchain that built the binary, so
+    // they are made in the same job, after the binary is checked.
+    it("ctl gathers vimma-ctl's notices and SBOM entry from the toolchain that built it", () => {
+      const block = all.get("ctl") ?? "";
+      const notices = runOf(block, "Notices and SBOM entry for vimma-ctl");
+      expect(notices).toContain(
+        "node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \\\n" +
+          "  --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json",
+      );
+      expect(block.indexOf("- name: Check the binary")).toBeLessThan(
+        block.indexOf("- name: Notices and SBOM entry for vimma-ctl"),
+      );
+      expect(block).toContain("uses: actions/setup-node@");
+    });
+
+    it("package ships vimma-ctl's notices, lists it in the SBOM and checks both", () => {
+      const block = all.get("package") ?? "";
+      const pack = runOf(block, "Package");
+      expect(pack).toContain("--ctl-licenses ctl/vimma-ctl-licenses");
+      expect(pack).toContain("--ctl-component ctl/vimma-ctl.cdx.json");
+      expect(pack).toContain('node tools/package/validate-sbom.mjs "dist/vimma-$v.cdx.json"');
+      expect(block).toMatch(/- name: npm ci\n {8}run: npm ci --ignore-scripts\n/);
+      const smoke = runOf(block, "Smoke test the .deb and the AppImage");
+      expect(smoke).toContain("test -s /usr/lib/vimma/vimma-ctl-licenses/musl-COPYRIGHT");
+      expect(smoke).toContain('case "$listing" in *"vimma/vimma-ctl-licenses/musl-COPYRIGHT"*) ;;');
+    });
+
+    it("the Mac vimma-ctl's notices go into the app and the smoke check finds them", () => {
+      const ctl = all.get("macos-ctl") ?? "";
+      expect(runOf(ctl, "Notices for vimma-ctl")).toContain(
+        "node tools/package/ctl-notices.mjs --out ctl/vimma-ctl-licenses",
+      );
+      expect(ctl).toContain("uses: actions/setup-node@");
+      expect(all.get("macos-build")).toContain(
+        "VIMMA_CTL_LICENSES: ${{ github.workspace }}/ctl/vimma-ctl-licenses",
+      );
+      expect(runOf(all.get("macos-smoke") ?? "", "Smoke check")).toContain(
+        'test -s "$APP/Contents/Resources/vimma-ctl-licenses/rust-std-COPYRIGHT.html"',
+      );
+    });
+
+    it("package puts vimma-ctl into every package and checks it in each", () => {
+      const block = all.get("package") ?? "";
+      expect(block).toMatch(/^ {4}needs: \[build, ctl\]$/m);
+      expect(block).toMatch(/name: ctl\n {10}path: ctl\n/);
+      const pack = runOf(block, "Package");
+      expect(pack).toContain("--ctl ctl/vimma-ctl");
+      const smoke = runOf(block, "Smoke test the .deb and the AppImage");
+      expect(smoke).toContain('[ "$(vimma-ctl --version)" = "$ctl" ]');
+      expect(smoke).toContain('case "$listing" in *"vimma/vimma-ctl"*) ;;');
+      // a link named vimma-ctl to the AppImage runs the client inside (AppRun, $ARGV0)
+      expect(smoke).toContain('ln -s "$appimage" "$RUNNER_TEMP/bin/vimma-ctl"');
+      expect(smoke).toContain(
+        '[ "$(APPIMAGE_EXTRACT_AND_RUN=1 "$RUNNER_TEMP/bin/vimma-ctl" --version)" = "$ctl" ]',
+      );
+    });
+
+    it("macos-ctl builds vimma-ctl on a Mac from the commit it checked, like build", () => {
+      const block = all.get("macos-ctl") ?? "";
+      expect(condition(block)).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
+      expect(block).toMatch(/^ {4}runs-on: macos-15$/m);
+      expect(block).not.toMatch(/^ {4}environment:/m);
+      expect(block).not.toContain("secrets.");
+      expect(runOf(block, "Check the tag's form")).toBe(
+        runOf(all.get("build") ?? "", "Check the tag's form"),
+      );
+      expect(runOf(block, "The tag is on main")).toBe(
+        runOf(all.get("build") ?? "", "The tag is on main"),
+      );
+      expect(block).toContain("ref: ${{ steps.tag.outputs.sha }}");
+      expect(block).toMatch(/^ {4}outputs:\n {6}sha: \$\{\{ steps\.tag\.outputs\.sha \}\}$/m);
+      const build = runOf(block, "Build vimma-ctl");
+      expect(build).toContain("cargo build --release --locked");
+      const check = runOf(block, "Check the binary");
+      expect(check).toContain("lipo -archs");
+      expect(check).toContain('[ "$version" = "vimma-ctl ${TAG#v} (protocol 2)" ]');
+    });
+
+    it("macos-build signs the Mac vimma-ctl into the app, from the same commit", () => {
+      const block = all.get("macos-build") ?? "";
+      expect(block).toMatch(/^ {4}needs: macos-ctl$/m);
+      expect(runOf(block, "vimma-ctl comes from the same commit")).toContain(
+        '[ "$CTL_SHA" = "$SHA" ]',
+      );
+      expect(block).toMatch(/name: macos-ctl\n {10}path: ctl\n/);
+      expect(block).toContain("VIMMA_CTL: ${{ github.workspace }}/ctl/vimma-ctl");
+    });
+
+    it("macos-smoke runs the app's vimma-ctl", () => {
+      const smoke = runOf(all.get("macos-smoke") ?? "", "Smoke check");
+      expect(smoke).toContain('ctl=$("$APP/Contents/MacOS/vimma-ctl" --version)');
+      expect(smoke).toContain('[ "$ctl" = "vimma-ctl ${TAG#v} (protocol 2)" ]');
     });
   });
 
@@ -464,6 +601,21 @@ esac
     expect(script).toContain('docker run --rm --network host -e ARCH_SMOKE_PORT="$PORT"');
     expect(script).not.toMatch(/-e PORT=/);
   });
+
+  // #516: package.mjs refuses vimma-ctl without its notices, so the pull-request stub brings
+  // every file it requires, and the installed package must carry them.
+  it.each(["arch-smoke.sh", "rpm-smoke.sh"])(
+    "%s packages its stub with vimma-ctl's notices",
+    (name) => {
+      const script = readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
+      const stub = script.slice(script.indexOf('if [ "${1:-}" = "--stub" ]; then'));
+      expect(stub).toMatch(/package\.mjs" .*--ctl-licenses "\$work\/vimma-ctl-licenses"/s);
+      for (const file of CTL_LICENSE_FILES)
+        expect(stub, file).toContain(`vimma-ctl-licenses/${file}`);
+      const lib = name === "arch-smoke.sh" ? "/opt/vimma" : "/usr/lib/vimma";
+      expect(script).toContain(`test -s ${lib}/vimma-ctl-licenses/musl-COPYRIGHT`);
+    },
+  );
 });
 
 // aur.yml: pushes vimma-bin to the AUR, which is public at once, so only for a published
@@ -930,6 +1082,14 @@ describe("release-please-config.json", () => {
     expect(config.prerelease).toBeUndefined();
   });
 
+  // Issue #529: firefox-notes moves main's hand-written [Unreleased] lines into the release PR's
+  // entry. release-please otherwise rebuilds its branch only when its own notes change, so a
+  // merge that adds only a changelog line would leave the branch with the old lines, and the
+  // PR would conflict with main on CHANGELOG.md.
+  it("rebuilds the release PR from main on every run", () => {
+    expect(config["always-update"]).toBe(true);
+  });
+
   it("keeps the manifest at surfer.json's displayVersion", () => {
     expect(manifest["."]).toBe(surfer.brands.vimma.release.displayVersion);
   });
@@ -1126,9 +1286,41 @@ describe("release-please.yml", () => {
     expect(notes).toContain("BRANCH: release-please--branches--main");
     expect(notes).toContain("node tools/release/firefox-notes.mjs");
     expect(notes).toMatch(/if \[ -z "\$PUSH_TOKEN" \]; then\n\s+echo "::notice::/);
-    expect(notes).toContain("chore(release): firefox $firefox in the changelog heading");
+    expect(notes).toContain(
+      "chore(release): unreleased lines and firefox $firefox in the changelog entry",
+    );
     // the push names the blob it replaces, so a force-push by release-please in between fails it
     expect(notes).toContain("sha: $sha");
+  });
+
+  // Issue #529: the hand-written [Unreleased] lines become part of the release's entry, first in
+  // the release PR's CHANGELOG.md, then in the GitHub release's notes from the tag's changelog.
+  it("firefox-notes moves [Unreleased] into the new entry before naming the Firefox version", () => {
+    const notes = job("firefox-notes");
+    const move = notes.indexOf(
+      'node tools/release/changelog.mjs move "$dir/CHANGELOG.md" > "$dir/moved.md"',
+    );
+    const name = notes.indexOf(
+      'node tools/release/firefox-notes.mjs "$dir/moved.md" --surfer "$dir/surfer.json"',
+    );
+    expect(move).toBeGreaterThan(-1);
+    expect(name).toBeGreaterThan(move);
+  });
+
+  it("release-title adds the tag's hand-written lines to the release notes", () => {
+    const title = job("release-title");
+    const add = title.indexOf(
+      'node tools/release/changelog.mjs notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"',
+    );
+    const name = title.indexOf(
+      'node tools/release/firefox-notes.mjs "$dir/hand.md" --surfer surfer.json > "$dir/new.md"',
+    );
+    expect(add).toBeGreaterThan(-1);
+    expect(name).toBeGreaterThan(add);
+    // a changelog the step cannot read never leaves the release untitled
+    expect(title).toMatch(
+      /if ! node tools\/release\/changelog\.mjs notes [^\n]*; then\n\s+echo "::warning::[^\n]*"\n\s+cp "\$dir\/body\.md" "\$dir\/hand\.md"\n\s+fi\n/,
+    );
   });
 
   it("release-title runs only when a release was created and titles it with versionLine", () => {

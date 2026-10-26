@@ -1,0 +1,17 @@
+{
+  "description": "vimma-ctl names its own version, Vimma's version of the tree it was built from",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 1,
+    "command": "agent-hello",
+    "args": {
+      "client": {
+        "name": "example-agent",
+        "version": "2.1.0"
+      },
+      "via": "example",
+      "ctl": "0.1.8"
+    }
+  }
+}

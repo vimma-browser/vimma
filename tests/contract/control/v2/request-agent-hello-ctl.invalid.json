@@ -1,0 +1,15 @@
+{
+  "description": "vimma-ctl's version is a Vimma version (X.Y.Z), not any label",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 1,
+    "command": "agent-hello",
+    "args": {
+      "client": {
+        "name": "example-agent"
+      },
+      "ctl": "v0.1.8"
+    }
+  }
+}

@@ -28,7 +28,7 @@ export function summaryLine(run) {
 }
 
 /** Escapes what would break a Markdown table cell or become HTML. @param {string} text */
-function md(text) {
+export function md(text) {
   return String(text)
     .replace(/[\\|<>[\]`*_]/g, (c) => `\\${c}`)
     .replace(/\s+/g, " ");
@@ -84,6 +84,24 @@ export function renderMarkdown(run) {
       return `- ${md(s.name)}: ${kind}, ${md(s.block?.reason ?? "")}`;
     });
   if (blocked.length) out.push("### Blocked and consent", "", ...blocked, "");
+
+  const retried = run.sites
+    .filter((s) => s.retry)
+    .map(
+      (s) =>
+        `- ${md(s.name)}: ${statusLabel(s.retry?.status ?? "error")}, ` +
+        `then ${statusLabel(s.status)} on the retry`,
+    );
+  if (retried.length) {
+    out.push(
+      "### Retried",
+      "",
+      "Sites a bot check blocked, loaded once more at the end of the run.",
+      "",
+      ...retried,
+      "",
+    );
+  }
 
   const conflicts = run.sites
     .filter((s) => shortcutKeys(s).length)
@@ -209,6 +227,7 @@ export function renderHtml(run) {
       const extra = [
         site.block ? `${html(site.block.kind)}: ${html(site.block.reason)}` : "",
         site.error ? `harness: ${html(site.error)}` : "",
+        site.retry ? `retried: ${html(statusLabel(site.retry.status))} at first` : "",
         site.finalUrl && site.finalUrl !== site.url ? `ended at ${html(site.finalUrl)}` : "",
         `${Math.round(site.durationMs / 1000)} s`,
       ]

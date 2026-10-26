@@ -88,6 +88,17 @@ const TAB_EVENTS = [
 ];
 const SESSION_EVENTS = ["SSWindowStateBusy", "SSWindowStateReady", "SSWindowClosing"];
 
+/**
+ * A page loading into `browser` in the parent process before its layout has started: the
+ * initial about:blank the load replaces, or the new document while the parser still runs.
+ * @param {any} browser
+ */
+function layoutPending(browser) {
+  const doc = browser.contentDocument;
+  if (!doc || !browser.webProgress?.isLoadingDocument) return false;
+  return doc.isInitialDocument || doc.readyState === "loading";
+}
+
 /** A new uuid, without braces. */
 function newId() {
   return Services.uuid.generateUUID().toString().slice(1, -1);
@@ -297,6 +308,30 @@ export class WindowWorkspacesImpl {
   }
 
   /**
+   * Shows `tab`'s workspace with `tab` selected, through the same switch as `switchTo`, so the
+   * workspace left becomes the alternate and its split is parked (docs/specs/mcp-drive.md D2).
+   * Returns why not, or null.
+   * @param {Tab} tab
+   * @returns {string | null}
+   */
+  showTab(tab) {
+    const model = this.#model;
+    if (!model) return "no workspaces in this window";
+    const id = this.#idOf(tab);
+    if (tab.closing || this.#foreign.has(id) || !workspaceOfTab(model, id)) {
+      return "this tab is in no workspace";
+    }
+    const next = selectTab(model, id);
+    if (next.active === model.active) {
+      // The same workspace: a plain selection, which #onSelect records.
+      this.#gBrowser.selectedTab = tab;
+      return null;
+    }
+    this.#show(model, next);
+    return null;
+  }
+
+  /**
    * Moves `tab` to workspace `ref` (decision 6, sub-spec 4b): reopens its URL in the target's
    * container, as Firefox's "Reopen in Container" does (history, form data, scroll and POST
    * data stay behind; the label and mute come along), then closes it. A tab in a split leaves
@@ -445,7 +480,7 @@ export class WindowWorkspacesImpl {
         this.#win.queueMicrotask(() => this.#guardFocus());
         break;
       case "SSTabRestored":
-        this.#onRestored(/** @type {Tab} */ (e.target));
+        this.#onLoaded(/** @type {Tab} */ (e.target));
         return;
     }
     // Tab events inside a restore are not applied: the Ready reconcile reads the live tabs.
@@ -479,8 +514,22 @@ export class WindowWorkspacesImpl {
    * Same-tab navigation is never moved to another workspace (spec workspace-routing, decision
    * 5: Zen moved tabs mid-load). When the selected tab's page lands on a site a `[[routes]]`
    * rule sends elsewhere, the notice says so, once per tab and host, and `:route move` moves it.
+   * A page #guardFocus kept without focus gets it when its load stops.
    */
   #progress = {
+    onStateChange: (
+      /** @type {any} */ browser,
+      /** @type {any} */ webProgress,
+      /** @type {unknown} */ _request,
+      /** @type {number} */ flags,
+    ) => {
+      const { STATE_STOP, STATE_IS_WINDOW } = Ci.nsIWebProgressListener;
+      if (!webProgress?.isTopLevel || browser !== this.#restoring) return;
+      if ((flags & (STATE_STOP | STATE_IS_WINDOW)) !== (STATE_STOP | STATE_IS_WINDOW)) return;
+      // A restore's own load ends before SessionStore calls it restored (SSTabRestored).
+      const tab = /** @type {Tab | null} */ (this.#gBrowser.getTabForBrowser(browser));
+      if (tab && !lazy.SessionStore.isTabRestoring(tab)) this.#onLoaded(tab);
+    },
     onLocationChange: (
       /** @type {any} */ browser,
       /** @type {any} */ webProgress,
@@ -969,49 +1018,52 @@ export class WindowWorkspacesImpl {
       view.reconcile();
       if (view.panes) this.#focusPane();
     }
+    // Before the TabSelect microtask: a key sent in the same task as the switch reaches us too.
+    this.#guardFocus();
     const active = /** @type {Workspaces} */ (this.#model).active;
     if (active !== prev.active) WorkspaceStore.setActive(this.#win, active);
     this.#changed();
   }
 
   /**
-   * The selected tab's browser while SessionStore restores a page into it in the parent process
-   * (the start page), kept without focus until it has restored (#guardFocus).
+   * The selected tab's browser while its page loads in the parent process (the start page) or
+   * SessionStore restores one into it, kept without focus until then (#guardFocus).
    * @type {any}
    */
   #restoring = null;
 
-  /** Focus moved: it may have gone into a restoring page (#guardFocus), after this event. */
+  /** Focus moved: it may have gone into a loading page (#guardFocus), after this event. */
   #onFocus = () => {
     if (!this.#win.closed) this.#win.queueMicrotask(() => this.#guardFocus());
   };
 
   /**
-   * Keeps focus out of the selected tab's page while SessionStore restores it in the parent
-   * process (the start page, and every lazy tab a workspace switch selects after a restart):
-   * until that page's layout starts, Gecko drops every key aimed at it before any listener sees
-   * it (PresShell's GetFrameForHandlingEventWith finds no frame for the focused document), so a
-   * ctrl+b typed right after the switch was lost (issue #140). Firefox's tab switch, and
+   * Keeps focus out of the selected tab's page while it loads in the parent process: the start
+   * page a switch to an empty workspace opens (issue #388), and every page SessionStore restores
+   * there, such as the start page and every lazy tab a workspace switch selects after a restart
+   * (issue #140). Until that page's layout starts, Gecko drops every key aimed at it before any
+   * listener sees it (PresShell's GetFrameForHandlingEventWith finds no frame for the focused
+   * document), so a ctrl+b typed right after the switch was lost. Firefox's tab switch, and
    * #focusPane after ours, focus the page at once; focus goes back to the window instead, where
-   * the keys reach VimmaHost, and to the page once it has restored (#onRestored). A page in a
-   * content process gets every key through the window first, so it keeps its focus.
+   * the keys reach VimmaHost, and to the page once it has loaded or restored (#onLoaded). A page
+   * in a content process gets every key through the window first, so it keeps its focus.
    */
   #guardFocus() {
     const gBrowser = this.#gBrowser;
     if (this.#win.closed || !gBrowser) return;
     const browser = /** @type {any} */ (gBrowser.selectedBrowser);
     if (this.#win.document.activeElement !== browser || browser.isRemoteBrowser) return;
-    if (!lazy.SessionStore.isTabRestoring(gBrowser.selectedTab)) return;
+    if (!lazy.SessionStore.isTabRestoring(gBrowser.selectedTab) && !layoutPending(browser)) return;
     this.#restoring = browser;
     Services.focus.clearFocus(this.#win);
   }
 
   /**
-   * `tab` has restored: its page gets the focus #guardFocus kept from it, unless it is no longer
-   * selected or something else has taken focus meanwhile.
+   * `tab`'s page has loaded or restored: it gets the focus #guardFocus kept from it, unless it
+   * is no longer selected or something else has taken focus meanwhile.
    * @param {Tab} tab
    */
-  #onRestored(tab) {
+  #onLoaded(tab) {
     const browser = tab.linkedBrowser;
     if (!browser || browser !== this.#restoring) return;
     this.#restoring = null;

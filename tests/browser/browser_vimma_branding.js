@@ -67,7 +67,12 @@ add_task(async function window_title_names_vimma() {
       () => document.title.includes("vimma-page"),
       "window title follows the page",
     );
-    Assert.ok(document.title.endsWith(BRAND), `window title "${document.title}" ends with Vimma`);
+    if (AppConstants.platform === "macosx") {
+      // Firefox's macOS window titles are the page's title alone; the menu bar names the app.
+      Assert.equal(document.title, "vimma-page", "window title is the page's title on macOS");
+    } else {
+      Assert.ok(document.title.endsWith(BRAND), `window title "${document.title}" ends with Vimma`);
+    }
     Assert.ok(!/Nightly|Firefox/.test(document.title), "window title has no Nightly/Firefox");
   });
 });
