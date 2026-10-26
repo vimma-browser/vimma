@@ -1929,8 +1929,9 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   before the leak keep opening depends on the date Apple revokes it from (**unverified**: no
   revocation has been tried). **A leaked API key** lets its holder notarise and read the team's
   notarisation history, not sign: revoke it in App Store Connect (Users and Access,
-  Integrations) and create a new one. The certificate expires after five years and is renewed
-  as the runbook's "Rotating" paragraph says, with a reminder 60 days before.
+  Integrations) and create a new one. The certificate's expiry is read from the certificate
+  (its `notAfter` date, or the certificate list on developer.apple.com), not assumed, and it is
+  renewed as the runbook's "Rotating" paragraph says, with a reminder 60 days before that date.
   [`the Apple secrets come from the macos-sign environment, in macos-notarise alone`](../tools/package/test/release-workflow.test.mjs),
   [`the macos-sign job runs no binary of the build: only the pinned rcodesign`](../tools/package/test/release-workflow.test.mjs),
   [`runs rcodesign and no disk-image tool, mach, node or other program of the build`](../tools/package/test/macos-developer-id.test.mjs),

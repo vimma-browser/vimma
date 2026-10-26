@@ -1254,9 +1254,13 @@ notarised and stapled"; re-run the whole release (`gh workflow run release.yml -
 to sign again. `rcodesign notary-log --api-key-file notary-api-key.json <submission-id>` shows Apple's
 reasons for a rejection; the submission ID is in the job's log.
 
-**Rotating.** A Developer ID Application certificate is valid for five years. Put its expiry
-date in the maintainer's calendar with a reminder 60 days before; make a new certificate as in
-step 1 and replace `APPLE_DEVELOPER_ID_P12` and its password. Apps signed with the old one keep
+**Rotating.** Do not assume a fixed validity for a Developer ID Application certificate; read
+its expiry from the certificate itself, with
+`openssl x509 -noout -enddate -in vimma-developer-id.crt.pem` (the `notAfter` date), or from the
+certificate list in Certificates, Identifiers & Profiles on developer.apple.com. Put that date in
+the maintainer's calendar with a reminder 60 days before; make a new certificate as in step 1 and
+replace `APPLE_DEVELOPER_ID_P12` and its password, then set the next reminder from the new
+certificate's expiry. Apps signed with the old one keep
 opening after it expires, since their signatures carry a secure timestamp. The API key does not
 expire; rotate it by creating a new key, replacing `APPLE_NOTARY_API_KEY`, and then revoking the
 old key in App Store Connect. Neither rotation needs a code change.
