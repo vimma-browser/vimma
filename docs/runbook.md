@@ -1166,7 +1166,9 @@ bootstrapped never run beside the Apple secrets:
 
 - `macos-unpack` opens `macos-build`'s ad hoc `.dmg` with those tools
   (`tools/package/macos-dmg-unpack.sh`) and uploads the volume as `macos-volume.tar`;
-- `macos-notarise`, the only job in the `macos-sign` environment, unpacks the tar, runs
+- `macos-notarise`, the only job in the `macos-sign` environment, unpacks the tar, refuses the
+  app unless it matches the manifest `macos-build` wrote of the app it signed ad hoc
+  (`tools/package/macos-app-manifest.sh`; a mismatch means the unpack step changed it), runs
   `tools/package/macos-sign-app.sh` (one `rcodesign sign` with the hardened runtime and
   `configs/macos/entitlements/`, then `rcodesign notary-submit --wait --staple` on the app) with
   the pinned rcodesign alone, and uploads the signed app;

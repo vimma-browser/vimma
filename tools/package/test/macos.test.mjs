@@ -213,6 +213,33 @@ describe("macos-dmg.sh", () => {
     }
   });
 
+  // Spec macos-build, decision 23: macos-notarise compares the app it is handed with this list of
+  // what mach built and macos-dmg.sh signed, so the unpack tools cannot change it unseen.
+  it("with VIMMA_APP_MANIFEST, writes the signed app's manifest before packing", () => {
+    const dir = tempDir("vimma-macos-dmg-");
+    const tools = stubs(dir);
+    mkdirSync(join(dir, "out"));
+    const manifest = join(dir, "out/vimma-app.manifest");
+    const { status, stderr } = sign(dir, tools, {
+      ...macCtl(dir),
+      VIMMA_APP_MANIFEST: manifest,
+    });
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    const lines = readFileSync(manifest, "utf8").trim().split("\n");
+    expect(lines).toContain("d x - Contents/MacOS");
+    expect(lines.find((l) => l.endsWith(" Contents/MacOS/vimma-ctl"))).toMatch(
+      /^f x [0-9a-f]{64} Contents\/MacOS\/vimma-ctl$/,
+    );
+    // the same three calls as without it: the ad hoc dmg does not change
+    expect(
+      readFileSync(tools.log, "utf8")
+        .trim()
+        .split("\n")
+        .map((l) => l.split(" ")[0]),
+    ).toEqual(["mach", "rcodesign", "rcodesign", "mach"]);
+  });
+
   it("writes no dmg when signing fails", () => {
     const dir = tempDir("vimma-macos-dmg-");
     const tools = stubs(dir, { signFails: true });

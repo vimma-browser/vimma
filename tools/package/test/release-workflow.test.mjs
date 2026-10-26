@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CTL_LICENSE_FILES, IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
+import { notariseJobProblems } from "./notarise-job.mjs";
 
 // release.yml's gates (spec m6-packaging; docs/runbook.md, "Release packages"). It starts only
 // by workflow_dispatch: release-please.yml's release-build job starts it for the draft release it
@@ -483,49 +484,123 @@ esac
       });
 
       // A compromised build could hand over a tool that waits for the key: the job with the
-      // secrets downloads the unpacked volume as data and runs only the pinned rcodesign.
+      // secrets downloads the unpacked volume and the build's manifest as data, and runs only the
+      // pinned rcodesign (tools/package/test/notarise-job.mjs says exactly what it may run).
       it("the macos-sign job runs no binary of the build: only the pinned rcodesign", () => {
-        const downloads = [
-          ...notarise.matchAll(/download-artifact@\S+.*\n {8}with:\n {10}name: (\S+)/g),
-        ];
-        expect(downloads.map((m) => m[1])).toEqual(["macos-volume"]);
+        expect(notariseJobProblems(notarise)).toEqual([]);
         expect(notarise).not.toMatch(
           /dmg-tools|DMG_TOOLS|macos-dmg-tools|chmod|mach|node |npm|npx/,
         );
-        const runs = [...notarise.matchAll(/^ {8}run: \|\n((?: {10}.*\n|\n)+)/gm)].map((m) => m[1]);
-        const programs = runs
-          .join("\n")
-          .split("\n")
-          .flatMap((l) => [
-            ...l.matchAll(/(?:^\s*|\| |\$\(|&& |\( *)(tools\/\S+|\/\S+|[a-z][\w.-]*)/g),
-          ])
-          .map((m) => m[1]);
-        const allowed = new Set([
-          "tools/package/fetch-rcodesign.sh",
-          "tools/package/macos-sign-app.sh",
-          "missing",
-          "for",
-          "do",
-          "done",
-          "if",
-          "then",
-          "fi",
-          "echo",
-          "printenv",
-          "exit",
-          "dir",
-          "umask",
-          "mkdir",
-          "printf",
-          "base64",
-          "rm",
-          "tar",
-          "volume",
-        ]);
-        for (const p of programs) expect(allowed, `macos-notarise runs ${p}`).toContain(p);
-        // the volume is unpacked, and its links checked by the sign script, before any secret
+      });
+
+      // Each rule of the check, shown to catch a change that breaks it.
+      it.each([
+        [
+          "another action",
+          (/** @type {string} */ b) =>
+            b.replace(
+              "      - name: rcodesign (pinned)",
+              "      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4\n" +
+                "        with:\n          path: x\n          key: x\n\n      - name: rcodesign (pinned)",
+            ),
+          /step 4 .*actions\/cache/,
+        ],
+        [
+          "an action not pinned to a commit",
+          (/** @type {string} */ b) =>
+            b.replace(/actions\/checkout@[0-9a-f]{40}/, "actions/checkout@v7"),
+          /not pinned/,
+        ],
+        [
+          "the dmg tools downloaded",
+          (/** @type {string} */ b) =>
+            b.replace(
+              "name: macos-volume\n          path: macos-volume",
+              "name: macos-dmg-tools\n          path: dmg-tools",
+            ),
+          /downloads macos-dmg-tools/,
+        ],
+        [
+          "a one-line run",
+          (/** @type {string} */ b) =>
+            b.replace(
+              'run: |\n          tools/package/fetch-rcodesign.sh "$RUNNER_TEMP/rcodesign"',
+              "run: ./dmg-tools/dmg --version",
+            ),
+          /not a \| block/,
+        ],
+        [
+          "a command after a ;",
+          (/** @type {string} */ b) =>
+            b.replace('mkdir "$RUNNER_TEMP/volume"', 'mkdir "$RUNNER_TEMP/volume"; ./evil'),
+          /runs \.\/evil/,
+        ],
+        [
+          "a command after a pipe",
+          (/** @type {string} */ b) =>
+            b.replace(
+              'rm -rf "$RUNNER_TEMP/apple-signing"',
+              'rm -rf "$RUNNER_TEMP/apple-signing" | sh',
+            ),
+          /runs sh/,
+        ],
+        [
+          "a command in a substitution",
+          (/** @type {string} */ b) =>
+            b.replace('mkdir "$RUNNER_TEMP/volume"', 'mkdir "$(curl -s x)"'),
+          /runs curl/,
+        ],
+        [
+          "a command named by a variable",
+          (/** @type {string} */ b) =>
+            b.replace('mkdir "$RUNNER_TEMP/volume"', '"$RUNNER_TEMP/tool"'),
+          /runs "\$RUNNER_TEMP\/tool"/,
+        ],
+        [
+          "a command after an assignment",
+          (/** @type {string} */ b) =>
+            b.replace('mkdir "$RUNNER_TEMP/volume"', 'LD_PRELOAD=x ./evil "$RUNNER_TEMP/volume"'),
+          /runs \.\/evil/,
+        ],
+        [
+          "a command after then or do",
+          (/** @type {string} */ b) => b.replace("then\n", "then bash -c x\n"),
+          /runs bash/,
+        ],
+        [
+          "a step added after the credentials",
+          (/** @type {string} */ b) =>
+            b.replace(
+              "      - name: Delete the signing credentials",
+              "      - name: Extra\n        run: |\n          tar -cf x.tar .\n\n      - name: Delete the signing credentials",
+            ),
+          /steps/,
+        ],
+      ])("the check catches %s", (_name, mutate, problem) => {
+        const mutated = mutate(notarise);
+        expect(mutated, "the mutation applies").not.toBe(notarise);
+        expect(notariseJobProblems(mutated).join("\n")).toMatch(problem);
+      });
+
+      // The unpack tools write the volume that is signed: the app must be the one mach built and
+      // macos-dmg.sh signed ad hoc, as macos-build listed it, before any credential exists.
+      it("macos-notarise checks the app against macos-build's manifest before the credentials", () => {
+        const step = runOf(notarise, "The unsigned app");
+        expect(step).toContain(
+          'tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" > "$RUNNER_TEMP/unpacked.manifest"',
+        );
+        expect(step).toContain(
+          'cmp macos-app-manifest/vimma-app.manifest "$RUNNER_TEMP/unpacked.manifest"',
+        );
         expect(notarise.indexOf("- name: The unsigned app")).toBeLessThan(
           notarise.indexOf("- name: Signing credentials"),
+        );
+        const build = all.get("macos-build") ?? "";
+        expect(build).toContain(
+          "VIMMA_APP_MANIFEST: ${{ vars.MACOS_SIGNING == 'developer-id' && format('{0}/app-manifest/vimma-app.manifest', github.workspace) || '' }}",
+        );
+        expect(build).toMatch(
+          /if: vars\.MACOS_SIGNING == 'developer-id'\n {8}with:\n {10}name: macos-app-manifest\n {10}path: app-manifest\//,
         );
       });
 

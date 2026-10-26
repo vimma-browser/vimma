@@ -1901,9 +1901,15 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   not** run any binary from an artifact: it downloads the unpacked volume only as a tar file,
   fetches rcodesign by `fetch-rcodesign.sh`, which checks its SHA-256, and runs only that and
   `tools/package/macos-sign-app.sh`, which calls rcodesign and standard system tools. It holds a
-  read-only token and no OIDC permission, and checks out the commit `macos-build` built. Before
-  any credential is written, the app is unpacked and the sign script refuses a symlink whose
-  target leaves the bundle, so rcodesign cannot be led to read or write a file outside it. The
+  read-only token and no OIDC permission, and checks out the commit `macos-build` built. Its
+  steps and actions are an exact list, and its shell blocks may start only allowlisted commands.
+  Before any credential is written, the app is unpacked and compared with the manifest
+  `macos-build` wrote of the app it built and signed ad hoc (`macos-app-manifest.sh`: every
+  path, type, executable bit and SHA-256, computed with coreutils and `sha256sum` only), so the
+  unpack tools cannot change it unseen; the manifest refuses any symlink, as Vimma.app has none,
+  and the sign script refuses a symlink again, as well as a name rcodesign's scope syntax could
+  misread and an `Info.plist` whose `CFBundleExecutable` is not one plain file name, so
+  rcodesign cannot be led to read or write a file outside the bundle. The
   shell's `printf` writes the p12, its password and the key to files of mode 600 under
   `$RUNNER_TEMP`; rcodesign gets only their paths, never a secret on a command line; an
   `always()` step deletes them before the signed app is uploaded; no step echoes a secret. Before
@@ -1918,9 +1924,13 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   branch or tag can run an edited workflow that reads the secrets (as in B6), and no repository
   secret of these names exists. It has no required reviewer, since a Firefox security release
   ships without a person. **⚠ limit:** whoever can merge to `main` can change `release.yml` to
-  misuse the secrets, as for every other environment. **⚠ limit:** a replaced disk-image tool
-  in `macos-pack` could still pack a different app than the one notarised; `macos-smoke` then
-  fails its signature checks, but nothing pins the tools themselves.
+  misuse the secrets, as for every other environment. **⚠ limit:** the manifest comes from
+  the same release run as the build, so it guards against the unpack tools, not against a
+  compromised build, which signs what it builds anyway. **⚠ limit:** nothing pins the
+  disk-image tools themselves. A replaced tool in `macos-pack` could pack a different app than
+  the one notarised, which `macos-smoke`'s signature checks then fail; it could also add other
+  entries to the `.dmg`, which is not signed, or point its Applications link elsewhere, and
+  `macos-dmg-check.sh` checks only the art files, not that nothing else is on the volume.
   **A leaked p12** lets its holder sign any Mac software that Gatekeeper accepts as Vimma's team,
   and, with any API key of the team, notarise it, until Apple revokes the certificate. The
   response is in `docs/runbook.md`, "Developer ID signing": unset `MACOS_SIGNING` so releases go
@@ -1936,6 +1946,12 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`the macos-sign job runs no binary of the build: only the pinned rcodesign`](../tools/package/test/release-workflow.test.mjs),
   [`runs rcodesign and no disk-image tool, mach, node or other program of the build`](../tools/package/test/macos-developer-id.test.mjs),
   [`refuses a symlink that leaves the app, before rcodesign runs`](../tools/package/test/macos-developer-id.test.mjs),
+  [`refuses every symlink, even one that stays inside the app, and an app that is a link`](../tools/package/test/macos-developer-id.test.mjs),
+  [`refuses a file name outside [A-Za-z0-9._+-] in a path it scopes a setting to`](../tools/package/test/macos-developer-id.test.mjs),
+  [`refuses a CFBundleExecutable with a / or .., and a binary Info.plist`](../tools/package/test/macos-developer-id.test.mjs),
+  [`changes when a byte, an executable bit or a file name changes`](../tools/package/test/macos-developer-id.test.mjs),
+  [`macos-notarise checks the app against macos-build's manifest before the credentials`](../tools/package/test/release-workflow.test.mjs),
+  [`the check catches %s`](../tools/package/test/release-workflow.test.mjs),
   [`%s runs only when MACOS_SIGNING is developer-id, after %s`](../tools/package/test/release-workflow.test.mjs),
   [`writes the credentials to owner-only files and fails when one is missing`](../tools/package/test/release-workflow.test.mjs),
   [`removes the credentials in an always() step before anything is uploaded`](../tools/package/test/release-workflow.test.mjs),

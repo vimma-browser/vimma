@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -22,6 +23,7 @@ const read = (path) => readFileSync(join(repo, path), "utf8");
 const UNPACK = join(repo, "tools/package/macos-dmg-unpack.sh");
 const SIGN = join(repo, "tools/package/macos-sign-app.sh");
 const PACK = join(repo, "tools/package/macos-dmg-pack.sh");
+const MANIFEST = join(repo, "tools/package/macos-app-manifest.sh");
 const ENTITLEMENTS = join(repo, "configs/macos/entitlements");
 const TEAM = "ABCDE12345";
 const PASSWORD = "p12-password-never-on-a-command-line";
@@ -94,6 +96,9 @@ function appTree(dir, { stapled = false, links = {} } = {}) {
     mkdirSync(join(app, f, ".."), { recursive: true });
     writeFileSync(join(app, f), "x");
   }
+  for (const [where, exe] of Object.entries(PLISTS)) {
+    writeFileSync(join(app, where, "Info.plist"), plist(exe));
+  }
   for (const [path, target] of Object.entries(links)) symlinkSync(target, join(app, path));
   return app;
 }
@@ -110,6 +115,30 @@ const APP_FILES = [
   "Contents/Resources/gmp-clearkey/0.1/libclearkey.dylib",
 ];
 const ART = [".DS_Store", ".background/background.png", ".VolumeIcon.icns"];
+/** Each bundle's Info.plist directory and its CFBundleExecutable. */
+const PLISTS = {
+  Contents: "vimma",
+  "Contents/MacOS/plugin-container.app/Contents": "plugin-container",
+  "Contents/MacOS/media-plugin-helper.app/Contents": "media-plugin-helper",
+};
+
+/**
+ * An XML Info.plist naming `exe` as the bundle's executable, as mach package writes it.
+ * @param {string} exe
+ */
+function plist(exe) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>${exe}</string>
+  <key>CFBundleIdentifier</key>
+  <string>dev.vimma.browser</string>
+</dict>
+</plist>
+`;
+}
 
 /**
  * Stub disk-image tools (dmg, hfsplus, newfs_hfs) in `dir/dmg-tools`, logging each call to
@@ -210,6 +239,78 @@ describe("macos-dmg-unpack.sh", () => {
     const { status, stderr } = unpack(dir, { DMG_TOOLS: tools });
     expect(status).not.toBe(0);
     expect(stderr).toMatch(/already/);
+  });
+});
+
+// macos-build writes it for the app mach built; macos-notarise recomputes it from what
+// macos-unpack handed over and refuses a difference, before any credential exists.
+describe("macos-app-manifest.sh", () => {
+  /** @param {string} app */
+  const manifest = (app) =>
+    spawnSync(MANIFEST, [app], { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } });
+
+  it("lists every entry with its type, executable bit and SHA-256, sorted bytewise", () => {
+    const dir = tempDir("vimma-manifest-");
+    const app = join(dir, "Vimma.app");
+    mkdirSync(join(app, "Contents/MacOS"), { recursive: true });
+    mkdirSync(join(app, "Contents/Resources/empty"), { recursive: true });
+    writeFileSync(join(app, "Contents/MacOS/vimma"), "binary\n");
+    chmodSync(join(app, "Contents/MacOS/vimma"), 0o755);
+    writeFileSync(join(app, "Contents/Resources/a b@2x.png"), "png\n");
+    chmodSync(join(app, "Contents/Resources/a b@2x.png"), 0o644);
+    const sha = (/** @type {string} */ s) => createHash("sha256").update(s).digest("hex");
+    const { status, stdout, stderr } = manifest(app);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    expect(stdout).toBe(
+      [
+        "d x - Contents",
+        "d x - Contents/MacOS",
+        `f x ${sha("binary\n")} Contents/MacOS/vimma`,
+        "d x - Contents/Resources",
+        `f - ${sha("png\n")} Contents/Resources/a b@2x.png`,
+        "d x - Contents/Resources/empty",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("changes when a byte, an executable bit or a file name changes", () => {
+    const dir = tempDir("vimma-manifest-");
+    const app = appTree(dir);
+    const before = manifest(app).stdout;
+    writeFileSync(join(app, "Contents/MacOS/XUL"), "y");
+    const byte = manifest(app).stdout;
+    expect(byte).not.toBe(before);
+    chmodSync(join(app, "Contents/MacOS/XUL"), 0o755);
+    expect(manifest(app).stdout).not.toBe(byte);
+    writeFileSync(join(app, "Contents/MacOS/extra"), "y");
+    expect(manifest(app).stdout).toContain("Contents/MacOS/extra");
+  });
+
+  it("refuses a symlink in the app, the app itself as a link, and a name with a newline", () => {
+    const dir = tempDir("vimma-manifest-");
+    const app = appTree(dir, { links: { "Contents/MacOS/x": "." } });
+    expect(manifest(app).status).not.toBe(0);
+    expect(manifest(app).stderr).toMatch(/symlink/);
+    const clean = appTree(join(dir, "clean"));
+    symlinkSync(clean, join(dir, "Linked.app"));
+    expect(manifest(join(dir, "Linked.app")).status).not.toBe(0);
+    writeFileSync(join(clean, "Contents/MacOS/a\nb"), "x");
+    expect(manifest(clean).status).not.toBe(0);
+    expect(manifest(clean).stderr).toMatch(/newline/);
+  });
+
+  // It runs in macos-notarise: coreutils only, nothing from the build.
+  it("runs only coreutils and sha256sum", () => {
+    const script = read("tools/package/macos-app-manifest.sh")
+      .split("\n")
+      .filter((l) => !/^\s*#/.test(l))
+      .join("\n");
+    expect(script).not.toMatch(
+      /DMG_TOOLS|hfsplus|dmg|mach|node|rcodesign|eval|source |^\s*"\$[a-z_]+"/m,
+    );
+    expect(script).toContain("sha256sum");
   });
 });
 
@@ -377,26 +478,72 @@ esac
   });
 
   // The app comes from macos-unpack's artifact: a link out of the bundle could make rcodesign
-  // read or write a file outside it, such as the credentials.
+  // read or write a file outside it, such as the credentials. A chain of links that each look
+  // harmless as text (x -> ., then x/x/../..) still gets out.
   it("refuses a symlink that leaves the app, before rcodesign runs", () => {
-    for (const target of ["/etc/hosts", "../../../secrets/p12-password", "../../.."]) {
-      const { dir, app, log, env } = setup(undefined, {
-        links: { "Contents/MacOS/escape": target },
-      });
+    const cases = [
+      { "Contents/MacOS/escape": "/etc/hosts" },
+      { "Contents/MacOS/escape": "../../../secrets/p12-password" },
+      { "Contents/MacOS/escape": "../../.." },
+      { "Contents/MacOS/x": ".", "Contents/MacOS/esc": "x/x/x/../../../../secrets/p12-password" },
+    ];
+    for (const links of cases) {
+      const { dir, app, log, env } = setup(undefined, { links });
       const { status, stderr } = run(SIGN, [app], dir, env);
-      expect(status, target).not.toBe(0);
-      expect(stderr, target).toMatch(/symlink/);
-      expect(existsSync(log), target).toBe(false);
+      expect(status, JSON.stringify(links)).not.toBe(0);
+      expect(stderr, JSON.stringify(links)).toMatch(/symlink/);
+      expect(existsSync(log), JSON.stringify(links)).toBe(false);
     }
   });
 
-  it("accepts a symlink that stays inside the app, as a framework's Versions/Current", () => {
-    const { dir, app, env } = setup(undefined, {
-      links: { "Contents/MacOS/link-to-xul": "XUL", "Contents/Resources/up": "../MacOS" },
-    });
-    const { status, stderr } = run(SIGN, [app], dir, env);
-    expect(stderr).toBe("");
-    expect(status).toBe(0);
+  // An installed Vimma.app on Firefox 158.0.1 has no symlink in the bundle;
+  // its frameworks are flat. So any link is refused, inside or out.
+  it("refuses every symlink, even one that stays inside the app, and an app that is a link", () => {
+    for (const links of [{ "Contents/MacOS/link-to-xul": "XUL" }, { "Contents/up": "MacOS" }]) {
+      const { dir, app, log, env } = setup(undefined, { links });
+      const { status, stderr } = run(SIGN, [app], dir, env);
+      expect(status, JSON.stringify(links)).not.toBe(0);
+      expect(stderr).toMatch(/symlink/);
+      expect(existsSync(log)).toBe(false);
+    }
+    const { dir, app, log, env } = setup();
+    symlinkSync(app, join(dir, "Linked.app"));
+    const { status, stderr } = run(SIGN, [join(dir, "Linked.app")], dir, env);
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/symlink/);
+    expect(existsSync(log)).toBe(false);
+  });
+
+  // A name becomes part of rcodesign's `<path>:<value>` scope syntax, so a `:` or a newline in it
+  // would change what is signed with which setting.
+  it("refuses a file name outside [A-Za-z0-9._+-] in a path it scopes a setting to", () => {
+    for (const name of ["lib:evil.dylib", "lib evil.dylib", "lib\nx.dylib"]) {
+      const { dir, app, log, env } = setup();
+      writeFileSync(join(app, "Contents/MacOS", name), "x");
+      const { status, stderr } = run(SIGN, [app], dir, env);
+      expect(status, JSON.stringify(name)).not.toBe(0);
+      expect(stderr).toMatch(/name/);
+      expect(existsSync(log)).toBe(false);
+    }
+  });
+
+  it("refuses a CFBundleExecutable with a / or .., and a binary Info.plist", () => {
+    const plists = [
+      plist("../../../secrets/p12-password"),
+      plist("MacOS/../vimma"),
+      plist(".."),
+      "bplist00 binary",
+    ];
+    for (const [i, text] of plists.entries()) {
+      for (const where of ["Contents", "Contents/MacOS/plugin-container.app/Contents"]) {
+        const { dir, app, log, env } = setup();
+        writeFileSync(join(app, where, "Info.plist"), text);
+        const { status, stderr } = run(SIGN, [app], dir, env);
+        expect(status, `${i} ${where}`).not.toBe(0);
+        expect(stderr, `${i} ${where}`).toMatch(/Info\.plist/);
+        expect(existsSync(log)).toBe(false);
+      }
+    }
   });
 
   it("refuses an app that is already stapled", () => {

@@ -489,7 +489,17 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     that. So the tools run only in `macos-unpack` and `macos-pack`, which hold no secret, and
     `macos-notarise` runs no binary from an artifact: only rcodesign, fetched and checked against
     its pinned SHA-256, through `tools/package/macos-sign-app.sh`, which calls rcodesign and
-    standard system tools and first refuses a symlink that leaves the app. The three jobs come
+    standard system tools. Its steps and actions are an exact list, and its shell blocks may start
+    only allowlisted commands. Before any credential exists, it compares the unpacked app with
+    the manifest `macos-build` wrote of the app it built and signed ad hoc
+    (`tools/package/macos-app-manifest.sh`: each path, type, executable bit and SHA-256, with
+    coreutils only), so the unpack tools cannot change the app unseen; that manifest comes from
+    the same run, so it guards against those tools, not a compromised build. Vimma.app has no
+    symlink (an installed Vimma.app on Firefox 158.0.1, inspected with `find -type l`, has none; its frameworks are
+    flat), so the manifest and the sign script refuse any symlink, which a chain of links could
+    otherwise use to lead rcodesign outside the bundle; the sign script also refuses a name
+    rcodesign's `<path>:<value>` scopes could misread and an `Info.plist` whose
+    `CFBundleExecutable` is not one plain file name. The three jobs come
     before `macos-smoke` so that the hosted Mac checks the signed `.dmg` that is published.
     `tools/package/macos-developer-id-check.sh` there runs `codesign --verify --deep --strict`,
     reads `codesign -dvv` for the Developer ID Application authority, the team ID of the
@@ -563,8 +573,10 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     and `macos-pack` have no `engine/` and no `mach`, so `macos-build` copies the `dmg`, `hfsplus` and `newfs_hfs` that its `mach`
     bootstrapped from Mozilla's Taskcluster, found as `make_dmg.py` finds them, into a one-day
     artifact, only for a Developer ID release. They run on the same runner image they were built
-    for, and only on runners without the Apple secrets (decision 23); a replaced tool could at
-    worst pack another app, which `macos-smoke`'s signature checks then fail. Rejected: downloading
+    for, and only on runners without the Apple secrets (decision 23). A replaced tool in
+    `macos-unpack` is caught by the manifest; one in `macos-pack` could pack another app, which
+    `macos-smoke`'s signature checks then fail, or add entries to the unsigned `.dmg`, which no
+    check covers yet (docs/security.md, B14). Rejected: downloading
     the Firefox source again for `mach`, which adds gigabytes and minutes for three small binaries,
     and pinning the tools by hash, because they are rebuilt with Mozilla's toolchain tasks and the
     pin would change with Firefox releases (not measured).
