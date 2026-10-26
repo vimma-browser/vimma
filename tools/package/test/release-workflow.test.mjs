@@ -70,7 +70,9 @@ describe("release.yml", () => {
       "publish",
       "macos-ctl",
       "macos-build",
+      "macos-unpack",
       "macos-notarise",
+      "macos-pack",
       "macos-smoke",
       "macos-sign",
       "macos-publish",
@@ -273,7 +275,9 @@ esac
     const MACOS = [
       "macos-ctl",
       "macos-build",
+      "macos-unpack",
       "macos-notarise",
+      "macos-pack",
       "macos-smoke",
       "macos-sign",
       "macos-publish",
@@ -333,7 +337,7 @@ esac
 
     it("macos-smoke runs the dmg on a hosted Mac and ties its version line to the tag", () => {
       const block = all.get("macos-smoke") ?? "";
-      expect(block).toMatch(/^ {4}needs: \[macos-build, macos-notarise\]$/m);
+      expect(block).toMatch(/^ {4}needs: \[macos-build, macos-pack\]$/m);
       expect(block).toMatch(/^ {4}runs-on: macos-15$/m);
       expect(block).toContain("ref: ${{ needs.macos-build.outputs.sha }}");
       expect(block).toContain("shasum -a 256 -c SHA256SUMS-macos");
@@ -434,7 +438,8 @@ esac
       expect(start).toContain('-f ref=main -f "inputs[tag]=$TAG" -f "inputs[target]=macos"');
     });
 
-    // Spec macos-build, sub-PR 7: Developer ID signing and notarisation, in a job of its own.
+    // Spec macos-build, sub-PR 7: Developer ID signing and notarisation. Three jobs, each on its own
+    // runner: the disk-image tools macos-build hands over never share a runner with the secrets.
     describe("Developer ID", () => {
       const SECRETS = [
         "APPLE_DEVELOPER_ID_P12",
@@ -442,13 +447,27 @@ esac
         "APPLE_NOTARY_API_KEY",
         "APPLE_TEAM_ID",
       ];
+      const unpack = all.get("macos-unpack") ?? "";
       const notarise = all.get("macos-notarise") ?? "";
+      const pack = all.get("macos-pack") ?? "";
 
-      it("macos-notarise runs only when MACOS_SIGNING is developer-id, after macos-build", () => {
-        expect(notarise).toMatch(/^ {4}needs: macos-build$/m);
-        expect(condition(notarise)).toContain("vars.MACOS_SIGNING == 'developer-id'");
-        expect(notarise).toMatch(/^ {4}runs-on: ubuntu-24\.04$/m);
-        expect(notarise).toMatch(/^ {4}timeout-minutes: \d+$/m);
+      it.each([
+        ["macos-unpack", "macos-build"],
+        ["macos-notarise", "[macos-build, macos-unpack]"],
+        ["macos-pack", "[macos-build, macos-unpack, macos-notarise]"],
+      ])("%s runs only when MACOS_SIGNING is developer-id, after %s", (id, needs) => {
+        const block = all.get(id) ?? "";
+        expect(block).toContain(`    needs: ${needs}\n`);
+        expect(condition(block)).toContain("vars.MACOS_SIGNING == 'developer-id'");
+        expect(block).toMatch(/^ {4}runs-on: ubuntu-24\.04$/m);
+        expect(block).toMatch(/^ {4}timeout-minutes: \d+$/m);
+        expect(block).toMatch(/^ {4}permissions:\n {6}contents: read\n {4}[a-z]/m);
+        expect(block).not.toMatch(/id-token|contents: write|GH_TOKEN|github\.token|cache:/);
+        expect(block).toContain("ref: ${{ needs.macos-build.outputs.sha }}");
+        expect(block).toMatch(/persist-credentials: false/);
+        for (const use of block.match(/uses: \S+/g) ?? []) {
+          expect(use).toMatch(/^uses: [\w./-]+@[0-9a-f]{40}$/);
+        }
       });
 
       it("the Apple secrets come from the macos-sign environment, in macos-notarise alone", () => {
@@ -463,15 +482,51 @@ esac
         }
       });
 
-      it("macos-notarise only reads the repository and checks out macos-build's commit", () => {
-        expect(notarise).toMatch(/^ {4}permissions:\n {6}contents: read\n {4}[a-z]/m);
-        expect(notarise).not.toMatch(/id-token|contents: write|GH_TOKEN|github\.token/);
-        expect(notarise).toContain("ref: ${{ needs.macos-build.outputs.sha }}");
-        expect(notarise).toMatch(/persist-credentials: false/);
-        expect(notarise).not.toMatch(/cache:/);
-        for (const use of notarise.match(/uses: \S+/g) ?? []) {
-          expect(use).toMatch(/^uses: [\w./-]+@[0-9a-f]{40}$/);
-        }
+      // A compromised build could hand over a tool that waits for the key: the job with the
+      // secrets downloads the unpacked volume as data and runs only the pinned rcodesign.
+      it("the macos-sign job runs no binary of the build: only the pinned rcodesign", () => {
+        const downloads = [
+          ...notarise.matchAll(/download-artifact@\S+.*\n {8}with:\n {10}name: (\S+)/g),
+        ];
+        expect(downloads.map((m) => m[1])).toEqual(["macos-volume"]);
+        expect(notarise).not.toMatch(
+          /dmg-tools|DMG_TOOLS|macos-dmg-tools|chmod|mach|node |npm|npx/,
+        );
+        const runs = [...notarise.matchAll(/^ {8}run: \|\n((?: {10}.*\n|\n)+)/gm)].map((m) => m[1]);
+        const programs = runs
+          .join("\n")
+          .split("\n")
+          .flatMap((l) => [
+            ...l.matchAll(/(?:^\s*|\| |\$\(|&& |\( *)(tools\/\S+|\/\S+|[a-z][\w.-]*)/g),
+          ])
+          .map((m) => m[1]);
+        const allowed = new Set([
+          "tools/package/fetch-rcodesign.sh",
+          "tools/package/macos-sign-app.sh",
+          "missing",
+          "for",
+          "do",
+          "done",
+          "if",
+          "then",
+          "fi",
+          "echo",
+          "printenv",
+          "exit",
+          "dir",
+          "umask",
+          "mkdir",
+          "printf",
+          "base64",
+          "rm",
+          "tar",
+          "volume",
+        ]);
+        for (const p of programs) expect(allowed, `macos-notarise runs ${p}`).toContain(p);
+        // the volume is unpacked, and its links checked by the sign script, before any secret
+        expect(notarise.indexOf("- name: The unsigned app")).toBeLessThan(
+          notarise.indexOf("- name: Signing credentials"),
+        );
       });
 
       it("writes the credentials to owner-only files and fails when one is missing", () => {
@@ -488,6 +543,9 @@ esac
         expect(notarise.indexOf("- name: Signing credentials")).toBeLessThan(
           notarise.indexOf("- name: Sign with the Developer ID, notarise and staple"),
         );
+        expect(runOf(notarise, "Sign with the Developer ID, notarise and staple")).toContain(
+          'tools/package/macos-sign-app.sh "$RUNNER_TEMP/volume/Vimma.app"',
+        );
       });
 
       it("removes the credentials in an always() step before anything is uploaded", () => {
@@ -499,33 +557,38 @@ esac
         expect(notarise.indexOf("- name: Delete the signing credentials")).toBeLessThan(
           notarise.indexOf("actions/upload-artifact@"),
         );
-        expect(notarise).not.toMatch(/path: .*(apple-signing|runner\.temp|RUNNER_TEMP)/);
+        expect(notarise).not.toMatch(/path: .*apple-signing/);
+        expect(notarise).toMatch(/name: macos-signed-app\n/);
       });
 
-      it("signs the dmg macos-build made, then re-renders the cask and SHA256SUMS-macos", () => {
-        const sign = runOf(notarise, "Sign with the Developer ID, notarise and staple");
-        expect(sign).toContain(
-          'tools/package/macos-developer-id.sh "release-macos/$dmg" "$RUNNER_TEMP/$dmg"',
-        );
-        const check = runOf(notarise, "The dmg is the one macos-build checksummed");
+      it("macos-unpack runs the handed-over tools on the ad hoc dmg, with no secret", () => {
+        expect(unpack).not.toMatch(/environment:|secrets\./);
+        const check = runOf(unpack, "Unpack the ad hoc dmg");
         expect(check).toContain("sha256sum -c SHA256SUMS-macos");
-        const cask = runOf(notarise, "The cask and checksums for the signed dmg");
+        expect(check).toContain('tools/package/macos-dmg-unpack.sh "release-macos/$dmg" volume');
+        // tar keeps the links and modes that a zipped artifact would lose
+        expect(check).toContain("tar -C volume -cf macos-volume.tar .");
+        expect(unpack).toMatch(/name: macos-volume\n/);
+      });
+
+      it("macos-pack packs the signed app with the handed-over tools, then the cask and sums", () => {
+        expect(pack).not.toMatch(/environment:|secrets\./);
+        const step = runOf(pack, "Pack the signed app");
+        expect(step).toContain('tools/package/macos-dmg-pack.sh volume "release-macos/$dmg"');
+        const cask = runOf(pack, "The cask and checksums for the signed dmg");
         expect(cask).toContain(
           'node tools/package/cask.mjs --notarised --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb',
         );
         expect(cask).toContain('sha256sum "$dmg" vimma.rb > SHA256SUMS-macos');
-        // the cask script runs once the credentials are gone
-        expect(notarise.indexOf("- name: Delete the signing credentials")).toBeLessThan(
-          notarise.indexOf("- name: The cask and checksums for the signed dmg"),
-        );
-        expect(notarise).toMatch(/name: macos\n {10}path: release-macos\/\n {10}overwrite: true/);
+        expect(cask).toContain("$GITHUB_STEP_SUMMARY");
+        expect(pack).toMatch(/name: macos\n {10}path: release-macos\/\n {10}overwrite: true/);
       });
 
       it("macos-build hands its disk-image tools over only for a Developer ID release", () => {
         const build = all.get("macos-build") ?? "";
-        const tools = build.slice(build.indexOf("- name: Disk-image tools for macos-notarise"));
+        const tools = build.slice(build.indexOf("- name: Disk-image tools for macos-unpack"));
         expect(tools).toMatch(/^ {8}if: vars\.MACOS_SIGNING == 'developer-id'$/m);
-        expect(runOf(build, "Disk-image tools for macos-notarise")).toContain(
+        expect(runOf(build, "Disk-image tools for macos-unpack")).toContain(
           'bootstrap_toolchain("hfsplus/newfs_hfs")',
         );
         expect(build).toMatch(/name: macos-dmg-tools\n/);
@@ -539,41 +602,42 @@ esac
         expect(say).toContain("$GITHUB_STEP_SUMMARY");
         expect(say).toMatch(/ad hoc/);
         expect(say).toMatch(/not notarised/);
-        expect(runOf(notarise, "The cask and checksums for the signed dmg")).toContain(
-          "$GITHUB_STEP_SUMMARY",
-        );
       });
 
-      // Once MACOS_SIGNING is developer-id, a skipped or failed macos-notarise stops the release;
+      // Once MACOS_SIGNING is developer-id, a skipped or failed signing job stops the release;
       // an ad hoc dmg is never published in its place.
       it("macos-smoke takes the ad hoc dmg only when Developer ID is off", () => {
-        const cond = condition(all.get("macos-smoke") ?? "");
-        expect(cond).toContain("always() && ");
+        const smoke = all.get("macos-smoke") ?? "";
+        expect(smoke).toMatch(/^ {4}needs: \[macos-build, macos-pack\]$/m);
+        const cond = condition(smoke);
+        expect(cond).toMatch(/^!cancelled\(\) && /);
         expect(cond).toContain("needs.macos-build.result == 'success'");
         expect(cond).toContain(
-          "(needs.macos-notarise.result == 'success' || " +
-            "(needs.macos-notarise.result == 'skipped' && vars.MACOS_SIGNING != 'developer-id'))",
+          "(needs.macos-pack.result == 'success' || " +
+            "(needs.macos-pack.result == 'skipped' && vars.MACOS_SIGNING != 'developer-id'))",
         );
       });
 
       // A job whose ancestor was skipped is skipped too unless its condition says otherwise, so the
-      // jobs after macos-smoke would not run for an ad hoc release, where macos-notarise is skipped.
-      it("the jobs after macos-smoke still run when macos-notarise is skipped", () => {
+      // jobs after macos-smoke would not run for an ad hoc release, where the signing jobs are
+      // skipped; !cancelled() rather than always(), so that cancelling a run stops them.
+      it("the jobs after macos-smoke still run when the signing jobs are skipped", () => {
         expect(condition(all.get("macos-sign") ?? "")).toMatch(
-          /^always\(\) && .*needs\.macos-build\.result == 'success' && needs\.macos-smoke\.result == 'success'/,
+          /^!cancelled\(\) && .*needs\.macos-build\.result == 'success' && needs\.macos-smoke\.result == 'success'/,
         );
-        expect(condition(all.get("macos-publish") ?? "")).toMatch(/^always\(\) && /);
+        expect(condition(all.get("macos-publish") ?? "")).toMatch(/^!cancelled\(\) && /);
         expect(condition(all.get("macos-tap") ?? "")).toMatch(
-          /^always\(\) && .*needs\.macos-publish\.result == 'success'/,
+          /^!cancelled\(\) && .*needs\.macos-publish\.result == 'success'/,
         );
       });
 
-      it("macos-smoke checks the Developer ID, notarisation and Gatekeeper on a Mac", () => {
+      it("macos-smoke checks the Developer ID of Vimma's team, notarisation and Gatekeeper", () => {
         const smoke = all.get("macos-smoke") ?? "";
         const step = smoke.slice(
           smoke.indexOf("- name: Developer ID, notarisation and Gatekeeper"),
         );
         expect(step).toMatch(/^ {8}if: vars\.MACOS_SIGNING == 'developer-id'$/m);
+        expect(step).toMatch(/^ {10}EXPECTED_TEAM_ID: \$\{\{ vars\.MACOS_TEAM_ID \}\}$/m);
         expect(runOf(smoke, "Developer ID, notarisation and Gatekeeper").trim()).toBe(
           'tools/package/macos-developer-id-check.sh "$APP"',
         );
@@ -596,7 +660,9 @@ esac
         "publish",
         "macos-ctl",
         "macos-build",
+        "macos-unpack",
         "macos-notarise",
+        "macos-pack",
         "macos-smoke",
         "macos-sign",
         "macos-publish",

@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# Signs the Vimma.app in an ad hoc signed .dmg from macos-dmg.sh with Vimma's Developer ID,
-# notarises and staples it, and packs a new .dmg (spec macos-build, decisions 23 to 26). It runs in
-# release.yml's macos-notarise job, on Linux, with no engine/ and no mach: the disk images are
-# read and written by the Mozilla tools that macos-build's mach bootstrapped, called as
-# python/mozbuild/mozpack/dmg.py does on Linux (extract_dmg_contents and create_dmg, Firefox
-# 158.0).
+# Signs Vimma.app with Vimma's Developer ID, notarises it and staples the ticket (spec macos-build,
+# decisions 23 to 25). It runs in release.yml's macos-notarise job, the only job with the Apple
+# secrets, and runs rcodesign (pinned by fetch-rcodesign.sh) and standard system tools only:
+# nothing the build handed over. The app came from macos-unpack as data, so every symlink in it
+# must stay inside it before rcodesign reads a credential.
 #
 # Signing follows mach macos-sign with rcodesign (tools/signing/macos/mach_commands.py,
-# sign_with_rcodesign) and the release channel's production settings
-# (taskcluster/config.yml, mac-signing.hardened-sign-config): one `rcodesign sign` of the app,
-# which signs nested code inside-out, with the hardened runtime on each helper and binary, the
-# helpers' own entitlements and Vimma's browser.xml on the app (configs/macos/entitlements).
-# --for-notarization makes rcodesign refuse anything but a Developer ID certificate with a secure
-# timestamp, and sets the runtime flag on every Mach-O the list below does not name.
+# sign_with_rcodesign) and the release channel's production settings (taskcluster/config.yml,
+# mac-signing.hardened-sign-config, Firefox 158.0): one `rcodesign sign` of the app, which signs
+# nested code inside-out, with the hardened runtime on each helper and binary, the helpers' own
+# entitlements and Vimma's browser.xml on the app (configs/macos/entitlements). --for-notarization
+# makes rcodesign refuse anything but a Developer ID certificate with a secure timestamp, and sets
+# the runtime flag on every Mach-O the list below does not name.
 #
-# Usage: tools/package/macos-developer-id.sh <in.dmg> <out.dmg>
-#   DMG_TOOLS                  a directory with Mozilla's dmg, hfsplus and newfs_hfs
+# Usage: tools/package/macos-sign-app.sh <Vimma.app>
 #   APPLE_P12_FILE             the Developer ID Application certificate and key (PKCS #12)
 #   APPLE_P12_PASSWORD_FILE    a file holding its password
 #   APPLE_NOTARY_API_KEY_FILE  the App Store Connect API key, as
@@ -25,54 +23,52 @@
 # Secrets are read from files, never passed on a command line.
 set -euo pipefail
 
-in=${1:?usage: macos-developer-id.sh <in.dmg> <out.dmg>}
-out=${2:?usage: macos-developer-id.sh <in.dmg> <out.dmg>}
+app=${1:?usage: macos-sign-app.sh <Vimma.app>}
 rcodesign=${RCODESIGN:-rcodesign}
 entitlements=$(cd "$(dirname "$0")/../../configs/macos/entitlements" && pwd)
 
 fail() {
-  echo "macos-developer-id.sh: $*" >&2
+  echo "macos-sign-app.sh: $*" >&2
   exit 1
 }
 
-for name in DMG_TOOLS APPLE_P12_FILE APPLE_P12_PASSWORD_FILE APPLE_NOTARY_API_KEY_FILE APPLE_TEAM_ID; do
+for name in APPLE_P12_FILE APPLE_P12_PASSWORD_FILE APPLE_NOTARY_API_KEY_FILE APPLE_TEAM_ID; do
   [ -n "${!name:-}" ] || fail "$name is not set"
 done
 for name in APPLE_P12_FILE APPLE_P12_PASSWORD_FILE APPLE_NOTARY_API_KEY_FILE; do
   [ -f "${!name}" ] || fail "$name does not name a file"
 done
 [[ $APPLE_TEAM_ID =~ ^[A-Z0-9]{10}$ ]] || fail "APPLE_TEAM_ID is not a ten-character Apple team ID"
-dmg_tool=$DMG_TOOLS/dmg
-hfs_tool=$DMG_TOOLS/hfsplus
-mkfshfs_tool=$DMG_TOOLS/newfs_hfs
-for tool in "$dmg_tool" "$hfs_tool" "$mkfshfs_tool"; do
-  [ -x "$tool" ] || fail "DMG_TOOLS has no executable $(basename "$tool")"
-done
+[ -d "$app/Contents" ] || fail "$app is not an app bundle"
+app=$(cd "$app" && pwd)
+# A stapled ticket means this app was signed already: a re-run starts from macos-build's dmg.
+[ ! -e "$app/Contents/CodeResources" ] || fail "$app is already notarised and stapled"
 
-absolute() { case "$1" in /*) echo "$1" ;; *) echo "$PWD/$1" ;; esac; }
-in=$(absolute "$in")
-out=$(absolute "$out")
-
-work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
-volume="$work/volume"
-mkdir "$volume"
-
-# Unpack: extract_dmg_contents, then extract_dmg drops the Applications link.
-"$dmg_tool" extract "$in" "$work/in.hfs" > /dev/null
-"$hfs_tool" "$work/in.hfs" extractall / "$volume"
-rm -f "$work/in.hfs"
-if [ -L "$volume/ " ]; then rm "$volume/ "; fi
-
-shopt -s nullglob dotglob
-apps=("$volume"/*.app)
-[ "${#apps[@]}" -eq 1 ] && [ -d "${apps[0]}" ] || fail "$in must hold exactly one .app"
-app=${apps[0]}
-for art in .DS_Store .background/background.png .VolumeIcon.icns; do
-  [ -f "$volume/$art" ] || fail "$in has no $art (macos-dmg.sh keeps the volume's art)"
-done
-# A stapled ticket means this dmg was signed already: a re-run starts from macos-build's dmg.
-[ ! -e "$app/Contents/CodeResources" ] || fail "$in is already notarised and stapled"
+# True when the symlink at app-relative path $1 points outside the app: an absolute target, or a
+# relative one whose `..` climb above the app's root. Each link is checked, so a chain of links
+# that each stay inside cannot leave it.
+escapes() {
+  local rel=$1 target depth=0 part
+  target=$(readlink "$app/$rel")
+  case $target in /*) return 0 ;; esac
+  local -a parts
+  IFS=/ read -r -a parts <<< "$(dirname "$rel")/$target"
+  for part in "${parts[@]}"; do
+    case $part in
+      "" | .) ;;
+      ..)
+        depth=$((depth - 1))
+        [ "$depth" -ge 0 ] || return 0
+        ;;
+      *) depth=$((depth + 1)) ;;
+    esac
+  done
+  return 1
+}
+while IFS= read -r -d '' link; do
+  link=${link#./}
+  if escapes "$link"; then fail "symlink $link points outside the app"; fi
+done < <(cd "$app" && find . -type l -print0)
 
 # The certificate is a Developer ID Application certificate of Vimma's team.
 info=$("$rcodesign" analyze-certificate --p12-file "$APPLE_P12_FILE" \
@@ -88,6 +84,7 @@ args=(--p12-file "$APPLE_P12_FILE" --p12-password-file "$APPLE_P12_PASSWORD_FILE
 # Each path present, in the order of taskcluster/config.yml's production list; scoped settings
 # apply to a nested bundle and everything in it. security-module-helper.app is nightly-only there
 # (only-if-milestone-is-nightly), and Vimma builds the release channel.
+shopt -s nullglob
 cd "$app"
 for path in Contents/MacOS/plugin-container.app Contents/MacOS/media-plugin-helper.app; do
   [ -e "$path" ] || continue
@@ -112,7 +109,7 @@ for path in \
   [ -e "$path" ] || continue
   args+=(--code-signature-flags "$path:runtime")
 done
-cd "$work"
+cd /
 args+=(--code-signature-flags runtime --entitlements-xml-file "$entitlements/browser.xml")
 
 "$rcodesign" sign "${args[@]}" "$app"
@@ -123,15 +120,3 @@ args+=(--code-signature-flags runtime --entitlements-xml-file "$entitlements/bro
 "$rcodesign" notary-submit --api-key-file "$APPLE_NOTARY_API_KEY_FILE" \
   --max-wait-seconds 3600 --wait --staple "$app"
 [ -f "$app/Contents/CodeResources" ] || fail "no notarisation ticket was stapled to the app"
-
-# Pack: create_dmg on Linux, with the volume's art already in place.
-hfs="$work/staged.hfs"
-size_kb=$(du -sk "$volume" | cut -f1)
-dd if=/dev/zero of="$hfs" bs=1M count=$((size_kb * 102 / 100000)) 2> /dev/null
-"$mkfshfs_tool" -v Vimma "$hfs"
-"$hfs_tool" "$hfs" symlink "/ " /Applications
-"$hfs_tool" "$hfs" attr / C
-chmod -R a+rX,a-st,u+w,go-w "$volume"
-"$hfs_tool" "$hfs" addall "$volume"
-"$dmg_tool" build "$hfs" "$work/out.dmg" > /dev/null
-mv "$work/out.dmg" "$out"

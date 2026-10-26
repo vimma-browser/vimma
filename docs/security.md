@@ -1892,37 +1892,55 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   base64 PKCS #12), `APPLE_DEVELOPER_ID_P12_PASSWORD`, `APPLE_NOTARY_API_KEY` (an App Store
   Connect API key, as the JSON `rcodesign encode-app-store-connect-api-key` writes) and
   `APPLE_TEAM_ID`, **must** be secrets of the `macos-sign` environment only, and only
-  `release.yml`'s `macos-notarise` job reads them. That job holds a read-only token and no
-  OIDC permission, checks out the commit `macos-build` built, and runs only
-  `tools/package/macos-developer-id.sh` with the secrets: the shell's `printf` writes the p12,
-  its password and the key to files of mode 600 under `$RUNNER_TEMP`, rcodesign gets only their
-  paths, never a secret on a command line, and an `always()` step deletes them before the cask
-  script runs and before anything is uploaded; no step echoes a secret. Before signing, the
-  certificate's subject must be a Developer ID Application certificate whose team ID is
-  `APPLE_TEAM_ID`. rcodesign's `--for-notarization` refuses any other certificate and a signature
-  without Apple's timestamp. With `MACOS_SIGNING` set, a missing secret fails the release; it
-  never falls back to an ad hoc `.dmg`. A hosted Mac then checks the published app with
-  `codesign -dvv`, `spctl --assess` and `stapler validate` before `macos-sign` cosigns it.
-  **⚠ setting:** the `macos-sign` environment's only deployment policy is the branch `main`, so
-  no branch or tag can run an edited workflow that reads the secrets (as in B6), and no
-  repository secret of these names exists. It has no required reviewer, since a Firefox security
-  release ships without a person. **⚠ limit:** whoever can merge to `main` can change
-  `release.yml` to misuse the secrets, as for every other environment.
+  `release.yml`'s `macos-notarise` job reads them. Signing is split over three jobs, each on its
+  own runner, so that no program the build produced ever runs where the secrets are: the
+  disk-image tools that `macos-build`'s `mach` bootstrapped (`dmg`, `hfsplus`, `newfs_hfs`),
+  handed over as an artifact and not checked against a pinned hash, parse the untrusted disk image
+  in `macos-unpack` and pack the signed app in `macos-pack`, neither of which holds a secret, so a
+  replaced tool, or a process it leaves behind, never sees a credential. `macos-notarise` **must
+  not** run any binary from an artifact: it downloads the unpacked volume only as a tar file,
+  fetches rcodesign by `fetch-rcodesign.sh`, which checks its SHA-256, and runs only that and
+  `tools/package/macos-sign-app.sh`, which calls rcodesign and standard system tools. It holds a
+  read-only token and no OIDC permission, and checks out the commit `macos-build` built. Before
+  any credential is written, the app is unpacked and the sign script refuses a symlink whose
+  target leaves the bundle, so rcodesign cannot be led to read or write a file outside it. The
+  shell's `printf` writes the p12, its password and the key to files of mode 600 under
+  `$RUNNER_TEMP`; rcodesign gets only their paths, never a secret on a command line; an
+  `always()` step deletes them before the signed app is uploaded; no step echoes a secret. Before
+  signing, the certificate's subject must be a Developer ID Application certificate whose team
+  ID is `APPLE_TEAM_ID`. rcodesign's `--for-notarization` refuses any other certificate and a
+  signature without Apple's timestamp. With `MACOS_SIGNING` set, a missing secret fails the
+  release; it never falls back to an ad hoc `.dmg`. A hosted Mac then checks the published app
+  with `codesign -dvv`, `spctl --assess` and `stapler validate`, and requires its team ID to be
+  the repository variable `MACOS_TEAM_ID` (public in every signature, so not a secret), before
+  `macos-sign` cosigns it; Gatekeeper alone would accept any team's notarised app. **⚠
+  setting:** the `macos-sign` environment's only deployment policy is the branch `main`, so no
+  branch or tag can run an edited workflow that reads the secrets (as in B6), and no repository
+  secret of these names exists. It has no required reviewer, since a Firefox security release
+  ships without a person. **⚠ limit:** whoever can merge to `main` can change `release.yml` to
+  misuse the secrets, as for every other environment. **⚠ limit:** a replaced disk-image tool
+  in `macos-pack` could still pack a different app than the one notarised; `macos-smoke` then
+  fails its signature checks, but nothing pins the tools themselves.
   **A leaked p12** lets its holder sign any Mac software that Gatekeeper accepts as Vimma's team,
   and, with any API key of the team, notarise it, until Apple revokes the certificate. The
-  response is in `docs/runbook.md`, "Developer ID signing": unset `MACOS_SIGNING` so releases go out
-  ad hoc, delete the secrets, ask Apple to revoke the certificate, then issue a new one. Once
+  response is in `docs/runbook.md`, "Developer ID signing": unset `MACOS_SIGNING` so releases go
+  out ad hoc, delete the secrets, ask Apple to revoke the certificate, then issue a new one. Once
   Apple revokes it, Gatekeeper refuses software signed with it; whether Vimma releases signed
   before the leak keep opening depends on the date Apple revokes it from (**unverified**: no
-  revocation has been tried). **A leaked API key**
-  lets its holder notarise and read the team's notarisation history, not sign: revoke it in App
-  Store Connect (Users and Access, Integrations) and create a new one.
+  revocation has been tried). **A leaked API key** lets its holder notarise and read the team's
+  notarisation history, not sign: revoke it in App Store Connect (Users and Access,
+  Integrations) and create a new one. The certificate expires after five years and is renewed
+  as the runbook's "Rotating" paragraph says, with a reminder 60 days before.
   [`the Apple secrets come from the macos-sign environment, in macos-notarise alone`](../tools/package/test/release-workflow.test.mjs),
-  [`macos-notarise only reads the repository and checks out macos-build's commit`](../tools/package/test/release-workflow.test.mjs),
+  [`the macos-sign job runs no binary of the build: only the pinned rcodesign`](../tools/package/test/release-workflow.test.mjs),
+  [`runs rcodesign and no disk-image tool, mach, node or other program of the build`](../tools/package/test/macos-developer-id.test.mjs),
+  [`refuses a symlink that leaves the app, before rcodesign runs`](../tools/package/test/macos-developer-id.test.mjs),
+  [`%s runs only when MACOS_SIGNING is developer-id, after %s`](../tools/package/test/release-workflow.test.mjs),
   [`writes the credentials to owner-only files and fails when one is missing`](../tools/package/test/release-workflow.test.mjs),
   [`removes the credentials in an always() step before anything is uploaded`](../tools/package/test/release-workflow.test.mjs),
   [`macos-smoke takes the ad hoc dmg only when Developer ID is off`](../tools/package/test/release-workflow.test.mjs),
-  [`macos-smoke checks the Developer ID, notarisation and Gatekeeper on a Mac`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-smoke checks the Developer ID of Vimma's team, notarisation and Gatekeeper`](../tools/package/test/release-workflow.test.mjs),
+  [`fails %s`](../tools/package/test/macos-developer-id.test.mjs),
   [`checks the certificate is a Developer ID Application of APPLE_TEAM_ID before signing`](../tools/package/test/macos-developer-id.test.mjs),
   [`passes the password and the API key as files, never on a command line`](../tools/package/test/macos-developer-id.test.mjs),
   [`signs in one rcodesign run, nested code inside-out with mach macos-sign's settings`](../tools/package/test/macos-developer-id.test.mjs),

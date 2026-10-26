@@ -1148,9 +1148,9 @@ gh variable delete MACOS_RELEASE_ENABLED               # off
 While the repository variable `MACOS_SIGNING` is not `developer-id`, the `.dmg` is ad hoc
 signed, so Gatekeeper asks once before it first opens (docs/guide.md, "macOS"), the Homebrew cask
 says so in its caveats (spec macos-homebrew), and `macos-build`'s summary and a warning say the
-release is ad hoc signed and not notarised. With it, a seventh job, `macos-notarise`, signs the
-app with the Developer ID and notarises it between `macos-build` and `macos-smoke` ("Developer ID
-signing" below). vimma.dev is not affected (issue #393).
+release is ad hoc signed and not notarised. With it, three more jobs, `macos-unpack`,
+`macos-notarise` and `macos-pack`, sign the app with the Developer ID and notarise it between
+`macos-build` and `macos-smoke` ("Developer ID signing" below). vimma.dev is not affected (issue #393).
 
 To bump rcodesign: take the new release's SHA-256 for
 `apple-codesign-<version>-x86_64-unknown-linux-musl.tar.gz` from
@@ -1159,18 +1159,27 @@ To bump rcodesign: take the new release's SHA-256 for
 
 #### Developer ID signing
 
-A release is signed with Vimma's Developer ID and notarised by `release.yml`'s `macos-notarise`
-job while `MACOS_SIGNING` is `developer-id` (spec [macos-build](specs/macos-build.md), decisions 23
-to 28; docs/security.md, B14). It takes `macos-build`'s ad hoc `.dmg` and the disk-image tools
-`macos-build`'s `mach` bootstrapped, runs `tools/package/macos-developer-id.sh` (one
-`rcodesign sign` with the hardened runtime and `configs/macos/entitlements/`, then
-`rcodesign notary-submit --wait --staple` on the app, then a new `.dmg`), renders the cask without
-its Open Anyway caveat and rewrites `SHA256SUMS-macos`, and replaces the run's `macos` artifact.
+A release is signed with Vimma's Developer ID and notarised by three jobs of `release.yml` while
+`MACOS_SIGNING` is `developer-id` (spec [macos-build](specs/macos-build.md), decisions 23 to 28;
+docs/security.md, B14), each on its own runner so that the disk-image tools `macos-build`'s `mach`
+bootstrapped never run beside the Apple secrets:
+
+- `macos-unpack` opens `macos-build`'s ad hoc `.dmg` with those tools
+  (`tools/package/macos-dmg-unpack.sh`) and uploads the volume as `macos-volume.tar`;
+- `macos-notarise`, the only job in the `macos-sign` environment, unpacks the tar, runs
+  `tools/package/macos-sign-app.sh` (one `rcodesign sign` with the hardened runtime and
+  `configs/macos/entitlements/`, then `rcodesign notary-submit --wait --staple` on the app) with
+  the pinned rcodesign alone, and uploads the signed app;
+- `macos-pack` packs it with the volume's art (`tools/package/macos-dmg-pack.sh`), renders the
+  cask without its Open Anyway caveat, rewrites `SHA256SUMS-macos` and replaces the run's `macos`
+  artifact.
+
 `macos-smoke` then runs `tools/package/macos-developer-id-check.sh` on the app:
-`codesign --verify --deep --strict`, the Developer ID authority and one team ID in `codesign -dvv`
-on the app and its nested code, a secure timestamp, the `runtime` flag, `spctl --assess --type
-execute` answering `source=Notarized Developer ID`, and `xcrun stapler validate`. Notarisation
-usually takes minutes; rcodesign waits up to an hour, and the job stops at 75 minutes.
+`codesign --verify --deep --strict`, the Developer ID authority and the team ID of the repository
+variable `MACOS_TEAM_ID` in `codesign -dvv` on the app and its nested code, a secure timestamp, the
+`runtime` flag, `spctl --assess --type execute` answering `source=Notarized Developer ID`, and
+`xcrun stapler validate`. Notarisation usually takes minutes; rcodesign waits up to an hour, and
+the job stops at 75 minutes.
 
 **Setting it up.** Once, by the Account Holder of the Apple Developer Program membership:
 
@@ -1227,19 +1236,22 @@ usually takes minutes; rcodesign waits up to an hour, and the job stops at 75 mi
    (TEAMID)". Then delete the local p12, `.p8`, JSON and password files, or keep them only in an
    encrypted password manager.
 
-4. Turn it on, and check the first release's `macos-notarise` and `macos-smoke`:
+4. Set the team ID that `macos-smoke` requires, as a repository variable (it is printed in every
+   signature, so it need not be secret), then turn signing on, and check the first release's
+   three signing jobs and `macos-smoke`:
 
    ```sh
+   gh variable set MACOS_TEAM_ID --body <team-id>
    gh variable set MACOS_SIGNING --body developer-id   # on; a missing secret now fails releases
    gh variable delete MACOS_SIGNING                    # off: releases go out ad hoc again
    ```
 
 **Re-running signing.** A failed `macos-notarise` (for example Apple's notary service timing
 out) is re-run with the run's failed jobs, `gh run rerun <run-id> --failed`: it takes
-`macos-build`'s artifact again. Once `macos-notarise` has succeeded, the `macos` artifact holds the
-signed `.dmg`, which `macos-developer-id.sh` refuses as "already notarised and stapled"; re-run
-from `macos-build` (or the whole release, `gh workflow run release.yml -f tag=vX.Y.Z`) to sign
-again. `rcodesign notary-log --api-key-file notary-api-key.json <submission-id>` shows Apple's
+`macos-unpack`'s volume again, which the run keeps for a day. Once `macos-pack` has succeeded, the
+`macos` artifact holds the signed `.dmg`, which `macos-dmg-unpack.sh` refuses as "already
+notarised and stapled"; re-run the whole release (`gh workflow run release.yml -f tag=vX.Y.Z`)
+to sign again. `rcodesign notary-log --api-key-file notary-api-key.json <submission-id>` shows Apple's
 reasons for a rejection; the submission ID is in the job's log.
 
 **Rotating.** A Developer ID Application certificate is valid for five years. Put its expiry

@@ -3,7 +3,8 @@
 Status: draft (sub-PRs 1, 3, 6 and 7 built; sub-PR 2 built except its two macOS mochitests;
 sub-PR 5's macOS key inventory built, #384) · Area: `configs/macos/mozconfig`,
 `configs/macos/entitlements/` (new), `tools/package/macos-dmg.sh` (new),
-`tools/package/macos-developer-id.sh` (new), `tools/package/macos-developer-id-check.sh` (new),
+`tools/package/macos-dmg-unpack.sh`, `macos-sign-app.sh`, `macos-dmg-pack.sh` and
+`macos-developer-id-check.sh` (new),
 `configs/branding/vimma/`, `tools/artifact-build/`,
 `tools/e2e/`, `tools/mochitest.mjs`, `tools/start.mjs`, `tools/vimma-ctl/src/discovery.rs`,
 `tools/vimma-ctl/src/mcp_serve.rs`, `.github/workflows/ci.yml`, `e2e.yml`, `macos.yml` (new),
@@ -473,24 +474,36 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 
 ### Developer ID and notarisation
 
-23. **A job of its own, `macos-notarise`, between `macos-build` and `macos-smoke`.** It runs on
-    `ubuntu-24.04` in the `macos-sign` environment, takes the ad hoc `.dmg` that `macos-build`
-    made and checksummed, re-signs the app with the Developer ID, notarises and staples it, packs
-    a new `.dmg`, renders the cask without its Open Anyway caveat and rewrites
-    `SHA256SUMS-macos`, and replaces the `macos` artifact. A GitHub job has one environment, and
-    `macos-build` is in `build` for the Safe Browsing key (decision 14), so the Apple secrets need
-    another job; this one runs for minutes, not the two hours of a Firefox build whose bootstrap
-    toolchains and npm packages would otherwise share a runner with the p12. It comes before
-    `macos-smoke` so that the hosted Mac checks the signed `.dmg` that is published.
+23. **Three jobs between `macos-build` and `macos-smoke`: `macos-unpack`, `macos-notarise` and
+    `macos-pack`, each on its own runner.** `macos-unpack` opens the ad hoc `.dmg` that
+    `macos-build` made and checksummed and uploads the volume as a tar file, which keeps the app's
+    links and modes. `macos-notarise`, in the `macos-sign` environment, unpacks that tar, signs the
+    app with the Developer ID, notarises and staples it, and uploads the signed app.
+    `macos-pack` puts the signed app back beside the window art, packs a new `.dmg`, renders the
+    cask without its Open Anyway caveat, rewrites `SHA256SUMS-macos` and replaces the `macos`
+    artifact. A GitHub job has one environment, and `macos-build` is in `build` for the Safe
+    Browsing key (decision 14), so the Apple secrets need another job. They need a runner of their
+    own besides, because the disk-image tools come from `macos-build` unpinned (decision 28) and
+    parse an untrusted image: a replaced tool, or a process it leaves behind, could wait for the
+    key on a runner it shares with the secrets, and reordering steps within one job would not stop
+    that. So the tools run only in `macos-unpack` and `macos-pack`, which hold no secret, and
+    `macos-notarise` runs no binary from an artifact: only rcodesign, fetched and checked against
+    its pinned SHA-256, through `tools/package/macos-sign-app.sh`, which calls rcodesign and
+    standard system tools and first refuses a symlink that leaves the app. The three jobs come
+    before `macos-smoke` so that the hosted Mac checks the signed `.dmg` that is published.
     `tools/package/macos-developer-id-check.sh` there runs `codesign --verify --deep --strict`,
-    reads `codesign -dvv` for the Developer ID Application authority, one team ID on the app and
-    its nested code, a secure timestamp and the `runtime` flag, and requires
-    `spctl --assess --type execute -vv` to answer `source=Notarized Developer ID` and
-    `xcrun stapler validate` to pass. Rejected: signing in `macos-build`, which would put the p12
-    in the `build` environment beside the build; signing in the cosign job `macos-sign`, which runs
-    after the smoke check, so the Mac would never see the Developer ID signature, and which runs no
-    repository code by design; signing on a hosted Mac with `codesign` and a temporary keychain,
-    because rcodesign signs on Linux from a p12 file with no keychain, as Mozilla does.
+    reads `codesign -dvv` for the Developer ID Application authority, the team ID of the
+    repository variable `MACOS_TEAM_ID` on the app and its nested code, a secure timestamp and the
+    `runtime` flag, and requires `spctl --assess --type execute -vv` to answer
+    `source=Notarized Developer ID` and `xcrun stapler validate` to pass. The team is compared
+    because Gatekeeper accepts any team's notarised app; it is a variable, not a secret, since
+    every signature shows it. Rejected: signing in `macos-build`, which would put the p12 in the
+    `build` environment beside a two-hour build; one job that unpacks, signs and packs, which runs
+    the handed-over tools on the runner that holds the key; signing in the cosign job `macos-sign`,
+    which runs after the smoke check, so the Mac would never see the Developer ID signature, and
+    which runs no repository code by design; signing on a hosted Mac with `codesign` and a
+    temporary keychain, because rcodesign signs on Linux from a p12 file with no keychain, as
+    Mozilla does.
 24. **Vimma's production entitlements are Firefox's, without the two restricted ones.**
     `configs/macos/entitlements/` holds `browser.xml` (Firefox 158.0's
     `production/firefox.browser.xml`), `plugin-container.xml` and `media-plugin-helper.xml`
@@ -506,7 +519,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     Firefox's on a Firefox bump, as `docs/runbook.md` says. Rejected: Firefox's file with the
     team ID swapped in, because without a provisioning profile the app would not start.
 25. **One `rcodesign sign` with mach's per-path settings, then the app is notarised, stapled and
-    packed.** `tools/package/macos-developer-id.sh` signs as `mach macos-sign -r` does for the
+    packed.** `tools/package/macos-sign-app.sh` signs as `mach macos-sign -r` does for the
     release channel: one run on the app, which rcodesign signs inside-out, with the runtime flag
     scoped to each helper app, binary and dylib in Mozilla's production list that is present, the
     two helper apps' entitlement files scoped to them, `vimma-ctl` added to the list, and
@@ -517,7 +530,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     `Contents/CodeResources`, and only then is the `.dmg` packed, as Mozilla does (Research), so
     the installed app carries its ticket and Gatekeeper accepts it offline. The `.dmg` itself is
     not signed, as Firefox's is not. The disk image is unpacked and packed with Mozilla's own tools
-    as `mozpack/dmg.py` calls them on Linux. Rejected: notarising the `.dmg` alone, which leaves
+    as `mozpack/dmg.py` calls them on Linux (`tools/package/macos-dmg-unpack.sh`,
+    `macos-dmg-pack.sh`), and the pack refuses an app without a stapled ticket. Rejected: notarising the `.dmg` alone, which leaves
     the app in `/Applications` without a stapled ticket, so a first start offline fails; and
     `codesign`-style separate runs per path, which rcodesign does not need.
 26. **`MACOS_SIGNING=developer-id` turns Developer ID on, and then a missing secret fails the
@@ -541,18 +555,19 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     read the secrets by editing a workflow. No reviewer is required, because a Firefox security
     release ships without a person (decision 12). The job writes the p12, its password and the key
     with the shell's `printf` to files of mode 600 under `$RUNNER_TEMP`, passes only their paths
-    to rcodesign, and deletes them in an `always()` step before the cask script runs or anything
-    is uploaded. Before signing it checks that the certificate's subject is a Developer ID
+    to rcodesign, and deletes them in an `always()` step before anything is uploaded. Before signing it checks that the certificate's subject is a Developer ID
     Application and its team ID is `APPLE_TEAM_ID`, so a certificate from another team, or an
     Apple Development certificate, never signs a release. Rejected: a required reviewer, which
     would hold every security release for a person.
-28. **The disk-image tools come from `macos-build`.** `macos-notarise` has no `engine/` and no
-    `mach`, so `macos-build` copies the `dmg`, `hfsplus` and `newfs_hfs` that its `mach`
+28. **The disk-image tools come from `macos-build`, and never reach the secrets.** `macos-unpack`
+    and `macos-pack` have no `engine/` and no `mach`, so `macos-build` copies the `dmg`, `hfsplus` and `newfs_hfs` that its `mach`
     bootstrapped from Mozilla's Taskcluster, found as `make_dmg.py` finds them, into a one-day
     artifact, only for a Developer ID release. They run on the same runner image they were built
-    for. Rejected: downloading the Firefox source again in `macos-notarise` for `mach`, which adds
-    gigabytes and minutes for three small binaries, and fetching the tools from Taskcluster by
-    hand, which would need a pin that changes with every Firefox release.
+    for, and only on runners without the Apple secrets (decision 23); a replaced tool could at
+    worst pack another app, which `macos-smoke`'s signature checks then fail. Rejected: downloading
+    the Firefox source again for `mach`, which adds gigabytes and minutes for three small binaries,
+    and pinning the tools by hash, because they are rebuilt with Mozilla's toolchain tasks and the
+    pin would change with Firefox releases (not measured).
 
 ### Not in this spec
 
@@ -570,8 +585,9 @@ Mac-native integrations such as Handoff, the Services menu or a global hotkey.
   code to reach.
 - **Secrets.** `macos.yml` needs none: no Safe Browsing key (decision 14), no Apple credentials.
   The Developer ID p12, its password, the App Store Connect API key and the team ID are secrets of
-  the `macos-sign` environment, which only `main` may deploy from, read by `macos-notarise` alone
-  and written to owner-only files that an `always()` step deletes (decision 27). With rcodesign
+  the `macos-sign` environment, which only `main` may deploy from, read by `macos-notarise` alone,
+  which runs no binary of the build, and written to owner-only files that an `always()` step
+  deletes (decisions 23 and 27). With rcodesign
   the p12 never enters a keychain. A leaked p12 lets its holder sign software that Gatekeeper
   accepts as Vimma's team until Apple revokes the certificate; a leaked API key lets its holder
   notarise under the team until it is revoked in App Store Connect. `docs/security.md`, B14, and
@@ -625,21 +641,27 @@ any failure is a test that assumes Linux.
 `rcodesign` and disk-image tools:
 
 - `the browser gets Firefox's production entitlements without the restricted pair`
-- `checks the certificate is a Developer ID Application of APPLE_TEAM_ID before signing`
-- `signs in one rcodesign run, nested code inside-out with mach macos-sign's settings`
-- `notarises and staples the app, then packs the dmg as mach's make_dmg does on Linux`
-- `passes the password and the API key as files, never on a command line`
-- `writes no dmg when signing or notarisation fails, or nothing was stapled`
+- `macos-dmg-unpack.sh`: `unpacks the dmg with the disk-image tools, as mach's unpack_dmg does on
+Linux`
+- `macos-sign-app.sh`: `checks the certificate is a Developer ID Application of APPLE_TEAM_ID
+before signing`, `signs in one rcodesign run, nested code inside-out with mach macos-sign's
+settings`, `notarises and staples the app after signing it`, `passes the password and the API
+key as files, never on a command line`, `refuses a symlink that leaves the app, before rcodesign
+runs`, `runs rcodesign and no disk-image tool, mach, node or other program of the build`
+- `macos-dmg-pack.sh`: `packs the volume as mach's make_dmg does on Linux`, `refuses an app
+without a stapled ticket, so an unsigned app is never packed`
 - `macos-developer-id-check.sh`: `passes a Developer ID app under the hardened runtime, notarised,
 stapled and accepted`, and fails an ad hoc signature, no hardened runtime, no secure timestamp, a
-  nested binary of another team, Gatekeeper's rejection and no stapled ticket
+  nested binary of another team, another team's notarised app, Gatekeeper's rejection and no
+  stapled ticket
 
 and in `tools/package/test/release-workflow.test.mjs`: `the Apple secrets come from the macos-sign
-environment, in macos-notarise alone`, `writes the credentials to owner-only files and fails when
-one is missing`, `removes the credentials in an always() step before anything is uploaded`,
-`macos-smoke takes the ad hoc dmg only when Developer ID is off` and `macos-smoke checks the
-Developer ID, notarisation and Gatekeeper on a Mac`. The real signature, notarisation and
-Gatekeeper's verdict are checked by the first signed release's `macos-smoke`.
+environment, in macos-notarise alone`, `the macos-sign job runs no binary of the build: only the
+pinned rcodesign`, `writes the credentials to owner-only files and fails when one is missing`,
+`removes the credentials in an always() step before anything is uploaded`, `macos-smoke takes the
+ad hoc dmg only when Developer ID is off` and `macos-smoke checks the Developer ID of Vimma's team,
+notarisation and Gatekeeper`. The real signature, notarisation and Gatekeeper's verdict are checked
+by the first signed release's `macos-smoke`.
 
 **Hand checks on a real Mac (open question 3):** Open Anyway on the current macOS; `ctrl+b` and
 every `ctrl+b` key; Option-composed `{` `}` `[` `]` `@` `|` `~` on a Finnish layout; `cmd+q`,
@@ -705,8 +727,9 @@ full build.
    `MACOS_RELEASE_ENABLED` (decision 12): the cross build with the Safe Browsing key, the
    `macos-15` smoke check against the tag, cosign, and an add-only upload. The guide's macOS
    install section.
-7. **`build(macos): developer id and notarisation`** (built). The `macos-notarise` job behind
-   `MACOS_SIGNING` (decisions 23 to 28): secrets in the `macos-sign` environment; `rcodesign
+7. **`build(macos): developer id and notarisation`** (built). The `macos-unpack`,
+   `macos-notarise` and `macos-pack` jobs behind `MACOS_SIGNING` (decisions 23 to 28): secrets in
+   the `macos-sign` environment; `rcodesign
 sign` with Vimma's production entitlements; `rcodesign notary-submit --wait --staple` on the
    app; a new `.dmg` and cask; the Developer ID checks in `macos-smoke`. Passkeys follow in #544.
 

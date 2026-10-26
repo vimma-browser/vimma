@@ -39,9 +39,11 @@ tools for such a build.
   `macos-notarise` job, still on Linux and still with rcodesign, with Vimma's Developer ID
   Application certificate, the hardened runtime and Vimma's production entitlements
   (`configs/macos/entitlements/`), then notarised and stapled with `rcodesign notary-submit`
-  (`tools/package/macos-developer-id.sh`; spec macos-build, decisions 23 to 28). The certificate
-  and the App Store Connect API key are secrets of the `macos-sign` environment, which only
-  `main` may deploy from.
+  (`tools/package/macos-sign-app.sh`; spec macos-build, decisions 23 to 28). The disk image is
+  opened and packed again in two jobs of their own (`macos-unpack`, `macos-pack`), so the
+  disk-image tools from the build never run beside the signing secrets. The certificate and the
+  App Store Connect API key are secrets of the `macos-sign` environment, which only `main` may
+  deploy from.
 - A hosted `macos-15` runner, which is free on a public repository, checks what was built: the
   `.dmg` mounts, `codesign --verify --deep --strict` passes, the binary is arm64, the version line
   matches and a page renders headless.

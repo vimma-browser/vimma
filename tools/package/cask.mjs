@@ -9,7 +9,8 @@
  *   node tools/package/cask.mjs --dmg <vimma-X.Y.Z-macos-aarch64.dmg> --out <vimma.rb>
  *     [--tag vX.Y.Z] [--repo vimma-browser/vimma] [--notarised]
  * The version is surfer.json brands.vimma.release.displayVersion; --tag must be exactly v<that>.
- * --notarised is for a dmg that macos-notarise signed with Vimma's Developer ID: macOS opens that
+ * --notarised is for a dmg that macos-pack packed after macos-notarise signed its app with Vimma's
+ * Developer ID: macOS opens that
  * app without asking, so the cask has no caveats (spec macos-build, decision 23).
  */
 import { readFileSync, writeFileSync } from "node:fs";

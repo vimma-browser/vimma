@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +19,9 @@ import { tempDir } from "../../test/temp-dir.mjs";
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 /** @param {string} path */
 const read = (path) => readFileSync(join(repo, path), "utf8");
-const SCRIPT = join(repo, "tools/package/macos-developer-id.sh");
+const UNPACK = join(repo, "tools/package/macos-dmg-unpack.sh");
+const SIGN = join(repo, "tools/package/macos-sign-app.sh");
+const PACK = join(repo, "tools/package/macos-dmg-pack.sh");
 const ENTITLEMENTS = join(repo, "configs/macos/entitlements");
 const TEAM = "ABCDE12345";
 const PASSWORD = "p12-password-never-on-a-command-line";
@@ -81,47 +84,57 @@ describe("Vimma's production entitlements (configs/macos/entitlements)", () => {
 });
 
 /**
- * Stub disk-image tools (dmg, hfsplus, newfs_hfs) and rcodesign in `dir`, logging each call to
- * `dir/log`. `dmg extract` + `hfsplus extractall` lay out a volume with one Vimma.app, its
- * helpers, the window art and the Applications link, as mach package makes it.
+ * A Vimma.app as mach package lays it out, with its helpers, under `dir/name`.
  * @param {string} dir
- * @param {{ team?: string, subject?: string, notaryFails?: boolean, signFails?: boolean,
- *   stapled?: boolean, staples?: boolean }} [options]
+ * @param {{ stapled?: boolean, links?: Record<string, string> }} [options]
  */
-function stubs(
-  dir,
-  {
-    team = TEAM,
-    subject = `Developer ID Application: Vimma (${TEAM})`,
-    notaryFails = false,
-    signFails = false,
-    stapled = false,
-    staples = true,
-  } = {},
-) {
+function appTree(dir, { stapled = false, links = {} } = {}) {
+  const app = join(dir, "Vimma.app");
+  for (const f of [...APP_FILES, ...(stapled ? ["Contents/CodeResources"] : [])]) {
+    mkdirSync(join(app, f, ".."), { recursive: true });
+    writeFileSync(join(app, f), "x");
+  }
+  for (const [path, target] of Object.entries(links)) symlinkSync(target, join(app, path));
+  return app;
+}
+
+const APP_FILES = [
+  "Contents/MacOS/vimma",
+  "Contents/MacOS/XUL",
+  "Contents/MacOS/vimma-ctl",
+  "Contents/MacOS/libmozglue.dylib",
+  "Contents/MacOS/libnss3.dylib",
+  "Contents/MacOS/pingsender",
+  "Contents/MacOS/plugin-container.app/Contents/MacOS/plugin-container",
+  "Contents/MacOS/media-plugin-helper.app/Contents/MacOS/media-plugin-helper",
+  "Contents/Resources/gmp-clearkey/0.1/libclearkey.dylib",
+];
+const ART = [".DS_Store", ".background/background.png", ".VolumeIcon.icns"];
+
+/**
+ * Stub disk-image tools (dmg, hfsplus, newfs_hfs) in `dir/dmg-tools`, logging each call to
+ * `dir/log`. `dmg extract` + `hfsplus extractall` lay out a volume with one Vimma.app, the window
+ * art and the Applications link, as mach package makes it.
+ * @param {string} dir
+ * @param {{ stapled?: boolean, buildFails?: boolean }} [options]
+ */
+function dmgTools(dir, { stapled = false, buildFails = false } = {}) {
   const log = join(dir, "log");
   const tools = join(dir, "dmg-tools");
   mkdirSync(tools);
   const files = [
-    "Vimma.app/Contents/MacOS/vimma",
-    "Vimma.app/Contents/MacOS/XUL",
-    "Vimma.app/Contents/MacOS/vimma-ctl",
-    "Vimma.app/Contents/MacOS/libmozglue.dylib",
-    "Vimma.app/Contents/MacOS/libnss3.dylib",
-    "Vimma.app/Contents/MacOS/pingsender",
-    "Vimma.app/Contents/MacOS/plugin-container.app/Contents/MacOS/plugin-container",
-    "Vimma.app/Contents/MacOS/media-plugin-helper.app/Contents/MacOS/media-plugin-helper",
-    "Vimma.app/Contents/Resources/gmp-clearkey/0.1/libclearkey.dylib",
-    ".DS_Store",
-    ".background/background.png",
-    ".VolumeIcon.icns",
+    ...APP_FILES.map((f) => `Vimma.app/${f}`),
+    ...ART,
     ...(stapled ? ["Vimma.app/Contents/CodeResources"] : []),
   ];
   const tool = (/** @type {string} */ name, /** @type {string} */ body) => {
     writeFileSync(join(tools, name), `#!/bin/sh\necho "${name} $*" >> "${log}"\n${body}`);
     chmodSync(join(tools, name), 0o755);
   };
-  tool("dmg", 'case "$1" in extract) echo hfs > "$3" ;; build) echo dmg > "$3" ;; esac\n');
+  tool(
+    "dmg",
+    `case "$1" in extract) echo hfs > "$3" ;; build) ${buildFails ? "exit 5" : 'echo dmg > "$3"'} ;; esac\n`,
+  );
   tool(
     "hfsplus",
     `if [ "$2" = extractall ]; then
@@ -131,11 +144,98 @@ fi
 if [ "$2" = addall ]; then (cd "$3" && find . -name CodeResources | sort) > "${log}.packed"; fi
 `,
   );
-  tool("newfs_hfs", 'echo "$3" > /dev/null\n');
-  const rcodesign = join(dir, "rcodesign");
-  writeFileSync(
-    rcodesign,
-    `#!/bin/sh
+  tool("newfs_hfs", ":\n");
+  return { log, tools };
+}
+
+/**
+ * Runs a script with a clean environment; undefined values are left out.
+ * @param {string} script
+ * @param {string[]} args
+ * @param {string} dir
+ * @param {Record<string, string | undefined>} env
+ */
+function run(script, args, dir, env) {
+  const tmp = join(dir, "tmp");
+  mkdirSync(tmp);
+  /** @type {Record<string, string>} */
+  const clean = { PATH: process.env.PATH ?? "", TMPDIR: tmp };
+  for (const [k, v] of Object.entries(env)) if (v !== undefined) clean[k] = v;
+  const result = spawnSync(script, args, { encoding: "utf8", env: clean });
+  return { ...result, tmp };
+}
+
+/** @param {string} log */
+const lines = (log) => readFileSync(log, "utf8").trim().split("\n");
+
+// Job macos-unpack: the handed-over disk-image tools run here, with no secret on the runner.
+describe("macos-dmg-unpack.sh", () => {
+  /** @param {string} dir @param {Record<string, string | undefined>} env */
+  const unpack = (dir, env) => {
+    writeFileSync(join(dir, "in.dmg"), "ad hoc dmg\n");
+    return run(UNPACK, [join(dir, "in.dmg"), join(dir, "volume")], dir, env);
+  };
+
+  it("unpacks the dmg with the disk-image tools, as mach's unpack_dmg does on Linux", () => {
+    const dir = tempDir("vimma-unpack-");
+    const { log, tools } = dmgTools(dir);
+    const { status, stderr, tmp } = unpack(dir, { DMG_TOOLS: tools });
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    const calls = lines(log);
+    // python/mozbuild/mozpack/dmg.py, extract_dmg_contents (Firefox 158.0)
+    expect(calls[0]).toMatch(new RegExp(`^dmg extract ${join(dir, "in.dmg")} \\S+\\.hfs$`));
+    expect(calls[1]).toMatch(/^hfsplus \S+\.hfs extractall \/ \S+$/);
+    expect(calls).toHaveLength(2);
+    // the app and the art, without the Applications link, which make_dmg adds again
+    expect(readdirSync(join(dir, "volume")).sort()).toEqual([
+      ".DS_Store",
+      ".VolumeIcon.icns",
+      ".background",
+      "Vimma.app",
+    ]);
+    expect(readdirSync(tmp)).toEqual([]);
+  });
+
+  it("refuses to run without DMG_TOOLS", () => {
+    const dir = tempDir("vimma-unpack-");
+    const { status, stderr } = unpack(dir, {});
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("DMG_TOOLS");
+  });
+
+  it("refuses an app that is already stapled, so a re-run starts from macos-build's dmg", () => {
+    const dir = tempDir("vimma-unpack-");
+    const { tools } = dmgTools(dir, { stapled: true });
+    const { status, stderr } = unpack(dir, { DMG_TOOLS: tools });
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/already/);
+  });
+});
+
+// Job macos-notarise, the only one with the Apple secrets: rcodesign and nothing from the build.
+describe("macos-sign-app.sh", () => {
+  /**
+   * A stub rcodesign in `dir`, logging to `dir/log`, and the credential files.
+   * @param {string} dir
+   * @param {{ team?: string, subject?: string, notaryFails?: boolean, signFails?: boolean,
+   *   staples?: boolean }} [options]
+   */
+  function rcodesignStub(
+    dir,
+    {
+      team = TEAM,
+      subject = `Developer ID Application: Vimma (${TEAM})`,
+      notaryFails = false,
+      signFails = false,
+      staples = true,
+    } = {},
+  ) {
+    const log = join(dir, "log");
+    const rcodesign = join(dir, "rcodesign");
+    writeFileSync(
+      rcodesign,
+      `#!/bin/sh
 echo "rcodesign $*" >> "${log}"
 case "$1" in
   analyze-certificate)
@@ -151,85 +251,54 @@ case "$1" in
     ;;
 esac
 `,
-  );
-  chmodSync(rcodesign, 0o755);
-  const secrets = join(dir, "secrets");
-  mkdirSync(secrets);
-  writeFileSync(join(secrets, "developer-id.p12"), "p12");
-  writeFileSync(join(secrets, "p12-password"), PASSWORD);
-  writeFileSync(join(secrets, "notary-api-key.json"), API_KEY);
-  return {
-    log,
-    env: {
-      RCODESIGN: rcodesign,
-      DMG_TOOLS: tools,
-      APPLE_P12_FILE: join(secrets, "developer-id.p12"),
-      APPLE_P12_PASSWORD_FILE: join(secrets, "p12-password"),
-      APPLE_NOTARY_API_KEY_FILE: join(secrets, "notary-api-key.json"),
-      APPLE_TEAM_ID: TEAM,
-    },
+    );
+    chmodSync(rcodesign, 0o755);
+    const secrets = join(dir, "secrets");
+    mkdirSync(secrets);
+    writeFileSync(join(secrets, "developer-id.p12"), "p12");
+    writeFileSync(join(secrets, "p12-password"), PASSWORD);
+    writeFileSync(join(secrets, "notary-api-key.json"), API_KEY);
+    return {
+      log,
+      env: {
+        RCODESIGN: rcodesign,
+        APPLE_P12_FILE: join(secrets, "developer-id.p12"),
+        APPLE_P12_PASSWORD_FILE: join(secrets, "p12-password"),
+        APPLE_NOTARY_API_KEY_FILE: join(secrets, "notary-api-key.json"),
+        APPLE_TEAM_ID: TEAM,
+      },
+    };
+  }
+
+  /**
+   * @param {Parameters<typeof rcodesignStub>[1]} [options]
+   * @param {Parameters<typeof appTree>[1]} [tree]
+   */
+  const setup = (options, tree) => {
+    const dir = tempDir("vimma-sign-");
+    const app = appTree(dir, tree);
+    return { dir, app, ...rcodesignStub(dir, options) };
   };
-}
-
-/**
- * Runs macos-developer-id.sh on dir/in.dmg into dir/out/Vimma.dmg.
- * @param {string} dir
- * @param {Record<string, string | undefined>} env
- */
-function run(dir, env) {
-  const tmp = join(dir, "tmp");
-  mkdirSync(tmp);
-  mkdirSync(join(dir, "out"));
-  writeFileSync(join(dir, "in.dmg"), "ad hoc dmg\n");
-  /** @type {Record<string, string>} */
-  const clean = { PATH: process.env.PATH ?? "", TMPDIR: tmp };
-  for (const [k, v] of Object.entries(env)) if (v !== undefined) clean[k] = v;
-  const result = spawnSync(SCRIPT, [join(dir, "in.dmg"), join(dir, "out/Vimma.dmg")], {
-    encoding: "utf8",
-    env: clean,
-  });
-  return { ...result, tmp };
-}
-
-/** @param {string} log */
-const lines = (log) => readFileSync(log, "utf8").trim().split("\n");
-
-describe("macos-developer-id.sh", () => {
-  it("unpacks the dmg with the disk-image tools, as mach's unpack_dmg does on Linux", () => {
-    const dir = tempDir("vimma-devid-");
-    const { log, env } = stubs(dir);
-    const { status, stderr } = run(dir, env);
-    expect(stderr).toBe("");
-    expect(status).toBe(0);
-    const calls = lines(log);
-    // python/mozbuild/mozpack/dmg.py, extract_dmg_contents (Firefox 158.0)
-    expect(calls[0]).toMatch(new RegExp(`^dmg extract ${join(dir, "in.dmg")} \\S+\\.hfs$`));
-    expect(calls[1]).toMatch(/^hfsplus \S+\.hfs extractall \/ \S+$/);
-  });
 
   it("checks the certificate is a Developer ID Application of APPLE_TEAM_ID before signing", () => {
     for (const [options, message] of /** @type {const} */ ([
       [{ team: "ZZZZZ99999" }, /team/i],
       [{ subject: `Apple Development: Vimma (${TEAM})` }, /Developer ID Application/],
     ])) {
-      const dir = tempDir("vimma-devid-");
-      const { log, env } = stubs(dir, options);
-      const { status, stdout, stderr } = run(dir, env);
+      const { dir, app, log, env } = setup(options);
+      const { status, stdout, stderr } = run(SIGN, [app], dir, env);
       expect(status).not.toBe(0);
       expect(stdout + stderr).toMatch(message);
-      expect(readFileSync(log, "utf8")).not.toMatch(/rcodesign sign|notary-submit|dmg build/);
-      expect(existsSync(join(dir, "out/Vimma.dmg"))).toBe(false);
+      expect(readFileSync(log, "utf8")).not.toMatch(/rcodesign sign|notary-submit/);
     }
   });
 
   it("signs in one rcodesign run, nested code inside-out with mach macos-sign's settings", () => {
-    const dir = tempDir("vimma-devid-");
-    const { log, env } = stubs(dir);
-    expect(run(dir, env).status).toBe(0);
+    const { dir, app, log, env } = setup();
+    expect(run(SIGN, [app], dir, env).status).toBe(0);
     const sign = lines(log).find((l) => l.startsWith("rcodesign sign ")) ?? "";
     const args = sign.split(" ").slice(2);
-    const app = args.at(-1) ?? "";
-    expect(app).toMatch(/\/Vimma\.app$/);
+    expect(args.at(-1)).toBe(app);
     /** @param {string} flag */
     const values = (flag) => args.flatMap((a, i) => (args[i - 1] === flag ? [a] : []));
     expect(values("--p12-file")).toEqual([env.APPLE_P12_FILE]);
@@ -259,40 +328,26 @@ describe("macos-developer-id.sh", () => {
     ]);
   });
 
-  it("notarises and staples the app, then packs the dmg as mach's make_dmg does on Linux", () => {
-    const dir = tempDir("vimma-devid-");
-    const { log, env } = stubs(dir);
-    const { status, tmp } = run(dir, env);
+  it("notarises and staples the app after signing it", () => {
+    const { dir, app, log, env } = setup();
+    const { status } = run(SIGN, [app], dir, env);
     expect(status).toBe(0);
     const calls = lines(log);
-    const at = (/** @type {RegExp} */ re) => calls.findIndex((l) => re.test(l));
-    const notary = calls[at(/^rcodesign notary-submit /)] ?? "";
-    expect(notary).toMatch(
-      new RegExp(
-        `^rcodesign notary-submit --api-key-file ${env.APPLE_NOTARY_API_KEY_FILE} ` +
-          "--max-wait-seconds \\d+ --wait --staple \\S+/Vimma\\.app$",
-      ),
+    expect(calls.map((l) => l.split(" ")[1])).toEqual([
+      "analyze-certificate",
+      "sign",
+      "notary-submit",
+    ]);
+    expect(calls[2]).toBe(
+      `rcodesign notary-submit --api-key-file ${env.APPLE_NOTARY_API_KEY_FILE} ` +
+        `--max-wait-seconds 3600 --wait --staple ${app}`,
     );
-    expect(at(/^rcodesign analyze-certificate /)).toBeLessThan(at(/^rcodesign sign /));
-    expect(at(/^rcodesign sign /)).toBeLessThan(at(/^rcodesign notary-submit /));
-    // python/mozbuild/mozpack/dmg.py, create_dmg on Linux (Firefox 158.0)
-    const pack = calls.slice(at(/^rcodesign notary-submit /) + 1);
-    expect(pack[0]).toMatch(/^newfs_hfs -v Vimma \S+\.hfs$/);
-    expect(pack[1]).toMatch(/^hfsplus \S+\.hfs symlink \/ {2}\/Applications$/);
-    expect(pack[2]).toMatch(/^hfsplus \S+\.hfs attr \/ C$/);
-    expect(pack[3]).toMatch(/^hfsplus \S+\.hfs addall \S+$/);
-    expect(pack[4]).toMatch(/^dmg build \S+\.hfs \S+$/);
-    expect(pack).toHaveLength(5);
-    // the stapled ticket is inside the app that is packed
-    expect(readFileSync(`${log}.packed`, "utf8").trim()).toBe("./Vimma.app/Contents/CodeResources");
-    expect(readFileSync(join(dir, "out/Vimma.dmg"), "utf8")).toBe("dmg\n");
-    expect(readdirSync(tmp)).toEqual([]);
+    expect(readFileSync(join(app, "Contents/CodeResources"), "utf8")).toBe("ticket\n");
   });
 
   it("passes the password and the API key as files, never on a command line", () => {
-    const dir = tempDir("vimma-devid-");
-    const { log, env } = stubs(dir);
-    const { status, stdout, stderr } = run(dir, env);
+    const { dir, app, log, env } = setup();
+    const { status, stdout, stderr } = run(SIGN, [app], dir, env);
     expect(status).toBe(0);
     const all = readFileSync(log, "utf8") + stdout + stderr;
     expect(all).not.toContain(PASSWORD);
@@ -305,44 +360,131 @@ describe("macos-developer-id.sh", () => {
     "APPLE_P12_PASSWORD_FILE",
     "APPLE_NOTARY_API_KEY_FILE",
     "APPLE_TEAM_ID",
-    "DMG_TOOLS",
   ])("refuses to run without %s", (name) => {
-    const dir = tempDir("vimma-devid-");
-    const { log, env } = stubs(dir);
-    const { status, stderr } = run(dir, { ...env, [name]: undefined });
+    const { dir, app, log, env } = setup();
+    const { status, stderr } = run(SIGN, [app], dir, { ...env, [name]: undefined });
     expect(status).not.toBe(0);
     expect(stderr).toContain(name);
     expect(existsSync(log)).toBe(false);
   });
 
   it("refuses a team ID that is not ten capitals and digits", () => {
-    const dir = tempDir("vimma-devid-");
-    const { log, env } = stubs(dir);
-    const { status, stderr } = run(dir, { ...env, APPLE_TEAM_ID: "abc; rm -rf /" });
+    const { dir, app, log, env } = setup();
+    const { status, stderr } = run(SIGN, [app], dir, { ...env, APPLE_TEAM_ID: "abc; rm -rf /" });
     expect(status).not.toBe(0);
     expect(stderr).toContain("APPLE_TEAM_ID");
     expect(existsSync(log)).toBe(false);
   });
 
-  it("refuses an app that is already stapled, so a re-run starts from macos-build's dmg", () => {
-    const dir = tempDir("vimma-devid-");
-    const { log, env } = stubs(dir, { stapled: true });
-    const { status, stderr } = run(dir, env);
-    expect(status).not.toBe(0);
-    expect(stderr).toMatch(/already/);
-    expect(readFileSync(log, "utf8")).not.toMatch(/rcodesign sign/);
+  // The app comes from macos-unpack's artifact: a link out of the bundle could make rcodesign
+  // read or write a file outside it, such as the credentials.
+  it("refuses a symlink that leaves the app, before rcodesign runs", () => {
+    for (const target of ["/etc/hosts", "../../../secrets/p12-password", "../../.."]) {
+      const { dir, app, log, env } = setup(undefined, {
+        links: { "Contents/MacOS/escape": target },
+      });
+      const { status, stderr } = run(SIGN, [app], dir, env);
+      expect(status, target).not.toBe(0);
+      expect(stderr, target).toMatch(/symlink/);
+      expect(existsSync(log), target).toBe(false);
+    }
   });
 
-  it("writes no dmg when signing or notarisation fails, or nothing was stapled", () => {
+  it("accepts a symlink that stays inside the app, as a framework's Versions/Current", () => {
+    const { dir, app, env } = setup(undefined, {
+      links: { "Contents/MacOS/link-to-xul": "XUL", "Contents/Resources/up": "../MacOS" },
+    });
+    const { status, stderr } = run(SIGN, [app], dir, env);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+  });
+
+  it("refuses an app that is already stapled", () => {
+    const { dir, app, log, env } = setup(undefined, { stapled: true });
+    const { status, stderr } = run(SIGN, [app], dir, env);
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/already/);
+    expect(existsSync(log)).toBe(false);
+  });
+
+  it("fails when signing or notarisation fails, or nothing was stapled", () => {
     for (const options of [{ signFails: true }, { notaryFails: true }, { staples: false }]) {
-      const dir = tempDir("vimma-devid-");
-      const { log, env } = stubs(dir, options);
-      const { status, tmp } = run(dir, env);
+      const { dir, app, env } = setup(options);
+      const { status } = run(SIGN, [app], dir, env);
       expect(status, JSON.stringify(options)).not.toBe(0);
-      expect(readFileSync(log, "utf8")).not.toMatch(/dmg build/);
-      expect(existsSync(join(dir, "out/Vimma.dmg"))).toBe(false);
-      expect(readdirSync(tmp)).toEqual([]);
     }
+  });
+
+  // What the job holding the secrets runs is this script and rcodesign; nothing that came from
+  // the build, and no other tool of this repository.
+  it("runs rcodesign and no disk-image tool, mach, node or other program of the build", () => {
+    const script = read("tools/package/macos-sign-app.sh")
+      .split("\n")
+      .filter((l) => !/^\s*#/.test(l))
+      .join("\n");
+    expect(script).not.toMatch(
+      /DMG_TOOLS|hfsplus|newfs_hfs|\bdmg\b|mach|node|eval|source |^\s*\. /m,
+    );
+    const invoked = [...script.matchAll(/^\s*(?:[a-z_]+=\$\()?"\$([a-z_]+)"/gm)].map((m) => m[1]);
+    expect(new Set(invoked)).toEqual(new Set(["rcodesign"]));
+  });
+});
+
+// Job macos-pack: the handed-over tools again, after the secrets' job has ended.
+describe("macos-dmg-pack.sh", () => {
+  /**
+   * @param {{ stapled?: boolean, art?: string[], buildFails?: boolean }} [options]
+   */
+  const pack = ({ stapled = true, art = ART, buildFails = false } = {}) => {
+    const dir = tempDir("vimma-pack-");
+    const { log, tools } = dmgTools(dir, { buildFails });
+    const volume = join(dir, "volume");
+    appTree(volume, { stapled });
+    for (const f of art) {
+      mkdirSync(join(volume, f, ".."), { recursive: true });
+      writeFileSync(join(volume, f), "art");
+    }
+    mkdirSync(join(dir, "out"));
+    const result = run(PACK, [volume, join(dir, "out/Vimma.dmg")], dir, { DMG_TOOLS: tools });
+    return { ...result, dir, log };
+  };
+
+  it("packs the volume as mach's make_dmg does on Linux", () => {
+    const { status, stderr, dir, log, tmp } = pack();
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    // python/mozbuild/mozpack/dmg.py, create_dmg on Linux (Firefox 158.0)
+    const calls = lines(log);
+    expect(calls[0]).toMatch(/^newfs_hfs -v Vimma \S+\.hfs$/);
+    expect(calls[1]).toMatch(/^hfsplus \S+\.hfs symlink \/ {2}\/Applications$/);
+    expect(calls[2]).toMatch(/^hfsplus \S+\.hfs attr \/ C$/);
+    expect(calls[3]).toMatch(/^hfsplus \S+\.hfs addall \S+$/);
+    expect(calls[4]).toMatch(/^dmg build \S+\.hfs \S+$/);
+    expect(calls).toHaveLength(5);
+    expect(readFileSync(`${log}.packed`, "utf8").trim()).toBe("./Vimma.app/Contents/CodeResources");
+    expect(readFileSync(join(dir, "out/Vimma.dmg"), "utf8")).toBe("dmg\n");
+    expect(readdirSync(tmp)).toEqual([]);
+  });
+
+  it("refuses an app without a stapled ticket, so an unsigned app is never packed", () => {
+    const { status, stderr, dir } = pack({ stapled: false });
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/stapled/);
+    expect(existsSync(join(dir, "out/Vimma.dmg"))).toBe(false);
+  });
+
+  it("refuses a volume without its window art or volume icon", () => {
+    for (const missing of ART) {
+      const { status, stderr } = pack({ art: ART.filter((f) => f !== missing) });
+      expect(status, missing).not.toBe(0);
+      expect(stderr, missing).toContain(missing);
+    }
+  });
+
+  it("writes no dmg when the disk-image tool fails", () => {
+    const { status, dir } = pack({ buildFails: true });
+    expect(status).not.toBe(0);
+    expect(existsSync(join(dir, "out/Vimma.dmg"))).toBe(false);
   });
 });
 
@@ -375,7 +517,7 @@ describe("macos-developer-id-check.sh", () => {
 
   /**
    * @param {{ app?: string, nested?: string, spctl?: string, spctlStatus?: number,
-   *   staple?: number, verify?: number }} [out]
+   *   staple?: number, verify?: number, expected?: string }} [out]
    */
   function check({
     app = SIGNED(),
@@ -384,6 +526,7 @@ describe("macos-developer-id-check.sh", () => {
     spctlStatus = 0,
     staple = 0,
     verify = 0,
+    expected = TEAM,
   } = {}) {
     const dir = tempDir("vimma-devid-check-");
     const bundle = join(dir, "Vimma.app");
@@ -415,9 +558,11 @@ esac
         CODESIGN: join(dir, "codesign"),
         SPCTL: join(dir, "spctl"),
         XCRUN: join(dir, "xcrun"),
+        ...(expected === undefined ? {} : { EXPECTED_TEAM_ID: expected }),
       },
     });
-    return { ...result, log: readFileSync(join(dir, "log"), "utf8"), bundle };
+    const log = existsSync(join(dir, "log")) ? readFileSync(join(dir, "log"), "utf8") : "";
+    return { ...result, log, bundle };
   }
 
   it("passes a Developer ID app under the hardened runtime, notarised, stapled and accepted", () => {
@@ -451,6 +596,13 @@ esac
     ],
     ["acceptance without notarisation", { spctl: "accepted\nsource=Developer ID" }, /Notarized/],
     ["no stapled ticket", { staple: 65 }, /stapl/],
+    // any notarised Developer ID app passes Gatekeeper; only Vimma's team's is Vimma
+    [
+      "another team's notarised app",
+      { app: SIGNED("ZZZZZ99999"), nested: SIGNED("ZZZZZ99999") },
+      /EXPECTED_TEAM_ID/,
+    ],
+    ["without EXPECTED_TEAM_ID", { expected: "" }, /EXPECTED_TEAM_ID/],
   ])("fails %s", (_name, out, message) => {
     const result = check(out);
     expect(result.status).not.toBe(0);

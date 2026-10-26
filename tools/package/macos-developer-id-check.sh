@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Checks, on a Mac, a Vimma.app from a Developer ID release (spec macos-build, decision 23): a
 # strict deep verify; a Developer ID Application signature with a secure timestamp and the hardened
-# runtime, on the app and on its nested code, all of one team; Gatekeeper accepting it as notarised;
-# and a stapled ticket. release.yml's macos-smoke runs it when MACOS_SIGNING is developer-id; an ad
+# runtime, on the app and on its nested code, all of Vimma's team (EXPECTED_TEAM_ID, from the
+# repository variable MACOS_TEAM_ID); Gatekeeper accepting it as notarised; and a stapled ticket. release.yml's macos-smoke runs it when MACOS_SIGNING is developer-id; an ad
 # hoc build fails it. Prints the team ID, which every copy of the signature carries anyway.
 #
 #   tools/package/macos-developer-id-check.sh path/to/Vimma.app
@@ -17,6 +17,10 @@ fail() {
   echo "::error::$*" >&2
   exit 1
 }
+
+expected_team=${EXPECTED_TEAM_ID:-}
+[[ $expected_team =~ ^[A-Z0-9]{10}$ ]] ||
+  fail "EXPECTED_TEAM_ID (the repository variable MACOS_TEAM_ID) is not a ten-character team ID"
 
 "$codesign" --verify --deep --strict --verbose=2 "$app" ||
   fail "codesign --verify --deep --strict fails"
@@ -39,6 +43,8 @@ signed_team() {
 }
 
 team=$(signed_team "$app")
+# Gatekeeper accepts any team's notarised app; only Vimma's team's is Vimma.
+[ "$team" = "$expected_team" ] || fail "the app is signed by team $team, not EXPECTED_TEAM_ID"
 for nested in \
   Contents/MacOS/vimma-ctl \
   Contents/MacOS/plugin-container.app \
