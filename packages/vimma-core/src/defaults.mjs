@@ -110,7 +110,7 @@ const keys = {
   // docs/specs/private-workspace.md: ctrl+shift+p is Firefox's "New Private Window", done
   // Vimma's way (go to the one private workspace, or open it).
   private_workspace: ["prefix+shift+p", "ctrl+shift+p"],
-  goto_picker: ["prefix+g"],
+  goto_picker: ["prefix+g", "ctrl+shift+a"],
   // docs/specs/live-grep.md decision 2: prefix+f is the find group, Telescope's <leader>fg.
   live_grep: ["prefix+f g"],
   toggle_sidebar: ["prefix+b"],
@@ -135,7 +135,7 @@ const keys = {
   save_page: ["ctrl+s"],
   print_page: ["ctrl+p"],
   downloads: ["ctrl+shift+y"],
-  addons_manager: ["ctrl+shift+a"],
+  addons_manager: ["ctrl+shift+f"],
   history_library: ["ctrl+shift+h"],
   bookmarks_library: ["ctrl+shift+o"],
   mute_tab: ["ctrl+m"],

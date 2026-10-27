@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Changed
+
+- Keys: on Firefox 159, `ctrl+shift+a` is Firefox's tab search key, so it opens Vimma's tab search (as `ctrl+b g` does), and the add-ons manager moves to Firefox's new `ctrl+shift+f`. The help and `defaults.toml` snapshots change with the two keys.
+
 ## [0.1.9](https://github.com/vimma-browser/vimma/compare/v0.1.8...v0.1.9) · Firefox 158.0.1 (2026-10-23)
 
 

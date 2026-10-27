@@ -193,10 +193,10 @@ describe("Firefox's keys in the overlay", () => {
     expect(row("devtools_style_editor")?.bindings).toEqual(["shift+f7"]);
   });
 
-  test("the goto picker is tab search, on ctrl+b g and b (docs/specs/tab-search.md)", () => {
+  test("the goto picker is tab search, on ctrl+b g, ctrl+shift+a and b (docs/specs/tab-search.md)", () => {
     expect(row("goto_picker")).toMatchObject({
       group: "Navigation",
-      bindings: ["ctrl+b g", "b"],
+      bindings: ["ctrl+b g", "ctrl+shift+a", "b"],
       description: "Tab search: every tab, every window, recently closed",
     });
     expect(row("tab_search")).toBeUndefined();

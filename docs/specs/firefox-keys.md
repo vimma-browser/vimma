@@ -561,6 +561,14 @@ keys (ctrl+b ? lists them). enable = ["ctrl+j"] gives one back exactly as Firefo
     the field, as every other unmodified key there does, and leaving the field with `esc` first
     still gives the process manager.
 
+    (Since changed: Firefox 159 moved Add-ons to `ctrl+shift+f` (`cmd+shift+e` on macOS) and
+    gave `ctrl+shift+a` to a new `key_searchTabs` (`Browser:SearchTabs`, the address bar's tabs
+    mode). Following decision 16, `addons_manager` moves to `ctrl+shift+f`, and
+    `ctrl+shift+a` is fate a, a second key for `goto_picker`: Vimma's tab search
+    ([tab-search](tab-search.md)) already searches tabs, across workspaces and windows, and
+    keeps private tabs out of a normal window, which the address bar's tabs mode does not know
+    about.)
+
 ## Sub-PRs
 
 Each is its own keymap PR, in this order, one open at a time:
