@@ -125,7 +125,7 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "P",
     ],
     [
-      "ctrl+shift+a",
+      "ctrl+shift+f",
       "key_openAddons",
       "Tools:Addons",
       "add-ons manager",
@@ -431,6 +431,16 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "screenshot",
       "b",
       "screenshot",
+      "all",
+      "P",
+    ],
+    [
+      "ctrl+shift+a",
+      "key_searchTabs",
+      "Browser:SearchTabs",
+      "search open tabs (the address bar's tabs mode)",
+      "a",
+      "goto_picker",
       "all",
       "P",
     ],
@@ -770,7 +780,8 @@ const MAC_CHANGES = {
   key_search2: "alt+meta+f",
   // downloads-shortcut is J outside Linux, and accel without shift outside XP_GNOME.
   key_openDownloads: "meta+j",
-  key_openAddons: "shift+meta+a",
+  // Firefox 159: addons-shortcut-2 is E on macOS, and key_searchTabs took cmd+shift+a.
+  key_openAddons: "shift+meta+e",
   openFileKb: "meta+o",
   key_savePage: "meta+s",
   printKb: "meta+p",
@@ -825,6 +836,7 @@ const MAC_CHANGES = {
   key_switchTextDirection: "shift+meta+x",
   key_privatebrowsing: "shift+meta+p",
   key_screenshot: "shift+meta+s",
+  key_searchTabs: "shift+meta+a",
   key_sanitize: "shift+meta+delete",
   // `internal` on macOS: Cocoa's application menu quits, so the key is never Vimma's to turn off
   // (docs/specs/macos-build.md behaviour 4).
