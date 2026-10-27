@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.10](https://github.com/vimma-browser/vimma/compare/v0.1.9...v0.1.10) (2026-10-27)
+
+
+### Changed
+
+* firefox 159.0 (MFSA 2026-118) ([#550](https://github.com/vimma-browser/vimma/issues/550)) ([d48d3f3](https://github.com/vimma-browser/vimma/commit/d48d3f3cbefbdbf35dfcc564888d962caa72b1a7))
+
 ## [Unreleased]
 
 ### Changed
