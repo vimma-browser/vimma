@@ -2,19 +2,17 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.10](https://github.com/vimma-browser/vimma/compare/v0.1.9...v0.1.10) (2026-10-27)
-
-
-### Changed
-
-* firefox 159.0 (MFSA 2026-118) ([#550](https://github.com/vimma-browser/vimma/issues/550)) ([d48d3f3](https://github.com/vimma-browser/vimma/commit/d48d3f3cbefbdbf35dfcc564888d962caa72b1a7))
-
 ## [Unreleased]
+
+## [0.1.10](https://github.com/vimma-browser/vimma/compare/v0.1.9...v0.1.10) · Firefox 159.0 (2026-10-27)
+
 
 ### Changed
 
 - Keys: on Firefox 159, `ctrl+shift+a` is Firefox's tab search key, so it opens Vimma's tab search (as `ctrl+b g` does), and the add-ons manager moves to Firefox's new `ctrl+shift+f`. The help and `defaults.toml` snapshots change with the two keys.
 - Tests: the `m3-private-workspace` e2e baseline is redrawn from the current start page, which now shows the bookmarks hint and the running Vimma and Firefox versions. The old image dated from Vimma 0.1.2 on Firefox 158, and the longer `0.1.10` version string pushed the difference past the 0.5 % limit.
+
+* Firefox 159.0 ([MFSA 2026-118](https://www.mozilla.org/en-US/security/advisories/mfsa2026-118/)) ([#550](https://github.com/vimma-browser/vimma/issues/550)) ([d48d3f3](https://github.com/vimma-browser/vimma/commit/d48d3f3cbefbdbf35dfcc564888d962caa72b1a7))
 
 ## [0.1.9](https://github.com/vimma-browser/vimma/compare/v0.1.8...v0.1.9) · Firefox 158.0.1 (2026-10-23)
 
