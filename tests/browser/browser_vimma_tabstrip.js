@@ -61,7 +61,8 @@ add_task(async function strip_is_hidden_by_default_and_nav_bar_stays() {
 
   await SimpleTest.promiseFocus(window);
   gBrowser.selectedBrowser.focus();
-  // ctrl+l and ctrl+t are Vimma's on every platform; cmd+t, accel on a Mac, is off there (#385).
+  // ctrl+l is Vimma's focus_urlbar on every platform. cmd+l is too on macOS, but it goes to the
+  // page first, and pressed this soon after startup it missed in about 1 of 10 macOS runs.
   EventUtils.synthesizeKey("l", { ctrlKey: true });
   await TestUtils.waitForCondition(() => gURLBar.focused, "ctrl+l focuses the URL bar");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -121,6 +122,7 @@ add_task(async function ctrl_t_and_closing_the_tab_still_work() {
     const before = gBrowser.tabs.length;
     clearToolboxState();
     const opened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
+    // ctrl+t is Vimma's new_tab on every platform; cmd+t, accel on a Mac, is off there (#385).
     EventUtils.synthesizeKey("t", { ctrlKey: true });
     const { target: tab } = await opened;
     await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "new tab is selected");
