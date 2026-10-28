@@ -1391,8 +1391,12 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   holds for it, and the validator and `vimma-ctl mcp` check it the same way; it is made only
   after the step, of a page that is no longer loading, and only while the tab is still an agent
   tab with the URL it had when the list began (else the result says why, in fixed words, and
-  holds no list); its labels become the connection's current ones as a `vimma_elements` list's
-  do. The step's question and its notice under a grant say that the list is taken too.
+  holds no list); the result's URL and title are read at the last such check, and a tab that
+  left the agent workspace meanwhile fails the call, noted in `:mcp log`, with nothing of its
+  page; its labels become the connection's current ones as a `vimma_elements` list's do. The
+  step's question (a checkpoint's included), its `:mcp log` row and its notice under a grant say
+  that the list is taken too.
+  [`test_a_steps_list_says_nothing_of_a_tab_that_left`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_steps_return_the_element_list_vimma_elements_would`](../tests/browser/browser_vimma_mcp_elements.js),
   [`a step's list is inside the untrusted delimiters, with its dropped count`](../packages/vimma-core/test/control-v2.test.mjs),
   [`why a step's list is missing: fixed words, never with a list`](../packages/vimma-core/test/control-v2.test.mjs),

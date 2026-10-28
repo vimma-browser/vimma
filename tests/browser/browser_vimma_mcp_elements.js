@@ -534,6 +534,39 @@ addTidyTask(async function test_steps_return_the_element_list_vimma_elements_wou
   await mcp(false);
 });
 
+// Issue #584 (security.md M8, M23): an open asked with elements says nothing of a tab that left
+// the agent workspace while its page loaded; a same-document open is listed without waiting for
+// a new document; :mcp log's row names the list.
+addTidyTask(async function test_a_steps_list_says_nothing_of_a_tab_that_left() {
+  await mcp(true);
+  const c = await agentClient();
+  const slow = `${DIR}file_vimma_agent_slow.sjs?wait=4000`;
+  const id = c.request("agent-open", { url: slow, elements: true });
+  AgentGate.answer((await question()).id, { kind: "grant", minutes: 12 });
+  await until(() => agentTabs().length === 1, "the open's tab");
+  BrowserTestUtils.removeTab(agentTabs()[0]);
+  const r = await c.response(id);
+  Assert.equal(r.error?.code, "failed", `refused: ${JSON.stringify(r)}`);
+  Assert.ok(!JSON.stringify(r).includes("slow.sjs"), "with nothing of the page");
+  Assert.equal(AgentGate.log[0].outcome, "stopped", "and :mcp log says it stopped");
+
+  const tab = await openAgentTab();
+  const t0 = Date.now();
+  const hash = await c.call("agent-open", { url: `${FORM}#plans`, tab: idOf(tab), elements: true });
+  Assert.ok(
+    hash.ok && hash.result.elements,
+    `a same-document open is listed: ${hash.error?.message}`,
+  );
+  Assert.less(Date.now() - t0, 5000, "without waiting out the page's load");
+  Assert.equal(
+    AgentGate.log[0].detail,
+    `${FORM}#plans, then vimma_elements`,
+    ":mcp log's row names the list",
+  );
+  c.close();
+  await mcp(false);
+});
+
 // Issue #584 (mcp-forms F26): a step's list counts as a vimma_elements call, when asked and
 // before anything is done; with the lists used up, a step asked with elements is refused unrun.
 addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {

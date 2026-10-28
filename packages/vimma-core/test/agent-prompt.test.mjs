@@ -412,6 +412,17 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
     const plain = { ...activate, what: { ...what, elements: false } };
     expect(text(questionLine(plain, { grantMinutes: 10 }))).not.toMatch(/vimma_elements/);
+    // A checkpoint's question names the list too: its yes returns it.
+    const submit = {
+      ...activate,
+      what: {
+        ...what,
+        submit: { method: "post", action: "https://example.com/a", host: "example.com", fields: 1 },
+      },
+    };
+    const asked = questionLine(submit, { grantMinutes: 10 });
+    expect(asked.hint).toBe("y send it · n stop");
+    expect(text(asked)).toMatch(/, then vimma_elements$/);
   });
 
   test("a submit: method and host in bold, the field count, y or n only", () => {

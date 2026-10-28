@@ -284,12 +284,15 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    function as `agent-elements`' own (`pageElements` in `ctl/agent-commands.mjs`), so F5 to F7
    and security.md M31 hold for it unchanged, and its labels replace the connection's as a
    `vimma_elements` list's do. `vimma_open` then waits up to 20 s for the new page to be ready
-   (F11's readiness). A page still loading, one that left the agent workspace or changed its URL
-   while it was listed, or one that cannot be listed returns `unlisted` with `loading`,
-   `changed` or `failed` instead, fixed words, so that a page's text never takes their place.
-   The step's question ends with `, then vimma_elements` and its notice under a grant with
-   `and listed the buttons and fields after it` (F28); a checkpoint's question (F15,
-   mcp-checkpoints C1) does not, since it asks about sending the form or paying.)
+   (F11's readiness; an open that only changes the fragment is ready in its own document). A
+   page still loading, one whose URL changed while it was listed, or one that cannot be listed
+   returns `unlisted` with `loading`, `changed` or `failed` instead, fixed words, so that a
+   page's text never takes their place; the result's URL and title are those of the last check
+   that the tab is still the agent's, and a tab that left the agent workspace meanwhile fails
+   the call with nothing of its page (M8). The step's question, a checkpoint's (F15,
+   mcp-checkpoints C1) included, ends with `, then vimma_elements`, its `:mcp log` row the same,
+   and its notice under a grant with `and listed the buttons and fields after it` (F28), because
+   the yes returns the list too.)
 3. **One session per tab and connection.** The labels go into the same session store as
    `vimma_keys`' `f` (`ctl/AgentDrive.sys.mjs:89-90`), bound to the document and URL and valid
    for 120 s, so a label never names an element of another page. `vimma_elements` and `f` each

@@ -273,6 +273,9 @@ async function ask(conn, command, what, state, rid, until, always = false) {
   }
 }
 
+/** Whether the page in `tab` is loading no document now. @param {Tab} tab */
+const notLoading = (tab) => !(tab.linkedBrowser.webProgress?.isLoadingDocument ?? true);
+
 /** @param {any} browser  the id of its top document */
 const docOf = (browser) => browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
 
@@ -403,38 +406,58 @@ function takeListSlot(conn, tool, what) {
 
 /**
  * A step's element list, asked with `elements` (issue #584): the page in `tab` after the step,
- * once `ready` says it is, listed as `agent-elements` lists it; or why there is none, in
- * STEP_UNLISTED's words. The tab must still be the agent's, and its URL the one it had when the
- * list began, once the list is made (M8).
- * @param {ConnId} conn @param {AgentWorkspace} agent @param {Win} win @param {Tab} tab
+ * once `ready` says it is, listed as `agent-elements` lists it, with the tab's URL and title as
+ * they were at the last check that it is still the agent's (M8); or, with that URL and title,
+ * why there is no list, in STEP_UNLISTED's words: `loading`, `changed` (the page's URL changed
+ * while it was listed) or `failed`. A tab that left the agent workspace or closed meanwhile is a
+ * `failed` refusal that says nothing of its page, noted in `:mcp log` (M23).
+ * @param {ConnId} conn @param {string} tool @param {object} what  the step's, for the log
+ * @param {AgentWorkspace} agent @param {Win} win @param {Tab} tab
  * @param {() => Promise<boolean>} ready
- * @returns {Promise<{ elements: string, dropped: number } | { unlisted: string }>}
+ * @returns {Promise<{ url: string, title: string }
+ *   & ({ elements: string, dropped: number } | { unlisted: string })>}
  */
-async function stepList(conn, agent, win, tab, ready) {
-  if (!(await ready())) return { unlisted: "loading" };
-  const stillAgent = () => {
+async function stepList(conn, tool, what, agent, win, tab, ready) {
+  /** The tab's page now, after checking that it is still an agent tab; or the refusal. */
+  const page = () => {
     const now = WorkspaceStore.agent;
-    return (
+    const still =
       !!now &&
       now.id === agent.id &&
       now.userContextId === agent.userContextId &&
       !win.closed &&
-      isAgentTab(win, tab, agent)
-    );
+      isAgentTab(win, tab, agent);
+    if (!still) {
+      AgentGate.note(conn, tool, what, "stopped", "changed");
+      throw new AgentError("failed", "the tab left the agent workspace before its page was listed");
+    }
+    return {
+      url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
+      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+    };
   };
-  if (!stillAgent()) return { unlisted: "changed" };
+  if (!(await ready())) return { ...page(), unlisted: "loading" };
+  const before = page();
   const url = tabUrl(tab);
-  const moved = new Error("changed");
-  let listed;
-  try {
-    listed = await pageElements(conn, tab, () => {
-      if (!stillAgent() || tabUrl(tab) !== url) throw moved;
-    });
-  } catch (e) {
-    if (e === moved) return { unlisted: "changed" };
+  /** @type {{ url: string, title: string } | null} */
+  let after = null;
+  let moved = false;
+  const listed = await pageElements(conn, tab, () => {
+    after = page();
+    if (tabUrl(tab) !== url) {
+      moved = true;
+      throw new Error("moved");
+    }
+  }).catch((e) => {
+    if (moved) return null;
     throw e;
+  });
+  if (!listed) return { ...(after ?? before), unlisted: "changed" };
+  if ("refused" in listed) {
+    AgentGate.note(conn, tool, what, "failed", "unlisted");
+    return { ...page(), unlisted: "failed" };
   }
-  return "refused" in listed ? { unlisted: "failed" } : listed;
+  return { .../** @type {{ url: string, title: string }} */ (after ?? before), ...listed };
 }
 
 /**
@@ -639,23 +662,23 @@ const COMMANDS = {
      * The open's result: with `elements`, once the page it loaded is ready, its list too.
      * @param {Win} win @param {Tab} tab @param {number} before  the top document it replaces
      */
-    const opened = async (win, tab, before) => {
+    const opened = async (win, tab, before, from = "") => {
       if (!elements) return { tab: tabId(tab) };
       const browser = tab.linkedBrowser;
       const until = Date.now() + LOAD_TIMEOUT_MS;
-      const list = await stepList(conn, agent, win, tab, () =>
+      // A URL that differs from the page's only by its fragment stays in the same document.
+      const unhashed = (/** @type {string} */ u) => u.replace(/#.*$/s, "");
+      const sameDocument = uri.spec.includes("#") && unhashed(uri.spec) === unhashed(from);
+      const list = await stepList(conn, "vimma_open", what, agent, win, tab, () =>
         AgentAct.ready(
           browser,
-          (/** @type {any} */ wg) => wg.innerWindowId !== before && !wg.isInitialDocument,
+          (/** @type {any} */ wg) =>
+            !wg.isInitialDocument &&
+            (wg.innerWindowId !== before || (sameDocument && tabUrl(tab) === uri.spec)),
           until,
         ),
       );
-      return {
-        tab: tabId(tab),
-        url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
-        title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
-        ...list,
-      };
+      return { tab: tabId(tab), ...list };
     };
     if (current) {
       const { win, tab } = stillAsAsked(agent, current.tab, current.url);
@@ -663,7 +686,7 @@ const COMMANDS = {
       // A download of this load is this connection's (decision 31): its grant covers it.
       AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
       tab.linkedBrowser.loadURI(uri, { triggeringPrincipal: principal });
-      return opened(win, tab, before);
+      return opened(win, tab, before, current.url);
     }
     const now = WorkspaceStore.agent;
     if (!now || now.id !== agent.id || now.userContextId !== agent.userContextId)
@@ -1170,7 +1193,7 @@ const COMMANDS = {
     if (result.stopped) AgentGate.note(conn, "vimma_activate", what, "stopped", result.stopped);
     // The page the click left, once it is ready: a page still loading is not listed (#584).
     const list = elements
-      ? await stepList(conn, agent, win, tab, async () => !result.loading)
+      ? await stepList(conn, "vimma_activate", what, agent, win, tab, async () => notLoading(tab))
       : null;
     return {
       url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
@@ -1405,7 +1428,7 @@ const COMMANDS = {
     if (result.stopped) AgentGate.note(conn, "vimma_fill", what, "stopped", result.stopped);
     // The page after the fill, once it is ready: a page still loading is not listed (#584).
     const list = elements
-      ? await stepList(conn, agent, win, tab, async () => !result.loading)
+      ? await stepList(conn, "vimma_fill", what, agent, win, tab, async () => notLoading(tab))
       : null;
     return {
       url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),

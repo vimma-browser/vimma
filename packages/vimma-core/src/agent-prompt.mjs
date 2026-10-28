@@ -319,6 +319,8 @@ function checkpointLine(q, who) {
       parts.push(...sentParts(sent, "  "));
     }
   }
+  // Issue #584: its yes also returns the page's element list after the step.
+  if (w.elements === true) parts.push({ text: ", then vimma_elements" });
   return { parts, hint: pay ? "y pay · n stop" : "y send it · n stop" };
 }
 
