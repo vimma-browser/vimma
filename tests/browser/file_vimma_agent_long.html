@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_keys.js: a page taller than the window, with a word far
+   - down for a find, a text field and a key listener that counts every key it is sent. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Long agent fixture</title>
+    <style>
+      .tall {
+        height: 4000px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Plans</h1>
+    <input id="field" type="text" value="" />
+    <div class="tall">Scroll down for the prices.</div>
+    <p id="prices">The pricing table is here.</p>
+    <div class="tall"></div>
+    <script>
+      window.keysSeen = 0;
+      for (const type of ["keydown", "keypress", "keyup"]) {
+        window.addEventListener(type, () => window.keysSeen++, true);
+      }
+    </script>
+  </body>
+</html>

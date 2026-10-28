@@ -13,11 +13,13 @@
 import {
   agentAlertText,
   agentState,
+  checkpointNotice,
   deniedNotice,
   FULL_CONTROL,
   grantNotice,
-  isPage,
+  isCheckpoint,
   mayOpenByItself,
+  noGrant,
   promptKey,
   questionLine,
   RAN_MS,
@@ -41,6 +43,14 @@ const ARMING_PREF = "security.dialog_enable_delay";
 const POLL_MS = 250;
 /** How often the status bar's grant minutes are redrawn while a grant runs. */
 const TICK_MS = 15_000;
+/**
+ * A held notice (spec ship-vimma-ctl, decision 9) shows this long after the line is free, so the
+ * agent's first question, which follows its hello at once, comes first, and an answer's own
+ * notice (NOTICE_MS, ui/notice.mjs) is read before it.
+ */
+const HELD_DELAY_MS = 1600;
+/** How long a held notice stays: as long as an update announcement. */
+const HELD_MS = 6000;
 
 /**
  * What the host tells the agent UI about one window.
@@ -49,7 +59,8 @@ const TICK_MS = 15_000;
  * @property {() => boolean} inField  focus is in an editable field (insert mode)
  * @property {() => boolean} otherOpen  a picker, prompt, panel or the command line is open
  * @property {() => boolean} pending  a key sequence is under way (after ctrl+b)
- * @property {(text: string) => void} notice
+ * @property {(text: string, ms?: number) => void} notice  `ms`: how long it stays
+ * @property {() => boolean} noticeOpen  a notice is on screen
  * @property {(question: string, yes: () => void) => void} ask  a y/N on the prompt line
  * @property {() => void} emit  redraw the status bar
  */
@@ -65,6 +76,11 @@ let current = null;
 const alerted = new Set();
 let poll = /** @type {any} */ (null);
 let tick = /** @type {any} */ (null);
+/** A notice that waits until no question waits, and its timer. @type {string | null} */
+let held = null;
+let heldTimer = /** @type {any} */ (null);
+/** Since when no question has waited (0 while one waits). */
+let freeSince = 0;
 let listening = false;
 
 /** The window that asks: the most recent normal (non-private) browser window. */
@@ -110,7 +126,11 @@ function onWindowChange(win, e) {
 function open(win, q) {
   const w = windows.get(win);
   if (!w) return false;
-  const shown = w.prompt.show(questionLine(q, { grantMinutes: grantMinutes() }), armMs());
+  const line = questionLine(q, {
+    grantMinutes: grantMinutes(),
+    agentWorkspace: McpHost.workspaceName,
+  });
+  const shown = w.prompt.show(line, armMs());
   if (!shown) return false;
   current = { id: q.id, win, count: "", question: q };
   return true;
@@ -161,6 +181,11 @@ function sync() {
       sync();
     }, POLL_MS);
   }
+  if (head) freeSince = 0;
+  else freeSince ||= Date.now();
+  if (held !== null) {
+    heldTimer ??= lazy.setTimeout(showHeld, HELD_DELAY_MS);
+  }
   if (AgentGate.grants().length) {
     tick ??= lazy.setTimeout(() => {
       tick = null;
@@ -168,6 +193,25 @@ function sync() {
     }, TICK_MS);
   }
   redraw();
+}
+
+/**
+ * The held notice, once no question has waited for HELD_DELAY_MS and no other notice is on
+ * screen, so it never cuts short the notice of what an agent just did; until then, it tries
+ * again.
+ */
+function showHeld() {
+  heldTimer = null;
+  if (held === null || AgentGate.waiting.length) return;
+  const win = askingWindow();
+  const w = win && windows.get(win);
+  const wait = freeSince ? freeSince + HELD_DELAY_MS - Date.now() : HELD_DELAY_MS;
+  if (!w || wait > 0 || w.noticeOpen()) {
+    heldTimer = lazy.setTimeout(showHeld, Math.max(wait, POLL_MS));
+    return;
+  }
+  w.notice(held, HELD_MS);
+  held = null;
 }
 
 /**
@@ -200,7 +244,14 @@ function onGate(event) {
   const w = win && windows.get(win);
   if (event && w) {
     if (event.kind === "answered" && event.answer === "grant" && event.length) {
-      w.notice(grantNotice(event.question, event.length));
+      w.notice(grantNotice(event.question, event.length, event.released ?? 0));
+    } else if (
+      event.kind === "answered" &&
+      event.answer === "once" &&
+      isCheckpoint(event.question)
+    ) {
+      // mcp-checkpoints Behaviour 6: where the form went, or where the payment was made.
+      w.notice(checkpointNotice(event.question));
     } else if (event.kind === "answered" && event.answer === "deny") {
       w.notice(deniedNotice(event.question, "user"));
     } else if (event.kind === "answered" && event.answer === "mute") {
@@ -209,6 +260,8 @@ function onGate(event) {
       w.notice(deniedNotice(event.question, "timeout"));
     } else if (event.kind === "ran") {
       w.notice(ranNotice(event, event.until, Date.now()));
+    } else if (event.kind === "notice" && event.hold) {
+      held = event.text;
     } else if (event.kind === "notice") {
       w.notice(event.text);
     }
@@ -289,7 +342,7 @@ export const AgentUi = {
     const q = current.question;
     const result = promptKey({ count: current.count }, formatKey(chord), {
       full: q.tool === FULL_CONTROL,
-      noGrant: isPage(q) || !!(/** @type {any} */ (q.what)?.unscanned),
+      noGrant: noGrant(q),
       dangerous: !!(/** @type {any} */ (q.what)?.danger),
     });
     if (result.kind === "count") {
@@ -318,7 +371,8 @@ export const AgentUi = {
 
   /**
    * `ctrl+b shift+a` (`mcp.answer`): the waiting question opens here, whatever the guards say;
-   * with none, the grants and `Revoke N agent grants? y/N`.
+   * with none, every grant ends at once (docs/specs/mcp-grants.md G4: ending is the safe
+   * direction, so it takes no second key).
    * @param {Window} win
    */
   answer(win) {
@@ -336,15 +390,12 @@ export const AgentUi = {
       redraw();
       return;
     }
-    const n = AgentGate.grants().length;
-    if (!n) {
-      w.notice("no agent requests waiting and no grants");
-      return;
-    }
-    w.ask(`Revoke ${n} agent grant${n === 1 ? "" : "s"}? y/N`, () => {
-      const ended = AgentGate.revoke();
-      w.notice(`mcp: ended ${ended} agent grant${ended === 1 ? "" : "s"}`);
-    });
+    const ended = AgentGate.revoke();
+    w.notice(
+      ended
+        ? `mcp: ended ${ended} agent grant${ended === 1 ? "" : "s"}`
+        : "no agent requests waiting and no grants",
+    );
   },
 
   /** The status bar's agent segment (decision 24), or null. */
@@ -356,6 +407,15 @@ export const AgentUi = {
       ranAt: AgentGate.ranAt,
       now: Date.now(),
     });
+  },
+
+  /**
+   * The window that asks and shows the notices: where the user answers (mcp-drive D6 names
+   * another window that a show switched).
+   * @returns {Window | null}
+   */
+  askingWindow() {
+    return askingWindow();
   },
 
   /** Test-only: the question on screen. */

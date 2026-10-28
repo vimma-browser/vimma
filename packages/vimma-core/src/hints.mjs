@@ -8,10 +8,15 @@
  */
 
 /** @import { Chord } from "./keys.mjs" */
+/** @import { BlockKind } from "./blocks.mjs" */
+/** @import { AgentElementInfo, AgentForm } from "./agent-element.mjs" */
+
+import { BLOCK_KINDS } from "./blocks.mjs";
+import { parseAgentElement, parseAgentForms } from "./agent-element.mjs";
 
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
 /** @typedef {{ rect: Rect }} Target */
-/** @typedef {"hint.follow" | "hint.follow_new_tab"} HintAction */
+/** @typedef {"hint.follow" | "hint.follow_new_tab" | "hint.element"} HintAction */
 /**
  * @template {Target} [T=Target]
  * @typedef {{ label: string, target: T }} Hint
@@ -44,7 +49,7 @@ export class HintError extends Error {
 export const DEFAULT_HINT_CHARS = "asdfghjkl";
 
 /** @type {readonly HintAction[]} */
-export const HINT_ACTIONS = Object.freeze(["hint.follow", "hint.follow_new_tab"]);
+export const HINT_ACTIONS = Object.freeze(["hint.follow", "hint.follow_new_tab", "hint.element"]);
 
 /** @param {string} chars */
 function checkChars(chars) {
@@ -202,17 +207,28 @@ const narrow = (state) => Object.freeze({ kind: "narrow", visible: visibleHints(
 export const HINT_REPLY_MAX_TARGETS = 5000;
 /** Most subframes one frame may report. */
 export const HINT_REPLY_MAX_FRAMES = 64;
-/** Longest href a link target may carry (for `F`). */
+/** Longest href a link target may carry (for `gF`). */
 export const HINT_REPLY_MAX_HREF = 8192;
+/** Longest link text a target may carry (an agent's `f`, docs/specs/mcp-drive.md D12). */
+export const HINT_REPLY_MAX_TEXT = 512;
 /** Coordinates beyond this are not on any screen. */
 const MAX_COORD = 1e6;
 /** @type {ReadonlySet<string>} */
-const TARGET_KINDS = new Set(["link", "input", "click"]);
+const TARGET_KINDS = new Set(["link", "input", "click", "block"]);
+/** @type {ReadonlySet<string>} */
+const BLOCK_KIND_SET = new Set(BLOCK_KINDS);
 
-/** @typedef {"link" | "input" | "click"} TargetKind */
-/** @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string }} ReplyTarget */
+/** @typedef {"link" | "input" | "click" | "block"} TargetKind */
+/**
+ * `rect` is where the label goes (for a text block, its first visible line); a block also
+ * carries its kind and its whole border box, for the outline (docs/specs/element-focus.md). An
+ * agent's collection (docs/specs/mcp-drive.md D12) is of links only, each with its text; an
+ * agent's `vimma_elements` (docs/specs/mcp-forms.md F5) is of every kind but blocks, each with the
+ * child's description of it (`agent`), and the frame's forms.
+ * @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string, text?: string, blockKind?: BlockKind, box?: Rect, agent?: AgentElementInfo }} ReplyTarget
+ */
 /** @typedef {{ id: number, rect: Rect }} ReplyFrame */
-/** @typedef {{ targets: ReplyTarget[], frames: ReplyFrame[], ms: number }} HintReply */
+/** @typedef {{ targets: ReplyTarget[], frames: ReplyFrame[], ms: number, forms?: AgentForm[] }} HintReply */
 
 /** @param {unknown} n */
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
@@ -235,15 +251,26 @@ function parseRect(value) {
 /**
  * A `Vimma:CollectHints` reply from a content process, which may be compromised: a fresh copy
  * with only the known fields, each of its exact type and within the caps, or null if anything
- * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs).
+ * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs). A
+ * collection gets only the kind of target it asked for: text blocks for element focus, never
+ * a block for `f` or `gF`, so a block is never followed and a link never outlined; an agent's
+ * collection (`texts`) only links, with their text; an agent's `vimma_elements` (`elements`) every
+ * kind but blocks, each with its description, checked by parseAgentElement, and the frame's forms.
  * @param {unknown} value
+ * @param {{ blocks?: boolean, texts?: boolean, elements?: boolean }} [options]  the collection
+ *   asked for text blocks, for links with their text (an agent's `f`), or for every element with
+ *   its description (`vimma_elements`)
  * @returns {HintReply | null}
  */
-export function parseHintReply(value) {
+export function parseHintReply(value, { blocks = false, texts = false, elements = false } = {}) {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const { targets, frames, ms } = /** @type {Record<string, unknown>} */ (value);
     if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+    const forms = elements
+      ? parseAgentForms(/** @type {Record<string, unknown>} */ (value).forms)
+      : null;
+    if (elements && !forms) return null;
     if (!Array.isArray(targets) || targets.length > HINT_REPLY_MAX_TARGETS) return null;
     if (!Array.isArray(frames) || frames.length > HINT_REPLY_MAX_FRAMES) return null;
     /** @type {ReplyTarget[]} */
@@ -251,11 +278,14 @@ export function parseHintReply(value) {
     const ids = new Set();
     for (const t of [...targets]) {
       if (typeof t !== "object" || t === null) return null;
-      const { id, rect, kind, href } = /** @type {Record<string, unknown>} */ (t);
+      const { id, rect, kind, href, text, blockKind, box, agent } =
+        /** @type {Record<string, unknown>} */ (t);
       if (!isIndex(id) || ids.has(id)) return null;
       ids.add(id);
       const r = parseRect(rect);
       if (!r || typeof kind !== "string" || !TARGET_KINDS.has(kind)) return null;
+      if ((kind === "block") !== blocks) return null;
+      if (texts && kind !== "link") return null;
       /** @type {ReplyTarget} */
       const out = {
         id: /** @type {number} */ (id),
@@ -265,6 +295,25 @@ export function parseHintReply(value) {
       if (href !== undefined) {
         if (typeof href !== "string" || href.length > HINT_REPLY_MAX_HREF) return null;
         out.href = href;
+      }
+      if (texts && text !== undefined) {
+        if (typeof text !== "string" || text.length > HINT_REPLY_MAX_TEXT) return null;
+        out.text = text;
+      }
+      if (elements) {
+        const info = parseAgentElement(agent, /** @type {AgentForm[]} */ (forms).length);
+        if (!info) return null;
+        out.agent = info;
+      }
+      if (kind === "block") {
+        // A block is clipped by its frame, not by the viewport: its box may start above it.
+        const b = parseRect(box);
+        if (typeof blockKind !== "string" || !BLOCK_KIND_SET.has(blockKind) || !b) return null;
+        if (href !== undefined) return null;
+        out.blockKind = /** @type {BlockKind} */ (blockKind);
+        out.box = b;
+      } else if (blockKind !== undefined || box !== undefined) {
+        return null;
       }
       outTargets.push(out);
     }
@@ -280,7 +329,73 @@ export function parseHintReply(value) {
       frameIds.add(id);
       outFrames.push({ id: /** @type {number} */ (id), rect: r });
     }
-    return { targets: outTargets, frames: outFrames, ms };
+    return forms
+      ? { targets: outTargets, frames: outFrames, ms, forms }
+      : { targets: outTargets, frames: outFrames, ms };
+  } catch {
+    return null;
+  }
+}
+
+/** Longest text a `Vimma:Block` yank may carry (code units): far past any block's. */
+export const BLOCK_REPLY_MAX_TEXT = 1 << 24;
+
+/** The `Vimma:Block` ops that focus a block, and so reply its kind, length and box. */
+const BLOCK_MOVES = new Set(["focus", "parent", "child", "next", "prev"]);
+
+/**
+ * @typedef {{ kind: BlockKind, length: number, box: Rect }} BlockMoved  a block was focused:
+ *   its border box in its frame's CSS pixels, unclipped, and its text's length in characters
+ * @typedef {BlockMoved | { box: Rect } | { rect: Rect } | { text: string, unselectable: boolean }
+ *   | { unselectable: boolean }} BlockReply
+ */
+
+/**
+ * A `Vimma:Block` reply (docs/specs/element-focus.md) from a content process, which may be
+ * compromised: a fresh copy with only the fields `op` replies, each of its exact type and within
+ * the caps, or null. Never throws. `focus`, `parent`, `child`, `next` and `prev` reply the block
+ * now focused; `rect` its box; `frame` a subframe's viewport; `yank` the block's text; `select`
+ * whether the page marks it unselectable.
+ * @param {unknown} value
+ * @param {string} op
+ * @returns {BlockReply | null}
+ */
+export function parseBlockReply(value, op) {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const v = /** @type {Record<string, unknown>} */ (value);
+    if (BLOCK_MOVES.has(op)) {
+      const { kind, length, box } = v;
+      const b = parseRect(box);
+      if (typeof kind !== "string" || !BLOCK_KIND_SET.has(kind) || !b) return null;
+      if (!isIndex(length) || /** @type {number} */ (length) > BLOCK_REPLY_MAX_TEXT) return null;
+      return {
+        kind: /** @type {BlockKind} */ (kind),
+        length: /** @type {number} */ (length),
+        box: b,
+      };
+    }
+    switch (op) {
+      case "rect": {
+        const b = parseRect(v.box);
+        return b ? { box: b } : null;
+      }
+      case "frame": {
+        const r = parseRect(v.rect);
+        return r ? { rect: r } : null;
+      }
+      case "yank": {
+        const { text, unselectable } = v;
+        if (typeof text !== "string" || text.length > BLOCK_REPLY_MAX_TEXT) return null;
+        if (typeof unselectable !== "boolean") return null;
+        return { text, unselectable };
+      }
+      case "select": {
+        const { unselectable } = v;
+        return typeof unselectable === "boolean" ? { unselectable } : null;
+      }
+    }
+    return null;
   } catch {
     return null;
   }

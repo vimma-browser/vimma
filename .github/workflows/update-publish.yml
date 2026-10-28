@@ -20,7 +20,7 @@
 #            key the browser pins and with openssl, then commits it and pushes, never forced.
 #
 # One manifest per build target (spec macos-homebrew, decision 16): `target` linux (the tarball,
-# AppImage and .deb, SHA256SUMS) or macos (the .dmg, SHA256SUMS-macos; prepare runs on macOS,
+# AppImage, .deb and .rpm, SHA256SUMS) or macos (the .dmg, SHA256SUMS-macos; prepare runs on macOS,
 # where hdiutil reads the build ID of the app inside it). The Linux run starts when the release
 # is published; the macOS run when its .dmg is on the published release, which is usually
 # later, from release.yml's macos-tap job, or here when the .dmg was there first.
@@ -173,7 +173,7 @@ jobs:
           v=${TAG#v}
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
           case "$TARGET_OS" in
-            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb") ;;
+            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb" "vimma-$v-1.x86_64.rpm") ;;
             macos) files=("vimma-$v-macos-aarch64.dmg") ;;
           esac
           mkdir -p assets && cd assets
@@ -357,7 +357,7 @@ jobs:
           v=${TAG#v}
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
           case "$TARGET_OS" in
-            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb") ;;
+            linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb" "vimma-$v-1.x86_64.rpm") ;;
             macos) files=("vimma-$v-macos-aarch64.dmg") ;;
           esac
           mkdir -p assets && cd assets
@@ -410,6 +410,11 @@ jobs:
           DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}
           SERIAL: ${{ steps.verify.outputs.serial }}
           VERSION: ${{ steps.verify.outputs.version }}
+          # The commit and the rebase in the retry both need an identity; a hosted runner has none.
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
         run: |
           install -d -m 700 ~/.ssh
           (umask 077 && printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/updates)
@@ -435,9 +440,7 @@ jobs:
           fi
           cd updates
           git add public/updates/browser/$BUILD_TARGET/vimma/update.xml
-          git -c user.name="github-actions[bot]" \
-            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "$message"
+          git commit -q -m "$message"
           # The other target's run may have pushed since the clone; its commit changes another
           # file, so this one rebases onto it unchanged.
           for attempt in 1 2 3; do

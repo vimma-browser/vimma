@@ -1,0 +1,12 @@
+{
+  "description": "Show an agent tab to the user (mcp-drive D2)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 9,
+    "command": "agent-show",
+    "args": {
+      "tab": "12"
+    }
+  }
+}

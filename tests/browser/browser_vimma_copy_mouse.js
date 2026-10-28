@@ -16,6 +16,7 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -165,7 +166,8 @@ add_task(async function ctrl_c_and_the_context_menu_copy_a_mouse_selection() {
 
 add_task(async function the_primary_selection_holds_a_mouse_selection() {
   const primary = Services.clipboard.kSelectionClipboard;
-  if (!Services.clipboard.isClipboardTypeSupported(primary)) {
+  // macOS has no primary selection; headless mode's clipboard claims one there all the same.
+  if (!Services.clipboard.isClipboardTypeSupported(primary) || AppConstants.platform === "macosx") {
     Assert.ok(true, "no primary selection on this platform");
     return;
   }

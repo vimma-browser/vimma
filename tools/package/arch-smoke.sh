@@ -9,13 +9,14 @@
 #       dist-dir holds package.mjs's output: PKGBUILD, SRCINFO and vimma-X.Y.Z-linux-x86_64.tar.xz.
 #       release.yml's package job runs this on the release build.
 #   tools/package/arch-smoke.sh --stub
-#       packages a stub tarball (a shell script for `vimma`) first; pkgbuild.yml runs this on
-#       pull requests, so a broken PKGBUILD fails before a release.
+#       packages a stub tarball (shell scripts for `vimma` and `vimma-ctl`) first; pkgbuild.yml
+#       runs this on pull requests, so a broken PKGBUILD fails before a release.
 #
 # Needs docker and python3 on the host. Checks: makepkg --printsrcinfo equals SRCINFO; makepkg -si
 # downloads the tarball, verifies its SHA-256 and installs; `vimma --version` prints the expected
-# line; /opt/vimma/is-packaged-app says vimma-package=pkgbuild-release; vimma-open is the repository's
-# launcher byte for byte; the desktop file passes desktop-file-validate; and, for a real build (not
+# line; vimma-ctl on PATH names the same Vimma version; /opt/vimma/is-packaged-app says
+# vimma-package=pkgbuild-release; vimma-open is the repository's launcher byte for byte; the
+# desktop file passes desktop-file-validate; and, for a real build (not
 # --stub), Vimma starts headless and takes a screenshot, so the PKGBUILD's depends are enough.
 set -euo pipefail
 
@@ -52,6 +53,12 @@ if [ "${1:-}" = "--inside" ]; then
   pacman -Qi vimma-bin
   version=$(vimma --version)
   [ "$version" = "$expected" ] || { echo "arch-smoke: vimma --version is '$version', want '$expected'"; exit 1; }
+  # vimma-ctl ships with the browser and carries its version (spec ship-vimma-ctl).
+  release=${expected#Vimma }
+  release=${release%% *}
+  ctl=$(vimma-ctl --version)
+  case "$ctl" in "vimma-ctl $release "*) ;; *) echo "arch-smoke: vimma-ctl --version is '$ctl', want vimma-ctl $release"; exit 1 ;; esac
+  test -s /opt/vimma/vimma-ctl-licenses/musl-COPYRIGHT
   marker=$(cat /opt/vimma/is-packaged-app)
   [ "$marker" = "vimma-package=pkgbuild-release" ] || { echo "arch-smoke: is-packaged-app says '$marker'"; exit 1; }
   test -x /usr/bin/vimma-open
@@ -86,8 +93,17 @@ if [ "${1:-}" = "--stub" ]; then
     cp "$repo/configs/branding/vimma/logo$size.png" "$app/browser/chrome/icons/default/default$size.png"
   done
   tar -cJf "$work/vimma-stub.en-US.linux-x86_64.tar.xz" -C "$work/stub" vimma
+  release=$(echo "$expected" | sed 's/^Vimma \([^ ]*\) .*/\1/')
+  printf '#!/bin/sh\necho "vimma-ctl %s (protocol 2)"\n' "$release" > "$work/vimma-ctl"
+  chmod 755 "$work/vimma-ctl"
+  # Stand-ins for what ctl-notices.mjs writes in the ctl job (#516).
+  mkdir "$work/vimma-ctl-licenses"
+  echo stub > "$work/vimma-ctl-licenses/README.txt"
+  echo stub > "$work/vimma-ctl-licenses/rust-std-COPYRIGHT.html"
+  echo stub > "$work/vimma-ctl-licenses/musl-COPYRIGHT"
   node "$here/package.mjs" --tarball "$work/vimma-stub.en-US.linux-x86_64.tar.xz" \
-    --out "$work/dist" --maintainer 'Vimma CI <ci@example.invalid>' --no-deb
+    --ctl "$work/vimma-ctl" --ctl-licenses "$work/vimma-ctl-licenses" --out "$work/dist" \
+    --maintainer 'Vimma CI <ci@example.invalid>' --no-deb --no-rpm
   dist="$work/dist"
   real=0
 else

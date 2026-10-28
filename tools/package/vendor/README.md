@@ -13,6 +13,13 @@ and keeping the SPDX list at the version the CycloneDX schema's `spdx.schema.jso
 | `spdx-license-list-3.24.0/licenses.json`   | `https://raw.githubusercontent.com/spdx/license-list-data/v3.24.0/json/licenses.json`        | 3.24.0  | CC0-1.0                    | `2455d63fb9bcc1eef49bad9fe5bd78e3dd3c2e71c31999f403fe738cdc67cae2` |
 | `spdx-license-list-3.24.0/exceptions.json` | same tag, `json/exceptions.json`                                                             | 3.24.0  | CC0-1.0                    | `f779511110a5eb9ffbd6a11abcec3b224e8eb623f6465e87254e95427b01f1b3` |
 | `../notices/LGPL-2.1.txt`                  | `https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt`                                     | 2.1     | verbatim copying permitted | `20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95` |
+| `../notices/musl-1.2.5/COPYRIGHT`          | `COPYRIGHT` in `https://musl.libc.org/releases/musl-1.2.5.tar.gz` (signature checked)        | 1.2.5   | MIT                        | `f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af` |
+
+The notices files ship: the AppImage carries `LGPL-2.1.txt`, and every package carries musl's
+`COPYRIGHT` with `vimma-ctl` (`ctl-notices.mjs`, which picks it by the musl version in the Rust
+toolchain's `libc.a`; rustup ships no copy). For a new musl, add `notices/musl-<version>/COPYRIGHT`
+from that release's tarball, after checking the tarball's `.asc` against musl's key
+(`https://musl.libc.org/musl.pub`).
 
 The schemas are validated with ajv 8 (MIT, a direct devDependency; it was already in the lockfile
 through commitlint): `node tools/package/validate-sbom.mjs <sbom>`.

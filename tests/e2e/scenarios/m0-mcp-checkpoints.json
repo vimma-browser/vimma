@@ -1,0 +1,223 @@
+{
+  "name": "m0-mcp-checkpoints",
+  "description": "docs/specs/mcp-checkpoints.md: under a grant, the real vimma-ctl mcp over stdio shops in the agent workspace on a real build while the window stays on main. vimma_open opens shop.html, a basket whose buttons are type=submit buttons outside any form; its vimma_elements is answered with a grant of 10 minutes (10a). vimma_activate of 'Lisää ostoskoriin' (a) runs unasked under the grant, with a notice (m0-mcp-checkpoints-basket-ran). vimma_activate of 'Vahvista tilaus' (s) stops at the payment checkpoint, ▲ and its verb in the warning colour, naming the button, the site and the total the page states, with y and n only (m0-mcp-checkpoints-pay-question); y runs it, and the notice says that the payment was allowed and where. vimma_open opens checkout.html, whose card number field is in a frame of another site (localhost inside 127.0.0.1); under the same grant, vimma_activate of 'Apply coupon' (d) asks as a payment because of that field (m0-mcp-checkpoints-card-question), and n stops that step only, with the grant still in force. vimma_open opens hosted-checkout.html, whose only control is a payment provider's 'Pay 42.90 EUR' button in a frame of another site (localhost inside 127.0.0.1); vimma_activate of it (a) asks as a payment that names the frame's site, then the tab's, 'on localhost (in 127.0.0.1)' (m0-mcp-checkpoints-hosted-question), and y shows 'allowed payment on localhost (in 127.0.0.1)' as it is answered (m0-mcp-checkpoints-hosted-allowed). The status bar and question line show the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "timeoutSeconds": 120,
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "fixture:long.html" },
+    {
+      "wait-for-state": { "tabs": [{}, { "selected": true, "title": "long top navigate" }] }
+    },
+    { "hold": true },
+    {
+      "mcp": {
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-11-25",
+          "capabilities": {},
+          "clientInfo": { "name": "claude-code", "version": "2.1.0" }
+        },
+        "as": "init"
+      }
+    },
+    {
+      "mcp-result": {
+        "of": "init",
+        "expect": { "result": { "protocolVersion": "2025-11-25" } }
+      }
+    },
+    { "mcp": { "method": "notifications/initialized" } },
+    { "keys": ": m c p space o n enter" },
+    { "sleep": 0.5 },
+    { "keys": "y" },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": { "name": "vimma_open", "arguments": { "url": "fixture:shop.html" } },
+        "as": "shop"
+      }
+    },
+    { "sleep": 1.5 },
+    { "keys": "y" },
+    {
+      "mcp-result": {
+        "of": "shop",
+        "expect": { "result": { "content": [{ "type": "text" }] } }
+      }
+    },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_elements",
+          "arguments": { "tab": "$shop.result.structuredContent.tab" }
+        },
+        "as": "elems"
+      }
+    },
+    { "sleep": 1.5 },
+    { "keys": "1 0 a" },
+    {
+      "mcp-result": {
+        "of": "elems",
+        "expect": {
+          "result": { "content": [{ "type": "text" }, { "type": "text" }, { "type": "text" }] }
+        }
+      }
+    },
+    { "sleep": 1 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_activate",
+          "arguments": { "tab": "$shop.result.structuredContent.tab", "label": "a" }
+        },
+        "as": "basket"
+      }
+    },
+    {
+      "mcp-result": {
+        "of": "basket",
+        "expect": { "result": { "content": [{ "type": "text" }, { "type": "text" }] } }
+      }
+    },
+    { "sleep": 0.5 },
+    { "screenshot": "m0-mcp-checkpoints-basket-ran" },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_activate",
+          "arguments": { "tab": "$shop.result.structuredContent.tab", "label": "s" }
+        },
+        "as": "pay"
+      }
+    },
+    { "sleep": 1.5 },
+    { "screenshot": "m0-mcp-checkpoints-pay-question" },
+    { "keys": "y" },
+    {
+      "mcp-result": {
+        "of": "pay",
+        "expect": { "result": { "content": [{ "type": "text" }, { "type": "text" }] } }
+      }
+    },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": { "name": "vimma_open", "arguments": { "url": "fixture:checkout.html" } },
+        "as": "checkout"
+      }
+    },
+    {
+      "mcp-result": {
+        "of": "checkout",
+        "expect": { "result": { "content": [{ "type": "text" }] } }
+      }
+    },
+    { "sleep": 1 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_elements",
+          "arguments": { "tab": "$checkout.result.structuredContent.tab" }
+        },
+        "as": "elems2"
+      }
+    },
+    {
+      "mcp-result": {
+        "of": "elems2",
+        "expect": {
+          "result": { "content": [{ "type": "text" }, { "type": "text" }, { "type": "text" }] }
+        }
+      }
+    },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_activate",
+          "arguments": { "tab": "$checkout.result.structuredContent.tab", "label": "d" }
+        },
+        "as": "coupon"
+      }
+    },
+    { "sleep": 1.5 },
+    { "screenshot": "m0-mcp-checkpoints-card-question" },
+    { "keys": "n" },
+    {
+      "mcp-result": {
+        "of": "coupon",
+        "expect": { "result": { "isError": true } }
+      }
+    },
+    { "sleep": 1.8 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": { "name": "vimma_open", "arguments": { "url": "fixture:hosted-checkout.html" } },
+        "as": "hosted"
+      }
+    },
+    {
+      "mcp-result": {
+        "of": "hosted",
+        "expect": { "result": { "content": [{ "type": "text" }] } }
+      }
+    },
+    { "sleep": 1 },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_elements",
+          "arguments": { "tab": "$hosted.result.structuredContent.tab" }
+        },
+        "as": "elems3"
+      }
+    },
+    {
+      "mcp-result": {
+        "of": "elems3",
+        "expect": {
+          "result": { "content": [{ "type": "text" }, { "type": "text" }, { "type": "text" }] }
+        }
+      }
+    },
+    {
+      "mcp": {
+        "method": "tools/call",
+        "params": {
+          "name": "vimma_activate",
+          "arguments": { "tab": "$hosted.result.structuredContent.tab", "label": "a" }
+        },
+        "as": "hostedpay"
+      }
+    },
+    { "sleep": 1.5 },
+    { "screenshot": "m0-mcp-checkpoints-hosted-question" },
+    { "keys": "y" },
+    { "sleep": 0.3 },
+    { "screenshot": "m0-mcp-checkpoints-hosted-allowed" },
+    {
+      "mcp-result": {
+        "of": "hostedpay",
+        "expect": { "result": { "content": [{ "type": "text" }, { "type": "text" }] } }
+      }
+    },
+    {
+      "assert-state": {
+        "workspace": "main",
+        "tabs": [{}, { "selected": true, "title": "long top navigate" }]
+      }
+    },
+    { "keys": ": m c p space o f f enter" }
+  ]
+}

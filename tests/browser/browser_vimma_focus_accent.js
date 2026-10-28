@@ -67,13 +67,15 @@ async function focusedUrlbarRing() {
   return { color: style.borderTopColor, background: style.backgroundColor };
 }
 
-/** The selected (focused) pane's outline, in a three-pane split. */
+/** The selected (focused) pane's border colour, in a three-pane split. */
 function focusedPaneOutline() {
   const panel = document.getElementById(gBrowser.selectedTab.linkedPanel);
   Assert.ok(panel.classList.contains("deck-selected"), "the focused pane is the deck's");
-  const style = getComputedStyle(/** @type {Element} */ (panel.querySelector(".browserContainer")));
-  Assert.notEqual(style.outlineStyle, "none", "the focused pane has its outline");
-  return style.outlineColor;
+  const container = /** @type {Element} */ (panel.querySelector(".browserContainer"));
+  const style = getComputedStyle(container, "::after");
+  Assert.notEqual(style.borderTopStyle, "none", "the focused pane has its border");
+  Assert.equal(style.borderTopWidth, "3px", "it is the 3 px pane focus border");
+  return style.borderTopColor;
 }
 
 /**

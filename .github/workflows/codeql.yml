@@ -42,15 +42,27 @@ jobs:
         # javascript-typescript: packages/, src/.../vimma/, tools/, tests/; rust: tools/vimma-ctl.
         # No build: neither language needs one (no Firefox engine either).
         language: [javascript-typescript, rust]
+    # Issue #443: a push to a draft pull request (opened, synchronize: a new head, so no earlier
+    # analysis is replaced) skips every step, not the job, so both required checks
+    # report under their matrix names (a matrix job skipped by its own `if:` reports one check
+    # named with the unexpanded expression). No analysis is uploaded for a draft, so the code
+    # scanning rule keeps it blocked until the run that marking it ready starts on the same head.
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Draft pull request (analysis skipped until it is marked ready)
+        if: github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')
+        run: echo "::notice::A draft pull request gets no CodeQL analysis until it is marked ready for review"
 
-      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')) }}
+
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        if: ${{ !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')) }}
         with:
           languages: ${{ matrix.language }}
           build-mode: none
           config-file: ./.github/codeql/codeql-config.yml
 
-      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        if: ${{ !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')) }}
         with:
           category: /language:${{ matrix.language }}

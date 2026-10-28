@@ -17,7 +17,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
- * The test names a file defines: mochitest `add_task(function name`, Vitest
+ * The test names a file defines: mochitest `add_task(function name` (or a file's own wrapper of
+ * it, `addTidyTask(function name`), Vitest
  * `test("name"` / `it("name"` / `describe("name"` (and `test.each([...])("name"`), Rust
  * `#[test] fn name`.
  * @param {string} text  the file's source
@@ -35,7 +36,7 @@ export function testNames(text, path) {
   } else if (path.endsWith(".py")) {
     collect(/^\s*def\s+(test\w*)\s*\(/gm);
   } else {
-    collect(/\badd_task\(\s*(?:async\s+)?function\s*\*?\s*(\w+)/g);
+    collect(/\badd(?:_task|[A-Z]\w*Task)\(\s*(?:async\s+)?function\s*\*?\s*(\w+)/g);
     collect(/(?:\b(?:test|it|describe)|\]\))\(\s*"((?:[^"\\\n]|\\.)*)"/g);
     collect(/(?:\b(?:test|it|describe)|\]\))\(\s*'((?:[^'\\\n]|\\.)*)'/g);
     collect(/(?:\b(?:test|it|describe)|\]\))\(\s*`([^`$\\]*)`/g);

@@ -49,7 +49,7 @@ export const PATTERNS = [
   /\bPR\s+#\d+(?:'s)?\s+review\b/gi,
   // the contributor instructions for coding agents, not a reason a reader can check; the pointers
   // that send agents there (README, CONTRIBUTING) carry a marker
-  /\bCLAUDE\.md\b/gi,
+  /\b(?:CLAUDE|AGENTS)\.md\b/gi,
 ];
 
 const MARKER = /<!--\s*process-wording:\s*\S[^>]*-->/;

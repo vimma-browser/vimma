@@ -1,6 +1,6 @@
 # Spec: macos-homebrew
 
-Status: draft (sub-PRs 1 to 3 implemented; sub-PR 4 in #408, sub-PR 5 in #409) · Area: `configs/branding/vimma/` (macOS icon
+Status: implemented · Area: `configs/branding/vimma/` (macOS icon
 files, new), `configs/macos/AppIcon.icon/` (icon source, new), `configs/macos/mozconfig`,
 `src/browser/branding/vimma/configure.sh`, `tools/package/` (cask generator and icon
 generator, new), `packages/vimma-core/src/updates.mjs`,
@@ -57,7 +57,9 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    profiles and caches (decision 5).
 6. The cask refuses to install on an Intel Mac and on a macOS older than the minimum (decision 6).
 7. Before Vimma is notarised, the cask's caveats tell the user how to open it the first time
-   (decision 7); after notarisation, it opens like any app.
+   (decision 7); after notarisation, it opens like any app. (Since changed: a release signed with
+   the Developer ID gets a cask with no caveats, `cask.mjs --notarised`; spec
+   [macos-build](macos-build.md), decisions 23 and 26.)
 8. Vimma on macOS shows the same update notices as on Linux when a newer release carries a
    `.dmg` (decisions 16 to 18). `:update` and `about:vimma` then suggest
    `brew upgrade --cask vimma` for a Homebrew install (decision 8), and for a `.dmg` installed by
@@ -66,7 +68,8 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
 9. The app icon in the Dock, Finder, Launchpad, the app switcher and Get Info is the Vimma logo,
    rendered at every size from the same artwork as the Linux icons, with no grey plate around
    it. Documents Vimma opens (`.html`, `.pdf`) show a Vimma document icon. The mounted `.dmg`
-   keeps the default volume icon for now (decision 14).
+   shows the Vimma logo as its volume icon, and its window shows `Vimma.app` on the left, an
+   arrow and the Applications link on the right, on the brand background (decision 14).
 10. Nothing in a Linux build, package or release asset changes: the icon files are macOS-only
     build inputs, and the Linux jobs neither read nor produce them.
 
@@ -180,10 +183,46 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
   and runs only on macOS. GitHub's `macos-15` images include Xcode (version **unverified**). A
   Linux cross-build cannot run it.
 - `mach package` builds the `.dmg` through `python/mozbuild/mozbuild/action/package.py:54-70`,
-  which accepts `--dsstore`, `--background` and `--icon`; `toolkit/mozapps/installer/upload-files.mk:21-28`
-  passes only `MOZ_PACKAGE_EXTRA_ARGS`, which no in-tree file sets, so a default `.dmg` has no
-  window background or volume icon. Whether `mk_add_options MOZ_PACKAGE_EXTRA_ARGS=…` in a
-  mozconfig reaches it is **unverified**.
+  which accepts `--dsstore`, `--background` and `--icon`, from
+  `toolkit/mozapps/installer/upload-files.mk:21-28`, which passes `MOZ_PACKAGE_EXTRA_ARGS`.
+  Configure sets that variable: `moz_package_extra_args` (`toolkit/moz.configure:4061-4105`)
+  gives a `DMG` build `--dsstore`, `--background` and `--icon` with the branding directory's
+  `dsstore`, `background.png` and `disk.icns`, and `--volume-name` with `MOZ_APP_DISPLAYNAME`,
+  so the window art and the volume icon come from the branding directory, and no mozconfig
+  needs to set anything. The
+  `config/autoconf.mk` of a Vimma objdir on a Mac reads
+  `MOZ_PACKAGE_EXTRA_ARGS = --dsstore …/browser/branding/vimma/dsstore --background …/browser/branding/vimma/background.png --icon …/browser/branding/vimma/disk.icns --volume-name Vimma`.
+  `make_dmg` puts the three files on the volume as `.DS_Store`, `.background/background.png`
+  and `.VolumeIcon.icns` (`python/mozbuild/mozbuild/action/make_dmg.py:35-40`) and sets the
+  root folder's custom icon flag (`python/mozbuild/mozpack/dmg.py:35-41`, called at line 206).
+  A plain `mk_add_options MOZ_PACKAGE_EXTRA_ARGS=…` would not reach `mach package` in any case:
+  `python/mozbuild/mozbuild/controller/building.py:2019-2035` copies only `export` lines and
+  `UPLOAD_EXTRA_FILES` into the objdir's `.mozconfig.mk`, the file `config/config.mk:32`
+  includes, and `mach package` runs make in the objdir, not through `client.mk` (read in the
+  source, not run).
+- The v0.1.6 `.dmg` carries Firefox's unofficial `dsstore`, `background.png` and `disk.icns`,
+  byte for byte (`shasum` of the mounted volume's files against
+  `browser/branding/unofficial/`), because Surfer's branding step copies them into
+  `browser/branding/vimma/`. That `.DS_Store` places `Nightly.app` and the Applications link
+  `" "`, and its background alias names a volume called `Nightly`. Mounted on macOS 27.0.1,
+  the image showed Firefox's unofficial drive icon, no background, and `Vimma.app` where Finder
+  put it.
+- Surfer's `addOptionalIcons` (`S/dist/commands/patches/branding-patch.js:242-256`) runs after
+  `copyMozFiles` and copies every top-level file of `configs/branding/vimma/` into the engine's
+  branding directory, so a committed `dsstore`, `background.png` or `disk.icns` replaces
+  Firefox's.
+- The repack in `tools/package/macos-dmg.sh` keeps the three files: `unpack_dmg` copies the
+  whole volume, hidden files included (`extract_dmg`, `python/mozbuild/mozpack/dmg.py:263`, and
+  `build/package/mac_osx/unpack-diskimage:48` on a Mac), and `make_dmg` copies its source
+  directory, hidden files included, onto the new volume (`dmg.py:195`) and sets the custom icon
+  flag again.
+- Firefox's `dsstore` is written by Finder: its alias records the scratch image it was laid out
+  on (`…/firefox-brand-dsstore-…/rw.72098.firefox-installer.dmg`). No tool in the engine tree
+  writes one.
+- On macOS 27.0.1, Finder opened Firefox 158.0.1's own `.dmg` (from download.mozilla.org) and a
+  test image with Vimma's art at the frame of the last Finder window, not at the `WindowBounds`
+  of their `.DS_Store`; the background picture, the icon size and the icon positions were
+  applied.
 - The dev build's bundle identifier is `org.mozilla.dev.vimma.browser` (its `Info.plist`, from
   `appId` `dev.vimma.browser` in `surfer.json`): macOS names the bundle
   `<distribution id>.<MOZ_MACBUNDLE_ID>`, and Firefox's default distribution id is `org.mozilla`.
@@ -250,7 +289,10 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    notarisation (macos-build sub-PR 6), because it would hold the tap back behind a yearly
    Developer ID cost while the `.dmg` itself is already public. When the macOS updater ships for
    signed builds, the cask switches to `auto_updates true`, as `zen` and `firefox` do, so that
-   Homebrew and the updater do not fight.
+   Homebrew and the updater do not fight. (Since changed: notarisation is macos-build's sub-PR 7;
+   while `MACOS_SIGNING` is `developer-id` the release's app is notarised, Gatekeeper accepts it
+   on the first open, and the cask has no caveats; spec [macos-build](macos-build.md), decisions
+   23 to 26.)
 8. **A Homebrew install is recognised by the Caskroom, not by a marker in the app.** The update
    check reports `homebrew` when the running app is `/Applications/Vimma.app` and
    `/opt/homebrew/Caskroom/vimma/` exists, and `updateSteps` gives `brew upgrade --cask vimma`.
@@ -280,7 +322,13 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    copy of the workflow, and anyone with write access can create a tag on an unmerged commit whose
    copy skips every check; rendering the cask in `homebrew.yml`, because the job holding the
    tap's key would then run repository code; a step in `release.yml`, because it would put the
-   tap's key in the build job.
+   tap's key in the build job. (Since changed: `homebrew.yml` also has a `release: released`
+   trigger, whose run holds a `start` job alone, with only `actions: write`, no environment and
+   no secret; it starts `main`'s copy by `workflow_dispatch` once `vimma.rb` is on the published
+   release, as `update-publish.yml` does. A draft published after its macOS files had needed a
+   manual run, and 0.1.9 and 0.1.10 missed the tap. The push itself still runs only by
+   `workflow_dispatch` from `main`, and a failed `start` opens the `release-failure` issue as a
+   failed push does.)
 10. **The tap's credential is a deploy key held by a `homebrew` environment,** limited to `main`,
     so that only a workflow file reviewed onto `main` can write to the tap, and a missing key
     skips the job instead of failing it. No tag may deploy to it, because a tag ruleset restricts
@@ -288,8 +336,15 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     deploy key reaches only the one repository. The tap repository's branch rules allow pushes by
     the deploy key and pull requests by others.
 11. **The tap holds only generated files and a README,** so that every cask change is visible in
-    this repository's review, and the tap cannot drift from the generator. The tap's own CI runs
-    `brew style` and `brew audit` on pull requests.
+    this repository's review, and the tap cannot drift from the generator. The tap's own CI,
+    `check.yml`, runs the same checks as `cask-check.sh`, `brew style` and an offline
+    `brew audit --cask --strict`, on the latest stable Homebrew, on the tap's pull requests and
+    pushes to `main`, so that a cask passes the same rules in both places and a network failure
+    cannot fail the tap with no cask change. `cask-check.sh` runs the runner image's Homebrew on
+    the one cask, so a new Homebrew audit rule can turn the tap red before this repository's
+    `cask` job. It is not a required check, so it never holds `homebrew.yml`'s push. Rejected: `--online`, because it
+    downloads the `.dmg` and queries GitHub, and `macos-smoke` already installs the `.dmg`
+    through the cask.
 
 ### Icon parity
 
@@ -315,14 +370,48 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     Rejected: compiling `Assets.car` during every build, because the release build runs on Linux;
     patching `Info.plist.in` to drop `CFBundleIconName`, because macOS 26 and later then draw the
     icon on a grey plate.
-14. **The `.dmg` window and volume icon come later,** so that the app icon ships without waiting
-    for them. A `background.png`, its `dsstore` and a `disk.icns` volume icon would be passed to
-    `mach package` through `MOZ_PACKAGE_EXTRA_ARGS`, which no in-tree file sets and whose reach
-    from a mozconfig is **unverified**; until then the mounted image shows the default volume
-    icon and no window art, and no `disk.icns` is committed. Rejected: running `package.py`'s DMG
-    step by hand in the release job now, because the dmg is repacked by
-    `tools/package/macos-dmg.sh` (macos-build) and a second packaging path would need its own
-    checks.
+14. **The `.dmg` window and volume icon are committed branding files.** `configs/branding/vimma/`
+    holds `background.png`, `dsstore` and `disk.icns`, because configure already passes those
+    three files of the branding directory to `mach package` (Research, "Icons in a macOS
+    build"), and without them the image carries Firefox's unofficial ones, laid out for
+    `Nightly.app`. No mozconfig line and no upstream patch is needed. Rejected: setting
+    `MOZ_PACKAGE_EXTRA_ARGS` in `configs/macos/mozconfig`, because configure sets it, and a plain
+    `mk_add_options` does not reach `mach package`; passing the files to `make_dmg` in
+    `tools/package/macos-dmg.sh`, because a second source of the art would let the image from
+    `mach package` and the released one differ.
+    - **The layout.** A 640 × 400 point window, icons at 128 points, `Vimma.app` centred at
+      (180, 190) and the Applications link at (460, 190), with toolbar, status bar and sidebar
+      hidden, as `DMG_LAYOUT` in `tools/package/macos-icons.mjs` states. `background.png` is
+      1280 × 800 pixels at 144 dpi, so that Finder draws it at the window's size and sharp on a
+      Retina display: the brand background (`surfer.json`'s `backgroundColor`) and an arrow from
+      the app to the link in the mark's green, `#1afa80`. Rejected: Firefox's own artwork,
+      because it is Mozilla's, and new illustrated art, because the logo and the brand colours
+      already identify Vimma.
+    - **The volume icon is the mark,** the same file as `firefox.icns`, so that the mounted
+      volume in Finder's sidebar and title bar shows the logo the app shows. Rejected: a drive
+      with the logo on it, as Firefox's is, because it needs artwork Vimma does not have.
+    - **Generated where they can be.** `tools/package/macos-icons.mjs` renders `background.png`
+      from an SVG with sharp and copies `disk.icns`, and `macos.yml`'s `icons` job checks both
+      with the other icon files (decision 13). The `dsstore` is the `.DS_Store` Finder writes,
+      as Firefox's is: `tools/package/macos-dsstore.sh` lays out a scratch disk image named
+      Vimma through AppleScript and copies it, since the alias to the background must name the
+      volume `make_dmg` creates. Finder records dates and the scratch image's path in it, so it
+      is not reproducible byte for byte, and `tools/package/test/macos.test.mjs` checks what it
+      says instead: the two icon positions, the window size, the icon size, a background alias
+      to `.background/background.png` on Vimma, and no home directory. The committed file is
+      generated on a GitHub-hosted `macos-15` runner, not a developer's Mac, because Finder also
+      records the generating machine's per-user temp-dir hash and its volume UUIDs; the test
+      fails on a known developer Mac's. Rejected: a `.DS_Store`
+      writer such as Python's `ds_store` and `mac_alias`, because it is a new dependency for a
+      file that changes only with the layout.
+    - **Checked in the release.** `tools/package/macos-dmg.sh` refuses a `.dmg` without the
+      three files, so a repack cannot drop them silently, and `tools/package/macos-dmg-check.sh`
+      checks the mounted image's `.DS_Store`, `.background/background.png` and
+      `.VolumeIcon.icns` against the committed files and its custom icon flag, in `macos.yml`'s
+      `smoke` job and `release.yml`'s `macos-smoke` job, so a release cannot publish an image
+      with Firefox's art or none. Finder on macOS 27.0.1 opens an image's window at the frame of
+      its last window rather than the `.DS_Store`'s, as it does Firefox's (Research); the
+      background, the icon size and the positions still apply.
 15. **The bundle identifier is `dev.vimma.browser`,** `surfer.json`'s `appId`, because macOS
     keeps preferences and window state under it, the cask's `uninstall quit:` and `zap` name it,
     and changing it after the first public build would strand every user's settings.
@@ -413,7 +502,9 @@ Submitting to Homebrew/homebrew-cask (open question 1); Developer ID signing and
   can change the tap but not the release, and Homebrew still checks the pinned SHA-256 against
   the GitHub download.
 - **Gatekeeper.** The caveats never tell a user to remove quarantine or disable Gatekeeper; they
-  point to the per-app Open Anyway that macOS offers. A notarised build needs no caveat.
+  point to the per-app Open Anyway that macOS offers. A notarised build needs no caveat. (Since
+  changed: a Developer ID release's cask has none; spec [macos-build](macos-build.md), decision
+  23.)
 - **Tap trust.** The documented command trusts one cask, not the whole tap.
 - **Icons.** The committed `Assets.car` and `.icns` files are binaries in the tree; the
   regeneration check in `macos.yml` makes them reproducible from the committed sources, so a
@@ -516,10 +607,12 @@ joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
    Caskroom check, the macOS manifest in `tools/update/manifest.mjs` and `update-publish.yml`,
    its start from `release.yml`'s `macos-tap`, and the guide, runbook and `docs/security.md`.
    Closes the feature's issue; sub-PRs 4 and 5 then have issues of their own.
-4. **`build(macos): dmg window art`** (#408). Decision 14: `background.png`, `dsstore`, `disk.icns`
-   and `MOZ_PACKAGE_EXTRA_ARGS`.
-5. **The tap's own CI** (decision 11, #409), in `vimma-browser/homebrew-tap`: `brew style` and
-   `brew audit` on its pull requests.
+4. **`build(macos): dmg window art`** (#408). Decision 14: `background.png`, `dsstore` and
+   `disk.icns` in `configs/branding/vimma/`, their generators, the guard in `macos-dmg.sh`, and
+   `macos-dmg-check.sh` in both smoke jobs.
+5. **The tap's own CI** (decision 11, #409), in `vimma-browser/homebrew-tap`: `check.yml`, with
+   `brew style` and `brew audit --cask --strict` on its pull requests and pushes, and the runbook
+   and `docs/security.md`.
 
 ## Open questions
 

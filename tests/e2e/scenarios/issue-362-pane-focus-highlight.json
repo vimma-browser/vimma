@@ -1,0 +1,162 @@
+{
+  "name": "issue-362-pane-focus-highlight",
+  "issue": 362,
+  "description": "Spec pane-focus-highlight: the focused pane in a split has a 3 px border in the theme's focus colour, inside its rectangle; the other panes keep the 1 px separator. Two fixture pages side by side with the left one focused (pane-focus-highlight-2), then the left pane split down with the new bottom-left pane focused (pane-focus-highlight-3). Each page titles itself with its width, so the state's titles check that the border did not shrink the pages. The status bar shows the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "timeoutSeconds": 60,
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:pane.html#a"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "a 1280",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "ctrl+b v"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "a 639"
+          },
+          {
+            "selected": true
+          }
+        ],
+        "panes": {
+          "zoomed": false,
+          "root": {
+            "axis": "x",
+            "children": [
+              {
+                "index": 1
+              },
+              {
+                "index": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "open": "fixture:pane.html#b"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "a 639"
+          },
+          {
+            "title": "b 639",
+            "selected": true
+          },
+          {}
+        ]
+      }
+    },
+    {
+      "keys": "ctrl+b h"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [
+          {},
+          {
+            "title": "a 639",
+            "selected": true
+          },
+          {
+            "title": "b 639",
+            "selected": false
+          },
+          {}
+        ]
+      }
+    },
+    {
+      "screenshot": "issue-362-pane-focus-highlight-2"
+    },
+    {
+      "keys": "ctrl+b -"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {},
+          {},
+          {
+            "selected": true
+          },
+          {}
+        ],
+        "panes": {
+          "root": {
+            "axis": "x",
+            "children": [
+              {
+                "axis": "y",
+                "children": [
+                  {
+                    "index": 1
+                  },
+                  {
+                    "index": 3
+                  }
+                ]
+              },
+              {
+                "index": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "open": "fixture:pane.html#c"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [
+          {},
+          {
+            "title": "a 639"
+          },
+          {
+            "title": "b 639"
+          },
+          {
+            "title": "c 639",
+            "selected": true
+          },
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "screenshot": "issue-362-pane-focus-highlight-3"
+    }
+  ]
+}

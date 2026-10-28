@@ -62,6 +62,10 @@ What Vimma adds (`host/find.mjs`, class `Find`, one per window, created by `Vimm
   hint), sends no focus report, and after the finder's task blurs the field, restores the match
   as its selection (the close collapses it) and shows it as the find's ATTENTION selection. So
   the tab stays in normal mode, no key types into the field, and `n` goes on from the match.
+  The finder focuses the field at most once per find step (a search, `n`, `N`), and its
+  `foundEditable` names the field until the next one, so the actor counts only the first focus
+  of a step as the find's (#442): the host sends every frame `Vimma:FindStep` before each step,
+  and a later focus in the same field (the page's own script) is reported, so it enters insert.
 - **Status**: a finder result listener per tab records `{ query, backward, current, total,
 limit, notFound }`; `VimmaHost.status(win).find` returns it for the selected tab while its
   URL is the one searched, and `mode: "command"` while a search is typed (Vim's command-line

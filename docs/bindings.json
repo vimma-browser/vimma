@@ -3,7 +3,7 @@
   "generated": "Generated from packages/vimma-core/src/actions.mjs and defaults.mjs by npm run gen-docs; do not edit.",
   "prefix": "ctrl+b",
   "legend": "prefix = ctrl+b",
-  "modes": ["normal", "insert", "visual", "command", "hint", "help", "panel", "resize"],
+  "modes": ["normal", "insert", "visual", "command", "hint", "element", "help", "panel", "resize"],
   "groups": [
     {
       "name": "Help",
@@ -787,6 +787,10 @@
               "chords": ["ctrl+b", "g"]
             },
             {
+              "keys": "ctrl+shift+a",
+              "chords": ["ctrl+shift+a"]
+            },
+            {
               "keys": "b",
               "chords": ["b"]
             }
@@ -1139,6 +1143,11 @@
           "keys": []
         },
         {
+          "name": "restart",
+          "description": "Restart Vimma; an installed update applies",
+          "keys": []
+        },
+        {
           "name": "reload_hard",
           "description": "Reload, bypassing the cache",
           "keys": [
@@ -1260,8 +1269,8 @@
           "description": "Add-ons manager (about:addons)",
           "keys": [
             {
-              "keys": "ctrl+shift+a",
-              "chords": ["ctrl+shift+a"]
+              "keys": "ctrl+shift+f",
+              "chords": ["ctrl+shift+f"]
             }
           ]
         },
@@ -1579,8 +1588,23 @@
           "description": "Follow link in new tab",
           "keys": [
             {
+              "keys": "gF",
+              "chords": ["gF"]
+            }
+          ]
+        },
+        {
+          "name": "focus_element",
+          "description": "Focus a text block: v selects it, y copies it",
+          "keys": [
+            {
               "keys": "F",
               "chords": ["F"]
+            },
+            {
+              "keys": "F",
+              "chords": ["F"],
+              "mode": "element"
             }
           ]
         },
@@ -1592,6 +1616,88 @@
               "keys": "esc",
               "chords": ["esc"],
               "mode": "hint"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Element focus",
+      "actions": [
+        {
+          "name": "element_visual",
+          "description": "Select the focused block in copy mode",
+          "keys": [
+            {
+              "keys": "v",
+              "chords": ["v"],
+              "mode": "element"
+            }
+          ]
+        },
+        {
+          "name": "element_visual_line",
+          "description": "Select the focused block's lines in copy mode",
+          "keys": [
+            {
+              "keys": "V",
+              "chords": ["V"],
+              "mode": "element"
+            }
+          ]
+        },
+        {
+          "name": "element_yank",
+          "description": "Copy the focused block's text",
+          "keys": [
+            {
+              "keys": "y",
+              "chords": ["y"],
+              "mode": "element"
+            }
+          ]
+        },
+        {
+          "name": "element_parent",
+          "description": "Focus the block around this one",
+          "keys": [
+            {
+              "keys": "+",
+              "chords": ["+"],
+              "mode": "element"
+            }
+          ]
+        },
+        {
+          "name": "element_child",
+          "description": "Focus back down, or the first block inside",
+          "keys": [
+            {
+              "keys": "-",
+              "chords": ["-"],
+              "mode": "element"
+            }
+          ]
+        },
+        {
+          "name": "element_next",
+          "description": "Focus the next block",
+          "keys": [
+            {
+              "keys": "j",
+              "chords": ["j"],
+              "mode": "element"
+            }
+          ]
+        },
+        {
+          "name": "element_prev",
+          "description": "Focus the previous block",
+          "keys": [
+            {
+              "keys": "k",
+              "chords": ["k"],
+              "mode": "element"
             }
           ]
         }
@@ -1713,6 +1819,11 @@
               "keys": "esc",
               "chords": ["esc"],
               "mode": "visual"
+            },
+            {
+              "keys": "esc",
+              "chords": ["esc"],
+              "mode": "element"
             }
           ]
         },
@@ -2081,6 +2192,28 @@
             {
               "keys": "aw",
               "chords": ["aw"],
+              "mode": "visual"
+            }
+          ]
+        },
+        {
+          "name": "select_inner_block",
+          "description": "Select the text block at the caret",
+          "keys": [
+            {
+              "keys": "ip",
+              "chords": ["ip"],
+              "mode": "visual"
+            }
+          ]
+        },
+        {
+          "name": "select_a_block",
+          "description": "Select the block at the caret; again: its parent",
+          "keys": [
+            {
+              "keys": "ap",
+              "chords": ["ap"],
               "mode": "visual"
             }
           ]

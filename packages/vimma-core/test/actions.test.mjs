@@ -74,7 +74,7 @@ describe("actions", () => {
       ),
       rename_tab: ["prefix+shift+t"],
       close_tab: ["prefix+shift+x", "ctrl+f4", "x"],
-      goto_picker: ["prefix+g", "b"],
+      goto_picker: ["prefix+g", "ctrl+shift+a", "b"],
     };
     for (const [name, bindings] of Object.entries(want)) {
       expect(getAction(name), name).toBeDefined();
@@ -209,6 +209,38 @@ describe("toolbar toggle", () => {
     const km = compileKeymap();
     expect(km.bindingsFor("show_toolbar")).toEqual([]);
     expect(km.bindingsFor("hide_toolbar")).toEqual([]);
+  });
+
+  test("focus_element (hint.element) is a Hints action on F, in normal and element mode", () => {
+    const a = getAction("focus_element");
+    expect(a).toMatchObject({
+      id: "hint.element",
+      group: "Hints",
+      description: "Focus a text block: v selects it, y copies it",
+    });
+    expect(resolveActionName("hint.element")?.name).toBe("focus_element");
+    // In ELEMENT mode, F picks another block.
+    expect(compileKeymap().bindingsFor("focus_element")).toEqual(["F", "F [element]"]);
+  });
+
+  test("follow_link_new_tab (hint.follow_new_tab) moved from F to gF", () => {
+    expect(compileKeymap().bindingsFor("follow_link_new_tab")).toEqual(["gF"]);
+  });
+
+  test("the ELEMENT mode's actions are grouped, and bound only in [modal.element]", () => {
+    const km = compileKeymap();
+    for (const [name, id, key] of [
+      ["element_visual", "element.visual", "v"],
+      ["element_visual_line", "element.visual_line", "V"],
+      ["element_yank", "element.yank", "y"],
+      ["element_parent", "element.parent", "+"],
+      ["element_child", "element.child", "-"],
+      ["element_next", "element.next", "j"],
+      ["element_prev", "element.prev", "k"],
+    ]) {
+      expect(getAction(name)).toMatchObject({ id, group: "Element focus" });
+      expect(km.bindingsFor(name)).toEqual([`${key} [element]`]);
+    }
   });
 
   test("prefix+u is the only default binding of toggle_toolbar, and no other action has it", () => {

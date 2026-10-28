@@ -260,7 +260,12 @@ add_task(async function not_found_shows_and_n_N_are_harmless() {
     await assertBackInNormal(browser, "a failed find");
     await TestUtils.waitForCondition(() => findStatus()?.notFound, "the status says not found");
     const segment = () => document.querySelector('#vimma-statusbar [data-segment="find"]');
-    await TestUtils.waitForCondition(() => segment(), "the find segment is rendered");
+    // The bar renders on the next animation frame, after the status: typing already rendered
+    // the segment as "/zzzqqq", so wait for the frame that adds "not found".
+    await TestUtils.waitForCondition(
+      () => segment()?.textContent === "/zzzqqq not found",
+      "the find segment is rendered",
+    ).catch(() => {});
     Assert.equal(segment()?.textContent, "/zzzqqq not found", "the status bar shows it");
     Assert.equal(await pageScrollY(browser), y, "a failed find does not move the page");
 
@@ -458,6 +463,69 @@ add_task(async function the_text_field_a_find_matched_still_takes_i_and_a_click(
       "a click into the box enters insert mode",
     );
   }, FIELD_PAGE);
+});
+
+/** Search fields shaped like YouTube's, Google's and DuckDuckGo's, and one in a shadow root. */
+const SITE_FIELDS_PAGE = ROOT + "file_vimma_find_site_fields.html";
+
+/**
+ * The fixture's field `id` (`inner` is in #host's shadow root): whether it has the focus, and
+ * its blurs counted from zero since `count` was last true.
+ * @param {XULBrowserElement} browser
+ * @param {string} id
+ * @param {{ count?: boolean, focus?: boolean }} [what] count: start counting blurs; focus: the
+ *   page's script focuses the field
+ */
+function siteField(browser, id, { count = false, focus = false } = {}) {
+  return SpecialPowers.spawn(browser, [id, count, focus], (fid, start, doFocus) => {
+    const doc = content.document;
+    const el =
+      fid === "inner"
+        ? doc.getElementById("host").shadowRoot.getElementById(fid)
+        : doc.getElementById(fid);
+    if (start) {
+      if (el.dataset.blurs === undefined) {
+        el.addEventListener("blur", () => {
+          el.dataset.blurs = String(Number(el.dataset.blurs) + 1);
+        });
+      }
+      el.dataset.blurs = "0";
+    }
+    if (doFocus) el.focus();
+    const root = el.getRootNode();
+    return { focused: root.activeElement === el, blurs: Number(el.dataset.blurs ?? 0) };
+  });
+}
+
+add_task(async function a_field_a_find_matched_enters_insert_when_the_page_focuses_it() {
+  // #442: the find gave the field's focus back, and the finder still names the field as its
+  // match. A later focus the page's own script makes there is the page's, not the find's.
+  for (const [id, word] of [
+    ["yt", "kestrel"],
+    ["g", "osprey"],
+    ["ddg", "plover"],
+    ["inner", "merlin"],
+  ]) {
+    await withPage(async (browser) => {
+      await siteField(browser, id, { count: true });
+      type(`/${word}`);
+      EventUtils.synthesizeKey("KEY_Enter");
+      await TestUtils.waitForCondition(() => findBarHidden(), `${id}: Enter closes the find bar`);
+      await TestUtils.waitForCondition(
+        async () => (await siteField(browser, id)).blurs > 0,
+        `${id}: the find reached the field and gave its focus back`,
+      );
+      await pageKeysThenUnbound(browser);
+      Assert.equal(VimmaHost.status(window).mode, "normal", `${id}: the find left normal mode`);
+
+      Assert.ok((await siteField(browser, id, { focus: true })).focused, `${id}: focused`);
+      await TestUtils.waitForCondition(
+        () => VimmaHost.status(window).mode === "insert",
+        `${id}: the page's focus on the field enters insert mode`,
+      );
+      Assert.ok((await siteField(browser, id)).focused, `${id}: the field keeps the focus`);
+    }, SITE_FIELDS_PAGE);
+  }
 });
 
 add_task(async function a_tab_closed_while_finding_leaves_no_find_behind() {

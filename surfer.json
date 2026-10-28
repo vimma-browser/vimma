@@ -5,7 +5,7 @@
   "binaryName": "vimma",
   "version": {
     "product": "firefox",
-    "version": "158.0"
+    "version": "159.0"
   },
   "buildOptions": {
     "windowsUseSymbolicLinks": false
@@ -18,7 +18,7 @@
       "brandShortName": "Vimma",
       "brandFullName": "Vimma",
       "release": {
-        "displayVersion": "0.1.6"
+        "displayVersion": "0.1.10"
       }
     }
   },

@@ -31,15 +31,15 @@ const SHA = /^[0-9a-f]{40}$/;
  * @typedef {{ name: string }} Label
  * @typedef {{ ref: string, sha?: string, repo?: { full_name: string } | null }} Ref
  * @typedef {{ number: number, state?: string, merged_at?: string | null, title?: string,
- *   base: Ref, head: Ref, labels: Label[], user?: { login: string } }} Pull
+ *   draft?: boolean | null, base: Ref, head: Ref, labels: Label[], user?: { login: string } }} Pull
  * @typedef {{
  *   enabled: string | undefined, hasToken: boolean, repository: string | undefined,
  *   event: string | undefined, ref: string | undefined, sha: string | undefined,
  *   subject?: string, bumpPulls?: Pull[], releasePulls?: Pull[], user?: { login: string },
  *   compare?: { status?: string }, releases?: unknown[],
  * }} Input
- * @typedef {{ action: "merge", release: number, head: string, bump: number }
- *   | { action: "skip" | "fail", reason: string }} Decision
+ * @typedef {{ action: "merge", release: number, head: string, bump: number, ready: boolean }} Merge
+ * @typedef {Merge | { action: "skip" | "fail", reason: string }} Decision
  */
 
 /** @param {string} reason @returns {Decision} */
@@ -126,7 +126,63 @@ export function decide(input) {
     release: release.number,
     head: /** @type {string} */ (release.head.sha),
     bump: bump.number,
+    // Issue #443: release-please opens the release PR as a draft, and GitHub never merges a
+    // draft, auto-merge or not. Marking it ready starts its full required checks.
+    ready: release.draft === true,
   };
+}
+
+/**
+ * The required checks a draft's run reports as skipped successes (e2e.yml, semgrep.yml; issue
+ * #443). CodeQL's are left out: its draft run uploads no analysis, which the ruleset's code
+ * scanning rule holds the merge on by itself.
+ */
+export const SLOW_CHECKS = [
+  "mochitest (artifact build)",
+  "semgrep (javascript, typescript, rust, secrets, github-actions)",
+];
+
+/**
+ * Whether the run that "ready for review" started has replaced the draft run's skipped
+ * successes on the head: the newest check run of each slow check is not a skip. Until then,
+ * auto-merge could take the skips for passes.
+ * @param {{ id: number, name: string, status?: string, conclusion?: string | null }[]} runs
+ *   the head commit's check runs
+ */
+export function slowChecksStarted(runs) {
+  return SLOW_CHECKS.every((name) => {
+    const newest = runs
+      .filter((r) => r.name === name)
+      .reduce(
+        (a, r) => (a && a.id > r.id ? a : r),
+        /** @type {(typeof runs)[number] | null} */ (null),
+      );
+    return newest !== null && newest.conclusion !== "skipped";
+  });
+}
+
+/**
+ * The `gh` calls that carry out a merge decision, in order: mark a draft release PR ready for
+ * review, set it to auto-merge pinned to the head `decide()` checked, and comment on the bump.
+ * The ready_for_review event comes from RELEASE_PLEASE_TOKEN's user, so it starts the checks
+ * that a draft skipped. The CLI below sets auto-merge only once `slowChecksStarted()` holds, and
+ * the code scanning rule holds the merge until CodeQL has uploaded for that head
+ * (docs/security.md G11).
+ * @param {Merge} decision
+ * @returns {string[][]}
+ */
+export function commands({ release, head, bump, ready }) {
+  const pr = ["--repo", REPOSITORY];
+  const body =
+    `Security bump merged: release PR #${release} is set to auto-merge at ${head} and merges ` +
+    "when its required checks pass (spec firefox-versions; AUTO_SECURITY_RELEASE).";
+  return [
+    ...(ready ? [["pr", "ready", String(release), ...pr]] : []),
+    // --match-head-commit: GitHub refuses if the branch moved since the checks above; later
+    // pushes by release-please keep auto-merge on (decision 14).
+    ["pr", "merge", String(release), ...pr, "--auto", "--squash", "--match-head-commit", head],
+    ["pr", "comment", String(bump), ...pr, "--body", body],
+  ];
 }
 
 /**
@@ -168,6 +224,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const env = { ...process.env, GH_TOKEN: process.env.RELEASE_TOKEN ?? "" };
   /** @param {string[]} args */
   const gh = (args) => execFileSync("gh", args, { env, encoding: "utf8" });
+  /**
+   * Polls the head's check runs for up to 3 minutes (the job has 5). On a timeout the job fails
+   * before auto-merge is set: the release PR is ready, and a person merges it once green.
+   * @param {string} head
+   */
+  const waitForSlowChecks = async (head) => {
+    const path = `repos/${REPOSITORY}/commits/${head}/check-runs?per_page=100`;
+    for (let i = 0; i < 18; i++) {
+      if (slowChecksStarted(JSON.parse(gh(["api", path])).check_runs ?? [])) return;
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+    }
+    console.log(`::error::The checks of the ready release PR did not start on ${head} in 3 min`);
+    process.exit(1);
+  };
   const decision = decide(await gather(process.env, async (path) => JSON.parse(gh(["api", path]))));
   if (decision.action === "fail") {
     console.log(`::error::${decision.reason}`);
@@ -178,23 +248,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(0);
   }
   const { release, head, bump } = decision;
-  // --match-head-commit: GitHub refuses if the branch moved since the checks above; later
-  // pushes by release-please keep auto-merge on (decision 14).
-  gh([
-    "pr",
-    "merge",
-    String(release),
-    "--repo",
-    REPOSITORY,
-    "--auto",
-    "--squash",
-    "--match-head-commit",
-    head,
-  ]);
-  const body =
-    `Security bump merged: release PR #${release} is set to auto-merge at ${head} and merges ` +
-    "when its required checks pass (spec firefox-versions; AUTO_SECURITY_RELEASE).";
-  gh(["pr", "comment", String(bump), "--repo", REPOSITORY, "--body", body]);
+  for (const args of commands(decision)) {
+    if (decision.ready && args[1] === "merge") await waitForSlowChecks(head);
+    gh(args);
+  }
   const summary = `#${bump} merged: release PR #${release} set to auto-merge at ${head}`;
   console.log(summary);
   if (process.env.GITHUB_STEP_SUMMARY) {

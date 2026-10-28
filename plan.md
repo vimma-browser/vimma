@@ -159,7 +159,8 @@ Repository layout (Surfer convention: `src/` mirrors the Firefox tree; `.patch` 
 ```
 vimma/
   surfer.json                     # upstream Firefox version, branding, build options
-  CLAUDE.md                       # rules coding agents read every session
+  AGENTS.md                       # rules coding agents read every session
+  CLAUDE.md                       # loads AGENTS.md for Claude Code
   CHANGELOG.md
   package.json                    # surfer, vitest, tsc, eslint, prettier, commitlint
   tsconfig.json                   # checkJs over src/**/vimma/** and packages/**
@@ -251,7 +252,7 @@ The backlog is GitHub issues, one per planned feature: [`label:planned`](https:/
 | M7 | **Security hardening** (ongoing) | Done, with gaps: merging and releasing a bump still need a person ([#259](https://github.com/vimma-browser/vimma/issues/259), [#220](https://github.com/vimma-browser/vimma/issues/220), [#224](https://github.com/vimma-browser/vimma/issues/224)) | Automatic Firefox security updates (detect a release, rebase, test, open a PR with no manual steps); fuzzing of the control protocol, `config.toml` and routing parsers; accessibility pass on Vimma's own UI; a scheduled quarterly patch audit; security release SLA proven twice | Two consecutive Firefox releases rebased and shipped with zero manual steps |
 | M6a | **Updater** (top priority) | Next: spec draft, [#217](https://github.com/vimma-browser/vimma/issues/217) | Updates reach every user without them noticing: a signed update manifest on vimma.dev per channel (release, nightly), security releases marked urgent; Firefox's updater back on (it is compiled out by m0-updater) for the tarball and AppImage, pointed at our manifest, verifying MARs against Vimma's own key, never calling Mozilla's update server; AUR and `.deb` left to pacman/apt with a status-bar hint; `release.yml` and every upstream security bump build, sign and publish MARs and the manifest with no manual steps | e2e: install N, serve N+1 from a local server, the update applies on restart and the profile survives; a Firefox security release reaches an installed Vimma with no manual step |
 | M6 | **Daily driver + release** (4 wks) | After M6a: [#228](https://github.com/vimma-browser/vimma/issues/228) | Quickmarks + history in `prefix+g`; per-workspace autofill stance; download/permission UX reviewed for keyboard use; tarball/AppImage/`.deb`; cosign + SBOM; AUR `vimma-bin`; opt-in crash reporting. The packaging tooling exists and is switched off (`docs/specs/m6-packaging.md`) | Firefox (stock) uninstalled for a week; a stranger installs from AUR and updates |
-| Later | **More platforms** | Later | macOS build + notarisation ([#238](https://github.com/vimma-browser/vimma/issues/238), `docs/specs/macos-build.md`); Homebrew install and the Vimma app icon ([#393](https://github.com/vimma-browser/vimma/issues/393), `docs/specs/macos-homebrew.md`); aarch64; Windows is not planned | Same gates as Linux |
+| Later | **More platforms** | Later | macOS build + notarisation ([#238](https://github.com/vimma-browser/vimma/issues/238), `docs/specs/macos-build.md`); Homebrew install and the Vimma app icon ([#393](https://github.com/vimma-browser/vimma/issues/393), `docs/specs/macos-homebrew.md`); the private workspace swapped in place on macOS ([#415](https://github.com/vimma-browser/vimma/issues/415), `docs/specs/private-swap-macos.md`); aarch64; Windows is not planned | Same gates as Linux |
 
 Work between milestones, in order. The issues hold the scope, the spec and the open questions.
 
@@ -260,12 +261,13 @@ Work between milestones, in order. The issues hold the scope, the spec and the o
 3. The Markdown pass and history cleanup ([#226](https://github.com/vimma-browser/vimma/issues/226)).
 4. Build supply chain sub-PRs 2 to 5 ([#222](https://github.com/vimma-browser/vimma/issues/222), [#223](https://github.com/vimma-browser/vimma/issues/223), [#224](https://github.com/vimma-browser/vimma/issues/224), [#225](https://github.com/vimma-browser/vimma/issues/225)).
 5. M6a, the updater ([#217](https://github.com/vimma-browser/vimma/issues/217)). Implementation starts once its signing-key questions are answered.
-6. Vimma MCP, remaining sub-PRs ([#229](https://github.com/vimma-browser/vimma/issues/229), [#230](https://github.com/vimma-browser/vimma/issues/230), [#231](https://github.com/vimma-browser/vimma/issues/231)), the follow-up [#232](https://github.com/vimma-browser/vimma/issues/232), and showing and moving around pages in the agent workspace ([#252](https://github.com/vimma-browser/vimma/issues/252)), before #231.
+6. Vimma MCP, remaining sub-PRs ([#229](https://github.com/vimma-browser/vimma/issues/229), [#230](https://github.com/vimma-browser/vimma/issues/230), [#231](https://github.com/vimma-browser/vimma/issues/231)), the follow-up [#232](https://github.com/vimma-browser/vimma/issues/232), and showing and moving around pages in the agent workspace ([#252](https://github.com/vimma-browser/vimma/issues/252)), before #231. Then one grant per task ([#507](https://github.com/vimma-browser/vimma/issues/507), `docs/specs/mcp-grants.md`) and the payment and form checkpoints ([#508](https://github.com/vimma-browser/vimma/issues/508), `docs/specs/mcp-checkpoints.md`). Then the built-in agent, a chat window confined to the agent workspace ([#535](https://github.com/vimma-browser/vimma/issues/535), `docs/specs/builtin-agent.md`), its model test bench first. Then modules that the user's own coding agent writes, tests in a sandbox Vimma and loads after review ([#540](https://github.com/vimma-browser/vimma/issues/540), `docs/specs/agent-modules.md`).
 7. Independent of the keymap: the Firefox panels audit ([#227](https://github.com/vimma-browser/vimma/issues/227)), search engines ([#233](https://github.com/vimma-browser/vimma/issues/233)), the
    bookmarks toolbar hidden by default ([#214](https://github.com/vimma-browser/vimma/issues/214)), the focused pane's highlight in a split ([#362](https://github.com/vimma-browser/vimma/issues/362)), and macOS sub-PRs 1 and 2 if [#238](https://github.com/vimma-browser/vimma/issues/238) decides so.
 8. Keymap changes, one PR at a time (each regenerates the bindings docs and the help snapshot):
    Firefox keys ([#234](https://github.com/vimma-browser/vimma/issues/234), [#235](https://github.com/vimma-browser/vimma/issues/235)), toolbar toggle ([#216](https://github.com/vimma-browser/vimma/issues/216)), element focus ([#213](https://github.com/vimma-browser/vimma/issues/213)), tab search
-   ([#215](https://github.com/vimma-browser/vimma/issues/215)) and the bookmarks toolbar's key ([#214](https://github.com/vimma-browser/vimma/issues/214)).
+   ([#215](https://github.com/vimma-browser/vimma/issues/215)), the bookmarks toolbar's key ([#214](https://github.com/vimma-browser/vimma/issues/214)), PDF mode's keys ([#487](https://github.com/vimma-browser/vimma/issues/487), `docs/specs/pdf-mode.md`)
+   and following a link to a new tab that is switched to ([#533](https://github.com/vimma-browser/vimma/issues/533), `docs/specs/follow-link-switch.md`).
 9. M6 ([#228](https://github.com/vimma-browser/vimma/issues/228)), once Vimma has been daily-driven.
 
 Maintenance: [#204](https://github.com/vimma-browser/vimma/issues/204), [#236](https://github.com/vimma-browser/vimma/issues/236), [#237](https://github.com/vimma-browser/vimma/issues/237).
@@ -365,5 +367,5 @@ Open questions to settle in M0 (each becomes an ADR or a line in `docs/limits.md
 
 ## 10. Where the rest went
 
-The first-session checklist that was here is done (M0), and the starter `CLAUDE.md` that was appendix A grew into the repository's [`CLAUDE.md`](CLAUDE.md), which is the version to read.
+The first-session checklist that was here is done (M0), and the starter `CLAUDE.md` that was appendix A grew into the repository's [`AGENTS.md`](AGENTS.md) (loaded by `CLAUDE.md`), which is the version to read.
 <!-- process-wording: points at the coding agents' rules file that replaced the appendix -->

@@ -12,9 +12,23 @@
  *   npm run sites -- --out dir                  # default site-compat-output/
  *   npm run sites -- --pref name=value          # an extra profile pref (repeatable)
  *   npm run sites -- --site-timeout 180         # seconds per site
+ *   npm run sites -- --retry-blocked            # load blocked sites once more at the end
+ *   npm run sites -- --offline                  # the snapshot gate: no network (see below)
+ *   npm run sites -- --record wikipedia,mdn     # record snapshots (into <out>/snapshots/)
+ *   npm run sites -- --record mdn=http://127.0.0.1:8000/x.html   # from a saved copy instead
  *
- * Exit 0 when the report was written, whatever the sites did; 1 when the harness failed;
- * 2 on usage errors.
+ * --retry-blocked is for the nightly hosted runner (spec, decision 11). From a home network every
+ * extra visit to a site that already shows a bot check makes the next one more likely.
+ *
+ * --offline replays the recorded pages in tests/e2e/fixtures/sites/ (snapshots.json) from a page
+ * server on 127.0.0.1, with every other host unreachable, and runs every check but shortcuts.
+ * It exits 1 when a check that passed on the recording does not pass now (snapshot.mjs): e2e.yml
+ * runs it on every pull request. Its default --out is site-compat-offline/. --record loads live
+ * pages (only sites whose licence allows a committed copy) and checks each snapshot before it
+ * writes it; review it before copying it into the fixtures.
+ *
+ * Exit 0 when the report was written, whatever the sites did (with --offline: and the gate
+ * passed); 1 when the harness failed; 2 on usage errors.
  */
 import {
   appendFileSync,
@@ -22,6 +36,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -33,13 +48,23 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { Ctl, findVimmaCtl } from "../e2e/driver.mjs";
 import { findBuild, launch, unpackTarball } from "../e2e/launcher.mjs";
+import { startPageServer } from "../e2e/pages.mjs";
 import { encodePng } from "../e2e/png.mjs";
 import { capture } from "../e2e/screenshot.mjs";
-import { runSite } from "./checks.mjs";
+import { recordSnapshot, runSite } from "./checks.mjs";
 import { Rdp } from "./rdp.mjs";
 import { renderHtml, renderMarkdown } from "./report.mjs";
-import { completeChecks, exitCode, siteStatus } from "./results.mjs";
+import { completeChecks, exitCode, mergeRetry, retryTargets, siteStatus } from "./results.mjs";
 import { filterSites, validateSites } from "./site-list.mjs";
+import {
+  finishSnapshot,
+  offlineSites,
+  recordable,
+  renderGate,
+  snapshotGate,
+  validateManifest,
+  verifySnapshot,
+} from "./snapshot.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -50,17 +75,44 @@ export const DEVTOOLS_PREFS = Object.freeze({
   "devtools.debugger.prompt-connection": false,
 });
 
+/** The recorded pages the offline run replays (snapshot.mjs). */
+export const SNAPSHOT_DIR = join(REPO, "tests/e2e/fixtures/sites");
+
+/**
+ * An offline run reaches only 127.0.0.1: every other host goes to a proxy on a port where
+ * nothing listens, so a reference the sanitiser and the snapshot's policy both missed fails
+ * instead of reaching the network. A loopback address never goes through the proxy
+ * (allow_hijacking_localhost off), so the page server is reached directly.
+ */
+export const OFFLINE_PREFS = Object.freeze({
+  "network.proxy.type": 1,
+  "network.proxy.http": "127.0.0.1",
+  "network.proxy.http_port": 1,
+  "network.proxy.ssl": "127.0.0.1",
+  "network.proxy.ssl_port": 1,
+  "network.proxy.socks": "",
+  "network.proxy.allow_hijacking_localhost": false,
+  "network.dns.disablePrefetch": true,
+  "network.prefetch-next": false,
+  "network.predictor.enabled": false,
+  // WebRTC's UDP traffic does not go through the proxy.
+  "media.peerconnection.enabled": false,
+});
+
 const OPTIONS = /** @type {const} */ ({
   filter: { type: "string" },
   build: { type: "string" },
   artifact: { type: "boolean", default: false },
   tarball: { type: "string" },
   "vimma-ctl": { type: "string" },
-  out: { type: "string", default: join(REPO, "site-compat-output") },
+  out: { type: "string" },
   sites: { type: "string", default: join(REPO, "tools/sites/sites.json") },
   pref: { type: "string", multiple: true, default: [] },
   "site-timeout": { type: "string", default: "180" },
   keep: { type: "boolean", default: false },
+  "retry-blocked": { type: "boolean", default: false },
+  offline: { type: "boolean", default: false },
+  record: { type: "string" },
   help: { type: "boolean", short: "h", default: false },
 });
 
@@ -149,15 +201,50 @@ async function main() {
   const list = JSON.parse(readFileSync(values.sites, "utf8"));
   const problems = validateSites(list);
   if (problems.length) return usage(`${values.sites}:\n  ${problems.join("\n  ")}`);
-  const sites = filterSites(list, values.filter);
+  const offline = values.offline;
+  if (offline && (values.record || values["retry-blocked"]))
+    return usage("--offline runs no live site: no --record or --retry-blocked with it");
+  if (values.record && values["retry-blocked"]) return usage("--record takes no --retry-blocked");
+  /** @type {Array<{ id: string, url: string }>} */
+  const recordings = [];
+  for (const item of (values.record ?? "").split(",").filter((x) => x.trim())) {
+    const [id = "", from] = item.trim().split(/=(.*)/s);
+    const site = list.find((/** @type {any} */ s) => s.id === id);
+    if (!site) return usage(`--record ${id}: not in ${values.sites}`);
+    if (!recordable(id))
+      return usage(`--record ${id}: its licence does not allow a committed copy (snapshot.mjs)`);
+    recordings.push({ id, url: from || site.url });
+  }
+  if (values.record !== undefined && !recordings.length) return usage("--record wants site ids");
+  /** @type {import("./snapshot.mjs").SnapshotEntry[]} */
+  let manifest = [];
+  /** @type {Awaited<ReturnType<typeof startPageServer>> | null} */
+  let server = null;
+  let sites = filterSites(list, values.filter);
+  if (offline) {
+    manifest = JSON.parse(readFileSync(join(SNAPSHOT_DIR, "snapshots.json"), "utf8"));
+    const files = readdirSync(SNAPSHOT_DIR).filter((f) => f.endsWith(".html"));
+    const bad = validateManifest(manifest, list, files);
+    if (bad.length) return usage(`${SNAPSHOT_DIR}/snapshots.json:\n  ${bad.join("\n  ")}`);
+    manifest = filterSites(
+      manifest.map((e) => ({
+        ...e,
+        name: list.find((/** @type {any} */ s) => s.id === e.id).name,
+      })),
+      values.filter,
+    );
+    server = await startPageServer(SNAPSHOT_DIR);
+    sites = offlineSites(manifest, list, server.base);
+  }
   if (!sites.length) return usage(`no site matches --filter ${values.filter}`);
 
-  const out = values.out;
+  const out = values.out ?? join(REPO, offline ? "site-compat-offline" : "site-compat-output");
   rmSync(out, { recursive: true, force: true });
   mkdirSync(join(out, "screenshots"), { recursive: true });
 
   /** @type {Array<() => Promise<void>>} */
   const cleanups = [];
+  if (server) cleanups.push(/** @type {NonNullable<typeof server>} */ (server).close);
   const cleanupAll = async () => {
     for (const c of cleanups.splice(0).reverse()) await c().catch(() => {});
   };
@@ -178,6 +265,8 @@ async function main() {
     network: process.env.GITHUB_ACTIONS ? "github-hosted" : "local",
     build: "",
     commit: gitCommit(),
+    filter: values.filter?.trim() || null,
+    ...(offline ? { offline: true } : {}),
     sites: [],
     harnessError: null,
   };
@@ -195,8 +284,20 @@ async function main() {
     run.build = build.binary;
     console.log(`build: ${build.binary}\nvimma-ctl: ${ctlBin}\nsites: ${sites.length}`);
 
-    for (const site of sites) {
-      console.log(`\n${site.id}: ${site.url}`);
+    /**
+     * One visit: a fresh profile and browser (decision 3). Screenshots are named after `prefix`.
+     * `body` runs the checks by default; --record takes a snapshot instead.
+     * @param {import("./site-list.mjs").Site} site
+     * @param {string} prefix
+     * @param {(ctx: import("./checks.mjs").Context, result: import("./results.mjs").SiteResult)
+     *   => Promise<unknown>} [body]
+     */
+    const visit = async (
+      site,
+      prefix,
+      body = (ctx, result) => runSite(site, ctx, result, { offline }),
+    ) => {
+      console.log(`\n${prefix}: ${site.url}`);
       const started = Date.now();
       /** @type {import("./results.mjs").SiteResult} */
       const result = {
@@ -209,7 +310,6 @@ async function main() {
         screenshots: [],
         durationMs: 0,
       };
-      run.sites.push(result);
       // Short: a Unix socket path must fit in 107 bytes.
       const sockDir = mkdtempSync(join(tmpdir(), "vsc-"));
       const sock = join(sockDir, "rdp.sock");
@@ -225,7 +325,7 @@ async function main() {
           build,
           xvfb: true, // always: screenshots, and a clipboard that is not the desktop's
           keep: values.keep,
-          prefs: { ...DEVTOOLS_PREFS, ...extraPrefs },
+          prefs: { ...DEVTOOLS_PREFS, ...(offline ? OFFLINE_PREFS : {}), ...extraPrefs },
           args: ["--start-debugger-server", sock],
           signal: abort.signal,
           onTeardown: (t) => {
@@ -241,7 +341,7 @@ async function main() {
         const display = session.display;
         const screenshot = async (/** @type {string} */ label) => {
           if (!display) return null;
-          const file = `${site.id}-${++shots}-${label}.png`;
+          const file = `${prefix}-${++shots}-${label}.png`;
           writeFileSync(join(out, "screenshots", file), encodePng(await capture(display.fbFile)));
           return file;
         };
@@ -251,7 +351,7 @@ async function main() {
           ),
         );
         await Promise.race([
-          runSite(site, { ctl, rdp, parent, screenshot, log: (l) => console.log(l) }, result),
+          body({ ctl, rdp, parent, screenshot, log: (l) => console.log(l) }, result),
           timedOut,
         ]);
         const failed = session.loadFailure();
@@ -276,6 +376,44 @@ async function main() {
       }
       result.durationMs = Date.now() - started;
       console.log(`  → ${result.status} (${Math.round(result.durationMs / 1000)} s)`);
+      return result;
+    };
+
+    if (recordings.length) {
+      mkdirSync(join(out, "snapshots"), { recursive: true });
+      for (const { id, url } of recordings) {
+        const site = { ...list.find((/** @type {any} */ s) => s.id === id), url };
+        const result = await visit(site, `${id}.record`, async (ctx, r) => {
+          const snap = await recordSnapshot(url, ctx);
+          const html = finishSnapshot(snap.html);
+          const bad = verifySnapshot(html);
+          if (bad.length) throw new Error(`the snapshot fails verifySnapshot: ${bad.join("; ")}`);
+          const file = join(out, "snapshots", `${id}.html`);
+          writeFileSync(file, html);
+          r.title = snap.title;
+          r.checks = [];
+          r.status = "ok";
+          console.log(
+            `    ${file}: ${Math.round(html.length / 1024)} kB, CSS ${Math.round(snap.cssBytes / 1024)} kB` +
+              (snap.skippedSheets ? `, ${snap.skippedSheets} unreadable stylesheets left out` : ""),
+          );
+        });
+        if (result.error) throw new Error(`--record ${id}: ${result.error}`);
+      }
+      console.log(
+        `\nRecorded into ${join(out, "snapshots")}. Review each, then copy it into ` +
+          "tests/e2e/fixtures/sites/ with its snapshots.json entry and README attribution.",
+      );
+      return 0;
+    }
+    for (const site of sites) run.sites.push(await visit(site, site.id));
+    if (values["retry-blocked"]) {
+      for (const first of retryTargets(run.sites)) {
+        const site = sites.find((s) => s.id === first.id);
+        if (!site) continue;
+        const second = await visit(site, `${site.id}.retry`);
+        run.sites[run.sites.indexOf(first)] = mergeRetry(first, second);
+      }
     }
   } catch (e) {
     run.harnessError = /** @type {Error} */ (e).message;
@@ -284,13 +422,14 @@ async function main() {
     await cleanupAll();
   }
   run.finishedAt = new Date().toISOString();
-  const md = renderMarkdown(run);
+  const gate = offline ? snapshotGate(run, manifest) : null;
+  const md = renderMarkdown(run) + (gate ? `\n${renderGate(gate)}` : "");
   writeFileSync(join(out, "results.json"), `${JSON.stringify(run, null, 2)}\n`);
   writeFileSync(join(out, "report.md"), md);
   writeFileSync(join(out, "report.html"), renderHtml(run));
   console.log(`\n${md}\nReport: ${join(out, "report.html")}`);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
-  return exitCode(run);
+  return gate ? Math.max(gate.exit, exitCode(run)) : exitCode(run);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

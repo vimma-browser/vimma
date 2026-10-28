@@ -7,6 +7,12 @@
 # Usage: tools/package/macos-dmg.sh <in.dmg> <out.dmg>
 #   MACH       mach to run (default: engine/mach); MOZ_OBJDIR as for the build
 #   RCODESIGN  rcodesign to run (default: rcodesign on PATH)
+#   VIMMA_CTL  a vimma-ctl built for the Mac, put next to vimma in Contents/MacOS before signing
+#              (spec ship-vimma-ctl); release.yml sets it, the weekly macOS build does not
+#   VIMMA_CTL_LICENSES  its notices from tools/package/ctl-notices.mjs, required with VIMMA_CTL
+#              (#516); they go into Contents/Resources, since Contents/MacOS holds only code
+#   VIMMA_APP_MANIFEST  where to write the signed app's manifest (macos-app-manifest.sh); release.yml
+#              sets it for a Developer ID release only
 set -eu
 
 in=${1:?usage: macos-dmg.sh <in.dmg> <out.dmg>}
@@ -31,8 +37,40 @@ if [ "$#" -ne 1 ] || [ ! -d "$1" ]; then
 fi
 app=$1
 
+# The window art and volume icon (spec macos-homebrew, decision 14). mach package puts them on the
+# volume from the branding directory (toolkit/moz.configure, MOZ_PACKAGE_EXTRA_ARGS); unpack_dmg
+# copies the volume's hidden files into $staged and make_dmg packs them again with the app, so a
+# dmg without them would be repacked without them.
+for art in .DS_Store .background/background.png .VolumeIcon.icns; do
+  if [ ! -f "$staged/$art" ]; then
+    echo "macos-dmg.sh: $in has no $art; mach package puts it there from the branding directory" >&2
+    exit 1
+  fi
+done
+
+if [ -n "${VIMMA_CTL:-}" ]; then
+  [ -f "$VIMMA_CTL" ] && [ -x "$VIMMA_CTL" ] || {
+    echo "macos-dmg.sh: VIMMA_CTL=$VIMMA_CTL is not an executable file" >&2
+    exit 1
+  }
+  [ -n "${VIMMA_CTL_LICENSES:-}" ] && [ -f "$VIMMA_CTL_LICENSES/README.txt" ] || {
+    echo "macos-dmg.sh: VIMMA_CTL_LICENSES must name vimma-ctl's notices (ctl-notices.mjs)" >&2
+    exit 1
+  }
+  cp -R "$VIMMA_CTL_LICENSES" "$app/Contents/Resources/vimma-ctl-licenses"
+  cp "$VIMMA_CTL" "$app/Contents/MacOS/vimma-ctl"
+  chmod 755 "$app/Contents/MacOS/vimma-ctl"
+  # Nested code is signed before the bundle that seals it, as codesign --verify --deep expects.
+  "$rcodesign" sign "$app/Contents/MacOS/vimma-ctl"
+fi
+
 # A disk image mounted on a Mac leaves Finder attributes that a strict verify rejects.
 if command -v xattr > /dev/null 2>&1; then xattr -cr "$app"; fi
 
 "$rcodesign" sign "$app"
+# For a Developer ID release: the list macos-notarise compares the app it is handed with
+# (macos-app-manifest.sh). It reads the app and changes nothing in the dmg.
+if [ -n "${VIMMA_APP_MANIFEST:-}" ]; then
+  "$(dirname "$0")/macos-app-manifest.sh" "$app" > "$VIMMA_APP_MANIFEST"
+fi
 "$mach" python -m mozbuild.action.make_dmg --volume-name Vimma "$staged" "$out"

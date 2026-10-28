@@ -1,0 +1,13 @@
+{
+  "description": "An image of an agent tab's viewport, with the labels of its last element list drawn on it (mcp-forms F18, F20)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 14,
+    "command": "agent-screenshot",
+    "args": {
+      "tab": "12",
+      "labels": true
+    }
+  }
+}

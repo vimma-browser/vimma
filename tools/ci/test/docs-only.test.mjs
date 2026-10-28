@@ -244,7 +244,66 @@ describe("workflow wiring", () => {
     expect(mochitest).toMatch(/^ {4}name: mochitest \(artifact build\)$/m);
     expect(mochitest).toMatch(/^ {4}needs: changes$/m);
     // !cancelled(), not success(): a failed classifier runs the job instead of skipping it.
-    expect(jobIf(mochitest)).toBe(`\${{ !cancelled() && ${RUNS} }}`);
+    // A draft pull request skips it too (issue #443, tools/test/draft-pull-requests.test.mjs).
+    expect(jobIf(mochitest)).toBe(
+      `\${{ !cancelled() && ${RUNS} && !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')) }}`,
+    );
+  });
+
+  // Spec macos-build, sub-PR 1: the same gate, and never on a version run (the upstream
+  // autopilot, the Beta canary), so macOS never blocks a Linux release (decision 13).
+  it("e2e.yml: the macOS job runs unless docs-only, and only on the pinned version", () => {
+    const text = workflow("e2e.yml");
+    const mac = job(text, "mochitest-macos");
+    expect(mac).toMatch(/^ {4}name: mochitest \(artifact build, macOS\)$/m);
+    expect(mac).toMatch(/^ {4}runs-on: macos-15$/m);
+    expect(mac).toMatch(/^ {4}needs: changes$/m);
+    expect(jobIf(mac)).toBe(`\${{ !cancelled() && ${RUNS} && inputs.firefox-version == '' }}`);
+    // Informational by branch protection, not by hiding a failure.
+    expect(mac).not.toContain("continue-on-error");
+    const names = steps(mac).map((s) => s.text);
+    // npm test includes tools/bench's baseline test, which needs the branch's whole history.
+    const checkout = names.find((t) => t.includes("actions/checkout@")) ?? "";
+    expect(checkout).toMatch(/^ +fetch-depth: 0\b/m);
+    const at = (/** @type {string} */ s) => names.findIndex((t) => t.includes(s));
+    const order = [
+      "run: npm ci",
+      "run: npm test",
+      "tools/upstream/firefox-source.sh",
+      "run: npm run import",
+      "node tools/artifact-build/artifact-build.mjs",
+      "npm run mochitest -- --artifact",
+    ].map(at);
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  // Spec macos-build, sub-PR 1: the same gate, and never on a version run (the upstream
+  // autopilot, the Beta canary), so macOS never blocks a Linux release (decision 13).
+  it("e2e.yml: the macOS job runs unless docs-only, and only on the pinned version", () => {
+    const text = workflow("e2e.yml");
+    const mac = job(text, "mochitest-macos");
+    expect(mac).toMatch(/^ {4}name: mochitest \(artifact build, macOS\)$/m);
+    expect(mac).toMatch(/^ {4}runs-on: macos-15$/m);
+    expect(mac).toMatch(/^ {4}needs: changes$/m);
+    expect(jobIf(mac)).toBe(`\${{ !cancelled() && ${RUNS} && inputs.firefox-version == '' }}`);
+    // Informational by branch protection, not by hiding a failure.
+    expect(mac).not.toContain("continue-on-error");
+    const names = steps(mac).map((s) => s.text);
+    // npm test includes tools/bench's baseline test, which needs the branch's whole history.
+    const checkout = names.find((t) => t.includes("actions/checkout@")) ?? "";
+    expect(checkout).toMatch(/^ +fetch-depth: 0\b/m);
+    const at = (/** @type {string} */ s) => names.findIndex((t) => t.includes(s));
+    const order = [
+      "run: npm ci",
+      "run: npm test",
+      "tools/upstream/firefox-source.sh",
+      "run: npm run import",
+      "node tools/artifact-build/artifact-build.mjs",
+      "npm run mochitest -- --artifact",
+    ].map(at);
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
   // Not gated: the ruleset's code scanning rule waits for CodeQL results on every pull request,
@@ -293,5 +352,23 @@ describe("workflow wiring", () => {
       /npx --no -- surfer license-check/,
     ])
       expect(step(re).cond).toBe(SKIP);
+  });
+
+  it("ci.yml: vimma-ctl's clippy and tests also run on macOS, unless docs-only", () => {
+    const text = workflow("ci.yml");
+    const mac = job(text, "vimma-ctl-macos");
+    expect(mac).toMatch(/^ {4}runs-on: macos-15$/m);
+    expect(mac).toMatch(/^ {4}needs: covered$/m);
+    expect(jobIf(mac)).toBe("${{ !cancelled() && needs.covered.outputs.skip != 'true' }}");
+    expect(mac).toMatch(/^ {4}permissions:\n {6}contents: read\n(?! {6})/m);
+    expect(mac).toContain("persist-credentials: false");
+    expectClassifyStep(mac);
+    const SKIP = "steps.classify.outputs.docs-only != 'true'";
+    const all = steps(mac);
+    for (const re of [/rustup toolchain install/, /cargo clippy --locked/, /cargo test --locked/]) {
+      const found = all.find((s) => re.test(s.text));
+      expect(found?.cond, String(re)).toBe(SKIP);
+      expect(found?.text).toContain("working-directory: tools/vimma-ctl");
+    }
   });
 });

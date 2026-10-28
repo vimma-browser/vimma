@@ -13,10 +13,11 @@
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "typecheck": "npm run sync-core && tsc -p tsconfig.json",
-    "lint": "eslint . && prettier --check . && npm run md-wording && npm run comment-wording && npm run spec-lint",
+    "lint": "eslint . && prettier --check . && npm run md-wording && npm run comment-wording && npm run spec-lint && npm run changelog-lint",
     "md-wording": "node tools/md-wording/process-wording.mjs",
     "comment-wording": "node tools/md-wording/comment-wording.mjs",
     "spec-lint": "node tools/spec-lint/spec-lint.mjs",
+    "changelog-lint": "node tools/release/changelog.mjs check CHANGELOG.md",
     "spec-status": "node tools/spec-lint/spec-status.mjs",
     "format": "prettier --write .",
     "gen-docs": "node tools/gen-docs.mjs && prettier --log-level warn --write docs/bindings.md docs/bindings.json",
@@ -24,6 +25,7 @@
     "version-files": "node tools/version-files/version-files.mjs",
     "import": "tools/upstream/verify-source.sh --require && npm run sync-core && npm run version-files && node tools/import/restore-patched.mjs && surfer config brand vimma && surfer import && SURFER_MOZCONFIG_ONLY=1 surfer build",
     "start": "node tools/start.mjs",
+    "build": "node tools/build.mjs",
     "mochitest": "node tools/mochitest.mjs",
     "e2e": "node tools/e2e/e2e.mjs",
     "sites": "node tools/sites/sites.mjs",
@@ -48,13 +50,13 @@
     "eslint": "^10.12.0",
     "fast-check": "^4.10.2",
     "globals": "^17.13.0",
-    "js-yaml": "^5.4.3",
+    "js-yaml": "^5.5.0",
     "prettier": "^3.9.10",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
   "overrides": {
     "sharp": "^0.35.5",
-    "qs": "^6.16.0"
+    "qs": "^6.17.0"
   }
 }

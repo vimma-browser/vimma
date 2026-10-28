@@ -526,6 +526,10 @@ keys (ctrl+b ? lists them). enable = ["ctrl+j"] gives one back exactly as Firefo
     `ctrl+j`, `ctrl+[`). `xulKeyChord` already maps `accel` to meta on macOS, so the mechanism
     works there, but macOS rows (`cmd+…`, `cmd+alt+i`, `cmd+{`) are not in the table and the
     coverage test runs on Linux CI only; a macOS table is out of scope until Vimma ships there.
+    (Since changed: `FIREFOX_SHORTCUTS_MACOS` is the macOS table, the Linux rows with macOS's
+    chords and macOS's own keys, and the coverage test reads it on a Mac;
+    [macos-build](macos-build.md) "Keys: accel", issue
+    [#384](https://github.com/vimma-browser/vimma/issues/384).)
 15. **No upstream patch.** Everything is our code: disabling `<key>` elements (as today),
     consuming keydowns, DOM attributes on the menu bar, and two prefs in Vimma's branding prefs
     file. No ADR line is needed.
@@ -556,6 +560,14 @@ keys (ctrl+b ? lists them). enable = ["ctrl+j"] gives one back exactly as Firefo
     only such chords and the F-keys global (`keymap.mjs`). In a text field `shift+esc` stays with
     the field, as every other unmodified key there does, and leaving the field with `esc` first
     still gives the process manager.
+
+    (Since changed: Firefox 159 moved Add-ons to `ctrl+shift+f` (`cmd+shift+e` on macOS) and
+    gave `ctrl+shift+a` to a new `key_searchTabs` (`Browser:SearchTabs`, the address bar's tabs
+    mode). Following decision 16, `addons_manager` moves to `ctrl+shift+f`, and
+    `ctrl+shift+a` is fate a, a second key for `goto_picker`: Vimma's tab search
+    ([tab-search](tab-search.md)) already searches tabs, across workspaces and windows, and
+    keeps private tabs out of a normal window, which the address bar's tabs mode does not know
+    about.)
 
 ## Sub-PRs
 

@@ -9,6 +9,12 @@ describe("tools/sites/sites.json", () => {
     expect(validateSites(SITES)).toEqual([]);
   });
 
+  // The names reach the site-compat issue as Markdown (decision 12): nothing GitHub would turn
+  // into a mention, a reference or a link.
+  it("names nothing GitHub would turn into a mention, reference or link", () => {
+    for (const s of SITES) expect(s.name, s.id).not.toMatch(/[@#`<>[\]]|:\/\/|\bGH-\d/);
+  });
+
   it("has the sites the suite covers", () => {
     const hosts = new Set(SITES.map((/** @type {any} */ s) => new URL(s.url).hostname));
     for (const host of [
@@ -31,6 +37,8 @@ describe("tools/sites/sites.json", () => {
       "codepen.io",
       "regex101.com",
       "excalidraw.com",
+      "crates.io",
+      "gitlab.com",
     ]) {
       expect(hosts.has(host), host).toBe(true);
     }
@@ -41,6 +49,11 @@ describe("tools/sites/sites.json", () => {
       "github-pr",
       "github-repo",
     ]);
+    // Decision 14: a comments page as well as the front page.
+    expect(
+      SITES.some((/** @type {any} */ s) => s.url.startsWith("https://news.ycombinator.com/item?")),
+    ).toBe(true);
+    expect(SITES).toHaveLength(25);
   });
 });
 

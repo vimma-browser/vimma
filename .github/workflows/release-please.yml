@@ -1,6 +1,7 @@
 # Plan §4 step 6 / §7: release-please keeps one release PR open with the next version and its
-# CHANGELOG.md entry, built from the Conventional Commits on main. Merging that PR is the
-# release: release-please tags vX.Y.Z and creates the GitHub Release as a draft, and
+# CHANGELOG.md entry, built from the Conventional Commits on main. It opens as a draft, whose
+# rebuilds skip the slow checks; marking it ready runs them once (issue #443). Merging that PR is
+# the release: release-please tags vX.Y.Z and creates the GitHub Release as a draft, and
 # release-build starts release.yml, which uploads the packages to that draft; the maintainer
 # publishes it. Config:
 # release-please-config.json, .release-please-manifest.json; setup in docs/runbook.md (Releases).
@@ -8,6 +9,8 @@
 # bumped through extra-files; the Firefox pin (version.version) is never touched.
 # Two post-steps name the Firefox the release is built on (spec firefox-versions): firefox-notes
 # puts it in the release PR's CHANGELOG.md heading, release-title in the release's title and notes.
+# They also carry the hand-written [Unreleased] lines into the release (issue #529): firefox-notes
+# moves them into the release PR's entry, release-title adds them to the release's notes.
 name: release-please
 
 on:
@@ -43,11 +46,14 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  # Decision 7: the release PR's newest CHANGELOG.md heading gets ` · Firefox <version>` and each
-  # Firefox bump line its advisory links (tools/release/firefox-notes.mjs), as one commit on the
-  # release branch. The PR body stays as release-please wrote it, so release-please finds it
-  # unchanged and does not rebuild the branch until main changes the notes; when it does rebuild
-  # (a force-push that drops this commit), this job applies the edit again in the same run.
+  # Issue #529: the hand-written `## [Unreleased]` lines move into the release PR's new entry,
+  # above release-please's list, leaving an empty `## [Unreleased]` at the top
+  # (tools/release/changelog.mjs). Decision 7: that entry's heading gets ` · Firefox <version>`
+  # and each Firefox bump line its advisory links (tools/release/firefox-notes.mjs). Both edits are
+  # one commit on the release branch. "always-update" makes release-please rebuild the branch from
+  # main on every run (a force-push that drops this commit), so the moved lines are always main's
+  # and the PR never conflicts with main on CHANGELOG.md; this job applies the edits again in the
+  # same run.
   # Main's code runs; the release branch's files are read through the API as data. The commit is
   # pushed with RELEASE_PLEASE_TOKEN, since a GITHUB_TOKEN push would leave the release PR's new
   # head without its required checks; without that token the job only logs a notice.
@@ -79,7 +85,7 @@ jobs:
             exit 0
           fi
           if [ -z "$PUSH_TOKEN" ]; then
-            echo "::notice::RELEASE_PLEASE_TOKEN is not set; #$pr's changelog heading has no Firefox version (docs/runbook.md, Releases)"
+            echo "::notice::RELEASE_PLEASE_TOKEN is not set; #$pr's changelog entry lacks the unreleased lines and the Firefox version (docs/runbook.md, Releases)"
             exit 0
           fi
           dir="$RUNNER_TEMP/firefox-notes"
@@ -89,26 +95,30 @@ jobs:
           gh api "$api/CHANGELOG.md?ref=$BRANCH" > "$dir/changelog.json"
           sha=$(jq -r .sha "$dir/changelog.json")
           jq -r .content "$dir/changelog.json" | base64 -d > "$dir/CHANGELOG.md"
-          node tools/release/firefox-notes.mjs "$dir/CHANGELOG.md" --surfer "$dir/surfer.json" \
+          node tools/release/changelog.mjs move "$dir/CHANGELOG.md" > "$dir/moved.md"
+          node tools/release/firefox-notes.mjs "$dir/moved.md" --surfer "$dir/surfer.json" \
             > "$dir/new.md"
           if cmp -s "$dir/CHANGELOG.md" "$dir/new.md"; then
-            echo "#$pr's changelog already names the Firefox version."
+            echo "#$pr's changelog entry already has the unreleased lines and the Firefox version."
             exit 0
           fi
           firefox=$(jq -r .version.version "$dir/surfer.json")
           # `sha` is the blob this replaces: if release-please rebuilt the branch since, GitHub
           # refuses the push (409) and the next run applies the edit to the new file.
-          jq -n --arg message "chore(release): firefox $firefox in the changelog heading" \
+          jq -n --arg message "chore(release): unreleased lines and firefox $firefox in the changelog entry" \
             --arg branch "$BRANCH" --arg sha "$sha" --rawfile content "$dir/new.md" \
             '{message: $message, branch: $branch, sha: $sha, content: ($content | @base64)}' \
             > "$dir/put.json"
           GH_TOKEN="$PUSH_TOKEN" gh api --method PUT "$api/CHANGELOG.md" --input "$dir/put.json" \
             --jq '"Pushed " + .commit.sha'
-          echo "#$pr: CHANGELOG.md heading names Firefox $firefox" >> "$GITHUB_STEP_SUMMARY"
+          echo "#$pr: CHANGELOG.md entry has the unreleased lines and names Firefox $firefox" \
+            >> "$GITHUB_STEP_SUMMARY"
 
   # Decision 8: the release release-please just created is titled `Vimma <x> · Firefox <y>`
   # (tools/release/version-line.mjs on the tag's surfer.json) and its notes' heading and bump
-  # lines get the same edit as the changelog. The notes are transformed, never rewritten, so
+  # lines get the same edit as the changelog. release-please writes the notes from the release
+  # PR's body, which holds only its own list, so the hand-written lines of the tag's CHANGELOG.md
+  # entry are added first (issue #529). The notes are transformed, never rewritten, so
   # nothing another job added is lost. Only the name and body change (the PATCH resends the verified
   # tag, which a draft otherwise loses): the release stays a draft.
   release-title:
@@ -146,7 +156,12 @@ jobs:
             exit 1
           fi
           jq -j '.body // ""' "$dir/release.json" > "$dir/body.md"
-          node tools/release/firefox-notes.mjs "$dir/body.md" --surfer surfer.json > "$dir/new.md"
+          # Without the hand-written lines the release is still titled; the warning says to add them.
+          if ! node tools/release/changelog.mjs notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"; then
+            echo "::warning::$TAG's notes lack the hand-written CHANGELOG.md lines (docs/runbook.md, Releases)"
+            cp "$dir/body.md" "$dir/hand.md"
+          fi
+          node tools/release/firefox-notes.mjs "$dir/hand.md" --surfer surfer.json > "$dir/new.md"
           if [ "$(jq -r .name "$dir/release.json")" = "$title" ] && cmp -s "$dir/body.md" "$dir/new.md"; then
             echo "$TAG is already titled \"$title\"."
             exit 0

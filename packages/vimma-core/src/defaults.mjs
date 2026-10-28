@@ -30,8 +30,10 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  * @property {{ placement?: "swap" | "window" }} [private]  where the private workspace is shown
  *   (docs/specs/private-swap.md)
  * @property {{ check?: boolean }} [updates]  update checks (docs/specs/m6a-updater.md)
- * @property {{ toolbar?: "shown" | "hidden" }} [ui]  Firefox's toolbar at startup
- *   (docs/specs/toolbar-toggle.md)
+ * @property {{ toolbar?: "shown" | "hidden",
+ *   bookmarks_toolbar?: import("./bookmarks-toolbar.mjs").BookmarksToolbarSetting }} [ui]
+ *   Firefox's toolbar at startup (docs/specs/toolbar-toggle.md) and its Bookmarks Toolbar
+ *   (docs/specs/bookmarks-toolbar-hidden.md)
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
  *   notify?: boolean, download_dir?: string, download_max_mb?: number,
@@ -108,7 +110,7 @@ const keys = {
   // docs/specs/private-workspace.md: ctrl+shift+p is Firefox's "New Private Window", done
   // Vimma's way (go to the one private workspace, or open it).
   private_workspace: ["prefix+shift+p", "ctrl+shift+p"],
-  goto_picker: ["prefix+g"],
+  goto_picker: ["prefix+g", "ctrl+shift+a"],
   // docs/specs/live-grep.md decision 2: prefix+f is the find group, Telescope's <leader>fg.
   live_grep: ["prefix+f g"],
   toggle_sidebar: ["prefix+b"],
@@ -133,7 +135,7 @@ const keys = {
   save_page: ["ctrl+s"],
   print_page: ["ctrl+p"],
   downloads: ["ctrl+shift+y"],
-  addons_manager: ["ctrl+shift+a"],
+  addons_manager: ["ctrl+shift+f"],
   history_library: ["ctrl+shift+h"],
   bookmarks_library: ["ctrl+shift+o"],
   mute_tab: ["ctrl+m"],
@@ -201,7 +203,10 @@ const modal = {
     "<Esc>": "page.stop",
     r: "page.reload",
     f: "hint.follow",
-    F: "hint.follow_new_tab",
+    // f follows links and F focuses text blocks; background-tab hints sit beside gf
+    // (element-focus decision 2).
+    F: "hint.element",
+    gF: "hint.follow_new_tab",
     "/": "find.forward",
     "?": "find.backward",
     n: "find.next",
@@ -276,12 +281,27 @@ const modal = {
     o: "selection.swap",
     iw: "selection.inner_word",
     aw: "selection.a_word",
+    ip: "selection.inner_block",
+    ap: "selection.a_block",
     y: "selection.yank",
     Y: "selection.yank_lines",
     I: "urlbar.focus",
   },
   command: { "<Esc>": "command.cancel" },
   hint: { "<Esc>": "hint.cancel" },
+  // A focused text block (docs/specs/element-focus.md decision 7): v and V select it in copy
+  // mode, y copies it, + and - grow and shrink the focus, j and k move it, F picks another.
+  element: {
+    "<Esc>": "mode.normal",
+    v: "element.visual",
+    V: "element.visual_line",
+    y: "element.yank",
+    "+": "element.parent",
+    "-": "element.child",
+    j: "element.next",
+    k: "element.prev",
+    F: "hint.element",
+  },
   help: { "<Esc>": "help.close", "/": "help.filter", q: "help.close" },
   panel: {
     ...Object.fromEntries(
@@ -464,8 +484,8 @@ export function formatDefaultsToml() {
     `root = ${tomlString(DEFAULT_CONFIG.bookmarks?.root ?? "workspace")}`,
     "",
     '# The private workspace (ctrl+b shift+p): "swap" shows it in place of the Vimma window on',
-    '# Hyprland, which hides the other one until you switch back; "window" opens it as a window',
-    "# of its own beside it, as on every other window manager.",
+    '# Hyprland and macOS, which hide the other one until you switch back; "window" opens it as',
+    "# a window of its own beside it, as on every other system.",
     "[private]",
     `placement = ${tomlString(DEFAULT_CONFIG.private?.placement ?? "swap")}`,
     "",
@@ -473,6 +493,10 @@ export function formatDefaultsToml() {
     "# Hidden, focusing the address bar shows it; ctrl+b u and :toolbar toggle it until restart.",
     "[ui]",
     `toolbar = ${tomlString(DEFAULT_CONFIG.ui?.toolbar ?? "shown")}`,
+    "# Firefox's Bookmarks Toolbar, hidden by default (your bookmarks: ctrl+b shift+b):",
+    '# "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,',
+    "# ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.",
+    '# bookmarks_toolbar = "shown"',
     "",
     "# Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request",
     "# names only the update channel and the platform. false stops every check.",

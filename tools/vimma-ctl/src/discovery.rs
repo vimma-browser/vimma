@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-//! Finding the profile and reading its discovery file (Linux first; spec § Profile discovery).
+//! Finding the profile and reading its discovery file (spec § Profile discovery; macOS: spec
+//! macos-build).
 
 use crate::json;
 use crate::protocol::{Discovery, decode_discovery};
@@ -55,10 +56,36 @@ impl fmt::Display for DiscoveryError {
 
 impl std::error::Error for DiscoveryError {}
 
-/// The directory holding `profiles.ini`: `$XDG_CONFIG_HOME/vimma/vimma` (default
+/// The directory holding `profiles.ini`, where Firefox puts it on this platform: on macOS
+/// `~/Library/Application Support/Vimma`; elsewhere `$XDG_CONFIG_HOME/vimma/vimma` (default
 /// `~/.config/vimma/vimma`), or the legacy `~/.vimma/vimma` when that exists.
 #[must_use]
 pub fn profiles_root(env: &Env) -> Option<PathBuf> {
+    profiles_root_for(env, Layout::HOST)
+}
+
+/// Firefox's profile layouts (`toolkit/xre/nsXREDirProvider.cpp`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Layout {
+    /// GTK: vendor/name under `XDG_CONFIG_HOME`, or the legacy dot directory.
+    Xdg,
+    /// macOS: the app's name under Application Support. Firefox ignores the vendor there and
+    /// reads `XDG_CONFIG_HOME` only on GTK, so neither moves the root.
+    MacOs,
+}
+
+impl Layout {
+    const HOST: Self = if cfg!(target_os = "macos") {
+        Self::MacOs
+    } else {
+        Self::Xdg
+    };
+}
+
+fn profiles_root_for(env: &Env, layout: Layout) -> Option<PathBuf> {
+    if layout == Layout::MacOs {
+        return Some(env.home.as_ref()?.join("Library/Application Support/Vimma"));
+    }
     if let Some(home) = &env.home {
         let legacy = home.join(".vimma/vimma");
         if legacy.is_dir() {
@@ -211,9 +238,8 @@ pub fn read_discovery(profile: &Path) -> Result<Discovery, DiscoveryError> {
 /// something else may have taken. This is only a hint: a reused pid passes it. What protects the
 /// user is the handshake: the server must prove it knows the token (the challenge) before the
 /// client sends the token or any command, so a squatter on the port learns neither.
-#[cfg(target_os = "linux")]
 fn check_pid(path: &Path, pid: u64) -> Result<(), DiscoveryError> {
-    if Path::new(&format!("/proc/{pid}")).exists() {
+    if pid_alive(pid) {
         return Ok(());
     }
     Err(DiscoveryError(format!(
@@ -223,9 +249,39 @@ fn check_pid(path: &Path, pid: u64) -> Result<(), DiscoveryError> {
     )))
 }
 
-#[cfg(not(target_os = "linux"))]
-fn check_pid(_path: &Path, _pid: u64) -> Result<(), DiscoveryError> {
-    Ok(())
+#[cfg(target_os = "linux")]
+fn pid_alive(pid: u64) -> bool {
+    Path::new(&format!("/proc/{pid}")).exists()
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn pid_alive(pid: u64) -> bool {
+    ps_lists(pid)
+}
+
+#[cfg(not(unix))]
+fn pid_alive(_pid: u64) -> bool {
+    true
+}
+
+/// Whether `/bin/ps -p` lists the pid, as `/proc/<pid>` exists on Linux: also for another
+/// user's process, which `kill(pid, 0)` would not tell from an exited one without its errno.
+/// `ps` rather than `kill`, since the crate forbids `unsafe` and has no libc binding (ADR-011).
+/// When `/bin/ps` cannot be run the answer is "alive", which leaves the handshake to decide.
+#[cfg(all(unix, any(test, not(target_os = "linux"))))]
+fn ps_lists(pid: u64) -> bool {
+    use std::process::{Command, Stdio};
+    // pid 0 is the kernel's on macOS, never Vimma's; past i32::MAX no pid exists.
+    if pid == 0 || pid > i32::MAX.unsigned_abs().into() {
+        return false;
+    }
+    Command::new("/bin/ps")
+        .args(["-o", "pid=", "-p", &pid.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_or(true, |status| status.success())
 }
 
 #[cfg(unix)]
@@ -352,23 +408,71 @@ mod tests {
             xdg_config_home: Some(PathBuf::from("/xdg")),
             profile: None,
         };
-        assert_eq!(profiles_root(&env), Some(PathBuf::from("/xdg/vimma/vimma")));
+        let root = |env: &Env| profiles_root_for(env, Layout::Xdg);
+        assert_eq!(root(&env), Some(PathBuf::from("/xdg/vimma/vimma")));
         let env = Env {
             xdg_config_home: None,
             ..env
         };
-        assert_eq!(profiles_root(&env), Some(home.join(".config/vimma/vimma")));
+        assert_eq!(root(&env), Some(home.join(".config/vimma/vimma")));
         fs::create_dir_all(home.join(".vimma/vimma")).unwrap();
-        assert_eq!(profiles_root(&env), Some(home.join(".vimma/vimma")));
-        assert_eq!(profiles_root(&Env::default()), None);
+        assert_eq!(root(&env), Some(home.join(".vimma/vimma")));
+        assert_eq!(root(&Env::default()), None);
+    }
+
+    #[test]
+    fn profiles_root_finds_application_support_vimma_on_macos() {
+        let home = temp_dir();
+        let env = Env {
+            home: Some(home.to_path_buf()),
+            xdg_config_home: None,
+            profile: None,
+        };
+        let expected = home.join("Library/Application Support/Vimma");
+        assert_eq!(
+            profiles_root_for(&env, Layout::MacOs),
+            Some(expected.clone())
+        );
+        // Firefox reads no legacy ~/.vimma on macOS.
+        fs::create_dir_all(home.join(".vimma/vimma")).unwrap();
+        assert_eq!(profiles_root_for(&env, Layout::MacOs), Some(expected));
+        assert_eq!(profiles_root_for(&Env::default(), Layout::MacOs), None);
+    }
+
+    #[test]
+    fn xdg_config_home_does_not_move_the_macos_profile_root() {
+        let env = Env {
+            home: Some(PathBuf::from("/Users/u")),
+            xdg_config_home: Some(PathBuf::from("/Users/u/.config")),
+            profile: None,
+        };
+        assert_eq!(
+            profiles_root_for(&env, Layout::MacOs),
+            Some(PathBuf::from("/Users/u/Library/Application Support/Vimma"))
+        );
+    }
+
+    #[test]
+    fn the_host_uses_its_own_layout() {
+        let env = Env {
+            home: Some(PathBuf::from("/h")),
+            xdg_config_home: None,
+            profile: None,
+        };
+        let expected = if cfg!(target_os = "macos") {
+            "/h/Library/Application Support/Vimma"
+        } else {
+            "/h/.config/vimma/vimma"
+        };
+        assert_eq!(profiles_root(&env), Some(PathBuf::from(expected)));
     }
 
     #[test]
     fn find_profile_order() {
-        let root = temp_dir();
+        let home = temp_dir();
         let env = Env {
-            home: None,
-            xdg_config_home: Some(root.to_path_buf()),
+            home: Some(home.to_path_buf()),
+            xdg_config_home: Some(home.join("xdg")),
             profile: Some(PathBuf::from("/from-env")),
         };
         assert_eq!(
@@ -382,13 +486,14 @@ mod tests {
         };
         let err = find_profile(None, &env).unwrap_err();
         assert!(err.0.contains("profiles.ini"), "{err}");
-        fs::create_dir_all(root.join("vimma/vimma")).unwrap();
-        fs::write(root.join("vimma/vimma/profiles.ini"), REAL_INI).unwrap();
+        let root = profiles_root(&env).unwrap();
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("profiles.ini"), REAL_INI).unwrap();
         assert_eq!(
             find_profile(None, &env),
-            Ok(root.join("vimma/vimma/jpa751c5.default-release"))
+            Ok(root.join("jpa751c5.default-release"))
         );
-        fs::write(root.join("vimma/vimma/profiles.ini"), "[General]\n").unwrap();
+        fs::write(root.join("profiles.ini"), "[General]\n").unwrap();
         assert!(
             find_profile(None, &env)
                 .unwrap_err()
@@ -410,11 +515,11 @@ mod tests {
         assert_eq!(found.pid, u64::from(pid));
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(unix)]
     #[test]
-    fn reports_a_file_whose_process_has_exited_as_stale() {
+    fn a_discovery_file_whose_pid_has_exited_is_stale_on_every_unix() {
         let dir = temp_dir();
-        // Above Linux's largest pid_max (2^22), so no process has it.
+        // Above Linux's largest pid_max (2^22) and macOS's (99998), so no process has it.
         let text = format!(r#"{{"protocol":1,"port":4000,"token":"{TOKEN}","pid":999999999}}"#);
         write_mode(&dir.join(FILE_NAME), &text, 0o600);
         let err = read_discovery(&dir).unwrap_err();
@@ -422,6 +527,21 @@ mod tests {
             err.0.contains("stale") && err.0.contains("pid 999999999"),
             "{err}"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ps_tells_a_running_pid_from_an_exited_one() {
+        assert!(ps_lists(u64::from(std::process::id())));
+        // Another user's process is running too: launchd or init, owned by root.
+        assert!(ps_lists(1));
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let exited = u64::from(child.id());
+        child.wait().unwrap();
+        assert!(!ps_lists(exited));
+        assert!(!ps_lists(0));
+        assert!(!ps_lists(u64::from(u32::MAX)));
+        assert!(!ps_lists(u64::MAX));
     }
 
     #[cfg(unix)]

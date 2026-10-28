@@ -47,7 +47,7 @@ new_workspace = ["prefix+shift+n"]
 rename_workspace = ["prefix+shift+w"]
 close_workspace = ["prefix+shift+d"]
 private_workspace = ["prefix+shift+p", "ctrl+shift+p"]
-goto_picker = ["prefix+g"]
+goto_picker = ["prefix+g", "ctrl+shift+a"]
 live_grep = ["prefix+f g"]
 toggle_sidebar = ["prefix+b"]
 toggle_toolbar = ["prefix+u"]
@@ -70,7 +70,7 @@ toggle_fullscreen = ["f11"]
 save_page = ["ctrl+s"]
 print_page = ["ctrl+p"]
 downloads = ["ctrl+shift+y"]
-addons_manager = ["ctrl+shift+a"]
+addons_manager = ["ctrl+shift+f"]
 history_library = ["ctrl+shift+h"]
 bookmarks_library = ["ctrl+shift+o"]
 mute_tab = ["ctrl+m"]
@@ -136,7 +136,8 @@ insert_editing = true
 "<Esc>" = "page.stop"
 "r" = "page.reload"
 "f" = "hint.follow"
-"F" = "hint.follow_new_tab"
+"F" = "hint.element"
+"gF" = "hint.follow_new_tab"
 "/" = "find.forward"
 "?" = "find.backward"
 "n" = "find.next"
@@ -211,6 +212,8 @@ insert_editing = true
 "o" = "selection.swap"
 "iw" = "selection.inner_word"
 "aw" = "selection.a_word"
+"ip" = "selection.inner_block"
+"ap" = "selection.a_block"
 "y" = "selection.yank"
 "Y" = "selection.yank_lines"
 "I" = "urlbar.focus"
@@ -220,6 +223,17 @@ insert_editing = true
 
 [modal.hint]
 "<Esc>" = "hint.cancel"
+
+[modal.element]
+"<Esc>" = "mode.normal"
+"v" = "element.visual"
+"V" = "element.visual_line"
+"y" = "element.yank"
+"+" = "element.parent"
+"-" = "element.child"
+"j" = "element.next"
+"k" = "element.prev"
+"F" = "hint.element"
 
 [modal.help]
 "<Esc>" = "help.close"
@@ -318,8 +332,8 @@ main_size = 60
 root = "workspace"
 
 # The private workspace (ctrl+b shift+p): "swap" shows it in place of the Vimma window on
-# Hyprland, which hides the other one until you switch back; "window" opens it as a window
-# of its own beside it, as on every other window manager.
+# Hyprland and macOS, which hide the other one until you switch back; "window" opens it as
+# a window of its own beside it, as on every other system.
 [private]
 placement = "swap"
 
@@ -327,6 +341,10 @@ placement = "swap"
 # Hidden, focusing the address bar shows it; ctrl+b u and :toolbar toggle it until restart.
 [ui]
 toolbar = "shown"
+# Firefox's Bookmarks Toolbar, hidden by default (your bookmarks: ctrl+b shift+b):
+# "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,
+# ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.
+# bookmarks_toolbar = "shown"
 
 # Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request
 # names only the update channel and the platform. false stops every check.

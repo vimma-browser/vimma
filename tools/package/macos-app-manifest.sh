@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Prints a manifest of Vimma.app: one line per entry, `<type> <x|-> <sha256|-> <path>`, sorted
+# bytewise by path, where type is f (file) or d (directory), x marks an entry the running user,
+# who owns the extracted files, may execute, and the hash is the file's SHA-256 (spec
+# macos-build, decision 23). macos-build writes it for the app mach built and macos-dmg.sh signed
+# ad hoc; macos-notarise recomputes it from the app macos-unpack hands over and refuses a
+# difference before any credential exists, so the disk-image tools cannot change the app unseen.
+# Both lists come from the same release run: this guards against the unpack tools, not against a
+# compromised build.
+#
+# Vimma.app has no symbolic link (an installed Vimma.app on Firefox 158.0.1 or 159.0 has none), so
+# a link, the app being a link, or a name with a newline is refused rather than listed. It uses
+# bash, find, sort and sha256sum only, so it can run where the signing secrets are.
+#
+#   tools/package/macos-app-manifest.sh path/to/Vimma.app > vimma-app.manifest
+set -euo pipefail
+export LC_ALL=C
+app=${1:?usage: macos-app-manifest.sh path/to/Vimma.app}
+
+fail() {
+  echo "macos-app-manifest.sh: $*" >&2
+  exit 1
+}
+
+[ ! -L "$app" ] || fail "$app is a symlink"
+[ -d "$app" ] || fail "$app is not a directory"
+links=$(find "$app" -type l -print -quit)
+[ -z "$links" ] || fail "a symlink is in the app: $links"
+other=$(find "$app" ! -type f ! -type d -print -quit)
+[ -z "$other" ] || fail "an entry that is neither a file nor a directory is in the app: $other"
+
+cd "$app"
+# Every name first, so the script never prints part of a manifest: printable ASCII only, which
+# keeps one entry per line.
+paths=()
+while IFS= read -r -d '' path; do
+  case $path in *[!\ -~]*) fail "a name with a newline, a control character or a non-ASCII byte" ;; esac
+  paths+=("${path#./}")
+done < <(find . -mindepth 1 -print0)
+
+# Then the whole manifest into a variable, printed only when every entry has been read.
+lines=""
+for path in "${paths[@]}"; do
+  if [ -x "$path" ]; then x=x; else x=-; fi
+  if [ -d "$path" ]; then
+    lines+="d $x - $path"$'\n'
+  else
+    sum=$(sha256sum < "$path")
+    lines+="f $x ${sum%% *} $path"$'\n'
+  fi
+done
+sorted=$(printf '%s' "$lines" | sort -t " " -k 4)
+[ -z "$sorted" ] || printf '%s\n' "$sorted"

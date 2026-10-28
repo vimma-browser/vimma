@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_checkpoint.js and the e2e checkpoint scenario: a shop's
+   - checkout whose card number field is in a payment provider's frame of another site
+   - (file_vimma_agent_shot_card.html on example.org), with an "Apply coupon" button that pays
+   - nothing by its words, and the order total before it. Each click is counted in #log.
+   - ?frame=hosted_pay loads file_vimma_agent_hosted_pay.html in the frame instead. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout · Shop</title>
+    <style>
+      body {
+        margin: 8px 16px;
+        font: 14px sans-serif;
+        max-width: 560px;
+      }
+      iframe {
+        border: 1px solid #888;
+        width: 320px;
+        height: 40px;
+        display: block;
+        margin: 8px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Checkout</h1>
+    <p>Order total: 42.90 EUR</p>
+    <iframe id="hosted" title="Payment"></iframe>
+    <p>
+      <input id="coupon" name="coupon" aria-label="Coupon" value="AUTUMN" />
+      <button id="apply" type="button">Apply coupon</button>
+    </p>
+    <ol id="log"></ol>
+    <script>
+      // A frame of another site: the test directory on example.org.
+      const dir = location.pathname.replace(/[^/]*$/, "");
+      const name = new URLSearchParams(location.search).get("frame") ?? "shot_card";
+      document.getElementById("hosted").src =
+        `https://example.org${dir}file_vimma_agent_${name}.html`;
+      document.getElementById("apply").addEventListener("click", () => {
+        const li = document.createElement("li");
+        li.textContent = "apply";
+        document.getElementById("log").append(li);
+      });
+    </script>
+  </body>
+</html>

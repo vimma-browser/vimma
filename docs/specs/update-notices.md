@@ -133,6 +133,8 @@ colour. VimmaHost hands it each keydown after the agent question and before the 
    prompt is open, or while a page is in DOM full screen (where the line is hidden) is not the
    question's: the line closes back to waiting and the key goes on, so that a key is never read
    as an answer to a question the user cannot see or did not mean.
+   (Since changed: hint, copy and element mode keep their keys the same way, because a hint label
+   and the yank type `y`; issue #495, `keysHeld` in `host/VimmaHost.sys.mjs`.)
    `y` only opens the steps: Vimma installs nothing (m6a-updater decision 11).
 9. **Once per session and version**, because the red segment stays and the steps need the user
    to act outside Vimma (a terminal, a package manager); asking again in the same session would

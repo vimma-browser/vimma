@@ -18,15 +18,21 @@ memory; Vimma puts it to work on the web. Bare keys drive the page, `ctrl+b` dri
 and workspaces, and your hands never leave the keyboard.
 
 - **Vim on the page:** `j`/`k` to scroll, `f` for link hints, `/` to find, `:` for commands, and
-  `Esc` to get back to normal mode.
+  `Esc` to get back to normal mode. Copy a paragraph, list item or code block in three keys: `F`,
+  its label, then `y` (or `v` to adjust it first).
 - **tmux for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab, `v` to split,
   `w` to switch workspace. If your fingers know tmux, they already know Vimma.
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
   `config.toml`, Firefox's own keys too: every Firefox shortcut is a Vimma binding with
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.
 - **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through
-  MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies, and every request asks
-  you first.
+  MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies. Every request asks you
+  first, and one answer (`10a`) lets an agent work through a task for that many minutes. There
+  they read and open pages, scroll, search and follow links with Vimma's own keys, click buttons
+  and fill forms by hint label (never a password or payment card field), see a page as a
+  screenshot, read its errors, and show you a page when they want you to look at it. Sending a
+  form and paying are checkpoints, asked every time under any grant: the question shows what the
+  form sends, or the button, the site and the total the page states.
 
 ## Install
 
@@ -46,14 +52,19 @@ mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://gi
 brew install --cask vimma-browser/tap/vimma
 ```
 
-Vimma is not yet notarised, so macOS blocks the first open ("Apple could not verify “Vimma”"):
-choose **Done**, then in System Settings → Privacy & Security choose **Open Anyway** next to
-Vimma. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma to Applications.
+A release that is not notarised (the guide says how to tell) makes macOS block the first open
+("Apple could not verify “Vimma”"): choose **Done**, then in System Settings → Privacy & Security
+choose **Open Anyway** next to Vimma. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma to Applications.
 The guide's [macOS](docs/guide.md#macos) section has the steps and a one-line terminal
 alternative.
 
 **Debian 12+, Ubuntu 22.04+:** download `vimma_X.Y.Z_amd64.deb`, then
 `sudo apt install ./vimma_X.Y.Z_amd64.deb`.
+
+**Fedora, openSUSE:** download `vimma-X.Y.Z-1.x86_64.rpm`, then
+`sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm` on Fedora, or
+`sudo zypper install --allow-unsigned-rpm ./vimma-X.Y.Z-1.x86_64.rpm` on openSUSE. The package
+carries no OpenPGP signature; check it with `SHA256SUMS` and cosign instead, as the guide shows.
 
 **Any other distribution:** download `vimma-X.Y.Z-x86_64.AppImage`, then
 `chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage`.
@@ -80,15 +91,18 @@ the hours slip by. It also happens to start with _Vim_.
 
 Early, for Linux x86_64 and macOS on Apple Silicon. Releases are on
 [GitHub Releases](https://github.com/vimma-browser/vimma/releases), with a tarball, an AppImage, a
-`.deb` and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
-([Install](#install)); you can also
-[build it from source](CONTRIBUTING.md#build-and-run). Update notices are live: Vimma 0.1.2 and
-later check a signed update file every 12 hours and show a newer release in the status bar. They
-notify only; installing the update is up to you.
+`.deb`, an `.rpm` for Fedora and openSUSE and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
+([Install](#install)). Each carries `vimma-ctl`, the client for scripts and agents, so it updates
+with the browser ([where it is](docs/guide.md#installing)); you can also
+[build Vimma from source](CONTRIBUTING.md#build-and-run). Update notices are live: Vimma 0.1.2 and
+later check a signed update file every 12 hours and show a newer release in the status bar. The
+AppImage, from the first release that includes its self-update, then replaces its own file with
+the newer release once its size and SHA-512 match the signed file, and the next start runs it.
+The other packages notify only; installing the update is up to you.
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>
 
-AI coding agents working on this repository follow [CLAUDE.md](CLAUDE.md); contributors read
+AI coding agents working on this repository follow [AGENTS.md](AGENTS.md); contributors read
 [CONTRIBUTING.md](CONTRIBUTING.md) before opening issues or pull requests.
 <!-- process-wording: points coding agents at their rules file -->
 

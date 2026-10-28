@@ -31,516 +31,526 @@
 
 // ---- smol-toml 1.9.0 dist/error.js ----
 function getLineColFromPtr(string, ptr) {
-    let lines = string.slice(0, ptr).split(/\r?\n/);
-    return [lines.length, lines.pop().length + 1];
+  let lines = string.slice(0, ptr).split(/\r?\n/);
+  return [lines.length, lines.pop().length + 1];
 }
 function makeCodeBlock(string, line, column) {
-    let lines = string.split(/\r?\n/);
-    let codeblock = '';
-    let numberLen = (Math.log10(line + 1) | 0) + 1;
-    for (let i = line - 1; i <= line + 1; i++) {
-        let l = lines[i - 1];
-        if (!l)
-            continue;
-        codeblock += i.toString().padEnd(numberLen, ' ');
-        codeblock += ':  ';
-        codeblock += l;
-        codeblock += '\n';
-        if (i === line) {
-            codeblock += ' '.repeat(numberLen + column + 2);
-            codeblock += '^\n';
-        }
+  let lines = string.split(/\r?\n/);
+  let codeblock = "";
+  let numberLen = (Math.log10(line + 1) | 0) + 1;
+  for (let i = line - 1; i <= line + 1; i++) {
+    let l = lines[i - 1];
+    if (!l) continue;
+    codeblock += i.toString().padEnd(numberLen, " ");
+    codeblock += ":  ";
+    codeblock += l;
+    codeblock += "\n";
+    if (i === line) {
+      codeblock += " ".repeat(numberLen + column + 2);
+      codeblock += "^\n";
     }
-    return codeblock;
+  }
+  return codeblock;
 }
 export class TomlError extends Error {
-    line;
-    column;
-    codeblock;
-    constructor(message, options) {
-        const [line, column] = getLineColFromPtr(options.toml, options.ptr);
-        const codeblock = makeCodeBlock(options.toml, line, column);
-        super(`Invalid TOML document: ${message}\n\n${codeblock}`, options);
-        this.line = line;
-        this.column = column;
-        this.codeblock = codeblock;
-    }
-    /** @internal */
-    static x(message, ctx, ptr) {
-        throw new TomlError(message, { toml: ctx.s, ptr: ptr ?? ctx.p });
-    }
+  line;
+  column;
+  codeblock;
+  constructor(message, options) {
+    const [line, column] = getLineColFromPtr(options.toml, options.ptr);
+    const codeblock = makeCodeBlock(options.toml, line, column);
+    super(`Invalid TOML document: ${message}\n\n${codeblock}`, options);
+    this.line = line;
+    this.column = column;
+    this.codeblock = codeblock;
+  }
+  /** @internal */
+  static x(message, ctx, ptr) {
+    throw new TomlError(message, { toml: ctx.s, ptr: ptr ?? ctx.p });
+  }
 }
 
 // ---- smol-toml 1.9.0 dist/date.js ----
-let DATE_TIME_RE = /^(\d{4}-\d{2}-\d{2})?[Tt ]?(?:(\d{2}):\d{2}(?::\d{2}(?:\.\d+)?)?)?(Z|z|[-+]\d{2}:\d{2})?$/i;
+let DATE_TIME_RE =
+  /^(\d{4}-\d{2}-\d{2})?[Tt ]?(?:(\d{2}):\d{2}(?::\d{2}(?:\.\d+)?)?)?(Z|z|[-+]\d{2}:\d{2})?$/i;
 export class TomlDate extends Date {
-    #hasDate = false;
-    #hasTime = false;
-    #offset = null;
-    constructor(date, fasttype, unsafeDelim) {
-        let hasDate = true;
-        let hasTime = true;
-        let offset = 'Z';
-        let c;
-        if (typeof date === 'string') {
-            if (fasttype)
-                prep: {
-                    // Date-time
-                    if (fasttype < 3) {
-                        if (+date.slice(11, 13) > 23) {
-                            date = '';
-                            break prep;
-                        }
-                        // Local
-                        if (fasttype === 2) {
-                            offset = null;
-                            date += 'Z';
-                        }
-                        // Offset; keep track of offset if not Z
-                        else if ((c = date.charCodeAt(date.length - 1)) !== 0x5a /* Z */ && c !== 0x7a /* z */) {
-                            offset = date.slice(date.length - 6);
-                        }
-                        if (unsafeDelim)
-                            date = date.slice(0, 10) + 'T' + date.slice(11);
-                    }
-                    // Time
-                    else if (fasttype === 4) {
-                        date = +date.slice(0, 2) > 23 ? '' : `0000-01-01T${date}Z`;
-                    }
-                    hasDate = fasttype !== 4;
-                    hasTime = fasttype !== 3;
-                }
-            else {
-                let match = date.match(DATE_TIME_RE);
-                if (match) {
-                    if (!match[1]) {
-                        hasDate = false;
-                        date = `0000-01-01T${date}`;
-                    }
-                    hasTime = !!match[2];
-                    // Make sure to use T instead of a space. Breaks in case of extreme values otherwise.
-                    hasTime && date[10] === ' ' && (date = date.replace(' ', 'T'));
-                    // Do not allow rollover hours.
-                    if (match[2] && +match[2] > 23) {
-                        date = '';
-                    }
-                    else {
-                        offset = match[3] || null;
-                        if (!offset && hasTime)
-                            date += 'Z';
-                    }
-                }
-                else {
-                    date = '';
-                }
+  #hasDate = false;
+  #hasTime = false;
+  #offset = null;
+  constructor(date, fasttype, unsafeDelim) {
+    let hasDate = true;
+    let hasTime = true;
+    let offset = "Z";
+    let c;
+    if (typeof date === "string") {
+      if (fasttype)
+        prep: {
+          // Date-time
+          if (fasttype < 3) {
+            if (+date.slice(11, 13) > 23) {
+              date = "";
+              break prep;
             }
+            // Local
+            if (fasttype === 2) {
+              offset = null;
+              date += "Z";
+            }
+            // Offset; keep track of offset if not Z
+            else if (
+              (c = date.charCodeAt(date.length - 1)) !== 0x5a /* Z */ &&
+              c !== 0x7a /* z */
+            ) {
+              offset = date.slice(date.length - 6);
+            }
+            if (unsafeDelim) date = date.slice(0, 10) + "T" + date.slice(11);
+          }
+          // Time
+          else if (fasttype === 4) {
+            date = +date.slice(0, 2) > 23 ? "" : `0000-01-01T${date}Z`;
+          }
+          hasDate = fasttype !== 4;
+          hasTime = fasttype !== 3;
         }
-        super(date);
-        if (!isNaN(this.getTime())) {
-            this.#hasDate = hasDate;
-            this.#hasTime = hasTime;
-            this.#offset = offset;
+      else {
+        let match = date.match(DATE_TIME_RE);
+        if (match) {
+          if (!match[1]) {
+            hasDate = false;
+            date = `0000-01-01T${date}`;
+          }
+          hasTime = !!match[2];
+          // Make sure to use T instead of a space. Breaks in case of extreme values otherwise.
+          hasTime && date[10] === " " && (date = date.replace(" ", "T"));
+          // Do not allow rollover hours.
+          if (match[2] && +match[2] > 23) {
+            date = "";
+          } else {
+            offset = match[3] || null;
+            if (!offset && hasTime) date += "Z";
+          }
+        } else {
+          date = "";
         }
+      }
     }
-    isDateTime() {
-        return this.#hasDate && this.#hasTime;
+    super(date);
+    if (!isNaN(this.getTime())) {
+      this.#hasDate = hasDate;
+      this.#hasTime = hasTime;
+      this.#offset = offset;
     }
-    isLocal() {
-        return !this.#hasDate || !this.#hasTime || !this.#offset;
-    }
-    isDate() {
-        return this.#hasDate && !this.#hasTime;
-    }
-    isTime() {
-        return this.#hasTime && !this.#hasDate;
-    }
-    isValid() {
-        return this.#hasDate || this.#hasTime;
-    }
-    toISOString() {
-        let iso = super.toISOString();
-        // Local Date
-        if (this.isDate())
-            return iso.slice(0, 10);
-        // Local Time
-        if (this.isTime())
-            return iso.slice(11, 23);
-        // Local DateTime
-        if (this.#offset === null)
-            return iso.slice(0, -1);
-        // Offset DateTime
-        if (this.#offset === 'Z' || this.#offset === 'z')
-            return iso;
-        // This part is quite annoying: JS strips the original timezone from the ISO string representation
-        // Instead of using a "modified" date and "Z", we restore the representation "as authored"
-        let offset = (+(this.#offset.slice(1, 3)) * 60) + +(this.#offset.slice(4, 6));
-        offset = this.#offset[0] === '-' ? offset : -offset;
-        let offsetDate = new Date(this.getTime() - (offset * 60e3));
-        return offsetDate.toISOString().slice(0, -1) + this.#offset;
-    }
-    static wrapAsOffsetDateTime(jsDate, offset = 'Z') {
-        let date = new TomlDate(jsDate);
-        date.#offset = offset;
-        return date;
-    }
-    static wrapAsLocalDateTime(jsDate) {
-        let date = new TomlDate(jsDate);
-        date.#offset = null;
-        return date;
-    }
-    static wrapAsLocalDate(jsDate) {
-        let date = new TomlDate(jsDate);
-        date.#hasTime = false;
-        date.#offset = null;
-        return date;
-    }
-    static wrapAsLocalTime(jsDate) {
-        let date = new TomlDate(jsDate);
-        date.#hasDate = false;
-        date.#offset = null;
-        return date;
-    }
+  }
+  isDateTime() {
+    return this.#hasDate && this.#hasTime;
+  }
+  isLocal() {
+    return !this.#hasDate || !this.#hasTime || !this.#offset;
+  }
+  isDate() {
+    return this.#hasDate && !this.#hasTime;
+  }
+  isTime() {
+    return this.#hasTime && !this.#hasDate;
+  }
+  isValid() {
+    return this.#hasDate || this.#hasTime;
+  }
+  toISOString() {
+    let iso = super.toISOString();
+    // Local Date
+    if (this.isDate()) return iso.slice(0, 10);
+    // Local Time
+    if (this.isTime()) return iso.slice(11, 23);
+    // Local DateTime
+    if (this.#offset === null) return iso.slice(0, -1);
+    // Offset DateTime
+    if (this.#offset === "Z" || this.#offset === "z") return iso;
+    // This part is quite annoying: JS strips the original timezone from the ISO string representation
+    // Instead of using a "modified" date and "Z", we restore the representation "as authored"
+    let offset = +this.#offset.slice(1, 3) * 60 + +this.#offset.slice(4, 6);
+    offset = this.#offset[0] === "-" ? offset : -offset;
+    let offsetDate = new Date(this.getTime() - offset * 60e3);
+    return offsetDate.toISOString().slice(0, -1) + this.#offset;
+  }
+  static wrapAsOffsetDateTime(jsDate, offset = "Z") {
+    let date = new TomlDate(jsDate);
+    date.#offset = offset;
+    return date;
+  }
+  static wrapAsLocalDateTime(jsDate) {
+    let date = new TomlDate(jsDate);
+    date.#offset = null;
+    return date;
+  }
+  static wrapAsLocalDate(jsDate) {
+    let date = new TomlDate(jsDate);
+    date.#hasTime = false;
+    date.#offset = null;
+    return date;
+  }
+  static wrapAsLocalTime(jsDate) {
+    let date = new TomlDate(jsDate);
+    date.#hasDate = false;
+    date.#offset = null;
+    return date;
+  }
 }
 
 // ---- smol-toml 1.9.0 dist/util.js ----
 /** @internal */
 export function skipComment(ctx) {
-    for (; ctx.p < ctx.s.length; ctx.p++) {
-        let c = ctx.s.charCodeAt(ctx.p);
-        if (c === 0xa /* \n */)
-            break;
-        if (c === 0xd /* \r */ && ctx.s.charCodeAt(ctx.p + 1) === 0xa /* \n */) {
-            ctx.p++;
-            break;
-        }
-        if ((c < 0x20 && c !== 0x9 /* \t */) || c === 0x7f) {
-            TomlError.x('control characters are not allowed in comments', ctx);
-        }
+  for (; ctx.p < ctx.s.length; ctx.p++) {
+    let c = ctx.s.charCodeAt(ctx.p);
+    if (c === 0xa /* \n */) break;
+    if (c === 0xd /* \r */ && ctx.s.charCodeAt(ctx.p + 1) === 0xa /* \n */) {
+      ctx.p++;
+      break;
     }
+    if ((c < 0x20 && c !== 0x9) /* \t */ || c === 0x7f) {
+      TomlError.x("control characters are not allowed in comments", ctx);
+    }
+  }
 }
 /** @internal */
 export function skipVoid(ctx, banNewLines, banComments) {
-    let c;
-    while (ctx.p < ctx.s.length) {
-        while (ctx.p < ctx.s.length && ((c = ctx.s.charCodeAt(ctx.p)) === 0x20 ||
-            c === 0x9 /* \t */ ||
-            (!banNewLines &&
-                (c === 0xa /* \n */ || (c === 0xd /* \r */ && ctx.s.charCodeAt(ctx.p + 1) === 0xa /* \n */)))))
-            ctx.p++;
-        if (banComments || c !== 0x23 /* # */)
-            break;
-        skipComment(ctx);
-    }
+  let c;
+  while (ctx.p < ctx.s.length) {
+    while (
+      ctx.p < ctx.s.length &&
+      ((c = ctx.s.charCodeAt(ctx.p)) === 0x20 ||
+        c === 0x9 /* \t */ ||
+        (!banNewLines &&
+          (c === 0xa /* \n */ ||
+            (c === 0xd /* \r */ && ctx.s.charCodeAt(ctx.p + 1) === 0xa) /* \n */)))
+    )
+      ctx.p++;
+    if (banComments || c !== 0x23 /* # */) break;
+    skipComment(ctx);
+  }
 }
 
 // ---- smol-toml 1.9.0 dist/primitive.js ----
 /** @internal */
 export function parseString(ctx) {
-    let startPtr = ctx.p;
-    let c = ctx.s.charCodeAt(ctx.p++);
-    let first = c;
-    let isLiteral = c === 0x27; /* ' */
-    let isMultiline = c === ctx.s.charCodeAt(ctx.p) && c === ctx.s.charCodeAt(ctx.p + 1);
-    if (isMultiline) {
-        // Trim initial newline
-        if ((c = ctx.s.charCodeAt(ctx.p += 2)) === 0xa /* \n */)
-            ctx.p++;
-        else if (c === 0xd /* \r */ && ctx.s.charCodeAt(ctx.p + 1) === 0xa /* \n */)
-            ctx.p += 2;
+  let startPtr = ctx.p;
+  let c = ctx.s.charCodeAt(ctx.p++);
+  let first = c;
+  let isLiteral = c === 0x27; /* ' */
+  let isMultiline = c === ctx.s.charCodeAt(ctx.p) && c === ctx.s.charCodeAt(ctx.p + 1);
+  if (isMultiline) {
+    // Trim initial newline
+    if ((c = ctx.s.charCodeAt((ctx.p += 2))) === 0xa /* \n */) ctx.p++;
+    else if (c === 0xd /* \r */ && ctx.s.charCodeAt(ctx.p + 1) === 0xa /* \n */) ctx.p += 2;
+  }
+  // For the record: it is not worth it to use a fast-path for literal strings using `indexOf`.
+  // Doing a char-by-char iteration ends up dispatching less instructions, for the same wall-clock runtime.
+  let parsed = "";
+  let sliceStart = ctx.p;
+  // states:
+  //   0 - decoding
+  //   1 - decoding escape
+  //   2 - whitespace escape (no newline encountered yet, must fail on non-whitespace)
+  //   3 - whitespace escape (newline encountered, allowed to transition back to normal decode)
+  let state = 0;
+  for (; ctx.p < ctx.s.length; ctx.p++) {
+    c = ctx.s.charCodeAt(ctx.p);
+    // Deal with newlines first, since that simplifies control character checking and handling across all states
+    if (
+      isMultiline &&
+      (c === 0xa /* \n */ || (c === 0xd /* \r */ && ctx.s.charCodeAt(ctx.p + 1) === 0xa) /* \n */)
+    ) {
+      state = state && 3;
     }
-    // For the record: it is not worth it to use a fast-path for literal strings using `indexOf`.
-    // Doing a char-by-char iteration ends up dispatching less instructions, for the same wall-clock runtime.
-    let parsed = '';
-    let sliceStart = ctx.p;
-    // states:
-    //   0 - decoding
-    //   1 - decoding escape
-    //   2 - whitespace escape (no newline encountered yet, must fail on non-whitespace)
-    //   3 - whitespace escape (newline encountered, allowed to transition back to normal decode)
-    let state = 0;
-    for (; ctx.p < ctx.s.length; ctx.p++) {
-        c = ctx.s.charCodeAt(ctx.p);
-        // Deal with newlines first, since that simplifies control character checking and handling across all states
-        if (isMultiline && (c === 0xa /* \n */ || (c === 0xd /* \r */ && ctx.s.charCodeAt(ctx.p + 1) === 0xa /* \n */))) {
-            state = state && 3;
-        }
-        // Control characters are banned in TOML, so we throw an error if we encounter them
-        else if ((c < 0x20 && c !== 0x9 /* \t */) || c === 0x7f) {
-            TomlError.x('control characters are not allowed in strings', ctx);
-        }
-        // The string might terminate while we're parsing through a newline escape.
-        // It must have encountered a newline; otherwise, it'll simply fail in another branch.
-        else if ((!state || state === 3) && c === first && (!isMultiline || (ctx.s.charCodeAt(ctx.p + 1) === first && ctx.s.charCodeAt(ctx.p + 2) === first))) {
-            if (isMultiline) {
-                // If the string ends with 4-5 quotes, then the first 1-2 are part of the string
-                if (ctx.s.charCodeAt(ctx.p + 3) === first)
-                    ctx.p++;
-                if (ctx.s.charCodeAt(ctx.p + 3) === first)
-                    ctx.p++;
-            }
-            // If we're in a newline escape still, then there's nothing to add.
-            if (!state) {
-                // Avoid a useless concat operation if the string can be used as-is.
-                let s = ctx.s.slice(sliceStart, ctx.p);
-                parsed = parsed ? parsed + s : s;
-            }
-            ctx.p += isMultiline ? 3 : 1;
-            return parsed;
-        }
-        // Baseline state; keep moving forward unless an escape sequence starts
-        else if (!state) {
-            if (!isLiteral && c === 0x5c /* \ */) {
-                parsed += ctx.s.slice(sliceStart, (sliceStart = ctx.p));
-                state = 1;
-            }
-        }
-        else if (state === 1) {
-            if (c === 0x78 /* x */ || c === 0x75 /* u */ || c === 0x55 /* U */) { // Unicode escape
-                let errPtr = ctx.p++ - 1;
-                let value = 0;
-                let len = c === 0x78 /* x */ ? 2 : c === 0x75 /* u */ ? 4 : 8;
-                for (let j = 0; j < len; j++, ctx.p++) {
-                    let hex = ctx.s.charCodeAt(ctx.p);
-                    let digit = 
-                    /* 0-9 */ hex >= 0x30 && hex <= 0x39 ? hex - 0x30 :
-                        /* A-F */ hex >= 0x41 && hex <= 0x46 ? hex - 0x41 + 10 :
-                            /* a-f */ hex >= 0x61 && hex <= 0x66 ? hex - 0x61 + 10 : -1;
-                    if (digit < 0)
-                        TomlError.x('invalid non-hex character in unicode escape', ctx);
-                    value = (value << 4) | digit;
-                }
-                // Because JS does bitwise on signed 32bit integers, all 0xfzzzzzzz values are actually seen as negative
-                if (value < 0 || value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)) {
-                    TomlError.x('invalid unicode escape', ctx, errPtr);
-                }
-                parsed += String.fromCodePoint(value);
-                sliceStart = ctx.p--;
-                state = 0;
-            }
-            // Newline escape sequence. We only need to care about spaces and tabs; newlines are dealt with earlier
-            else if (isMultiline && (c === 0x20 || c === 0x9 /* \t */)) {
-                state = 2;
-            }
-            // Basic escape sequence
-            else {
-                if (c === 0x62 /* b */)
-                    parsed += '\b';
-                else if (c === 0x74 /* t */)
-                    parsed += '\t';
-                else if (c === 0x6e /* n */)
-                    parsed += '\n';
-                else if (c === 0x66 /* f */)
-                    parsed += '\f';
-                else if (c === 0x72 /* r */)
-                    parsed += '\r';
-                else if (c === 0x65 /* e */)
-                    parsed += '\x1b';
-                else if (c === 0x22 /* " */)
-                    parsed += '"';
-                else if (c === 0x5c /* \ */)
-                    parsed += '\\';
-                else
-                    TomlError.x('unrecognised escape sequence', ctx);
-                sliceStart = ctx.p + 1;
-                state = 0;
-            }
-        }
-        // Newline escape continuation: keep moving forward until the first non-whitespace char
-        else if (c !== 0x20 && c !== 0x9 /* \t */) {
-            if (state === 2)
-                TomlError.x('invalid escape: only line-ending whitespace may be escaped', ctx, sliceStart);
-            // State cannot be zero, or we'd have branched earlier already.
-            // If it's a backslash, immediately transition to the escape state so it can be processed.
-            state = !isLiteral && c === 0x5c /* \ */ ? 1 : 0;
-            sliceStart = ctx.p;
-        }
+    // Control characters are banned in TOML, so we throw an error if we encounter them
+    else if ((c < 0x20 && c !== 0x9) /* \t */ || c === 0x7f) {
+      TomlError.x("control characters are not allowed in strings", ctx);
     }
-    TomlError.x('unfinished string', ctx, startPtr);
+    // The string might terminate while we're parsing through a newline escape.
+    // It must have encountered a newline; otherwise, it'll simply fail in another branch.
+    else if (
+      (!state || state === 3) &&
+      c === first &&
+      (!isMultiline ||
+        (ctx.s.charCodeAt(ctx.p + 1) === first && ctx.s.charCodeAt(ctx.p + 2) === first))
+    ) {
+      if (isMultiline) {
+        // If the string ends with 4-5 quotes, then the first 1-2 are part of the string
+        if (ctx.s.charCodeAt(ctx.p + 3) === first) ctx.p++;
+        if (ctx.s.charCodeAt(ctx.p + 3) === first) ctx.p++;
+      }
+      // If we're in a newline escape still, then there's nothing to add.
+      if (!state) {
+        // Avoid a useless concat operation if the string can be used as-is.
+        let s = ctx.s.slice(sliceStart, ctx.p);
+        parsed = parsed ? parsed + s : s;
+      }
+      ctx.p += isMultiline ? 3 : 1;
+      return parsed;
+    }
+    // Baseline state; keep moving forward unless an escape sequence starts
+    else if (!state) {
+      if (!isLiteral && c === 0x5c /* \ */) {
+        parsed += ctx.s.slice(sliceStart, (sliceStart = ctx.p));
+        state = 1;
+      }
+    } else if (state === 1) {
+      if (c === 0x78 /* x */ || c === 0x75 /* u */ || c === 0x55 /* U */) {
+        // Unicode escape
+        let errPtr = ctx.p++ - 1;
+        let value = 0;
+        let len = c === 0x78 /* x */ ? 2 : c === 0x75 /* u */ ? 4 : 8;
+        for (let j = 0; j < len; j++, ctx.p++) {
+          let hex = ctx.s.charCodeAt(ctx.p);
+          let digit =
+            /* 0-9 */ hex >= 0x30 && hex <= 0x39
+              ? hex - 0x30
+              : /* A-F */ hex >= 0x41 && hex <= 0x46
+                ? hex - 0x41 + 10
+                : /* a-f */ hex >= 0x61 && hex <= 0x66
+                  ? hex - 0x61 + 10
+                  : -1;
+          if (digit < 0) TomlError.x("invalid non-hex character in unicode escape", ctx);
+          value = (value << 4) | digit;
+        }
+        // Because JS does bitwise on signed 32bit integers, all 0xfzzzzzzz values are actually seen as negative
+        if (value < 0 || value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)) {
+          TomlError.x("invalid unicode escape", ctx, errPtr);
+        }
+        parsed += String.fromCodePoint(value);
+        sliceStart = ctx.p--;
+        state = 0;
+      }
+      // Newline escape sequence. We only need to care about spaces and tabs; newlines are dealt with earlier
+      else if (isMultiline && (c === 0x20 || c === 0x9) /* \t */) {
+        state = 2;
+      }
+      // Basic escape sequence
+      else {
+        if (c === 0x62 /* b */) parsed += "\b";
+        else if (c === 0x74 /* t */) parsed += "\t";
+        else if (c === 0x6e /* n */) parsed += "\n";
+        else if (c === 0x66 /* f */) parsed += "\f";
+        else if (c === 0x72 /* r */) parsed += "\r";
+        else if (c === 0x65 /* e */) parsed += "\x1b";
+        else if (c === 0x22 /* " */) parsed += '"';
+        else if (c === 0x5c /* \ */) parsed += "\\";
+        else TomlError.x("unrecognised escape sequence", ctx);
+        sliceStart = ctx.p + 1;
+        state = 0;
+      }
+    }
+    // Newline escape continuation: keep moving forward until the first non-whitespace char
+    else if (c !== 0x20 && c !== 0x9 /* \t */) {
+      if (state === 2)
+        TomlError.x("invalid escape: only line-ending whitespace may be escaped", ctx, sliceStart);
+      // State cannot be zero, or we'd have branched earlier already.
+      // If it's a backslash, immediately transition to the escape state so it can be processed.
+      state = !isLiteral && c === 0x5c /* \ */ ? 1 : 0;
+      sliceStart = ctx.p;
+    }
+  }
+  TomlError.x("unfinished string", ctx, startPtr);
 }
 
 // ---- smol-toml 1.9.0 dist/struct.js ----
 /** @internal */
 export function parseKey(ctx, end = 0x3d /* = */) {
-    // States:
-    // 0: before first char
-    // 1: parsing bare key
-    // 2: after key component
-    let startPtr;
-    let state = 0;
-    let parsed = [];
-    let sliceStart;
-    let c = ctx.s.charCodeAt(startPtr = ctx.p);
-    do {
-        // End of key
-        if (c === end) {
-            if (!state)
-                TomlError.x('unexpected end of key', ctx);
-            if (state === 1)
-                parsed.push(ctx.s.slice(sliceStart, ctx.p));
-            return ctx.p++, parsed;
-        }
-        // Dotted key separator
-        else if (c === 0x2e /* . */) {
-            if (!state)
-                TomlError.x('illegal empty bare key', ctx);
-            if (state === 1)
-                parsed.push(ctx.s.slice(sliceStart, ctx.p));
-            state = 0;
-        }
-        // Quoted key
-        else if (!state && (c === 0x22 /* " */ || c === 0x27 /* ' */)) {
-            if (c === ctx.s.charCodeAt(ctx.p + 1) && c === ctx.s.charCodeAt(ctx.p + 2))
-                TomlError.x('illegal quoted key: multiline strings are not allowed', ctx);
-            parsed.push(parseString(ctx));
-            state = 2;
-            ctx.p--;
-        }
-        // Whitespace; no-op in state 0 and 2, end of bare key in state 1
-        else if (c === 0x20 || c === 0x9 /* \t */) {
-            if (state === 1) {
-                parsed.push(ctx.s.slice(sliceStart, ctx.p));
-                state = 2;
-            }
-        }
-        // If state is post-key, no character is allowed; otherwise ensure it's a bare-key component
-        else if (state === 2 || (c < 0x30 && c !== 0x2d /* - */) || (c > 0x39 && c < 0x41) || (c > 0x5a && c < 0x61 && c !== 0x5f /* _ */) || c > 0x7a) {
-            TomlError.x('illegal character in key', ctx);
-        }
-        // Illegal character
-        else if (!state) {
-            state = 1;
-            sliceStart = ctx.p;
-        }
-    } while (c = ctx.s.charCodeAt(++ctx.p));
-    TomlError.x('incomplete key-value: cannot find end of key', ctx, startPtr);
+  // States:
+  // 0: before first char
+  // 1: parsing bare key
+  // 2: after key component
+  let startPtr;
+  let state = 0;
+  let parsed = [];
+  let sliceStart;
+  let c = ctx.s.charCodeAt((startPtr = ctx.p));
+  do {
+    // End of key
+    if (c === end) {
+      if (!state) TomlError.x("unexpected end of key", ctx);
+      if (state === 1) parsed.push(ctx.s.slice(sliceStart, ctx.p));
+      return (ctx.p++, parsed);
+    }
+    // Dotted key separator
+    else if (c === 0x2e /* . */) {
+      if (!state) TomlError.x("illegal empty bare key", ctx);
+      if (state === 1) parsed.push(ctx.s.slice(sliceStart, ctx.p));
+      state = 0;
+    }
+    // Quoted key
+    else if (!state && (c === 0x22 /* " */ || c === 0x27) /* ' */) {
+      if (c === ctx.s.charCodeAt(ctx.p + 1) && c === ctx.s.charCodeAt(ctx.p + 2))
+        TomlError.x("illegal quoted key: multiline strings are not allowed", ctx);
+      parsed.push(parseString(ctx));
+      state = 2;
+      ctx.p--;
+    }
+    // Whitespace; no-op in state 0 and 2, end of bare key in state 1
+    else if (c === 0x20 || c === 0x9 /* \t */) {
+      if (state === 1) {
+        parsed.push(ctx.s.slice(sliceStart, ctx.p));
+        state = 2;
+      }
+    }
+    // If state is post-key, no character is allowed; otherwise ensure it's a bare-key component
+    else if (
+      state === 2 ||
+      (c < 0x30 && c !== 0x2d) /* - */ ||
+      (c > 0x39 && c < 0x41) ||
+      (c > 0x5a && c < 0x61 && c !== 0x5f) /* _ */ ||
+      c > 0x7a
+    ) {
+      TomlError.x("illegal character in key", ctx);
+    }
+    // Illegal character
+    else if (!state) {
+      state = 1;
+      sliceStart = ctx.p;
+    }
+  } while ((c = ctx.s.charCodeAt(++ctx.p)));
+  TomlError.x("incomplete key-value: cannot find end of key", ctx, startPtr);
 }
 /** @internal */
 export function parseInlineTable(ctx) {
-    let startPtr = ctx.p++;
-    let res = Object.create(null);
-    let seen = new Set();
-    let c;
-    while (ctx.p < ctx.s.length) {
-        skipVoid(ctx);
-        if ((c = ctx.s.charCodeAt(ctx.p)) === 0x7d /* } */) {
-            ctx.p++;
-            return res;
-        }
-        let k;
-        let t = res;
-        let hasOwn = false;
-        let errPtr = ctx.p;
-        let key = parseKey(ctx);
-        for (let i = 0; i < key.length; i++) {
-            if (i)
-                t = hasOwn ? t[k] : (t[k] = Object.create(null));
-            k = key[i];
-            if ((hasOwn = Object.hasOwn(t, k)) && (typeof t[k] !== 'object' || seen.has(t[k]))) {
-                TomlError.x('trying to redefine an already defined value', ctx, errPtr);
-            }
-            let unsafe = k === '__proto__';
-            if (ctx.uk && (unsafe || k === 'constructor')) {
-                t = ctx.uk !== 1 && TomlError.x('document contains an unsafe property', ctx, errPtr);
-                break;
-            }
-            if (!hasOwn && unsafe) {
-                Object.defineProperty(t, k, { enumerable: true, configurable: true, writable: true });
-            }
-        }
-        if (hasOwn) {
-            TomlError.x('trying to redefine an already defined value', ctx, errPtr);
-        }
-        skipVoid(ctx, true, true);
-        let value = extractValue(ctx, 0x7d /* } */);
-        if (t && typeof (t[k] = value) === 'object')
-            seen.add(value);
-        skipVoid(ctx);
-        if ((c = ctx.s.charCodeAt(ctx.p++)) === 0x7d /* } */) {
-            return res;
-        }
-        if (c !== 0x2c /* , */)
-            TomlError.x('expected comma or end of structure', ctx, ctx.p - 1);
+  let startPtr = ctx.p++;
+  let res = Object.create(null);
+  let seen = new Set();
+  let c;
+  while (ctx.p < ctx.s.length) {
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p)) === 0x7d /* } */) {
+      ctx.p++;
+      return res;
     }
-    TomlError.x('unfinished table', ctx, startPtr);
+    let k;
+    let t = res;
+    let hasOwn = false;
+    let errPtr = ctx.p;
+    let key = parseKey(ctx);
+    for (let i = 0; i < key.length; i++) {
+      if (i) t = hasOwn ? t[k] : (t[k] = Object.create(null));
+      k = key[i];
+      if ((hasOwn = Object.hasOwn(t, k)) && (typeof t[k] !== "object" || seen.has(t[k]))) {
+        TomlError.x("trying to redefine an already defined value", ctx, errPtr);
+      }
+      let unsafe = k === "__proto__";
+      if (ctx.uk && (unsafe || k === "constructor")) {
+        t = ctx.uk !== 1 && TomlError.x("document contains an unsafe property", ctx, errPtr);
+        break;
+      }
+      if (!hasOwn && unsafe) {
+        Object.defineProperty(t, k, { enumerable: true, configurable: true, writable: true });
+      }
+    }
+    if (hasOwn) {
+      TomlError.x("trying to redefine an already defined value", ctx, errPtr);
+    }
+    skipVoid(ctx, true, true);
+    let value = extractValue(ctx, 0x7d /* } */);
+    if (t && typeof (t[k] = value) === "object") seen.add(value);
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p++)) === 0x7d /* } */) {
+      return res;
+    }
+    if (c !== 0x2c /* , */) TomlError.x("expected comma or end of structure", ctx, ctx.p - 1);
+  }
+  TomlError.x("unfinished table", ctx, startPtr);
 }
 /** @internal */
 export function parseArray(ctx) {
-    let startPtr = ctx.p++;
-    let res = [];
-    let c;
-    while (ctx.p < ctx.s.length) {
-        skipVoid(ctx);
-        if ((c = ctx.s.charCodeAt(ctx.p)) === 0x5d /* ] */) {
-            ctx.p++;
-            return res;
-        }
-        res.push(extractValue(ctx, 0x5d /* ] */));
-        skipVoid(ctx);
-        if ((c = ctx.s.charCodeAt(ctx.p++)) === 0x5d /* ] */) {
-            return res;
-        }
-        if (c !== 0x2c /* , */)
-            TomlError.x('expected comma or end of structure', ctx, ctx.p - 1);
+  let startPtr = ctx.p++;
+  let res = [];
+  let c;
+  while (ctx.p < ctx.s.length) {
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p)) === 0x5d /* ] */) {
+      ctx.p++;
+      return res;
     }
-    TomlError.x('unfinished array', ctx, startPtr);
+    res.push(extractValue(ctx, 0x5d /* ] */));
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p++)) === 0x5d /* ] */) {
+      return res;
+    }
+    if (c !== 0x2c /* , */) TomlError.x("expected comma or end of structure", ctx, ctx.p - 1);
+  }
+  TomlError.x("unfinished array", ctx, startPtr);
 }
 
 // ---- smol-toml 1.9.0 dist/extract.js ----
 function isDigit(char, base = 10) {
-    return base === 16
-        ? (char > 0x2f && char < 0x3a) || (char > 0x40 && char < 0x47) || (char > 0x60 && char < 0x67)
-        : (char > 0x2f && char < 0x30 + base);
+  return base === 16
+    ? (char > 0x2f && char < 0x3a) || (char > 0x40 && char < 0x47) || (char > 0x60 && char < 0x67)
+    : char > 0x2f && char < 0x30 + base;
 }
 function isEndOfValue(char, delim) {
-    // Whitespace -- we're permissive on `\r` for performance; it'll be dealt with later anyway
-    return char === 0x20 || char === 0x9 /* \t */ || char === 0xa /* \n */ || char === 0xd /* \r */ ||
-        // Structure end or next value delimiter
-        (delim && (char === delim || char === 0x2c /* , */)) ||
-        // Comment
-        char === 0x23; /* # */
+  // Whitespace -- we're permissive on `\r` for performance; it'll be dealt with later anyway
+  return (
+    char === 0x20 ||
+    char === 0x9 /* \t */ ||
+    char === 0xa /* \n */ ||
+    char === 0xd /* \r */ ||
+    // Structure end or next value delimiter
+    (delim && (char === delim || char === 0x2c) /* , */) ||
+    // Comment
+    char === 0x23
+  ); /* # */
 }
 /** @internal */
 export function extractValue(ctx, end) {
-    let errPtr = ctx.p;
-    let c = ctx.s.charCodeAt(ctx.p);
-    // Structs
-    if (c === 0x5b /* [ */ || c === 0x7b /* { */) {
-        ctx.d-- || TomlError.x('document contains excessively nested structures. aborting.', ctx);
-        let value = c === 0x5b /* [ */
-            ? parseArray(ctx)
-            : parseInlineTable(ctx);
-        ctx.d++;
-        return value;
-    }
-    // Strings
-    if (c === 0x22 /* " */ || c === 0x27 /* ' */) {
-        return parseString(ctx);
-    }
-    // Booleans
-    // We can fast-path because the first character is enough to know the only possible value
-    if (c === 0x74 /* t */) { // Only possible valid value is `true`
-        if (ctx.s.charCodeAt(++ctx.p) !== 0x72 || ctx.s.charCodeAt(++ctx.p) !== 0x75 || ctx.s.charCodeAt(++ctx.p) !== 0x65)
-            TomlError.x('invalid value', ctx, errPtr);
-        return ctx.p++, true;
-    }
-    if (c === 0x66 /* f */) { // Only possible valid value is `false`
-        if (ctx.s.charCodeAt(++ctx.p) !== 0x61 || ctx.s.charCodeAt(++ctx.p) !== 0x6c || ctx.s.charCodeAt(++ctx.p) !== 0x73 || ctx.s.charCodeAt(++ctx.p) !== 0x65)
-            TomlError.x('invalid value', ctx, errPtr);
-        return ctx.p++, false;
-    }
-    if (c === 0x2b /* + */ || c === 0x2d /* - */) {
-        return parseNumber(ctx, ctx.p, ctx.s.charCodeAt(++ctx.p), 0x2c - c, end);
-    }
-    // Rough heuristic, but `parseDate` falls back to number parsing if it's a false positive.
-    // e.g.: `a = 1\n-------------- = 1` would match this heuristic, but gracefully fallback to numbers.
-    if (ctx.s.charCodeAt(ctx.p + 4) === 0x2d /* - */ && ctx.s.charCodeAt(ctx.p + 7) === 0x2d /* - */) {
-        return parseDate(ctx, c, end);
-    }
-    // Same logic as above; `parseTime` falls back to number parsing if it's a false positive.
-    if (ctx.s.charCodeAt(ctx.p + 2) === 0x3a /* : */) {
-        return parseTime(ctx, c, end);
-    }
-    return parseNumber(ctx, ctx.p, c, 0, end);
+  let errPtr = ctx.p;
+  let c = ctx.s.charCodeAt(ctx.p);
+  // Structs
+  if (c === 0x5b /* [ */ || c === 0x7b /* { */) {
+    ctx.d-- || TomlError.x("document contains excessively nested structures. aborting.", ctx);
+    let value = c === 0x5b /* [ */ ? parseArray(ctx) : parseInlineTable(ctx);
+    ctx.d++;
+    return value;
+  }
+  // Strings
+  if (c === 0x22 /* " */ || c === 0x27 /* ' */) {
+    return parseString(ctx);
+  }
+  // Booleans
+  // We can fast-path because the first character is enough to know the only possible value
+  if (c === 0x74 /* t */) {
+    // Only possible valid value is `true`
+    if (
+      ctx.s.charCodeAt(++ctx.p) !== 0x72 ||
+      ctx.s.charCodeAt(++ctx.p) !== 0x75 ||
+      ctx.s.charCodeAt(++ctx.p) !== 0x65
+    )
+      TomlError.x("invalid value", ctx, errPtr);
+    return (ctx.p++, true);
+  }
+  if (c === 0x66 /* f */) {
+    // Only possible valid value is `false`
+    if (
+      ctx.s.charCodeAt(++ctx.p) !== 0x61 ||
+      ctx.s.charCodeAt(++ctx.p) !== 0x6c ||
+      ctx.s.charCodeAt(++ctx.p) !== 0x73 ||
+      ctx.s.charCodeAt(++ctx.p) !== 0x65
+    )
+      TomlError.x("invalid value", ctx, errPtr);
+    return (ctx.p++, false);
+  }
+  if (c === 0x2b /* + */ || c === 0x2d /* - */) {
+    return parseNumber(ctx, ctx.p, ctx.s.charCodeAt(++ctx.p), 0x2c - c, end);
+  }
+  // Rough heuristic, but `parseDate` falls back to number parsing if it's a false positive.
+  // e.g.: `a = 1\n-------------- = 1` would match this heuristic, but gracefully fallback to numbers.
+  if (
+    ctx.s.charCodeAt(ctx.p + 4) === 0x2d /* - */ &&
+    ctx.s.charCodeAt(ctx.p + 7) === 0x2d /* - */
+  ) {
+    return parseDate(ctx, c, end);
+  }
+  // Same logic as above; `parseTime` falls back to number parsing if it's a false positive.
+  if (ctx.s.charCodeAt(ctx.p + 2) === 0x3a /* : */) {
+    return parseTime(ctx, c, end);
+  }
+  return parseNumber(ctx, ctx.p, c, 0, end);
 }
 // State:
 // 0: init
@@ -555,329 +565,336 @@ export function extractValue(ctx, end) {
 //     -> 16: was exponent
 // states 2-5, 14, 16 are ONLY permitted iif base === 10
 function parseNumber(ctx, startPtr, startChr, sign, endChr) {
-    let c = startChr;
-    let state = 0;
-    let hasUnderscores = false;
-    // (+/-)inf
-    if (c === 0x69 /* i */) {
-        if (ctx.s.charCodeAt(++ctx.p) !== 0x6e || ctx.s.charCodeAt(++ctx.p) !== 0x66)
-            TomlError.x('invalid value', ctx, startPtr);
-        return ctx.p++, (sign || 1) / 0;
+  let c = startChr;
+  let state = 0;
+  let hasUnderscores = false;
+  // (+/-)inf
+  if (c === 0x69 /* i */) {
+    if (ctx.s.charCodeAt(++ctx.p) !== 0x6e || ctx.s.charCodeAt(++ctx.p) !== 0x66)
+      TomlError.x("invalid value", ctx, startPtr);
+    return (ctx.p++, (sign || 1) / 0);
+  }
+  // (+/-)nan
+  if (c === 0x6e /* n */) {
+    if (ctx.s.charCodeAt(++ctx.p) !== 0x61 || ctx.s.charCodeAt(++ctx.p) !== 0x6e)
+      TomlError.x("invalid value", ctx, startPtr);
+    return (ctx.p++, NaN);
+  }
+  // Leading zero
+  // Only allowed cases: `0<EOV>`, `0.(...)`, `0e(...)`, `0x(...)`, `0b(...)`, `0o(...)`
+  // FWIW, `0e(...)` is a stupid case, but it's not banned per-se so we have to parse it
+  if (c === 0x30 /* 0 */) {
+    if (++ctx.p >= ctx.s.length || isEndOfValue((c = ctx.s.charCodeAt(ctx.p)), endChr))
+      return ctx.bi === true ? 0n : 0; // note: conveniently deals with `-0`
+    if (!sign) {
+      if (c === 0x78 /* x */) return parseIntegerBaseN(ctx, startPtr, 16, endChr);
+      else if (c === 0x62 /* b */) return parseIntegerBaseN(ctx, startPtr, 2, endChr);
+      else if (c === 0x6f /* o */) return parseIntegerBaseN(ctx, startPtr, 8, endChr);
     }
-    // (+/-)nan
-    if (c === 0x6e /* n */) {
-        if (ctx.s.charCodeAt(++ctx.p) !== 0x61 || ctx.s.charCodeAt(++ctx.p) !== 0x6e)
-            TomlError.x('invalid value', ctx, startPtr);
-        return ctx.p++, NaN;
+    if (c === 0x2e /* . */) state = 2;
+    else if (c === 0x65 /* e */ || c === 0x45 /* E */) state = 4;
+    else TomlError.x("illegal leading zero", ctx, startPtr);
+  }
+  // If the 1st char is not a digit by now, then it's not a valid TOML value at all
+  else if (!isDigit(c)) TomlError.x("invalid value", ctx, startPtr);
+  while (++ctx.p < ctx.s.length && ((c = ctx.s.charCodeAt(ctx.p)), !isEndOfValue(c, endChr))) {
+    if (!state) state = 1; // Detects single-digit numbers we can use a fast parse path for
+    // The way the states are numbered is not random: underscores are always permitted in odd-numbered states and
+    // never permitted in even-numbered ones.
+    if (c === 0x5f /* _ */) {
+      if (!(state & 1)) TomlError.x("illegal underscore", ctx);
+      state += 11; // 11 is a marker that makes the state even and greater than 9; see the numbering + rationale above
+      hasUnderscores = true;
     }
-    // Leading zero
-    // Only allowed cases: `0<EOV>`, `0.(...)`, `0e(...)`, `0x(...)`, `0b(...)`, `0o(...)`
-    // FWIW, `0e(...)` is a stupid case, but it's not banned per-se so we have to parse it
-    if (c === 0x30 /* 0 */) {
-        if (++ctx.p >= ctx.s.length || isEndOfValue(c = ctx.s.charCodeAt(ctx.p), endChr))
-            return ctx.bi === true ? 0n : 0; // note: conveniently deals with `-0`
-        if (!sign) {
-            if (c === 0x78 /* x */)
-                return parseIntegerBaseN(ctx, startPtr, 16, endChr);
-            else if (c === 0x62 /* b */)
-                return parseIntegerBaseN(ctx, startPtr, 2, endChr);
-            else if (c === 0x6f /* o */)
-                return parseIntegerBaseN(ctx, startPtr, 8, endChr);
-        }
-        if (c === 0x2e /* . */)
-            state = 2;
-        else if (c === 0x65 /* e */ || c === 0x45 /* E */)
-            state = 4;
-        else
-            TomlError.x('illegal leading zero', ctx, startPtr);
+    // Transition to fractional part.
+    else if (state === 1 && c === 0x2e /* . */) state = 2;
+    // Transition to exponent part.
+    else if ((state === 1 || state === 3) && (c === 0x65 /* e */ || c === 0x45) /* E */) state = 4;
+    // + and - are permitted in state 4 only (handled before entering the function for state 0)
+    else if (state === 4 && (c === 0x2b /* + */ || c === 0x2d) /* - */) {
+      /* no-op */
     }
-    // If the 1st char is not a digit by now, then it's not a valid TOML value at all
-    else if (!isDigit(c))
-        TomlError.x('invalid value', ctx, startPtr);
-    while (++ctx.p < ctx.s.length && (c = ctx.s.charCodeAt(ctx.p), !isEndOfValue(c, endChr))) {
-        if (!state)
-            state = 1; // Detects single-digit numbers we can use a fast parse path for
-        // The way the states are numbered is not random: underscores are always permitted in odd-numbered states and
-        // never permitted in even-numbered ones.
-        if (c === 0x5f /* _ */) {
-            if (!(state & 1))
-                TomlError.x('illegal underscore', ctx);
-            state += 11; // 11 is a marker that makes the state even and greater than 9; see the numbering + rationale above
-            hasUnderscores = true;
-        }
-        // Transition to fractional part.
-        else if (state === 1 && c === 0x2e /* . */)
-            state = 2;
-        // Transition to exponent part.
-        else if ((state === 1 || state === 3) && (c === 0x65 /* e */ || c === 0x45 /* E */))
-            state = 4;
-        // + and - are permitted in state 4 only (handled before entering the function for state 0)
-        else if (state === 4 && (c === 0x2b /* + */ || c === 0x2d /* - */)) { /* no-op */ }
-        // All special cases have been handled; only digits are allowed here
-        else if (!isDigit(c))
-            TomlError.x(`illegal character in numeric literal`, ctx);
-        // Clear state flags
-        else if (state > 9)
-            state -= 11;
-        else if (!(state & 1))
-            state++;
-    }
-    // Single-char number; we can fast-path these very easily.
-    if (!state) {
-        let val = (startChr - 0x30 /* 0 */) * (sign || 1);
-        return ctx.bi === true ? BigInt(val) : val;
-    }
-    // Even-numbered states absolutely require a digit next; not even end of value is permitted
-    if (!(state & 1))
-        TomlError.x('unfinished numeric value', ctx, startPtr);
-    let str = ctx.s.slice(startPtr, ctx.p);
-    if (hasUnderscores)
-        str = str.replaceAll('_', ''); // perf: replaceAll 1.25x faster than replace with a regex
-    return state > 1
-        ? parseFloat(str)
-        : parseInteger(ctx, str, 10, startPtr);
+    // All special cases have been handled; only digits are allowed here
+    else if (!isDigit(c)) TomlError.x(`illegal character in numeric literal`, ctx);
+    // Clear state flags
+    else if (state > 9) state -= 11;
+    else if (!(state & 1)) state++;
+  }
+  // Single-char number; we can fast-path these very easily.
+  if (!state) {
+    let val = (startChr - 0x30) /* 0 */ * (sign || 1);
+    return ctx.bi === true ? BigInt(val) : val;
+  }
+  // Even-numbered states absolutely require a digit next; not even end of value is permitted
+  if (!(state & 1)) TomlError.x("unfinished numeric value", ctx, startPtr);
+  let str = ctx.s.slice(startPtr, ctx.p);
+  if (hasUnderscores) str = str.replaceAll("_", ""); // perf: replaceAll 1.25x faster than replace with a regex
+  return state > 1 ? parseFloat(str) : parseInteger(ctx, str, 10, startPtr);
 }
 function parseIntegerBaseN(ctx, startPtr, base, endChr) {
-    let c, underscore = 1;
-    while (++ctx.p < ctx.s.length && (c = ctx.s.charCodeAt(ctx.p), !isEndOfValue(c, endChr))) {
-        if (c === 0x5f /* _ */) {
-            if (underscore & 1)
-                TomlError.x('illegal underscore', ctx);
-            underscore = 3;
-        }
-        // We only need to check if the number is a valid digit, nothing else is permitted
-        else if (!isDigit(c, base))
-            TomlError.x(`illegal character in numeric literal`, ctx);
-        // Clear underscore flag
-        else if (underscore & 1)
-            underscore--;
+  let c,
+    underscore = 1;
+  while (++ctx.p < ctx.s.length && ((c = ctx.s.charCodeAt(ctx.p)), !isEndOfValue(c, endChr))) {
+    if (c === 0x5f /* _ */) {
+      if (underscore & 1) TomlError.x("illegal underscore", ctx);
+      underscore = 3;
     }
-    // Trailing underscore is not allowed
-    if (underscore & 1)
-        TomlError.x('unfinished numeric value', ctx);
-    let str = ctx.s.slice(startPtr + 2, ctx.p);
-    if (underscore)
-        str = str.replaceAll('_', ''); // perf: replaceAll 1.25x faster than replace with a regex
-    return parseInteger(ctx, str, base, startPtr);
+    // We only need to check if the number is a valid digit, nothing else is permitted
+    else if (!isDigit(c, base)) TomlError.x(`illegal character in numeric literal`, ctx);
+    // Clear underscore flag
+    else if (underscore & 1) underscore--;
+  }
+  // Trailing underscore is not allowed
+  if (underscore & 1) TomlError.x("unfinished numeric value", ctx);
+  let str = ctx.s.slice(startPtr + 2, ctx.p);
+  if (underscore) str = str.replaceAll("_", ""); // perf: replaceAll 1.25x faster than replace with a regex
+  return parseInteger(ctx, str, base, startPtr);
 }
 function parseInteger(ctx, str, base, startPtr) {
-    if (ctx.bi !== true)
-        int: {
-            let val = parseInt(str, base);
-            if (!Number.isSafeInteger(val)) {
-                if (ctx.bi)
-                    break int;
-                TomlError.x('integer value cannot be represented losslessly', ctx, startPtr);
-            }
-            return val;
-        }
-    return base === 10 ? BigInt(str) : BigInt((base === 2 ? '0b' : base === 8 ? '0o' : '0x') + str);
+  if (ctx.bi !== true)
+    int: {
+      let val = parseInt(str, base);
+      if (!Number.isSafeInteger(val)) {
+        if (ctx.bi) break int;
+        TomlError.x("integer value cannot be represented losslessly", ctx, startPtr);
+      }
+      return val;
+    }
+  return base === 10 ? BigInt(str) : BigInt((base === 2 ? "0b" : base === 8 ? "0o" : "0x") + str);
 }
 function parseDate(ctx, c, endChr) {
-    let startPtr = ctx.p++, unsafeSeparator;
-    if (!isDigit(c) ||
-        !isDigit(ctx.s.charCodeAt(ctx.p++)) ||
-        !isDigit(ctx.s.charCodeAt(ctx.p++)) ||
-        !isDigit(ctx.s.charCodeAt(ctx.p++))) {
-        return parseNumber(ctx, ctx.p = startPtr, c, 0, endChr);
-    }
-    ctx.p += 5;
-    if (!isDigit(ctx.s.charCodeAt(ctx.p++)))
-        TomlError.x('invalid date-time: date part is malformed', ctx, startPtr);
-    if (ctx.p >= ctx.s.length || (((c = ctx.s.charCodeAt(ctx.p)) !== 0x20 || (unsafeSeparator = true, !isDigit(ctx.s.charCodeAt(ctx.p + 1)))) && c !== 0x54 /* T */ && c !== 0x74 /* t */)) {
-        let t = ctx.s.slice(startPtr, ctx.p);
-        return readDate(ctx, t, 3, false, startPtr);
-    }
-    if (ctx.s.charCodeAt(ctx.p += 3) !== 0x3a /* : */)
-        TomlError.x('invalid date-time: time part is malformed', ctx, startPtr);
-    if (ctx.s.charCodeAt(ctx.p += 3) === 0x3a /* : */)
-        ctx.p += 3;
-    if (ctx.s.charCodeAt(ctx.p) === 0x2e /* . */)
-        while (isDigit(ctx.s.charCodeAt(++ctx.p)))
-            ;
-    if (c = ctx.s.charCodeAt(ctx.p)) {
-        if (c === 0x5a /* Z */ || c === 0x7a /* z */) {
-            let t = ctx.s.slice(startPtr, ++ctx.p);
-            return readDate(ctx, t, 1, unsafeSeparator, startPtr, '[+00:00]');
-        }
-        if (c === 0x2b /* + */ || c === 0x2d /* - */) {
-            // Temporal's ZonedDateTime is weird asf when it comes to dealing with traditional offsets...
-            // It's 1.2x faster to allocate a new string to pass to ZDT than use Instant.toZonedDateTimeISO
-            let t = ctx.s.slice(startPtr, ctx.p += 6);
-            return readDate(ctx, t, 1, unsafeSeparator, startPtr, !ctx.ld && ('[' + ctx.s.slice(ctx.p - 6, ctx.p) + ']'));
-        }
-    }
+  let startPtr = ctx.p++,
+    unsafeSeparator;
+  if (
+    !isDigit(c) ||
+    !isDigit(ctx.s.charCodeAt(ctx.p++)) ||
+    !isDigit(ctx.s.charCodeAt(ctx.p++)) ||
+    !isDigit(ctx.s.charCodeAt(ctx.p++))
+  ) {
+    return parseNumber(ctx, (ctx.p = startPtr), c, 0, endChr);
+  }
+  ctx.p += 5;
+  if (!isDigit(ctx.s.charCodeAt(ctx.p++)))
+    TomlError.x("invalid date-time: date part is malformed", ctx, startPtr);
+  if (
+    ctx.p >= ctx.s.length ||
+    (((c = ctx.s.charCodeAt(ctx.p)) !== 0x20 ||
+      ((unsafeSeparator = true), !isDigit(ctx.s.charCodeAt(ctx.p + 1)))) &&
+      c !== 0x54 /* T */ &&
+      c !== 0x74) /* t */
+  ) {
     let t = ctx.s.slice(startPtr, ctx.p);
-    return readDate(ctx, t, 2, unsafeSeparator, startPtr);
+    return readDate(ctx, t, 3, false, startPtr);
+  }
+  if (ctx.s.charCodeAt((ctx.p += 3)) !== 0x3a /* : */)
+    TomlError.x("invalid date-time: time part is malformed", ctx, startPtr);
+  if (ctx.s.charCodeAt((ctx.p += 3)) === 0x3a /* : */) ctx.p += 3;
+  if (ctx.s.charCodeAt(ctx.p) === 0x2e /* . */) while (isDigit(ctx.s.charCodeAt(++ctx.p)));
+  if ((c = ctx.s.charCodeAt(ctx.p))) {
+    if (c === 0x5a /* Z */ || c === 0x7a /* z */) {
+      let t = ctx.s.slice(startPtr, ++ctx.p);
+      return readDate(ctx, t, 1, unsafeSeparator, startPtr, "[+00:00]");
+    }
+    if (c === 0x2b /* + */ || c === 0x2d /* - */) {
+      // Temporal's ZonedDateTime is weird asf when it comes to dealing with traditional offsets...
+      // It's 1.2x faster to allocate a new string to pass to ZDT than use Instant.toZonedDateTimeISO
+      let t = ctx.s.slice(startPtr, (ctx.p += 6));
+      return readDate(
+        ctx,
+        t,
+        1,
+        unsafeSeparator,
+        startPtr,
+        !ctx.ld && "[" + ctx.s.slice(ctx.p - 6, ctx.p) + "]",
+      );
+    }
+  }
+  let t = ctx.s.slice(startPtr, ctx.p);
+  return readDate(ctx, t, 2, unsafeSeparator, startPtr);
 }
 function parseTime(ctx, c, endChr) {
-    let start = ctx.p;
-    if (!isDigit(c) || !isDigit(ctx.s.charCodeAt(++ctx.p))) {
-        return parseNumber(ctx, --ctx.p, c, 0, endChr);
-    }
-    if (ctx.s.charCodeAt(ctx.p += 4) === 0x3a /* : */)
-        ctx.p += 3;
-    if (ctx.s.charCodeAt(ctx.p) === 0x2e /* . */)
-        while (isDigit(ctx.s.charCodeAt(++ctx.p)))
-            ;
-    let t = ctx.s.slice(start, ctx.p);
-    return readDate(ctx, t, 4, false, start);
+  let start = ctx.p;
+  if (!isDigit(c) || !isDigit(ctx.s.charCodeAt(++ctx.p))) {
+    return parseNumber(ctx, --ctx.p, c, 0, endChr);
+  }
+  if (ctx.s.charCodeAt((ctx.p += 4)) === 0x3a /* : */) ctx.p += 3;
+  if (ctx.s.charCodeAt(ctx.p) === 0x2e /* . */) while (isDigit(ctx.s.charCodeAt(++ctx.p)));
+  let t = ctx.s.slice(start, ctx.p);
+  return readDate(ctx, t, 4, false, start);
 }
 function readDate(ctx, str, type, unsafeDelim, errPtr, temporalSuffix) {
-    if (ctx.ld) {
-        let date = new TomlDate(str, type, unsafeDelim);
-        if (!date.isValid())
-            TomlError.x('invalid date', ctx, errPtr);
-        return date;
+  if (ctx.ld) {
+    let date = new TomlDate(str, type, unsafeDelim);
+    if (!date.isValid()) TomlError.x("invalid date", ctx, errPtr);
+    return date;
+  }
+  try {
+    if (temporalSuffix) str += temporalSuffix;
+    switch (type) {
+      case 1:
+        return Temporal.ZonedDateTime.from(str);
+      case 2:
+        return Temporal.PlainDateTime.from(str);
+      case 3:
+        return Temporal.PlainDate.from(str);
+      case 4:
+        return Temporal.PlainTime.from(str);
     }
-    try {
-        if (temporalSuffix)
-            str += temporalSuffix;
-        switch (type) {
-            case 1: return Temporal.ZonedDateTime.from(str);
-            case 2: return Temporal.PlainDateTime.from(str);
-            case 3: return Temporal.PlainDate.from(str);
-            case 4: return Temporal.PlainTime.from(str);
-        }
-    }
-    catch (e) {
-        TomlError.x(e instanceof Error ? e.message : '' + e, ctx, errPtr);
-    }
+  } catch (e) {
+    TomlError.x(e instanceof Error ? e.message : "" + e, ctx, errPtr);
+  }
 }
 
 // ---- smol-toml 1.9.0 dist/parse.js ----
 function peekTable(ctx, key, table, meta, type) {
-    let t = table;
-    let m = meta;
-    let k;
-    let hasOwn = false;
-    let state;
-    for (let i = 0; i < key.length; i++) {
-        if (i) {
-            t = hasOwn ? t[k] : (t[k] = Object.create(null));
-            m = (state = m[k]).c;
-            if (type === 0 /* Type.DOTTED */ && (state.t === 1 /* Type.EXPLICIT */ || state.t === 2 /* Type.ARRAY */)) {
-                return null;
-            }
-            if (state.t === 2 /* Type.ARRAY */) {
-                let l = t.length - 1;
-                t = t[l];
-                m = m[l].c;
-            }
-        }
-        k = key[i];
-        if ((hasOwn = Object.hasOwn(t, k)) && m[k]?.t === 0 /* Type.DOTTED */ && m[k]?.d) {
-            return null;
-        }
-        if (!hasOwn) {
-            let unsafe = k === '__proto__';
-            if (ctx.uk && (unsafe || k === 'constructor'))
-                return false;
-            if (unsafe) {
-                Object.defineProperty(t, k, { enumerable: true, configurable: true, writable: true });
-                Object.defineProperty(m, k, { enumerable: true, configurable: true, writable: true });
-            }
-            m[k] = {
-                t: i < key.length - 1 && type === 2 /* Type.ARRAY */
-                    ? 3 /* Type.ARRAY_DOTTED */ : type,
-                d: false,
-                i: 0,
-                c: Object.create(null),
-            };
-        }
-    }
-    state = m[k];
-    if (state.t !== type && !(type === 1 /* Type.EXPLICIT */ && state.t === 3 /* Type.ARRAY_DOTTED */)) {
-        // Bad key type!
+  let t = table;
+  let m = meta;
+  let k;
+  let hasOwn = false;
+  let state;
+  for (let i = 0; i < key.length; i++) {
+    if (i) {
+      t = hasOwn ? t[k] : (t[k] = Object.create(null));
+      m = (state = m[k]).c;
+      if (
+        type === 0 /* Type.DOTTED */ &&
+        (state.t === 1 /* Type.EXPLICIT */ || state.t === 2) /* Type.ARRAY */
+      ) {
         return null;
+      }
+      if (state.t === 2 /* Type.ARRAY */) {
+        let l = t.length - 1;
+        t = t[l];
+        m = m[l].c;
+      }
     }
-    if (type === 2 /* Type.ARRAY */) {
-        if (!state.d) {
-            state.d = true;
-            t[k] = [];
-        }
-        t[k].push(t = Object.create(null));
-        state.c[state.i++] = (state = { t: 1 /* Type.EXPLICIT */, d: false, i: 0, c: Object.create(null) });
+    k = key[i];
+    if ((hasOwn = Object.hasOwn(t, k)) && m[k]?.t === 0 /* Type.DOTTED */ && m[k]?.d) {
+      return null;
     }
-    if (state.d) {
-        // Redefining a table!
-        return null;
+    if (!hasOwn) {
+      let unsafe = k === "__proto__";
+      if (ctx.uk && (unsafe || k === "constructor")) return false;
+      if (unsafe) {
+        Object.defineProperty(t, k, { enumerable: true, configurable: true, writable: true });
+        Object.defineProperty(m, k, { enumerable: true, configurable: true, writable: true });
+      }
+      m[k] = {
+        t: i < key.length - 1 && type === 2 /* Type.ARRAY */ ? 3 /* Type.ARRAY_DOTTED */ : type,
+        d: false,
+        i: 0,
+        c: Object.create(null),
+      };
     }
-    state.d = true;
-    if (type === 1 /* Type.EXPLICIT */) {
-        t = hasOwn ? t[k] : (t[k] = Object.create(null));
+  }
+  state = m[k];
+  if (
+    state.t !== type &&
+    !(type === 1 /* Type.EXPLICIT */ && state.t === 3 /* Type.ARRAY_DOTTED */)
+  ) {
+    // Bad key type!
+    return null;
+  }
+  if (type === 2 /* Type.ARRAY */) {
+    if (!state.d) {
+      state.d = true;
+      t[k] = [];
     }
-    else if (type === 0 /* Type.DOTTED */ && hasOwn) {
-        return null;
-    }
-    return [k, t, state.c];
+    t[k].push((t = Object.create(null)));
+    state.c[state.i++] = state = {
+      t: 1 /* Type.EXPLICIT */,
+      d: false,
+      i: 0,
+      c: Object.create(null),
+    };
+  }
+  if (state.d) {
+    // Redefining a table!
+    return null;
+  }
+  state.d = true;
+  if (type === 1 /* Type.EXPLICIT */) {
+    t = hasOwn ? t[k] : (t[k] = Object.create(null));
+  } else if (type === 0 /* Type.DOTTED */ && hasOwn) {
+    return null;
+  }
+  return [k, t, state.c];
 }
 function validateTablePeek(ctx, peek, ptr) {
-    if (peek === null || ctx.uk === 2)
-        TomlError.x(peek === null
-            ? 'trying to redefine an already defined table or value'
-            : 'document contains an unsafe property', ctx, ptr);
+  if (peek === null || ctx.uk === 2)
+    TomlError.x(
+      peek === null
+        ? "trying to redefine an already defined table or value"
+        : "document contains an unsafe property",
+      ctx,
+      ptr,
+    );
 }
 export function parse(toml, options = {}) {
-    let ctx = {
-        s: toml,
-        p: 0,
-        d: options.maxDepth ?? 1000,
-        bi: options.integersAsBigInt ?? false,
-        ld: options.useLegacyDate ?? true,
-        uk: options.unsafeKeyBehaviour === 'throw' ? 2 : options.unsafeKeyBehaviour === 'drop' ? 1 : 0,
-    };
-    let res = Object.create(null);
-    let meta = Object.create(null);
-    let tmp;
-    let skipping = false;
-    let tbl = res;
-    let m = meta;
-    // BOM is allowed, skip.
-    // JS is UTF-16, so we have to check for the UTF-16 BOM instead of the UTF-8 BOM sequence!
-    if (toml.charCodeAt(0) === 0xfeff)
+  let ctx = {
+    s: toml,
+    p: 0,
+    d: options.maxDepth ?? 1000,
+    bi: options.integersAsBigInt ?? false,
+    ld: options.useLegacyDate ?? true,
+    uk: options.unsafeKeyBehaviour === "throw" ? 2 : options.unsafeKeyBehaviour === "drop" ? 1 : 0,
+  };
+  let res = Object.create(null);
+  let meta = Object.create(null);
+  let tmp;
+  let skipping = false;
+  let tbl = res;
+  let m = meta;
+  // BOM is allowed, skip.
+  // JS is UTF-16, so we have to check for the UTF-16 BOM instead of the UTF-8 BOM sequence!
+  if (toml.charCodeAt(0) === 0xfeff) ctx.p++;
+  skipVoid(ctx);
+  while (ctx.p < toml.length) {
+    if (toml.charCodeAt(ctx.p) === 0x5b /* [ */) {
+      let isTableArray = toml.charCodeAt(++ctx.p) === 0x5b; /* [ */
+      tmp = ctx.p += +isTableArray;
+      skipping = false;
+      let k = parseKey(ctx, 0x5d /* ] */);
+      if (isTableArray) {
+        if (toml.charCodeAt(ctx.p) !== 0x5d /* ] */) {
+          TomlError.x("expected end of table array declaration", ctx);
+        }
         ctx.p++;
-    skipVoid(ctx);
-    while (ctx.p < toml.length) {
-        if (toml.charCodeAt(ctx.p) === 0x5b /* [ */) {
-            let isTableArray = toml.charCodeAt(++ctx.p) === 0x5b; /* [ */
-            tmp = ctx.p += +isTableArray;
-            skipping = false;
-            let k = parseKey(ctx, 0x5d /* ] */);
-            if (isTableArray) {
-                if (toml.charCodeAt(ctx.p) !== 0x5d /* ] */) {
-                    TomlError.x('expected end of table array declaration', ctx);
-                }
-                ctx.p++;
-            }
-            let p = peekTable(ctx, k, res, meta, isTableArray ? 2 /* Type.ARRAY */ : 1 /* Type.EXPLICIT */);
-            if (!p) {
-                validateTablePeek(ctx, p, tmp);
-                skipping = true;
-            }
-            else {
-                m = p[2];
-                tbl = p[1];
-            }
-        }
-        else {
-            tmp = ctx.p;
-            let k = parseKey(ctx);
-            let p = peekTable(ctx, k, tbl, m, 0 /* Type.DOTTED */);
-            if (!p && !skipping)
-                validateTablePeek(ctx, p, tmp);
-            skipVoid(ctx, true, true);
-            let v = extractValue(ctx, void 0);
-            if (p && !skipping)
-                p[1][p[0]] = v;
-        }
-        skipVoid(ctx, true);
-        if (ctx.p < toml.length && (tmp = toml.charCodeAt(ctx.p)) !== 0xa /* \n */ && (tmp !== 0xd /* \r */ || toml.charCodeAt(ctx.p + 1) !== 0xa /* \n */)) {
-            TomlError.x('each key-value declaration must be followed by an end-of-line', ctx);
-        }
-        skipVoid(ctx);
+      }
+      let p = peekTable(
+        ctx,
+        k,
+        res,
+        meta,
+        isTableArray ? 2 /* Type.ARRAY */ : 1 /* Type.EXPLICIT */,
+      );
+      if (!p) {
+        validateTablePeek(ctx, p, tmp);
+        skipping = true;
+      } else {
+        m = p[2];
+        tbl = p[1];
+      }
+    } else {
+      tmp = ctx.p;
+      let k = parseKey(ctx);
+      let p = peekTable(ctx, k, tbl, m, 0 /* Type.DOTTED */);
+      if (!p && !skipping) validateTablePeek(ctx, p, tmp);
+      skipVoid(ctx, true, true);
+      let v = extractValue(ctx, void 0);
+      if (p && !skipping) p[1][p[0]] = v;
     }
-    return res;
+    skipVoid(ctx, true);
+    if (
+      ctx.p < toml.length &&
+      (tmp = toml.charCodeAt(ctx.p)) !== 0xa /* \n */ &&
+      (tmp !== 0xd /* \r */ || toml.charCodeAt(ctx.p + 1) !== 0xa) /* \n */
+    ) {
+      TomlError.x("each key-value declaration must be followed by an end-of-line", ctx);
+    }
+    skipVoid(ctx);
+  }
+  return res;
 }
 
 // Ignore license in this file: BSD-3-Clause (header above); see README.md.

@@ -7,7 +7,8 @@
  * every key Firefox handles in a Linux browser window (FIREFOX_SHORTCUTS), which `<key>`
  * elements of the window's keysets Vimma turns off, and who goes first on a chord, the page or
  * Vimma. The host reads each element's chord with xulKeyChord and disables what
- * planFirefoxKeys returns.
+ * planFirefoxKeys returns. macOS has its own inventory, FIREFOX_SHORTCUTS_MACOS
+ * (docs/specs/macos-build.md decision 22).
  */
 import { formatKey, makeChordText, parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
@@ -124,7 +125,7 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "P",
     ],
     [
-      "ctrl+shift+a",
+      "ctrl+shift+f",
       "key_openAddons",
       "Tools:Addons",
       "add-ons manager",
@@ -430,6 +431,16 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "screenshot",
       "b",
       "screenshot",
+      "all",
+      "P",
+    ],
+    [
+      "ctrl+shift+a",
+      "key_searchTabs",
+      "Browser:SearchTabs",
+      "search open tabs (the address bar's tabs mode)",
+      "a",
+      "goto_picker",
       "all",
       "P",
     ],
@@ -742,6 +753,258 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
 ]);
 
 /**
+ * How a Linux row reads on macOS: its chord there (a string), a row replaced in full (an object
+ * with `chord` and what else differs), or null when the key does not exist on macOS. A Linux
+ * row without an entry is the same on macOS. Rows are named by their `<key>` id; an unnamed key
+ * and a handler's row by its Linux chord.
+ * @typedef {string | null | (Partial<FirefoxShortcut> & { chord: string })} MacChange
+ */
+
+/**
+ * Firefox 158's macOS differences (en-US; engine paths, checked against 158.0):
+ * browser/base/content/browser-sets.inc.xhtml `#mainKeyset` (accel is cmd, and the `XP_MACOSX`
+ * branches), devtools/startup/DevToolsStartup.sys.mjs:90-262 (`accel,alt` for the toolbox
+ * keys), browser-development-helpers.js:24-36, dom/xul/MenuBarListener.cpp:207 (F10 is not a
+ * menu key on macOS), modules/libpref/init/StaticPrefList.yaml `ui.key.menuAccessKey` (0 on
+ * macOS: no menu access keys), UrlbarChildController.mjs:779 (cmd+enter completes .com) and
+ * widget/cocoa/NativeKeyBindings.mm:586-591 (alt+left moves by word).
+ * @type {Record<string, MacChange>}
+ */
+const MAC_CHANGES = {
+  key_newNavigator: "meta+n",
+  key_newNavigatorTab: "meta+t",
+  focusURLBar: "meta+l",
+  focusURLBar2: null,
+  key_search: "meta+k",
+  // XP_MACOSX: accel,alt with find-shortcut's F.
+  key_search2: "alt+meta+f",
+  // downloads-shortcut is J outside Linux, and accel without shift outside XP_GNOME.
+  key_openDownloads: "meta+j",
+  // Firefox 159: addons-shortcut-2 is E on macOS, and key_searchTabs took cmd+shift+a.
+  key_openAddons: "shift+meta+e",
+  openFileKb: "meta+o",
+  key_savePage: "meta+s",
+  printKb: "meta+p",
+  key_close: "meta+w",
+  key_closeWindow: "shift+meta+w",
+  key_undo: "meta+z",
+  key_redo: "shift+meta+z",
+  key_cut: "meta+x",
+  key_copy: "meta+c",
+  key_paste: "meta+v",
+  key_selectAll: "meta+a",
+  goBackKb: "meta+left",
+  goForwardKb: "meta+right",
+  goBackKb2: "meta+[",
+  goForwardKb2: "meta+]",
+  showAllHistoryKb: "meta+y",
+  key_reload_skip_cache2: null,
+  key_enterFullScreen: "ctrl+meta+f",
+  key_exitFullScreen: "ctrl+meta+f",
+  key_toggleReaderMode: "alt+meta+r",
+  key_togglePictureInPicture: "alt+meta+}",
+  "ctrl+}": "alt+meta+}",
+  key_reload: "meta+r",
+  key_reload_skip_cache: "shift+meta+r",
+  key_viewSource: "meta+u",
+  key_viewInfo: "meta+i",
+  key_find: "meta+f",
+  key_findAgain: "meta+g",
+  key_findPrevious: "shift+meta+g",
+  addBookmarkAsKb: "meta+d",
+  bookmarkAllTabsKb: "shift+meta+d",
+  manBookmarkKb: "shift+meta+o",
+  viewBookmarksSidebarKb: "meta+b",
+  viewBookmarksToolbarKb: "shift+meta+b",
+  // The three sidebar keys are control+<letter> on macOS.
+  viewGenaiChatSidebarKb: "ctrl+x",
+  // ctrl+u is Vimma's half-page scroll, as on Linux (key_viewSource's chord there).
+  viewOpenTabsSidebarKb: {
+    chord: "ctrl+u",
+    fate: "a",
+    action: "scroll_half_up",
+    modes: "normal",
+    first: "V",
+  },
+  toggleSidebarKb: "ctrl+z",
+  key_gotoHistory: "shift+meta+h",
+  key_fullZoomReduce: "meta+minus",
+  "ctrl+_": "meta+_",
+  key_fullZoomEnlarge: "meta+plus",
+  "ctrl+=": "meta+=",
+  key_fullZoomReset: "meta+0",
+  key_switchTextDirection: "shift+meta+x",
+  key_privatebrowsing: "shift+meta+p",
+  key_screenshot: "shift+meta+s",
+  key_searchTabs: "shift+meta+a",
+  key_sanitize: "shift+meta+delete",
+  // `internal` on macOS: Cocoa's application menu quits, so the key is never Vimma's to turn off
+  // (docs/specs/macos-build.md behaviour 4).
+  key_quitApplication: { chord: "meta+q", fate: "d", does: "quit (macOS's own key)" },
+  key_restoreLastClosedTabOrWindowOrSession: "shift+meta+t",
+  key_undoCloseWindow: "shift+meta+n",
+  ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`key_selectTab${n}`, `meta+${n}`])),
+  key_selectLastTab: "meta+9",
+  key_quickRestart: "alt+meta+r",
+  key_toggleToolbox: "alt+meta+i",
+  key_browserToolbox: "alt+shift+meta+i",
+  key_browserConsole: "shift+meta+j",
+  key_responsiveDesignMode: "alt+meta+m",
+  key_inspector: "alt+meta+c",
+  key_webconsole: "alt+meta+k",
+  key_jsdebugger: { chord: "alt+meta+z", does: "Debugger" },
+  key_netmonitor: "alt+meta+e",
+  key_dom: { chord: "alt+meta+w", does: "DOM panel" },
+  // ShortcutUtils.getSystemActionForEvent: ctrl+F4 closes a tab everywhere but macOS.
+  "ctrl+f4": null,
+  "alt+f": null,
+  "alt+e": null,
+  "alt+v": null,
+  "alt+s": null,
+  "alt+b": null,
+  "alt+t": null,
+  "alt+h": null,
+  "alt+p": null,
+  f10: null,
+  "ctrl+enter": "meta+enter",
+  "ctrl+left": "alt+left",
+};
+
+/**
+ * The rows only macOS has, by source (the files of MAC_CHANGES).
+ * @type {Partial<Record<FirefoxShortcut["source"], FirefoxShortcut[]>>}
+ */
+const MAC_ONLY = {
+  main: rowsOf("main", [
+    [
+      "shift+meta+f",
+      "key_enterFullScreen_old",
+      "View:FullScreen",
+      "full screen (the old key)",
+      "c",
+    ],
+    [
+      "f11",
+      "key_enterFullScreen_compat",
+      "View:FullScreen",
+      "full screen",
+      "b",
+      "toggle_fullscreen",
+      "all",
+      "P",
+    ],
+    [
+      "shift+meta+f",
+      "key_exitFullScreen_old",
+      "View:FullScreen",
+      "leave full screen (the old key)",
+      "c",
+      null,
+      null,
+      null,
+      { when: "fullscreen" },
+    ],
+    [
+      "f11",
+      "key_exitFullScreen_compat",
+      "View:FullScreen",
+      "leave full screen",
+      "b",
+      "toggle_fullscreen",
+      "all",
+      "V",
+      { when: "fullscreen" },
+    ],
+    ["alt+meta+u", "key_viewSourceSafari", "View:PageSource", "view source (Safari's key)", "c"],
+    ["meta+e", "key_findSelection", "cmd_findSelection", "find the selection", "c"],
+    ["meta+.", "key_stop_mac", "Browser:Stop", "stop loading", "c"],
+    ["shift+meta+backspace", "key_sanitize_mac", "Tools:Sanitize", "clear recent history", "c"],
+    ["meta+m", "key_minimizeWindow", "cmd_minimizeWindow", "minimize (macOS's own key)", "d"],
+    ["meta+,", "key_preferencesCmdMac", "", "settings (the application menu)", "d"],
+    ["meta+h", "key_hideThisAppCmdMac", "", "hide Vimma (the application menu)", "d"],
+    ["alt+meta+h", "key_hideOtherAppsCmdMac", "", "hide the others (the application menu)", "d"],
+  ]),
+  devtools: rowsOf("devtools", [["shift+meta+c", "key_inspectorMac", "", "Inspector", "c"]]),
+  // ShortcutUtils.getSystemActionForEvent (toolkit/modules/ShortcutUtils.sys.mjs:380-445):
+  // cmd+alt+arrow in tabbox.js, cmd+{ and cmd+} in Tabbrowser's keypress handler.
+  // getSystemActionForEvent matches cmd+{ and cmd+} by charCode and ignores ctrl
+  // (ShortcutUtils.sys.mjs:430-443), so ctrl+cmd+{ and ctrl+cmd+} switch tabs too.
+  chrome: rowsOf("chrome", [
+    ["alt+meta+left", "tabbox.js", "", "previous tab", "c"],
+    ["alt+meta+up", "tabbox.js", "", "previous tab", "c"],
+    ["alt+meta+right", "tabbox.js", "", "next tab", "c"],
+    ["alt+meta+down", "tabbox.js", "", "next tab", "c"],
+    ["meta+{", "Tabbrowser", "", "previous tab", "c"],
+    ["meta+}", "Tabbrowser", "", "next tab", "c"],
+    ["ctrl+meta+{", "Tabbrowser", "", "previous tab", "c"],
+    ["ctrl+meta+}", "Tabbrowser", "", "next tab", "c"],
+  ]),
+};
+
+/**
+ * A Linux row as macOS has it. A key that moves to a chord Vimma does not bind is unbound and
+ * off there (fate c), since Vimma's keymap is the same on both; a fate d key stays d.
+ * @param {FirefoxShortcut} row
+ * @returns {FirefoxShortcut | null}
+ */
+function macRow(row) {
+  const name = (row.source === "main" || row.source === "devtools") && row.id ? row.id : row.chord;
+  const change = MAC_CHANGES[name];
+  if (change === undefined) return row;
+  if (change === null) return null;
+  // A moved key loses the Linux row's binding: the keymap binds the Linux chord, not this one.
+  /** @type {Partial<FirefoxShortcut>} */
+  const rest = { ...row };
+  for (const k of /** @type {const} */ (["action", "modes", "first", "unbound"])) delete rest[k];
+  /** @type {Partial<FirefoxShortcut>} */
+  const mac =
+    typeof change === "object"
+      ? { ...rest, fate: "c", ...change }
+      : { ...rest, chord: change, fate: row.fate === "d" ? "d" : "c" };
+  return /** @type {FirefoxShortcut} */ (Object.freeze(mac));
+}
+
+/**
+ * Every key that does something in a macOS browser window (Firefox 158, en-US), with its fate:
+ * the Linux inventory with macOS's chords (MAC_CHANGES) and macOS's own keys (MAC_ONLY), in the
+ * same order. The host reads it on macOS for what "all" turns off and which out-of-keyset
+ * handlers it stops; Vimma's keymap, pageFirst and bindings.md stay on FIREFOX_SHORTCUTS.
+ * @type {readonly FirefoxShortcut[]}
+ */
+export const FIREFOX_SHORTCUTS_MACOS = Object.freeze(
+  (() => {
+    /** @type {FirefoxShortcut[]} */
+    const rows = [];
+    /** @type {FirefoxShortcut["source"] | null} */
+    let source = null;
+    const done = new Set();
+    const flush = () => {
+      if (source && !done.has(source)) rows.push(...(MAC_ONLY[source] ?? []));
+      done.add(source);
+    };
+    for (const row of FIREFOX_SHORTCUTS) {
+      if (row.source !== source) {
+        flush();
+        source = row.source;
+      }
+      const mac = macRow(row);
+      if (mac) rows.push(mac);
+    }
+    flush();
+    return rows;
+  })(),
+);
+
+/**
+ * The inventory of the platform Vimma runs on.
+ * @param {{ mac?: boolean }} [options]
+ * @returns {readonly FirefoxShortcut[]}
+ */
+export function firefoxShortcuts({ mac = false } = {}) {
+  return mac ? FIREFOX_SHORTCUTS_MACOS : FIREFOX_SHORTCUTS;
+}
+
+/**
  * Whether the page has `chord` before Vimma (docs/specs/firefox-keys.md decision 6): Firefox let
  * the page override it (P in the inventory). Firefox's reserved keys, its tab keys and Vimma's
  * own keys (V), and any chord outside the inventory, are Vimma's first. As in Firefox, the
@@ -844,10 +1107,16 @@ export function xulKeyChord(el, { mac = false } = {}) {
   return makeChordText(key, mods);
 }
 
-/** Chords "all" turns off although they have no ctrl, alt or meta (`f5`, `esc`, `shift+esc`). */
-const INVENTORY_OFF = new Set(FIREFOX_SHORTCUTS.filter((r) => r.fate !== "d").map((r) => r.chord));
-/** Chords that stay Firefox's or the field's (fate d), whatever "all" says. */
-const FATE_D = new Set(FIREFOX_SHORTCUTS.filter((r) => r.fate === "d").map((r) => r.chord));
+/**
+ * Per platform: the chords "all" turns off although they have no ctrl, alt or meta (`f5`, `esc`,
+ * `shift+esc`), and the chords that stay Firefox's or the field's (fate d), whatever "all" says.
+ * @param {readonly FirefoxShortcut[]} rows
+ */
+const fates = (rows) => ({
+  inventoryOff: new Set(rows.filter((r) => r.fate !== "d").map((r) => r.chord)),
+  fateD: new Set(rows.filter((r) => r.fate === "d").map((r) => r.chord)),
+});
+const FATES = { linux: fates(FIREFOX_SHORTCUTS), mac: fates(FIREFOX_SHORTCUTS_MACOS) };
 
 /** @param {string} chord canonical */
 const isModified = (chord) => {
@@ -885,14 +1154,16 @@ export function canonicalChord(text) {
  * runs elsewhere (`internal`: copy, paste, undo) or without a chord yet is never touched.
  * `unmatched`: chords of a `disable` list that no key has (ctrl+e on Linux), for about:vimma.
  * `bound`: the chords Vimma binds (boundChords), off whatever `disable` says unless `enable`
- * lists them (docs/specs/firefox-keys.md decision 2).
+ * lists them (docs/specs/firefox-keys.md decision 2). `mac`: the fates are macOS's inventory's
+ * (FIREFOX_SHORTCUTS_MACOS), so "all" keeps cmd+q there.
  * @template {{ chord: string | null, internal?: boolean }} K
  * @param {readonly K[]} keys  in document order
  * @param {{ disable: "all" | readonly string[], enable: readonly string[] }} setting  canonical
- * @param {{ bound?: ReadonlySet<string> }} [options]
+ * @param {{ bound?: ReadonlySet<string>, mac?: boolean }} [options]
  * @returns {FirefoxKeyPlan<K>}
  */
-export function planFirefoxKeys(keys, setting, { bound = new Set() } = {}) {
+export function planFirefoxKeys(keys, setting, { bound = new Set(), mac = false } = {}) {
+  const { inventoryOff, fateD } = mac ? FATES.mac : FATES.linux;
   const enable = new Set(setting.enable);
   const all = setting.disable === "all";
   const listed = new Set(all ? [] : setting.disable);
@@ -900,7 +1171,7 @@ export function planFirefoxKeys(keys, setting, { bound = new Set() } = {}) {
     if (!k.chord || k.internal || enable.has(k.chord)) return false;
     if (bound.has(k.chord)) return true;
     if (!all) return listed.has(k.chord);
-    return !FATE_D.has(k.chord) && (isModified(k.chord) || INVENTORY_OFF.has(k.chord));
+    return !fateD.has(k.chord) && (isModified(k.chord) || inventoryOff.has(k.chord));
   });
   const matched = new Set(
     off

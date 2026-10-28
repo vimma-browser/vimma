@@ -69,7 +69,7 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  * @property {{ enabled: boolean, from: "config" | "pref", workspace: string | null,
  *   adopted: boolean, tabs: number }} mcp  agents (docs/specs/vimma-mcp.md): the switch and the
  *   agent workspace, with its tab count; never its URLs or titles
- * @property {string} windowManager  Hyprland and the private placement (private-swap)
+ * @property {string} windowManager  Hyprland, or none needed on macOS, and the private placement
  * @property {{ on: { chord: string, id: string, label: string }[],
  *   off: { chord: string, id: string, command: string }[], unmatched: string[] }}
  *   firefoxKeys  Firefox's own shortcuts that are on and off (docs/specs/firefox-keys.md)

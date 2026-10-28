@@ -12,6 +12,14 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { CHALLENGE_CONTEXT } from "../../packages/vimma-core/src/control.mjs";
 
+/**
+ * The version a vimma-ctl built from this tree names in its agent-hello (surfer.json's
+ * displayVersion, docs/specs/ship-vimma-ctl.md), so the harness's agent connection is as new as
+ * the build under test and shows no older-client notice.
+ */
+const CTL_VERSION = JSON.parse(readFileSync(new URL("../../surfer.json", import.meta.url), "utf8"))
+  .brands.vimma.release.displayVersion;
+
 /** How long a request may wait for the user (the longest ask_timeout plus 10 s). */
 const ANSWER_MS = 310_000;
 
@@ -185,7 +193,10 @@ export class ControlSessions {
     this.agent ??= (async () => {
       const { port, token } = this.discovery();
       const c = await ControlClient.connect({ port, token, role: "agent" });
-      const hi = await c.call("agent-hello", { client: { name: spec.client ?? "example-agent" } });
+      const hi = await c.call("agent-hello", {
+        client: { name: spec.client ?? "example-agent" },
+        ctl: CTL_VERSION,
+      });
       if (!hi?.ok) throw new Error(`agent-hello: ${JSON.stringify(hi)}`);
       return c;
     })();

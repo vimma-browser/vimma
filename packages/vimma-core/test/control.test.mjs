@@ -307,7 +307,7 @@ describe("validateMessage: state", () => {
       tabs: [{ id: 1, url: null, title: null, selected: "yes" }, "x"],
     };
     expect(errorsOf(ok(broken), { command: "state" })).toEqual([
-      "result.mode must be one of normal, insert, visual, command, hint, help, panel, resize",
+      "result.mode must be one of normal, insert, visual, command, hint, element, help, panel, resize",
       "result.pending must be a string or null",
       "result.workspace must be a string or null",
       "result.tabs[0].id must be a string",

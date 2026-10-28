@@ -43,6 +43,8 @@ describe("cask", () => {
     expect(text).toContain("  depends_on macos: :sequoia\n");
     expect(text).toContain('  app "Vimma.app"\n');
     expect(text).toContain('  binary "#{appdir}/Vimma.app/Contents/MacOS/vimma"\n');
+    // vimma-ctl ships inside the app (spec ship-vimma-ctl) and goes on the PATH beside vimma
+    expect(text).toContain('  binary "#{appdir}/Vimma.app/Contents/MacOS/vimma-ctl"\n');
     // Vimma has no macOS updater, so brew upgrade replaces the app (decision 7)
     expect(text).not.toMatch(/auto_updates true/);
     expect(text).not.toMatch(/preflight|postflight|installer |script:/);
@@ -72,6 +74,13 @@ describe("cask", () => {
     expect(caveats).toContain("Privacy & Security");
     expect(text).not.toMatch(/xattr|quarantine/);
   });
+
+  // Spec macos-build, sub-PR 7: a notarised app opens like any other, so its cask needs no note.
+  it("a notarised release's cask has no caveats and is otherwise the same", () => {
+    const notarised = cask({ ...input, notarised: true });
+    expect(notarised).not.toMatch(/caveats|Open Anyway|notarised/);
+    expect(notarised).toBe(text.slice(0, text.indexOf("\n  caveats <<~EOS\n")) + "end\n");
+  });
 });
 
 describe("cask.mjs", () => {
@@ -90,6 +99,20 @@ describe("cask.mjs", () => {
     const sha = createHash("sha256").update("not really a dmg\n").digest("hex");
     expect(readFileSync(out, "utf8")).toBe(
       cask({ version: VERSION, dmgSha256: sha, repo: "vimma-browser/vimma" }),
+    );
+  });
+
+  it("--notarised writes the cask without caveats", () => {
+    const dir = tempDir("vimma-cask-");
+    const dmg = join(dir, "vimma.dmg");
+    writeFileSync(dmg, "signed dmg\n");
+    const out = join(dir, "vimma.rb");
+    const result = run(["--notarised", "--tag", `v${VERSION}`, "--dmg", dmg, "--out", out]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const sha = createHash("sha256").update("signed dmg\n").digest("hex");
+    expect(readFileSync(out, "utf8")).toBe(
+      cask({ version: VERSION, dmgSha256: sha, repo: "vimma-browser/vimma", notarised: true }),
     );
   });
 
@@ -124,6 +147,9 @@ describe("cask-check.sh", () => {
     expect(script).toContain('codesign --verify --deep --strict "$APP"');
     expect(script).toContain(
       '[ "$(readlink "$(brew --prefix)/bin/vimma")" = "$APP/Contents/MacOS/vimma" ]',
+    );
+    expect(script).toContain(
+      '[ "$(readlink "$(brew --prefix)/bin/vimma-ctl")" = "$APP/Contents/MacOS/vimma-ctl" ]',
     );
   });
 

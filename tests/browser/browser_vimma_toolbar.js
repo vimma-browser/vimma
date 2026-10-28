@@ -28,6 +28,9 @@ const { ConfigHost } = ChromeUtils.importESModule(
 const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
+const { DEFAULT_HINT_CHARS } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/hints.mjs",
+);
 const { PlacesTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/PlacesTestUtils.sys.mjs",
 );
@@ -508,6 +511,173 @@ add_task(async function permission_prompts_answer_y_and_n() {
   await show();
 });
 
+// Issue #485: a Vimma surface that takes typing keeps y and n while a prompt shows: live grep's
+// query and a search being typed.
+add_task(async function prompt_keys_leave_live_grep_and_find_their_keys() {
+  const DELAY = 100;
+  await SpecialPowers.pushPrefEnv({ set: [["security.notification_enable_delay", DELAY]] });
+  const tab = await openPage();
+  await hide();
+  const browser = tab.linkedBrowser;
+  const panel = PopupNotifications.panel;
+  const principal = () => browser.contentPrincipal;
+  const geo = () => SitePermissions.getForPrincipal(principal(), "geo", browser).state;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const shown = BrowserTestUtils.waitForEvent(panel, "popupshown");
+  await SpecialPowers.spawn(browser, [], () => {
+    content.navigator.geolocation.getCurrentPosition(
+      () => {},
+      () => {},
+    );
+  });
+  await shown;
+  const n = /** @type {any} */ (panel.firstElementChild);
+  await until(() => shows(n.querySelector(".vimma-prompt-keys")), "the prompt is armed");
+
+  const grep = () => $("vimma-grep");
+  prefix("f");
+  EventUtils.synthesizeKey("g");
+  await until(() => !!grep()?.open, "ctrl+b f g opens live grep");
+  EventUtils.synthesizeKey("y");
+  EventUtils.synthesizeKey("n");
+  await wait(DELAY * 2);
+  Assert.equal(panel.state, "open", "y and n typed into live grep answer nothing");
+  Assert.equal(geo(), SitePermissions.UNKNOWN, "nothing decided");
+  Assert.equal(
+    grep().querySelector(".vimma-grep-query")?.textContent,
+    "yn",
+    "they went into the grep query",
+  );
+  // The first Esc leaves the query for browse mode, the second closes.
+  EventUtils.synthesizeKey("KEY_Escape");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !grep()?.open, "Esc Esc closes live grep");
+
+  await focusContent(browser);
+  await until(() => VimmaHost.status(window).mode === "normal", "normal mode");
+  EventUtils.synthesizeKey("/");
+  await until(() => VimmaHost.status(window).mode === "command", "/ starts a search");
+  EventUtils.synthesizeKey("y");
+  EventUtils.synthesizeKey("n");
+  await wait(DELAY * 2);
+  Assert.equal(panel.state, "open", "y and n typed into a search answer nothing");
+  Assert.equal(geo(), SitePermissions.UNKNOWN, "still nothing decided");
+  Assert.equal(gBrowser.getCachedFindBar()?._findField.value, "yn", "they went into the search");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => VimmaHost.status(window).mode === "normal", "Esc ends the search");
+  await until(() => shows(n.querySelector(".vimma-prompt-keys")), "armed again");
+
+  const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
+  EventUtils.synthesizeKey("y");
+  await hidden;
+  Assert.equal(geo(), SitePermissions.ALLOW, "with both closed, y answers the prompt again");
+  SitePermissions.removeFromPrincipal(principal(), "geo", browser);
+
+  await SpecialPowers.popPrefEnv();
+  gBrowser.removeTab(tab);
+  await show();
+});
+
+// Issue #495: hint, copy and element mode type y and n for themselves (a label from any
+// `[modal] hint_chars`, the yank): a prompt the page raises in one of them never takes them.
+// After Esc leaves the mode, y answers the prompt as usual.
+add_task(async function prompt_keys_leave_hint_copy_and_element_mode_their_keys() {
+  const DELAY = 100;
+  await SpecialPowers.pushPrefEnv({ set: [["security.notification_enable_delay", DELAY]] });
+  const tab = await openPage();
+  const browser = tab.linkedBrowser;
+  const panel = PopupNotifications.panel;
+  const principal = () => browser.contentPrincipal;
+  const geo = () => SitePermissions.getForPrincipal(principal(), "geo", browser).state;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const mode = () => VimmaHost.status(window).mode;
+  // Links and text blocks at the top of the page, for the labels and the caret.
+  await SpecialPowers.spawn(browser, [], () => {
+    const doc = content.document;
+    const box = doc.createElement("div");
+    box.id = "vimma-prompt-modes";
+    for (let i = 0; i < 4; i++) {
+      const p = doc.createElement("p");
+      const a = doc.createElement("a");
+      a.href = `#link${i}`;
+      a.textContent = `link ${i}`;
+      p.append(`Paragraph ${i} with `, a, " in it.");
+      box.append(p);
+    }
+    doc.body.prepend(box);
+    content.scrollTo(0, 0);
+  });
+  /** Asks for the location; resolves with the prompt once it is armed. */
+  const ask = async () => {
+    const shown = BrowserTestUtils.waitForEvent(panel, "popupshown");
+    await SpecialPowers.spawn(browser, [], () => {
+      content.navigator.geolocation.getCurrentPosition(
+        () => {},
+        () => {},
+      );
+    });
+    await shown;
+    const n = /** @type {any} */ (panel.firstElementChild);
+    await until(() => shows(n.querySelector(".vimma-prompt-keys")), "the prompt is armed");
+    return n;
+  };
+  /** In `what`, an armed prompt: y leaves it undecided, its keys line says Esc first. */
+  const yKept = async (n, what) => {
+    Assert.ok(
+      n.querySelector(".vimma-prompt-keys").textContent.startsWith("Esc, then y allow"),
+      `${what}: the keys line says to leave the mode first`,
+    );
+    EventUtils.synthesizeKey("y");
+    await wait(DELAY * 3);
+    Assert.equal(panel.state, "open", `${what}: y answers nothing`);
+    Assert.equal(geo(), SitePermissions.UNKNOWN, `${what}: nothing decided`);
+  };
+  /** Back in normal mode, y answers the prompt as usual. */
+  const yAnswers = async (n, what) => {
+    await until(() => mode() === "normal", `${what}: back in normal mode`);
+    await until(() => shows(n.querySelector(".vimma-prompt-keys")), "armed again");
+    Assert.ok(n.querySelector(".vimma-prompt-keys").textContent.startsWith("y allow"));
+    const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
+    EventUtils.synthesizeKey("y");
+    await hidden;
+    Assert.equal(geo(), SitePermissions.ALLOW, `${what}: then y allows`);
+    SitePermissions.removeFromPrincipal(principal(), "geo", browser);
+  };
+
+  // Hint mode with an alphabet of y and n: every label starts with one of them.
+  VimmaHost.configure({ hintChars: "yn" });
+  registerCleanupFunction(() => VimmaHost.configure({ hintChars: DEFAULT_HINT_CHARS }));
+  EventUtils.synthesizeKey("f");
+  await until(() => mode() === "hint", "f starts link hints");
+  let n = await ask();
+  await yKept(n, "hint mode");
+  Assert.equal(mode(), "hint", "the y went to the labels: still in hint mode");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await yAnswers(n, "hint mode");
+  VimmaHost.configure({ hintChars: DEFAULT_HINT_CHARS });
+
+  // Copy mode: y is the yank.
+  EventUtils.synthesizeKey("v");
+  await until(() => mode() === "visual", "v starts copy mode");
+  n = await ask();
+  await yKept(n, "copy mode");
+  if (mode() === "visual") EventUtils.synthesizeKey("KEY_Escape");
+  await yAnswers(n, "copy mode");
+
+  // Element mode: y is the yank too.
+  EventUtils.synthesizeKey("F");
+  await until(() => VimmaHost._hints(window)?.hints.length, "F labels the blocks");
+  for (const c of VimmaHost._hints(window).hints[0].label) EventUtils.synthesizeKey(c);
+  await until(() => mode() === "element", "a label focuses its block");
+  n = await ask();
+  await yKept(n, "element mode");
+  if (mode() === "element") EventUtils.synthesizeKey("KEY_Escape");
+  await yAnswers(n, "element mode");
+
+  await SpecialPowers.popPrefEnv();
+  gBrowser.removeTab(tab);
+});
+
 // 5b: the keys follow Firefox's own delay for the prompt (notification.timeShown), which it
 // restarts when the panel is repositioned or resized and when the window is activated. A key
 // armed earlier would click a button Firefox still refuses, and be lost.
@@ -622,6 +792,33 @@ add_task(async function the_addon_install_prompt_answers_y_and_n() {
   await until(() => shows(hintOf(n)), "armed");
   EventUtils.synthesizeKey("y");
   Assert.equal(await answer, true, "y adds it");
+  await until(() => panel.state === "closed", "the prompt is gone");
+
+  // Issue #495: this prompt takes focus from the page, so link labels still on screen are no
+  // longer the focused page's mode; a y meant for them still never answers it.
+  await SpecialPowers.spawn(browser, [], () => {
+    for (let i = 0; i < 4; i++) {
+      const a = content.document.createElement("a");
+      a.href = `#link${i}`;
+      a.textContent = `link ${i} `;
+      content.document.body.prepend(a);
+    }
+    content.scrollTo(0, 0);
+  });
+  EventUtils.synthesizeKey("f");
+  await until(() => VimmaHost.status(window).mode === "hint", "f starts link hints");
+  ({ n, answer } = await ask());
+  settled = false;
+  answer.then(() => (settled = true));
+  await until(() => shows(hintOf(n)), "armed over the labels");
+  Assert.ok(VimmaHost._hints(window), "the labels are still up");
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 2);
+  Assert.ok(!settled, "a y typed while the labels show installs nothing");
+  Assert.equal(VimmaHost._hints(window), null, "and the labels are gone");
+  await until(() => shows(hintOf(n)), "armed again");
+  EventUtils.synthesizeKey("y");
+  Assert.equal(await answer, true, "then y adds it");
   await until(() => panel.state === "closed", "the prompt is gone");
 
   await SpecialPowers.popPrefEnv();

@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ARTIFACT_OBJDIR,
   appIniForArtifact,
+  artifactJob,
   artifactMozconfig,
   candidateTree,
   indexNamespace,
   indexTask,
+  linkLauncher,
   machArtifactEnv,
   refreshAppIni,
   sourceStamp,
@@ -211,6 +213,32 @@ describe("indexNamespace", () => {
       `gecko.v2.mozilla-beta.shippable.revision.${BETA_REV}.firefox.linux64-opt`,
     );
   });
+
+  it("names the job it is given, such as Apple Silicon's", () => {
+    expect(indexNamespace(RELEASE, "macosx64-aarch64-opt")).toBe(
+      `gecko.v2.mozilla-release.shippable.revision.${REV}.firefox.macosx64-aarch64-opt`,
+    );
+  });
+});
+
+describe("artifactJob (mirrors the default job in mozbuild/artifacts.py)", () => {
+  it("is linux64-opt on x86-64 Linux", () => {
+    expect(artifactJob("linux", "x64")).toBe("linux64-opt");
+  });
+
+  it("is macosx64-aarch64-opt on Apple Silicon", () => {
+    expect(artifactJob("darwin", "arm64")).toBe("macosx64-aarch64-opt");
+  });
+
+  it.each([
+    ["linux", "arm64"],
+    ["darwin", "x64"],
+    ["win32", "x64"],
+  ])("refuses %s/%s, which no Vimma artifact build supports yet", (platform, arch) => {
+    expect(() => artifactJob(platform, arch)).toThrow(
+      new RegExp(`no artifact build for ${platform}/${arch}`),
+    );
+  });
 });
 
 describe("machArtifactEnv", () => {
@@ -262,6 +290,24 @@ describe("indexTask (Taskcluster index findTask response)", () => {
     expect(() => indexTask(RELEASE, 200, old, NOW)).toThrow(/expired 2026-10-01T00:00:00.000Z/);
   });
 
+  it("names the job it looked for, and still says linux64 on Linux", () => {
+    const mac = "macosx64-aarch64-opt";
+    expect(() => indexTask(RELEASE, 404, NOT_FOUND, NOW, mac)).toThrow(
+      /Mozilla's macosx64-aarch64 build of [\s\S]*firefox\.macosx64-aarch64-opt\)/,
+    );
+    const old = { ...FOUND, expires: "2026-10-01T00:00:00.000Z" };
+    expect(() => indexTask(RELEASE, 200, old, NOW, mac)).toThrow(
+      /Mozilla's macosx64-aarch64 build of .* expired/,
+    );
+    expect(() => indexTask(RELEASE, 404, NOT_FOUND, NOW)).toThrow(
+      `Mozilla's linux64 build of ${REV} is not in the Taskcluster index ` +
+        `(gecko.v2.mozilla-release.shippable.revision.${REV}.firefox.linux64-opt).`,
+    );
+    expect(() => indexTask(RELEASE, 200, old, NOW)).toThrow(
+      `Mozilla's linux64 build of ${REV} expired 2026-10-01T00:00:00.000Z.`,
+    );
+  });
+
   it("throws on another HTTP status or a malformed body", () => {
     expect(() => indexTask(RELEASE, 500, {}, NOW)).toThrow(/HTTP 500/);
     expect(() => indexTask(RELEASE, 200, { taskId: 1 }, NOW)).toThrow(/unexpected/);
@@ -306,5 +352,27 @@ describe("refreshAppIni", () => {
     expect(refreshAppIni(dir)).toBe(
       join(dir, ARTIFACT_OBJDIR, "dist", "bin", "browser", "application.ini"),
     );
+  });
+});
+
+describe("linkLauncher", () => {
+  it("links dist/bin/<binaryName> to firefox before the build, dangling until the unpack", () => {
+    // On macOS, browser/app/moz.build copies dist/bin/<MOZ_APP_NAME> into the .app, and make
+    // fails when the link is missing; Mozilla's artifact only ships `firefox`.
+    const engine = tempDir("vimma-artifact-");
+    const launcher = linkLauncher(engine, "vimma");
+    expect(launcher).toBe(join(engine, ARTIFACT_OBJDIR, "dist", "bin", "vimma"));
+    expect(lstatSync(launcher).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(launcher)).toBe("firefox");
+  });
+
+  it("leaves an existing launcher or link alone, so it can run again after the build", () => {
+    const engine = tempDir("vimma-artifact-");
+    linkLauncher(engine, "vimma");
+    expect(() => linkLauncher(engine, "vimma")).not.toThrow();
+    const bin = join(engine, ARTIFACT_OBJDIR, "dist", "bin");
+    writeFileSync(join(bin, "other"), "a real binary");
+    linkLauncher(engine, "other");
+    expect(lstatSync(join(bin, "other")).isFile()).toBe(true);
   });
 });

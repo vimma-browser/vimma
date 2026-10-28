@@ -1,8 +1,10 @@
 # Spec m0-pipeline. The required check "lint, typecheck, test, commitlint, licences" is one job;
 # a guard job before it skips a push to main whose tree a pull request already passed (#358).
+# vimma-ctl's clippy and tests also run on macOS in a job of their own, which is not a required
+# check (spec macos-build, sub-PR 2).
 # Issue #245: on a docs-only pull request (tools/ci/docs-only.mjs) the steps that Markdown cannot
 # affect skip with `if:`, and the job still reports. The steps that read Markdown (prettier,
-# md-wording, spec-lint, security-links, gen-docs, test:py, the Vitest files in
+# md-wording, spec-lint, changelog-lint, security-links, gen-docs, test:py, the Vitest files in
 # MARKDOWN_TESTS) and commitlint always run.
 name: CI
 
@@ -134,6 +136,11 @@ jobs:
       - name: Spec statuses and decision reasons (npm run spec-lint)
         run: npm run spec-lint
 
+      # CHANGELOG.md's [Unreleased] is its first heading, appears once and holds only what the
+      # release PR's firefox-notes job can move into the new version's entry (issue #529).
+      - name: Hand-written changelog lines in order (npm run changelog-lint)
+        run: npm run changelog-lint
+
       # docs/bindings.md, docs/bindings.json and defaults.toml are generated: a hand edit fails here.
       - name: Generated docs are current (npm run gen-docs)
         run: |
@@ -176,7 +183,7 @@ jobs:
         if: steps.classify.outputs.docs-only != 'true'
         run: npm run license-check
 
-      # vimma-ctl (ADR-011). Steps in this job, not a job of their own: see the note at the top.
+      # vimma-ctl (ADR-011). On Linux, steps of the required check: see the note at the top.
       # The runner image ships rustup; it installs the toolchain pinned in rust-toolchain.toml.
       - name: Rust toolchain (tools/vimma-ctl/rust-toolchain.toml)
         if: steps.classify.outputs.docs-only != 'true'
@@ -228,3 +235,50 @@ jobs:
           else
             npx --no -- commitlint --from "$FROM" --to "$TO" --verbose
           fi
+
+  # vimma-ctl on macOS (spec macos-build, sub-PR 2): its profile root and its stale-pid check
+  # differ there. clippy and the tests only; fmt and the licence check are the same on any host.
+  vimma-ctl-macos:
+    name: vimma-ctl on macOS
+    needs: covered
+    if: ${{ !cancelled() && needs.covered.outputs.skip != 'true' }}
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the classifier reads the PR range
+          persist-credentials: false
+
+      # As in the check job: the classifier from the base, so the pull request cannot change it.
+      # The runner image's Node runs it; it uses Node's built-in modules only.
+      - name: Docs-only pull request? (tools/ci/docs-only.mjs, from the base)
+        id: classify
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git show "$BASE:tools/ci/docs-only.mjs" > "$RUNNER_TEMP/docs-only.mjs"; then
+            node "$RUNNER_TEMP/docs-only.mjs" --event pull_request --base "$BASE" --head "$HEAD"
+          else
+            echo "No classifier on the base: running everything"
+          fi
+
+      # The runner image ships rustup; it installs the toolchain pinned in rust-toolchain.toml.
+      - name: Rust toolchain (tools/vimma-ctl/rust-toolchain.toml)
+        if: steps.classify.outputs.docs-only != 'true'
+        working-directory: tools/vimma-ctl
+        run: rustup toolchain install && cargo --version && cargo clippy --version
+
+      - name: cargo clippy
+        if: steps.classify.outputs.docs-only != 'true'
+        working-directory: tools/vimma-ctl
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: cargo test
+        if: steps.classify.outputs.docs-only != 'true'
+        working-directory: tools/vimma-ctl
+        run: cargo test --locked
