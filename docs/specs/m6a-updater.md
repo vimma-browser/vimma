@@ -369,7 +369,8 @@ download against that SHA-512 before installing it (docs/security.md UP8);
 
 - One `<update>`, the newest build of the channel; an `<updates>` with no `<update>` (still
   signed, still with its channel, target and serial) means "nothing offered". The channel,
-  target and serial sit on `<updates>` (decision 25). Nightlies use `displayVersion="0.3.1-nightly.20261028"`.
+  target and serial sit on `<updates>` (decision 25). Nightlies use `displayVersion="0.3.1-nightly.20261028031500"`, the build ID after the release
+  version, so that each build has its own (decision 40).
 - `appVersion` is Firefox's version and `displayVersion` Vimma's (What the design must add, 2);
   together they are the version line `Vimma 0.3.1 · Firefox 158.0.1` that about:vimma and
   `:update` show, written by the same rule as `tools/release/version-line.mjs`.
@@ -953,7 +954,9 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     a mismatch cannot ship again; and the client rule removes the symptom for any build ID error
     that gets past both, because every release tag is a new Vimma version. Its cost: a rebuild of
     one Vimma version is never offered to an install of that version, which no release does (a
-    fix is a new version). Rejected: reading the build ID from the binary in `manifest.mjs`,
+    fix is a new version). It holds only while each build of a feed has its own
+    `displayVersion`, so a nightly's carries its build ID (§2): with the day alone, two nightlies
+    of one day would hide each other's fixes. Rejected: reading the build ID from the binary in `manifest.mjs`,
     because the macOS binary cannot run on the Linux job that builds the manifest; and comparing
     Vimma versions instead of build IDs in rule 4, because Firefox's updater, which tarball
     installs are to use (sub-PRs 2 and 5), selects by build ID, and the two must agree.
@@ -1018,7 +1021,7 @@ Written first and seen to fail.
   (older `appVersion`; equal `appVersion` with older, equal and newer build ID; numeric not string
   build-ID order; the running Vimma version with a newer build ID); freeze thresholds per channel, and no stale warning with checks off; `updateNotice` for every row of the §5 table;
   the `y/N` prompt once per session and its 24 h re-ask; install-type detection; the version line
-  (`Vimma 0.3.1 · Firefox 158.0.1`, `0.3.1-nightly.20261028`).
+  (`Vimma 0.3.1 · Firefox 158.0.1`, `0.3.1-nightly.20261028031500`).
   `config.test.mjs`: `[updates] check`, wrong type, schema 1 → "is new in schema 2";
   `cmdline.test.mjs`: `:update`, `:restart`; `actions.test.mjs`: both actions have no default key
   and appear in help. Snapshots (`defaults.toml`, help) are re-recorded with a changelog line.

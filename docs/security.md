@@ -2133,8 +2133,8 @@ _Pages_ and _extensions_ cannot reach it.
   older than one this profile accepted or than the running build's ID (replay), or with a serial
   more than a day ahead of the clock, and an older or equal build, or the Vimma version that is
   already running, is **never** offered (downgrade). A release build **must** carry one build ID
-  in its binary and its `application.ini` (the manifest's source): release.yml fixes
-  `MOZ_BUILD_DATE` and fails a package whose two differ. Withholding updates or serving an old
+  in its binary and its `application.ini` (the manifest's source): release.yml and nightly.yml fix
+  `MOZ_BUILD_DATE` and fail a package whose two differ. Withholding updates or serving an old
   manifest for long is what a compromised host can still do; the feed's age shows after 45 days
   (7 for nightly).
   [`channel and target mismatches are refused`](../packages/vimma-core/test/updates.test.mjs),

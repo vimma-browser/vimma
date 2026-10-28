@@ -1039,8 +1039,8 @@ describe("the version line", () => {
       "Vimma 0.3.1 · Firefox 158.0.1",
     );
     expect(
-      updateVersionLine({ displayVersion: "0.3.1-nightly.20261028", appVersion: "158.0.1" }),
-    ).toBe("Vimma 0.3.1-nightly.20261028 · Firefox 158.0.1");
+      updateVersionLine({ displayVersion: "0.3.1-nightly.20261028031500", appVersion: "158.0.1" }),
+    ).toBe("Vimma 0.3.1-nightly.20261028031500 · Firefox 158.0.1");
   });
 });
 

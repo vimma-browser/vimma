@@ -76,10 +76,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error("usage: build-id.mjs --binary <vimma> --ini <application.ini>");
     process.exit(2);
   }
-  // stdout alone: the sandbox's user-namespace probe writes to stderr on some runners
+  // stderr goes to the job log, so a crash says why; a hung binary fails after a minute
   const fullVersion = execFileSync(values.binary, ["--full-version"], {
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
+    stdio: ["ignore", "pipe", "inherit"],
+    timeout: 60_000,
   });
   const problem = buildIdProblem(fullVersion, readFileSync(values.ini, "utf8"));
   if (problem) {
