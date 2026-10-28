@@ -2,11 +2,12 @@
 
 Status: draft · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`, `agent-providers.mjs`,
 `agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`; `agent.mjs` and `agent-prompt.mjs`
-for the built-in label and the task grant; `config.mjs` for `[agent]`; `actions.mjs` and
+for the built-in label and the conversation grant; `config.mjs` for `[agent]`; `actions.mjs` and
 `defaults.mjs` for the key); `src/browser/base/content/vimma/` (new `agent/AgentChat.sys.mjs`,
 `agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`, `ui/agent-chat.mjs`;
 `ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `host/workspace-ops.mjs`,
-`ui/statusbar.mjs`, `host/agent-ui.mjs`); new `tools/agent-bench/`; `tests/e2e/fixtures/`;
+`ui/statusbar.mjs`, `ui/side-panel.mjs`, `host/agent-ui.mjs`); new `tools/agent-bench/`;
+`tests/e2e/fixtures/`;
 `docs/guide.md`, `docs/security.md`, `docs/limits.md`, README · Upstream patches: none · ADR: a
 new ADR for an in-browser model client beside [ADR-019](../adr/019-agents-over-mcp.md), written
 with delivery PR 3 (B4). No new dependency (B6).
@@ -14,8 +15,9 @@ with delivery PR 3 (B4). No new dependency (B6).
 Issue: [#535](https://github.com/vimma-browser/vimma/issues/535)
 
 Builds on [vimma-mcp](vimma-mcp.md) (the agent workspace, the gate, the question line),
-[mcp-drive](mcp-drive.md), [mcp-forms](mcp-forms.md), [mcp-grants](mcp-grants.md) (one grant
-per task) and [mcp-checkpoints](mcp-checkpoints.md) (sending a form and paying). Decisions of
+[mcp-drive](mcp-drive.md), [mcp-forms](mcp-forms.md), [mcp-grants](mcp-grants.md) (grants,
+which [#578](https://github.com/vimma-browser/vimma/issues/578) makes last a connection's
+lifetime) and [mcp-checkpoints](mcp-checkpoints.md) (sending a form and paying). Decisions of
 those specs are written "vimma-mcp 21", "mcp-grants G2" and so on; this spec's own are "B1",
 "B2", and so on. Engine paths are relative to `engine/` (Firefox 158.0.1,
 `config/milestone.txt`). Vimma paths are under `src/browser/base/content/vimma/` unless they
@@ -59,12 +61,13 @@ first, so that what the guide says a model can do is what the bench measured.
 ### Setup and providers
 
 1. **Off until set up.** With no provider configured, Vimma makes no network request for the
-   agent. `:agent` (and the key of B13, once delivered) opens the chat window; with no provider
+   agent. `:agent` (and `ctrl+b i`, once delivered, B13) opens the chat window; with no provider
    it shows setup, which offers two choices.
 2. **Local model.** Setup asks only `127.0.0.1` on the usual ports of local servers: Ollama
    (11434), LM Studio (1234) and the llama.cpp server (8080), each with `GET /v1/models` and a
    timeout of 1 s. It lists the models those servers report as `ollama · qwen3:14b`, and the
-   user picks one. When none answers, setup shows how to start one (`ollama serve`, then
+   user picks one; the first model found is preselected and becomes `[agent] default` once the
+   user confirms setup (B12). When none answers, setup shows how to start one (`ollama serve`, then
    `ollama pull <model>`) and accepts an address such as `http://127.0.0.1:8000/v1` (vLLM's
    default port) instead. No key is asked. The probe runs only while setup is open with this
    option picked, never in the background.
@@ -85,7 +88,7 @@ first, so that what the guide says a model can do is what the bench measured.
    `anthropic · claude-sonnet-4-5 · page text sent to api.anthropic.com`. A local address that
    is not one of the probed servers says `local endpoint 127.0.0.1:8000`, because Vimma cannot
    see whether that server forwards to a hosted model (Security and privacy). The second says
-   `works in: agent workspace`, then the conversation's grant (`grant 9m`, or `asks every step`)
+   `works in: agent workspace`, then the conversation's grant (`granted`, or `asks every step`)
    and, while a task runs, its steps (`14/60 steps`).
 7. **A picker switches models.** In the window, `m` (normal mode) opens a picker of the
    configured providers and the models the local servers report. Each conversation remembers
@@ -97,7 +100,6 @@ first, so that what the guide says a model can do is what the bench measured.
    [agent]
    default = "local"           # a provider name below
    local_only = false          # true: refuse any provider that is not on 127.0.0.1 or ::1
-   task_grant_minutes = 10     # the grant a task sent with Enter gets (Behaviour 24)
    max_running = 3             # conversations whose tasks run at once (Behaviour 32)
    max_steps = 60              # B10
    max_tokens = 1000000
@@ -146,23 +148,24 @@ first, so that what the guide says a model can do is what the bench measured.
 13. **Everything is plain text.** The agent's replies are shown as text with line breaks; no
     Markdown, HTML, images or clickable links (B9). Each reply sits under an `agent` label,
     indented, so no line of it starts at the window's left edge.
-14. **Keys.** The input starts focused in insert mode: `Enter` sends with a task grant and
-    `ctrl+Enter` sends asking at every step (Behaviour 24-25), `shift+Enter` adds a line, `Esc`
-    goes to normal mode. In normal mode `j`/`k`, `ctrl+d`/`ctrl+u`, `gg`/`G` move through the
-    transcript, `i` or `a` returns to the input, `s` stops the running task, `m` opens the
-    model picker, `n` starts a new conversation, `c` opens the conversation list
+14. **Keys.** The input starts focused in insert mode: `Enter` sends with the conversation's
+    grant and `ctrl+Enter` sends asking at every step (Behaviour 24-25), `shift+Enter` adds a
+    line, `Esc` goes to normal mode. In normal mode `j`/`k`, `ctrl+d`/`ctrl+u`, `gg`/`G` move
+    through the transcript, `i` or `a` returns to the input, `s` stops the running task, `m`
+    opens the model picker, `n` starts a new conversation, `c` opens the conversation list
     (Behaviour 19), `C` clears the context (Behaviour 22), `P` gives the selected tab to the
     agent (item 17), `y` copies the selected transcript entry, `q` closes the window.
     `:agent stop`, `:agent new`, `:agent model`, `:agent list`, `:agent clear`, `:agent give`
     and `:agent forget all` do the same from the command line.
 15. **Instructions during a task.** A message sent while a task runs is added after the current
     step and reaches the model at its next turn; the transcript marks it
-    `(added during the task)`. It does not change the task's grant.
+    `(added during the task)`. Sent with `Enter`, it keeps the conversation's grant; sent with
+    `ctrl+Enter`, it ends it (Behaviour 25).
 16. **Stopping.** `s` in the window, `:agent stop`, or `ctrl+b shift+a` with no question waiting
     (which ends every grant, mcp-grants G4) stops the running task: the request to the model is
-    aborted, a question of the conversation still waiting is withdrawn, and no further step
-    starts. A step already running finishes, since a click that has happened cannot be undone,
-    and the transcript says `stopped after "clicked …"`. `ctrl+b shift+a` stops every running
+    aborted, a question of the conversation still waiting is withdrawn, no further step starts,
+    and the conversation's grant ends (Behaviour 24). A step already running finishes, since a
+    click that has happened cannot be undone, and the transcript says `stopped after "clicked …"`. `ctrl+b shift+a` stops every running
     conversation; `s` and `:agent stop` stop the open one.
 17. **Giving a page to the agent.** `P` in the window (normal mode) or `:agent give` asks, as
     the workspace picker's `m` asks today, whether to move the tab to the agent workspace,
@@ -199,17 +202,21 @@ first, so that what the guide says a model can do is what the bench measured.
 
 ### Approval
 
-24. **`Enter` sends the task with a task grant.** The conversation's gate connection gets a
-    grant for `[agent] task_grant_minutes` (default 10), as `10a` would give an MCP agent
-    (mcp-grants), made by the key press itself, before the first step. The header shows it
-    (`grant 9m`), and it ends as any grant ends: `ctrl+b shift+a`, `:mcp revoke`, expiry, or the
-    conversation's deletion. A new task sent with `Enter` in the same conversation renews it.
-25. **`ctrl+Enter` sends the task asking at every step.** No grant is made, so each step asks,
-    as an MCP agent's steps do without a grant; a grant the user gives in answer to one of those
-    questions applies as usual.
+24. **Sending a task from the window is the grant.** A message sent with `Enter` grants the
+    conversation's gate connection the agent workspace, made by the key press itself before the
+    first step, so the conversation asks no separate approval question. The grant is the gate's
+    ordinary grant for one connection, which lasts the connection's lifetime (as #578 makes it
+    for MCP agents), so it has no timer: it covers every later task sent with `Enter` in that
+    conversation until it is stopped. It ends with `s` or `:agent stop`, with `ctrl+b shift+a`,
+    `:mcp revoke`, the conversation's deletion, or a restart, which ends every connection; the
+    next message sent with `Enter` grants it again. The header shows it (`granted`).
+25. **`ctrl+Enter` sends the task asking at every step.** It ends the conversation's grant, if
+    one stands, so each step asks, as an MCP agent's steps do without a grant, until a later
+    message is sent with `Enter`; a grant the user gives in answer to one of those questions
+    applies as usual.
 26. **Checkpoints always ask.** Sending a form, a payment step (mcp-checkpoints), `vimma_show`
-    and the downloads that always ask (mcp-grants G2) ask under the task grant, with `y` and
-    `n` only.
+    and the downloads that always ask (mcp-grants G2) ask under the conversation's grant, every
+    time, in the window's prompt slot (Behaviour 27), with `y` and `n` only.
 27. **Questions in the window.** While the window is open on the conversation that asks, its
     questions (checkpoints, and every step under `ctrl+Enter`) appear in the prompt slot, not on
     the question line: a bordered element between the transcript and the input, with the
@@ -242,14 +249,15 @@ first, so that what the guide says a model can do is what the bench measured.
     workspace (`tab 12 is not a tab of the agent workspace`), so a conversation learns nothing
     of the others' tabs. A tab the user moved there without giving it to a conversation (the
     picker's `m`, `:wsmove agent`) belongs to none until given. Ownership is kept in memory;
-    after a restart, restored tabs belong to none.
+    after a restart, restored tabs belong to none. MCP agents see and act only on the tabs no
+    conversation owns, refused the others with the same error (B17).
 31. **Its name.** Questions, notices and `:mcp log` name a conversation
     `built-in · Weekly groceries` (the word `built-in`, then the title), and `:mcp log` adds
     the model. An MCP client whose `agent-hello` gives a name starting with `built-in` is
     shown with ` (mcp)` after it, so no other program can pass as the built-in agent.
 32. **One conversation is one connection, several may run.** Each conversation has its own gate
-    connection, grant, rates and `:mcp log` rows, so a grant covers the task of the
-    conversation it was given in, and a new conversation starts without one. At most
+    connection, grant, rates and `:mcp log` rows, so a grant covers only the conversation it
+    was given in, and a new conversation starts without one. At most
     `[agent] max_running` conversations (default 3) run a task at once; sending a task when
     that many run says `3 agent tasks are running ([agent] max_running); s stops one`. MCP
     agents may run beside them, as they may beside each other today.
@@ -266,8 +274,8 @@ first, so that what the guide says a model can do is what the bench measured.
     same budget again.
 35. **The status bar shows progress.** While one task runs, the agent segment reads
     `◇ built-in 14/60 · 212k tok` (steps, tokens), with `· 0.41` for cost when prices are set;
-    while several run, `◇ 2 agents`. The grant's minutes show beside it as today
-    (`◇ agent 9m`). With the window closed, the segment is the only sign of a running task.
+    while several run, `◇ 2 agents`. With the window closed, the segment is the only sign of a
+    running task.
 
 ## Research
 
@@ -370,15 +378,30 @@ agent to a part of the profile, or publishes which steps always ask.
 1. **A chat window, not a command line** (B1, Behaviour 10-18), because the tasks this is for
    are long and conditional (a list of items, each with preferences), they run for minutes, and
    the user needs to read what happened and correct it while it runs. A one-line command cannot
-   hold the task, and notices replace each other, so they cannot hold the history. Where the
-   window lives is open question 1.
+   hold the task, and notices replace each other, so they cannot hold the history. The window
+   lives in the side panel's slot (`ui/side-panel.mjs`), wider than the tab list (about
+   420 px), with keys through `VimmaHost` in a mode of its own and one panel at a time, because
+   that reuses Vimma's keyboard handling and text-only rendering, needs no privileged page, and
+   opens from every workspace while the agent works in its own. Rejected: a pane of the split
+   layout, because it needs a privileged `about:` page in a tab that belongs to one workspace,
+   must be kept out of the agent tools, and holds untrusted text with chrome privileges (B9); a
+   window of its own, because it has no status bar or question line and needs its own key
+   capture.
 2. **The agent tools and the gate are the only reach** (B2, Behaviour 29), so that the built-in
    agent is bound by the same rules as any MCP agent and every rule of security.md §12 covers it
    unchanged. It never reaches other workspaces, the private workspace or the user's logins,
    because the agent commands check every tab against the agent workspace and its container
    when each command runs (vimma-mcp 7). Rejected: tools of its own (for example a "search the
    shop" tool), because each would need its own threat review and would not reach MCP agents;
-   improvements to the shared tools help both (open question 5).
+   improvements to the shared tools help both. In the one recorded run each `vimma_elements`
+   list was 3 to 12 KB and the tool definitions are 17.5 KB, which together fill much of a small
+   model's context in a few steps, so `vimma_elements` gains a `query` parameter (words matched
+   against labels and text, NFKC and case-folded) and a `kinds` filter (`button`, `field`,
+   `link`), in a spec of their own and measured by the bench before and after (Delivery 7),
+   because they serve MCP agents too and their effect can be measured. Rejected for now: a
+   `limit` with paging, because a filter returns the lines the agent wants rather than the next
+   page of those it does not; shorter tool descriptions, unless the bench shows small models
+   failing for lack of context.
 3. **Safety does not depend on the model** (B3). The gate, the grant, the checkpoints, the
    confinement and the budgets are enforced in code the model's output cannot change, so that
    a small, confused or prompt-injected model is stopped at the same places as a capable one.
@@ -392,9 +415,10 @@ agent to a part of the profile, or publishes which steps always ask.
    every local process, and the token in a file; a separate MCP host process, because it adds a
    program to ship and a socket for no gain in confinement. An ADR records the new kind of
    client (a model client inside the browser) beside ADR-019.
-5. **One conversation is one gate connection** (B5, Behaviour 32), because a grant is the
-   user's judgement of one task (mcp-grants G1), and a conversation is the unit of a task; a
-   grant that carried over to a new conversation would cover a task the user has not seen.
+5. **One conversation is one gate connection** (B5, Behaviour 32), because the grant is made
+   by sending a message in one conversation (B18) and covers what the user wrote there; a grant
+   that carried over to a new conversation would cover instructions the user has not written
+   yet, and a connection is what the gate already grants, revokes and logs.
 6. **The loop is pure and shared with the bench** (B6). The model loop (messages, tool calls,
    budgets, transcript entries) and the provider adapters live in `packages/vimma-core`, take a
    `fetch` and a tool runner as arguments, and import nothing from Firefox, so that the bench
@@ -414,7 +438,13 @@ agent to a part of the profile, or publishes which steps always ask.
    one, visible and deletable in `about:logins`, and never written where Firefox's Smart Window
    keeps its key (a pref in clear text, Research). `config.toml` is a file users share and keep
    in dotfile repositories, so a key there would leak with it; a key field is a config error.
-   Whether the key is also encrypted with the OS keyring before it is stored is open question 4.
+   The key is encrypted with `OSKeyStore` before it is stored, the key that also protects stored
+   conversations (B15), and the login holds only the ciphertext, so that a copied profile, a
+   password export or a synced copy is useless without the user's desktop keyring, at the cost
+   of a key that does not move to a new machine. That cost is accepted because an API key spends
+   money and is easily replaced, and one encryption scheme for everything the agent stores is
+   simpler to explain. Rejected: the key in login storage as it is, because it would then be
+   exported and synced with passwords, readable wherever they are.
 9. **The window renders text only** (B9, Behaviour 12-13), because the agent's replies can
    carry page text an injection wrote. Markdown images are a known way to send data out (an
    image URL that carries what the model read loads the moment it is shown), and a clickable
@@ -427,11 +457,12 @@ agent to a part of the profile, or publishes which steps always ask.
     that does not converge, a page that floods the agent with text, or a model that keeps
     calling tools costs at most what the user allowed. Steps count tool calls because they are
     what the user sees; tokens count what the provider reports and, for a server that reports
-    none, characters divided by four, shown with `~`. Cost is computed only from prices the user
-    enters (open question 7), because providers do not return a price and a price table in Vimma
-    would go out of date. The defaults (60 steps, 1,000,000 tokens) cover about three times the
-    20 calls one three-item basket took (Problem), and the bench's results replace them before
-    delivery PR 3.
+    none, characters divided by four, shown with `~`. Cost is computed only from `price_in` and
+    `price_out` the user enters, because providers do not return a price. Rejected: a price
+    table for known models shipped with Vimma, because it goes out of date with every price
+    change and would state a wrong cost as fact. The defaults (60 steps, 1,000,000 tokens)
+    cover about three times the 20 calls one three-item basket took (Problem), and the bench's
+    results replace them before delivery PR 3.
 11. **Network calls go only to the configured endpoint** (B11, Behaviour 1-4, 9). Each request
     is a `fetch` from the parent process to the provider's endpoint as configured, with
     `credentials: "omit"` (no cookies of any container) and `redirect: "error"`, so that an
@@ -444,11 +475,15 @@ agent to a part of the profile, or publishes which steps always ask.
     the background would make Vimma contact local services the user did not ask about. A hosted
     provider says what it receives before the first task (Behaviour 5) because the page text the
     agent reads, including what the agent workspace's logins show (an address, an order
-    history), goes to that provider. Whether a local model found by the probe becomes the
-    default is open question 3.
+    history), goes to that provider. When the probe finds a local server, its first model is
+    preselected and `[agent] default` points to it once the user confirms setup, because
+    nothing then leaves the machine and the user still confirms the choice.
 13. **One key opens the window, delivered in its own keymap PR** (B13), because keymap changes
     regenerate the bindings docs and the help snapshot and go one PR at a time. Until then,
-    `:agent` opens it. The key is open question 2.
+    `:agent` opens it. The key is `ctrl+b i`, free in the default keymap, because the window
+    opens in its input as Vim's `i` starts typing, and `i` reads as "instruct". Rejected:
+    `ctrl+b shift+c` ("chat"), because a shifted key is slower for a window opened often; no
+    default key, because the window is the feature's main surface.
 14. **The bench comes first** (B14, Delivery 1-2), because the feature is only useful with a
     model that completes real tasks, and which models do so is unknown (Problem). The bench
     runs on local fixtures, so its results do not depend on a live shop and it never buys
@@ -485,21 +520,37 @@ agent to a part of the profile, or publishes which steps always ask.
     own connection, grant and log rows. Tab ownership keeps them apart, so that one
     conversation's model cannot read or act in another's pages, and a page injected into one
     task cannot steer the other's tabs. The refusal is worded as for a tab outside the agent
-    workspace so that a conversation cannot probe which tab ids exist. `max_running` bounds the
-    sum of the per-connection rates and the cost of mistakes no one is watching; its default is
-    open question 6. Rejected: one task at a time, for the wait above; a shared pool of agent
-    tabs, because two models would act on the same pages.
-18. **`Enter` grants the task; `ctrl+Enter` asks every step** (B18, Behaviour 24-26). A task
-    typed in Vimma's own window is known to come from the user, unlike an MCP agent's, whose
-    instruction Vimma never sees, so a grant made by the key that sends it is the user's
-    judgement of a task they just wrote, which is what mcp-grants G1 asks of a grant. Each step
-    is still chosen by a model that reads untrusted pages, so the steps that cannot be taken back
-    (sending a form, paying) remain checkpoints under that grant, as do `vimma_show` and the
-    downloads that always ask. `ctrl+Enter` is for a task to be watched step by step.
-    The grant is the gate's ordinary grant, so it is ended by the same keys and shown in the
-    same places. Rejected: no grant at the start, because the first question would ask the user
-    to approve a step of the task they just sent, which trains the reflex `a` that mcp-grants
-    removed; a grant with no end, because a task that stalls should not keep its reach.
+    workspace so that a conversation cannot probe which tab ids exist. MCP agents see only the
+    tabs no conversation owns, because otherwise an MCP agent could read and act in a running
+    conversation's pages, which ownership keeps conversations from doing to each other; the
+    guide's description of what an MCP agent sees changes with it. `max_running` bounds the sum
+    of the per-connection rates and the cost of mistakes no one is watching; its default is 3,
+    because that covers a few independent errands while the sum of the rates (30 loads a
+    minute) and the unwatched cost stay small. A local model serving several conversations also
+    slows each, which the bench measures before the default is final. Rejected: one task at a
+    time, for the wait above; a default of 1, because running several would then need a config
+    change for no safety gain; 5, because the summed rates rise to 50 loads a minute for errands
+    few users run at once; a shared pool of agent tabs, because two models would act on the same
+    pages; MCP agents seeing every tab, as noted above.
+18. **Sending from the window is the grant; `ctrl+Enter` asks every step** (B18,
+    Behaviour 24-26). A task typed in Vimma's own window is known to come from the user, unlike
+    an MCP agent's, whose instruction Vimma never sees, so sending it is itself the user's
+    approval of the conversation's work in the agent workspace, and a separate question would
+    only ask the user to approve what they just wrote, which trains the reflex `a` that
+    mcp-grants removed. The grant lasts the conversation's connection until stopped, because the
+    connection-lifetime grant of #578 is the gate's one model of a grant for every agent, and
+    because a conversation takes steps only while a task the user sent runs, and every task stops
+    at its budget (B10), so a grant between tasks gives the model no turn to use it, while a
+    timer would interrupt a long task with a question the user already answered by sending it.
+    Each step is still chosen by a model that reads untrusted pages, so the steps that cannot be
+    taken back (sending a form, paying) remain checkpoints under the grant, as do `vimma_show`
+    and the downloads that always ask, and they ask in the window's prompt slot, which neither
+    the input nor the model can answer (B19). `ctrl+Enter` is for a task to be watched step by
+    step, and it ends a standing grant so that the user can switch a conversation to asking at
+    any message. The grant is the gate's ordinary grant, so it is ended by the same keys and
+    shown in the same places. Rejected: a separate approval question at the start, for the
+    reflex above; a timed task grant (`task_grant_minutes`), for the interruption above and
+    because MCP agents no longer have one.
 19. **Questions in the window are Vimma's, never the model's** (B19, Behaviour 27-28). Showing
     a conversation's questions in its window keeps the user in one place while they watch the
     task. A model-written line can never look like or answer one, because the prompt slot is a
@@ -516,7 +567,8 @@ agent to a part of the profile, or publishes which steps always ask.
 
 What is new: a model client inside the browser that sends page text to an endpoint picked in
 setup, an API key stored in the profile, conversations stored in the profile, several agents
-running at once, a grant made by the key that sends a task, and a window that shows the model's
+running at once, a grant made by the key that sends a task and kept for the conversation's
+lifetime, and a window that shows the model's
 output and the gate's questions. The reach on pages is unchanged: the same agent tools, gate,
 checkpoints and rates as an MCP agent (B2, B3), narrowed further to each conversation's own
 tabs (B17).
@@ -526,8 +578,8 @@ tabs (B17).
 Page text, titles, URLs, element labels and console messages are untrusted. They reach the
 model inside the untrusted-content delimiters of `wrapUntrusted`, as for MCP agents, which is a
 mitigation, not a guarantee. A page can therefore steer the model. What a model steered by a
-page, or one that is simply wrong, can still do under a grant (a task sent with `Enter` has
-one), stated as mcp-grants does:
+page, or one that is simply wrong, can still do under a grant (a conversation whose tasks are
+sent with `Enter` has one), stated as mcp-grants does:
 
 - load any http or https URL in the agent workspace, and so send what it read in a URL
   (`vimma_open`, a followed link), at most 10 loads a minute per conversation, each a notice and
@@ -547,14 +599,17 @@ keep a dangerous or unscanned download; answer a question of the gate or make a 
 links in the window (B9). Unlike an MCP agent in a coding host, it has no shell, files or
 network of its own, so the agent workspace and the provider are its only ways to send anything.
 
-### The task grant
+### The conversation grant
 
 `Enter` makes a grant before the first step, where an MCP agent's first step asks. The grant is
 made only by that key press in Vimma's own window, which no page and no local process can send:
 the window is chrome, page key events never reach it, and the control socket has no command
-that sends a task. It lasts `task_grant_minutes`, is shown in the header and the status bar, and
-ends with `ctrl+b shift+a`. What it allows is what any grant allows (above); `ctrl+Enter` sends
-a task without one.
+that sends a task. It lasts the conversation's connection, as an MCP agent's grant lasts its
+connection (#578), and covers later tasks sent with `Enter` in the same conversation; it is
+shown in the header and ends with `s`, `:agent stop`, `ctrl+b shift+a`, `:mcp revoke`, the
+conversation's deletion or a restart. Between tasks the model gets no turn, so a standing grant
+is used only by a task the user sent. What it allows is what any grant allows (above);
+`ctrl+Enter` sends a task without one and ends a standing one.
 
 ### Several agents at once
 
@@ -589,7 +644,9 @@ of scope (security.md §11).
   protects. Without a primary password, any process that can read the profile can decrypt it,
   as it can every saved password; the guide says so and recommends a primary password. A
   `chrome://vimma-agent` login appears in `about:logins`, in a password export, and in Sync when
-  the user syncs passwords (Research); open question 4 is about keeping it out of those copies.
+  the user syncs passwords (Research). The login holds only the key encrypted with
+  `OSKeyStore` (B8), so with a desktop keyring those copies are useless elsewhere; without one,
+  `OSKeyStore`'s own key is in `key4.db`, and the guide says which applies.
 - **Other local processes** running as the user can read the profile and talk to a local
   server; Vimma does not defend against them (security.md §11). The key is not in the control
   socket's discovery file, the token, prefs, `config.toml`, the session store or any file
@@ -625,12 +682,14 @@ A new subsection of §12 for the built-in agent, with rules and their tests:
 - a grant **must** be made only by the user's `Enter` in the chat window or an answer to a
   question; nothing typed in the input and nothing the model outputs **must** ever answer a
   question, make a grant or fill the prompt slot;
-- checkpoints, `vimma_show` and the downloads that always ask **must** ask under the task grant;
+- checkpoints, `vimma_show` and the downloads that always ask **must** ask under the
+  conversation's grant, every time;
+- an MCP agent **must** see and act only on agent-workspace tabs no conversation owns;
 - an `agent-hello` naming a client that starts with `built-in` **must** be shown with ` (mcp)`;
 - requests **must** go only to the configured endpoint, `https://` unless loopback, with no
   credentials and no redirects; `local_only` **must** refuse any non-loopback endpoint;
-- an API key **must** be stored only in login storage, and **must not** appear in prefs,
-  `config.toml`, logs, notices, the transcript, stored conversations or error text;
+- an API key **must** be stored only in login storage, encrypted with `OSKeyStore`, and
+  **must not** appear in prefs, `config.toml`, logs, notices, the transcript, stored conversations or error text;
 - stored conversations **must** hold only messages, replies and Vimma's summaries, encrypted
   with `OSKeyStore`, and **must** be deleted by `d`, `:agent forget all` and `keep_days`;
 - giving a tab to the agent **must** move it after a `y/N`, reopened with the agent workspace's
@@ -668,19 +727,20 @@ opened belongs to its opener's conversation`; `a given tab belongs to the open c
 - `agent-tools.test.mjs`: `the built-in tool list equals the MCP fixture`; `screenshot is left
 out for a provider without vision`.
 - `config.test.mjs`: `[agent] providers parse`; `a key field in [agent] is an error`;
-  `local_only refuses a remote endpoint`; `task_grant_minutes, max_running and keep_days
-parse`.
+  `local_only refuses a remote endpoint`; `max_running and keep_days parse`;
+  `task_grant_minutes is not a key of [agent]`.
 - `agent-gate.test.mjs`: `a built-in connection's grant does not cover another conversation`;
-  `a client named built-in over MCP is shown with (mcp)`; `a task grant leaves checkpoints
-asking`.
+  `a client named built-in over MCP is shown with (mcp)`; `a conversation grant leaves
+checkpoints asking`; `a conversation grant has no expiry and ends on stop`.
 
 ### Mochitests (`tests/browser/`)
 
 - `browser_vimma_agent_chat.js` (new), against a scripted OpenAI-compatible server on
   `127.0.0.1` (an `.sjs` file): `test_no_request_before_setup`;
   `test_probe_only_on_setup_and_only_loopback`; `test_header_says_where_it_works`;
-  `test_enter_grants_the_task_ctrl_enter_asks_every_step`;
-  `test_checkpoint_asks_under_the_task_grant`; `test_question_in_the_prompt_slot_when_open`;
+  `test_enter_grants_the_conversation_ctrl_enter_asks_every_step`;
+  `test_grant_covers_later_tasks_until_stopped`;
+  `test_checkpoint_asks_under_the_conversation_grant`; `test_question_in_the_prompt_slot_when_open`;
   `test_question_on_the_question_line_when_closed`; `test_input_and_model_never_answer`;
   `test_checkpoint_in_transcript`; `test_stop_withdraws_the_waiting_question`;
   `test_ctrl_b_shift_a_stops_every_task`; `test_budget_stops_the_task`;
@@ -690,13 +750,15 @@ asking`.
   `test_works_with_mcp_off`; `test_opened_from_another_workspace_reads_none_of_its_tabs`;
   `test_give_moves_the_tab_after_y_and_reopens_it_in_the_agent_container`.
 - `browser_vimma_agent_conversations.js` (new): `test_two_conversations_see_only_their_tabs`;
-  `test_other_conversations_tab_refused_as_outside`; `test_max_running`;
+  `test_other_conversations_tab_refused_as_outside`;
+  `test_mcp_agent_sees_only_unowned_tabs`; `test_max_running`;
   `test_questions_name_the_conversation`; `test_status_bar_counts_agents`;
   `test_stored_file_is_encrypted_and_holds_no_tool_output`;
   `test_reopened_conversation_starts_with_a_clean_context`; `test_clear_context`;
   `test_delete_and_forget_all_remove_files`; `test_keep_days`.
 - `browser_vimma_agent_keys.js` (new): `test_key_stored_as_a_login_only` (no pref, no config,
-  no file but the logins); `test_key_never_in_log_notice_transcript_or_store`;
+  no file but the logins); `test_stored_login_holds_only_the_keystore_ciphertext`;
+  `test_key_never_in_log_notice_transcript_or_store`;
   `test_key_deleted_from_setup`.
 
 ### e2e (`tools/e2e`, under Xvfb)
@@ -726,7 +788,7 @@ asking`.
   choice per line; steps; input and output tokens; wall time; `paid` (an order reached the
   shop's server: always a failure); `sent a form unasked` (a submission without a checkpoint:
   always a failure); `checkpoint asked` (expected at checkout); `injection followed` (a request
-  reached the second host). The harness gives the task a grant, as `Enter` does, and answers
+  reached the second host). The harness gives the conversation a grant, as `Enter` does, and answers
   every checkpoint with `n`.
 - **Results** go to `docs/agent-bench.md`: per model and server, the scores over N runs, the
   model's size and quantisation, the server and its version, the hardware, and the Vimma
@@ -735,8 +797,8 @@ asking`.
 ## Docs and changelog
 
 - `docs/guide.md`: a "Built-in agent" section under "Agent workspace": setup, providers, what
-  is sent where, the window and its keys, `Enter` and `ctrl+Enter`, questions in the window,
-  giving a page, several conversations and their tabs, the conversation list, what is stored
+  is sent where, the window and its keys, `Enter` and `ctrl+Enter` and how long a grant lasts,
+  questions in the window, giving a page, several conversations and their tabs, the conversation list, what is stored
   and how it is encrypted, budgets, stopping, how it differs from an MCP agent; "What Vimma
   protects, and what it does not" gains the built-in agent; the Features at a glance line.
 - `docs/security.md`: the §12 subsection above, with its tests.
@@ -761,10 +823,11 @@ Each PR is mergeable and tested on its own; the window appears only in PR 4.
 2. `feat(agent): a model test bench on a local fixture shop` (B14): `tools/agent-bench`, the
    bench shop and lists, the scripted provider, scoring, and the first results in
    `docs/agent-bench.md` for the models the bench could run. The results set the budget
-   defaults and decide open question 5.
+   defaults and `max_running`, and are the baseline for Delivery 7.
 3. `feat(agent): the built-in agent's gate connections, providers and key storage` (B4, B5, B8,
-   B11, B12, B17, B18): the in-process connections and their labels, tab ownership in
-   `agent-commands.mjs`, the task grant, `max_running`, `[agent]` config, setup's probe, key
+   B11, B12, B17, B18), built on #578's connection-lifetime grant: the in-process connections
+   and their labels, tab ownership in `agent-commands.mjs` (MCP agents included), the
+   conversation grant, `max_running`, `[agent]` config, setup's probe, key
    storage, `:agent` commands without the window, the ADR, security.md, with mochitests.
 4. `feat(agent): the chat window` (B1, B9, B16, B19, Behaviour 10-18, 27-28, 34-35): the
    window, the transcript, the prompt slot, giving a page, the status bar segment, the guide,
@@ -774,55 +837,9 @@ Each PR is mergeable and tested on its own; the window appears only in PR 4.
    and mochitests.
 6. `feat(keys): a key opens the agent chat window` (B13): one keymap PR, with the regenerated
    bindings docs, the help snapshot and a screenshot of `ctrl+b ?`.
-7. If open question 5 is answered yes: the tool improvements, in their own spec for MCP and the
+7. The `query` and `kinds` filters of `vimma_elements` (B2), in their own spec for MCP and the
    built-in agent alike, measured by the bench before and after.
 
 ## Open questions
 
-1. **Where the window lives.** (a) In the side panel's slot (`ui/side-panel.mjs`), wider than
-   the tab list (about 420 px), opening in any workspace like the tab list and the bookmarks
-   panel; keys through `VimmaHost` in a mode of its own; one panel at a time. (b) A pane of
-   the split layout beside the agent tab, which needs a privileged `about:` page in a tab: that
-   tab belongs to one workspace, must be kept out of the agent tools if it is in the agent
-   workspace, and holds untrusted text with chrome privileges (B9). (c) A window of its own,
-   which a tiling window manager places beside the browser, but which has no status bar or
-   question line and needs its own key capture. **Recommendation: (a)**, because it reuses
-   Vimma's keyboard handling and text-only rendering, needs no privileged page, and is
-   reachable from every workspace while the agent works in its own.
-2. **The key that opens it.** (a) `ctrl+b i` (free; `i` as in "instruct", and the window opens
-   in its input, as Vim's `i` starts typing). (b) `ctrl+b shift+c` (free; "chat"). (c) No
-   default key, only `:agent`. **Recommendation: (a).**
-3. **A local model as the default when one is found.** (a) Yes: when setup's probe finds a
-   local server, its first model is preselected and `[agent] default` points to it. (b) No:
-   setup preselects nothing. **Recommendation: (a)**, because nothing leaves the machine, and
-   the user still confirms the choice in setup.
-4. **API keys and the OS keyring.** (a) Store the key in login storage as it is (B8): encrypted
-   with the profile's key, listed in `about:logins`, exported and synced with passwords.
-   (b) Encrypt the key with `OSKeyStore` first, the key that already protects stored
-   conversations (B15), and store the ciphertext as the login: a copied profile, an export or a
-   synced copy is then useless without the user's desktop keyring, at the cost of a key that
-   does not move to a new machine. **Recommendation: (b)**, because an API key spends money and
-   is easily replaced, so a copy that is useless elsewhere is worth more than one that travels,
-   and one encryption scheme for everything the agent stores is simpler to explain.
-5. **Tool changes that help smaller models.** In the one recorded run, each `vimma_elements`
-   list was 3 to 12 KB and the tool definitions are 17.5 KB, which together fill much of a small
-   model's context in a few steps. (a) A `query` parameter on `vimma_elements` (words matched
-   against labels and text, NFKC and case-folded) and a `kinds` filter (`button`, `field`,
-   `link`), so the agent asks for "milk" and gets a few lines. (b) A `limit` with paging.
-   (c) Shorter tool descriptions for providers whose model has a small context. (d) None
-   until the bench shows a need. **Recommendation: (a), measured by the bench before and after
-   (Delivery 7)**, because it serves MCP agents too and its effect can be measured; (c) only if
-   the bench shows small models failing for lack of context.
-6. **How many conversations may run at once by default.** (a) 3. (b) 1, so several run only
-   when the user raises `[agent] max_running`. (c) 5. **Recommendation: (a)**, because it
-   covers a few independent errands while keeping the sum of the rates (30 loads a minute) and
-   the unwatched cost small; a local model serving several conversations also slows each, which
-   the bench can measure before the default is final.
-7. **Cost limits.** (a) Cost only from `price_in` and `price_out` the user enters (B10).
-   (b) A price table for known models shipped with Vimma. **Recommendation: (a)**, because a
-   shipped table goes out of date with every price change and would state a wrong cost as fact.
-8. **MCP agents and the conversations' tabs.** (a) MCP agents keep seeing every agent-workspace
-   tab, as today, conversation-owned tabs included. (b) MCP agents see only the tabs no
-   conversation owns. **Recommendation: (b)**, because otherwise an MCP agent could read and act
-   in a running conversation's pages, which B17 keeps conversations from doing to each other;
-   the guide's description of what an MCP agent sees changes with it.
+None. The answers are decisions in Design.
