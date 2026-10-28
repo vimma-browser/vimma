@@ -290,6 +290,21 @@ function paneState(win, visible) {
   };
 }
 
+/**
+ * `state.tabs[].loading`: the tab's page is loading or still to load. It names no page, so a
+ * private window keeps it, where it is the only sign of a loaded page (#567). A new window is
+ * listed before it starts to load its first page, which it does in delayed startup
+ * (browser-init.js): until then its tabs are on their initial about:blank and not busy yet.
+ * @param {any} win @param {any} tab
+ */
+function tabLoading(win, tab) {
+  const browser = tab.linkedBrowser;
+  if (tab.hasAttribute("busy") || browser.webProgress?.isLoadingDocument) return true;
+  if (win.gBrowserInit?.delayedStartupFinished === true || tab.hasAttribute("pending"))
+    return false;
+  return browser.browsingContext?.currentWindowGlobal?.isInitialDocument ?? true;
+}
+
 /** @type {Record<string, (args: any) => object>} */
 const COMMANDS = {
   "send-keys"({ keys }) {
@@ -319,6 +334,7 @@ const COMMANDS = {
         title: hidden ? null : tab.label,
         selected: tab.selected,
         pinned: tab.pinned,
+        loading: tabLoading(win, tab),
       })),
       panes: paneState(win, visible),
     };

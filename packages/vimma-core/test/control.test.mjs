@@ -334,6 +334,18 @@ describe("validateMessage: state", () => {
     expect(errorsOf(ok({ ...state, private: false }), { command: "state" })).toEqual([]);
   });
 
+  test("a tab's loading, when present, is a boolean, in a private window too", () => {
+    const loading = { ...state.tabs[0], loading: true };
+    expect(errorsOf(ok({ ...state, tabs: [loading] }), { command: "state" })).toEqual([]);
+    const hidden = { id: "1", url: null, title: null, selected: true, loading: false };
+    const priv = { ...state, private: true, workspace: "private", tabs: [hidden] };
+    expect(errorsOf(ok(priv), { command: "state" })).toEqual([]);
+    const broken = { ...state, tabs: [{ ...state.tabs[0], loading: "yes" }] };
+    expect(errorsOf(ok(broken), { command: "state" })).toEqual([
+      "result.tabs[0].loading must be a boolean",
+    ]);
+  });
+
   test("tabs must be an array with at most one selected tab", () => {
     expect(errorsOf(ok({ ...state, tabs: {} }), { command: "state" })).toEqual([
       "result.tabs must be an array",

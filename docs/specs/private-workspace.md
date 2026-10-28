@@ -388,8 +388,9 @@ UX, honestly:
      another app goes to the normal window, as Firefox does (BrowserContentHandler.sys.mjs:1324-1330);
      the WM focuses it, so you leave the private workspace.
    - d. `vimma-ctl state` of a private window reports `"private": true` and `"workspace":
-"private"`, with each tab's `url` and `title` as `null`. Pane structure and ids are kept, so
-     scripts can still drive it. No config switch.
+"private"`, with each tab's `url` and `title` as `null`. Pane structure, ids and each tab's
+     `loading` are kept, so scripts can still drive it and wait for a page to load. No config
+     switch.
    - e. No status-bar notice in a normal window names a page of the private workspace.
 9. **Add-ons, search and protections** are Firefox's, per private window. Add-ons need "Run in
    Private Windows" (`ctrl+b e`, `shift+p`), and Vimma's start page and its own UI need no
