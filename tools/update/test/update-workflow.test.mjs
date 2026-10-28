@@ -356,82 +356,79 @@ describe("update-publish.yml", () => {
   // #530: the Linux and macOS runs of a release push within seconds of each other, so the
   // retry is the common path. Git may not guess an identity (a hosted runner's has no name), so
   // the step's env must give the rebase one, as it gives the commit.
-  it.skipIf(process.platform === "win32")(
-    "a push the other target's run beat rebases and lands, with no git identity configured",
-    () => {
-      const step = stepOf(job("publish"), "Push to vimma-updates");
-      /** @type {Record<string, string>} */
-      const stepEnv = {};
-      for (const m of step.matchAll(/^ {10}(GIT_[A-Z_]+): (.+)$/gm)) {
-        stepEnv[m[1] ?? ""] = (m[2] ?? "").replace(/^"(.*)"$/, "$1");
-      }
-      const run = runOf(job("publish"), "Push to vimma-updates");
-      const tail = run.slice(run.indexOf("cd updates\n"));
-      const dir = tempDir("vimma-push-");
-      const file = "public/updates/browser/Linux_x86_64-gcc3/vimma/update.xml";
-      const rival = "public/updates/browser/Darwin_aarch64-gcc3/vimma/update.xml";
-      const home = join(dir, "home");
-      mkdirSync(home);
-      const who = {
-        GIT_AUTHOR_NAME: "t",
-        GIT_AUTHOR_EMAIL: "t@example.invalid",
-        GIT_COMMITTER_NAME: "t",
-        GIT_COMMITTER_EMAIL: "t@example.invalid",
-      };
-      const base = {
-        PATH: process.env.PATH ?? "",
-        HOME: home,
-        GIT_CONFIG_NOSYSTEM: "1",
-        GIT_CONFIG_GLOBAL: "/dev/null",
-        GIT_CONFIG_COUNT: "2",
-        GIT_CONFIG_KEY_0: "user.useConfigOnly",
-        GIT_CONFIG_VALUE_0: "true",
-        GIT_CONFIG_KEY_1: "init.defaultBranch",
-        GIT_CONFIG_VALUE_1: "main",
-      };
-      /** @param {string[]} args @param {string} cwd @param {Record<string, string>} [env] */
-      const git = (args, cwd, env = { ...base, ...who }) =>
-        execFileSync("git", args, { cwd, env, stdio: "pipe" });
-      git(["init", "-q", "--bare", "origin.git"], dir);
-      git(["clone", "-q", "origin.git", "seed"], dir);
-      mkdirSync(join(dir, "seed", "public"), { recursive: true });
-      writeFileSync(join(dir, "seed", "public", "README"), "seed\n");
-      git(["add", "."], join(dir, "seed"));
-      git(["commit", "-q", "-m", "seed"], join(dir, "seed"));
-      git(["push", "-q", "origin", "HEAD:main"], join(dir, "seed"));
-      git(["clone", "-q", "--branch", "main", "origin.git", "updates"], dir);
-      // The other target's run pushes after this run's clone.
-      mkdirSync(join(dir, "seed", rival, ".."), { recursive: true });
-      writeFileSync(join(dir, "seed", rival), "<updates/>\n");
-      git(["add", "."], join(dir, "seed"));
-      git(["commit", "-q", "-m", "macos manifest"], join(dir, "seed"));
-      git(["push", "-q", "origin", "HEAD:main"], join(dir, "seed"));
-      mkdirSync(join(dir, "updates", file, ".."), { recursive: true });
-      writeFileSync(join(dir, "updates", file), "<updates/>\n");
+  it("a push the other target's run beat rebases and lands, with no git identity configured", () => {
+    const step = stepOf(job("publish"), "Push to vimma-updates");
+    /** @type {Record<string, string>} */
+    const stepEnv = {};
+    for (const m of step.matchAll(/^ {10}(GIT_[A-Z_]+): (.+)$/gm)) {
+      stepEnv[m[1] ?? ""] = (m[2] ?? "").replace(/^"(.*)"$/, "$1");
+    }
+    const run = runOf(job("publish"), "Push to vimma-updates");
+    const tail = run.slice(run.indexOf("cd updates\n"));
+    const dir = tempDir("vimma-push-");
+    const file = "public/updates/browser/Linux_x86_64-gcc3/vimma/update.xml";
+    const rival = "public/updates/browser/Darwin_aarch64-gcc3/vimma/update.xml";
+    const home = join(dir, "home");
+    mkdirSync(home);
+    const who = {
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@example.invalid",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@example.invalid",
+    };
+    const base = {
+      PATH: process.env.PATH ?? "",
+      HOME: home,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_COUNT: "2",
+      GIT_CONFIG_KEY_0: "user.useConfigOnly",
+      GIT_CONFIG_VALUE_0: "true",
+      GIT_CONFIG_KEY_1: "init.defaultBranch",
+      GIT_CONFIG_VALUE_1: "main",
+    };
+    /** @param {string[]} args @param {string} cwd @param {Record<string, string>} [env] */
+    const git = (args, cwd, env = { ...base, ...who }) =>
+      execFileSync("git", args, { cwd, env, stdio: "pipe" });
+    git(["init", "-q", "--bare", "origin.git"], dir);
+    git(["clone", "-q", "origin.git", "seed"], dir);
+    mkdirSync(join(dir, "seed", "public"), { recursive: true });
+    writeFileSync(join(dir, "seed", "public", "README"), "seed\n");
+    git(["add", "."], join(dir, "seed"));
+    git(["commit", "-q", "-m", "seed"], join(dir, "seed"));
+    git(["push", "-q", "origin", "HEAD:main"], join(dir, "seed"));
+    git(["clone", "-q", "--branch", "main", "origin.git", "updates"], dir);
+    // The other target's run pushes after this run's clone.
+    mkdirSync(join(dir, "seed", rival, ".."), { recursive: true });
+    writeFileSync(join(dir, "seed", rival), "<updates/>\n");
+    git(["add", "."], join(dir, "seed"));
+    git(["commit", "-q", "-m", "macos manifest"], join(dir, "seed"));
+    git(["push", "-q", "origin", "HEAD:main"], join(dir, "seed"));
+    mkdirSync(join(dir, "updates", file, ".."), { recursive: true });
+    writeFileSync(join(dir, "updates", file), "<updates/>\n");
 
-      const result = spawnSync("bash", ["-e", "-c", tail], {
-        cwd: dir,
-        env: {
-          ...base,
-          ...stepEnv,
-          BUILD_TARGET: "Linux_x86_64-gcc3",
-          message: "vimma 0.1.8: update manifest, serial 1",
-        },
-        encoding: "utf8",
-      });
-      expect(result.stderr).not.toMatch(/ident|identity/i);
-      expect(result.status, result.stderr).toBe(0);
-      const log = git(["log", "--format=%s|%an|%cn", "main"], join(dir, "origin.git"))
-        .toString()
-        .trim()
-        .split("\n");
-      expect(log).toEqual([
-        "vimma 0.1.8: update manifest, serial 1|github-actions[bot]|github-actions[bot]",
-        "macos manifest|t|t",
-        "seed|t|t",
-      ]);
-    },
-  );
+    const result = spawnSync("bash", ["-e", "-c", tail], {
+      cwd: dir,
+      env: {
+        ...base,
+        ...stepEnv,
+        BUILD_TARGET: "Linux_x86_64-gcc3",
+        message: "vimma 0.1.8: update manifest, serial 1",
+      },
+      encoding: "utf8",
+    });
+    expect(result.stderr).not.toMatch(/ident|identity/i);
+    expect(result.status, result.stderr).toBe(0);
+    const log = git(["log", "--format=%s|%an|%cn", "main"], join(dir, "origin.git"))
+      .toString()
+      .trim()
+      .split("\n");
+    expect(log).toEqual([
+      "vimma 0.1.8: update manifest, serial 1|github-actions[bot]|github-actions[bot]",
+      "macos manifest|t|t",
+      "seed|t|t",
+    ]);
+  });
 
   it("the failure issue says how to re-run", () => {
     const failure = job("failure");
