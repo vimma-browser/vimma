@@ -692,7 +692,8 @@ any failure is a test that assumes Linux.
 - `browser_vimma_firefox_keys.js`: `accel is cmd and disable all keeps cmd+q on macos`
 - `browser_vimma_browser_keys.js`, on Linux and macOS (decision 29): back and forward with
   `alt+left` / `alt+right` (`cmd+left` / `cmd+right` on a Mac) in normal and insert mode and
-  from the address bar, `cmd+[` / `cmd+]` on a Mac, the tab digits, the address bar keys, and
+  from the address bar, `cmd+[` / `cmd+]` on a Mac, `cmd+left` in an `<input>` and a
+  contenteditable moving to the line's start without going back, the tab digits, the address bar keys, and
   undo and redo in a field (`cmd+z` on a Mac) without the Debugger
 
 **Build and smoke, on `macos-15` (sub-PRs 3 and 4):**

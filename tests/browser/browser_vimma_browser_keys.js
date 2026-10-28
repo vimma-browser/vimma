@@ -159,6 +159,50 @@ add_task(async function on_macos_cmd_brackets_go_back_and_forward_as_firefoxs_ke
   BrowserTestUtils.removeTab(tab);
 });
 
+add_task(async function on_macos_cmd_left_in_a_field_moves_to_the_line_start_and_stays() {
+  if (!MAC) {
+    Assert.ok(true, "macOS only: Linux's alt+left goes back from a field, as in Firefox");
+    return;
+  }
+  // The page has cmd+left first (decision 29): a text field's own key wins, as in Firefox.
+  const tab = await normalPage();
+  const browser = tab.linkedBrowser;
+  const second = PLAIN + "?field";
+  BrowserTestUtils.startLoadingURIString(browser, second);
+  await BrowserTestUtils.browserLoaded(browser, false, second);
+  for (const kind of ["input", "contenteditable"]) {
+    await SpecialPowers.spawn(browser, [kind], (k) => {
+      const doc = content.document;
+      doc.getElementById("vimma-field")?.remove();
+      const el = doc.createElement(k === "input" ? "input" : "div");
+      el.id = "vimma-field";
+      if (k === "input") el.value = "hello world";
+      else {
+        el.contentEditable = "true";
+        el.textContent = "hello world";
+      }
+      doc.body.append(el);
+      el.focus();
+      if (k === "input") el.setSelectionRange(11, 11);
+      else content.getSelection().collapse(el.firstChild, 11);
+    });
+    await TestUtils.waitForCondition(
+      () => VimmaHost._browserMode(browser) === "insert",
+      `${kind}: insert mode`,
+    );
+    EventUtils.synthesizeKey("KEY_ArrowLeft", { metaKey: true });
+    const caret = () =>
+      SpecialPowers.spawn(browser, [kind], (k) => {
+        const el = content.document.getElementById("vimma-field");
+        return k === "input" ? el.selectionStart : content.getSelection().focusOffset;
+      });
+    await TestUtils.waitForCondition(async () => (await caret()) === 0, `${kind}: line start`);
+    await new Promise((r) => setTimeout(r, 300));
+    Assert.equal(urlOf(browser), second, `${kind}: cmd+left did not go back`);
+  }
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function the_address_bar_keys_focus_it() {
   // Firefox's second address bar key: alt+d on Linux, cmd+l on macOS (no alt+d there).
   for (const [key, mods, name] of [
