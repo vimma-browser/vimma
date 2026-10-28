@@ -6,6 +6,8 @@
 
 "use strict";
 
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+
 const PREF = "vimma.ui.tabstrip.hidden";
 const ROOT_ATTR = "vimma-tabstrip-hidden";
 
@@ -59,7 +61,8 @@ add_task(async function strip_is_hidden_by_default_and_nav_bar_stays() {
 
   await SimpleTest.promiseFocus(window);
   gBrowser.selectedBrowser.focus();
-  EventUtils.synthesizeKey("l", { accelKey: true });
+  // ctrl+l and ctrl+t are Vimma's on every platform; cmd+t, accel on a Mac, is off there (#385).
+  EventUtils.synthesizeKey("l", { ctrlKey: true });
   await TestUtils.waitForCondition(() => gURLBar.focused, "ctrl+l focuses the URL bar");
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -118,7 +121,7 @@ add_task(async function ctrl_t_and_closing_the_tab_still_work() {
     const before = gBrowser.tabs.length;
     clearToolboxState();
     const opened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
-    EventUtils.synthesizeKey("t", { accelKey: true });
+    EventUtils.synthesizeKey("t", { ctrlKey: true });
     const { target: tab } = await opened;
     await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "new tab is selected");
     Assert.equal(gBrowser.tabs.length, before + 1, "ctrl+t opened a tab");
@@ -157,8 +160,10 @@ add_task(async function ctrl_tab_pagedown_and_digits_switch_tabs() {
   EventUtils.synthesizeKey("KEY_Tab", { ctrlKey: true, shiftKey: true });
   await TestUtils.waitForCondition(() => gBrowser.selectedTab === second, "ctrl+shift+tab: prev");
 
-  // ctrl+2 on Windows/macOS, alt+2 on Linux (XP_GNOME in browser-sets.inc.xhtml).
+  // Firefox's tab 2 key: alt+2 on Linux (XP_GNOME in browser-sets.inc.xhtml), cmd+2 on macOS,
+  // where Vimma binds select_tab_2 to it (defaults.mjs MAC_KEYS) since Option+2 types a character.
   const modifier = $("key_selectTab2").getAttribute("modifiers");
+  Assert.equal(modifier, AppConstants.platform == "macosx" ? "accel" : "alt", "key_selectTab2");
   await BrowserTestUtils.switchTab(gBrowser, first);
   EventUtils.synthesizeKey("2", modifier === "alt" ? { altKey: true } : { accelKey: true });
   await TestUtils.waitForCondition(() => gBrowser.selectedTab === second, `${modifier}+2: 2nd tab`);

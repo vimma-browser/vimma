@@ -103,8 +103,9 @@ function tidy() {
 
 add_task(async function the_url_bar_routes_to_the_rules_workspace_and_switches() {
   ww().switchTo({ id: home.id });
+  // ctrl+t is Vimma's new_tab on every platform; cmd+t, accel on a Mac, is off there (#385).
   let opened = nextTab();
-  EventUtils.synthesizeKey("t", { accelKey: true });
+  EventUtils.synthesizeKey("t", { ctrlKey: true });
   const blank = await opened;
   Assert.equal(blank.userContextId, home.userContextId, "ctrl+t: a new tab in rt-home");
   clearNotice();
@@ -191,14 +192,17 @@ add_task(async function a_background_open_by_the_user_goes_there_and_says_so() {
 /**
  * A link on the selected page (in rt-home) to `href`, with `target` if given, clicked by the
  * page's own script after a user gesture, as a hostile page can: `mods` as on a MouseEvent.
+ * `accelKey` is the open-in-a-new-tab modifier: ctrl, or cmd on macOS, where ctrl+click is a
+ * right click (BrowserUtils.whereToOpenLink reads metaKey there).
  * @param {string} href
- * @param {{ target?: string, ctrlKey?: boolean, button?: number }} how
+ * @param {{ target?: string, accelKey?: boolean, button?: number }} how
  */
-function pageClicks(href, { target = "", ctrlKey = false, button = 0 } = {}) {
+function pageClicks(href, { target = "", accelKey = false, button = 0 } = {}) {
+  const meta = accelKey && AppConstants.platform == "macosx";
   return SpecialPowers.spawn(
     gBrowser.selectedBrowser,
-    [href, target, ctrlKey, button],
-    (url, tgt, ctrl, btn) => {
+    [href, target, accelKey && !meta, meta, button],
+    (url, tgt, ctrl, cmd, btn) => {
       const a = content.document.createElement("a");
       a.href = url;
       if (tgt) a.target = tgt;
@@ -211,6 +215,7 @@ function pageClicks(href, { target = "", ctrlKey = false, button = 0 } = {}) {
           bubbles: true,
           cancelable: true,
           ctrlKey: ctrl,
+          metaKey: cmd,
           button: btn,
         }),
       );
@@ -223,10 +228,10 @@ add_task(async function a_page_can_never_route_the_links_it_opens() {
   // (with rt-work's cookies). Every open a page triggers stays in the page's container.
   const page = await inHome();
 
-  // A synthetic ctrl-click from the page's script: ClickHandlerChild → ClickHandlerParent →
-  // openLinkIn, a background tab with the page's principal.
+  // A synthetic ctrl-click (cmd-click on macOS) from the page's script: ClickHandlerChild →
+  // ClickHandlerParent → openLinkIn, a background tab with the page's principal.
   let opened = nextTab();
-  await pageClicks(`${WORK}?ctrl`, { ctrlKey: true });
+  await pageClicks(`${WORK}?ctrl`, { accelKey: true });
   let tab = await opened;
   Assert.equal(tab.userContextId, home.userContextId, "a scripted ctrl-click stays in rt-home");
   Assert.equal(activeName(), "rt-home", "and opens nothing in rt-work");
@@ -271,7 +276,7 @@ add_task(async function a_page_can_never_route_the_links_it_opens() {
   await BrowserTestUtils.browserLoaded(bare.linkedBrowser);
   Assert.equal(bare.userContextId, 0, "a page in no container");
   opened = nextTab();
-  await pageClicks(`${WORK}?bare-ctrl`, { ctrlKey: true });
+  await pageClicks(`${WORK}?bare-ctrl`, { accelKey: true });
   tab = await opened;
   Assert.equal(tab.userContextId, 0, "its scripted ctrl-click stays in no container");
   BrowserTestUtils.removeTab(tab);

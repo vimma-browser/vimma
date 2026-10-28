@@ -125,9 +125,10 @@ add_task(async function a_container_deleted_by_an_extension_is_replaced_at_once(
   Assert.ok(ww().isForeign(tab), "marked foreign");
 
   // New tabs route to the new container, never to container 0.
+  // ctrl+t is Vimma's new_tab on every platform; cmd+t, accel on a Mac, is off there (#385).
   const routed = await BrowserTestUtils.openNewForegroundTab({
     gBrowser,
-    opening: () => EventUtils.synthesizeKey("t", { accelKey: true }),
+    opening: () => EventUtils.synthesizeKey("t", { ctrlKey: true }),
   });
   Assert.equal(routed.userContextId, fresh, "ctrl+t opens in the new container");
 
