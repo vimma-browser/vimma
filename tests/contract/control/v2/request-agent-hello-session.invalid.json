@@ -1,0 +1,15 @@
+{
+  "description": "a session id is at least 32 lowercase hex characters, so it cannot be guessed",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 1,
+    "command": "agent-hello",
+    "args": {
+      "client": {
+        "name": "example-agent"
+      },
+      "session": "1234"
+    }
+  }
+}

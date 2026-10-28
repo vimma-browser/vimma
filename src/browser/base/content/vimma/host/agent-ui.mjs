@@ -101,7 +101,7 @@ const isFocused = (win) => /** @type {any} */ (Services.focus).activeWindow === 
 /** @param {Window} win */
 const isFullscreen = (win) => win.document.documentElement.hasAttribute("inDOMFullscreen");
 
-const grantMinutes = () => McpHost.config?.grantMinutes ?? 10;
+const grantMinutes = () => McpHost.config?.grantMinutes ?? 0;
 const armMs = () => Services.prefs.getIntPref(ARMING_PREF, 1000);
 
 /** Window events after which the line must arm again (security.md M4). */

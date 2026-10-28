@@ -33,7 +33,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 /** Test-only: the ask timeout in ms, in place of `[mcp] ask_timeout`. */
 const ASK_TIMEOUT_PREF = "vimma.mcp.askTimeoutMs";
 const DEFAULT_ASK_TIMEOUT_S = 50;
-const DEFAULT_GRANT = { grantMinutes: 10, grantMaxMinutes: 480 };
+const DEFAULT_GRANT = { grantMinutes: 0, grantMaxMinutes: 480 };
 
 /**
  * @typedef {{ allow: true, grant?: { until: number } }
@@ -198,20 +198,23 @@ export const AgentGate = {
    * An agent connection said hello: it may ask from now on.
    * @param {ConnId} conn
    * @param {{ client: string, version?: string, via?: string }} label  self-reported: labels only
+   * @param {string} [session]  its `vimma-ctl mcp` process's id, which gets back the grant of
+   *   that process's dropped link (docs/specs/mcp-session-grants.md S3)
    */
-  connect(conn, label) {
-    queue.connect(conn);
+  connect(conn, label, session) {
+    queue.connect(conn, { ...(session ? { session } : {}), now: Date.now() });
     labels.set(conn, { ...label, since: Date.now() });
     changed();
   },
 
   /**
-   * The connection closed: its waiting requests go unanswered and its grants end (decision 22).
+   * The connection closed: its waiting requests go unanswered and its grant ends (decision 22),
+   * unless the same session reconnects in time (mcp-session-grants S3).
    * @param {ConnId} conn
    */
   disconnect(conn) {
     const had = labels.delete(conn);
-    for (const id of queue.disconnect(conn)) {
+    for (const id of queue.disconnect(conn, Date.now())) {
       const p = pending.get(id);
       if (!p) continue;
       pending.delete(id);
@@ -426,9 +429,14 @@ export const AgentGate = {
     record(conn, tool, what, outcome, why);
   },
 
-  /** `:mcp off`: the log goes with the agents. */
-  clearLog() {
+  /**
+   * `:mcp off`: the log goes with the agents, and so does every grant, those waiting for a
+   * reconnect included, before the server closes the connections (mcp-session-grants S5).
+   */
+  off() {
     log.clear();
+    queue.forgetSessions();
+    changed();
   },
 
   /** When an allowed request last ran, or null. */

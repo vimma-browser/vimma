@@ -21,6 +21,7 @@ import {
   OpenRate,
   MUTE_MS,
   QUEUE_LIMITS,
+  RECONNECT_MS,
   UNTRUSTED_CLOSE,
   UNTRUSTED_OPEN,
   grantLength,
@@ -206,12 +207,121 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
     expect(q.waiting.map((r) => r.id)).toEqual([c.id, d.id, e.id]);
   });
 
-  test("a reconnect asks again", () => {
+  test("a connection without a session asks again after a reconnect", () => {
     const q = queue();
     q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 5 }, 0);
     q.disconnect(1);
     q.connect(1);
     expect(q.ask(1, READ, 1000).kind).toBe("wait");
+  });
+
+  // docs/specs/mcp-session-grants.md S1: a grant for the whole connection has no end.
+  test("a grant for the whole connection runs until the connection closes", () => {
+    const q = queue();
+    const a = q.ask(1, READ, 0);
+    expect(q.answer(a.id, { kind: "grant", minutes: Infinity }, 0).grant).toEqual({
+      conn: 1,
+      until: Infinity,
+    });
+    expect(q.ask(1, OPEN, 1e12)).toEqual({ kind: "run", grant: { conn: 1, until: Infinity } });
+    expect(q.grants(1e12)).toEqual([{ conn: 1, until: Infinity }]);
+    q.disconnect(1, 1e12);
+    expect(q.grants(1e12)).toEqual([]);
+  });
+
+  // mcp-session-grants S3: the same vimma-ctl mcp process (its session id) keeps its grant
+  // across a dropped link, for RECONNECT_MS only.
+  describe("a reconnect of the same session", () => {
+    const S = "a".repeat(64);
+    /** A queue whose connection 1 of session S holds a grant ending at `until` minutes. */
+    function granted(minutes = Infinity) {
+      const q = new AgentQueue();
+      q.connect(1, { session: S, now: 0 });
+      q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes }, 0);
+      return q;
+    }
+
+    test("keeps its grant within RECONNECT_MS", () => {
+      const q = granted();
+      q.disconnect(1, 1000);
+      expect(q.grants(1000)).toEqual([]);
+      q.connect(3, { session: S, now: 1000 + RECONNECT_MS });
+      expect(q.ask(3, OPEN, 1000 + RECONNECT_MS)).toEqual({
+        kind: "run",
+        grant: { conn: 3, until: Infinity },
+      });
+    });
+
+    test("keeps a timed grant's end, and not one that ended", () => {
+      const q = granted(5);
+      q.disconnect(1, MIN);
+      q.connect(3, { session: S, now: 2 * MIN });
+      expect(q.grants(2 * MIN)).toEqual([{ conn: 3, until: 5 * MIN }]);
+      const r = granted(5);
+      r.disconnect(1, 4 * MIN);
+      r.connect(3, { session: S, now: 5 * MIN });
+      expect(r.ask(3, READ, 5 * MIN).kind).toBe("wait");
+    });
+
+    test("asks again after RECONNECT_MS", () => {
+      const q = granted();
+      q.disconnect(1, 1000);
+      q.connect(3, { session: S, now: 1001 + RECONNECT_MS });
+      expect(q.ask(3, READ, 1001 + RECONNECT_MS).kind).toBe("wait");
+    });
+
+    test("another session, or none, gets nothing, and the parked grant stays for its own", () => {
+      const q = granted();
+      q.disconnect(1, 0);
+      q.connect(3, { session: "b".repeat(64), now: 0 });
+      q.connect(4, { now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+      expect(q.ask(4, READ, 0).kind).toBe("wait");
+      q.connect(5, { session: S, now: 0 });
+      expect(q.ask(5, READ, 0).kind).toBe("run");
+    });
+
+    test("a parked grant is restored once", () => {
+      const q = granted();
+      q.disconnect(1, 0);
+      q.connect(3, { session: S, now: 0 });
+      q.connect(4, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("run");
+      expect(q.ask(4, READ, 0).kind).toBe("wait");
+    });
+
+    test("a second connection claiming a live session gets nothing", () => {
+      const q = granted();
+      q.connect(3, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+      // Nor does it park the first one's grant when it closes.
+      q.disconnect(3, 0);
+      q.connect(4, { session: S, now: 0 });
+      expect(q.ask(4, READ, 0).kind).toBe("wait");
+      expect(q.ask(1, READ, 0).kind).toBe("run");
+    });
+
+    test("revoke ends a parked grant too", () => {
+      const q = granted();
+      q.disconnect(1, 0);
+      q.revoke(0);
+      q.connect(3, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+    });
+
+    test("turning MCP off ends the parked grants and those of the open connections", () => {
+      const q = granted();
+      q.connect(2, { session: "c".repeat(64), now: 0 });
+      q.answer(q.ask(2, READ, 0).id, { kind: "grant", minutes: Infinity }, 0);
+      q.disconnect(1, 0);
+      q.forgetSessions();
+      // :mcp off closes the open ones afterwards: they must not park what they held.
+      q.disconnect(2, 0);
+      q.connect(3, { session: S, now: 0 });
+      q.connect(4, { session: "c".repeat(64), now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+      expect(q.ask(4, READ, 0).kind).toBe("wait");
+    });
   });
 
   test("a connection holds at most one grant", () => {
@@ -241,6 +351,14 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
     expect(grantLength(15, config)).toEqual({ minutes: 15, capped: false });
     expect(grantLength(900, config)).toEqual({ minutes: 480, capped: true });
     expect(grantLength(0, config)).toEqual({ minutes: 1, capped: false });
+  });
+
+  // mcp-session-grants S1: grant_minutes = 0, the default, makes a bare a last the connection.
+  test("grant_minutes 0: a bare a lasts the whole connection, a count is still minutes", () => {
+    const config = { grantMinutes: 0, grantMaxMinutes: 480 };
+    expect(grantLength(null, config)).toEqual({ minutes: Infinity, capped: false });
+    expect(grantLength(15, config)).toEqual({ minutes: 15, capped: false });
+    expect(grantLength(900, config)).toEqual({ minutes: 480, capped: true });
   });
 });
 
@@ -601,6 +719,17 @@ describe(":mcp revoke and :mcp's status", () => {
         now: 0,
       }),
     ).toBe(" · 2 agents connected · 3 waiting · 2 grants, the first ends in 15m");
+  });
+
+  test("a grant for the whole connection says it lasts until its agent quits", () => {
+    const one = { connections: 1, waiting: 0, grants: [{ until: Infinity }], now: 0 };
+    expect(mcpActivity(one)).toBe(" · 1 agent connected · 1 grant, until its agent quits");
+    expect(
+      mcpActivity({ ...one, connections: 2, grants: [{ until: Infinity }, { until: Infinity }] }),
+    ).toBe(" · 2 agents connected · 2 grants, until their agents quit");
+    expect(
+      mcpActivity({ ...one, connections: 2, grants: [{ until: 5 * MIN }, { until: Infinity }] }),
+    ).toBe(" · 2 agents connected · 2 grants, the first ends in 5m");
   });
 });
 

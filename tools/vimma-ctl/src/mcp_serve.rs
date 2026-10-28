@@ -109,6 +109,7 @@ pub fn serve(
         pending: BTreeMap::new(),
         note: None,
         noted: None,
+        session: client::random_nonce().ok(),
     };
     let code = loop {
         let wait = server.next_wake(Instant::now());
@@ -221,6 +222,10 @@ struct Server<'a> {
     note: Option<String>,
     /// The Vimma version a note was given for: once per version, not per connection.
     noted: Option<String>,
+    /// This process's id in every `agent-hello`, so a reconnect keeps the grant the dropped
+    /// link held (docs/specs/mcp-session-grants.md S3, S4); `None` without random bytes, when
+    /// a reconnect simply asks again.
+    session: Option<String>,
 }
 
 impl Server<'_> {
@@ -316,6 +321,9 @@ impl Server<'_> {
         ]);
         if let Some(via) = &self.via {
             args.insert("via".into(), Value::String(via.clone()));
+        }
+        if let Some(session) = &self.session {
+            args.insert("session".into(), Value::String(session.clone()));
         }
         client
             .call_value("agent-hello", &Value::Object(args))

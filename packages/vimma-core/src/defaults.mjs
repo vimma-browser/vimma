@@ -424,7 +424,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   mcp: {
     workspace: "agent",
     ask_timeout: 50,
-    grant_minutes: 10,
+    grant_minutes: 0,
     grant_max_minutes: 480,
     max_read_chars: 200000,
     notify: true,
@@ -578,9 +578,10 @@ function mcpLines() {
   const m = /** @type {Required<NonNullable<UserConfig["mcp"]>>} */ (DEFAULT_CONFIG.mcp);
   return [
     "# Local AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and",
-    "# every request asks you first. Left out, :mcp on|off sets enabled and remembers it; set",
-    "# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300); a bare `a`",
-    "# grants grant_minutes, a count before it up to grant_max_minutes (at most 1440).",
+    "# each asks you first. Left out, :mcp on|off sets enabled and remembers it; set",
+    "# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300). A bare `a`",
+    "# allows the agent until it quits (grant_minutes = 0), or for grant_minutes; a count before",
+    "# it allows that many minutes, up to grant_max_minutes (at most 1440).",
     "[mcp]",
     "# enabled = false",
     `workspace = ${tomlString(m.workspace)}`,

@@ -182,6 +182,8 @@ describe("status bar segments", () => {
     });
     expect(at({ waiting: 2, minutes: 14, ran: false })?.text).toBe("◇ agent 2?");
     expect(at({ waiting: 0, minutes: 14, ran: false })?.text).toBe("◇ agent 14m");
+    // docs/specs/mcp-session-grants.md S1: a grant for the whole connection has no minutes.
+    expect(at({ waiting: 0, minutes: Infinity, ran: false })?.text).toBe("◇ agent granted");
     // A question waiting says so even just after a request ran: the question comes first.
     expect(at({ waiting: 1, minutes: null, ran: true })?.text).toBe("◇ agent 1?");
     expect(at({ waiting: 0, minutes: 14, ran: true })).toMatchObject({

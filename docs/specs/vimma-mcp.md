@@ -509,7 +509,8 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
     against, and a fixed length would either be too short for a long task or too long for a
     quick one. `[mcp] grant_minutes` (default 10) is what a bare `a` gives. `[mcp]
 grant_max_minutes` (default 480, at most 1440) caps both the count and the config value. A
-    larger count is cut to the cap, and the notice says so.
+    larger count is cut to the cap, and the notice says so. (Since changed: `grant_minutes`
+    defaults to 0, which makes a bare `a` last the agent's whole session; [mcp-session-grants](mcp-session-grants.md) S1, S2.)
 21. **A grant is per connection and per tool.** It belongs to the one control connection of one
     `vimma-ctl mcp` process (one agent session), not to a client name, which any process can
     claim. A grant for `vimma_read_page` does not cover `vimma_open` or `vimma_close_tab`:
@@ -521,7 +522,8 @@ grant_max_minutes` (default 480, at most 1440) caps both the count and the confi
 22. **A grant ends** when its time is up, when its connection closes (the agent session ends,
     Vimma or `vimma-ctl` restarts), when `:mcp revoke` or `ctrl+b shift+a` → `y` revokes all,
     when `:mcp off` runs, or when the agent workspace is closed or renamed in config. Grants are
-    held in memory only and never written to disk.
+    held in memory only and never written to disk. (Since changed: a grant of a closed
+    connection waits 2 minutes for the same `vimma-ctl mcp` process to reconnect; [mcp-session-grants](mcp-session-grants.md) S3.)
 23. **Visible while it runs.** The status bar's agent segment shows the shortest remaining grant
     (`◇ agent 14m`); waiting questions win over a grant's minutes in the segment. `:mcp` lists
     all grants, and a call made under a grant shows a notice
@@ -817,7 +819,8 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     without a request (Vimma closes an agent connection after 60 s without a line). A dropped
     connection fails every waiting call (decision 39) and the next call connects again, as a new
     connection with no grants; a write that fails on a connection that died unnoticed is retried
-    once on a fresh one. Each call has its own deadline of 310 s (the longest `ask_timeout` plus
+    once on a fresh one. (Since changed: `agent-hello` carries the process's session id, and a
+    reconnect within 2 minutes keeps the grant; [mcp-session-grants](mcp-session-grants.md) S3, S4.) Each call has its own deadline of 310 s (the longest `ask_timeout` plus
     10 s); past it the call fails and its question is withdrawn with `agent-cancel`. At most 16
     calls wait here at once. stdin EOF closes the socket and exits 0. `vimma-ctl mcp` takes no
     `--timeout` or `--json`: each call waits for the user. Logs (connect, disconnect, protocol

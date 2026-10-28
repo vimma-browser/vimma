@@ -393,7 +393,9 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
   /** @type {Part[]} */
   let parts;
   // mcp-grants G3: a grant covers every tool of the connection; its notice says what still asks.
-  let hint = `y once · ${grantMinutes}a ${grantMinutes} min · n deny · x mute`;
+  // mcp-session-grants S1: grant_minutes 0, the default, makes a bare `a` last the connection.
+  const grant = grantMinutes ? `${grantMinutes}a ${grantMinutes} min` : "a until it quits";
+  let hint = `y once · ${grant} · n deny · x mute`;
   const w = q.what ?? {};
   if (q.tool === FULL_CONTROL) {
     // The code the client printed on its own terminal (security.md S13): the user answers
@@ -525,7 +527,8 @@ export function grantNotice(q, { minutes, capped }, released = 0) {
     ? ` · it also ran ${released} waiting call${released === 1 ? "" : "s"} (:mcp log)`
     : "";
   return (
-    `${clientName(q.label)} may use the agent workspace for ${minutes} min${cap}; ` +
+    `${clientName(q.label)} may use the agent workspace ` +
+    `${minutes === Infinity ? "until it quits" : `for ${minutes} min${cap}`}; ` +
     `${STILL_ASKS} (ctrl+b shift+a ends it)${also}`
   );
 }
@@ -570,7 +573,7 @@ export function ranNotice(q, until, now) {
                           : q.tool === DOWNLOAD_TOOL
                             ? `downloads "${cutTitle(w.name)}"`
                             : `used ${q.tool}`;
-  return `${clientName(q.label)} ${did} (grant, ${left}m left)`;
+  return `${clientName(q.label)} ${did} (grant${until === Infinity ? "" : `, ${left}m left`})`;
 }
 
 /**

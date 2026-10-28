@@ -436,7 +436,7 @@ fn auth_then_code(
 }
 
 /// 32 bytes from the OS CSPRNG as 64 lowercase hex chars.
-fn random_nonce() -> io::Result<String> {
+pub(crate) fn random_nonce() -> io::Result<String> {
     use std::io::Read;
     let mut bytes = [0u8; 32];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
