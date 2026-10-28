@@ -1124,12 +1124,29 @@ address bar moves to the start of the line, and `cmd+[` goes back from there.
 cmd+shift+]), also with `ctrl` (`ctrl+meta+{`, `ctrl+meta+}`), and `alt+meta+left`,
 `alt+meta+right`, `alt+meta+up` and `alt+meta+down`. Its sidebar keys use `ctrl`: `ctrl+x` (AI
 chatbot), `ctrl+z` (show or hide the sidebar) and `ctrl+u` (open tabs, which stays Vimma's
-half-page scroll). Vimma's keymap is otherwise the same as on Linux, so the others are unbound, and the
-default `disable = "all"` turns them off, `ctrl+x` and `ctrl+z` included:
-`[firefox] enable = ["meta+t"]` or `["meta+{"]` gives one back. In a windowed Mac build a key that
-also has a menu bar item (`cmd+t` is File > New Tab) may still run from the menu bar; this has not
-been checked on a Mac yet. `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt`
-access keys.
+half-page scroll). The default `disable = "all"` turns the others off, `ctrl+x` and `ctrl+z`
+included, as it does Firefox's unbound keys on Linux. Vimma's own keys do
+the same things: `ctrl+t` or `t` for a new tab, `x` to close it, and the `cmd+l` and `cmd+1..9`
+above. `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt` access keys.
+
+To have Firefox's common `cmd` keys back, list them in `enable` (`cmd+t` works there too, and
+means `meta+t`); each then runs exactly as in Firefox, and the others stay off:
+
+```toml
+schema = 2
+
+[firefox]
+enable = [
+  "meta+t", "meta+n", "meta+w", # new tab, new window, close tab
+  "shift+meta+t",               # restore the last closed tab, window or session
+  "meta+r", "meta+f", "meta+g", # reload, find, next match
+]
+```
+
+In a windowed Mac build a key that is off may still run from the menu bar when it has a menu
+item there (`cmd+t` is File > New Tab, `cmd+w` File > Close Tab): macOS's menu bar takes the
+item's key from Firefox's shortcut without seeing that it is off. This has not been checked on a
+Mac yet.
 
 ### Firefox's shortcuts on Vim's keys
 
