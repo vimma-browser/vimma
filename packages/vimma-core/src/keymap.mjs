@@ -8,8 +8,8 @@
  */
 import { resolveActionName, suggestAction } from "./actions.mjs";
 import { parseCommandLine } from "./cmdline.mjs";
-import { DEFAULT_CONFIG } from "./defaults.mjs";
-import { FIREFOX_SHORTCUTS } from "./firefox-keys.mjs";
+import { DEFAULT_CONFIG, defaultKeys } from "./defaults.mjs";
+import { firefoxShortcuts } from "./firefox-keys.mjs";
 import {
   KeyNotationError,
   displayBinding,
@@ -126,9 +126,10 @@ function asList(v, path) {
 
 /**
  * @param {UserConfig} [user]
+ * @param {{ mac?: boolean }} [options]  macOS's default keys (defaults.mjs MAC_KEYS) and inventory
  */
-export function compileKeymap(user = {}) {
-  const defKeys = /** @type {Record<string, string | string[]>} */ (DEFAULT_CONFIG.keys);
+export function compileKeymap(user = {}, { mac = false } = {}) {
+  const defKeys = defaultKeys({ mac });
   const defModal = /** @type {Record<string, unknown>} */ (DEFAULT_CONFIG.modal);
   const userKeys = user.keys ?? {};
   const userModal = /** @type {Record<string, unknown>} */ (user.modal ?? {});
@@ -283,7 +284,9 @@ export function compileKeymap(user = {}) {
     const path = formatPath(["firefox", "enable", i]);
     const chord = formatKey(notation(() => parseKey(text), path));
     const firefoxActions = new Set(
-      FIREFOX_SHORTCUTS.filter((r) => r.chord === chord && r.action).map((r) => r.action),
+      firefoxShortcuts({ mac })
+        .filter((r) => r.chord === chord && r.action)
+        .map((r) => r.action),
     );
     for (const e of entries) {
       if (e.modes.size === 0 || formatKey(/** @type {Chord} */ (e.chords[0])) !== chord) continue;

@@ -8,7 +8,7 @@
  * elements of the window's keysets Vimma turns off, and who goes first on a chord, the page or
  * Vimma. The host reads each element's chord with xulKeyChord and disables what
  * planFirefoxKeys returns. macOS has its own inventory, FIREFOX_SHORTCUTS_MACOS
- * (docs/specs/macos-build.md decision 22).
+ * (docs/specs/macos-build.md decisions 22 and 29).
  */
 import { formatKey, makeChordText, parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
@@ -761,6 +761,23 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
  */
 
 /**
+ * A macOS row Vimma's macOS defaults bind (defaults.mjs MAC_KEYS, docs/specs/macos-build.md
+ * decision 29): every mode, and the page first, as on Linux, since none of these keys is
+ * `reserved`.
+ * @param {string} chord
+ * @param {string} action
+ * @param {"a" | "b"} fate
+ * @returns {MacChange}
+ */
+const macBound = (chord, action, fate = "a") => ({
+  chord,
+  fate,
+  action,
+  modes: "all",
+  first: "P",
+});
+
+/**
  * Firefox 158's macOS differences (en-US; engine paths, checked against 158.0):
  * browser/base/content/browser-sets.inc.xhtml `#mainKeyset` (accel is cmd, and the `XP_MACOSX`
  * branches), devtools/startup/DevToolsStartup.sys.mjs:90-262 (`accel,alt` for the toolbox
@@ -773,7 +790,7 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
 const MAC_CHANGES = {
   key_newNavigator: "meta+n",
   key_newNavigatorTab: "meta+t",
-  focusURLBar: "meta+l",
+  focusURLBar: macBound("meta+l", "focus_urlbar"),
   focusURLBar2: null,
   key_search: "meta+k",
   // XP_MACOSX: accel,alt with find-shortcut's F.
@@ -793,10 +810,10 @@ const MAC_CHANGES = {
   key_copy: "meta+c",
   key_paste: "meta+v",
   key_selectAll: "meta+a",
-  goBackKb: "meta+left",
-  goForwardKb: "meta+right",
-  goBackKb2: "meta+[",
-  goForwardKb2: "meta+]",
+  goBackKb: macBound("meta+left", "history_back"),
+  goForwardKb: macBound("meta+right", "history_forward"),
+  goBackKb2: macBound("meta+[", "history_back"),
+  goForwardKb2: macBound("meta+]", "history_forward"),
   showAllHistoryKb: "meta+y",
   key_reload_skip_cache2: null,
   key_enterFullScreen: "ctrl+meta+f",
@@ -843,8 +860,13 @@ const MAC_CHANGES = {
   key_quitApplication: { chord: "meta+q", fate: "d", does: "quit (macOS's own key)" },
   key_restoreLastClosedTabOrWindowOrSession: "shift+meta+t",
   key_undoCloseWindow: "shift+meta+n",
-  ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`key_selectTab${n}`, `meta+${n}`])),
-  key_selectLastTab: "meta+9",
+  ...Object.fromEntries(
+    [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [
+      `key_selectTab${n}`,
+      macBound(`meta+${n}`, `select_tab_${n}`),
+    ]),
+  ),
+  key_selectLastTab: macBound("meta+9", "select_last_tab", "b"),
   key_quickRestart: "alt+meta+r",
   key_toggleToolbox: "alt+meta+i",
   key_browserToolbox: "alt+shift+meta+i",
@@ -943,7 +965,7 @@ const MAC_ONLY = {
 
 /**
  * A Linux row as macOS has it. A key that moves to a chord Vimma does not bind is unbound and
- * off there (fate c), since Vimma's keymap is the same on both; a fate d key stays d.
+ * off there (fate c), since Vimma's keymap is otherwise the same on both; a fate d key stays d.
  * @param {FirefoxShortcut} row
  * @returns {FirefoxShortcut | null}
  */
@@ -968,7 +990,8 @@ function macRow(row) {
  * Every key that does something in a macOS browser window (Firefox 158, en-US), with its fate:
  * the Linux inventory with macOS's chords (MAC_CHANGES) and macOS's own keys (MAC_ONLY), in the
  * same order. The host reads it on macOS for what "all" turns off and which out-of-keyset
- * handlers it stops; Vimma's keymap, pageFirst and bindings.md stay on FIREFOX_SHORTCUTS.
+ * handlers it stops, and pageFirst for the macOS chords Vimma binds there (MAC_KEYS);
+ * bindings.md's table stays on FIREFOX_SHORTCUTS.
  * @type {readonly FirefoxShortcut[]}
  */
 export const FIREFOX_SHORTCUTS_MACOS = Object.freeze(
@@ -1005,6 +1028,15 @@ export function firefoxShortcuts({ mac = false } = {}) {
 }
 
 /**
+ * The rows pageFirst reads on macOS: Linux's, since the keymap is Linux's but for MAC_KEYS, and
+ * the macOS rows of MAC_KEYS' chords.
+ */
+const PAGE_FIRST_MAC = Object.freeze([
+  ...FIREFOX_SHORTCUTS,
+  ...FIREFOX_SHORTCUTS_MACOS.filter((r) => r.first && !FIREFOX_SHORTCUTS.includes(r)),
+]);
+
+/**
  * Whether the page has `chord` before Vimma (docs/specs/firefox-keys.md decision 6): Firefox let
  * the page override it (P in the inventory). Firefox's reserved keys, its tab keys and Vimma's
  * own keys (V), and any chord outside the inventory, are Vimma's first. As in Firefox, the
@@ -1013,15 +1045,15 @@ export function firefoxShortcuts({ mac = false } = {}) {
  * @param {string} chord  canonical
  * A row Vimma binds in normal mode only counts there: Esc stops a load after the page in normal
  * mode, but leaves insert mode at once.
- * @param {{ fullScreen?: boolean, keyboardLock?: boolean, mode?: string }} [state]  the window
- *   is in full screen (F11 is reserved then); a page holds the fullscreen Keyboard Lock; the
- *   mode the key is dispatched in (normal by default)
+ * @param {{ fullScreen?: boolean, keyboardLock?: boolean, mode?: string, mac?: boolean }} [state]
+ *   the window is in full screen (F11 is reserved then); a page holds the fullscreen Keyboard
+ *   Lock; the mode the key is dispatched in (normal by default); Vimma runs on macOS
  */
 export function pageFirst(
   chord,
-  { fullScreen = false, keyboardLock = false, mode = "normal" } = {},
+  { fullScreen = false, keyboardLock = false, mode = "normal", mac = false } = {},
 ) {
-  const rows = FIREFOX_SHORTCUTS.filter(
+  const rows = (mac ? PAGE_FIRST_MAC : FIREFOX_SHORTCUTS).filter(
     (r) =>
       r.chord === chord &&
       r.first &&

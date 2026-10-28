@@ -373,8 +373,6 @@ support-files = ["head_vimma_control.js"]
 ["browser_vimma_a11y.js"]
 
 ["browser_vimma_browser_keys.js"]
-# macOS: the page takes Option+arrow and Option+digit first; undo is cmd+z (#386)
-skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_plain.html", "file_vimma_slow.sjs"]
 
 ["browser_vimma_update_check.js"]
