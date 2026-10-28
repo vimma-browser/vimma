@@ -594,6 +594,130 @@ add_task(async function a_jump_that_ends_after_grep_reopens_keeps_the_new_search
   EventUtils.synthesizeKey("KEY_Escape");
 });
 
+// #419: on a slow machine a step's jump ended after grep was open again, and the step's GrepEnd
+// then stopped that search's query in the frame, which listed nothing.
+add_task(async function a_step_that_ends_after_grep_reopens_leaves_the_new_search_alone() {
+  await reset();
+  const a = await openFixture({ title: "Alpha", t: "alpha needle" });
+  const c = await openFixture({ title: "Charlie", t: "charlie needle" });
+  await BrowserTestUtils.switchTab(gBrowser, a);
+  await openGrep();
+  type("needle");
+  await resultsSettle(2);
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => !isOpen(), "jumped to the first result");
+  await until(() => VimmaHost.status(window).mode === "normal", "normal mode");
+  await focusContent(a.linkedBrowser);
+
+  const session = VimmaHost._grep(window);
+  const { ask } = session;
+  /** @type {(() => void)[]} */
+  const held = [];
+  let jumped = false;
+  /** @type {Promise<unknown>[]} */
+  const endedWhileOpen = [];
+  // Charlie's frame answers the step's jump only once grep is open again: the order a slow
+  // content process gives.
+  session.ask = (/** @type {any[]} */ ...args) => {
+    const reply = ask.apply(session, args);
+    if (args[2] === "Vimma:GrepEnd" && session.isOpen) endedWhileOpen.push(reply);
+    if (args[2] !== "Vimma:GrepJump") return reply;
+    return new Promise((resolve) => held.push(() => resolve(reply.finally(() => (jumped = true)))));
+  };
+  try {
+    type("]q");
+    await until(() => held.length > 0, "the step asks Charlie's frame to select its match");
+    await focusContent(c.linkedBrowser);
+    type(":grep charlie");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(() => isOpen(), ":grep text opens with that query");
+    await resultsSettle(1);
+    for (const release of held) release();
+    await until(() => jumped, "the step's jump ends");
+    // What the step sends after its jump has been sent, and answered, by the next task.
+    await new Promise((r) => setTimeout(r, 0));
+    await Promise.all(endedWhileOpen);
+    Assert.equal(endedWhileOpen.length, 0, "no frame is told to end while a search is open");
+    const frames = await SpecialPowers.spawn(c.linkedBrowser, [], () => {
+      const { GrepMatcher } = ChromeUtils.importESModule(
+        "chrome://browser/content/vimma/actors/grep-matcher.mjs",
+      );
+      return GrepMatcher.frames.length;
+    });
+    Assert.equal(frames, 1, "the open search's text stays in Charlie's process");
+    Assert.deepEqual(texts(), ["charlie needle"], "and its row stays listed");
+  } finally {
+    session.ask = ask;
+  }
+  EventUtils.synthesizeKey("KEY_Escape");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "closed");
+});
+
+// #419: a step's jump waits for its tab switch (TabSwitchDone, at most 1 second), 300 to 400 ms
+// on the macOS runner; grep opened meanwhile must keep its frame and the keyboard. Holding
+// TabSwitchDone makes the jump wait the full second.
+add_task(async function a_step_whose_tab_switch_ends_after_grep_reopens_stops_there() {
+  await reset();
+  const a = await openFixture({ title: "Alpha", t: "alpha needle" });
+  const c = await openFixture({ title: "Charlie", t: "charlie needle" });
+  await BrowserTestUtils.switchTab(gBrowser, a);
+  await openGrep();
+  type("needle");
+  await resultsSettle(2);
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => !isOpen(), "jumped to the first result");
+  await until(() => VimmaHost.status(window).mode === "normal", "normal mode");
+  await focusContent(a.linkedBrowser);
+
+  const session = VimmaHost._grep(window);
+  const { ask, jump } = session;
+  /** @type {string[]} */
+  const sentWhileOpen = [];
+  let jumped = false;
+  session.ask = (/** @type {any[]} */ ...args) => {
+    const name = args[2];
+    if (session.isOpen && /^Vimma:Grep(Jump|End)$/.test(name)) sentWhileOpen.push(name);
+    return ask.apply(session, args);
+  };
+  session.jump = async (/** @type {any[]} */ ...args) => {
+    try {
+      return await jump.apply(session, args);
+    } finally {
+      jumped = true;
+    }
+  };
+  const hold = (/** @type {Event} */ e) => e.stopPropagation();
+  window.addEventListener("TabSwitchDone", hold, true);
+  try {
+    type("]q");
+    await until(() => gBrowser.selectedTab === c, "]q selects Charlie");
+    await focusContent(c.linkedBrowser);
+    type(":grep charlie");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(() => isOpen(), ":grep text opens with that query");
+    await resultsSettle(1);
+    await until(() => jumped, "the step's jump stops waiting for the tab switch");
+    await new Promise((r) => setTimeout(r, 0));
+    Assert.deepEqual(sentWhileOpen, [], "it asks the frame nothing while the search is open");
+    Assert.ok(dialog().contains(document.activeElement), "and the keyboard stays in grep");
+    const frames = await SpecialPowers.spawn(c.linkedBrowser, [], () => {
+      const { GrepMatcher } = ChromeUtils.importESModule(
+        "chrome://browser/content/vimma/actors/grep-matcher.mjs",
+      );
+      return GrepMatcher.frames.length;
+    });
+    Assert.equal(frames, 1, "the open search's text stays in Charlie's process");
+  } finally {
+    window.removeEventListener("TabSwitchDone", hold, true);
+    session.ask = ask;
+    session.jump = jump;
+  }
+  EventUtils.synthesizeKey("KEY_Escape");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "closed");
+});
+
 add_task(async function replies_to_an_older_query_never_replace_newer_results() {
   await reset();
   await openFixture({ title: "Gen", t: "older match|newer match" });

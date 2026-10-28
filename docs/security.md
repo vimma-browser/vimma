@@ -2062,7 +2062,11 @@ Rules:
   disk or in the session store, and drops a tab's lines when the tab or its window closes, and
   stops watching a closed window. The recently closed titles and URLs a search sends to the
   parent's worker are held under one key a picker session and dropped when the picker closes.
+  A `]q`/`[q` step that ends after the picker opened again leaves its frame to that search,
+  which tells it to drop its text when it closes.
   [`closing_tells_every_searched_frame_to_drop_its_text`](../tests/browser/browser_vimma_live_grep.js),
+  [`a_step_that_ends_after_grep_reopens_leaves_the_new_search_alone`](../tests/browser/browser_vimma_live_grep.js),
+  [`a_step_whose_tab_switch_ends_after_grep_reopens_stops_there`](../tests/browser/browser_vimma_live_grep.js),
   [`a_reply_held_past_close_still_gets_grep_end`](../tests/browser/browser_vimma_live_grep.js),
   [`the_grep_list_steps_with_bracket_q_and_grep_resumes`](../tests/browser/browser_vimma_live_grep.js),
   [`pruneGrepList drops a closed tab's rows and keeps its place`](../packages/vimma-core/test/grep.test.mjs),
