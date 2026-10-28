@@ -58,6 +58,13 @@ link=$(find "$app" -type l -print -quit)
 # would be read with bytes dropped), `&` (character references), comments, CDATA, whitespace
 # inside a tag other than the XML declaration, the DOCTYPE and <plist ...>, and the key more than
 # once. mach package writes none of these.
+#
+# A plain name is letters, digits, `.`, `_`, `+`, `-` and the space: Firefox's helpers are named
+# with spaces (gpu-helper.app's executable is "Vimma GPU Helper" in the released apps).
+# rcodesign splits a scoped value at its first `:` and reads `@` as an architecture selector
+# (rcodesign 0.29.0, split_scoped_value in src/cli/mod.rs, SettingsScope in
+# src/signing_settings.rs), so a space is safe in a scoped path, and `:` and `@` are refused.
+plain_name='^[A-Za-z0-9._+ -]+$'
 while IFS= read -r -d '' plist; do
   [ "$(head -c 6 "$plist")" != bplist ] || fail "$plist is a binary Info.plist"
   [ "$(LC_ALL=C tr -cd '\000' < "$plist" | wc -c)" -eq 0 ] || fail "$plist has a NUL byte"
@@ -74,7 +81,7 @@ while IFS= read -r -d '' plist; do
   [ "$keys" -le 1 ] || fail "$plist names CFBundleExecutable more than once"
   [ "$keys" -eq 1 ] || continue
   exe=$(sed -n 's|.*<key>CFBundleExecutable</key>[[:space:]]*<string>\([^<]*\)</string>.*|\1|p' <<< "$flat")
-  if [[ ! $exe =~ ^[A-Za-z0-9._+-]+$ ]] || [ "$exe" = . ] || [ "$exe" = .. ]; then
+  if [[ ! $exe =~ $plain_name ]] || [[ $exe != *[!\ ]* ]] || [ "$exe" = . ] || [ "$exe" = .. ]; then
     fail "$plist names the executable '$exe', not a plain file name"
   fi
 done < <(find "$app" -name Info.plist -print0)
@@ -92,8 +99,8 @@ scoped() {
   local -a parts
   IFS=/ read -r -a parts <<< "$1"
   for part in "${parts[@]}"; do
-    [[ $part =~ ^[A-Za-z0-9._+-]+$ ]] && [ "$part" != . ] && [ "$part" != .. ] ||
-      fail "a name outside [A-Za-z0-9._+-] in $1"
+    [[ $part =~ $plain_name ]] && [[ $part == *[!\ ]* ]] && [ "$part" != . ] && [ "$part" != .. ] ||
+      fail "a name outside [A-Za-z0-9._+ -] in $1"
   done
   [[ $1 != *$'\n'* ]] || fail "a name with a newline in the app"
 }

@@ -507,7 +507,12 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     flat), so the manifest and the sign script refuse any symlink, which a chain of links could
     otherwise use to lead rcodesign outside the bundle; the sign script also refuses a name
     rcodesign's `<path>:<value>` scopes could misread and an `Info.plist` whose
-    `CFBundleExecutable` is not one plain file name. The three jobs come
+    `CFBundleExecutable` is not one plain file name. A plain name may hold spaces, because the
+    released app's GPU and media helpers are "Vimma GPU Helper" and "Vimma Media Plugin Helper",
+    and rcodesign 0.29.0 splits a scoped value at its first `:` and reads only `@` specially in
+    the path (`split_scoped_value`, `SettingsScope`), so `:` and `@` are refused and a space is
+    not; a dry run of the sign script on the released 0.1.8 app showed the first rule wrong. The
+    three jobs come
     before `macos-smoke` so that the hosted Mac checks the signed `.dmg` that is published.
     `tools/package/macos-developer-id-check.sh` there runs `codesign --verify --deep --strict`,
     reads `codesign -dvv` for the Developer ID Application authority, the team ID of the

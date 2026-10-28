@@ -1921,7 +1921,9 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   Vimma's Developer ID signature, notarised, for the tag's version line, or `macos-smoke`'s
   signature, team and version checks fail. The manifest refuses any symlink, as Vimma.app has none,
   and the sign script refuses a symlink again, as well as a name rcodesign's scope syntax could
-  misread and an `Info.plist` whose `CFBundleExecutable` is not one plain file name, so
+  misread (such as `:` or `@`) and an `Info.plist` whose `CFBundleExecutable` is not one plain
+  file name (letters, digits, `.`, `_`, `+`, `-` and spaces, since Firefox's helpers such as
+  "Vimma GPU Helper" have spaces in their names), so
   rcodesign cannot be led to read or write a file outside the bundle. The
   shell's `printf` writes the p12, its password and the key to files of mode 600 under
   `$RUNNER_TEMP`; rcodesign gets only their paths, never a secret on a command line; an
@@ -1964,7 +1966,8 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`runs rcodesign and no disk-image tool, mach, node or other program of the build`](../tools/package/test/macos-developer-id.test.mjs),
   [`refuses a symlink that leaves the app, before rcodesign runs`](../tools/package/test/macos-developer-id.test.mjs),
   [`refuses every symlink, even one that stays inside the app, and an app that is a link`](../tools/package/test/macos-developer-id.test.mjs),
-  [`refuses a file name outside [A-Za-z0-9._+-] in a path it scopes a setting to`](../tools/package/test/macos-developer-id.test.mjs),
+  [`refuses a file name outside [A-Za-z0-9._+ -] in a path it scopes a setting to`](../tools/package/test/macos-developer-id.test.mjs),
+  [`signs the released 0.1.10 bundle's layout, spaced helper names passed intact`](../tools/package/test/macos-developer-id.test.mjs),
   [`refuses a CFBundleExecutable with a / or .., and a binary Info.plist`](../tools/package/test/macos-developer-id.test.mjs),
   [`changes when a byte, an executable bit or a file name changes`](../tools/package/test/macos-developer-id.test.mjs),
   [`macos-notarise checks the app against macos-build's manifest hash before the credentials`](../tools/package/test/release-workflow.test.mjs),

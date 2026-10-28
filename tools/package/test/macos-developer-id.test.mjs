@@ -358,6 +358,7 @@ describe("macos-sign-app.sh", () => {
       rcodesign,
       `#!/bin/sh
 echo "rcodesign $*" >> "${log}"
+printf '%s\\n' "$@" > "${log}.args.$1"
 case "$1" in
   analyze-certificate)
     echo "# Certificate 0"
@@ -536,8 +537,14 @@ esac
 
   // A name becomes part of rcodesign's `<path>:<value>` scope syntax, so a `:` or a newline in it
   // would change what is signed with which setting.
-  it("refuses a file name outside [A-Za-z0-9._+-] in a path it scopes a setting to", () => {
-    for (const name of ["lib:evil.dylib", "lib evil.dylib", "lib\nx.dylib"]) {
+  it("refuses a file name outside [A-Za-z0-9._+ -] in a path it scopes a setting to", () => {
+    for (const name of [
+      "lib:evil.dylib",
+      "lib@0.dylib",
+      "lib\tx.dylib",
+      "lib\nx.dylib",
+      "libé.dylib",
+    ]) {
       const { dir, app, log, env } = setup();
       writeFileSync(join(app, "Contents/MacOS", name), "x");
       const { status, stderr } = run(SIGN, [app], dir, env);
@@ -545,6 +552,114 @@ esac
       expect(stderr).toMatch(/name/);
       expect(existsSync(log)).toBe(false);
     }
+  });
+
+  // The layout of the released Vimma 0.1.10 app (Firefox 159.0), read with find: its GPU and
+  // media helpers' executables have spaces in their names, which a dry run of the sign script on
+  // the released 0.1.8 app showed it refused. rcodesign splits a scoped value at its first `:` and reads `@` as an
+  // architecture selector (rcodesign 0.29.0, split_scoped_value in src/cli/mod.rs and
+  // SettingsScope in src/signing_settings.rs), so a space is safe in a scoped path; `:` and `@`
+  // are not.
+  it("signs the released 0.1.10 bundle's layout, spaced helper names passed intact", () => {
+    const dir = tempDir("vimma-sign-");
+    const app = join(dir, "Vimma.app");
+    const files = [
+      "Contents/PkgInfo",
+      "Contents/MacOS/vimma",
+      "Contents/MacOS/XUL",
+      "Contents/MacOS/nmhproxy",
+      "Contents/MacOS/pingsender",
+      "Contents/MacOS/vimma-ctl",
+      ...[
+        "libEGL",
+        "libfreebl3",
+        "libgkcodecs",
+        "libGLESv2",
+        "liblgpllibs",
+        "libmozavcodec",
+        "libmozavutil",
+        "libmozglue",
+        "libmozinference",
+        "libnss3",
+        "libonnxruntime",
+        "libsoftokn3",
+      ].map((l) => `Contents/MacOS/${l}.dylib`),
+      "Contents/Frameworks/ChannelPrefs.framework/ChannelPrefs",
+      "Contents/Frameworks/ChannelPrefs.framework/_CodeSignature/CodeResources",
+      "Contents/Resources/gmp-clearkey/0.1/libclearkey.dylib",
+      "Contents/Resources/gmp-clearkey/0.1/manifest.json",
+      "Contents/Resources/res/cursors/move@2x.png",
+      "Contents/Resources/vimma-ctl-licenses/README.txt",
+      "Contents/_CodeSignature/CodeResources",
+    ];
+    /** @type {Record<string, string>} */
+    const helpers = {
+      "gpu-helper.app": "Vimma GPU Helper",
+      "media-plugin-helper.app": "Vimma Media Plugin Helper",
+      "plugin-container.app": "plugin-container",
+    };
+    for (const [helper, exe] of Object.entries(helpers)) {
+      const c = `Contents/MacOS/${helper}/Contents`;
+      files.push(`${c}/MacOS/${exe}`, `${c}/PkgInfo`, `${c}/_CodeSignature/CodeResources`);
+      files.push(`${c}/Resources/English.lproj/InfoPlist.strings`);
+    }
+    for (const f of files) {
+      mkdirSync(join(app, f, ".."), { recursive: true });
+      writeFileSync(join(app, f), "x");
+    }
+    writeFileSync(join(app, "Contents/Info.plist"), plist("vimma"));
+    const prefs = join(app, "Contents/Frameworks/ChannelPrefs.framework/Resources");
+    mkdirSync(prefs);
+    writeFileSync(join(prefs, "Info.plist"), plist("ChannelPrefs"));
+    for (const [helper, exe] of Object.entries(helpers)) {
+      writeFileSync(join(app, "Contents/MacOS", helper, "Contents/Info.plist"), plist(exe));
+    }
+    const { log, env } = rcodesignStub(dir);
+    const { status, stderr } = run(SIGN, [app], dir, env);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    expect(lines(log).map((l) => l.split(" ")[1])).toEqual([
+      "analyze-certificate",
+      "sign",
+      "notary-submit",
+    ]);
+    const args = readFileSync(`${log}.args.sign`, "utf8").trimEnd().split("\n");
+    expect(args.at(-1)).toBe(app);
+    /** @param {string} flag */
+    const values = (flag) => args.flatMap((a, i) => (args[i - 1] === flag ? [a] : []));
+    expect(new Set(values("--code-signature-flags"))).toEqual(
+      new Set([
+        "Contents/MacOS/plugin-container.app:runtime",
+        "Contents/MacOS/media-plugin-helper.app:runtime",
+        "Contents/MacOS/gpu-helper.app:runtime",
+        "Contents/MacOS/XUL:runtime",
+        "Contents/MacOS/pingsender:runtime",
+        "Contents/MacOS/nmhproxy:runtime",
+        ...files
+          .filter((f) => /^Contents\/MacOS\/[^/]+\.dylib$/.test(f))
+          .map((f) => `${f}:runtime`),
+        "Contents/Resources/gmp-clearkey/0.1/libclearkey.dylib:runtime",
+        "Contents/Frameworks/ChannelPrefs.framework:runtime",
+        "Contents/MacOS/vimma-ctl:runtime",
+        "runtime",
+      ]),
+    );
+    expect(values("--entitlements-xml-file")).toEqual([
+      `Contents/MacOS/plugin-container.app:${ENTITLEMENTS}/plugin-container.xml`,
+      `Contents/MacOS/media-plugin-helper.app:${ENTITLEMENTS}/media-plugin-helper.xml`,
+      `${ENTITLEMENTS}/browser.xml`,
+    ]);
+  });
+
+  // A name with a space reaches rcodesign as one argument, its scope intact.
+  it("passes a scoped path with a space as one argument", () => {
+    const { dir, app, log, env } = setup();
+    writeFileSync(join(app, "Contents/MacOS/lib with space.dylib"), "x");
+    const { status, stderr } = run(SIGN, [app], dir, env);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    const args = readFileSync(`${log}.args.sign`, "utf8").trimEnd().split("\n");
+    expect(args).toContain("Contents/MacOS/lib with space.dylib:runtime");
   });
 
   it("skips a nested Info.plist without CFBundleExecutable", () => {
@@ -564,6 +679,9 @@ esac
       plist("../../../secrets/p12-password"),
       plist("MacOS/../vimma"),
       plist(".."),
+      // a space is allowed inside a name, but a name of spaces only, or a tab, is not
+      plist("   "),
+      plist("Vimma\tHelper"),
       "bplist00 binary",
       // where sed and a real plist parser disagree: each is refused before it is parsed
       plist("vimma").replace(
