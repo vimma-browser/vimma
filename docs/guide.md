@@ -1124,8 +1124,8 @@ address bar moves to the start of the line, and `cmd+[` goes back from there.
 cmd+shift+]), also with `ctrl` (`ctrl+meta+{`, `ctrl+meta+}`), and `alt+meta+left`,
 `alt+meta+right`, `alt+meta+up` and `alt+meta+down`. Its sidebar keys use `ctrl`: `ctrl+x` (AI
 chatbot), `ctrl+z` (show or hide the sidebar) and `ctrl+u` (open tabs, which stays Vimma's
-half-page scroll). Vimma does not bind these, so the default `disable = "all"` turns them off,
-`ctrl+x` and `ctrl+z` included, as it does Firefox's unbound keys on Linux. Vimma's own keys do
+half-page scroll). The default `disable = "all"` turns the others off, `ctrl+x` and `ctrl+z`
+included, as it does Firefox's unbound keys on Linux. Vimma's own keys do
 the same things: `ctrl+t` or `t` for a new tab, `x` to close it, and the `cmd+l` and `cmd+1..9`
 above. `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt` access keys.
 

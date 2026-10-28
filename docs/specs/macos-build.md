@@ -14,6 +14,7 @@ sub-PR 5's macOS key inventory built, #384; the macOS default keys built, #386) 
 [ADR-018](../adr/018-macos-cross-build.md) ("macOS is cross-compiled on Linux, arm64 first")
 
 Issues: [#238](https://github.com/vimma-browser/vimma/issues/238),
+[#385](https://github.com/vimma-browser/vimma/issues/385),
 [#386](https://github.com/vimma-browser/vimma/issues/386)
 
 Engine paths are relative to `engine/` and were checked against Firefox 158.0. Surfer paths
@@ -448,38 +449,35 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 ### Keys on macOS
 
 22. **A macOS inventory derived from the Linux one.** `FIREFOX_SHORTCUTS_MACOS`
-    (`packages/vimma-core/src/firefox-keys.mjs`) is the Linux inventory with each row's macOS
-    chord (`MAC_CHANGES`, by `<key>` id), without the keys macOS lacks (`focusURLBar2`,
+    (`packages/vimma-core/src/firefox-keys.mjs`) is the Linux inventory with each row's macOS chord
+    (`MAC_CHANGES`, by `<key>` id), without the keys macOS lacks (`focusURLBar2`,
     `key_reload_skip_cache2`, `ctrl+F4`, F10 and the menu bar's access keys, since
-    `ui.key.menuAccessKey` is 0 there), and with macOS's own keys (`MAC_ONLY`). The host reads it
-    on a Mac for what `disable = "all"` turns off and which out-of-keyset tab keys it stops; the
+    `ui.key.menuAccessKey` is 0 there), and with macOS's own keys (`MAC_ONLY`). The host reads it on
+    a Mac for what `disable = "all"` turns off and which out-of-keyset tab keys it stops; the
     keymap, the page-first rule and `bindings.md` stay on the Linux table but for decision 29's
-    keys, whose macOS rows are bound and read on a Mac; decision 30 says what `"all"` does with
-    the rest. A row
-    whose key moves to a chord Vimma does not bind is fate c there (unbound, its `<key>` off):
-    `cmd+t`, the DevTools' `cmd+alt+<key>` and ShortcutUtils' `meta+{`,
-    `meta+}` (also with `ctrl`, which `ShortcutUtils.getSystemActionForEvent` ignores) and
-    `alt+meta+<arrow>` tab keys (Firefox 158, `toolkit/modules/ShortcutUtils.sys.mjs:380-445`).
-    `key_quitApplication` is `cmd+q` and `internal` on macOS
-    (`browser/base/content/browser-sets.inc.xhtml`, the `XP_MACOSX` branch), so it is fate d:
-    `"all"` keeps it, as behaviour 4 says. A `<key>` that is off may still run from the native
-    menu bar in a windowed build: `nsMenuItemX::SetKeyEquiv`
-    (`widget/cocoa/nsMenuItemX.mm:316-383` in Firefox 159) copies the chord of a menu item's
-    `<key>` without reading its `disabled`, the item's enabled state follows its command
-    (`SetEnabled`, `nsMenuItemX.mm:445-470`), and a keydown nothing in Gecko consumed goes to
-    the menu bar's key equivalents (`dom/events/EventStateManager.cpp:4029`,
-    `nsCocoaWindow::PostHandleKeyEvent` and `SendEventToNativeMenuSystem`,
-    `widget/cocoa/nsCocoaWindow.mm:628-674`). firefox-keys sets `disabled` on the `<key>`, not
-    on its `<command>`, so the item stays enabled with its key equivalent, and only a keydown
-    Vimma consumes stops short of the menu bar (`EventStateManager::PostHandleKeyboardEvent`
-    returns early on `nsEventStatus_eConsumeNoDefault`, `EventStateManager.cpp:3985`). The
-    engine source reads so; it is not yet confirmed
-    in a running windowed build, which headless tests cannot show, and is part of sub-PR 5's
-    hand check of the native menu bar. Rejected: a macOS chord column in every row,
-    because the keymap, `pageFirst` and the docs would each have to pick a column while only
-    the host and the coverage test differ by platform; and a hand-written second table, because
-    its 149 rows would be kept in step with Linux's 140 by hand, where 77 rows change their
-    chord, 12 go and 21 are macOS's own.
+    keys, whose macOS rows are bound and read on a Mac; decision 30 says what `"all"` does with the
+    rest. A row whose key moves to a chord Vimma does not bind is fate c there (unbound, its `<key>`
+    off): `cmd+t`, the DevTools' `cmd+alt+<key>` and ShortcutUtils' `meta+{`, `meta+}` (also with
+    `ctrl`, which `ShortcutUtils.getSystemActionForEvent` ignores) and `alt+meta+<arrow>` tab keys
+    (Firefox 158, `toolkit/modules/ShortcutUtils.sys.mjs:380-445`). `key_quitApplication` is `cmd+q`
+    and `internal` on macOS (`browser/base/content/browser-sets.inc.xhtml`, the `XP_MACOSX` branch),
+    so it is fate d: `"all"` keeps it, as behaviour 4 says. A `<key>` that is off may still run from
+    the native menu bar in a windowed build: `nsMenuItemX::SetKeyEquiv`
+    (`widget/cocoa/nsMenuItemX.mm:316-383` in Firefox 159) copies the chord of a menu item's `<key>`
+    without reading its `disabled`, the item's enabled state follows its command (`SetEnabled`,
+    `nsMenuItemX.mm:445-470`), and a keydown nothing in Gecko consumed goes to the menu bar's key
+    equivalents (`dom/events/EventStateManager.cpp:4029`, `nsCocoaWindow::PostHandleKeyEvent` and
+    `SendEventToNativeMenuSystem`, `widget/cocoa/nsCocoaWindow.mm:628-674`). firefox-keys sets
+    `disabled` on the `<key>`, not on its `<command>`, so the item stays enabled with its key
+    equivalent, and only a keydown Vimma consumes stops short of the menu bar
+    (`EventStateManager::PostHandleKeyboardEvent` returns early on
+    `nsEventStatus_eConsumeNoDefault`, `EventStateManager.cpp:3985`). The engine source reads so; it
+    is not yet confirmed in a running windowed build, which headless tests cannot show, and is part
+    of sub-PR 5's hand check of the native menu bar. Rejected: a macOS chord column in every row,
+    because the keymap, `pageFirst` and the docs would each have to pick a column while only the
+    host and the coverage test differ by platform; and a hand-written second table, because its 149
+    rows would be kept in step with Linux's 140 by hand, where 77 rows change their chord, 12 go and
+    21 are macOS's own.
 
 ### Developer ID and notarisation
 
@@ -635,18 +633,19 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     the page, because Option+digit has already become a character by then and Option+arrow is a
     text field's word movement.
 
-30. **Under `"all"`, Firefox's `cmd` keys that Vimma does not bind are off on macOS, as on
-    Linux.** On a Mac the default `disable = "all"` turns off `cmd+t`, `cmd+n`, `cmd+w`,
-    `shift+cmd+t`, `cmd+r`, `cmd+f` and the other `cmd` keys of the macOS inventory (decision 22) that decision 29 does not bind, and `cmd+q` stays on. A user who wants some of them back
-    lists them in `[firefox] enable` (`enable = ["meta+t", "meta+w"]`; `cmd+t` is accepted as
-    `meta+t`), and each then runs exactly as Firefox runs it; `docs/guide.md` ("Firefox's own
-    shortcuts") gives a copy-pasteable list of the common ones. The reasons: one rule that reads
-    the same on every platform is easier to predict than a per-platform exception; Vimma's own
-    keys already cover these actions on a Mac (`ctrl+t` and `t` for a new tab, `x` to close
-    one, and decision 29's `cmd` keys); and `[firefox] enable` exists for exactly this case, a
-    Firefox key wanted back as Firefox runs it. Rejected: keeping Firefox's unbound `cmd` keys on
-    under `"all"`, because `"all"` would then mean something else on a Mac. A key that is off
-    may still run from its native menu bar item in a windowed build (decision 22).
+30. **Under `"all"`, Firefox's `cmd` keys that Vimma does not bind are off on macOS, as on Linux.**
+    On a Mac the default `disable = "all"` turns off `cmd+t`, `cmd+n`, `cmd+w`, `shift+cmd+t`,
+    `cmd+r`, `cmd+f` and the other `cmd` keys of the macOS inventory (decision 22) that decision 29
+    does not bind, and `cmd+q` stays on. A user who wants some of them back lists them in `[firefox]
+enable` (`enable = ["meta+t", "meta+w"]`; `cmd+t` is accepted as `meta+t`), and each then runs
+    exactly as Firefox runs it; `docs/guide.md` ("Firefox's own shortcuts") gives a copy-pasteable
+    list of the common ones. The reasons: one rule that reads the same on every platform is easier
+    to predict than a per-platform exception; Vimma's own keys already cover these actions on a Mac
+    (`ctrl+t` and `t` for a new tab, `x` to close one, and decision 29's `cmd` keys); and `[firefox]
+enable` exists for exactly this case, a Firefox key wanted back as Firefox runs it. Rejected:
+    keeping Firefox's unbound `cmd` keys on under `"all"`, because `"all"` would then mean something
+    else on a Mac. A key that is off may still run from its native menu bar item in a windowed build
+    (decision 22).
 
 ### Not in this spec
 

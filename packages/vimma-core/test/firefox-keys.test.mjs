@@ -613,7 +613,8 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
 });
 
 // Issue #385, docs/specs/macos-build.md decision 30: on macOS, "all" keeps Firefox's cmd keys
-// that Vimma does not bind off, as on Linux, and the guide's `[firefox] enable` example is how a user gets some back.
+// that Vimma does not bind off, as on Linux, and the guide's `[firefox] enable` example is how
+// a user gets some back.
 describe("macOS: the guide's [firefox] enable example", () => {
   const guide = readFileSync(new URL("../../../docs/guide.md", import.meta.url), "utf8");
   const examples = [...guide.matchAll(/```toml\n([\s\S]*?)```/g)]
@@ -653,5 +654,19 @@ describe("macOS: the guide's [firefox] enable example", () => {
     // Without the example, the same keys are off.
     const byDefault = onWith("schema = 2\n").map((k) => k.chord);
     for (const chord of firefox.enable) expect(byDefault, chord).not.toContain(chord);
+  });
+
+  // Decision 30 covers only the cmd keys Vimma does not bind: an example that enabled one of
+  // decision 29's (cmd+l, cmd+1, cmd+[, cmd+left) would take a Vimma key away from the user.
+  test("the guide's example enables no chord the macOS keymap binds", () => {
+    const text = /** @type {string} */ (examples[0]);
+    const { config, keymap } = parseConfig(text, { mac: true });
+    const enable = /** @type {any} */ (config).firefox.enable;
+    for (const bound of [
+      boundChords(/** @type {any} */ (keymap)),
+      boundChords(compileKeymap({}, { mac: true })),
+    ]) {
+      expect(enable.filter((/** @type {string} */ c) => bound.has(c))).toEqual([]);
+    }
   });
 });
