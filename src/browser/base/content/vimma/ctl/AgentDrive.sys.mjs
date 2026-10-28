@@ -26,6 +26,7 @@ import { isCaseSensitive } from "../core/find.mjs";
 import { urlRoot, urlUp } from "../core/pageurl.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
+import { AgentAct } from "./AgentAct.sys.mjs";
 import { AgentShot } from "./AgentShot.sys.mjs";
 
 /** @import { AgentStep } from "../core/agent-keys.mjs" */
@@ -179,20 +180,21 @@ function pageMark(browser) {
 }
 
 /**
- * Waits until the page left `mark` and finished loading, or until `until`. An initial
- * about:blank (a process switch makes one in the tab) is a step on the way, not the page.
+ * Waits until the page left `mark` and is ready (AgentAct.ready: loaded, or past its
+ * DOMContentLoaded and quiet a moment; issue #579), or until `until`. An initial about:blank
+ * (a process switch makes one in the tab) is a step on the way, not the page.
  * @param {Browser} browser @param {{ doc: number, url: string }} mark @param {number} until
- * @returns {Promise<boolean>} whether it loaded in time
+ * @returns {Promise<boolean>} whether it was ready in time
  */
-async function loaded(browser, mark, until) {
-  for (;;) {
-    const now = pageMark(browser);
-    const moved = now.doc !== mark.doc || now.url !== mark.url;
-    const initial = browser.browsingContext?.currentWindowGlobal?.isInitialDocument ?? true;
-    if (moved && !initial && !browser.webProgress?.isLoadingDocument) return true;
-    if (Date.now() > until) return false;
-    await sleep(50);
-  }
+function loaded(browser, mark, until) {
+  return AgentAct.ready(
+    browser,
+    (/** @type {any} */ wg) => {
+      const now = pageMark(browser);
+      return (now.doc !== mark.doc || now.url !== mark.url) && !wg.isInitialDocument;
+    },
+    until,
+  );
 }
 
 /**

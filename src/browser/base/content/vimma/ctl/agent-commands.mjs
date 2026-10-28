@@ -363,8 +363,9 @@ function within(ms, promise) {
 }
 
 /**
- * A tab's page, loaded: a lazy tab (restored, or unloaded under memory pressure) gets its
- * browser and loads `url` in the background first (spec B2). Never selected, never shown.
+ * A tab's page, ready (AgentAct.ready: loaded, or past its DOMContentLoaded and quiet a moment;
+ * issue #579): a lazy tab (restored, or unloaded under memory pressure) gets its browser and
+ * loads `url` in the background first (spec B2). Never selected, never shown.
  * @param {Win} win @param {Tab} tab @param {string} url @param {number} userContextId
  */
 async function loadedPage(win, tab, url, userContextId) {
@@ -373,14 +374,14 @@ async function loadedPage(win, tab, url, userContextId) {
   if (tab.hasAttribute("pending") || !browser.browsingContext?.currentWindowGlobal) {
     browser.loadURI(agentUri(url), { triggeringPrincipal: agentPrincipal(userContextId) });
   }
-  const deadline = Date.now() + LOAD_TIMEOUT_MS;
-  for (;;) {
-    const wg = browser.browsingContext?.currentWindowGlobal;
-    const loading = browser.webProgress?.isLoadingDocument ?? true;
-    if (wg && !loading && !tab.hasAttribute("pending") && !wg.isInitialDocument) return wg;
-    if (Date.now() > deadline) throw new AgentError("failed", "the page did not load in time");
-    await sleep(100);
-  }
+  const ready = await AgentAct.ready(
+    browser,
+    (/** @type {any} */ wg) => !tab.hasAttribute("pending") && !wg.isInitialDocument,
+    Date.now() + LOAD_TIMEOUT_MS,
+  );
+  const wg = browser.browsingContext?.currentWindowGlobal;
+  if (!ready || !wg) throw new AgentError("failed", "the page did not load in time");
+  return wg;
 }
 
 /**

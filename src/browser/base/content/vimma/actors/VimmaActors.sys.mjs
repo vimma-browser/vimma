@@ -733,6 +733,30 @@ export const VimmaActors = {
   },
 
   /**
+   * Waits in a frame's own process until its page has settled after an agent's step (issue
+   * #579; docs/specs/mcp-forms.md F11): `ready`, from its DOMContentLoaded; `net`, until no
+   * request the step started is open; then a quiet period, bounded (core AGENT_WAITS). The
+   * answer is checked like any reply from a content process.
+   * @param {any} bc BrowsingContext
+   * @param {{ ready?: boolean, net?: boolean, quiet: number, still: number, max: number,
+   *   until: number }} ask  `until`: ms since the epoch, past which the child stops waiting
+   * @returns {Promise<{ settled: "quiet" | "busy", state: string } | null>} null: the frame
+   *   has no actor, its document went away, or the reply was malformed
+   */
+  async agentQuiet(bc, ask) {
+    const actor = actorFor(bc);
+    if (!actor) return null;
+    try {
+      const r = await actor.sendQuery("Vimma:AgentQuiet", ask);
+      if (r?.settled !== "quiet" && r?.settled !== "busy") return null;
+      if (typeof r.state !== "string") return null;
+      return { settled: r.settled, state: r.state };
+    } catch {
+      return null; // the frame navigated or its process went away
+    }
+  },
+
+  /**
    * Which parts of the page changed in place since the agent's last click on `target` (#510),
    * in core's fixed words (ACTIVATE_CHANGES), checked like any reply from a content process;
    * null when the frame has another document, did not watch that click, or answered wrongly.
