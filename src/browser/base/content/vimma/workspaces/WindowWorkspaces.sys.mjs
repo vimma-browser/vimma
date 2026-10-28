@@ -650,10 +650,10 @@ export class WindowWorkspacesImpl {
   /**
    * The workspace that owns a container (decision 1), or undefined.
    * @param {number} userContextId
+   * @param {Workspaces | null} [model]  the model to look in (a rebuild's, before it is live)
    */
-  #owner(userContextId) {
-    const model = /** @type {Workspaces} */ (this.#model);
-    return model.workspaces.find((w) => w.container === String(userContextId));
+  #owner(userContextId, model = this.#model) {
+    return model?.workspaces.find((w) => w.container === String(userContextId));
   }
 
   /** The window value; "" when there is none or SessionStore does not track the window yet. */
@@ -666,11 +666,29 @@ export class WindowWorkspacesImpl {
   }
 
   /**
-   * Builds the model from the open tabs, which are the truth, and the window value, which
-   * supplies each workspace's selected tab, the pane trees and the labels (Reconcile in the
-   * spec). Runs at init and after every restore into the window; idempotent.
+   * Rebuilds the model (below). A failed rebuild keeps the current model: the live tabs are
+   * still the truth and the next restore, or a tab selected meanwhile (#onSelect), repairs
+   * what this pass missed. Letting the failure out would leave a half-built model behind
+   * (issue #546).
    */
   #reconcile() {
+    const foreign = this.#foreign;
+    try {
+      this.#rebuild();
+    } catch (e) {
+      this.#foreign = foreign;
+      console.error("vimma: the window's workspaces could not be rebuilt; keeping them", e);
+    }
+  }
+
+  /**
+   * Builds the model from the open tabs, which are the truth, and the window value, which
+   * supplies each workspace's selected tab, the pane trees and the labels (Reconcile in the
+   * spec). Runs at init and after every restore into the window; idempotent. The new model
+   * replaces the current one only once it is complete (#show), so a failure partway leaves
+   * the current one untouched.
+   */
+  #rebuild() {
     const defs = this.#defs();
     if (!defs.length) return;
     const gBrowser = this.#gBrowser;
@@ -696,17 +714,16 @@ export class WindowWorkspacesImpl {
     let model = createWorkspaces(
       defs.map((d) => ({ id: d.id, name: d.name, container: String(d.userContextId) })),
     );
-    this.#model = model;
     const routed = WorkspaceStore.defaultUserContextId(this.#win);
     const fallback =
       known(base?.active) ??
-      (routed === null ? undefined : this.#owner(routed)?.id) ??
+      (routed === null ? undefined : this.#owner(routed, model)?.id) ??
       model.active;
     this.#foreign = new Set();
     for (const tab of gBrowser.tabs) {
       if (!this.#live(tab) || tab.pinned) continue;
       const id = this.#idOf(tab);
-      const owner = this.#owner(tab.userContextId)?.id;
+      const owner = this.#owner(tab.userContextId, model)?.id;
       if (!owner) this.#foreign.add(id);
       const ws =
         owner ??
@@ -881,9 +898,17 @@ export class WindowWorkspacesImpl {
    */
   #onSelect(tab) {
     if (!this.#switching) this.#hint(tab);
-    const model = /** @type {Workspaces} */ (this.#model);
+    let model = /** @type {Workspaces} */ (this.#model);
     const id = this.#idOf(tab);
-    if (this.#switching || tab.pinned || !workspaceOfTab(model, id)) return;
+    if (this.#switching || tab.pinned) return;
+    if (!workspaceOfTab(model, id)) {
+      // A live tab the model does not know (its TabOpen fell inside a restore bracket, or a
+      // rebuild failed): selecting it puts it back, as #sync does for orphans (issue #546).
+      this.#adopt(tab);
+      this.#changed();
+      model = /** @type {Workspaces} */ (this.#model);
+      if (!workspaceOfTab(model, id)) return;
+    }
     const next = selectTab(model, id);
     if (next.active === model.active) {
       this.#model = next;
