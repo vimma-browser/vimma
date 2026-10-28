@@ -2131,13 +2131,19 @@ _Pages_ and _extensions_ cannot reach it.
   [`refusals_show_after_three_in_a_row`](../tests/browser/browser_vimma_update_check.js)
 - UP2. A verified manifest is **never** accepted for another channel or platform, with a serial
   older than one this profile accepted or than the running build's ID (replay), or with a serial
-  more than a day ahead of the clock, and an older or equal build is **never** offered
-  (downgrade). Withholding updates or serving an old
+  more than a day ahead of the clock, and an older or equal build, or the Vimma version that is
+  already running, is **never** offered (downgrade). A release build **must** carry one build ID
+  in its binary and its `application.ini` (the manifest's source): release.yml and nightly.yml fix
+  `MOZ_BUILD_DATE` and fail a package whose two differ. Withholding updates or serving an old
   manifest for long is what a compromised host can still do; the feed's age shows after 45 days
   (7 for nightly).
   [`channel and target mismatches are refused`](../packages/vimma-core/test/updates.test.mjs),
   [`replay: a serial below the one accepted, or below this build, is refused; equal is accepted`](../packages/vimma-core/test/updates.test.mjs),
   [`downgrade: an older or equal build is no offer, not an error`](../packages/vimma-core/test/updates.test.mjs),
+  [`the Vimma version already running is no offer, whatever its build ID`](../packages/vimma-core/test/updates.test.mjs),
+  [`the_vimma_version_running_is_never_offered`](../tests/browser/browser_vimma_update_check.js),
+  [`a packaged build ID that differs from the binary's is a problem`](../tools/release/test/build-id.test.mjs),
+  [`release.yml's Linux and macOS builds fix MOZ_BUILD_DATE before they build`](../tools/package/test/release-workflow.test.mjs),
   [`a release feed older than 45 days and a nightly one older than 7 are stale`](../packages/vimma-core/test/updates.test.mjs),
   [`replay_is_refused_and_downgrade_offers_nothing`](../tests/browser/browser_vimma_update_check.js),
   [`a serial more than a day ahead of the clock is refused; up to a day is accepted`](../packages/vimma-core/test/updates.test.mjs),

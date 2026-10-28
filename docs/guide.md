@@ -2902,7 +2902,9 @@ another key, one for another channel or platform, or one older than a file it al
 Except for the AppImage, it installs nothing; it tells you.
 
 - **A newer version:** the status bar's right side shows `⇡ 0.3.1 available`, dim. A release that
-  carries a Firefox security fix shows `⇡ 0.3.1 security: :update` in the error colour.
+  carries a Firefox security fix shows `⇡ 0.3.1 security: :update` in the error colour. The
+  version you are running is never offered: once it is installed, the notice goes at the next
+  start.
 - **The first time a version is offered**, a message above the status bar says
   `Vimma 0.3.1 is available · :update shows the command` (or `fixes security issues` for a
   security release) for a few seconds. It takes no focus and no keys, and is not shown again for
