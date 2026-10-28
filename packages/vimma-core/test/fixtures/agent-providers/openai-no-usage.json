@@ -1,0 +1,27 @@
+{
+  "id": "chatcmpl-7",
+  "object": "chat.completion",
+  "created": 1793219600,
+  "model": "local-model",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_1",
+            "type": "function",
+            "function": { "name": "vimma_tabs", "arguments": {} }
+          },
+          {
+            "type": "function",
+            "function": { "name": "vimma_read_page", "arguments": "{\"tab\": \"12\"" }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ]
+}
