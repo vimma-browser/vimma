@@ -2306,7 +2306,8 @@ must be newer than the one `updates.vimma.dev` and `vimma-updates` have. `sign` 
 with Cloud KMS and checks the signature with openssl. `publish` (environment `update-publish`)
 downloads the files again, checks the signed file with the browser's own verifier and pinned
 key and with openssl, then commits it to `vimma-updates` and pushes (never forced; one commit
-per manifest, `vimma X.Y.Z: update manifest, serial S`), and waits up to 10 minutes until
+per manifest, `vimma X.Y.Z: update manifest, serial S`; a push the other target's run beat is
+rebased onto it, as `github-actions[bot]`, and tried again up to three times), and waits up to 10 minutes until
 `updates.vimma.dev` serves the new serial. A failure opens or comments on the
 `release-failure` issue.
 

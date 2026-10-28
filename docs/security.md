@@ -2261,6 +2261,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`the publish job verifies with the browser's verifier and with openssl before any push`](../tools/update/test/update-workflow.test.mjs),
   [`the deploy key lives in its own environment and reaches only the push step`](../tools/update/test/update-workflow.test.mjs),
   [`pushes one commit naming the version to main, never forced, to a pinned host key`](../tools/update/test/update-workflow.test.mjs),
+  [`a push the other target's run beat rebases and lands, with no git identity configured`](../tools/update/test/update-workflow.test.mjs),
   [`signs the body so that the browser's verifier accepts it under the KMS key`](../tools/update/test/update-workflow.test.mjs),
   [`refuses to sign %s`](../tools/update/test/update-workflow.test.mjs),
   [`every asset must be listed with the hash of the file that was downloaded`](../tools/update/test/manifest.test.mjs),
