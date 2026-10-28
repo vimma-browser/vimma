@@ -645,6 +645,24 @@ add_task(async function closing_the_private_window_any_way_brings_normal_back() 
   }
 });
 
+// On a busy machine Hyprland's closewindow can be read before the window's unload runs (#554):
+// the swap back then works from the closed window's last record, which must still be there.
+add_task(async function a_closewindow_read_before_the_unload_still_brings_normal_back() {
+  const f = await start();
+  const priv = await enter();
+  const a = f.addr.get(priv);
+  // What the fake's poll does once the window is gone, before the window itself closes.
+  f.clients.delete(a);
+  f.emit(`closewindow>>${a.slice(2)}`);
+  await until(() => PrivateSwap._pair === null, "the close event was read");
+  await PrivateSwap._settled();
+  Assert.ok(!parked(window), "normal is not left parked");
+  // As in the task above: with the slot window gone its geometry cannot be swapped, only its
+  // workspace (the active one would be 7).
+  Assert.equal(f.rec(window).workspace.id, 3, "normal is back on the closed window's workspace");
+  await BrowserTestUtils.closeWindow(priv);
+});
+
 add_task(async function a_link_from_another_app_brings_the_parked_window_back() {
   const f = await start();
   const priv = await enter();
