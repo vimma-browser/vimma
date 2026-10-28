@@ -191,22 +191,12 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * A binding on a chord Firefox let the page override (docs/specs/firefox-keys.md decision 6):
  * its keydown went to the page, and it runs on the keypress after the page had it, unless the
  * page called preventDefault. `awaiting`: its keypress went to a remote page, whose reply runs it.
- * `down`: for a remote page, the keydown's own reply: "waiting" for it, "passed" once it came
- * back unprevented, so a keypress reply is due; `timer` then runs the binding if that keypress
- * reply never comes (#576).
  * @typedef {{ key: string, result: DispatchResult, pressed: boolean, awaiting: boolean,
- *   mode: Mode, down: "none" | "waiting" | "passed", timer: number | null }} PageFirst
+ *   mode: Mode }} PageFirst
  */
 
 /** The most page-first keys kept waiting (a page that never replies cannot grow the queue). */
 const PAGE_FIRST_MAX = 16;
-
-/**
- * How long a page-first key whose keydown the page left alone waits for its keypress reply
- * before it runs anyway. The reply normally follows within milliseconds, right after the page's
- * keypress listeners; Gecko sends none when the keypress never reached the page (#576).
- */
-const PAGE_FIRST_REPLY_MS = 500;
 
 /**
  * @typedef {object} WindowState
@@ -2008,10 +1998,7 @@ export const VimmaHost = {
   _onKeyDown(win, state, e) {
     // A key the page has had, back for chrome's shortcuts (requestReplyFromRemoteContent): it
     // was dispatched once already, before the page.
-    if (/** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent) {
-      this._onPageFirstKeyDownReply(state, e);
-      return;
-    }
+    if (/** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent) return;
     // The agent question takes its keys first, and only while it shows (vimma-mcp 13-14).
     if (AgentUi.onKey(win, e)) {
       this._emit(state);
@@ -2029,7 +2016,7 @@ export const VimmaHost = {
     const key = formatKey(chord);
     // A page-first binding whose keypress never came (the page took the keydown) is dropped.
     // One whose keypress stayed in this process was settled during that keypress.
-    for (const p of [...state.pageFirst]) if (!p.awaiting) this._settlePageFirst(state, p);
+    state.pageFirst = state.pageFirst.filter((p) => p.awaiting);
     // Focus left the page the hints are on (URL bar, another pane): they no longer apply.
     if (state.hint && state.hint.browser !== this._focusedBrowser(win)) this._cancelHints(state);
     if (state.element.browser && state.element.browser !== this._focusedBrowser(win)) {
@@ -2164,23 +2151,14 @@ export const VimmaHost = {
         // Firefox let the page have this chord first: so does Vimma (firefox-keys decision 6).
         // The keydown goes on; the keypress after the page runs the action (_onKeyPress).
         if (first && !modal && this._pageFirst(state, chord, mode)) {
-          // A remote page: its keydown's reply says whether the page took the keydown, in which
-          // case no keypress reply ever comes (BrowserChild skips that keypress).
-          const remote = /** @type {any} */ (e.target)?.isRemoteBrowser === true;
-          if (remote) /** @type {ChromeKeyEvent} */ (e).requestReplyFromRemoteContent();
           state.pageFirst.push({
             key: formatKey(chord),
             result,
             pressed: false,
             awaiting: false,
             mode,
-            down: remote ? "waiting" : "none",
-            timer: null,
           });
-          const [oldest] = state.pageFirst;
-          if (state.pageFirst.length > PAGE_FIRST_MAX && oldest) {
-            this._settlePageFirst(state, oldest);
-          }
+          if (state.pageFirst.length > PAGE_FIRST_MAX) state.pageFirst.shift();
           return;
         }
         consume(e);
@@ -2259,12 +2237,11 @@ export const VimmaHost = {
       // ShortcutKeyDefinitions.cpp) never reaches `_onKeyPress` before the page:
       // GlobalKeyListener::HandleEventOnCaptureInSystemEventGroup stops it and waits for this
       // reply itself, so its entry is still unpressed here.
-      const pending =
-        state.pageFirst.find((p) => p.awaiting && p.key === key) ??
-        state.pageFirst.find((p) => !p.pressed && p.key === key);
-      if (!pending) return;
-      this._settlePageFirst(state, pending);
-      if (this._pageTookKey(e, pending)) return;
+      let at = state.pageFirst.findIndex((p) => p.awaiting && p.key === key);
+      if (at === -1) at = state.pageFirst.findIndex((p) => !p.pressed && p.key === key);
+      if (at === -1) return;
+      const [pending] = state.pageFirst.splice(at, 1);
+      if (!pending || this._pageTookKey(e, pending)) return;
       consume(e);
       this._run(state, pending.result);
       this._emit(state);
@@ -2278,52 +2255,6 @@ export const VimmaHost = {
       e.stopPropagation();
       ev.requestReplyFromRemoteContent();
     }
-  },
-
-  /**
-   * Takes a page-first binding off the queue, with its fallback timer.
-   * @param {WindowState} state
-   * @param {PageFirst} pending
-   */
-  _settlePageFirst(state, pending) {
-    if (pending.timer !== null) state.win.clearTimeout(pending.timer);
-    pending.timer = null;
-    state.pageFirst = state.pageFirst.filter((p) => p !== pending);
-  },
-
-  /**
-   * The reply to a page-first binding's keydown (`_dispatch` asked for it), hidden from chrome's
-   * other handlers, which saw that keydown already. Prevented in the page's process (page
-   * script, or a native handler there), the keydown makes BrowserChild skip its keypress, so no
-   * keypress reply ever comes and the binding is dropped, as Firefox's keysets drop theirs.
-   * Otherwise the keypress reply is due; if it has not come within PAGE_FIRST_REPLY_MS the binding
-   * runs (#576). A key held down is the exception: BrowserChild drops repeats while the page is
-   * busy, and such a binding (cmd+left) could undo what a field did with the earlier ones.
-   * @param {WindowState} state
-   * @param {KeyboardEvent} e
-   */
-  _onPageFirstKeyDownReply(state, e) {
-    const chord = chordFromEvent(e);
-    const key = chord && formatKey(chord);
-    const pending = state.pageFirst.find((p) => p.down === "waiting" && p.key === key);
-    if (!pending) return;
-    const took = e.defaultPrevented;
-    // As before this reply existed: no chrome handler (the native menu bar's key equivalents,
-    // after a reply nobody prevented) sees this keydown twice.
-    consume(e);
-    if (took) {
-      this._settlePageFirst(state, pending);
-      return;
-    }
-    pending.down = "passed";
-    if (e.repeat) return;
-    pending.timer = state.win.setTimeout(() => {
-      pending.timer = null;
-      if (!state.pageFirst.includes(pending)) return;
-      this._settlePageFirst(state, pending);
-      this._run(state, pending.result);
-      this._emit(state);
-    }, PAGE_FIRST_REPLY_MS);
   },
 
   /**
@@ -2355,10 +2286,10 @@ export const VimmaHost = {
     const chord = chordFromEvent(e);
     const key = chord && formatKey(chord);
     // The one `_onKeyPress` just marked: a local keypress settles in its own dispatch.
-    const pending = state.pageFirst.find((p) => p.pressed && !p.awaiting && p.key === key);
-    if (!pending) return;
-    this._settlePageFirst(state, pending);
-    if (e.defaultPrevented) return;
+    const at = state.pageFirst.findIndex((p) => p.pressed && !p.awaiting && p.key === key);
+    if (at === -1) return;
+    const [pending] = state.pageFirst.splice(at, 1);
+    if (e.defaultPrevented || !pending) return;
     e.preventDefault();
     this._run(state, pending.result);
     this._emit(state);
