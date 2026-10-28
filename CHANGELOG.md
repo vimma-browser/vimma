@@ -4,8 +4,13 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
-- Agents (MCP): clicks and fills wait only while the page is busy instead of a fixed second; a fill without a submit returns at once, and a page counts as ready before its slow images finish. Sending a form or paying is caught exactly as before.
+### Added
+
 - Agents (MCP): `vimma_open`, `vimma_activate` and `vimma_fill` take `elements: true` and return the page's element list with the step, so an action and the next look are one call. Screenshots default to at most 1024 px, PNG or JPEG, whichever is smaller; `full: true` gives the full-size image.
+
+### Changed
+
+- Agents (MCP): clicks and fills wait only while the page is busy instead of a fixed second; a fill without a submit returns at once, and a page counts as ready before its slow images finish. Sending a form or paying is caught exactly as before.
 
 ## [0.1.11](https://github.com/vimma-browser/vimma/compare/v0.1.10...v0.1.11) · Firefox 159.0 (2026-10-28)
 
