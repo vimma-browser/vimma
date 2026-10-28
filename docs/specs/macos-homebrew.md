@@ -322,7 +322,8 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    no secret; it starts `main`'s copy by `workflow_dispatch` once `vimma.rb` is on the published
    release, as `update-publish.yml` does. A draft published after its macOS files had needed a
    manual run, and 0.1.9 and 0.1.10 missed the tap. The push itself still runs only by
-   `workflow_dispatch` from `main`.)
+   `workflow_dispatch` from `main`, and a failed `start` opens the `release-failure` issue as a
+   failed push does.)
 10. **The tap's credential is a deploy key held by a `homebrew` environment,** limited to `main`,
     so that only a workflow file reviewed onto `main` can write to the tap, and a missing key
     skips the job instead of failing it. No tag may deploy to it, because a tag ruleset restricts

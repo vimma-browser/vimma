@@ -1666,8 +1666,8 @@ container with `tools/package/arch-smoke.sh`) → `sign` (only job with
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
 `release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
 `failure`. `homebrew.yml`, on publish: `start` (`actions: write` only; starts `main`'s copy for
-the tag when `vimma.rb` is on the release). From `main` when `start` or `macos-tap` starts it,
-or by hand: `homebrew` (no GitHub token; the tap's deploy key only) → `failure`. Locally, from a mach tarball:
+the tag when `vimma.rb` is on the release) → `failure`. From `main` when `start` or `macos-tap`
+starts it, or by hand: `homebrew` (no GitHub token; the tap's deploy key only) → `failure`. Locally, from a mach tarball:
 
 ```sh
 tools/package/fetch-appimagetool.sh /tmp/ait
@@ -1921,7 +1921,7 @@ delete it once the patch release is out). An `aur.yml` failure also opens the is
 with `gh workflow run aur.yml -f tag=vX.Y.Z`. That manual run uses `main`'s `aur.yml`, while the
 run started by publishing uses the `aur.yml` at the release's tag, so a fix to `aur.yml` reaches
 an already tagged release only through the manual run. A `homebrew.yml` failure opens it as
-well; re-run it with `gh workflow run homebrew.yml -f tag=vX.Y.Z`, which, like every run of it,
+well, a failed `start` on publish included; re-run it with `gh workflow run homebrew.yml -f tag=vX.Y.Z`, which, like every run of it,
 uses `main`'s `homebrew.yml`. To pull a bad release: `gh release edit vX.Y.Z --draft`
 (hides it); the AUR package cannot go back a version without an `epoch`, and `homebrew.yml`
 never replaces a newer cask in the tap with an older one, so ship a fixed release instead.

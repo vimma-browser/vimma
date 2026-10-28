@@ -781,7 +781,7 @@ describe("homebrew.yml", () => {
 
   it("has the start job, the homebrew job and its failure report", () => {
     expect([...all.keys()]).toEqual(["start", "homebrew", "failure"]);
-    expect(job("failure")).toMatch(/^ {4}needs: homebrew$/m);
+    expect(job("failure")).toMatch(/^ {4}needs: \[start, homebrew\]$/m);
   });
 
   // `released`, as update-publish.yml: a release published as a full release, or a pre-release
@@ -807,7 +807,11 @@ describe("homebrew.yml", () => {
       .replace(/^ {2}TAG: .*$/m, "")
       .replace(/^ {2}group: .*$/m, "")
       .replace(/^ {4}if: github\.event_name == 'release' && .*$/m, "")
-      .replace(/^ {6}github\.event_name == 'workflow_dispatch' &&$/m, "");
+      .replace(/^ {6}github\.event_name == 'workflow_dispatch' &&$/m, "")
+      .replace(
+        /^ {6}\(github\.event_name == 'release' \|\| github\.ref == 'refs\/heads\/main'\) &&$/m,
+        "",
+      );
     expect(outside).not.toMatch(/github\.event|GITHUB_EVENT|event_name/);
   });
 
@@ -820,14 +824,19 @@ describe("homebrew.yml", () => {
     );
   });
 
-  it("the failure report runs only when the macOS release is enabled, here, from main", () => {
-    const cond = condition(job("failure"));
-    expect(cond).toContain(
-      "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
-        "github.ref == 'refs/heads/main'",
+  // A start that fails (a malformed tag, a dispatch GitHub refuses) leaves the tap stale, as
+  // 0.1.9 and 0.1.10 were left; so it is reported as a failed push is, by the same job, as
+  // update-publish.yml reports its start. On the release event that job runs the tag's copy, and
+  // holds only issues: write.
+  it("the failure report covers start and the push, when the macOS release is enabled, here", () => {
+    expect(condition(job("failure"))).toBe(
+      "failure() && vars.RELEASE_ENABLED == 'true' && " +
+        "github.repository == 'vimma-browser/vimma' && " +
+        "(github.event_name == 'release' || github.ref == 'refs/heads/main') && " +
+        "vars.MACOS_RELEASE_ENABLED == 'true'",
     );
-    expect(cond).not.toMatch(/refs\/tags|event_name/);
-    expect(cond).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
+    expect(job("failure")).toMatch(/^ {4}permissions:\n {6}issues: write(?: #.*)?\n {4}[a-z]/m);
+    expect(job("failure")).not.toMatch(/environment:|secrets\.|actions\/checkout|node |npm /);
   });
 
   // The release event's run executes this file as the tag has it; its one job may start a

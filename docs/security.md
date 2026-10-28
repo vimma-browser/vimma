@@ -1789,15 +1789,19 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   its version against the tag, and with signing on checks `SHA256SUMS-macos` against
   `IDENTITY_REGEXP` before it pushes over SSH to github.com, whose host key is pinned. It pushes
   only `Casks/vimma.rb`, never with `--force`, and never replaces a newer cask with an older one.
-  Two jobs start it, each holding only `actions: write`, no environment and no secret, and
-  running no repository code: `homebrew.yml`'s own `start` job, which a published release
+  Two jobs start it, each, as `main` has it, holding only `actions: write`, no environment and no
+  secret, and running no repository code: `homebrew.yml`'s own `start` job, which a published release
   (`released`, never a pre-release) runs, and `release.yml`'s `macos-tap` job, which runs when the
   macOS files reach the release. Each starts `homebrew.yml` on `main` with the tag only once
   `vimma.rb` is on the published release, so whichever of the publish and the macOS files comes
-  last starts the push. `start` runs the tag's copy of `homebrew.yml`, so it is bounded by what its
-  token can do, not by what the file says: the most an edited copy can do is start `main`'s copy
-  of a workflow, which checks everything again; it cannot reach the tap's key. `start` checks the
-  tag's form before it fetches anything. The tap's key is a write deploy key of the tap alone, a secret
+  last starts the push. `start` runs the tag's copy of `homebrew.yml`, which anyone with write
+  access can edit on a tag of their own: an edited copy may ask for any permissions and read the
+  repository's and organisation's secrets, but it gets nothing a write-access user cannot already
+  get by pushing a branch. It cannot deploy to the `homebrew` environment, so it cannot reach the
+  tap's key. `start` checks the tag's form before it fetches anything. A failed `start` (a
+  malformed tag, a dispatch GitHub refuses) or a failed push opens or comments on the
+  `release-failure` issue from the `failure` job, which holds only `issues: write`, so the tap is
+  never left on an older release unnoticed. The tap's key is a write deploy key of the tap alone, a secret
   of the `homebrew` environment, which only `main` may use. No tag may deploy to it (as in B6): a
   tag ruleset restricts moving a tag, not creating one, and a run's workflow file and its `if:`
   come from its ref, so a tag on an unmerged commit could carry a `homebrew.yml` that skips every
@@ -1840,7 +1844,7 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`the start step dispatches main's copy once the cask is on the published release`](../tools/package/test/release-workflow.test.mjs),
   [`the start step refuses the tag %j before anything is fetched`](../tools/package/test/release-workflow.test.mjs),
   [`the homebrew job runs only by dispatch, when the macOS release is enabled, here, from main`](../tools/package/test/release-workflow.test.mjs),
-  [`the failure report runs only when the macOS release is enabled, here, from main`](../tools/package/test/release-workflow.test.mjs),
+  [`the failure report covers start and the push, when the macOS release is enabled, here`](../tools/package/test/release-workflow.test.mjs),
   [`a release without the cask is an error`](../tools/package/test/release-workflow.test.mjs),
   [`the download step refuses %s`](../tools/package/test/release-workflow.test.mjs),
   [`checks SHA256SUMS-macos's signature against the documented identity when signing is on`](../tools/package/test/release-workflow.test.mjs),
@@ -2100,9 +2104,14 @@ _Pages_ and _extensions_ cannot reach it.
 
 - UP7. A manifest is **only** signed by `update-publish.yml` run from `main`, and **only** for a
   release that is published (not a draft or a pre-release) and whose tag is on `main`, or as an
-  empty manifest that offers nothing. Publishing a release starts a job that holds only
-  `actions: write` and runs no repository code; it starts the workflow again on `main`, so the
-  file that signs is always `main`'s, never a tag's. The signing job is the **only** job with
+  empty manifest that offers nothing. Publishing a release starts a job that, as `main` has it,
+  holds only `actions: write` and runs no repository code; it starts the workflow again on
+  `main`, so the file that signs is always `main`'s, never a tag's. That job runs the tag's copy
+  of the file, which anyone with write access can edit on a tag of their own: an edited copy may
+  ask for any permissions and read the repository's and organisation's secrets, but it gets
+  nothing a write-access user cannot already get by pushing a branch. It cannot deploy to the
+  `update-signing` or `update-publish` environment, so it cannot reach the signing key or the
+  deploy key. The signing job is the **only** job with
   `id-token: write`, uses the `update-signing` environment (deployment branch `main` alone), and
   runs no repository code: it checks the body's shape with the shell, signs the SHA-384
   DigestInfo with Cloud KMS and checks the signature with openssl. The job that builds the body

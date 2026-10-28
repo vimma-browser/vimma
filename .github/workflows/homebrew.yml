@@ -178,11 +178,14 @@ jobs:
             git push origin HEAD:main
           fi
 
+  # Reports a failed push, and a failed start (a malformed tag, a dispatch GitHub refused), which
+  # would otherwise leave the tap on the previous release unnoticed, as update-publish.yml reports
+  # its start. On the release event this is the tag's copy; it holds no secret and no environment.
   failure:
-    needs: homebrew
+    needs: [start, homebrew]
     if: >-
       failure() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
-      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'release' || github.ref == 'refs/heads/main') &&
       vars.MACOS_RELEASE_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
