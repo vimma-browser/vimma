@@ -408,10 +408,12 @@ esac
         'gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/homebrew.yml/dispatches" \\',
       );
       expect(start).toContain('-f ref=main -f "inputs[tag]=$TAG"');
-      // homebrew.yml has no release trigger (a tag must not reach its key): a draft published
-      // after its macOS files is started by hand, from main
-      expect(start).toContain("gh workflow run homebrew.yml -f tag=$TAG");
-      expect(start).not.toMatch(/publishing it starts/);
+      // a draft published after its macOS files: homebrew.yml's start job, which publishing
+      // runs, starts the tap push then; nothing is left to start by hand
+      expect(start).toContain(
+        'echo "::notice::$TAG is a draft; publishing it starts homebrew.yml, which pushes the cask"',
+      );
+      expect(start).not.toContain("gh workflow run homebrew.yml");
     });
 
     // Spec macos-homebrew, decision 16: the macOS update manifest needs the .dmg on a published
@@ -777,37 +779,173 @@ describe("homebrew.yml", () => {
   const job = (id) => /** @type {string} */ (all.get(id) ?? "");
   const FETCH = "Download the published release's cask";
 
-  it("has the homebrew job and its failure report", () => {
-    expect([...all.keys()]).toEqual(["homebrew", "failure"]);
-    expect(job("failure")).toMatch(/^ {4}needs: homebrew$/m);
+  it("has the start job, the homebrew job and its failure report", () => {
+    expect([...all.keys()]).toEqual(["start", "homebrew", "failure"]);
+    expect(job("failure")).toMatch(/^ {4}needs: \[start, homebrew\]$/m);
   });
 
-  // A release event's ref is its tag, and anyone with write access can create a tag on an
-  // unmerged commit with an edited copy of this file: only main may reach the homebrew
-  // environment's key (docs/security.md, B6 and B11).
-  it("runs only by dispatch with a tag, never for a release event or a tag ref", () => {
+  // `released`, as update-publish.yml: a release published as a full release, or a pre-release
+  // promoted to one; never a pre-release, which the tap's users must not be offered.
+  it("runs when a release is published, or by dispatch with a tag; never on a push or a PR", () => {
     const on = triggersOf(file);
-    expect(on).toMatch(/^on:\n {2}workflow_dispatch:\n {4}inputs:\n {6}tag:\n/m);
-    expect(on).not.toMatch(
-      /release:|pull_request|push:|schedule:|workflow_run:|repository_dispatch/,
+    expect(on).toMatch(
+      /^on:\n {2}release:\n {4}types: \[released\]\n {2}workflow_dispatch:\n {4}inputs:\n {6}tag:\n/m,
     );
-    expect(file).not.toMatch(/github\.event\.release|GITHUB_EVENT_NAME|event_name/);
-    expect(file).toMatch(/^env:\n {2}TAG: \$\{\{ inputs\.tag \}\}$/m);
+    expect(on).not.toMatch(/pull_request|push:|schedule:|workflow_run:|repository_dispatch/);
+    expect(file).toMatch(
+      /^env:\n {2}TAG: \$\{\{ github\.event\.release\.tag_name \|\| inputs\.tag \}\}$/m,
+    );
     expect(file).toMatch(/^permissions: \{\}$/m);
   });
 
-  it.each(["homebrew", "failure"])(
-    "job %s runs only when the macOS release is enabled, here, from main",
-    (id) => {
-      const cond = condition(job(id));
-      expect(cond).toContain(
-        "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
-          "github.ref == 'refs/heads/main'",
+  // A release event's ref is its tag, and anyone with write access can create a tag on an
+  // unmerged commit with an edited copy of this file: the release event's run only starts main's
+  // copy, and only main's copy may reach the homebrew environment's key (docs/security.md, B6 and
+  // B11). The event is read only in the jobs' conditions, the env and the concurrency group.
+  it("reads the release event nowhere but the start condition, TAG and the concurrency group", () => {
+    const outside = file
+      .replace(/^ {2}TAG: .*$/m, "")
+      .replace(/^ {2}group: .*$/m, "")
+      .replace(/^ {4}if: github\.event_name == 'release' && .*$/m, "")
+      .replace(/^ {6}github\.event_name == 'workflow_dispatch' &&$/m, "")
+      .replace(
+        /^ {6}\(github\.event_name == 'release' \|\| github\.ref == 'refs\/heads\/main'\) &&$/m,
+        "",
       );
-      expect(cond).not.toMatch(/refs\/tags|event_name/);
-      expect(cond).toContain("vars.MACOS_RELEASE_ENABLED == 'true'");
+    expect(outside).not.toMatch(/github\.event|GITHUB_EVENT|event_name/);
+  });
+
+  it("the homebrew job runs only by dispatch, when the macOS release is enabled, here, from main", () => {
+    const cond = condition(job("homebrew"));
+    expect(cond).toBe(
+      "github.event_name == 'workflow_dispatch' && " +
+        "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
+        "github.ref == 'refs/heads/main' && vars.MACOS_RELEASE_ENABLED == 'true'",
+    );
+  });
+
+  // A start that fails (a malformed tag, a dispatch GitHub refuses) leaves the tap stale, as
+  // 0.1.9 and 0.1.10 were left; so it is reported as a failed push is, by the same job, as
+  // update-publish.yml reports its start. On the release event that job runs the tag's copy, and
+  // holds only issues: write.
+  it("the failure report covers start and the push, when the macOS release is enabled, here", () => {
+    expect(condition(job("failure"))).toBe(
+      "failure() && vars.RELEASE_ENABLED == 'true' && " +
+        "github.repository == 'vimma-browser/vimma' && " +
+        "(github.event_name == 'release' || github.ref == 'refs/heads/main') && " +
+        "vars.MACOS_RELEASE_ENABLED == 'true'",
+    );
+    expect(job("failure")).toMatch(/^ {4}permissions:\n {6}issues: write(?: #.*)?\n {4}[a-z]/m);
+    expect(job("failure")).not.toMatch(/environment:|secrets\.|actions\/checkout|node |npm /);
+  });
+
+  // The release event's run executes this file as the tag has it; its one job may start a
+  // workflow and nothing else: no environment, no secret, no repository code.
+  it("a published release only starts the tap push on main", () => {
+    const start = job("start");
+    expect(condition(start)).toBe(
+      "github.event_name == 'release' && github.repository == 'vimma-browser/vimma'",
+    );
+    expect(start).toMatch(/^ {4}permissions:\n {6}actions: write(?: #.*)?\n {4}[a-z]/m);
+    expect(start).not.toMatch(/environment:|secrets\.|actions\/checkout|setup-node|node |npm /);
+    const run = runOf(start, "Start the tap push on main");
+    expect(run).toContain("[[ $TAG =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]");
+    expect(run).toContain(
+      'if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma.rb"; then',
+    );
+    expect(run).toContain(
+      'gh workflow run homebrew.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"',
+    );
+    expect(run.indexOf("=~")).toBeLessThan(run.indexOf("curl"));
+    expect(run.indexOf("curl")).toBeLessThan(run.indexOf("gh workflow run"));
+  });
+
+  /**
+   * Runs the start step with stub `curl` and `gh`; curl finds vimma.rb when `cask` is true, and
+   * gh logs its arguments.
+   * @param {{ tag?: string, cask?: boolean, release?: string, macos?: string }} options
+   */
+  const startWith = ({ tag = "v0.1.11", cask = true, release = "true", macos = "true" }) => {
+    const dir = mkdtempSync(join(tmpdir(), "homebrew-start-"));
+    try {
+      execFileSync("mkdir", ["-p", join(dir, "bin")]);
+      const log = join(dir, "log");
+      writeFileSync(log, "");
+      writeFileSync(
+        join(dir, "bin", "curl"),
+        `#!/bin/sh\necho "curl $*" >> "${log}"\n${cask ? "exit 0" : "exit 22"}\n`,
+        { mode: 0o755 },
+      );
+      writeFileSync(join(dir, "bin", "gh"), `#!/bin/sh\necho "gh $*" >> "${log}"\n`, {
+        mode: 0o755,
+      });
+      const result = spawnSync(
+        "bash",
+        ["-e", "-c", runOf(job("start"), "Start the tap push on main")],
+        {
+          cwd: dir,
+          encoding: "utf8",
+          env: {
+            PATH: `${join(dir, "bin")}:${process.env.PATH}`,
+            TAG: tag,
+            GITHUB_REPOSITORY: "vimma-browser/vimma",
+            RELEASE_ENABLED: release,
+            MACOS_RELEASE_ENABLED: macos,
+            GITHUB_STEP_SUMMARY: join(dir, "summary"),
+          },
+        },
+      );
+      return { ...result, log: readFileSync(log, "utf8") };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("the start step dispatches main's copy once the cask is on the published release", () => {
+    const result = startWith({});
+    expect(result.status).toBe(0);
+    expect(result.log).toBe(
+      "curl -fsSIL --proto =https -o /dev/null https://github.com/vimma-browser/vimma/releases/download/v0.1.11/vimma.rb\n" +
+        "gh workflow run homebrew.yml --repo vimma-browser/vimma --ref main -f tag=v0.1.11\n",
+    );
+  });
+
+  // The macOS files usually reach the release after it is published; macos-tap starts the push.
+  it("the start step leaves a release without the cask to release.yml's macos-tap", () => {
+    const result = startWith({ cask: false });
+    expect(result.status).toBe(0);
+    expect(result.log).not.toContain("gh ");
+    expect(result.stdout).toContain("::notice::");
+    expect(result.stdout).toContain("macos-tap");
+  });
+
+  it.each([
+    ["RELEASE_ENABLED is not true", { release: "" }],
+    ["MACOS_RELEASE_ENABLED is not true", { macos: "false" }],
+  ])("the start step does nothing, green, when %s", (_, options) => {
+    const result = startWith(options);
+    expect(result.status).toBe(0);
+    expect(result.log).toBe("");
+    expect(result.stdout).toContain("::notice::");
+  });
+
+  it.each(["v0.1", "v0.1.11-rc1", "0.1.11", "v0.1.11\n", "v0.1.11; true"])(
+    "the start step refuses the tag %j before anything is fetched",
+    (tag) => {
+      const result = startWith({ tag });
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toContain("::error::");
+      expect(result.log).toBe("");
     },
   );
+
+  // GitHub keeps one pending run per concurrency group: the release event's run, which only
+  // starts another, has a group of its own, so it never waits behind or replaces a tap push.
+  it("runs one tap push per tag at a time, the release event's run apart", () => {
+    expect(file).toMatch(
+      /^concurrency:\n {2}group: homebrew-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event\.release\.tag_name \|\| inputs\.tag \}\}\n {2}cancel-in-progress: false$/m,
+    );
+  });
 
   // releases/download/<tag>/ serves a published release's assets only: a draft's are a 404, so
   // the job cannot push a draft's cask even when started by hand for its tag.

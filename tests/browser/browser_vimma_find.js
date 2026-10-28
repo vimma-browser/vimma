@@ -260,7 +260,12 @@ add_task(async function not_found_shows_and_n_N_are_harmless() {
     await assertBackInNormal(browser, "a failed find");
     await TestUtils.waitForCondition(() => findStatus()?.notFound, "the status says not found");
     const segment = () => document.querySelector('#vimma-statusbar [data-segment="find"]');
-    await TestUtils.waitForCondition(() => segment(), "the find segment is rendered");
+    // The bar renders on the next animation frame, after the status: typing already rendered
+    // the segment as "/zzzqqq", so wait for the frame that adds "not found".
+    await TestUtils.waitForCondition(
+      () => segment()?.textContent === "/zzzqqq not found",
+      "the find segment is rendered",
+    ).catch(() => {});
     Assert.equal(segment()?.textContent, "/zzzqqq not found", "the status bar shows it");
     Assert.equal(await pageScrollY(browser), y, "a failed find does not move the page");
 
