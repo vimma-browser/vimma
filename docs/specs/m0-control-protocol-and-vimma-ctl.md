@@ -223,9 +223,9 @@ are sent.
   in progress), and in a new window before it has started to load its first page: a window is
   listed as soon as it opens, while its tabs still show their initial empty document. It is
   `false` once the page has loaded or stopped, and for an unloaded tab (restored on demand or
-  discarded), which `state` leaves without a browser. It names no page, so a private window keeps it;
-  there it is the only sign that the start page has loaded. Added without a version bump, like
-  `panes`: a client that waits on it treats a missing `loading` as not loaded.
+  discarded), which `state` leaves without a browser. It names no page, so a private window
+  keeps it; there it is the only sign that the start page has loaded. Added without a version
+  bump, like `panes`: a client that waits on it treats a missing `loading` as not loaded.
 - `panes`: the pane tree once split view exists (M3), `null` before. Its shape is that spec's to
   define; it is added without a version bump because clients ignore what they do not know.
   Since m3-workspaces sub-spec 7: `null` while the window shows one pane, else
