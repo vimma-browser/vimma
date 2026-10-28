@@ -273,6 +273,9 @@ async function ask(conn, command, what, state, rid, until, always = false) {
   }
 }
 
+/** Whether the page in `tab` is loading no document now. @param {Tab} tab */
+const notLoading = (tab) => !(tab.linkedBrowser.webProgress?.isLoadingDocument ?? true);
+
 /** @param {any} browser  the id of its top document */
 const docOf = (browser) => browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
 
@@ -360,6 +363,101 @@ function within(ms, promise) {
       throw new AgentError("failed", "reading the page took too long");
     }),
   ]);
+}
+
+/**
+ * The element list of `tab`'s page as `agent-elements` makes it (mcp-forms F2-F7; security.md
+ * M25, M31), for that command and for a step asked with `elements` (issue #584), so both are
+ * one code path. `still` runs once the list is made and throws when the tab is no longer as
+ * asked (M8); only after it do the labels become the connection's (M25).
+ * @param {ConnId} conn @param {Tab} tab @param {() => void} still
+ * @returns {Promise<{ elements: string, dropped: number } | { refused: string }>}
+ */
+async function pageElements(conn, tab, still) {
+  // Where the page is scrolled before the list is made: labels are drawn on a screenshot only
+  // while it has not moved since (F20).
+  const scroll = await VimmaActors.scrollPosition(tab.linkedBrowser);
+  let listed;
+  try {
+    listed = await AgentAct.elements(tab);
+  } catch (e) {
+    // Fixed text: an error's message could carry the page's words past the untrusted header.
+    console.error("vimma agent-elements:", e);
+    listed = { refused: "Vimma could not list this page's elements" };
+  }
+  if ("refused" in listed) return listed;
+  still();
+  AgentDrive.remember(conn, tab.linkedBrowser, listed.labels, "elements", scroll);
+  return { elements: listed.elements, dropped: listed.dropped };
+}
+
+/**
+ * Takes a slot of the connection's `agent-elements` rate for a step asked with `elements`
+ * (issue #584; mcp-forms F26): counted when asked, as a list of its own, so returning the list
+ * with a step is no way past the rate. Refused as `busy` before anything else of the step.
+ * @param {ConnId} conn @param {string} tool @param {object} what
+ */
+function takeListSlot(conn, tool, what) {
+  if (elementCalls.take(conn, Date.now())) return;
+  AgentGate.note(conn, tool, what, "busy");
+  const message = "too many vimma_elements calls from this agent in the last minute";
+  throw new AgentError("denied", message, "busy");
+}
+
+/**
+ * A step's element list, asked with `elements` (issue #584): the page in `tab` after the step,
+ * once `ready` says it is, listed as `agent-elements` lists it, with the tab's URL and title as
+ * they were at the last check that it is still the agent's (M8); or, with that URL and title,
+ * why there is no list, in STEP_UNLISTED's words: `loading`, `changed` (the page's URL changed
+ * while it was listed) or `failed`. A tab that left the agent workspace or closed meanwhile is a
+ * `failed` refusal that says nothing of its page, noted in `:mcp log` (M23).
+ * @param {ConnId} conn @param {string} tool @param {object} what  the step's, for the log
+ * @param {AgentWorkspace} agent @param {Win} win @param {Tab} tab
+ * @param {() => Promise<boolean>} ready
+ * @returns {Promise<{ url: string, title: string }
+ *   & ({ elements: string, dropped: number } | { unlisted: string })>}
+ */
+async function stepList(conn, tool, what, agent, win, tab, ready) {
+  /** The tab's page now, after checking that it is still an agent tab; or the refusal. */
+  const page = () => {
+    const now = WorkspaceStore.agent;
+    const still =
+      !!now &&
+      now.id === agent.id &&
+      now.userContextId === agent.userContextId &&
+      !win.closed &&
+      isAgentTab(win, tab, agent);
+    if (!still) {
+      AgentGate.note(conn, tool, what, "stopped", "changed");
+      throw new AgentError("failed", "the tab left the agent workspace before its page was listed");
+    }
+    return {
+      url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
+      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+    };
+  };
+  if (!(await ready())) return { ...page(), unlisted: "loading" };
+  const before = page();
+  const url = tabUrl(tab);
+  /** @type {{ url: string, title: string } | null} */
+  let after = null;
+  let moved = false;
+  const listed = await pageElements(conn, tab, () => {
+    after = page();
+    if (tabUrl(tab) !== url) {
+      moved = true;
+      throw new Error("moved");
+    }
+  }).catch((e) => {
+    if (moved) return null;
+    throw e;
+  });
+  if (!listed) return { ...(after ?? before), unlisted: "changed" };
+  if ("refused" in listed) {
+    AgentGate.note(conn, tool, what, "failed", "unlisted");
+    return { ...page(), unlisted: "failed" };
+  }
+  return { .../** @type {{ url: string, title: string }} */ (after ?? before), ...listed };
 }
 
 /**
@@ -542,7 +640,7 @@ const COMMANDS = {
   },
 
   /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
-  async "agent-open"(conn, state, { url, tab: id }, rid) {
+  async "agent-open"(conn, state, { url, tab: id, elements = false }, rid) {
     const agent = agentWorkspace();
     const uri = agentUri(url);
     const into = id === undefined ? null : findAgentTab(agent, id);
@@ -552,18 +650,54 @@ const COMMANDS = {
       url: uri.spec,
       host: uri.host,
       ...(current ? { tab: current.tab, title: current.title, current: current.url } : {}),
+      ...(elements ? { elements: true } : {}),
     };
+    if (elements) takeListSlot(conn, "vimma_open", what);
     await ask(conn, "agent-open", what, state, rid);
     if (!opens.take(conn, Date.now())) {
       throw new AgentError("denied", "too many opens from this agent in the last minute", "busy");
     }
     const principal = agentPrincipal(agent.userContextId);
+    /**
+     * The open's result: with `elements`, once the page it loaded is ready, its list too.
+     * @param {Win} win @param {Tab} tab @param {number} before  the top document it replaces
+     */
+    const opened = async (win, tab, before, from = "") => {
+      if (!elements) return { tab: tabId(tab) };
+      const browser = tab.linkedBrowser;
+      const until = Date.now() + LOAD_TIMEOUT_MS;
+      // A URL that differs from the page's only by its fragment stays in the same document.
+      const unhashed = (/** @type {string} */ u) => u.replace(/#.*$/s, "");
+      const sameDocument = uri.spec.includes("#") && unhashed(uri.spec) === unhashed(from);
+      // A tab closed during the wait ends it at once: stepList then refuses it.
+      /** @type {() => void} */
+      let unlisten = () => {};
+      const closed = new Promise((resolve) => {
+        const onClose = () => resolve(false);
+        tab.addEventListener("TabClose", onClose, { once: true });
+        unlisten = () => tab.removeEventListener("TabClose", onClose);
+      });
+      const list = await stepList(conn, "vimma_open", what, agent, win, tab, () =>
+        Promise.race([
+          AgentAct.ready(
+            browser,
+            (/** @type {any} */ wg) =>
+              !wg.isInitialDocument &&
+              (wg.innerWindowId !== before || (sameDocument && tabUrl(tab) === uri.spec)),
+            until,
+          ),
+          /** @type {Promise<boolean>} */ (closed),
+        ]),
+      ).finally(unlisten);
+      return { tab: tabId(tab), ...list };
+    };
     if (current) {
-      const { tab } = stillAsAsked(agent, current.tab, current.url);
+      const { win, tab } = stillAsAsked(agent, current.tab, current.url);
+      const before = docOf(tab.linkedBrowser);
       // A download of this load is this connection's (decision 31): its grant covers it.
       AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
       tab.linkedBrowser.loadURI(uri, { triggeringPrincipal: principal });
-      return { tab: tabId(tab) };
+      return opened(win, tab, before, current.url);
     }
     const now = WorkspaceStore.agent;
     if (!now || now.id !== agent.id || now.userContextId !== agent.userContextId)
@@ -584,7 +718,7 @@ const COMMANDS = {
       }),
     );
     AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
-    return { tab: tabId(tab) };
+    return opened(win, tab, 0);
   },
 
   /**
@@ -807,24 +941,12 @@ const COMMANDS = {
     if (!tab.linkedPanel || tab.hasAttribute("pending")) {
       await loadedPage(win, tab, what.url, agent.userContextId);
     }
-    // Where the page is scrolled before the list is made: labels are drawn on a screenshot only
-    // while it has not moved since (F20).
-    const scroll = await VimmaActors.scrollPosition(tab.linkedBrowser);
-    let listed;
-    try {
-      listed = await AgentAct.elements(tab);
-    } catch (e) {
-      // Fixed text: an error's message could carry the page's words past the untrusted header.
-      console.error("vimma agent-elements:", e);
-      listed = { refused: "Vimma could not list this page's elements" };
-    }
+    // Only once the tab is as asked: a list of a page that moved on leaves no labels (M25).
+    const listed = await pageElements(conn, tab, still);
     if ("refused" in listed) {
       AgentGate.note(conn, "vimma_elements", what, "failed");
       throw new AgentError("failed", listed.refused);
     }
-    still();
-    // Only once the tab is as asked: a list of a page that moved on leaves no labels (M25).
-    AgentDrive.remember(conn, tab.linkedBrowser, listed.labels, "elements", scroll);
     // A page sets its URL and title: capped, so the reply stays within its 1 MiB line.
     return {
       url: wf(cut(what.url, ELEMENTS_URL_MAX).text),
@@ -842,7 +964,7 @@ const COMMANDS = {
    * scrolled since.
    * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
    */
-  async "agent-screenshot"(conn, state, { tab: id, labels = false }, rid) {
+  async "agent-screenshot"(conn, state, { tab: id, labels = false, full = false }, rid) {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id);
     const what = { ...describeTab(asked.tab), index: asked.index };
@@ -885,7 +1007,7 @@ const COMMANDS = {
     }
     let shot;
     try {
-      shot = await AgentShot.capture(win, tab, drawn);
+      shot = await AgentShot.capture(win, tab, drawn, full);
     } catch (e) {
       // Fixed text: an error's message could carry the page's words past the untrusted header.
       console.error("vimma agent-screenshot:", e);
@@ -967,11 +1089,17 @@ const COMMANDS = {
    * tab the user is using is `in-use` (F27).
    * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
    */
-  async "agent-activate"(conn, state, { tab: id, label }, rid) {
+  async "agent-activate"(conn, state, { tab: id, label, elements = false }, rid) {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id);
     const browser = asked.tab.linkedBrowser;
-    const base = { ...describeTab(asked.tab), index: asked.index, label, detail: label };
+    const base = {
+      ...describeTab(asked.tab),
+      index: asked.index,
+      label,
+      detail: label,
+      ...(elements ? { elements: true } : {}),
+    };
     /**
      * A refusal outside the gate goes into `:mcp log` too (M23, M32).
      * @param {any} outcome @param {unknown} error @param {object} [what]
@@ -985,6 +1113,7 @@ const COMMANDS = {
       const message = "too many vimma_activate calls from this agent in the last minute";
       throw refuse("busy", new AgentError("denied", message, "busy"));
     }
+    if (elements) takeListSlot(conn, "vimma_activate", base);
     if (inUse(browser)) throw refuse("in-use", denied("in-use"));
     const found = AgentDrive.element(conn, browser, label);
     if ("refused" in found) throw refuse("failed", new AgentError("failed", found.refused));
@@ -1073,9 +1202,14 @@ const COMMANDS = {
       AgentGate.note(conn, "vimma_activate", stopped, "stopped", "unasked submission");
     }
     if (result.stopped) AgentGate.note(conn, "vimma_activate", what, "stopped", result.stopped);
+    // The page the click left, once it is ready: a page still loading is not listed (#584).
+    const list = elements
+      ? await stepList(conn, "vimma_activate", what, agent, win, tab, async () => notLoading(tab))
+      : null;
     return {
       url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      ...list,
       loading: result.loading,
       navigated: result.navigated,
       ...(result.dialog ? { dialog: result.dialog } : {}),
@@ -1093,12 +1227,17 @@ const COMMANDS = {
    * user is using is `in-use` (F27). Fills share the clicks' rate (F26).
    * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
    */
-  async "agent-fill"(conn, state, { tab: id, fields, submit: submitArg }, rid) {
+  async "agent-fill"(conn, state, { tab: id, fields, submit: submitArg, elements = false }, rid) {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id);
     const browser = asked.tab.linkedBrowser;
     const labels = fields.map((/** @type {any} */ f) => f.label).join(" ");
-    const base = { ...describeTab(asked.tab), index: asked.index, detail: labels };
+    const base = {
+      ...describeTab(asked.tab),
+      index: asked.index,
+      detail: labels,
+      ...(elements ? { elements: true } : {}),
+    };
     /**
      * A refusal outside the gate goes into `:mcp log` too (M23, M32).
      * @param {any} outcome @param {unknown} error @param {object} [what] @param {string} [why]
@@ -1113,6 +1252,7 @@ const COMMANDS = {
         "too many vimma_activate and vimma_fill calls from this agent in the last minute";
       throw refuse("busy", new AgentError("denied", message, "busy"));
     }
+    if (elements) takeListSlot(conn, "vimma_fill", base);
     if (inUse(browser)) throw refuse("in-use", denied("in-use"));
     /** @type {{ label: string, target: any, value: string | boolean, name: string,
      *   field: import("../core/agent-act.mjs").FillTarget }[]} */
@@ -1297,9 +1437,14 @@ const COMMANDS = {
     }
     if (result.blocked) noteBlocked(result.blocked);
     if (result.stopped) AgentGate.note(conn, "vimma_fill", what, "stopped", result.stopped);
+    // The page after the fill, once it is ready: a page still loading is not listed (#584).
+    const list = elements
+      ? await stepList(conn, "vimma_fill", what, agent, win, tab, async () => notLoading(tab))
+      : null;
     return {
       url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      ...list,
       filled: result.filled,
       ...(result.reset ? { reset: result.reset } : {}),
       loading: result.loading,

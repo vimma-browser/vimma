@@ -1,0 +1,14 @@
+{
+  "description": "elements is a flag, never a selector of what to list",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 12,
+    "command": "agent-activate",
+    "args": {
+      "tab": "12",
+      "label": "sd",
+      "elements": "form"
+    }
+  }
+}

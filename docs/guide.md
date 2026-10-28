@@ -1649,6 +1649,13 @@ focus and hint mode.
 - **A grant covers it:** each call then shows
   `claude-code listed the buttons and fields of "Sign up · Example" (grant, 12m left)`. The list
   holds no page text beyond the elements' own. At most 30 calls a minute; each is in `:mcp log`.
+- **With a step, in one call.** An agent can ask `vimma_open`, `vimma_activate` or `vimma_fill`
+  for the page's list too (`elements`), so it does not need a second call to see the page after
+  its step; `vimma_open` then waits until the page is ready. The list is made exactly as
+  `vimma_elements` makes it, with the same rules for secrets, and counts as one of its 30 calls
+  a minute. The step's question ends with `, then vimma_elements`, and its notice under a grant
+  with `and listed the buttons and fields after it`. A page still loading, or one that changed
+  while it was listed, is not listed; the agent is told so and lists it itself.
 
 #### Clicking on a page
 
@@ -1740,9 +1747,11 @@ soon as its last field is set.
 `vimma_screenshot` lets an agent see what an agent tab shows, to check the effect of a click or
 a fill. The question names the tab,
 `◇ claude-code wants vimma_screenshot: 2 "Sign up · Example" example.com/signup`, and on `y`
-the agent gets an image of the tab's viewport (what you would see with the tab selected), at
-most 1,280 pixels wide, taken in the background: the tab is not selected or shown, and your
-window keeps its workspace, tab and mode. With `labels`, the labels of the agent's last
+the agent gets an image of the tab's viewport (what you would see with the tab selected), taken
+in the background: the tab is not selected or shown, and your window keeps its workspace, tab and
+mode. The image is at most 1,024 pixels wide, as a PNG or a JPEG, whichever is smaller, which
+keeps the cost of a screenshot to the agent down; with `full`, it is at most 1,280 pixels wide
+and a PNG when that fits. With `labels`, the labels of the agent's last
 `vimma_elements` list of that page are drawn on it in your theme's hint colours, while the page
 has not scrolled since.
 

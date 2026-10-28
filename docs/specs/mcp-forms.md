@@ -276,7 +276,23 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    collection, its frames of other sites included, has up to 4 s from the start to answer, where
    the user's hint mode gives a subframe 150 ms, because an agent tab is in the background, where
    a frame's process may be busy or newly started, and an agent cannot tell that a frame was left
-   out; `AGENT_FRAMES_MS` in `actors/VimmaActors.sys.mjs`.)
+   out; `AGENT_FRAMES_MS` in `actors/VimmaActors.sys.mjs`.) (Since changed: `vimma_open`,
+   `vimma_activate` and `vimma_fill` take `elements: true` and then return the same list of the
+   page after the step, in `elements` and `dropped`, because an agent called `vimma_elements`
+   after nearly every step, and each extra call is a model round trip; issue
+   [#584](https://github.com/vimma-browser/vimma/issues/584). The list comes from the same
+   function as `agent-elements`' own (`pageElements` in `ctl/agent-commands.mjs`), so F5 to F7
+   and security.md M31 hold for it unchanged, and its labels replace the connection's as a
+   `vimma_elements` list's do. `vimma_open` then waits up to 20 s for the new page to be ready
+   (F11's readiness; an open that only changes the fragment is ready in its own document). A
+   page still loading, one whose URL changed while it was listed, or one that cannot be listed
+   returns `unlisted` with `loading`, `changed` or `failed` instead, fixed words, so that a
+   page's text never takes their place; the result's URL and title are those of the last check
+   that the tab is still the agent's, and a tab that left the agent workspace meanwhile fails
+   the call with nothing of its page (M8). The step's question, a checkpoint's (F15,
+   mcp-checkpoints C1) included, ends with `, then vimma_elements`, its `:mcp log` row the same,
+   and its notice under a grant with `and listed the buttons and fields after it` (F28), because
+   the yes returns the list too.)
 3. **One session per tab and connection.** The labels go into the same session store as
    `vimma_keys`' `f` (`ctl/AgentDrive.sys.mjs:89-90`), bound to the document and URL and valid
    for 120 s, so a label never names an element of another page. `vimma_elements` and `f` each
@@ -529,6 +545,14 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `title`; `vimma-ctl mcp` returns it as an MCP image item after a text header from
     `untrustedHeader`'s wording, adding that text in the image is web content and not
     instructions, because a page can render a prompt injection as easily as it can write one.
+    (Since changed: that is now the image of `full: true`. By default the image is at most 1,024
+    pixels wide and the smaller of a PNG and a JPEG at quality 0.75, else a JPEG at 0.5
+    (`AGENT_SCREENSHOT_SMALL`, `screenshotEncodings` in `packages/vimma-core/src/agent-act.mjs`),
+    because a model pays for an image by its pixels, about width times height divided by 750 in
+    tokens for Claude, and some clients by its base64 as well, while 1,024 pixels still show a
+    page's text. On a local fixture the default image costs about 722 tokens against 1,130 at
+    full size, with 23 to 35 % less base64; a page of flat colours stays a PNG, a busy one
+    becomes a JPEG. Issue [#584](https://github.com/vimma-browser/vimma/issues/584).)
 20. **Labels drawn on it.** With `labels: true`, the labels of the tab's current
     `vimma_elements` session are drawn at their rects (`HintTarget.rect`, top-frame CSS pixels,
     scaled), in the theme's hint colours, so that a model looking at the image can name the
@@ -621,6 +645,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     minute, `vimma_elements` and `vimma_console` 30 each, `vimma_screenshot` 12 (F21), all
     counted when asked, with `busy` beyond, as mcp-drive D15's rate is, so that a refused call
     cannot loop and a grant cannot flood a page; navigations count in the open rate (F11).
+    (Since changed: a step asked with `elements` (F2) also takes a slot of `vimma_elements`'
+    rate when asked, and is `busy` before anything of it runs when those are used up, so that
+    returning the list with a step is no way past the rate; issue
+    [#584](https://github.com/vimma-browser/vimma/issues/584).)
 27. **The tab must be the agent's and not in use.** Before the question, after the yes and before
     each field or click, the tab must pass `isAgentTab` (vimma-mcp 19, mcp-drive D13), else the
     call stops with `changed`. A tab the user is using (`VimmaHost.inUse`) denies

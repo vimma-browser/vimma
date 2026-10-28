@@ -319,6 +319,8 @@ function checkpointLine(q, who) {
       parts.push(...sentParts(sent, "  "));
     }
   }
+  // Issue #584: its yes also returns the page's element list after the step.
+  if (w.elements === true) parts.push({ text: ", then vimma_elements" });
   return { parts, hint: pay ? "y pay · n stop" : "y send it · n stop" };
 }
 
@@ -475,6 +477,8 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
     } else {
       parts = [...head, ...tabParts(w)];
     }
+    // Issue #584: a step that returns the page's element list asks for that list too.
+    if (w.elements === true) parts.push({ text: ", then vimma_elements" });
   }
   return { parts, hint, label: parts.map((p) => p.text).join("") };
 }
@@ -573,7 +577,9 @@ export function ranNotice(q, until, now) {
                           : q.tool === DOWNLOAD_TOOL
                             ? `downloads "${cutTitle(w.name)}"`
                             : `used ${q.tool}`;
-  return `${clientName(q.label)} ${did} (grant${until === Infinity ? "" : `, ${left}m left`})`;
+  const listed = w.elements === true ? " and listed the buttons and fields after it" : "";
+  const grant = `(grant${until === Infinity ? "" : `, ${left}m left`})`;
+  return `${clientName(q.label)} ${did}${listed} ${grant}`;
 }
 
 /**

@@ -15,7 +15,13 @@
 // `in-use`, and while one of them runs a screenshot is refused. agent-commands.mjs asked first
 // and checks the tab again afterwards.
 
-import { AGENT_SCREENSHOT, screenshotLabels, screenshotScale } from "../core/agent-act.mjs";
+import {
+  AGENT_SCREENSHOT,
+  AGENT_SCREENSHOT_SMALL,
+  screenshotEncodings,
+  screenshotLabels,
+  screenshotScale,
+} from "../core/agent-act.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
@@ -113,22 +119,30 @@ function hintColours(win) {
 }
 
 /**
- * The image in the first encoding whose base64 is at most `max` characters (F19): PNG, else
- * JPEG at each quality in turn; null when none fits.
+ * The image in an encoding whose base64 is at most `max` characters (F19; issue #584): the
+ * smallest of screenshotEncodings' `smallest` (a full image: PNG; the default one: PNG or
+ * JPEG), else the first of its `then` that fits; null when none fits.
  * @param {any} canvas  an OffscreenCanvas
- * @param {number} max
+ * @param {number} max @param {boolean} full
  * @returns {Promise<{ mimeType: string, data: string } | null>}
  */
-async function encode(canvas, max) {
-  const tries = [
-    { type: "image/png" },
-    ...AGENT_SCREENSHOT.jpeg.map((quality) => ({ type: "image/jpeg", quality })),
-  ];
-  for (const options of tries) {
-    const blob = await canvas.convertToBlob(options);
-    if (4 * Math.ceil(blob.size / 3) > max) continue;
+async function encode(canvas, max, full) {
+  const { smallest, then } = screenshotEncodings(full);
+  const fits = (/** @type {any} */ blob) => 4 * Math.ceil(blob.size / 3) <= max;
+  /** @param {any} blob @param {string} type */
+  const encoded = async (blob, type) => {
     const bytes = /** @type {any} */ (new Uint8Array(await blob.arrayBuffer()));
-    return { mimeType: options.type, data: bytes.toBase64() };
+    return { mimeType: type, data: bytes.toBase64() };
+  };
+  let best = null;
+  for (const options of smallest) {
+    const blob = await canvas.convertToBlob(options);
+    if (fits(blob) && (!best || blob.size < best.blob.size)) best = { blob, type: options.type };
+  }
+  if (best) return encoded(best.blob, best.type);
+  for (const options of then) {
+    const blob = await canvas.convertToBlob(options);
+    if (fits(blob)) return encoded(blob, options.type);
   }
   return null;
 }
@@ -150,20 +164,22 @@ export const AgentShot = {
 
   /**
    * A screenshot of `tab`'s viewport, in the background (F18-F21), with `labels` drawn on it;
-   * or why there is none.
+   * or why there is none. At most AGENT_SCREENSHOT_SMALL.width pixels wide unless `full`
+   * (issue #584).
    * @param {any} win  the browser window that holds the tab
    * @param {any} tab
    * @param {Map<string, HintTarget> | null} labels  the labels to draw, or none
+   * @param {boolean} [full]
    * @returns {Promise<{ mimeType: string, data: string, width: number, height: number,
    *   drawn: number } | { refused: string }>}
    */
-  async capture(win, tab, labels) {
+  async capture(win, tab, labels, full = false) {
     const browser = tab.linkedBrowser;
     if (!onTheWeb(browser.contentPrincipal)) return { refused: SHOT_REFUSALS.notWeb };
     if (acting.get(browser) || capturing.has(browser)) return { refused: SHOT_REFUSALS.acting };
     capturing.add(browser);
     try {
-      return await this.draw(win, browser, labels);
+      return await this.draw(win, browser, labels, full);
     } finally {
       capturing.delete(browser);
     }
@@ -199,17 +215,19 @@ export const AgentShot = {
   /**
    * The drawing of `capture`, once the tab is held.
    * @param {any} win @param {any} browser @param {Map<string, HintTarget> | null} labels
+   * @param {boolean} full
    * @returns {Promise<{ mimeType: string, data: string, width: number, height: number,
    *   drawn: number } | { refused: string }>}
    */
-  async draw(win, browser, labels) {
+  async draw(win, browser, labels, full) {
     const web = () => onTheWeb(browser.contentPrincipal);
     // The <browser>'s box is the viewport's size in the chrome's CSS pixels; a hidden tab
     // panel keeps it (Firefox lays out background tabs). Reading it also flushes the chrome's
     // layout, which `drawSnapshot` needs (as `tabs.captureTab` does). A box with no room draws
     // nothing.
     const box = browser.getBoundingClientRect();
-    const fit = screenshotScale(box.width, win.devicePixelRatio, box.height);
+    const wide = full ? AGENT_SCREENSHOT.width : AGENT_SCREENSHOT_SMALL.width;
+    const fit = screenshotScale(box.width, win.devicePixelRatio, box.height, wide);
     const wg = browser.browsingContext?.currentWindowGlobal;
     if (fit === null || !wg) return { refused: SHOT_REFUSALS.unpainted };
     // The page's CSS pixels are the chrome's times its zoom, as `tabs.captureTab` scales: the
@@ -243,7 +261,7 @@ export const AgentShot = {
       bitmap.close();
       return { refused };
     }
-    const width = Math.min(bitmap.width, AGENT_SCREENSHOT.width);
+    const width = Math.min(bitmap.width, wide);
     const height = Math.min(bitmap.height, AGENT_SCREENSHOT.height);
     const canvas = new win.OffscreenCanvas(width, height);
     const ctx = canvas.getContext("2d", { alpha: false });
@@ -255,7 +273,7 @@ export const AgentShot = {
       drawLabels(ctx, placed, scale, hintColours(win));
       drawn = placed.length;
     }
-    const image = await encode(canvas, this._base64Max ?? AGENT_SCREENSHOT.base64);
+    const image = await encode(canvas, this._base64Max ?? AGENT_SCREENSHOT.base64, full);
     if (!image) return { refused: SHOT_REFUSALS.tooLarge };
     return { ...image, width, height, drawn };
   },

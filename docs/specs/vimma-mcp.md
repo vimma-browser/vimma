@@ -286,7 +286,10 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
      `about:`, `javascript:` and `data:` are `invalid-args`: an agent has no reason to load
      local files or privileged pages through the browser.
    - `agent-open` without `tab` opens a new background tab in the agent workspace; with `tab` it
-     loads the URL in that agent tab.
+     loads the URL in that agent tab. (Since changed: with `elements: true` it waits for the page
+     to be ready and returns its `url`, `title` and element list too, because an agent's next
+     call after an open was nearly always a look at the page; issue
+     [#584](https://github.com/vimma-browser/vimma/issues/584), mcp-forms F2.)
    - `agent-read` reads through `PageExtractor.getText` (`useSimpleText` for `text`,
      `removeBoilerplate: true`). It also returns the page's selection, if the agent tab has one.
      `max_chars` defaults to `[mcp] max_read_chars` (200,000) and is capped there. The server

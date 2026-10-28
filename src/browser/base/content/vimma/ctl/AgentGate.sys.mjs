@@ -99,7 +99,8 @@ function record(conn, tool, what, outcome, why) {
     client: labels.get(conn)?.client ?? "",
     tool,
     title: typeof w.title === "string" ? w.title : "",
-    detail,
+    // A step that also lists the page says so, as its question did (issue #584).
+    detail: w.elements === true ? `${detail}, then vimma_elements` : detail,
     outcome,
     ...(why ? { why } : {}),
   });
