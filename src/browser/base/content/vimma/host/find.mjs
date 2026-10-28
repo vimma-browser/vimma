@@ -378,7 +378,12 @@ export class Find {
     const findbar = tab && gBrowser.getCachedFindBar(tab);
     if (findbar && isPdf(browser)) {
       findbar._findField.value = query;
+      // Since Firefox 160, PdfJsParent opens and focuses a hidden find bar on "findagain", so
+      // that Esc can clear pdf.js's highlights. n and N keep it closed, as on a web page: close
+      // it again, which gives the focus back to the page (findbar.close, Finder.focusContent).
+      const hidden = findbar.hidden;
       findbar.onFindAgainCommand(backward);
+      if (hidden && !findbar.hidden) findbar.close(true);
       return;
     }
     browser.finder.caseSensitive = isCaseSensitive(query);

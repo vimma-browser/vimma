@@ -324,6 +324,7 @@ add_task(async function slash_and_n_in_the_pdf_viewer() {
       async () => (await pdfSelected(browser)) === 1,
       "n moves pdf.js to the next match",
     );
+    Assert.ok(findBarHidden(), "n leaves the find bar closed");
     EventUtils.synthesizeKey("N");
     await TestUtils.waitForCondition(
       async () => (await pdfSelected(browser)) === 0,
