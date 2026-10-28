@@ -1,0 +1,115 @@
+{
+  "lists": [
+    {
+      "id": "L01",
+      "items": [{ "text": "milk, 1 litre, the cheapest", "accept": ["milk-pirkka"], "qty": 1 }]
+    },
+    {
+      "id": "L02",
+      "items": [
+        {
+          "text": "lactose-free milk, 1 litre, the cheapest lactose-free one",
+          "accept": ["milk-lf-valio"],
+          "qty": 1
+        },
+        { "text": "rye bread, not sliced", "accept": ["rye-whole"], "qty": 1 }
+      ]
+    },
+    {
+      "id": "L03",
+      "items": [
+        { "text": "bananas", "accept": ["bananas", "bananas-organic"], "qty": 1 },
+        { "text": "ground coffee, the cheapest", "accept": ["coffee-pirkka"], "qty": 1 },
+        { "text": "eggs, a 10 pack", "accept": ["eggs-10", "eggs-10-organic"], "qty": 1 }
+      ]
+    },
+    {
+      "id": "L04",
+      "items": [
+        { "text": "2 packs of butter, the cheapest", "accept": ["butter-pirkka"], "qty": 2 },
+        { "text": "orange juice", "accept": ["orange-juice"], "qty": 1 },
+        { "text": "a cucumber", "accept": ["cucumber"], "qty": 1 },
+        { "text": "spaghetti", "accept": ["spaghetti", "spaghetti-organic"], "qty": 1 }
+      ]
+    },
+    {
+      "id": "L05",
+      "items": [
+        { "text": "saffron", "accept": [], "qty": 0 },
+        { "text": "tomatoes", "accept": ["tomatoes"], "qty": 1 },
+        { "text": "onions", "accept": ["onions"], "qty": 1 },
+        { "text": "chicken fillet", "accept": ["chicken-fillet"], "qty": 1 },
+        { "text": "rice", "accept": ["rice"], "qty": 1 }
+      ]
+    },
+    {
+      "id": "L06",
+      "items": [
+        {
+          "text": "milk, lactose-free if there is one",
+          "accept": ["milk-lf-valio", "milk-lf-arla"],
+          "qty": 1
+        },
+        { "text": "cheese, lactose-free if there is one", "accept": ["emmental-lf"], "qty": 1 },
+        { "text": "wholegrain toast bread", "accept": ["toast-wholegrain"], "qty": 1 },
+        { "text": "green apples", "accept": ["apples-green"], "qty": 1 },
+        { "text": "3 cartons of oat drink", "accept": ["oat-drink"], "qty": 3 },
+        { "text": "green tea", "accept": ["tea-green"], "qty": 1 }
+      ]
+    },
+    {
+      "id": "L07",
+      "items": [
+        { "text": "organic minced beef", "accept": ["minced-beef-organic"], "qty": 1 },
+        { "text": "organic potatoes", "accept": ["potatoes-organic"], "qty": 1 },
+        { "text": "carrots", "accept": ["carrots"], "qty": 1 },
+        { "text": "sliced ham", "accept": ["ham-sliced"], "qty": 1 },
+        { "text": "2 bottles of sparkling water", "accept": ["sparkling-water"], "qty": 2 },
+        { "text": "sugar", "accept": ["sugar"], "qty": 1 },
+        { "text": "wheat flour", "accept": ["flour"], "qty": 1 }
+      ]
+    },
+    {
+      "id": "L08",
+      "items": [
+        { "text": "toilet paper", "accept": ["toilet-paper"], "qty": 1 },
+        { "text": "dish soap", "accept": ["dish-soap"], "qty": 1 },
+        { "text": "laundry detergent", "accept": ["detergent"], "qty": 1 },
+        { "text": "trash bags", "accept": ["trash-bags"], "qty": 1 },
+        { "text": "sponges", "accept": ["sponges"], "qty": 1 },
+        { "text": "paper towels", "accept": ["paper-towels"], "qty": 1 },
+        { "text": "lemons", "accept": ["lemons"], "qty": 1 },
+        { "text": "cola", "accept": ["cola"], "qty": 1 }
+      ]
+    },
+    {
+      "id": "L09",
+      "items": [
+        { "text": "milk, 1 litre, the cheapest", "accept": ["milk-pirkka"], "qty": 1 },
+        { "text": "butter, the cheapest", "accept": ["butter-pirkka"], "qty": 1 },
+        { "text": "eggs, a 6 pack", "accept": ["eggs-6"], "qty": 1 },
+        { "text": "edam cheese, not sliced", "accept": ["edam-block"], "qty": 1 },
+        { "text": "a baguette", "accept": ["baguette"], "qty": 1 },
+        { "text": "salmon fillet", "accept": ["salmon"], "qty": 1 },
+        { "text": "oat flakes", "accept": ["oats"], "qty": 1 },
+        { "text": "apple juice", "accept": ["apple-juice"], "qty": 1 },
+        { "text": "coffee beans", "accept": ["coffee-beans"], "qty": 1 }
+      ]
+    },
+    {
+      "id": "L10",
+      "items": [
+        { "text": "organic bananas", "accept": ["bananas-organic"], "qty": 1 },
+        { "text": "oranges", "accept": ["oranges"], "qty": 1 },
+        { "text": "potatoes, the cheapest", "accept": ["potatoes"], "qty": 1 },
+        { "text": "grill sausage", "accept": ["sausage"], "qty": 1 },
+        { "text": "black tea", "accept": ["tea-black"], "qty": 1 },
+        { "text": "lemonade", "accept": ["lemonade"], "qty": 1 },
+        { "text": "gluten-free bread", "accept": ["oat-bread-gf"], "qty": 1 },
+        { "text": "dark roast ground coffee", "accept": ["coffee-dark"], "qty": 1 },
+        { "text": "organic spaghetti", "accept": ["spaghetti-organic"], "qty": 1 },
+        { "text": "2 cucumbers", "accept": ["cucumber"], "qty": 2 }
+      ]
+    }
+  ]
+}

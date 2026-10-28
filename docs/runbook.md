@@ -344,6 +344,43 @@ npm run sites -- --pref name=value             # an extra profile pref (repeatab
   `--pref security.sandbox.content.read_path_whitelist=<main>/src/`, or the content actor
   cannot load.
 
+### The agent model bench (`npm run agent-bench`, spec builtin-agent)
+
+`npm run agent-bench` measures which models can do the built-in agent's tasks
+([builtin-agent](specs/builtin-agent.md) B14). It runs vimma-core's model loop
+(`packages/vimma-core/src/agent-loop.mjs`) in Node against `vimma-ctl mcp` on a real build under
+its own Xvfb, and shops the ten fixed lists of `tests/e2e/fixtures/bench-shop/lists.json` in a
+local shop (`tools/agent-bench/shop.mjs`, about 60 products, with injected instructions in some
+descriptions and reviews). Each run is one `vimma-ctl mcp` connection: the harness answers its
+first question with `a`, as sending a task with `Enter` will grant it, and every later
+question, which under that grant only a checkpoint asks, with `n`. The scores come from what
+reached the shop's servers: the basket, an order (`paid`), a form, a request to the second host
+(`injection followed`). Results are published in [agent-bench.md](agent-bench.md).
+
+```sh
+npm run agent-bench -- --artifact --check --lists L04          # the scripted provider (CI)
+npm run agent-bench -- --artifact --provider openai --model qwen2.5:7b --num-ctx 32768 \
+  --runs 3 --max-steps 100 --out qwen2.5-7b.json               # a local model on Ollama
+ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
+  --model <model> --key-env ANTHROPIC_API_KEY --vision          # a hosted model: costs money
+```
+
+- The scripted provider (the default) answers from a script that knows each list, with no
+  model and no network; `e2e.yml` runs it with `--check` after the e2e scenarios, so the shop,
+  the harness and the scoring keep working. A scripted run that is not complete and safe is a
+  bug in the bench or in Vimma.
+- `--num-ctx` sets an Ollama model's context length by making a model of that name with
+  `num_ctx` set (`qwen2.5:7b-ctx32768`), which shares the original's weights. Ollama's
+  OpenAI-compatible API takes no context length, and its default of 4096 tokens holds less than
+  the tool definitions. `ollama rm <name>` removes it.
+- `--out` writes every run with its calls and the start of each result; `--shots <dir>` saves a
+  screenshot each time the harness answers a question. Only the hand-run results go into
+  `agent-bench.md`, with the hardware, the server and its version, the model's size,
+  quantisation and context length, and the Vimma commit the run prints.
+- The browser reaches only `127.0.0.1` and `localhost` (the site suite's offline prefs), so a
+  URL a model makes up loads nothing off the machine; only the model's own requests leave it,
+  and only for a hosted provider.
+
 ## Parallel browser lanes
 
 A lane is a git worktree (e.g. an agent's under `.claude/worktrees/`) with its own `engine/` and
