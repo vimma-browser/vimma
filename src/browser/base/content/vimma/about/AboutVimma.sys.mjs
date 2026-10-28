@@ -258,7 +258,8 @@ export const AboutVimma = {
    */
   async collect(win, { tab = null } = {}) {
     const app = lazy.AppConstants;
-    const keymap = ConfigHost.keymap ?? compileKeymap();
+    const keymap =
+      ConfigHost.keymap ?? compileKeymap({}, { mac: Services.appinfo.OS === "Darwin" });
     const configPath = ConfigHost.path;
     const theme = ThemeHost.status;
     // A normal window's page lists no private window (private-workspace decision 8b).

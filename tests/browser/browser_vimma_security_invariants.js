@@ -57,6 +57,21 @@ add_task(async function control_state_is_read_only() {
   while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
 });
 
+add_task(async function control_state_never_inserts_a_lazy_tab() {
+  // A restored or unloaded tab has no browser yet; reading its webProgress would make one.
+  const lazy = gBrowser.addTab(`${PAGE}?lazy`, {
+    createLazyBrowser: true,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  Assert.ok(!lazy.linkedPanel, "sanity: the tab is lazy");
+  const entry = VimmaControl._commands
+    .state()
+    .tabs.find((/** @type {any} */ t) => t.id === String(lazy.linkedBrowser.browserId));
+  Assert.ok(!lazy.linkedPanel, "state leaves the lazy tab without a browser");
+  Assert.strictEqual(entry?.loading, false, "and reports it as not loading");
+  BrowserTestUtils.removeTab(lazy);
+});
+
 add_task(async function page_titles_with_html_stay_text() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?title`);
   const browser = tab.linkedBrowser;

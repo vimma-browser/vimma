@@ -785,6 +785,9 @@ function checkStateResult(result, errors) {
       if (typeof tab.selected !== "boolean") {
         errors.push(`result.tabs[${i}].selected must be a boolean`);
       } else if (tab.selected) selected++;
+      if ("loading" in tab && typeof tab.loading !== "boolean") {
+        errors.push(`result.tabs[${i}].loading must be a boolean`);
+      }
     });
     if (selected > 1) errors.push("result.tabs must have at most one selected tab");
   }

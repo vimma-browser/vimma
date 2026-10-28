@@ -70,8 +70,14 @@ only the agent workspace, and every request asks you first (§12).
 - S8. `reload-theme` **never** takes an argument; it reads only the theme folder Vimma's own
   prefs name. [`test_reload_theme`](../tests/browser/browser_vimma_control.js),
   [`takes no args`](../packages/vimma-core/test/control.test.mjs)
-- S9. `state` **must** be read-only: it changes no tab, selection, mode or workspace.
-  [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js)
+- S9. `state` **must** be read-only: it changes no tab, selection, mode or workspace, and never
+  gives an unloaded tab its browser. In a private window it **never** reports a tab's URL or
+  title; it keeps each tab's id, place, selection, pinning and whether its page is still loading,
+  and the pane structure.
+  [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
+  [`control_state_never_inserts_a_lazy_tab`](../tests/browser/browser_vimma_security_invariants.js),
+  [`vimma_ctl_state_withholds_private_urls_and_titles`](../tests/browser/browser_vimma_private_workspace.js),
+  [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../tests/browser/browser_vimma_private_workspace.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../tests/browser/browser_vimma_control.js),

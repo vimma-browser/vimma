@@ -850,9 +850,10 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
 
 /**
  * @param {string} text  contents of config.toml
+ * @param {{ mac?: boolean }} [options]  compile over macOS's default keys (compileKeymap)
  * @returns {ParseResult}
  */
-export function parseConfig(text) {
+export function parseConfig(text, { mac = false } = {}) {
   /** @param {ConfigError[]} errors @returns {ParseResult} */
   const failed = (errors) => ({ config: null, keymap: null, errors, migratedFrom: null });
 
@@ -894,12 +895,10 @@ export function parseConfig(text) {
   let keymap = null;
   if (!problems.some((p) => KEYMAP_SECTIONS.has(/** @type {string} */ (p.path[0])))) {
     try {
-      keymap = compileKeymap({
-        keys: user.keys,
-        modal: user.modal,
-        unbind: user.unbind,
-        firefox: user.firefox,
-      });
+      keymap = compileKeymap(
+        { keys: user.keys, modal: user.modal, unbind: user.unbind, firefox: user.firefox },
+        { mac },
+      );
     } catch (e) {
       /* c8 ignore next */
       if (!(e instanceof KeymapError)) throw e;
@@ -934,14 +933,18 @@ export function parseConfig(text) {
  * Apply new config text atomically: on any error the previous config stays active (plan M5).
  * @param {ActiveConfig | null} active  the config in use, null before the first load
  * @param {string} text
+ * @param {{ mac?: boolean }} [options]  macOS's default keys (compileKeymap)
  * @returns {{ active: ActiveConfig, errors: ConfigError[], kept: boolean }}
  *   kept: the text was not applied; `active` is the previous config, or the defaults
  */
-export function reloadConfig(active, text) {
-  const r = parseConfig(text);
+export function reloadConfig(active, text, { mac = false } = {}) {
+  const r = parseConfig(text, { mac });
   if (r.config && r.keymap)
     return { active: { config: r.config, keymap: r.keymap }, errors: [], kept: false };
-  const fallback = active ?? { config: mergeWithDefaults({}), keymap: compileKeymap() };
+  const fallback = active ?? {
+    config: mergeWithDefaults({}),
+    keymap: compileKeymap({}, { mac }),
+  };
   return { active: fallback, errors: r.errors, kept: true };
 }
 
@@ -967,17 +970,18 @@ export function rawUpdatesCheck(text) {
  * is refused with the reason, and nothing is written.
  * @param {string | null} text  config.toml as it is, null when missing
  * @param {{ domain: string, workspace: string }} rule
+ * @param {{ mac?: boolean }} [options]  check it with macOS's default keys (compileKeymap)
  * @returns {{ append: string } | { create: string } | { error: string }}
  */
-export function appendRouteText(text, { domain, workspace }) {
+export function appendRouteText(text, { domain, workspace }, { mac = false } = {}) {
   const block = `[[routes]]\ndomain = ${JSON.stringify(domain)}\nworkspace = ${JSON.stringify(workspace)}\n`;
   const base = text ?? formatConfigTemplate();
-  if (text !== null && parseConfig(text).errors.length) {
+  if (text !== null && parseConfig(text, { mac }).errors.length) {
     return { error: "config.toml does not parse now; fix it first (:config shows it)" };
   }
   const glue = base === "" ? "" : base.endsWith("\n") ? "\n" : "\n\n";
   const added = `${glue}${block}`;
-  const after = parseConfig(base + added);
+  const after = parseConfig(base + added, { mac });
   const first = after.errors[0];
   if (first) {
     return {

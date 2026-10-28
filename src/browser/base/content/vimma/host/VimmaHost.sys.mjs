@@ -1289,7 +1289,7 @@ export const VimmaHost = {
     if (states.has(win)) return;
     /** @type {Map<string, Window>} the window of each tab tab search listed (tab-search.mjs) */
     let tabWindows = new Map();
-    const keymap = settings.keymap ?? compileKeymap();
+    const keymap = settings.keymap ?? compileKeymap({}, { mac: MAC });
     /** @type {WindowState} */
     const state = {
       win,
@@ -2195,7 +2195,9 @@ export const VimmaHost = {
     } catch {
       // Not in this build: no Keyboard Lock.
     }
-    if (!pageFirst(key, { fullScreen: !!win.fullScreen, keyboardLock, mode })) return false;
+    if (!pageFirst(key, { fullScreen: !!win.fullScreen, keyboardLock, mode, mac: MAC })) {
+      return false;
+    }
     if (keyboardLock) return true;
     return !this._shortcutsBlocked(state);
   },

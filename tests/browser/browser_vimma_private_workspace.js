@@ -47,6 +47,7 @@ const ROOT = getRootDirectory(gTestPath).replace(
   "https://example.com",
 );
 const FORM = `${ROOT}file_vimma_private_form.html`;
+const SLOW = `${ROOT}file_vimma_slow.sjs`;
 const PAGE = "https://example.com/?normal";
 const PICKER_ID = "vimma-workspace-picker";
 const GOTO_ID = "vimma-picker";
@@ -509,6 +510,63 @@ add_task(async function vimma_ctl_state_withholds_private_urls_and_titles() {
     normal.tabs.every((t) => typeof t.url === "string"),
     "and keeps its urls",
   );
+});
+
+// A private tab's url and title are withheld, so `loading` is what tells a script (the e2e
+// screenshot of the private start page) that the page has finished loading.
+add_task(async function vimma_ctl_state_says_whether_a_private_tab_is_loading() {
+  const [priv] = privateWindows();
+  await SimpleTest.promiseFocus(priv);
+  const tab = BrowserTestUtils.addTab(priv.gBrowser, SLOW);
+  priv.gBrowser.selectedTab = tab;
+  await until(
+    () => tab.hasAttribute("busy") && tab.linkedBrowser.currentURI.spec === SLOW,
+    "the slow page is loading",
+  );
+  const id = String(tab.linkedBrowser.browserId);
+  const entry = () => VimmaControl._commands.state().tabs.find((t) => t.id === id);
+  Assert.strictEqual(entry().loading, true, "loading: true while the page loads");
+  Assert.strictEqual(entry().url, null, "and still no url");
+  tab.linkedBrowser.stop();
+  await until(() => !tab.hasAttribute("busy"), "the load stopped");
+  Assert.strictEqual(entry().loading, false, "loading: false once it stopped");
+  const result = VimmaControl._commands.state();
+  const v = validateMessage(
+    { type: "response", id: 1, ok: true, result },
+    { kind: "response", command: "state" },
+  );
+  Assert.ok(v.valid, `the state follows the protocol: ${v.errors.join("; ")}`);
+  BrowserTestUtils.removeTab(tab);
+  await SimpleTest.promiseFocus(window);
+});
+
+// The flake of #567: vimma-ctl state reports a new private window before the window has even
+// started to load its start page (gBrowserInit's delayed startup does that). Its first tab is
+// then the initial about:blank, not busy, so `loading` must say it is still to load.
+add_task(async function a_new_private_window_is_loading_until_its_start_page_has_loaded() {
+  const args = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
+  args.data = window.BROWSER_NEW_TAB_URL;
+  const win = window.OpenBrowserWindow({ private: true, args });
+  await BrowserTestUtils.waitForEvent(win, "load");
+  Assert.ok(!win.gBrowserInit.delayedStartupFinished, "the start page has not started to load");
+  const early = VimmaControl._commands.state();
+  Assert.equal(early.private, true, "state reports the new private window");
+  Assert.strictEqual(early.tabs[0].loading, true, "loading: true before its first load starts");
+  const browser = win.gBrowser.selectedBrowser;
+  await until(
+    () =>
+      browser.currentURI.spec === window.BROWSER_NEW_TAB_URL &&
+      !win.gBrowser.selectedTab.hasAttribute("busy") &&
+      !browser.webProgress.isLoadingDocument,
+    "the start page has loaded",
+  );
+  Assert.strictEqual(
+    VimmaControl._commands.state().tabs[0].loading,
+    false,
+    "loading: false once the start page has loaded",
+  );
+  await BrowserTestUtils.closeWindow(win);
+  await SimpleTest.promiseFocus(window);
 });
 
 add_task(async function nothing_private_reaches_the_normal_profile() {

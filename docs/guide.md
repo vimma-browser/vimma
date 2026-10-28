@@ -879,7 +879,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `j` / `k`, `h` / `l`                                                                    | Normal mode: scroll down / up, left / right by a step. A count repeats: `3j`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `d` / `u`, `ctrl+d` / `ctrl+u`                                                          | Normal mode: scroll half a page down / up, as in Vimium and Vim. `ctrl+e` / `ctrl+y` scroll a step down / up, as `j` / `k`. In insert mode the page gets them; in a text field `ctrl+u` deletes to the line's start.                                                                                                                                                                                                                                                                                                                                                                      |
 | `gg` / `G`                                                                              | Normal mode: go to the top / bottom of the page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `H` / `L`, `ctrl+o` / `ctrl+i`, `alt+left` / `alt+right`, `ctrl+[` / `ctrl+]`           | Back / forward in the page's history (in a split, the focused pane's), `ctrl+o` / `ctrl+i` as Vim's jump list. `H`, `L`, `ctrl+o`, `ctrl+i`, `ctrl+[` and `ctrl+]` in normal mode; Firefox's `alt+left` / `alt+right` in every mode, the address bar too. A count moves that many pages, stopping at the first or last: `3H`.                                                                                                                                                                                                                                                             |
+| `H` / `L`, `ctrl+o` / `ctrl+i`, `alt+left` / `alt+right`, `ctrl+[` / `ctrl+]`           | Back / forward in the page's history (in a split, the focused pane's), `ctrl+o` / `ctrl+i` as Vim's jump list. `H`, `L`, `ctrl+o`, `ctrl+i`, `ctrl+[` and `ctrl+]` in normal mode; Firefox's `alt+left` / `alt+right` in every mode, the address bar too. On macOS these two are Firefox's `cmd+left` / `cmd+right` and `cmd+[` / `cmd+]`, in every mode ([On macOS](#on-macos-the-alt-keys-are-cmd-keys)). A count moves that many pages, stopping at the first or last: `3H`.                                                                                                           |
 | `r`, `F5`, `ctrl+r`                                                                     | Reloads the page (in a split, the focused pane's); `r` in normal mode, Firefox's `F5` and `ctrl+r` everywhere. In insert mode `H`, `L` and `r` are typed into the field. `ctrl+F5` / `ctrl+shift+r` reload bypassing the cache.                                                                                                                                                                                                                                                                                                                                                           |
 | `i`                                                                                     | Normal mode: focus the text field you were last in (else the first) and enter insert mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `gi`                                                                                    | Normal mode: focus the first visible text field, insert mode; `3gi` the third (or the last). With none, it says so and stays normal.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -887,7 +887,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `p` / `P`                                                                               | Normal mode: opens the clipboard here / in a new tab, as `:open` / `:tabnew`: a URL loads, other text is searched. No `javascript:`, `data:`.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `gu` / `gU`                                                                             | Normal mode: up one level in the URL / to the site's root, without query and hash; `2gu` goes up two. At the top it says so.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `gf`                                                                                    | Normal mode: the page's source in a new tab, as Firefox's `ctrl+u` does. In insert mode `gi`, `yy`, `p`, `P`, `gu`, `gU` and `gf` are typed into the field.                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `I`, `ctrl+l`, `alt+d`                                                                  | Focus the address bar with its text selected (in a split, the focused pane's); closes an open panel first. `I` in normal and copy mode, Firefox's `ctrl+l` and `alt+d` everywhere.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `I`, `ctrl+l`, `alt+d`                                                                  | Focus the address bar with its text selected (in a split, the focused pane's); closes an open panel first. `I` in normal and copy mode, Firefox's `ctrl+l` and `alt+d` everywhere (`ctrl+l` and `cmd+l` on macOS).                                                                                                                                                                                                                                                                                                                                                                        |
 | `f` / `gF`                                                                              | Normal mode: link hints. Type a label to follow it, or, with `gF`, to open the link in a background tab. `Backspace` undoes a key, `Esc` cancels.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `F`                                                                                     | Normal mode: element focus ([above](#copying-a-paragraph-element-focus)). Type a label to outline a text block; `y` copies it, `v` selects it in copy mode.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `/` / `?`                                                                               | Normal mode: find in the page (below). `Enter` stays on the match, `Esc` goes back to where you were.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -900,7 +900,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b c`, `ctrl+t`, `t`                                                               | Opens a new tab (the start page, address bar focused).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `t` in normal mode.                                                                     |
 | `ctrl+b n` / `ctrl+b p`, `ctrl+tab` / `ctrl+shift+tab`, `ctrl+pagedown` / `ctrl+pageup` | Next / previous tab, wrapping around at the ends. Hidden tabs are skipped. `gt` / `gT` in normal mode; `3gt` goes to tab 3.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `ctrl+b 1..9`, `alt+1..8`, `alt+9`                                                      | Tab 1 to 9, counting visible tabs (pinned tabs first); Firefox's `alt+9` is the last tab. With fewer tabs than N, nothing happens. `ctrl+shift+pageup` / `ctrl+shift+pagedown` move the tab left / right among them.                                                                                                                                                                                                                                                                                                                                                                      |
+| `ctrl+b 1..9`, `alt+1..8`, `alt+9`                                                      | Tab 1 to 9, counting visible tabs (pinned tabs first); Firefox's `alt+9` is the last tab. On macOS Firefox's `cmd+1..8` and `cmd+9` instead. With fewer tabs than N, nothing happens. `ctrl+shift+pageup` / `ctrl+shift+pagedown` move the tab left / right among them.                                                                                                                                                                                                                                                                                                                   |
 | `:`                                                                                     | Normal mode: opens the command line at the bottom of the window ([below](#the-command-line)). In a text field `:` is typed.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b g`, `ctrl+shift+a`, `b`                                                         | Opens tab search over the page, ready to type (`b` in normal mode; `ctrl+shift+a` is Firefox's tab search key): every tab of every workspace and window, and the recently closed ones ([below](#tab-search-and-tab-rename)).                                                                                                                                                                                                                                                                                                                                                              |
 | `ctrl+b f g`                                                                            | Opens [live grep](#live-grep): search the text of the workspace's tabs as you type. `]q` / `[q` in normal mode step through its results afterwards.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -1088,36 +1088,6 @@ only. Three are left alone: the `alt+letter` keys that open the menu bar's menus
 and a bare `alt` tap and `'` (quick find for links) do nothing (the `ui.key.menuAccessKeyFocuses`
 and `accessibility.typeaheadfind.manual` prefs are `false` in Vimma's defaults).
 
-**On macOS** Firefox's keys use `cmd` where Linux has `ctrl` (`cmd+t`, `cmd+l`, `cmd+w`, written
-`meta+t` in config.toml), and it has tab keys of its own: `meta+{` and `meta+}` (cmd+shift+[ and
-cmd+shift+]), also with `ctrl` (`ctrl+meta+{`, `ctrl+meta+}`), and `alt+meta+left`,
-`alt+meta+right`, `alt+meta+up` and `alt+meta+down`. Its sidebar keys use `ctrl`: `ctrl+x` (AI
-chatbot), `ctrl+z` (show or hide the sidebar) and `ctrl+u` (open tabs, which stays Vimma's
-half-page scroll). Vimma's keymap is the same as on Linux, so the others are unbound, and the
-default `disable = "all"` turns them off, `ctrl+x` and `ctrl+z` included: the same rule as on
-Linux, and Vimma's own keys do the same things (`ctrl+t` or `t` for a new tab, `x` to close
-it, `ctrl+l` for the address bar, `ctrl+b 1..9` for a tab by number). `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt` access keys.
-
-To have Firefox's common `cmd` keys back, list them in `enable` (`cmd+t` works there too, and
-means `meta+t`); each then runs exactly as in Firefox, and the others stay off:
-
-```toml
-schema = 2
-
-[firefox]
-enable = [
-  "meta+t", "meta+n", "meta+w", "shift+meta+t", # new tab, new window, close tab, reopen it
-  "meta+l", "meta+r", "meta+f", "meta+g",       # address bar, reload, find, next match
-  "meta+[", "meta+]",                           # back, forward
-  "meta+1", "meta+2", "meta+3", "meta+4", "meta+5", "meta+6", "meta+7", "meta+8", "meta+9",
-]
-```
-
-In a windowed Mac build a key that is off may still run from the menu bar when it has a menu
-item there (`cmd+t` is File > New Tab, `cmd+w` File > Close Tab): macOS's menu bar takes the
-item's key from Firefox's shortcut without seeing that it is off. This has not been checked on a
-Mac yet.
-
 **Any Firefox command from a key.** `:firefox <id>` runs one of the window's commands or keys by
 its id (Tab completes them): `:firefox Tools:Downloads`, `:firefox key_search2`. A value that
 starts with `:` in a `[modal.<mode>]` table binds a key to a command line; such bindings are
@@ -1127,6 +1097,56 @@ listed in `ctrl+b ?` under "Commands":
 [modal.normal]
 "<C-S-y>" = ":firefox Tools:Downloads"
 ```
+
+#### On macOS the alt keys are cmd keys
+
+Option types characters on a Mac (Option+1 is `¡`) and moves the caret by word (Option+left),
+so the default keys that are `alt` chords on Linux would never run there. On macOS they are
+Firefox's own macOS keys instead, the ones a Mac user already knows (written `meta` in
+config.toml):
+
+| Action                                      | Linux                    | macOS                                       |
+| ------------------------------------------- | ------------------------ | ------------------------------------------- |
+| Back / forward (`history_back`, `_forward`) | `alt+left` / `alt+right` | `cmd+left` / `cmd+right`, `cmd+[` / `cmd+]` |
+| Tab 1 to 8 (`select_tab_1` … `_8`)          | `alt+1` … `alt+8`        | `cmd+1` … `cmd+8`                           |
+| Last tab (`select_last_tab`)                | `alt+9`                  | `cmd+9`                                     |
+| Address bar (`focus_urlbar`)                | `ctrl+l`, `alt+d`        | `ctrl+l`, `cmd+l`                           |
+
+`alt+home` (home page) is the same on both, as in Firefox: Option+Home types nothing. Everything
+else, `ctrl+b`, `H` / `L` and `ctrl+[` / `ctrl+]` included, is the same as on Linux. As on
+Linux, the page and a text field have these keys first: `cmd+left` in a text field or the
+address bar moves to the start of the line, and `cmd+[` goes back from there.
+[bindings.md](bindings.md#on-macos) lists them, `ctrl+b ?` shows the ones in force, and a
+`[keys]` list in config.toml replaces them as it does any default.
+
+**Firefox's other macOS keys** use `cmd` where Linux has `ctrl` (`cmd+t`, `cmd+w`, written
+`meta+t` in config.toml), and it has tab keys of its own: `meta+{` and `meta+}` (cmd+shift+[ and
+cmd+shift+]), also with `ctrl` (`ctrl+meta+{`, `ctrl+meta+}`), and `alt+meta+left`,
+`alt+meta+right`, `alt+meta+up` and `alt+meta+down`. Its sidebar keys use `ctrl`: `ctrl+x` (AI
+chatbot), `ctrl+z` (show or hide the sidebar) and `ctrl+u` (open tabs, which stays Vimma's
+half-page scroll). Vimma does not bind these, so the default `disable = "all"` turns them off,
+`ctrl+x` and `ctrl+z` included, as it does Firefox's unbound keys on Linux. Vimma's own keys do
+the same things: `ctrl+t` or `t` for a new tab, `x` to close it, and the `cmd+l` and `cmd+1..9`
+above. `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt` access keys.
+
+To have Firefox's common `cmd` keys back, list them in `enable` (`cmd+t` works there too, and
+means `meta+t`); each then runs exactly as in Firefox, and the others stay off:
+
+```toml
+schema = 2
+
+[firefox]
+enable = [
+  "meta+t", "meta+n", "meta+w", # new tab, new window, close tab
+  "shift+meta+t",               # restore the last closed tab, window or session
+  "meta+r", "meta+f", "meta+g", # reload, find, next match
+]
+```
+
+In a windowed Mac build a key that is off may still run from the menu bar when it has a menu
+item there (`cmd+t` is File > New Tab, `cmd+w` File > Close Tab): macOS's menu bar takes the
+item's key from Firefox's shortcut without seeing that it is off. This has not been checked on a
+Mac yet.
 
 ### Firefox's shortcuts on Vim's keys
 
@@ -2292,7 +2312,8 @@ restore all forget it, and so do Vimma's own files.
   private workspace to see them (on Hyprland and macOS the normal window swaps back into place;
   the private workspace stays one key away). Routing rules never send a page into or out of it.
 - **Scripts:** `vimma-ctl state` in the private workspace says `"private": true` and
-  `"workspace": "private"`, and gives every tab's `url` and `title` as `null`. `vimma-ctl open`
+  `"workspace": "private"`, and gives every tab's `url` and `title` as `null`; each tab's
+  `loading` still says whether its page has finished loading. `vimma-ctl open`
   and `send-keys` act on the focused window, so with the private workspace focused they load
   into it and type there.
 - **Diagnostics:** `about:vimma` and `:bug` in a normal window leave private windows out, and

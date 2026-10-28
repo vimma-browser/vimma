@@ -57,7 +57,7 @@
       "license": "Apache-2.0 AND LGPL-3.0-or-later",
       "reason": "libvips (LGPL-3.0-or-later) prebuilt for sharp, used unmodified and dynamically loaded; dev-only build tool that resizes our logos, never shipped; via @zen-browser/surfer > sharp"
     },
-    "caniuse-lite@1.0.30001815": {
+    "caniuse-lite@1.0.30001819": {
       "license": "CC-BY-4.0",
       "reason": "browser-support data under an attribution-only licence; dev-only and never shipped, via @stryker-mutator/core > instrumenter > @babel/core > browserslist"
     },

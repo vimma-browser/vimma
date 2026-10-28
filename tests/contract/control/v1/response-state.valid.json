@@ -15,7 +15,8 @@
           "id": "12",
           "url": "https://example.com/",
           "title": "Example Domain",
-          "selected": true
+          "selected": true,
+          "loading": false
         },
         {
           "id": "13",
