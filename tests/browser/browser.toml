@@ -103,8 +103,6 @@ support-files = ["head_vimma_aus.js"]
 skip-if = ["artifact"]
 
 ["browser_vimma_split_contract.js"]
-# macOS: the zoom hit test's control needs Firefox's non-macOS z-index on column 0 (#389)
-skip-if = ["os == 'mac'"]
 
 ["browser_vimma_split_layout.js"]
 
