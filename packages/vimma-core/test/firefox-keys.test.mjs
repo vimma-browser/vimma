@@ -612,8 +612,8 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
   });
 });
 
-// Issue #385, docs/specs/macos-build.md decision 29: on macOS, "all" keeps Firefox's cmd keys
-// off as on Linux, and the guide's `[firefox] enable` example is how a user gets some back.
+// Issue #385, docs/specs/macos-build.md decision 30: on macOS, "all" keeps Firefox's cmd keys
+// that Vimma does not bind off, as on Linux, and the guide's `[firefox] enable` example is how a user gets some back.
 describe("macOS: the guide's [firefox] enable example", () => {
   const guide = readFileSync(new URL("../../../docs/guide.md", import.meta.url), "utf8");
   const examples = [...guide.matchAll(/```toml\n([\s\S]*?)```/g)]
@@ -625,7 +625,7 @@ describe("macOS: the guide's [firefox] enable example", () => {
   ).map((r) => ({ id: r.id, chord: r.chord, fate: r.fate }));
   /** @param {string} text config.toml */
   const onWith = (text) => {
-    const { config, keymap, errors } = parseConfig(text);
+    const { config, keymap, errors } = parseConfig(text, { mac: true });
     expect(errors).toEqual([]);
     const plan = planFirefoxKeys(keys, /** @type {any} */ (config).firefox, {
       bound: boundChords(/** @type {any} */ (keymap)),
@@ -640,7 +640,7 @@ describe("macOS: the guide's [firefox] enable example", () => {
   test("the guide's example parses on macOS and re-enables exactly the cmd keys it lists", () => {
     expect(examples, "one [firefox] example with meta+ keys in docs/guide.md").toHaveLength(1);
     const text = /** @type {string} */ (examples[0]);
-    const { config } = parseConfig(text);
+    const { config } = parseConfig(text, { mac: true });
     const firefox = /** @type {any} */ (config).firefox;
     expect(firefox.disable).toBe("all");
     expect(firefox.enable).toContain("meta+t");
