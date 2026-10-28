@@ -354,8 +354,9 @@ add_task(async function new_tabs_join_the_active_workspace_and_other_containers_
   const A = def("sw-a");
   await press(")", A);
   const a0 = await startTab();
+  // ctrl+t is Vimma's new_tab on every platform; cmd+t, accel on a Mac, is off there (#385).
   const opened = BrowserTestUtils.waitForNewTab(gBrowser, null, false, true);
-  EventUtils.synthesizeKey("t", { accelKey: true });
+  EventUtils.synthesizeKey("t", { ctrlKey: true });
   const fresh = await opened;
   Assert.equal(fresh.userContextId, A.userContextId, "ctrl+t opens in A's container");
   Assert.equal(workspaceOf(fresh), A.id, "and joins A");

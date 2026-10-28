@@ -77,7 +77,7 @@ skip-if = ["artifact"]
 skip-if = ["artifact"]
 
 ["browser_vimma_tabstrip.js"]
-# macOS: cmd+t and cmd+l are off under the default [firefox] disable = "all" (#385)
+# macOS: its cmd+2 step loses page-first cmd chords when content does not reply (#576)
 skip-if = ["os == 'mac'"]
 
 ["browser_vimma_toolbar.js"]
@@ -168,17 +168,11 @@ support-files = ["file_vimma_grep.html", "head_vimma_grep.js"]
 ["browser_vimma_workspace_store.js"]
 
 ["browser_vimma_workspace_routes.js"]
-# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
-skip-if = ["os == 'mac'"]
 
 ["browser_vimma_workspace_routing.js"]
-# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
-skip-if = ["os == 'mac'"]
 support-files = ["file_vimma_cookie.html"]
 
 ["browser_vimma_workspace_switching.js"]
-# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
-skip-if = ["os == 'mac'"]
 
 ["browser_vimma_workspace_ops.js"]
 
@@ -294,8 +288,6 @@ support-files = [
 ["browser_vimma_workspace_picker.js"]
 
 ["browser_vimma_workspace_edges.js"]
-# macOS: opens tabs with cmd+t, off under the default [firefox] disable = "all" (#385)
-skip-if = ["os == 'mac'"]
 
 ["browser_vimma_workspace_buffer_keys.js"]
 
