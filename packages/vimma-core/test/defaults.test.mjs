@@ -18,3 +18,12 @@ test("the committed docs/bindings.json is up to date (run npm run gen-docs)", ()
   const committed = readFileSync(new URL("../../../docs/bindings.json", import.meta.url), "utf8");
   expect(JSON.parse(committed)).toEqual(bindingsJson(compileKeymap()));
 });
+
+test("defaults.toml lists macOS's own default keys as comments under [keys] (#386)", () => {
+  const toml = formatDefaultsToml();
+  const keys = toml.slice(toml.indexOf("[keys]"), toml.indexOf("[modal]"));
+  expect(keys).toContain('\n# history_back = ["meta+left", "meta+["]\n');
+  expect(keys).toContain('\n# select_last_tab = ["meta+9"]\n');
+  expect(keys).toContain('\n# focus_urlbar = ["ctrl+l", "meta+l"]\n');
+  expect(keys).toContain('\nhistory_back = ["alt+left"]\n');
+});

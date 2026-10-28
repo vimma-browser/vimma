@@ -286,3 +286,75 @@ describe(": bindings in [modal.*]", () => {
     expect(compileKeymap().commands()).toEqual([]);
   });
 });
+
+// Issue #386, docs/specs/macos-build.md decision 29: Option types characters on a Mac, so the
+// default alt keys are Firefox's macOS chords there (browser-sets.inc.xhtml, Firefox 159).
+describe("macOS defaults: Firefox's macOS chords for the alt keys", () => {
+  const linux = compileKeymap();
+  const mac = compileKeymap({}, { mac: true });
+  /** @param {ReturnType<typeof compileKeymap>} km @param {string} chord @param {string} mode */
+  const at = (km, chord, mode = "normal") =>
+    km.trie(/** @type {any} */ (mode)).children.get(chord)?.action?.name;
+
+  const MAC = [
+    ["meta+left", "history_back"],
+    ["meta+right", "history_forward"],
+    ["meta+[", "history_back"],
+    ["meta+]", "history_forward"],
+    ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`meta+${n}`, `select_tab_${n}`]),
+    ["meta+9", "select_last_tab"],
+    ["meta+l", "focus_urlbar"],
+    // goHome is alt+home on every platform, and Option+Home types no character.
+    ["alt+home", "go_home"],
+  ];
+
+  test.each(MAC)("%s runs %s on macOS, in every mode", (chord, action) => {
+    for (const mode of ["normal", "insert", "visual", "panel", "help"]) {
+      expect(at(mac, chord, mode), `${chord} in ${mode}`).toBe(action);
+    }
+  });
+
+  test("the Linux alt chords Option turns into characters are unbound on macOS", () => {
+    for (const chord of ["alt+left", "alt+right", "alt+d", "alt+1", "alt+8", "alt+9"]) {
+      expect(at(mac, chord), chord).toBeUndefined();
+    }
+  });
+
+  test("Linux keeps its defaults: the alt chords, and no meta chord", () => {
+    expect(at(linux, "alt+left")).toBe("history_back");
+    expect(at(linux, "alt+right")).toBe("history_forward");
+    expect(at(linux, "alt+d")).toBe("focus_urlbar");
+    expect(at(linux, "alt+1")).toBe("select_tab_1");
+    expect(at(linux, "alt+9")).toBe("select_last_tab");
+    expect(at(linux, "alt+home")).toBe("go_home");
+    for (const [chord] of MAC.filter(([c]) => c.startsWith("meta+"))) {
+      expect(at(linux, /** @type {string} */ (chord)), chord).toBeUndefined();
+    }
+    expect(compileKeymap({}, { mac: false }).bindingsFor("history_back")).toEqual(
+      linux.bindingsFor("history_back"),
+    );
+  });
+
+  test("the keys macOS shares with Linux stay: prefix keys, ctrl+l, ctrl+[ and ctrl+]", () => {
+    expect(mac.bindingsFor("select_tab_1")).toEqual(["prefix+1", "meta+1"]);
+    expect(mac.bindingsFor("select_tab_9")).toEqual(["prefix+9"]);
+    expect(mac.bindingsFor("focus_urlbar").slice(0, 2)).toEqual(["ctrl+l", "meta+l"]);
+    expect(mac.bindingsFor("focus_urlbar")).not.toContain("alt+d");
+    expect(at(mac, "ctrl+[")).toBe("history_back");
+    expect(at(mac, "ctrl+]")).toBe("history_forward");
+    expect(at(mac, "ctrl+t")).toBe("new_tab");
+  });
+
+  test("a user's [keys] list replaces the macOS default as it does Linux's", () => {
+    const km = compileKeymap({ keys: { history_back: ["ctrl+alt+h"] } }, { mac: true });
+    expect(km.bindingsFor("history_back")).toContain("ctrl+alt+h");
+    expect(at(km, "meta+left")).toBeUndefined();
+    expect(at(km, "meta+right")).toBe("history_forward");
+  });
+
+  test("[firefox] enable gives a macOS chord back to Firefox", () => {
+    const km = compileKeymap({ firefox: { enable: ["meta+left"] } }, { mac: true });
+    expect(at(km, "meta+left")).toBeUndefined();
+    expect(at(km, "meta+[")).toBe("history_back");
+  });
+});
