@@ -62,6 +62,13 @@ const LOAD_TIMEOUT_MS = 20000;
  * dialog it opened are seen within this, and a load's progress events wake it sooner.
  */
 const TICK_MS = 100;
+/**
+ * How long after a step ran the submission its question allowed stays open when the step has
+ * started no load (security.md M28): the second it always had.
+ */
+const ALLOW_MS = 1000;
+/** How much longer than its own limit a frame's answer may take to reach the parent. */
+const ANSWER_MS = 500;
 /** A dialog's text in the result, in code points (F11). */
 const DIALOG_TEXT_MAX = 200;
 /** The page dialogs a result names, by the prompt service's type (F11). */
@@ -279,6 +286,26 @@ function afterStep(browser, before, dialog, blocked, stopped) {
 
 export const AgentAct = {
   /**
+   * Asks the top document of `browser` whether it is ready (VimmaActors.agentQuiet with
+   * `ready`), bounded in the parent as well: a page that busy-loops holds its own process, and
+   * with it the child's limits, but never the call past `until`.
+   * @param {any} browser XULBrowserElement @param {number} until  ms since the epoch
+   */
+  askReady(browser, until) {
+    return bounded(
+      VimmaActors.agentQuiet(browser.browsingContext, {
+        ready: true,
+        quiet: AGENT_WAITS.readyQuiet,
+        still: 0,
+        max: AGENT_WAITS.readyBusy,
+        until,
+      }),
+      null,
+      Math.max(0, until - Date.now()),
+    );
+  },
+
+  /**
    * Waits until the page of `browser` that `accept` takes is ready (mcp-drive D13, mcp-forms
    * F11; issue #579): it has finished loading, or its DOMContentLoaded has fired and it has
    * not changed for a moment since (AGENT_WAITS.readyQuiet, at most readyBusy). A page that
@@ -298,13 +325,7 @@ export const AgentAct = {
         if (!browser.webProgress?.isLoadingDocument) return true;
         if (asked !== wg) {
           asked = wg;
-          const r = await VimmaActors.agentQuiet(browser.browsingContext, {
-            ready: true,
-            quiet: AGENT_WAITS.readyQuiet,
-            still: 0,
-            max: AGENT_WAITS.readyBusy,
-            until,
-          });
+          const r = await this.askReady(browser, until);
           const same = browser.browsingContext?.currentWindowGlobal === wg;
           if (r && r.state !== "complete" && same) return true;
           continue;
@@ -509,7 +530,9 @@ export const AgentAct = {
     const start = Date.now();
     const deadline = start + LOAD_TIMEOUT_MS;
     let started = false;
-    let ran = !step;
+    /** When the step ran in the page's process (0: not yet). */
+    let ranAt = step ? 0 : start;
+    let withdrawn = false;
     /** @type {Promise<unknown> | null} the step's frame settling, once asked */
     let settling = null;
     let settled = false;
@@ -518,6 +541,17 @@ export const AgentAct = {
     let ready = false;
     /** @type {Promise<unknown> | undefined} what wakes the wait besides the tab's progress */
     let wake;
+    /**
+     * `p` wakes the wait once, when it settles: a promise that has settled already would wake
+     * every turn in a microtask and starve the event loop the load needs.
+     * @param {Promise<unknown>} p
+     */
+    const arm = (p) => {
+      const w = p.then(() => {
+        if (wake === w) wake = undefined;
+      });
+      wake = w;
+    };
     for (;;) {
       if (dialogs.dialog) return undefined;
       if (inUse()) return "in-use";
@@ -531,31 +565,38 @@ export const AgentAct = {
         if (now.doc !== before.doc && wg && !wg.isInitialDocument && wg !== asked) {
           asked = wg;
           ready = false;
-          wake = VimmaActors.agentQuiet(browser.browsingContext, {
-            ready: true,
-            quiet: AGENT_WAITS.readyQuiet,
-            still: 0,
-            max: AGENT_WAITS.readyBusy,
-            until: deadline,
-          }).then((r) => {
-            // A page complete while the tab still loads is the one before the next load.
-            if (asked === wg && r && r.state !== "complete") ready = true;
-          });
+          arm(
+            this.askReady(browser, deadline).then((r) => {
+              // A page complete while the tab still loads is the one before the next load.
+              if (asked === wg && r && r.state !== "complete") ready = true;
+            }),
+          );
         }
-      } else if (!ran && step) {
+      } else if (!ranAt) {
         // A process that does not answer has its step taken as run, as a hung page's would be.
-        const outcome = await bounded(VimmaActors.agentClickOutcome(step), "clicked", 1000);
+        const outcome = step
+          ? await bounded(VimmaActors.agentClickOutcome(step), "clicked", 1000)
+          : "clicked";
         if (outcome === "skipped") return "skipped";
-        if (outcome !== "pending" || Date.now() - start >= COLLECT_TIMEOUT_MS) ran = true;
+        if (outcome !== "pending" || Date.now() - start >= COLLECT_TIMEOUT_MS) ranAt = Date.now();
         else await sleep(10);
         continue;
       } else if (settled) {
         return undefined;
-      } else if (!settling) {
-        settling = this.settle(browser, step, deadline).then(() => {
-          settled = true;
-        });
-        wake = settling;
+      } else {
+        // A step that started no load within the allowance's second has no submission of its
+        // own to make: the allowance closes then, as it did before the wait became the page's,
+        // so a page that keeps the wait going does not keep it open (security.md M28).
+        if (!withdrawn && Date.now() - ranAt >= ALLOW_MS) {
+          withdrawn = true;
+          VimmaActors.agentWithdraw(browser);
+        }
+        if (!settling) {
+          settling = this.settle(browser, step, deadline).then(() => {
+            settled = true;
+          });
+          arm(settling);
+        }
       }
       if (Date.now() >= deadline) return undefined;
       await nextEvent(browser, TICK_MS, wake);
@@ -571,13 +612,18 @@ export const AgentAct = {
   async settle(browser, step, until) {
     const from = Date.now();
     const bc = step && step.bc.currentWindowGlobal === step.wg ? step.bc : browser.browsingContext;
-    const r = await VimmaActors.agentQuiet(bc, {
-      net: true,
-      quiet: AGENT_WAITS.quiet,
-      still: AGENT_WAITS.still,
-      max: AGENT_WAITS.busy,
-      until,
-    });
+    // Bounded here too: the child's own limits hold only while its page lets its process run.
+    const r = await bounded(
+      VimmaActors.agentQuiet(bc, {
+        net: true,
+        quiet: AGENT_WAITS.quiet,
+        still: AGENT_WAITS.still,
+        max: AGENT_WAITS.busy,
+        until,
+      }),
+      null,
+      Math.max(0, Math.min(AGENT_WAITS.busy + ANSWER_MS, until - from)),
+    );
     if (!r) await sleep(Math.max(0, Math.min(from + AGENT_WAITS.still, until) - Date.now()));
   },
 

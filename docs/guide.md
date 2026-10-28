@@ -1662,9 +1662,9 @@ nothing did, so that a button that updates a basket in place is not pressed twic
 comes as soon as the page has settled: a quarter of a second after its last change and once the
 requests the click started have answered, a little over a second when nothing changed, at most
 2 seconds. A click that loads a page answers once that page's content is in, without waiting
-for its images; the result says it is still loading. It gets no page text this way: it calls `vimma_elements` to see what changed. Only the
-frame of the clicked element is compared, so a button inside an embedded frame that updates the
-page around it reads as no change.
+for its images; the result says it is still loading. It gets no page text this way: it calls
+`vimma_elements` to see what changed. Only the frame of the clicked element is compared, so a
+button inside an embedded frame that updates the page around it reads as no change.
 
 - **A plain click, no user activation.** The page gets the same click your `f` hints give it,
   never a mouse press from the system. It therefore cannot do what needs a real gesture of yours

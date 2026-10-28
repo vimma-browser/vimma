@@ -985,7 +985,10 @@ export class VimmaChild extends JSWindowActorChild {
   /** How many requests this document has open: its loads, fetches and XHRs (its load group). */
   #openRequests() {
     try {
-      return Number(/** @type {any} */ (this.document)?.documentLoadGroup?.activeCount ?? 0);
+      // Every request, not `activeCount`: that counts only foreground ones, and fetches and
+      // XHRs are background requests (nsLoadGroup::AddRequest, LOAD_BACKGROUND).
+      const group = /** @type {any} */ (this.document)?.documentLoadGroup;
+      return group ? [...group.requests].length : 0;
     } catch {
       return 0;
     }

@@ -610,6 +610,18 @@ export const VimmaActors = {
   },
 
   /**
+   * The submission a question allowed is withdrawn before the call ends (security.md M28): a
+   * step that started no load within a second has none of its own to make, and a page that
+   * keeps the call's wait going must not keep the allowance open with it. The mark and the
+   * hosts of the submissions stopped stay for the call's result.
+   * @param {any} browser XULBrowserElement
+   */
+  agentWithdraw(browser) {
+    const mark = submitMarks.get(browser?.browsingContext?.browserId);
+    if (mark) mark.allowed = null;
+  },
+
+  /**
    * The agent's call is over: the allowed submission is no longer allowed, and the hosts of the
    * submissions stopped since the mark are returned (the mark stays).
    * @param {any} browser XULBrowserElement
@@ -749,7 +761,7 @@ export const VimmaActors = {
     try {
       const r = await actor.sendQuery("Vimma:AgentQuiet", ask);
       if (r?.settled !== "quiet" && r?.settled !== "busy") return null;
-      if (typeof r.state !== "string") return null;
+      if (!["loading", "interactive", "complete"].includes(r.state)) return null;
       return { settled: r.settled, state: r.state };
     } catch {
       return null; // the frame navigated or its process went away

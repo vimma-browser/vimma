@@ -396,8 +396,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `DOMContentLoaded` and 200 ms without a change (at most 1 s), not at its load event, and the
     result says `loading: true` while its images and other subresources still load. The same
     readiness ends a `vimma_keys` step's wait for a load and the wait before `vimma_read_page`.
-    The submission allowance of F16 still lasts until the call ends; it now ends sooner, so a
-    submission the page makes after the call is cancelled as the page's own; security.md M28.)
+    The submission allowance of F16 still ends with the call, and a second after the click ran
+    when the click has started no load, as before, so a page that keeps the wait going does
+    not keep it open; a submission the page makes after the call is cancelled as the page's
+    own; security.md M28.)
     Agents
     cannot answer dialogs: no tool does, because a `confirm` is often the page asking "are you
     sure", which is the user's to answer. The dialog waits in the tab until the user shows it.

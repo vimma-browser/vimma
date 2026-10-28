@@ -300,3 +300,53 @@ addTidyTask(async function test_an_allowed_submission_the_page_holds_back_is_can
   Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's resubmission was cancelled");
   Assert.equal(tab.linkedBrowser.currentURI.spec, WAITS, "the page stayed");
 });
+
+/**
+ * `agent-activate` of a submit button, its submission question answered once.
+ * @param {any} c @param {any} tab @param {string} label
+ */
+async function submitClick(c, tab, label) {
+  const id = c.request("agent-activate", { tab: idOf(tab), label });
+  const q = await question();
+  Assert.equal(q.what.submit?.host, "example.com", "asked as a submission");
+  AgentGate.answer(q.id, { kind: "once" });
+  return c.response(id);
+}
+
+addTidyTask(async function test_an_allowed_submission_to_a_slow_server_goes_through() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // The destination answers after 3 s, long after the page went quiet: the call waits for that
+  // load with the allowance open, and the browser keeps running meanwhile.
+  const slow = `${DIR}file_vimma_agent_slow.sjs?wait=3000`;
+  const sent = requestStatus(slow);
+  let ticks = 0;
+  const timer = setInterval(() => ticks++, 100);
+  const start = Date.now();
+  const r = await submitClick(c, tab, by["Order slow"]);
+  clearInterval(timer);
+  const ms = Date.now() - start;
+  info(`vimma_activate of a submission whose server answers after 3 s: ${ms} ms, ${ticks} ticks`);
+  Assert.ok(r.ok, `the click ran: ${JSON.stringify(r.error)}`);
+  Assert.equal(await sent, Cr.NS_OK, "the asked submission was sent");
+  Assert.equal(r.result.navigated, true, "and its page loaded within the call");
+  Assert.equal(r.result.url, slow, "the destination");
+  Assert.greater(ticks, ms / 200, "the parent's event loop ran during the wait");
+});
+
+addTidyTask(async function test_a_page_kept_busy_does_not_keep_the_allowance_open() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // The page holds back the allowed submission, keeps a request open so that it never looks
+  // settled, and sends the form again 1.5 s later: the allowance closed a second after the
+  // click ran, as it always did, so that is the page's own submission (M28).
+  const sent = requestStatus(`${PAGE}?busy`);
+  const r = await submitClick(c, tab, by["Order busy"]);
+  Assert.ok(r.ok, "the click ran");
+  Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's resubmission was cancelled");
+  Assert.equal(tab.linkedBrowser.currentURI.spec, WAITS, "the page stayed");
+});
