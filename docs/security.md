@@ -817,12 +817,16 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`a hostile title of 300 characters is literal text cut at 60 columns`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M5. Grants **must** be per connection, at most one each, held in memory only, and end on
   `:mcp revoke`, on `ctrl+b shift+a` with no question waiting (one key, no second question), when
-  their connection closes, on `:mcp off` and, for a timed grant (a count, capped at
-  `[mcp] grant_max_minutes`, or `grant_minutes` above 0), at expiry. A grant of a connection that
-  closed **must** be given back only to a connection whose `agent-hello` carries the same session
-  id (32 to 128 lowercase hex characters), within 2 minutes of the close, once, and never while
-  another open connection holds that id; `:mcp revoke`, `ctrl+b shift+a` and `:mcp off` **must**
-  end such a waiting grant too.
+  their connection closes and no reconnect of its session claims the grant within 2 minutes, on
+  `:mcp off` and, for a timed grant (a count, capped at `[mcp] grant_max_minutes`, or
+  `grant_minutes` above 0), at expiry. A grant of a connection that closed **must** be given back
+  only to a connection whose `agent-hello` carries the same session id (32 to 128 lowercase hex
+  characters), within 2 minutes of the close, once, and never while another open connection holds
+  that id; **never** when the connection was muted (`x`); and never for a connection that said
+  hello or closed after `:mcp off`, until MCP is on again. `:mcp revoke`, `ctrl+b shift+a` and
+  `:mcp off` **must** end such a waiting grant too.
+  [`a muted connection's grant is not kept for a reconnect`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`while MCP is off no session is taken or parked, until it is on again`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`keeps its grant within RECONNECT_MS`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`asks again after RECONNECT_MS`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`another session, or none, gets nothing, and the parked grant stays for its own`](../packages/vimma-core/test/agent-gate.test.mjs),

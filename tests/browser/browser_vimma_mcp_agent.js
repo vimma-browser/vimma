@@ -483,6 +483,8 @@ add_task(async function test_a_reconnect_of_the_same_session_keeps_its_grant() {
   other.close();
 
   // :mcp off ends the grants, the parked one included: on again, the same session asks.
+  c.close();
+  await until(() => AgentGate.connections.length === 0, "its link drops, and its grant waits");
   await setSwitches({});
   await until(() => AgentGate.connections.length === 0, ":mcp off closes the connections");
   await setSwitches({ mcp: true });

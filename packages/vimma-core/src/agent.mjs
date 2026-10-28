@@ -312,6 +312,8 @@ export class AgentQueue {
      * @type {Map<string, { grant: number, parkedUntil: number }>}
      */
     this.parked = new Map();
+    /** False from `:mcp off` until MCP is on again: no session is taken or parked meanwhile. */
+    this.sessions = true;
     this.nextId = 1;
   }
 
@@ -328,7 +330,7 @@ export class AgentQueue {
     // A session held by an open connection is not this one's: a second claim gets nothing.
     const live =
       session !== undefined && [...this.conns.values()].some((o) => o.session === session);
-    if (session !== undefined && !live) {
+    if (this.sessions && session !== undefined && !live) {
       c.session = session;
       const parked = this.parked.get(session);
       this.parked.delete(session);
@@ -349,17 +351,20 @@ export class AgentQueue {
     const c = this.conns.get(conn);
     this.conns.delete(conn);
     for (const [session, p] of this.parked) if (p.parkedUntil < now) this.parked.delete(session);
-    if (c?.session !== undefined && c.grant > now) {
+    // A muted connection (`x`) keeps no grant for a reconnect: the mute must stop it.
+    if (this.sessions && c?.session !== undefined && c.grant > now && c.mutedUntil <= now) {
       this.parked.set(c.session, { grant: c.grant, parkedUntil: now + RECONNECT_MS });
     }
     return gone;
   }
 
   /**
-   * `:mcp off`: every grant ends, the parked ones too, and no open connection parks its grant
-   * when it closes, so turning MCP on again starts with no grant.
+   * `:mcp off`: every grant ends, the parked ones too, and until `resumeSessions` no connection
+   * takes or parks a session, not even one that says hello while the server is still closing
+   * the others, so turning MCP on again starts with no grant.
    */
   forgetSessions() {
+    this.sessions = false;
     this.parked.clear();
     for (const c of this.conns.values()) {
       c.grant = 0;
@@ -398,6 +403,11 @@ export class AgentQueue {
     const id = this.nextId++;
     this.queue.push(always ? { id, conn, tool, always } : { id, conn, tool });
     return { kind: "wait", id };
+  }
+
+  /** MCP is on again: sessions keep their grants across a reconnect as before. */
+  resumeSessions() {
+    this.sessions = true;
   }
 
   /**

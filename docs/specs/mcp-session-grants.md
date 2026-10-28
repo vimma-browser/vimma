@@ -130,13 +130,15 @@ That matches this spec: a task is approved once, and only the steps with consequ
    characters, sent only inside the authenticated socket, and Vimma accepts 32 to 128 hex
    characters (at least 128 bits). A grant waiting for its session is given back to the first
    connection that names it and to no other; a second connection naming a session that an open
-   connection holds gets nothing and parks nothing when it closes. A `vimma-ctl mcp` that cannot
+   connection holds gets nothing and parks nothing when it closes. A connection muted with `x`
+   parks nothing either, so that a dropped link never lifts a mute while keeping the grant. A `vimma-ctl mcp` that cannot
    read random bytes sends no id, and its reconnects ask again. Rejected: deriving the id from
    the process id, because process ids are small and reused.
 5. **`:mcp off` and revoking end the waiting grants too** (S5, behaviour 5), because the user
    expects both to end every grant, including that of an agent whose link is down at that
-   moment. `:mcp off` also marks the open connections so that, when the server closes them a
-   moment later, they park nothing.
+   moment. Until MCP is on again no connection takes or parks a session, because the server
+   closes the open connections a moment after `:mcp off`, and a question answered in that moment
+   must not leave a grant for the next `:mcp on`.
 6. **The status shows a grant with no end as `granted`** (S6, behaviour 3), because `◇ agent`
    alone means only that an agent is connected, and the user must see that this one may act
    unasked; minutes have no meaning for it, so the notice of a call under it drops them.

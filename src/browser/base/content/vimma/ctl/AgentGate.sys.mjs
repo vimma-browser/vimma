@@ -439,6 +439,11 @@ export const AgentGate = {
     changed();
   },
 
+  /** MCP is on: a reconnect of a session keeps its grant again (mcp-session-grants S3). */
+  on() {
+    queue.resumeSessions();
+  },
+
   /** When an allowed request last ran, or null. */
   get ranAt() {
     return ranAt;

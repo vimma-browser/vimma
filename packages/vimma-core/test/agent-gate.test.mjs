@@ -309,6 +309,32 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
       expect(q.ask(3, READ, 0).kind).toBe("wait");
     });
 
+    test("a muted connection's grant is not kept for a reconnect", () => {
+      const q = granted();
+      const d = q.ask(1, "vimma_download", 0, { always: true });
+      q.answer(d.id, { kind: "mute" }, 0);
+      q.disconnect(1, 0);
+      q.connect(3, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+    });
+
+    test("while MCP is off no session is taken or parked, until it is on again", () => {
+      const q = new AgentQueue();
+      q.forgetSessions();
+      // A connection that said hello while :mcp off was closing the others.
+      q.connect(1, { session: S, now: 0 });
+      q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: Infinity }, 0);
+      q.disconnect(1, 0);
+      q.resumeSessions();
+      q.connect(2, { session: S, now: 0 });
+      expect(q.ask(2, READ, 0).kind).toBe("wait");
+      // On again, sessions work as before.
+      q.answer(q.ask(2, READ, 0).id, { kind: "grant", minutes: Infinity }, 0);
+      q.disconnect(2, 0);
+      q.connect(3, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("run");
+    });
+
     test("turning MCP off ends the parked grants and those of the open connections", () => {
       const q = granted();
       q.connect(2, { session: "c".repeat(64), now: 0 });
