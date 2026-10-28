@@ -261,12 +261,12 @@ function onLine(line) {
     case "close": {
       const known = byAddress.has(ev.address);
       byAddress.delete(ev.address);
-      // Too late for the unload swap: the parked window still comes back (decision 7). The
-      // event can be read before the window's unload (#554), and that swap is queued: it reads
-      // the closed window's last record when it runs, so the record goes only after it.
-      const done = known ? step({ type: "closing", window: ev.address }, { cached: true }) : null;
-      if (done) done.finally(() => records.delete(ev.address));
-      else records.delete(ev.address);
+      // Too late for the unload swap: the parked window still comes back (decision 7). A swap
+      // queued or running now can still need the closed window's last record: this one, when
+      // the event is read before the unload (#554), or one whose j/clients no longer listed the
+      // window and whose rescue falls back on the record (#570). It goes once they are all done.
+      if (known) step({ type: "closing", window: ev.address }, { cached: true });
+      chain.finally(() => records.delete(ev.address));
       return;
     }
     case "move": {
