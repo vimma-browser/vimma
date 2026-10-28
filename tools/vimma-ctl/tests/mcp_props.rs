@@ -187,12 +187,19 @@ fn tool() -> impl Strategy<Value = ToolCall> {
             format: None,
             max_chars: None
         }),
-        any::<String>().prop_map(|url| ToolCall::Open { url, tab: None }),
+        any::<String>().prop_map(|url| ToolCall::Open {
+            url,
+            tab: None,
+            elements: false
+        }),
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Close { tab }),
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Show { tab }),
         ("[0-9]{1,20}", any::<String>()).prop_map(|(tab, keys)| ToolCall::Keys { tab, keys }),
-        ("[0-9]{1,20}", any::<bool>())
-            .prop_map(|(tab, labels)| ToolCall::Screenshot { tab, labels }),
+        ("[0-9]{1,20}", any::<bool>()).prop_map(|(tab, labels)| ToolCall::Screenshot {
+            tab,
+            labels,
+            full: false
+        }),
         (
             "[0-9]{1,20}",
             proptest::option::of(0u64..=9_007_199_254_740_991)
@@ -206,6 +213,7 @@ fn tool() -> impl Strategy<Value = ToolCall> {
                     value: FillValue::Text(value),
                 }],
                 submit: None,
+                elements: false,
             }
         }),
     ]

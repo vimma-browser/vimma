@@ -385,6 +385,35 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(text(questionLine(long, { grantMinutes: 10 }))).toMatch(/ sg button "x{59}…"$/);
   });
 
+  // Issue #584: a step that also returns the page's element list says so in its question and
+  // its notice, since a yes to it is a yes to vimma_elements on the page it leaves.
+  test("a step that returns the element list says so in the question and the notice", () => {
+    const what = {
+      tab: "7",
+      index: 2,
+      title: "List · Example",
+      url: "https://example.com/list",
+      label: "sg",
+      kind: "button",
+      text: "Add to list",
+      elements: true,
+    };
+    const activate = { tool: "vimma_activate", label: { client: "claude-code" }, what };
+    expect(text(questionLine(activate, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_activate: 2 "List · Example" example.com/list  sg button "Add to list", then vimma_elements',
+    );
+    expect(ranNotice(activate, 12 * MIN, 0)).toBe(
+      'claude-code clicked button "Add to list" in "List · Example" and listed the buttons and fields after it (grant, 12m left)',
+    );
+    const opened = { ...open, what: { ...open.what, elements: true } };
+    expect(text(questionLine(opened, { grantMinutes: 10 }))).toMatch(/, then vimma_elements$/);
+    expect(ranNotice(opened, Infinity, 0)).toBe(
+      "example-agent opened docs.rs and listed the buttons and fields after it (grant)",
+    );
+    const plain = { ...activate, what: { ...what, elements: false } };
+    expect(text(questionLine(plain, { grantMinutes: 10 }))).not.toMatch(/vimma_elements/);
+  });
+
   test("a submit: method and host in bold, the field count, y or n only", () => {
     const submit = {
       tool: "vimma_activate",
