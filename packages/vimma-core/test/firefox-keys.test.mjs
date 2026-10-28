@@ -1,6 +1,8 @@
 // Firefox's own shortcuts (docs/specs/key-handling-batch.md § 1): which <key> elements of
 // #mainKeyset Vimma turns off.
+import { readFileSync } from "node:fs";
 import { describe, test, expect } from "vitest";
+import { parseConfig } from "../src/config.mjs";
 import {
   FIREFOX_SHORTCUTS,
   FIREFOX_SHORTCUTS_MACOS,
@@ -579,5 +581,49 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
       if (r.fate !== "c" || r.conditional) continue;
       expect(bound.has(r.chord), `${r.chord} (${r.id})`).toBe(false);
     }
+  });
+});
+
+// Issue #385, docs/specs/macos-build.md decision 29: on macOS, "all" keeps Firefox's cmd keys
+// off as on Linux, and the guide's `[firefox] enable` example is how a user gets some back.
+describe("macOS: the guide's [firefox] enable example", () => {
+  const guide = readFileSync(new URL("../../../docs/guide.md", import.meta.url), "utf8");
+  const examples = [...guide.matchAll(/```toml\n([\s\S]*?)```/g)]
+    .map((m) => /** @type {string} */ (m[1]))
+    .filter((text) => text.includes("[firefox]") && text.includes('"meta+'));
+  /** Every key of a macOS window's keysets, as the host reads them. */
+  const keys = FIREFOX_SHORTCUTS_MACOS.filter(
+    (r) => r.id && (r.source === "main" || r.source === "devtools"),
+  ).map((r) => ({ id: r.id, chord: r.chord, fate: r.fate }));
+  /** @param {string} text config.toml */
+  const onWith = (text) => {
+    const { config, keymap, errors } = parseConfig(text);
+    expect(errors).toEqual([]);
+    const plan = planFirefoxKeys(keys, /** @type {any} */ (config).firefox, {
+      bound: boundChords(/** @type {any} */ (keymap)),
+      mac: true,
+    });
+    const off = new Set(plan.off);
+    return keys.filter((k) => !off.has(k));
+  };
+
+  // The default itself ("all" turns cmd+t off and keeps cmd+q on macOS) is pinned above, in
+  // '"all" on macOS keeps cmd+q and reads the macOS fates' and "cmd+q quits as macOS runs it".
+  test("the guide's example parses on macOS and re-enables exactly the cmd keys it lists", () => {
+    expect(examples, "one [firefox] example with meta+ keys in docs/guide.md").toHaveLength(1);
+    const text = /** @type {string} */ (examples[0]);
+    const { config } = parseConfig(text);
+    const firefox = /** @type {any} */ (config).firefox;
+    expect(firefox.disable).toBe("all");
+    expect(firefox.enable).toContain("meta+t");
+    expect(firefox.enable.every((/** @type {string} */ c) => c.includes("meta+"))).toBe(true);
+    // Only the listed chords come back; Firefox's fate d keys (cmd+q, the editor's) stay on.
+    const on = onWith(text);
+    const back = new Set(on.filter((k) => k.fate !== "d").map((k) => k.chord));
+    expect([...back].sort()).toEqual([...firefox.enable].sort());
+    expect(on.map((k) => k.chord)).toContain("meta+q");
+    // Without the example, the same keys are off.
+    const byDefault = onWith("schema = 2\n").map((k) => k.chord);
+    for (const chord of firefox.enable) expect(byDefault, chord).not.toContain(chord);
   });
 });

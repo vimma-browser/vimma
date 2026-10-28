@@ -27,6 +27,9 @@ tests.**
   `ctrl+b ?` overlay.
 - Firefox's own shortcuts are off, and every shortcut is configurable through Vimma. Vimma's
   defaults are Firefox's own keys, so a Firefox user keeps every shortcut they know.
+  (Since changed: on macOS Vimma's defaults stay on Linux's chords, so Firefox's `cmd` keys
+  other than `cmd+q` are off under `disable = "all"` and come back through `[firefox] enable`;
+  [macos-build](macos-build.md) decision 29.)
 - DevTools keys stay exactly as they are in Firefox, and can still be changed in config.toml.
 
 ## User stories

@@ -1094,11 +1094,29 @@ cmd+shift+]), also with `ctrl` (`ctrl+meta+{`, `ctrl+meta+}`), and `alt+meta+lef
 `alt+meta+right`, `alt+meta+up` and `alt+meta+down`. Its sidebar keys use `ctrl`: `ctrl+x` (AI
 chatbot), `ctrl+z` (show or hide the sidebar) and `ctrl+u` (open tabs, which stays Vimma's
 half-page scroll). Vimma's keymap is the same as on Linux, so the others are unbound, and the
-default `disable = "all"` turns them off, `ctrl+x` and `ctrl+z` included:
-`[firefox] enable = ["meta+t"]` or `["meta+{"]` gives one back. In a windowed Mac build a key that
-also has a menu bar item (`cmd+t` is File > New Tab) may still run from the menu bar; this has not
-been checked on a Mac yet. `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt`
-access keys.
+default `disable = "all"` turns them off, `ctrl+x` and `ctrl+z` included: the same rule as on
+Linux, and Vimma's own keys do the same things (`ctrl+t` or `t` for a new tab, `x` to close
+it, `ctrl+l` for the address bar, `ctrl+b 1..9` for a tab by number). `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt` access keys.
+
+To have Firefox's common `cmd` keys back, list them in `enable` (`cmd+t` works there too, and
+means `meta+t`); each then runs exactly as in Firefox, and the others stay off:
+
+```toml
+schema = 2
+
+[firefox]
+enable = [
+  "meta+t", "meta+n", "meta+w", "shift+meta+t", # new tab, new window, close tab, reopen it
+  "meta+l", "meta+r", "meta+f", "meta+g",       # address bar, reload, find, next match
+  "meta+[", "meta+]",                           # back, forward
+  "meta+1", "meta+2", "meta+3", "meta+4", "meta+5", "meta+6", "meta+7", "meta+8", "meta+9",
+]
+```
+
+In a windowed Mac build a key that is off may still run from the menu bar when it has a menu
+item there (`cmd+t` is File > New Tab, `cmd+w` File > Close Tab): macOS's menu bar takes the
+item's key from Firefox's shortcut without seeing that it is off. This has not been checked on a
+Mac yet.
 
 **Any Firefox command from a key.** `:firefox <id>` runs one of the window's commands or keys by
 its id (Tab completes them): `:firefox Tools:Downloads`, `:firefox key_search2`. A value that
