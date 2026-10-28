@@ -11,6 +11,8 @@
 #              (spec ship-vimma-ctl); release.yml sets it, the weekly macOS build does not
 #   VIMMA_CTL_LICENSES  its notices from tools/package/ctl-notices.mjs, required with VIMMA_CTL
 #              (#516); they go into Contents/Resources, since Contents/MacOS holds only code
+#   VIMMA_APP_MANIFEST  where to write the signed app's manifest (macos-app-manifest.sh); release.yml
+#              sets it for a Developer ID release only
 set -eu
 
 in=${1:?usage: macos-dmg.sh <in.dmg> <out.dmg>}
@@ -66,4 +68,9 @@ fi
 if command -v xattr > /dev/null 2>&1; then xattr -cr "$app"; fi
 
 "$rcodesign" sign "$app"
+# For a Developer ID release: the list macos-notarise compares the app it is handed with
+# (macos-app-manifest.sh). It reads the app and changes nothing in the dmg.
+if [ -n "${VIMMA_APP_MANIFEST:-}" ]; then
+  "$(dirname "$0")/macos-app-manifest.sh" "$app" > "$VIMMA_APP_MANIFEST"
+fi
 "$mach" python -m mozbuild.action.make_dmg --volume-name Vimma "$staged" "$out"
