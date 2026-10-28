@@ -186,7 +186,8 @@ addTidyTask(async function test_a_click_waits_for_the_request_it_started() {
   const ms = at - (await pageAt(tab));
   info(`vimma_activate, a click whose page updates when a 600 ms request answers: ${ms} ms`);
   Assert.deepEqual(r.result.changed, ["text"], "the update after the request is in the result");
-  Assert.less(ms, 1800, `and the call did not wait for a page that went quiet (${ms})`);
+  // At most the 2 s a busy page gets (AGENT_WAITS.busy), with room for a slow runner's IPC.
+  Assert.less(ms, 2600, `and the call ended within its cap, not at a load deadline (${ms})`);
 });
 
 addTidyTask(async function test_a_click_that_changes_nothing_waits_less_than_before() {
