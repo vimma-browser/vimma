@@ -212,6 +212,9 @@ export class GrepSession {
     this.info = { ...IDLE };
     /** The generation of the newest search; replies for an older one are dropped. */
     this.gen = 0;
+    /** How many times the picker has opened: a jump or step that waited across an opening
+     * belongs to an older search and leaves the frames to the newer one. */
+    this.opened = 0;
     /** @type {number | undefined} */
     this.timer = undefined;
     /** @type {number | undefined} */
@@ -337,6 +340,7 @@ export class GrepSession {
     );
     for (const key of this.frames.keys()) if (!kept.has(key)) this.frames.delete(key);
     const query = text ?? "";
+    this.opened++;
     this.state = openGrepPicker(query);
     this.info = { ...IDLE };
     this.ui.open();
@@ -679,8 +683,10 @@ export class GrepSession {
    * Selects the row's tab, in its own window, and asks its frame to select the match.
    * @param {GrepMatchRow} row
    * @param {string} query
+   * @param {number} [opened]  this.opened when the jump was asked for: if grep opened while
+   *   the tab switched, the jump stops there and leaves focus and the frame to that search
    */
-  async jump(row, query) {
+  async jump(row, query, opened = this.opened) {
     const win = this.windowFor(row.tabId);
     const tab = /** @type {any} */ (tabById(win, row.tabId));
     if (!tab) {
@@ -693,6 +699,7 @@ export class GrepSession {
       const shown = switchDone(win);
       gBrowser.selectedTab = tab;
       await shown;
+      if (this.opened !== opened) return;
     }
     tab.linkedBrowser?.focus();
     const frame = this.frames.get(`${row.tabId}:${row.frameKey}`);
@@ -731,7 +738,11 @@ export class GrepSession {
     this.list = next;
     const row = /** @type {GrepMatchRow} */ (next.rows[next.index]);
     this.host.notice(grepListText(next));
-    await this.jump(row, next.query);
+    const opened = this.opened;
+    await this.jump(row, next.query, opened);
+    // Grep opened while the jump waited (a slow tab switch or frame): that search owns the
+    // frame now, and ending it here would stop its running query, which then lists nothing.
+    if (this.opened !== opened) return;
     const frame = this.frames.get(`${row.tabId}:${row.frameKey}`);
     if (frame) await this.ask(frame.bc, {}, "Vimma:GrepEnd");
   }
