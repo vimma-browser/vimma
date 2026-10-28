@@ -34,6 +34,10 @@ const { DEFAULT_HINT_CHARS } = ChromeUtils.importESModule(
 const { PlacesTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/PlacesTestUtils.sys.mjs",
 );
+const { UrlbarTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/UrlbarTestUtils.sys.mjs",
+);
+UrlbarTestUtils.init(this);
 
 const PREF = "vimma.ui.toolbar.hidden";
 const HIDDEN = "vimma-toolbar-hidden";
@@ -282,6 +286,12 @@ add_task(async function focusing_the_url_bar_shows_the_minimal_bar() {
     title: "Vimma plain page",
   });
   await PlacesTestUtils.addVisits({ uri: OTHER, title: "Vimma plain page" });
+  // Earlier test files leave their pages in history; one visited more often lists above the
+  // bookmark, so the row to pick is found by its URL, not by its place in the list.
+  const EARLIER = PLAIN + "?earlier";
+  for (let i = 0; i < 3; i++) {
+    await PlacesTestUtils.addVisits({ uri: EARLIER, title: "Vimma plain page" });
+  }
   await Cc["@mozilla.org/places/frecency-recalculator;1"]
     .getService(Ci.nsIObserver)
     .wrappedJSObject.recalculateAnyOutdatedFrecencies();
@@ -307,7 +317,11 @@ add_task(async function focusing_the_url_bar_shows_the_minimal_bar() {
   Assert.equal(hiddenTop, shownTop, "the suggestions open where they do with the toolbar shown");
   Assert.greater(hiddenTop, gURLBar.inputField.getBoundingClientRect().top, "below the field");
   const loaded = BrowserTestUtils.browserLoaded(browser, false, OTHER);
-  EventUtils.synthesizeKey("KEY_ArrowDown");
+  await UrlbarTestUtils.promiseSearchComplete(window);
+  for (let i = 0; i < 10 && gURLBar.view.selectedResult?.payload.url !== OTHER; i++) {
+    EventUtils.synthesizeKey("KEY_ArrowDown");
+  }
+  Assert.equal(gURLBar.view.selectedResult?.payload.url, OTHER, "the bookmark's row is selected");
   EventUtils.synthesizeKey("KEY_Enter");
   await loaded;
   await until(() => barCollapsed(), "Enter on a row loads it and hides the bar");
