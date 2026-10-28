@@ -37,7 +37,8 @@
     "security-links": "node tools/security/check-doc-links.mjs",
     "license-check:crates": "node tools/license-check/cargo-license-check.mjs",
     "bench": "node tools/bench/bench.mjs",
-    "mutation": "stryker run"
+    "mutation": "stryker run",
+    "gen-agent-tools": "node tools/gen-agent-tools.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",

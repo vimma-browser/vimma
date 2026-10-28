@@ -1,0 +1,15 @@
+{
+  "id": "msg_013Zva2CMHLNnXjNJJKqJ2EF",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-4-5",
+  "content": [{ "type": "text", "text": "The basket holds the milk.\nShall I go on?" }],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 120,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 6195,
+    "output_tokens": 14
+  }
+}

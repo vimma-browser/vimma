@@ -1,7 +1,9 @@
 # Spec: builtin-agent
 
-Status: draft · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`, `agent-providers.mjs`,
-`agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`; `agent.mjs` and `agent-prompt.mjs`
+Status: draft (Delivery 1 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
+`agent-providers.mjs`, `agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`,
+`agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs`; `agent.mjs` and
+`agent-prompt.mjs`
 for the built-in label and the conversation grant; `config.mjs` for `[agent]`; `actions.mjs` and
 `defaults.mjs` for the key); `src/browser/base/content/vimma/` (new `agent/AgentChat.sys.mjs`,
 `agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`, `ui/agent-chat.mjs`;
