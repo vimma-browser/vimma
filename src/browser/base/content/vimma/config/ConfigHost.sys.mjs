@@ -497,7 +497,7 @@ export const ConfigHost = {
     } catch (e) {
       if (!notFound(e)) return `cannot read ${path}`;
     }
-    const r = appendRouteText(text, rule);
+    const r = appendRouteText(text, rule, { mac: Services.appinfo.OS === "Darwin" });
     if ("error" in r) return r.error;
     try {
       if ("create" in r) {

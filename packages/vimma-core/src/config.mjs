@@ -970,17 +970,18 @@ export function rawUpdatesCheck(text) {
  * is refused with the reason, and nothing is written.
  * @param {string | null} text  config.toml as it is, null when missing
  * @param {{ domain: string, workspace: string }} rule
+ * @param {{ mac?: boolean }} [options]  check it with macOS's default keys (compileKeymap)
  * @returns {{ append: string } | { create: string } | { error: string }}
  */
-export function appendRouteText(text, { domain, workspace }) {
+export function appendRouteText(text, { domain, workspace }, { mac = false } = {}) {
   const block = `[[routes]]\ndomain = ${JSON.stringify(domain)}\nworkspace = ${JSON.stringify(workspace)}\n`;
   const base = text ?? formatConfigTemplate();
-  if (text !== null && parseConfig(text).errors.length) {
+  if (text !== null && parseConfig(text, { mac }).errors.length) {
     return { error: "config.toml does not parse now; fix it first (:config shows it)" };
   }
   const glue = base === "" ? "" : base.endsWith("\n") ? "\n" : "\n\n";
   const added = `${glue}${block}`;
-  const after = parseConfig(base + added);
+  const after = parseConfig(base + added, { mac });
   const first = after.errors[0];
   if (first) {
     return {
