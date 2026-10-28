@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_waits.js: each control records when the page saw the agent's
+   - step (`window.at`, ms since the epoch), so the test can time the call's wait after it. A
+   - button that updates the page at once, one that updates it when a 600 ms request answers, one
+   - that changes nothing, a field, a link to a page whose load event takes 5 s, a button whose
+   - script submits a form 1.5 s later, and a submit button whose page holds its submission back
+   - and sends it again 1.5 s later, one that does the same while it keeps a request open, and
+   - a form whose destination answers after 3 s. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Waits agent fixture</title>
+    <style>
+      body {
+        margin: 4px;
+        font: 12px sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <p>
+      <button id="add" type="button">Add</button>
+      <button id="fetch" type="button">Fetch</button>
+      <button id="nothing" type="button">Nothing</button>
+      <button id="late" type="button">Submit late</button>
+      <input id="name" aria-label="Name" />
+      <a id="slow" href="file_vimma_agent_slow.sjs?page">Slow page</a>
+    </p>
+    <form id="order" method="post" action="file_vimma_agent_page.html?order">
+      <button id="hold" type="submit">Order held</button>
+    </form>
+    <form id="slow-order" method="post" action="file_vimma_agent_slow.sjs?wait=3000">
+      <button type="submit">Order slow</button>
+    </form>
+    <form id="busy-order" method="post" action="file_vimma_agent_page.html?busy">
+      <button type="submit">Order busy</button>
+    </form>
+    <form id="draft" method="post" action="file_vimma_agent_page.html?late"></form>
+    <p id="total">Total 0</p>
+    <script>
+      window.at = 0;
+      const total = document.getElementById("total");
+      const stamp = () => (window.at = Date.now());
+      document.getElementById("add").addEventListener("click", () => {
+        stamp();
+        total.textContent = "Total 1";
+      });
+      document.getElementById("fetch").addEventListener("click", async () => {
+        stamp();
+        await (await fetch("file_vimma_agent_slow.sjs?wait=600")).text();
+        total.textContent = "Total fetched";
+      });
+      document.getElementById("nothing").addEventListener("click", stamp);
+      document.getElementById("name").addEventListener("input", stamp);
+      document.getElementById("late").addEventListener("click", () => {
+        stamp();
+        setTimeout(() => document.getElementById("draft").requestSubmit(), 1500);
+      });
+      // Holds its submission back, keeps a request open so the page never looks settled, and
+      // sends the form again 1.5 s later.
+      const busy = document.getElementById("busy-order");
+      busy.addEventListener("submit", (e) => {
+        if (window.resentBusy) return;
+        e.preventDefault();
+        fetch("file_vimma_agent_slow.sjs?wait=5000");
+        setTimeout(() => {
+          window.resentBusy = true;
+          busy.requestSubmit();
+        }, 1500);
+      });
+      const order = document.getElementById("order");
+      window.resent = false;
+      order.addEventListener("submit", (e) => {
+        if (window.resent) return;
+        stamp();
+        e.preventDefault();
+        setTimeout(() => {
+          window.resent = true;
+          order.requestSubmit();
+        }, 1500);
+      });
+    </script>
+  </body>
+</html>

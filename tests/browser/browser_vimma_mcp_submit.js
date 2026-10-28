@@ -24,9 +24,6 @@ const { VimmaControl } = ChromeUtils.importESModule(
 const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
 );
-const { AgentAct } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
-);
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
@@ -53,7 +50,6 @@ const SIGNUP = `${DIR}file_vimma_agent_signup.html`;
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
 registerCleanupFunction(async () => {
-  AgentAct._settleMs = null;
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   await VimmaControl.settled();
@@ -95,7 +91,6 @@ const clients = [];
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
-  AgentAct._settleMs = null;
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -172,11 +167,6 @@ function requestStatus(prefix) {
     Services.obs.addObserver(observe, "http-on-modify-request");
   });
 }
-
-add_task(async function setup() {
-  // The default wait after a click: a page's submission a moment later is still in its result.
-  AgentAct._settleMs = null;
-});
 
 addTidyTask(async function test_submit_asks_under_a_grant() {
   await mcp(true);

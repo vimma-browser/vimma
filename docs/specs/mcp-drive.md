@@ -323,8 +323,13 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
       the user reached in that tab before) is refused.
 13. **Within one call.** Actions run in order. After an action that loads a page (a follow,
     back, forward, `gu`, `gU`), the next one waits for that load, up to 20 s (`LOAD_TIMEOUT_MS`,
-    `agent-commands.mjs:33`). Before each action the tab must still be an agent tab; if it has
-    left the agent workspace or closed, the call stops with `changed` and reports the steps done.
+    `agent-commands.mjs:33`). (Since changed: the page counts as loaded at its
+    `DOMContentLoaded` and 200 ms without a change, at most 1 s, rather than at its load event,
+    because a page's slow images and trackers held every step; the result's `loading` says
+    whether it is still loading; issue
+    [#579](https://github.com/vimma-browser/vimma/issues/579), mcp-forms F11.) Before each
+    action the tab must still be an agent tab; if it has left the agent workspace or closed, the
+    call stops with `changed` and reports the steps done.
     If the user is using the tab (it is the selected tab of a focused window and its mode is
     insert, hint or copy mode, or a key sequence is pending there), the call is denied with the
     new reason `in-use` before it runs, so an agent never scrolls or navigates a page under the

@@ -1190,9 +1190,9 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   listed elements, the frame's text outside scripts and styles, a visible dialog element), as
   fixed words from a list that both the browser and `vimma-ctl mcp` check; the comparison runs in
   the clicked element's frame's child, which keeps only a hash of the text, sends no page text
-  and reads no sensitive field's value, as in `vimma_elements` (M31). That check waits up to one
-  more second after the submission allowance of M28 is closed, so it opens nothing, and a
-  submission the page tries meanwhile is still stopped and named.
+  and reads no sensitive field's value, as in `vimma_elements` (M31). That check runs once the
+  clicked element's frame has settled (M28), after the submission allowance of M28 is closed,
+  so it opens nothing; a submission the page tries during the call is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../tests/browser/browser_vimma_mcp_activate.js),
   [`test_activate_says_what_changed_in_place`](../tests/browser/browser_vimma_mcp_activate_changes.js),
   [`activate_says_what_changed_in_place`](../tools/vimma-ctl/src/mcp.rs),
@@ -1256,7 +1256,19 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   host, port and path) it named; a redirect of a submission let through follows on. The call's
   wait for a page counts from when the click or the submission ran in the page's process, not
   from the child's reply before it, so that the allowance is still open when a busy process runs
-  the step late; it still ends with the call. That wait is bounded: a child that does not answer
+  the step late; it still ends with the call. A step that starts no load ends its call once the
+  step's frame has settled, which its own process tells: no change to its document for 250 ms
+  and no request the step opened still open, 1.3 s when the page has not changed at all, at
+  most 2 s; a load the step started is waited for until the new page has had its
+  `DOMContentLoaded` and 200 ms without a change. A submission the step itself makes starts its
+  load in that process before the settle's answer, over the same IPC channel, so the call waits
+  for that load with the allowance open. A step that has started no load a second after it ran
+  has its allowance withdrawn then, while the wait goes on, so a page that keeps itself busy
+  (changing its document, holding a request open) never keeps the allowance open longer than
+  the second it had before; the parent bounds each of these answers itself, so a page that
+  blocks its own process cannot hold the call either. A submission the page makes later, after
+  the call, is outside the allowance and is cancelled while the mark stays, as any other, though
+  the result can no longer name it. That wait is bounded: a child that does not answer
   whether the step ran is taken as having run after 1 s, one that keeps answering that it has not
   run yet after 5 s, and the whole wait ends after 20 s. When the child skips a step, because the
   page changed the element or the form as it was pressed, it tells the parent in the same task,
@@ -1280,6 +1292,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   submission's `submit` listener: such a button is an ordinary click (mcp-forms F17).
   [`test_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_page_script_submit_after_a_click_is_cancelled`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_a_submission_the_page_makes_after_a_click_is_still_cancelled`](../tests/browser/browser_vimma_mcp_waits.js),
+  [`test_an_allowed_submission_the_page_holds_back_is_cancelled_later`](../tests/browser/browser_vimma_mcp_waits.js),
+  [`test_a_page_kept_busy_does_not_keep_the_allowance_open`](../tests/browser/browser_vimma_mcp_waits.js),
+  [`test_an_allowed_submission_to_a_slow_server_goes_through`](../tests/browser/browser_vimma_mcp_waits.js),
   [`test_users_own_submit_in_an_agent_tab_goes_through`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submit_sent_elsewhere_than_asked_is_stopped`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submit_listener_moving_the_destination_is_stopped`](../tests/browser/browser_vimma_mcp_submit.js),

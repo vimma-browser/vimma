@@ -27,9 +27,6 @@ const { VimmaControl } = ChromeUtils.importESModule(
 const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
 );
-const { AgentAct } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
-);
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
@@ -56,7 +53,6 @@ const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
 registerCleanupFunction(async () => {
-  AgentAct._settleMs = null;
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   await VimmaControl.settled();
@@ -100,7 +96,6 @@ const clients = [];
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
-  AgentAct._settleMs = 300;
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -169,11 +164,6 @@ const seen = (tab) =>
     gesture: content.document.hasValidTransientUserGestureActivation,
     title: content.document.title,
   }));
-
-add_task(async function setup() {
-  // The wait for a page a click may start: short here, so a test of many clicks stays quick.
-  AgentAct._settleMs = 300;
-});
 
 addTidyTask(async function test_activate_clicks_a_button_in_a_background_tab() {
   await mcp(true);

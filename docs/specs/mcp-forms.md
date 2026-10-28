@@ -383,7 +383,24 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     page also returns `changed`, the parts of the page that changed in place within a further
     second: `element`, `elements`, `text` and `dialog`, fixed words with no page text, because an
     agent told "the page did not change" after a basket updated in place clicked again; issue
-    [#510](https://github.com/vimma-browser/vimma/issues/510), security.md M26.) Agents
+    [#510](https://github.com/vimma-browser/vimma/issues/510), security.md M26.) (Since
+    changed: the fixed second and the further second are gone, because an agent's task spent
+    most of its time in them; issue [#579](https://github.com/vimma-browser/vimma/issues/579).
+    Once the click has run, the clicked element's frame watches its own document in its own
+    process (a `MutationObserver` from just before the click, and the requests of its load group
+    that the click opened) and the call goes on as soon as the page has not changed for 250 ms
+    and no such request is open. A page that has not changed at all is given 1.3 s, because a
+    hidden tab's page timers fire at most once a second and an update from a timer must not read
+    as "nothing changed"; a page that never stops changing ends the wait after 2 s, the old worst
+    case. `changed` is then read once. A page a click loads counts as ready at its
+    `DOMContentLoaded` and 200 ms without a change (at most 1 s), not at its load event, and the
+    result says `loading: true` while its images and other subresources still load. The same
+    readiness ends a `vimma_keys` step's wait for a load and the wait before `vimma_read_page`.
+    The submission allowance of F16 still ends with the call, and a second after the click ran
+    when the click has started no load, as before, so a page that keeps the wait going does
+    not keep it open; a submission the page makes after the call is cancelled as the page's
+    own; security.md M28.)
+    Agents
     cannot answer dialogs: no tool does, because a `confirm` is often the page asking "are you
     sure", which is the user's to answer. The dialog waits in the tab until the user shows it.
     Every navigation an activation causes takes a slot of the open rate (`OPEN_RATE`), shared
@@ -412,7 +429,12 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `reset` the fields whose value did not stick (the page put it back), so the agent can tell,
     and otherwise reads as after a click (F11). Each field is set after the child's reply, as a
     click is, so a dialog the page opens in its `change` handler never holds the call: the
-    fields after it are not filled and the result names the dialog.
+    fields after it are not filled and the result names the dialog. (Since changed: a fill
+    without `submit` returns once its last field is set and waits for no page, unless a field's
+    handler started a load, which it waits for as after a click so that a submission the page
+    tried is named in `blocked`; a fill with `submit` waits as after a click (F11), because
+    filling fields loads nothing and the fixed second was most of the call; issue
+    [#579](https://github.com/vimma-browser/vimma/issues/579).)
 13. **What it never fills.** Refused before anything is asked, naming the field: sensitive fields
     (F6), file fields, hidden and disabled fields, read-only fields, editable roots
     (`contenteditable`; rich editors keep their own model, and no Firefox API sets their text as

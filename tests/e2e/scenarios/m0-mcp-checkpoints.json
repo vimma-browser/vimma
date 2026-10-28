@@ -84,7 +84,7 @@
         "expect": { "result": { "content": [{ "type": "text" }, { "type": "text" }] } }
       }
     },
-    { "sleep": 0.5 },
+    { "sleep": 2.2 },
     { "screenshot": "m0-mcp-checkpoints-basket-ran" },
     { "sleep": 1.8 },
     {

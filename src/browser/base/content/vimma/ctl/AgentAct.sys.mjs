@@ -39,6 +39,7 @@ import {
   labelAgentElements,
 } from "../core/agent-act.mjs";
 import { isPayStep, pageText, statedTotal } from "../core/agent-checkpoint.mjs";
+import { AGENT_WAITS } from "../core/agent-wait.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { cutTo, shown } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
@@ -48,6 +49,7 @@ import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
@@ -55,8 +57,18 @@ ChromeUtils.defineESModuleGetters(lazy, {
 const COLLECT_TIMEOUT_MS = 5000;
 /** How long a click's call waits for a page it started (mcp-drive D13, mcp-forms F11). */
 const LOAD_TIMEOUT_MS = 20000;
-/** How long after a click a page that has started no load is taken to have none to start. */
-const SETTLE_MS = 1000;
+/**
+ * The longest a wait goes without looking at the tab again: the user's input in it and a
+ * dialog it opened are seen within this, and a load's progress events wake it sooner.
+ */
+const TICK_MS = 100;
+/**
+ * How long after a step ran the submission its question allowed stays open when the step has
+ * started no load (security.md M28): the second it always had.
+ */
+const ALLOW_MS = 1000;
+/** How much longer than its own limit a frame's answer may take to reach the parent. */
+const ANSWER_MS = 500;
 /** A dialog's text in the result, in code points (F11). */
 const DIALOG_TEXT_MAX = 200;
 /** The page dialogs a result names, by the prompt service's type (F11). */
@@ -79,6 +91,41 @@ const sleep = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
  * @returns {Promise<T>}
  */
 const bounded = (promise, fallback, ms) => Promise.race([promise, sleep(ms).then(() => fallback)]);
+
+/**
+ * Resolves at the first of: a progress event of `browser`'s page (a load starting, committing
+ * or stopping, a location change), `ms` passing, or `wake` resolving; so a wait reacts to a
+ * load at once without asking the tab every few milliseconds.
+ * @param {any} browser XULBrowserElement @param {number} ms @param {Promise<unknown>} [wake]
+ * @returns {Promise<void>}
+ */
+function nextEvent(browser, ms, wake) {
+  /** @type {any} */
+  const tabs = browser.ownerGlobal?.gBrowser;
+  return new Promise((resolve) => {
+    let timer = 0;
+    const done = () => {
+      lazy.clearTimeout(timer);
+      try {
+        tabs?.removeTabsProgressListener(listener);
+      } catch {
+        // the window is closing
+      }
+      resolve();
+    };
+    const listener = {
+      onStateChange: (/** @type {any} */ b) => b === browser && done(),
+      onLocationChange: (/** @type {any} */ b) => b === browser && done(),
+    };
+    timer = lazy.setTimeout(done, Math.max(0, ms));
+    try {
+      tabs?.addTabsProgressListener(listener);
+    } catch {
+      // no tab browser: the timer alone wakes the wait
+    }
+    wake?.then(done, done);
+  });
+}
 
 /**
  * A URI's site, its registrable domain (eTLD+1, mcp-drive D18); its host when it has none.
@@ -238,8 +285,65 @@ function afterStep(browser, before, dialog, blocked, stopped) {
 }
 
 export const AgentAct = {
-  /** Test-only: SETTLE_MS's place, so a test of many clicks stays quick. */
-  _settleMs: /** @type {number | null} */ (null),
+  /**
+   * Asks the top document of `browser` whether it is ready (VimmaActors.agentQuiet with
+   * `ready`), bounded in the parent as well: a page that busy-loops holds its own process, and
+   * with it the child's limits, but never the call past `until`.
+   * @param {any} browser XULBrowserElement @param {number} until  ms since the epoch
+   */
+  askReady(browser, until) {
+    return bounded(
+      VimmaActors.agentQuiet(browser.browsingContext, {
+        ready: true,
+        quiet: AGENT_WAITS.readyQuiet,
+        still: 0,
+        max: AGENT_WAITS.readyBusy,
+        until,
+      }),
+      null,
+      Math.max(0, until - Date.now()),
+    );
+  },
+
+  /**
+   * Waits until the page of `browser` that `accept` takes is ready (mcp-drive D13, mcp-forms
+   * F11; issue #579): it has finished loading, or its DOMContentLoaded has fired and it has
+   * not changed for a moment since (AGENT_WAITS.readyQuiet, at most readyBusy). A page that
+   * says it is complete while the tab still loads is the one before a load on its way, so the
+   * wait goes on to the next. Never past `until`.
+   * @param {any} browser XULBrowserElement
+   * @param {(wg: any) => boolean} accept  whether the top document is the page waited for
+   * @param {number} until  ms since the epoch
+   * @returns {Promise<boolean>} whether it was ready in time
+   */
+  async ready(browser, accept, until) {
+    /** @type {any} the document last asked whether it is ready */
+    let asked = null;
+    /** @type {any} the document that answered it is ready */
+    let readyDoc = null;
+    /** @type {Promise<unknown> | undefined} the pending answer, which wakes the wait once */
+    let wake;
+    for (;;) {
+      const wg = browser.browsingContext?.currentWindowGlobal;
+      if (wg && accept(wg)) {
+        // The tab's own state answers first: a page that finished loading is ready whatever
+        // its process says, or does not say.
+        if (!(browser.webProgress?.isLoadingDocument ?? true)) return true;
+        if (readyDoc === wg) return true;
+        if (asked !== wg) {
+          asked = wg;
+          const w = this.askReady(browser, until).then((r) => {
+            // A page complete while the tab still loads is the one before the next load.
+            if (asked === wg && r && r.state !== "complete") readyDoc = wg;
+            if (wake === w) wake = undefined;
+          });
+          wake = w;
+        }
+      }
+      if (Date.now() > until) return false;
+      await nextEvent(browser, Math.min(TICK_MS, until - Date.now() + 1), wake);
+    }
+  },
 
   /**
    * Whether a step may pay (docs/specs/mcp-checkpoints.md C5, C6; security.md M33), and what its
@@ -411,14 +515,19 @@ export const AgentAct = {
   },
 
   /**
-   * Waits after an agent's step for a page it started (up to 20 s), a dialog it opened, or the
-   * user starting to use the tab (F11, F27); a step that has started no load within a second is
-   * taken to have none. That second counts from when the step ran in the page's process: the
-   * child clicks or submits after its reply, and a busy process runs it later. Counted from the
-   * reply, the call could end before the click, and with it the one submission the question
-   * allowed (security.md M28), which would then be cancelled as the page's own. A step the child
-   * skipped ends the wait at once (`skipped`): the page changed the element as it was pressed,
-   * and the allowance must close before the page can put it back and submit by itself.
+   * Waits after an agent's step for a page it started (up to 20 s, until that page is ready:
+   * `ready`), a dialog it opened, or the user starting to use the tab (F11, F27). A step that
+   * has started no load is done once its frame's page has settled (issue #579): it has not
+   * changed for a quiet period and no request the step started is open, waited for in the
+   * page's process (VimmaActors.agentQuiet; core AGENT_WAITS). That wait begins once the step
+   * ran there: the child clicks or submits after its reply, and a busy process runs it later.
+   * Counted from the reply, the call could end before the click, and with it the one
+   * submission the question allowed (security.md M28), which would then be cancelled as the
+   * page's own. A submission the step makes starts its load in the same process before the
+   * quiet period ends, and that load goes over the same IPC channel ahead of the child's
+   * answer, so the wait sees it and goes on for the page. A step the child skipped ends the
+   * wait at once (`skipped`): the page changed the element as it was pressed, and the
+   * allowance must close before the page can put it back and submit by itself.
    * @param {any} browser XULBrowserElement @param {{ doc: number, url: string }} before
    * @param {{ dialog: { type: string, text: string } | null }} dialogs
    * @param {() => boolean} inUse
@@ -428,50 +537,121 @@ export const AgentAct = {
    */
   async waitForPage(browser, before, dialogs, inUse, step = null) {
     const start = Date.now();
-    const settle = this._settleMs ?? SETTLE_MS;
+    const deadline = start + LOAD_TIMEOUT_MS;
     let started = false;
-    /** When the step ran in the page's process. */
-    let ran = step ? 0 : start;
+    /** When the step ran in the page's process (0: not yet). */
+    let ranAt = step ? 0 : start;
+    let withdrawn = false;
+    /** @type {Promise<unknown> | null} the step's frame settling, once asked */
+    let settling = null;
+    let settled = false;
+    /** @type {any} the new document last asked whether it is ready */
+    let asked = null;
+    let ready = false;
+    /** @type {Promise<unknown> | undefined} what wakes the wait besides the tab's progress */
+    let wake;
+    /**
+     * `p` wakes the wait once, when it settles: a promise that has settled already would wake
+     * every turn in a microtask and starve the event loop the load needs.
+     * @param {Promise<unknown>} p
+     */
+    const arm = (p) => {
+      const w = p.then(() => {
+        if (wake === w) wake = undefined;
+      });
+      wake = w;
+    };
     for (;;) {
-      await sleep(50);
       if (dialogs.dialog) return undefined;
       if (inUse()) return "in-use";
       const loading = !!browser.webProgress?.isLoadingDocument;
       const now = pageOf(browser);
       if (loading || now.doc !== before.doc || now.url !== before.url) started = true;
-      if (started && !loading) return undefined;
-      if (!ran && step) {
+      if (started) {
+        if (!loading) return undefined;
+        const wg = browser.browsingContext?.currentWindowGlobal;
+        if (ready && wg === asked) return undefined;
+        if (now.doc !== before.doc && wg && !wg.isInitialDocument && wg !== asked) {
+          asked = wg;
+          ready = false;
+          arm(
+            this.askReady(browser, deadline).then((r) => {
+              // A page complete while the tab still loads is the one before the next load.
+              if (asked === wg && r && r.state !== "complete") ready = true;
+            }),
+          );
+        }
+      } else if (!ranAt) {
         // A process that does not answer has its step taken as run, as a hung page's would be.
-        const outcome = await bounded(VimmaActors.agentClickOutcome(step), "clicked", 1000);
+        const outcome = step
+          ? await bounded(VimmaActors.agentClickOutcome(step), "clicked", 1000)
+          : "clicked";
         if (outcome === "skipped") return "skipped";
-        if (outcome !== "pending" || Date.now() - start >= COLLECT_TIMEOUT_MS) ran = Date.now();
+        if (outcome !== "pending" || Date.now() - start >= COLLECT_TIMEOUT_MS) ranAt = Date.now();
+        else await sleep(10);
+        continue;
+      } else if (settled) {
+        return undefined;
+      } else {
+        // A step that started no load within the allowance's second has no submission of its
+        // own to make: the allowance closes then, as it did before the wait became the page's,
+        // so a page that keeps the wait going does not keep it open (security.md M28).
+        if (!withdrawn && Date.now() - ranAt >= ALLOW_MS) {
+          withdrawn = true;
+          VimmaActors.agentWithdraw(browser);
+        }
+        if (!settling) {
+          settling = this.settle(browser, step, deadline).then(() => {
+            settled = true;
+          });
+          arm(settling);
+        }
       }
-      if (!started && ran && Date.now() - ran >= settle) return undefined;
-      if (Date.now() - start >= LOAD_TIMEOUT_MS) return undefined;
+      if (Date.now() >= deadline) return undefined;
+      await nextEvent(browser, TICK_MS, wake);
     }
   },
 
   /**
+   * Resolves once the frame of the step's element (the tab's top frame when there is none) has
+   * settled (core AGENT_WAITS: quiet, still, busy). A frame that cannot say, having no actor or
+   * no longer its document, is given the time a page that changed nothing would be.
+   * @param {any} browser XULBrowserElement @param {HintTarget | null} step @param {number} until
+   */
+  async settle(browser, step, until) {
+    const from = Date.now();
+    const bc = step && step.bc.currentWindowGlobal === step.wg ? step.bc : browser.browsingContext;
+    // Bounded here too: the child's own limits hold only while its page lets its process run.
+    const r = await bounded(
+      VimmaActors.agentQuiet(bc, {
+        net: true,
+        quiet: AGENT_WAITS.quiet,
+        still: AGENT_WAITS.still,
+        max: AGENT_WAITS.busy,
+        until,
+      }),
+      null,
+      Math.max(0, Math.min(AGENT_WAITS.busy + ANSWER_MS, until - from)),
+    );
+    if (!r) await sleep(Math.max(0, Math.min(from + AGENT_WAITS.still, until) - Date.now()));
+  },
+
+  /**
    * After a click that started no load (#510): which parts of the page changed in place, asked
-   * of the clicked element's frame until something has, for up to another second after the
-   * settle, so the result never says "nothing changed" of a page that updated itself a moment
-   * late. Null when a page or a dialog of the browser came instead, or the frame cannot say;
-   * the allowance is closed by then, so the extra wait opens nothing.
+   * of the clicked element's frame once it has settled (`waitForPage`), which waited past a
+   * hidden tab's one-second timer clamp for a page that had not changed yet, so the result
+   * never says "nothing changed" of a page that updated itself a moment late. Null when a page
+   * or a dialog of the browser came instead, or the frame cannot say.
    * @param {any} browser XULBrowserElement @param {{ doc: number, url: string }} before
    * @param {{ dialog: { type: string, text: string } | null }} dialogs
    * @param {HintTarget} target
    * @returns {Promise<string[] | null>}
    */
   async changesAfter(browser, before, dialogs, target) {
-    const end = Date.now() + (this._settleMs ?? SETTLE_MS);
-    for (;;) {
-      // A URL the page's script changed (history.pushState) loads nothing: its changes count.
-      const moved = docOf(browser) !== before.doc;
-      if (dialogs.dialog || moved || browser.webProgress?.isLoadingDocument) return null;
-      const changed = await bounded(VimmaActors.agentChanges(target), null, 1000);
-      if (!changed || changed.length || Date.now() >= end) return changed;
-      await sleep(150);
-    }
+    // A URL the page's script changed (history.pushState) loads nothing: its changes count.
+    const moved = docOf(browser) !== before.doc;
+    if (dialogs.dialog || moved || browser.webProgress?.isLoadingDocument) return null;
+    return bounded(VimmaActors.agentChanges(target), null, 1000);
   },
 
   /**
@@ -510,7 +690,8 @@ export const AgentAct = {
    * `fillable` said each may be and the user allowed it, then submits their form when the
    * question said so: through `submit.target`'s submit button (`click`) or the form's default
    * submission (`form`). Before each field the tab must still be the agent's (`still`) and not
-   * in use; a field that changed since the question stops the call. Then waits as after a click.
+   * in use; a field that changed since the question stops the call. Then waits as after a click
+   * when it submitted or a field's handler started a load; otherwise it returns at once.
    * @param {any} browser XULBrowserElement
    * @param {{ label: string, target: HintTarget, value: string | boolean,
    *   expect: { field: string, type: string | null } }[]} steps
@@ -625,7 +806,21 @@ export const AgentAct = {
           sent = submit.target;
         }
       }
-      const waited = await this.waitForPage(browser, before, dialogs, inUse, sent);
+      // A fill that sent nothing waits for no page (issue #579), only for a load its fields'
+      // handlers started, so that a submission the page tried meanwhile is named.
+      const now = pageOf(browser);
+      // The parent learns of a load the fields' handlers started only after it began in the
+      // page's process, so the last field's frame is asked too.
+      const last = filled ? (steps[filled - 1]?.target ?? null) : null;
+      const moving =
+        !!browser.webProgress?.isLoadingDocument ||
+        now.doc !== before.doc ||
+        now.url !== before.url ||
+        (!sent &&
+          !!last &&
+          (await bounded(VimmaActors.agentLoading(last), false, COLLECT_TIMEOUT_MS)));
+      const waited =
+        sent || moving ? await this.waitForPage(browser, before, dialogs, inUse, sent) : undefined;
       // Asked again as a click's outcome is: a busy page can answer the wait's poll too late.
       const skipped =
         waited === "skipped" ||

@@ -26,9 +26,6 @@ const { VimmaControl } = ChromeUtils.importESModule(
 const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
 );
-const { AgentAct } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
-);
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
@@ -56,7 +53,6 @@ const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
 registerCleanupFunction(async () => {
-  AgentAct._settleMs = null;
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   await VimmaControl.settled();
@@ -102,7 +98,6 @@ const clients = [];
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
-  AgentAct._settleMs = 50;
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -214,11 +209,6 @@ const page = (tab) =>
       gesture: d.hasValidTransientUserGestureActivation,
     };
   });
-
-add_task(async function setup() {
-  // A fill that starts no load is over at once: many fills stay quick.
-  AgentAct._settleMs = 50;
-});
 
 addTidyTask(async function test_fill_sets_values_and_fires_input_and_change() {
   await mcp(true);
@@ -500,7 +490,6 @@ const BOUNCES = [
 
 addTidyTask(async function test_a_skipped_submit_is_not_sent_and_allows_nothing_after_it() {
   await mcp(true);
-  AgentAct._settleMs = null;
   const c = await agentClient();
   for (const { form, button, field, how } of BOUNCES) {
     const tab = await openAgentTab(CLICK);
@@ -545,7 +534,6 @@ const beforeSubmitCheck = (tab, name) =>
 
 addTidyTask(async function test_a_skipped_default_submit_is_not_sent_and_allows_nothing_after_it() {
   await mcp(true);
-  AgentAct._settleMs = null;
   const tab = await openAgentTab(CLICK);
   const c = await agentClient();
   const by = await labels(c, tab);
@@ -581,7 +569,6 @@ addTidyTask(async function test_a_skipped_default_submit_is_not_sent_and_allows_
 
 addTidyTask(async function test_page_script_submit_after_a_fill_is_cancelled() {
   await mcp(true);
-  AgentAct._settleMs = null;
   const tab = await openAgentTab();
   const c = await agentClient();
   const by = await labels(c, tab);
@@ -590,7 +577,6 @@ addTidyTask(async function test_page_script_submit_after_a_fill_is_cancelled() {
   Assert.equal(r.result.navigated, false, "the form the page sent was not sent (M28)");
   Assert.equal(r.result.blocked, "example.com", "the result says Vimma stopped it");
   Assert.equal(tab.linkedBrowser.currentURI.spec, FILL, "the page stayed");
-  AgentAct._settleMs = 50;
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
@@ -598,7 +584,6 @@ addTidyTask(async function test_page_script_submit_after_a_fill_is_cancelled() {
 
 addTidyTask(async function test_a_page_submit_during_a_fill_is_not_the_asked_one() {
   await mcp(true);
-  AgentAct._settleMs = null;
   const tab = await openAgentTab();
   const c = await agentClient();
   const by = await labels(c, tab);
@@ -618,7 +603,6 @@ addTidyTask(async function test_a_page_submit_during_a_fill_is_not_the_asked_one
   Assert.equal(r.result.blocked, "example.com", "the page's own submission was stopped (M28)");
   Assert.equal(r.result.navigated, true, "the asked submission, after the last field, was sent");
   Assert.equal(r.result.url, `${PAGE}?early`, "to its destination");
-  AgentAct._settleMs = 50;
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
