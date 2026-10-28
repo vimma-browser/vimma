@@ -60,7 +60,7 @@ const BLOCKS = {
 const UNBOUND = "z";
 
 add_task(function use_the_default_keymap() {
-  VimmaHost.configure({ keymap: compileKeymap() });
+  VimmaHost.configure({ keymap: compileKeymap({}, { mac: Services.appinfo.OS === "Darwin" }) });
 });
 
 /**
