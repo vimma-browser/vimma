@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
      Entitlements of Vimma.app's main executable in a Developer ID release, under the hardened
-     runtime (spec macos-build, decision 24). This is Firefox 158.0's
+     runtime (spec macos-build, decision 24). This is Firefox 158.0's (and 159.0's)
      security/mac/hardenedruntime/production/firefox.browser.xml without its two restricted
      entitlements, the application identifier and the platform passkey entitlement, which need a
      provisioning profile (mach macos-sign's production-without-restricted). Keep it in step with

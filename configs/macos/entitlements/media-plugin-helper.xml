@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
      Entitlements of Contents/MacOS/media-plugin-helper.app in a Developer ID release: Firefox
-     158.0's security/mac/hardenedruntime/production/media-plugin-helper.xml.
+     158.0's (and 159.0's) security/mac/hardenedruntime/production/media-plugin-helper.xml.
 -->
 <plist version="1.0">
   <dict>

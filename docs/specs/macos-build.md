@@ -503,17 +503,17 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     step under `shell: bash` (`-eo pipefail`), the manifest script checks every name before it
     prints anything, and the step hashes its output only when it succeeded, because a manifest
     cut off partway could equal the real one while a subtree stays hidden. Vimma.app has no
-    symlink (an installed Vimma.app on Firefox 158.0.1, inspected with `find -type l`, has none; its frameworks are
-    flat), so the manifest and the sign script refuse any symlink, which a chain of links could
+    symlink (the released apps on Firefox 158.0.1 and 159.0, inspected with `find -type l`, have
+    none; their frameworks are flat), so the manifest and the sign script refuse any symlink, which a chain of links could
     otherwise use to lead rcodesign outside the bundle; the sign script also refuses a name
     rcodesign's `<path>:<value>` scopes could misread and an `Info.plist` whose
     `CFBundleExecutable` is not one plain file name. A plain name may hold spaces, because the
     released app's GPU and media helpers are "Vimma GPU Helper" and "Vimma Media Plugin Helper",
     and rcodesign 0.29.0 splits a scoped value at its first `:` and reads only `@` specially in
     the path (`split_scoped_value`, `SettingsScope`), so `:` and `@` are refused and a space is
-    not; a dry run of the sign script on the released 0.1.8 app showed the first rule wrong. The
-    three jobs come
-    before `macos-smoke` so that the hosted Mac checks the signed `.dmg` that is published.
+    not. A rule without the space refused the released 0.1.8 app in a dry run of the sign script
+    with a stub rcodesign; the 0.1.8 and 0.1.10 apps now pass it. The three jobs come before
+    `macos-smoke` so that the hosted Mac checks the signed `.dmg` that is published.
     `tools/package/macos-developer-id-check.sh` there runs `codesign --verify --deep --strict`,
     reads `codesign -dvv` for the Developer ID Application authority, the team ID of the
     repository variable `MACOS_TEAM_ID` on the app and its nested code, a secure timestamp and the
@@ -530,7 +530,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 24. **Vimma's production entitlements are Firefox's, without the two restricted ones.**
     `configs/macos/entitlements/` holds `browser.xml` (Firefox 158.0's
     `production/firefox.browser.xml`), `plugin-container.xml` and `media-plugin-helper.xml`
-    (Firefox's files unchanged), so that Vimma's content processes JIT, the CDM helper loads its
+    (Firefox's files unchanged; Firefox 159.0's three files and `hardened-sign-config` are the
+    same as 158.0's), so that Vimma's content processes JIT, the CDM helper loads its
     library and the browser keeps camera, microphone, location, USB, smart card and PKCS #11
     access under the hardened runtime exactly as Firefox does. `browser.xml` leaves out
     `com.apple.application-identifier` and `com.apple.developer.web-browser.public-key-credential`,

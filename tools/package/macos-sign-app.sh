@@ -8,11 +8,11 @@
 #
 # Signing follows mach macos-sign with rcodesign (tools/signing/macos/mach_commands.py,
 # sign_with_rcodesign) and the release channel's production settings (taskcluster/config.yml,
-# mac-signing.hardened-sign-config, Firefox 158.0): one `rcodesign sign` of the app, which signs
-# nested code inside-out, with the hardened runtime on each helper and binary, the helpers' own
-# entitlements and Vimma's browser.xml on the app (configs/macos/entitlements). --for-notarization
-# makes rcodesign refuse anything but a Developer ID certificate with a secure timestamp, and sets
-# the runtime flag on every Mach-O the list below does not name.
+# mac-signing.hardened-sign-config, Firefox 158.0, unchanged in 159.0): one `rcodesign sign` of
+# the app, which signs nested code inside-out, with the hardened runtime on each helper and binary,
+# the helpers' own entitlements and Vimma's browser.xml on the app (configs/macos/entitlements).
+# --for-notarization makes rcodesign refuse anything but a Developer ID certificate with a secure
+# timestamp, and sets the runtime flag on every Mach-O the list below does not name.
 #
 # Usage: tools/package/macos-sign-app.sh <Vimma.app>
 #   APPLE_P12_FILE             the Developer ID Application certificate and key (PKCS #12)
@@ -47,8 +47,8 @@ app=$(cd "$app" && pwd)
 [ ! -e "$app/Contents/CodeResources" ] || fail "$app is already notarised and stapled"
 
 # The app came from macos-unpack's artifact. Vimma.app has no symlink (an installed Vimma.app on
-# Firefox 158.0.1 has none; its frameworks are flat), and a link could lead rcodesign to read or
-# write a file outside the bundle, so every symlink is refused, wherever it points.
+# Firefox 158.0.1 or 159.0 has none; its frameworks are flat), and a link could lead rcodesign to
+# read or write a file outside the bundle, so every symlink is refused, wherever it points.
 link=$(find "$app" -type l -print -quit)
 [ -z "$link" ] || fail "a symlink is in the app: $link"
 

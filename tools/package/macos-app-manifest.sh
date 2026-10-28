@@ -8,9 +8,9 @@
 # Both lists come from the same release run: this guards against the unpack tools, not against a
 # compromised build.
 #
-# Vimma.app has no symbolic link (an installed Vimma.app on Firefox 158.0.1 has none), so a link,
-# the app being a link, or a name with a newline is refused rather than listed. It uses bash,
-# find, sort and sha256sum only, so it can run where the signing secrets are.
+# Vimma.app has no symbolic link (an installed Vimma.app on Firefox 158.0.1 or 159.0 has none), so
+# a link, the app being a link, or a name with a newline is refused rather than listed. It uses
+# bash, find, sort and sha256sum only, so it can run where the signing secrets are.
 #
 #   tools/package/macos-app-manifest.sh path/to/Vimma.app > vimma-app.manifest
 set -euo pipefail
