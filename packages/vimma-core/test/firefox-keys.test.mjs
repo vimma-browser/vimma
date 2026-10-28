@@ -247,8 +247,30 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     for (const r of rows.filter((r) => r.source === "menubar")) expect(r.fate, r.chord).toBe("d");
   });
 
+  // Firefox 159's ctrl+shift+a searches tabs; Vimma's own tab search is the goto picker.
+  test("Firefox 159 moved Add-ons to ctrl+shift+f and gave ctrl+shift+a to tab search", () => {
+    const byId = new Map(rows.filter((r) => r.id).map((r) => [r.id, r]));
+    expect(byId.get("key_openAddons")).toMatchObject({
+      chord: "ctrl+shift+f",
+      command: "Tools:Addons",
+      fate: "b",
+      action: "addons_manager",
+      first: "P",
+    });
+    expect(byId.get("key_searchTabs")).toMatchObject({
+      chord: "ctrl+shift+a",
+      command: "Browser:SearchTabs",
+      fate: "a",
+      action: "goto_picker",
+      first: "P",
+    });
+    expect(getAction("search_tabs")).toBeUndefined();
+  });
+
   // Decision 16: every Firefox key is a Vimma binding on Firefox's own chord.
   test.each([
+    ["ctrl+shift+f", "addons_manager"],
+    ["ctrl+shift+a", "goto_picker"],
     ["ctrl+j", "web_search"],
     ["ctrl+f", "find_forward"],
     ["ctrl+shift+d", "bookmark_all_tabs"],
@@ -450,6 +472,8 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
     ["key_inspector", "alt+meta+c"],
     ["key_inspectorMac", "shift+meta+c"],
     ["key_dom", "alt+meta+w"],
+    ["key_openAddons", "shift+meta+e"],
+    ["key_searchTabs", "shift+meta+a"],
   ])("accel is cmd: %s is %s, unbound and off", (id, chord) => {
     const row = byId.get(id);
     expect(row).toMatchObject({ chord, fate: "c" });

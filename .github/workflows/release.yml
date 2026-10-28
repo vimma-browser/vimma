@@ -897,10 +897,10 @@ jobs:
             || { echo "::error::$TAG no longer points to $SHA, the commit that was built"; exit 1; }
           gh release upload "$TAG" dist/vimma-*-macos-aarch64.dmg* dist/vimma.rb* dist/SHA256SUMS-macos* --clobber --repo "$GITHUB_REPOSITORY"
 
-  # homebrew.yml has no release trigger, since a tag must not reach the tap's key, and the macOS
-  # files usually reach a release after it is published. Once vimma.rb is on a published release
-  # (releases/download/ serves nothing for a draft), this starts homebrew.yml on main for the
-  # tag; a draft published after its macOS files needs it started by hand. Likewise the macOS
+  # The macOS files usually reach a release after it is published, when homebrew.yml's start job
+  # found no cask. Once vimma.rb is on a published release (releases/download/ serves nothing
+  # for a draft), this starts homebrew.yml on main for the tag; for a draft published after its
+  # macOS files, publishing starts homebrew.yml, whose start job then finds the cask. Likewise the macOS
   # update manifest (spec macos-homebrew, decision 16): update-publish.yml for target macos,
   # which update-publish.yml itself starts when a draft is published after its .dmg.
   # No repository code, and no token beyond starting a workflow.
@@ -924,7 +924,7 @@ jobs:
               -f ref=main -f "inputs[tag]=$TAG"
             echo "Started homebrew.yml for $TAG" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::notice::$TAG is a draft; once it is published, run: gh workflow run homebrew.yml -f tag=$TAG"
+            echo "::notice::$TAG is a draft; publishing it starts homebrew.yml, which pushes the cask"
           fi
 
       - name: Start update-publish.yml for the macOS manifest

@@ -5,17 +5,25 @@
 # fetched from releases/download/<tag>/, which serves a published release only (a draft's files
 # are a 404 there), checked against the release's SHA256SUMS-macos and, with signing on,
 # SHA256SUMS-macos against release.yml's signature.
-# Trigger: workflow_dispatch on main only. A release event would run this file as it is at the
-# tag, and anyone with write access can create a tag on an unmerged commit with an edited copy
-# (docs/security.md, B6 and B11); so no release trigger, and the homebrew environment accepts
-# main alone. release.yml's macos-tap job dispatches this once vimma.rb is on the published
-# release; for a draft published after its macOS files, run it by hand.
+#
+# Publishing a release starts `start`, which only starts this workflow again on main with the
+# tag (workflow_dispatch), as update-publish.yml does. The release event's run executes this file
+# as the tag has it, and anyone with write access can create a tag on an unmerged commit with an
+# edited copy (docs/security.md, B6 and B11); so `start` holds no secret and no environment and
+# may only start a workflow, and the push runs only from main's copy, in the homebrew
+# environment, which accepts main alone. `start` dispatches the push when vimma.rb is already on
+# the published release (a draft published after its macOS files); otherwise release.yml's
+# macos-tap job dispatches it once the macOS files land on the published release.
 # Nothing runs until RELEASE_ENABLED and MACOS_RELEASE_ENABLED are `true`; skipped (green, with a
 # notice) until the HOMEBREW_TAP_SSH_KEY secret exists. Retry: gh workflow run homebrew.yml
 # -f tag=vX.Y.Z (docs/runbook.md, "Release packages").
 name: homebrew
 
+# `released`, as update-publish.yml has: a full release, or a pre-release promoted to one. Not
+# `published`, as aur.yml has, which a pre-release also fires: the tap offers stable releases.
 on:
+  release:
+    types: [released]
   workflow_dispatch:
     inputs:
       tag:
@@ -25,18 +33,52 @@ on:
 
 permissions: {}
 
+# One tap push per tag at a time (workflow_dispatch); the release event's run, which only starts
+# one, has a group of its own. GitHub keeps one pending run per group, so the release event's run
+# must not share one with a push it could replace or wait behind.
 concurrency:
-  group: homebrew-${{ inputs.tag }}
+  group: homebrew-${{ github.event_name }}-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 env:
-  TAG: ${{ inputs.tag }}
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
+  # Runs from the tag's copy of this file, which a tag pushed on another commit could change; so
+  # it does nothing but start main's copy: no environment, no secret, no repository code.
+  start:
+    if: github.event_name == 'release' && github.repository == 'vimma-browser/vimma'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write # start this workflow on main
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_ENABLED: ${{ vars.RELEASE_ENABLED }}
+      MACOS_RELEASE_ENABLED: ${{ vars.MACOS_RELEASE_ENABLED }}
+    steps:
+      - name: Start the tap push on main
+        run: |
+          if [ "$RELEASE_ENABLED" != true ] || [ "$MACOS_RELEASE_ENABLED" != true ]; then
+            echo "::notice::RELEASE_ENABLED or MACOS_RELEASE_ENABLED is not true; no tap push for $TAG"
+            exit 0
+          fi
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::'$TAG' is not a vX.Y.Z release tag"; exit 1; }
+          # The macOS files usually reach the release after it is published, and then
+          # release.yml's macos-tap starts the push; a draft published after them has the cask now.
+          if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma.rb"; then
+            gh workflow run homebrew.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
+            echo "Started homebrew.yml on main for $TAG" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice::$TAG has no vimma.rb yet; release.yml's macos-tap starts the tap push when the macOS files land"
+          fi
+
   # No GitHub token at all: the files come from public download URLs, and the push uses the tap's
   # deploy key alone.
   homebrew:
     if: >-
+      github.event_name == 'workflow_dispatch' &&
       vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
       vars.MACOS_RELEASE_ENABLED == 'true'
@@ -136,11 +178,14 @@ jobs:
             git push origin HEAD:main
           fi
 
+  # Reports a failed push, and a failed start (a malformed tag, a dispatch GitHub refused), which
+  # would otherwise leave the tap on the previous release unnoticed, as update-publish.yml reports
+  # its start. On the release event this is the tag's copy; it holds no secret and no environment.
   failure:
-    needs: homebrew
+    needs: [start, homebrew]
     if: >-
       failure() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
-      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'release' || github.ref == 'refs/heads/main') &&
       vars.MACOS_RELEASE_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
