@@ -325,6 +325,26 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Add-on picker: popup, options, on/off, remove, update | `addon_picker` | `ctrl+b e` |
 | Open an add-on's popup by name (:addon name)          | `addon_popup`  | —          |
 
+## On macOS
+
+Option types characters on a Mac, so the defaults that are `alt` chords on Linux are Firefox's
+macOS keys there (`meta` is `cmd`). Every other binding is the same on both.
+
+| Action                                   | Config name       | Bindings on macOS                                  |
+| ---------------------------------------- | ----------------- | -------------------------------------------------- |
+| Jump to tab 1 in this workspace          | `select_tab_1`    | `ctrl+b 1`, `meta+1`                               |
+| Jump to tab 2 in this workspace          | `select_tab_2`    | `ctrl+b 2`, `meta+2`                               |
+| Jump to tab 3 in this workspace          | `select_tab_3`    | `ctrl+b 3`, `meta+3`                               |
+| Jump to tab 4 in this workspace          | `select_tab_4`    | `ctrl+b 4`, `meta+4`                               |
+| Jump to tab 5 in this workspace          | `select_tab_5`    | `ctrl+b 5`, `meta+5`                               |
+| Jump to tab 6 in this workspace          | `select_tab_6`    | `ctrl+b 6`, `meta+6`                               |
+| Jump to tab 7 in this workspace          | `select_tab_7`    | `ctrl+b 7`, `meta+7`                               |
+| Jump to tab 8 in this workspace          | `select_tab_8`    | `ctrl+b 8`, `meta+8`                               |
+| Jump to the last tab in this workspace   | `select_last_tab` | `meta+9`                                           |
+| Go back                                  | `history_back`    | `meta+left`, `meta+[`, `H`, `ctrl+o`, `ctrl+[`     |
+| Go forward                               | `history_forward` | `meta+right`, `meta+]`, `L`, `ctrl+i`, `ctrl+]`    |
+| Focus the address bar, its text selected | `focus_urlbar`    | `ctrl+l`, `meta+l`, `I`, `I [visual]`, `I [panel]` |
+
 ## Firefox's shortcuts
 
 Every key Firefox handles in a Linux browser window, and what it does in Vimma. Most are

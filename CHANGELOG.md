@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Fixed
 
+- macOS: back, forward, the tab digits and the address bar have Firefox's macOS keys, `cmd+left` / `cmd+right` and `cmd+[` / `cmd+]`, `cmd+1` to `cmd+9` and `cmd+l`, in place of the Linux defaults `alt+left`, `alt+right`, `alt+1` to `alt+9` and `alt+d`, which never ran on a Mac because Option types characters there. Linux keeps its keys. A new help snapshot holds the macOS keymap, and the `defaults.toml` snapshot lists the macOS keys as comments under `[keys]`.
+
 - Workspaces: a workspace could lose its tab list (tab search and the side panel showing one "New Tab") while its tabs stayed open, when a restore into the window ended with a workspace rebuild that failed partway. The rebuild now replaces the window's model only once it is complete, a failed one keeps the current model, and selecting a tab the model does not know puts it back.
 - Releases: publishing a release now starts the Homebrew tap update whenever the macOS cask is already on the release, so `brew upgrade --cask vimma` finds new releases. Releases 0.1.9 and 0.1.10 had missed the tap because their macOS files reached the draft before it was published; 0.1.10 was pushed to the tap by hand.
 

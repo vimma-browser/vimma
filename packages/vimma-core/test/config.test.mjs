@@ -477,6 +477,17 @@ describe("reloadConfig keeps the last good config", () => {
     expect(r.errors[0]?.line).toBe(2);
   });
 
+  test("on macOS the keymap, and the defaults it falls back to, are macOS's (#386)", () => {
+    const mac = { mac: true };
+    expect(parseConfig(good, mac).keymap?.bindingsFor("history_back")).toContain("meta+left");
+    expect(parseConfig(good).keymap?.bindingsFor("history_back")).toContain("alt+left");
+    const r = reloadConfig(null, broken, mac);
+    expect(r.kept).toBe(true);
+    expect(r.active.keymap.bindingsFor("select_last_tab")).toEqual(["meta+9"]);
+    const urlbar = reloadConfig(null, good, mac).active.keymap.bindingsFor("focus_urlbar");
+    expect(urlbar.slice(0, 2)).toEqual(["ctrl+l", "meta+l"]);
+  });
+
   test("valid text replaces the previous config", () => {
     const first = reloadConfig(null, good).active;
     const r = reloadConfig(first, "");

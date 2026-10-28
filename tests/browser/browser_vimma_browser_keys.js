@@ -22,6 +22,15 @@ const ROOT = getRootDirectory(gTestPath).replace(
 const PLAIN = ROOT + "file_vimma_plain.html";
 const SLOW = ROOT + "file_vimma_slow.sjs";
 
+// docs/specs/macos-build.md decision 29: on macOS the alt keys are Firefox's macOS keys, cmd
+// (meta) chords, since Option types characters there; undo and redo are cmd+z and cmd+shift+z.
+const MAC = Services.appinfo.OS === "Darwin";
+/** The modifier of the back / forward arrows and of the tab digits: alt on Linux, cmd on macOS. */
+const NAV = MAC ? { metaKey: true } : { altKey: true };
+const NAV_NAME = MAC ? "cmd" : "alt";
+/** The modifier of undo and redo in a text field. */
+const EDIT = MAC ? { metaKey: true } : { ctrlKey: true };
+
 /**
  * A page in its own tab, focused, in normal mode, its keys recorded.
  * @param {string} [url]
@@ -92,7 +101,7 @@ add_task(async function setup() {
   });
 });
 
-add_task(async function alt_left_goes_back_in_normal_and_insert_mode_and_from_the_url_bar() {
+add_task(async function nav_left_goes_back_in_normal_and_insert_mode_and_from_the_url_bar() {
   const tab = await normalPage();
   const browser = tab.linkedBrowser;
   const second = PLAIN + "?second";
@@ -100,28 +109,67 @@ add_task(async function alt_left_goes_back_in_normal_and_insert_mode_and_from_th
   await BrowserTestUtils.browserLoaded(browser, false, second);
   await focusContent(browser);
 
-  EventUtils.synthesizeKey("KEY_ArrowLeft", { altKey: true });
-  await TestUtils.waitForCondition(() => urlOf(browser) === PLAIN, "alt+left: back (normal)");
+  EventUtils.synthesizeKey("KEY_ArrowLeft", NAV);
+  await TestUtils.waitForCondition(() => urlOf(browser) === PLAIN, `${NAV_NAME}+left: back`);
   await focusContent(browser);
-  EventUtils.synthesizeKey("KEY_ArrowRight", { altKey: true });
-  await TestUtils.waitForCondition(() => urlOf(browser) === second, "alt+right: forward");
+  EventUtils.synthesizeKey("KEY_ArrowRight", NAV);
+  await TestUtils.waitForCondition(() => urlOf(browser) === second, `${NAV_NAME}+right: forward`);
 
   await focusContent(browser);
   await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "normal", "normal");
   EventUtils.synthesizeKey("i");
   await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "insert");
-  EventUtils.synthesizeKey("KEY_ArrowLeft", { altKey: true });
-  await TestUtils.waitForCondition(() => urlOf(browser) === PLAIN, "alt+left: back (insert)");
+  EventUtils.synthesizeKey("KEY_ArrowLeft", NAV);
+  await TestUtils.waitForCondition(() => urlOf(browser) === PLAIN, "back (insert)");
 
-  // From the address bar, as Firefox's alt+left: the selected tab's page.
+  // From the address bar, as Firefox's alt+left: the selected tab's page. On macOS cmd+left
+  // there moves to the line's start, as in Firefox, and cmd+[ goes back.
   await focusContent(browser);
-  EventUtils.synthesizeKey("KEY_ArrowRight", { altKey: true });
+  EventUtils.synthesizeKey("KEY_ArrowRight", NAV);
   await TestUtils.waitForCondition(() => urlOf(browser) === second, "forward again");
   gURLBar.focus();
   await TestUtils.waitForCondition(() => gURLBar.focused, "the address bar has focus");
-  EventUtils.synthesizeKey("KEY_ArrowLeft", { altKey: true });
-  await TestUtils.waitForCondition(() => urlOf(browser) === PLAIN, "alt+left: back (URL bar)");
+  EventUtils.synthesizeKey("KEY_ArrowLeft", NAV);
+  if (MAC) {
+    await new Promise((r) => setTimeout(r, 300));
+    Assert.equal(urlOf(browser), second, "cmd+left in the address bar is the field's key");
+    Assert.ok(gURLBar.focused, "and the address bar keeps the focus");
+    EventUtils.synthesizeKey("[", { metaKey: true });
+  }
+  await TestUtils.waitForCondition(() => urlOf(browser) === PLAIN, "back (URL bar)");
   BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function on_macos_cmd_brackets_go_back_and_forward_as_firefoxs_keys() {
+  if (!MAC) {
+    Assert.ok(true, "macOS only: Linux's ctrl+[ and ctrl+] are the next task's");
+    return;
+  }
+  const tab = await normalPage();
+  const browser = tab.linkedBrowser;
+  const second = PLAIN + "?cmd-bracket";
+  BrowserTestUtils.startLoadingURIString(browser, second);
+  await BrowserTestUtils.browserLoaded(browser, false, second);
+  await focusContent(browser);
+  EventUtils.synthesizeKey("[", { metaKey: true });
+  await TestUtils.waitForCondition(() => urlOf(browser) === PLAIN, "cmd+[: back");
+  await focusContent(browser);
+  EventUtils.synthesizeKey("]", { metaKey: true });
+  await TestUtils.waitForCondition(() => urlOf(browser) === second, "cmd+]: forward");
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function the_address_bar_keys_focus_it() {
+  // Firefox's second address bar key: alt+d on Linux, cmd+l on macOS (no alt+d there).
+  for (const [key, mods, name] of [
+    ["l", { ctrlKey: true }, "ctrl+l"],
+    MAC ? ["l", { metaKey: true }, "cmd+l"] : ["d", { altKey: true }, "alt+d"],
+  ]) {
+    const tab = await normalPage();
+    EventUtils.synthesizeKey(key, mods);
+    await TestUtils.waitForCondition(() => gURLBar.focused, `${name} focuses the address bar`);
+    BrowserTestUtils.removeTab(tab);
+  }
 });
 
 add_task(async function ctrl_bracket_goes_back_in_normal_mode_only() {
@@ -161,11 +209,20 @@ add_task(async function the_tab_keys_count_the_visible_tabs() {
   }
   gBrowser.selectedTab = tabs[0];
   await focusContent(tabs[0].linkedBrowser);
-  EventUtils.synthesizeKey("9", { altKey: true });
-  await TestUtils.waitForCondition(() => gBrowser.selectedTab === tabs[2], "alt+9: last tab");
+  EventUtils.synthesizeKey("9", NAV);
+  await TestUtils.waitForCondition(
+    () => gBrowser.selectedTab === tabs[2],
+    `${NAV_NAME}+9: last tab`,
+  );
   await focusContent(tabs[2].linkedBrowser);
-  EventUtils.synthesizeKey("1", { altKey: true });
-  await TestUtils.waitForCondition(() => gBrowser.selectedTab === first, "alt+1: first tab");
+  EventUtils.synthesizeKey("1", NAV);
+  await TestUtils.waitForCondition(
+    () => gBrowser.selectedTab === first,
+    `${NAV_NAME}+1: first tab`,
+  );
+  await focusContent(first.linkedBrowser);
+  EventUtils.synthesizeKey("3", NAV);
+  await TestUtils.waitForCondition(() => gBrowser.selectedTab === tabs[1], `${NAV_NAME}+3: tab 3`);
 
   gBrowser.selectedTab = tabs[0];
   await focusContent(tabs[0].linkedBrowser);
@@ -246,7 +303,7 @@ add_task(async function ctrl_m_mutes_unless_the_page_takes_it() {
   BrowserTestUtils.removeTab(tab);
 });
 
-add_task(async function ctrl_shift_z_in_a_field_redoes_and_opens_no_debugger() {
+add_task(async function redo_in_a_field_redoes_and_opens_no_debugger() {
   const tab = await normalPage();
   const browser = tab.linkedBrowser;
   await SpecialPowers.spawn(browser, [], () => {
@@ -261,10 +318,12 @@ add_task(async function ctrl_shift_z_in_a_field_redoes_and_opens_no_debugger() {
   const value = () =>
     SpecialPowers.spawn(browser, [], () => content.document.getElementById("redo").value);
   await TestUtils.waitForCondition(async () => (await value()) === "ab", "typed");
-  EventUtils.synthesizeKey("z", { ctrlKey: true });
-  await TestUtils.waitForCondition(async () => (await value()) !== "ab", "ctrl+z undoes");
-  EventUtils.synthesizeKey("z", { ctrlKey: true, shiftKey: true });
-  await TestUtils.waitForCondition(async () => (await value()) === "ab", "ctrl+shift+z redoes");
+  // Undo and redo are ctrl+z and ctrl+shift+z on Linux, where ctrl+shift+z is also the
+  // Debugger's key, and cmd+z and cmd+shift+z on macOS.
+  EventUtils.synthesizeKey("z", EDIT);
+  await TestUtils.waitForCondition(async () => (await value()) !== "ab", "undo");
+  EventUtils.synthesizeKey("z", { ...EDIT, shiftKey: true });
+  await TestUtils.waitForCondition(async () => (await value()) === "ab", "redo");
   Assert.equal(debuggerKey.count, 0, "and the Debugger did not open");
   BrowserTestUtils.removeTab(tab);
 });
