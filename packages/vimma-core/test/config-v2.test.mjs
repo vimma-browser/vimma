@@ -665,11 +665,12 @@ describe("[ui] bookmarks_toolbar", () => {
 
 // docs/specs/vimma-mcp.md, decision 26: [mcp], a schema-2 table; config wins over :mcp on|off.
 describe("[mcp]", () => {
-  test("defaults: workspace agent, 50 s, 10 of at most 480 min, 200,000 characters, notify", () => {
+  // docs/specs/mcp-session-grants.md S1: grant_minutes 0, a grant for the whole connection.
+  test("defaults: workspace agent, 50 s, grants for the connection or at most 480 min, 200,000 characters, notify", () => {
     expect(ok(v2()).mcp).toEqual({
       workspace: "agent",
       askTimeout: 50,
-      grantMinutes: 10,
+      grantMinutes: 0,
       grantMaxMinutes: 480,
       maxReadChars: 200000,
       notify: true,
@@ -681,7 +682,7 @@ describe("[mcp]", () => {
     expect(DEFAULT_CONFIG.mcp).toEqual({
       workspace: "agent",
       ask_timeout: 50,
-      grant_minutes: 10,
+      grant_minutes: 0,
       grant_max_minutes: 480,
       max_read_chars: 200000,
       notify: true,
@@ -692,7 +693,7 @@ describe("[mcp]", () => {
     const text = formatDefaultsToml();
     expect(text).toMatch(/^\[mcp\]\n# enabled = false\nworkspace = "agent"\nask_timeout = 50$/m);
     expect(text).toMatch(
-      /^grant_minutes = 10\ngrant_max_minutes = 480\nmax_read_chars = 200000\nnotify = true$/m,
+      /^grant_minutes = 0\ngrant_max_minutes = 480\nmax_read_chars = 200000\nnotify = true$/m,
     );
     expect(text).toMatch(/^download_dir = "~\/Downloads\/vimma-agent"\ndownload_max_mb = 200$/m);
     expect(text).toMatch(/^clamav_max_age_days = 7$/m);
@@ -744,9 +745,10 @@ describe("[mcp]", () => {
       "must be an integer between 1 and 1440 (minutes)",
     );
     expect(at("grant_max_minutes = 1441")?.path).toBe("mcp.grant_max_minutes");
-    expect(at("grant_minutes = 0")?.message).toBe(
-      "must be an integer between 1 and grant_max_minutes (480)",
+    expect(at("grant_minutes = -1")?.message).toBe(
+      "must be an integer between 0 and grant_max_minutes (480)",
     );
+    expect(ok(v2("[mcp]", "grant_minutes = 0")).mcp.grantMinutes).toBe(0);
     expect(at("max_read_chars = 999")?.message).toBe("must be an integer between 1000 and 500000");
     expect(at("max_read_chars = 500001")?.path).toBe("mcp.max_read_chars");
     expect(at('ask_timeout = "50"')?.message).toBe("expected an integer, got a string");
@@ -759,11 +761,11 @@ describe("[mcp]", () => {
       {
         line: 3,
         path: "mcp.grant_minutes",
-        message: "must be an integer between 1 and grant_max_minutes (30)",
+        message: "must be an integer between 0 and grant_max_minutes (30)",
       },
     ]);
     expect(errors(v2("[mcp]", "grant_minutes = 500"))[0]?.message).toBe(
-      "must be an integer between 1 and grant_max_minutes (480)",
+      "must be an integer between 0 and grant_max_minutes (480)",
     );
   });
 

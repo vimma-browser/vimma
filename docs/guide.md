@@ -50,9 +50,9 @@ What works today, each with the section that explains it:
   token-protected control socket; local AI agents reach one [agent workspace](#agent-workspace)
   through MCP, where they can read, open, scroll and search pages, follow their links, list and
   click their buttons, fill their fields (never a password or card number), take a screenshot,
-  read a page's errors and show you a page. Every request asks you first, one answer can let an
-  agent work through a task for some minutes, and sending a form or paying asks every time,
-  showing what is sent or the total the page states.
+  read a page's errors and show you a page. An agent asks you first, one answer lets it work
+  through its task until it quits, and sending a form or paying asks every time, showing what is
+  sent or the total the page states.
 
 ## Every key is yours
 
@@ -663,8 +663,9 @@ with `F11` keeps it. From the left:
 - on the right, the **search** in this page: `/word [2/5]` (match 2 of 5), or
   `/zzz not found` in red;
 - `◇ agent` while a local AI agent is connected ([agent workspace](#agent-workspace)):
-  `◇ agent 2?` when 2 of its requests wait for your answer, `◇ agent 14m` while a grant you gave
-  has 14 minutes left, and `◇ agent ·` for a moment after a request ran;
+  `◇ agent 2?` when 2 of its requests wait for your answer, `◇ agent granted` while it may act
+  without asking (`◇ agent 14m` for a grant of minutes with 14 left), and `◇ agent ·` for a
+  moment after a request ran;
 - `loading` while the page loads, then its **URL** without `https://`;
 - with the [toolbar hidden](#hiding-the-toolbar), `not secure` in red for a page Firefox's
   address bar would warn about (an `http:` page keeps its `http://`), `using camera, mic` (or
@@ -1400,7 +1401,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 | `:mcp`           | Says whether agents are on or off, which workspace is theirs, and how many agents, questions and grants.            |
 | `:mcp on`        | Asks `Let local AI agents ask to use the "agent" workspace? Every request asks you first. y/N`, then turns them on. |
 | `:mcp off`       | Turns agents off, without a question. Connected agents are disconnected and their grants end.                       |
-| `:mcp revoke`    | Ends every time-limited grant you gave agents, at once.                                                             |
+| `:mcp revoke`    | Ends every grant you gave agents, at once.                                                                          |
 | `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                   |
 | `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.      |
 | `ctrl+b shift+a` | Answers the waiting agent request; with none, ends every grant at once.                                             |
@@ -1561,8 +1562,9 @@ with the rest of your computer.
   paying, showing you a page and a dangerous or unscanned download still ask
   ([What a grant covers](#what-a-grant-covers)). A grant given for a read therefore also means
   "let it fetch any address", and an address can carry what the agent has read elsewhere. Every
-  call under a grant shows a notice and a row in `:mcp log`, so you can see where it went; give
-  a grant for a task you are watching, and answer `y` one at a time otherwise.
+  call under a grant shows a notice and a row in `:mcp log`, so you can see where it went. A bare
+  `a` lasts until the agent quits, which can be hours: give a grant for a task you are watching,
+  a count (`15a`) when you want it to lapse by itself, and answer `y` one at a time otherwise.
 - **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.
   Grants belong to the connection, not the name, and `:mcp` shows the program that started it.
 - **The rest of your computer is the agent tool's matter.** An agent with a shell or file tools
@@ -1848,7 +1850,7 @@ on it.
 Each request an agent makes appears as one line at the foot of the window, above the status bar:
 
 ```
-◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a 10 min · n deny · x mute
+◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · a until it quits · n deny · x mute
 ```
 
 It names the agent (as the agent calls itself), the tool, and what it touches: the tab's place,
@@ -1859,7 +1861,8 @@ of agent tabs for the tab list.
 | Key                   | Answer                                                                           |
 | --------------------- | -------------------------------------------------------------------------------- |
 | `y`                   | Allow this request once.                                                         |
-| a count, then `a`     | Allow this agent every tool for that many minutes (`15a`); a bare `a` gives 10.  |
+| `a`                   | Allow this agent every tool until it quits.                                      |
+| a count, then `a`     | Allow this agent every tool for that many minutes only (`15a`).                  |
 | `n`, `Esc` or `Enter` | Deny it.                                                                         |
 | `x`                   | Deny it and everything else this agent asked, and ignore it until it reconnects. |
 | `Backspace`           | Take back a digit of the count.                                                  |
@@ -1884,18 +1887,21 @@ of agent tabs for the tab list.
   Hyprland, the workspace is highlighted) and a desktop notification says, for example,
   `claude-code asks to use Vimma's agent workspace (read a page)`. It carries no address or
   title and no buttons: you answer in Vimma. `[mcp] notify = false` turns the notification off.
-- **Grants show.** `◇ agent 14m` counts down the shortest one, and each request a grant lets
-  through shows a notice (`claude-code read "Pull requests · vimma-browser/vimma" (grant, 14m left)`).
-  `ctrl+b shift+a` with nothing waiting, or `:mcp revoke`, ends them all at once. A grant
-  also ends when the agent disconnects or `:mcp off` runs, and is never written to disk.
+- **Grants show.** `◇ agent granted` while an agent may act without asking (`◇ agent 14m` counts
+  down a grant of minutes), and each request a grant lets through shows a notice
+  (`claude-code read "Pull requests · vimma-browser/vimma" (grant)`). `ctrl+b shift+a` with
+  nothing waiting, or `:mcp revoke`, ends them all at once. A grant also ends when the agent
+  quits or `:mcp off` runs, and is never written to disk.
 
 #### What a grant covers
 
-One grant covers a task. Answer any request with `15a`, and that agent may use every tool for
-15 minutes without asking: read pages, list tabs, open and close tabs, press keys and follow
+One grant covers a task. Answer any request with `a`, and that agent may use every tool until
+it quits, without asking: read pages, list tabs, open and close tabs, press keys and follow
 links, list a page's buttons and fields, click, fill, take screenshots, read a page's errors and
 download. The notice says so:
-`claude-code may use the agent workspace for 15 min; sending a form or paying still asks (ctrl+b shift+a ends it)`.
+`claude-code may use the agent workspace until it quits; sending a form or paying still asks (ctrl+b shift+a ends it)`.
+Answer `15a` instead to allow it for 15 minutes only; `[mcp] grant_minutes` makes a bare `a` a
+grant of that many minutes.
 The question's hint leaves that out, so the line stays short; the notice says it the moment you
 answer. Requests that wait when you answer run at once.
 
@@ -1910,8 +1916,9 @@ ending the one in force:
 - **A dangerous or unscanned download**, and a download a page started by itself
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
 
-A grant belongs to one agent session: another agent, or the same one after it reconnects, asks
-again.
+A grant belongs to one agent session, the one `vimma-ctl mcp` process your agent tool started:
+another agent asks again. If that agent's connection drops (a suspended laptop, Vimma closing an
+idle link) and it reconnects within two minutes, it keeps its grant; later, it asks again.
 
 #### Checkpoints: sending a form and paying
 
@@ -2793,7 +2800,8 @@ accent = "#ff9e64"
   `"window"`: it is a window of its own beside it); `[mcp]` (local AI agents:
   `enabled`, which wins over `:mcp on|off`; `workspace`, the [agent workspace](#agent-workspace)'s
   name, default `"agent"`, never `"private"`; `ask_timeout`, 10 to 300 seconds, default 50;
-  `grant_minutes`, default 10, at most `grant_max_minutes`, 1 to 1440, default 480;
+  `grant_minutes`, what a bare `a` allows: 0, the default, until the agent quits, or that many
+  minutes, at most `grant_max_minutes`, 1 to 1440, default 480;
   `max_read_chars`, 1,000 to 500,000, default 200,000; `notify`, default `true`;
   `download_dir`, `download_max_mb` and `clamav_max_age_days`, [above](#downloads-from-the-agent-workspace)); `[search]`
   (the default engine and `@aliases`, [below](#search-engines)); `[ui] toolbar` (`"shown"`, the

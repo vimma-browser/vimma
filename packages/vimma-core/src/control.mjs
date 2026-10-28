@@ -287,7 +287,7 @@ function checkTabArg(args, errors) {
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentHelloArgs(args, errors) {
-  noExtraFields(args, ["client", "via", "ctl"], errors, "args.");
+  noExtraFields(args, ["client", "via", "ctl", "session"], errors, "args.");
   const { client } = args;
   if (!isObject(client)) errors.push("client must be an object");
   else {
@@ -302,7 +302,14 @@ function checkAgentHelloArgs(args, errors) {
   // vimma-ctl's own version (docs/specs/ship-vimma-ctl.md, behaviour 4); a client from before
   // it sends none.
   if ("ctl" in args && !isCtlVersion(args.ctl)) errors.push("ctl must be a Vimma version (X.Y.Z)");
+  // The id of one `vimma-ctl mcp` process, random per process, so that a reconnect keeps its
+  // grant (docs/specs/mcp-session-grants.md S4); at least 128 bits, so it cannot be guessed.
+  if ("session" in args && !(typeof args.session === "string" && SESSION_ID.test(args.session))) {
+    errors.push("session must be 32 to 128 lowercase hex characters");
+  }
 }
+
+const SESSION_ID = /^[0-9a-f]{32,128}$/;
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentReadArgs(args, errors) {

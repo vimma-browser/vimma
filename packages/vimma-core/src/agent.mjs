@@ -99,7 +99,8 @@ export function mcpActivity({ connections, waiting, grants, now }) {
     const first = Math.min(...grants.map((g) => g.until));
     const left = Math.max(1, Math.ceil((first - now) / 60_000));
     const which = grants.length === 1 ? "it ends" : "the first ends";
-    out += ` · ${count(grants.length, "grant")}, ${which} in ${left}m`;
+    const lasts = grants.length === 1 ? "until its agent quits" : "until their agents quit";
+    out += ` · ${count(grants.length, "grant")}, ${first === Infinity ? lasts : `${which} in ${left}m`}`;
   }
   return out;
 }
@@ -272,6 +273,12 @@ export class AgentLog {
 /** Denials in a row that mute a connection, and for how long (decision 18). */
 export const MUTE_AFTER = 3;
 export const MUTE_MS = 60_000;
+/**
+ * How long a grant waits for its `vimma-ctl mcp` process (its session id) to reconnect after
+ * the link dropped (docs/specs/mcp-session-grants.md S3): long enough for Vimma's 60 s idle
+ * close and the agent's next call, short enough that a grant never outlives its agent by much.
+ */
+export const RECONNECT_MS = 120_000;
 
 /**
  * @typedef {string | number} ConnId
@@ -295,29 +302,74 @@ export class AgentQueue {
   constructor() {
     /** @type {AgentRequest[]} */
     this.queue = [];
-    /** @type {Map<ConnId, { denials: number, mutedUntil: number, grant: number }>} `grant`: when
-     * the connection's grant ends, 0 for none */
+    /** @type {Map<ConnId, { denials: number, mutedUntil: number, grant: number,
+     *   session?: string }>} `grant`: when the connection's grant ends, 0 for none, Infinity
+     *   for the whole connection; `session`: its process's id, when no other connection had it */
     this.conns = new Map();
+    /**
+     * Grants of connections that closed, by session id, kept until `parkedUntil` for the same
+     * `vimma-ctl mcp` process to reconnect (mcp-session-grants S3).
+     * @type {Map<string, { grant: number, parkedUntil: number }>}
+     */
+    this.parked = new Map();
+    /** False from `:mcp off` until MCP is on again: no session is taken or parked meanwhile. */
+    this.sessions = true;
     this.nextId = 1;
   }
 
-  /** @param {ConnId} conn  an agent connection, after its hello */
-  connect(conn) {
-    if (!this.conns.has(conn)) {
-      this.conns.set(conn, { denials: 0, mutedUntil: 0, grant: 0 });
+  /**
+   * @param {ConnId} conn  an agent connection, after its hello
+   * @param {{ session?: string, now?: number }} [hello]  `session`: the id its `vimma-ctl mcp`
+   *   process sent, which gets back a grant that process's dropped link left within
+   *   RECONNECT_MS
+   */
+  connect(conn, { session, now = 0 } = {}) {
+    if (this.conns.has(conn)) return;
+    /** @type {{ denials: number, mutedUntil: number, grant: number, session?: string }} */
+    const c = { denials: 0, mutedUntil: 0, grant: 0 };
+    // A session held by an open connection is not this one's: a second claim gets nothing.
+    const live =
+      session !== undefined && [...this.conns.values()].some((o) => o.session === session);
+    if (this.sessions && session !== undefined && !live) {
+      c.session = session;
+      const parked = this.parked.get(session);
+      this.parked.delete(session);
+      if (parked && parked.parkedUntil >= now && parked.grant > now) c.grant = parked.grant;
     }
+    this.conns.set(conn, c);
   }
 
   /**
-   * The connection closed: its grant ends, and its waiting requests go with it.
-   * @param {ConnId} conn
+   * The connection closed: its waiting requests go with it, and its grant ends, unless its
+   * session may reconnect for it (mcp-session-grants S3).
+   * @param {ConnId} conn @param {number} [now]
    * @returns {number[]} the ids of the requests it took
    */
-  disconnect(conn) {
+  disconnect(conn, now = 0) {
     const gone = this.queue.filter((r) => r.conn === conn).map((r) => r.id);
     this.queue = this.queue.filter((r) => r.conn !== conn);
+    const c = this.conns.get(conn);
     this.conns.delete(conn);
+    for (const [session, p] of this.parked) if (p.parkedUntil < now) this.parked.delete(session);
+    // A muted connection (`x`) keeps no grant for a reconnect: the mute must stop it.
+    if (this.sessions && c?.session !== undefined && c.grant > now && c.mutedUntil <= now) {
+      this.parked.set(c.session, { grant: c.grant, parkedUntil: now + RECONNECT_MS });
+    }
     return gone;
+  }
+
+  /**
+   * `:mcp off`: every grant ends, the parked ones too, and until `resumeSessions` no connection
+   * takes or parks a session, not even one that says hello while the server is still closing
+   * the others, so turning MCP on again starts with no grant.
+   */
+  forgetSessions() {
+    this.sessions = false;
+    this.parked.clear();
+    for (const c of this.conns.values()) {
+      c.grant = 0;
+      delete c.session;
+    }
   }
 
   /** The waiting requests, oldest first. */
@@ -351,6 +403,11 @@ export class AgentQueue {
     const id = this.nextId++;
     this.queue.push(always ? { id, conn, tool, always } : { id, conn, tool });
     return { kind: "wait", id };
+  }
+
+  /** MCP is on again: sessions keep their grants across a reconnect as before. */
+  resumeSessions() {
+    this.sessions = true;
   }
 
   /**
@@ -437,6 +494,7 @@ export class AgentQueue {
       if (c.grant > now) n++;
       c.grant = 0;
     }
+    this.parked.clear();
     return n;
   }
 
@@ -476,11 +534,14 @@ export class AgentQueue {
 
 /**
  * A grant's length (decision 20): the count typed before `a`, or `[mcp] grant_minutes` for a
- * bare `a`, at least 1 and at most `[mcp] grant_max_minutes`.
+ * bare `a`, at least 1 and at most `[mcp] grant_max_minutes`. A bare `a` with `grant_minutes`
+ * 0, the default, is Infinity: the whole connection (mcp-session-grants S1).
  * @param {number | null} count
  * @param {{ grantMinutes: number, grantMaxMinutes: number }} config
+ * @returns {{ minutes: number, capped: boolean }}
  */
 export function grantLength(count, { grantMinutes, grantMaxMinutes }) {
+  if (count === null && grantMinutes === 0) return { minutes: Infinity, capped: false };
   const asked = count ?? grantMinutes;
   const minutes = Math.max(1, Math.min(asked, grantMaxMinutes));
   return { minutes, capped: asked > grantMaxMinutes };

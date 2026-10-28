@@ -88,6 +88,14 @@ describe("the question's text (decision 13)", () => {
     expect(line.label).toBe(text(line));
   });
 
+  // docs/specs/mcp-session-grants.md S1: with grant_minutes 0, the default, a bare a lasts the
+  // whole connection, and the hint says so.
+  test("with grant_minutes 0 the hint says a lasts until the agent quits", () => {
+    expect(questionLine(read, { grantMinutes: 0 }).hint).toBe(
+      "y once · a until it quits · n deny · x mute",
+    );
+  });
+
   test("an open shows the full URL with its host in bold", () => {
     const line = questionLine(open, { grantMinutes: 10 });
     expect(text(line)).toBe(
@@ -271,6 +279,17 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
       "example-agent may use the agent workspace for 480 min, the most [mcp] grant_max_minutes " +
         "allows; sending a form or paying still asks (ctrl+b shift+a ends it)",
     );
+  });
+
+  test("a grant for the whole connection says it lasts until the agent quits", () => {
+    expect(grantNotice(read, { minutes: Infinity, capped: false })).toBe(
+      "example-agent may use the agent workspace until it quits; sending a form or paying still " +
+        "asks (ctrl+b shift+a ends it)",
+    );
+  });
+
+  test("a call under a grant for the whole connection names no time left", () => {
+    expect(ranNotice(open, Infinity, 0)).toBe("example-agent opened docs.rs (grant)");
   });
 
   test("a call under a grant shows what it did and the time left", () => {
@@ -743,6 +762,7 @@ describe("the status bar's agent state (decision 24)", () => {
       minutes: 14,
       ran: false,
     });
+    expect(agentState({ ...base, grants: [{ until: Infinity }] }).minutes).toBe(Infinity);
     expect(agentState({ ...base, ranAt: 0, now: 1999 }).ran).toBe(true);
     expect(agentState({ ...base, ranAt: 0, now: 2000 }).ran).toBe(false);
   });

@@ -1,0 +1,16 @@
+{
+  "description": "vimma-ctl mcp names its process with a session id, so a reconnect keeps its grant",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 1,
+    "command": "agent-hello",
+    "args": {
+      "client": {
+        "name": "example-agent"
+      },
+      "ctl": "0.1.8",
+      "session": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  }
+}

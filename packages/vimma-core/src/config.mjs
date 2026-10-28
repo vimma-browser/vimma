@@ -686,8 +686,9 @@ function validateMcp(mcp, { fail, typeError, unknownKey }) {
       integer(path, v, g.min, g.max, " (minutes)");
     } else if (key === "grant_minutes") {
       if (typeof v !== "bigint") typeError(path, v, "an integer");
-      else if (v < 1n || (grantMax !== undefined && v > BigInt(grantMax))) {
-        fail(path, `must be an integer between 1 and grant_max_minutes (${grantMax})`);
+      // 0: a bare `a` grants the whole connection (docs/specs/mcp-session-grants.md S1).
+      else if (v < 0n || (grantMax !== undefined && v > BigInt(grantMax))) {
+        fail(path, `must be an integer between 0 and grant_max_minutes (${grantMax})`);
       }
     } else if (key === "max_read_chars") {
       integer(path, v, MCP_BOUNDS.maxReadChars.min, MCP_BOUNDS.maxReadChars.max);

@@ -412,13 +412,13 @@ const COMMANDS = {
    * The connection's first command (decision 4): labels for the question. Neither is proof.
    * @param {ConnId} conn @param {AgentConn} state @param {any} args
    */
-  "agent-hello"(conn, state, { client, via, ctl }) {
+  "agent-hello"(conn, state, { client, via, ctl, session }) {
     state.agent = {
       client: client.name,
       ...(client.version ? { version: client.version } : {}),
       ...(via ? { via } : {}),
     };
-    AgentGate.connect(conn, state.agent);
+    AgentGate.connect(conn, state.agent, session);
     // An older vimma-ctl keeps its own tools, since every command is checked here all the same;
     // the user learns why an agent lacks newer ones (spec ship-vimma-ctl, decision 6).
     // Once per client name and version a session, so a client that reconnects, or opens

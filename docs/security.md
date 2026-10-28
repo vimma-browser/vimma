@@ -751,9 +751,21 @@ a step that may pay, a show, a dangerous or unscanned download and a page's own 
 ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
 makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
 spends and leaves the grant as it was (M28, M33). The question's hint names only the keys
-(`10a 10 min`), so that the question fits one line; the guide's key table says that `a` covers
-every tool, and the grant's notice, shown the moment it is made, says so and names what still
-asks and the key that ends it.
+(`a until it quits`, or `10a 10 min`), so that the question fits one line; the guide's key
+table says that `a` covers every tool, and the grant's notice, shown the moment it is made, says
+so and names what still asks and the key that ends it.
+
+[mcp-session-grants](specs/mcp-session-grants.md) makes a bare `a` last the agent's whole
+session by default (`[mcp] grant_minutes = 0`): the grant has no time limit and ends when the
+agent's connection closes, on `ctrl+b shift+a`, `:mcp revoke` or `:mcp off`, or when Vimma quits.
+A count before `a` (`10a`), or `grant_minutes` above 0, still gives a timed grant. One answer
+therefore lets an agent act for as long as it runs, possibly hours, rather than ten minutes: the
+notices, the status bar's `◇ agent granted`, `:mcp log`, the rate limits and the checkpoints are
+what bound it, and the guide advises a grant only for a task you are watching. A `vimma-ctl mcp`
+process sends a random 256-bit session id in its `agent-hello`; if its link drops, its grant
+waits for a connection with the same id for two minutes and then ends (M5). The id is not a
+credential beyond the token: it is sent only over the authenticated socket, and a process that
+can read it out of `vimma-ctl`'s memory runs as the user and can read the token as well (§11).
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection, which covers every tool but those
@@ -803,9 +815,27 @@ asks and the key that ends it.
   [`test_a_window_not_in_front_gets_attention_and_a_notification`](../tests/browser/browser_vimma_mcp_control.js),
   [`any other key neither allows nor denies`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a hostile title of 300 characters is literal text cut at 60 columns`](../packages/vimma-core/test/agent-prompt.test.mjs)
-- M5. Grants **must** be per connection, at most one each, capped at `[mcp] grant_max_minutes`,
-  held in memory only, and end on `:mcp revoke`, on `ctrl+b shift+a` with no question waiting
-  (one key, no second question), when their connection closes, on `:mcp off` and at expiry.
+- M5. Grants **must** be per connection, at most one each, held in memory only, and end on
+  `:mcp revoke`, on `ctrl+b shift+a` with no question waiting (one key, no second question), when
+  their connection closes and no reconnect of its session claims the grant within 2 minutes, on
+  `:mcp off` and, for a timed grant (a count, capped at `[mcp] grant_max_minutes`, or
+  `grant_minutes` above 0), at expiry. A grant of a connection that closed **must** be given back
+  only to a connection whose `agent-hello` carries the same session id (32 to 128 lowercase hex
+  characters), within 2 minutes of the close, once, and never while another open connection holds
+  that id; **never** when the connection was muted (`x`); and never for a connection that said
+  hello or closed after `:mcp off`, until MCP is on again. `:mcp revoke`, `ctrl+b shift+a` and
+  `:mcp off` **must** end such a waiting grant too.
+  [`a muted connection's grant is not kept for a reconnect`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`while MCP is off no session is taken or parked, until it is on again`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`keeps its grant within RECONNECT_MS`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`asks again after RECONNECT_MS`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`another session, or none, gets nothing, and the parked grant stays for its own`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a second connection claiming a live session gets nothing`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`revoke ends a parked grant too`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`turning MCP off ends the parked grants and those of the open connections`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`agent-hello: a session id of 32 to 128 lowercase hex characters`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`test_a_reconnect_of_the_same_session_keeps_its_grant`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`grant_minutes 0: a bare a lasts the whole connection, a count is still minutes`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`grants end on revoke and on disconnect, and are listed shortest first`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a connection holds at most one grant`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`the length: a count, or the default for a bare a, capped at grant_max_minutes`](../packages/vimma-core/test/agent-gate.test.mjs),

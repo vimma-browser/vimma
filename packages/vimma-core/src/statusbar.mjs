@@ -58,7 +58,7 @@ export { textWidth };
  * @property {FindStatus | null} [find]          the current `/` or `?` find (spec m1-find)
  * @property {{ waiting: number, minutes: number | null, ran: boolean } | null} [agent]  local AI
  *   agents (docs/specs/vimma-mcp.md decision 24): questions waiting, the shortest grant's
- *   minutes left, a request that just ran
+ *   minutes left (Infinity for a grant of the whole connection), a request that just ran
  * @property {boolean} [toolbarHidden]  Firefox's toolbar is hidden (docs/specs/toolbar-toggle.md):
  *   the bar then carries its security and private-browsing cues; shown, those are left out
  * @property {SecurityLevel} [security]  the selected page's connection (securityFromState)
@@ -487,7 +487,7 @@ export function statusSegments(input) {
       : ran
         ? `${word} ·`
         : agent.minutes !== null
-          ? `${word} ${agent.minutes}m`
+          ? `${word} ${agent.minutes === Infinity ? "granted" : `${agent.minutes}m`}`
           : word;
     right.push(
       seg({

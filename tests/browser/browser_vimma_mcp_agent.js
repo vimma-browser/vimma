@@ -94,13 +94,21 @@ async function openAgentTab(url = PAGE) {
   return tab;
 }
 
-/** An agent connection, after its agent-hello. */
-async function agentClient(name = "example-agent") {
+/**
+ * An agent connection, after its agent-hello.
+ * @param {string} [name] @param {string} [session]  the vimma-ctl mcp process's id
+ */
+async function agentClient(name = "example-agent", session = undefined) {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
   const welcome = await c.handshake({ protocol: 2, role: "agent" });
   Assert.equal(welcome.type, "welcome", "an agent connection is welcomed");
   Assert.equal(welcome.role, "agent", "as the agent role");
-  const hi = await c.call("agent-hello", { client: { name }, via: "example", ctl: VIMMA_VERSION });
+  const hi = await c.call("agent-hello", {
+    client: { name },
+    via: "example",
+    ctl: VIMMA_VERSION,
+    ...(session ? { session } : {}),
+  });
   Assert.deepEqual(hi.result, { workspace: agent().name, exists: true }, "agent-hello answers");
   return c;
 }
@@ -439,6 +447,53 @@ add_task(async function test_one_grant_covers_every_tool_of_its_connection() {
   await c.response(id);
   c.close();
   await until(() => AgentGate.grants().length === 0, "closing the connection ends its grant");
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  await setSwitches({});
+});
+
+// docs/specs/mcp-session-grants.md S1, S3: a bare `a` (grant_minutes 0, the default) allows the
+// connection until it closes, and a reconnect of the same vimma-ctl mcp process (its session id)
+// keeps that grant; another session, or a reconnect after :mcp off and on, asks again.
+add_task(async function test_a_reconnect_of_the_same_session_keeps_its_grant() {
+  await setSwitches({ mcp: true });
+  const tab = await openAgentTab();
+  const session = "5e".repeat(32);
+  let c = await agentClient("example-agent", session);
+  let id = c.request("agent-read", { tab: idOf(tab) });
+  await answer({ kind: "grant", minutes: null });
+  Assert.equal((await c.response(id)).ok, true, "a bare a allows the read");
+  Assert.deepEqual(
+    AgentGate.grants().map((g) => g.until),
+    [Infinity],
+    "and grants the whole connection, with no end",
+  );
+  c.close();
+  await until(() => AgentGate.grants().length === 0, "the closed connection holds no grant");
+
+  c = await agentClient("example-agent", session);
+  const r = await c.call("agent-read", { tab: idOf(tab) });
+  Assert.equal(r.ok, true, "the same session's reconnect reads unasked");
+  Assert.equal(AgentGate.waiting.length, 0, "with no question");
+
+  const other = await agentClient("example-agent", "77".repeat(32));
+  id = other.request("agent-read", { tab: idOf(tab) });
+  await question();
+  await answer({ kind: "deny" });
+  Assert.equal((await other.response(id)).error?.code, "denied", "another session asks");
+  other.close();
+
+  // :mcp off ends the grants, the parked one included: on again, the same session asks.
+  c.close();
+  await until(() => AgentGate.connections.length === 0, "its link drops, and its grant waits");
+  await setSwitches({});
+  await until(() => AgentGate.connections.length === 0, ":mcp off closes the connections");
+  await setSwitches({ mcp: true });
+  c = await agentClient("example-agent", session);
+  id = c.request("agent-read", { tab: idOf(tab) });
+  await question();
+  await answer({ kind: "deny" });
+  Assert.equal((await c.response(id)).error?.code, "denied", "after :mcp off it asks again");
+  c.close();
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   await setSwitches({});
 });

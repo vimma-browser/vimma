@@ -397,7 +397,7 @@ describe("mergeWithDefaults", () => {
       mcp: {
         workspace: "agent",
         askTimeout: 50,
-        grantMinutes: 10,
+        grantMinutes: 0,
         grantMaxMinutes: 480,
         maxReadChars: 200000,
         notify: true,

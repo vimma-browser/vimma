@@ -149,6 +149,17 @@ describe("agent commands: args", () => {
     expect(errorsOf(req("agent-hello", {}))).toEqual(["client must be an object"]);
   });
 
+  // docs/specs/mcp-session-grants.md S4: the session id of one vimma-ctl mcp process.
+  test("agent-hello: a session id of 32 to 128 lowercase hex characters", () => {
+    const hello = (/** @type {unknown} */ session) =>
+      errorsOf(req("agent-hello", { client: { name: "x" }, session }));
+    expect(hello("a".repeat(32))).toEqual([]);
+    expect(hello("0123456789abcdef".repeat(8))).toEqual([]);
+    for (const session of ["a".repeat(31), "a".repeat(129), "A".repeat(64), "g".repeat(64), 7]) {
+      expect(hello(session)).toEqual(["session must be 32 to 128 lowercase hex characters"]);
+    }
+  });
+
   test("tab ids are browserIds: digits, as state gives them", () => {
     expect(errorsOf(req("agent-close", { tab: "12" }))).toEqual([]);
     for (const tab of ["", "0", "01", "1e3", "-1", 12, "1".repeat(17)]) {
