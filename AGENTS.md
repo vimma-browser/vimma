@@ -27,6 +27,9 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   and spec-lint.
 - `npm run gen-docs`: regenerate `docs/bindings.md`, `docs/bindings.json` and `defaults.toml`
   after changing `actions.mjs` or `defaults.mjs`.
+- `npm run gen-agent-tools`: regenerate the built-in agent's tool list and system text
+  (`packages/vimma-core/src/agent-tools-data.mjs`) after changing vimma-ctl's MCP tool fixture
+  (`tools/vimma-ctl/tests/fixtures/mcp/tools-list.json`) or `INSTRUCTIONS` in `mcp.rs`.
 - `npm run import`: sync-core plus surfer import (symlinks `src/` and `tests/` into `engine/`);
   rerun after editing `packages/vimma-core`.
 - `npx surfer build --ui`: rebuild the UI only; plain `./mach build` in `engine/` after a
