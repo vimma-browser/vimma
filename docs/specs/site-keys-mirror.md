@@ -66,7 +66,11 @@ cannot fall behind the browser.
    `SITE_DISPATCH_APP_ID` (client ID) and the secret `SITE_DISPATCH_APP_KEY` (private key), from
    which GitHub's `actions/create-github-app-token` mints a one-hour token for that repository
    alone. Without the variable the job logs a notice and succeeds, so main does not go red before
-   it is set. No third-party action; `actions/checkout` is not needed.
+   it is set. No third-party action; `actions/checkout` is not needed. (Since changed: the key is
+   a secret of the `site-dispatch` environment, which only `main` may deploy to, and a published
+   release only starts `site-dispatch.yml` on `main` with `release=true`, because a tag's copy of
+   the file could otherwise read the key and push to vimma-site's auto-merging release-sync
+   branches; docs/security.md, B14.)
 5. **The site** (vimma-browser/vimma-site) fetches `docs/bindings.json` at a fixed commit from
    `raw.githubusercontent.com`, commits it with the commit it came from, and builds both its
    keys page and its `?` overlay from it. Its own workflow answers the dispatch with a pull

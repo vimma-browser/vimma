@@ -429,7 +429,7 @@ Limits:
 | `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
 | `codeql.yml`               | push to `main`, PRs, Mon, manual                   | `ubuntu-latest`           | nothing; skipped while the repo is private |
 | `dependabot-automerge.yml` | Dependabot's PRs                                   | `ubuntu-latest`           | nothing (Dependabot, below)                |
-| `site-dispatch.yml`        | `docs/bindings.json` on `main`, release published  | `ubuntu-latest`           | an app's key (vimma.dev, below)            |
+| `site-dispatch.yml`        | `docs/bindings.json` on `main`, release published  | `ubuntu-latest`           | an app's key, main only (vimma.dev, below) |
 | `spec-status.yml`          | daily, issue closed, specs, manual                 | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
 
 Locally, before pushing: `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:py`,
@@ -2312,11 +2312,34 @@ a pull request. Publishing a release (not a pre-release) sends `vimma-release`, 
 It authenticates as the org's GitHub App **vimma-site-dispatch** (Organization settings →
 Developer settings → GitHub Apps), installed on vimma-browser/vimma-site only with "Contents: read
 and write": the variable `SITE_DISPATCH_APP_ID` holds its client ID and the secret
-`SITE_DISPATCH_APP_KEY` its private key, and each run mints a one-hour token. Nothing expires.
-To rotate the key, generate a new one on the app's page, `gh secret set SITE_DISPATCH_APP_KEY <
-new-key.pem`, then delete the old key there. Until the variable exists the job skips with a
-notice. Re-send by hand with `gh workflow run site-dispatch.yml` (`-f release=true` for a
-release).
+`SITE_DISPATCH_APP_KEY`, of the `site-dispatch` environment, its private key, and each run mints a
+one-hour token. Nothing expires. The key can push to vimma-site's auto-merging release-sync
+branches, so only `main`'s copy of the workflow may read it (docs/security.md, B14): a published
+release only starts `site-dispatch.yml` on `main` with `release=true`, and the `site-dispatch`
+environment's only deployment policy is the branch `main`. Setup, and moving the key out of the
+repository's secrets:
+
+```sh
+# 1. The environment, deployable only from main (already created).
+gh api -X PUT repos/vimma-browser/vimma/environments/site-dispatch \
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api -X POST repos/vimma-browser/vimma/environments/site-dispatch/deployment-branch-policies \
+  -f name=main -f type=branch
+# 2. The key as an environment secret.
+gh secret set SITE_DISPATCH_APP_KEY --env site-dispatch < key.pem
+# 3. Delete the repository secret, so no tag's or branch's copy can read it.
+gh secret delete SITE_DISPATCH_APP_KEY
+```
+
+A repository secret's value cannot be read back, so step 2 needs the `.pem`: generate a new key on
+the app's page if it is not at hand. Generate one and delete the old key there too if the old
+repository secret should be considered exposed (it was readable by any tag's or branch's copy of a
+workflow). To rotate the key, generate a new one on the app's page,
+`gh secret set SITE_DISPATCH_APP_KEY --env site-dispatch < new-key.pem`, then delete the old key
+there. Until the variable exists the job skips with a notice. Re-send by hand with
+`gh workflow run site-dispatch.yml --ref main` (`-f release=true` for a release); from any other
+ref the dispatch job does not run.
 
 ### Security scanning (`semgrep.yml`, `codeql.yml`)
 
