@@ -453,9 +453,9 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     `key_reload_skip_cache2`, `ctrl+F4`, F10 and the menu bar's access keys, since
     `ui.key.menuAccessKey` is 0 there), and with macOS's own keys (`MAC_ONLY`). The host reads it
     on a Mac for what `disable = "all"` turns off and which out-of-keyset tab keys it stops; the
-    keymap, the page-first rule and `bindings.md` stay on the Linux table, because Vimma's keymap
-    is the same on both platforms but for the keys of decision 29, whose macOS rows are bound
-    there (issue #385 is the rest of the macOS keymap). A row
+    keymap, the page-first rule and `bindings.md` stay on the Linux table but for decision 29's
+    keys, whose macOS rows are bound and read on a Mac, because Vimma's keymap is otherwise the
+    same on both platforms (issue #385 is the rest of the macOS keymap). A row
     whose key moves to a chord Vimma does not bind is fate c there (unbound, its `<key>` off):
     `cmd+t`, the DevTools' `cmd+alt+<key>` and ShortcutUtils' `meta+{`,
     `meta+}` (also with `ctrl`, which `ShortcutUtils.getSystemActionForEvent` ignores) and
