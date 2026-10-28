@@ -669,15 +669,26 @@ const COMMANDS = {
       // A URL that differs from the page's only by its fragment stays in the same document.
       const unhashed = (/** @type {string} */ u) => u.replace(/#.*$/s, "");
       const sameDocument = uri.spec.includes("#") && unhashed(uri.spec) === unhashed(from);
+      // A tab closed during the wait ends it at once: stepList then refuses it.
+      /** @type {() => void} */
+      let unlisten = () => {};
+      const closed = new Promise((resolve) => {
+        const onClose = () => resolve(false);
+        tab.addEventListener("TabClose", onClose, { once: true });
+        unlisten = () => tab.removeEventListener("TabClose", onClose);
+      });
       const list = await stepList(conn, "vimma_open", what, agent, win, tab, () =>
-        AgentAct.ready(
-          browser,
-          (/** @type {any} */ wg) =>
-            !wg.isInitialDocument &&
-            (wg.innerWindowId !== before || (sameDocument && tabUrl(tab) === uri.spec)),
-          until,
-        ),
-      );
+        Promise.race([
+          AgentAct.ready(
+            browser,
+            (/** @type {any} */ wg) =>
+              !wg.isInitialDocument &&
+              (wg.innerWindowId !== before || (sameDocument && tabUrl(tab) === uri.spec)),
+            until,
+          ),
+          /** @type {Promise<boolean>} */ (closed),
+        ]),
+      ).finally(unlisten);
       return { tab: tabId(tab), ...list };
     };
     if (current) {

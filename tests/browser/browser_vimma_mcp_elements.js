@@ -544,9 +544,11 @@ addTidyTask(async function test_a_steps_list_says_nothing_of_a_tab_that_left() {
   const id = c.request("agent-open", { url: slow, elements: true });
   AgentGate.answer((await question()).id, { kind: "grant", minutes: 12 });
   await until(() => agentTabs().length === 1, "the open's tab");
+  const closed = Date.now();
   BrowserTestUtils.removeTab(agentTabs()[0]);
   const r = await c.response(id);
   Assert.equal(r.error?.code, "failed", `refused: ${JSON.stringify(r)}`);
+  Assert.less(Date.now() - closed, 3000, "as soon as the tab closed, not after the wait");
   Assert.ok(!JSON.stringify(r).includes("slow.sjs"), "with nothing of the page");
   Assert.equal(AgentGate.log[0].outcome, "stopped", "and :mcp log says it stopped");
 
