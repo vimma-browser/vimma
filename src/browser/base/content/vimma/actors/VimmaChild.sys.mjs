@@ -793,6 +793,10 @@ export class VimmaChild extends JSWindowActorChild {
         return fillTargetOf(el, data.value);
       case "fill":
         return this.#agentFillField(el, data);
+      case "loading":
+        // After a fill (issue #579): whether the fields' handlers started a load in this frame.
+        // Asked after their task, so a submission they queued has started by now.
+        return !!(/** @type {any} */ (this.docShell)?.isLoadingDocument);
       case "fill-outcome": {
         const last = this.#agentFill;
         return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";

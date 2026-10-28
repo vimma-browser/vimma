@@ -809,10 +809,16 @@ export const AgentAct = {
       // A fill that sent nothing waits for no page (issue #579), only for a load its fields'
       // handlers started, so that a submission the page tried meanwhile is named.
       const now = pageOf(browser);
+      // The parent learns of a load the fields' handlers started only after it began in the
+      // page's process, so the last field's frame is asked too.
+      const last = filled ? (steps[filled - 1]?.target ?? null) : null;
       const moving =
         !!browser.webProgress?.isLoadingDocument ||
         now.doc !== before.doc ||
-        now.url !== before.url;
+        now.url !== before.url ||
+        (!sent &&
+          !!last &&
+          (await bounded(VimmaActors.agentLoading(last), false, COLLECT_TIMEOUT_MS)));
       const waited =
         sent || moving ? await this.waitForPage(browser, before, dialogs, inUse, sent) : undefined;
       // Asked again as a click's outcome is: a busy page can answer the wait's poll too late.

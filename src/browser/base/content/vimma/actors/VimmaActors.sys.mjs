@@ -745,6 +745,22 @@ export const VimmaActors = {
   },
 
   /**
+   * Whether the frame of `target` has a load under way, as its own process sees it (issue #579):
+   * a load its page's handlers started reaches the parent's progress a moment later.
+   * @param {HintTarget} target
+   * @returns {Promise<boolean>}
+   */
+  async agentLoading(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return true; // it navigated already
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", { op: "loading" });
+      return reply === true;
+    } catch {
+      return true; // the frame went away mid-question: a load took it
+    }
+  },
+
+  /**
    * Waits in a frame's own process until its page has settled after an agent's step (issue
    * #579; docs/specs/mcp-forms.md F11): `ready`, from its DOMContentLoaded; `net`, until no
    * request the step started is open; then a quiet period, bounded (core AGENT_WAITS). The
