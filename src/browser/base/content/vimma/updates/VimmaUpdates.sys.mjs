@@ -287,8 +287,17 @@ function save() {
   }
 }
 
-/** The running build is newer than or equal to `offer` (it was installed since). */
+/** Vimma's version of the running build (version_display.txt). */
+function runningVersion() {
+  return /** @type {string} */ (lazy.AppConstants.MOZ_APP_VERSION_DISPLAY);
+}
+
+/**
+ * The running build is newer than or equal to `offer` (it was installed since), or is the Vimma
+ * version it offers: as judgeManifest, a build never offers its own version (#563).
+ */
 function alreadyHave(/** @type {Offer} */ offer) {
+  if (offer.displayVersion === runningVersion()) return true;
   const order = Services.vc.compare(offer.appVersion, Services.appinfo.version);
   return order < 0 || (order === 0 && BigInt(offer.buildId) <= BigInt(Services.appinfo.appBuildID));
 }
@@ -447,6 +456,7 @@ async function runCheck() {
       target: target(),
       appVersion: Services.appinfo.version,
       buildId: Services.appinfo.appBuildID,
+      displayVersion: runningVersion(),
       serial: stored,
       now: Date.now(),
     },
@@ -908,7 +918,7 @@ export const VimmaUpdates = {
 
   /** Vimma's own version (version_display.txt), as about:vimma shows it. */
   get runningVersion() {
-    return /** @type {string} */ (lazy.AppConstants.MOZ_APP_VERSION_DISPLAY);
+    return runningVersion();
   },
 
   /** The current result, synchronously (tests, the status bar). */

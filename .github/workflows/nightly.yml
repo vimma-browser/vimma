@@ -105,6 +105,13 @@ jobs:
           set -o pipefail
           npm run import 2>&1 | tee -a "$LOG"
 
+      # As release.yml (#563): buildid.h is written again when `./mach package` runs, and without a fixed
+      # MOZ_BUILD_DATE it takes the time then, so the packaged application.ini (what the update
+      # manifest offers) named a later build than the binary (what appinfo.appBuildID says) and
+      # a release offered itself as an update. One UTC time for every mach call of this job.
+      - name: Fix the build ID for every mach call
+        run: echo "MOZ_BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
+
       # `surfer import` needed engine/'s empty repository; mach must not see it: its taskgraph
       # hashes the files a repository tracks to find Mozilla's toolchains for --enable-bootstrap,
       # and finds none in an empty one. Without .git, engine/ is a source tarball to mach.
@@ -149,6 +156,11 @@ jobs:
           (cd engine && ./mach package) 2>&1 | tee -a "$LOG"
           cp engine/obj-x86_64-pc-linux-gnu/dist/vimma-*.en-US.linux-x86_64.tar.xz dist/
           ls -l dist
+          # the build ID the binary runs with is the one its application.ini names (#563)
+          unpacked=$(mktemp -d)
+          tar -xJf dist/vimma-*.en-US.linux-x86_64.tar.xz -C "$unpacked"
+          node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"
+          rm -rf "$unpacked"
 
       - name: Delete the Safe Browsing key file
         if: always()

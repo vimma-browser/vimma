@@ -439,11 +439,14 @@ export function parseManifest(body) {
 }
 
 /**
- * Rules 2 to 4 (spec §4): the right channel and target, no replay, no downgrade.
+ * Rules 2 to 4 (spec §4): the right channel and target, no replay, no downgrade. The Vimma
+ * version this build already is is never offered, whatever the build IDs say: a release whose
+ * packaged build ID differs from its binary's must not offer itself to itself (#563).
  * @param {Manifest} manifest
  * @param {{ channel: string, target: string, appVersion: string, buildId: string,
- *   serial: string | null, now: number }} running  `serial`: the highest this profile
- *   accepted; `now`: the clock, ms since the epoch
+ *   displayVersion: string, serial: string | null, now: number }} running  `displayVersion`:
+ *   this build's Vimma version; `serial`: the highest this profile accepted; `now`: the clock,
+ *   ms since the epoch
  * @param {(a: string, b: string) => number} compare  Firefox's version comparison
  * @returns {{ ok: true, serial: string, offer: Offer | null } | { ok: false, reason: string }}
  */
@@ -484,6 +487,7 @@ export function judgeManifest(manifest, running, compare) {
   const order = u ? compare(u.appVersion, running.appVersion) : -1;
   const newer =
     !!u &&
+    u.displayVersion !== running.displayVersion &&
     (order > 0 ||
       (order === 0 &&
         BUILD_ID.test(running.buildId) &&

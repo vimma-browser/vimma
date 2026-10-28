@@ -514,6 +514,7 @@ describe("judgeManifest (§4 rules 2 to 4)", () => {
     target: "Linux_x86_64-gcc3",
     appVersion: "158.0",
     buildId: "20261020000000",
+    displayVersion: "0.3.0",
     serial: /** @type {string | null} */ (null),
     now: Date.parse("2026-10-29T00:00:00Z"),
   };
@@ -575,6 +576,18 @@ describe("judgeManifest (§4 rules 2 to 4)", () => {
     expect(at("20261019000000")).toMatchObject({ ok: true, offer: null });
     expect(at("20261020000000")).toMatchObject({ ok: true, offer: null });
     expect(at("20261021000000")).toMatchObject({ ok: true, offer: { buildId: "20261021000000" } });
+  });
+
+  // #563: a release whose packaged application.ini has a later build ID than its binary offered
+  // itself to itself. The Vimma version this build already is is never an update.
+  test("the Vimma version already running is no offer, whatever its build ID", () => {
+    const self = { ...running, appVersion: "158.0.1", displayVersion: "0.3.1" };
+    const later = parsed({ update: { buildID: "20261027213312" } });
+    expect(judgeManifest(later, self, compare)).toMatchObject({ ok: true, offer: null });
+    expect(judgeManifest(later, { ...self, displayVersion: "0.3.0" }, compare)).toMatchObject({
+      ok: true,
+      offer: { displayVersion: "0.3.1" },
+    });
   });
 
   test("build IDs compare as numbers, not strings", () => {

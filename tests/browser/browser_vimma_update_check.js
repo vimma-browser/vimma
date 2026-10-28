@@ -18,6 +18,7 @@ const { base64Encode, signatureComment, signedBytes, spkiKeyId } = ChromeUtils.i
   "chrome://browser/content/vimma/core/updates.mjs",
 );
 const { UpdateUtils } = ChromeUtils.importESModule("resource://gre/modules/UpdateUtils.sys.mjs");
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 
 const HOST = `${getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -238,6 +239,43 @@ add_task(async function replay_is_refused_and_downgrade_offers_nothing() {
   const r = await VimmaUpdates.check();
   Assert.equal(r.outcome, "current", "same Firefox, older build: up to date");
   await until(() => !segment(), "no segment when up to date");
+});
+
+// #563: a release whose packaged application.ini had a later build ID than its binary offered
+// itself, and the saved offer outlived the update. The Vimma version running is never offered.
+add_task(async function the_vimma_version_running_is_never_offered() {
+  const running = AppConstants.MOZ_APP_VERSION_DISPLAY;
+  const self = {
+    appVersion: Services.appinfo.version,
+    buildID: String(Number(Services.appinfo.appBuildID) + 1),
+    displayVersion: running,
+    vimmaUrgency: "security",
+  };
+  await serve(await manifest({ update: self }));
+  const r = await VimmaUpdates.check();
+  Assert.equal(r.outcome, "current", "the same Vimma with a later build ID: up to date");
+  Assert.equal(VimmaUpdates.status().offer, null, "nothing is offered");
+  await until(() => !segment(), "no segment for the version already running");
+
+  const offer = {
+    appVersion: self.appVersion,
+    buildId: self.buildID,
+    displayVersion: running,
+    detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v" + running,
+    urgent: true,
+    advisories: [],
+  };
+  Services.prefs.setStringPref(
+    "vimma.update.last",
+    JSON.stringify({ checkedAt: Date.now(), okAt: Date.now(), outcome: "offer", offer }),
+  );
+  VimmaUpdates._load();
+  Assert.equal(
+    VimmaUpdates.status().offer,
+    null,
+    "a saved offer of the running version is dropped",
+  );
+  VimmaUpdates._reset();
 });
 
 add_task(async function a_host_that_does_not_answer_is_quiet() {

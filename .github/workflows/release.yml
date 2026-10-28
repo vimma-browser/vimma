@@ -160,6 +160,13 @@ jobs:
       - name: Import patches and our sources
         run: npm run import
 
+      # #563: buildid.h is written again when `./mach package` runs, and without a fixed
+      # MOZ_BUILD_DATE it takes the time then, so the packaged application.ini (what the update
+      # manifest offers) named a later build than the binary (what appinfo.appBuildID says) and
+      # the release offered itself as an update. One UTC time for every mach call of this job.
+      - name: Fix the build ID for every mach call
+        run: echo "MOZ_BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
+
       # As nightly.yml: mach must not see engine/'s empty repository, or --enable-bootstrap finds
       # none of Mozilla's toolchains (its taskgraph hashes only the files a repository tracks).
       - name: Build
@@ -197,6 +204,11 @@ jobs:
           (cd engine && ./mach package)
           rm -rf release && mkdir release
           cp "$MOZ_OBJDIR"/dist/vimma-*.en-US.linux-x86_64.tar.xz release/
+          # the build ID the binary runs with is the one its application.ini gives the manifest
+          unpacked=$(mktemp -d)
+          tar -xJf release/vimma-*.en-US.linux-x86_64.tar.xz -C "$unpacked"
+          node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"
+          rm -rf "$unpacked"
 
       - name: Delete the Safe Browsing key file
         if: always()
@@ -700,6 +712,13 @@ jobs:
       - name: Rust standard library for aarch64-apple-darwin
         run: rustup target add aarch64-apple-darwin
 
+      # As build (#563): buildid.h is written again when `./mach package` runs, and without a fixed
+      # MOZ_BUILD_DATE it takes the time then, so the packaged application.ini (what the update
+      # manifest offers) named a later build than the binary (what appinfo.appBuildID says) and
+      # the release offered itself as an update. One UTC time for every mach call of this job.
+      - name: Fix the build ID for every mach call
+        run: echo "MOZ_BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
+
       # SURFER_PLATFORM picks configs/macos/mozconfig (--target=aarch64-apple-darwin).
       - name: Build
         env:
@@ -1087,6 +1106,8 @@ jobs:
           expected=$(node tools/release/version-line.mjs)
           case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;; *) echo "::error::surfer.json gives '$expected', tag is $TAG"; exit 1 ;; esac
           [ "$version" = "$expected" ] || { echo "::error::--version is '$version', want '$expected'"; exit 1; }
+          # the build ID the app runs with is the one its application.ini gives the manifest (#563)
+          node tools/release/build-id.mjs --binary "$APP/Contents/MacOS/vimma" --ini "$APP/Contents/Resources/application.ini"
           ctl=$("$APP/Contents/MacOS/vimma-ctl" --version)
           [ "$ctl" = "vimma-ctl ${TAG#v} (protocol 2)" ] || { echo "::error::vimma-ctl --version is '$ctl'"; exit 1; }
           test -s "$APP/Contents/Resources/vimma-ctl-licenses/rust-std-COPYRIGHT.html"

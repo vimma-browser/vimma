@@ -1796,6 +1796,62 @@ describe("--version smoke checks", () => {
   });
 });
 
+// #563: `./mach package` wrote application.ini again after the build with a later build ID than
+// the binary's, the manifest offered that ID, and the release offered itself to itself. Each
+// build job fixes MOZ_BUILD_DATE before its first mach call, and a packaged build whose binary
+// and application.ini disagree fails before anything is published.
+describe("one build ID per build", () => {
+  /** @param {string} name */
+  const workflow = (name) =>
+    readFileSync(new URL(`../../../.github/workflows/${name}`, import.meta.url), "utf8");
+  const FIX = "- name: Fix the build ID for every mach call\n";
+  const SET = 'echo "MOZ_BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"';
+  const all = jobs();
+
+  /** @param {string} block @param {string} label */
+  const fixedBeforeBuild = (block, label) => {
+    const fix = block.indexOf(FIX);
+    expect(fix, label).toBeGreaterThan(-1);
+    expect(block.slice(fix, block.indexOf("\n      - ", fix + 1))).toContain(SET);
+    expect(fix, label).toBeLessThan(block.indexOf("- name: Build\n"));
+  };
+
+  it("release.yml's Linux and macOS builds fix MOZ_BUILD_DATE before they build", () => {
+    fixedBeforeBuild(all.get("build") ?? "", "build");
+    fixedBeforeBuild(all.get("macos-build") ?? "", "macos-build");
+  });
+
+  it("nightly.yml fixes it too, so its packages carry the build ID they run with", () => {
+    fixedBeforeBuild(workflow("nightly.yml"), "nightly.yml");
+  });
+
+  it("the Linux release checks the packaged tarball's binary against its application.ini", () => {
+    const run = runOf(
+      all.get("build") ?? "",
+      "Package with mach (dist/vimma-<firefox>.en-US.linux-x86_64.tar.xz)",
+    );
+    expect(run).toContain(
+      'node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"',
+    );
+  });
+
+  it("the macOS smoke job checks the app from the dmg the same way", () => {
+    const run = runOf(all.get("macos-smoke") ?? "", "Smoke check");
+    expect(run).toContain(
+      'node tools/release/build-id.mjs --binary "$APP/Contents/MacOS/vimma" --ini "$APP/Contents/Resources/application.ini"',
+    );
+  });
+
+  it("the nightly checks its package before uploading it", () => {
+    const file = workflow("nightly.yml");
+    const start = file.indexOf("- name: Package\n");
+    const step = file.slice(start, file.indexOf("\n      - name:", start + 1));
+    expect(step).toContain(
+      'node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"',
+    );
+  });
+});
+
 // release-please.yml's post-steps (spec firefox-versions, decisions 7 and 8): the release PR's
 // CHANGELOG.md heading and the GitHub Release's title name the Firefox version. They hold write
 // tokens on every push to main, so their scopes and inputs are pinned here.
