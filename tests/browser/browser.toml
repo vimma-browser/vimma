@@ -305,6 +305,7 @@ support-files = [
   "file_vimma_private_form.html",
   "file_vimma_private_download.txt",
   "file_vimma_private_download.txt^headers^",
+  "file_vimma_slow.sjs",
 ]
 
 ["browser_vimma_private_swap.js"]

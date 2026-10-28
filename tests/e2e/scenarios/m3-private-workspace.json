@@ -1,6 +1,6 @@
 {
   "name": "m3-private-workspace",
-  "description": "docs/specs/private-workspace.md: the private workspace is Firefox's private window, reached by keys only. It first waits for search.json.mozlz4, which SearchSettings writes once SearchService has initialized: a window opened before that keeps the URL bar's engine-less placeholder and magnifier icon until something is typed (SmartbarInput's deferred update), so the screenshot would show either URL bar depending on timing (#236). ctrl+b shift+p opens it (state: private, workspace private, no urls or titles); a screenshot of its status bar (◆ private); ctrl+b ) leaves it for the first normal workspace; ctrl+shift+p goes back to the same window (no second one); ctrl+b shift+d then y closes it and the normal window is left. Xvfb has no window manager, so this is the X11 path: the private window opens over the Vimma window at its size and position.",
+  "description": "docs/specs/private-workspace.md: the private workspace is Firefox's private window, reached by keys only. It first waits for search.json.mozlz4, which SearchSettings writes once SearchService has initialized: a window opened before that keeps the URL bar's engine-less placeholder and magnifier icon until something is typed (SmartbarInput's deferred update), so the screenshot would show either URL bar depending on timing (#236). ctrl+b shift+p opens it (state: private, workspace private, no urls or titles); it waits for the start page's loading: false, the only sign of a loaded page that a private window's state gives, or the screenshot could show the page still loading (#567); a screenshot of its status bar (◆ private); ctrl+b ) leaves it for the first normal workspace; ctrl+shift+p goes back to the same window (no second one); ctrl+b shift+d then y closes it and the normal window is left. Xvfb has no window manager, so this is the X11 path: the private window opens over the Vimma window at its size and position.",
   "timeoutSeconds": 60,
   "steps": [
     {
@@ -24,7 +24,8 @@
           {
             "url": null,
             "title": null,
-            "selected": true
+            "selected": true,
+            "loading": false
           }
         ]
       },
