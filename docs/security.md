@@ -1498,7 +1498,7 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
   [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
 
-## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`)
+## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`, `site-dispatch.yml`)
 
 Vimma's binaries are built from Mozilla's Firefox source, this repository, and the npm packages
 that drive the build, chiefly Surfer. These rules keep what reaches a build pinned and reviewed.
@@ -1898,6 +1898,35 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`macos-ctl builds vimma-ctl on a Mac from the commit it checked, like build`](../tools/package/test/release-workflow.test.mjs),
   [`macos-build signs the Mac vimma-ctl into the app, from the same commit`](../tools/package/test/release-workflow.test.mjs),
   [`package puts vimma-ctl into every package and checks it in each`](../tools/package/test/release-workflow.test.mjs)
+- B14. `site-dispatch.yml` (spec [site-keys-mirror](specs/site-keys-mirror.md)) tells
+  `vimma-browser/vimma-site` about a published release (`vimma-release`, never for a
+  pre-release) or a change to `docs/bindings.json` on `main` (`vimma-bindings`). It holds the
+  private key of the org's GitHub App `vimma-site-dispatch`, the repository secret
+  `SITE_DISPATCH_APP_KEY`, with the app's client ID in the variable `SITE_DISPATCH_APP_ID`. Its
+  `GITHUB_TOKEN` has no permission (`permissions: {}`), it checks nothing out and runs no
+  repository code. `actions/create-github-app-token`, pinned by commit SHA, **must** mint the
+  token for `vimma-site` alone with `contents: write`, what the `repository_dispatch` endpoint
+  requires; the token lasts an hour. Event values, the release's tag among them, reach the shell
+  only through `env`, and the one API call goes to `vimma-site`'s `dispatches`. Without the
+  variable the job logs a notice and succeeds. A release event runs the tag's copy of the file,
+  and `workflow_dispatch` runs any branch's copy; the key is a repository secret, not an
+  environment's, so an edited copy on a tag or branch that someone with write access pushes can
+  read it and mint a token for anything the app's installation allows. That is what bounds the
+  key, not the workflow: **⚠ setting:** the app holds only Contents read and write (with
+  Metadata read) and is installed on `vimma-site` alone (docs/runbook.md, "vimma.dev's keys").
+  With that, the key can push to `vimma-site`'s branches, tags and releases, but cannot change a
+  workflow there (that needs the Workflows permission) and cannot push to its `main`, whose
+  ruleset requires a pull request and passing checks and has no bypass actor. **⚠ limit:**
+  the Cloudflare Workers and Pages app builds `vimma-site`'s pushed branches, so a leaked key
+  could get a branch of its own built as a preview; vimma.dev itself deploys only from `main`.
+  [`mints the app token for vimma-browser/vimma-site alone, with contents: write only`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`has no permission at the top level and no job asks for one`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`holds the app's key and no other secret, and no personal token`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`pins every action by full commit SHA and checks nothing out`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`sends the dispatch to vimma-site only`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`passes the tag and every event value to run: through env only`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`without the app's ID, logs a notice and succeeds instead of failing`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`never runs for a pre-release or outside vimma-browser/vimma`](../tools/test/site-dispatch-workflow.test.mjs)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 

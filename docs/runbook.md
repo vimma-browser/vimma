@@ -429,7 +429,7 @@ Limits:
 | `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
 | `codeql.yml`               | push to `main`, PRs, Mon, manual                   | `ubuntu-latest`           | nothing; skipped while the repo is private |
 | `dependabot-automerge.yml` | Dependabot's PRs                                   | `ubuntu-latest`           | nothing (Dependabot, below)                |
-| `site-dispatch.yml`        | `docs/bindings.json` on `main`, release published  | `ubuntu-latest`           | a token secret (vimma.dev, below)          |
+| `site-dispatch.yml`        | `docs/bindings.json` on `main`, release published  | `ubuntu-latest`           | an app's key (vimma.dev, below)            |
 | `spec-status.yml`          | daily, issue closed, specs, manual                 | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
 
 Locally, before pushing: `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:py`,
