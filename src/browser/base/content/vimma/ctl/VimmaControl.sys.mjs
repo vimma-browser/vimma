@@ -298,10 +298,13 @@ function paneState(win, visible) {
  * @param {any} win @param {any} tab
  */
 function tabLoading(win, tab) {
+  if (tab.hasAttribute("busy")) return true;
+  // A lazy (restored or unloaded) tab loads nothing, and reading its browser's webProgress
+  // would insert the browser and start a content process: `state` stays read-only (S9).
+  if (!tab.linkedPanel || tab.hasAttribute("pending")) return false;
   const browser = tab.linkedBrowser;
-  if (tab.hasAttribute("busy") || browser.webProgress?.isLoadingDocument) return true;
-  if (win.gBrowserInit?.delayedStartupFinished === true || tab.hasAttribute("pending"))
-    return false;
+  if (browser.webProgress?.isLoadingDocument) return true;
+  if (win.gBrowserInit?.delayedStartupFinished === true) return false;
   return browser.browsingContext?.currentWindowGlobal?.isInitialDocument ?? true;
 }
 

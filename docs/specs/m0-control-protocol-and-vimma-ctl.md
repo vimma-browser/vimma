@@ -216,13 +216,14 @@ are sent.
   ([private-workspace](private-workspace.md)).
 - `private`: `true` in a private window, absent otherwise. Its tabs' `url` and `title` are then
   `null`, withheld so that scripts never see private pages (private-workspace decision 8d); `id`,
-  `selected`, `loading` and `panes` are kept.
+  `index`, `selected`, `pinned`, `loading` and `panes` are kept.
 - `tabs`: the window's visible tabs in strip order. `id` is an opaque string, stable for the tab's
   lifetime (the server uses `browser.browserId`); exactly one tab is `selected` when there are any.
   `loading` is `true` while the tab's page loads (the tab strip's busy state, or a document load
   in progress), and in a new window before it has started to load its first page: a window is
   listed as soon as it opens, while its tabs still show their initial empty document. It is
-  `false` once the page has loaded or stopped. It names no page, so a private window keeps it;
+  `false` once the page has loaded or stopped, and for an unloaded tab (restored on demand or
+  discarded), which `state` leaves without a browser. It names no page, so a private window keeps it;
   there it is the only sign that the start page has loaded. Added without a version bump, like
   `panes`: a client that waits on it treats a missing `loading` as not loaded.
 - `panes`: the pane tree once split view exists (M3), `null` before. Its shape is that spec's to
