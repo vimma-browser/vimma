@@ -77,6 +77,8 @@ skip-if = ["artifact"]
 skip-if = ["artifact"]
 
 ["browser_vimma_tabstrip.js"]
+# macOS: its cmd+2 step loses page-first cmd chords when content does not reply (#576)
+skip-if = ["os == 'mac'"]
 
 ["browser_vimma_toolbar.js"]
 support-files = ["file_vimma_plain.html", "file_vimma_mixed.js"]
