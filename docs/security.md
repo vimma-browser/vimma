@@ -2031,9 +2031,9 @@ Rules:
   private tab, open or recently closed, and a private window **never** lists a normal tab, open
   or recently closed, nor a closed normal window. A window SessionStore does not track yet is
   skipped, not searched.
-  [`private_tabs_never_reach_a_normal_window_and_back`](../tests/browser/browser_vimma_live_grep.js),
-  [`all_windows_searches_the_other_windows_and_enter_goes_there`](../tests/browser/browser_vimma_live_grep.js),
-  [`a_window_sessionstore_does_not_track_is_skipped`](../tests/browser/browser_vimma_live_grep.js)
+  [`private_tabs_never_reach_a_normal_window_and_back`](../tests/browser/browser_vimma_live_grep_windows.js),
+  [`all_windows_searches_the_other_windows_and_enter_goes_there`](../tests/browser/browser_vimma_live_grep_windows.js),
+  [`a_window_sessionstore_does_not_track_is_skipped`](../tests/browser/browser_vimma_live_grep_windows.js)
 - L2. A frame's reply comes from a content process that may be compromised: the parent **must**
   copy it field by field, cut to the limits (100 listed and 1,000 counted matches a frame, lines
   of 162 characters, 21 preview lines of 302 characters, a preview's match within its line),
@@ -2053,7 +2053,7 @@ Rules:
   their results **must** be marked as the agent's, so an agent's page is never taken for yours;
   a recently closed tab or window is the agent's when the tab its row shows was in the agent
   workspace's container.
-  [`agent_tabs_only_in_window_scope_marked_and_last`](../tests/browser/browser_vimma_live_grep.js),
+  [`agent_tabs_only_in_window_scope_marked_and_last`](../tests/browser/browser_vimma_live_grep_windows.js),
   [`agent workspace rows are marked and come last`](../packages/vimma-core/test/grep.test.mjs),
   [`a closed window takes the agent marking of the tab it shows`](../packages/vimma-core/test/grep.test.mjs)
 - L5. Page text **must not** outlive the picker: when it closes, every frame the query was sent
@@ -2070,8 +2070,8 @@ Rules:
   [`a_reply_held_past_close_still_gets_grep_end`](../tests/browser/browser_vimma_live_grep.js),
   [`the_grep_list_steps_with_bracket_q_and_grep_resumes`](../tests/browser/browser_vimma_live_grep.js),
   [`pruneGrepList drops a closed tab's rows and keeps its place`](../packages/vimma-core/test/grep.test.mjs),
-  [`the_grep_list_drops_a_closed_windows_lines`](../tests/browser/browser_vimma_live_grep.js),
-  [`the_closed_titles_have_one_matcher_key_until_close`](../tests/browser/browser_vimma_live_grep.js)
+  [`the_grep_list_drops_a_closed_windows_lines`](../tests/browser/browser_vimma_live_grep_windows.js),
+  [`the_closed_titles_have_one_matcher_key_until_close`](../tests/browser/browser_vimma_live_grep_windows.js)
 - L6. A regular expression **must** run on page text only in a worker thread of the page's
   content process (one a process, shared by its frames), and on recently closed titles and URLs
   only in a worker thread of the parent process, line by line, and a query **must** be stopped
@@ -2086,7 +2086,7 @@ Rules:
   [`grep_end_resets_the_frames_generation`](../tests/browser/browser_vimma_live_grep.js),
   [`one_worker_a_process_and_none_for_a_blank_frame`](../tests/browser/browser_vimma_live_grep.js),
   [`an_over_long_query_says_so_and_is_not_sent`](../tests/browser/browser_vimma_live_grep.js),
-  [`a_catastrophic_pattern_on_closed_titles_never_freezes_the_browser`](../tests/browser/browser_vimma_live_grep.js),
+  [`a_catastrophic_pattern_on_closed_titles_never_freezes_the_browser`](../tests/browser/browser_vimma_live_grep_windows.js),
   [`a match never spans two lines`](../packages/vimma-core/test/grep.test.mjs)
 - L7. A page **must not** be able to make the parent hold an unbounded search: at most 100
   frames are searched in a tab, and at most 2,000 matches are held, those of the replies first
