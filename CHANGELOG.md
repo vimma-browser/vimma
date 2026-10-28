@@ -4,8 +4,15 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- Control socket: `vimma-ctl state` reports a `loading` flag for each tab, true while the tab is busy, a document is loading, or a new window has not yet started to load its first page. It names no page, so a private window's tabs carry it too.
+
 ### Fixed
 
+- Find: on Firefox 160, `n` and `N` in a PDF keep the find bar closed, so the focus stays on the page and the next `N` moves to the previous match instead of typing into the bar.
+- Updates: an installed release no longer offers itself as a security update. Release builds now keep one build ID from the binary to the packaged `application.ini`, and Vimma never offers the version it runs, dropping a saved offer of it at startup.
+- Private windows: closing a private window in any way brings the normal window back on the closed window's workspace. When Hyprland reported the close before the window's unload ran, the normal window could land on the active workspace instead.
 - Workspaces: a workspace could lose its tab list (tab search and the side panel showing one "New Tab") while its tabs stayed open, when a restore into the window ended with a workspace rebuild that failed partway. The rebuild now replaces the window's model only once it is complete, a failed one keeps the current model, and selecting a tab the model does not know puts it back.
 - Releases: publishing a release now starts the Homebrew tap update whenever the macOS cask is already on the release, so `brew upgrade --cask vimma` finds new releases. Releases 0.1.9 and 0.1.10 had missed the tap because their macOS files reached the draft before it was published; 0.1.10 was pushed to the tap by hand.
 
