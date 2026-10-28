@@ -1,0 +1,16 @@
+{
+  "description": "The tab, the page it loaded and why its element list is missing: it was still loading (issue #584)",
+  "kind": "response",
+  "command": "agent-open",
+  "message": {
+    "type": "response",
+    "id": 4,
+    "ok": true,
+    "result": {
+      "tab": "12",
+      "url": "https://example.com/shop",
+      "title": "Shop · Example",
+      "unlisted": "loading"
+    }
+  }
+}

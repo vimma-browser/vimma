@@ -1,0 +1,18 @@
+{
+  "description": "The page after the click, a new one, and its element list inside the untrusted-content delimiters, as agent-elements returns it (issue #584, security.md M31)",
+  "kind": "response",
+  "command": "agent-activate",
+  "message": {
+    "type": "response",
+    "id": 12,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/basket",
+      "title": "Basket · Example",
+      "loading": false,
+      "navigated": true,
+      "elements": "<untrusted-web-content>\n{\"form\":1,\"method\":\"post\",\"action\":\"https://example.com/checkout\"}\n{\"label\":\"a\",\"kind\":\"button\",\"text\":\"Check out\",\"type\":\"submit\",\"form\":1}\n{\"label\":\"s\",\"kind\":\"link\",\"text\":\"Keep shopping\",\"href\":\"https://example.com/\"}\n</untrusted-web-content>",
+      "dropped": 0
+    }
+  }
+}

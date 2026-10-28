@@ -1,0 +1,13 @@
+{
+  "description": "full is true or false, never a size",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 14,
+    "command": "agent-screenshot",
+    "args": {
+      "tab": "12",
+      "full": 4000
+    }
+  }
+}

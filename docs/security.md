@@ -735,7 +735,10 @@ them, never a password, payment card, one-time-code or file field: M25, M27, M28
 `vimma_screenshot` (an image of an agent tab's viewport, refused while a password or payment
 card field on screen has a value: M25, M31, M32) and `vimma_console` (an agent tab's script
 errors, console errors and warnings and failed requests, read without running page code: M25,
-M30, M31, M32), in force.
+M30, M31, M32), in force. Since [#584](https://github.com/vimma-browser/vimma/issues/584),
+`vimma_open`, `vimma_activate` and `vimma_fill` can return the page's element list in their
+result, made and limited as a `vimma_elements` call (M31, M32), and a screenshot is smaller
+unless the agent asks for it at full size (M31).
 
 [mcp-grants](specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a
 grant given in answer to any question, a read included, lets that agent open URLs, follow links,
@@ -1383,6 +1386,23 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   one form autofill's heuristics infer as a payment card field, with, in a card form, any field
   they leave to their machine-learning model; if the heuristics fail, every field of that form
   counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned.
+  The list `agent-open`, `agent-activate` and `agent-fill` return when asked with `elements`
+  (issue #584) **must** be made by the same code as `agent-elements`' own, so every rule above
+  holds for it, and the validator and `vimma-ctl mcp` check it the same way; it is made only
+  after the step, of a page that is no longer loading, and only while the tab is still an agent
+  tab with the URL it had when the list began (else the result says why, in fixed words, and
+  holds no list); the result's URL and title are read at the last such check, and a tab that
+  left the agent workspace meanwhile fails the call, noted in `:mcp log`, with nothing of its
+  page; its labels become the connection's current ones as a `vimma_elements` list's do. The
+  step's question (a checkpoint's included), its `:mcp log` row and its notice under a grant say
+  that the list is taken too.
+  [`test_a_steps_list_says_nothing_of_a_tab_that_left`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_steps_return_the_element_list_vimma_elements_would`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`a step's list is inside the untrusted delimiters, with its dropped count`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`why a step's list is missing: fixed words, never with a list`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../tools/vimma-ctl/src/mcp.rs),
+  [`an_open_with_elements_lists_the_page_it_loaded`](../tools/vimma-ctl/src/mcp.rs),
+  [`a step that returns the element list says so in the question and the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`test_password_and_card_fields_are_sensitive_without_values`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
   [`passwords, one-time codes and every cc-* name are sensitive; email is not`](../packages/vimma-core/test/agent-act.test.mjs),
@@ -1399,7 +1419,8 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`elements_list_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
 
   `agent-screenshot`'s image (F19) **must** be a PNG, or a JPEG when the PNG does not fit, whose
-  base64 is at most 700 KiB, at most 1,280 by 16,384 pixels; the protocol validator and
+  base64 is at most 700 KiB, at most 1,280 by 16,384 pixels; unless asked `full`, it is at most
+  1,024 pixels wide and the smaller of a PNG and a JPEG (issue #584); the protocol validator and
   `vimma-ctl mcp` **must** refuse any other type, size or encoding, and `vimma-ctl mcp` **must**
   pass it on as an MCP image item only after the untrusted header, which says that text in the
   image is web content and not from you. Labels drawn on it (F20) come only from the
@@ -1423,6 +1444,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   within the moment of the drawing, between the two checks, is not seen by either.
   [`test_screenshot_refused_while_a_sensitive_value_is_on_screen`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`test_screenshot_fits_the_reply_line`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`test_screenshot_is_smaller_unless_asked_full`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`test_screenshot_draws_labels`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`test_screenshot_and_the_agents_own_steps_exclude_each_other`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`the scale: at most 1,280 pixels wide, at most the device pixel ratio`](../packages/vimma-core/test/agent-act.test.mjs),
@@ -1447,12 +1469,15 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
 - M32. More than 30 `agent-elements` calls, 30 `agent-activate` and `agent-fill` calls
   together, 12 `agent-screenshot` calls, or 30 `agent-console` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
   question, **must** be denied as `busy`, so a grant cannot flood a page and a refused call
-  cannot loop; every call, asked, under a grant or denied, **must** be in `:mcp log` (M23), a
+  cannot loop; an `agent-open`, `agent-activate` or `agent-fill` asked with `elements` counts
+  as an `agent-elements` call as well (issue #584), and with those used up it is denied as
+  `busy` before anything of it runs; every call, asked, under a grant or denied, **must** be in `:mcp log` (M23), a
   click with its element, a fill with its fields and values (one refused before its question,
   with its labels), and a submission with its destination, and a call under a grant shows a notice naming the page (and for a click, the
   element; for a fill, how many fields).
   [`at most 30 agent-elements per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_elements_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_a_steps_list_counts_as_an_elements_call`](../tests/browser/browser_vimma_mcp_elements.js),
   [`vimma_elements: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`at most 30 agent-activate per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_activate_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_activate.js),
