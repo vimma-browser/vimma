@@ -430,6 +430,23 @@ add_task(async function a_jump_that_ends_after_grep_reopens_keeps_the_new_search
   EventUtils.synthesizeKey("KEY_Escape");
 });
 
+/**
+ * How many frames' texts the tab's content process holds for grep, once they are dropped or
+ * after 2 seconds.
+ * @param {any} tab
+ */
+function grepTextsAfterDrop(tab) {
+  return SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
+    const { GrepMatcher } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/grep-matcher.mjs",
+    );
+    await ContentTaskUtils.waitForCondition(() => !GrepMatcher.frames.length, "", 50, 40).catch(
+      () => {},
+    );
+    return GrepMatcher.frames.length;
+  });
+}
+
 // #419: on a slow machine a step's jump ended after grep was open again, and the step's GrepEnd
 // then stopped that search's query in the frame, which listed nothing.
 add_task(async function a_step_that_ends_after_grep_reopens_leaves_the_new_search_alone() {
@@ -488,6 +505,7 @@ add_task(async function a_step_that_ends_after_grep_reopens_leaves_the_new_searc
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "closed");
+  Assert.equal(await grepTextsAfterDrop(c), 0, "closing the new search ends Charlie's frame (L5)");
 });
 
 // #419: a step's jump waits for its tab switch (TabSwitchDone, at most 1 second), 300 to 400 ms
@@ -525,6 +543,14 @@ add_task(async function a_step_whose_tab_switch_ends_after_grep_reopens_stops_th
   };
   const hold = (/** @type {Event} */ e) => e.stopPropagation();
   window.addEventListener("TabSwitchDone", hold, true);
+  // A focus() on the browser does not move the keyboard out of the open picker, so the call
+  // itself is counted.
+  const browser = c.linkedBrowser;
+  let focusedWhileOpen = 0;
+  browser.focus = function (/** @type {any[]} */ ...args) {
+    if (session.isOpen) focusedWhileOpen++;
+    return Object.getPrototypeOf(browser).focus.apply(browser, args);
+  };
   try {
     type("]q");
     await until(() => gBrowser.selectedTab === c, "]q selects Charlie");
@@ -536,6 +562,7 @@ add_task(async function a_step_whose_tab_switch_ends_after_grep_reopens_stops_th
     await until(() => jumped, "the step's jump stops waiting for the tab switch");
     await new Promise((r) => setTimeout(r, 0));
     Assert.deepEqual(sentWhileOpen, [], "it asks the frame nothing while the search is open");
+    Assert.equal(focusedWhileOpen, 0, "nor focuses Charlie's browser while it is open");
     Assert.ok(dialog().contains(document.activeElement), "and the keyboard stays in grep");
     const frames = await SpecialPowers.spawn(c.linkedBrowser, [], () => {
       const { GrepMatcher } = ChromeUtils.importESModule(
@@ -548,10 +575,12 @@ add_task(async function a_step_whose_tab_switch_ends_after_grep_reopens_stops_th
     window.removeEventListener("TabSwitchDone", hold, true);
     session.ask = ask;
     session.jump = jump;
+    delete browser.focus;
   }
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "closed");
+  Assert.equal(await grepTextsAfterDrop(c), 0, "closing the new search ends Charlie's frame (L5)");
 });
 
 add_task(async function replies_to_an_older_query_never_replace_newer_results() {

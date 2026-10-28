@@ -428,11 +428,8 @@ match.
    lives in memory for the window and is dropped when the window closes; it is not saved with
    the session. Sending results to the list only on request (`ctrl+q`, as Telescope) was
    rejected because `]q` and `[q` cost nothing until used; no list at all would mean reopening
-   the picker for every next result. (Since changed: a step that is still waiting for its tab
-   switch or its frame when the picker opens again stops there. It neither selects its match
-   nor tells the frame to drop its text, because that frame now belongs to the new search, and
-   its `Vimma:GrepEnd` stopped that search's running query, which then listed nothing; see
-   `host/grep.mjs`, `step`.)
+   the picker for every next result. (Since changed: a step still waiting when the picker opens
+   again stops there and leaves its frame to the new search; see `docs/security.md` §15, L5.)
 9. **Keys in the picker.** Search mode (the mode it opens in) types into the query; browse mode
    comes with `Esc`, as in Telescope and every Vimma picker. Moving keys follow the screen, as
    in Telescope: `ctrl+n`, `↓` (and `j` in browse mode) move down, toward the prompt and the
