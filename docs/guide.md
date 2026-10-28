@@ -2274,7 +2274,8 @@ restore all forget it, and so do Vimma's own files.
   private workspace to see them (on Hyprland and macOS the normal window swaps back into place;
   the private workspace stays one key away). Routing rules never send a page into or out of it.
 - **Scripts:** `vimma-ctl state` in the private workspace says `"private": true` and
-  `"workspace": "private"`, and gives every tab's `url` and `title` as `null`. `vimma-ctl open`
+  `"workspace": "private"`, and gives every tab's `url` and `title` as `null`; each tab's
+  `loading` still says whether its page has finished loading. `vimma-ctl open`
   and `send-keys` act on the focused window, so with the private workspace focused they load
   into it and type there.
 - **Diagnostics:** `about:vimma` and `:bug` in a normal window leave private windows out, and
