@@ -74,7 +74,7 @@ describe("actions", () => {
       ),
       rename_tab: ["prefix+shift+t"],
       close_tab: ["prefix+shift+x", "ctrl+f4", "x"],
-      goto_picker: ["prefix+g", "b"],
+      goto_picker: ["prefix+g", "ctrl+shift+a", "b"],
     };
     for (const [name, bindings] of Object.entries(want)) {
       expect(getAction(name), name).toBeDefined();

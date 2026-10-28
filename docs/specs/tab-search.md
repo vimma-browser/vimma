@@ -286,7 +286,9 @@ one).
    bound today and does not conflict. `ctrl+shift+a`, Chromium's key, stays `addons_manager`
    (firefox-keys, fate a), because Firefox users expect it there; a user who wants it writes
    `keys.goto_picker = ["prefix+g", "ctrl+shift+a"]`. The workspace and add-on pickers keep
-   their browse mode.
+   their browse mode. (Since changed: Firefox 159 made `ctrl+shift+a` its own tab search and
+   moved Add-ons to `ctrl+shift+f`, so `ctrl+shift+a` is now a default key of `goto_picker`;
+   [firefox-keys](firefox-keys.md) decision 17's note.)
 3. **What it lists, in order** (blank query):
    1. The current window's workspaces: the current workspace first, then the window's workspace
       order, the agent workspace last (decision 6). Before, the current workspace sat wherever

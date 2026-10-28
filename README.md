@@ -102,7 +102,7 @@ The other packages notify only; installing the update is up to you.
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>
 
-AI coding agents working on this repository follow [CLAUDE.md](CLAUDE.md); contributors read
+AI coding agents working on this repository follow [AGENTS.md](AGENTS.md); contributors read
 [CONTRIBUTING.md](CONTRIBUTING.md) before opening issues or pull requests.
 <!-- process-wording: points coding agents at their rules file -->
 

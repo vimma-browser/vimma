@@ -22,7 +22,9 @@ const { ConfigHost } = ChromeUtils.importESModule(
 const { BookmarksToolbar, MIGRATED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/bookmarks-toolbar.mjs",
 );
-const { MigrationUtils } = ChromeUtils.importESModule("resource:///modules/MigrationUtils.sys.mjs");
+const { MigrationUtils } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/migration/MigrationUtils.sys.mjs",
+);
 
 const PREF = "browser.toolbars.bookmarks.visibility";
 const TOOLBAR_PREF = "vimma.ui.toolbar.hidden";

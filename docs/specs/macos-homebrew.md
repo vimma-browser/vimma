@@ -322,7 +322,13 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    copy of the workflow, and anyone with write access can create a tag on an unmerged commit whose
    copy skips every check; rendering the cask in `homebrew.yml`, because the job holding the
    tap's key would then run repository code; a step in `release.yml`, because it would put the
-   tap's key in the build job.
+   tap's key in the build job. (Since changed: `homebrew.yml` also has a `release: released`
+   trigger, whose run holds a `start` job alone, with only `actions: write`, no environment and
+   no secret; it starts `main`'s copy by `workflow_dispatch` once `vimma.rb` is on the published
+   release, as `update-publish.yml` does. A draft published after its macOS files had needed a
+   manual run, and 0.1.9 and 0.1.10 missed the tap. The push itself still runs only by
+   `workflow_dispatch` from `main`, and a failed `start` opens the `release-failure` issue as a
+   failed push does.)
 10. **The tap's credential is a deploy key held by a `homebrew` environment,** limited to `main`,
     so that only a workflow file reviewed onto `main` can write to the tap, and a missing key
     skips the job instead of failing it. No tag may deploy to it, because a tag ruleset restricts

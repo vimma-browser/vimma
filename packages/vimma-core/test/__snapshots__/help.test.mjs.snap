@@ -69,7 +69,7 @@ Workspaces
   private_workspace         ctrl+b shift+p, ctrl+shift+p                      Private workspace (a private window); again goes back
 
 Navigation
-  goto_picker               ctrl+b g, b                                       Tab search: every tab, every window, recently closed
+  goto_picker               ctrl+b g, ctrl+shift+a, b                         Tab search: every tab, every window, recently closed
   toggle_sidebar            ctrl+b b                                          Open / close the side panel
   toggle_toolbar            ctrl+b u                                          Show / hide the toolbar (URL bar and add-on buttons)
   show_toolbar              (unbound)                                         Show the toolbar
@@ -115,7 +115,7 @@ Browser
   save_page                 ctrl+s                                            Save the page
   print_page                ctrl+p                                            Print the page
   downloads                 ctrl+shift+y                                      Downloads (the Library)
-  addons_manager            ctrl+shift+a                                      Add-ons manager (about:addons)
+  addons_manager            ctrl+shift+f                                      Add-ons manager (about:addons)
   history_library           ctrl+shift+h                                      History (the Library)
   bookmarks_library         ctrl+shift+o                                      Bookmarks (the Library)
   mute_tab                  ctrl+m                                            Mute or unmute the tab
