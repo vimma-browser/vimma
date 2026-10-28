@@ -319,6 +319,53 @@ add_task(async function zoom_keys_zoom_and_a_page_that_takes_one_keeps_it() {
   BrowserTestUtils.removeTab(tab);
 });
 
+/**
+ * Stops every keypress reply from a remote page before chrome sees it (the window root's
+ * capture phase comes before the window's), as when Gecko never sends one back (#576).
+ * @returns {{ dropped: number, stop: () => void }}
+ */
+function loseKeypressReplies() {
+  const root = window.windowRoot;
+  const opts = { capture: true, mozSystemGroup: true };
+  const lost = {
+    dropped: 0,
+    stop: () => root.removeEventListener("keypress", listener, opts),
+  };
+  const listener = (/** @type {KeyboardEvent} */ e) => {
+    if (!e.isReplyEventFromRemoteContent) return;
+    lost.dropped++;
+    e.stopImmediatePropagation();
+  };
+  root.addEventListener("keypress", listener, opts);
+  registerCleanupFunction(lost.stop);
+  return lost;
+}
+
+add_task(async function a_page_first_key_whose_keypress_reply_is_lost_still_runs() {
+  // The page saw the keydown and left it alone, but its keypress reply never came back: the key
+  // is Vimma's after a short wait, instead of being lost (#576).
+  const tab = await normalPage();
+  const browser = tab.linkedBrowser;
+  const lost = loseKeypressReplies();
+  try {
+    EventUtils.synthesizeKey("=", { ctrlKey: true });
+    await TestUtils.waitForCondition(() => zoomOf(browser) > 1, "ctrl+= zooms in, no reply");
+    Assert.equal(lost.dropped, 1, "its keypress reply was the one lost");
+    FullZoom.reset(browser);
+    await TestUtils.waitForCondition(() => zoomOf(browser) === 1, "reset");
+
+    // A page that takes the keydown still keeps it: no keypress, so no reply, ever.
+    await pageTakes(browser, ["ctrl+="]);
+    EventUtils.synthesizeKey("=", { ctrlKey: true });
+    Assert.ok(await waitForPageKey(browser, ["=", "!="]), "the page had ctrl+=");
+    await new Promise((r) => setTimeout(r, 1500));
+    Assert.equal(zoomOf(browser), 1, "and Vimma did not zoom");
+  } finally {
+    lost.stop();
+    BrowserTestUtils.removeTab(tab);
+  }
+});
+
 add_task(async function a_blocked_shortcuts_permission_makes_the_key_vimmas_first() {
   const tab = await normalPage();
   const browser = tab.linkedBrowser;

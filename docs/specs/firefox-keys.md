@@ -607,7 +607,9 @@ Each is its own keymap PR, in this order, one open at a time:
   `ctrl+]`) is page-first in normal mode only (`pageFirst(chord, { mode })`); `Esc` leaving
   insert or copy mode stays Vimma's first (the copy-mode, find and insert mochitests caught it).
 - **Page-first keys queue** (`state.pageFirst`, oldest first, at most 16): keys typed fast or
-  held down each wait for their own reply.
+  held down each wait for their own reply. (Since changed: a remote page's keydown reply is
+  asked for too, and a key whose keydown the page left alone runs if its keypress reply has not
+  come within 500 ms; [macos-build](macos-build.md) decision 31.)
 - **Off the page:** `history.back` / `forward`, `page.reload`, `find.next` / `previous` run on the
   selected tab's page when no page of ours has focus (`alt+left`, `F5`, `ctrl+g` from the address
   bar, as Firefox's did).

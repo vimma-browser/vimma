@@ -647,6 +647,27 @@ enable` exists for exactly this case, a Firefox key wanted back as Firefox runs 
     else on a Mac. A key that is off may still run from its native menu bar item in a windowed build
     (decision 22).
 
+31. **A page-first key whose keypress reply never comes runs once the keydown is known to be
+    the page's to leave.** Decision 29 makes `cmd+l`, `cmd+1` to `cmd+9`, `cmd+[`, `cmd+]` and
+    `cmd+left` / `cmd+right` page-first ([firefox-keys](firefox-keys.md) decision 6), so a Mac
+    user takes the reply path on every one of them. That path runs the binding only from the
+    keypress's reply (`requestReplyFromRemoteContent`). Gecko sends no reply when the page took
+    the keydown (`BrowserChild::RecvRealKeyEvent` then skips the keypress and stops it, and
+    `BrowserParent::RecvReplyKeyEvent` drops a stopped reply), and none either when the keypress
+    never reached a page, with nothing to tell the two apart. So the host also asks for the
+    keydown's reply. A keydown reply prevented in the page's process drops the binding, as
+    before: that page took the key, and Firefox's keysets drop their key the same way. An
+    unprevented keydown reply means a keypress reply is due; if it has not come within 500 ms
+    the binding runs. The keydown reply is consumed, so no chrome handler sees that keydown
+    twice and the native menu bar does not run its key equivalent a second time. A held key's
+    repeats are left out: `BrowserChild::SkipRepeatedKeyEvent` drops repeats while the page is
+    busy, and `cmd+left` running after a field moved the caret would go back a page. A field's
+    own key still wins: its keypress reply comes back, prevented in insert mode, well within the
+    bound (`cmd+left` in a field moves to the line start). Rejected: running every page-first
+    key after a timeout with no reply, because an editor that takes the keydown (`ctrl+=` in a
+    web editor) never replies and would lose its key; and making these keys Vimma's first,
+    because a field would lose `cmd+left` and `cmd+[`.
+
 ### Not in this spec
 
 A vimma.dev download (decision 12); platform passkeys (decision 24); the Homebrew cask and tap
