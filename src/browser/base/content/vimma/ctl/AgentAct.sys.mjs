@@ -319,20 +319,29 @@ export const AgentAct = {
   async ready(browser, accept, until) {
     /** @type {any} the document last asked whether it is ready */
     let asked = null;
+    /** @type {any} the document that answered it is ready */
+    let readyDoc = null;
+    /** @type {Promise<unknown> | undefined} the pending answer, which wakes the wait once */
+    let wake;
     for (;;) {
       const wg = browser.browsingContext?.currentWindowGlobal;
       if (wg && accept(wg)) {
-        if (!browser.webProgress?.isLoadingDocument) return true;
+        // The tab's own state answers first: a page that finished loading is ready whatever
+        // its process says, or does not say.
+        if (!(browser.webProgress?.isLoadingDocument ?? true)) return true;
+        if (readyDoc === wg) return true;
         if (asked !== wg) {
           asked = wg;
-          const r = await this.askReady(browser, until);
-          const same = browser.browsingContext?.currentWindowGlobal === wg;
-          if (r && r.state !== "complete" && same) return true;
-          continue;
+          const w = this.askReady(browser, until).then((r) => {
+            // A page complete while the tab still loads is the one before the next load.
+            if (asked === wg && r && r.state !== "complete") readyDoc = wg;
+            if (wake === w) wake = undefined;
+          });
+          wake = w;
         }
       }
       if (Date.now() > until) return false;
-      await nextEvent(browser, Math.min(TICK_MS, until - Date.now() + 1));
+      await nextEvent(browser, Math.min(TICK_MS, until - Date.now() + 1), wake);
     }
   },
 
