@@ -21,8 +21,9 @@
  * product's page by its URL, for comparison. --pace-ms makes each scripted turn take that long,
  * as a model's does: unpaced, a list of more than nine items is refused by the open rate
  * (3000 keeps every list under it). --keep-results is `[agent] keep_results`: how many of the
- * latest tool results a request carries whole (default 6, as the built-in agent; 0 sends every
- * result whole, as before docs/specs/agent-speed.md S5).
+ * latest tool results a request carries whole (by default the built-in agent's: 20 for a provider
+ * on this machine, the scripted one included, and 6 for a hosted one; 0 sends every result whole,
+ * as before docs/specs/agent-speed.md S5).
  * --provider openai talks to an OpenAI-compatible server (default http://127.0.0.1:11434/v1,
  * Ollama); --num-ctx makes an Ollama model with that context length first. --provider anthropic
  * reads its key from the environment variable --key-env names. Every run is one `vimma-ctl mcp`
@@ -37,6 +38,7 @@ import { join } from "node:path";
 import { cpus, release, totalmem } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { keepResultsFor } from "../../packages/vimma-core/src/agent-loop.mjs";
 import { agentTools, AGENT_INSTRUCTIONS } from "../../packages/vimma-core/src/agent-tools.mjs";
 import { ControlSessions } from "../e2e/control-client.mjs";
 import { findVimmaCtl } from "../e2e/driver.mjs";
@@ -119,7 +121,6 @@ async function main() {
     provider: o.provider,
     hardware: hardware(),
     commit: commit(),
-    keepResults: o.keepResults,
   };
   if (o.provider === "scripted") Object.assign(meta, { floor: o.floor, paceMs: o.paceMs });
   if (o.provider !== "scripted") {
@@ -141,6 +142,7 @@ async function main() {
     Object.assign(meta, { model: o.model, endpoint, vision: o.vision });
     if (isOllama) Object.assign(meta, await ollama.describe(endpoint, model));
   }
+  meta.keepResults = keepResultsFor(provider, o.keepResults);
   const tools = agentTools({ vision: provider.vision ?? false });
   const limits = {
     ...(o.maxSteps ? { maxSteps: o.maxSteps } : {}),

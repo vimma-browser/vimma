@@ -43,7 +43,7 @@ describe("[agent]", () => {
       maxTokens: 2_000_000,
       maxCost: 2,
       keepDays: null,
-      keepResults: 6,
+      keepResults: null,
       providers: [],
     });
     expect(AGENT_DEFAULTS.maxRunning).toBe(3);

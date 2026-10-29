@@ -6,6 +6,8 @@ import {
   checkToolCall,
   clearContext,
   KEEP_RESULTS,
+  KEEP_RESULTS_LOCAL,
+  keepResultsFor,
   LEFT_OUT,
   pruneResults,
   startTask,
@@ -725,7 +727,21 @@ describe("older results leave the context in blocks", () => {
 
   test("the default keeps the last 6 results, as [agent] keep_results does", () => {
     expect(KEEP_RESULTS).toBe(6);
-    expect(AGENT_DEFAULTS.keepResults).toBe(KEEP_RESULTS);
+    expect("keepResults" in AGENT_DEFAULTS).toBe(false);
+  });
+
+  test("a hosted provider keeps 6, a local one 20, and keep_results overrides both", () => {
+    const hosted = { kind: "anthropic", endpoint: "https://api.anthropic.com", model: "m" };
+    const remote = { kind: "openai", endpoint: "https://llm.example/v1", model: "m" };
+    const ollama = { kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "m" };
+    const studio = { kind: "openai", endpoint: "http://localhost:1234/v1", model: "m" };
+    const v6 = { kind: "openai", endpoint: "http://[::1]:8000/v1", model: "m" };
+    expect(KEEP_RESULTS_LOCAL).toBe(20);
+    expect([hosted, remote].map((p) => keepResultsFor(p, null))).toEqual([6, 6]);
+    expect([ollama, studio, v6].map((p) => keepResultsFor(p, null))).toEqual([20, 20, 20]);
+    expect(keepResultsFor(ollama, 6)).toBe(6);
+    expect(keepResultsFor(hosted, 0)).toBe(0);
+    expect(keepResultsFor(hosted, 30)).toBe(30);
   });
 
   test("the loop leaves out results older than keep_results in blocks, keeping their first line", () => {
@@ -851,7 +867,26 @@ describe("older results leave the context in blocks", () => {
     expect(JSON.stringify(kept)).not.toContain(LEFT_OUT);
   });
 
-  test("without keepResults the loop keeps the default", async () => {
+  test("without keepResults a local provider's loop keeps 20 results whole", async () => {
+    const script = [];
+    for (let i = 0; i < 41; i++)
+      script.push({ content: "", tool_calls: [call("vimma_tabs", {}, `c${i}`)] });
+    script.push({ content: "Done." });
+    const s = server(script);
+    const r = runner({
+      vimma_tabs: () => ({ content: [{ type: "text", text: `1 tab\n${"- tab 1\n".repeat(40)}` }] }),
+    });
+    await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    /** @param {any} body */
+    const leftOut = (body) =>
+      body.messages.filter(
+        (/** @type {any} */ m) => m.role === "tool" && m.content.endsWith(LEFT_OUT),
+      ).length;
+    expect(leftOut(s.bodies[39])).toBe(0);
+    expect(leftOut(s.bodies.at(-1))).toBe(20);
+  });
+
+  test("without keepResults a hosted provider's loop keeps the default", async () => {
     const script = [];
     for (let i = 0; i < 13; i++)
       script.push({ content: "", tool_calls: [call("vimma_tabs", {}, `c${i}`)] });
@@ -860,7 +895,11 @@ describe("older results leave the context in blocks", () => {
     const r = runner({
       vimma_tabs: () => ({ content: [{ type: "text", text: `1 tab\n${"- tab 1\n".repeat(40)}` }] }),
     });
-    await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    await start({
+      provider: { kind: "openai", endpoint: "https://llm.example/v1", model: "m" },
+      fetch: s.fetch,
+      runTool: r.runTool,
+    }).done;
     const last = s.bodies.at(-1).messages.filter((/** @type {any} */ m) => m.role === "tool");
     expect(last.filter((/** @type {any} */ m) => m.content.endsWith(LEFT_OUT))).toHaveLength(6);
   });

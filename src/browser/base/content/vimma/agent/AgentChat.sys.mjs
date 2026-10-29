@@ -456,7 +456,7 @@ export const AgentChat = {
       runTool: (name, args, opts) => runTool(c, name, args, opts),
       budget,
       localOnly,
-      keepResults: limits.keepResults,
+      keepResults: config()?.keepResults ?? null,
       onEvent: (e) => {
         c.transcript.task(e);
         changed();

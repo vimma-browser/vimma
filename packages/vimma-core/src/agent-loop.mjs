@@ -10,7 +10,7 @@
 // the browser runs it against its agent commands. Everything that keeps the agent safe (the
 // gate, grants, checkpoints, confinement) is the runner's side; the loop only bounds the task.
 
-import { ProviderError, callModel } from "./agent-providers.mjs";
+import { ProviderError, callModel, isLocalEndpoint } from "./agent-providers.mjs";
 import { isFinalRefusal } from "./agent-results.mjs";
 import { UNTRUSTED_FROM } from "./agent.mjs";
 
@@ -59,10 +59,28 @@ export const REPEAT_LIMIT = 3;
 export const SERVER_ERRORS = 3;
 
 /**
- * How many of the latest tool results a request carries whole (`[agent] keep_results`,
- * docs/specs/agent-speed.md S5). Older ones keep their first line.
+ * How many of the latest tool results a request to a hosted provider carries whole, when
+ * `[agent] keep_results` is not set (docs/specs/agent-speed.md S5). Older ones keep their first
+ * line. Hosted input tokens cost money, and a block left out costs seconds there.
  */
 export const KEEP_RESULTS = 6;
+/**
+ * The same for a provider on this machine. Each block left out makes a local server read the
+ * request again from the first changed result, about 120 s on a CPU-bound model
+ * (docs/agent-bench.md), so it prunes rarely: a ten-item list (about 36 results) never reaches
+ * a block, and a longer task's context still stops growing.
+ */
+export const KEEP_RESULTS_LOCAL = 20;
+
+/**
+ * The `keepResults` a task runs with: `[agent] keep_results` when set, else by where the
+ * provider runs.
+ * @param {Provider} provider @param {number | null | undefined} configured
+ */
+export function keepResultsFor(provider, configured) {
+  if (configured != null) return configured;
+  return isLocalEndpoint(provider.endpoint) ? KEEP_RESULTS_LOCAL : KEEP_RESULTS;
+}
 /** What replaces the rest of a left-out result. Vimma's words, never the page's. */
 export const LEFT_OUT =
   "(Vimma left the rest of this older result out of the conversation to save space. Call the " +
@@ -197,8 +215,8 @@ const notRun = (call, text) => ({
  * that has happened cannot be undone (Behaviour 16).
  * @param {{ provider: Provider, fetch: Fetch, key: string, system: string, tools: ToolDef[],
  *   messages: ChatMessage[], runTool: RunTool, budget: Budget, localOnly?: boolean,
- *   keepResults?: number, onEvent?: (e: TaskEvent) => void }} opts
- *   `keepResults`: see pruneResults; KEEP_RESULTS when left out.
+ *   keepResults?: number | null, onEvent?: (e: TaskEvent) => void }} opts
+ *   `keepResults`: see pruneResults; keepResultsFor the provider when left out.
  * @returns {{ steer(text: string): void, stop(): void, done: Promise<TaskResult> }}
  */
 export function startTask(opts) {
@@ -261,7 +279,7 @@ async function run(opts, signal, pending) {
         key: opts.key,
         system: opts.system,
         tools,
-        messages: pruneResults(messages, opts.keepResults ?? KEEP_RESULTS),
+        messages: pruneResults(messages, keepResultsFor(provider, opts.keepResults)),
         signal,
         localOnly: opts.localOnly,
       });

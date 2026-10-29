@@ -324,11 +324,12 @@ the model's default, on the CPU), at most 100 steps and 40 minutes:
 - The loop would save budget by ending a task after several identical refused calls in a row,
   and by treating a server error such as Ollama's token repeat limit as the end of the turn with
   a message, rather than of the task.
-- `[agent] keep_results = 6` cuts a long list's tokens by a third and bounds its context, at
-  the cost, on a CPU-bound local model, of about two minutes for each block left out. A local
-  model on the CPU may run as fast or faster with a larger value (fewer blocks) or with 0, as
-  long as its context holds the whole task; the default is set for hosted models and GPUs,
-  where a block costs seconds.
+- `keep_results` 6 cuts a long list's tokens by a third and bounds its context, at the cost,
+  on a CPU-bound local model, of about two minutes for each block left out. So the default
+  depends on where the provider runs: 6 for a hosted one, where tokens cost money and a block
+  costs seconds, and 20 for one on this machine, where a ten-item list (about 36 results)
+  never reaches a block and a longer task still stops growing at 40 results. The ornith runs
+  above set `--keep-results 6` explicitly; `[agent] keep_results` overrides both defaults.
 - Setup (Delivery 3) should set or check the context length of a local model, since an
   OpenAI-compatible request cannot.
 - The tool changes the results point to (an open that waits for the page, labels that outlive a
