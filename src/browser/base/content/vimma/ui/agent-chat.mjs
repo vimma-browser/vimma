@@ -992,15 +992,20 @@ export class AgentChatWindow {
     keyInput.autocomplete = "off";
     keyInput.className = "vimma-agent-chat-input";
     if (!noReveal.has(this.win)) {
-      this.win.windowUtils.loadSheetUsingURIString(
-        NO_REVEAL_SHEET,
-        this.win.windowUtils.AGENT_SHEET,
-      );
       noReveal.add(this.win);
+      try {
+        this.win.windowUtils.loadSheetUsingURIString(
+          NO_REVEAL_SHEET,
+          this.win.windowUtils.AGENT_SHEET,
+        );
+      } catch (e) {
+        // The button would then show but do nothing: the listeners below still cancel it.
+        console.error("vimma agent: the key field's sheet did not load", e);
+      }
     }
     // An entered key is never shown again (M46). NO_REVEAL_SHEET hides the eye button, and every
-    // reveal (that button, the textbox context menu's item, `revealPassword`) goes through the
-    // cancelable MozWillToggleReveal; a masked field already refuses copy and cut. The context
+    // reveal a user can ask for (that button, the textbox context menu's item, `revealPassword`)
+    // goes through the cancelable MozWillToggleReveal; a masked field already refuses copy and cut. The context
     // menu goes too, since its only use here would be that reveal item; ctrl+v still pastes.
     for (const type of ["MozWillToggleReveal", "contextmenu", "copy", "cut", "dragstart"]) {
       keyInput.addEventListener(type, (e) => e.preventDefault());

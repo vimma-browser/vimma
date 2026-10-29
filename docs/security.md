@@ -1757,7 +1757,7 @@ for the user.
   window, the transcript, the status bar or a notice (which may show its last four characters),
   nor kept in a pref or the conversation, and an error storing it **must not** be shown with its
   text, nor recorded in Vimma's key log or its debug output. The field **must not** reveal the
-  key: it has no reveal button, cancels every reveal (`MozWillToggleReveal`), opens no context
+  key: it has no reveal button, cancels every reveal a user can ask for (`MozWillToggleReveal`), opens no context
   menu, and gives up nothing to copy, cut or drag; it never holds a stored key, so changing a
   key means entering it again. Any way out of the field (Esc, closing the window, another
   view) empties it. A provider that needs a key and has none for
