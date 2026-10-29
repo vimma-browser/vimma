@@ -1,0 +1,14 @@
+{
+  "description": "An open that returns only the matching elements of the page it loaded (builtin-agent B2)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 11,
+    "command": "agent-open",
+    "args": {
+      "elements": true,
+      "query": "oat drink",
+      "url": "https://shop.example/search?q=oat+drink"
+    }
+  }
+}

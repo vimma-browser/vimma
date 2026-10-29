@@ -28,7 +28,7 @@ import {
   mcpClientName,
   wrapUntrusted,
 } from "../core/agent.mjs";
-import { actDetail, fillDetail } from "../core/agent-act.mjs";
+import { ListedSites, actDetail, fillDetail } from "../core/agent-act.mjs";
 import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
 import { fillFits, shownNotice } from "../core/agent-prompt.mjs";
 import { ctlIsCurrent, ctlVersionNotice } from "../core/ctl-version.mjs";
@@ -84,6 +84,11 @@ const actCalls = new CallRate(ACT_RATE);
 const shotCalls = new CallRate(SCREENSHOT_RATE);
 /** Each connection's `agent-console`: at most CONSOLE_RATE a minute, counted when asked (F26). */
 const consoleCalls = new CallRate(CONSOLE_RATE);
+/**
+ * Each connection's last element list of each site (agent-speed S4): what its next list of the
+ * site leaves out. A connection is one conversation, so a new one gets every list in full.
+ */
+const listedSites = new ListedSites();
 /** The longest URL and title an `agent-elements` reply carries, in code points. */
 const ELEMENTS_URL_MAX = 8192;
 const ELEMENTS_TITLE_MAX = 1024;
@@ -447,17 +452,25 @@ function within(ms, promise) {
  * The element list of `tab`'s page as `agent-elements` makes it (mcp-forms F2-F7; security.md
  * M25, M31), for that command and for a step asked with `elements` (issue #584), so both are
  * one code path. `still` runs once the list is made and throws when the tab is no longer as
- * asked (M8); only after it do the labels become the connection's (M25).
+ * asked (M8); only after it do the labels become the connection's (M25), and the list the
+ * connection's last of the page's site, which its next list of the site leaves out the lines of
+ * (agent-speed S4), unless `full`. `filters` are the list's `query` and `kinds` (builtin-agent B2).
  * @param {ConnId} conn @param {Tab} tab @param {() => void} still
- * @returns {Promise<{ elements: string, dropped: number } | { refused: string }>}
+ * @param {ListOptions} [options]
+ * @returns {Promise<{ elements: string, dropped: number, repeated?: string[] }
+ *   | { refused: string }>}
  */
-async function pageElements(conn, tab, still) {
+async function pageElements(conn, tab, still, { query, kinds, full = false } = {}) {
   // Where the page is scrolled before the list is made: labels are drawn on a screenshot only
   // while it has not moved since (F20).
   const scroll = await VimmaActors.scrollPosition(tab.linkedBrowser);
   let listed;
   try {
-    listed = await AgentAct.elements(tab);
+    listed = await AgentAct.elements(tab, {
+      query,
+      kinds,
+      seen: (site) => (full ? undefined : listedSites.get(conn, site)),
+    });
   } catch (e) {
     // Fixed text: an error's message could carry the page's words past the untrusted header.
     console.error("vimma agent-elements:", e);
@@ -466,8 +479,19 @@ async function pageElements(conn, tab, still) {
   if ("refused" in listed) return listed;
   still();
   AgentDrive.remember(conn, tab.linkedBrowser, listed.labels, "elements", scroll);
-  return { elements: listed.elements, dropped: listed.dropped };
+  if (listed.site) listedSites.set(conn, listed.site, listed.lines);
+  return {
+    elements: listed.elements,
+    dropped: listed.dropped,
+    ...(listed.repeated.length ? { repeated: listed.repeated } : {}),
+  };
 }
+
+/**
+ * An element list's options: its filters (builtin-agent B2) and whether to give every line
+ * (agent-speed S4).
+ * @typedef {{ query?: string, kinds?: string[], full?: boolean }} ListOptions
+ */
 
 /**
  * Takes a slot of the connection's `agent-elements` rate for a step asked with `elements`
@@ -490,11 +514,11 @@ function takeListSlot(conn, tool, what) {
  * `failed` refusal that says nothing of its page, noted in `:mcp log` (M23).
  * @param {ConnId} conn @param {string} tool @param {object} what  the step's, for the log
  * @param {AgentWorkspace} agent @param {Win} win @param {Tab} tab
- * @param {() => Promise<boolean>} ready
+ * @param {() => Promise<boolean>} ready @param {ListOptions} filters  the step's `query` and `kinds`
  * @returns {Promise<{ url: string, title: string }
- *   & ({ elements: string, dropped: number } | { unlisted: string })>}
+ *   & ({ elements: string, dropped: number, repeated?: string[] } | { unlisted: string })>}
  */
-async function stepList(conn, tool, what, agent, win, tab, ready) {
+async function stepList(conn, tool, what, agent, win, tab, ready, filters) {
   /** The tab's page now, after checking that it is still an agent tab; or the refusal. */
   const page = () => {
     const now = WorkspaceStore.agent;
@@ -519,13 +543,18 @@ async function stepList(conn, tool, what, agent, win, tab, ready) {
   /** @type {{ url: string, title: string } | null} */
   let after = null;
   let moved = false;
-  const listed = await pageElements(conn, tab, () => {
-    after = page();
-    if (tabUrl(tab) !== url) {
-      moved = true;
-      throw new Error("moved");
-    }
-  }).catch((e) => {
+  const listed = await pageElements(
+    conn,
+    tab,
+    () => {
+      after = page();
+      if (tabUrl(tab) !== url) {
+        moved = true;
+        throw new Error("moved");
+      }
+    },
+    filters,
+  ).catch((e) => {
     if (moved) return null;
     throw e;
   });
@@ -720,7 +749,7 @@ const COMMANDS = {
   },
 
   /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
-  async "agent-open"(conn, state, { url, tab: id, elements = false }, rid) {
+  async "agent-open"(conn, state, { url, tab: id, elements = false, query, kinds }, rid) {
     const agent = agentWorkspace();
     const uri = agentUri(url);
     const into = id === undefined ? null : findAgentTab(agent, id, conn);
@@ -757,17 +786,25 @@ const COMMANDS = {
         tab.addEventListener("TabClose", onClose, { once: true });
         unlisten = () => tab.removeEventListener("TabClose", onClose);
       });
-      const list = await stepList(conn, "vimma_open", what, agent, win, tab, () =>
-        Promise.race([
-          AgentAct.ready(
-            browser,
-            (/** @type {any} */ wg) =>
-              !wg.isInitialDocument &&
-              (wg.innerWindowId !== before || (sameDocument && tabUrl(tab) === uri.spec)),
-            until,
-          ),
-          /** @type {Promise<boolean>} */ (closed),
-        ]),
+      const list = await stepList(
+        conn,
+        "vimma_open",
+        what,
+        agent,
+        win,
+        tab,
+        () =>
+          Promise.race([
+            AgentAct.ready(
+              browser,
+              (/** @type {any} */ wg) =>
+                !wg.isInitialDocument &&
+                (wg.innerWindowId !== before || (sameDocument && tabUrl(tab) === uri.spec)),
+              until,
+            ),
+            /** @type {Promise<boolean>} */ (closed),
+          ]),
+        { query, kinds },
       ).finally(unlisten);
       return { tab: tabId(tab), ...list };
     };
@@ -996,7 +1033,7 @@ const COMMANDS = {
    * on the page is touched and the tab stays in the background (M25).
    * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
    */
-  async "agent-elements"(conn, state, { tab: id }, rid) {
+  async "agent-elements"(conn, state, { tab: id, query, kinds, full = false }, rid) {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id, conn);
     const what = { ...describeTab(asked.tab), index: asked.index };
@@ -1021,7 +1058,7 @@ const COMMANDS = {
       await loadedPage(win, tab, what.url, agent.userContextId);
     }
     // Only once the tab is as asked: a list of a page that moved on leaves no labels (M25).
-    const listed = await pageElements(conn, tab, still);
+    const listed = await pageElements(conn, tab, still, { query, kinds, full });
     if ("refused" in listed) {
       AgentGate.note(conn, "vimma_elements", what, "failed");
       throw new AgentError("failed", listed.refused);
@@ -1030,8 +1067,7 @@ const COMMANDS = {
     return {
       url: wf(cut(what.url, ELEMENTS_URL_MAX).text),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
-      elements: listed.elements,
-      dropped: listed.dropped,
+      ...listed,
     };
   },
 
@@ -1166,7 +1202,7 @@ const COMMANDS = {
    * tab the user is using is `in-use` (F27).
    * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
    */
-  async "agent-activate"(conn, state, { tab: id, label, elements = false }, rid) {
+  async "agent-activate"(conn, state, { tab: id, label, elements = false, query, kinds }, rid) {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id, conn);
     const browser = asked.tab.linkedBrowser;
@@ -1279,7 +1315,10 @@ const COMMANDS = {
     if (result.stopped) AgentGate.note(conn, "vimma_activate", what, "stopped", result.stopped);
     // The page the click left, once it is ready: a page still loading is not listed (#584).
     const list = elements
-      ? await stepList(conn, "vimma_activate", what, agent, win, tab, async () => notLoading(tab))
+      ? await stepList(conn, "vimma_activate", what, agent, win, tab, async () => notLoading(tab), {
+          query,
+          kinds,
+        })
       : null;
     return {
       url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
@@ -1302,7 +1341,12 @@ const COMMANDS = {
    * user is using is `in-use` (F27). Fills share the clicks' rate (F26).
    * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
    */
-  async "agent-fill"(conn, state, { tab: id, fields, submit: submitArg, elements = false }, rid) {
+  async "agent-fill"(
+    conn,
+    state,
+    { tab: id, fields, submit: submitArg, elements = false, query, kinds },
+    rid,
+  ) {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id, conn);
     const browser = asked.tab.linkedBrowser;
@@ -1511,7 +1555,10 @@ const COMMANDS = {
     if (result.stopped) AgentGate.note(conn, "vimma_fill", what, "stopped", result.stopped);
     // The page after the fill, once it is ready: a page still loading is not listed (#584).
     const list = elements
-      ? await stepList(conn, "vimma_fill", what, agent, win, tab, async () => notLoading(tab))
+      ? await stepList(conn, "vimma_fill", what, agent, win, tab, async () => notLoading(tab), {
+          query,
+          kinds,
+        })
       : null;
     return {
       url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
@@ -1540,6 +1587,16 @@ const COMMANDS = {
 };
 
 /**
+ * A built-in conversation's context was cleared (builtin-agent B22): its next element list of
+ * any site comes in full, since the model no longer has the lines a compact list would leave
+ * out (agent-speed S4).
+ * @param {ConnId} conn
+ */
+export function forgetListedSites(conn) {
+  listedSites.forget(conn);
+}
+
+/**
  * The connection closed: forget its opens.
  * @param {ConnId} conn
  */
@@ -1548,6 +1605,7 @@ export function forgetAgentConnection(conn) {
   keyCalls.forget(conn);
   showCalls.forget(conn);
   elementCalls.forget(conn);
+  listedSites.forget(conn);
   actCalls.forget(conn);
   shotCalls.forget(conn);
   consoleCalls.forget(conn);

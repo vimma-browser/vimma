@@ -26,6 +26,8 @@ import {
   fillRefusal,
   parseFillTarget,
   agentElementList,
+  filterAgentElements,
+  ListedSites,
   isAgentLabel,
   isSubmitControl,
   parseActTarget,
@@ -391,6 +393,160 @@ describe("the element list (F5; security.md M31)", () => {
     const lines = list.text.split("\n").map((l) => JSON.parse(l));
     expect(lines.filter((l) => "action" in l)).toHaveLength(64);
     expect(lines.filter((l) => "label" in l && !("form" in l))).toHaveLength(6);
+  });
+});
+
+// docs/specs/agent-speed.md S4, Behaviour 4: a list of a page on a site the conversation has
+// already listed leaves out the lines identical to that list's, label included, and names their
+// labels; the labels stay those of the page now (security.md M31).
+describe("compact element lists (agent-speed S4)", () => {
+  const basket = { key: "1:0", method: "post", action: "https://shop.example/basket" };
+  /** @param {string} label @param {object} info @param {object} [more] */
+  const el = (label, info, more = {}) => ({
+    label,
+    target: { rect, kind: "click", info, ...more },
+  });
+  const header = [
+    el("aa", { kind: "link", text: "Dairy" }, { href: "https://shop.example/c/dairy" }),
+    el("as", { kind: "link", text: "Bakery" }, { href: "https://shop.example/c/bakery" }),
+  ];
+
+  test("an element list leaves out lines given earlier for the same site and counts them", () => {
+    const first = agentElementList(
+      [
+        ...header,
+        el("ad", { kind: "field", text: "", type: "number", value: "1" }, { form: basket }),
+        el("af", { kind: "button", text: "Add to basket" }, { form: basket }),
+      ],
+      AGENT_ELEMENTS.bytes,
+    );
+    expect(first.repeated).toEqual([]);
+    const seen = new Set(first.lines);
+    const second = agentElementList(
+      [
+        ...header,
+        el("ad", { kind: "field", text: "", type: "number", value: "1" }, { form: basket }),
+        el("af", { kind: "button", text: "Add Oat drink to basket" }, { form: basket }),
+      ],
+      AGENT_ELEMENTS.bytes,
+      seen,
+    );
+    // The form line stays: it says what the numbers of the lines shown mean on this page.
+    expect(second.text.split("\n")).toEqual([
+      '{"form":1,"method":"post","action":"https://shop.example/basket"}',
+      '{"label":"af","kind":"button","text":"Add Oat drink to basket","form":1}',
+    ]);
+    expect(second.repeated).toEqual(["aa", "as", "ad"]);
+    expect(second.omitted).toBe(0);
+    // Every element the list gave, shown or left out as repeated, is one the labels name.
+    expect(second.given.map((e) => e.label)).toEqual(["aa", "as", "ad", "af"]);
+    expect(second.lines).toHaveLength(4);
+  });
+
+  test("a line that differs in anything, its label too, is given again", () => {
+    const seen = new Set(agentElementList(header, AGENT_ELEMENTS.bytes).lines);
+    const moved = agentElementList(
+      [
+        el("aa", { kind: "link", text: "Bakery" }, { href: "https://shop.example/c/bakery" }),
+        el("as", { kind: "link", text: "Dairy" }, { href: "https://shop.example/c/dairy" }),
+      ],
+      AGENT_ELEMENTS.bytes,
+      seen,
+    );
+    expect(moved.repeated).toEqual([]);
+    expect(moved.text.split("\n")).toHaveLength(2);
+  });
+
+  test("a sensitive field is left out only when its line, without a value, is the same", () => {
+    const pw = el("aa", { kind: "field", text: "", type: "password", sensitive: true });
+    const seen = new Set(agentElementList([pw], AGENT_ELEMENTS.bytes).lines);
+    const again = agentElementList([pw], AGENT_ELEMENTS.bytes, seen);
+    expect(again.repeated).toEqual(["aa"]);
+    expect(again.lines[0]).not.toContain("value");
+  });
+
+  test("repeated lines take no room of the byte budget", () => {
+    const many = Array.from({ length: 40 }, (_, i) =>
+      el(`l${i}`, { kind: "button", text: "y".repeat(70) }),
+    );
+    const seen = new Set(agentElementList(many, AGENT_ELEMENTS.bytes).lines);
+    const list = agentElementList(many, 2000, seen);
+    expect(list.omitted).toBe(0);
+    expect(list.repeated).toHaveLength(40);
+  });
+
+  test("a list after a navigation to another site is given in full", () => {
+    const sites = new ListedSites();
+    sites.set(1, "https://shop.example", ["a"]);
+    expect(sites.get(1, "https://shop.example")?.has("a")).toBe(true);
+    expect(sites.get(1, "https://other.example")).toBeUndefined();
+    // Another connection is another conversation.
+    expect(sites.get(2, "https://shop.example")).toBeUndefined();
+    sites.forget(1);
+    expect(sites.get(1, "https://shop.example")).toBeUndefined();
+  });
+
+  test("each conversation keeps the last list of its most recent sites only", () => {
+    const sites = new ListedSites();
+    for (let i = 0; i < ListedSites.max + 1; i++) sites.set(1, `https://s${i}.example`, ["x"]);
+    expect(sites.get(1, "https://s0.example")).toBeUndefined();
+    expect(sites.get(1, `https://s${ListedSites.max}.example`)?.size).toBe(1);
+    sites.set(1, "https://s1.example", ["y"]);
+    expect([...(sites.get(1, "https://s1.example") ?? [])]).toEqual(["y"]);
+  });
+});
+
+// builtin-agent B2 (agent-speed Behaviour 4): `query` and `kinds` narrow a list to the elements
+// an agent asks for.
+describe("element list filters (builtin-agent B2)", () => {
+  /** @param {string} label @param {object} info */
+  const el = (label, info) => ({ label, target: { rect, kind: "click", info } });
+  const page = [
+    el("aa", { kind: "link", text: "Dairy" }),
+    el("as", { kind: "field", text: "", type: "search", caption: "Search the shop" }),
+    el("ad", { kind: "button", text: "Add Oat Drink (Oatly, 1 l) to basket" }),
+    el("af", { kind: "button", text: "Add Oat flakes to basket" }),
+    el("ag", { kind: "field", text: "", type: "number", name: "qty" }),
+  ];
+  const labels = (/** @type {{ label: string }[]} */ list) => list.map((e) => e.label);
+
+  test("no filter keeps every element", () => {
+    expect(labels(filterAgentElements(page, {}))).toEqual(["aa", "as", "ad", "af", "ag"]);
+  });
+
+  test("query keeps the elements whose label, text, caption or name holds all its words", () => {
+    expect(labels(filterAgentElements(page, { query: "oat DRINK" }))).toEqual(["ad"]);
+    expect(labels(filterAgentElements(page, { query: "oat" }))).toEqual(["ad", "af"]);
+    expect(labels(filterAgentElements(page, { query: "search" }))).toEqual(["as"]);
+    expect(labels(filterAgentElements(page, { query: "QTY" }))).toEqual(["ag"]);
+    expect(labels(filterAgentElements(page, { query: "af" }))).toEqual(["af"]);
+    // NFKC and case-folded: full-width letters match their plain forms.
+    expect(labels(filterAgentElements(page, { query: "Ｏａｔ drink" }))).toEqual(["ad"]);
+    expect(filterAgentElements(page, { query: "cheese" })).toEqual([]);
+  });
+
+  test("kinds keeps the elements of those kinds", () => {
+    expect(labels(filterAgentElements(page, { kinds: ["field"] }))).toEqual(["as", "ag"]);
+    expect(labels(filterAgentElements(page, { kinds: ["button", "link"] }))).toEqual([
+      "aa",
+      "ad",
+      "af",
+    ]);
+    expect(labels(filterAgentElements(page, { query: "oat", kinds: ["link"] }))).toEqual([]);
+  });
+
+  test("query matches only what the list writes: text cut at 80 characters, as shown", () => {
+    const long = [el("aa", { kind: "button", text: `${"x ".repeat(45)}hidden` })];
+    expect(filterAgentElements(long, { query: "hidden" })).toEqual([]);
+    expect(filterAgentElements(long, { query: "x" })).toHaveLength(1);
+    // Invisible characters the list strips cannot split a word the list shows whole.
+    const zw = [el("aa", { kind: "button", text: "oat\u200Bdrink" })];
+    expect(filterAgentElements(zw, { query: "oatdrink" })).toHaveLength(1);
+  });
+
+  test("a sensitive field's value is never matched", () => {
+    const secret = [el("aa", { kind: "field", text: "", sensitive: true, value: "hunter2" })];
+    expect(filterAgentElements(secret, { query: "hunter2" })).toEqual([]);
   });
 });
 

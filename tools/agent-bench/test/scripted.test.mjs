@@ -192,6 +192,33 @@ describe("shopper", () => {
     expect(last.text).toMatch(/basket/i);
   });
 
+  // agent-speed S4: a compact list leaves out the lines an earlier list of the site gave and
+  // names their labels; the script reads them off that list, as a model does.
+  it("finds a button a compact list left out in the earlier list that gave it", () => {
+    const next = shopper({
+      base: "http://127.0.0.1:1/",
+      list: { ...list, items: [list.items[0]] },
+    });
+    /** @type {any[]} */
+    const messages = [{ role: "user", content: "task" }];
+    messages.push(
+      toolMsg(
+        `Opened x in tab 9 of Vimma's agent workspace\n<untrusted-web-content>\n${LISTING}\n</untrusted-web-content>`,
+      ),
+    );
+    next({ messages });
+    messages.push(
+      toolMsg(
+        "Opened http://127.0.0.1:1/search?q=milk in tab 12 of Vimma's agent workspace, in the " +
+          "background.\n<untrusted-web-content>\n\n</untrusted-web-content>\n" +
+          "(3 elements as in your last list of this site: a, d, f)",
+      ),
+    );
+    expect(next({ messages }).calls).toEqual([
+      { name: "vimma_activate", args: { tab: "12", label: "f" } },
+    ]);
+  });
+
   it("lists a search page again when its open could not list it", () => {
     const next = shopper({ base: "http://127.0.0.1:1/", list });
     /** @type {any[]} */

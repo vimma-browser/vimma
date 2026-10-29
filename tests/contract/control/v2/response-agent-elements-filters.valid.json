@@ -1,0 +1,17 @@
+{
+  "description": "A compact list: the lines as in the conversation's last list of the site are left out and their labels named (agent-speed S4)",
+  "kind": "response",
+  "command": "agent-elements",
+  "message": {
+    "type": "response",
+    "id": 11,
+    "ok": true,
+    "result": {
+      "url": "https://shop.example/search?q=oat+drink",
+      "title": "Search · Shop",
+      "elements": "<untrusted-web-content>\n{\"form\":1,\"method\":\"post\",\"action\":\"https://shop.example/basket\"}\n{\"label\":\"af\",\"kind\":\"button\",\"text\":\"Add Oat drink (Oatly, 1 l) to basket\",\"form\":1}\n</untrusted-web-content>",
+      "dropped": 0,
+      "repeated": ["aa", "as", "ad"]
+    }
+  }
+}

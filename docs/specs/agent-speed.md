@@ -65,9 +65,10 @@ the page-text rules, the checkpoints or the confinement.
    every time (mcp-forms F15).
 4. An element list carries its explanation once, in the tool description, instead of in every
    result; a list of a page on a site the conversation has already listed leaves out the lines
-   identical to that earlier list and says how many it left out; `vimma_elements`, and the
-   `elements` option of `vimma_open`, `vimma_activate` and `vimma_fill`, take the `query` and
-   `kinds` filters of builtin-agent B2.
+   identical to that earlier list and names the labels it left out, which still work;
+   `vimma_elements` with `full: true` gives every line; `vimma_elements`, and the `elements`
+   option of `vimma_open`, `vimma_activate` and `vimma_fill`, take the `query` and `kinds`
+   filters of builtin-agent B2.
 5. The built-in agent's requests leave out the body of tool results older than the last
    `[agent] keep_results` results (default 6), keeping each result's first line (the page's
    URL and title inside the untrusted-content wording) and a note that the rest was left out.
@@ -229,8 +230,17 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    product lists repeated a line an earlier list had given, label included.
    A list for a tab whose page has the same origin as a list the conversation already got
    leaves out element lines that are identical to that list's, label included, and ends with
-   `(N elements as in your last list of this site)`. Labels stay valid, since a label is still
-   given for every element on the page. The check runs in the parent on the checked copies
+   `(N elements as in your last list of this site: aa, as, …)`, outside the delimiters. Naming
+   the labels costs a few characters an element and tells the model which elements of its last
+   list are still on the page, so it does not click one that is gone. Labels stay valid, since
+   labels are counted over the whole page and an element left out is still one the list gave.
+   Form lines are always written, so form numbers mean this page's forms. The parent keeps the
+   last list's lines for each connection's 16 most recent origins and drops them when the
+   connection closes, so a new conversation gets every list in full; `vimma_elements` with
+   `full: true` gives every line, for a model whose client has dropped the earlier result.
+   `query` matches every word against an element's label, text, caption and name, never its
+   value; `kinds` takes the list's own kinds (`link`, `button`, `field`, `checkbox`, `radio`,
+   `select`, `click`), so a filter names exactly what the lines say. The check runs in the parent on the checked copies
    (`parseAgentElement`), so it adds no page-controlled path. Rejected: a diff that names
    removed elements, because the model acts only on what is on the page now.
 5. **Old page content leaves the context in blocks** (S5), because earlier results are the
@@ -303,8 +313,9 @@ basket button`; `a paced scripted run is not refused by the rates` (Behaviour 2)
 ### Vitest (`packages/vimma-core`)
 
 - `an element list leaves out lines given earlier for the same site and counts them`;
-  `a list after a navigation to another site is given in full`; `a left-out line's label still
-activates its element` (Behaviour 4, in `agent-act.test.mjs`).
+  `a list after a navigation to another site is given in full`; `query keeps the elements whose
+label, text, caption or name holds all its words`; `a sensitive field's value is never matched`
+  (Behaviour 4, in `agent-act.test.mjs`).
 - `the loop leaves out results older than keep_results in blocks, keeping their first line`;
   `a request's prefix changes only when a block is left out` (Behaviour 5).
 - `a local provider with think = false sends the setting its server takes` (Behaviour 7).
@@ -312,8 +323,9 @@ activates its element` (Behaviour 4, in `agent-act.test.mjs`).
 
 ### Mochitests
 
-- `browser_vimma_mcp_elements.js`: `test_repeated_list_leaves_out_unchanged_lines`,
-  `test_compact_list_keeps_delimiters_and_sensitive_rules` (Behaviour 4, M31).
+- `browser_vimma_mcp_elements.js`: `test_repeated_list_leaves_out_unchanged_lines` (a left-out
+  line's label still activates its element), `test_compact_list_keeps_delimiters_and_sensitive_rules`,
+  `test_elements_query_and_kinds` (Behaviour 4, M31).
 
 ### The bench
 

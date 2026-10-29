@@ -146,10 +146,10 @@ async function question() {
 
 /**
  * `agent-elements` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {object | null} [answer]
+ * @param {any} c @param {any} tab @param {object | null} [answer] @param {object} [args]
  */
-async function elements(c, tab, answer = { kind: "once" }) {
-  const id = c.request("agent-elements", { tab: idOf(tab) });
+async function elements(c, tab, answer = { kind: "once" }, args = {}) {
+  const id = c.request("agent-elements", { tab: idOf(tab), ...args });
   if (answer) {
     const q = await question();
     Assert.equal(q.tool, "vimma_elements", "agent-elements asks as vimma_elements");
@@ -173,11 +173,12 @@ async function keys(c, tab, keys) {
   return c.response(id);
 }
 
-/** The list's JSON objects, between the delimiters. @param {string} list */
+/** The list's JSON objects, between the delimiters; an empty list has none. @param {string} list */
 const parsed = (list) =>
   list
     .split("\n")
     .slice(1, -1)
+    .filter((l) => l !== "")
     .map((l) => JSON.parse(l));
 
 /** @param {any[]} list @param {(e: any) => boolean} pick @param {string} what */
@@ -460,10 +461,12 @@ async function withList(c, command, args, answer = { kind: "once" }) {
 }
 
 /**
- * That `list` keeps the M31 rules this file checks on vimma_elements' own; its items.
- * @param {string} list @param {string} what
+ * That `list` keeps the M31 rules this file checks on vimma_elements' own; its items, or those
+ * a model reads off it with `known`, the connection's last list of the site (agent-speed S4).
+ * @param {string} list @param {string} what @param {any} [result]  the result with `list`
+ * @param {Map<string, any>} [known]
  */
-function checkM31(list, what) {
+function checkM31(list, what, result, known) {
   Assert.ok(
     list.startsWith("<untrusted-web-content>\n") && list.endsWith("\n</untrusted-web-content>"),
     `${what}: inside the untrusted-content delimiters (M31)`,
@@ -472,7 +475,7 @@ function checkM31(list, what) {
   for (const secret of SECRETS) {
     Assert.ok(!list.includes(secret), `${what}: the value ${secret} never reaches the agent`);
   }
-  const items = parsed(list).filter((e) => "label" in e);
+  const items = known ? readList(known, result) : parsed(list).filter((e) => "label" in e);
   for (const name of ["password", "old", "code", "cardnumber", "expiry", "cvc", "card2", "pin"]) {
     const field = one(items, (e) => e.name === name, `${what}: ${name} field`);
     Assert.equal(field.sensitive, true, `${what}: ${name} is sensitive`);
@@ -488,7 +491,8 @@ addTidyTask(async function test_steps_return_the_element_list_vimma_elements_wou
   await mcp(true);
   const tab = await openAgentTab();
   const c = await agentClient();
-  let items = parsed((await elements(c, tab)).result.elements).filter((e) => "label" in e);
+  const known = new Map();
+  let items = readList(known, (await elements(c, tab)).result);
   const email = one(items, (e) => e.name === "email", "email field");
   const fill = await withList(c, "agent-fill", {
     tab: idOf(tab),
@@ -496,17 +500,25 @@ addTidyTask(async function test_steps_return_the_element_list_vimma_elements_wou
   });
   Assert.ok(fill.ok, `a fill with elements runs: ${JSON.stringify(fill.error)}`);
   Assert.equal(fill.result.filled, 1, "the field is filled");
-  items = checkM31(fill.result.elements, "after a fill");
+  items = checkM31(fill.result.elements, "after a fill", fill.result, known);
   Assert.equal(
     one(items, (e) => e.name === "email", "email field").value,
     "ada@example.com",
     "the list is the page after the fill",
   );
-  const after = await elements(c, tab);
+  const after = await elements(c, tab, undefined, { full: true });
+  const byLabel = (/** @type {any} */ a, /** @type {any} */ b) => (a.label < b.label ? -1 : 1);
   Assert.deepEqual(
-    parsed(fill.result.elements),
-    parsed(after.result.elements),
+    [...items].sort(byLabel),
+    parsed(after.result.elements)
+      .filter((e) => "label" in e)
+      .sort(byLabel),
     "the same list vimma_elements makes of that page",
+  );
+  Assert.deepEqual(
+    parsed(fill.result.elements).filter((e) => !("label" in e)),
+    parsed(after.result.elements).filter((e) => !("label" in e)),
+    "with the same forms",
   );
   Assert.equal(fill.result.dropped, after.result.dropped, "with the same count left out");
 
@@ -514,7 +526,7 @@ addTidyTask(async function test_steps_return_the_element_list_vimma_elements_wou
   const click = await withList(c, "agent-activate", { tab: idOf(tab), label: menu.label });
   Assert.ok(click.ok, `a click with elements runs: ${JSON.stringify(click.error)}`);
   Assert.equal(click.result.navigated, false, "the click loaded no page");
-  items = checkM31(click.result.elements, "after a click");
+  items = checkM31(click.result.elements, "after a click", click.result, known);
   // A label of the returned list is the connection's current one: it clicks with no new list.
   const again = one(items, (e) => e.text === "Menu", "script button");
   const id = c.request("agent-activate", { tab: idOf(tab), label: again.label });
@@ -526,7 +538,7 @@ addTidyTask(async function test_steps_return_the_element_list_vimma_elements_wou
   Assert.equal(open.result.tab, idOf(tab), "in the tab asked");
   Assert.equal(open.result.url, FORM, "the page it loaded");
   Assert.equal(open.result.title, "Form agent fixture", "once it was ready");
-  items = checkM31(open.result.elements, "after an open");
+  items = checkM31(open.result.elements, "after an open", open.result, known);
   const plans = one(items, (e) => e.kind === "link", "link");
   const r = await keys(c, tab, `f${plans.label}`);
   Assert.equal(r.result.steps[0].ok, true, "f follows a link of the open's list");
@@ -534,7 +546,7 @@ addTidyTask(async function test_steps_return_the_element_list_vimma_elements_wou
   const fresh = await withList(c, "agent-open", { url: FORM });
   Assert.ok(fresh.ok, `an open of a new tab with elements runs: ${JSON.stringify(fresh.error)}`);
   Assert.notEqual(fresh.result.tab, idOf(tab), "a new tab");
-  checkM31(fresh.result.elements, "after an open of a new tab");
+  checkM31(fresh.result.elements, "after an open of a new tab", fresh.result, known);
   Assert.equal(activeName(), "main", "the window stayed on its workspace (M25)");
   c.close();
   await mcp(false);
@@ -613,5 +625,198 @@ addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
   Assert.equal(agentTabs().length, 1, "which opened nothing");
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
+  await mcp(false);
+});
+
+/**
+ * The list a model reads off a compact list (agent-speed S4): the lines shown, and for each
+ * repeated label the line an earlier list gave it. `known` maps labels to the lines of the
+ * connection's last list of the site, and is replaced by this list's.
+ * @param {Map<string, any>} known @param {any} result
+ */
+function readList(known, result) {
+  const items = parsed(result.elements).filter((e) => "label" in e);
+  const repeated = result.repeated ?? [];
+  for (const label of repeated) {
+    Assert.ok(known.has(label), `the repeated label ${label} was in the last list of the site`);
+  }
+  const all = [...items, ...repeated.map((l) => known.get(l))];
+  known.clear();
+  for (const e of all) known.set(e.label, e);
+  return all;
+}
+
+// docs/specs/agent-speed.md S4, Behaviour 4: a list of a page on a site the connection already
+// listed leaves out the lines identical to its last list of that site, label included, names
+// their labels, and leaves them working; `full` gives every line; another site, or another
+// connection, gets the list in full.
+addTidyTask(async function test_repeated_list_leaves_out_unchanged_lines() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const first = await elements(c, tab, { kind: "grant", minutes: 12 });
+  Assert.ok(!("repeated" in first.result), "the first list of the site is given in full");
+  const known = new Map();
+  const all = readList(known, first.result);
+  const again = await elements(c, tab, null);
+  Assert.deepEqual(
+    [...(again.result.repeated ?? [])].sort(),
+    all.map((e) => e.label).sort(),
+    "a list of the same page names every label as repeated",
+  );
+  Assert.ok(
+    parsed(again.result.elements).every((e) => !("label" in e)),
+    "and writes no element line again, only the forms",
+  );
+  Assert.deepEqual(readList(known, again.result).length, all.length, "nothing is lost");
+  // A repeated label is one of the page's: it clicks.
+  const menu = one(all, (e) => e.text === "Menu", "script button");
+  const click = c.request("agent-activate", { tab: idOf(tab), label: menu.label });
+  AgentGate.answer((await question()).id, { kind: "once" });
+  Assert.ok((await c.response(click)).ok, "a repeated label clicks");
+  // What changed on the page is written again; the rest is not.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.document.getElementById("bio").value = "Changed bio";
+  });
+  const changed = await elements(c, tab, null);
+  const shown = parsed(changed.result.elements).filter((e) => "label" in e);
+  Assert.deepEqual(
+    shown.map((e) => e.name),
+    ["bio"],
+    "only the changed field's line is written",
+  );
+  Assert.equal(shown[0].value, "Changed bio", "with its value now");
+  Assert.equal(changed.result.repeated.length, all.length - 1, "the rest repeated");
+  // full: every line.
+  const full = await c.call("agent-elements", { tab: idOf(tab), full: true });
+  Assert.ok(full.ok, `full lists: ${JSON.stringify(full.error)}`);
+  Assert.ok(!("repeated" in full.result), "full repeats nothing");
+  Assert.equal(
+    parsed(full.result.elements).filter((e) => "label" in e).length,
+    all.length,
+    "full writes every element",
+  );
+  // Another connection is another conversation.
+  const d = await agentClient("other-agent");
+  const fresh = await elements(d, tab);
+  Assert.ok(!("repeated" in fresh.result), "another connection's first list is in full");
+  // Another site's page is given in full, and so is a step's list after it.
+  const other = FORM.replace("https://example.com", "https://example.org");
+  const open = await c.call("agent-open", { url: other, tab: idOf(tab), elements: true });
+  Assert.ok(open.ok, `an open of another site lists it: ${JSON.stringify(open.error)}`);
+  Assert.ok(!("repeated" in open.result), "a list of another site is in full");
+  c.close();
+  d.close();
+  await mcp(false);
+});
+
+// agent-speed S4 (security.md M31): a compact list keeps the delimiters and the sensitive-field
+// rules: no value of a sensitive field reaches the agent, the labels it leaves out are labels
+// only, and the list a model reads off it is the one vimma_elements gives in full.
+addTidyTask(async function test_compact_list_keeps_delimiters_and_sensitive_rules() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const known = new Map();
+  readList(known, (await elements(c, tab, { kind: "grant", minutes: 12 })).result);
+  // The page types into its sensitive fields: their lines carry no value, so they stay the same.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.document.getElementById("pw").value = "another-secret";
+    content.document.getElementById("cvc").value = "999";
+  });
+  const r = await elements(c, tab, null);
+  const text = JSON.stringify(r.result);
+  for (const secret of [...SECRETS, "another-secret", "999"]) {
+    Assert.ok(!text.includes(secret), `the value ${secret} never reaches the agent`);
+  }
+  Assert.ok(r.result.repeated.length > 0, "the list is compact");
+  for (const label of r.result.repeated) {
+    Assert.ok(/^[asdfghjkl]{1,3}$/.test(label), `${label} is a label only`);
+  }
+  const lines = readList(known, r.result);
+  const list = `<untrusted-web-content>\n${lines.map((e) => JSON.stringify(e)).join("\n")}\n</untrusted-web-content>`;
+  checkM31(list, "the list read off a compact one");
+  Assert.ok(
+    r.result.elements.startsWith("<untrusted-web-content>\n") &&
+      r.result.elements.endsWith("\n</untrusted-web-content>"),
+    "a compact list is inside the delimiters",
+  );
+  // The page shows payment card fields, so a click there asks under the grant too (C6).
+  const step = await withList(c, "agent-activate", {
+    tab: idOf(tab),
+    label: one(lines, (e) => e.text === "Menu", "script button").label,
+  });
+  Assert.ok(step.ok, `a click with elements runs: ${JSON.stringify(step.error)}`);
+  Assert.ok(
+    step.result.elements.startsWith("<untrusted-web-content>\n") &&
+      step.result.elements.endsWith("\n</untrusted-web-content>"),
+    "a step's compact list is inside the delimiters",
+  );
+  Assert.ok(step.result.repeated.length > 0, "and compact too");
+  c.close();
+  await mcp(false);
+});
+
+// builtin-agent B2 (agent-speed Behaviour 4): query and kinds list only the matching elements;
+// their labels click, and a filtered list's labels are the ones it gave.
+addTidyTask(async function test_elements_query_and_kinds() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const asked = c.request("agent-elements", { tab: idOf(tab), kinds: ["button"], full: true });
+  AgentGate.answer((await question()).id, { kind: "grant", minutes: 12 });
+  let r = await c.response(asked);
+  Assert.ok(r.ok, `kinds lists: ${JSON.stringify(r.error)}`);
+  const buttons = parsed(r.result.elements).filter((e) => "label" in e);
+  Assert.ok(buttons.length > 0, "some buttons");
+  Assert.ok(
+    buttons.every((e) => e.kind === "button"),
+    "only buttons",
+  );
+  r = await c.call("agent-elements", { tab: idOf(tab), query: "SIGN up", full: true });
+  const signup = parsed(r.result.elements).filter((e) => "label" in e);
+  Assert.deepEqual(
+    signup.map((e) => e.text),
+    ["Sign up"],
+    "the query's words, case folded",
+  );
+  r = await c.call("agent-elements", { tab: idOf(tab), query: "hunter2-secret", full: true });
+  Assert.equal(
+    parsed(r.result.elements).filter((e) => "label" in e).length,
+    0,
+    "a value is never matched",
+  );
+  r = await c.call("agent-elements", { tab: idOf(tab), query: "menu" });
+  const menu = one(
+    parsed(r.result.elements).filter((e) => "label" in e),
+    (e) => e.text === "Menu",
+    "script button",
+  );
+  const id = c.request("agent-activate", { tab: idOf(tab), label: menu.label });
+  AgentGate.answer((await question()).id, { kind: "once" });
+  Assert.ok((await c.response(id)).ok, "a filtered list's label clicks");
+  // The Sign up button's label came from an earlier list; the newest one left it out.
+  const gone = await c.call("agent-activate", { tab: idOf(tab), label: signup[0].label });
+  Assert.ok(!gone.ok, `a label the newest list did not give is refused: ${JSON.stringify(gone)}`);
+  Assert.equal(AgentGate.waiting.length, 0, "unasked");
+  const open = await c.call("agent-open", {
+    url: FORM,
+    tab: idOf(tab),
+    elements: true,
+    kinds: ["field"],
+  });
+  Assert.ok(open.ok, `an open with kinds lists: ${JSON.stringify(open.error)}`);
+  const fields = [
+    ...parsed(open.result.elements).filter((e) => "label" in e),
+    ...(open.result.repeated ?? []),
+  ];
+  Assert.ok(fields.length > 0, "the page's fields");
+  Assert.ok(
+    parsed(open.result.elements)
+      .filter((e) => "label" in e)
+      .every((e) => e.kind === "field"),
+    "and only fields",
+  );
+  c.close();
   await mcp(false);
 });

@@ -1423,6 +1423,43 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   page; its labels become the connection's current ones as a `vimma_elements` list's do. The
   step's question (a checkpoint's included), its `:mcp log` row and its notice under a grant say
   that the list is taken too.
+  A compact list ([agent-speed](specs/agent-speed.md) S3, S4) changes what a list holds, never
+  how it is made or wrapped: every rule above holds for the lines it writes, which are the same
+  lines a full list writes. How to read a list is said once, in the `vimma_elements` tool
+  description; each result keeps its untrusted-content header (the page's URL and title) and its
+  intro saying that the text is the page's. A list of a page whose origin the connection has
+  listed before leaves out the element lines identical, label, form number and state included,
+  to its last list of that origin, and the result names their labels in `repeated`: labels only
+  (1 to 3 hint characters, each once), outside the delimiters, which the validator and
+  `vimma-ctl mcp` refuse otherwise, so no page string reaches the agent by that route. The
+  comparison runs in the parent on the lines made from the checked copies, so it adds no path
+  the page controls; a page can only make a line identical to one it already showed, which says
+  of its element what that line said. Form lines are always written, so the numbers mean this
+  page's forms. A sensitive field's line has no value, so it stays identical whatever the page
+  types into it, and no value is ever compared or returned. Labels are counted over the whole
+  page, so leaving lines out changes no label; the elements a list gave, written or left out,
+  are the ones the connection can click or fill, and a label the newest list did not give is
+  refused. What is kept per connection is the last list's lines for at most 16 origins, dropped when the
+  connection closes and when a built-in conversation's context is cleared, so a new conversation,
+  or one whose model no longer has the earlier lists, gets every list in full. The lines are kept
+  once the list is made, before the client has read the reply: a client that drops a reply (a
+  cancelled call, a context its client compacted) can be handed labels of lines it never saw, and
+  `full: true`, which the tool description names, lists every line again; a label still clicks
+  only an element of the page now. `query` (at most 200 characters of one line, matched NFKC and
+  case-folded against an element's label, text, caption and name as the list writes them, cut at
+  80 characters, never its value) and `kinds` (kinds of the list's own) leave out the elements
+  that do not match, and their labels with them; neither reaches the page.
+  [`test_repeated_list_leaves_out_unchanged_lines`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_compact_list_keeps_delimiters_and_sensitive_rules`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_elements_query_and_kinds`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_clear_forgets_the_last_element_lists`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`query matches only what the list writes: text cut at 80 characters, as shown`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`an element list leaves out lines given earlier for the same site and counts them`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a sensitive field is left out only when its line, without a value, is the same`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a sensitive field's value is never matched`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a list's repeated labels come with it, each a label, at most once`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a_compact_list_names_the_labels_it_left_out`](../tools/vimma-ctl/src/mcp.rs),
+  [`element_lists_take_query_kinds_and_full`](../tools/vimma-ctl/src/mcp.rs),
   [`test_a_steps_list_says_nothing_of_a_tab_that_left`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_steps_return_the_element_list_vimma_elements_would`](../tests/browser/browser_vimma_mcp_elements.js),
   [`a step's list is inside the untrusted delimiters, with its dropped count`](../packages/vimma-core/test/control-v2.test.mjs),

@@ -116,7 +116,8 @@ async function question() {
  * @param {any} c @param {any} tab
  */
 async function grantedLabels(c, tab) {
-  const id = c.request("agent-elements", { tab: idOf(tab) });
+  // Every line, also those as in the last list of the site (agent-speed S4): the map needs all.
+  const id = c.request("agent-elements", { tab: idOf(tab), full: true });
   if (!AgentGate.grants().length) {
     AgentGate.answer((await question()).id, { kind: "grant", minutes: 15 });
   }

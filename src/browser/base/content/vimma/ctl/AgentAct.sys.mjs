@@ -35,6 +35,7 @@ import {
   AGENT_ELEMENTS,
   actRefusal,
   agentElementList,
+  filterAgentElements,
   fillRefusal,
   labelAgentElements,
 } from "../core/agent-act.mjs";
@@ -844,14 +845,20 @@ export const AgentAct = {
   },
 
   /**
-   * The elements on screen in `tab`, labelled, as the reply's `elements` and `dropped`, with the
-   * labels for AgentDrive.remember once the caller has checked the tab again; or why nothing is
-   * listed.
+   * The elements on screen in `tab`, labelled, as the reply's `elements`, `dropped` and
+   * `repeated`, with the labels for AgentDrive.remember once the caller has checked the tab
+   * again; or why nothing is listed. `query` and `kinds` keep only the matching elements
+   * (builtin-agent B2); `seen` gives the lines of the connection's last list of the page's origin,
+   * which this one leaves out (agent-speed S4). `site` and `lines` are what the caller keeps for
+   * the next list. Labels are counted over the whole page, so a filter or a left-out line never
+   * changes another element's label; only the elements the list gave can be clicked by theirs.
    * @param {any} tab
-   * @returns {Promise<{ elements: string, dropped: number, labels: Map<string, HintTarget> }
-   *   | { refused: string }>}
+   * @param {{ query?: string, kinds?: string[], seen?: (site: string) => Set<string> | undefined }}
+   *   [options]
+   * @returns {Promise<{ elements: string, dropped: number, repeated: string[], site: string,
+   *   lines: string[], labels: Map<string, HintTarget> } | { refused: string }>}
    */
-  async elements(tab) {
+  async elements(tab, { query, kinds, seen } = {}) {
     const browser = tab.linkedBrowser;
     if (!onTheWeb(browser.contentPrincipal)) {
       return { refused: "elements are listed only on http and https pages" };
@@ -878,14 +885,24 @@ export const AgentAct = {
         hint,
       };
     });
-    const { elements, dropped } = labelAgentElements(items);
-    const list = agentElementList(elements, AGENT_ELEMENTS.bytes);
+    const labelled = labelAgentElements(items);
+    const elements = filterAgentElements(labelled.elements, { query, kinds });
+    // The origin, not the site: a list of another host of the same site may differ entirely.
+    const origin = String(top?.documentPrincipal?.originNoSuffix ?? "");
+    const listedAs = /^https?:\/\//.test(origin) ? origin : "";
+    const list = agentElementList(
+      elements,
+      AGENT_ELEMENTS.bytes,
+      listedAs ? seen?.(listedAs) : undefined,
+    );
     // The reply is one line: elements past its room are left out, and their labels too.
-    const listed = elements.slice(0, elements.length - list.omitted);
     return {
       elements: wrapUntrusted(wf(list.text)),
-      dropped: dropped + list.omitted,
-      labels: new Map(listed.map((l) => [l.label, l.target.hint])),
+      dropped: labelled.dropped + list.omitted,
+      repeated: list.repeated,
+      site: listedAs,
+      lines: list.lines,
+      labels: new Map(list.given.map((l) => [l.label, l.target.hint])),
     };
   },
 };

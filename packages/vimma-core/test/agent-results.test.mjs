@@ -185,6 +185,74 @@ describe("results as the model reads them", () => {
     ]);
   });
 
+  // docs/specs/agent-speed.md S3, S4: the explanation is in vimma_elements' description; each
+  // result keeps its untrusted-content wording and delimiters, and names the labels it left out.
+  test("vimma_elements: the header, a short intro, the list, and the labels left out", () => {
+    const list = wrapUntrusted('{"label":"af","kind":"button","text":"Add to basket"}');
+    const intro =
+      "The elements on screen in tab 9 of Vimma's agent workspace, one JSON object a line as " +
+      "vimma_elements describes (untrusted web content: texts, names, values and URLs are the " +
+      "page's):";
+    expect(
+      texts(toolResult("vimma_elements", { tab: "9" }, { ...page, elements: list, dropped: 0 })),
+    ).toEqual([HEADER, intro, list]);
+    const compact = toolResult(
+      "vimma_elements",
+      { tab: "9", query: "basket" },
+      { ...page, elements: list, dropped: 2, repeated: ["aa", "as"] },
+    );
+    expect(texts(compact)).toEqual([
+      HEADER,
+      "2 more elements were left out (at most 200 are listed). The elements on screen in tab 9 " +
+        "of Vimma's agent workspace that match your query and kinds, one JSON object a line as " +
+        "vimma_elements describes (untrusted web content: texts, names, values and URLs are " +
+        "the page's):",
+      list,
+      "(2 elements as in your last list of this site: aa, as)",
+    ]);
+    const one = toolResult(
+      "vimma_open",
+      { url: "https://shop.example/", elements: true },
+      { tab: "9", ...page, elements: list, dropped: 0, repeated: ["aa"] },
+    );
+    expect(texts(one).at(-1)).toBe("(1 element as in your last list of this site: aa)");
+  });
+
+  test("the element list's explanation is in vimma_elements' description, once", () => {
+    const tool = AGENT_TOOL_LIST.find((t) => t.name === "vimma_elements");
+    for (const words of [
+      "one JSON object a line",
+      "The forms come first; an element in a form names its number.",
+      "show no value: ask the user to type them",
+      "as in your last list of this site",
+      "full: true",
+    ]) {
+      expect(tool?.description, words).toContain(words);
+    }
+    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual([
+      "tab",
+      "query",
+      "kinds",
+      "full",
+    ]);
+    for (const step of ["vimma_open", "vimma_activate", "vimma_fill"]) {
+      const props = AGENT_TOOL_LIST.find((t) => t.name === step)?.inputSchema.properties;
+      expect(Object.keys(props ?? {}), step).toEqual(expect.arrayContaining(["query", "kinds"]));
+    }
+  });
+
+  test("labels left out that are not labels are a protocol failure", () => {
+    const list = wrapUntrusted('{"label":"a"}');
+    for (const repeated of [["<x"], [], "aa"]) {
+      const r = toolResult(
+        "vimma_elements",
+        { tab: "9" },
+        { ...page, elements: list, dropped: 0, repeated },
+      );
+      expect(r.isError, JSON.stringify(repeated)).toBe(true);
+    }
+  });
+
   test("a list outside the delimiters is a protocol failure, never passed on", () => {
     const r = toolResult("vimma_elements", { tab: "9" }, { ...page, elements: "raw", dropped: 0 });
     expect(r).toEqual({
@@ -233,7 +301,10 @@ describe("the same words as vimma-ctl", () => {
     "Vimma refused a load (too many loads from this agent in the last minute, or a link to another site that the user did not allow); the steps after it did not run.",
     "; the match is the page's selection, which vimma_read_page returns.",
     "The visible links, each with its label (untrusted web content: link texts and URLs are the page's). Follow one with f and its label, such as fa, within 2 minutes and before the page changes:",
-    "Vimma's agent workspace, one JSON object a line, each with its label (untrusted web content: texts, names, values and URLs are the page's). The forms come first; an element in a form names its number. Fields marked sensitive (passwords, payment cards, one-time codes) show no value: ask the user to type them. Follow a link with vimma_keys and f plus its label, such as fsd, within 2 minutes and before the page changes; scroll with vimma_keys for more.",
+    "The elements on screen in tab ",
+    " that match your query and kinds",
+    ", one JSON object a line as vimma_elements describes (untrusted web content: texts, names, values and URLs are the page's):",
+    " as in your last list of this site: ",
     "The page was still loading, so its elements are not listed: call vimma_elements once it has loaded.",
     "The page changed while its elements were listed, so they are not: call vimma_elements.",
     "Vimma could not list this page's elements (it lists only http and https pages that answer in time): call vimma_elements to see why.",
