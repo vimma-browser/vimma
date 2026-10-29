@@ -1,6 +1,6 @@
 # Spec: agent-speed
 
-Status: draft (Delivery 1 in #603, 2 in #611, 3 for #598) · Area: `tools/agent-bench/` (the
+Status: draft (Delivery 1 in #603, 2 in #611, 3 for #598, 6 for #600) · Area: `tools/agent-bench/` (the
 scripted floor, the per-step breakdown); `packages/vimma-core/src/` (`agent-loop.mjs`, `agent-providers.mjs`,
 `agent-tools-data.mjs`, `agent-act.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: tool descriptions and
 `INSTRUCTIONS`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
@@ -371,7 +371,10 @@ Ordered by expected gain for cost. Each PR runs the bench before and after.
 2. **The default of `keep_results`.** Options: 4, 6 or 10. Fewer saves more tokens but a model
    that compares products across pages may need an older list again, which costs a step.
    Recommendation: 6, measured on L06 and L09 (the lists with preferences) before Delivery 5
-   merges.
+   merges. Measured so far ([agent-bench.md](../agent-bench.md), "Older results left out"): on
+   the scripted floor 4, 6 and 10 save 21, 14 and 2 % of L09's tokens; on a local
+   mixture-of-experts model on the CPU, 6 cut L10's tokens by 37 % but each block left out cost
+   about 120 s of reading, so the run took as long.
 3. **Thinking for local models by default.** Options: the model's default, or off for local
    providers. Recommendation: the model's default until the bench shows that a model with
    thinking off chooses the same products (the "cheapest" and "lactose-free" items).
