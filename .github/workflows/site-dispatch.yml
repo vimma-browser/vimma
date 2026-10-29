@@ -1,12 +1,24 @@
 # Spec site-keys-mirror. Tells vimma-browser/vimma-site when something it mirrors changes:
 # - a push to main that changes the default bindings sends `vimma-bindings` with the commit;
-# - a published release (not a pre-release) sends `vimma-release` with its tag, and the site's
+# - a published release (not a pre-release) sends `vimma-release`, and the site's
 #   release-sync.yml then syncs the latest published release and opens a pull request, so the
-#   site does not wait for its daily run.
-# Needs the secret SITE_DISPATCH_TOKEN: a fine-grained token for vimma-browser/vimma-site only, with
-# "Contents: read and write" (what the repository_dispatch endpoint requires). Without it the job
-# logs a notice and succeeds, so main stays green until the secret is set.
-# No checkout and no third-party action: one API call with the runner's gh.
+#   site does not wait for its scheduled run.
+# Authenticates as the org's GitHub App vimma-site-dispatch, installed on vimma-browser/vimma-site
+# only with "Contents: read and write" (what the repository_dispatch endpoint requires): the
+# variable SITE_DISPATCH_APP_ID holds its client ID and the secret SITE_DISPATCH_APP_KEY, of the
+# site-dispatch environment, its private key. Each run mints a token that lasts an hour and
+# reaches only vimma-site, so nothing expires and nothing depends on a person's account. Without
+# the variable or the key the token step fails and the run goes red, so a release the site was
+# never told about shows.
+#
+# The key can push to vimma-site, whose release-sync pull requests merge themselves, so only
+# main's copy of this file may hold it (docs/security.md, B15). Publishing a release starts
+# `start`, which runs the tag's copy, and anyone with write access can create a tag with an
+# edited copy; so `start` holds no secret and no environment and only starts this workflow on
+# main (workflow_dispatch, release=true), as homebrew.yml and update-publish.yml do. `dispatch`
+# holds the key, in the site-dispatch environment, which accepts main alone.
+# No checkout and no third-party action: GitHub's create-github-app-token, then one API call with
+# the runner's gh.
 name: Site dispatch
 
 on:
@@ -24,37 +36,70 @@ on:
 
 permissions: {}
 
+# GitHub keeps one pending run per group, so the release event's run, which only starts a release
+# dispatch, has a group of its own, and a release dispatch never waits behind or replaces a
+# bindings one (a newer bindings run may replace a pending older one: it sends the newer commit).
 concurrency:
-  group: site-dispatch
+  group: site-dispatch-${{ github.event_name }}-${{ inputs.release || 'bindings' }}
   cancel-in-progress: false
 
 jobs:
-  dispatch:
-    name: tell vimma.dev what changed
-    if: github.repository == 'vimma-browser/vimma' && !github.event.release.prerelease
+  # Runs from the tag's copy of this file, which a tag pushed on another commit could change; so
+  # it does nothing but start main's copy: no environment, no secret, no repository code.
+  start:
+    name: start the release dispatch on main
+    if: >-
+      github.event_name == 'release' && github.repository == 'vimma-browser/vimma' &&
+      !github.event.release.prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: write # start this workflow on main
     steps:
-      - name: repository_dispatch to vimma-browser/vimma-site
+      - name: start site-dispatch.yml on main with release=true
         env:
-          GH_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
-          EVENT: ${{ github.event_name }}
-          RELEASE: ${{ inputs.release }}
-          SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [ "$EVENT" = release ] || [ "$RELEASE" = true ]; then
+          gh workflow run site-dispatch.yml --repo "$GITHUB_REPOSITORY" --ref main -f release=true
+          echo "Started site-dispatch.yml on main for $TAG (vimma-release)" >> "$GITHUB_STEP_SUMMARY"
+
+  # Holds the app's key; the site-dispatch environment accepts main alone, and the condition keeps
+  # every other ref from asking.
+  dispatch:
+    name: tell vimma.dev what changed
+    if: >-
+      github.repository == 'vimma-browser/vimma' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: site-dispatch
+    steps:
+      - name: token for vimma-browser/vimma-site
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.SITE_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.SITE_DISPATCH_APP_KEY }}
+          owner: vimma-browser
+          repositories: vimma-site
+          permission-contents: write
+
+      - name: repository_dispatch to vimma-browser/vimma-site
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          RELEASE: ${{ inputs.release }}
+          SHA: ${{ github.sha }}
+        run: |
+          # release-sync.yml syncs the latest published release and reads no payload.
+          if [ "$RELEASE" = true ]; then
             type=vimma-release
-            what=${TAG:-the latest release}
-            payload=(-f "client_payload[tag]=$TAG")
+            what="the latest release"
+            payload=()
           else
             type=vimma-bindings
             what=$SHA
             payload=(-f "client_payload[sha]=$SHA")
-          fi
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::notice::SITE_DISPATCH_TOKEN is not set; vimma.dev was not told about $what ($type)"
-            exit 0
           fi
           gh api --method POST repos/vimma-browser/vimma-site/dispatches \
             -f "event_type=$type" "${payload[@]}"
