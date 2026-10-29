@@ -1599,8 +1599,11 @@ control socket has no command that sends a task, and page key events never reach
 steps that cannot be taken back still ask under it.
 
 **The model's endpoint.** Requests carry the system text, the tool definitions, the user's
-messages and every tool result (page text, element lists, console entries, screenshots for a
-model with vision) to the endpoint the user configured, and nowhere else. A hosted provider's
+messages and the tool results (page text, element lists, console entries, screenshots for a
+model with vision) to the endpoint the user configured, and nowhere else. Results older than the
+last `[agent] keep_results` (default 6) are sent shortened to their first line, Vimma's line
+naming the page (M47), so a page the agent has left stops reaching the model with each request;
+the conversation kept in memory still holds them whole. A hosted provider's
 own terms decide what it keeps. A server on 127.0.0.1 may itself forward to a hosted model;
 Vimma sees only the address.
 
@@ -1750,6 +1753,17 @@ for the user.
   [`test_hosted_anthropic_provider_asks_for_its_key_before_the_task`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless`](../tests/browser/browser_vimma_agent_chat.js),
   [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
+- M47. Shortening older results (`[agent] keep_results`) **must** only take text out of a
+  request, never add page text or move it out of the untrusted-content delimiters: a shortened
+  result keeps only its first text item's first line, and a result that starts with Vimma's
+  `Untrusted web content from …` line keeps that line whole, so a page title that breaks the line
+  never loses the warning after it. The user's messages, the model's replies and every refused
+  or denied result (the user's no to a checkpoint among them) **must** be sent whole, and a
+  shortened result **must** keep its call's id, so each step stays paired with what it did.
+  [`a left-out result keeps its first line and says the rest was left out`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`a page's line keeps its warning even when the page's title breaks the line`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`the user's messages, the replies and refusals, the user's no among them, stay whole`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`pruning changes only the request: the task's messages keep every result`](../packages/vimma-core/test/agent-loop.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 
