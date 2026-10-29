@@ -10,7 +10,8 @@
 // the browser runs it against its agent commands. Everything that keeps the agent safe (the
 // gate, grants, checkpoints, confinement) is the runner's side; the loop only bounds the task.
 
-import { callModel } from "./agent-providers.mjs";
+import { ProviderError, callModel } from "./agent-providers.mjs";
+import { isFinalRefusal } from "./agent-results.mjs";
 
 /**
  * @typedef {import("./agent-providers.mjs").ChatMessage} ChatMessage
@@ -33,7 +34,8 @@ import { callModel } from "./agent-providers.mjs";
  *   | { type: "call", call: ToolCall }
  *   | { type: "refused", call: ToolCall, reason: string }
  *   | { type: "result", call: ToolCall, result: ToolResult }
- *   | { type: "steer", text: string }} TaskEvent
+ *   | { type: "steer", text: string }
+ *   | { type: "server-error", error: string }} TaskEvent
  *   What the transcript shows as the task runs.
  * @typedef {{ outcome: "done" | "stopped" | "budget" | "error", messages: ChatMessage[],
  *   reply?: string, exceeded?: Exceeded, error?: string, after?: ToolCall | null }} TaskResult
@@ -42,6 +44,18 @@ import { callModel } from "./agent-providers.mjs";
 
 const STOPPED = "Not run: the task was stopped.";
 const OVER_BUDGET = "Not run: the task reached its budget.";
+/**
+ * The same call refused this many times in a row ends the task: a model that repeats a refused
+ * call does not learn from the refusal (docs/agent-bench.md: one sent the same refused call 18
+ * times), and each repeat spends a step and a turn's tokens. Only refusals the same call meets
+ * again count (isFinalRefusal); waiting for a page to load is not a repeat.
+ */
+export const REPEAT_LIMIT = 3;
+/**
+ * Server errors in a row that end the task. One ends only the model's turn: a local server
+ * aborts a turn now and then (Ollama's `token repeat limit reached`) and the next turn may work.
+ */
+export const SERVER_ERRORS = 3;
 
 /** @type {Record<string, (v: unknown) => boolean>} */
 const TYPES = {
@@ -148,6 +162,20 @@ async function run(opts, signal, pending) {
   let after = null;
   const stopped = () => ({ outcome: /** @type {const} */ ("stopped"), messages, after });
 
+  let serverErrors = 0;
+  /** The last refused call as `name args`, and how many times in a row it was refused. */
+  let refused = { key: "", times: 0 };
+  /** @param {ToolCall} call @param {boolean} wasRefused @returns {boolean} the limit is reached */
+  const count = (call, wasRefused) => {
+    if (!wasRefused) {
+      refused = { key: "", times: 0 };
+      return false;
+    }
+    const key = `${call.name} ${JSON.stringify(call.args)}`;
+    refused = { key, times: refused.key === key ? refused.times + 1 : 1 };
+    return refused.times >= REPEAT_LIMIT;
+  };
+
   const takePending = () => {
     for (const text of pending.splice(0)) {
       messages.push({ role: "user", text });
@@ -174,8 +202,21 @@ async function run(opts, signal, pending) {
       });
     } catch (e) {
       if (signal.aborted) return stopped();
-      return { outcome: "error", messages, error: e instanceof Error ? e.message : String(e) };
+      const error = e instanceof Error ? e.message : String(e);
+      const server = e instanceof ProviderError && (e.status ?? 0) >= 500;
+      if (!server || ++serverErrors >= SERVER_ERRORS) return { outcome: "error", messages, error };
+      emit({ type: "server-error", error });
+      // The failed turn produced nothing; the next one is told so. Only the status: the error's
+      // body may quote the request, page text included, which must not come back as the user's.
+      messages.push({
+        role: "user",
+        text: `(Vimma: the model server failed on your last turn with HTTP status ${
+          /** @type {ProviderError} */ (e).status
+        }. Go on with the task.)`,
+      });
+      continue;
     }
+    serverErrors = 0;
     budget.addUsage(reply.usage);
     emit({ type: "usage", usage: reply.usage });
     const { message } = reply;
@@ -192,7 +233,13 @@ async function run(opts, signal, pending) {
     messages.push({ role: "tool", results });
     /** @type {Exceeded | null} */
     let exceeded = budget.exceeded();
+    /** @type {ToolCall | null} */
+    let repeated = null;
     for (const call of message.toolCalls) {
+      if (repeated) {
+        results.push(notRun(call, STOPPED));
+        continue;
+      }
       if (signal.aborted) {
         results.push(notRun(call, STOPPED));
         continue;
@@ -203,10 +250,11 @@ async function run(opts, signal, pending) {
         continue;
       }
       budget.step();
-      const refused = checkToolCall(call, tools);
-      if (refused) {
-        emit({ type: "refused", call, reason: refused });
-        results.push(notRun(call, `Not run: ${refused}.`));
+      const why = checkToolCall(call, tools);
+      if (why) {
+        emit({ type: "refused", call, reason: why });
+        results.push(notRun(call, `Not run: ${why}.`));
+        if (count(call, true)) repeated = call;
         continue;
       }
       emit({ type: "call", call });
@@ -224,8 +272,13 @@ async function run(opts, signal, pending) {
       after = call;
       results.push(result);
       emit({ type: "result", call, result });
+      if (count(call, isFinalRefusal(result))) repeated = call;
     }
     if (signal.aborted) return stopped();
+    if (repeated) {
+      const error = `stopped: ${repeated.name} was refused ${REPEAT_LIMIT} times in a row with the same arguments`;
+      return { outcome: "error", messages, error };
+    }
     if (exceeded) return { outcome: "budget", messages, exceeded };
   }
 }

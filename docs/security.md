@@ -1567,6 +1567,118 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`says older for a client that names no version: it predates the check`](../packages/vimma-core/test/ctl-version.test.mjs),
   [`is optional, and refused with the whole hello when it is not a version`](../packages/vimma-core/test/ctl-version.test.mjs)
 
+### The built-in agent (`agent/AgentChat.sys.mjs`, `agent/AgentKeys.sys.mjs`)
+
+Vimma's own agent ([builtin-agent](specs/builtin-agent.md),
+[ADR-023](adr/023-in-browser-model-client.md)): a model the user picks, local or hosted, runs
+tasks the user types in Vimma, through the same agent commands and gate as an MCP agent. It is
+behind `vimma.feature.agentChat` (off) until its chat window lands; what is in force:
+
+**Reach:** the agent workspace's tabs that its conversation owns, through `runAgentCommand` in
+the browser's process, so every rule above holds for it, with no `:mcp on` and no socket. It
+has no shell, files or network of its own: the agent workspace and the model's endpoint are its
+only ways to send anything. Page text reaches the model inside the untrusted-content delimiters,
+a mitigation and not a guarantee (M7), so a page can steer it; a steered model under its
+conversation's grant can do what any grant allows (above), within its own tabs and its budget.
+
+**The conversation grant.** A task the user sends from Vimma's own chat window is known to come
+from the user, so sending it with `Enter` grants that conversation's connection, with no
+question and no expiry, until it is stopped (B18). Nothing but Vimma's chrome calls it: the
+control socket has no command that sends a task, and page key events never reach chrome. The
+steps that cannot be taken back still ask under it.
+
+**The model's endpoint.** Requests carry the system text, the tool definitions, the user's
+messages and every tool result (page text, element lists, console entries, screenshots for a
+model with vision) to the endpoint the user configured, and nowhere else. A hosted provider's
+own terms decide what it keeps. A server on 127.0.0.1 may itself forward to a hosted model;
+Vimma sees only the address.
+
+**API keys.** A key is a login of the origin `chrome://vimma-agent` whose password is the key,
+with the endpoint origin it was entered for, encrypted with OSKeyStore. Such a login is listed in `about:logins`, exported with the other
+passwords and synced when the user syncs passwords; those copies hold only the ciphertext. With
+a desktop keyring (GNOME Keyring, KWallet through libsecret) OSKeyStore's secret lives outside
+the profile, so a copied profile does not reveal the key; without one it lives in `key4.db`,
+protected by the primary password like saved passwords, and readable by anyone who reads the
+profile when no primary password is set. Other processes running as the user are out of scope
+(§11).
+
+- M35. The built-in agent **must** act only through `runAgentCommand`, on one gate connection per
+  conversation (`builtin:<n>`, an id no socket connection can have), with the arguments checked
+  as a socket request's, so every rule of §12 applies to it; it **must** work with MCP off, and
+  `:mcp off` **must not** end its grants.
+  [`test_works_with_mcp_off_and_enter_grants_without_a_question`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`a built-in connection's grant does not cover another conversation`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`:mcp off ends the MCP grants and leaves a conversation's`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`the built-in connection ids are the only ones that say built-in`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`every agent tool has its command, and nothing else does`](../packages/vimma-core/test/agent-results.test.mjs)
+- M36. A conversation **must** see and act only on the agent tabs it owns (opened, given, or
+  opened from one it owns) and **must** be refused another tab with the error a tab outside the
+  agent workspace gets; an MCP agent **must** see and act only on the agent tabs no conversation
+  owns. Ownership is kept in memory by tab, so a tab keeps its owner when it is unloaded and
+  when its opener closes; after a restart no tab is owned.
+  [`test_two_conversations_see_only_their_tabs`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_an_unloaded_tab_stays_its_conversations`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_tabs_opened_from_an_owned_tab_stay_owned`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_mcp_agent_sees_only_unowned_tabs`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`a tab belongs to the conversation that opened it`](../packages/vimma-core/test/agent-owners.test.mjs),
+  [`a tab a page opened belongs to its opener's conversation`](../packages/vimma-core/test/agent-owners.test.mjs)
+- M37. A conversation's grant **must** be made only by the user sending a task without asking
+  every step (`Enter`) or by an answer to its question; it **must** have no expiry, **must** end
+  on a send that asks every step (`ctrl+Enter`), on stopping the conversation, on
+  `ctrl+b shift+a`, on `:mcp revoke` and when the conversation is deleted, and **must never**
+  cover another conversation. Form submissions, payment steps, `vimma_show` and the downloads
+  that always ask **must** ask under it (M19, M28, M33).
+  [`test_ctrl_enter_asks_every_step_and_ends_the_grant`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_grant_covers_later_tasks_until_stopped`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_checkpoint_and_show_ask_under_the_conversation_grant`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`a conversation grant has no expiry and ends on stop`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a conversation grant leaves checkpoints asking`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`:mcp revoke ends a conversation grant as any other`](../packages/vimma-core/test/agent-gate.test.mjs)
+- M38. An `agent-hello` whose client name starts with `built-in` (in any case, with any
+  separator or none, after invisible characters or in compatibility forms) **must** be shown
+  with ` (mcp)` after it, so no other program passes as the built-in agent in a question, a
+  notice or `:mcp log`. Look-alike letters of other scripts are not caught; the name is a label
+  and grants nothing.
+  [`a client named built-in over MCP is shown with (mcp)`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_mcp_agent_sees_only_unowned_tabs`](../tests/browser/browser_vimma_agent_conversations.js)
+- M39. Model requests **must** go only to the configured endpoint, `https://` unless on a
+  loopback address, with `credentials: "omit"` and `redirect: "error"`; `[agent] local_only`
+  **must** refuse every endpoint off this machine, in config.toml and at each request. Setup's
+  probe **must** ask only 127.0.0.1 on the local servers' ports, with a timeout of 1 s, and only
+  when setup asks.
+  [`test_requests_only_to_the_endpoint_without_credentials_or_redirects`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`posts to the endpoint without credentials or redirects, and parses the reply`](../packages/vimma-core/test/agent-providers.test.mjs),
+  [`a refused endpoint makes no request`](../packages/vimma-core/test/agent-providers.test.mjs),
+  [`local_only refuses a remote endpoint`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`an endpoint off this machine must be https, and carry no user name`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`lists the models of the servers that answer, with no cookies and no redirects`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`test_probe_only_on_setup_and_only_loopback`](../tests/browser/browser_vimma_agent_conversations.js)
+- M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key and
+  the endpoint origin it was entered for, encrypted with OSKeyStore, and **must** be sent only to
+  that origin (a provider whose endpoint config.toml changes gets no key), and **must never** be
+  in a pref, config.toml (a key field there is a
+  config error that does not repeat the value), a file of Vimma's, `:mcp log`, a notice, the
+  conversation or an error text (a provider's error is cut at 200 characters with the key
+  replaced by `•••`); it goes only into the provider's request header.
+  [`test_key_stored_as_a_login_only`](../tests/browser/browser_vimma_agent_keys.js),
+  [`test_stored_login_holds_only_the_keystore_ciphertext`](../tests/browser/browser_vimma_agent_keys.js),
+  [`test_key_never_in_log_notice_or_error`](../tests/browser/browser_vimma_agent_keys.js),
+  [`test_key_deleted`](../tests/browser/browser_vimma_agent_keys.js),
+  [`test_a_key_goes_only_to_the_endpoint_it_was_stored_for`](../tests/browser/browser_vimma_agent_keys.js),
+  [`a key field in [agent] is an error, with its line`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`the key's value never appears in the error`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`a provider error is cut and never contains the key`](../packages/vimma-core/test/agent-providers.test.mjs)
+- M41. At most `[agent] max_running` conversations (default 3) **must** run a task at once. A
+  task **must** stop at its budget (`max_steps`, `max_tokens`, `max_cost`), which nothing the
+  model writes raises, and after the same call has its arguments refused or is denied three
+  times in a row; `ctrl+b shift+a`
+  with no question waiting **must** stop every running task.
+  [`test_max_running`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_ctrl_b_shift_a_stops_every_task`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`a task stops at max_steps`](../packages/vimma-core/test/agent-budget.test.mjs),
+  [`a task ends after the same call is refused three times in a row`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`max_running and keep_days parse within their bounds`](../packages/vimma-core/test/config-agent.test.mjs)
+
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 
 Whether a key is Vimma's or the page's depends on the tab's mode, which the content actor's focus

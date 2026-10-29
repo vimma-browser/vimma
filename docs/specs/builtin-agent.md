@@ -1,18 +1,18 @@
 # Spec: builtin-agent
 
-Status: draft (Delivery 1-2 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
+Status: draft (Delivery 1-3 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
 `agent-providers.mjs`, `agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`,
 `agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs`; `agent.mjs` and
 `agent-prompt.mjs`
 for the built-in label and the conversation grant; `config.mjs` for `[agent]`; `actions.mjs` and
 `defaults.mjs` for the key); `src/browser/base/content/vimma/` (new `agent/AgentChat.sys.mjs`,
 `agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`, `ui/agent-chat.mjs`;
-`ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `host/workspace-ops.mjs`,
+`ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `host/workspace-ops.mjs`, `host/mcp-ops.mjs`,
 `ui/statusbar.mjs`, `ui/side-panel.mjs`, `host/agent-ui.mjs`); new `tools/agent-bench/`;
 `tests/e2e/fixtures/`;
 `docs/guide.md`, `docs/security.md`, `docs/limits.md`, README · Upstream patches: none · ADR: a
-new ADR for an in-browser model client beside [ADR-019](../adr/019-agents-over-mcp.md), written
-with delivery PR 3 (B4). No new dependency (B6).
+[ADR-023](../adr/023-in-browser-model-client.md), an in-browser model client beside
+[ADR-019](../adr/019-agents-over-mcp.md) (B4). No new dependency (B6).
 
 Issue: [#535](https://github.com/vimma-browser/vimma/issues/535)
 
@@ -72,7 +72,10 @@ first, so that what the guide says a model can do is what the bench measured.
    user confirms setup (B12). When none answers, setup shows how to start one (`ollama serve`, then
    `ollama pull <model>`) and accepts an address such as `http://127.0.0.1:8000/v1` (vLLM's
    default port) instead. No key is asked. The probe runs only while setup is open with this
-   option picked, never in the background.
+   option picked, never in the background. For an Ollama model whose context is below
+   32,768 tokens (Ollama's default is 4,096), confirming setup makes a copy of the model with
+   `num_ctx` set to 32,768 (`qwen3:14b-ctx32768`), which shares its weights, and uses that
+   (B12).
 3. **External provider.** The user picks Anthropic (the Messages API) or an OpenAI-compatible
    endpoint (an `https://` address), a model name, and pastes the API key into a masked field.
    The key goes straight into Firefox's login storage (B8) and is never shown again; setup shows
@@ -103,8 +106,8 @@ first, so that what the guide says a model can do is what the bench measured.
    default = "local"           # a provider name below
    local_only = false          # true: refuse any provider that is not on 127.0.0.1 or ::1
    max_running = 3             # conversations whose tasks run at once (Behaviour 32)
-   max_steps = 60              # B10
-   max_tokens = 1000000
+   max_steps = 100             # B10
+   max_tokens = 2000000
    max_cost = 2.00             # used only for a provider with prices
    # keep_days = 30            # delete conversations unused for this long (Behaviour 20)
 
@@ -440,7 +443,9 @@ agent to a part of the profile, or publishes which steps always ask.
    one, visible and deletable in `about:logins`, and never written where Firefox's Smart Window
    keeps its key (a pref in clear text, Research). `config.toml` is a file users share and keep
    in dotfile repositories, so a key there would leak with it; a key field is a config error.
-   The key is encrypted with `OSKeyStore` before it is stored, the key that also protects stored
+   The key is stored with the origin of the endpoint it was entered for, so that a provider
+   whose endpoint changes in `config.toml` (an edited or pulled dotfile) is not sent it, and
+   both are encrypted with `OSKeyStore` before they are stored, the key that also protects stored
    conversations (B15), and the login holds only the ciphertext, so that a copied profile, a
    password export or a synced copy is useless without the user's desktop keyring, at the cost
    of a key that does not move to a new machine. That cost is accepted because an API key spends
@@ -468,7 +473,14 @@ agent to a part of the profile, or publishes which steps always ask.
     ([agent-bench.md](../agent-bench.md)) show a scripted agent on the shortest path needing
     51 steps and 490,000 tokens for ten items, so delivery PR 3 sets 100 steps and 2,000,000
     tokens, because 60 and 1,000,000 leave a model no room for the detours every measured model
-    took.
+    took. Two more stops come from the same results: a task ends when the same call (the same
+    tool and arguments) has its arguments refused or is denied three times in a row (a page
+    still loading or a rate clears by itself, so waiting and asking again is no repeat), because a model that repeats a refused
+    call does not learn from the refusal (one sent the same refused call 18 times) and each
+    repeat spends a step and a turn's tokens; and a server error (HTTP 500 and above) ends only
+    the model's turn, which the next turn is told of, because local servers abort a turn now and
+    then (Ollama's `token repeat limit reached` ended three runs) and the next turn may work;
+    three in a row end the task, as does any other error.
 11. **Network calls go only to the configured endpoint** (B11, Behaviour 1-4, 9). Each request
     is a `fetch` from the parent process to the provider's endpoint as configured, with
     `credentials: "omit"` (no cookies of any container) and `redirect: "error"`, so that an
@@ -483,7 +495,12 @@ agent to a part of the profile, or publishes which steps always ask.
     agent reads, including what the agent workspace's logins show (an address, an order
     history), goes to that provider. When the probe finds a local server, its first model is
     preselected and `[agent] default` points to it once the user confirms setup, because
-    nothing then leaves the machine and the user still confirms the choice.
+    nothing then leaves the machine and the user still confirms the choice. Setup checks an
+    Ollama model's context and makes a copy with `num_ctx` set when it is below 32,768 tokens,
+    because Ollama's OpenAI-compatible API takes no context length and its default of 4,096
+    holds less than the tool definitions, while a ten-item list needs about 19,000 tokens on the
+    bench's shortest path ([agent-bench.md](../agent-bench.md)). Other local servers set the
+    context where they start, which Vimma cannot change.
 13. **One key opens the window, delivered in its own keymap PR** (B13), because keymap changes
     regenerate the bindings docs and the help snapshot and go one PR at a time. Until then,
     `:agent` opens it. The key is `ctrl+b i`, free in the default keymap, because the window
@@ -732,6 +749,12 @@ opened belongs to its opener's conversation`; `a given tab belongs to the open c
   `a moved tab belongs to none`; `ownership ends when the tab closes`.
 - `agent-tools.test.mjs`: `the built-in tool list equals the MCP fixture`; `screenshot is left
 out for a provider without vision`.
+- `agent-results.test.mjs`: `every agent tool has its command, and nothing else does`; each
+  tool's result in vimma-ctl's words; `a list outside the delimiters is a protocol failure,
+never passed on`; a test per fixed sentence that it is in `mcp.rs`.
+- `agent-setup.test.mjs`: `only 127.0.0.1 on Ollama's, LM Studio's and llama.cpp's ports`;
+  `lists the models of the servers that answer, with no cookies and no redirects`;
+  `a model with less gets a copy with num_ctx set, sharing its weights`.
 - `config.test.mjs`: `[agent] providers parse`; `a key field in [agent] is an error`;
   `local_only refuses a remote endpoint`; `max_running and keep_days parse`;
   `task_grant_minutes is not a key of [agent]`.
@@ -845,10 +868,13 @@ Each PR is mergeable and tested on its own; the window appears only in PR 4.
 3. `feat(agent): the built-in agent's gate connections, providers and key storage` (B4, B5, B8,
    B11, B12, B17, B18), built on #578's connection-lifetime grant: the in-process connections
    and their labels, tab ownership in `agent-commands.mjs` (MCP agents included), the
-   conversation grant, `max_running`, `[agent]` config, setup's probe, key
-   storage, `:agent` commands without the window, the ADR, security.md, with mochitests.
+   conversation grant, `max_running`, `[agent]` config, setup's probe and context check, key
+   storage, the ADR, security.md, with mochitests. The `:agent` commands come with the window
+   (delivery 4) rather than here, because without the window the agent's replies and steps
+   have nowhere to go but the notice line, where each one replaces the last (Design 1).
 4. `feat(agent): the chat window` (B1, B9, B16, B19, Behaviour 10-18, 27-28, 34-35): the
-   window, the transcript, the prompt slot, giving a page, the status bar segment, the guide,
+   window, the transcript, the prompt slot, giving a page, the `:agent` commands, setup's
+   screens, the status bar segment, the guide,
    limits.md, README, e2e and screenshots.
 5. `feat(agent): conversations kept across restarts` (B15, Behaviour 19-23): the list, the
    encrypted store, clearing the context, deleting and `keep_days`, with security.md's rules

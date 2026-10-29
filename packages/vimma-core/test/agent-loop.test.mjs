@@ -328,12 +328,147 @@ describe("the loop", () => {
     });
   });
 
-  test("a provider error ends the task with the error", async () => {
+  test("a provider's refusal of the request ends the task with the error", async () => {
     /** @type {any} */
-    const fetch = async () => ({ ok: false, status: 500, text: async () => "overloaded" });
+    const fetch = async () => ({ ok: false, status: 401, text: async () => "bad key" });
     const res = await start({ fetch, runTool: runner().runTool }).done;
     expect(res.outcome).toBe("error");
-    expect(res.error).toBe("500: overloaded");
+    expect(res.error).toBe("401: bad key");
+  });
+
+  test("a server error ends the model's turn with a note, and the task goes on", async () => {
+    const s = server([{ content: "Done." }]);
+    let failed = false;
+    /** @type {any} */
+    const fetch = async (/** @type {string} */ url, /** @type {any} */ init) => {
+      if (failed) return s.fetch(url, init);
+      failed = true;
+      return {
+        ok: false,
+        status: 500,
+        text: async () => "prediction aborted, token repeat limit reached",
+      };
+    };
+    const events = /** @type {any[]} */ ([]);
+    const res = await start({
+      fetch,
+      runTool: runner().runTool,
+      onEvent: (/** @type {any} */ e) => events.push(e),
+    }).done;
+    expect(res.outcome).toBe("done");
+    expect(res.reply).toBe("Done.");
+    expect(events).toContainEqual({
+      type: "server-error",
+      error: "500: prediction aborted, token repeat limit reached",
+    });
+    expect(s.bodies[0].messages.at(-1)).toEqual({
+      role: "user",
+      content:
+        "(Vimma: the model server failed on your last turn with HTTP status 500. Go on with " +
+        "the task.)",
+    });
+  });
+
+  test("three server errors in a row end the task", async () => {
+    let n = 0;
+    /** @type {any} */
+    const fetch = async () => {
+      n++;
+      return { ok: false, status: 503, text: async () => "overloaded" };
+    };
+    const res = await start({ fetch, runTool: runner().runTool }).done;
+    expect(n).toBe(3);
+    expect(res.outcome).toBe("error");
+    expect(res.error).toBe("503: overloaded");
+  });
+
+  test("a task ends after the same call is refused three times in a row", async () => {
+    const same = { content: "", tool_calls: [call("vimma_open", { url: "https://a.example/" })] };
+    const s = server([same, same, same, same]);
+    const r = runner({
+      vimma_open: () => ({
+        isError: true,
+        content: [{ type: "text", text: "Vimma refused the arguments: url is not a valid URL." }],
+      }),
+    });
+    const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    expect(r.calls).toHaveLength(3);
+    expect(s.bodies).toHaveLength(3);
+    expect(res.outcome).toBe("error");
+    expect(res.error).toBe(
+      "stopped: vimma_open was refused 3 times in a row with the same arguments",
+    );
+  });
+
+  test("a user's no to the same call three times ends the task too", async () => {
+    const same = { content: "", tool_calls: [call("vimma_open", { url: "https://a.example/" })] };
+    const s = server([same, same, same, same]);
+    const r = runner({
+      vimma_open: () => ({
+        isError: true,
+        content: [{ type: "text", text: "The user denied this request in Vimma." }],
+      }),
+    });
+    const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    expect(r.calls).toHaveLength(3);
+    expect(res.outcome).toBe("error");
+  });
+
+  test("a refusal that may clear by itself does not count: a page still loading", async () => {
+    const same = { content: "", tool_calls: [call("vimma_tabs", {})] };
+    const s = server([same, same, same, same, same, { content: "Listed." }]);
+    let n = 0;
+    const r = runner({
+      vimma_tabs: () =>
+        ++n < 5
+          ? {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: "Vimma could not do it: elements are listed only on http and https pages.",
+                },
+              ],
+            }
+          : { content: [{ type: "text", text: "1 tab" }] },
+    });
+    const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    expect(r.calls).toHaveLength(5);
+    expect(res.outcome).toBe("done");
+  });
+
+  test("calls the loop refuses count as refused too", async () => {
+    const bad = { content: "", tool_calls: [call("vimma_open", { url: 5 })] };
+    const s = server([bad, bad, bad, bad]);
+    const res = await start({ fetch: s.fetch, runTool: runner().runTool }).done;
+    expect(s.bodies).toHaveLength(3);
+    expect(res.outcome).toBe("error");
+  });
+
+  test("a call that runs, or another call, resets the count", async () => {
+    const open = (/** @type {string} */ url) => ({
+      content: "",
+      tool_calls: [call("vimma_open", { url })],
+    });
+    const s = server([
+      open("https://a.example/"),
+      open("https://a.example/"),
+      open("https://b.example/"),
+      open("https://a.example/"),
+      open("https://a.example/"),
+      { content: "", tool_calls: [call("vimma_tabs", {})] },
+      open("https://a.example/"),
+      { content: "Gave up." },
+    ]);
+    const r = runner({
+      vimma_open: () => ({
+        isError: true,
+        content: [{ type: "text", text: "Vimma refused the arguments: url is not a valid URL." }],
+      }),
+    });
+    const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    expect(res.outcome).toBe("done");
+    expect(r.calls).toHaveLength(7);
   });
 
   test("the endpoint rules apply: local_only refuses a remote provider", async () => {
@@ -397,8 +532,9 @@ describe("malformed tool calls", () => {
   });
 
   test("malformed calls count as steps, so a model that keeps writing them stops", async () => {
-    const bad = { content: "", tool_calls: [call("nope", {})] };
-    const s = server([bad, bad, bad, bad]);
+    // Each a different call, so the repeat rule does not end the task first.
+    const bad = (/** @type {number} */ n) => ({ content: "", tool_calls: [call(`nope${n}`, {})] });
+    const s = server([bad(1), bad(2), bad(3), bad(4)]);
     const res = await start({
       fetch: s.fetch,
       runTool: runner().runTool,
