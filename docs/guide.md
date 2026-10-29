@@ -1662,6 +1662,18 @@ focus and hint mode.
   a minute. The step's question ends with `, then vimma_elements`, and its notice under a grant
   with `and listed the buttons and fields after it`. A page still loading, or one that changed
   while it was listed, is not listed; the agent is told so and lists it itself.
+- **Shorter lists on a site it has listed before.** A shop's header, search field and basket
+  button are the same on every page, so a list of a page on a site the agent has already listed
+  leaves out the lines that are exactly as in its last list of that site and names their labels
+  instead, which still work. How to read a list is in the tool's description, not repeated in
+  every result. A new conversation, a page on another site, or a conversation whose context you
+  cleared gets the whole list, and the agent can ask for it with `full: true`. On the bench's
+  ten-item shopping list this cuts the tokens of the whole task by about a fifth and the largest
+  request by about a quarter ([agent-bench.md](agent-bench.md)).
+- **Only what it is looking for.** `query` lists only the elements whose label, text, caption or
+  name holds every word of it (`"oat drink"`, ignoring case), and `kinds` only buttons, fields,
+  links and the like; both work with `elements` on a step too. A query never matches a field's
+  value.
 
 #### Clicking on a page
 

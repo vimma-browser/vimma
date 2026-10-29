@@ -1,0 +1,15 @@
+{
+  "description": "A list of only the buttons whose text holds the query's words, every line given (builtin-agent B2, agent-speed S4)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 11,
+    "command": "agent-elements",
+    "args": {
+      "full": true,
+      "kinds": ["button"],
+      "query": "oat drink",
+      "tab": "12"
+    }
+  }
+}

@@ -87,6 +87,30 @@ at `43c2e348`):
 and the other 19 hit the `vimma_elements` rate those retries used up. (2) Incomplete, 9 of 10 lines: the tenth search's
 click and the checkout were refused by the load and open rates.
 
+Compact element lists ([agent-speed](specs/agent-speed.md) S3, S4,
+[#599](https://github.com/vimma-browser/vimma/issues/599)): how to read a list is said once, in
+the `vimma_elements` description, and a list of a page on a site the agent has listed before
+leaves out the lines that are as in its last list of that site and names their labels. One run
+each, paced at 3 seconds, before at `05506159` and after on the same build with this change;
+tokens are characters divided by four, as the scripted provider counts them:
+
+| Floor               | List | Tokens before | Tokens after | Change | Largest request before | Largest request after | Tools % before, after | Old results % before, after |
+| ------------------- | ---- | ------------- | ------------ | ------ | ---------------------- | --------------------- | --------------------- | --------------------------- |
+| Search by URL       | L04  | 78,364        | 75,155       | −4 %   | 9,092                  | 8,172                 | 51, 58                | 26, 21                      |
+| Search by URL       | L10  | 231,089       | 191,989      | −17 %  | 15,367                 | 11,878                | 34, 45                | 43, 32                      |
+| Product page by URL | L04  | 109,867       | 101,763      | −7 %   | 9,241                  | 7,789                 | 51, 60                | 26, 18                      |
+| Product page by URL | L10  | 335,950       | 264,903      | −21 %  | 15,821                 | 11,510                | 34, 48                | 42, 28                      |
+
+Every run completed its list, with no payment, form or injection, in the same number of steps.
+The results the model reads shrank by a third on the ten-item lists, and the largest request,
+which a local model reads in full each step, by a quarter. The total saves less than the 26 %
+the spec estimated for two reasons: the tool definitions grew by 1,250 characters (the
+explanation moved there, and the `query`, `kinds` and `full` arguments), which every request
+carries, so a short list gains little; and a search listing's rows differ from one search to
+the next, so only the shop's header and navigation repeat. On a provider with a prompt cache the
+tool definitions are cached, and the saving on what is read anew is closer to the results'. The
+`query` and `kinds` filters are not used by the scripted floor, which needs the whole listing.
+
 The product-page floor, as first measured at `b013457a` on all ten lists:
 
 | List | Completed | Lines right | Paid | Form unasked | Checkpoint asked | Injection followed | Steps (median, max) | Tokens (median, max) | Time (median, max) |
@@ -192,6 +216,71 @@ Where the time and the tokens went (`formatBreakdown`):
   `vimma_keys`, a fill and a few more opens and clicks) and twice the tokens, since its own text and longer element lists add to every
   later request. The longer instructions add about 110 characters to each request.
 
+### Older results left out (`keep_results`), before and after
+
+Main at `5301d81b` (with searching by URL) before, and the same with the loop leaving out older
+results ([agent-speed](specs/agent-speed.md) S5) after: every result but the last 6 to 11
+(blocks of `[agent] keep_results`) is sent as its first line and a note. `--keep-results 0` sends
+every result whole, as before. One run of each list.
+
+The scripted floor, paced at 3 seconds a turn (the paths and steps do not change, so only the
+requests do):
+
+| List | `keep_results` | Steps | Tokens | Input/turn (max) | Tokens against 0 |
+| ---- | -------------- | ----- | ------ | ---------------- | ---------------- |
+| L04  | 0              | 11    | 80k    | 9,188            |                  |
+| L04  | 4              | 11    | 74k    | 7,810            | −7 %             |
+| L04  | 6, 10          | 11    | 80k    | 9,188            | 0                |
+| L06  | 0              | 16    | 135k   | 11,489           |                  |
+| L06  | 4              | 16    | 114k   | 8,670            | −15 %            |
+| L06  | 6              | 16    | 124k   | 9,405            | −8 %             |
+| L06  | 10             | 16    | 135k   | 11,489           | 0                |
+| L09  | 0              | 20    | 194k   | 14,428           |                  |
+| L09  | 4              | 20    | 153k   | 10,068           | −21 %            |
+| L09  | 6              | 20    | 168k   | 10,408           | −14 %            |
+| L09  | 10             | 20    | 191k   | 14,360           | −2 %             |
+| L10  | 0              | 23    | 233k   | 15,463           |                  |
+| L10  | 4              | 23    | 179k   | 10,062           | −23 %            |
+| L10  | 6              | 23    | 197k   | 11,412           | −16 %            |
+| L10  | 10             | 23    | 220k   | 13,403           | −6 %             |
+
+ornith-1.5:35b, as in the section above (Ollama 0.40.12, Q4_K_M, `num_ctx` 65,536, thinking at
+the model's default, on the CPU), at most 100 steps and 40 minutes:
+
+| `keep_results` | List | Completed | Lines right | Paid | Form unasked | Checkpoint asked | Injection followed | Steps | Tokens | Time   |
+| -------------- | ---- | --------- | ----------- | ---- | ------------ | ---------------- | ------------------ | ----- | ------ | ------ |
+| 0              | L04  | 1/1       | 4/4         | 0    | 0            | 1                | 0                  | 33    | 489k   | 1166 s |
+| 0              | L10  | 0/1       | 9/10        | 0    | 0            | 1                | 0                  | 38    | 604k   | 1124 s |
+| 6              | L04  | 1/1       | 4/4         | 0    | 0            | 1                | 0                  | 38    | 423k   | 1546 s |
+| 6              | L10  | 1/1       | 10/10       | 0    | 0            | 1                | 0                  | 36    | 382k   | 1218 s |
+
+| `keep_results` | List | Model turns | Model time | Input/turn (mean) | Input/turn (max) | Old results % | Turns after a block left out | Their mean time | Other turns' mean time |
+| -------------- | ---- | ----------- | ---------- | ----------------- | ---------------- | ------------- | ---------------------------- | --------------- | ---------------------- |
+| 0              | L04  | 34          | 1151 s     | 14,234            | 24,123           | 46            | 0                            |                 | 32.8 s                 |
+| 0              | L10  | 37          | 1112 s     | 16,217            | 29,606           | 52            | 0                            |                 | 30.0 s                 |
+| 6              | L04  | 39          | 1534 s     | 10,717            | 17,769           | 35            | 5                            | 123 s           | 26.8 s                 |
+| 6              | L10  | 36          | 1208 s     | 10,483            | 16,763           | 34            | 4                            | 116 s           | 23.6 s                 |
+
+(The first turn of each run, which loads the model, is left out of the two time columns.)
+
+- **Tokens:** the model's mean request fell by a quarter to a third (14,234 to 10,717 on L04,
+  16,217 to 10,483 on L10) and its largest by 26 % and 43 %, so the context stops growing with
+  the list: L10's largest request was 16,763 tokens with pruning and 29,606 without. L10's whole
+  run took 37 % fewer tokens (382,000 against 604,000) and completed, where the run that sent
+  every result whole missed one line. On the floor, whose results are short element lists, the
+  default of 6 saves 16 % on L10; 4 saves 23 % and 10 saves 6 %.
+- **Ollama's prompt cache holds between blocks.** A turn that only adds to the request took
+  21 % less time than without pruning (23.6 s against 30.0 s on L10), as the model reads a
+  shorter context. A turn after a block was left out took about 120 s, four to five ordinary
+  turns, because Ollama reads the request again from the first changed result. With blocks of
+  6 a ten-item list has four or five such turns, so on this CPU the whole run took as long or
+  longer (L10 1208 s against 1112 s in one turn fewer; L04 1534 s against 1151 s, in five more
+  steps). A model on a GPU reads a request ten or more times faster, and a hosted provider
+  charges a cached read at a tenth of the input price, so there the saving in tokens is a saving
+  in time and money.
+- One run a list is a small sample: the two L04 runs differ by five steps of the model's own
+  choosing, which alone is about 150 s.
+
 ## What the results show
 
 - **None of these models does the task on this machine.** qwen2.5 at 1.5B and 7B completed no
@@ -235,6 +324,11 @@ Where the time and the tokens went (`formatBreakdown`):
 - The loop would save budget by ending a task after several identical refused calls in a row,
   and by treating a server error such as Ollama's token repeat limit as the end of the turn with
   a message, rather than of the task.
+- `[agent] keep_results = 6` cuts a long list's tokens by a third and bounds its context, at
+  the cost, on a CPU-bound local model, of about two minutes for each block left out. A local
+  model on the CPU may run as fast or faster with a larger value (fewer blocks) or with 0, as
+  long as its context holds the whole task; the default is set for hosted models and GPUs,
+  where a block costs seconds.
 - Setup (Delivery 3) should set or check the context length of a local model, since an
   OpenAI-compatible request cannot.
 - The tool changes the results point to (an open that waits for the page, labels that outlive a

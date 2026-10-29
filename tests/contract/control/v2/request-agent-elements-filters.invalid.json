@@ -1,0 +1,13 @@
+{
+  "description": "A kind no element list names",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 11,
+    "command": "agent-elements",
+    "args": {
+      "kinds": ["menu"],
+      "tab": "12"
+    }
+  }
+}

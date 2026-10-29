@@ -384,6 +384,11 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   (`tools/agent-bench/breakdown.mjs`). `--out` has the same per turn (`turns`), and each call's
   time (`ms`). Use it to measure a change that should make the agent faster or cheaper before
   and after.
+- `--keep-results N` is `[agent] keep_results` (default 6, as the built-in agent): how many of
+  the latest tool results a request carries whole. `--keep-results 0` sends every result whole,
+  to measure the loop without pruning. A turn after a block was left out reads the request
+  again from the first changed result, which on a local model shows as a turn several times
+  slower than the others.
 - The browser reaches only `127.0.0.1` and `localhost` (the site suite's offline prefs), so a
   URL a model makes up loads nothing off the machine; only the model's own requests leave it,
   and only for a hosted provider.

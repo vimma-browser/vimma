@@ -90,6 +90,36 @@ function wrappedList(list, dropped) {
     : null;
 }
 
+/**
+ * An element list as items (agent-speed S3, S4): the intro, the list as Vimma wrapped it, and
+ * the labels it left out as in the conversation's last list of the site, which are Vimma's words.
+ * @param {string} tab @param {boolean} filtered @param {any} result
+ * @returns {ToolContent[]}
+ */
+function listItems(tab, filtered, result) {
+  const list = wrappedList(result?.elements, result?.dropped);
+  if (!list) {
+    throw new Broken("Vimma's element list is not inside the untrusted-content delimiters");
+  }
+  const items = [item(elementsIntro(tab, list.dropped, filtered)), item(list.wrapped)];
+  if (result.repeated !== undefined) {
+    const r = result.repeated;
+    const labels =
+      Array.isArray(r) &&
+      r.length > 0 &&
+      new Set(r).size === r.length &&
+      r.every((l) => typeof l === "string" && LABEL.test(l));
+    if (!labels) throw new Broken("Vimma's result has repeated labels that are not labels");
+    const n = r.length;
+    items.push(
+      item(
+        `(${n} element${n === 1 ? "" : "s"} as in your last list of this site: ${r.join(", ")})`,
+      ),
+    );
+  }
+  return items;
+}
+
 /** A JSON string, as mcp.rs prints a title or a query: quoted, its quotes escaped. */
 const quoted = (/** @type {string} */ s) => JSON.stringify(s);
 
@@ -113,6 +143,7 @@ export function toolResult(name, args, result) {
 function success(name, args, result) {
   const tab = String(args.tab ?? "");
   const elements = args.elements === true;
+  const filtered = args.query !== undefined || args.kinds !== undefined;
   switch (name) {
     case "vimma_tabs": {
       if (!Array.isArray(result?.tabs)) throw new Broken("Vimma's result has no tabs list");
@@ -148,29 +179,28 @@ function success(name, args, result) {
       return items;
     }
     case "vimma_open":
-      return openItems(String(args.url ?? ""), field(result, "tab"), elements, result);
+      return openItems(String(args.url ?? ""), field(result, "tab"), elements, filtered, result);
     case "vimma_close_tab":
       if (result?.closed !== true) throw new Broken("Vimma's result does not say closed");
       return [item(`Closed tab ${tab} of Vimma's agent workspace.`)];
     case "vimma_keys":
       return keysText(tab, result);
     case "vimma_elements": {
-      const list = wrappedList(result?.elements, result?.dropped);
-      if (!list) {
-        throw new Broken("Vimma's element list is not inside the untrusted-content delimiters");
-      }
-      return [
-        item(untrustedHeader(field(result, "url"), field(result, "title"))),
-        item(elementsIntro(tab, list.dropped)),
-        item(list.wrapped),
-      ];
+      const header = untrustedHeader(field(result, "url"), field(result, "title"));
+      return [item(header), ...listItems(tab, filtered, result)];
     }
     case "vimma_activate":
-      return afterStep(tab, elements, result, [
+      return afterStep(tab, elements, filtered, result, [
         `Clicked ${args.label} in tab ${tab} of Vimma's agent workspace, in the background.`,
       ]);
     case "vimma_fill":
-      return fillText(tab, Array.isArray(args.fields) ? args.fields.length : 0, elements, result);
+      return fillText(
+        tab,
+        Array.isArray(args.fields) ? args.fields.length : 0,
+        elements,
+        filtered,
+        result,
+      );
     case "vimma_screenshot":
       return screenshotItems(tab, args.labels === true, result);
     case "vimma_console":
@@ -262,16 +292,17 @@ function keysText(tab, result) {
   return items;
 }
 
-/** @param {string} tab @param {number} dropped */
-function elementsIntro(tab, dropped) {
+/**
+ * What an element list is (agent-speed S3): how to read it is in vimma_elements' description,
+ * sent once; each result still says that its text is the page's.
+ * @param {string} tab @param {number} dropped @param {boolean} filtered
+ */
+function elementsIntro(tab, dropped, filtered) {
   const said =
-    `The buttons, fields, links and other clickable elements on screen in tab ${tab} of ` +
-    "Vimma's agent workspace, one JSON object a line, each with its label (untrusted web " +
-    "content: texts, names, values and URLs are the page's). The forms come first; an element " +
-    "in a form names its number. Fields marked sensitive (passwords, payment cards, one-time " +
-    "codes) show no value: ask the user to type them. Follow a link with vimma_keys and f plus " +
-    "its label, such as fsd, within 2 minutes and before the page changes; scroll with " +
-    "vimma_keys for more.";
+    `The elements on screen in tab ${tab} of Vimma's agent workspace` +
+    (filtered ? " that match your query and kinds" : "") +
+    ", one JSON object a line as vimma_elements describes (untrusted web content: texts, " +
+    "names, values and URLs are the page's):";
   return dropped > 0
     ? `${dropped} more elements were left out (at most 200 are listed). ${said}`
     : said;
@@ -289,12 +320,15 @@ const UNLISTED = Object.freeze({
 
 /**
  * A step's element list as items, or why there is none (mcp.rs, `step_list`).
- * @param {string} tab @param {boolean} asked @param {any} result
+ * @param {string} tab @param {boolean} asked @param {boolean} filtered @param {any} result
  * @returns {{ list: ToolContent[], unlisted: string | null }}
  */
-function stepList(tab, asked, result) {
+function stepList(tab, asked, filtered, result) {
   const hasList = result.elements !== undefined || result.dropped !== undefined;
   const unlisted = result.unlisted;
+  if (!hasList && result.repeated !== undefined) {
+    throw new Broken("Vimma's result has repeated labels without an element list");
+  }
   if (!asked) {
     if (hasList || unlisted !== undefined) {
       throw new Broken("Vimma's result has an element list other than asked");
@@ -302,11 +336,7 @@ function stepList(tab, asked, result) {
     return { list: [], unlisted: null };
   }
   if (hasList && unlisted === undefined) {
-    const list = wrappedList(result.elements, result.dropped);
-    if (!list) {
-      throw new Broken("Vimma's element list is not inside the untrusted-content delimiters");
-    }
-    return { list: [item(elementsIntro(tab, list.dropped)), item(list.wrapped)], unlisted: null };
+    return { list: listItems(tab, filtered, result), unlisted: null };
   }
   if (!hasList && typeof unlisted === "string") {
     const why = /** @type {Record<string, string>} */ (UNLISTED)[unlisted];
@@ -317,19 +347,22 @@ function stepList(tab, asked, result) {
   throw new Broken("Vimma's result has both an element list and a reason for none");
 }
 
-/** @param {string} url @param {string} tab @param {boolean} elements @param {any} result */
-function openItems(url, tab, elements, result) {
+/**
+ * @param {string} url @param {string} tab @param {boolean} elements @param {boolean} filtered
+ * @param {any} result
+ */
+function openItems(url, tab, elements, filtered, result) {
   const opened = `Opened ${url} in tab ${tab} of Vimma's agent workspace, in the background.`;
   if (!elements) {
     if (result.url !== undefined || result.title !== undefined) {
       throw new Broken("Vimma's result has a page other than asked");
     }
-    stepList(tab, false, result);
+    stepList(tab, false, false, result);
     return [item(`${opened} Read it with vimma_read_page.`)];
   }
   const page = field(result, "url");
   const title = field(result, "title");
-  const { list, unlisted } = stepList(tab, true, result);
+  const { list, unlisted } = stepList(tab, true, filtered, result);
   const lines = [opened, ...(unlisted ? [unlisted] : [])];
   return [item(untrustedHeader(page, title)), item(lines.join("\n")), ...list];
 }
@@ -419,8 +452,11 @@ function screenshotItems(tab, asked, result) {
 
 const LABEL = /^[asdfghjkl]{1,3}$/;
 
-/** @param {string} tab @param {number} asked @param {boolean} elements @param {any} result */
-function fillText(tab, asked, elements, result) {
+/**
+ * @param {string} tab @param {number} asked @param {boolean} elements @param {boolean} filtered
+ * @param {any} result
+ */
+function fillText(tab, asked, elements, filtered, result) {
   const filled = result.filled;
   if (!Number.isInteger(filled) || filled < 0 || filled > asked) {
     throw new Broken("Vimma's result has no count of filled fields");
@@ -446,7 +482,7 @@ function fillText(tab, asked, elements, result) {
         "which Vimma does not send; tell the user.",
     );
   }
-  return afterStep(tab, elements, result, lines);
+  return afterStep(tab, elements, filtered, result, lines);
 }
 
 const CHANGES = Object.freeze({
@@ -483,15 +519,16 @@ const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
 
 /**
  * The page after a click or a fill (mcp.rs, `after_step`).
- * @param {string} tab @param {boolean} elements @param {any} result @param {string[]} lines
+ * @param {string} tab @param {boolean} elements @param {boolean} filtered @param {any} result
+ * @param {string[]} lines
  * @returns {ToolContent[]}
  */
-function afterStep(tab, elements, result, lines) {
+function afterStep(tab, elements, filtered, result, lines) {
   const url = field(result, "url");
   const title = field(result, "title");
   const loading = flag(result, "loading");
   const navigated = flag(result, "navigated");
-  const { list, unlisted } = stepList(tab, elements, result);
+  const { list, unlisted } = stepList(tab, elements, filtered, result);
   const listed = list.length > 0;
   const gone = listed
     ? "Labels of the old page are gone; the new page's are listed below."
