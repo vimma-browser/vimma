@@ -474,7 +474,8 @@ agent to a part of the profile, or publishes which steps always ask.
     51 steps and 490,000 tokens for ten items, so delivery PR 3 sets 100 steps and 2,000,000
     tokens, because 60 and 1,000,000 leave a model no room for the detours every measured model
     took. Two more stops come from the same results: a task ends when the same call (the same
-    tool and arguments) is refused three times in a row, because a model that repeats a refused
+    tool and arguments) has its arguments refused or is denied three times in a row (a page
+    still loading or a rate clears by itself, so waiting and asking again is no repeat), because a model that repeats a refused
     call does not learn from the refusal (one sent the same refused call 18 times) and each
     repeat spends a step and a turn's tokens; and a server error (HTTP 500 and above) ends only
     the model's turn, which the next turn is told of, because local servers abort a turn now and

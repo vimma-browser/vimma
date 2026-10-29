@@ -1642,7 +1642,8 @@ profile when no primary password is set. Other processes running as the user are
   [`a provider error is cut and never contains the key`](../packages/vimma-core/test/agent-providers.test.mjs)
 - M41. At most `[agent] max_running` conversations (default 3) **must** run a task at once. A
   task **must** stop at its budget (`max_steps`, `max_tokens`, `max_cost`), which nothing the
-  model writes raises, and after the same call is refused three times in a row; `ctrl+b shift+a`
+  model writes raises, and after the same call has its arguments refused or is denied three
+  times in a row; `ctrl+b shift+a`
   with no question waiting **must** stop every running task.
   [`test_max_running`](../tests/browser/browser_vimma_agent_conversations.js),
   [`test_ctrl_b_shift_a_stops_every_task`](../tests/browser/browser_vimma_agent_conversations.js),
