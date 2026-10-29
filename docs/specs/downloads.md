@@ -54,8 +54,9 @@ Firefox's downloads UI is built for the mouse, and Vimma's hidden toolbar makes 
 
 ## Behaviour
 
-1. As a Vimma user, `ctrl+b d` (or `:downloads`) opens the downloads picker over the page. `Esc`,
-   `q` or `ctrl+b d` again closes it. Like the other pickers, it takes every key while open.
+1. As a Vimma user, `ctrl+b d` (or `:downloads`) opens the downloads picker over the page. `Esc` or
+   `q` closes it. Like the other pickers, it takes every key while open, `ctrl+b` included, so a
+   second `ctrl+b d` does not close it.
 2. As a Vimma user in a normal window, the picker lists this profile's downloads, newest first:
    those of this session and, after them, the newest from history, up to 100 rows in all. Two
    sections, `active` (in progress, paused, blocked) and `recent` (the rest), as tab search shows
@@ -74,59 +75,68 @@ Firefox's downloads UI is built for the mouse, and Vimma's hidden toolbar makes 
 7. As a Vimma user, the keys in the picker act on the highlighted download (table below). A key
    that does not apply to the download's state does nothing and says why in the notice line
    (`not finished yet`, `the file is missing`).
-8. As a Vimma user, `D` (delete the file) and `c` (cancel) ask `y/N` first; nothing else asks
-   Vimma's own question.
+8. As a Vimma user, `shift+d` (delete the file) and `c` (cancel) ask `y/N` first; nothing else
+   asks Vimma's own question. `shift+d`, `c` and `!` close the picker before their question or
+   dialog shows, so the answer goes to the question and never to the picker.
 9. As a Vimma user, opening a finished program or script shows Firefox's own "this file is
    executable" prompt first, as Firefox does from its panel; opening a file Firefox shows itself
    (a PDF, an image) opens it in a tab.
-10. As a Vimma user, a download Firefox blocked (an `http:` download, too many downloads from one
-    page, or a Safe Browsing verdict in a build that has one) is listed as `blocked` with
-    Firefox's reason. `Enter` on it shows the reason and the keys that apply; `!` opens Firefox's
-    own dialog to allow or remove it, whose default button removes the file and whose `Esc`
-    cancels. An allowed file is opened with `o` afterwards, never from the dialog. When
-    `browser.safebrowsing.allowOverride` is `false`, `!` does nothing and says so.
+10. As a Vimma user, a download Firefox blocked by a verdict (an `http:` file from an `https:`
+    page, a content-analysis verdict, or a Safe Browsing verdict in a build that has one) is listed
+    as `blocked` with Firefox's reason. `Enter` on it shows the reason and the keys that apply; `!`
+    opens Firefox's own dialog to allow or remove it, whose default button removes the file and
+    whose `Esc` cancels. An allowed file is opened with `o` afterwards, never from the dialog. `!`
+    does nothing, and says why, when `browser.safebrowsing.allowOverride` is `false` or the verdict
+    is `Malware`; for a `Malware` verdict from content analysis `shift+d` does nothing either, as in
+    Firefox's panel. Downloads Firefox blocked because one page started too many are not listed:
+    Firefox's panel shows them (Behaviour 14).
 11. As a Vimma user, a download from the agent workspace is never opened from the picker: `o` and
     `Enter` say `agent downloads are never opened by Vimma`, as Firefox's own panel already does
-    in Vimma. `!` and `r` do nothing on it. `s`, `y`, `Y`, `d` and `D` work.
+    in Vimma. `shift+o`, `u`, `!` and `r` do nothing on it and say why. `s`, `y`, `shift+y`, `d` and
+    `shift+d` work.
 12. As a Vimma user, while a download runs the status bar shows `↓ 42%` (`↓ 3 · 42%` for three,
     `↓ 3` while no size is known, `↓ paused` when all are paused). After the last one ends it
-    shows `↓ done`, `↓ failed` or `↓ blocked` until the picker is next opened in that window.
-    `failed` and `blocked` are in the error colour.
+    shows `↓ done` for 10 seconds, and `↓ failed` or `↓ blocked` until the picker is next opened in
+    that window. `failed` and `blocked` are in the error colour.
 13. As a screen-reader user, a download that finishes, fails or is blocked is announced once in
     the status bar's live region (`download finished: report.pdf`), and the segment's text says
     `downloading 42%` rather than the arrow.
 14. As a Vimma user, starting a download no longer opens Firefox's downloads panel or shows the
-    hidden toolbar. The toolbar's downloads button and its panel still work when the toolbar is
-    shown (`ctrl+b u`).
-15. As a Vimma user, `L` in the picker opens Firefox's full downloads view (the Library, or
+    hidden toolbar, the first download of a new profile included. A download Firefox blocks still
+    opens the panel, with the toolbar, as in Firefox, because that panel is Firefox's warning. The
+    toolbar's downloads button and its panel still work when the toolbar is shown (`ctrl+b u`).
+15. As a Vimma user, `shift+l` in the picker opens Firefox's full downloads view (the Library, or
     `about:downloads` in a private window), as `ctrl+shift+y` does.
 16. As a Vimma user on macOS, `ctrl+b d` and every picker key are the same as on Linux; "show in
     folder" shows the file in Finder.
 17. As an agent, `vimma_keys` cannot open the picker or act on a download, and no MCP tool lists
     or opens downloads.
 
-| Key        | Applies to                                  | Does                                                                                                                             |
-| ---------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `ctrl+b d` | anywhere (`downloads_picker`, `:downloads`) | opens or closes the picker                                                                                                       |
-| `j` / `k`  | the list                                    | move                                                                                                                             |
-| `/`        | the list                                    | filter (`Esc` back to the list)                                                                                                  |
-| `Enter`    | any                                         | the state's default: open (done), resume (paused), retry (failed, canceled), the reason and keys (blocked); in progress: nothing |
-| `o`        | done, file present                          | open the file, as Firefox would                                                                                                  |
-| `O`        | done, a type Firefox shows itself (PDF)     | open it in the system's app instead                                                                                              |
-| `s`        | file or `.part` present                     | show it in its folder (Finder on macOS)                                                                                          |
-| `y`        | any                                         | copy the download's link                                                                                                         |
-| `Y`        | file present                                | copy the file's path                                                                                                             |
-| `p`        | in progress, or paused                      | pause or resume                                                                                                                  |
-| `c`        | in progress, or paused                      | cancel, after `y/N`; the partial file is removed                                                                                 |
-| `r`        | failed, canceled                            | retry                                                                                                                            |
-| `u`        | a download with a referring page            | open the page it came from in a new tab                                                                                          |
-| `d`        | stopped (done, failed, canceled, blocked)   | remove from the list and from history; the file stays                                                                            |
-| `D`        | file, `.part` or blocked data present       | delete the file, after `y/N`                                                                                                     |
-| `!`        | blocked, with data kept                     | Firefox's dialog: allow (keep or open) or remove                                                                                 |
-| `L`        | any                                         | Firefox's full downloads view (`downloads`)                                                                                      |
-| `Esc`, `q` | the list                                    | close                                                                                                                            |
+| Key        | Applies to                                                                      | Does                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `ctrl+b d` | anywhere (`downloads_picker`, `:downloads`)                                     | opens the picker                                                                                                                 |
+| `j` / `k`  | the list                                                                        | move                                                                                                                             |
+| `/`        | the list                                                                        | filter (`Esc` back to the list)                                                                                                  |
+| `Enter`    | any                                                                             | the state's default: open (done), resume (paused), retry (failed, canceled), the reason and keys (blocked); in progress: nothing |
+| `o`        | done, file present                                                              | open the file, as Firefox would                                                                                                  |
+| `shift+o`  | done, a type Firefox shows itself (PDF)                                         | open it in the system's app instead                                                                                              |
+| `s`        | file or `.part` present                                                         | show it in its folder (Finder on macOS)                                                                                          |
+| `y`        | any                                                                             | copy the download's link                                                                                                         |
+| `shift+y`  | file present                                                                    | copy the file's path                                                                                                             |
+| `p`        | in progress, or paused                                                          | pause or resume                                                                                                                  |
+| `c`        | in progress, or paused                                                          | cancel, after `y/N`; the partial file is removed                                                                                 |
+| `r`        | failed, canceled                                                                | retry                                                                                                                            |
+| `u`        | a download with a referring page                                                | open the page it came from in a new tab                                                                                          |
+| `d`        | stopped (done, failed, canceled, blocked)                                       | remove from the list and from history; the file stays                                                                            |
+| `shift+d`  | file, `.part` or blocked data present; not a content-analysis `Malware` verdict | delete the file, after `y/N`                                                                                                     |
+| `!`        | blocked, with data kept; not a `Malware` verdict                                | Firefox's dialog: allow or remove                                                                                                |
+| `shift+l`  | any                                                                             | Firefox's full downloads view (`downloads`)                                                                                      |
+| `Esc`, `q` | the list                                                                        | close                                                                                                                            |
 
-No config key is added.
+Upper-case keys are written `shift+o`, `shift+y`, `shift+d` and `shift+l`, as the add-on picker's
+`shift+p` is (core `picker.mjs`, `ADDON_KEYS`). These keys work in the picker's browse mode; after
+`/` every key types into the filter. `Enter` gains each state's action in the sub-PR that adds that
+action (Delivery). No config key is added.
 
 ## Research
 
@@ -155,9 +165,12 @@ No config key is added.
 - **Actions.** The panel and the Library share one command set,
   `browser/components/downloads/DownloadsViewUI.sys.mjs:1159-1290`, each enabled by
   `isCommandEnabled` (`:1097-1145`): `cancel` (cancels, then `removePartialData`), `pauseResume`,
-  `retry` (`download.start()`), `open` (`DownloadsCommon.openDownload`, `:606`, which is
-  `download.launch`), `openInSystemViewer` (`useSystemDefault: true`), `show`
-  (`nsIFile.reveal`, falling back to opening the parent folder, `:620-660`), `openReferrer`,
+  `retry` (`download.start()`), `open` and `openInSystemViewer` (both
+  `DownloadsCommon.openDownload`, `DownloadsCommon.sys.mjs:606`, which is `download.launch`; the
+  second with `useSystemDefault: true`; `DownloadsViewUI.sys.mjs:1172-1176`, `:1233-1239`), `show`
+  (`DownloadsCommon.showDownloadedFile`, `DownloadsViewUI.sys.mjs:1192-1195`: `nsIFile.reveal`,
+  falling back to `showDirectory` on the parent folder, `DownloadsCommon.sys.mjs:620-660`),
+  `openReferrer`,
   `delete` (`DownloadsCommon.deleteDownload`, `:356`: removes the Places entry and the list
   entry, and confirms the block of blocked data), `deleteFile`
   (`DownloadsCommon.deleteDownloadFiles`, `:388`, whose history handling follows
@@ -213,6 +226,22 @@ No config key is added.
   the panel's subview offers allow and remove.
   `isCommandEnabled` allows every unblock command only with `hasBlockedData` and
   `allowOverride` (`DownloadsViewUI.sys.mjs:1109-1114`).
+- **When the panel opens by itself.** `_notifyDownloadEvent` (`DownloadsCommon.sys.mjs:1031-1078`)
+  returns early, animating the button only, when the event is not `error` and the panel was shown
+  before (`browser.download.panel.shown`, default `false`, `firefox.js:939`) and
+  `browser.download.alwaysOpenPanel` does not ask for it (`:1056-1068`). So a profile's first
+  download opens the panel whatever `alwaysOpenPanel` says, and an `error` event opens it always.
+  `onDownloadAdded` sends `error` for every download blocked by a reputation or content-analysis
+  verdict (`:917-921`), `Insecure` included. A download blocked as spam opens the panel when no
+  other download is running (`DownloadSpamProtection.sys.mjs:126-140`).
+- **Spam lists.** Downloads blocked because a page started too many are `DownloadSpam` objects in
+  a per-window `DownloadList` (`DownloadSpamProtection.sys.mjs`, `spamList`, `getSpamListForWindow`
+  and `register(view, window)`, `:245-290`), not in `Downloads.getList` or `DownloadHistory`. Such an
+  item stands for a URL and a count, not a file.
+- **Content-analysis verdicts.** For a download blocked by content analysis with a `Malware`
+  verdict, the panel's subview hides both unblock and delete (`content/downloads.js:1748-1755`).
+  `confirmUnblockDownload` words its message by verdict and by whether reputation or content
+  analysis blocked it (`DownloadsCommon.sys.mjs:736-748`).
 - **Keys.** Firefox's `key_openDownloads` is `ctrl+shift+y` on Linux and `cmd+j` on macOS
   (`browser/base/content/browser-sets.inc.xhtml:179-186`,
   `browser/locales/en-US/browser/browserSets.ftl:59-63`). Vimma binds the Linux chord as
@@ -260,7 +289,7 @@ download list view and runs each action through Firefox's own objects. The picke
    next to `downloads`, default `prefix+d`, so that the key is the feature's initial and sits with
    the other pickers on the prefix (`ctrl+b g`, `ctrl+b w`, `ctrl+b e`). The command line gets
    `:downloads`. `ctrl+shift+y` keeps Firefox's meaning (the Library), because Vimma binds
-   Firefox's chords with Firefox's meaning ([firefox-keys](firefox-keys.md)); `L` in the picker
+   Firefox's chords with Firefox's meaning ([firefox-keys](firefox-keys.md)); `shift+l` in the picker
    reaches the same view. The key is the same on macOS, since the prefix is `ctrl+b` there too and
    `MAC_KEYS` changes only `alt` chords. tmux uses `prefix d` to detach a client, which has no
    meaning in a browser.
@@ -269,7 +298,7 @@ download list view and runs each action through Firefox's own objects. The picke
    source, so that a file downloaded before a restart is still one key away; a private window lists
    `Downloads.getList(Downloads.PRIVATE)`, as Firefox's panel does there, so that no private
    download reaches a normal window and none outlives its session. The cap of 100 keeps the
-   picker's DOM and its filter fast; `L` opens the Library for the rest. Rows are ordered by start
+   picker's DOM and its filter fast; `shift+l` opens the Library for the rest. Rows are ordered by start
    time, newest first, in two sections: `active` (downloading, paused, blocked with data kept) and
    `recent` (everything else).
 4. **One list for every workspace.** The picker is not filtered by workspace, because Firefox
@@ -279,8 +308,8 @@ download list view and runs each action through Firefox's own objects. The picke
    downloads are listed with `◇`, since they are on the user's disk and the user may need to find
    or delete them.
 5. **Every action is Firefox's.** `host/download-ops.mjs` calls the same functions as Firefox's
-   panel: `Download.launch`, `DownloadsCommon.openDownload` with `useSystemDefault`,
-   `Download.showContainingDirectory`, `Download.start`, `Download.cancel`,
+   panel: `DownloadsCommon.openDownload` for both opens (with `useSystemDefault: true` for
+   `shift+o`), `DownloadsCommon.showDownloadedFile` for `s`, `Download.start`, `Download.cancel`,
    `Download.removePartialData`, `DownloadsCommon.deleteDownload`,
    `DownloadsCommon.deleteDownloadFiles` (with `browser.download.clearHistoryOnDelete`),
    `DownloadsCommon.copyDownloadLink` and `DownloadsCommon.confirmUnblockDownload`. Which keys
@@ -288,48 +317,70 @@ download list view and runs each action through Firefox's own objects. The picke
    `downloadKeys` and tested against the same cases. So the executable prompt, the private and
    container flags of a file opened in a tab, Gatekeeper on macOS, and Vimma's refusal to open an
    agent download (`ctl/AgentDownloads.sys.mjs`, `launchDownload`) hold in the picker without
-   being re-implemented. Vimma never calls `nsIFile.launch` or `nsIFile.reveal` itself (rule C2).
-6. **`D` and `c` ask; nothing else does.** Deleting a file and cancelling a download (which
+   being re-implemented. Vimma never calls `nsIFile.launch`, `nsIFile.reveal`,
+   `DownloadIntegration.launchDownload` or `DownloadUIHelper.loadFileIn` itself (rule C2).
+6. **`shift+d` and `c` ask; nothing else does.** Deleting a file and cancelling a download (which
    removes its partial data) ask `y/N` with `RenamePrompt.ask`, because they cannot be undone and a
-   single key in a list is easier to hit by mistake than Firefox's context-menu item. `d` removes
+   single key in a list is easier to hit by mistake than Firefox's context-menu item. The picker
+   closes before the question shows, as the add-on picker closes before its remove question
+   (`host/VimmaHost.sys.mjs`, the `remove` case), because an open picker takes every key first
+   (`VimmaHost.sys.mjs`, "A picker takes every key"), so the `y` would otherwise reach the picker.
+   `!` closes it before Firefox's dialog for the same reason. `d` removes
    only the list and history entry and keeps the file, so it does not ask, as in Firefox. The
    answer stands for the download that was asked about: if it changed state before `y`
    (finished, removed elsewhere), nothing happens and the notice says so, as the add-on picker's
    remove does.
 7. **Blocked downloads keep Firefox's dialog.** `!` calls
-   `DownloadsCommon.confirmUnblockDownload` with the verdict and the dialog type
+   `DownloadsCommon.confirmUnblockDownload` with the verdict, both `becauseBlockedByReputationCheck`
+   and `becauseBlockedByContentAnalysis` (the dialog words its message by them), and the dialog type
    `chooseUnblock`, and runs what it returns (`unblock` or `confirmBlock`), so that a blocked
    download is released only through Firefox's own warning, in Firefox's wording. Vimma always
    uses `chooseUnblock`, whose default button removes the file, and never `chooseOpen`, whose
    default opens it, so that `!` followed by a habitual `Enter` cannot run a blocked file; opening
-   it is a separate `o`. For every verdict, `Malware` included, Vimma offers what the panel offers,
-   because the panel is Firefox's main downloads UI and its dialog states the risk. `!` is offered only with
-   `hasBlockedData`, `browser.safebrowsing.allowOverride` on, and not for an agent download.
+   it is a separate `o`. `!` is offered only with `hasBlockedData`,
+   `browser.safebrowsing.allowOverride` on, a verdict other than `Malware`, and not for an agent
+   download. A `Malware` verdict can only be removed, as in the Library
+   (`DownloadsViewUI.sys.mjs:813-833`), because a file a scanner calls malware is the one case where
+   a keyboard path to "allow" adds risk and no use; the panel's subview would allow it, and open
+   question 8 asks whether to follow the panel instead. For a content-analysis `Malware` verdict
+   `shift+d` is refused too, as the panel hides delete there (`content/downloads.js:1748-1750`),
+   because the content-analysis agent, not the user, owns that file; `d` still removes the row.
    `Enter` on a blocked row never unblocks: it puts the verdict's text and the applicable keys in
-   the notice line. `D` on a blocked row runs `confirmBlock` after `y/N`. Rejected: a Vimma
+   the notice line. `shift+d` on a blocked row runs `confirmBlock` after `y/N`. Rejected: a Vimma
    question in the notice line in place of Firefox's dialog, because it would be a second wording
    of a security warning to keep in step with Firefox's; one key to unblock, because Firefox never
    releases a blocked file in one step.
 8. **Agent downloads stay under the agent rules.** In the picker, an agent download (by the test
    `ctl/AgentDownloads.sys.mjs` already uses: its container, its tab's container, or a path in the
-   quarantine folder) refuses `o`, `O`, `Enter`'s open, `r` and `!` with the existing notice, because
-   [vimma-mcp](vimma-mcp.md) decision 31 owns how such a file is admitted and docs/security.md M12
-   says it is never opened by Vimma. The refusal of `o` is checked twice: by the picker, so the
+   quarantine folder) refuses `o`, `shift+o`, `Enter`'s open, `r` and `!` with the existing notice,
+   because [vimma-mcp](vimma-mcp.md) decision 31 owns how such a file is admitted and
+   docs/security.md M12 says it is never opened by Vimma. It refuses `u` too, because the referring
+   page was chosen by the agent, and opening it would load that page in the user's workspace and
+   container, with the user's cookies. The refusal of `o` is checked twice: by the picker, so the
    key says why at once, and by the `launchDownload` override, which stays the rule.
 9. **A `downloads` segment on the status bar.** Core `downloadSegment(summary)` turns the window's
    list (Firefox's `DownloadsCommon.summarizeDownloads` fields: count, paused, percent, time left)
-   into a right-side segment: `↓ 42%`, `↓ 3 · 42%`, `↓ 3`, `↓ paused`, then `↓ done`, `↓ failed` or
-   `↓ blocked` until the picker is next opened in that window, as Firefox's indicator keeps its
-   attention until the panel opens. Progress and `done` are dim (`--vimma-fg-dim`, priority 6.5,
+   into a right-side segment: `↓ 42%`, `↓ 3 · 42%`, `↓ 3`, `↓ paused`; then `↓ done` for 10
+   seconds, because a finished download needs no action and the bar's width is shared with the URL
+   and the title; and `↓ failed` or `↓ blocked` until the picker is next opened in that window, as
+   Firefox's indicator keeps its attention until the panel opens, because those wait to be seen
+   (open question 5 asks whether `done` should stay as long). Progress and `done` are dim (`--vimma-fg-dim`, priority 6.5,
    so they give way before the title); `failed` and `blocked` use `--vimma-text-error` and
    priority 3, so they outlast the title, because a blocked file waits for a decision. The arrow
    is never the only carrier: the segment's accessible text is `downloading 42%`, `download
 blocked`, and so on, and the end of each download is announced once (m7-a11y: no meaning by
    colour or glyph alone). A private window's segment counts its private downloads only.
-10. **Firefox's panel stops opening by itself.** Vimma sets `browser.download.alwaysOpenPanel` to
-    `false` in `firefox-branding.js`, because with the toolbar hidden the panel brings the whole
-    toolbar over the page for every first download of a burst, and the status-bar segment now
-    carries that news. The downloads button and its panel stay, so a user with the toolbar shown
+10. **Firefox's panel stops opening for ordinary downloads.** Vimma sets
+    `browser.download.alwaysOpenPanel` to `false` and `browser.download.panel.shown` to `true` in
+    `firefox-branding.js`, because with the toolbar hidden the panel brings the whole toolbar over
+    the page for every first download of a burst, and the status-bar segment now carries that news;
+    both are needed, since a profile whose panel never showed opens it on its first download
+    whatever `alwaysOpenPanel` says (Research). A blocked download (an `error` event, or a spam
+    block with no other download running) still opens the panel, because that panel is Firefox's
+    warning about a file it refused, and a warning that pushes the toolbar over the page once is
+    better than one the reader misses; stopping it would need an upstream patch to
+    `_notifyDownloadEvent` and `DownloadSpamProtection`, with a line in [ADR-003](../adr/003-own-files-minimal-patches.md), for no gain in
+    safety. The downloads button and its panel stay, so a user with the toolbar shown
     keeps Firefox's UI, and the pref can be set back in `about:config`. Rejected: removing the
     button or the panel, because they are the mouse path and cost nothing while hidden; flipping
     the pref only while the toolbar is hidden, because a pref that changes with the UI state would
@@ -348,7 +399,7 @@ blocked`, and so on, and the end of each download is announced once (m7-a11y: no
     parsed as HTML (rule C1), because a file name and a referrer are chosen by the page. The row
     shows the host, never the full URL, as the agent's download question does, so that a token in
     a download link is not on screen; `y` copies the full link on request.
-14. **`Y` copies the path.** The file's path is copied as text, because "show in folder" depends
+14. **`shift+y` copies the path.** The file's path is copied as text, because "show in folder" depends
     on a file manager that a tiling desktop may not run (Research: on Linux `reveal` reports
     success even when nothing opens), and a terminal user can paste the path instead.
 15. **macOS and Linux differ only where Firefox does.** `s` says `shown in Finder` on macOS and
@@ -365,6 +416,12 @@ blocked`, and so on, and the end of each download is announced once (m7-a11y: no
     (they change the stored handler of a MIME type, so a later download of that type opens by
     itself; Settings → Applications and `about:downloads` keep them); clearing the whole list;
     dragging a file out; choosing an app to open with; multi-select. Each can be its own change.
+18. **Spam blocks are not listed.** The picker does not show the downloads Firefox blocked because
+    one page started too many, because they live in a per-window spam list, not in the downloads
+    lists, and stand for a URL and a count, with no file to open, show or delete. Firefox's panel
+    opens for them (decision 10) and keeps its own allow and remove buttons there. Rejected:
+    registering the picker as a view of that list, because every key but `!` would need a spam-only
+    meaning for a case Firefox's panel already covers.
 
 ## Security and privacy
 
@@ -375,16 +432,23 @@ agent-download rules M11-M13 all apply. What changes:
 
 - **Rule C2 gains a third exception.** Opening a download and showing it in its folder hand a file
   to the OS, which is starting a process in C2's sense. `docs/security.md` C2 gets: chrome code may
-  ask Firefox to open a download or show it in its folder only through `Download.launch`,
-  `DownloadsCommon.openDownload` and `Download.showContainingDirectory`, only from
+  ask Firefox to open a download or show it in its folder only through
+  `DownloadsCommon.openDownload` and `DownloadsCommon.showDownloadedFile`, only from
   `host/download-ops.mjs`, and only on a key the user pressed in the picker. The chrome-source test
-  widens its pattern from `.launch()` to any `.launch(` and allows exactly those call sites.
+  gets a second pattern for every call that hands a file to the OS or opens it: `.launch(` (any
+  arguments), `.reveal(`, `openDownload(`, `showDownloadedFile(`, `showDirectory(`,
+  `launchDownload(`, `loadFileIn(`, `launchWithFile(` and `showContainingDirectory(`. It allows
+  `openDownload(` and `showDownloadedFile(` in `host/download-ops.mjs` only, and the
+  `launchDownload` override that `ctl/AgentDownloads.sys.mjs` already has, and no other match.
 - **A new section, "Downloads picker"**, with rules D1-D6: names, hosts, verdicts and paths are
   text (D1, also listed under C1); a private window lists only its private downloads and a normal
   window never one (D2); a blocked download is released only through
-  `confirmUnblockDownload`, never with `allowOverride` off and never for an agent download (D3);
-  an agent download is never opened, retried or unblocked from the picker (D4, beside M12);
-  `D` and `c` ask first and act only on the download asked about (D5); no agent role reaches
+  `confirmUnblockDownload` with the `chooseUnblock` dialog, never with `allowOverride` off, never
+  for a `Malware` verdict, and never for an agent download, and a content-analysis `Malware` file
+  is never deleted from the picker (D3); an agent download is never opened, opened in the system
+  app, retried, unblocked or followed to its referring page from the picker (D4, beside M12);
+  `shift+d` and `c` ask first with the picker closed, and act only on the download asked about
+  (D5); no agent role reaches
   the picker or the list (D6, beside M16).
 - **Privacy.** The rows show the host, not the URL (decision 13). The status-bar segment shows
   counts and a percentage, never a file name. A private download is visible only in its own
@@ -407,13 +471,16 @@ Written first and seen to fail.
   `an agent download carries the agent glyph`; `sections: active then recent, newest first`;
   `the list is capped at 100 rows`; `the keys that apply follow isCommandEnabled for each state`;
   `Enter is open, resume, retry, the reason or nothing by state`;
-  `unblock needs blocked data and allowOverride`; `an agent download refuses o, O, r and !`;
-  `D and c need a y/N; d does not`; `the filter matches name, host, state and workspace`;
+  `unblock needs blocked data and allowOverride`; `a Malware verdict refuses !`;
+  `a content-analysis Malware verdict refuses ! and shift+d`;
+  `an agent download refuses o, shift+o, u, r and !`;
+  `shift+d and c need a y/N; d does not`; `the filter matches name, host, state and workspace`;
   `the segment shows one, several, unknown size and paused`;
-  `done, failed and blocked stay until the picker is opened`;
+  `done goes after 10 seconds; failed and blocked stay until the picker is opened`;
   `failed and blocked outrank the title; progress gives way first`;
   `the segment's accessible text has no arrow`; `each end is announced once`.
 - `picker.test.mjs`: `a download row's keys give a download effect; / types them`;
+  `shift+d, c and ! close the picker before their effect`;
   `the highlight stays on its download when rows move`.
 - `actions.test.mjs`: `downloads_picker is downloads.picker, in Browser, on prefix+d`.
 - `agent-keys.test.mjs`: `downloads.picker is not an agent key action`.
@@ -438,18 +505,27 @@ test registers an `Integration.downloads` override that records `launchFile`,
 - `test_d_removes_the_entry_and_keeps_the_file`
 - `test_D_asks_and_deletes_the_file`
 - `test_an_answer_does_nothing_if_the_download_changed`
+- `test_the_y_answer_goes_to_the_question_never_to_the_picker`
+- `test_enter_in_firefoxs_unblock_dialog_never_reaches_the_picker`
 - `test_y_copies_the_link_and_Y_the_path`
 - `test_u_opens_the_referring_page`
 - `test_a_blocked_download_unblocks_only_through_firefoxs_dialog`
 - `test_no_unblock_when_allowOverride_is_false`
+- `test_a_malware_verdict_can_only_be_removed`
+- `test_a_content_analysis_malware_verdict_cannot_be_unblocked_or_deleted`
+- `test_spam_blocks_are_not_listed`
 - `test_names_with_html_stay_text`
 - `test_L_opens_firefoxs_downloads_view`
 - `test_the_status_bar_shows_progress_then_done_failed_or_blocked`
 - `test_starting_a_download_opens_no_panel_and_keeps_the_toolbar_hidden`
+- `test_a_new_profiles_first_download_opens_no_panel`
+- `test_a_blocked_download_still_opens_firefoxs_panel`
+- `test_a_second_ctrl_b_d_does_not_close_the_picker`
 
 In `browser_vimma_private_workspace.js`: `test_a_private_window_lists_only_private_downloads` and
 `test_a_normal_window_never_lists_a_private_download`. In `browser_vimma_mcp_downloads.js`:
-`test_the_picker_never_opens_an_agent_download` and `test_vimma_keys_cannot_open_the_downloads_picker`.
+`test_the_picker_never_opens_an_agent_download`,
+`test_the_picker_never_opens_an_agent_downloads_referring_page` and `test_vimma_keys_cannot_open_the_downloads_picker`.
 
 **e2e:** a scenario `downloads-picker.json` that starts a slow download from a fixture page under
 the Omarchy theme, saves baselines of the status bar's `↓` segment and of the open picker, and
@@ -459,16 +535,17 @@ checks the row's progress changes between two frames. The keymap sub-PR also scr
 ## Docs and changelog
 
 - `docs/guide.md`: a new section "Downloads" after "Add-ons" (the picker, its keys, blocked
-  downloads, agent downloads, macOS and Linux differences, `Y` on a desktop without a file
+  downloads, agent downloads, macOS and Linux differences, `shift+y` on a desktop without a file
   manager); "Status bar" (the `↓` segment); "Hiding the toolbar" (the panel no longer opens by
-  itself); "Firefox behaviour Vimma changes" (`browser.download.alwaysOpenPanel`); the Features at
+  itself, except for a blocked download); "Firefox behaviour Vimma changes"
+  (`browser.download.alwaysOpenPanel`, `browser.download.panel.shown`); the Features at
   a glance list.
 - `docs/bindings.md`, `docs/bindings.json` and `packages/vimma-core/defaults.toml` regenerated with
   `npm run gen-docs`; the help snapshot updated.
 - `docs/security.md`: C2 and the new section (Security and privacy above).
 - `CHANGELOG.md` `[Unreleased]`, one line per user-visible sub-PR: "Status bar shows downloads in
   progress and finished, failed or blocked ones; Firefox's downloads panel no longer opens by
-  itself", "`ctrl+b d` opens a downloads picker", "the downloads picker can pause, resume, cancel,
+  itself for an ordinary download", "`ctrl+b d` opens a downloads picker", "the downloads picker can pause, resume, cancel,
   retry, remove and delete", "the downloads picker shows blocked downloads and allows them through
   Firefox's dialog".
 
@@ -478,19 +555,23 @@ Each sub-PR is mergeable and tested on its own; only sub-PR 3 changes the keymap
 
 1. **`feat(core): downloads rows, keys and status segment`.** Core `downloads.mjs` and its vitest:
    states, rows, the key table, the segment. No user-visible change, so no guide or changelog line.
-2. **`feat(statusbar): show downloads in the status bar`.** The status-bar segment and its view in
-   `host/download-ops.mjs`, `browser.download.alwaysOpenPanel` off, the announcements; mochitests
-   for the segment and the panel; guide "Status bar", "Hiding the toolbar" and "Firefox behaviour
-   Vimma changes".
+2. **`feat(statusbar): show downloads in the status bar`.** The status-bar segment for downloads in
+   progress and paused, with its view in `host/download-ops.mjs`; `browser.download.alwaysOpenPanel`
+   off and `browser.download.panel.shown` on; mochitests for the segment and the three panel cases;
+   guide "Status bar", "Hiding the toolbar" and "Firefox behaviour Vimma changes". The end states
+   (`done`, `failed`, `blocked`) and their announcements wait for sub-PR 3, because two of them
+   clear only when the picker opens.
 3. **`feat(downloads): ctrl+b d opens a downloads picker`.** The action, `:downloads`, the picker
-   kind with listing, live updates, filter, `Enter`, `o`, `O`, `s`, `y`, `Y`, `u`, `L`; the
-   agent and private tests; C2 widened and the new docs/security.md section with D1, D2, D4 and
+   kind with listing, live updates, filter, `o`, `shift+o`, `s`, `y`, `shift+y`, `u`, `shift+l`,
+   and `Enter` as open; the segment's end states and announcements; the agent and private tests; C2 widened and the new docs/security.md section with D1, D2, D4 and
    D6, reviewed by a fresh agent. Regenerates the bindings docs and the help snapshot, with the
    `ctrl+b ?` screenshot and the e2e baselines.
-4. **`feat(downloads): pause, resume, cancel, retry, remove and delete`.** `p`, `c`, `r`, `d`, `D`
-   with the `y/N` questions and rule D5.
+4. **`feat(downloads): pause, resume, cancel, retry, remove and delete`.** `p`, `c`, `r`, `d`,
+   `shift+d` with the `y/N` questions (the picker closed first) and rule D5; `Enter` gains resume and
+   retry.
 5. **`feat(downloads): blocked downloads in the picker`.** The `blocked` state, `Enter`'s reason,
-   `!` through Firefox's dialog, `D` on blocked data, rule D3 (reviewed by a fresh agent). Sets this
+   `!` through Firefox's dialog, `shift+d` on blocked data, the `Malware` and content-analysis
+   refusals, rule D3 (reviewed by a fresh agent). Sets this
    spec to `implemented` and closes the issue.
 
 ## Open questions
@@ -504,7 +585,7 @@ Each sub-PR is mergeable and tested on its own; only sub-PR 3 changes the keymap
    exist, and the status bar covers watching.
 2. **The entry key.** (a) `ctrl+b d`, the initial, free in the default keymap; tmux's detach has
    no browser meaning. (b) `ctrl+b y`, after Firefox's `ctrl+shift+y`. (c) Rebind `ctrl+shift+y` to
-   the picker and leave the Library to `L` and `:firefox Tools:Downloads`, which breaks the rule that
+   the picker and leave the Library to `shift+l` and `:firefox Tools:Downloads`, which breaks the rule that
    Firefox's chords keep Firefox's meaning. **Recommendation: (a)**, because it is easy to remember
    and keeps Firefox's chord as Firefox's.
 3. **Which downloads one window lists.** (a) Every download of the profile (of the private
@@ -521,9 +602,9 @@ Each sub-PR is mergeable and tested on its own; only sub-PR 3 changes the keymap
    **Recommendation: (b)**, because the key asks to see the file, and the container only decides
    where it opens, not whether it is seen.
 5. **How long `↓ done` stays.** (a) Until the picker is opened in that window, as Firefox's
-   indicator keeps its attention until the panel opens (decision 9). (b) A fixed time, such as
-   10 seconds, for `done` only, with `failed` and `blocked` kept until the picker opens. (c) No
-   `done` at all, only progress and problems. **Recommendation: (b)**, because a finished download
+   indicator keeps its attention until the panel opens. (b) 10 seconds, for `done` only, with
+   `failed` and `blocked` kept until the picker opens (decision 9). (c) No `done` at all, only
+   progress and problems. **Recommendation: (b)**, because a finished download
    needs no action, the bar's width is shared with the URL and title, and a problem still waits to
    be seen.
 6. **"Always open similar files".** (a) Left out of the picker; Settings and `about:downloads`
@@ -537,3 +618,9 @@ Each sub-PR is mergeable and tested on its own; only sub-PR 3 changes the keymap
    so that an agent can find the file it fetched. **Recommendation: (a)** for this feature, because
    (b) is a new socket command that needs its own protocol and security rules, and (c) widens what an
    agent can read, which needs a design of its own; either can be its own issue.
+8. **Allowing a `Malware` verdict.** (a) Removal only, as Firefox's Library offers for every
+   `Malware` verdict (decision 7). (b) `!` as for other verdicts, through the same `chooseUnblock`
+   dialog, as Firefox's panel offers for a reputation `Malware` verdict (not for a content-analysis
+   one). **Recommendation: (a)**, because a file a scanner names as malware has no safe reason to
+   be allowed from a keyboard list, a user who must keep it can still allow it in Firefox's panel
+   or Library, and the stricter of Firefox's two UIs is the one a security rule can rest on.
