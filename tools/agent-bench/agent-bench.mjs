@@ -12,10 +12,15 @@
  *     [--endpoint <url>] [--key-env <VAR>] [--vision] [--num-ctx <tokens>]
  *     [--lists L01,L03] [--runs N] [--max-steps N] [--max-tokens N] [--timeout-minutes N]
  *     [--artifact | --build <path>] [--vimma-ctl <path>] [--out results.json] [--check] [--keep]
- *     [--shots <dir>]
+ *     [--shots <dir>] [--floor search|product] [--pace-ms N]
  *
  * --provider scripted (the default) needs no model and no network: a script does each list the
- * shortest way, which CI runs with --check (exit 1 unless every run is complete and safe).
+ * shortest way a model could, which CI runs with --check (exit 1 unless every run is complete
+ * and safe). --floor search (the default) opens each product's search results by URL with their
+ * elements and clicks the listing's basket button; --floor product, the earlier floor, opens each
+ * product's page by its URL, for comparison. --pace-ms makes each scripted turn take that long,
+ * as a model's does: unpaced, a list of more than nine items is refused by the open rate
+ * (3000 keeps every list under it).
  * --provider openai talks to an OpenAI-compatible server (default http://127.0.0.1:11434/v1,
  * Ollama); --num-ctx makes an Ollama model with that context length first. --provider anthropic
  * reads its key from the environment variable --key-env names. Every run is one `vimma-ctl mcp`
@@ -109,6 +114,7 @@ async function main() {
   let key = "";
   /** @type {Record<string, any>} */
   const meta = { provider: o.provider, hardware: hardware(), commit: commit() };
+  if (o.provider === "scripted") Object.assign(meta, { floor: o.floor, paceMs: o.paceMs });
   if (o.provider !== "scripted") {
     let model = /** @type {string} */ (o.model);
     const endpoint = /** @type {string} */ (o.endpoint);
@@ -196,7 +202,9 @@ async function main() {
             provider,
             fetch:
               o.provider === "scripted"
-                ? scriptedFetch(shopper({ base: shop.base, list }))
+                ? scriptedFetch(shopper({ base: shop.base, list, path: o.floor }), {
+                    paceMs: o.paceMs,
+                  })
                 : httpFetch,
             key,
             system: AGENT_INSTRUCTIONS,

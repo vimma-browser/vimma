@@ -20,13 +20,16 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 export class AgentPrompt {
   /**
    * @param {Window} win  a browser window
-   * @param {{ id?: string, color?: string }} [look]  the update question
-   *   (docs/specs/update-notices.md) is the same line with its own id and colour
+   * @param {{ id?: string, color?: string, parent?: () => Element | null }} [look]  the update
+   *   question (docs/specs/update-notices.md) is the same line with its own id and colour; the
+   *   built-in agent's prompt slot (docs/specs/builtin-agent.md Behaviour 27) is the same line
+   *   inside the chat window (`parent`), in place of the window's foot
    */
-  constructor(win, { id = AGENT_PROMPT_ID, color = "var(--vimma-text-cyan)" } = {}) {
+  constructor(win, { id = AGENT_PROMPT_ID, color = "var(--vimma-text-cyan)", parent } = {}) {
     this.win = win;
     this.id = id;
     this.color = color;
+    this.parent = parent ?? null;
     /** @type {HTMLElement | null} */
     this.el = null;
     /** @type {HTMLElement | null} */
@@ -158,7 +161,9 @@ export class AgentPrompt {
     container.append(panel);
     const statusBar = doc.getElementById(STATUSBAR_ID);
     const browser = doc.getElementById("browser");
-    if (statusBar) statusBar.before(container);
+    const parent = this.parent?.();
+    if (parent) parent.append(container);
+    else if (statusBar) statusBar.before(container);
     else if (browser) browser.after(container);
     else doc.body.append(container);
     this.el = container;

@@ -230,7 +230,8 @@ describe("command table", () => {
   });
 
   test("PENDING_ACTIONS are exactly the missing ones, not yet in actions.mjs", () => {
-    expect(PENDING_ACTIONS).toEqual([]);
+    // :agent's action comes with its key, one keymap change (docs/specs/builtin-agent.md B13).
+    expect(PENDING_ACTIONS).toEqual(["agent.command"]);
     for (const id of PENDING_ACTIONS) expect(ids.has(id)).toBe(false);
   });
 
@@ -520,5 +521,32 @@ describe(":firefox (docs/specs/firefox-keys.md decision 5)", () => {
     });
     expect(candidates.map((c) => c.value)).toEqual(["firefox Tools:Downloads"]);
     expect(candidates[0]?.description).toBe("Firefox command");
+  });
+});
+
+describe(":agent (docs/specs/builtin-agent.md Behaviour 14)", () => {
+  test("runs agent.command, with its words as text", () => {
+    expect(parseCommandLine(":agent")).toEqual(run("agent", "agent.command"));
+    expect(parseCommandLine(":agent stop")).toEqual(
+      run("agent", "agent.command", { text: "stop" }),
+    );
+  });
+
+  test("a hidden action's commands do not exist: not run, not completed, not suggested", () => {
+    const hidden = ["agent.command"];
+    expect(parseCommandLine(":agent", { hidden })).toMatchObject({
+      kind: "error",
+      error: { code: "unknown-command" },
+    });
+    expect(parseCommandLine(":agent_command", { hidden })).toMatchObject({
+      kind: "error",
+      error: { code: "unknown-command" },
+    });
+    const error = /** @type {any} */ (parseCommandLine(":agen", { hidden })).error;
+    expect(error.suggestions).not.toContain("agent");
+    const words = completeCommandLine(":agen", { hidden }).candidates.map((c) => c.value);
+    expect(words).not.toContain("agent");
+    expect(words).not.toContain("agent_command");
+    expect(completeCommandLine(":agen").candidates.map((c) => c.value)).toContain("agent");
   });
 });

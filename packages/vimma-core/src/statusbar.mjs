@@ -56,9 +56,11 @@ export { textWidth };
  * @property {string} [configFile]
  * @property {readonly string[]} [alerts]  persistent errors (containers off: no workspaces)
  * @property {FindStatus | null} [find]          the current `/` or `?` find (spec m1-find)
- * @property {{ waiting: number, minutes: number | null, ran: boolean } | null} [agent]  local AI
+ * @property {{ waiting: number, minutes: number | null, ran: boolean, builtin?: string | null }
+ *   | null} [agent]  local AI
  *   agents (docs/specs/vimma-mcp.md decision 24): questions waiting, the shortest grant's
- *   minutes left (Infinity for a grant of the whole connection), a request that just ran
+ *   minutes left (Infinity for a grant of the whole connection), a request that just ran, and
+ *   the built-in agent's running tasks (docs/specs/builtin-agent.md Behaviour 35)
  * @property {boolean} [toolbarHidden]  Firefox's toolbar is hidden (docs/specs/toolbar-toggle.md):
  *   the bar then carries its security and private-browsing cues; shown, those are left out
  * @property {SecurityLevel} [security]  the selected page's connection (securityFromState)
@@ -481,14 +483,17 @@ export function statusSegments(input) {
   if (agent) {
     // The glyph and the word carry it without colour (decision 24), as `◆ private` does.
     const word = `${AGENT_GLYPH} agent`;
-    const ran = agent.ran && !agent.waiting;
+    // The built-in agent's running tasks say their own progress (builtin-agent Behaviour 35).
+    const ran = agent.ran && !agent.waiting && !agent.builtin;
     const text = agent.waiting
       ? `${word} ${agent.waiting}?`
-      : ran
-        ? `${word} ·`
-        : agent.minutes !== null
-          ? `${word} ${agent.minutes === Infinity ? "granted" : `${agent.minutes}m`}`
-          : word;
+      : agent.builtin
+        ? agent.builtin
+        : ran
+          ? `${word} ·`
+          : agent.minutes !== null
+            ? `${word} ${agent.minutes === Infinity ? "granted" : `${agent.minutes}m`}`
+            : word;
     right.push(
       seg({
         id: "agent",

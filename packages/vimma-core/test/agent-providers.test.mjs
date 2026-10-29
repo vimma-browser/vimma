@@ -419,8 +419,15 @@ describe("checkEndpoint (B11, Behaviour 9)", () => {
     ["ftp://127.0.0.1/", false, "an endpoint must be an http:// or https:// address"],
     ["not a url", false, "an endpoint must be an http:// or https:// address"],
     ["https://user:pw@llm.example/", false, "an endpoint must not carry a user name or password"],
+    ["https://llm.example/v1?x=1", false, "an endpoint must not carry a query or a fragment"],
+    ["https://llm.example/v1#x", false, "an endpoint must not carry a query or a fragment"],
   ])("%s (local_only %s)", (endpoint, localOnly, error) => {
     expect(checkEndpoint(endpoint, { localOnly })).toBe(error);
+  });
+
+  test("an endpoint with a query or a fragment is refused", () => {
+    for (const e of ["https://llm.example/v1?k=v", "https://llm.example/v1#top"])
+      expect(checkEndpoint(e, { localOnly: false })).toMatch(/query or a fragment/);
   });
 });
 

@@ -240,3 +240,159 @@
     }
   }
 }
+
+/* The built-in agent's chat window (ui/agent-chat.mjs, docs/specs/builtin-agent.md Behaviour
+   11): wider than the tab list, in the command line's font. The model's lines sit indented
+   under their label, so none starts at the edge where Vimma's own lines do (B19); the prompt
+   slot is bordered, in the question line's look, between the transcript and the input. */
+#vimma-agent-chat {
+  width: min(420px, 45vw);
+  font-family: var(--vimma-font, monospace);
+
+  & .vimma-panel-header {
+    display: block;
+    border-bottom: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
+  }
+
+  & .vimma-agent-chat-head {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  & .vimma-agent-chat-head + .vimma-agent-chat-head {
+    font-size: 0.85em;
+    color: var(--vimma-fg-dim, GrayText);
+  }
+
+  & .vimma-agent-chat-log {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0.5rem 0.75rem;
+    outline: none;
+  }
+
+  & .vimma-agent-chat-entry {
+    margin-block-end: 0.4rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    border-inline-start: 2px solid transparent;
+    padding-inline-start: 0.35rem;
+  }
+
+  /* The entry `y` copies, while the transcript has focus (normal mode). */
+  & .vimma-agent-chat-log:focus .vimma-agent-chat-entry[aria-current="true"] {
+    border-inline-start-color: var(--vimma-focus, AccentColor);
+    background: var(--vimma-selection, SelectedItem);
+  }
+
+  & .vimma-agent-chat-label {
+    font-size: 0.85em;
+    font-weight: bold;
+    color: var(--vimma-text-cyan, AccentColor);
+  }
+
+  & .vimma-agent-chat-you {
+    color: var(--vimma-text-green, AccentColor);
+  }
+
+  & .vimma-agent-chat-line {
+    padding-inline-start: 2ch;
+  }
+
+  & .vimma-agent-chat-dim {
+    color: var(--vimma-fg-dim, GrayText);
+  }
+
+  & .vimma-agent-chat-warn {
+    color: var(--vimma-text-yellow, inherit);
+  }
+
+  & .vimma-agent-chat-empty {
+    margin-block-end: 0.5rem;
+    color: var(--vimma-fg-dim, GrayText);
+  }
+
+  & .vimma-agent-chat-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 0.5rem;
+    padding: 0.15rem 0.35rem;
+
+    &[aria-selected="true"] {
+      background: var(--vimma-selection, SelectedItem);
+      color: var(--vimma-fg-bright, SelectedItemText);
+    }
+  }
+
+  & .vimma-agent-chat-row-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  & .vimma-agent-chat-row-detail {
+    font-size: 0.85em;
+    color: var(--vimma-fg-dim, GrayText);
+  }
+
+  /* The prompt slot: the question line's panel, in the window's flow, with a border. */
+  & #vimma-agent-chat-slot {
+    margin: 0 0.75rem 0.5rem;
+
+    &[hidden] {
+      display: none;
+    }
+
+    & .vimma-cmdline-panel {
+      position: static;
+      border: 1px solid var(--vimma-text-cyan, AccentColor);
+      padding: 0.35rem 0.5rem;
+      white-space: normal;
+    }
+  }
+
+  /* Setup's masked key field (Behaviour 3): its label, then the password field. */
+  & .vimma-agent-chat-keybox {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-block-end: 0.25rem;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  & .vimma-agent-chat-keylabel {
+    margin: 0 0.75rem;
+    color: var(--vimma-text-yellow, inherit);
+  }
+
+  & .vimma-agent-chat-input {
+    box-sizing: border-box;
+    width: auto;
+    margin: 0 0.75rem;
+    padding: 0.35rem;
+    resize: none;
+    border: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
+    background: var(--vimma-bg, Field);
+    color: var(--vimma-fg, FieldText);
+    font: inherit;
+
+    &:focus-visible {
+      outline: 2px solid var(--vimma-focus, AccentColor);
+      outline-offset: -1px;
+    }
+
+    &[readonly] {
+      border-style: dashed;
+      color: var(--vimma-fg-dim, GrayText);
+    }
+
+    &[hidden] {
+      display: none;
+    }
+  }
+}
