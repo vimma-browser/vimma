@@ -1743,7 +1743,8 @@ export const VimmaHost = {
     if (!state) return { mode: "insert", pending: [] };
     const browser = /** @type {any} */ (win).gBrowser?.selectedBrowser;
     return {
-      mode: state.find.typing ? "command" : this._mode(state),
+      // The chat window's transcript has focus: its normal mode (docs/specs/builtin-agent.md 14).
+      mode: state.find.typing ? "command" : state.agentChat.inNormal ? "normal" : this._mode(state),
       pending: state.dispatcher.pending(),
       find: browser ? state.find.status(browser) : null,
       pane: paneStatus(win),

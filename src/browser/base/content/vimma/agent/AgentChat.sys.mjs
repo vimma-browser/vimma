@@ -427,7 +427,7 @@ export const AgentChat = {
 
   /**
    * Whether the next task must first say what leaves the machine (Behaviour 5): its provider
-   * is off this machine and the user has not said y to it for this conversation and endpoint.
+   * is off this machine and no y to it was given for this conversation and endpoint.
    * @param {number} id
    */
   needsNotice(id) {
@@ -450,7 +450,7 @@ export const AgentChat = {
     return null;
   },
 
-  /** The user said y to Behaviour 5's notice. @param {number} id */
+  /** A y to Behaviour 5's notice: this conversation may send to its endpoint. @param {number} id */
   confirm(id) {
     const c = conversation(id);
     c.confirmed = c.provider.endpoint;

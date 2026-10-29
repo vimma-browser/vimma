@@ -280,7 +280,7 @@ export function externalNotice(provider) {
  * forwards to a hosted model; a hosted endpoint receives page text.
  * @param {string} endpoint
  */
-function destination(endpoint) {
+export function whereDataGoes(endpoint) {
   let url;
   try {
     url = new URL(endpoint);
@@ -301,7 +301,7 @@ function destination(endpoint) {
  */
 export function chatHeader({ provider, granted, localOnly = false, budget = null }) {
   const first = provider
-    ? `${chatText(provider.name)} · ${chatText(provider.model)} · ${destination(provider.endpoint)}`
+    ? `${chatText(provider.name)} · ${chatText(provider.model)} · ${whereDataGoes(provider.endpoint)}`
     : "no model set up";
   const second = [
     "works in: agent workspace",

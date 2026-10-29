@@ -198,10 +198,7 @@ addTidyTask(async function test_enter_grants_and_the_transcript_shows_each_step(
   );
   Assert.equal(reply.querySelector(".vimma-agent-chat-label")?.textContent, "agent", "labelled");
   Assert.equal(input().value, "", "the input is empty again");
-  await until(
-    () => statusText("agent") === "◇ agent granted",
-    "no task runs; the grant stands",
-  );
+  await until(() => statusText("agent") === "◇ agent granted", "no task runs; the grant stands");
 });
 
 addTidyTask(async function test_shift_enter_adds_a_line_and_ctrl_enter_asks() {

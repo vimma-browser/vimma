@@ -251,7 +251,10 @@ export class CommandLine {
   complete(direction) {
     const input = /** @type {HTMLInputElement} */ (this.input);
     if (!this.cycle) {
-      const { candidates } = completeCommandLine(input.value, { args: this.args(), hidden: this.hidden() });
+      const { candidates } = completeCommandLine(input.value, {
+        args: this.args(),
+        hidden: this.hidden(),
+      });
       if (!candidates.length) return;
       this.cycle = { candidates, index: direction > 0 ? 0 : candidates.length - 1 };
       this.renderList(candidates);
@@ -271,7 +274,11 @@ export class CommandLine {
   refreshList() {
     const value = /** @type {HTMLInputElement} */ (this.input).value;
     const word = value.replace(/^[\s:]*/, "");
-    this.renderList(word ? completeCommandLine(value, { args: this.args(), hidden: this.hidden() }).candidates : []);
+    this.renderList(
+      word
+        ? completeCommandLine(value, { args: this.args(), hidden: this.hidden() }).candidates
+        : [],
+    );
   }
 
   /**

@@ -12,7 +12,14 @@
 // is inside it; they are fixed, as a picker's are, because the window's key in the keymap comes
 // in its own pull request (B13).
 
-import { USER_LABEL, chatHeader, chatKey, entryView, externalNotice } from "../core/agent-chat.mjs";
+import {
+  USER_LABEL,
+  chatHeader,
+  chatKey,
+  entryView,
+  externalNotice,
+  whereDataGoes,
+} from "../core/agent-chat.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
 import { buildPanelBox, giveFocusBack, rememberFocus } from "./side-panel.mjs";
@@ -118,6 +125,11 @@ export class AgentChatWindow {
   get focused() {
     const active = this.win.document.activeElement;
     return this.opened && !!this.box && !!active && this.box.contains(active);
+  }
+
+  /** The transcript has focus: the window's normal mode, for the status bar. */
+  get inNormal() {
+    return this.opened && !!this.log && this.win.document.activeElement === this.log;
   }
 
   /** The open conversation's gate connection, whose questions the slot shows (Behaviour 27). */
@@ -419,31 +431,29 @@ export class AgentChatWindow {
     /** @type {Row[]} */
     const rows = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []).map((p) => ({
       label: `${p.name} · ${p.model}`,
-      detail: chatHeader({ provider: p, granted: false })[0].split(" · ").slice(2).join(" · "),
+      detail: whereDataGoes(p.endpoint),
       provider: p,
     }));
     this.rows = rows;
     this.row = 0;
     this.render();
-    {
-      // Asked only now, while the picker is open, and only on 127.0.0.1 (Behaviour 2, B12).
-      lazy.AgentChat.probe().then(
-        (/** @type {any[]} */ found) => {
-          if (!this.opened || this.view !== "models") return;
-          for (const s of found) {
-            for (const model of s.models) {
-              this.rows.push({
-                label: `${s.server} · ${model}`,
-                detail: "local, found now",
-                local: { endpoint: s.endpoint, model, server: s.server },
-              });
-            }
+    // Asked only now, while the picker is open, and only on 127.0.0.1 (Behaviour 2, B12).
+    lazy.AgentChat.probe().then(
+      (/** @type {any[]} */ found) => {
+        if (!this.opened || this.view !== "models") return;
+        for (const s of found) {
+          for (const model of s.models) {
+            this.rows.push({
+              label: `${s.server} · ${model}`,
+              detail: whereDataGoes(s.endpoint),
+              local: { endpoint: s.endpoint, model, server: s.server },
+            });
           }
-          this.render();
-        },
-        (/** @type {any} */ e) => console.error("vimma agent: probe failed", e),
-      );
-    }
+        }
+        this.render();
+      },
+      (/** @type {any} */ e) => console.error("vimma agent: probe failed", e),
+    );
   }
 
   /** The conversations view (Behaviour 19), newest first, in memory. */
