@@ -324,12 +324,14 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    keep in dotfile repositories, so a CLI provider in `config.toml` names only which supported
    CLI and model it is, and the path is a pref that setup writes after the user picks it in the
    list of what `PATH` holds. Before each run Vimma checks that the path is absolute, a regular
-   file (symlinks resolved), executable, owned by the user or root, and neither it nor its
-   folder writable by other users, because a file another local user can replace would let
-   that user run code as this user when a task is sent. Neither IOUtils nor nsIFile gives a
-   file's owner: a no-op `chmod` succeeds only on the user's own file, and root's is read with
-   the `statx`/`lstat` call security.md C2 already allows for clamd's socket, so no new native
-   call is added. `vimma-ctl`, which the CLI runs with the ticket, is the one next to Vimma's
+   file (symlinks resolved), executable, owned by the user or root, not writable by other
+   users, and that every folder above it, up to `/`, is the user's or root's and not writable
+   by other users unless it is sticky (as `/tmp` is, where only an entry's owner may replace
+   it), because a file another local user can replace, or a folder above it they can swap,
+   would let that user run code as this user when a task is sent. Neither IOUtils nor nsIFile
+   gives a file's owner, and IOUtils drops the sticky bit, so both are read with the
+   `statx`/`lstat` call security.md C2 already allows for clamd's socket; no new native call is
+   added. `vimma-ctl`, which the CLI runs with the ticket, is the one next to Vimma's
    binary (where every release puts it), else the pref `vimma.agent.cli.vimmaCtl` (a build from
    source, tests), and it is checked the same way. Rejected: a `command` key in
    `config.toml`, because it breaks F3; root-owned files only, as for ClamAV (C2 of
@@ -343,15 +345,21 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    supported only once its session files can be kept out of storage or the window states that
    they are kept. The environment is Vimma's own (`environmentAppend`), so the CLI finds its
    login, `HOME` and `PATH`, minus the variables Vimma and Firefox set for themselves (`MOZ_*`,
-   `VIMMA_*`), so that nothing of the browser's leaks into the CLI's shell. Rejected: resuming
+   `VIMMA_*`, and `XRE_*` and `XUL_*`, which name the profile and the application), so that
+   nothing of the browser's leaks into the CLI's shell. Rejected: resuming
    the CLI's session between tasks (`exec resume`, `--resume`), because it needs the session
    files above; an `env` key in `config.toml`, because a CLI's login is the CLI's matter and
    variables such as `LD_PRELOAD` would run code (F3).
 6. **An empty working directory per run** (C6, Behaviour 7). Each run's `workdir` is a new 0700
-   directory under the system's temporary directory, removed when the run ends, so that the CLI
-   loads no project's instruction files, hooks or settings from wherever Vimma was started, and
-   its file tools start in a place that holds nothing. It is outside the profile, because a
-   directory inside it puts the cookies and logins one `..` away. This does not confine a CLI
+   directory, removed when the run ends, so that the CLI loads no project's instruction files,
+   hooks or settings from wherever Vimma was started, and its file tools start in a place that
+   holds nothing. It is in `$XDG_RUNTIME_DIR` when there is one (the user's own 0700 folder
+   under root's `/run`), else in `~/.cache/vimma-agent-cli` (made 0700), and a run is refused
+   when a folder above it is another user's or writable by others, sticky ones included,
+   because Claude Code reads its project instruction files from every folder above its
+   working directory, so one another user planted in a shared `/tmp` would steer every run
+   with the conversation's grant. It is outside the profile, because a directory inside it puts
+   the cookies and logins one `..` away. This does not confine a CLI
    with a shell or file tools, which reach every file the CLI's own settings let them reach;
    C7 says so in the window. A file the CLI writes in this directory is removed with it, and
    the guide says so.

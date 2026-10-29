@@ -57,6 +57,11 @@ export const VIMMA_CTL_PREF = "vimma.agent.cli.vimmaCtl";
 const VERSION_MS = 5000;
 /** How often the status bar's minutes move while a run lasts. */
 const TICK_MS = 30_000;
+/** How long a CLI has to exit after its work is done, and its output to drain after that. */
+const EXIT_GRACE_MS = 2000;
+
+/** @param {number} ms */
+const delay = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
 
 /**
  * @typedef {import("../core/agent-cli.mjs").CliEvent} CliEvent
@@ -78,19 +83,42 @@ const SOUND = Object.freeze({
 });
 
 /**
- * Whose a file is: the user's (a no-op chmod works only on one's own file), root's, or
- * another user's.
+ * Whose a file is and who may write it, from its owner's uid and its mode (statx or lstat,
+ * which keep the sticky bit IOUtils.stat drops): the user's (the profile's owner), root's or
+ * another user's. Null when it cannot be read, which no check accepts.
  * @param {string} path
- * @returns {Promise<"user" | "root" | "other">}
+ * @returns {{ owner: "user" | "root" | "other", othersWrite: boolean, sticky: boolean } | null}
  */
-async function ownerOf(path) {
-  try {
-    const { permissions } = await IOUtils.stat(path);
-    await IOUtils.setPermissions(path, permissions, false);
-    return "user";
-  } catch {
-    return lazy.AgentDownloads.ownerUid(path) === 0 ? "root" : "other";
+function ownership(path) {
+  const me = lazy.AgentDownloads.ownerAndMode(PathUtils.profileDir)?.uid;
+  const s = lazy.AgentDownloads.ownerAndMode(path);
+  if (!s || me === undefined) return null;
+  return {
+    owner: s.uid === me ? "user" : s.uid === 0 ? "root" : "other",
+    othersWrite: (s.mode & 0o022) !== 0,
+    sticky: (s.mode & 0o1000) !== 0,
+  };
+}
+
+/**
+ * Every folder from `path`'s up to `/`, judged together (C4): one that another user owns, or
+ * that others may write and that is not sticky, could have the file swapped under it. A sticky
+ * folder (as /tmp is) lets nobody but its entry's owner replace that entry, whose owner is
+ * judged one level down. With `strict` a sticky folder counts too, since another user may add
+ * a file of their own to it.
+ * @param {string} path @param {boolean} [strict]
+ * @returns {{ dirOwner: "user" | "root" | "other", dirOthersWrite: boolean }}
+ */
+function folders(path, strict = false) {
+  /** @type {"user" | "root" | "other"} */
+  let dirOwner = "user";
+  let dirOthersWrite = false;
+  for (let dir = PathUtils.parent(path); dir; dir = PathUtils.parent(dir)) {
+    const o = ownership(dir);
+    if (!o || o.owner === "other") dirOwner = "other";
+    else if (o.othersWrite && (strict || !o.sticky)) dirOthersWrite = true;
   }
+  return { dirOwner, dirOthersWrite };
 }
 
 /**
@@ -108,21 +136,50 @@ async function inspect(path) {
     file.normalize();
     const real = file.path;
     const stat = await IOUtils.stat(real);
-    const dir = PathUtils.parent(real) ?? "/";
-    const dirStat = await IOUtils.stat(dir);
+    const own = ownership(real);
     const problem = pathProblem({
       absolute: true,
       regular: stat.type === "regular",
       executable: file.isExecutable(),
-      owner: await ownerOf(real),
-      othersWrite: (stat.permissions & 0o022) !== 0,
-      dirOwner: await ownerOf(dir),
-      dirOthersWrite: (dirStat.permissions & 0o022) !== 0,
+      owner: own?.owner ?? "other",
+      othersWrite: own?.othersWrite ?? true,
+      ...folders(real),
     });
     return problem ? { problem } : { path: real };
   } catch {
     return { problem: "it does not exist" };
   }
+}
+
+/**
+ * Where a run's folder goes (C6): a folder of the user's, outside the profile, with no folder
+ * above it another user can write, because Claude Code reads its project instruction files
+ * from every folder above its working folder, so a file planted in a shared /tmp would steer
+ * every run. `$XDG_RUNTIME_DIR` (the user's own, 0700, under root's /run) when there is one,
+ * else `~/.cache/vimma-agent-cli`, made 0700.
+ * @returns {Promise<string>}
+ */
+async function runBase() {
+  const runtime = Services.env.get("XDG_RUNTIME_DIR");
+  const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
+  const base =
+    runtime && PathUtils.isAbsolute(runtime)
+      ? runtime
+      : PathUtils.join(home, ".cache", "vimma-agent-cli");
+  if (!runtime) {
+    await IOUtils.makeDirectory(base, { permissions: 0o700, ignoreExisting: true });
+  }
+  const own = ownership(base);
+  const above = folders(base, true);
+  if (
+    own?.owner !== "user" ||
+    own.othersWrite ||
+    above.dirOwner === "other" ||
+    above.dirOthersWrite
+  ) {
+    throw new Error(`${base} is not a private folder of yours`);
+  }
+  return base;
 }
 
 /**
@@ -170,7 +227,9 @@ export const AgentCli = {
    * @returns {Promise<{ cli: string, path: string, label: string, problem: string | null }[]>}
    */
   async find() {
+    /** @type {{ cli: string, path: string, label: string, problem: string | null }[]} */
     const out = [];
+    if (!this.enabled) return out;
     for (const cli of Object.values(CLIS)) {
       let found;
       try {
@@ -204,7 +263,7 @@ export const AgentCli = {
   },
 
   /**
-   * Setup's pick (Behaviour 2, C4): the path the user confirmed is the program a task of this
+   * Setup's pick (Behaviour 2, C4): the path picked there is the program a task of this
    * CLI runs, kept in a pref and checked again at each run.
    * @param {string} cli @param {string} path  as `find` listed it
    */
@@ -216,7 +275,7 @@ export const AgentCli = {
 
   /**
    * The version the program prints, or null: run with its fixed argument, no shell, in the
-   * temporary folder, killed after 5 s.
+   * private run folder, killed after 5 s.
    * @param {string} path  checked
    */
   async version(path) {
@@ -229,7 +288,7 @@ export const AgentCli = {
         command: path,
         arguments: versionArguments(),
         environment: cliEnvironment(lazy.Subprocess.getEnvironment()),
-        workdir: PathUtils.tempDir,
+        workdir: await runBase(),
         stderr: "pipe",
       });
       proc.stdin.close().catch(() => {});
@@ -277,6 +336,8 @@ export const AgentCli = {
     let ticket = "";
     let stopped = false;
     let inputOpen = true;
+    /** The task and the lines queued before it are written: a new line may go straight in. */
+    let live = false;
     /** @type {import("../core/agent-budget.mjs").Exceeded | null} */
     let exceeded = null;
     /** @type {string | null} */
@@ -302,6 +363,13 @@ export const AgentCli = {
     };
 
     const done = (async () => {
+      if (!AgentCli.enabled) {
+        return {
+          outcome: "error",
+          error: `agent CLIs are off (${CLI_FEATURE_PREF})`,
+          messages: [],
+        };
+      }
       if (!cli)
         return { outcome: "error", error: "this provider names no supported CLI", messages: [] };
       const path = Services.prefs.getStringPref(pathPref(cli.id), "");
@@ -323,7 +391,7 @@ export const AgentCli = {
       const ctl = await findVimmaCtl();
       if ("problem" in ctl) return { outcome: "error", error: ctl.problem, messages: [] };
       if (stopped) return { outcome: "stopped", messages: [] };
-      const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-agent-cli", 0o700);
+      const dir = await IOUtils.createUniqueDirectory(await runBase(), "vimma-agent-cli", 0o700);
       /** @type {any} */
       let tick = null;
       /** @type {any} */
@@ -359,20 +427,29 @@ export const AgentCli = {
           workdir: dir,
           stderr: "pipe",
         });
-        if (stopped) end();
-        await proc.stdin.write(userLine(taskPrompt(o.messages, o.text)));
-        for (const line of pending.splice(0)) await proc.stdin.write(line);
+        // From the start: a CLI that never reads its input must not hold the task past it.
         const minutes = o.provider.maxMinutes ?? 30;
         limit = lazy.setTimeout(
           () => overBudget({ limit: "minutes", used: minutes, max: minutes }),
           minutes * 60_000,
         );
         tick = lazy.setInterval(() => o.onEvent({ type: "tick" }), TICK_MS);
+        if (stopped) end();
+        else {
+          await proc.stdin.write(userLine(taskPrompt(o.messages, o.text)));
+          // Lines added meanwhile, in order, before a later one may go straight to the input.
+          while (pending.length) await proc.stdin.write(/** @type {string} */ (pending.shift()));
+          live = true;
+        }
         const stderr = tail(proc.stderr);
         const stream = new ClaudeStream();
         /** @type {Extract<CliEvent, { type: "result" }> | null} */
         let result = null;
         let reply = "";
+        /** @type {() => void} */
+        let markFinished = () => {};
+        /** A result left nothing queued: the CLI's work is done. */
+        const finished = new Promise((resolve) => (markFinished = () => resolve(null)));
         /** @param {CliEvent} e */
         const handle = (e) => {
           if (stopped && e.type !== "result") return;
@@ -387,18 +464,38 @@ export const AgentCli = {
             if (e.usage) o.budget.addUsage({ ...e.usage, estimated: false });
             if (e.cost !== null) o.budget.reportCost(e.cost);
             // The run ends when nothing is queued: the CLI exits once its input closes.
-            if (e.queued === 0) closeInput();
+            if (e.queued === 0) {
+              closeInput();
+              markFinished();
+            }
             const over = o.budget.exceeded();
             if (over) overBudget(over);
           }
           o.onEvent(e);
         };
-        for (let s; (s = await proc.stdout.readString());) {
-          for (const e of stream.push(s)) handle(e);
+        const reading = (async () => {
+          for (let s; (s = await proc.stdout.readString());) {
+            for (const e of stream.push(s)) handle(e);
+          }
+        })().catch(() => {});
+        const exited = proc.wait();
+        // The run is over when its output ends, the CLI exits, or its result left nothing
+        // queued. Subprocess sees an exit only when a pipe the CLI held closes, so a child of
+        // the CLI that kept one open would hide it; after a grace, kill() reaps an exited CLI
+        // (waitpid) and ends a live one, and the run, and its ticket, end with it.
+        await Promise.race([reading, exited, finished]);
+        const quit = await Promise.race([exited, delay(EXIT_GRACE_MS).then(() => null)]);
+        if (!quit) {
+          if (ticket) lazy.VimmaControl.revokeTicket(ticket);
+          proc.kill(KILL_GRACE_MS);
         }
+        const { exitCode } = await exited;
+        if (ticket) lazy.VimmaControl.revokeTicket(ticket);
+        await Promise.race([reading, delay(EXIT_GRACE_MS)]);
+        proc.stdout.close().catch(() => {});
+        proc.stderr.close().catch(() => {});
         for (const e of stream.end()) handle(e);
-        const { exitCode } = await proc.wait();
-        const errText = await stderr;
+        const errText = await Promise.race([stderr, delay(EXIT_GRACE_MS).then(() => "")]);
         const r = /** @type {Extract<CliEvent, { type: "result" }> | null} */ (result);
         if (exceeded) return { outcome: "budget", exceeded, messages: [] };
         if (stopped) return { outcome: "stopped", messages: [] };
@@ -422,6 +519,9 @@ export const AgentCli = {
       }
     })().catch((e) => {
       if (ticket) lazy.VimmaControl.revokeTicket(ticket);
+      proc?.kill(KILL_GRACE_MS);
+      // A stop while the task was being written closes the input under the write.
+      if (stopped) return { outcome: /** @type {const} */ ("stopped"), messages: [] };
       return {
         outcome: /** @type {const} */ ("error"),
         error: `${cli?.id ?? "the CLI"} could not run: ${e?.message ?? e}`,
@@ -439,7 +539,7 @@ export const AgentCli = {
         // Claude Code reads a line written during a turn within that turn.
         const line = userLine(text);
         if (!inputOpen) return;
-        if (proc) proc.stdin.write(line).catch(() => {});
+        if (live) proc.stdin.write(line).catch(() => {});
         else pending.push(line);
       },
       done: /** @type {Promise<TaskResult>} */ (done),

@@ -17,7 +17,7 @@
 // model only those. Until the feature is finished its pref keeps it off.
 
 import { Budget } from "../core/agent-budget.mjs";
-import { CLIS, DEFAULT_MAX_MINUTES } from "../core/agent-cli.mjs";
+import { CLIS, DEFAULT_MAX_MINUTES, runStartedText } from "../core/agent-cli.mjs";
 import { Transcript, isLocalEndpoint, needsKey, noticeTarget } from "../core/agent-chat.mjs";
 import { startTask } from "../core/agent-loop.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
@@ -380,10 +380,7 @@ function startCli(c, text, budget) {
     onEvent: (e) => {
       if (e.type === "init") {
         c.cli = { model: e.model, tools: e.tools };
-        c.transcript.notice(
-          `run started: ${cli?.id} ${e.version} · ${e.model || "its default model"} · ` +
-            `its own tools: ${e.tools.length ? e.tools.join(", ") : "none"}`,
-        );
+        if (cli) c.transcript.notice(runStartedText(cli, e.version, e.model, e.tools));
       } else if (e.type === "reply") c.transcript.task({ type: "reply", text: e.text });
       else if (e.type === "own-tool") c.transcript.ownTool(e.id, e.text);
       else if (e.type === "own-tool-refused") c.transcript.ownToolRefused(e.id);

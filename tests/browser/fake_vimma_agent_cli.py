@@ -13,6 +13,7 @@
 #   [[sleep S]]  [[ignore-term]]  [[loop]]    wait; ignore SIGTERM; call vimma_tabs until killed
 #   [[fail CODE TEXT]]                        TEXT on stderr, exit CODE before any result
 #   [[vimma-failed]] [[no-usage]]             init says vimma did not start; result has no usage
+#   [[orphan]]                                leave a child holding stdout open after exiting
 # Everything it was given goes to the JSON file FAKE_CLI_REPORT names, rewritten as it runs.
 import json
 import os
@@ -170,11 +171,17 @@ if "[[no-usage]]" not in task:
     result["usage"] = {"input_tokens": 1500, "output_tokens": 300}
 out(result)
 
+if "[[orphan]]" in task:
+    # A child that keeps the CLI's stdout and stderr open after the CLI exits.
+    subprocess.Popen(["sleep", "20"])
+
 # Lines written after the first (added instructions) are kept until stdin closes.
 for line in sys.stdin:
     report["lines"].append(json.loads(line))
     save()
-report["stdin_closed"] = True
+report["stdin_closed"] = time.time()
 save()
 mcp.stdin.close()
 mcp.wait()
+report["exited"] = time.time()
+save()

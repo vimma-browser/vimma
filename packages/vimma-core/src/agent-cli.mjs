@@ -115,7 +115,8 @@ export function cliEnvironment(env) {
   /** @type {Record<string, string>} */
   const out = {};
   for (const [k, v] of Object.entries(env)) {
-    if (!/^(MOZ_|VIMMA_)/.test(k)) out[k] = v;
+    // XRE_ and XUL_ name the profile and the application files.
+    if (!/^(MOZ_|VIMMA_|XRE_|XUL_)/.test(k)) out[k] = v;
   }
   return out;
 }
@@ -166,6 +167,25 @@ export function ownToolsText(tools) {
   if (!tools.length) return "none";
   const shown = tools.slice(0, 4).map((t) => cut(plain(t).replace(/\s+/g, " "), 40));
   return tools.length > 4 ? `${shown.join(", ")} +${tools.length - 4}` : shown.join(", ");
+}
+
+/** Tools the run-started line names before `+N`: a CLI's own set is a few dozen. */
+const RUN_TOOLS = 60;
+
+/**
+ * The transcript's line when a run starts (Behaviour 5): the CLI's version, its model and every
+ * tool of its own it reported, each cut, so a CLI's init can never make a line without bound.
+ * @param {CliInfo} cli @param {string} version @param {string} model @param {string[]} tools
+ */
+export function runStartedText(cli, version, model, tools) {
+  const names = tools.slice(0, RUN_TOOLS).map((t) => cut(plain(t).replace(/\s+/g, " "), 24));
+  const more = tools.length > RUN_TOOLS ? ` +${tools.length - RUN_TOOLS}` : "";
+  const head = [`${cli.id}${version ? ` ${cut(plain(version), 40)}` : ""}`];
+  head.push(model ? cut(plain(model), 80) : "its default model");
+  return (
+    `run started: ${head.join(" · ")} · its own tools: ` +
+    `${names.length ? names.join(", ") : "none"}${more}`
+  );
 }
 
 /** The input field that says what an own tool did, by tool: the rest show their input. */
@@ -247,8 +267,8 @@ export function pathProblem(f) {
   if (!f.executable) return "it is not executable";
   if (f.owner === "other") return "it is owned by another user";
   if (f.othersWrite) return "other users can write it";
-  if (f.dirOwner === "other") return "its folder is owned by another user";
-  if (f.dirOthersWrite) return "its folder can be written by other users";
+  if (f.dirOwner === "other") return "a folder it is in is owned by another user";
+  if (f.dirOthersWrite) return "a folder it is in can be written by other users";
   return null;
 }
 

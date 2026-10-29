@@ -242,12 +242,67 @@ addTidyTask(async function test_path_checks_refuse_a_file_others_can_write() {
   }
   await IOUtils.setPermissions(fake.dir, 0o777, false);
   try {
-    Assert.equal(await AgentCli.check(fake.bin), "its folder can be written by other users");
+    Assert.equal(await AgentCli.check(fake.bin), "a folder it is in can be written by other users");
   } finally {
     await IOUtils.setPermissions(fake.dir, 0o700);
   }
+  // A folder higher up that others can write (and that is not sticky) could be swapped.
+  const outer = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-open", 0o700);
+  const inner = PathUtils.join(outer, "bin");
+  await IOUtils.makeDirectory(inner, { permissions: 0o700 });
+  const deep = PathUtils.join(inner, "claude");
+  await IOUtils.copy(fake.bin, deep);
+  await IOUtils.setPermissions(deep, 0o700);
+  try {
+    Assert.equal(await AgentCli.check(deep), null, "every folder above it is sound");
+    await IOUtils.setPermissions(outer, 0o777, false);
+    Assert.equal(
+      await AgentCli.check(deep),
+      "a folder it is in can be written by other users",
+      "a folder two levels up counts",
+    );
+    await IOUtils.setPermissions(outer, 0o1777, false);
+    Assert.equal(await AgentCli.check(deep), null, "a sticky folder, as /tmp is, does not");
+  } finally {
+    await IOUtils.setPermissions(outer, 0o700);
+    await IOUtils.remove(outer, { recursive: true });
+  }
   Assert.equal(await AgentCli.check("claude"), "its path is not absolute");
   Assert.equal(await AgentCli.check("/nonexistent/claude"), "it does not exist");
+});
+
+addTidyTask(async function test_feature_off_starts_nothing() {
+  const c = conversation();
+  await SpecialPowers.pushPrefEnv({ set: [[CLI_FEATURE_PREF, false]] });
+  try {
+    Assert.deepEqual(await AgentChat.send(c.id, "hello"), {
+      refused: "agent CLIs are unfinished and off (vimma.feature.agentCli)",
+    });
+    const direct = await AgentCli.start({
+      provider: CLI,
+      conn: c.conn,
+      state: {},
+      text: "hello",
+      messages: [],
+      budget: /** @type {any} */ ({ exceeded: () => null, step() {} }),
+      onEvent() {},
+    }).done;
+    Assert.equal(direct.outcome, "error", "the runner refuses too");
+    Assert.deepEqual(await AgentCli.find(), [], "and setup finds nothing");
+    Assert.ok(!(await IOUtils.exists(fake.report)), "nothing ran");
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
+addTidyTask(async function test_a_child_holding_the_output_does_not_keep_the_run() {
+  if (!(await needCtl())) return;
+  const c = conversation();
+  const started = Date.now();
+  const result = await run(c.id, "[[orphan]]");
+  Assert.equal(result.outcome, "done", `done: ${result.error}`);
+  Assert.less(Date.now() - started, 10000, "the run ended with the CLI, not with its child");
+  Assert.ok(!AgentChat.get(c.id).running, "and the conversation is not left running");
 });
 
 addTidyTask(async function test_no_process_before_a_task() {
@@ -283,8 +338,14 @@ addTidyTask(async function test_runs_in_an_empty_private_directory_removed_after
   const c = conversation();
   await run(c.id, "hello");
   const report = await readReport(fake.report);
-  Assert.ok(report.cwd.startsWith(PathUtils.tempDir), `in the temporary folder: ${report.cwd}`);
+  // Claude Code reads instruction files from every folder above its working folder, so no
+  // folder above it may be one another user can write, as the shared temporary folder is.
+  Assert.ok(!report.cwd.startsWith(PathUtils.tempDir), `not in the shared /tmp: ${report.cwd}`);
   Assert.ok(!report.cwd.startsWith(PathUtils.profileDir), "never in the profile");
+  for (let dir = PathUtils.parent(report.cwd); dir; dir = PathUtils.parent(dir)) {
+    const { permissions } = await IOUtils.stat(dir);
+    Assert.equal(permissions & 0o022, 0, `${dir} cannot be written by other users`);
+  }
   Assert.equal(report.dir_mode, "0o700", "a 0700 folder");
   Assert.equal(report.mcp_config_mode, "0o600", "its MCP configuration 0600");
   Assert.ok(!(await IOUtils.exists(report.cwd)), "removed when the run ended");

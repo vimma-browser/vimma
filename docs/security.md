@@ -1927,8 +1927,10 @@ own process, not a process group.
   closing **must** withdraw only the questions it was waiting on, leaving the conversation, its
   grant and its tabs.
   [`test_ticket_connection_acts_as_the_conversation`](../tests/browser/browser_vimma_agent_cli.js)
-- M53. A ticket **must never** be written to a pref, `config.toml`, the discovery file or any
-  file of the profile, a log, a notice or `:mcp log`. `vimma-ctl mcp` **must** take it only
+- M53. Vimma **must never** write a ticket to a pref, `config.toml`, the discovery file or any
+  file of the profile, a log, a notice or `:mcp log`; the one file that holds it is the run's
+  0600 MCP configuration (M56). What the CLI itself logs of that configuration is its matter:
+  a ticket is good for one run, and revoked when the run ends. `vimma-ctl mcp` **must** take it only
   from `VIMMA_AGENT_TICKET` (with the port from `VIMMA_AGENT_PORT`), never print it, and with a
   ticket **must not** read the discovery file, so that process never holds the token. When its
   ticket's task has ended it **must** tell the model so, and **never** to turn MCP on.
@@ -1944,19 +1946,25 @@ own process, not a process group.
 - M55. An agent CLI **must** be started only when the user sends a task in the chat window, and
   only as the program at the path picked in setup (a pref, never `config.toml`),
   checked before each run: an absolute path, symlinks resolved, to a regular executable file
-  owned by the user or root that no other user can write, in a folder owned by the user or root
-  that no other user can write. Its arguments **must** come from the CLI's fixed builder, with
-  the provider's model the only value in them (a model that starts with `-` is refused), the
-  task and the conversation before it **must** go to its standard input and never into an
-  argument, and there is no shell. Its environment is Vimma's without the `MOZ_` and `VIMMA_`
-  variables. It **must** run in a new 0700 folder under the system's temporary folder, outside
-  the profile, removed with the run, and nothing **must** start before a task is sent but
-  setup's `--version`.
+  owned by the user or root that no other user can write, every folder above it the user's or
+  root's and not writable by other users unless sticky. Its arguments **must** come from the
+  CLI's fixed builder, with the provider's model the only value in them (a model that starts
+  with `-` is refused), the task and the conversation before it **must** go to its standard
+  input and never into an argument, and there is no shell. Its environment is Vimma's without
+  the `MOZ_`, `VIMMA_`, `XRE_` and `XUL_` variables. It **must** run in a new 0700 folder of
+  the user's (in `$XDG_RUNTIME_DIR`, else `~/.cache/vimma-agent-cli`), outside the profile,
+  with no folder above it that another user owns or can write, sticky ones included, since the
+  CLI reads instruction files from every folder above its working folder; the folder is removed
+  with the run. Nothing **must** start before a task is sent but setup's `--version`, and
+  nothing at all while `vimma.feature.agentCli` is off. A run **must** end, and revoke its
+  ticket, when the CLI's work is done even if a child of it keeps its output open.
   [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_no_process_before_a_task`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_task_on_stdin_and_fixed_arguments`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_runs_in_an_empty_private_directory_removed_after`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_feature_off_starts_nothing`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_a_child_holding_the_output_does_not_keep_the_run`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`claude-code's arguments are the fixture, with the model only from the provider`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`the task is never an argument`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`a model that looks like an option is refused, not passed`](../packages/vimma-core/test/agent-cli.test.mjs),

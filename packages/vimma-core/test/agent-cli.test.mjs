@@ -17,6 +17,7 @@ import {
   ownToolText,
   ownToolsText,
   pathProblem,
+  runStartedText,
   taskPrompt,
   userLine,
   versionText,
@@ -119,6 +120,9 @@ describe("claude-code's command line (C2)", () => {
         MOZ_CRASHREPORTER: "1",
         VIMMA_AGENT_TICKET: "stale",
         VIMMA_CTL: "x",
+        XRE_PROFILE_PATH: "/home/u/.config/vimma/abc.default",
+        XRE_PROFILE_LOCAL_PATH: "/home/u/.cache/vimma/abc.default",
+        XUL_APP_FILE: "/opt/vimma/application.ini",
         ANTHROPIC_API_KEY: "kept: the CLI's login is its own",
       }),
     ).toEqual({
@@ -126,6 +130,20 @@ describe("claude-code's command line (C2)", () => {
       PATH: "/usr/bin",
       ANTHROPIC_API_KEY: "kept: the CLI's login is its own",
     });
+  });
+
+  test("the run-started line lists the reported tools, each cut, and stays bounded", () => {
+    const cli = CLIS["claude-code"];
+    expect(runStartedText(cli, "2.1.303", "sonnet", ["Bash", "Read"])).toBe(
+      "run started: claude-code 2.1.303 · sonnet · its own tools: Bash, Read",
+    );
+    expect(runStartedText(cli, "", "", [])).toBe(
+      "run started: claude-code · its default model · its own tools: none",
+    );
+    const many = Array.from({ length: 500 }, (_, i) => `Tool${i}${"x".repeat(100)}`);
+    const line = runStartedText(cli, "9".repeat(500), "m".repeat(500), many);
+    expect([...line].length).toBeLessThanOrEqual(2000);
+    expect(line).toMatch(/\+\d+$/);
   });
 
   test("the version line names the version and the path", () => {
@@ -378,7 +396,11 @@ describe("the program's path (C4)", () => {
     expect(pathProblem({ ...good, executable: false })).toMatch(/executable/);
     expect(pathProblem({ ...good, owner: "other" })).toMatch(/owned by another user/);
     expect(pathProblem({ ...good, othersWrite: true })).toMatch(/other users can write/);
-    expect(pathProblem({ ...good, dirOwner: "other" })).toMatch(/folder .*another user/);
-    expect(pathProblem({ ...good, dirOthersWrite: true })).toMatch(/folder .*other users/);
+    expect(pathProblem({ ...good, dirOwner: "other" })).toBe(
+      "a folder it is in is owned by another user",
+    );
+    expect(pathProblem({ ...good, dirOthersWrite: true })).toBe(
+      "a folder it is in can be written by other users",
+    );
   });
 });

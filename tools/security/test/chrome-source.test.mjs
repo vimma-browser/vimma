@@ -128,7 +128,7 @@ describe("chrome code", () => {
       /lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: claudeArguments\(\{ mcpConfig: file, model: o\.provider\.model \}\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
     );
     expect(text).toMatch(
-      /lazy\.Subprocess\.call\(\{\s*command: path,\s*arguments: versionArguments\(\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: PathUtils\.tempDir,\s*stderr: "pipe",\s*\}\)/,
+      /lazy\.Subprocess\.call\(\{\s*command: path,\s*arguments: versionArguments\(\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: await runBase\(\),\s*stderr: "pipe",\s*\}\)/,
     );
     // `version` runs only a path `inspect` passed; the run only `checked`, inspect's result.
     expect(text).toContain("const checked = await inspect(path);");
