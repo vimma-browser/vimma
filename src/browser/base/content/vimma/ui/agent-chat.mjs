@@ -52,6 +52,7 @@ const SLOT_HINT = "a question waits: answer it here";
  * @property {(text: string, error?: boolean) => void} say  a notice
  * @property {(id: number) => void} give  `P`, `:agent give`: the selected tab to conversation id
  * @property {(text: string) => void} copy  to the clipboard
+ * @property {() => void} rearm  focus came into the window: its slot's question arms again
  * @property {() => void} changed  the window opened, closed or switched conversation: the
  *   question may move between the line and the slot, and the status bar redraws
  * @typedef {{ label: string, detail: string, provider?: AgentProviderConfig,
@@ -397,7 +398,7 @@ export class AgentChatWindow {
     if (lazy.AgentChat.needsNotice(id)) {
       const provider = lazy.AgentChat.get(id).provider;
       this.host.ask(externalNotice(provider), () => {
-        lazy.AgentChat.confirm(id);
+        lazy.AgentChat.confirm(id, provider.endpoint);
         go();
       });
       return;
@@ -669,6 +670,12 @@ export class AgentChatWindow {
     this.log = log;
     this.slotBox = slotBox;
     this.input = input;
+    // Focus coming into the window from outside arms the slot's question again (security.md
+    // M4, M43): a key typed on the way in, meant for the input, never answers it.
+    box.addEventListener("focusin", (e) => {
+      const from = /** @type {Node | null} */ (e.relatedTarget);
+      if (!from || !box.contains(from)) this.host.rearm();
+    });
     input.addEventListener("focus", () => this.render());
     log.addEventListener("focus", () => this.render());
     return box;

@@ -273,6 +273,10 @@ export const AgentChat = {
       }
       const refused = checkEndpoint(c.provider.endpoint, { localOnly });
       if (refused) return { refused };
+      // Behaviour 5 is the window's question, and no other caller may skip it.
+      if (this.needsNotice(id)) {
+        return { refused: `nothing is sent to ${c.provider.name} before you say y to its notice` };
+      }
     }
     if (!c.title) {
       c.title = titleOf(text);
@@ -450,10 +454,14 @@ export const AgentChat = {
     return null;
   },
 
-  /** A y to Behaviour 5's notice: this conversation may send to its endpoint. @param {number} id */
-  confirm(id) {
+  /**
+   * A y to Behaviour 5's notice: this conversation may send to the endpoint it named.
+   * @param {number} id @param {string} endpoint  as the notice named it
+   */
+  confirm(id, endpoint) {
     const c = conversation(id);
-    c.confirmed = c.provider.endpoint;
+    // Only for the endpoint the notice named: a provider changed while it was open is not.
+    if (endpoint === c.provider.endpoint) c.confirmed = endpoint;
   },
 
   /**

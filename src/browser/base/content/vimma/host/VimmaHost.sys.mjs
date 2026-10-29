@@ -1533,6 +1533,7 @@ export const VimmaHost = {
           Cc["@mozilla.org/widget/clipboardhelper;1"]
             .getService(Ci.nsIClipboardHelper)
             .copyString(text),
+        rearm: () => AgentUi.rearmSlot(win),
         changed: () => {
           AgentUi.refresh();
           this._emit(state);

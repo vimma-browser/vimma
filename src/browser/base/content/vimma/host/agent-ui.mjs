@@ -439,6 +439,7 @@ export const AgentUi = {
       // Its conversation's chat window shows it: it is answered there (Behaviour 27).
       if (current?.slot) {
         windows.get(current.win)?.focusChat?.();
+        AgentUi.rearmSlot(current.win);
         return;
       }
       if (current?.win === win) return;
@@ -472,6 +473,14 @@ export const AgentUi = {
     if (!state) return null;
     const running = lazy.AgentChat.list().filter((/** @type {any} */ c) => c.running && c.budget);
     return { ...state, builtin: builtinStatus(running.map((/** @type {any} */ c) => c.budget)) };
+  },
+
+  /**
+   * Focus came into `win`'s chat window: a question in its slot arms again (security.md M43).
+   * @param {Window} win
+   */
+  rearmSlot(win) {
+    if (current?.win === win && current.slot) windows.get(win)?.slot?.rearm(armMs());
   },
 
   /** A chat window opened, closed or switched conversation: its question may move. */

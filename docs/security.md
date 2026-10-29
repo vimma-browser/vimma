@@ -1692,20 +1692,23 @@ for the user.
   are removed from the user's and the model's text, and the model's lines sit indented under the
   `agent` label, never at the window's edge where Vimma's own lines start. A step's line is built
   from the loop's and the gate's events, never from a tool's result, so no page text a result
-  carries reaches the window.
+  carries reaches the window, and a tool name the model made up is shown on one line, cut.
   [`test_reply_rendered_as_text`](../tests/browser/browser_vimma_agent_chat.js),
   [`bidi overrides and control characters go; line breaks and tabs stay`](../packages/vimma-core/test/agent-chat.test.mjs),
   [`a reply line starting with a question glyph is indented under the agent label`](../packages/vimma-core/test/agent-chat.test.mjs),
-  [`a step the gate says nothing of shows the loop's own name for it`](../packages/vimma-core/test/agent-chat.test.mjs)
+  [`a step the gate says nothing of shows the loop's own name for it`](../packages/vimma-core/test/agent-chat.test.mjs),
+  [`a tool name the model made up stays on one line, cut short`](../packages/vimma-core/test/agent-chat.test.mjs)
 - M43. A question of the open conversation **must** show only in the window's prompt slot, an
   element outside the transcript that only `host/agent-ui.mjs` fills from `AgentGate`, and in
   one place at a time (the question line when the window is closed or open on another
   conversation). The slot **must** take keys only while focus is in the window and only once
-  armed (`security.dialog_enable_delay`, M4); while it shows, the input **must** be read-only and
+  armed (`security.dialog_enable_delay`, M4), arming again whenever focus comes into the window
+  from outside it; while it shows, the input **must** be read-only and
   `Enter` **must not** send; nothing typed in the input and nothing the model writes **must**
   answer a question, make a grant or fill the slot.
   [`test_question_in_the_prompt_slot_and_never_answered_by_the_input`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_question_on_the_question_line_when_closed`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_slot_arms_again_when_focus_comes_back_into_the_window`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_shift_enter_adds_a_line_and_ctrl_enter_asks`](../tests/browser/browser_vimma_agent_chat.js)
 - M44. Giving a tab to a conversation (`P`, `:agent give`) **must** move a tab of another
   workspace to the agent workspace only after a `y`, reopened there with the agent workspace's
@@ -1717,7 +1720,8 @@ for the user.
   [`test_opened_from_another_workspace_reads_none_of_its_tabs`](../tests/browser/browser_vimma_agent_chat.js)
 - M45. Before a conversation's first task to an endpoint off this machine (and again after its
   provider changes), the window **must** say where page text, field values, screenshots and the
-  user's messages go and send nothing without a `y`. While `vimma.feature.agentChat` is off,
+  user's messages go and send nothing without a `y` to that endpoint; `AgentChat.send` itself
+  **must** refuse a task the notice was not answered for. While `vimma.feature.agentChat` is off,
   `:agent` **must not** run, complete or be suggested.
   [`test_external_provider_notice_before_first_task`](../tests/browser/browser_vimma_agent_chat.js),
   [`the notice before the first task names the host and, when known, who runs it`](../packages/vimma-core/test/agent-chat.test.mjs),

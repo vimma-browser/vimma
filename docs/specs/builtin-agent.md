@@ -178,7 +178,10 @@ first, so that what the guide says a model can do is what the bench measured.
     where agents can read it (`y/N`), then moves the selected tab of the browser window to the agent workspace, where it is
     reopened with the agent workspace's cookies and without its history
     (`host/workspace-ops.mjs`, `moveTabToWorkspace`), and makes it a tab of the open
-    conversation (Behaviour 30). The transcript says `you gave tab "Maito · Kauppa"`. The
+    conversation (Behaviour 30). A tab already in the agent workspace that no conversation
+    owns is given without the question, because giving it takes it away from MCP agents
+    rather than letting anything new read it; another conversation's tab is refused. The
+    transcript says `you gave tab "Maito · Kauppa"`. The
     agent never reads the user's own tab where it is.
 18. **The agent may ask the user.** A reply without a tool call ends the model's turn; the task
     waits for the next message. The agent asks for passwords and payment details to be typed by

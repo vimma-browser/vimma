@@ -59,14 +59,24 @@ export function giveSelectedTab(win, id, ask, say) {
       say("agent: the tab changed since you were asked; nothing was moved");
       return;
     }
+    // A conversation deleted meanwhile gets nothing: the tab stays where it was.
+    if (!lazy.AgentChat.list().some((/** @type {any} */ c) => c.id === id)) {
+      say("agent: that conversation is gone; nothing was moved");
+      return;
+    }
     let given = false;
     const refused = ww.moveTab(
       tab,
       { id: agent.id },
       {
         onMoved: (fresh) => {
-          lazy.AgentChat.give(id, fresh, title);
-          given = true;
+          // Inside moveTab, before the old tab closes: a throw here would leave both open.
+          try {
+            lazy.AgentChat.give(id, fresh, title);
+            given = true;
+          } catch (e) {
+            console.error("vimma agent: giving the tab failed", e);
+          }
         },
       },
     );

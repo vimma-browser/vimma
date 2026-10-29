@@ -243,6 +243,22 @@ addTidyTask(async function test_question_in_the_prompt_slot_and_never_answered_b
   Assert.equal(AgentGate.waiting.length, 0, "nor waiting as a question");
 });
 
+addTidyTask(async function test_slot_arms_again_when_focus_comes_back_into_the_window() {
+  await openChat();
+  send(script([openStep(PAGE), { reply: "ok" }]), { ask: true });
+  await until(slotOpen, "the question is in the prompt slot");
+  await focusContent(gBrowser.selectedBrowser);
+  // Armed while nobody looked at the window.
+  await new Promise((r) => setTimeout(r, 600));
+  input().focus();
+  EventUtils.synthesizeKey("y");
+  Assert.equal(AgentGate.waiting.length, 1, "the first key after focus came back answers nothing");
+  await new Promise((r) => setTimeout(r, 600));
+  EventUtils.synthesizeKey("y");
+  await until(() => !slotOpen(), "an armed y answers it");
+  await finished();
+});
+
 addTidyTask(async function test_question_on_the_question_line_when_closed() {
   await openChat();
   const id = openId();
@@ -333,6 +349,10 @@ addTidyTask(async function test_external_provider_notice_before_first_task() {
     await new Promise((r) => setTimeout(r, 200));
     Assert.ok(!AgentChat.get(openId()).running, "n sent nothing");
     Assert.equal(input().value, "hello", "and the message stays in the input");
+    const direct = await AgentChat.send(openId(), "hello");
+    Assert.ok("refused" in direct, "nor does a send that skips the window's notice");
+    AgentChat.confirm(openId(), "https://elsewhere.example/v1");
+    Assert.ok(AgentChat.needsNotice(openId()), "a y to another endpoint confirms nothing");
   } finally {
     McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
   }

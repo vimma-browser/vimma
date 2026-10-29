@@ -64,6 +64,20 @@ const ANSWERS = Object.freeze({
   mute: "denied (muted)",
 });
 
+/** Columns a tool's name keeps in a step's line. */
+const NAME_COLUMNS = 40;
+
+/**
+ * A tool's name as the model sent it, on one line and cut (security.md M42): a made-up name with
+ * line breaks would otherwise draw lines at the window's edge, where Vimma's own start.
+ * @param {unknown} name
+ */
+const toolName = (name) => {
+  const one = chatText(name).replace(/\s+/g, " ").trim();
+  const chars = [...one];
+  return chars.length > NAME_COLUMNS ? `${chars.slice(0, NAME_COLUMNS).join("")}…` : one;
+};
+
 export class Transcript {
   constructor() {
     /** @type {Entry[]} */
@@ -104,12 +118,12 @@ export class Transcript {
         this.push({ kind: "agent", text: chatText(e.text) });
         return;
       case "call":
-        this.step = this.push({ kind: "step", text: chatText(e.call.name), outcome: "…" });
+        this.step = this.push({ kind: "step", text: toolName(e.call.name), outcome: "…" });
         return;
       case "refused":
         this.push({
           kind: "step",
-          text: chatText(e.call.name),
+          text: toolName(e.call.name),
           outcome: `refused: ${chatText(e.reason)}`,
         });
         return;
