@@ -549,6 +549,17 @@ const fieldCount = (fields) => {
  */
 export function ranNotice(q, until, now) {
   const left = Math.max(1, Math.ceil((until - now) / 60_000));
+  const grant = `(grant${until === Infinity ? "" : `, ${left}m left`})`;
+  return `${clientName(q.label)} ${stepText(q)} ${grant}`;
+}
+
+/**
+ * What a call did, in the words of its notice (`clicked button "Lisää" in "Maito"`): the notice
+ * after a call under a grant, and a step of the built-in agent's transcript
+ * (docs/specs/builtin-agent.md Behaviour 12).
+ * @param {{ tool: string, what: Record<string, any> }} q
+ */
+export function stepText(q) {
   const w = q.what ?? {};
   const did =
     q.tool === "vimma_read_page"
@@ -578,8 +589,25 @@ export function ranNotice(q, until, now) {
                             ? `downloads "${cutTitle(w.name)}"`
                             : `used ${q.tool}`;
   const listed = w.elements === true ? " and listed the buttons and fields after it" : "";
-  const grant = `(grant${until === Infinity ? "" : `, ${left}m left`})`;
-  return `${clientName(q.label)} ${did}${listed} ${grant}`;
+  return `${did}${listed}`;
+}
+
+/**
+ * A checkpoint as the built-in agent's transcript keeps it once asked
+ * (docs/specs/builtin-agent.md Behaviour 12): `▲ asked to pay on shop.example · the page says
+ * "Total 42,90 €"`, or `▲ asked to send a form to shop.example`.
+ * @param {{ what: Record<string, any> }} q
+ */
+export function checkpointText(q) {
+  const w = q.what ?? {};
+  if (w.pay && typeof w.pay === "object") {
+    const total = truncate(pageClean(w.pay.total), TOTAL_COLUMNS, "end");
+    return `${CHECKPOINT_GLYPH} asked to pay on ${paySite(w.pay)}${
+      total ? ` · the page says "${total}"` : ""
+    }`;
+  }
+  const to = clean(w.submit?.host) || displayUrl(clean(w.submit?.action));
+  return `${CHECKPOINT_GLYPH} asked to send a form to ${to}`;
 }
 
 /**
