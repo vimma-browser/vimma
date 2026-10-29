@@ -627,7 +627,7 @@ agent to a part of the profile, or publishes which steps always ask.
     docs and the help snapshot changed once. Rejected: a keymap mode for the window now, because it would change the
     keymap twice; making its keys remappable, because a window with an input and a question
     slot needs fixed keys the slot's guards can rely on, as a picker's are.
-22. **The window ships behind the feature pref** (B22). `vimma.feature.agentChat` stays `false`
+22. **The feature pref until the key** (B22). `vimma.feature.agentChat` stays `false`
     after delivery 4, so neither `:agent`, the window nor its status bar text shows in a
     release, because a released window would still lose every conversation at a restart, which
     Behaviour 20 says it keeps, and a provider chosen in the window would last only until the

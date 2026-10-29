@@ -1788,7 +1788,9 @@ for the user.
   file of the store, those it cannot read and a save's temporary files included; `[agent] keep_days` **must** remove the files
   not written for that many days, at start, when it changes and once a day, from the files' times
   alone, so it never needs the keyring. A deleted conversation's task that ends afterwards
-  **must not** write its file again.
+  **must not** write its file again. The store **must not** be read or decrypted before the
+  window first opens, so a user who never opens it is never asked to unlock the keyring.
+  [`test_a_new_window_reads_no_stored_conversation`](../tests/browser/browser_vimma_agent_store.js),
   [`test_delete_and_forget_all_remove_files`](../tests/browser/browser_vimma_agent_store.js),
   [`test_a_deleted_conversations_task_writes_nothing_after`](../tests/browser/browser_vimma_agent_store.js),
   [`test_keep_days`](../tests/browser/browser_vimma_agent_store.js),

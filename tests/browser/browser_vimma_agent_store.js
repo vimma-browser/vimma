@@ -36,6 +36,7 @@ const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
 );
 const { McpHost } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/mcp-ops.mjs");
+const { sinon } = ChromeUtils.importESModule("resource://testing-common/Sinon.sys.mjs");
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
@@ -159,6 +160,23 @@ add_setup(async () => {
   const saved = McpHost.agentConfig;
   McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
   registerCleanupFunction(() => McpHost.configureAgent(saved));
+});
+
+add_task(async function test_a_new_window_reads_no_stored_conversation() {
+  // The store is decrypted only when the window first opens (B15), so a user who never opens it
+  // is never asked to unlock the keyring, now that the agent ships in every build.
+  const restore = sinon.spy(AgentChat, "restore");
+  const loadAll = sinon.spy(AgentStore, "loadAll");
+  try {
+    const win = await BrowserTestUtils.openNewBrowserWindow();
+    await TestUtils.waitForTick();
+    Assert.equal(restore.callCount, 0, "a new window does not read the conversations");
+    Assert.equal(loadAll.callCount, 0, "nor decrypts their files");
+    await BrowserTestUtils.closeWindow(win);
+  } finally {
+    restore.restore();
+    loadAll.restore();
+  }
 });
 
 addTidyTask(async function test_stored_file_is_encrypted_and_holds_no_tool_output() {
