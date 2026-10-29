@@ -1,0 +1,14 @@
+{
+  "description": "Open an https URL in an agent tab, wait for the page to be ready and return its element list (issue #584)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 4,
+    "command": "agent-open",
+    "args": {
+      "url": "https://example.com/shop",
+      "tab": "12",
+      "elements": true
+    }
+  }
+}

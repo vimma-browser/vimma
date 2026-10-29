@@ -1,0 +1,18 @@
+{
+  "description": "A step's element list must be inside the untrusted-content delimiters, as agent-elements' own (security.md M31)",
+  "kind": "response",
+  "command": "agent-activate",
+  "message": {
+    "type": "response",
+    "id": 12,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/basket",
+      "title": "Basket · Example",
+      "loading": false,
+      "navigated": true,
+      "elements": "{\"label\":\"a\",\"kind\":\"button\",\"text\":\"Check out\"}",
+      "dropped": 0
+    }
+  }
+}

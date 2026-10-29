@@ -15,6 +15,8 @@ import {
   scriptErrorSource,
   AGENT_ELEMENTS,
   AGENT_SCREENSHOT,
+  AGENT_SCREENSHOT_SMALL,
+  screenshotEncodings,
   screenshotLabels,
   screenshotScale,
   ELEMENT_KINDS,
@@ -753,6 +755,30 @@ describe("screenshots (F18-F20)", () => {
     expect(screenshotScale(1280, 1, 0)).toBe(null);
     expect(screenshotScale(0, 1)).toBe(null);
     expect(screenshotScale(Number.NaN, 1)).toBe(null);
+  });
+
+  // Issue #584: a screenshot's pixels and base64 are the model's tokens, so the default is
+  // smaller, as JPEG; `full` asks for the old size, PNG first.
+  test("the default is at most 1,024 pixels wide, the smaller of PNG and JPEG", () => {
+    expect(AGENT_SCREENSHOT_SMALL).toEqual({ width: 1024, jpeg: [0.75, 0.5] });
+    expect(screenshotScale(1280, 1, 800, AGENT_SCREENSHOT_SMALL.width)).toBe(0.8);
+    expect(screenshotScale(1000, 1, 800, AGENT_SCREENSHOT_SMALL.width)).toBe(1);
+    expect(screenshotScale(1280, 2, 800, AGENT_SCREENSHOT_SMALL.width)).toBe(0.8);
+    // Never wider than the full size, whatever is asked.
+    expect(screenshotScale(2560, 1, 800, 4000)).toBe(0.5);
+    // The smallest of `smallest` that fits, else the first of `then` that does: a page of flat
+    // colours is smaller as a PNG, a photo as a JPEG.
+    expect(screenshotEncodings(false)).toEqual({
+      smallest: [{ type: "image/png" }, { type: "image/jpeg", quality: 0.75 }],
+      then: [{ type: "image/jpeg", quality: 0.5 }],
+    });
+    expect(screenshotEncodings(true)).toEqual({
+      smallest: [{ type: "image/png" }],
+      then: [
+        { type: "image/jpeg", quality: 0.8 },
+        { type: "image/jpeg", quality: 0.6 },
+      ],
+    });
   });
 
   test("labels at their element's corner, scaled; those off the image are left out", () => {

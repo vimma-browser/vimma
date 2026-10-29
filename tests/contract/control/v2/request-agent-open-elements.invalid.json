@@ -1,0 +1,13 @@
+{
+  "description": "elements is true or false",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 4,
+    "command": "agent-open",
+    "args": {
+      "url": "https://example.com/shop",
+      "elements": 1
+    }
+  }
+}
