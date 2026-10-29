@@ -1637,8 +1637,9 @@ steps that cannot be taken back still ask under it.
 
 **The model's endpoint.** Requests carry the system text, the tool definitions, the user's
 messages and the tool results (page text, element lists, console entries, screenshots for a
-model with vision) to the endpoint the user configured, and nowhere else. Only the last 6 to 11
-results (blocks of `[agent] keep_results`, default 6) are sent whole; older ones are sent
+model with vision) to the endpoint the user configured, and nowhere else. Only the latest results
+are sent whole, in blocks of `[agent] keep_results` (unset: 6 for a hosted provider, 20 for one
+on this machine), so between one and two blocks' worth; older ones are sent
 shortened to their first line and a note (M50), so earlier page text stops reaching the model
 with each request. The conversation kept in memory still holds them whole. A hosted provider's
 own terms decide what it keeps. A server on 127.0.0.1 may itself forward to a hosted model;

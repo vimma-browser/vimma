@@ -70,7 +70,8 @@ the page-text rules, the checkpoints or the confinement.
    option of `vimma_open`, `vimma_activate` and `vimma_fill`, take the `query` and `kinds`
    filters of builtin-agent B2.
 5. The built-in agent's requests leave out the body of tool results older than the last
-   `[agent] keep_results` results (default 6), keeping each result's first line (the page's
+   `[agent] keep_results` results (unset: 6 for a hosted provider, 20 for a provider on this
+   machine), keeping each result's first line (the page's
    URL and title inside the untrusted-content wording) and a note that the rest was left out.
    Results are left out in blocks of the same size, so that a provider's prompt cache keeps
    the conversation's prefix between blocks.
@@ -249,7 +250,15 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    request and make a provider read the whole conversation again each turn, which on a local
    model costs more than it saves; pruning in blocks of `keep_results` results changes the
    prefix once per block. Each left-out result keeps its first line, so the model still knows
-   which page it read, and the note says it can read the page again. Less page text in the
+   which page it read, and the note says it can read the page again. The default depends on
+   where the provider runs, and `[agent] keep_results` overrides it: 6 for a hosted provider,
+   whose input tokens cost money and where a block left out costs a cached prefix's seconds;
+   20 for one on this machine (an endpoint on 127.0.0.1, ::1 or localhost: Ollama, LM Studio,
+   llama.cpp, vLLM), because a local server reads the request again from the first changed
+   result, about 120 s a block on a CPU-bound mixture-of-experts model, four to five ordinary
+   turns, so that pruning by 6 made a ten-item list no faster though it cut its tokens by a
+   third ([agent-bench.md](../agent-bench.md)). At 20 a ten-item list (about 36 results)
+   never reaches a block, and a longer task's context still stops growing at 40 results. Less page text in the
    context also leaves less room for an injected instruction to act later. Rejected: a summary
    written by the model, because it would be page text by another route and cost a request
    (builtin-agent B15 rejects the same for stored conversations).
@@ -380,13 +389,6 @@ Ordered by expected gain for cost. Each PR runs the bench before and after.
    (c) multiplies the rates by up to three and needs a grant that one `Enter` gives to several
    conversations, which B18 does not allow. Recommendation: (a) until S2 to S6 are measured,
    because they remove most of the steps a planner would hand out.
-2. **The default of `keep_results`.** Options: 4, 6 or 10. Fewer saves more tokens but a model
-   that compares products across pages may need an older list again, which costs a step.
-   Recommendation: 6, measured on L06 and L09 (the lists with preferences) before Delivery 5
-   merges. Measured so far ([agent-bench.md](../agent-bench.md), "Older results left out"): on
-   the scripted floor 4, 6 and 10 save 21, 14 and 2 % of L09's tokens; on a local
-   mixture-of-experts model on the CPU, 6 cut L10's tokens by 37 % but each block left out cost
-   about 120 s of reading, so the run took as long.
-3. **Thinking for local models by default.** Options: the model's default, or off for local
+2. **Thinking for local models by default.** Options: the model's default, or off for local
    providers. Recommendation: the model's default until the bench shows that a model with
    thinking off chooses the same products (the "cheapest" and "lactose-free" items).

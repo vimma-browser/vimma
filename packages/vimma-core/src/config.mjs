@@ -90,7 +90,8 @@ import { checkEndpoint } from "./agent-providers.mjs";
 /**
  * `[agent]` (docs/specs/builtin-agent.md Behaviour 8). `default` is a provider's name, or null.
  * @typedef {{ default: string | null, localOnly: boolean, maxRunning: number, maxSteps: number,
- *   maxTokens: number, maxCost: number, keepDays: number | null, keepResults: number,
+ *   maxTokens: number, maxCost: number, keepDays: number | null,
+ *   keepResults: number | null,
  *   providers: AgentProviderConfig[] }} AgentConfig
  */
 
@@ -271,15 +272,14 @@ export const MCP_BOUNDS = Object.freeze({
 /**
  * `[agent]`'s defaults (docs/specs/builtin-agent.md B10, B17). Kept here rather than in
  * DEFAULT_CONFIG while the built-in agent is unfinished, so defaults.toml does not list it.
- * The budgets are agent-budget.mjs's DEFAULT_LIMITS; `keepResults` is agent-loop.mjs's
- * KEEP_RESULTS (docs/specs/agent-speed.md S5).
+ * The budgets are agent-budget.mjs's DEFAULT_LIMITS. `keep_results` has no default here: unset
+ * (null), it depends on the provider (agent-loop.mjs, keepResultsFor).
  */
 export const AGENT_DEFAULTS = Object.freeze({
   maxRunning: 3,
   maxSteps: 100,
   maxTokens: 2_000_000,
   maxCost: 2,
-  keepResults: 6,
 });
 const AGENT_KEYS = [
   "default",
@@ -879,7 +879,7 @@ function resolveAgent(agent) {
     maxTokens: /** @type {number} */ (num(agent?.max_tokens, AGENT_DEFAULTS.maxTokens)),
     maxCost: /** @type {number} */ (num(agent?.max_cost, AGENT_DEFAULTS.maxCost)),
     keepDays: num(agent?.keep_days, null),
-    keepResults: /** @type {number} */ (num(agent?.keep_results, AGENT_DEFAULTS.keepResults)),
+    keepResults: num(agent?.keep_results, null),
     providers: providers.map((p) => ({
       name: p.name,
       kind: p.kind,

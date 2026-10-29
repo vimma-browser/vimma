@@ -194,7 +194,7 @@ describe("runOne", () => {
 
   it("leaves older results out of its requests as the built-in agent does, or not at all", async () => {
     const list = lists[9];
-    /** @param {number | undefined} keepResults */
+    /** @param {number} keepResults */
     const runWith = (keepResults) =>
       runOne({
         list,
@@ -207,9 +207,9 @@ describe("runOne", () => {
         runTool: fakeVimma(),
         limits: {},
         timeoutMs: 30_000,
-        ...(keepResults === undefined ? {} : { keepResults }),
+        keepResults,
       });
-    const pruned = await runWith(undefined);
+    const pruned = await runWith(6);
     const whole = await runWith(0);
     expect(pruned.complete && whole.complete).toBe(true);
     expect(pruned.steps).toBe(whole.steps);
@@ -369,8 +369,9 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--pace-ms", "-1"])).toThrow(/--pace-ms/);
   });
 
-  it("takes how many results a request keeps whole, by default the agent's", () => {
-    expect(parseArgs([])).toMatchObject({ keepResults: 6 });
+  it("takes how many results a request keeps whole, by default the provider's, as the agent", () => {
+    expect(parseArgs([])).toMatchObject({ keepResults: null });
+    expect(parseArgs(["--keep-results", "6"])).toMatchObject({ keepResults: 6 });
     expect(parseArgs(["--keep-results", "0"])).toMatchObject({ keepResults: 0 });
     expect(() => parseArgs(["--keep-results", "-1"])).toThrow(/--keep-results/);
   });
