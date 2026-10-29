@@ -505,7 +505,17 @@ Instead:
   **pending**: tab events are queued, not applied; no visibility changes; no window-value writes
   (tab values set now would be overwritten by `extData`, and our window value may be replaced,
   5930-5944). On every `SSWindowStateReady` it runs the reconcile and leaves pending. Any number
-  of brackets, in any window, at any time, work the same way.
+  of brackets, in any window, at any time, work the same way. (Since changed: SessionStore does
+  not close every bracket. A window opened on macOS after the last one closed gets the closed
+  window's pinned tabs and closed-tab list through `#restoreWindow`, which raises the busy count,
+  and no `SSWindowStateReady` ever follows; a `#restoreTab` that throws between raising and
+  lowering the count leaves it raised the same way. The window then stayed pending for good, with
+  every later tab event dropped, which is how tab search and the side panel came to list one tab
+  of eleven in issue [#546](https://github.com/vimma-browser/vimma/issues/546). Pending now also
+  ends on `sessionstore-single-window-restored` for the window, which SessionStore sends at the
+  end of both restore paths, and after 5 s without a Ready; either runs the reconcile, and the
+  about:vimma report names the restore that never finished, a restore still pending, and the open
+  tabs beside the model's.)
 - **Tab events outside a bracket** are handled in a microtask, so a path that adds a tab and then
   restores it in the same task (undo close, `duplicateTab`) has set `extData` first; if a bracket
   opened meanwhile, the event waits for its `SSWindowStateReady`.
