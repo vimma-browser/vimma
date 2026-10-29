@@ -87,6 +87,34 @@ describe("runOne", () => {
     expect(run.calls.at(-1)).toMatchObject({ name: "vimma_activate", denied: true });
   });
 
+  it("records each model turn's time, tokens and request parts, and each call's time", async () => {
+    const list = lists[0];
+    const run = await runOne({
+      list,
+      shop,
+      provider: SCRIPTED_PROVIDER,
+      fetch: scriptedFetch(shopper({ base: shop.base, list })),
+      key: "",
+      system: AGENT_INSTRUCTIONS,
+      tools: agentTools({ vision: false }),
+      runTool: fakeVimma(),
+      limits: {},
+      timeoutMs: 30_000,
+    });
+    // One model turn per step, and the closing reply.
+    expect(run.turns).toHaveLength(run.steps + 1);
+    for (const t of run.turns) {
+      expect(t.ms).toBeGreaterThanOrEqual(0);
+      expect(t.input).toBeGreaterThan(0);
+      expect(t.output).toBeGreaterThan(0);
+      expect(t.parts.tools).toBeGreaterThan(0);
+    }
+    expect(run.turns.reduce((n, t) => n + t.input + t.output, 0)).toBe(run.input + run.output);
+    // The second turn's request holds the first call's result as its newest part.
+    expect(run.turns[1].parts.latest).toBeGreaterThan(0);
+    expect(run.calls.every((c) => typeof c.ms === "number" && c.ms >= 0)).toBe(true);
+  });
+
   it("stops a run at its step budget and says so", async () => {
     const list = lists[9];
     const run = await runOne({

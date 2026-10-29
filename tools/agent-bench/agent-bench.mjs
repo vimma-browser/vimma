@@ -36,6 +36,7 @@ import { findVimmaCtl } from "../e2e/driver.mjs";
 import { findBuild, launch, quitBrowser } from "../e2e/launcher.mjs";
 import { encodePng } from "../e2e/png.mjs";
 import { capture } from "../e2e/screenshot.mjs";
+import { formatBreakdown } from "./breakdown.mjs";
 import { httpFetch } from "./http-fetch.mjs";
 import { loadLists } from "./lists.mjs";
 import { McpClient } from "./mcp-client.mjs";
@@ -234,7 +235,7 @@ async function main() {
   }
 
   const table = formatSummary(runs);
-  process.stdout.write(`\n${JSON.stringify(meta)}\n\n${table}\n`);
+  process.stdout.write(`\n${JSON.stringify(meta)}\n\n${table}\n\n${formatBreakdown(runs)}\n`);
   if (o.out) writeFileSync(o.out, `${JSON.stringify({ meta, runs }, null, 2)}\n`);
   if (o.check) {
     const bad = runs.filter((r) => !r.complete || !r.safe || !r.checkpointAsked);

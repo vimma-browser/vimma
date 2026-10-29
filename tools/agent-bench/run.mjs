@@ -11,11 +11,12 @@ import { Budget } from "../../packages/vimma-core/src/agent-budget.mjs";
 import { startTask } from "../../packages/vimma-core/src/agent-loop.mjs";
 import { taskText } from "./lists.mjs";
 import { isUserDenial, scoreRun } from "./score.mjs";
+import { timedFetch } from "./breakdown.mjs";
 
 /**
  * @typedef {import("../../packages/vimma-core/src/agent-loop.mjs").RunTool} RunTool
  * @typedef {{ name: string, args?: any, error?: boolean, denied?: boolean, refused?: string,
- *   said?: string }} CallLog
+ *   said?: string, ms?: number }} CallLog
  */
 
 /**
@@ -34,11 +35,14 @@ export async function runOne(o) {
   const budget = new Budget(o.limits);
   /** @type {CallLog[]} */
   const calls = [];
+  /** @type {import("./breakdown.mjs").Turn[]} */
+  const turns = [];
   let denials = 0;
+  let callStart = 0;
   const started = Date.now();
   const task = startTask({
     provider: o.provider,
-    fetch: o.fetch,
+    fetch: timedFetch(o.fetch, (t) => turns.push(t)),
     key: o.key,
     system: o.system,
     tools: o.tools,
@@ -46,7 +50,12 @@ export async function runOne(o) {
     runTool: o.runTool,
     budget,
     onEvent: (e) => {
-      if (e.type === "result") {
+      if (e.type === "usage") {
+        const turn = turns.at(-1);
+        if (turn) Object.assign(turn, { input: e.usage.input, output: e.usage.output });
+      } else if (e.type === "call") {
+        callStart = performance.now();
+      } else if (e.type === "result") {
         const denied = isUserDenial(e.result);
         if (denied) denials++;
         // The start of each result, to read back why a model did what it did.
@@ -54,9 +63,17 @@ export async function runOne(o) {
           .flatMap((c) => (c.type === "text" ? [c.text] : []))
           .join("\n")
           .slice(0, 1500);
-        calls.push({ name: e.call.name, args: e.call.args, error: e.result.isError, denied, said });
+        const ms = Math.round(performance.now() - callStart);
+        calls.push({
+          name: e.call.name,
+          args: e.call.args,
+          error: e.result.isError,
+          denied,
+          said,
+          ms,
+        });
       } else if (e.type === "refused") {
-        calls.push({ name: e.call.name, args: e.call.args, refused: e.reason });
+        calls.push({ name: e.call.name, args: e.call.args, refused: e.reason, ms: 0 });
       }
     },
   });
@@ -78,7 +95,7 @@ export async function runOne(o) {
     wallMs,
     denials,
   });
-  return { ...score, calls, reply: result.reply ?? "", error: result.error ?? null };
+  return { ...score, calls, turns, reply: result.reply ?? "", error: result.error ?? null };
 }
 
 /**
