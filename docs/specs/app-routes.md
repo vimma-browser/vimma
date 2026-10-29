@@ -65,7 +65,9 @@ Today none of these paths names the right program:
    a tie. If none of them matches, the first matching rule without `app` wins, as today. Rules
    below it never apply to that link. `app = "herdr"` therefore beats `app = "ghostty"` for a link
    herdr's pane opened, whichever of the two comes first, as long as both are above any matching
-   rule without `app`.
+   rule without `app`. One exception applies wherever its rule sits: when a rule naming the agent
+   workspace has an `app` equal to any of the link's names, no rule with `app` applies to that link
+   (Behaviour 10).
 4. **`BROWSER=vimma-open` attributes CLI links.** With `export BROWSER=vimma-open`, every program
    that honours `BROWSER` (CPython's `webbrowser`, `gh`, `xdg-open` on a generic desktop) runs
    `vimma-open <url>`, which walks the process chain on Linux and on macOS, returns at once, and
@@ -120,9 +122,9 @@ Today none of these paths names the right program:
 10. **Never the agent or the private workspace.** A link from another program never opens in the
     agent workspace (vimma-mcp, decision 42) or in the private workspace (private-workspace,
     decision 8c). A rule naming the agent workspace is passed over for such a link and matching goes
-    on with the next rule; `:route` and about:vimma mark it. When such a rule names one of the
-    link's programs (an agent CLI), rules for programs farther up the chain (its terminal) do not
-    apply to that link.
+    on with the next rule; `:route` and about:vimma mark it. When such a rule's `app` names one of
+    the link's programs (an agent CLI), no rule with `app` applies to that link, only rules without
+    `app`, then Firefox's guess and the workspace default.
 11. **`vimma-open --from <app> <url>`** names the program explicitly, for a caller that is not on
     the chain (a systemd unit, a script started elsewhere).
 12. **about:vimma shows the last names.** Its Routing section says which names the most recent link
@@ -363,7 +365,9 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
    `matchRoute` finds the first matching rule without `app`, N. The candidates are the matching
    rules with `app` above N (all of them when there is no N); the one matching the nearest name
    wins, the earlier in the file on a tie; with no candidate, N wins. Rules below N are inert for
-   that link. With no names, only rules without `app` can match. Reason: the nearer program is
+   that link. With no names, only rules without `app` can match. Before any of this, the agent cut
+   of decision 5 runs, wherever its rule sits in the file, since it can only remove candidates (the
+   safe direction). Reason: the nearer program is
    the more
    specific claim, so `app = "herdr"` should beat `app = "ghostty"` for a link from a herdr pane
    without the user having to order them; and between a rule with `app` and one without, file order
@@ -388,14 +392,21 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
    This changes today's behaviour, which falls through to Firefox's guess; the existing test
    `a_route_rule_naming_the_agent_workspace_is_not_followed_from_outside` stays, and a new one
    checks that the next rule applies. Private windows stay unroutable (`unroutable`).
-   - **An agent CLI's link never borrows the terminal's rules.** When a rule with `app` that names
-     the agent workspace matches one of the link's names, the names after that one are dropped
-     before matching, so only rules for that name or a nearer one, and rules without `app`, can
-     apply, then Firefox's guess and the workspace default. Reason: with
-     `app = "claude"` routed to the agent workspace above `app = "ghostty"` with
+   - **An agent CLI's link never reaches an app rule.** When a rule naming the agent workspace has
+     an `app` equal to any of the link's names, all names are dropped before matching, wherever
+     that rule sits in the file: only rules without `app` apply, then Firefox's guess and the
+     workspace default. "Equal" compares the `app` key alone, so a rule
+     `app = "claude", domain = "github.com"` still protects claude's other links. Reason: with
+     `app = "claude"` routed to the agent workspace and `app = "ghostty"` with
      `domain = "login.microsoftonline.com"` routed to `admin`, a prompt-injected agent's sign-in
      URL (`claude,zsh,ghostty`) would otherwise open with `admin`'s cookies, where today it gets
-     the guess or the default.
+     the guess or the default. Keeping the names nearer than the agent's would not help, because
+     every process nearer than the agent CLI is one the agent started: a copied shell named
+     `ghostty` gives `ghostty,claude,zsh,ghostty`, and an agent running `az login` gives
+     `python3,claude,…`, which reaches a user's own `app = "python3"` sign-in rule. The cut covers
+     links an agent opens the normal way, through `BROWSER` or `xdg-open`; it cannot stop an agent
+     that runs `vimma-open --from` or `vimma -vimma-from` itself, which is the boundary
+     docs/security.md §11 already accepts for programs running as the user.
 
 ### Collecting the names
 
@@ -425,9 +436,10 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
 
    When the walk ends at the 32-step limit or at a name that is not a token, the farthest name kept
    (decision 2) is the last process reached, not a terminal. Otherwise the walk stops at the
-   terminal or app that a launcher, LaunchServices or the compositor started, and names it. Reason: these are the processes whose name says which program the user
-   was in; the stop list keeps the compositor and session out, so that a rule such as
-   `app = "hyprland"` cannot match every link. Rejected: stopping at the first process inside an
+   terminal or app that a launcher, LaunchServices or the compositor started, and names it.
+   Reason: these are the processes whose name says which program the user was in; the stop list
+   keeps the compositor and session out, so that a rule such as `app = "hyprland"` cannot match
+   every link. Rejected: stopping at the first process inside an
    `.app` bundle on macOS, because framework Python runs as `Python.app/Contents/MacOS/Python` and
    the walk would stop before the terminal.
 
@@ -573,8 +585,9 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
   name apart. (2) A web page can start another app through an external protocol, after Firefox's
   prompt or a remembered "always allow", and that app's next link then carries its name. (3) Every
   program run in a terminal carries the terminal's names, an AI agent's CLI included, so a
-  prompt-injected agent's link matches the terminal's rules unless a rule names the agent's CLI
-  first: a rule naming the agent workspace cuts the names there (decision 5), and the guide
+  prompt-injected agent's link matches the terminal's rules unless a rule names the agent's CLI:
+  a rule naming the agent workspace drops every name of such a link (decision 5), though an agent
+  that names itself with `--from` or `-vimma-from` is not covered (§11), and the guide
   recommends routing agent CLIs (`claude`, `codex`) by name to a workspace with no privileged
   sign-ins. For a workspace that holds privileged sign-ins, the guide recommends pairing `app` with
   `domain`, as the worked example does, so that a forged name opens only the sign-in host there.
@@ -592,8 +605,8 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
   a running app; an inherited `VIMMA_FROM` never names it; any launch whose URL is an argument
   trusts `VIMMA_FROM`, since Vimma cannot tell `vimma-open` from another launcher, and a value set
   with `launchctl setenv` reaches every such launch until logout"; new R8: "a rule naming the agent
-  workspace never applies to a link from another program, and when it matches one of the link's
-  names, no rule for a farther name applies". §2's reach line gains "local
+  workspace never applies to a link from another program, and when its `app` equals one of the
+  link's names, no rule with `app` applies to that link". §2's reach line gains "local
   programs on macOS (the Apple Event's sender)". §7 "`vimma-open`": O6 says the list and 64
   characters; new O8: "`--from` takes exactly an app token and one URL that is not a flag"; new
   O9: "`vimma-open` never runs a command of the multiplexer it inspects".
@@ -617,7 +630,14 @@ Written first and seen to fail.
   - `an app rule below the first matching rule without app never applies`: (1) `app = "ghostty"`
     with the sign-in domain → `admin`, (2) the sign-in domain → `work`, (3) `app = "herdr"` →
     `personal`; `python3,zsh,herdr,zsh,ghostty` gives `admin`, and with rule 1 deleted, `work`
-  - `an agent workspace rule cuts the names: claude,zsh,ghostty never reaches the ghostty rule`
+  - `an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule`
+  - `a child named after the terminal under an agent CLI never reaches the terminal's rule`
+    (`ghostty,claude,zsh,ghostty`)
+  - `az login run by an agent never reaches a python3 sign-in rule` (`python3,claude,zsh,ghostty`)
+  - `the agent cut applies below the first rule without app too`: (1) `app = "ghostty"` → `admin`,
+    (2) the sign-in domain → `work`, (3) `app = "claude"` → the agent workspace;
+    `claude,zsh,ghostty` gives `work`
+  - `an agent rule with a domain still drops the names for the agent's other links`
   - `a shell in the chain matches only a rule that names it, and only when no nearer name matched`
   - `parseAppList collapses consecutive duplicates: python3,zsh,herdr,herdr,zsh,ghostty`
   - `parseAppList keeps at most eight names, drops non-tokens, keeps the rest`
@@ -659,7 +679,8 @@ at most eight, never two equal neighbours`.
   `about_vimma_marks_a_shadowed_rule_and_an_agent_rule`,
   `an_app_rule_never_opens_a_link_in_the_private_workspace`. In
   `browser_vimma_agent_outside_opens.js`: `a_rule_after_one_naming_the_agent_workspace_applies`,
-  `an_agent_cli_link_skips_farther_app_rules_after_an_agent_rule`. Also
+  `an_agent_cli_link_skips_every_app_rule_after_an_agent_rule`,
+  `a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`. Also
   `a_cold_start_app_routed_first_tab_is_not_hinted_back`.
 - **e2e (Linux, Xvfb):** a scenario `app-routes.json` with a new step `external`, which runs the
   packaged `vimma-open` with the given arguments. The harness runs the browser and the step under
@@ -684,9 +705,10 @@ at most eight, never two equal neighbours`.
   platforms: the names a link carries and the nearest-first rule; the worked example (the three
   rules and `export BROWSER=vimma-open`, with the note that the `herdr` rule keeps a detached
   session working); multiplexers; the advice to pair `app` with `domain` for sign-in workspaces and
-  to route agent CLIs (`claude`, `codex`) by name to a workspace with no privileged sign-ins; that about:vimma shows the last link's names; `--from`; and what has no
+  to route agent CLIs (`claude`, `codex`) by name to a workspace with no privileged sign-ins; that
+  about:vimma shows the last link's names; `--from`; and what has no
   names (portal and Flatpak callers, a CLI calling `open` or `osascript` without `BROWSER`,
-  Handoff, a detached multiplexer with several clients).
+  Handoff, a terminal behind a daemonised multiplexer server).
 - **`docs/limits.md`:** the routing limits line lists the cases with no names.
 - **`docs/specs/workspace-routing.md`:** `(Since changed: …; see app-routes.)` notes at decisions 2
   (the nearest name among app rules), 6 (the walk keeps shells and goes past the first program) and
