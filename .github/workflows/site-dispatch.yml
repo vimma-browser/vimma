@@ -8,10 +8,11 @@
 # variable SITE_DISPATCH_APP_ID holds its client ID and the secret SITE_DISPATCH_APP_KEY, of the
 # site-dispatch environment, its private key. Each run mints a token that lasts an hour and
 # reaches only vimma-site, so nothing expires and nothing depends on a person's account. Without
-# the variable the job logs a notice and succeeds, so main stays green until the app is set up.
+# the variable or the key the token step fails and the run goes red, so a release the site was
+# never told about shows.
 #
 # The key can push to vimma-site, whose release-sync pull requests merge themselves, so only
-# main's copy of this file may hold it (docs/security.md, B14). Publishing a release starts
+# main's copy of this file may hold it (docs/security.md, B15). Publishing a release starts
 # `start`, which runs the tag's copy, and anyone with write access can create a tag with an
 # edited copy; so `start` holds no secret and no environment and only starts this workflow on
 # main (workflow_dispatch, release=true), as homebrew.yml and update-publish.yml do. `dispatch`
@@ -76,7 +77,6 @@ jobs:
     steps:
       - name: token for vimma-browser/vimma-site
         id: app
-        if: vars.SITE_DISPATCH_APP_ID != ''
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.SITE_DISPATCH_APP_ID }}
@@ -100,10 +100,6 @@ jobs:
             type=vimma-bindings
             what=$SHA
             payload=(-f "client_payload[sha]=$SHA")
-          fi
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::notice::SITE_DISPATCH_APP_ID is not set; vimma.dev was not told about $what ($type)"
-            exit 0
           fi
           gh api --method POST repos/vimma-browser/vimma-site/dispatches \
             -f "event_type=$type" "${payload[@]}"

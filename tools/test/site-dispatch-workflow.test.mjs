@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-// docs/security.md B14: site-dispatch.yml holds the vimma-site-dispatch app's key and a release
+// docs/security.md B15: site-dispatch.yml holds the vimma-site-dispatch app's key and a release
 // event runs the tag's copy, so its token must reach vimma-site alone and nothing from the event
 // may reach the shell but through env. Text checks, like sites-workflow.test.mjs: no YAML
 // dependency.
@@ -20,9 +20,11 @@ function withOf(action) {
   );
 }
 
-/** Every `run:` script's text, without the `run: |` line. */
+/** Every `run:` script's text: a block's lines without the `run: |` line, or a one-line value. */
 function runScripts() {
-  return [...text.matchAll(/\n( +)run: \|\n((?:\1 {2}.*\n|\n)+)/g)].map((m) => m[2] ?? "");
+  const blocks = [...text.matchAll(/\n( +)run: \|\n((?:\1 {2}.*\n|\n)+)/g)].map((m) => m[2] ?? "");
+  const lines = [...text.matchAll(/^ +(?:- )?run: (?![|>])(.+)$/gm)].map((m) => m[1] ?? "");
+  return [...blocks, ...lines];
 }
 
 /** The text of one job under `jobs:`, up to the next job. @param {string} name */
@@ -61,7 +63,7 @@ describe("site dispatch workflow (site-dispatch.yml)", () => {
     expect(job("dispatch")).not.toMatch(/\n {4}permissions:/);
   });
 
-  // docs/security.md B14: a release event runs the tag's copy of this file, which a writer can
+  // docs/security.md B15: a release event runs the tag's copy of this file, which a writer can
   // edit, and an edited copy could push to an auto-merging release-sync branch of vimma-site.
   it("the job that uses the key deploys to site-dispatch and runs only from main", () => {
     const dispatch = job("dispatch");
@@ -134,13 +136,13 @@ describe("site dispatch workflow (site-dispatch.yml)", () => {
     expect(text).toMatch(/^ {10}TAG: \$\{\{ github\.event\.release\.tag_name \}\}$/m);
   });
 
-  it("without the app's ID, logs a notice and succeeds instead of failing", () => {
-    expect(text).toMatch(/if: vars\.SITE_DISPATCH_APP_ID != ''/);
+  // A skip that succeeds hid a release the site never heard of; without the app's ID or key the
+  // token step fails, so the run goes red.
+  it("fails without the app's ID or key instead of skipping the dispatch", () => {
+    expect(text).not.toContain("vars.SITE_DISPATCH_APP_ID != ''");
     const script = runScripts().find((run) => run.includes("gh api")) ?? "";
-    const guard = /if \[ -z "\$GH_TOKEN" \]; then\n(.*)\n(.*)\n/.exec(script);
-    expect(guard?.[1]).toMatch(/echo "::notice::SITE_DISPATCH_APP_ID is not set;/);
-    expect(guard?.[2]?.trim()).toBe("exit 0");
-    expect(script.indexOf("exit 0")).toBeLessThan(script.indexOf("gh api"));
+    expect(script).not.toContain("exit 0");
+    expect(script).not.toContain("::notice::");
   });
 
   it("never runs for a pre-release or outside vimma-browser/vimma", () => {

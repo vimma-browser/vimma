@@ -70,7 +70,8 @@ cannot fall behind the browser.
    a secret of the `site-dispatch` environment, which only `main` may deploy to, and a published
    release only starts `site-dispatch.yml` on `main` with `release=true`, because a tag's copy of
    the file could otherwise read the key and push to vimma-site's auto-merging release-sync
-   branches; docs/security.md, B14.)
+   branches; docs/security.md, B15. Without the variable or the key the run now fails instead
+   of logging a notice, because a skipped dispatch left the site on an old release unnoticed.)
 5. **The site** (vimma-browser/vimma-site) fetches `docs/bindings.json` at a fixed commit from
    `raw.githubusercontent.com`, commits it with the commit it came from, and builds both its
    keys page and its `?` overlay from it. Its own workflow answers the dispatch with a pull

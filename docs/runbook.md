@@ -2488,7 +2488,7 @@ Developer settings → GitHub Apps), installed on vimma-browser/vimma-site only 
 and write": the variable `SITE_DISPATCH_APP_ID` holds its client ID and the secret
 `SITE_DISPATCH_APP_KEY`, of the `site-dispatch` environment, its private key, and each run mints a
 one-hour token. Nothing expires. The key can push to vimma-site's auto-merging release-sync
-branches, so only `main`'s copy of the workflow may read it (docs/security.md, B14): a published
+branches, so only `main`'s copy of the workflow may read it (docs/security.md, B15): a published
 release only starts `site-dispatch.yml` on `main` with `release=true`, and the `site-dispatch`
 environment's only deployment policy is the branch `main`. Setup, and moving the key out of the
 repository's secrets:
