@@ -6,6 +6,9 @@ import { describe, test, expect } from "vitest";
 import fc from "fast-check";
 import {
   AgentQueue,
+  builtinLabel,
+  isBuiltinConn,
+  mcpClientName,
   ACT_RATE,
   AGENT_TOOLS,
   ALWAYS_ASK,
@@ -813,5 +816,91 @@ describe("vimma_show always asks (mcp-drive D4)", () => {
     expect(b.kind).toBe("wait");
     q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.waiting.map((r) => r.id)).toContain(b.id);
+  });
+});
+
+// docs/specs/builtin-agent.md B5, B18, Behaviour 24-26, 31: a built-in conversation is one
+// connection; sending a task with `Enter` grants it for the connection's lifetime, with no
+// question, and `ctrl+Enter` ends that grant.
+describe("the conversation grant (builtin-agent B18)", () => {
+  test("a conversation grant has no expiry and ends on stop", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    expect(q.grantConnection("builtin:1", 0)).toBe(true);
+    expect(q.grants(0)).toEqual([{ conn: "builtin:1", until: Infinity }]);
+    expect(q.ask("builtin:1", READ, 365 * 24 * 60 * MIN).kind).toBe("run");
+    expect(q.endGrant("builtin:1")).toBe(true);
+    expect(q.ask("builtin:1", READ, 0).kind).toBe("wait");
+    expect(q.endGrant("builtin:1")).toBe(false);
+  });
+
+  test("a built-in connection's grant does not cover another conversation", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    q.connect("builtin:2");
+    q.connect(7);
+    q.grantConnection("builtin:1", 0);
+    expect(q.ask("builtin:2", READ, 0).kind).toBe("wait");
+    expect(q.ask(7, READ, 0).kind).toBe("wait");
+  });
+
+  test("a conversation grant leaves checkpoints asking", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    q.grantConnection("builtin:1", 0);
+    expect(q.ask("builtin:1", "vimma_activate", 0, { always: true }).kind).toBe("wait");
+    expect(q.ask("builtin:1", "vimma_show", 0).kind).toBe("wait");
+  });
+
+  test("the user's send lifts a mute, and a closed connection is not granted", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    for (let i = 0; i < 3; i++) {
+      q.answer(/** @type {any} */ (q.ask("builtin:1", READ, i)).id, { kind: "deny" }, i);
+    }
+    expect(q.ask("builtin:1", READ, 10).kind).toBe("deny");
+    q.grantConnection("builtin:1", 10);
+    expect(q.ask("builtin:1", READ, 11).kind).toBe("run");
+    expect(q.grantConnection("builtin:9", 0)).toBe(false);
+  });
+
+  test(":mcp revoke ends a conversation grant as any other", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    q.grantConnection("builtin:1", 0);
+    expect(q.revoke(0)).toBe(1);
+    expect(q.grants(0)).toEqual([]);
+  });
+});
+
+describe("names (builtin-agent Behaviour 31)", () => {
+  test("a conversation is named built-in and its title", () => {
+    expect(builtinLabel("Weekly groceries")).toBe("built-in · Weekly groceries");
+  });
+
+  test("a client named built-in over MCP is shown with (mcp)", () => {
+    expect(mcpClientName("built-in")).toBe("built-in (mcp)");
+    expect(mcpClientName("Built-In · Weekly groceries")).toBe("Built-In · Weekly groceries (mcp)");
+    expect(mcpClientName("  built-in")).toBe("  built-in (mcp)");
+    expect(mcpClientName("builtin")).toBe("builtin (mcp)");
+    expect(mcpClientName("claude-code")).toBe("claude-code");
+  });
+
+  test("the built-in connection ids are the only ones that say built-in", () => {
+    expect(isBuiltinConn("builtin:3")).toBe(true);
+    expect(isBuiltinConn(3)).toBe(false);
+    expect(isBuiltinConn("full")).toBe(false);
+  });
+});
+
+describe("the built-in agent and :mcp off (builtin-agent Behaviour 33)", () => {
+  test(":mcp off ends the MCP grants and leaves a conversation's", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    q.connect(7);
+    q.grantConnection("builtin:1", 0);
+    q.answer(/** @type {any} */ (q.ask(7, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    q.forgetSessions();
+    expect(q.grants(1)).toEqual([{ conn: "builtin:1", until: Infinity }]);
   });
 });

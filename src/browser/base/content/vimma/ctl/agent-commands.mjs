@@ -24,8 +24,11 @@ import {
   OpenRate,
   SCREENSHOT_RATE,
   SHOW_RATE,
+  isBuiltinConn,
+  mcpClientName,
   wrapUntrusted,
 } from "../core/agent.mjs";
+import { TabOwners } from "../core/agent-owners.mjs";
 import { actDetail, fillDetail } from "../core/agent-act.mjs";
 import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
 import { fillFits, shownNotice } from "../core/agent-prompt.mjs";
@@ -126,6 +129,34 @@ const denied = (reason) => new AgentError("denied", DENIED[reason] ?? reason, re
  * @typedef {{ agent?: { client: string, via?: string }, cancels?: Map<number, () => void> }} AgentConn
  */
 
+/**
+ * Which built-in conversation owns which agent tab (docs/specs/builtin-agent.md B17, Behaviour
+ * 30), by the tab's browser id. In memory only: after a restart no tab is owned.
+ */
+const owners = new TabOwners();
+
+/**
+ * The conversation `tab` belongs to, or null. A tab a page or the user opened from an owned tab
+ * (its `openerTab`, set by tabbrowser's addTab) belongs to the opener's conversation, decided
+ * the first time it is looked at.
+ * @param {Tab} tab
+ */
+function ownerOf(tab) {
+  const own = owners.owner(tabId(tab));
+  if (own !== null) return own;
+  const opener = tab.openerTab;
+  if (!opener?.linkedBrowser) return null;
+  owners.openedBy(tabId(tab), tabId(opener));
+  return owners.owner(tabId(tab));
+}
+
+/**
+ * Whether connection `conn` may see `tab`: a conversation only its own tabs, an MCP connection
+ * only those no conversation owns (B17).
+ * @param {Tab} tab @param {ConnId} conn
+ */
+const visibleTo = (tab, conn) => ownerOf(tab) === (isBuiltinConn(conn) ? conn : null);
+
 /** The agent workspace, or a refusal when there is none (containers off). */
 function agentWorkspace() {
   const w = WorkspaceStore.agent;
@@ -148,15 +179,18 @@ function normalWindows() {
 
 /**
  * Whether `tab` belongs to the agent: its container is the agent workspace's, and its window's
- * model has it in that workspace, not adopted there as a foreign tab (decision 7).
- * @param {Win} win @param {Tab} tab @param {AgentWorkspace} agent
+ * model has it in that workspace, not adopted there as a foreign tab (decision 7); and it is
+ * one connection `conn` may see (B17).
+ * @param {Win} win @param {Tab} tab @param {AgentWorkspace} agent @param {ConnId} conn
  */
-function isAgentTab(win, tab, agent) {
+function isAgentTab(win, tab, agent, conn) {
   if (tab.closing || tab.pinned || tab.userContextId !== agent.userContextId) return false;
   const ww = WindowWorkspaces.get(win);
   const model = ww?.model;
   if (!ww || !model || ww.isForeign(tab)) return false;
-  return workspaceOfTab(model, ww.idOf(tab))?.id === agent.id;
+  if (workspaceOfTab(model, ww.idOf(tab))?.id !== agent.id) return false;
+  // A lazy tab has no browser id yet, so nothing owns it; it is named once it has one.
+  return !tab.linkedPanel || visibleTo(tab, conn);
 }
 
 /**
@@ -164,16 +198,17 @@ function isAgentTab(win, tab, agent) {
  * lazy one (restored, or unloaded under memory pressure) gets its browser, which gives it the
  * id agents name it by; its page loads only when it is read (spec B2). Without, nothing is
  * touched: a lazy tab has no id yet, so no agent can name it.
- * @param {AgentWorkspace} agent @param {boolean} [name]
+ * @param {AgentWorkspace} agent @param {ConnId} conn @param {boolean} [name]
  * @returns {{ win: Win, tab: Tab }[]}
  */
-function agentTabs(agent, name = false) {
+function agentTabs(agent, conn, name = false) {
   return normalWindows().flatMap((win) =>
     win.gBrowser.tabs
-      .filter((/** @type {Tab} */ t) => isAgentTab(win, t, agent))
-      .map((/** @type {Tab} */ tab) => {
+      .filter((/** @type {Tab} */ t) => isAgentTab(win, t, agent, conn))
+      .flatMap((/** @type {Tab} */ tab) => {
         if (name && !tab.linkedPanel) win.gBrowser.insertBrowser(tab);
-        return { win, tab };
+        // Checked again once named: only then can the tab be owned.
+        return !name || visibleTo(tab, conn) ? [{ win, tab }] : [];
       }),
   );
 }
@@ -201,11 +236,12 @@ function tabUrl(tab) {
 
 /**
  * The agent tab with id `id`, or invalid-args: a tab of any other workspace, container or
- * window is unknown to the agent (decision 7), and nothing is asked.
- * @param {AgentWorkspace} agent @param {string} id
+ * window is unknown to the agent (decision 7), and so is another conversation's tab, in the same
+ * words, so that no connection learns which tabs the others have (B17). Nothing is asked.
+ * @param {AgentWorkspace} agent @param {string} id @param {ConnId} conn
  */
-function findAgentTab(agent, id) {
-  const all = agentTabs(agent);
+function findAgentTab(agent, id, conn) {
+  const all = agentTabs(agent, conn);
   const index = all.findIndex(({ tab }) => tabId(tab) === id);
   if (index === -1) {
     throw new AgentError("invalid-args", `tab ${id} is not a tab of the agent workspace`);
@@ -330,16 +366,16 @@ async function payStep(browser, conn, step, found = null) {
 
 /**
  * After the yes: the tab must still be the agent's with the URL asked about (decision 19).
- * @param {AgentWorkspace} asked @param {string} id @param {string} url
+ * @param {AgentWorkspace} asked @param {string} id @param {string} url @param {ConnId} conn
  */
-function stillAsAsked(asked, id, url) {
+function stillAsAsked(asked, id, url, conn) {
   const agent = WorkspaceStore.agent;
   if (!agent || agent.id !== asked.id || agent.userContextId !== asked.userContextId) {
     throw denied("changed");
   }
   let found;
   try {
-    found = findAgentTab(asked, id);
+    found = findAgentTab(asked, id, conn);
   } catch {
     throw denied("changed");
   }
@@ -426,7 +462,7 @@ async function stepList(conn, tool, what, agent, win, tab, ready) {
       now.id === agent.id &&
       now.userContextId === agent.userContextId &&
       !win.closed &&
-      isAgentTab(win, tab, agent);
+      isAgentTab(win, tab, agent, conn);
     if (!still) {
       AgentGate.note(conn, tool, what, "stopped", "changed");
       throw new AgentError("failed", "the tab left the agent workspace before its page was listed");
@@ -513,7 +549,8 @@ const COMMANDS = {
    */
   "agent-hello"(conn, state, { client, via, ctl, session }) {
     state.agent = {
-      client: client.name,
+      // No MCP client may pass as the built-in agent (docs/specs/builtin-agent.md Behaviour 31).
+      client: mcpClientName(client.name),
       ...(client.version ? { version: client.version } : {}),
       ...(via ? { via } : {}),
     };
@@ -552,12 +589,12 @@ const COMMANDS = {
   /** @param {ConnId} conn @param {AgentConn} state @param {any} _args @param {number} rid */
   async "agent-tabs"(conn, state, _args, rid) {
     const agent = agentWorkspace();
-    await ask(conn, "agent-tabs", { count: agentTabs(agent).length }, state, rid);
+    await ask(conn, "agent-tabs", { count: agentTabs(agent, conn).length }, state, rid);
     // The list as it is now, checked again (decision 7).
     const now = agentWorkspace();
     if (now.id !== agent.id) throw denied("changed");
     return {
-      tabs: agentTabs(now, true).map(({ tab }) => ({
+      tabs: agentTabs(now, conn, true).map(({ tab }) => ({
         id: tabId(tab),
         url: wf(tabUrl(tab)),
         title: wf(tab.label ?? ""),
@@ -569,10 +606,10 @@ const COMMANDS = {
   /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
   async "agent-read"(conn, state, { tab: id, format = "markdown", max_chars }, rid) {
     const agent = agentWorkspace();
-    const asked = findAgentTab(agent, id);
+    const asked = findAgentTab(agent, id, conn);
     const what = { ...describeTab(asked.tab), index: asked.index };
     await ask(conn, "agent-read", what, state, rid);
-    const { win, tab } = stillAsAsked(agent, id, what.url);
+    const { win, tab } = stillAsAsked(agent, id, what.url, conn);
     const limit = Math.min(
       max_chars ?? Infinity,
       McpHost.config?.maxReadChars ?? DEFAULT_MAX_READ,
@@ -612,7 +649,7 @@ const COMMANDS = {
     const background = !(tab.selected && /** @type {any} */ (Services.focus).activeWindow === win);
     // Last, once everything is collected (security.md M8): the page may have navigated or the
     // tab moved while it was read, and then nothing of it is sent.
-    stillAsAsked(agent, id, what.url);
+    stillAsAsked(agent, id, what.url, conn);
     // Page JS can set the selection, so it is as untrusted as the text.
     const reply = () => ({
       url: wf(what.url),
@@ -643,7 +680,7 @@ const COMMANDS = {
   async "agent-open"(conn, state, { url, tab: id, elements = false }, rid) {
     const agent = agentWorkspace();
     const uri = agentUri(url);
-    const into = id === undefined ? null : findAgentTab(agent, id);
+    const into = id === undefined ? null : findAgentTab(agent, id, conn);
     const current = into ? describeTab(into.tab) : null;
     // The tab's own URL is `current`; `url` is what it would load.
     const what = {
@@ -692,7 +729,7 @@ const COMMANDS = {
       return { tab: tabId(tab), ...list };
     };
     if (current) {
-      const { win, tab } = stillAsAsked(agent, current.tab, current.url);
+      const { win, tab } = stillAsAsked(agent, current.tab, current.url, conn);
       const before = docOf(tab.linkedBrowser);
       // A download of this load is this connection's (decision 31): its grant covers it.
       AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
@@ -717,6 +754,7 @@ const COMMANDS = {
         skipAnimation: true,
       }),
     );
+    if (isBuiltinConn(conn)) owners.opened(tabId(tab), conn);
     AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
     return opened(win, tab, 0);
   },
@@ -730,7 +768,7 @@ const COMMANDS = {
     const agent = agentWorkspace();
     const parsed = parseAgentKeys(keys);
     if (!parsed.ok) throw new AgentError("invalid-args", parsed.error);
-    const asked = findAgentTab(agent, id);
+    const asked = findAgentTab(agent, id, conn);
     const what = { ...describeTab(asked.tab), index: asked.index, keys: shownKeys(parsed.steps) };
     /**
      * A denial outside the gate goes into `:mcp log` too (D14, M23).
@@ -764,7 +802,7 @@ const COMMANDS = {
     const outcome = await ask(conn, "agent-keys", what, state, rid, undefined, !!firstPay);
     let found;
     try {
-      found = stillAsAsked(agent, id, what.url);
+      found = stillAsAsked(agent, id, what.url, conn);
     } catch (e) {
       throw refuse("changed", e);
     }
@@ -844,7 +882,7 @@ const COMMANDS = {
             now.id === agent.id &&
             now.userContextId === agent.userContextId &&
             !win.closed &&
-            isAgentTab(win, tab, agent)
+            isAgentTab(win, tab, agent, conn)
           );
         },
         load: (url) => {
@@ -871,7 +909,7 @@ const COMMANDS = {
    */
   async "agent-show"(conn, state, { tab: id }, rid) {
     const agent = agentWorkspace();
-    const asked = findAgentTab(agent, id);
+    const asked = findAgentTab(agent, id, conn);
     const what = { ...describeTab(asked.tab), index: asked.index };
     // Counted when asked, before the question, so a refused show cannot loop (D7).
     if (!showCalls.take(conn, Date.now())) {
@@ -884,7 +922,7 @@ const COMMANDS = {
     await ask(conn, "agent-show", what, state, rid, undefined, true);
     let found;
     try {
-      found = stillAsAsked(agent, id, what.url);
+      found = stillAsAsked(agent, id, what.url, conn);
     } catch (e) {
       AgentGate.note(conn, "vimma_show", what, "changed");
       throw e;
@@ -918,7 +956,7 @@ const COMMANDS = {
    */
   async "agent-elements"(conn, state, { tab: id }, rid) {
     const agent = agentWorkspace();
-    const asked = findAgentTab(agent, id);
+    const asked = findAgentTab(agent, id, conn);
     const what = { ...describeTab(asked.tab), index: asked.index };
     // Counted when asked, before the question, so a refused list cannot loop (F26).
     if (!elementCalls.take(conn, Date.now())) {
@@ -930,7 +968,7 @@ const COMMANDS = {
     /** After the yes, and once the list is made, the tab must still be as asked (M8). */
     const still = () => {
       try {
-        return stillAsAsked(agent, id, what.url);
+        return stillAsAsked(agent, id, what.url, conn);
       } catch (e) {
         AgentGate.note(conn, "vimma_elements", what, "changed");
         throw e;
@@ -966,7 +1004,7 @@ const COMMANDS = {
    */
   async "agent-screenshot"(conn, state, { tab: id, labels = false, full = false }, rid) {
     const agent = agentWorkspace();
-    const asked = findAgentTab(agent, id);
+    const asked = findAgentTab(agent, id, conn);
     const what = { ...describeTab(asked.tab), index: asked.index };
     // Only a web page is captured (F18): refused before anything is asked or counted, and
     // AgentShot checks the page's principal again around the drawing.
@@ -983,7 +1021,7 @@ const COMMANDS = {
     /** After the yes, and once the image is made, the tab must still be as asked (M8). */
     const still = () => {
       try {
-        return stillAsAsked(agent, id, what.url);
+        return stillAsAsked(agent, id, what.url, conn);
       } catch (e) {
         AgentGate.note(conn, "vimma_screenshot", what, "changed");
         throw e;
@@ -1040,7 +1078,7 @@ const COMMANDS = {
    */
   async "agent-console"(conn, state, { tab: id, since = 0 }, rid) {
     const agent = agentWorkspace();
-    const asked = findAgentTab(agent, id);
+    const asked = findAgentTab(agent, id, conn);
     const what = { ...describeTab(asked.tab), index: asked.index };
     // Only a web page's (as F2): a privileged about: page, the start page or a local file moved
     // into the agent workspace is not the agent's to read. Refused before anything is asked.
@@ -1057,7 +1095,7 @@ const COMMANDS = {
     /** After the yes, and once the lists are made, the tab must still be as asked (M8). */
     const still = () => {
       try {
-        return stillAsAsked(agent, id, what.url);
+        return stillAsAsked(agent, id, what.url, conn);
       } catch (e) {
         AgentGate.note(conn, "vimma_console", what, "changed");
         throw e;
@@ -1091,7 +1129,7 @@ const COMMANDS = {
    */
   async "agent-activate"(conn, state, { tab: id, label, elements = false }, rid) {
     const agent = agentWorkspace();
-    const asked = findAgentTab(agent, id);
+    const asked = findAgentTab(agent, id, conn);
     const browser = asked.tab.linkedBrowser;
     const base = {
       ...describeTab(asked.tab),
@@ -1162,7 +1200,7 @@ const COMMANDS = {
     await ask(conn, "agent-activate", what, state, rid, undefined, !!submit || !!pay);
     let found2;
     try {
-      found2 = stillAsAsked(agent, id, what.url);
+      found2 = stillAsAsked(agent, id, what.url, conn);
     } catch (e) {
       throw refuse("changed", e, what);
     }
@@ -1191,7 +1229,7 @@ const COMMANDS = {
       opens.take(conn, Date.now());
     }
     const now = WorkspaceStore.agent;
-    if (!now || now.id !== agent.id || win.closed || !isAgentTab(win, tab, agent)) {
+    if (!now || now.id !== agent.id || win.closed || !isAgentTab(win, tab, agent, conn)) {
       // The tab left the agent workspace while the click's page loaded: nothing of it is said.
       AgentGate.note(conn, "vimma_activate", what, "stopped", "changed");
       throw new AgentError("failed", "the tab left the agent workspace after the click");
@@ -1229,7 +1267,7 @@ const COMMANDS = {
    */
   async "agent-fill"(conn, state, { tab: id, fields, submit: submitArg, elements = false }, rid) {
     const agent = agentWorkspace();
-    const asked = findAgentTab(agent, id);
+    const asked = findAgentTab(agent, id, conn);
     const browser = asked.tab.linkedBrowser;
     const labels = fields.map((/** @type {any} */ f) => f.label).join(" ");
     const base = {
@@ -1367,7 +1405,7 @@ const COMMANDS = {
     await ask(conn, "agent-fill", what, state, rid, undefined, !!submit);
     let found2;
     try {
-      found2 = stillAsAsked(agent, id, what.url);
+      found2 = stillAsAsked(agent, id, what.url, conn);
     } catch (e) {
       throw refuse("changed", e, what);
     }
@@ -1394,7 +1432,7 @@ const COMMANDS = {
           inUse: () => inUse(tab.linkedBrowser),
           still: () => {
             try {
-              stillAsAsked(agent, id, what.url);
+              stillAsAsked(agent, id, what.url, conn);
               return true;
             } catch {
               return false;
@@ -1430,7 +1468,7 @@ const COMMANDS = {
       opens.take(conn, Date.now());
     }
     const now = WorkspaceStore.agent;
-    if (!now || now.id !== agent.id || win.closed || !isAgentTab(win, tab, agent)) {
+    if (!now || now.id !== agent.id || win.closed || !isAgentTab(win, tab, agent, conn)) {
       // The tab left the agent workspace during the fill: nothing of it is said.
       AgentGate.note(conn, "vimma_fill", what, "stopped", "changed");
       throw new AgentError("failed", "the tab left the agent workspace during the fill");
@@ -1458,10 +1496,10 @@ const COMMANDS = {
   /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
   async "agent-close"(conn, state, { tab: id }, rid) {
     const agent = agentWorkspace();
-    const asked = findAgentTab(agent, id);
+    const asked = findAgentTab(agent, id, conn);
     const what = { ...describeTab(asked.tab), index: asked.index };
     await ask(conn, "agent-close", what, state, rid);
-    const { win, tab } = stillAsAsked(agent, id, what.url);
+    const { win, tab } = stillAsAsked(agent, id, what.url, conn);
     win.gBrowser.removeTab(tab, { closeWindowWithLastTab: false, skipPermitUnload: true });
     return { closed: true };
   },
@@ -1481,6 +1519,39 @@ export function forgetAgentConnection(conn) {
   consoleCalls.forget(conn);
   AgentDrive.forget(conn);
 }
+
+/**
+ * A built-in conversation's own hello (docs/specs/builtin-agent.md B4): the connection is
+ * registered with the gate under the conversation's label, never renamed as an MCP client's is.
+ * Only AgentChat calls it, with a `builtin:` id that no socket connection has.
+ * @param {ConnId} conn @param {AgentConn} state
+ * @param {{ client: string, via?: string }} label
+ */
+export function builtinHello(conn, state, label) {
+  if (!isBuiltinConn(conn)) throw new AgentError("bad-request", "not a built-in connection");
+  if (state.agent) throw new AgentError("bad-request", "agent-hello was already sent");
+  state.agent = { ...label };
+  AgentGate.connect(conn, state.agent);
+}
+
+/**
+ * Tab ownership for the built-in agent (B17): giving a tab to a conversation (Behaviour 17),
+ * and a deleted conversation's tabs going back to no one.
+ */
+export const AgentTabOwners = {
+  /** @param {Tab} tab @param {ConnId} conn */
+  give(tab, conn) {
+    owners.given(tabId(tab), conn);
+  },
+  /** @param {Tab} tab @returns {ConnId | null} */
+  ownerOf(tab) {
+    return tab.linkedPanel ? ownerOf(tab) : null;
+  },
+  /** @param {ConnId} conn */
+  forget(conn) {
+    for (const tab of owners.tabsOf(conn)) owners.closed(tab);
+  },
+};
 
 /**
  * Run an agent command, validated already. `state` is the connection's: `agent` once its

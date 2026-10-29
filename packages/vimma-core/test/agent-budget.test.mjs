@@ -5,7 +5,7 @@ import { Budget, DEFAULT_LIMITS, budgetLimitText } from "../src/agent-budget.mjs
 
 describe("Budget", () => {
   test("the defaults are those of [agent]", () => {
-    expect(DEFAULT_LIMITS).toEqual({ maxSteps: 60, maxTokens: 1_000_000, maxCost: 2 });
+    expect(DEFAULT_LIMITS).toEqual({ maxSteps: 100, maxTokens: 2_000_000, maxCost: 2 });
     expect(new Budget().limits).toEqual(DEFAULT_LIMITS);
   });
 
@@ -58,7 +58,7 @@ describe("Budget", () => {
     b.addUsage({ input: 1, output: 1, estimated: true });
     expect(b.status()).toEqual({
       steps: 0,
-      maxSteps: 60,
+      maxSteps: 100,
       tokens: 4,
       estimated: true,
       cost: null,

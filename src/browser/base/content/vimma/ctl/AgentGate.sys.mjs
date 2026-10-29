@@ -380,6 +380,42 @@ export const AgentGate = {
   },
 
   /**
+   * A built-in conversation's task was sent with `Enter` (docs/specs/builtin-agent.md B18): the
+   * user's own key press in Vimma's window grants that conversation's connection for its
+   * lifetime, with no question. Only AgentChat calls it, for its own connections.
+   * @param {ConnId} conn
+   * @returns {boolean} false for a connection that is not open
+   */
+  grantConnection(conn) {
+    if (NOT_AGENTS.has(conn) || !labels.has(conn)) return false;
+    const made = queue.grantConnection(conn, Date.now());
+    if (made) changed();
+    return made;
+  },
+
+  /**
+   * End one connection's grant (`ctrl+Enter`, a stopped conversation: builtin-agent B18).
+   * @param {ConnId} conn
+   * @returns {boolean} whether it had one
+   */
+  endGrant(conn) {
+    const ended = queue.endGrant(conn);
+    if (ended) changed();
+    return ended;
+  },
+
+  /**
+   * A connection's new name (a conversation titled by its first message, Behaviour 19, 31).
+   * @param {ConnId} conn @param {string} client
+   */
+  relabel(conn, client) {
+    const label = labels.get(conn);
+    if (!label) return;
+    labels.set(conn, { ...label, client });
+    changed();
+  },
+
+  /**
    * End every grant (`:mcp revoke`, decision 22).
    * @returns {number} how many ended
    */

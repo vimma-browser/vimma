@@ -281,6 +281,32 @@ export const MUTE_MS = 60_000;
 export const RECONNECT_MS = 120_000;
 
 /**
+ * The built-in agent's connections (docs/specs/builtin-agent.md B4, B5): one per conversation,
+ * in the browser's own process. A socket connection's id is a number, so no MCP client can have
+ * one of these.
+ */
+export const BUILTIN_CONN_PREFIX = "builtin:";
+/** @param {ConnId} conn */
+export const isBuiltinConn = (conn) =>
+  typeof conn === "string" && conn.startsWith(BUILTIN_CONN_PREFIX);
+
+/**
+ * What questions, notices and `:mcp log` call a conversation (Behaviour 31).
+ * @param {string} title
+ */
+export const builtinLabel = (title) => `built-in · ${title}`;
+
+/**
+ * An MCP client's name as shown: one that starts with "built-in" (in any case, with or without
+ * the hyphen, after spaces) gets ` (mcp)`, so no other program can pass as the built-in agent
+ * (Behaviour 31).
+ * @param {string} name  the client's self-reported name
+ */
+export function mcpClientName(name) {
+  return /^\s*built-?in/i.test(name) ? `${name} (mcp)` : name;
+}
+
+/**
  * @typedef {string | number} ConnId
  * @typedef {{ id: number, conn: ConnId, tool: string, always?: boolean }} AgentRequest  `always`:
  *   asks even under a grant, and its answer never makes one (decision 31 d)
@@ -366,7 +392,10 @@ export class AgentQueue {
   forgetSessions() {
     this.sessions = false;
     this.parked.clear();
-    for (const c of this.conns.values()) {
+    for (const [conn, c] of this.conns) {
+      // `:mcp off` closes the socket's agent role, which the built-in agent does not use
+      // (docs/specs/builtin-agent.md Behaviour 33): its conversations keep their grants.
+      if (isBuiltinConn(conn)) continue;
       c.grant = 0;
       delete c.session;
     }
@@ -481,6 +510,34 @@ export class AgentQueue {
     const had = this.queue.some((r) => r.id === id);
     this.#drop(id);
     return had;
+  }
+
+  /**
+   * A grant for the whole of `conn`'s connection, made by the user's own action rather than an
+   * answer: a task sent with `Enter` in Vimma's chat window (docs/specs/builtin-agent.md B18).
+   * It lifts a mute, since the user just asked the agent to go on.
+   * @param {ConnId} conn @param {number} now
+   * @returns {boolean} false for a connection that is not open
+   */
+  grantConnection(conn, now) {
+    const c = this.conns.get(conn);
+    if (!c) return false;
+    c.grant = Infinity;
+    c.denials = 0;
+    if (c.mutedUntil > now) c.mutedUntil = 0;
+    return true;
+  }
+
+  /**
+   * End `conn`'s grant only (`ctrl+Enter`, stopping a conversation: builtin-agent B18).
+   * @param {ConnId} conn
+   * @returns {boolean} whether there was one
+   */
+  endGrant(conn) {
+    const c = this.conns.get(conn);
+    if (!c || !c.grant) return false;
+    c.grant = 0;
+    return true;
   }
 
   /**

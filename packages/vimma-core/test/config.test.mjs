@@ -408,6 +408,16 @@ describe("mergeWithDefaults", () => {
       ui: { toolbar: "shown", bookmarksToolbar: null },
       updates: { check: true },
       search: null,
+      agent: {
+        default: null,
+        localOnly: false,
+        maxRunning: 3,
+        maxSteps: 100,
+        maxTokens: 2_000_000,
+        maxCost: 2,
+        keepDays: null,
+        providers: [],
+      },
     });
   });
 });

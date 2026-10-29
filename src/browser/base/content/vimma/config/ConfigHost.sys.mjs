@@ -143,6 +143,7 @@ function apply(next, text) {
   PrivateSwap.configure(config.private.placement);
   WorkspaceRouter.setRoutes(config.routes);
   McpHost.configure(config.mcp);
+  McpHost.configureAgent(config.agent);
   if (config.ui.toolbar !== appliedToolbar) {
     appliedToolbar = config.ui.toolbar;
     Toolbar.setHidden(config.ui.toolbar === "hidden");

@@ -33,6 +33,8 @@ import { McpHost } from "./mcp-ops.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  // Lazily: AgentChat runs its tools through agent-commands, which imports this module.
+  AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
@@ -390,6 +392,8 @@ export const AgentUi = {
       redraw();
       return;
     }
+    // The built-in agent's running tasks stop too (docs/specs/builtin-agent.md Behaviour 16).
+    lazy.AgentChat.stopAll();
     const ended = AgentGate.revoke();
     w.notice(
       ended

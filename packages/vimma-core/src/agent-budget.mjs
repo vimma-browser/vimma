@@ -11,8 +11,11 @@
 /** @typedef {{ priceIn?: number, priceOut?: number }} Prices  per million tokens */
 /** @typedef {{ limit: "steps" | "tokens" | "cost", used: number, max: number }} Exceeded */
 
-/** `[agent]`'s defaults: about three times the 20 calls one three-item basket took. */
-export const DEFAULT_LIMITS = Object.freeze({ maxSteps: 60, maxTokens: 1_000_000, maxCost: 2 });
+/**
+ * `[agent]`'s defaults (docs/agent-bench.md): a scripted agent on the shortest path needs 51
+ * steps and 490,000 tokens for a ten-item list, and every measured model took detours.
+ */
+export const DEFAULT_LIMITS = Object.freeze({ maxSteps: 100, maxTokens: 2_000_000, maxCost: 2 });
 
 export class Budget {
   /** @param {Partial<Limits>} [limits] @param {Prices} [prices] */

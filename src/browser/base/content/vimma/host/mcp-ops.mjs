@@ -18,7 +18,7 @@ import {
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { ControlHost } from "./control-ops.mjs";
 
-/** @import { McpConfig } from "../core/config.mjs" */
+/** @import { AgentConfig, McpConfig } from "../core/config.mjs" */
 
 /** `:mcp on|off` (decision 3); `[mcp] enabled` in config.toml wins over it (decision 26). */
 export const MCP_ENABLED_PREF = "vimma.mcp.enabled";
@@ -33,6 +33,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 /** @type {McpConfig | null} config.toml's `[mcp]`, once read; until then the defaults apply. */
 let config = null;
+/** @type {AgentConfig | null} config.toml's `[agent]` (docs/specs/builtin-agent.md), once read. */
+let agentConfig = null;
 
 /** @param {unknown} e */
 const reason = (e) => /** @type {Error} */ (e).message;
@@ -50,6 +52,20 @@ export const McpHost = {
   /** `[mcp]` in force, or null before config.toml was read. */
   get config() {
     return config;
+  },
+
+  /**
+   * `[agent]` from config.toml (ConfigHost, at every read): the built-in agent's providers and
+   * limits.
+   * @param {AgentConfig | null} agent  null: the defaults (tests)
+   */
+  configureAgent(agent) {
+    agentConfig = agent;
+  },
+
+  /** `[agent]` in force, or null before config.toml was read. */
+  get agentConfig() {
+    return agentConfig;
   },
 
   /**
