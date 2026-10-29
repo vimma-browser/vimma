@@ -267,7 +267,8 @@ Work between milestones, in order. The issues hold the scope, the spec and the o
 8. Keymap changes, one PR at a time (each regenerates the bindings docs and the help snapshot):
    Firefox keys ([#234](https://github.com/vimma-browser/vimma/issues/234), [#235](https://github.com/vimma-browser/vimma/issues/235)), toolbar toggle ([#216](https://github.com/vimma-browser/vimma/issues/216)), element focus ([#213](https://github.com/vimma-browser/vimma/issues/213)), tab search
    ([#215](https://github.com/vimma-browser/vimma/issues/215)), the bookmarks toolbar's key ([#214](https://github.com/vimma-browser/vimma/issues/214)), PDF mode's keys ([#487](https://github.com/vimma-browser/vimma/issues/487), `docs/specs/pdf-mode.md`)
-   and following a link to a new tab that is switched to ([#533](https://github.com/vimma-browser/vimma/issues/533), `docs/specs/follow-link-switch.md`).
+   and following a link to a new tab that is switched to ([#533](https://github.com/vimma-browser/vimma/issues/533), `docs/specs/follow-link-switch.md`),
+   and the downloads picker with its status-bar segment ([#618](https://github.com/vimma-browser/vimma/issues/618), `docs/specs/downloads.md`), which is M6's download UX for the keyboard.
 9. M6 ([#228](https://github.com/vimma-browser/vimma/issues/228)), once Vimma has been daily-driven.
 
 Maintenance: [#204](https://github.com/vimma-browser/vimma/issues/204), [#236](https://github.com/vimma-browser/vimma/issues/236), [#237](https://github.com/vimma-browser/vimma/issues/237).
