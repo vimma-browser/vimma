@@ -27,6 +27,7 @@ export const STEPS = [
   "mochitest",
   "e2e",
   "sites-offline",
+  "agent-bench",
 ];
 
 /** @typedef {{ status: string, test: string, message: string }} MochitestFailure */

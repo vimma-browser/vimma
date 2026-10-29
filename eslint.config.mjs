@@ -183,6 +183,11 @@ export default [
     },
   },
   {
+    // The agent bench shop's page script: a classic script in a web page, in Firefox.
+    files: ["tests/e2e/fixtures/bench-shop/*.js"],
+    languageOptions: { sourceType: "script", globals: { ...globals.browser } },
+  },
+  {
     // Default-pref files (browser/branding/*/pref/): `pref()` is the only global.
     files: ["src/browser/branding/**/pref/*.js"],
     languageOptions: { sourceType: "script", globals: { pref: "readonly" } },

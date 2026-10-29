@@ -73,6 +73,7 @@ describe("suiteResults", () => {
         mochitest: FAILED,
         e2e: FAILED,
         "sites-offline": FAILED,
+        "agent-bench": FAILED,
       },
       mochitestLog: LOG,
       e2eReport,
@@ -87,6 +88,7 @@ describe("suiteResults", () => {
       mochitest: "failure",
       e2e: "failure",
       "sites-offline": "failure",
+      "agent-bench": "failure",
     });
     expect(r.mochitest.failures).toHaveLength(3);
     expect(r.e2e).toEqual(e2eReport);
@@ -116,6 +118,7 @@ describe("suiteResults", () => {
         "mochitest",
         "e2e",
         "sites-offline",
+        "agent-bench",
       ].map((s) => [s, OK]),
     );
     const r = suiteResults({
