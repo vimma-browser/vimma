@@ -95,14 +95,31 @@ const KEYS_CALL_MS = 60000;
  */
 const inUse = (browser) => VimmaHost.inUse(browser) || AgentShot.capturing(browser);
 
-/** A refusal with a protocol error code (and, for `denied`, its reason). */
+/**
+ * A refusal with a protocol error code (and, for `denied`, its reason; for a used-up rate, the
+ * milliseconds until the next call is allowed, issue #592).
+ */
 export class AgentError extends Error {
-  /** @param {string} code @param {string} message @param {string} [reason] */
-  constructor(code, message, reason) {
+  /**
+   * @param {string} code @param {string} message @param {string} [reason]
+   * @param {number} [retryAfter]
+   */
+  constructor(code, message, reason, retryAfter) {
     super(message);
     this.code = code;
     this.reason = reason;
+    this.retryAfter = retryAfter;
   }
+}
+
+/**
+ * The `busy` denial of a used-up rate (issue #592): it names the limit and says when the next
+ * call is allowed, so an agent does not wait for a question that is not there.
+ * @param {CallRate} rate @param {ConnId} conn @param {string} calls  e.g. "vimma_keys calls"
+ */
+function rateDenied(rate, conn, calls) {
+  const { message, retryAfter } = rate.refusal(conn, Date.now(), calls);
+  return new AgentError("denied", message, "busy", retryAfter);
 }
 
 /** The denial texts, by reason (decision 4); the MCP layer words them for the model. */
@@ -400,8 +417,7 @@ async function pageElements(conn, tab, still) {
 function takeListSlot(conn, tool, what) {
   if (elementCalls.take(conn, Date.now())) return;
   AgentGate.note(conn, tool, what, "busy");
-  const message = "too many vimma_elements calls from this agent in the last minute";
-  throw new AgentError("denied", message, "busy");
+  throw rateDenied(elementCalls, conn, "vimma_elements calls");
 }
 
 /**
@@ -655,7 +671,7 @@ const COMMANDS = {
     if (elements) takeListSlot(conn, "vimma_open", what);
     await ask(conn, "agent-open", what, state, rid);
     if (!opens.take(conn, Date.now())) {
-      throw new AgentError("denied", "too many opens from this agent in the last minute", "busy");
+      throw rateDenied(opens, conn, "opens");
     }
     const principal = agentPrincipal(agent.userContextId);
     /**
@@ -743,8 +759,7 @@ const COMMANDS = {
     // Counted when asked, before anything else is learnt, so a refused call cannot be retried
     // in a loop, nor used to watch unasked whether the user is typing in a tab (D15).
     if (!keyCalls.take(conn, Date.now())) {
-      const message = "too many vimma_keys calls from this agent in the last minute";
-      throw refuse("busy", new AgentError("denied", message, "busy"));
+      throw refuse("busy", rateDenied(keyCalls, conn, "vimma_keys calls"));
     }
     if (inUse(asked.tab.linkedBrowser)) throw refuse("in-use");
     // mcp-checkpoints C6: a key that acts (a follow, gu, gU, H, L) on a page where it may pay
@@ -876,8 +891,7 @@ const COMMANDS = {
     // Counted when asked, before the question, so a refused show cannot loop (D7).
     if (!showCalls.take(conn, Date.now())) {
       AgentGate.note(conn, "vimma_show", what, "busy");
-      const message = "too many vimma_show calls from this agent in the last minute";
-      throw new AgentError("denied", message, "busy");
+      throw rateDenied(showCalls, conn, "vimma_show calls");
     }
     // AgentQueue asks vimma_show every time whatever is passed (ALWAYS_ASK); always is said here
     // too, so the gate's own options agree (D4).
@@ -923,8 +937,7 @@ const COMMANDS = {
     // Counted when asked, before the question, so a refused list cannot loop (F26).
     if (!elementCalls.take(conn, Date.now())) {
       AgentGate.note(conn, "vimma_elements", what, "busy");
-      const message = "too many vimma_elements calls from this agent in the last minute";
-      throw new AgentError("denied", message, "busy");
+      throw rateDenied(elementCalls, conn, "vimma_elements calls");
     }
     await ask(conn, "agent-elements", what, state, rid);
     /** After the yes, and once the list is made, the tab must still be as asked (M8). */
@@ -976,8 +989,7 @@ const COMMANDS = {
     // Counted when asked, before the question, so a refused screenshot cannot loop (F21).
     if (!shotCalls.take(conn, Date.now())) {
       AgentGate.note(conn, "vimma_screenshot", what, "busy");
-      const message = "too many vimma_screenshot calls from this agent in the last minute";
-      throw new AgentError("denied", message, "busy");
+      throw rateDenied(shotCalls, conn, "vimma_screenshot calls");
     }
     await ask(conn, "agent-screenshot", what, state, rid);
     /** After the yes, and once the image is made, the tab must still be as asked (M8). */
@@ -1050,8 +1062,7 @@ const COMMANDS = {
     // Counted when asked, before the question, so a refused read cannot loop (F26).
     if (!consoleCalls.take(conn, Date.now())) {
       AgentGate.note(conn, "vimma_console", what, "busy");
-      const message = "too many vimma_console calls from this agent in the last minute";
-      throw new AgentError("denied", message, "busy");
+      throw rateDenied(consoleCalls, conn, "vimma_console calls");
     }
     await ask(conn, "agent-console", what, state, rid);
     /** After the yes, and once the lists are made, the tab must still be as asked (M8). */
@@ -1110,8 +1121,7 @@ const COMMANDS = {
     };
     // Counted when asked, before anything else is learnt, so a refused call cannot loop (F26).
     if (!actCalls.take(conn, Date.now())) {
-      const message = "too many vimma_activate calls from this agent in the last minute";
-      throw refuse("busy", new AgentError("denied", message, "busy"));
+      throw refuse("busy", rateDenied(actCalls, conn, "vimma_activate and vimma_fill calls"));
     }
     if (elements) takeListSlot(conn, "vimma_activate", base);
     if (inUse(browser)) throw refuse("in-use", denied("in-use"));
@@ -1130,8 +1140,7 @@ const COMMANDS = {
     }
     // A click may load a page, which is an open (F11): a yes must not end in "too many loads".
     if (!opens.can(conn, Date.now())) {
-      const message = "too many loads from this agent in the last minute";
-      throw refuse("busy", new AgentError("denied", message, "busy"));
+      throw refuse("busy", rateDenied(opens, conn, "loads"));
     }
     const element = checked.element;
     /** @type {{ method: string, action: string, host: string, fields: number } | undefined} */
@@ -1248,9 +1257,7 @@ const COMMANDS = {
     };
     // Counted when asked, before anything else is learnt, so a refused call cannot loop (F26).
     if (!actCalls.take(conn, Date.now())) {
-      const message =
-        "too many vimma_activate and vimma_fill calls from this agent in the last minute";
-      throw refuse("busy", new AgentError("denied", message, "busy"));
+      throw refuse("busy", rateDenied(actCalls, conn, "vimma_activate and vimma_fill calls"));
     }
     if (elements) takeListSlot(conn, "vimma_fill", base);
     if (inUse(browser)) throw refuse("in-use", denied("in-use"));
@@ -1317,8 +1324,7 @@ const COMMANDS = {
     }
     // A fill may load a page (a change handler's, or the submit), which is an open (F11).
     if (!opens.can(conn, Date.now())) {
-      const message = "too many loads from this agent in the last minute";
-      throw refuse("busy", new AgentError("denied", message, "busy"));
+      throw refuse("busy", rateDenied(opens, conn, "loads"));
     }
     /** @type {{ method: string, action: string, host: string, fields: number } | undefined} */
     let submit;

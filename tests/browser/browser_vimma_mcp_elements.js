@@ -594,7 +594,7 @@ addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
   Assert.equal(r.error?.reason, "busy", "a click asked with elements is refused as busy");
   Assert.equal(
     r.error?.message,
-    "too many vimma_elements calls from this agent in the last minute",
+    "too many vimma_elements calls from this agent in the last minute (at most 30)",
     "naming the elements rate",
   );
   const title = await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.title);

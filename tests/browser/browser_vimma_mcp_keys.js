@@ -364,6 +364,14 @@ add_task(async function test_keys_under_a_grant_notice_and_rate() {
   }
   Assert.equal(busy?.i, 28, "the 31st call in a minute is refused");
   Assert.equal(busy?.x.error.reason, "busy", "as busy");
+  // Issue #592: it names the limit and when the next call is allowed.
+  Assert.equal(
+    busy?.x.error.message,
+    "too many vimma_keys calls from this agent in the last minute (at most 30)",
+    "naming the limit it hit",
+  );
+  const wait = busy?.x.error.retryAfter;
+  Assert.ok(wait > 50_000 && wait <= 60_000, `and the wait for the next call: ${wait} ms`);
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   BrowserTestUtils.removeTab(tab);

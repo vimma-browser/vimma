@@ -389,6 +389,14 @@ addTidyTask(async function test_activate_under_a_grant_notice_log_and_rate() {
   }
   Assert.equal(busy?.i, 28, "the 31st click in a minute is refused");
   Assert.equal(busy?.x.error.reason, "busy", "as busy");
+  // Issue #592: it names the limit and when the next call is allowed.
+  Assert.equal(
+    busy?.x.error.message,
+    "too many vimma_activate and vimma_fill calls from this agent in the last minute (at most 30)",
+    "naming the limit it hit",
+  );
+  const wait = busy?.x.error.retryAfter;
+  Assert.ok(wait > 50_000 && wait <= 60_000, `and the wait for the next call: ${wait} ms`);
   Assert.equal(AgentGate.log[0].outcome, "busy", "and logged");
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);

@@ -486,6 +486,40 @@ describe("the elements rate (mcp-forms F26)", () => {
   });
 });
 
+// Issue #592: a rate refusal names its limit and when the next call is allowed, so an agent
+// waits for the rate instead of for a question that is not there.
+describe("a used-up rate says when the next call is allowed", () => {
+  test("retryAfter is 0 with a slot left, else the time until the oldest call leaves", () => {
+    const r = new CallRate({ max: 3, ms: 60_000 });
+    expect(r.retryAfter(1, 0)).toBe(0);
+    r.take(1, 1_000);
+    r.take(1, 5_000);
+    expect(r.retryAfter(1, 6_000)).toBe(0);
+    r.take(1, 9_000);
+    expect(r.retryAfter(1, 10_000)).toBe(51_000);
+    expect(r.retryAfter(1, 60_999)).toBe(1);
+    expect(r.retryAfter(1, 61_000)).toBe(0);
+    expect(r.take(1, 61_000)).toBe(true);
+    expect(r.retryAfter(2, 10_000)).toBe(0);
+  });
+
+  test("retryAfter counts nothing", () => {
+    const r = new CallRate({ max: 1, ms: 60_000 });
+    r.retryAfter(1, 0);
+    expect(r.take(1, 0)).toBe(true);
+    expect(r.take(1, 1)).toBe(false);
+  });
+
+  test("the refusal names the calls, the limit and the wait", () => {
+    const r = new CallRate(KEYS_RATE);
+    for (let i = 0; i < 30; i++) r.take(1, 20_000 + i);
+    expect(r.refusal(1, 68_000, "vimma_keys calls")).toEqual({
+      message: "too many vimma_keys calls from this agent in the last minute (at most 30)",
+      retryAfter: 12_000,
+    });
+  });
+});
+
 // docs/specs/mcp-forms.md F25, F26 (security.md M28, M32): clicks are granted like other tools,
 // at most 30 a minute (shared with fills), and a submission asks under a grant and makes none.
 describe("clicks and submissions (mcp-forms F15, F25, F26)", () => {

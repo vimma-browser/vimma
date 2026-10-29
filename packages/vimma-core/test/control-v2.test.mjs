@@ -678,6 +678,26 @@ describe("agent commands: results and errors", () => {
       "error.reason is only for denied",
     ]);
   });
+
+  // Issue #592: a used-up rate is busy with the time until the next call is allowed.
+  test("retryAfter: 1 to 60000 whole milliseconds, on a busy denial only", () => {
+    const denied = (reason, retryAfter) => ({
+      type: "response",
+      id: 1,
+      ok: false,
+      error: { code: "denied", message: "too many", reason, retryAfter },
+    });
+    for (const ms of [1, 12_000, 60_000]) expect(errorsOf(denied("busy", ms))).toEqual([]);
+    const bad = "error.retryAfter must be a whole number from 1 to 60000";
+    for (const ms of [0, -1, 1.5, 60_001, "5", null]) {
+      expect(errorsOf(denied("busy", ms))).toEqual([bad]);
+    }
+    expect(errorsOf(denied("user", 5))).toEqual(["error.retryAfter is only for a busy denial"]);
+    const other = { code: "failed", message: "m", retryAfter: 5 };
+    expect(errorsOf({ type: "response", id: 1, ok: false, error: other })).toEqual([
+      "error.retryAfter is only for a busy denial",
+    ]);
+  });
 });
 
 // Issue #584: an open, a click or a fill may return the page's new element list, under the same
