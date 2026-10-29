@@ -194,7 +194,7 @@ Each CLI was checked as stated; none was run against a real account, and no toke
     strings) with `--strict-mcp-config` ("Only use MCP servers from --mcp-config"); `--tools ""`
     ("disable all tools" of the built-in set); `--allowedTools`; `--permission-mode dontAsk`;
     `--max-budget-usd` ("only works with --print"); `--no-session-persistence`; `--model`;
-    `--bare` ("skip hooks, LSP, plugin sync, … CLAUDE.md auto-discovery"; its Anthropic auth is
+    `--bare` (skips hooks, plugins and the discovery of project instruction files; its Anthropic auth is
     `ANTHROPIC_API_KEY` or an `apiKeyHelper` only, "OAuth and keychain are never read"). `-p`
     skips the workspace trust dialog ("Only use this in directories you trust").
   - Output, one JSON object a line: `{"type":"system","subtype":"init"}` with `tools`,
