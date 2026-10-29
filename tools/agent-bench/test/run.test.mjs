@@ -192,6 +192,30 @@ describe("runOne", () => {
     expect(run.calls.every((c) => typeof c.ms === "number" && c.ms >= 0)).toBe(true);
   });
 
+  it("leaves older results out of its requests as the built-in agent does, or not at all", async () => {
+    const list = lists[9];
+    /** @param {number | undefined} keepResults */
+    const runWith = (keepResults) =>
+      runOne({
+        list,
+        shop,
+        provider: SCRIPTED_PROVIDER,
+        fetch: scriptedFetch(shopper({ base: shop.base, list })),
+        key: "",
+        system: AGENT_INSTRUCTIONS,
+        tools: agentTools({ vision: false }),
+        runTool: fakeVimma(),
+        limits: {},
+        timeoutMs: 30_000,
+        ...(keepResults === undefined ? {} : { keepResults }),
+      });
+    const pruned = await runWith(undefined);
+    const whole = await runWith(0);
+    expect(pruned.complete && whole.complete).toBe(true);
+    expect(pruned.steps).toBe(whole.steps);
+    expect(pruned.input).toBeLessThan(whole.input);
+  });
+
   it("stops a run at its step budget and says so", async () => {
     const list = lists[9];
     const run = await runOne({
@@ -343,6 +367,12 @@ describe("parseArgs", () => {
     });
     expect(() => parseArgs(["--floor", "category"])).toThrow(/--floor/);
     expect(() => parseArgs(["--pace-ms", "-1"])).toThrow(/--pace-ms/);
+  });
+
+  it("takes how many results a request keeps whole, by default the agent's", () => {
+    expect(parseArgs([])).toMatchObject({ keepResults: 6 });
+    expect(parseArgs(["--keep-results", "0"])).toMatchObject({ keepResults: 0 });
+    expect(() => parseArgs(["--keep-results", "-1"])).toThrow(/--keep-results/);
   });
 
   it("refuses a provider it does not know and a model-less real provider", () => {

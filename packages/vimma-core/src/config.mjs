@@ -90,7 +90,7 @@ import { checkEndpoint } from "./agent-providers.mjs";
 /**
  * `[agent]` (docs/specs/builtin-agent.md Behaviour 8). `default` is a provider's name, or null.
  * @typedef {{ default: string | null, localOnly: boolean, maxRunning: number, maxSteps: number,
- *   maxTokens: number, maxCost: number, keepDays: number | null,
+ *   maxTokens: number, maxCost: number, keepDays: number | null, keepResults: number,
  *   providers: AgentProviderConfig[] }} AgentConfig
  */
 
@@ -271,13 +271,15 @@ export const MCP_BOUNDS = Object.freeze({
 /**
  * `[agent]`'s defaults (docs/specs/builtin-agent.md B10, B17). Kept here rather than in
  * DEFAULT_CONFIG while the built-in agent is unfinished, so defaults.toml does not list it.
- * The budgets are agent-budget.mjs's DEFAULT_LIMITS.
+ * The budgets are agent-budget.mjs's DEFAULT_LIMITS; `keepResults` is agent-loop.mjs's
+ * KEEP_RESULTS (docs/specs/agent-speed.md S5).
  */
 export const AGENT_DEFAULTS = Object.freeze({
   maxRunning: 3,
   maxSteps: 100,
   maxTokens: 2_000_000,
   maxCost: 2,
+  keepResults: 6,
 });
 const AGENT_KEYS = [
   "default",
@@ -287,6 +289,7 @@ const AGENT_KEYS = [
   "max_tokens",
   "max_cost",
   "keep_days",
+  "keep_results",
   "providers",
 ];
 const AGENT_PROVIDER_KEYS = [
@@ -801,6 +804,7 @@ function validateAgent(agent, { fail, typeError, unknownKey }) {
     else if (key === "max_steps") integer(path, v, 1, 1000);
     else if (key === "max_tokens") integer(path, v, 1000, 100_000_000);
     else if (key === "keep_days") integer(path, v, 1, 3650, " (days)");
+    else if (key === "keep_results") integer(path, v, 0, 1000);
     else if (key === "max_cost") {
       if (typeof v !== "number" && typeof v !== "bigint") typeError(path, v, "a number");
       else if (!(Number(v) > 0 && Number(v) <= 1000)) {
@@ -875,6 +879,7 @@ function resolveAgent(agent) {
     maxTokens: /** @type {number} */ (num(agent?.max_tokens, AGENT_DEFAULTS.maxTokens)),
     maxCost: /** @type {number} */ (num(agent?.max_cost, AGENT_DEFAULTS.maxCost)),
     keepDays: num(agent?.keep_days, null),
+    keepResults: /** @type {number} */ (num(agent?.keep_results, AGENT_DEFAULTS.keepResults)),
     providers: providers.map((p) => ({
       name: p.name,
       kind: p.kind,
