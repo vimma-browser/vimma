@@ -206,6 +206,8 @@ export function parseArgs(argv) {
       check: { type: "boolean", default: false },
       keep: { type: "boolean", default: false },
       shots: { type: "string" },
+      floor: { type: "string", default: "search" },
+      "pace-ms": { type: "string", default: "0" },
       help: { type: "boolean", default: false },
     },
   });
@@ -214,6 +216,12 @@ export function parseArgs(argv) {
     throw new Error(`--provider must be one of ${PROVIDERS.join(", ")}, not ${provider}`);
   if (provider !== "scripted" && !values.model)
     throw new Error(`--provider ${provider} needs --model`);
+  const floor = /** @type {string} */ (values.floor);
+  if (floor !== "search" && floor !== "product")
+    throw new Error(`--floor must be search or product, not ${floor}`);
+  const paceMs = Number(values["pace-ms"]);
+  if (!Number.isInteger(paceMs) || paceMs < 0)
+    throw new Error("--pace-ms must be a whole number of milliseconds, 0 or more");
   /** @param {string | undefined} v @param {string} name */
   const int = (v, name) => {
     if (v === undefined) return undefined;
@@ -240,6 +248,8 @@ export function parseArgs(argv) {
     check: values.check ?? false,
     keep: values.keep ?? false,
     shots: values.shots ?? null,
+    floor: /** @type {"search" | "product"} */ (floor),
+    paceMs,
     help: values.help ?? false,
   };
 }
