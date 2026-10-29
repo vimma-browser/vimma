@@ -729,6 +729,7 @@ class Connection {
           code: e.code,
           message: e.message,
           ...(e.reason ? { reason: e.reason } : {}),
+          ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}),
         };
         this.respond(id, { error });
       } else {

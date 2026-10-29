@@ -209,6 +209,12 @@ pub enum Failure {
     /// Vimma said no: `user`, `timeout`, `busy`, `muted`, `changed` or `cancelled`. `waited` is
     /// how long the call waited, which names the timeout.
     Denied { reason: String, waited: Duration },
+    /// Vimma said `busy` with `retryAfter`: one of this connection's per-minute rates is used up.
+    /// `message` names the limit; `retry_after` is when the next call is allowed.
+    RateLimited {
+        message: String,
+        retry_after: Duration,
+    },
     /// Vimma answered with another error code.
     Refused { code: String, message: String },
     /// No discovery file, a stale one, or nothing listening.
@@ -2402,6 +2408,14 @@ pub fn failure_text(failure: &Failure) -> String {
                 .to_string(),
             other => format!("Vimma denied this request ({other})."),
         },
+        Failure::RateLimited {
+            message,
+            retry_after,
+        } => format!(
+            "Vimma's rate limit for this agent: {message}. No question is waiting for the user. \
+             The next call is allowed in {} s.",
+            retry_after.as_millis().div_ceil(1000)
+        ),
         Failure::Refused { code, message } => match code.as_str() {
             "invalid-args" => format!("Vimma refused the arguments: {message}."),
             "failed" => format!("Vimma could not do it: {message}."),
@@ -4335,6 +4349,26 @@ mod tests {
             assert_eq!(tool_error_text(&r), text);
         }
         assert!(failure_text(&Failure::NotRunning("no file".into())).contains("no file"));
+    }
+
+    // Issue #592: a used-up rate says which limit and when the next call is allowed, and not
+    // that questions are waiting for the user.
+    #[test]
+    fn a_rate_limit_names_the_limit_and_the_wait() {
+        let failure = Failure::RateLimited {
+            message: "too many vimma_keys calls from this agent in the last minute (at most 30)"
+                .into(),
+            retry_after: Duration::from_millis(11_200),
+        };
+        let text = failure_text(&failure);
+        assert_eq!(
+            text,
+            "Vimma's rate limit for this agent: too many vimma_keys calls from this agent in the \
+             last minute (at most 30). No question is waiting for the user. The next call is \
+             allowed in 12 s."
+        );
+        let r = tool_result(&legacy_call(ToolCall::Tabs), Err(&failure));
+        assert_eq!(tool_error_text(&r), text);
     }
 
     // Issue #584: vimma_open, vimma_activate and vimma_fill take elements, and vimma_screenshot

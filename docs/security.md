@@ -1060,10 +1060,20 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   size and characters, the find queries and the counts it can see first; the browser checks all
   of it again. More than 6 `agent-show` calls of one connection a minute (mcp-drive D7), counted
   when asked and before the question, are `busy`, so a refused show cannot be retried in a loop.
+  A `busy` denial for a used-up rate (M20's keys and shows, M3's opens and M32's lists, clicks,
+  fills, screenshots and console reads) names the limit and, to a vimma-ctl at least as new as
+  Vimma, carries `retryAfter`, the milliseconds from 1 to 60000 until the next call is allowed,
+  so an agent waits for the rate rather than for a question that is not there (issue #592); the
+  validators take `retryAfter` on a `busy` denial only. It is learnt from the connection's own
+  calls alone, and the refusal still comes before anything else is learnt.
   [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
   [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`the refusal names the calls, the limit and the wait`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`retryAfter: 1 to 60000 whole milliseconds, on a busy denial only`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a_rate_limit_names_the_limit_and_the_wait`](../tools/vimma-ctl/src/mcp.rs),
+  [`a_busy_denial_with_retry_after_is_a_rate_limit`](../tools/vimma-ctl/src/mcp_serve.rs),
   [`test_loads_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_follows_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_follow.js),
   [`a label is lowercase hint characters, at most the longest label of 200 links`](../packages/vimma-core/test/agent-keys.test.mjs),

@@ -82,6 +82,11 @@ export const DENY_REASONS = Object.freeze([
   "cancelled",
   "in-use",
 ]);
+/**
+ * The longest `retryAfter` of a `busy` denial, in ms: every per-connection rate is a sliding
+ * window of a minute, so its next slot is free within one (issue #592).
+ */
+export const MAX_RETRY_AFTER = 60_000;
 /** Why `agent-keys` stopped before its last step (mcp-drive D13, D15, D18). */
 export const KEYS_STOPS = Object.freeze(["changed", "in-use", "timeout", "denied"]);
 /** `agent-keys`'s keys, in code points (mcp-drive D15). */
@@ -926,7 +931,7 @@ function checkResponse(m, command, errors) {
     errors.push("error must be an object");
     return;
   }
-  noExtraFields(error, ["code", "message", "reason"], errors, "error.");
+  noExtraFields(error, ["code", "message", "reason", "retryAfter"], errors, "error.");
   if (typeof error.code !== "string" || !ERROR_CODES.includes(error.code)) {
     errors.push(`error.code must be one of ${ERROR_CODES.join(", ")}`);
   }
@@ -937,6 +942,14 @@ function checkResponse(m, command, errors) {
       errors.push(`error.reason must be one of ${DENY_REASONS.join(", ")}`);
     }
   } else if ("reason" in error) errors.push("error.reason is only for denied");
+  // A used-up rate says when the next call is allowed (issue #592).
+  if ("retryAfter" in error) {
+    if (error.code !== "denied" || error.reason !== "busy") {
+      errors.push("error.retryAfter is only for a busy denial");
+    } else if (!isInt(error.retryAfter, 1, MAX_RETRY_AFTER)) {
+      errors.push(`error.retryAfter must be a whole number from 1 to ${MAX_RETRY_AFTER}`);
+    }
+  }
 }
 
 /**

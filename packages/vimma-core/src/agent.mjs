@@ -214,6 +214,32 @@ export class CallRate {
     return (this.times.get(conn) ?? []).filter((t) => t > now - ms).length < max;
   }
 
+  /**
+   * Milliseconds until connection `conn` may make one more call: 0 with a slot left, else the
+   * time until its oldest call in the window leaves it. Counts nothing.
+   * @param {string | number} conn @param {number} now
+   */
+  retryAfter(conn, now) {
+    const { max, ms } = this.limit;
+    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
+    if (recent.length < max) return 0;
+    // At most the window: a clock set back leaves calls stamped in the future.
+    return Math.min(ms, Math.min(...recent) + ms - now);
+  }
+
+  /**
+   * A refusal for a used-up rate (issue #592): which limit, and when the next call is allowed,
+   * so an agent waits for the rate rather than for a question that is not there.
+   * @param {string | number} conn @param {number} now @param {string} calls  e.g. "vimma_keys calls"
+   * @returns {{ message: string, retryAfter: number }}
+   */
+  refusal(conn, now, calls) {
+    return {
+      message: `too many ${calls} from this agent in the last minute (at most ${this.limit.max})`,
+      retryAfter: Math.max(1, this.retryAfter(conn, now)),
+    };
+  }
+
   /** @param {string | number} conn  closed */
   forget(conn) {
     this.times.delete(conn);

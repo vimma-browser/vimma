@@ -525,20 +525,30 @@ fn failure_of(e: client::Error, waited: Duration) -> Failure {
             code,
             message,
             reason,
+            retry_after,
         })
         | client::Error::Auth(ErrorBody {
             code,
             message,
             reason,
+            retry_after,
         })
         | client::Error::Denied(ErrorBody {
             code,
             message,
             reason,
-        }) => match (code.as_str(), reason) {
-            ("denied", Some(reason)) => Failure::Denied { reason, waited },
-            ("role-off", _) => Failure::McpOff,
-            ("unsupported-protocol", _) => Failure::TooOld(1),
+            retry_after,
+        }) => match (code.as_str(), reason, retry_after) {
+            // A used-up rate, not questions waiting (issue #592).
+            ("denied", Some(reason), Some(retry_after)) if reason == "busy" => {
+                Failure::RateLimited {
+                    message,
+                    retry_after,
+                }
+            }
+            ("denied", Some(reason), _) => Failure::Denied { reason, waited },
+            ("role-off", _, _) => Failure::McpOff,
+            ("unsupported-protocol", _, _) => Failure::TooOld(1),
             _ => Failure::Refused { code, message },
         },
         client::Error::Protocol(message) => Failure::Protocol(message),
@@ -586,6 +596,34 @@ fn name_from_ps(output: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Issue #592: a busy denial with retryAfter is a used-up rate, not questions waiting.
+    #[test]
+    fn a_busy_denial_with_retry_after_is_a_rate_limit() {
+        let denied = |retry_after| {
+            client::Error::Denied(ErrorBody {
+                code: "denied".into(),
+                message: "too many vimma_keys calls".into(),
+                reason: Some("busy".into()),
+                retry_after,
+            })
+        };
+        let waited = Duration::from_millis(3);
+        assert_eq!(
+            failure_of(denied(Some(Duration::from_secs(12))), waited),
+            Failure::RateLimited {
+                message: "too many vimma_keys calls".into(),
+                retry_after: Duration::from_secs(12),
+            }
+        );
+        assert_eq!(
+            failure_of(denied(None), waited),
+            Failure::Denied {
+                reason: "busy".into(),
+                waited,
+            }
+        );
+    }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]

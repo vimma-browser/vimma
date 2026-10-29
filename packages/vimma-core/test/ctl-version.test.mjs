@@ -2,7 +2,12 @@
 // version, and a client older than Vimma gets a one-line notice, never a refusal.
 import { describe, expect, it } from "vitest";
 import { validateMessage } from "../src/control.mjs";
-import { compareVersions, ctlVersionNotice, isCtlVersion } from "../src/ctl-version.mjs";
+import {
+  compareVersions,
+  ctlIsCurrent,
+  ctlVersionNotice,
+  isCtlVersion,
+} from "../src/ctl-version.mjs";
 
 describe("compareVersions", () => {
   it("orders by major, minor and patch as numbers", () => {
@@ -61,6 +66,27 @@ describe("ctlVersionNotice", () => {
   it("says nothing when Vimma's own version is not one it can compare", () => {
     expect(ctlVersionNotice("0.1.7", "")).toBeNull();
     expect(ctlVersionNotice(undefined, "dev")).toBeNull();
+  });
+});
+
+// Issue #592: a reply field newer than the client (a rate refusal's retryAfter) goes only to a
+// vimma-ctl at least as new as Vimma, so an older client keeps working (decision 6).
+describe("ctlIsCurrent", () => {
+  it("is true for a client as new as Vimma or newer", () => {
+    expect(ctlIsCurrent("0.1.8", "0.1.8")).toBe(true);
+    expect(ctlIsCurrent("0.1.9", "0.1.8")).toBe(true);
+    expect(ctlIsCurrent("0.1.8-nightly.2", "0.1.8-nightly.1")).toBe(true);
+  });
+
+  it("is false for an older client, or one that names no version", () => {
+    expect(ctlIsCurrent("0.1.7", "0.1.8")).toBe(false);
+    expect(ctlIsCurrent("0.1.8-rc.1", "0.1.8")).toBe(false);
+    expect(ctlIsCurrent(undefined, "0.1.8")).toBe(false);
+  });
+
+  it("is false when either version cannot be compared", () => {
+    expect(ctlIsCurrent("0.1.8", "dev")).toBe(false);
+    expect(ctlIsCurrent("x", "0.1.8")).toBe(false);
   });
 });
 

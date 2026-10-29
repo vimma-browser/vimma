@@ -418,6 +418,7 @@ fn check_role(discovery: &Discovery, role: Role) -> Result<(), Error> {
             code: "role-off".into(),
             message: "MCP is off in Vimma: run :mcp on".into(),
             reason: None,
+            retry_after: None,
         })),
         _ => Ok(()),
     }
@@ -469,6 +470,7 @@ mod tests {
             code: code.into(),
             message: "m".into(),
             reason: None,
+            retry_after: None,
         }
     }
 
