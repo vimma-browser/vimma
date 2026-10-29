@@ -100,6 +100,9 @@ the [user guide](guide.md); planned work is on the
 ## Agents (MCP)
 
 - Agents can list, read, open and close tabs of the agent workspace, and download through it.
+- Pages in the agent workspace open no pop-up, so they load without their
+  `Cross-Origin-Opener-Policy`, which Firefox refuses in such a tab. A page that also sends
+  `Cross-Origin-Embedder-Policy` is not cross-origin isolated there: it has no `SharedArrayBuffer`.
 - `vimma_fill` knows a one-time-code field by its `autocomplete="one-time-code"` only, and a
   password field by its type (or a past type, or dots drawn by the page): a text field merely
   labelled "Password" or "Code" is filled like any other, with its value shown in the question.

@@ -162,7 +162,12 @@ answer for the user, and that never disturbs what the user is doing.
   makes `window.open` and `target=_blank` open nothing, as Firefox's hidden page reader does
   (`toolkit/components/pageextractor/PageExtractorParent.sys.mjs:200-211`) and the thumbnailer
   (`toolkit/actors/BackgroundThumbnailsChild.sys.mjs:60`). The flags survive a browsing-context
-  replacement (`CanonicalBrowsingContext::ReplacedBy`).
+  replacement (`CanonicalBrowsingContext::ReplacedBy`). A sandboxed top-level load whose response
+  has a `Cross-Origin-Opener-Policy` other than `unsafe-none` fails with
+  `NS_ERROR_DOM_COOP_FAILED` (`HttpBaseChannel::ComputeCrossOriginOpenerPolicyMismatch`, after
+  the `http-on-examine-*` observers), so an agent tab's top-level document is loaded without that
+  header. The policy keeps cross-origin windows from holding a reference to the page; an agent tab
+  has no opener and its pages open no window, so only `crossOriginIsolated` is lost.
 - **Downloads.** Every download is a `Download` in `DownloadCore.sys.mjs`: `start()` awaits
   `DownloadIntegration.shouldBlockForParentalControls(this)` (`:510-514`) before the saver runs,
   and `downloadDone(this)` (`:646`) after. `DownloadIntegration` is an integration point
