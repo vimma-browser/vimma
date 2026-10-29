@@ -103,7 +103,13 @@ first, so that what the guide says a model can do is what the bench measured.
    steps (`14/60 steps`). The approval is `granted` while the conversation holds a grant, and
    `asks every step` when its latest task was sent with `ctrl+Enter` and no grant stands
    (Behaviour 24-25). Without either, as before the first task, it names none, because the next
-   task sent with `Enter` is itself the grant and nothing would ask.
+   task sent with `Enter` is itself the grant and nothing would ask. With no model, the first
+   line says `no model set up`, unless `config.toml` has errors: a file with errors applies none
+   of its tables, `[agent]` included, so the line names the error and its line instead
+   (`no model: config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file`).
+   The window's body says the same in place of the setup steps, and so does the notice when
+   `:agent give`, `n` or a send needs a model. Otherwise the setup hint would send the user to
+   set up a model the file already lists.
 7. **A picker switches models.** In the window, `m` (normal mode) or `:agent model` opens a
    picker of every model available now: the configured providers, then the models the local
    servers list, asked while the picker opens (the usual ports of item 2 and every configured
@@ -126,6 +132,8 @@ first, so that what the guide says a model can do is what the bench measured.
 8. **`config.toml` may list providers**, by endpoint and model only:
 
    ```toml
+   schema = 2                  # at the top of the file: [agent] is new in schema 2
+
    [agent]
    default = "local"           # a provider name below
    local_only = false          # true: refuse any provider that is not on 127.0.0.1 or ::1

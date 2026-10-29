@@ -143,12 +143,39 @@ function onResponse(subject) {
     return;
   }
   if (!isAgentContainer(loadInfo.originAttributes?.userContextId)) return;
+  if (type === Ci.nsIContentPolicy.TYPE_DOCUMENT) dropOpenerPolicy(channel);
   // A frame asks with its top-level document's principal (permission delegation): deny the
   // top-level page's origin, in this tab only.
   const top = loadInfo.browsingContext?.top;
   if (!top?.browserId) return;
   const uri = type === Ci.nsIContentPolicy.TYPE_DOCUMENT ? channel.URI : top.currentURI;
   denyFor(uri, loadInfo.originAttributes, top.browserId);
+}
+
+/**
+ * An agent tab's top-level page loads without its Cross-Origin-Opener-Policy (issue #640).
+ * Firefox fails a top-level load whose browsing context has sandbox flags and whose response
+ * has an opener policy other than unsafe-none with NS_ERROR_DOM_COOP_FAILED
+ * (HttpBaseChannel::ComputeCrossOriginOpenerPolicyMismatch, which runs after the
+ * http-on-examine-* observers), and every agent tab is sandboxed against pop-ups. What the
+ * policy guards, a cross-origin window keeping a reference to the page, cannot happen there:
+ * the tab has no opener (it is opened from chrome) and its pages open no window. The page still
+ * runs in its site's own process; it loses only `crossOriginIsolated` (SharedArrayBuffer). A
+ * page a service worker serves reaches no observer and keeps its policy, and loads all the same:
+ * InterceptedHttpChannel ignores that error.
+ * @param {any} channel  nsIHttpChannel of a top-level document in the agent container
+ */
+function dropOpenerPolicy(channel) {
+  try {
+    if (channel.getResponseHeader("Cross-Origin-Opener-Policy") === "") return;
+  } catch {
+    return;
+  }
+  try {
+    channel.setResponseHeader("Cross-Origin-Opener-Policy", "", false);
+  } catch (e) {
+    console.error("vimma agent pages: cannot drop an opener policy", e);
+  }
 }
 
 /**

@@ -11,8 +11,12 @@ import {
   entryView,
   externalNotice,
   isLocalEndpoint,
+  noModelLines,
+  noModelNotice,
+  noModelReason,
   parseAgentCommand,
 } from "../src/agent-chat.mjs";
+import { reloadConfig } from "../src/config.mjs";
 
 const call = (/** @type {string} */ name, args = {}, id = "c1") => ({ id, name, args });
 const ok = { id: "c1", name: "vimma_activate", isError: false, content: [] };
@@ -239,6 +243,53 @@ describe("the header (Behaviour 6)", () => {
 
   test("without a provider it says so", () => {
     expect(chatHeader({ provider: null, granted: false })[0]).toBe("no model set up");
+  });
+
+  test("a refused config.toml is named, with its line, instead of the setup hint", () => {
+    const toml = '[agent]\ndefault = "local"\n\n[[agent.providers]]\nname = "local"\n';
+    const { errors } = reloadConfig(null, toml);
+    const refused = noModelReason(errors, "config.toml");
+    expect(refused).toBe(
+      "config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file",
+    );
+    expect(chatHeader({ provider: null, granted: false, refused })[0]).toBe(`no model: ${refused}`);
+    expect(noModelNotice(refused)).toBe(`agent: no model: ${refused}`);
+  });
+
+  test("an [agent] error is named before the file's first error, with the count", () => {
+    const errors = [
+      { line: 2, path: "keys.x", message: "unknown action" },
+      { line: 9, path: "agent.providers[0].endpoint", message: "is not a URL" },
+    ];
+    expect(noModelReason(errors, "config.toml")).toBe(
+      "2 errors: config.toml:9: agent.providers[0].endpoint: is not a URL",
+    );
+    expect(noModelReason([errors[0]], "x.toml")).toBe("x.toml:2: keys.x: unknown action");
+  });
+
+  test("the window's body names the refused file's error in place of the setup steps", () => {
+    const refused =
+      "config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file";
+    expect(noModelLines(refused, "config.toml")).toEqual([
+      "No model: config.toml has errors, so none of it applies, [agent] included.",
+      refused,
+      "Fix it and save the file, then press Esc, then n for a new conversation.",
+    ]);
+    expect(noModelLines("2 errors: x.toml:4: keys.a: unknown action", "x.toml")[0]).toBe(
+      "No model: x.toml has errors, so none of it applies, [agent] included.",
+    );
+    expect(noModelLines(null, "config.toml")).toEqual([
+      "No model is set up for the built-in agent.",
+      "Add a provider under [agent] in config.toml, or press Esc, then m to look for a " +
+        "local model server (Ollama, LM Studio, llama.cpp) on this machine.",
+    ]);
+  });
+
+  test("with config.toml applied, the hint points to setup", () => {
+    expect(noModelReason([], "config.toml")).toBeNull();
+    expect(noModelNotice(null)).toBe(
+      "agent: no model is set up; add one under [agent] in config.toml",
+    );
   });
 });
 
