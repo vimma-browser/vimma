@@ -275,7 +275,19 @@ function render(d) {
 
   fill(
     "workspaces",
-    dl([field("Workspaces", d.workspaces.count, "workspace-count")]),
+    dl([
+      field("Workspaces", d.workspaces.count, "workspace-count"),
+      // The report's own lines past the first: the open tabs beside the model's, a restore
+      // pending or never finished, the last rebuild error (issue #546).
+      ...(d.workspaces.live === null
+        ? []
+        : [field("Open tabs", d.workspaces.live, "workspace-live")]),
+      ...AboutVimma.workspaceNotes(d)
+        .map((/** @type {string} */ line) => line.trim())
+        .map((/** @type {string} */ line, /** @type {number} */ i) =>
+          field(i ? "" : "Notes", line, `workspace-note-${i}`),
+        ),
+    ]),
     d.workspaces.window.length
       ? el(
           "table",

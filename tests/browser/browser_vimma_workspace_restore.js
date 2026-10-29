@@ -370,6 +370,85 @@ add_task(async function a_newer_window_value_is_left_untouched() {
   await BrowserTestUtils.closeWindow(win);
 });
 
+// Issue #630: the bound that ends a restore SessionStore never finishes (STUCK_RESTORE_MS) must
+// never end a real one partway, however long its synchronous part takes. A whole-window restore
+// opens every tab (TabOpen) before it sets the window value and the tab values; a model rebuilt
+// and saved in between would overwrite the snapshot before the Ready reads it. The test-only pref
+// sets the bound to 0, so any check of it inside the bracket would fire at the first TabOpen.
+add_task(async function a_whole_window_restore_is_never_cut_short_by_the_stuck_bound() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.workspaces.stuckRestoreMs", 0]] });
+  try {
+    await wholeWindowRestore();
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
+/** The case above, with the bound at 0. */
+async function wholeWindowRestore() {
+  const A = workspace("sb-a");
+  const B = workspace("sb-b");
+  const w1 = await openWindow();
+  const ww1 = WindowWorkspaces.get(w1);
+
+  // A: two pages and a tab in no workspace's container (foreign), with the first page selected.
+  ww1.switchTo({ id: A.id });
+  const a1 = await openIn(w1, `${PAGE}?sb-a1`);
+  const a2 = await openIn(w1, `${PAGE}?sb-a2`);
+  const foreign = w1.gBrowser.addTab(`${PAGE}?sb-foreign`, {
+    userContextId: 0,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.browserLoaded(foreign.linkedBrowser);
+  w1.gBrowser.selectedTab = a1;
+  await until(
+    () => ww1.model.workspaces.find((w) => w.id === A.id).activeTab === ww1.idOf(a1),
+    "A's selected tab is its first page",
+  );
+  Assert.ok(ww1.isForeign(foreign) && workspaceOf(w1, foreign) === A.id, "the foreign tab is A's");
+
+  // B: its start tab and a page, side by side; B active.
+  ww1.switchTo({ id: B.id });
+  await until(() => w1.gBrowser.selectedTab.userContextId === B.userContextId, "B's start tab");
+  const b0 = w1.gBrowser.selectedTab;
+  const b1 = BrowserTestUtils.addTab(w1.gBrowser, `${PAGE}?sb-b1`);
+  await BrowserTestUtils.browserLoaded(b1.linkedBrowser);
+  Assert.ok(PaneViews.get(w1).split("vertical", { tab: b1 }).ok, "B is split");
+
+  const uuid = (/** @type {Element} */ t) => SessionStore.getCustomTabValue(t, TAB_KEY);
+  const uuids = new Map([a1, a2, foreign, b0, b1].map((t) => [t, uuid(t)]));
+  await TabStateFlusher.flushWindow(w1);
+  await TestUtils.waitForTick();
+  const winState = JSON.parse(SessionStore.getBrowserState()).windows.find((w) =>
+    w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?sb-b1`)),
+  );
+  await BrowserTestUtils.closeWindow(w1);
+
+  const w2 = await openWindow();
+  await restoreInto(w2, winState);
+  const ww2 = WindowWorkspaces.get(w2);
+  const model = ww2.model;
+  const ws = (/** @type {string} */ id) => model.workspaces.find((w) => w.id === id);
+  Assert.deepEqual(
+    ws(A.id).tabs.slice(1),
+    [uuids.get(a1), uuids.get(a2), uuids.get(foreign)],
+    "A's tabs, the foreign one too, come back with their uuids",
+  );
+  Assert.equal(ws(A.id).activeTab, uuids.get(a1), "A's selected tab is remembered");
+  Assert.deepEqual(ws(B.id).tabs, [uuids.get(b0), uuids.get(b1)], "B's tabs come back");
+  Assert.equal(model.active, B.id, "B is the active workspace");
+  const byUuid = (/** @type {string} */ u) => w2.gBrowser.tabs.find((t) => uuid(t) === u);
+  Assert.deepEqual(
+    leaves(PaneViews.get(w2).panes ?? { root: { type: "leaf", pane: "p0", tab: "" } }).map(
+      (l) => l.tab,
+    ),
+    [byUuid(uuids.get(b0)).linkedPanel, byUuid(uuids.get(b1)).linkedPanel],
+    "B's pane tree comes back",
+  );
+  Assert.equal(ww2.health().recovered, null, "no restore was taken as stuck");
+  await BrowserTestUtils.closeWindow(w2);
+}
+
 add_task(async function a_failed_reconcile_keeps_the_windows_tabs() {
   const A = workspace("ml-a");
   const win = await openWindow();

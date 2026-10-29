@@ -86,7 +86,40 @@ const TAB_EVENTS = [
   "SSTabRestored",
   LABEL_EVENT,
 ];
-const SESSION_EVENTS = ["SSWindowStateBusy", "SSWindowStateReady", "SSWindowClosing"];
+const SESSION_EVENTS = [
+  "SSWindowRestoring",
+  "SSWindowStateBusy",
+  "SSWindowStateReady",
+  "SSWindowClosing",
+];
+
+/**
+ * SessionStore's notification at the end of a restore into one window, sent on both paths that
+ * restore a whole window (#restoreWindowsFeaturesAndTabs, and #initializeWindow's restore of the
+ * last closed window), whether or not an SSWindowStateReady went out first.
+ */
+const WINDOW_RESTORED_TOPIC = "sessionstore-single-window-restored";
+
+/**
+ * How long a restore into a window may stay pending without SSWindowStateReady before it is
+ * taken as one that never finished, by a timer set at the bracket's start (SSWindowRestoring
+ * or SSWindowStateBusy). SessionStore's brackets end
+ * synchronously (#restoreTab) or in a 0 ms timer of the window's that it scheduled before the
+ * Busy (#restoreWindowFeatures), and a chrome window's timers are not throttled, so the timer
+ * never fires inside a real bracket, however long that bracket's synchronous part takes.
+ */
+export const STUCK_RESTORE_MS = 5000;
+
+/** Test-only: overrides STUCK_RESTORE_MS, read at each SSWindowRestoring and SSWindowStateBusy. */
+const STUCK_RESTORE_PREF = "vimma.workspaces.stuckRestoreMs";
+
+/**
+ * The bound in effect: STUCK_RESTORE_MS unless the test-only pref says otherwise. Never throws:
+ * getIntPref with a default returns the default for a pref of another type as well.
+ */
+function stuckRestoreMs() {
+  return Services.prefs.getIntPref(STUCK_RESTORE_PREF, STUCK_RESTORE_MS);
+}
 
 /**
  * A page loading into `browser` in the parent process before its layout has started: the
@@ -156,6 +189,21 @@ export class WindowWorkspacesImpl {
   #moving = null;
   /** Between SSWindowStateBusy and SSWindowStateReady: a restore is under way. */
   #pending = false;
+  /** When the pending restore began (Date.now()). */
+  #pendingSince = 0;
+  /** The timer that ends a pending restore SessionStore never finishes (STUCK_RESTORE_MS). */
+  #stuckTimer = 0;
+  /** The bound of the pending restore (stuckRestoreMs at its bracket's last start event). */
+  #stuckBound = STUCK_RESTORE_MS;
+  /** Whether the pending restore sent SSWindowStateBusy, not only SSWindowRestoring. */
+  #busySeen = false;
+  /**
+   * The last restore that never finished: why the wait ended, after how long, and when.
+   * @type {{ reason: string, afterMs: number, at: number } | null}
+   */
+  #recovered = null;
+  /** @type {{ message: string, at: number } | null} the last failed rebuild */
+  #lastError = null;
   /** #start got as far as building (a Ready before that builds nothing). */
   #started = false;
   #saveQueued = false;
@@ -183,6 +231,7 @@ export class WindowWorkspacesImpl {
     for (const type of [...TAB_EVENTS, ...SESSION_EVENTS]) win.addEventListener(type, this);
     win.addEventListener("focus", this.#onFocus, true);
     Services.obs.addObserver(this.#observer, CHANGED_TOPIC);
+    Services.obs.addObserver(this.#windowRestored, WINDOW_RESTORED_TOPIC);
     this.ready = this.#start().catch((e) => console.error("vimma: no workspaces", e));
   }
 
@@ -192,7 +241,9 @@ export class WindowWorkspacesImpl {
     }
     this.#win.removeEventListener("focus", this.#onFocus, true);
     this.#restoring = null;
+    this.#win.clearTimeout(this.#stuckTimer);
     Services.obs.removeObserver(this.#observer, CHANGED_TOPIC);
+    Services.obs.removeObserver(this.#windowRestored, WINDOW_RESTORED_TOPIC);
     this.#win.gBrowser?.removeTabsProgressListener(this.#progress);
     const view = PaneViews.get(this.#win);
     if (view) {
@@ -242,6 +293,27 @@ export class WindowWorkspacesImpl {
   /** The window's model, or null without workspaces. */
   get model() {
     return this.#model;
+  }
+
+  /**
+   * What about:vimma's report says of this window's model (issue #546): its open unpinned tabs
+   * (the model holds them all when it is in step), how long a restore has been pending, the
+   * last restore that never finished, and the last failed rebuild.
+   */
+  health() {
+    const now = Date.now();
+    const recovered = this.#recovered;
+    return {
+      live: (this.#gBrowser?.tabs ?? []).filter((t) => this.#live(t) && !t.pinned).length,
+      pending: this.#pending,
+      pendingMs: this.#pending ? now - this.#pendingSince : null,
+      recovered: recovered && {
+        reason: recovered.reason,
+        afterMs: recovered.afterMs,
+        agoMs: now - recovered.at,
+      },
+      lastError: this.#lastError?.message ?? null,
+    };
   }
 
   /**
@@ -467,13 +539,29 @@ export class WindowWorkspacesImpl {
   handleEvent(e) {
     if (this.#win.closed) return;
     switch (e.type) {
+      case "SSWindowRestoring":
       case "SSWindowStateBusy":
-        // Our value as it is now, before the restore replaces it (it may not carry ours).
-        this.#save();
-        this.#pending = true;
+        // A whole-window restore sends SSWindowRestoring first, then Busy; once the window's
+        // busy count is stuck (#endStuckRestore) it sends only SSWindowRestoring, and ends with
+        // sessionstore-single-window-restored, which ends the pending (#windowRestored).
+        // The bound is read first: nothing may stop the timer being set once pending is.
+        this.#stuckBound = stuckRestoreMs();
+        if (!this.#pending) {
+          // Our value as it is now, before the restore replaces it (it may not carry ours).
+          this.#save();
+          this.#pending = true;
+          this.#busySeen = false;
+        }
+        if (e.type === "SSWindowStateBusy") this.#busySeen = true;
+        this.#pendingSince = Date.now();
+        this.#win.clearTimeout(this.#stuckTimer);
+        this.#stuckTimer = this.#win.setTimeout(
+          () => this.#endStuckRestore("no SSWindowStateReady"),
+          this.#stuckBound,
+        );
         return;
       case "SSWindowStateReady":
-        this.#pending = false;
+        this.#endPending();
         if (this.#started) this.#reconcile();
         return;
       case "SSWindowClosing":
@@ -486,7 +574,11 @@ export class WindowWorkspacesImpl {
         this.#onLoaded(/** @type {Tab} */ (e.target));
         return;
     }
-    // Tab events inside a restore are not applied: the Ready reconcile reads the live tabs.
+    // Tab events inside a restore are not applied: the Ready reconcile reads the live tabs. The
+    // bound is never checked here: a whole-window restore opens its tabs before it sets the
+    // window and tab values, so a rebuild between two of its TabOpens would save over the
+    // snapshot the Ready reads. Only the timer ends a restore that never finishes; every real
+    // bracket ends synchronously or in a 0 ms timer SessionStore scheduled before its Busy.
     if (!this.#model || this.#pending) return;
     const tab = /** @type {Tab} */ (e.target);
     switch (e.type) {
@@ -572,6 +664,50 @@ export class WindowWorkspacesImpl {
     this.#hinted.set(tab, host);
     this.#notify(`${host} goes to "${hit.workspace.name}" (route ${hit.route.index}): :route move`);
   }
+
+  #endPending() {
+    this.#pending = false;
+    this.#win.clearTimeout(this.#stuckTimer);
+    this.#stuckTimer = 0;
+  }
+
+  /**
+   * Ends a pending restore SessionStore will never finish, and rebuilds the model from the live
+   * tabs. SessionStore's busy count for a window can stay raised for good: its restore of the
+   * last closed window into the next one opened (macOS, where the app outlives its windows)
+   * raises it with no matching Ready, and a #restoreTab that throws partway never lowers it.
+   * Every tab event was dropped from then on, so tab search and the side panel missed each tab
+   * opened afterwards (issue #546). No Busy or Ready comes for that window again; its tab events
+   * are applied as they come, like any window's outside a restore.
+   * @param {string} reason
+   */
+  #endStuckRestore(reason) {
+    if (!this.#pending || this.#win.closed) return;
+    const afterMs = Date.now() - this.#pendingSince;
+    this.#endPending();
+    this.#recovered = { reason, afterMs, at: Date.now() };
+    console.warn(
+      `vimma: a session restore into this window never finished (${reason}); ` +
+        `rebuilding its workspaces after ${afterMs} ms`,
+    );
+    if (this.#started) this.#reconcile();
+  }
+
+  /**
+   * Observer: SessionStore finished restoring a window, maybe without SSWindowStateReady. After a
+   * Busy, the missing Ready is a restore that never finished as far as the count goes. Without a
+   * Busy (the count was already stuck, so only SSWindowRestoring came), the restore finished
+   * normally and is not reported as stuck.
+   */
+  #windowRestored = (/** @type {unknown} */ subject) => {
+    if (subject !== this.#win || !this.#pending) return;
+    if (this.#busySeen) {
+      this.#endStuckRestore("restored without SSWindowStateReady");
+      return;
+    }
+    this.#endPending();
+    if (this.#started) this.#reconcile();
+  };
 
   /** Observer: the store's definitions changed (a workspace added, renamed or deleted). */
   #observer = () => {
@@ -680,6 +816,7 @@ export class WindowWorkspacesImpl {
       this.#rebuild();
     } catch (e) {
       this.#foreign = foreign;
+      this.#lastError = { message: String(e), at: Date.now() };
       console.error("vimma: the window's workspaces could not be rebuilt; keeping them", e);
     }
   }

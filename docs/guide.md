@@ -2740,7 +2740,12 @@ Refresh for the current state. It is an ordinary page, so `j` / `k` scroll it.
   theme's, or the built-in palette's, e.g. `vimma (built in)`), its appearance (`system`,
   `dark` or `light`, where that comes from and how to change it), and on Omarchy the theme
   directory, its `colors.toml` time and why the last theme file was rejected, if one was.
-- **Workspaces:** how many there are, and this window's with their tab and pane counts.
+- **Workspaces:** how many there are, and this window's with their tab and pane counts; the
+  window's open tabs beside the tabs its workspaces hold (`open tabs 11, in workspaces 11`,
+  marked `out of step` when they differ, which is when tab search and the side panel list fewer
+  tabs than the status bar counts); a session restore into the window still under way and for
+  how long; the last restore that never finished and when the workspaces were rebuilt after it;
+  and the last error from rebuilding them.
 - **Control socket:** on or off, and its port. The token is never shown.
 - **Agents (MCP):** on or off (and whether `config.toml` or `:mcp on` decides), and the
   [agent workspace](#agent-workspace) with its tab count; never its addresses or titles.
