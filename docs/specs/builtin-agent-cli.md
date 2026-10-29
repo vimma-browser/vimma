@@ -591,7 +591,10 @@ Claude Code's stream-json, scripted by the task's text; it also covers
 - `agent-cli`: the fake CLI through the real `vimma-ctl mcp` on the fixture shop, a three-item
   task sent with `Enter`, ending at the payment checkpoint in the prompt slot answered `n`.
   Screenshots with the Omarchy theme: setup's CLI list, the header with the fake CLI's own
-  tools listed, an own-tool line, a stopped task.
+  tools listed, an own-tool line, a stopped task. It lands with Delivery 3, because a scenario
+  can name neither a program by its path in the checkout nor a `PATH` for setup's search, and
+  the harness gains that with it; Delivery 2's screens were checked in a real build with the
+  fake CLI and the real `vimma-ctl mcp`.
 
 ## Docs and changelog
 
@@ -628,13 +631,14 @@ window (its Delivery 4), which this feature needs.
    `agent-cli.mjs` with Claude Code's builder and parser and recorded fixtures,
    `agent/AgentCli.sys.mjs`, setup, the notice and the header with the CLI's own tools from its
    init, budgets, `max_minutes` and the cost shown without `max_cost`, C2's exception and the
-   rules on the CLI's own tools in security.md, ADR-023, mochitests and e2e with screenshots.
+   rules on the CLI's own tools in security.md, ADR-023 and mochitests.
 3. `feat(agent): codex as a provider of the chat window` (C12): Codex's builder and parser with
    fixtures recorded against a scripted server, the queued instruction of Behaviour 10, the
    check of how its MCP server receives the ticket, and the check of whether its events report
    its effective sandbox for the header; the feature flag's default becomes
-   `true`, the guide and limits.md describe agent CLIs (Docs and changelog), and the status
-   becomes `implemented`.
+   `true`, the guide and limits.md describe agent CLIs (Docs and changelog), the `agent-cli`
+   e2e scenario lands with what the harness needs for it (Tests), and the status becomes
+   `implemented`.
 4. Gemini CLI and opencode: one issue each, opened with PR 3, for the checks of C12.
 
 ## Open questions
