@@ -259,3 +259,11 @@ describe("toolbar toggle", () => {
     ]);
   });
 });
+
+describe("the built-in agent's window (docs/specs/builtin-agent.md B13)", () => {
+  test("agent_chat (agent.command) is an Agents action on ctrl+b i, and :agent runs it", () => {
+    expect(getAction("agent_chat")).toMatchObject({ id: "agent.command", group: "Agents" });
+    expect(resolveActionName("agent.command")?.name).toBe("agent_chat");
+    expect(compileKeymap().bindingsFor("agent_chat")).toEqual(["prefix+i"]);
+  });
+});

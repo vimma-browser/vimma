@@ -1581,9 +1581,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
 
 Vimma's own agent ([builtin-agent](specs/builtin-agent.md),
 [ADR-023](adr/023-in-browser-model-client.md)): a model the user picks, local or hosted, runs
-tasks the user types in Vimma, through the same agent commands and gate as an MCP agent. It is
-behind `vimma.feature.agentChat` (off) until it has its key (builtin-agent B22); what is in
-force:
+tasks the user types in Vimma, through the same agent commands and gate as an MCP agent. The
+window opens with `ctrl+b i` or `:agent`; what is in force:
 
 **Reach:** the agent workspace's tabs that its conversation owns, through `runAgentCommand` in
 the browser's process, so every rule above holds for it, with no `:mcp on` and no socket. It
@@ -1746,12 +1745,9 @@ for the user.
 - M45. Before a conversation's first task to an endpoint off this machine (and again after its
   provider changes), the window **must** say where page text, field values, screenshots and the
   user's messages go and send nothing without a `y` to that endpoint; `AgentChat.send` itself
-  **must** refuse a task the notice was not answered for. While `vimma.feature.agentChat` is off,
-  `:agent` **must not** run, complete or be suggested.
+  **must** refuse a task the notice was not answered for.
   [`test_external_provider_notice_before_first_task`](../tests/browser/browser_vimma_agent_chat.js),
-  [`the notice before the first task names the host and, when known, who runs it`](../packages/vimma-core/test/agent-chat.test.mjs),
-  [`test_agent_command_hidden_without_the_feature_pref`](../tests/browser/browser_vimma_agent_chat.js),
-  [`a hidden action's commands do not exist: not run, not completed, not suggested`](../packages/vimma-core/test/cmdline.test.mjs)
+  [`the notice before the first task names the host and, when known, who runs it`](../packages/vimma-core/test/agent-chat.test.mjs)
 - M46. A hosted provider's key **must** be typed only into the window's password field, which
   hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
   window, the transcript, the status bar or a notice (which may show its last four characters),

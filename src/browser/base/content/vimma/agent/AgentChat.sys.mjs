@@ -74,11 +74,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
  * @typedef {import("../core/agent-store.mjs").StoredEntry} StoredEntry
  */
 
-/**
- * Unfinished: off until the window has its key (delivery 6; builtin-agent B22; CONTRIBUTING.md,
- * "Unfinished features").
- */
-export const FEATURE_PREF = "vimma.feature.agentChat";
 /** A conversation's title: the first line of its first message, cut at 40 columns (Behaviour 19). */
 const TITLE_COLUMNS = 40;
 
@@ -271,7 +266,6 @@ let pruneTimer = /** @type {any} */ (null);
 
 /** config.toml was read: `keep_days` runs at start, when it changes, and once a day. */
 function onConfig() {
-  if (!AgentChat.enabled) return;
   const keepDays = config()?.keepDays ?? null;
   if (pruneTimer === null) {
     pruneTimer = lazy.setInterval(() => AgentChat.prune(), PRUNE_EVERY_MS);
@@ -355,18 +349,11 @@ function view(/** @type {Conversation} */ c) {
 }
 
 export const AgentChat = {
-  get enabled() {
-    return Services.prefs.getBoolPref(FEATURE_PREF, false);
-  },
-
   /**
    * A new conversation, on a connection of its own that starts without a grant (B5).
    * @param {{ provider: AgentProviderConfig, title?: string }} opts
    */
   create({ provider, title = "" }) {
-    if (!this.enabled) {
-      throw new Error(`the built-in agent is unfinished and off (${FEATURE_PREF})`);
-    }
     const c = make({ provider, title });
     changed();
     return view(c);
@@ -553,7 +540,6 @@ export const AgentChat = {
    */
   restore() {
     restoring ??= (async () => {
-      if (!this.enabled) return;
       try {
         const known = new Set([...conversations.values()].map((c) => c.uid));
         for (const r of await AgentStore.loadAll()) {
@@ -596,7 +582,6 @@ export const AgentChat = {
    * @returns {Promise<void>}
    */
   async prune() {
-    if (!this.enabled) return;
     // After a read under way, so a conversation whose file goes is not read back into memory.
     await restoring;
     const keepDays = config()?.keepDays ?? null;

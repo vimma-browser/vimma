@@ -2614,6 +2614,16 @@
       "name": "Agents",
       "actions": [
         {
+          "name": "agent_chat",
+          "description": "Built-in agent: open its chat window (:agent)",
+          "keys": [
+            {
+              "keys": "ctrl+b i",
+              "chords": ["ctrl+b", "i"]
+            }
+          ]
+        },
+        {
           "name": "mcp_command",
           "description": "Agents (MCP): :mcp on, off or forget",
           "keys": []

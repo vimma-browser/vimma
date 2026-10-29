@@ -1,6 +1,6 @@
 # Spec: builtin-agent
 
-Status: draft (Delivery 1-5 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
+Status: accepted (Delivery 1-6 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
 `agent-providers.mjs`, `agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`,
 `agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs`, `agent-store.mjs`;
 `agent.mjs` and
@@ -67,7 +67,7 @@ first, so that what the guide says a model can do is what the bench measured.
 ### Setup and providers
 
 1. **Off until set up.** With no provider configured, Vimma makes no network request for the
-   agent. `:agent` (and `ctrl+b i`, once delivered, B13) opens the chat window; with no provider
+   agent. `ctrl+b i` or `:agent` (B13) opens the chat window; with no provider
    it shows setup, which offers two choices.
 2. **Local model.** Setup asks only `127.0.0.1` on the usual ports of local servers: Ollama
    (11434), LM Studio (1234) and the llama.cpp server (8080), each with `GET /v1/models` and a
@@ -516,8 +516,8 @@ agent to a part of the profile, or publishes which steps always ask.
     bench's shortest path ([agent-bench.md](../agent-bench.md)). Other local servers set the
     context where they start, which Vimma cannot change.
 13. **One key opens the window, delivered in its own keymap PR** (B13), because keymap changes
-    regenerate the bindings docs and the help snapshot and go one PR at a time. Until then,
-    `:agent` opens it. The key is `ctrl+b i`, free in the default keymap, because the window
+    regenerate the bindings docs and the help snapshot and go one PR at a time. The key is
+    `ctrl+b i`, free in the default keymap, because the window
     opens in its input as Vim's `i` starts typing, and `i` reads as "instruct". Rejected:
     `ctrl+b shift+c` ("chat"), because a shifted key is slower for a window opened often; no
     default key, because the window is the feature's main surface.
@@ -622,10 +622,9 @@ agent to a part of the profile, or publishes which steps always ask.
     focus is in the window, VimmaHost hands it the keys first, as it hands a picker its keys:
     `Enter`, `ctrl+Enter` and `Esc` in the input, the normal-mode keys of Behaviour 14 in the
     transcript, and every chord with `ctrl` other than `ctrl+d` and `ctrl+u` goes on to the
-    keymap, so `ctrl+b` sequences work as anywhere. `:agent` is a command whose action joins
-    `actions.mjs` in the pull request that adds its key (B13), listed until then in core's
-    `PENDING_ACTIONS` and run by its id, so that the keymap, the bindings docs and the help
-    snapshot change once. Rejected: a keymap mode for the window now, because it would change the
+    keymap, so `ctrl+b` sequences work as anywhere. `:agent`'s action (`agent_chat`) joined
+    `actions.mjs` in the pull request that added its key (B13), so that the keymap, the bindings
+    docs and the help snapshot changed once. Rejected: a keymap mode for the window now, because it would change the
     keymap twice; making its keys remappable, because a window with an input and a question
     slot needs fixed keys the slot's guards can rely on, as a picker's are.
 22. **The window ships behind the feature pref** (B22). `vimma.feature.agentChat` stays `false`
@@ -639,8 +638,13 @@ agent to a part of the profile, or publishes which steps always ask.
     text to a model should reach users whole, with its stored conversations reviewed.
     Delivery 5 closes both reasons about restarts: conversations are kept and setup writes
     `[agent] default`. What remains is the window's key (delivery 6), which changes how the
-    window is found, not what it may do; whether the pref turns on before it is the open
-    question below.
+    window is found, not what it may do. Delivery 6 therefore adds the key and removes the
+    pref, its reads and the tests' setup of it (CONTRIBUTING.md, "Unfinished features"), and
+    the guide, limits.md and the README describe the agent in the same change. Rejected: turning
+    the pref on after delivery 5, because a window reached only by `:agent` would be found by few
+    users before its key; waiting for a local model that does the tasks on the bench
+    ([#599](https://github.com/vimma-browser/vimma/issues/599)), because a hosted model does them
+    now, and the guide says what the bench measured instead of naming a model.
 23. **A hosted provider is set up in the window** (B24, Behaviour 3). The model picker (`m`,
     `:agent model`) lists the configured providers, `add: Anthropic (Messages API)` and
     `add: OpenAI-compatible endpoint`, then the local servers' models. Adding asks the endpoint
@@ -977,12 +981,4 @@ Each PR is mergeable and tested on its own; the window appears only in PR 4.
 
 ## Open questions
 
-1. **When `vimma.feature.agentChat` turns on** (B22). (a) In delivery 6's pull request, with the
-   window's key, the guide, limits.md and the README, as B22 says. (b) Now, after delivery 5,
-   with `:agent` as the only way in until delivery 6, and the guide, limits.md and the README in
-   the same change. (c) After the bench's results for a local model ([#599](https://github.com/vimma-browser/vimma/issues/599)), so
-   the guide can name one that does the tasks. **Recommendation: (a)**, because every reason
-   B22 gives about safety and data is closed by delivery 5, and the key is the one step left,
-   one keymap pull request away; turning the pref on with it changes the guide, the help
-   snapshot and the README once, and a released window reached only by `:agent` would be found
-   by few users before the key arrives. The other decisions are in Design.
+None: the decisions are in Design.

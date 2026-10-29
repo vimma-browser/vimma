@@ -23,7 +23,7 @@ Services.scriptloader.loadSubScript(
   this,
 );
 
-const { AgentChat, FEATURE_PREF } = ChromeUtils.importESModule(
+const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
 const { AgentStore } = ChromeUtils.importESModule(
@@ -152,10 +152,7 @@ const addTidyTask = (task) => add_task(tidyTask(task, tidy));
 
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      [FEATURE_PREF, true],
-      ["vimma.mcp.askTimeoutMs", 20000],
-    ],
+    set: [["vimma.mcp.askTimeoutMs", 20000]],
   });
   OSKeyStoreTestUtils.setup();
   registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());

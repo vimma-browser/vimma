@@ -187,11 +187,9 @@ export const COMMANDS = Object.freeze([
 
 /**
  * Action ids the commands use that actions.mjs does not define yet. The host spec adds them
- * (with `npm run gen-docs`) and empties this list. `agent.command` (`:agent`) joins
- * actions.mjs with the built-in agent's key, so that the keymap changes once
- * (docs/specs/builtin-agent.md B13); until then the host runs it by its id.
+ * (with `npm run gen-docs`) and empties this list.
  */
-export const PENDING_ACTIONS = Object.freeze(/** @type {string[]} */ (["agent.command"]));
+export const PENDING_ACTIONS = Object.freeze(/** @type {string[]} */ ([]));
 
 /** `:toolbar`'s words, in completion order. */
 const TOOLBAR_WORDS = Object.freeze(/** @type {const} */ (["show", "hide"]));

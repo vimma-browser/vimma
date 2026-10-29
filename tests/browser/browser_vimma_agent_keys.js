@@ -20,7 +20,7 @@ const { OSKeyStore } = ChromeUtils.importESModule("resource://gre/modules/OSKeyS
 const { AgentKeys, KEY_ORIGIN } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
 );
-const { AgentChat, FEATURE_PREF } = ChromeUtils.importESModule(
+const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
@@ -32,7 +32,6 @@ const ENDPOINT = "https://api.example.com/v1";
 
 add_setup(async () => {
   OSKeyStoreTestUtils.setup();
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE_PREF, true]] });
   registerCleanupFunction(async () => {
     await AgentKeys.delete("hosted");
     await OSKeyStoreTestUtils.cleanup();

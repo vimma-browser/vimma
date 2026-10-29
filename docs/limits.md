@@ -132,6 +132,25 @@ the [user guide](guide.md); planned work is on the
   changes them. What an agent does outside Vimma, with its shell and files, is up to that tool
   ([what Vimma protects](guide.md#what-vimma-protects-and-what-it-does-not)).
 
+## Vimma's own agent
+
+- The [model bench](agent-bench.md) is all Vimma says about models, and none of the local models
+  it ran on a laptop CPU completed its shopping tasks. Whether a local model calls tools well
+  depends on the model and the server running it.
+- A local address may itself forward to a hosted model: the window says `stays on this machine`
+  only for a local server's model picked in the window, and `local endpoint` for an address
+  typed by hand.
+- Token counts are the provider's; a server that reports none is estimated from the characters
+  sent. Cost is shown, and `max_cost` applies, only for a provider with `price_in` and
+  `price_out` in `config.toml`, in whatever currency those are.
+- Conversations share the agent workspace's cookies and logins with each other and with MCP
+  agents; only their tabs are apart.
+- A stored reply may quote page text, since the agent writes its replies from what it read.
+- Without a desktop keyring, stored conversations and API keys are protected as Firefox's saved
+  passwords are: by a primary password if one is set, otherwise readable by anything that can
+  read the profile.
+- The window does not open in a private window.
+
 ## Compatibility and versions
 
 - Add-ons see the browser name `Vimma` (`runtime.getBrowserInfo().name`), not `Firefox`.
