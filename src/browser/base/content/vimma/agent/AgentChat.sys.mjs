@@ -16,7 +16,7 @@
 
 import { Budget } from "../core/agent-budget.mjs";
 import { Transcript, isLocalEndpoint } from "../core/agent-chat.mjs";
-import { startTask } from "../core/agent-loop.mjs";
+import { clearContext, startTask } from "../core/agent-loop.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
 import { failureResult, toolCommand, toolResult } from "../core/agent-results.mjs";
 import { modelChoices, prepareLocalModel, probeLocal } from "../core/agent-setup.mjs";
@@ -433,6 +433,21 @@ export const AgentChat = {
   needsNotice(id) {
     const c = conversation(id);
     return !isLocalEndpoint(c.provider.endpoint) && c.confirmed !== c.provider.endpoint;
+  },
+
+  /**
+   * `C`, `:agent clear` (Behaviour 22): the model is sent only the messages and replies from
+   * now on, not the pages read before. Refused while a task runs.
+   * @param {number} id
+   * @returns {string | null} why not
+   */
+  clear(id) {
+    const c = conversation(id);
+    if (isRunning(c)) return "a task is running; s stops it";
+    c.messages = clearContext(c.messages);
+    c.transcript.notice("context cleared: earlier page reads are no longer sent to the model");
+    changed();
+    return null;
   },
 
   /** The user said y to Behaviour 5's notice. @param {number} id */

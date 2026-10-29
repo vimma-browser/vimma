@@ -100,6 +100,18 @@ function send(/** @type {string} */ text, { ask = false } = {}) {
   EventUtils.synthesizeKey("KEY_Enter", ask ? { ctrlKey: true } : {});
 }
 
+/**
+ * The open conversation's task, once the window's send has started it and it has ended: the
+ * send reads the provider's key first, so the task starts a moment after Enter.
+ */
+async function finished() {
+  await until(() => {
+    const c = AgentChat.get(openId());
+    return !c.running && c.last !== null;
+  }, "the task ended");
+  return AgentChat.done(openId());
+}
+
 /** The open conversation's id. */
 const openId = () => /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
 
@@ -166,27 +178,30 @@ addTidyTask(async function test_header_says_where_it_works() {
 
 addTidyTask(async function test_enter_grants_and_the_transcript_shows_each_step() {
   await openChat();
-  send(script([{ hold: true }, openStep(PAGE), { reply: "Opened it." }]));
+  send(script([openStep(PAGE), { hold: true, reply: "Opened it." }]));
   await until(() => held.size === 1, "the model is thinking");
-  await until(() => /◇ built-in 0\/100/.test(statusText("agent")), "the status bar shows it");
+  await until(() => /◇ built-in 1\/100 · /.test(statusText("agent")), "the status bar shows it");
   Assert.ok(
     header()[1].startsWith("works in: agent workspace · granted"),
     "Enter granted the conversation (Behaviour 24)",
   );
   for (const release of held.values()) release();
   held.clear();
-  await AgentChat.done(openId());
+  await finished();
   await until(() => logText().includes("Opened it."), "the reply is shown");
   const text = logText();
   Assert.ok(text.includes("SCRIPT:"), "the user's message");
-  Assert.ok(text.includes("opened example.com — ran under grant"), "a line for the step");
+  Assert.ok(text.includes("opened example.com — ran under grant"), `a line for the step: ${text}`);
   Assert.ok(text.includes("granted: this conversation"), "the grant's notice");
-  const reply = [...log().querySelectorAll(".vimma-agent-chat-entry")].find((e) =>
-    e.textContent.includes("Opened it."),
+  const reply = [...log().querySelectorAll(".vimma-agent-chat-entry")].find(
+    (e) => e.getAttribute("data-text") === "Opened it.",
   );
   Assert.equal(reply.querySelector(".vimma-agent-chat-label")?.textContent, "agent", "labelled");
   Assert.equal(input().value, "", "the input is empty again");
-  Assert.equal(statusText("agent"), "◇ agent granted", "no task runs; the grant stands");
+  await until(
+    () => statusText("agent") === "◇ agent granted",
+    "no task runs; the grant stands",
+  );
 });
 
 addTidyTask(async function test_shift_enter_adds_a_line_and_ctrl_enter_asks() {
@@ -219,12 +234,12 @@ addTidyTask(async function test_question_in_the_prompt_slot_and_never_answered_b
   await new Promise((r) => setTimeout(r, 600));
   EventUtils.synthesizeKey("y");
   await until(() => !slotOpen(), "the armed y answered it");
-  const result = await AgentChat.done(openId());
+  const result = await finished();
   Assert.equal(result.outcome, "done", "the step ran");
   await until(() => logText().includes("asked → yes"), "the transcript says it was asked");
   // The model's text imitating a question sits in the transcript, under its label, as text.
-  const imitation = [...log().querySelectorAll(".vimma-agent-chat-entry")].find((e) =>
-    e.textContent.includes("wants to pay"),
+  const imitation = [...log().querySelectorAll(".vimma-agent-chat-entry")].find(
+    (e) => e.getAttribute("data-text") === "▲ built-in wants to pay: y pay · n stop",
   );
   Assert.equal(imitation.querySelector(".vimma-agent-chat-label")?.textContent, "agent");
   Assert.ok(!slotOpen(), "and never in the prompt slot");
@@ -257,7 +272,7 @@ addTidyTask(async function test_reply_rendered_as_text() {
     PORT +
     "/elsewhere?link)‮evil";
   send(script([{ reply }]));
-  await AgentChat.done(openId());
+  await finished();
   await until(() => logText().includes("![x]"), "the reply is shown");
   Assert.equal(log().querySelectorAll("img, a, iframe").length, 0, "no markup was made");
   Assert.ok(logText().includes('<img src="http://127.0.0.1'), "the markup shows as text");
@@ -273,7 +288,7 @@ addTidyTask(async function test_normal_mode_keys_stop_and_close() {
   EventUtils.synthesizeKey("KEY_Escape");
   Assert.notEqual(document.activeElement, input(), "Esc left the input");
   EventUtils.synthesizeKey("s");
-  const result = await AgentChat.done(openId());
+  const result = await finished();
   Assert.equal(result.outcome, "stopped", "s stopped the task (Behaviour 16)");
   await until(() => logText().includes("stopped"), "the transcript says so");
   EventUtils.synthesizeKey("i");
@@ -329,7 +344,7 @@ addTidyTask(async function test_external_provider_notice_before_first_task() {
 addTidyTask(async function test_opened_from_another_workspace_reads_none_of_its_tabs() {
   await openChat();
   send(script([{ call: "vimma_tabs", args: {} }, { reply: "listed" }]));
-  const result = await AgentChat.done(openId());
+  const result = await finished();
   const listed = result.messages
     .filter((/** @type {any} */ m) => m.role === "tool")
     .flatMap((/** @type {any} */ m) => m.results)

@@ -56,6 +56,7 @@ export function chatText(text) {
 }
 
 /** What the gate's answers make of a step (Behaviour 12). */
+/** @type {Readonly<Record<string, string>>} */
 const ANSWERS = Object.freeze({
   once: "asked → yes",
   grant: "asked → yes, granted",
@@ -140,7 +141,7 @@ export class Transcript {
   gate(e) {
     const step = this.step;
     if (!step) return;
-    const asked = { tool: e.tool, what: e.what ?? {} };
+    const asked = { tool: e.tool, label: null, what: e.what ?? {} };
     if (isCheckpoint(asked)) {
       step.kind = "checkpoint";
       step.text = checkpointText(asked);
@@ -161,7 +162,7 @@ export class Transcript {
             ? "ran under grant"
             : e.kind === "timeout"
               ? "denied (no answer)"
-              : /** @type {Record<string, string>} */ (ANSWERS[e.answer ?? ""] ?? "denied");
+              : (ANSWERS[e.answer ?? ""] ?? "denied");
     }
     this.version++;
   }
