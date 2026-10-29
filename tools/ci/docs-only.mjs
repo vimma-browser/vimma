@@ -37,6 +37,7 @@ export const CODE_DIRS = Object.freeze([".github/", "packages/", "src/", "tests/
  */
 export const MARKDOWN_TESTS = Object.freeze([
   "packages/vimma-core/test/firefox-keys.test.mjs",
+  "packages/vimma-core/test/guide-agent-examples.test.mjs",
   "packages/vimma-core/test/updates.test.mjs",
   "tools/package/test/package.test.mjs",
   "tools/release/test/changelog.test.mjs",
