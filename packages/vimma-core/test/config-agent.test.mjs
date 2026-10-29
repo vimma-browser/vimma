@@ -43,6 +43,7 @@ describe("[agent]", () => {
       maxTokens: 2_000_000,
       maxCost: 2,
       keepDays: null,
+      keepResults: 6,
       providers: [],
     });
     expect(AGENT_DEFAULTS.maxRunning).toBe(3);
@@ -59,6 +60,7 @@ describe("[agent]", () => {
         "max_tokens = 500000",
         "max_cost = 1.5",
         "keep_days = 30",
+        "keep_results = 10",
         ...LOCAL,
         "vision = false",
         ...HOSTED,
@@ -72,6 +74,7 @@ describe("[agent]", () => {
       maxTokens: 500000,
       maxCost: 1.5,
       keepDays: 30,
+      keepResults: 10,
       providers: [
         {
           name: "local",
@@ -155,6 +158,9 @@ describe("[agent]", () => {
     expect(at("max_running = 11")).toBe("must be an integer between 1 and 10");
     expect(at("keep_days = 0")).toBe("must be an integer between 1 and 3650 (days)");
     expect(at("max_steps = 0")).toBe("must be an integer between 1 and 1000");
+    expect(ok(v2("[agent]", "keep_results = 0")).agent.keepResults).toBe(0);
+    expect(at("keep_results = -1")).toBe("must be an integer between 0 and 1000");
+    expect(at("keep_results = 1001")).toBe("must be an integer between 0 and 1000");
     expect(at("max_tokens = 999")).toBe("must be an integer between 1000 and 100000000");
     expect(at("max_cost = 0")).toBe("must be a number above 0 and at most 1000");
     expect(at('max_steps = "60"')).toBe("expected an integer, got a string");
