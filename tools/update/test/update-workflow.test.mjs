@@ -165,8 +165,9 @@ describe("update-publish.yml", () => {
 
   it("a published release whose .dmg is already there starts the macOS manifest too", () => {
     const run = runOf(job("start"), "Start the manifest run on main");
+    expect(run).toContain('"https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG"');
     expect(run).toContain(
-      'if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma-${TAG#v}-macos-aarch64.dmg"; then',
+      'if [ "$code" = 200 ] && jq -e --arg f "vimma-${TAG#v}-macos-aarch64.dmg" \\',
     );
     expect(run).toContain(
       'gh workflow run update-publish.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG" -f target=macos',

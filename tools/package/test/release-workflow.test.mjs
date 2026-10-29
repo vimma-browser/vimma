@@ -411,8 +411,9 @@ esac
       expect(block).not.toMatch(/actions\/checkout|setup-node|node /);
       const start = runOf(block, "Start homebrew.yml for a published release");
       expect(start).toContain(
-        'curl -fsSL -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma.rb"',
+        '"https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG"',
       );
+      expect(start).toContain('jq -e --arg f "vimma.rb"');
       expect(start).toContain(
         'gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/homebrew.yml/dispatches" \\',
       );
@@ -435,7 +436,10 @@ esac
       expect(step).toMatch(/^ {8}if: vars\.UPDATES_ENABLED == 'true'$/m);
       const start = runOf(block, "Start update-publish.yml for the macOS manifest");
       expect(start).toContain(
-        'if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma-${TAG#v}-macos-aarch64.dmg"; then',
+        '"https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG"',
+      );
+      expect(start).toContain(
+        'if [ "$code" = 200 ] && jq -e --arg f "vimma-${TAG#v}-macos-aarch64.dmg" \\',
       );
       expect(start).toContain(
         'gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/update-publish.yml/dispatches" \\',
@@ -1358,9 +1362,8 @@ describe("homebrew.yml", () => {
     expect(start).not.toMatch(/environment:|secrets\.|actions\/checkout|setup-node|node |npm /);
     const run = runOf(start, "Start the tap push on main");
     expect(run).toContain("[[ $TAG =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]");
-    expect(run).toContain(
-      'if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma.rb"; then',
-    );
+    expect(run).toContain('"https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG"');
+    expect(run).toContain('if [ "$code" = 200 ] && jq -e --arg f "vimma.rb" \\');
     expect(run).toContain(
       'gh workflow run homebrew.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"',
     );
@@ -1369,8 +1372,8 @@ describe("homebrew.yml", () => {
   });
 
   /**
-   * Runs the start step with stub `curl` and `gh`; curl finds vimma.rb when `cask` is true, and
-   * gh logs its arguments.
+   * Runs the start step with stub `curl` and `gh`; curl answers the release API with a published
+   * release that has vimma.rb when `cask` is true and lacks it otherwise, and gh logs its arguments.
    * @param {{ tag?: string, cask?: boolean, release?: string, macos?: string }} options
    */
   const startWith = ({ tag = "v0.1.11", cask = true, release = "true", macos = "true" }) => {
@@ -1379,9 +1382,17 @@ describe("homebrew.yml", () => {
       execFileSync("mkdir", ["-p", join(dir, "bin")]);
       const log = join(dir, "log");
       writeFileSync(log, "");
+      const body = JSON.stringify({
+        draft: false,
+        assets: [{ name: cask ? "vimma.rb" : "SHA256SUMS", state: "uploaded" }],
+      });
+      writeFileSync(join(dir, "body.json"), body);
+      // curl ... -o <file> -w '%{http_code}' <url>: logs, writes the release, prints 200
       writeFileSync(
         join(dir, "bin", "curl"),
-        `#!/bin/sh\necho "curl $*" >> "${log}"\n${cask ? "exit 0" : "exit 22"}\n`,
+        `#!/bin/sh\necho "curl $*" >> "${log}"\n` +
+          `while [ $# -gt 0 ]; do [ "$1" = -o ] && cp "${join(dir, "body.json")}" "$2"; shift; done\n` +
+          "printf 200\n",
         { mode: 0o755 },
       );
       writeFileSync(join(dir, "bin", "gh"), `#!/bin/sh\necho "gh $*" >> "${log}"\n`, {
@@ -1400,10 +1411,11 @@ describe("homebrew.yml", () => {
             RELEASE_ENABLED: release,
             MACOS_RELEASE_ENABLED: macos,
             GITHUB_STEP_SUMMARY: join(dir, "summary"),
+            RUNNER_TEMP: dir,
           },
         },
       );
-      return { ...result, log: readFileSync(log, "utf8") };
+      return { ...result, log: readFileSync(log, "utf8").replaceAll(dir, "<RUNNER_TEMP>") };
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1413,7 +1425,7 @@ describe("homebrew.yml", () => {
     const result = startWith({});
     expect(result.status).toBe(0);
     expect(result.log).toBe(
-      "curl -fsSIL --proto =https -o /dev/null https://github.com/vimma-browser/vimma/releases/download/v0.1.11/vimma.rb\n" +
+      "curl -sS --proto =https --retry 3 -o <RUNNER_TEMP>/release.json -w %{http_code} https://api.github.com/repos/vimma-browser/vimma/releases/tags/v0.1.11\n" +
         "gh workflow run homebrew.yml --repo vimma-browser/vimma --ref main -f tag=v0.1.11\n",
     );
   });
