@@ -746,8 +746,7 @@ exactly the cmd keys it lists`.
 **Mochitests, headless, artifact build, on `macos-15` (sub-PRs 1 and 2):**
 
 - the existing suite; each failure is fixed, or marked `skip-if` for macOS in
-  `tests/browser/browser.toml` with an issue, never loosened. Two files are skipped on macOS:
-  `browser_vimma_tabstrip.js` ([#576](https://github.com/vimma-browser/vimma/issues/576)) and
+  `tests/browser/browser.toml` with an issue, never loosened. One file is skipped on macOS:
   `browser_vimma_private_workspace.js`, whose cause is fixed and whose skip goes with
   [#614](https://github.com/vimma-browser/vimma/issues/614)
 - `browser_vimma_private_swap.js`, run on macOS unchanged. The planned test

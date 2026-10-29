@@ -331,7 +331,7 @@ jobs:
 
   # Spec macos-build, sub-PR 1: the same front end on Mozilla's macOS arm64 build of the same
   # release (tools/artifact-build picks the macosx64-aarch64-opt job on an Apple Silicon host), on
-  # a hosted Apple Silicon Mac. Informational: not a required check (open question 6), so a red
+  # a hosted Apple Silicon Mac. Informational: not a required check (decision 34), so a red
   # run here shows a macOS break without blocking the merge; branch protection must not list it.
   # Not on a version run (upstream autopilot, Beta canary): macOS never blocks a Linux release
   # (decision 13). No vimma-ctl build (its macOS tests are in ci.yml) and no e2e scenarios
