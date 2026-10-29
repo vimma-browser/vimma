@@ -396,6 +396,15 @@ support-files = ["file_vimma_login.html", "file_vimma_plain.html"]
 support-files = [
   "file_vimma_agent_click.html",
   "file_vimma_agent_page.html",
+  "head_vimma_agent_model.js",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_agent_chat.js"]
+support-files = [
+  "file_vimma_agent_click.html",
+  "file_vimma_agent_page.html",
+  "head_vimma_agent_model.js",
   "head_vimma_control.js",
 ]
 

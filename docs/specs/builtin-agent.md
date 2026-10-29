@@ -1,6 +1,6 @@
 # Spec: builtin-agent
 
-Status: draft (Delivery 1-3 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
+Status: draft (Delivery 1-4 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
 `agent-providers.mjs`, `agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`,
 `agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs`; `agent.mjs` and
 `agent-prompt.mjs`
@@ -8,7 +8,8 @@ for the built-in label and the conversation grant; `config.mjs` for `[agent]`; `
 `defaults.mjs` for the key); `src/browser/base/content/vimma/` (new `agent/AgentChat.sys.mjs`,
 `agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`, `ui/agent-chat.mjs`;
 `ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `host/workspace-ops.mjs`, `host/mcp-ops.mjs`,
-`ui/statusbar.mjs`, `ui/side-panel.mjs`, `host/agent-ui.mjs`); new `tools/agent-bench/`;
+`ui/statusbar.mjs`, `ui/side-panel.mjs`, `host/agent-ui.mjs`, new `host/agent-chat-ops.mjs`);
+new `tools/agent-bench/`;
 `tests/e2e/fixtures/`;
 `docs/guide.md`, `docs/security.md`, `docs/limits.md`, README · Upstream patches: none · ADR: a
 [ADR-023](../adr/023-in-browser-model-client.md), an in-browser model client beside
@@ -177,7 +178,10 @@ first, so that what the guide says a model can do is what the bench measured.
     where agents can read it (`y/N`), then moves the selected tab of the browser window to the agent workspace, where it is
     reopened with the agent workspace's cookies and without its history
     (`host/workspace-ops.mjs`, `moveTabToWorkspace`), and makes it a tab of the open
-    conversation (Behaviour 30). The transcript says `you gave tab "Maito · Kauppa"`. The
+    conversation (Behaviour 30). A tab already in the agent workspace that no conversation
+    owns is given without the question, because giving it takes it away from MCP agents
+    rather than letting anything new read it; another conversation's tab is refused. The
+    transcript says `you gave tab "Maito · Kauppa"`. The
     agent never reads the user's own tab where it is.
 18. **The agent may ask the user.** A reply without a tool call ends the model's turn; the task
     waits for the next message. The agent asks for passwords and payment details to be typed by
@@ -585,6 +589,54 @@ agent to a part of the profile, or publishes which steps always ask.
     cannot answer it. Rejected: questions as transcript lines, because a line among the
     model's lines can be imitated; answering by typing `y` in the input, because the input also
     carries instructions to the model.
+20. **A step is drawn from the loop's and the gate's events** (B20, Behaviour 12). The
+    transcript adds a line when the loop reports a call and gives it the words and the outcome
+    of the gate's events for the conversation's connection (asked, answered, ran under the
+    grant), as the notices of an MCP agent's steps say them; a call the gate never saw shows the
+    tool's name, and its result only as `done` or `refused`. Nothing reads a tool's result, so
+    the transcript holds no page text a result carries, and it keeps working when the loop's
+    steps change shape (a tool that returns more, several calls in one turn, a new tool), which
+    the work on task speed ([agent-speed](agent-speed.md)) may bring. Rejected: a format per
+    tool, because each new tool or result shape would need its own and could carry page text
+    into the window.
+21. **The window's keys are its own until the key's pull request** (B21, Behaviour 14). While
+    focus is in the window, VimmaHost hands it the keys first, as it hands a picker its keys:
+    `Enter`, `ctrl+Enter` and `Esc` in the input, the normal-mode keys of Behaviour 14 in the
+    transcript, and every chord with `ctrl` other than `ctrl+d` and `ctrl+u` goes on to the
+    keymap, so `ctrl+b` sequences work as anywhere. `:agent` is a command whose action joins
+    `actions.mjs` in the pull request that adds its key (B13), listed until then in core's
+    `PENDING_ACTIONS` and run by its id, so that the keymap, the bindings docs and the help
+    snapshot change once. Rejected: a keymap mode for the window now, because it would change the
+    keymap twice; making its keys remappable, because a window with an input and a question
+    slot needs fixed keys the slot's guards can rely on, as a picker's are.
+22. **The window ships behind the feature pref** (B22). `vimma.feature.agentChat` stays `false`
+    after delivery 4, so neither `:agent`, the window nor its status bar text shows in a
+    release, because a released window would still lose every conversation at a restart, which
+    Behaviour 20 says it keeps, and a provider chosen in the window would last only until the
+    restart, since setup does not yet write `[agent] default`; both come with delivery 5, and
+    the window's key with delivery 6. The pref turns on, and the guide, limits.md and the
+    README describe the agent, in the pull request that completes the last of them. Rejected:
+    turning it on now with the guide saying what is missing, because a feature that sends page
+    text to a model should reach users whole, with its stored conversations reviewed.
+23. **A hosted provider is set up in the window** (B24, Behaviour 3). The model picker (`m`,
+    `:agent model`) lists the configured providers, `add: Anthropic (Messages API)` and
+    `add: OpenAI-compatible endpoint`, then the local servers' models. Adding asks the endpoint
+    (`https://` off this machine, as B11 requires) and the model on the prompt line, then the
+    key in a masked field inside the window; a configured hosted provider without a key, chosen
+    in the picker or sent a task, asks for its key the same way, and the task stays in the input
+    until it is stored. The key goes from the field straight to `AgentKeys` (B8) and the field is
+    emptied at once, so it is never drawn, kept by the window, or written to the transcript, a
+    notice (which shows only its last four characters), a pref or config.toml; `x` on a provider
+    in the picker deletes its key after `y/N`. The endpoint and model are asked on the prompt
+    line because neither is secret, while the key gets a password field because the prompt line
+    draws what is typed. Rejected: asking the key on the prompt line, because it would be shown
+    on screen while typed.
+24. **One window per browser window, never in a private one** (B23, Behaviour 10). Each
+    normal browser window has its own chat window, open on one conversation at a time, and a
+    question shows in the slot of the window open on its conversation, else on the question
+    line. A private window does not open it, because the agent's questions are answered only in
+    normal windows (`host/agent-ui.mjs`) and a private window's keys are never kept; the private
+    workspace of a normal window opens it, as Behaviour 10 says.
 
 ## Security and privacy
 
@@ -872,13 +924,18 @@ Each PR is mergeable and tested on its own; the window appears only in PR 4.
    storage, the ADR, security.md, with mochitests. The `:agent` commands come with the window
    (delivery 4) rather than here, because without the window the agent's replies and steps
    have nowhere to go but the notice line, where each one replaces the last (Design 1).
-4. `feat(agent): the chat window` (B1, B9, B16, B19, Behaviour 10-18, 27-28, 34-35): the
-   window, the transcript, the prompt slot, giving a page, the `:agent` commands, setup's
-   screens, the status bar segment, the guide,
-   limits.md, README, e2e and screenshots.
-5. `feat(agent): conversations kept across restarts` (B15, Behaviour 19-23): the list, the
-   encrypted store, clearing the context, deleting and `keep_days`, with security.md's rules
-   and mochitests.
+4. `feat(agent): the chat window` (B1, B9, B16, B19-B24, Behaviour 10-18, 27-28, 34-35): the
+   window, the transcript, the prompt slot, giving a page, the `:agent` commands, the model
+   picker with the local probe (Behaviour 7), the status bar segment, security.md's rules for
+   the window, mochitests, and e2e screenshots with the Omarchy theme. Hosted providers are
+   set up in the window (B24): Anthropic's Messages API or an OpenAI-compatible endpoint, with
+   the key in a masked field, tested end to end against a mock of both APIs. The conversation
+   list, clearing and forgetting work in memory. The feature pref stays off (B22), so the guide,
+   limits.md and the README change when it turns on.
+5. `feat(agent): conversations kept across restarts` (B15, Behaviour 19-23): the encrypted
+   store behind the list, clearing the context, deleting and `keep_days`, and setup's
+   confirmation that writes the chosen provider and `[agent] default` to config.toml
+   (Behaviour 2), with security.md's rules and mochitests.
 6. `feat(keys): a key opens the agent chat window` (B13): one keymap PR, with the regenerated
    bindings docs, the help snapshot and a screenshot of `ctrl+b ?`.
 7. The `query` and `kinds` filters of `vimma_elements` (B2), in their own spec for MCP and the

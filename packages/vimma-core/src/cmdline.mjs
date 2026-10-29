@@ -176,13 +176,22 @@ export const COMMANDS = Object.freeze([
     "control.command",
     "Full control: on <minutes>, off; without: the status",
   ),
+  // docs/specs/builtin-agent.md Behaviour 14: without a word, the window.
+  cmd(
+    "agent",
+    "optional",
+    "agent.command",
+    "Built-in agent: its window; stop, new, model, list, clear, give, forget all",
+  ),
 ]);
 
 /**
  * Action ids the commands use that actions.mjs does not define yet. The host spec adds them
- * (with `npm run gen-docs`) and empties this list.
+ * (with `npm run gen-docs`) and empties this list. `agent.command` (`:agent`) joins
+ * actions.mjs with the built-in agent's key, so that the keymap changes once
+ * (docs/specs/builtin-agent.md B13); until then the host runs it by its id.
  */
-export const PENDING_ACTIONS = Object.freeze(/** @type {string[]} */ ([]));
+export const PENDING_ACTIONS = Object.freeze(/** @type {string[]} */ (["agent.command"]));
 
 /** `:toolbar`'s words, in completion order. */
 const TOOLBAR_WORDS = Object.freeze(/** @type {const} */ (["show", "hide"]));
@@ -234,6 +243,28 @@ for (const c of COMMANDS) for (const w of [c.name, ...c.aliases]) byWord.set(w, 
 
 /** Config names of actions, once each (aliases are left out of completion). */
 const ACTION_NAMES = [...new Set(ACTIONS.map((a) => a.name))];
+
+/** The action id each word runs: a command's (and its text action), or an action name's. */
+/** @type {Map<string, string[]>} */
+const WORD_IDS = new Map([
+  ...[...byWord].map(([w, c]) => /** @type {[string, string[]]} */ ([w, idsOf(c)])),
+  ...ACTION_NAMES.map(
+    (n) => /** @type {[string, string[]]} */ ([n, [resolveActionName(n)?.id ?? ""]]),
+  ),
+]);
+
+/** @param {CommandDef} c */
+function idsOf(c) {
+  return c.textAction ? [c.action, c.textAction] : [c.action];
+}
+
+/**
+ * Whether `word` runs one of the `hidden` action ids: an unfinished feature's, while its pref
+ * is off (CONTRIBUTING.md, "Unfinished features": no command of it shows).
+ * @param {string} word @param {readonly string[]} hidden
+ */
+const isHidden = (word, hidden) =>
+  hidden.length > 0 && (WORD_IDS.get(word) ?? []).some((id) => hidden.includes(id));
 
 /**
  * A free-text argument: the rest of the line, trimmed, unquoted only when one pair of quotes
@@ -287,25 +318,32 @@ const MAX_SUGGEST = 2 * Math.max(...ALL_WORDS.map((w) => w.length));
  * Commands whose name or alias starts with `word`, once each.
  * @param {string} word
  */
-const commandsWithPrefix = (word) => [
-  ...new Set([...byWord].filter(([w]) => w.startsWith(word)).map(([, c]) => c)),
+const commandsWithPrefix = (word, hidden = /** @type {readonly string[]} */ ([])) => [
+  ...new Set(
+    [...byWord]
+      .filter(([w, c]) => w.startsWith(word) && !idsOf(c).some((id) => hidden.includes(id)))
+      .map(([, c]) => c),
+  ),
 ];
 
 /**
  * Parse one command line (with or without leading colons, which Vim also accepts).
  * @param {string} line
+ * @param {{ hidden?: readonly string[] }} [options]  action ids whose commands and names do
+ *   not exist now (an unfinished feature's, while its pref is off)
  * @returns {CommandResult}
  */
-export function parseCommandLine(line) {
+export function parseCommandLine(line, { hidden = [] } = {}) {
   const m = /^[\s:]*([^\s:]\S*)([\s\S]*)$/.exec(line);
   if (!m) return Object.freeze({ kind: "empty" });
   const word = /** @type {string} */ (m[1]).toLowerCase();
   const raw = /** @type {string} */ (m[2]).trim();
   const text = unwrap(raw);
 
-  let command = byWord.get(word);
+  let command = isHidden(word, hidden) ? undefined : byWord.get(word);
   if (!command) {
-    const def = resolveActionName(word);
+    const found = resolveActionName(word);
+    const def = found && !hidden.includes(found.id) ? found : undefined;
     if (def) {
       if (raw) return unexpected(word);
       /** @type {Action} */
@@ -313,7 +351,7 @@ export function parseCommandLine(line) {
       if (def.arg !== undefined) action.arg = def.arg;
       return runResult(word, action);
     }
-    let candidates = commandsWithPrefix(word);
+    let candidates = commandsWithPrefix(word, hidden);
     if (candidates.length > 1) {
       // `:wor` is `:workspace`, not also `:workspaces`: a command whose name begins a word of
       // every other match wins, as Vim's shortest abbreviation does.
@@ -331,8 +369,9 @@ export function parseCommandLine(line) {
     command = candidates[0];
   }
   if (!command) {
-    const prefixed = ALL_WORDS.filter((w) => w.startsWith(word)).slice(0, 3);
-    const near = word.length <= MAX_SUGGEST ? closest(word, ALL_WORDS) : undefined;
+    const words = hidden.length ? ALL_WORDS.filter((w) => !isHidden(w, hidden)) : ALL_WORDS;
+    const prefixed = words.filter((w) => w.startsWith(word)).slice(0, 3);
+    const near = word.length <= MAX_SUGGEST ? closest(word, words) : undefined;
     const suggestions = prefixed.length ? prefixed : near ? [near] : [];
     return fail("unknown-command", `not a command: "${word}"`, suggestions);
   }
@@ -478,10 +517,11 @@ function aliasCandidates(command, text, aliases) {
  * one, from the names the host passes in `args` (`{ addon: [...], workspace: [...] }`, and
  * `search`: the `@aliases` with their engines).
  * @param {string} line
- * @param {{ limit?: number, args?: CompletionArgs }} [options]
+ * @param {{ limit?: number, args?: CompletionArgs, hidden?: readonly string[] }} [options]
+ *   `hidden`: action ids whose commands are left out (parseCommandLine)
  * @returns {{ word: string, candidates: Candidate[] }}
  */
-export function completeCommandLine(line, { limit = 20, args = {} } = {}) {
+export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] } = {}) {
   const rest = line.replace(/^[\s:]*/, "");
   const m = /^(\S*)(\s?)/.exec(rest);
   const word = (m?.[1] ?? "").toLowerCase();
@@ -516,6 +556,7 @@ export function completeCommandLine(line, { limit = 20, args = {} } = {}) {
   /** @type {Array<{ c: Candidate, span: number, start: number, i: number }>} */
   const loose = [];
   CANDIDATES.forEach((c, i) => {
+    if (isHidden(c.value, hidden)) return;
     if (c.value === word) exact.push(c);
     else if (c.value.startsWith(word)) prefix.push(c);
     else {

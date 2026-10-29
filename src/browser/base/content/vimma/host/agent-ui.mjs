@@ -26,6 +26,8 @@ import {
   ranNotice,
 } from "../core/agent-prompt.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
+import { isBuiltinConn } from "../core/agent.mjs";
+import { builtinStatus } from "../core/agent-chat.mjs";
 import { AgentGate } from "../ctl/AgentGate.sys.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 
@@ -65,14 +67,24 @@ const HELD_MS = 6000;
  * @property {() => boolean} noticeOpen  a notice is on screen
  * @property {(question: string, yes: () => void) => void} ask  a y/N on the prompt line
  * @property {() => void} emit  redraw the status bar
+ * @property {import("../ui/agent-prompt.mjs").AgentPrompt} [slot]  the chat window's prompt
+ *   slot (docs/specs/builtin-agent.md Behaviour 27)
+ * @property {() => import("../core/agent.mjs").ConnId | null} [slotConn]  the connection of the
+ *   conversation the chat window shows, while it is open
+ * @property {() => boolean} [chatFocused]  focus is in the chat window
+ * @property {() => void} [slotChanged]  the slot opened or closed
+ * @property {() => void} [focusChat]  focus the chat window (its question waits there)
  */
 
 /** @type {Map<Window, AgentWindow>} */
 const windows = new Map();
 /** When each window last had a key. @type {WeakMap<Window, number>} */
 const lastKey = new WeakMap();
-/** The question on screen: which, where, the digits typed. */
-/** @type {{ id: number, win: Window, count: string, question: Question } | null} */
+/**
+ * The question on screen: which, where, the digits typed, and whether in a chat window's slot
+ * rather than on the question line.
+ * @type {{ id: number, win: Window, count: string, question: Question, slot: boolean } | null}
+ */
 let current = null;
 /** Questions a window not in front was told about already (decision 15: once each). */
 const alerted = new Set();
@@ -121,28 +133,56 @@ function onWindowChange(win, e) {
   // focus and blur bubble from every element: only the window's own count.
   if ((e.type === "focus" || e.type === "blur") && e.target !== win) return;
   lastKey.set(win, Date.now());
-  if (current?.win === win) windows.get(win)?.prompt.rearm(armMs());
+  if (current?.win === win) promptOf(current)?.rearm(armMs());
 }
 
-/** @param {Window} win @param {Question} q */
-function open(win, q) {
+/**
+ * Where a question shows: the line, or the chat window's slot.
+ * @param {{ win: Window, slot: boolean }} where
+ */
+function promptOf({ win, slot }) {
   const w = windows.get(win);
-  if (!w) return false;
+  return slot ? w?.slot : w?.prompt;
+}
+
+/**
+ * The window whose chat shows the conversation that asks: its questions go to that window's
+ * slot, not the line (docs/specs/builtin-agent.md Behaviour 27), one place at a time.
+ * @param {import("../core/agent.mjs").ConnId} conn
+ * @returns {Window | null}
+ */
+function slotWindow(conn) {
+  for (const [win, w] of windows) {
+    if (w.slot && w.slotConn?.() === conn && !lazy.PrivateBrowsingUtils.isWindowPrivate(win)) {
+      return win;
+    }
+  }
+  return null;
+}
+
+/** @param {Window} win @param {Question} q @param {boolean} [slot] */
+function open(win, q, slot = false) {
+  const w = windows.get(win);
+  const prompt = slot ? w?.slot : w?.prompt;
+  if (!w || !prompt) return false;
   const line = questionLine(q, {
     grantMinutes: grantMinutes(),
     agentWorkspace: McpHost.workspaceName,
   });
-  const shown = w.prompt.show(line, armMs());
+  const shown = prompt.show(line, armMs());
   if (!shown) return false;
-  current = { id: q.id, win, count: "", question: q };
+  current = { id: q.id, win, count: "", question: q, slot };
+  if (slot) w.slotChanged?.();
   return true;
 }
 
-/** Back to waiting: the line closes, the question stays queued. */
+/** Back to waiting: the line or the slot closes, the question stays queued. */
 function close() {
   if (!current) return;
-  windows.get(current.win)?.prompt.hide();
+  const was = current;
+  promptOf(was)?.hide();
   current = null;
+  if (was.slot) windows.get(was.win)?.slotChanged?.();
 }
 
 function redraw() {
@@ -155,7 +195,11 @@ function sync() {
   const head = waiting[0] ?? null;
   for (const id of alerted) if (!waiting.some((q) => q.id === id)) alerted.delete(id);
   if (current && current.id !== head?.id) close();
-  if (head && !current) {
+  // A chat window opened or closed on the conversation that asks moves its question.
+  const inSlot = head ? slotWindow(head.conn) : null;
+  if (current && (current.slot ? current.win !== inSlot : !!inSlot)) close();
+  if (head && !current && inSlot) open(inSlot, head, true);
+  if (head && !current && !inSlot) {
     const win = askingWindow();
     const w = win && windows.get(win);
     if (win && w) {
@@ -244,7 +288,10 @@ function attention(win, q) {
 function onGate(event) {
   const win = current?.win ?? askingWindow();
   const w = win && windows.get(win);
-  if (event && w) {
+  // A built-in conversation's steps under its grant are in its transcript, and its running
+  // task in the status bar (docs/specs/builtin-agent.md Behaviour 12, 35): no notice for each.
+  const quiet = event?.kind === "ran" && isBuiltinConn(event.conn);
+  if (event && w && !quiet) {
     if (event.kind === "answered" && event.answer === "grant" && event.length) {
       w.notice(grantNotice(event.question, event.length, event.released ?? 0));
     } else if (
@@ -320,7 +367,10 @@ export const AgentUi = {
     lastKey.set(win, Date.now());
     if (!current || current.win !== win) return false;
     const w = windows.get(win);
-    if (!w?.prompt.isOpen) return false;
+    const prompt = promptOf(current);
+    if (!w || !prompt?.isOpen) return false;
+    // The slot takes keys only while focus is in its chat window (Behaviour 27).
+    if (current.slot && !w.chatFocused?.()) return false;
     const chord = chordFromEvent(e);
     if (!chord) return false; // a bare modifier: shift for `Y`
     if (chord.ctrl || chord.alt || chord.meta) return false;
@@ -328,7 +378,7 @@ export const AgentUi = {
     if (w.pending()) return false;
     // Another prompt, picker or the command line opened over the line takes the keys; the line
     // goes back to waiting and comes back when it closes.
-    if (w.otherOpen()) {
+    if (!current.slot && w.otherOpen()) {
       close();
       sync();
       return false;
@@ -336,8 +386,8 @@ export const AgentUi = {
     e.preventDefault();
     e.stopPropagation();
     // Not armed yet: the delay starts again, so typing on through the line never answers it.
-    if (!w.prompt.armed) {
-      w.prompt.rearm(armMs());
+    if (!prompt.armed) {
+      prompt.rearm(armMs());
       return true;
     }
     if (e.repeat) return true;
@@ -349,7 +399,7 @@ export const AgentUi = {
     });
     if (result.kind === "count") {
       current.count = result.count;
-      w.prompt.setCount(result.count);
+      prompt.setCount(result.count);
     } else if (result.kind === "answer") {
       const { id } = current;
       close();
@@ -364,7 +414,7 @@ export const AgentUi = {
    * @param {Window} win
    */
   onFocusChange(win) {
-    if (current?.win !== win) return;
+    if (current?.win !== win || current.slot) return;
     if (windows.get(win)?.inField()) {
       close();
       sync();
@@ -386,6 +436,12 @@ export const AgentUi = {
     }
     const head = AgentGate.waiting[0];
     if (head) {
+      // Its conversation's chat window shows it: it is answered there (Behaviour 27).
+      if (current?.slot) {
+        windows.get(current.win)?.focusChat?.();
+        AgentUi.rearmSlot(current.win);
+        return;
+      }
       if (current?.win === win) return;
       close();
       if (!open(win, head)) w.notice("agent request: leave full screen to answer it");
@@ -402,15 +458,34 @@ export const AgentUi = {
     );
   },
 
-  /** The status bar's agent segment (decision 24), or null. */
+  /**
+   * The status bar's agent segment (decision 24), or null, with the built-in agent's running
+   * tasks (docs/specs/builtin-agent.md Behaviour 35).
+   */
   status() {
-    return agentState({
+    const state = agentState({
       connections: AgentGate.connections.length,
       waiting: AgentGate.waiting.length,
       grants: AgentGate.grants(),
       ranAt: AgentGate.ranAt,
       now: Date.now(),
     });
+    if (!state) return null;
+    const running = lazy.AgentChat.list().filter((/** @type {any} */ c) => c.running && c.budget);
+    return { ...state, builtin: builtinStatus(running.map((/** @type {any} */ c) => c.budget)) };
+  },
+
+  /**
+   * Focus came into `win`'s chat window: a question in its slot arms again (security.md M43).
+   * @param {Window} win
+   */
+  rearmSlot(win) {
+    if (current?.win === win && current.slot) windows.get(win)?.slot?.rearm(armMs());
+  },
+
+  /** A chat window opened, closed or switched conversation: its question may move. */
+  refresh() {
+    sync();
   },
 
   /**

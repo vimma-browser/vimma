@@ -63,6 +63,8 @@ export function checkEndpoint(endpoint, { localOnly }) {
   if (url.protocol !== "http:" && url.protocol !== "https:")
     return "an endpoint must be an http:// or https:// address";
   if (url.username || url.password) return "an endpoint must not carry a user name or password";
+  // The request's path is added after the endpoint: a query or fragment would swallow it.
+  if (url.search || url.hash) return "an endpoint must not carry a query or a fragment";
   const loopback = LOOPBACK.has(url.hostname);
   if (localOnly && !loopback) return `local_only refuses ${url.hostname}`;
   if (!loopback && url.protocol !== "https:")

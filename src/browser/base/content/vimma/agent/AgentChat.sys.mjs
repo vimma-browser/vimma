@@ -9,11 +9,14 @@
 // same code; and it needs no `:mcp on`, which opens the socket to every local process. Sending
 // a task with `Enter` grants the conversation's connection, with no question, for its lifetime;
 // `ask` (`ctrl+Enter`) ends that grant so every step asks. The model loop is vimma-core's, the
-// one the bench measures. Kept in memory; the chat window and the stored conversations come in
-// later deliveries, and until then the feature pref keeps it off.
+// one the bench measures. Each conversation keeps its transcript (core agent-chat.mjs), built
+// from the loop's events and the gate's events for its connection, which the chat window
+// (ui/agent-chat.mjs) draws. Kept in memory; the stored conversations come in a later delivery,
+// and until the feature is finished its pref keeps it off.
 
 import { Budget } from "../core/agent-budget.mjs";
-import { startTask } from "../core/agent-loop.mjs";
+import { Transcript, isLocalEndpoint, needsKey } from "../core/agent-chat.mjs";
+import { clearContext, startTask } from "../core/agent-loop.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
 import { failureResult, toolCommand, toolResult } from "../core/agent-results.mjs";
 import { modelChoices, prepareLocalModel, probeLocal } from "../core/agent-setup.mjs";
@@ -47,10 +50,17 @@ ChromeUtils.defineESModuleGetters(lazy, {
  *   task: { stop(): void, steer(text: string): void } | null, starting: boolean,
  *   stopped: boolean,
  *   budget: Budget | null, done: Promise<TaskResult> | null,
- *   last: { outcome: string, error?: string } | null }} Conversation
+ *   last: { outcome: string, error?: string } | null, transcript: Transcript,
+ *   confirmed: string | null, granted: boolean }} Conversation
+ *   `confirmed`: the endpoint whose notice of what leaves the machine the user answered y to
+ *   (Behaviour 5); `granted`: whether it had a grant at the last change, for the transcript's
+ *   notice when that changes
  */
 
-/** Unfinished: off until the chat window lands (CONTRIBUTING.md, "Unfinished features"). */
+/**
+ * Unfinished: off until the conversations are kept and the window has its key (deliveries 5
+ * and 6; CONTRIBUTING.md, "Unfinished features").
+ */
 export const FEATURE_PREF = "vimma.feature.agentChat";
 /** A conversation's title: the first line of its first message, cut at 40 columns (Behaviour 19). */
 const TITLE_COLUMNS = 40;
@@ -64,6 +74,18 @@ let nextRid = 1;
 const listeners = new Set();
 
 function changed() {
+  for (const c of conversations.values()) {
+    const granted = AgentGate.grants().some((g) => g.conn === c.conn);
+    if (granted !== c.granted) {
+      c.granted = granted;
+      c.transcript.notice(
+        granted
+          ? "granted: this conversation may use the agent workspace until it is stopped; " +
+              "sending a form or paying still asks"
+          : "grant ended: each step asks until you send with Enter",
+      );
+    }
+  }
   for (const listener of listeners) {
     try {
       listener();
@@ -72,6 +94,26 @@ function changed() {
     }
   }
 }
+
+/**
+ * The gate's events about a conversation's connection go into its transcript (a step's words
+ * and outcome, a checkpoint); every gate change may end or make a grant, so the window redraws.
+ * @param {import("../ctl/AgentGate.sys.mjs").GateEvent} [event]
+ */
+function onGate(event) {
+  if (event && event.kind !== "notice") {
+    const q = event.kind === "ran" ? event : event.question;
+    const c = [...conversations.values()].find((x) => x.conn === q.conn);
+    c?.transcript.gate({
+      kind: event.kind,
+      tool: q.tool,
+      what: /** @type {Record<string, any>} */ (q.what),
+      ...(event.kind === "answered" ? { answer: event.answer } : {}),
+    });
+  }
+  changed();
+}
+let gateListening = false;
 
 /** The parent process's fetch: requests from the system principal, with no page's cookies. */
 const parentFetch = (/** @type {string} */ url, /** @type {any} */ init) => fetch(url, init);
@@ -197,7 +239,14 @@ export const AgentChat = {
       budget: null,
       done: null,
       last: null,
+      transcript: new Transcript(),
+      confirmed: null,
+      granted: false,
     };
+    if (!gateListening) {
+      gateListening = true;
+      AgentGate.addListener(onGate);
+    }
     builtinHello(c.conn, c.state, {
       client: builtinLabel(title || "New conversation"),
       via: `${provider.name} · ${provider.model}`,
@@ -224,6 +273,10 @@ export const AgentChat = {
       }
       const refused = checkEndpoint(c.provider.endpoint, { localOnly });
       if (refused) return { refused };
+      // Behaviour 5 is the window's question, and no other caller may skip it.
+      if (this.needsNotice(id)) {
+        return { refused: `nothing is sent to ${c.provider.name} before you say y to its notice` };
+      }
     }
     if (!c.title) {
       c.title = titleOf(text);
@@ -232,8 +285,10 @@ export const AgentChat = {
     /** The send's effect on the grant: made by Enter, ended by ctrl+Enter (B18). */
     const applyGrant = () => (ask ? AgentGate.endGrant(c.conn) : AgentGate.grantConnection(c.conn));
     if (c.task && !c.stopped) {
+      c.transcript.user(text, { during: true });
       applyGrant();
       c.task.steer(text);
+      changed();
       return { steered: true };
     }
     // Held from here, before the awaits, so two sends cannot both take the last place.
@@ -245,10 +300,20 @@ export const AgentChat = {
     } catch (e) {
       c.starting = false;
       changed();
-      console.error("vimma agent: the provider's key could not be read", e);
+      console.error(
+        "vimma agent: the provider's key could not be read",
+        /** @type {any} */ (e)?.name,
+      );
       return { refused: `the key of ${c.provider.name} could not be read` };
     }
     if (!conversations.has(id) || !c.starting) return { refused: "the conversation was stopped" };
+    // A provider that needs a key gets no request without one (security.md M46).
+    if (!key && needsKey(c.provider)) {
+      c.starting = false;
+      changed();
+      return { refused: `${c.provider.name} has no API key; m in the window sets one` };
+    }
+    c.transcript.user(text);
     // Only now, so a send that starts no task leaves no grant behind.
     applyGrant();
     const limits = config() ?? AGENT_DEFAULTS;
@@ -266,7 +331,10 @@ export const AgentChat = {
       runTool: (name, args, opts) => runTool(c, name, args, opts),
       budget,
       localOnly,
-      onEvent: () => changed(),
+      onEvent: (e) => {
+        c.transcript.task(e);
+        changed();
+      },
     });
     c.starting = false;
     c.stopped = false;
@@ -277,12 +345,14 @@ export const AgentChat = {
         c.messages = result.messages;
         if (c.task === handle) c.task = null;
         c.last = { outcome: result.outcome, ...(result.error ? { error: result.error } : {}) };
+        c.transcript.end(result);
         changed();
         return result;
       },
       (e) => {
         if (c.task === handle) c.task = null;
         c.last = { outcome: "error", error: String(e?.message ?? e) };
+        c.transcript.end(c.last);
         changed();
         throw e;
       },
@@ -339,6 +409,90 @@ export const AgentChat = {
   /** @param {number} id */
   get(id) {
     return view(conversation(id));
+  },
+
+  /**
+   * What the window draws of a conversation: its transcript, read only.
+   * @param {number} id
+   * @returns {Readonly<Transcript>}
+   */
+  transcript(id) {
+    return conversation(id).transcript;
+  },
+
+  /**
+   * The model picker's choice (Behaviour 7): the conversation's next task goes to `provider`.
+   * Refused while a task runs, so a task never changes where its page text goes.
+   * @param {number} id @param {AgentProviderConfig} provider
+   * @returns {string | null} why not
+   */
+  setProvider(id, provider) {
+    const c = conversation(id);
+    if (isRunning(c)) return "a task is running; s stops it";
+    const refused = checkEndpoint(provider.endpoint, { localOnly: config()?.localOnly ?? false });
+    if (refused) return refused;
+    c.provider = provider;
+    AgentGate.relabel(c.conn, builtinLabel(c.title || "New conversation"));
+    c.transcript.notice(`model: ${provider.name} · ${provider.model}`);
+    changed();
+    return null;
+  },
+
+  /**
+   * Whether the next task must first say what leaves the machine (Behaviour 5): its provider
+   * is off this machine and no y to it was given for this conversation and endpoint.
+   * @param {number} id
+   */
+  needsNotice(id) {
+    const c = conversation(id);
+    return !isLocalEndpoint(c.provider.endpoint) && c.confirmed !== c.provider.endpoint;
+  },
+
+  /**
+   * `C`, `:agent clear` (Behaviour 22): the model is sent only the messages and replies from
+   * now on, not the pages read before. Refused while a task runs.
+   * @param {number} id
+   * @returns {string | null} why not
+   */
+  clear(id) {
+    const c = conversation(id);
+    if (isRunning(c)) return "a task is running; s stops it";
+    c.messages = clearContext(c.messages);
+    c.transcript.notice("context cleared: earlier page reads are no longer sent to the model");
+    changed();
+    return null;
+  },
+
+  /**
+   * A y to Behaviour 5's notice: this conversation may send to the endpoint it named.
+   * @param {number} id @param {string} endpoint  as the notice named it
+   */
+  confirm(id, endpoint) {
+    const c = conversation(id);
+    // Only for the endpoint the notice named: a provider changed while it was open is not.
+    if (endpoint === c.provider.endpoint) c.confirmed = endpoint;
+  },
+
+  /**
+   * A tab moved to the agent workspace for this conversation (Behaviour 17): it is the
+   * conversation's from now on, and the transcript says so.
+   * @param {number} id @param {any} tab  the tab in the agent workspace
+   * @param {string} title  as the transcript names it
+   */
+  give(id, tab, title) {
+    const c = conversation(id);
+    AgentTabOwners.give(tab, c.conn);
+    c.transcript.notice(`you gave tab "${title}"`);
+    changed();
+  },
+
+  /**
+   * The conversation that owns `tab`, or null.
+   * @param {any} tab
+   */
+  ownerOf(tab) {
+    const conn = AgentTabOwners.ownerOf(tab);
+    return [...conversations.values()].find((c) => c.conn === conn)?.id ?? null;
   },
 
   list() {
