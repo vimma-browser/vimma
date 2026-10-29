@@ -329,6 +329,24 @@ addTidyTask(async function test_element_labels_last_while_their_element_is_there
   );
   const gone = await activate(c, tab, by.Remove, null);
   Assert.equal(gone.error?.message, "that element is gone: call vimma_elements again");
+  // So is one the page moved into a document of its own frame: still connected, but no longer
+  // on the page the label was listed on.
+  Services.prefs.setIntPref(ASK_TIMEOUT, 3000);
+  await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
+    const frame = content.document.createElement("iframe");
+    frame.srcdoc = "<p>frame</p>";
+    const ready = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    content.document.body.append(frame);
+    await ready;
+    const doc = frame.contentDocument;
+    doc.body.append(doc.adoptNode(content.document.getElementById("add")));
+  });
+  const moved = await activate(c, tab, by["Add to list"], null);
+  Assert.equal(
+    moved.error?.message,
+    "that element is gone: call vimma_elements again",
+    "an element adopted into another document is gone",
+  );
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

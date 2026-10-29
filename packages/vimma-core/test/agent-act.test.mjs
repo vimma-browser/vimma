@@ -202,6 +202,8 @@ describe("labels (F5)", () => {
     expect(AGENT_ELEMENTS.max).toBe(200);
     // An element list's labels have no lifetime of their own (issue #591): see labelsCurrent.
     expect(AGENT_ELEMENTS).not.toHaveProperty("ttlMs");
+    // Only their drawing on a screenshot is bounded: rects go stale as a page updates (F20).
+    expect(AGENT_ELEMENTS.drawMs).toBe(120_000);
     const targets = Array.from({ length: 205 }, (_, i) => ({ rect: at(205 - i) }));
     const { elements, dropped } = labelAgentElements(targets);
     expect(elements).toHaveLength(200);

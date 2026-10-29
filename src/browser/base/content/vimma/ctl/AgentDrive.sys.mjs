@@ -21,6 +21,7 @@
 // `vimma_fill` fills, only an element of a `vimma_elements` list (`element`).
 
 import { AGENT_LINKS, agentLinkList, labelAgentLinks, labelsCurrent } from "../core/agent-keys.mjs";
+import { AGENT_ELEMENTS } from "../core/agent-act.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
 import { urlRoot, urlUp } from "../core/pageurl.mjs";
@@ -239,6 +240,8 @@ export const AgentDrive = {
   _onStep: /** @type {((n: number) => void | Promise<void>) | null} */ (null),
   /** Test-only: how long `f`'s labels live, in place of AGENT_LINKS.ttlMs. */
   _linkTtlMs: /** @type {number | null} */ (null),
+  /** Test-only: how long a list's labels are drawn, in place of AGENT_ELEMENTS.drawMs. */
+  _drawMs: /** @type {number | null} */ (null),
   /** Test-only: the wait for the page a step loaded. */
   _loaded: loaded,
 
@@ -282,12 +285,14 @@ export const AgentDrive = {
   /**
    * The labels of the connection's current `vimma_elements` list of the page now in `browser`,
    * to draw on a screenshot (mcp-forms F20), with the top frame's scroll position when it was
-   * listed; null when there is none: `f`'s link list, an old list, or one of another page.
+   * listed; null when there is none: `f`'s link list, a list of another page, or one older than
+   * AGENT_ELEMENTS.drawMs, whose rects the page may have moved since.
    * @param {unknown} conn @param {Browser} browser
    */
   elementLabels(conn, browser) {
     const session = this.current(conn, browser);
     if (session?.source !== "elements") return null;
+    if (Date.now() - session.at >= (this._drawMs ?? AGENT_ELEMENTS.drawMs)) return null;
     return { byLabel: session.byLabel, scroll: session.scroll ?? null };
   },
 

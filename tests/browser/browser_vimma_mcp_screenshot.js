@@ -51,6 +51,7 @@ const SENSITIVE = "a payment or password field on screen has a value; Vimma does
 const UNCHECKED = "Vimma could not check every frame of this page for payment fields";
 
 registerCleanupFunction(async () => {
+  AgentDrive._drawMs = null;
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   await VimmaControl.settled();
@@ -348,6 +349,11 @@ add_task(async function test_screenshot_draws_labels() {
   // Without labels asked, the same page has none.
   r = await screenshot(c, tab, { full: true });
   Assert.ok(!near((await decode(r.result)).at(...corner), hint), "no labels unless asked");
+  // A list older than the draw limit may have moved under a page's own updates: stale (F20).
+  AgentDrive._drawMs = 0;
+  r = await screenshot(c, tab, { labels: true, full: true });
+  AgentDrive._drawMs = null;
+  Assert.deepEqual([r.result.labels, r.result.stale], [0, true], "an old list: stale");
   // Once the page scrolled, the list's places are wrong: nothing is drawn, and it is stale.
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.scrollTo(0, 40));
   r = await screenshot(c, tab, { labels: true });

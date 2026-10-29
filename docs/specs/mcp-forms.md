@@ -298,7 +298,8 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    for 120 s, so a label never names an element of another page. (Since changed: an element
    list's labels have no time limit; they last while their document, URL and element do,
    because a model taking 90 s a step lost most clicks to the 120 s, and the element reference
-   already binds the label (#591; security.md M25). `f`'s link list keeps the 120 s.)
+   already binds the label (#591; security.md M25). An element the page adopts into another
+   document counts as gone. `f`'s link list keeps the 120 s.)
    `vimma_elements` and `f` each replace the session. `vimma_activate` and `vimma_fill` take labels only from a
    `vimma_elements` session, because only that list showed the agent each element's kind and
    field details; `vimma_keys`' `f<label>` keeps following only link targets, as loads
@@ -561,7 +562,9 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     scaled), in the theme's hint colours, so that a model looking at the image can name the
     button it sees. A session that is not current (F3), or whose top frame has scrolled since
     the list was made, draws nothing and the result says the list is stale, because labels at
-    the old places would name the wrong elements.
+    the old places would name the wrong elements. (Since changed: also a list older than 120 s,
+    `AGENT_ELEMENTS.drawMs`, once labels stopped expiring, because a page that updates in place
+    moves its elements without a navigation; #591.)
 21. **Limits and sensitive values.** At most 12 `agent-screenshot` requests per connection a
     minute (`busy` beyond), counted when asked, because each is a large reply and a paint in the
     content process. A screenshot is refused while a sensitive field (F6) in the viewport has a

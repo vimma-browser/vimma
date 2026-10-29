@@ -1143,13 +1143,16 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   are, to this connection, that tab, the top document still shown at the same URL and, for an
   element in a frame, that frame's document still shown, but with no time limit: a label lasts
   until the page navigates, its document changes, a new list or `f` replaces it, or its element
-  leaves the page, each of which refuses it (`stale labels` or `that element is gone`). The
-  child holds each listed element by reference, so a label can only ever name the element the
-  agent was shown. A time limit added nothing to that, since a page can change an element's
-  text within any lifetime, and it refused most clicks of a model that takes 90 s a step. What
-  a click, a fill or a follow then does is asked or checked at that moment, from the element as
-  it is then and never from the list (M26-M29, M33). `f<label>` follows only a link from the
-  list, as a load (M18), and only while the link is still in its document. `agent-activate`
+  leaves the page, each of which refuses it (`stale labels` or `that element is gone`). An
+  element counts as on the page only while it is connected and still belongs to the document
+  it was listed in, so one the page adopts into another document (a frame of its own) is gone
+  too. The child holds each listed element by reference, so a label can only ever name the
+  element the agent was shown. A time limit added nothing to that, since a page can change an
+  element's text within any lifetime, and it refused most clicks of a model that takes 90 s a
+  step. What a click or a fill then does is asked and checked at that moment, from the element
+  as it is then and never from the list (M26-M28, M33). `f<label>` follows only a link from the
+  list, as a load of the href the list showed (M18), and only while the link is still in its
+  document. `agent-activate`
   (F8-F11) is held the same way: it clicks only
   an element of the connection's current `vimma_elements` list, on an http or https page, with
   the tab never selected and the element never focused, and it is denied as `in-use` while you
@@ -1172,6 +1175,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_f_follows_only_links_from_an_elements_list`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_labels_of_a_gone_element_are_refused`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_element_labels_last_while_their_element_is_there`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_screenshot_draws_labels`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`an element list's labels last as long as their page, however slow the agent`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-elements: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs),
   [`test_activate_clicks_a_button_in_a_background_tab`](../tests/browser/browser_vimma_mcp_activate.js),
@@ -1438,8 +1442,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   pass it on as an MCP image item only after the untrusted header, which says that text in the
   image is web content and not from you. Labels drawn on it (F20) come only from the
   connection's current `vimma_elements` list of that page, and only while its top frame has
-  not scrolled since the list was made; else none is drawn and the result says the list is
-  stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
+  not scrolled since the list was made and for 120 s after it, because they are drawn at the
+  places the list recorded and a page that updates in place moves its elements without a
+  navigation; else none is drawn and the result says the list is stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
   meets the viewport of any frame of the tab: each frame's child checks, just before and again
   just after the drawing, every form control of its document and its open and closed shadow
   trees, a number field showing text it cannot parse and an autofill preview counting as a
