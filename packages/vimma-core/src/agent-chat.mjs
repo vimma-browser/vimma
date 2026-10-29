@@ -161,7 +161,7 @@ export class Transcript {
             ? "ran under grant"
             : e.kind === "timeout"
               ? "denied (no answer)"
-              : (/** @type {Record<string, string>} */ (ANSWERS)[e.answer ?? ""] ?? "denied");
+              : /** @type {Record<string, string>} */ ((ANSWERS)[e.answer ?? ""] ?? "denied");
     }
     this.version++;
   }

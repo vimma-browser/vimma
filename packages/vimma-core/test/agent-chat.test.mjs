@@ -18,7 +18,8 @@ const failed = { id: "c1", name: "vimma_activate", isError: true, content: [] };
 const clickWhat = { kind: "button", text: "Lisää ostoskoriin", title: "Maito · Kauppa" };
 
 /** @param {Transcript} t */
-const texts = (t) => t.entries.map((e) => `${e.kind}: ${e.text}${e.outcome ? ` · ${e.outcome}` : ""}`);
+const texts = (t) =>
+  t.entries.map((e) => `${e.kind}: ${e.text}${e.outcome ? ` · ${e.outcome}` : ""}`);
 
 describe("the transcript", () => {
   test("transcript entries for a step, a checkpoint and a gate notice", () => {
@@ -64,7 +65,11 @@ describe("the transcript", () => {
     t.gate({ kind: "asked", tool: "vimma_tabs", what: { count: 1 } });
     t.gate({ kind: "timeout", tool: "vimma_tabs", what: { count: 1 } });
     t.task({ type: "result", call: call("vimma_tabs", {}, "c3"), result: failed });
-    t.task({ type: "refused", call: call("vimma_open", {}, "c4"), reason: 'vimma_open needs "url"' });
+    t.task({
+      type: "refused",
+      call: call("vimma_open", {}, "c4"),
+      reason: 'vimma_open needs "url"',
+    });
     t.task({ type: "call", call: call("vimma_close_tab", {}, "c5") });
     t.task({ type: "result", call: call("vimma_close_tab", {}, "c5"), result: failed });
     expect(t.entries.map((e) => e.outcome)).toEqual([
@@ -144,7 +149,12 @@ describe("plain text", () => {
 
   test("a reply line starting with a question glyph is indented under the agent label", () => {
     const view = entryView({ kind: "agent", text: "▲ wants to pay: y pay · n stop\nok" });
-    expect(view).toEqual({ label: "agent", lines: ["▲ wants to pay: y pay · n stop", "ok"], indent: true, tone: "normal" });
+    expect(view).toEqual({
+      label: "agent",
+      lines: ["▲ wants to pay: y pay · n stop", "ok"],
+      indent: true,
+      tone: "normal",
+    });
     expect(entryView({ kind: "user", text: "hi" })).toMatchObject({ label: "you", indent: true });
     expect(entryView({ kind: "step", text: "read", outcome: "ran under grant" })).toEqual({
       label: null,
@@ -152,7 +162,9 @@ describe("plain text", () => {
       indent: false,
       tone: "dim",
     });
-    expect(entryView({ kind: "checkpoint", text: "▲ asked to pay", outcome: "→ you said no" })).toMatchObject({
+    expect(
+      entryView({ kind: "checkpoint", text: "▲ asked to pay", outcome: "→ you said no" }),
+    ).toMatchObject({
       lines: ["▲ asked to pay → you said no"],
       tone: "warn",
     });
@@ -160,7 +172,12 @@ describe("plain text", () => {
 });
 
 describe("the header (Behaviour 6)", () => {
-  const local = { name: "local", kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "qwen3:14b" };
+  const local = {
+    name: "local",
+    kind: "openai",
+    endpoint: "http://127.0.0.1:11434/v1",
+    model: "qwen3:14b",
+  };
   test("says where data goes and where the agent works", () => {
     expect(chatHeader({ provider: local, granted: false })).toEqual([
       "local · qwen3:14b · stays on this machine",
@@ -168,7 +185,12 @@ describe("the header (Behaviour 6)", () => {
     ]);
     expect(
       chatHeader({
-        provider: { name: "anthropic", kind: "anthropic", endpoint: "https://api.anthropic.com", model: "claude-sonnet-4-5" },
+        provider: {
+          name: "anthropic",
+          kind: "anthropic",
+          endpoint: "https://api.anthropic.com",
+          model: "claude-sonnet-4-5",
+        },
         granted: true,
         budget: { steps: 14, maxSteps: 60, tokens: 1, estimated: false, cost: null },
       }),
@@ -194,7 +216,14 @@ describe("the header (Behaviour 6)", () => {
 });
 
 describe("the status bar (Behaviour 35)", () => {
-  const s = (/** @type {any} */ o) => ({ steps: 14, maxSteps: 60, tokens: 212_400, estimated: false, cost: null, ...o });
+  const s = (/** @type {any} */ o) => ({
+    steps: 14,
+    maxSteps: 60,
+    tokens: 212_400,
+    estimated: false,
+    cost: null,
+    ...o,
+  });
   test("one task: steps and tokens, cost with prices; several: how many", () => {
     expect(builtinStatus([])).toBe(null);
     expect(builtinStatus([s({})])).toBe("◇ built-in 14/60 · 212k tok");
@@ -214,7 +243,10 @@ describe(":agent (Behaviour 14)", () => {
     for (const w of ["new", "model", "list", "clear", "give"])
       expect(parseAgentCommand(w)).toEqual({ kind: w });
     expect(parseAgentCommand("forget all")).toEqual({ kind: "forget" });
-    expect(parseAgentCommand("forget")).toMatchObject({ kind: "refuse", text: expect.stringContaining('"forget all"') });
+    expect(parseAgentCommand("forget")).toMatchObject({
+      kind: "refuse",
+      text: expect.stringContaining('"forget all"'),
+    });
     expect(parseAgentCommand("stpo")).toMatchObject({
       kind: "refuse",
       text: expect.stringContaining('did you mean "stop"?'),
