@@ -45,7 +45,7 @@ jobs:
           mkdir -p out
           git fetch --no-tags --depth=1 origin stats
           git show FETCH_HEAD:downloads.csv > out/downloads.csv
-          node tools/stats/downloads.mjs collect --repo "$REPO" --out out/day.csv
+          node tools/stats/downloads.mjs collect --repo "$REPO" > out/day.csv
           node tools/stats/downloads.mjs merge --csv out/downloads.csv --day out/day.csv
           node tools/stats/downloads.mjs summary --csv out/downloads.csv --markdown \
             >> "$GITHUB_STEP_SUMMARY"

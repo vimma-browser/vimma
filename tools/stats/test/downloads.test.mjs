@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
+import { createServer } from "node:http";
+import { promisify } from "node:util";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +21,7 @@ import {
 // (docs/runbook.md, "Release download counts"), and a summary of the daily deltas.
 
 const SCRIPT = fileURLToPath(new URL("../downloads.mjs", import.meta.url));
+const execFileAsync = promisify(execFile);
 
 /** @param {string} date @param {string} tag @param {string} asset @param {number} downloads */
 const row = (date, tag, asset, downloads) => ({ date, tag, asset, downloads });
@@ -161,6 +164,31 @@ describe("fetching releases", () => {
 });
 
 describe("the command line", () => {
+  it("collect prints the day's CSV on stdout, from the API that GITHUB_API_URL names", async () => {
+    const releases = [{ tag_name: "v1", assets: [{ name: "a.dmg", download_count: 7 }] }];
+    /** @type {string[]} */
+    const paths = [];
+    const server = createServer((req, res) => {
+      paths.push(req.url ?? "");
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify(releases));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
+    try {
+      const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
+      const { stdout, stderr } = await execFileAsync(
+        process.execPath,
+        [SCRIPT, "collect", "--repo", "o/r", "--date", "2026-10-29"],
+        { env: { ...process.env, GITHUB_API_URL: `http://127.0.0.1:${port}`, GITHUB_TOKEN: "" } },
+      );
+      expect(stdout).toBe(`${HEADER}\n2026-10-29,v1,a.dmg,7\n`);
+      expect(stderr).toMatch(/2026-10-29: 1 assets, 7 downloads/);
+      expect(paths).toEqual(["/repos/o/r/releases?per_page=100&page=1"]);
+    } finally {
+      server.close();
+    }
+  });
+
   it("summary prints the totals of a history file", () => {
     const dir = tempDir("vimma-downloads-");
     const csv = join(dir, "downloads.csv");

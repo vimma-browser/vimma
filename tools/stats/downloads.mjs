@@ -10,9 +10,10 @@
  * a day into `downloads.csv` on the `stats` branch; this script takes the snapshot, adds it to
  * the history and summarises the daily changes.
  *
- *   node tools/stats/downloads.mjs collect --repo <owner/name> --out <day.csv> [--date YYYY-MM-DD]
+ *   node tools/stats/downloads.mjs collect --repo <owner/name> [--date YYYY-MM-DD] > <day.csv>
  *       today's (UTC) count of every asset of every published release; GITHUB_TOKEN or GH_TOKEN
- *       is used when set (public data: the token only raises the rate limit)
+ *       is used when set (public data: the token only raises the rate limit), GITHUB_API_URL
+ *       when set; the CSV goes to stdout, a one-line total to stderr
  *   node tools/stats/downloads.mjs merge --csv <downloads.csv> --day <day.csv>
  *       appends the day to the history, unless that date is already recorded
  *   node tools/stats/downloads.mjs summary --csv <downloads.csv> [--assets] [--markdown]
@@ -261,11 +262,13 @@ export function formatSummary(summary, opts = {}) {
 /**
  * Every release of the repository, following the pages.
  * @param {string} repo owner/name
- * @param {{ token?: string, fetch?: typeof fetch }} [opts]
+ * @param {{ token?: string, api?: string, fetch?: typeof fetch }} [opts] `api` is the REST
+ *   API's base URL (the runner's GITHUB_API_URL), api.github.com by default
  * @returns {Promise<Release[]>}
  */
 export async function fetchReleases(repo, opts = {}) {
   const get = opts.fetch ?? fetch;
+  const api = (opts.api ?? "https://api.github.com").replace(/\/+$/, "");
   /** @type {Record<string, string>} */
   const headers = {
     accept: "application/vnd.github+json",
@@ -275,7 +278,7 @@ export async function fetchReleases(repo, opts = {}) {
   /** @type {Release[]} */
   const all = [];
   for (let page = 1; ; page++) {
-    const url = `https://api.github.com/repos/${repo}/releases?per_page=${PER_PAGE}&page=${page}`;
+    const url = `${api}/repos/${repo}/releases?per_page=${PER_PAGE}&page=${page}`;
     const res = await get(url, { headers });
     if (!res.ok) throw new Error(`GET ${url}: HTTP ${res.status} ${await res.text()}`);
     const batch = /** @type {Release[]} */ (await res.json());
@@ -285,7 +288,7 @@ export async function fetchReleases(repo, opts = {}) {
 }
 
 const USAGE = `usage:
-  downloads.mjs collect --repo <owner/name> --out <day.csv> [--date YYYY-MM-DD]
+  downloads.mjs collect --repo <owner/name> [--date YYYY-MM-DD] > <day.csv>
   downloads.mjs merge --csv <downloads.csv> --day <day.csv>
   downloads.mjs summary --csv <downloads.csv> [--assets] [--markdown]`;
 
@@ -296,7 +299,6 @@ async function main(argv) {
     args: rest,
     options: {
       repo: { type: "string" },
-      out: { type: "string" },
       date: { type: "string" },
       csv: { type: "string" },
       day: { type: "string" },
@@ -305,13 +307,16 @@ async function main(argv) {
     },
     strict: true,
   });
-  if (command === "collect" && values.repo && values.out) {
+  if (command === "collect" && values.repo) {
     const date = values.date ?? new Date().toISOString().slice(0, 10);
     const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || undefined;
-    const rows = assetRows(await fetchReleases(values.repo, { token }), date);
-    writeFileSync(values.out, toCsv(rows));
+    const api = process.env.GITHUB_API_URL || undefined;
+    const rows = assetRows(await fetchReleases(values.repo, { token, api }), date);
+    // The CSV goes to stdout, so this script never writes fetched data to a path of its own
+    // choosing; the caller redirects it.
+    process.stdout.write(toCsv(rows));
     const total = rows.reduce((n, r) => n + r.downloads, 0);
-    console.log(`${date}: ${rows.length} assets, ${total} downloads`);
+    console.error(`${date}: ${rows.length} assets, ${total} downloads`);
     return 0;
   }
   if (command === "merge" && values.csv && values.day) {
