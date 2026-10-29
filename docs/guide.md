@@ -1735,7 +1735,11 @@ focus and hint mode.
   `vimma_elements` makes it, with the same rules for secrets, and counts as one of its 30 calls
   a minute. The step's question ends with `, then vimma_elements`, and its notice under a grant
   with `and listed the buttons and fields after it`. A page still loading, or one that changed
-  while it was listed, is not listed; the agent is told so and lists it itself.
+  while it was listed, is not listed; the agent is told so and lists it itself. A page that did
+  not load (Firefox showed its error page, for a server that was not found or a certificate it
+  does not trust) is an error the agent reads first, with Firefox's error code, so it stops
+  instead of opening the same address again; the built-in agent ends its task after the same
+  failing call three times in a row.
 - **Shorter lists on a site it has listed before.** A shop's header, search field and basket
   button are the same on every page, so a list of a page on a site the agent has already listed
   leaves out the lines that are exactly as in its last list of that site and names their labels

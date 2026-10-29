@@ -1455,7 +1455,10 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   holds for it, and the validator and `vimma-ctl mcp` check it the same way; it is made only
   after the step, of a page that is no longer loading, and only while the tab is still an agent
   tab with the URL it had when the list began (else the result says why, in fixed words, and
-  holds no list); the result's URL and title are read at the last such check, and a tab that
+  holds no list; a page that is one of Firefox's error pages is named by its error code, which
+  the validator and `vimma-ctl mcp` accept only from a fixed list, never as the page's text;
+  `vimma_elements` on such a tab refuses with the same code, and the built-in agent's stop after
+  three identical refusals counts both); the result's URL and title are read at the last such check, and a tab that
   left the agent workspace meanwhile fails the call, noted in `:mcp log`, with nothing of its
   page; its labels become the connection's current ones as a `vimma_elements` list's do. The
   step's question (a checkpoint's included), its `:mcp log` row and its notice under a grant say
@@ -1501,6 +1504,12 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_steps_return_the_element_list_vimma_elements_would`](../tests/browser/browser_vimma_mcp_elements.js),
   [`a step's list is inside the untrusted delimiters, with its dropped count`](../packages/vimma-core/test/control-v2.test.mjs),
   [`why a step's list is missing: fixed words, never with a list`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a load error: one of Firefox's codes, only with unlisted error`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a code outside the fixed list is other, never the page's text`](../packages/vimma-core/test/load-errors.test.mjs),
+  [`a_load_that_ended_on_an_error_page_is_an_error_naming_it`](../tools/vimma-ctl/src/mcp.rs),
+  [`a load that ended on Firefox's error page is an error result naming the error`](../packages/vimma-core/test/agent-results.test.mjs),
+  [`an open that ends on Firefox's error page three times ends the task`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`test_builtin_open_names_the_error_page`](../tests/browser/browser_vimma_agent_load_error.js),
   [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../tools/vimma-ctl/src/mcp.rs),
   [`an_open_with_elements_lists_the_page_it_loaded`](../tools/vimma-ctl/src/mcp.rs),
   [`a step that returns the element list says so in the question and the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
@@ -2365,7 +2374,13 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   (`released`, never a pre-release) runs, and `release.yml`'s `macos-tap` job, which runs when the
   macOS files reach the release. Each starts `homebrew.yml` on `main` with the tag only once
   `vimma.rb` is on the published release, so whichever of the publish and the macOS files comes
-  last starts the push. `start` runs the tag's copy of `homebrew.yml`, which anyone with write
+  last starts the push. Each learns that from the release's metadata, read without a token from
+  the API's `releases/tags/<tag>`, which answers 404 for a draft; it also requires `draft` to be
+  false and the file's upload to be complete, never requests the file itself (any request for a
+  release file counts as a download, docs/runbook.md, "Release download counts"), and fails on
+  any answer other than 200 or 404 and on a 200 that is not a release, so a rate limit or an outage never passes for a release
+  without the cask. Starting `homebrew.yml` grants nothing: its `homebrew` job still downloads
+  the cask and checks it as above. `start` runs the tag's copy of `homebrew.yml`, which anyone with write
   access can edit on a tag of their own: an edited copy may ask for any permissions and read the
   repository's and organisation's secrets, but it gets nothing a write-access user cannot already
   get by pushing a branch. It cannot deploy to the `homebrew` environment, so it cannot reach the
@@ -2423,7 +2438,11 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`takes the tap key from the homebrew environment`](../tools/package/test/release-workflow.test.mjs),
   [`the tap key reaches only the push step`](../tools/package/test/release-workflow.test.mjs),
   [`pushes Casks/vimma.rb to the tap over SSH with github.com's pinned host key`](../tools/package/test/release-workflow.test.mjs),
-  [`never replaces a newer cask with an older one`](../tools/package/test/release-workflow.test.mjs)
+  [`never replaces a newer cask with an older one`](../tools/package/test/release-workflow.test.mjs),
+  [`reads the release's metadata and never requests a release file`](../tools/test/release-asset-checks.test.mjs),
+  [`starts nothing, green, when %s`](../tools/test/release-asset-checks.test.mjs),
+  [`fails when the release API answers %i`](../tools/test/release-asset-checks.test.mjs),
+  [`no workflow requests a release file only to see that it exists`](../tools/test/release-asset-checks.test.mjs)
 
 - B12. The Flatpak build, `flatpak.yml` (spec [flatpak](specs/flatpak.md)), publishes nothing,
   holds no secret and no environment, and each job's token only reads the repository. It
@@ -2869,7 +2888,9 @@ _Pages_ and _extensions_ cannot reach it.
   its one file, the `.dmg`, **must** match `SHA256SUMS-macos`, which **must** carry release.yml's
   cosign signature, and is checked against it before the secretless `prepare` job (on a macOS
   runner) mounts it read-only to read its build ID; the signing job refuses a body for another
-  target than the one asked for. Each target has its own concurrency group, so its serials only
+  target than the one asked for. The macOS run starts once the `.dmg` is on the published
+  release, which the starting jobs learn from the release's metadata as in B11; `prepare` then
+  checks again that the release is published and downloads the `.dmg` itself. Each target has its own concurrency group, so its serials only
   grow; a push that the other target's push beat is rebased onto it (another file), never forced.
   **⚠ limit:** without a required reviewer on `update-signing`, anyone with write access can
   start a run on `main` that re-signs a published release or offers nothing (withholding
@@ -2901,7 +2922,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`runs one manifest per target at a time, never cancelling one half done`](../tools/update/test/update-workflow.test.mjs),
   [`refuses a .dmg that does not match SHA256SUMS-macos`](../tools/update/test/manifest.test.mjs),
   [`checkSigned takes the target: a Linux manifest is refused for macOS and back`](../tools/update/test/manifest.test.mjs),
-  [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../tools/package/test/release-workflow.test.mjs)
+  [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../tools/package/test/release-workflow.test.mjs),
+  [`a published release whose .dmg is already there starts the macOS manifest too`](../tools/update/test/update-workflow.test.mjs),
+  [`fails when the release API answers %i`](../tools/test/release-asset-checks.test.mjs)
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
   the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `dnf`,

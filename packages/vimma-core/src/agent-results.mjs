@@ -10,6 +10,7 @@
 // fails when a sentence here is not in mcp.rs.
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN, untrustedHeader } from "./agent.mjs";
+import { LOAD_ERRORS, NOT_LOADED, errorPageText } from "./load-errors.mjs";
 
 /**
  * @typedef {import("./agent-providers.mjs").ToolContent} ToolContent
@@ -132,7 +133,9 @@ const quoted = (/** @type {string} */ s) => JSON.stringify(s);
  */
 export function toolResult(name, args, result) {
   try {
-    return { content: success(name, args, result) };
+    const content = success(name, args, result);
+    const failed = loadFailed(args, result);
+    return failed ? { content: [item(failed), ...content], isError: true } : { content };
   } catch (e) {
     if (!(e instanceof Broken)) throw e;
     return toolError(`Vimma's answer broke the control protocol: ${e.message}.`);
@@ -308,6 +311,39 @@ function elementsIntro(tab, dropped, filtered) {
     : said;
 }
 
+/** The start of a step's result whose page did not load (issue #643). */
+export const LOAD_FAILED = "The page did not load in tab ";
+/** The start of a refusal of a page that did not load, as `vimma_elements` meets it. */
+const LOAD_FAILED_REFUSAL = `Vimma could not do it: ${NOT_LOADED}`;
+
+/**
+ * Why a step's page did not load, as the error result's first line (mcp.rs, `load_failed`), or
+ * null for a page that loaded: the step ran, but its page is Firefox's error page, so the same
+ * step meets it again. A model that read only that its elements were not listed opened the same
+ * address in tab after tab (issue #643).
+ * @param {Record<string, any>} args @param {any} result
+ * @returns {string | null}
+ */
+function loadFailed(args, result) {
+  if (result?.unlisted !== "error") {
+    if (result?.loadError !== undefined) {
+      throw new Broken("Vimma's result has a load error without unlisted error");
+    }
+    return null;
+  }
+  const code = result.loadError;
+  if (typeof code !== "string" || !Object.hasOwn(LOAD_ERRORS, code)) {
+    throw new Broken("Vimma's result has an unknown load error");
+  }
+  const tab = typeof result.tab === "string" ? result.tab : args.tab;
+  return (
+    `${LOAD_FAILED}${tab} of Vimma's agent workspace: ${errorPageText(code)}. The same call ` +
+    "fails the same way, so do not repeat it: tell the user, or try another address. The tab " +
+    "stays open: load another page in it with vimma_open and its tab, or close it with " +
+    "vimma_close_tab."
+  );
+}
+
 const UNLISTED = Object.freeze({
   loading:
     "The page was still loading, so its elements are not listed: call vimma_elements once it " +
@@ -339,6 +375,8 @@ function stepList(tab, asked, filtered, result) {
     return { list: listItems(tab, filtered, result), unlisted: null };
   }
   if (!hasList && typeof unlisted === "string") {
+    // Said first, by loadFailed, as the result's error.
+    if (unlisted === "error") return { list: [], unlisted: null };
     const why = /** @type {Record<string, string>} */ (UNLISTED)[unlisted];
     if (!why) throw new Broken("Vimma's result has an unknown reason for no element list");
     return { list: [], unlisted: why };
@@ -586,16 +624,22 @@ export const REFUSED_ARGS = "Vimma refused the arguments: ";
 export const USER_DENIED = "The user denied this request in Vimma.";
 
 /**
- * Whether a result is a refusal that the same call will meet again: its arguments refused, or
- * the user's no. A page still loading, a rate or a busy queue clear by themselves, so a model
- * that waits and asks again is not repeating itself (docs/specs/builtin-agent.md B10).
+ * Whether a result is a refusal that the same call will meet again: its arguments refused, the
+ * user's no, or a page that did not load (Firefox's error page, issue #643). A page still
+ * loading, a rate or a busy queue clear by themselves, so a model that waits and asks again is
+ * not repeating itself (docs/specs/builtin-agent.md B10).
  * @param {{ isError?: boolean, content: ToolContent[] }} result
  */
 export function isFinalRefusal(result) {
   if (!result.isError) return false;
   const first = result.content[0];
   const text = first?.type === "text" ? first.text : "";
-  return text.startsWith(REFUSED_ARGS) || text === USER_DENIED;
+  return (
+    text.startsWith(REFUSED_ARGS) ||
+    text === USER_DENIED ||
+    text.startsWith(LOAD_FAILED) ||
+    text.startsWith(LOAD_FAILED_REFUSAL)
+  );
 }
 
 /**

@@ -1896,6 +1896,7 @@ fn cap_u32(n: u64) -> u32 {
 pub fn tool_result(call: &Call, outcome: Result<&Value, &Failure>) -> Value {
     let result = match outcome {
         Ok(value) => success(&call.tool, value)
+            .and_then(|out| with_load_error(&call.tool, value, out))
             .unwrap_or_else(|why| tool_error(&failure_text(&Failure::Protocol(why)))),
         Err(failure) => tool_error(&failure_text(failure)),
     };
@@ -2255,6 +2256,124 @@ fn elements_intro(tab: &str, dropped: f64, filtered: bool) -> String {
     said
 }
 
+/// The `e=` codes of Firefox's error pages that Vimma names, each with what it means
+/// (vimma-core's `LOAD_ERRORS`, issue #643); `other` stands for any other code.
+const LOAD_ERRORS: &[(&str, &str)] = &[
+    ("dnsNotFound", "the server was not found"),
+    ("connectionFailure", "the server refused the connection"),
+    ("netTimeout", "the server took too long to answer"),
+    ("netReset", "the connection was reset"),
+    ("netInterrupt", "the connection was interrupted"),
+    ("netOffline", "the browser is offline"),
+    (
+        "networkProtocolError",
+        "the server broke the network protocol",
+    ),
+    ("redirectLoop", "the page redirects in a loop"),
+    ("serverError", "the server answered with an error"),
+    ("httpErrorPage", "the server answered with an error"),
+    ("malformedURI", "the address is not valid"),
+    (
+        "unknownProtocolFound",
+        "the address uses a protocol the browser does not handle",
+    ),
+    (
+        "deniedPortAccess",
+        "the address uses a port the browser blocks",
+    ),
+    (
+        "proxyConnectFailure",
+        "the proxy server refused the connection",
+    ),
+    ("proxyResolveFailure", "the proxy server was not found"),
+    (
+        "contentEncodingError",
+        "the page's content encoding is broken",
+    ),
+    ("corruptedContentErrorv2", "the page's content is corrupted"),
+    ("unsafeContentType", "the page's content type is unsafe"),
+    ("invalidHeaderValue", "the server sent an invalid header"),
+    ("notCached", "the page is no longer in the cache"),
+    ("fileNotFound", "the file was not found"),
+    ("fileAccessDenied", "the file cannot be read"),
+    ("nssBadCert", "the site's certificate is not trusted"),
+    ("nssFailure2", "the secure connection failed"),
+    ("sslv3Used", "the site uses an insecure protocol"),
+    ("weakCryptoUsed", "the site uses weak encryption"),
+    (
+        "inadequateSecurityError",
+        "the site's security is inadequate",
+    ),
+    (
+        "clientSocketMisconfiguration",
+        "the secure connection failed",
+    ),
+    (
+        "httpsOnly",
+        "the site has no https version and the browser loads only https",
+    ),
+    (
+        "basicHttpAuthDisabled",
+        "the site asks for a login the browser does not send over http",
+    ),
+    ("blockedByPolicy", "an enterprise policy blocks the page"),
+    ("blockedByCOOP", "the page's opener policy blocked it"),
+    ("blockedByCOEP", "the page's embedder policy blocked it"),
+    (
+        "cspBlocked",
+        "the page's content security policy blocked it",
+    ),
+    ("xfoBlocked", "the page does not allow being framed"),
+    ("deceptiveBlocked", "the site is reported as deceptive"),
+    ("malwareBlocked", "the site is reported as malware"),
+    (
+        "unwantedBlocked",
+        "the site is reported to serve unwanted software",
+    ),
+    ("harmfulBlocked", "the site is reported as harmful"),
+    ("addonBlocked", "an add-on blocked the page"),
+    ("other", "an error Vimma does not name"),
+];
+
+/// A step's result whose page is Firefox's error page (issue #643): the step ran, but the same
+/// step meets the error again, so the result is an error that says so first, in Vimma's words
+/// (vimma-core's `loadFailed`). A model that read only that the page's elements were not listed
+/// opened the same address in tab after tab.
+fn with_load_error(tool: &ToolCall, result: &Value, out: Value) -> Result<Value, String> {
+    let code = result.get("loadError");
+    match result.get("unlisted") {
+        Some(Value::String(w)) if w == "error" => {}
+        _ if code.is_none() => return Ok(out),
+        _ => return Err("Vimma's result has a load error without unlisted error".into()),
+    }
+    let words = match code {
+        Some(Value::String(code)) => LOAD_ERRORS
+            .iter()
+            .find(|(c, _)| c == code)
+            .map(|(c, w)| format!("{w} ({c})")),
+        _ => None,
+    }
+    .ok_or("Vimma's result has an unknown load error")?;
+    let tab = match tool {
+        ToolCall::Activate { tab, .. } | ToolCall::Fill { tab, .. } => tab.as_str(),
+        _ => field(result, "tab")?,
+    };
+    let said = format!(
+        "The page did not load in tab {tab} of Vimma's agent workspace: Firefox showed its error \
+         page, {words}. The same call fails the same way, so do not repeat it: tell the user, or \
+         try another address. The tab stays open: load another page in it with vimma_open and \
+         its tab, or close it with vimma_close_tab."
+    );
+    let Value::Object(mut out) = out else {
+        return Err("Vimma's result is not an object".into());
+    };
+    if let Some(Value::Array(content)) = out.get_mut("content") {
+        content.insert(0, text_item(&said));
+    }
+    out.insert("isError".into(), Value::Bool(true));
+    Ok(Value::Object(out))
+}
+
 /// A step's element list (issue #584; security.md M31), checked as `vimma_elements`' own: when
 /// `asked`, the list inside its delimiters as items to add after the step's text, or else why it
 /// is missing, as a line of Vimma's fixed words; when not asked, none may come.
@@ -2291,6 +2410,8 @@ fn step_list(
                     "Vimma could not list this page's elements (it lists only http and \
                              https pages that answer in time): call vimma_elements to see why."
                 }
+                // Said first, by with_load_error, as the result's error.
+                "error" => return Ok((Vec::new(), None)),
                 _ => return Err("Vimma's result has an unknown reason for no element list".into()),
             };
             Ok((Vec::new(), Some(why.to_string())))
@@ -5082,6 +5203,73 @@ mod tests {
         );
         let bare = tool_result(&open, Ok(&parse(r#"{"tab":"13"}"#).unwrap()));
         assert!(tool_error_text(&bare).contains("protocol"), "{bare}");
+    }
+
+    // Issue #643: a step whose page is Firefox's error page is an error result that names the
+    // error first, in Vimma's fixed words, so that the model stops repeating it; a code outside
+    // the fixed list is a protocol error.
+    #[test]
+    fn a_load_that_ended_on_an_error_page_is_an_error_naming_it() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        let mut call =
+            |tool: &str, arguments: &str| match handle(&mut p, &call_line(3, tool, arguments)) {
+                Action::Call(c) => c,
+                _ => panic!("{tool} {arguments}: not a call"),
+            };
+        let open = call(
+            "vimma_open",
+            r#"{"url":"https://shop.invalid/","elements":true}"#,
+        );
+        let activate = call(
+            "vimma_activate",
+            r#"{"tab":"4","label":"sd","elements":true}"#,
+        );
+        let fixture = |validity: &str| {
+            let f = v2_fixture(&format!("response-agent-open-load-error.{validity}.json"));
+            f.get("message").unwrap().get("result").unwrap().clone()
+        };
+        let r = tool_result(&open, Ok(&fixture("valid")));
+        assert_eq!(at(&r, &["result", "isError"]), &Value::Bool(true), "{r}");
+        let t = texts(&r);
+        assert_eq!(
+            t[0],
+            "The page did not load in tab 12 of Vimma's agent workspace: Firefox showed its \
+             error page, the server was not found (dnsNotFound). The same call fails the same \
+             way, so do not repeat it: tell the user, or try another address. The tab stays \
+             open: load another page in it with vimma_open and its tab, or close it with \
+             vimma_close_tab.",
+            "{t:?}"
+        );
+        assert!(t[1].starts_with("Untrusted web content from https://shop.invalid/"));
+        assert_eq!(
+            t[2],
+            "Opened https://shop.invalid/ in tab 12 of Vimma's agent workspace, in the background."
+        );
+        let bad = tool_result(&open, Ok(&fixture("invalid")));
+        assert!(tool_error_text(&bad).contains("protocol"), "{bad}");
+        let clicked = parse(
+            r#"{"url":"https://shop.invalid/","title":"Problem loading page","loading":false,
+            "navigated":true,"unlisted":"error","loadError":"other"}"#,
+        )
+        .unwrap();
+        let r = tool_result(&activate, Ok(&clicked));
+        assert_eq!(at(&r, &["result", "isError"]), &Value::Bool(true), "{r}");
+        assert!(
+            texts(&r)[0].starts_with(
+                "The page did not load in tab 4 of Vimma's agent workspace: Firefox showed its \
+                 error page, an error Vimma does not name (other)."
+            ),
+            "{r}"
+        );
+        for bad in [
+            r#"{"url":"https://a/","title":"A","loading":false,"navigated":true,"unlisted":"error"}"#,
+            r#"{"url":"https://a/","title":"A","loading":false,"navigated":true,"unlisted":"failed","loadError":"dnsNotFound"}"#,
+            r#"{"url":"https://a/","title":"A","loading":false,"navigated":true,"unlisted":"error","loadError":"toString"}"#,
+        ] {
+            let r = tool_result(&activate, Ok(&parse(bad).unwrap()));
+            assert!(tool_error_text(&r).contains("protocol"), "{bad}: {r}");
+        }
     }
 
     fn v2_fixture(name: &str) -> Value {

@@ -292,7 +292,20 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    the call with nothing of its page (M8). The step's question, a checkpoint's (F15,
    mcp-checkpoints C1) included, ends with `, then vimma_elements`, its `:mcp log` row the same,
    and its notice under a grant with `and listed the buttons and fields after it` (F28), because
-   the yes returns the list too.)
+   the yes returns the list too.) (Since changed: a step whose page is one of Firefox's error
+   pages (`about:neterror`, `about:certerror`, `about:blocked`, `about:httpsonlyerror`) returns
+   `unlisted` with `error` and `loadError`, the error page's `e=` code from a fixed list
+   (`LOAD_ERRORS` in `packages/vimma-core/src/load-errors.mjs`, `other` for any code not in it),
+   and the tool result is an error (`isError`) whose first line says that the page did not load,
+   names the error and says that the same call fails the same way, because a model told only
+   that the page could not be listed opened the same address in tab after tab; issue
+   [#643](https://github.com/vimma-browser/vimma/issues/643). `vimma_elements` on such a tab
+   fails with the same words. An open of the same address again still opens a new tab, as every
+   open without `tab` does, rather than reusing the failed one, because the user's question
+   named a new tab and not the failed tab and its page; the error names the tab, so the agent
+   can load into it with `tab`, which the user is asked about as such. The built-in agent's loop
+   counts the error as a refusal (builtin-agent B10), so the same failing call three times in a
+   row ends the task.)
 3. **One session per tab and connection.** The labels go into the same session store as
    `vimma_keys`' `f` (`ctl/AgentDrive.sys.mjs:89-90`), bound to the document and URL and valid
    for 120 s, so a label never names an element of another page. (Since changed: an element
