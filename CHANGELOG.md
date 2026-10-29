@@ -14,6 +14,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Agents (MCP): an agent over a per-minute limit is told which limit it hit, that no question is waiting, and how long to wait, instead of a message saying questions are waiting.
 - Agents (MCP): clicks and fills wait only while the page is busy instead of a fixed second; a fill without a submit returns at once, and a page counts as ready before its slow images finish. Sending a form or paying is caught exactly as before.
 
+### Fixed
+
+- Workspaces: tab search and the side panel no longer lose a window's tabs after the last window is closed and a new one opened (on macOS, from the Dock), or after a session restore that stops partway; until a restart they listed one tab while the status bar counted them all. The `:bug` report now shows the open tabs beside the workspaces' count and names a restore that never finished.
+
 ## [0.1.11](https://github.com/vimma-browser/vimma/compare/v0.1.10...v0.1.11) · Firefox 159.0 (2026-10-28)
 
 
