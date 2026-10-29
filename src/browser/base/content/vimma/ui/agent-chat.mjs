@@ -17,10 +17,13 @@ import {
   chatHeader,
   chatKey,
   entryView,
-  externalNotice,
   needsKey,
+  noticeTarget,
+  providerWhere,
+  sendNotice,
   whereDataGoes,
 } from "../core/agent-chat.mjs";
+import { CLIS } from "../core/agent-cli.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
 import { lastUseText } from "../core/agent-store.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
@@ -31,6 +34,7 @@ const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   // Lazily: AgentChat reaches VimmaHost through the agent commands, and VimmaHost builds this.
   AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
+  AgentCli: "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
   AgentKeys: "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
   ConfigHost: "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
   McpHost: "chrome://browser/content/vimma/host/mcp-ops.mjs",
@@ -75,7 +79,8 @@ const SLOT_HINT = "a question waits: answer it here";
  * @property {() => void} changed  the window opened, closed or switched conversation: the
  *   question may move between the line and the slot, and the status bar redraws
  * @typedef {{ label: string, detail: string, provider?: AgentProviderConfig,
- *   add?: "anthropic" | "openai",
+ *   add?: "anthropic" | "openai" | "cli", cliPick?: { cli: string, path: string },
+ *   refused?: string,
  *   local?: { endpoint: string, model: string, server: string }, id?: number }} Row
  */
 
@@ -501,8 +506,8 @@ export class AgentChatWindow {
   afterKey(id, go) {
     if (lazy.AgentChat.needsNotice(id)) {
       const provider = lazy.AgentChat.get(id).provider;
-      this.host.ask(externalNotice(provider), () => {
-        lazy.AgentChat.confirm(id, provider.endpoint);
+      this.host.ask(sendNotice(provider), () => {
+        lazy.AgentChat.confirm(id, noticeTarget(provider));
         go();
       });
       return;
@@ -548,16 +553,25 @@ export class AgentChatWindow {
   loadModels() {
     const config = lazy.McpHost.agentConfig;
     /** @type {Row[]} */
-    const rows = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []).map((p) => ({
-      label: `${p.name} · ${p.model}`,
-      detail: whereDataGoes(p.endpoint),
-      provider: p,
-    }));
+    const rows = /** @type {AgentProviderConfig[]} */ (config?.providers ?? [])
+      // An agent CLI only while that feature is on (builtin-agent-cli, Delivery).
+      .filter((p) => p.kind !== "cli" || lazy.AgentCli.enabled)
+      .map((p) => ({
+        label: `${p.name} · ${p.model || p.cli}`,
+        detail: providerWhere(p),
+        provider: p,
+      }));
     // Setup's hosted providers (Behaviour 3): before the probe's rows, which come later.
     rows.push(
       { label: "add: Anthropic (Messages API)", detail: "api key", add: "anthropic" },
       { label: "add: OpenAI-compatible endpoint", detail: "https:// and api key", add: "openai" },
     );
+    if (lazy.AgentCli.enabled) {
+      const names = Object.values(CLIS)
+        .map((c) => c.title)
+        .join(", ");
+      rows.push({ label: `add: agent CLI (${names})`, detail: "its own login", add: "cli" });
+    }
     this.rows = rows;
     for (const row of rows) {
       const p = row.provider;
@@ -604,7 +618,7 @@ export class AgentChatWindow {
       .sort((/** @type {any} */ a, /** @type {any} */ b) => b.used - a.used || b.id - a.id)
       .map((/** @type {any} */ c) => ({
         label: `${c.running ? "▶ " : ""}${c.title || "New conversation"}`,
-        detail: `${c.provider.name} · ${c.provider.model} · ${lastUseText(c.used, now)}`,
+        detail: `${c.provider.name} · ${c.provider.model || c.provider.cli} · ${lastUseText(c.used, now)}`,
         id: c.id,
       }));
     this.row = Math.max(
@@ -621,11 +635,38 @@ export class AgentChatWindow {
       this.open({ conversation: row.id });
       return;
     }
+    if (row.add === "cli") {
+      this.findClis();
+      return;
+    }
     if (row.add) {
       this.addProvider(row.add);
       return;
     }
+    if (row.refused) {
+      this.host.say(`agent: ${row.refused}`, true);
+      return;
+    }
     let provider = row.provider;
+    if (row.cliPick) {
+      // builtin-agent-cli Behaviour 2, C4: the path picked here is a pref, and the
+      // provider names only which CLI it is.
+      const info = CLIS[row.cliPick.cli];
+      if (!info) return;
+      lazy.AgentCli.use(info.id, row.cliPick.path);
+      const listed = (lazy.McpHost.agentConfig?.providers ?? []).find(
+        (/** @type {AgentProviderConfig} */ p) => p.kind === "cli" && p.cli === info.id,
+      );
+      provider = listed ?? {
+        name: freeName(info.bin),
+        kind: "cli",
+        cli: info.id,
+        endpoint: "",
+        model: "",
+        vision: false,
+        maxMinutes: 30,
+      };
+    }
     if (
       provider &&
       needsKey(provider) &&
@@ -655,9 +696,45 @@ export class AgentChatWindow {
     this.insert();
     const picked = provider;
     this.remember(picked).then((note) => {
-      if (note)
-        this.host.say(`agent: ${picked.name} · ${picked.model}${note}`, note.startsWith(";"));
+      if (note) {
+        const what = picked.model || picked.cli;
+        this.host.say(`agent: ${picked.name} · ${what}${note}`, note.startsWith(";"));
+      }
     });
+  }
+
+  /**
+   * Setup's agent CLIs (builtin-agent-cli Behaviour 1): a search of PATH and each one's
+   * `--version`, only while setup is open on this row, each listed with its path to pick.
+   */
+  findClis() {
+    this.rows = [];
+    this.row = 0;
+    this.render();
+    lazy.AgentCli.find().then(
+      (
+        /** @type {{ cli: string, path: string, label: string, problem: string | null }[]} */ found,
+      ) => {
+        if (!this.opened || this.view !== "models") return;
+        if (!found.length) {
+          this.host.say(`agent: ${lazy.AgentCli.noneFound()}`, true);
+          this.loadModels();
+          return;
+        }
+        this.rows = found.map((f) => ({
+          label: f.label,
+          detail: f.problem ? `refused: ${f.problem}` : "agent CLI · Enter uses it",
+          ...(f.problem
+            ? { refused: `${f.path} is refused: ${f.problem}` }
+            : { cliPick: { cli: f.cli, path: f.path } }),
+        }));
+        this.render();
+        // A row cuts a long path; the notice line shows the first one whole before it is used.
+        const first = found[0];
+        if (first) this.host.say(`agent: found ${first.label}`, !!first.problem);
+      },
+      (/** @type {any} */ e) => console.error("vimma agent: looking for agent CLIs failed", e),
+    );
   }
 
   /**
@@ -673,7 +750,10 @@ export class AgentChatWindow {
     );
     const listed = providers.some(
       (p) =>
-        p.kind === provider.kind && p.endpoint === provider.endpoint && p.model === provider.model,
+        p.kind === provider.kind &&
+        p.endpoint === provider.endpoint &&
+        p.model === provider.model &&
+        p.cli === provider.cli,
     );
     if (listed) return "";
     const makeDefault = providers.length === 0;
@@ -849,6 +929,7 @@ export class AgentChatWindow {
       granted: !!c?.granted,
       localOnly: !!config?.localOnly,
       budget: c?.running ? c.budget : null,
+      cli: c?.cli ?? null,
     });
     this.head.forEach((h, i) => (h.textContent = lines[i] ?? ""));
     const log = /** @type {HTMLElement} */ (this.log);

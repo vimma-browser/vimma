@@ -1,6 +1,6 @@
 # Spec: builtin-agent-cli
 
-Status: accepted (Delivery 1 built) · Area: `packages/vimma-core/src/` (new `agent-cli.mjs`:
+Status: accepted (Delivery 1-2 built) · Area: `packages/vimma-core/src/` (new `agent-cli.mjs`:
 argument builders and stream parsers per CLI; `config.mjs` for `kind = "cli"`; `control.mjs` for
 the ticket hello);
 `src/browser/base/content/vimma/` (new `agent/AgentCli.sys.mjs`: the process runner;
@@ -143,8 +143,9 @@ own configuration allows; Vimma does not confine them, and the window states whi
     (Claude Code's `result.usage`, Codex's `turn.completed.usage`), they count toward
     `max_tokens` and show in the status bar as for any provider. When it reports a cost (Claude
     Code's `total_cost_usd`), the status bar shows it as `≈ $0.41 (claude-code)`, and
-    `max_cost` does not apply to it (C13); when `max_cost` is set, the first task's summary says
-    `max_cost does not apply to claude-code`. When the CLI reports neither, the status bar shows
+    `max_cost` does not apply to it (C13); the first task of a conversation with a CLI says
+    `max_cost does not apply to claude-code: the cost it reports is its own estimate`, since
+    `max_cost` always has a value (2 unless set). When the CLI reports neither, the status bar shows
     steps and time only (`◇ built-in 14/100 · 6 min`) and the transcript's task summary says
     `tokens not reported by codex`.
 16. **A time limit.** A CLI task stops after `max_minutes` of wall-clock time (default 30), with
@@ -218,7 +219,20 @@ Each CLI was checked as stated; none was run against a real account, and no toke
   - With `--input-format stream-json`, two user lines
     (`{"type":"user","message":{"role":"user","content":"…"}}`) written to stdin three seconds
     apart gave two `result` lines from one process, which exited when stdin closed. A line
-    written while a turn was running was not tested.
+    written while a turn was running reached that turn: Claude Code's next request to the
+    scripted server carried it as "The user sent a new message while you were working", and the
+    run gave one `result`, whose `queued_turn_count` was 0. A line that comes too late for the
+    turn is queued for another, which that count reports.
+  - Without `--bare`, with the arguments of C2 and the model `sonnet`, a run against the same
+    scripted server (a made-up key in `ANTHROPIC_API_KEY`, a throwaway `HOME`) gave the stream
+    recorded in `packages/vimma-core/test/fixtures/agent-cli/`. The init's `tools` listed the
+    CLI's default set (`Bash`, `Read`, `Write`, `WebFetch` and others) and
+    `mcp__vimma__vimma_tabs`; a `Bash` call the settings did not allow came back as a
+    `system`/`permission_denied` event naming its `tool_use_id`. With a key the server refused
+    (401), the CLI retried ten times (`system`/`api_retry`), then wrote an `assistant` message
+    of the model `<synthetic>` with a top-level `error` repeating the error, a `result` with
+    `is_error: true` and that text, and exited with 1, with nothing on stderr. The throwaway
+    `HOME` then held `.claude.json`, its backup and the MCP server's log, and no session file.
   - `total_cost_usd` is computed by Claude Code (the run reported `"costBasis":"list"`), not
     returned by the API: for a subscription it is not what the user pays.
 - **Codex 0.163.0.** `codex --help`, `codex exec --help` and `codex mcp add --help`, and the
@@ -312,7 +326,12 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    list of what `PATH` holds. Before each run Vimma checks that the path is absolute, a regular
    file (symlinks resolved), executable, owned by the user or root, and neither it nor its
    folder writable by other users, because a file another local user can replace would let
-   that user run code as this user when a task is sent. Rejected: a `command` key in
+   that user run code as this user when a task is sent. Neither IOUtils nor nsIFile gives a
+   file's owner: a no-op `chmod` succeeds only on the user's own file, and root's is read with
+   the `statx`/`lstat` call security.md C2 already allows for clamd's socket, so no new native
+   call is added. `vimma-ctl`, which the CLI runs with the ticket, is the one next to Vimma's
+   binary (where every release puts it), else the pref `vimma.agent.cli.vimmaCtl` (a build from
+   source, tests), and it is checked the same way. Rejected: a `command` key in
    `config.toml`, because it breaks F3; root-owned files only, as for ClamAV (C2 of
    security.md), because user installs (`~/.local/bin`, version managers) are where these CLIs
    live.
@@ -374,9 +393,17 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    | agent reply           | `assistant` block `text`                                     | `item.completed` with an `agent_message`                |
    | step in the browser   | from the gate (not from `tool_use` of `mcp__vimma__*`)       | from the gate (not from `mcp_tool_call`)                |
    | CLI's own tool        | `assistant` block `tool_use` of any other name               | `item.started` with `command_execution`, `file_change`  |
+   | own tool refused      | `system`/`permission_denied` with its `tool_use_id`          | not reported                                            |
    | tokens, cost          | `result`: `usage`, `total_cost_usd`                          | `turn.completed`: `usage`                               |
    | task ended, or failed | `result` (`is_error`, `subtype`); exit code                  | `turn.completed` or `turn.failed`, `error`; exit code   |
    | ignored               | other `system` subtypes, `tool_result` bodies, thinking      | `reasoning`, `todo_list`, `item.updated`, unknown kinds |
+
+   An own-tool line whose call the CLI's settings refused says `refused by its settings`,
+   because a line that says the CLI ran a command it was not allowed to run would be wrong. An
+   `assistant` message with a top-level `error` is not a reply: it repeats the result's error,
+   which the task's end shows once. The input closes after a `result` whose
+   `queued_turn_count` is 0, so the CLI exits; a message added during the turn is part of that
+   turn (Research).
 
    Steps in the browser are taken from the gate, because the gate is what ran them and decided
    their outcome, while the CLI's stream is the CLI's account of it; a CLI that reports a step
@@ -537,8 +564,12 @@ shows steps and time only`.
 
 ### Mochitests (`tests/browser/`)
 
-`browser_vimma_agent_cli.js` (new), with a fake CLI: a test script that prints a recorded
-stream and drives `vimma-ctl mcp`'s protocol with the ticket it is given:
+`browser_vimma_agent_cli.js` (Delivery 1: the ticket) and `browser_vimma_agent_cli_run.js`
+(Delivery 2: the run), with a fake CLI, `fake_vimma_agent_cli.py`: a script that takes Claude
+Code's arguments, starts the real `vimma-ctl mcp` its MCP configuration names, and prints
+Claude Code's stream-json, scripted by the task's text; it also covers
+`test_added_instruction_reaches_the_running_cli` and
+`test_a_later_task_is_a_new_run_given_the_conversation`:
 `test_setup_lists_only_found_clis_and_stores_the_path`; `test_path_checks_refuse_a_file_others_can_write`;
 `test_no_process_before_a_task`; `test_task_on_stdin_and_fixed_arguments`;
 `test_runs_in_an_empty_private_directory_removed_after`;
@@ -578,6 +609,12 @@ stream and drives `vimma-ctl mcp`'s protocol with the ticket it is given:
 - README: the agents line names agent CLIs as providers, with the last PR.
 - `CHANGELOG.md`: added by the maintainer at merge.
 
+The guide's section and `limits.md`'s lines land with the pull request that turns
+`vimma.feature.agentCli` on (Delivery 3), not with Delivery 2, because CONTRIBUTING.md
+("Unfinished features") has the pull request that finishes a feature add its docs, and a guide
+section for a feature no release shows would describe what users cannot use; builtin-agent B22
+does the same for the chat window.
+
 ## Delivery
 
 Behind `vimma.feature.agentCli` (default `false`) until the last PR, after builtin-agent's chat
@@ -591,13 +628,13 @@ window (its Delivery 4), which this feature needs.
    `agent-cli.mjs` with Claude Code's builder and parser and recorded fixtures,
    `agent/AgentCli.sys.mjs`, setup, the notice and the header with the CLI's own tools from its
    init, budgets, `max_minutes` and the cost shown without `max_cost`, C2's exception and the
-   rules on the CLI's own tools in security.md, the guide, limits.md, ADR-023, mochitests and
-   e2e with screenshots.
+   rules on the CLI's own tools in security.md, ADR-023, mochitests and e2e with screenshots.
 3. `feat(agent): codex as a provider of the chat window` (C12): Codex's builder and parser with
    fixtures recorded against a scripted server, the queued instruction of Behaviour 10, the
    check of how its MCP server receives the ticket, and the check of whether its events report
    its effective sandbox for the header; the feature flag's default becomes
-   `true`, and the status becomes `implemented`.
+   `true`, the guide and limits.md describe agent CLIs (Docs and changelog), and the status
+   becomes `implemented`.
 4. Gemini CLI and opencode: one issue each, opened with PR 3, for the checks of C12.
 
 ## Open questions

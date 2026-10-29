@@ -254,10 +254,10 @@
     border-bottom: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
   }
 
+  /* Wrapped, never cut: the lines say where page text goes and, for an agent CLI, which of its
+     own tools are not confined (builtin-agent-cli Behaviour 5). */
   & .vimma-agent-chat-head {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
   }
 
   & .vimma-agent-chat-head + .vimma-agent-chat-head {

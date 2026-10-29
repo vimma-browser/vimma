@@ -132,6 +132,10 @@ pref("vimma.update.url", "https://updates.vimma.dev/updates/browser/%BUILD_TARGE
 // The built-in agent (spec builtin-agent): unfinished until its chat window lands, so off.
 pref("vimma.feature.agentChat", false);
 
+// Agent CLIs as the built-in agent's providers (spec builtin-agent-cli): unfinished until Codex
+// is supported, so off.
+pref("vimma.feature.agentCli", false);
+
 // Control socket (spec m0-control-server, ADR-007): off in every build. When on, Vimma listens on
 // 127.0.0.1 and writes <profile>/vimma-control.json (0600) for vimma-ctl; live on change.
 pref("vimma.control.enabled", false);

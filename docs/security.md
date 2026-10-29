@@ -307,7 +307,7 @@ text that pages, add-ons and bookmarks choose.
   [`toggles_in_the_side_panels_slot_one_panel_at_a_time`](../tests/browser/browser_vimma_bookmarks.js),
   [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.mjs)
 - C2. Chrome code **never** builds code from text (`eval`, `Function`) and **never** starts a
-  process, with two exceptions. First, the system's ClamAV scanners, `clamscan` (only
+  process, with three exceptions. First, the system's ClamAV scanners, `clamscan` (only
   `/usr/bin/clamscan` or `/usr/local/bin/clamscan`) and `clamdscan` (only `/usr/bin/clamdscan`
   or `/usr/local/bin/clamdscan`), never from a `PATH` search, and only a regular file another
   user (root) owns that the user cannot write, in a folder the user cannot write. They run in
@@ -317,7 +317,12 @@ text that pages, add-ons and bookmarks choose.
   (UP11): `/bin/sh` (an absolute path) with one fixed script that waits for Vimma's own process
   to exit and then runs `$APPIMAGE` with no arguments, the process id and the path passed as
   positional parameters the script **never** reads as shell text, started from one call site
-  only once a quit can no longer be cancelled. Chrome code **never** calls
+  only once a quit can no longer be cancelled. Third, an agent CLI the built-in agent runs
+  (M55; [builtin-agent-cli](specs/builtin-agent-cli.md) C2, C4): only the program at the path
+  picked in setup, checked before each run, with arguments from one fixed builder
+  per CLI, the task on its standard input, no shell, and only when the user sends a task in the
+  chat window; its `--version` is the only other call, with that fixed argument, while setup
+  lists what a search of `PATH` found. Chrome code **never** calls
   native code, with one exception: the owner and type of clamd's socket (M13), read through
   js-ctypes with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
   `/usr/lib/libSystem.B.dylib` on macOS (`lstat` on arm64, `lstat$INODE64` on x86_64, the same
@@ -326,7 +331,8 @@ text that pages, add-ons and bookmarks choose.
   working directory of a process without the hardened runtime, so a library planted where Vimma
   starts would be loaded. Any other system or architecture, a failed call or a struct of
   another size gives no owner, so clamd is not used. [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
-  [`never starts a process, but ClamAV on an agent download and an AppImage's restart`](../tools/security/test/chrome-source.test.mjs),
+  [`never starts a process, but ClamAV, an AppImage's restart and an agent CLI`](../tools/security/test/chrome-source.test.mjs),
+  [`starts an agent CLI only from its checked path, with fixed arguments and no shell`](../tools/security/test/chrome-source.test.mjs),
   [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
   [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../packages/vimma-core/test/restart.test.mjs),
   [`starts the AppImage only once the old process has exited, with no arguments`](../packages/vimma-core/test/restart.test.mjs),
@@ -455,8 +461,11 @@ A local file you trust and edit. Spec: [m5-config-load](specs/m5-config-load.md)
   value (such as a `javascript:` home page) is an error.
   [`broken text keeps the previous config active, unchanged`](../packages/vimma-core/test/config.test.mjs),
   [`workspace %s is an error`](../packages/vimma-core/test/config.test.mjs)
-- F3. The config is **never** executed: no value is evaluated as code or run as a command.
-  [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs)
+- F3. The config is **never** executed: no value is evaluated as code or run as a command. An
+  agent CLI provider names only which supported CLI it is and its model; a `command`, `path`,
+  `args` or `env` key in one is an error (M60).
+  [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
+  [`command, path, args and env in a cli provider are errors with their line`](../packages/vimma-core/test/config-agent.test.mjs)
 - F4. `:route add` **must** write each value as one escaped TOML string, and write nothing when
   the result would not parse.
   [`appendRouteText quotes a workspace name as a TOML string`](../packages/vimma-core/test/routes.test.mjs),
@@ -1878,17 +1887,28 @@ for the user.
   [`the user's messages, the replies and refusals, the user's no among them, stay whole`](../packages/vimma-core/test/agent-loop.test.mjs),
   [`a request's prefix changes only when a block is left out`](../packages/vimma-core/test/agent-loop.test.mjs)
 
-**Agent CLIs** ([builtin-agent-cli](specs/builtin-agent-cli.md), in progress; no process is
-started yet): a conversation will be able to run an agent CLI the user has, such as Claude
-Code, whose `vimma-ctl mcp` acts on the browser as that conversation. What is in force is the
-way in: a one-time ticket that binds one `vimma-ctl mcp` connection to the conversation's gate
+**Agent CLIs** ([builtin-agent-cli](specs/builtin-agent-cli.md), in progress, behind
+`vimma.feature.agentCli`, off): a conversation can run an agent CLI the user has, Claude Code
+for now, whose `vimma-ctl mcp` acts on the browser as that conversation. The way in is a
+one-time ticket that binds one `vimma-ctl mcp` connection to the conversation's gate
 connection. It reaches only what the conversation already reaches, so a process of the user's
 that reads it from the CLI's environment gains nothing the conversation does not have, and
 only until the run ends.
 
+**Reach of the CLI itself:** everything the user can do. The CLI keeps the shell, file and web
+tools its own settings allow, and Vimma does not approve, refuse, count or confine them: they
+act with the user's rights, under the CLI's permission model only. A page that steers the CLI's
+model can make it use them, for example to read a file the user can read and send it to the
+CLI's provider, or to run a command. What bounds that is the CLI's own settings; what Vimma adds
+is that the first task's notice says those tools are not confined, the header lists the ones
+the CLI reported for the run, and each use is a marked line in the transcript. Page text goes to
+the CLI and from it to whatever model the CLI uses; Vimma cannot see where, so `local_only`
+refuses every CLI. A shell command the CLI started may outlive a stop: Firefox signals the CLI's
+own process, not a process group.
+
 - M51. A ticket **must** be 256 random bits, made only by chrome code for one conversation's
-  connection, good until it is revoked (when its conversation is stopped or deleted; the run
-  that ends **must** revoke it too, once runs exist), for one connection at a time: the first
+  connection, good until it is revoked (when its conversation is stopped or deleted, and when
+  the run it was made for ends), for one connection at a time: the first
   connection's
   `vimma-ctl mcp` session id is the only way back in after that connection drops. A second
   connection while one lives, a later one without that session id, and one after a first that
@@ -1899,7 +1919,8 @@ only until the run ends.
   by the connection's end.
   [`test_second_connection_with_a_ticket_is_refused`](../tests/browser/browser_vimma_agent_cli.js),
   [`test_a_request_id_in_flight_is_not_reused`](../tests/browser/browser_vimma_agent_cli.js),
-  [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js)
+  [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js),
+  [`test_cli_that_ignores_sigterm_is_killed_and_takes_no_step`](../tests/browser/browser_vimma_agent_cli_run.js)
 - M52. A ticket's connection **must** act as its conversation's connection (M35-M37): asked
   about under the conversation's label, covered by its grant and by no other, on the tabs it
   owns. Its `agent-hello` **must not** register an MCP agent or change the label, and its
@@ -1920,6 +1941,78 @@ only until the run ends.
   the browser; a question the connection waited on is withdrawn, and a step already past its
   question finishes, as any stopped task's does (Behaviour 16 of builtin-agent).
   [`test_stop_and_delete_close_the_ticket_connection`](../tests/browser/browser_vimma_agent_cli.js)
+- M55. An agent CLI **must** be started only when the user sends a task in the chat window, and
+  only as the program at the path picked in setup (a pref, never `config.toml`),
+  checked before each run: an absolute path, symlinks resolved, to a regular executable file
+  owned by the user or root that no other user can write, in a folder owned by the user or root
+  that no other user can write. Its arguments **must** come from the CLI's fixed builder, with
+  the provider's model the only value in them (a model that starts with `-` is refused), the
+  task and the conversation before it **must** go to its standard input and never into an
+  argument, and there is no shell. Its environment is Vimma's without the `MOZ_` and `VIMMA_`
+  variables. It **must** run in a new 0700 folder under the system's temporary folder, outside
+  the profile, removed with the run, and nothing **must** start before a task is sent but
+  setup's `--version`.
+  [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_path_checks_refuse_a_file_others_can_write`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_no_process_before_a_task`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_task_on_stdin_and_fixed_arguments`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_runs_in_an_empty_private_directory_removed_after`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`claude-code's arguments are the fixture, with the model only from the provider`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`the task is never an argument`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a model that looks like an option is refused, not passed`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`the environment is Vimma's, minus the variables Vimma and Firefox set`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`anything else is refused, with the reason`](../packages/vimma-core/test/agent-cli.test.mjs)
+- M56. The ticket **must** reach the CLI's `vimma-ctl mcp` only through the MCP configuration's
+  `env`, in a file that is 0600 in that 0700 folder and removed with it, and **never** through a
+  command line. The CLI **must** be given no MCP server but Vimma's (`--strict-mcp-config`), so
+  that it reaches pages only through the gate, and `vimma-ctl` is checked as the CLI is (M55).
+  [`test_ticket_never_in_cmdline_prefs_or_log`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_only_vimmas_mcp_server_is_given`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`the mcp configuration names only vimma-ctl, with the ticket in its environment`](../packages/vimma-core/test/agent-cli.test.mjs)
+- M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
+  own (the `Enter` grant covers them, checkpoints and `vimma_show` still ask), and shown from the
+  gate's record, never from the CLI's account of them. A CLI's output **must** be rendered as
+  text and **must never** answer a question, make a grant or fill the prompt slot. A step the
+  CLI takes with a tool of its own **must** be a marked line of its own (`◆`), never a step in
+  the browser.
+  [`test_enter_grant_covers_cli_steps_and_checkpoints_ask`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_own_tool_lines_are_marked`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`mcp__vimma tool calls in the stream are not transcript steps`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`text is passed as written, and the window renders it as text`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`each gate event of the conversation is a step, asked or run under the grant`](../packages/vimma-core/test/agent-chat.test.mjs),
+  [`an own-tool line is marked, muted, and says when the cli's settings refused it`](../packages/vimma-core/test/agent-chat.test.mjs)
+- M58. A CLI's own shell, file and web tools are **outside** Vimma's gate (above). Before a
+  conversation's first task with a CLI (and after a provider change), the window **must** say
+  where page text goes and that those tools are not confined, and send nothing without a `y`;
+  `AgentChat.send` **must** refuse a task the notice was not answered for. The header **must**
+  list the tools the CLI reported as enabled for its run.
+  [`test_first_task_notice_says_the_clis_own_tools_are_not_confined`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_header_lists_the_clis_own_tools_from_its_init`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`an agent CLI: its name, the model it reported, and that it decides where data goes`](../packages/vimma-core/test/agent-chat.test.mjs)
+- M59. A CLI task's steps **must** be counted where they reach the gate, and the next one
+  refused at `max_steps`, so a CLI cannot under-report them; `max_minutes` (default 30)
+  **must** stop it; tokens the CLI reports count toward `max_tokens`. `max_cost` is not
+  enforced for a CLI, whose reported cost is shown as its own estimate (`≈`), and the first task
+  says so. A stream line over 1 MiB, or more than 64 MiB of output, **must** end the run.
+  [`test_max_steps_counted_by_the_gate`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_max_minutes_stops_the_task`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_max_cost_set_is_reported_as_not_applying`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`a cli task stops at max_minutes`](../packages/vimma-core/test/agent-budget.test.mjs),
+  [`reported cost is shown and max_cost does not stop a cli task`](../packages/vimma-core/test/agent-budget.test.mjs),
+  [`a line over 1 MiB ends the run`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a run over 64 MiB of output is stopped`](../packages/vimma-core/test/agent-cli.test.mjs)
+- M60. `local_only` **must** refuse every CLI provider, in `config.toml`, in the picker and at
+  each task; a `command`, `path`, `args` or `env` key in a CLI provider **must** be a config
+  error, and so is an `endpoint`.
+  [`test_local_only_refuses_a_cli`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`local_only refuses a cli provider`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`command, path, args and env in a cli provider are errors with their line`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`an agent cli is written by name, kind, cli and model, never its path`](../packages/vimma-core/test/agent-config.test.mjs)
+- M61. A stop (`s`, `:agent stop`, `ctrl+b shift+a`), a task's budget and its end **must**
+  revoke the ticket, closing its connection, before the CLI is signalled; then `SIGTERM`, and
+  `SIGKILL` after 3 s.
+  [`test_stop_closes_the_connection_before_the_signal`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_cli_that_ignores_sigterm_is_killed_and_takes_no_step`](../tests/browser/browser_vimma_agent_cli_run.js)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 

@@ -17,7 +17,8 @@
 // model only those. Until the feature is finished its pref keeps it off.
 
 import { Budget } from "../core/agent-budget.mjs";
-import { Transcript, isLocalEndpoint, needsKey } from "../core/agent-chat.mjs";
+import { CLIS, DEFAULT_MAX_MINUTES } from "../core/agent-cli.mjs";
+import { Transcript, isLocalEndpoint, needsKey, noticeTarget } from "../core/agent-chat.mjs";
 import { startTask } from "../core/agent-loop.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
 import {
@@ -45,6 +46,7 @@ import {
 } from "../ctl/agent-commands.mjs";
 import { AgentGate } from "../ctl/AgentGate.sys.mjs";
 import { AGENT_CONFIG_TOPIC, McpHost } from "../host/mcp-ops.mjs";
+import { AgentCli, CLI_FEATURE_PREF } from "./AgentCli.sys.mjs";
 import { AgentKeys } from "./AgentKeys.sys.mjs";
 import { AgentStore } from "./AgentStore.sys.mjs";
 
@@ -68,9 +70,12 @@ ChromeUtils.defineESModuleGetters(lazy, {
  *   budget: Budget | null, done: Promise<TaskResult> | null,
  *   last: { outcome: string, error?: string } | null, transcript: Transcript,
  *   confirmed: string | null, granted: boolean, uid: string, created: number, used: number,
- *   stored: StoredEntry[], taskStart: number, urls: unknown[] }} Conversation
- *   `confirmed`: the endpoint whose notice of what leaves the machine the user answered y to
- *   (Behaviour 5); `granted`: whether it had a grant at the last change, for the transcript's
+ *   stored: StoredEntry[], taskStart: number, urls: unknown[],
+ *   cli: { model: string, tools: string[] | null } | null, costNoted: boolean }} Conversation
+ *   `confirmed`: the endpoint (or `cli:<id>`, core noticeTarget) whose notice of what leaves the
+ *   machine the user answered y to (Behaviour 5); `cli`: what an agent CLI reported when its
+ *   last run started, for the header (builtin-agent-cli C7); `costNoted`: the transcript said
+ *   that max_cost does not apply to its CLI (C13); `granted`: whether it had a grant at the last change, for the transcript's
  *   notice when that changes; `uid`: its file's name; `stored`: what its file holds (B15);
  *   `taskStart`: where the running task's transcript entries begin; `urls`: the pages its task
  *   was asked about, for the summary's hosts
@@ -132,12 +137,15 @@ function onGate(event) {
     const c = [...conversations.values()].find((x) => x.conn === q.conn);
     const what = /** @type {Record<string, any>} */ (q.what);
     if (c?.task) c.urls.push(what?.url, what?.current);
-    c?.transcript.gate({
+    const e = {
       kind: event.kind,
       tool: q.tool,
       what: /** @type {Record<string, any>} */ (q.what),
       ...(event.kind === "answered" ? { answer: event.answer } : {}),
-    });
+    };
+    // An agent CLI's steps are the gate's alone: no loop's call starts them (builtin-agent-cli C8).
+    if (c?.provider.kind === "cli") c.transcript.cliGate(e);
+    else c?.transcript.gate(e);
   }
   changed();
 }
@@ -219,6 +227,8 @@ function make(o) {
     stored,
     taskStart: 0,
     urls: [],
+    cli: null,
+    costNoted: false,
   };
   for (const e of restoredEntries(stored)) {
     if (e.kind === "user") c.transcript.user(e.text);
@@ -231,7 +241,7 @@ function make(o) {
   }
   builtinHello(c.conn, c.state, {
     client: builtinLabel(c.title || "New conversation"),
-    via: `${o.provider.name} · ${o.provider.model}`,
+    via: `${o.provider.name} · ${o.provider.model || o.provider.cli || ""}`,
   });
   conversations.set(id, c);
   return c;
@@ -331,6 +341,74 @@ async function runTool(c, name, args, { signal }) {
 }
 
 /**
+ * Why a task may not go to `provider` now, or null: an endpoint that config.toml's rules
+ * refuse, or an agent CLI while that feature is off or with `local_only`, since Vimma cannot
+ * see where a CLI sends what it reads (builtin-agent-cli Behaviour 6, C11).
+ * @param {AgentProviderConfig} provider @param {boolean} localOnly
+ * @returns {string | null}
+ */
+function providerRefusal(provider, localOnly) {
+  if (provider.kind !== "cli") return checkEndpoint(provider.endpoint, { localOnly });
+  if (!AgentCli.enabled) return `agent CLIs are unfinished and off (${CLI_FEATURE_PREF})`;
+  if (!Object.hasOwn(CLIS, provider.cli ?? "")) return "this provider names no supported CLI";
+  if (localOnly) return "an agent CLI may send page text off this machine ([agent] local_only)";
+  return null;
+}
+
+/**
+ * An agent CLI's run of conversation `c` (builtin-agent-cli Behaviour 7-16): its stream's
+ * replies and own-tool steps go into the transcript, its steps in the browser come from the
+ * gate (onGate), and what it reported at its start is kept for the header.
+ * @param {Conversation} c @param {string} text @param {Budget} budget
+ */
+function startCli(c, text, budget) {
+  const cli = CLIS[c.provider.cli ?? ""];
+  if (cli && !c.costNoted) {
+    c.costNoted = true;
+    c.transcript.notice(
+      `max_cost does not apply to ${cli.id}: the cost it reports is its own estimate`,
+    );
+  }
+  const handle = AgentCli.start({
+    provider: c.provider,
+    conn: c.conn,
+    state: c.state,
+    text,
+    // What is stored, never this session's tool results: the CLI keeps no session (C5).
+    messages: modelMessages(c.stored.slice(0, -1)),
+    budget,
+    onEvent: (e) => {
+      if (e.type === "init") {
+        c.cli = { model: e.model, tools: e.tools };
+        c.transcript.notice(
+          `run started: ${cli?.id} ${e.version} · ${e.model || "its default model"} · ` +
+            `its own tools: ${e.tools.length ? e.tools.join(", ") : "none"}`,
+        );
+      } else if (e.type === "reply") c.transcript.task({ type: "reply", text: e.text });
+      else if (e.type === "own-tool") c.transcript.ownTool(e.id, e.text);
+      else if (e.type === "own-tool-refused") c.transcript.ownToolRefused(e.id);
+      changed();
+    },
+  });
+  return {
+    stop: handle.stop,
+    steer: handle.steer,
+    done: handle.done.then((result) => {
+      // A run that was stopped or failed had no result to report them in.
+      if (!budget.tokensReported && (result.outcome === "done" || result.outcome === "budget")) {
+        c.transcript.notice(`tokens not reported by ${cli?.id}`);
+      }
+      // The CLI's context is not Vimma's: only the message and its reply join the
+      // conversation a model provider would be sent after a change of provider.
+      /** @type {import("../core/agent-providers.mjs").ChatMessage[]} */
+      const messages = [...c.messages, { role: "user", text }];
+      if (result.reply) messages.push({ role: "assistant", text: result.reply, toolCalls: [] });
+      return { ...result, messages };
+    }),
+  };
+}
+
+/**
  * The key for `provider`'s requests: the one stored for its name and endpoint, or none (a
  * local server takes none).
  * @param {AgentProviderConfig} provider
@@ -342,12 +420,13 @@ async function keyFor(provider) {
 
 /** What a conversation shows of itself: never its key, which it does not hold. */
 function view(/** @type {Conversation} */ c) {
-  const { name, kind, endpoint, model } = c.provider;
+  const { name, kind, endpoint, model, cli } = c.provider;
   return {
     id: c.id,
     conn: c.conn,
     title: c.title,
-    provider: { name, kind, endpoint, model },
+    provider: { name, kind, endpoint, model, ...(cli ? { cli } : {}) },
+    cli: c.cli,
     running: isRunning(c),
     granted: AgentGate.grants().some((g) => g.conn === c.conn),
     budget: c.budget?.status() ?? null,
@@ -390,7 +469,7 @@ export const AgentChat = {
       if (this.running >= max) {
         return { refused: `${max} agent tasks are running ([agent] max_running); s stops one` };
       }
-      const refused = checkEndpoint(c.provider.endpoint, { localOnly });
+      const refused = providerRefusal(c.provider, localOnly);
       if (refused) return { refused };
       // Behaviour 5 is the window's question, and no other caller may skip it.
       if (this.needsNotice(id)) {
@@ -418,7 +497,8 @@ export const AgentChat = {
     changed();
     let key;
     try {
-      key = await keyFor(c.provider);
+      // An agent CLI keeps its own login.
+      key = c.provider.kind === "cli" ? "" : await keyFor(c.provider);
     } catch (e) {
       c.starting = false;
       changed();
@@ -444,26 +524,36 @@ export const AgentChat = {
     // Only now, so a send that starts no task leaves no grant behind.
     applyGrant();
     const limits = config() ?? AGENT_DEFAULTS;
+    const isCli = c.provider.kind === "cli";
     const budget = new Budget(
       { maxSteps: limits.maxSteps, maxTokens: limits.maxTokens, maxCost: limits.maxCost },
       c.provider,
+      isCli
+        ? {
+            cli: c.provider.cli ?? "",
+            maxMinutes: c.provider.maxMinutes ?? DEFAULT_MAX_MINUTES,
+          }
+        : undefined,
     );
-    const handle = startTask({
-      provider: c.provider,
-      fetch: parentFetch,
-      key,
-      system: AGENT_INSTRUCTIONS,
-      tools: agentTools({ vision: c.provider.vision }),
-      messages: [...c.messages, { role: "user", text }],
-      runTool: (name, args, opts) => runTool(c, name, args, opts),
-      budget,
-      localOnly,
-      keepResults: config()?.keepResults ?? null,
-      onEvent: (e) => {
-        c.transcript.task(e);
-        changed();
-      },
-    });
+    const handle = isCli
+      ? startCli(c, text, budget)
+      : startTask({
+          // A model provider: an agent CLI's kind went to startCli.
+          provider: /** @type {import("../core/agent-providers.mjs").Provider} */ (c.provider),
+          fetch: parentFetch,
+          key,
+          system: AGENT_INSTRUCTIONS,
+          tools: agentTools({ vision: c.provider.vision }),
+          messages: [...c.messages, { role: "user", text }],
+          runTool: (name, args, opts) => runTool(c, name, args, opts),
+          budget,
+          localOnly,
+          keepResults: config()?.keepResults ?? null,
+          onEvent: (e) => {
+            c.transcript.task(e);
+            changed();
+          },
+        });
     c.starting = false;
     c.stopped = false;
     c.task = handle;
@@ -513,10 +603,10 @@ export const AgentChat = {
     const c = conversation(id);
     c.starting = false;
     if (c.task) c.stopped = true;
-    c.task?.stop();
-    // An agent CLI's connection closes first, so nothing it sends after the stop reaches the
-    // browser (docs/specs/builtin-agent-cli.md C9).
+    // An agent CLI's connection closes first, before its process is signalled, so nothing it
+    // sends after the stop reaches the browser (docs/specs/builtin-agent-cli.md C9).
     lazy.VimmaControl.revokeTickets(c.conn);
+    c.task?.stop();
     for (const withdraw of [...(c.state.cancels?.values() ?? [])]) withdraw();
     AgentGate.endGrant(c.conn);
     changed();
@@ -662,11 +752,12 @@ export const AgentChat = {
   setProvider(id, provider) {
     const c = conversation(id);
     if (isRunning(c)) return "a task is running; s stops it";
-    const refused = checkEndpoint(provider.endpoint, { localOnly: config()?.localOnly ?? false });
+    const refused = providerRefusal(provider, config()?.localOnly ?? false);
     if (refused) return refused;
     c.provider = provider;
+    c.cli = null;
     AgentGate.relabel(c.conn, builtinLabel(c.title || "New conversation"));
-    c.transcript.notice(`model: ${provider.name} · ${provider.model}`);
+    c.transcript.notice(`model: ${provider.name} · ${provider.model || provider.cli || ""}`);
     persist(c);
     changed();
     return null;
@@ -679,7 +770,9 @@ export const AgentChat = {
    */
   needsNotice(id) {
     const c = conversation(id);
-    return !isLocalEndpoint(c.provider.endpoint) && c.confirmed !== c.provider.endpoint;
+    // An agent CLI is never local: Vimma cannot see where it sends (builtin-agent-cli C11).
+    const local = c.provider.kind !== "cli" && isLocalEndpoint(c.provider.endpoint);
+    return !local && c.confirmed !== noticeTarget(c.provider);
   },
 
   /**
@@ -700,13 +793,14 @@ export const AgentChat = {
   },
 
   /**
-   * A y to Behaviour 5's notice: this conversation may send to the endpoint it named.
-   * @param {number} id @param {string} endpoint  as the notice named it
+   * A y to Behaviour 5's notice: this conversation may send to the endpoint it named, or to
+   * the agent CLI it named (`cli:<id>`, core noticeTarget).
+   * @param {number} id @param {string} target  as the notice named it
    */
-  confirm(id, endpoint) {
+  confirm(id, target) {
     const c = conversation(id);
-    // Only for the endpoint the notice named: a provider changed while it was open is not.
-    if (endpoint === c.provider.endpoint) c.confirmed = endpoint;
+    // Only for what the notice named: a provider changed while it was open is not.
+    if (target === noticeTarget(c.provider)) c.confirmed = target;
   },
 
   /**

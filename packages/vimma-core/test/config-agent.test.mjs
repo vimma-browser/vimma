@@ -176,7 +176,7 @@ describe("[agent]", () => {
       message: 'a second provider named "local"',
     });
     expect(errors(v2(...LOCAL.slice(0, 2), 'kind = "gemini"', ...LOCAL.slice(3)))[0]?.message).toBe(
-      'must be "openai" or "anthropic"',
+      'must be "openai", "anthropic" or "cli"',
     );
     expect(errors(v2(...HOSTED.slice(0, -1)))[0]?.message).toBe(
       "price_in and price_out go together",
@@ -194,5 +194,74 @@ describe("[agent]", () => {
     expect(errors(["schema = 1", "[agent]", "max_steps = 5"].join("\n"))[0]?.message).toBe(
       "is new in schema 2: put schema = 2 at the top of the file",
     );
+  });
+});
+
+describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C10, C11)", () => {
+  const CLI = ["[[agent.providers]]", 'name = "claude"', 'kind = "cli"', 'cli = "claude-code"'];
+  const NO_PROGRAM =
+    "a CLI provider names no program, arguments or environment: setup confirms the program's path";
+
+  test("a cli provider parses with cli and model", () => {
+    expect(ok(v2(...CLI, 'model = "sonnet"')).agent.providers).toEqual([
+      {
+        name: "claude",
+        kind: "cli",
+        cli: "claude-code",
+        endpoint: "",
+        model: "sonnet",
+        vision: false,
+        maxMinutes: 30,
+      },
+    ]);
+    // No model: the CLI's own default, which its run reports.
+    expect(ok(v2(...CLI)).agent.providers[0]?.model).toBe("");
+  });
+
+  test("command, path, args and env in a cli provider are errors with their line", () => {
+    for (const [key, value] of [
+      ["command", '"/bin/sh"'],
+      ["path", '"/tmp/claude"'],
+      ["args", '["--dangerously-skip-permissions"]'],
+      ["env", '{ LD_PRELOAD = "/tmp/x.so" }'],
+    ]) {
+      expect(errors(v2(...CLI, `${key} = ${value}`))).toEqual([
+        { line: 6, path: `agent.providers[0].${key}`, message: NO_PROGRAM },
+      ]);
+    }
+  });
+
+  test("a cli provider takes no endpoint, and needs its cli", () => {
+    expect(errors(v2(...CLI, 'endpoint = "https://x.example"'))[0]).toMatchObject({
+      path: "agent.providers[0].endpoint",
+      message: "a CLI provider has no endpoint: the CLI decides where it sends requests",
+    });
+    expect(errors(v2(...CLI.slice(0, 3)))[0]?.message).toBe('a CLI provider needs "cli"');
+    expect(errors(v2(...CLI.slice(0, 3), 'cli = "claude-cod"'))[0]).toMatchObject({
+      path: "agent.providers[0].cli",
+      message: 'must be "claude-code"',
+      suggestion: "claude-code",
+    });
+  });
+
+  test("local_only refuses a cli provider", () => {
+    expect(errors(v2("[agent]", "local_only = true", ...CLI))[0]).toMatchObject({
+      path: "agent.providers[0].kind",
+      message: "an agent CLI may send page text off this machine ([agent] local_only)",
+    });
+  });
+
+  test("max_minutes parses within its bounds", () => {
+    expect(ok(v2(...CLI, "max_minutes = 5")).agent.providers[0]).toMatchObject({ maxMinutes: 5 });
+    expect(ok(v2(...CLI, "max_minutes = 1440")).agent.providers[0]).toMatchObject({
+      maxMinutes: 1440,
+    });
+    for (const bad of ["0", "1441", "2.5"]) {
+      expect(errors(v2(...CLI, `max_minutes = ${bad}`))[0]?.path).toBe(
+        "agent.providers[0].max_minutes",
+      );
+    }
+    // Only a CLI's: a model provider's task is bounded by its steps and tokens.
+    expect(errors(v2(...LOCAL, "max_minutes = 5"))[0]?.path).toBe("agent.providers[0].max_minutes");
   });
 });

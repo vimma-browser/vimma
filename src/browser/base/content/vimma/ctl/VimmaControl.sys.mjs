@@ -110,10 +110,13 @@ let connectionIds = 0;
  * A one-time ticket (docs/specs/builtin-agent-cli.md C3): `conn` and `state` are its
  * conversation's gate connection; `label` names the CLI in a notice; `live` is the connection
  * using it; `used` is set once one has; `session` is that connection's `vimma-ctl mcp` session
- * id, which only a reconnect of the same process knows.
+ * id, which only a reconnect of the same process knows. `onCommand` is the run's budget: told of
+ * each command that reaches the gate, it returns why the command may not run, or null
+ * (builtin-agent-cli C10).
  * @typedef {{ ticket: string, id: string, conn: string,
  *   state: import("./agent-commands.mjs").AgentConn, label: string,
- *   live: Connection | null, used: boolean, session: string | null }} Ticket
+ *   live: Connection | null, used: boolean, session: string | null,
+ *   onCommand: ((command: string) => string | null) | null }} Ticket
  */
 /** Live tickets, by id (HMAC-SHA256(ticket, TICKET_CONTEXT)). @type {Map<string, Ticket>} */
 const tickets = new Map();
@@ -772,6 +775,10 @@ class Connection {
     // One request per id at a time: a second would take the first's entry, leaving its
     // question beyond agent-cancel and the withdrawal when the connection drops.
     if (this.rids.has(id)) throw new AgentError("bad-request", `request id ${id} is in flight`);
+    // The run's step budget is counted here, by what reaches the gate, so a CLI cannot
+    // under-report it (builtin-agent-cli C10).
+    const over = ticket.onCommand?.(command) ?? null;
+    if (over) throw new AgentError("failed", over);
     const rid = --ticketRids;
     this.rids.set(id, rid);
     try {
@@ -1299,18 +1306,30 @@ export const VimmaControl = {
    * bits bound to the conversation's gate connection, good for one connection (and its
    * reconnects by session id) until `revokeTicket`. Starts the listener if it is off. The
    * ticket goes only into the CLI's environment: never a pref, a file, a log or a notice.
-   * @param {{ conn: string, state: import("./agent-commands.mjs").AgentConn, label: string }} binding
-   *   the conversation's connection and state, and the CLI's name for a notice
+   * @param {{ conn: string, state: import("./agent-commands.mjs").AgentConn, label: string,
+   *   onCommand?: (command: string) => string | null }} binding
+   *   the conversation's connection and state, the CLI's name for a notice, and the run's
+   *   budget, told of each command before it reaches the gate
    * @returns {Promise<{ ticket: string, port: number }>}
    */
-  async issueTicket({ conn, state, label }) {
+  async issueTicket({ conn, state, label, onCommand }) {
     if (quitting) throw new Error("Vimma is shutting down");
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
     const ticket = hex(bytes);
     const id = await hmacHex(ticket, TICKET_CONTEXT);
     /** @type {Ticket} */
-    const t = { ticket, id, conn, state, label, live: null, used: false, session: null };
+    const t = {
+      ticket,
+      id,
+      conn,
+      state,
+      label,
+      live: null,
+      used: false,
+      session: null,
+      onCommand: onCommand ?? null,
+    };
     tickets.set(id, t);
     await enqueue(startServer);
     if (!server || tickets.get(id) !== t) {

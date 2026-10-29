@@ -15,6 +15,7 @@ browser.jar:
         content/browser/vimma/ctl/AgentShot.sys.mjs       (ctl/AgentShot.sys.mjs)
         content/browser/vimma/ctl/AgentConsole.sys.mjs    (ctl/AgentConsole.sys.mjs)
         content/browser/vimma/agent/AgentChat.sys.mjs     (agent/AgentChat.sys.mjs)
+        content/browser/vimma/agent/AgentCli.sys.mjs      (agent/AgentCli.sys.mjs)
         content/browser/vimma/agent/AgentKeys.sys.mjs     (agent/AgentKeys.sys.mjs)
         content/browser/vimma/agent/AgentStore.sys.mjs    (agent/AgentStore.sys.mjs)
         content/browser/vimma/config/ConfigHost.sys.mjs   (config/ConfigHost.sys.mjs)

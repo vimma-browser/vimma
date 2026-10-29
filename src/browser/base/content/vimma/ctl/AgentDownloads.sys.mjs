@@ -962,6 +962,17 @@ export const AgentDownloads = {
     return socketOwner(path);
   },
 
+  /**
+   * A file's owner's uid, symlinks not followed, or null when it cannot be read: an agent
+   * CLI's program must be the user's or root's (docs/specs/builtin-agent-cli.md C4), and this
+   * is the one place Vimma reads an owner (security.md C2).
+   * @param {string} path
+   * @returns {number | null}
+   */
+  ownerUid(path) {
+    return socketOwner(path)?.uid ?? null;
+  },
+
   /** Once per app (AgentPages.init): the hooks stay for the session. */
   init() {
     if (initialised) return;

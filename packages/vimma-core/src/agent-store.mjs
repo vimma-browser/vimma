@@ -12,12 +12,15 @@
 
 /**
  * @typedef {{ kind: "user" | "agent" | "summary", text: string }} StoredEntry
- * @typedef {{ name: string, kind: "openai" | "anthropic", endpoint: string, model: string,
- *   vision: boolean, priceIn?: number, priceOut?: number }} StoredProvider
+ * @typedef {{ name: string, kind: "openai" | "anthropic" | "cli", endpoint: string,
+ *   model: string, vision: boolean, priceIn?: number, priceOut?: number, cli?: string }}
+ *   StoredProvider
  * @typedef {{ v: number, id: string, title: string, created: number, used: number,
  *   provider: StoredProvider, entries: StoredEntry[] }} StoredRecord
  * @typedef {import("./agent-providers.mjs").ChatMessage} ChatMessage
  */
+
+import { CLI_IDS } from "./agent-cli.mjs";
 
 /** The record's format; a file of another version is not read. */
 export const STORE_VERSION = 1;
@@ -50,6 +53,13 @@ const isPrice = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
  */
 function storedProvider(p) {
   if (!isObject(p)) return null;
+  if (p.kind === "cli") {
+    // An agent CLI (docs/specs/builtin-agent-cli.md C4): which one and its model, never a path,
+    // an argument or an environment.
+    if (typeof p.name !== "string" || !p.name || typeof p.model !== "string") return null;
+    if (typeof p.cli !== "string" || !CLI_IDS.includes(p.cli)) return null;
+    return { name: p.name, kind: "cli", cli: p.cli, endpoint: "", model: p.model, vision: false };
+  }
   if (p.kind !== "openai" && p.kind !== "anthropic") return null;
   if (typeof p.name !== "string" || !p.name || typeof p.model !== "string" || !p.model) {
     return null;
