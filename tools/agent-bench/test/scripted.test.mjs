@@ -65,6 +65,12 @@ const ELEMENTS = [
   '{"label":"d","kind":"button","text":"Add to basket"}',
 ].join("\n");
 
+const LISTING = [
+  '{"label":"a","kind":"link","text":"Basket (0)"}',
+  '{"label":"d","kind":"button","text":"Add Milk (Valio, 1 l) to basket"}',
+  '{"label":"f","kind":"button","text":"Add Milk (Pirkka, 1 l) to basket"}',
+].join("\n");
+
 const CHECKOUT = [
   '{"label":"a","kind":"link","text":"Basket (2)"}',
   '{"label":"s","kind":"button","text":"Place order and pay"}',
@@ -80,7 +86,7 @@ describe("shopper", () => {
   };
 
   it("opens each product, adds it as many times as asked, then tries to pay", () => {
-    const next = shopper({ base: "http://127.0.0.1:1/", list });
+    const next = shopper({ base: "http://127.0.0.1:1/", list, path: "product" });
     /** @type {any[]} */
     const messages = [{ role: "user", content: "task" }];
     const step = () => {
@@ -119,7 +125,7 @@ describe("shopper", () => {
   });
 
   it("lists a page again while it is still on its first blank document", () => {
-    const next = shopper({ base: "http://127.0.0.1:1/", list });
+    const next = shopper({ base: "http://127.0.0.1:1/", list, path: "product" });
     /** @type {any[]} */
     const messages = [{ role: "user", content: "task" }];
     next({ messages });
@@ -136,7 +142,7 @@ describe("shopper", () => {
   });
 
   it("stops with a reply when a page has no button it needs", () => {
-    const next = shopper({ base: "http://127.0.0.1:1/", list });
+    const next = shopper({ base: "http://127.0.0.1:1/", list, path: "product" });
     /** @type {any[]} */
     const messages = [{ role: "user", content: "task" }];
     next({ messages });
@@ -146,5 +152,88 @@ describe("shopper", () => {
     const r = next({ messages });
     expect(r.calls ?? []).toEqual([]);
     expect(r.text).toMatch(/no "Add to basket"/);
+  });
+
+  it("opens each item's search by URL with elements and clicks the listing's basket button", () => {
+    const next = shopper({ base: "http://127.0.0.1:1/", list });
+    /** @type {any[]} */
+    const messages = [{ role: "user", content: "task" }];
+    const step = () => {
+      const r = next({ messages });
+      messages.push({ role: "assistant", content: r.text ?? "" });
+      return r;
+    };
+    const opened = (
+      /** @type {string} */ url,
+      /** @type {number} */ tab,
+      /** @type {string} */ els,
+    ) =>
+      toolMsg(
+        `The page ${url} (untrusted)\nOpened ${url} in tab ${tab} of Vimma's agent workspace, in the background.\n${els}`,
+      );
+
+    expect(step().calls).toEqual([
+      { name: "vimma_open", args: { url: "http://127.0.0.1:1/search?q=milk", elements: true } },
+    ]);
+    messages.push(opened("http://127.0.0.1:1/search?q=milk", 12, LISTING));
+    // The listing's own button for the product, not the first basket button on it.
+    expect(step().calls).toEqual([{ name: "vimma_activate", args: { tab: "12", label: "f" } }]);
+    messages.push(toolMsg("Clicked f in tab 12"));
+    expect(step().calls).toEqual([{ name: "vimma_activate", args: { tab: "12", label: "f" } }]);
+    messages.push(toolMsg("Clicked f in tab 12"));
+    expect(step().calls).toEqual([
+      { name: "vimma_open", args: { url: "http://127.0.0.1:1/checkout", elements: true } },
+    ]);
+    messages.push(opened("http://127.0.0.1:1/checkout", 13, CHECKOUT));
+    expect(step().calls).toEqual([{ name: "vimma_activate", args: { tab: "13", label: "s" } }]);
+    messages.push(toolMsg("Error: The user denied this request in Vimma."));
+    const last = step();
+    expect(last.calls ?? []).toEqual([]);
+    expect(last.text).toMatch(/basket/i);
+  });
+
+  it("lists a search page again when its open could not list it", () => {
+    const next = shopper({ base: "http://127.0.0.1:1/", list });
+    /** @type {any[]} */
+    const messages = [{ role: "user", content: "task" }];
+    next({ messages });
+    messages.push(
+      toolMsg(
+        "Opened x in tab 3 of Vimma's agent workspace, in the background.\nNo elements: the page is still loading.",
+      ),
+    );
+    expect(next({ messages }).calls).toEqual([{ name: "vimma_elements", args: { tab: "3" } }]);
+    messages.push(toolMsg(LISTING));
+    expect(next({ messages }).calls).toEqual([
+      { name: "vimma_activate", args: { tab: "3", label: "f" } },
+    ]);
+  });
+});
+
+describe("scriptedFetch pacing", () => {
+  it("waits paceMs before each answer, as a model's turn takes time", async () => {
+    /** @type {number[]} */
+    const waits = [];
+    const fetch = scriptedFetch(() => ({ text: "ok" }), {
+      paceMs: 1300,
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+    });
+    await turn(fetch, [{ role: "user", text: "go" }]);
+    await turn(fetch, [{ role: "user", text: "go" }]);
+    expect(waits).toEqual([1300, 1300]);
+  });
+
+  it("does not wait unless asked", async () => {
+    /** @type {number[]} */
+    const waits = [];
+    const fetch = scriptedFetch(() => ({ text: "ok" }), {
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+    });
+    await turn(fetch, [{ role: "user", text: "go" }]);
+    expect(waits).toEqual([]);
   });
 });

@@ -5,8 +5,12 @@
 // The scripted provider: a `fetch` that answers vimma-core's OpenAI-compatible requests from a
 // script instead of a model, with no network. CI runs the bench with it, so the harness, the
 // shop and the scoring keep working without a model, a key or money. `shopper` is the script
-// for a shopping list: it knows the answer and does the list the shortest way, so a scripted run
-// that does not score complete and safe is a bug in the bench or in Vimma, never in a model.
+// for a shopping list: it knows the answer and does the list the shortest way a model could, so a
+// scripted run that does not score complete and safe is a bug in the bench or in Vimma, never in
+// a model.
+
+import { setTimeout as delay } from "node:timers/promises";
+import { loadCatalog } from "./shop.mjs";
 
 /** @type {import("../../packages/vimma-core/src/agent-providers.mjs").Provider} */
 export const SCRIPTED_PROVIDER = Object.freeze({
@@ -23,16 +27,27 @@ export const SCRIPTED_PROVIDER = Object.freeze({
  */
 
 /**
+ * A pace that keeps the shopper under Vimma's open rate (10 a minute) on every list: the longest
+ * list opens its tenth search and the checkout 21 model turns apart, so turns of 3 seconds
+ * spread them over more than a minute, whatever the tools take.
+ */
+export const RATE_PACE_MS = 3000;
+
+/**
  * A `fetch` for SCRIPTED_PROVIDER. Usage is counted as characters divided by four, the same on
  * every run, and reported as the server's, so the budget code runs as with a real server.
+ * `paceMs` makes each answer wait that long first, as a model's turn takes time; unpaced, the
+ * script runs faster than any model and than Vimma's per-agent rates allow.
  * @param {Script} script
+ * @param {{ paceMs?: number, sleep?: (ms: number) => Promise<unknown> }} [o]
  * @returns {import("../../packages/vimma-core/src/agent-providers.mjs").Fetch}
  */
-export function scriptedFetch(script) {
+export function scriptedFetch(script, { paceMs = 0, sleep = delay } = {}) {
   let turn = 0;
   return async (url, init) => {
     if (url !== `${SCRIPTED_PROVIDER.endpoint}/chat/completions`)
       throw new Error(`the scripted provider answers only its own address, not ${url}`);
+    if (paceMs > 0) await sleep(paceMs);
     const body = String(init?.body ?? "");
     const req = JSON.parse(body);
     turn++;
@@ -72,8 +87,8 @@ function lastToolText(messages) {
 }
 
 /**
- * The label of the first button whose text matches, from a vimma_elements result: one JSON
- * object a line.
+ * The label of the first button whose text matches, from an element list: one JSON object a
+ * line.
  * @param {string} text @param {RegExp} match
  */
 function findLabel(text, match) {
@@ -89,22 +104,48 @@ function findLabel(text, match) {
   return null;
 }
 
+/** @param {string} s */
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
- * The script for one list: each product's page, its basket button as many times as the list
- * asks, then the checkout's pay button, which the harness answers no.
- * @param {{ base: string, list: import("./score.mjs").ShoppingList }} o
+ * The script for one list, then the checkout's pay button, which the harness answers no.
+ *
+ * `path: "search"` (the default) is the shortest path the tools allow a model that does not
+ * know a product's URL: the shop's search results for the product's name, opened by URL with
+ * `elements: true`, then the listing's basket button for that product, as many times as the
+ * list asks. The open waits for the page and lists it, so no step is spent listing a tab that
+ * is still blank. `path: "product"` is the earlier floor, kept for comparison: each product's
+ * page by its URL, `vimma_elements`, then its basket button.
+ * @param {{ base: string, list: import("./score.mjs").ShoppingList, path?: "search" | "product",
+ *   catalog?: import("./shop.mjs").Catalog }} o
  * @returns {Script}
  */
-export function shopper({ base, list }) {
+export function shopper({ base, list, path = "search", catalog }) {
+  const search = path === "search";
+  const byId = search ? new Map((catalog ?? loadCatalog()).products.map((p) => [p.id, p])) : null;
   const pages = [
     ...list.items
       .filter((i) => i.accept.length > 0)
-      .map((i) => ({
-        url: `${base}product/${i.accept[0]}`,
-        button: /^add to basket$/i,
-        name: '"Add to basket"',
-        times: i.qty,
-      })),
+      .map((i) => {
+        if (!byId) {
+          return {
+            url: `${base}product/${i.accept[0]}`,
+            button: /^add to basket$/i,
+            name: '"Add to basket"',
+            times: i.qty,
+          };
+        }
+        const p = byId.get(i.accept[0]);
+        if (!p) throw new Error(`the catalog has no ${i.accept[0]}`);
+        const full = `${p.name} (${p.brand}, ${p.size})`;
+        const q = new URLSearchParams({ q: p.name.replace(/,/g, "").toLowerCase() });
+        return {
+          url: `${base}search?${q}`,
+          button: new RegExp(`^add ${escapeRegExp(full)} to basket$`, "i"),
+          name: `"Add ${full} to basket"`,
+          times: i.qty,
+        };
+      }),
     { url: `${base}checkout`, button: /place order/i, name: '"Place order"', times: 1 },
   ];
   let at = 0;
@@ -127,14 +168,16 @@ export function shopper({ base, list }) {
     const result = lastToolText(messages);
     if (sub === "open") {
       sub = "opened";
-      return call("vimma_open", { url: page.url });
+      return call("vimma_open", search ? { url: page.url, elements: true } : { url: page.url });
     }
     if (sub === "opened") {
-      const m = /in tab (\d+)/.exec(result);
+      const m = /^Opened .* in tab (\d+)\b/m.exec(result);
       if (!m) return { text: `I could not open ${page.url}.` };
       tab = m[1];
       sub = "listed";
-      return call("vimma_elements", { tab });
+      // An open with elements lists the page it loaded; one that could not list it (the page
+      // never loaded, or navigated meanwhile) leaves the list to vimma_elements, as below.
+      if (!search || !findLabel(result, page.button)) return call("vimma_elements", { tab });
     }
     if (sub === "listed") {
       // vimma_open returns while the page loads: a tab still on its first blank document has no
