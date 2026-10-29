@@ -60,8 +60,9 @@ const nextTab = (win = window) =>
 add_task(async function startup_wires_the_store_and_new_tabs_land_in_main() {
   Assert.ok(main(), "the store was started at startup with its default workspace, main");
   Assert.ok(main().userContextId > 0, "main has a container of its own");
+  // ctrl+t is Vimma's new_tab on every platform; cmd+t, accel on a Mac, is off there (#385).
   const opened = nextTab();
-  EventUtils.synthesizeKey("t", { accelKey: true });
+  EventUtils.synthesizeKey("t", { ctrlKey: true });
   const tab = await opened;
   Assert.equal(tab.userContextId, main().userContextId, "ctrl+t opens in main's container");
   BrowserTestUtils.removeTab(tab);
@@ -99,7 +100,7 @@ add_task(async function new_tabs_without_a_container_take_the_active_workspaces(
   WorkspaceStore.setActive(window, work.id);
 
   let opened = nextTab();
-  EventUtils.synthesizeKey("t", { accelKey: true });
+  EventUtils.synthesizeKey("t", { ctrlKey: true });
   const ctrlT = await opened;
   Assert.equal(ctrlT.userContextId, work.userContextId, "ctrl+t");
 

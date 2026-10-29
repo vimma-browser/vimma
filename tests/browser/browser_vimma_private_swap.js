@@ -154,6 +154,8 @@ class FakeHypr {
     this.failing = new Set();
     /** Called with each batch before it is applied. @type {((text: string) => void) | null} */
     this.onBatch = null;
+    /** Called on each j/clients request before it is answered. @type {(() => void) | null} */
+    this.onClients = null;
     this.events = /** @type {any[]} */ ([]);
     this.held = /** @type {any[]} */ ([]);
     const req = this.dir.clone();
@@ -335,6 +337,7 @@ class FakeHypr {
     if (text === "j/activeworkspace") return JSON.stringify(this.active);
     if (text === "j/clients") {
       this.poll();
+      this.onClients?.();
       this.clientsAt.push(Date.now());
       if (this.slowClients) this.lateReply = this.slowClients;
       const due = this.held.filter(
@@ -643,6 +646,49 @@ add_task(async function closing_the_private_window_any_way_brings_normal_back() 
     await PrivateSwap._settled();
     Assert.equal(PrivateSwap._pair, null, `${how}: the pair is forgotten`);
   }
+});
+
+// On a busy machine Hyprland's closewindow can be read before the window's unload runs (#554):
+// the swap back then works from the closed window's last record, which must still be there.
+add_task(async function a_closewindow_read_before_the_unload_still_brings_normal_back() {
+  const f = await start();
+  const priv = await enter();
+  const a = f.addr.get(priv);
+  // What the fake's poll does once the window is gone, before the window itself closes.
+  f.clients.delete(a);
+  f.emit(`closewindow>>${a.slice(2)}`);
+  await until(() => PrivateSwap._pair === null, "the close event was read");
+  await PrivateSwap._settled();
+  Assert.ok(!parked(window), "normal is not left parked");
+  // As in the task above: with the slot window gone its geometry cannot be swapped, only its
+  // workspace (the active one would be 7).
+  Assert.equal(f.rec(window).workspace.id, 3, "normal is back on the closed window's workspace");
+  await BrowserTestUtils.closeWindow(priv);
+});
+
+// The other order (#570): the normal window is activated as the private one closes, so its
+// swap back reads j/clients, which no longer lists the closing window, and the closewindow is
+// read while that request is answered. The rescue still needs the closed window's last record
+// to put normal back on its workspace.
+add_task(async function a_closewindow_read_during_the_swap_back_still_brings_normal_back() {
+  const f = await start();
+  const priv = await enter();
+  const a = f.addr.get(priv);
+  await wait(500); // past the swap's own late activations (SETTLE_MS)
+  f.onClients = () => {
+    f.onClients = null;
+    // Hyprland drops the window and says so before it answers the request.
+    f.clients.delete(a);
+    f.emit(`closewindow>>${a.slice(2)}`);
+    f.lateReply = 300; // under HyprIpc's REPLY_MS
+  };
+  // As GTK's activate for the normal window once the private one has gone.
+  window.dispatchEvent(new Event("activate"));
+  await until(() => PrivateSwap._pair === null, "the close event was read");
+  await PrivateSwap._settled();
+  Assert.ok(!parked(window), "normal is not left parked");
+  Assert.equal(f.rec(window).workspace.id, 3, "normal is back on the closed window's workspace");
+  await BrowserTestUtils.closeWindow(priv);
 });
 
 add_task(async function a_link_from_another_app_brings_the_parked_window_back() {

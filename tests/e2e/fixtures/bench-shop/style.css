@@ -1,0 +1,48 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+body {
+  margin: 0 auto;
+  max-width: 760px;
+  padding: 16px 24px;
+  font: 16px/1.5 sans-serif;
+  color: #222;
+  background: #fafafa;
+}
+header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.logo {
+  font-weight: bold;
+}
+nav a {
+  margin-right: 8px;
+}
+.products li,
+.basket li {
+  margin: 6px 0;
+}
+.tag {
+  font-size: 13px;
+  padding: 0 6px;
+  border: 1px solid #8a8;
+  border-radius: 8px;
+}
+.price,
+.total {
+  font-weight: bold;
+}
+/* Read by assistive technology and by innerText, not shown: names the product on each basket
+   button of a listing, as shops do for screen readers. */
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

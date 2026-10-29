@@ -21,9 +21,6 @@ const { VimmaControl } = ChromeUtils.importESModule(
 const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
 );
-const { AgentAct } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
-);
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
@@ -49,7 +46,6 @@ const CHECKOUT = `${DIR}file_vimma_agent_checkout.html`;
 const PAGE = `${DIR}file_vimma_agent_page.html`;
 
 registerCleanupFunction(async () => {
-  AgentAct._settleMs = null;
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   await VimmaControl.settled();
   ww().switchTo({ id: mainId() });
@@ -90,7 +86,6 @@ const clients = [];
 /** What a task leaves when it ends, passed or not (tidyTask). */
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
-  AgentAct._settleMs = null;
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -144,10 +139,6 @@ const clicked = (tab) =>
 
 /** The grant's end, which no checkpoint may move. */
 const grantEnd = () => AgentGate.grants()[0]?.until;
-
-add_task(async function setup() {
-  AgentAct._settleMs = 100;
-});
 
 addTidyTask(async function test_pay_button_outside_a_form_asks_under_a_grant() {
   await mcp(true);

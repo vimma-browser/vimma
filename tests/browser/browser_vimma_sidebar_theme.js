@@ -169,8 +169,20 @@ function pressedLauncherButton() {
   );
 }
 
+/**
+ * Shows the launcher strip, whose theme the test checks. Up to Firefox 159 opening a panel showed
+ * it. Since Firefox 160 the default horizontal-tabs mode ("hide-on-close") leaves the launcher to
+ * the user (SidebarState's userLauncherVisible, which the toolbar button sets), and a panel
+ * opens without it.
+ */
+function showLauncher() {
+  const state = SidebarController._state;
+  if ("userLauncherVisible" in state) state.userLauncherVisible = true;
+}
+
 /** Opens a Firefox sidebar panel and waits for its document to finish loading. */
 async function showSidebar(/** @type {string} */ command) {
+  showLauncher();
   await SidebarController.show(command);
   const browser = SidebarController.browser;
   const url = SidebarController.sidebars.get(command).url;
@@ -397,6 +409,9 @@ add_task(async function setup() {
   });
   registerCleanupFunction(async () => {
     SidebarController.hide();
+    if ("userLauncherVisible" in SidebarController._state) {
+      SidebarController._state.userLauncherVisible = false;
+    }
     await SpecialPowers.popPrefEnv();
     await PlacesUtils.bookmarks.remove(RENAME_GUID);
     await IOUtils.remove(root, { recursive: true });

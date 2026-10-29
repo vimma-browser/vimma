@@ -331,9 +331,16 @@ describe("e2e.yml Beta mode", () => {
   it("e2e.yml continues after a failed suite only in beta mode", () => {
     const lines = [...e2e.matchAll(/^\s*continue-on-error:.*$/gm)].map((m) => m[0].trim());
     expect(lines).toEqual(
-      Array(5).fill("continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}"),
+      Array(6).fill("continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}"),
     );
-    for (const id of ["branding", "upstream-prefs", "mochitest", "e2e", "sites-offline"]) {
+    for (const id of [
+      "branding",
+      "upstream-prefs",
+      "mochitest",
+      "e2e",
+      "sites-offline",
+      "agent-bench",
+    ]) {
       expect(step(e2e, id), id).toContain(
         "continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}",
       );

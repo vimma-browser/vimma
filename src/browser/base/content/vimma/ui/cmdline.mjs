@@ -67,6 +67,8 @@ function isPrivate(win) {
  * @property {() => void} [changed]  after it opens or closes (the status bar's mode)
  * @property {() => import("../core/cmdline.mjs").CompletionArgs} [args]  what commands'
  *   arguments complete to (`{ addon: names }`)
+ * @property {() => readonly string[]} [hidden]  action ids whose commands do not exist now (an
+ *   unfinished feature's, while its pref is off)
  */
 
 export class CommandLine {
@@ -74,11 +76,12 @@ export class CommandLine {
    * @param {Window} win  a browser window
    * @param {Callbacks} callbacks  `run` gets a parsed line once the command line has closed
    */
-  constructor(win, { run, changed = () => {}, args = () => ({}) }) {
+  constructor(win, { run, changed = () => {}, args = () => ({}), hidden = () => [] }) {
     this.win = win;
     this.run = run;
     this.changed = changed;
     this.args = args;
+    this.hidden = hidden;
     /** @type {HTMLElement | null} */
     this.el = null;
     /** @type {HTMLInputElement | null} */
@@ -225,7 +228,7 @@ export class CommandLine {
   submit() {
     const input = /** @type {HTMLInputElement} */ (this.input);
     const line = input.value;
-    const result = parseCommandLine(line);
+    const result = parseCommandLine(line, { hidden: this.hidden() });
     this.store.history = pushHistory(this.store.history, line);
     this.resetCursor();
     if (result.kind === "error") {
@@ -248,7 +251,10 @@ export class CommandLine {
   complete(direction) {
     const input = /** @type {HTMLInputElement} */ (this.input);
     if (!this.cycle) {
-      const { candidates } = completeCommandLine(input.value, { args: this.args() });
+      const { candidates } = completeCommandLine(input.value, {
+        args: this.args(),
+        hidden: this.hidden(),
+      });
       if (!candidates.length) return;
       this.cycle = { candidates, index: direction > 0 ? 0 : candidates.length - 1 };
       this.renderList(candidates);
@@ -268,7 +274,11 @@ export class CommandLine {
   refreshList() {
     const value = /** @type {HTMLInputElement} */ (this.input).value;
     const word = value.replace(/^[\s:]*/, "");
-    this.renderList(word ? completeCommandLine(value, { args: this.args() }).candidates : []);
+    this.renderList(
+      word
+        ? completeCommandLine(value, { args: this.args(), hidden: this.hidden() }).candidates
+        : [],
+    );
   }
 
   /**

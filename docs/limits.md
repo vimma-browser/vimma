@@ -142,8 +142,10 @@ the [user guide](guide.md); planned work is on the
 
 - Vimma is released for Linux x86_64, and for macOS on Apple Silicon once the macOS release jobs
   are switched on. There is no Intel Mac, universal or Windows build.
-- The macOS `.dmg` is ad hoc signed, not notarised, until Vimma has an Apple Developer ID:
-  macOS asks once, under Privacy & Security, before it first opens, and passkeys do not work.
+- A macOS release is signed with Vimma's Developer ID and notarised only once the release
+  workflow's signing is switched on; before that, and in every CI test build, the `.dmg` is ad
+  hoc signed and macOS asks once, under Privacy & Security, before it first opens. Passkeys
+  stored in macOS do not work in either (issue #544).
   It has no update notices (no update manifest exists for macOS): install a newer `.dmg` by hand.
 - Finder on recent macOS (checked on 27.0.1) opens the mounted `.dmg`'s window at the frame of
   the last Finder window and ignores the size the `.dmg` stores, as it does for Firefox's: a

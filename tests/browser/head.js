@@ -97,11 +97,14 @@ function bindUnbuiltPrefixKey() {
   const { compileKeymap } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/core/keymap.mjs",
   );
+  // This platform's keymap, as the host compiles it: on macOS the cmd keys (macos-build
+  // decision 29), which later files in the same run expect.
+  const mac = { mac: Services.appinfo.OS === "Darwin" };
   const restore = VimmaHost._withhold("history.back");
-  VimmaHost.configure({ keymap: compileKeymap({ keys: { history_back: ["prefix+o"] } }) });
+  VimmaHost.configure({ keymap: compileKeymap({ keys: { history_back: ["prefix+o"] } }, mac) });
   registerCleanupFunction(() => {
     restore();
-    VimmaHost.configure({ keymap: compileKeymap() });
+    VimmaHost.configure({ keymap: compileKeymap({}, mac) });
   });
   return "Go back: not implemented yet";
 }

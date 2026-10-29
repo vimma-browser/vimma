@@ -130,7 +130,7 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
   await until(hintShown, "armed after the delay");
   Assert.equal(
     line().querySelector(".vimma-agent-prompt-hint").textContent,
-    "y once · 10a 10 min · n deny · x mute",
+    "y once · a until it quits · n deny · x mute",
     "the hint names the keys; the grant's notice says what still asks",
   );
   EventUtils.synthesizeKey("y", { repeat: true });
@@ -229,6 +229,35 @@ add_task(async function test_a_count_and_a_grant_minutes_shown_in_the_status_bar
   );
   c.close();
   await until(() => segment() === null, "the segment goes with the last agent");
+  await setSwitches({});
+});
+
+// docs/specs/mcp-session-grants.md S1, S6: a bare `a` allows the agent until it quits, with no
+// minutes in the notice, the status bar or the notices of the calls under it.
+add_task(async function test_a_bare_a_grants_until_the_agent_quits() {
+  await setSwitches({ mcp: true });
+  Services.prefs.setIntPref(ARMING, 100);
+  const c = await agentClient();
+  await calmPage();
+  const id = c.request("agent-tabs");
+  await armed();
+  EventUtils.synthesizeKey("a");
+  Assert.ok((await c.response(id)).ok, "a allows");
+  await until(
+    () =>
+      noticeText() ===
+      "example-agent may use the agent workspace until it quits; sending a form or paying still " +
+        "asks (ctrl+b shift+a ends it)",
+    "the grant notice says it lasts until the agent quits",
+  );
+  await until(() => segment() === "◇ agent granted", "the status bar says a grant runs");
+  Assert.ok((await c.call("agent-tabs")).ok, "the next call runs unasked");
+  await until(
+    () => noticeText() === "example-agent listed the agent tabs (grant)",
+    "and its notice names no minutes",
+  );
+  c.close();
+  await until(() => segment() === null, "the grant goes with the agent");
   await setSwitches({});
 });
 

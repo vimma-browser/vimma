@@ -1,0 +1,13 @@
+{
+  "description": "A full-size screenshot: up to 1,280 pixels wide, PNG when it fits (issue #584)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 14,
+    "command": "agent-screenshot",
+    "args": {
+      "tab": "12",
+      "full": true
+    }
+  }
+}

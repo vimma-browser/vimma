@@ -88,6 +88,14 @@ describe("the question's text (decision 13)", () => {
     expect(line.label).toBe(text(line));
   });
 
+  // docs/specs/mcp-session-grants.md S1: with grant_minutes 0, the default, a bare a lasts the
+  // whole connection, and the hint says so.
+  test("with grant_minutes 0 the hint says a lasts until the agent quits", () => {
+    expect(questionLine(read, { grantMinutes: 0 }).hint).toBe(
+      "y once · a until it quits · n deny · x mute",
+    );
+  });
+
   test("an open shows the full URL with its host in bold", () => {
     const line = questionLine(open, { grantMinutes: 10 });
     expect(text(line)).toBe(
@@ -273,6 +281,17 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
   });
 
+  test("a grant for the whole connection says it lasts until the agent quits", () => {
+    expect(grantNotice(read, { minutes: Infinity, capped: false })).toBe(
+      "example-agent may use the agent workspace until it quits; sending a form or paying still " +
+        "asks (ctrl+b shift+a ends it)",
+    );
+  });
+
+  test("a call under a grant for the whole connection names no time left", () => {
+    expect(ranNotice(open, Infinity, 0)).toBe("example-agent opened docs.rs (grant)");
+  });
+
   test("a call under a grant shows what it did and the time left", () => {
     expect(ranNotice(read, 14 * MIN + 1, 0)).toBe(
       'example-agent read "Pull requests · vimma-browser/vimma" (grant, 15m left)',
@@ -364,6 +383,46 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     );
     const long = { ...activate, what: { ...activate.what, text: "x".repeat(100) } };
     expect(text(questionLine(long, { grantMinutes: 10 }))).toMatch(/ sg button "x{59}…"$/);
+  });
+
+  // Issue #584: a step that also returns the page's element list says so in its question and
+  // its notice, since a yes to it is a yes to vimma_elements on the page it leaves.
+  test("a step that returns the element list says so in the question and the notice", () => {
+    const what = {
+      tab: "7",
+      index: 2,
+      title: "List · Example",
+      url: "https://example.com/list",
+      label: "sg",
+      kind: "button",
+      text: "Add to list",
+      elements: true,
+    };
+    const activate = { tool: "vimma_activate", label: { client: "claude-code" }, what };
+    expect(text(questionLine(activate, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_activate: 2 "List · Example" example.com/list  sg button "Add to list", then vimma_elements',
+    );
+    expect(ranNotice(activate, 12 * MIN, 0)).toBe(
+      'claude-code clicked button "Add to list" in "List · Example" and listed the buttons and fields after it (grant, 12m left)',
+    );
+    const opened = { ...open, what: { ...open.what, elements: true } };
+    expect(text(questionLine(opened, { grantMinutes: 10 }))).toMatch(/, then vimma_elements$/);
+    expect(ranNotice(opened, Infinity, 0)).toBe(
+      "example-agent opened docs.rs and listed the buttons and fields after it (grant)",
+    );
+    const plain = { ...activate, what: { ...what, elements: false } };
+    expect(text(questionLine(plain, { grantMinutes: 10 }))).not.toMatch(/vimma_elements/);
+    // A checkpoint's question names the list too: its yes returns it.
+    const submit = {
+      ...activate,
+      what: {
+        ...what,
+        submit: { method: "post", action: "https://example.com/a", host: "example.com", fields: 1 },
+      },
+    };
+    const asked = questionLine(submit, { grantMinutes: 10 });
+    expect(asked.hint).toBe("y send it · n stop");
+    expect(text(asked)).toMatch(/, then vimma_elements$/);
   });
 
   test("a submit: method and host in bold, the field count, y or n only", () => {
@@ -743,6 +802,7 @@ describe("the status bar's agent state (decision 24)", () => {
       minutes: 14,
       ran: false,
     });
+    expect(agentState({ ...base, grants: [{ until: Infinity }] }).minutes).toBe(Infinity);
     expect(agentState({ ...base, ranAt: 0, now: 1999 }).ran).toBe(true);
     expect(agentState({ ...base, ranAt: 0, now: 2000 }).ran).toBe(false);
   });

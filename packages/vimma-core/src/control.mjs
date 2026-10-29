@@ -64,6 +64,12 @@ export const DIALOG_TYPES = Object.freeze(["alert", "confirm", "prompt"]);
  */
 export const ACTIVATE_CHANGES = Object.freeze(["element", "elements", "text", "dialog"]);
 /**
+ * Why an open, a click or a fill asked with `elements` returns no element list (issue #584):
+ * the page was still loading, it changed while it was listed, or it could not be listed (not an
+ * http or https page, or it did not answer). Words only, never the page's text.
+ */
+export const STEP_UNLISTED = Object.freeze(["loading", "changed", "failed"]);
+/**
  * Why an agent request was `denied` (vimma-mcp decision 4). `in-use`: the user is typing in that
  * tab, or a key sequence or hint mode is under way there (mcp-drive D13).
  */
@@ -76,6 +82,11 @@ export const DENY_REASONS = Object.freeze([
   "cancelled",
   "in-use",
 ]);
+/**
+ * The longest `retryAfter` of a `busy` denial, in ms: every per-connection rate is a sliding
+ * window of a minute, so its next slot is free within one (issue #592).
+ */
+export const MAX_RETRY_AFTER = 60_000;
 /** Why `agent-keys` stopped before its last step (mcp-drive D13, D15, D18). */
 export const KEYS_STOPS = Object.freeze(["changed", "in-use", "timeout", "denied"]);
 /** `agent-keys`'s keys, in code points (mcp-drive D15). */
@@ -287,7 +298,7 @@ function checkTabArg(args, errors) {
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentHelloArgs(args, errors) {
-  noExtraFields(args, ["client", "via", "ctl"], errors, "args.");
+  noExtraFields(args, ["client", "via", "ctl", "session"], errors, "args.");
   const { client } = args;
   if (!isObject(client)) errors.push("client must be an object");
   else {
@@ -302,7 +313,14 @@ function checkAgentHelloArgs(args, errors) {
   // vimma-ctl's own version (docs/specs/ship-vimma-ctl.md, behaviour 4); a client from before
   // it sends none.
   if ("ctl" in args && !isCtlVersion(args.ctl)) errors.push("ctl must be a Vimma version (X.Y.Z)");
+  // The id of one `vimma-ctl mcp` process, random per process, so that a reconnect keeps its
+  // grant (docs/specs/mcp-session-grants.md S4); at least 128 bits, so it cannot be guessed.
+  if ("session" in args && !(typeof args.session === "string" && SESSION_ID.test(args.session))) {
+    errors.push("session must be 32 to 128 lowercase hex characters");
+  }
 }
+
+const SESSION_ID = /^[0-9a-f]{32,128}$/;
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentReadArgs(args, errors) {
@@ -322,7 +340,8 @@ function checkAgentReadArgs(args, errors) {
  * @param {Obj} args @param {string[]} errors
  */
 function checkAgentOpenArgs(args, errors) {
-  noExtraFields(args, ["url", "tab"], errors, "args.");
+  noExtraFields(args, ["url", "tab", "elements"], errors, "args.");
+  checkElementsFlag(args, errors);
   const { url } = args;
   if (typeof url !== "string") errors.push("url must be a string");
   else if (url.length > MAX_URL) errors.push(`url must be at most ${MAX_URL} characters`);
@@ -330,6 +349,16 @@ function checkAgentOpenArgs(args, errors) {
     errors.push("url must not contain control characters or spaces");
   } else if (!/^https?:/i.test(url)) errors.push("url scheme must be http or https");
   if ("tab" in args) checkTabArg(args, errors);
+}
+
+/**
+ * A step's `elements` (issue #584): whether it returns the page's element list afterwards.
+ * @param {Obj} args @param {string[]} errors
+ */
+function checkElementsFlag(args, errors) {
+  if ("elements" in args && typeof args.elements !== "boolean") {
+    errors.push("elements must be a boolean");
+  }
 }
 
 /** C0 but the tab, DEL and C1: the keys are one line, with tabs or spaces between keys. */
@@ -352,8 +381,9 @@ function checkAgentKeysArgs(args, errors) {
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentActivateArgs(args, errors) {
-  noExtraFields(args, ["tab", "label"], errors, "args.");
+  noExtraFields(args, ["tab", "label", "elements"], errors, "args.");
   checkTabArg(args, errors);
+  checkElementsFlag(args, errors);
   if (!isAgentLabel(args.label)) {
     errors.push(`label must be 1 to 3 of the hint characters ${DEFAULT_HINT_CHARS}`);
   }
@@ -373,8 +403,9 @@ const isFillValue = (v) =>
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentFillArgs(args, errors) {
-  noExtraFields(args, ["tab", "fields", "submit"], errors, "args.");
+  noExtraFields(args, ["tab", "fields", "submit", "elements"], errors, "args.");
   checkTabArg(args, errors);
+  checkElementsFlag(args, errors);
   const { fields } = args;
   if (!Array.isArray(fields) || fields.length < 1 || fields.length > AGENT_FILL.fields) {
     errors.push(`fields must be a list of 1 to ${AGENT_FILL.fields} fields`);
@@ -429,11 +460,13 @@ function checkRequest(m, errors) {
   else if (command === "agent-fill") checkAgentFillArgs(args, errors);
   else if (command === "agent-screenshot") {
     // The viewport of one tab, never an area of the page or another tab (mcp-forms F18).
-    noExtraFields(args, ["tab", "labels"], errors, "args.");
+    noExtraFields(args, ["tab", "labels", "full"], errors, "args.");
     checkTabArg(args, errors);
     if ("labels" in args && typeof args.labels !== "boolean") {
       errors.push("labels must be a boolean");
     }
+    // Full size (issue #584): the default image is smaller.
+    if ("full" in args && typeof args.full !== "boolean") errors.push("full must be a boolean");
   } else if (command === "agent-console") {
     // A tab and a time, never an expression: nothing runs in the page (mcp-forms F23).
     noExtraFields(args, ["tab", "since"], errors, "args.");
@@ -506,6 +539,50 @@ function checkElementsResult(result, errors) {
     errors.push("result.elements must be inside the untrusted-content delimiters");
   }
   if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+}
+
+/**
+ * The element list a step returns when asked with `elements` (issue #584), checked as
+ * `agent-elements`' own (security.md M31): inside the untrusted-content delimiters with how many
+ * were left out, or why there is none, in fixed words.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkStepList(result, errors) {
+  const listed = "elements" in result;
+  if (listed !== "dropped" in result) {
+    errors.push("result.elements and result.dropped come together");
+  } else if (listed) {
+    if (!insideDelimiters(result.elements)) {
+      errors.push("result.elements must be inside the untrusted-content delimiters");
+    }
+    if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+  }
+  if ("unlisted" in result) {
+    if (!STEP_UNLISTED.includes(/** @type {any} */ (result.unlisted))) {
+      errors.push(`result.unlisted must be one of ${STEP_UNLISTED.join(", ")}`);
+    } else if (listed) errors.push("result.unlisted comes only without result.elements");
+  }
+}
+
+/**
+ * `agent-open`'s result: the tab's id; asked with `elements`, also the page it loaded and its
+ * element list, or why there is none (issue #584).
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkOpenResult(result, errors) {
+  noExtraFields(
+    result,
+    ["tab", "url", "title", "elements", "dropped", "unlisted"],
+    errors,
+    "result.",
+  );
+  checkFields(result, "result", { strings: ["tab"] }, errors);
+  if ("elements" in result || "dropped" in result || "unlisted" in result) {
+    checkFields(result, "result", { strings: ["url", "title"] }, errors);
+    checkStepList(result, errors);
+  } else if ("url" in result || "title" in result) {
+    errors.push("result.url and result.title come only with result.elements or result.unlisted");
+  }
 }
 
 /**
@@ -589,10 +666,24 @@ const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
 function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([])) {
   noExtraFields(
     result,
-    ["url", "title", "loading", "navigated", "dialog", "blocked", "stopped", "changed", ...extra],
+    [
+      "url",
+      "title",
+      "loading",
+      "navigated",
+      "dialog",
+      "blocked",
+      "stopped",
+      "changed",
+      "elements",
+      "dropped",
+      "unlisted",
+      ...extra,
+    ],
     errors,
     "result.",
   );
+  checkStepList(result, errors);
   checkFields(
     result,
     "result",
@@ -727,7 +818,7 @@ function checkAgentResult(result, command, errors) {
     };
     checkFields(result, "result", shape, errors);
   } else if (command === "agent-open") {
-    checkFields(result, "result", { strings: ["tab"] }, errors);
+    checkOpenResult(result, errors);
   } else if (command === "agent-close" && result.closed !== true) {
     errors.push("result.closed must be true");
   } else if (command === "agent-show") {
@@ -785,6 +876,9 @@ function checkStateResult(result, errors) {
       if (typeof tab.selected !== "boolean") {
         errors.push(`result.tabs[${i}].selected must be a boolean`);
       } else if (tab.selected) selected++;
+      if ("loading" in tab && typeof tab.loading !== "boolean") {
+        errors.push(`result.tabs[${i}].loading must be a boolean`);
+      }
     });
     if (selected > 1) errors.push("result.tabs must have at most one selected tab");
   }
@@ -837,7 +931,7 @@ function checkResponse(m, command, errors) {
     errors.push("error must be an object");
     return;
   }
-  noExtraFields(error, ["code", "message", "reason"], errors, "error.");
+  noExtraFields(error, ["code", "message", "reason", "retryAfter"], errors, "error.");
   if (typeof error.code !== "string" || !ERROR_CODES.includes(error.code)) {
     errors.push(`error.code must be one of ${ERROR_CODES.join(", ")}`);
   }
@@ -848,6 +942,14 @@ function checkResponse(m, command, errors) {
       errors.push(`error.reason must be one of ${DENY_REASONS.join(", ")}`);
     }
   } else if ("reason" in error) errors.push("error.reason is only for denied");
+  // A used-up rate says when the next call is allowed (issue #592).
+  if ("retryAfter" in error) {
+    if (error.code !== "denied" || error.reason !== "busy") {
+      errors.push("error.retryAfter is only for a busy denial");
+    } else if (!isInt(error.retryAfter, 1, MAX_RETRY_AFTER)) {
+      errors.push(`error.retryAfter must be a whole number from 1 to ${MAX_RETRY_AFTER}`);
+    }
+  }
 }
 
 /**

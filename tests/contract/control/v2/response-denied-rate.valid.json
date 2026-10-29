@@ -1,0 +1,15 @@
+{
+  "description": "A per-connection rate is used up: busy, with the milliseconds until a call is allowed again",
+  "kind": "response",
+  "message": {
+    "type": "response",
+    "id": 3,
+    "ok": false,
+    "error": {
+      "code": "denied",
+      "message": "too many vimma_keys calls from this agent in the last minute (at most 30)",
+      "reason": "busy",
+      "retryAfter": 12000
+    }
+  }
+}

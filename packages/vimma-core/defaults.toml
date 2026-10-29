@@ -105,6 +105,19 @@ add_bookmark = ["prefix+a"]
 agent_prompt = ["prefix+shift+a"]
 copy_mode = ["prefix+["]
 addon_picker = ["prefix+e"]
+# On macOS these default to Firefox's macOS keys instead, since Option types characters:
+# select_tab_1 = ["prefix+1", "meta+1"]
+# select_tab_2 = ["prefix+2", "meta+2"]
+# select_tab_3 = ["prefix+3", "meta+3"]
+# select_tab_4 = ["prefix+4", "meta+4"]
+# select_tab_5 = ["prefix+5", "meta+5"]
+# select_tab_6 = ["prefix+6", "meta+6"]
+# select_tab_7 = ["prefix+7", "meta+7"]
+# select_tab_8 = ["prefix+8", "meta+8"]
+# select_last_tab = ["meta+9"]
+# history_back = ["meta+left", "meta+["]
+# history_forward = ["meta+right", "meta+]"]
+# focus_urlbar = ["ctrl+l", "meta+l"]
 
 [modal]
 leader = " "
@@ -352,14 +365,15 @@ toolbar = "shown"
 check = true
 
 # Local AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and
-# every request asks you first. Left out, :mcp on|off sets enabled and remembers it; set
-# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300); a bare `a`
-# grants grant_minutes, a count before it up to grant_max_minutes (at most 1440).
+# each asks you first. Left out, :mcp on|off sets enabled and remembers it; set
+# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300). A bare `a`
+# allows the agent until it quits (grant_minutes = 0), or for grant_minutes; a count before
+# it allows that many minutes, up to grant_max_minutes (at most 1440).
 [mcp]
 # enabled = false
 workspace = "agent"
 ask_timeout = 50
-grant_minutes = 10
+grant_minutes = 0
 grant_max_minutes = 480
 max_read_chars = 200000
 notify = true

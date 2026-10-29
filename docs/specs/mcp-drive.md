@@ -286,6 +286,8 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     document that was collected (its window global); a label against a session that is missing,
     older than 120 s, or from a page that has navigated since is refused with
     `stale labels: send f again`, because a label of an old page could name a different link.
+    (Since changed: labels from a `vimma_elements` list, which `f<label>` also follows, have no
+    time limit and last while their page and element do; mcp-forms F3, #591.)
     - **A follow is a load, not a click.** The link's `href` is loaded in the same tab with the
       page's own principal after `checkLoadURIWithPrincipal`, as `openInBackground` does
       (`VimmaActors.sys.mjs:294-322`), but in place. No click event fires, so the page's own
@@ -323,8 +325,13 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
       the user reached in that tab before) is refused.
 13. **Within one call.** Actions run in order. After an action that loads a page (a follow,
     back, forward, `gu`, `gU`), the next one waits for that load, up to 20 s (`LOAD_TIMEOUT_MS`,
-    `agent-commands.mjs:33`). Before each action the tab must still be an agent tab; if it has
-    left the agent workspace or closed, the call stops with `changed` and reports the steps done.
+    `agent-commands.mjs:33`). (Since changed: the page counts as loaded at its
+    `DOMContentLoaded` and 200 ms without a change, at most 1 s, rather than at its load event,
+    because a page's slow images and trackers held every step; the result's `loading` says
+    whether it is still loading; issue
+    [#579](https://github.com/vimma-browser/vimma/issues/579), mcp-forms F11.) Before each
+    action the tab must still be an agent tab; if it has left the agent workspace or closed, the
+    call stops with `changed` and reports the steps done.
     If the user is using the tab (it is the selected tab of a focused window and its mode is
     insert, hint or copy mode, or a key sequence is pending there), the call is denied with the
     new reason `in-use` before it runs, so an agent never scrolls or navigates a page under the
@@ -480,6 +487,7 @@ Until then §12 names this spec as planned.
 - **M18.** A follow **must** load only an http or https href the page could link to, in the same
   tab, with no click event, from labels of the current document no older than 120 s; a follow
   to another site **must** ask as `vimma_open` unless a `vimma_open` grant is in force.
+  (Since changed: the 120 s applies to `f`'s own list only; security.md M25, #591.)
 - **M19.** `agent-show` **must** always ask (no grant covers it), switch only the normal window
   that holds the agent tab, only to the agent workspace, and **never** raise or focus a window.
 - **M20.** The limits of D7, D12 and D15 **must** deny with `busy` or `invalid-args`.

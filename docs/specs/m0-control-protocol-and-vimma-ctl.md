@@ -195,7 +195,15 @@ are sent.
   "mode": "normal",
   "pending": "prefix",
   "workspace": null,
-  "tabs": [{ "id": "12", "url": "https://example.com/", "title": "Example", "selected": true }],
+  "tabs": [
+    {
+      "id": "12",
+      "url": "https://example.com/",
+      "title": "Example",
+      "selected": true,
+      "loading": false
+    }
+  ],
   "panes": null
 }
 ```
@@ -208,9 +216,16 @@ are sent.
   ([private-workspace](private-workspace.md)).
 - `private`: `true` in a private window, absent otherwise. Its tabs' `url` and `title` are then
   `null`, withheld so that scripts never see private pages (private-workspace decision 8d); `id`,
-  `selected` and `panes` are kept.
+  `index`, `selected`, `pinned`, `loading` and `panes` are kept.
 - `tabs`: the window's visible tabs in strip order. `id` is an opaque string, stable for the tab's
   lifetime (the server uses `browser.browserId`); exactly one tab is `selected` when there are any.
+  `loading` is `true` while the tab's page loads (the tab strip's busy state, or a document load
+  in progress), and in a new window before it has started to load its first page: a window is
+  listed as soon as it opens, while its tabs still show their initial empty document. It is
+  `false` once the page has loaded or stopped, and for an unloaded tab (restored on demand or
+  discarded), which `state` leaves without a browser. It names no page, so a private window
+  keeps it; there it is the only sign that the start page has loaded. Added without a version
+  bump, like `panes`: a client that waits on it treats a missing `loading` as not loaded.
 - `panes`: the pane tree once split view exists (M3), `null` before. Its shape is that spec's to
   define; it is added without a version bump because clients ignore what they do not know.
   Since m3-workspaces sub-spec 7: `null` while the window shows one pane, else
@@ -266,7 +281,10 @@ Spec: [vimma-mcp](vimma-mcp.md) (decisions 2-4), ADR-019. Fixtures:
   welcome, only when the discovery file lists `agent`.
 - **New error codes.** `role-off` (above) and `denied`: an agent request the user did not allow.
   A `denied` error carries `reason`: `user`, `timeout`, `busy`, `muted`, `changed` or
-  `cancelled`; no other error has a `reason`.
+  `cancelled`; no other error has a `reason`. (Since changed: a `busy` denial for a used-up
+  per-connection rate also carries `retryAfter`, the milliseconds until the next call is
+  allowed, when the connection's vimma-ctl is at least as new as Vimma, and its message names
+  the limit; see [security.md](../security.md) M20 and M32.)
 - **Agent commands** (role `agent` only; `agent-hello` must come first, and only once):
 
   | Command        | `args`                                                     | `result`                                                                         |

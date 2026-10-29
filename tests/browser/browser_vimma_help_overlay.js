@@ -153,10 +153,13 @@ add_task(async function rows_show_the_keys_to_press_under_a_legend() {
     Assert.ok(keysOf(overlay(), "toggle_sidebar").startsWith("ctrl+b b"), "the sidebar keys");
     Assert.equal(keysOf(overlay(), "close_tab"), "ctrl+b shift+x, ctrl+f4, x", "close_tab's keys");
     // docs/specs/firefox-keys.md: Firefox's keys are listed next to Vimma's (history_back is
-    // rebound in this file: bindUnbuiltPrefixKey).
+    // rebound in this file: bindUnbuiltPrefixKey), Firefox's macOS keys on macOS (macos-build
+    // decision 29).
     Assert.equal(
       keysOf(overlay(), "history_forward"),
-      "alt+right, L, ctrl+i, ctrl+]",
+      Services.appinfo.OS === "Darwin"
+        ? "meta+right, meta+], L, ctrl+i, ctrl+]"
+        : "alt+right, L, ctrl+i, ctrl+]",
       "Go forward lists every key that goes forward",
     );
     Assert.ok(!overlay().textContent.includes("prefix+"), "no prefix+ notation anywhere");

@@ -266,6 +266,15 @@ jobs:
         continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}
         run: npm run sites -- --offline --artifact --out site-compat-offline/
 
+      # docs/specs/builtin-agent.md, "The bench": the agent bench's harness on the artifact build
+      # with its scripted provider, which needs no model and makes no request beyond the bench
+      # shop on 127.0.0.1. Fails unless the run fills the basket, stops at the payment checkpoint
+      # and sends nothing unasked, so the bench keeps working between hand-run model results.
+      - name: Agent bench, scripted provider (npm run agent-bench -- --artifact --check)
+        id: agent-bench
+        continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}
+        run: npm run agent-bench -- --artifact --check --lists L04
+
       - name: Upload site-compat-offline/ (the snapshot gate's report and screenshots)
         if: failure() || (steps.mode.outputs.beta == 'true' && steps.sites-offline.outcome == 'failure')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -322,7 +331,7 @@ jobs:
 
   # Spec macos-build, sub-PR 1: the same front end on Mozilla's macOS arm64 build of the same
   # release (tools/artifact-build picks the macosx64-aarch64-opt job on an Apple Silicon host), on
-  # a hosted Apple Silicon Mac. Informational: not a required check (open question 6), so a red
+  # a hosted Apple Silicon Mac. Informational: not a required check (decision 34), so a red
   # run here shows a macOS break without blocking the merge; branch protection must not list it.
   # Not on a version run (upstream autopilot, Beta canary): macOS never blocks a Linux release
   # (decision 13). No vimma-ctl build (its macOS tests are in ci.yml) and no e2e scenarios

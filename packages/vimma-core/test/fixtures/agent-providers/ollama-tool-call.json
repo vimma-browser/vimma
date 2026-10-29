@@ -1,0 +1,34 @@
+{
+  "id": "chatcmpl-49",
+  "object": "chat.completion",
+  "created": 1793219531,
+  "model": "qwen2.5:1.5b",
+  "system_fingerprint": "fp_ollama",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_cdtchjpp",
+            "index": 0,
+            "type": "function",
+            "function": {
+              "name": "vimma_open",
+              "arguments": "{\"url\":{\"type\":\"string\",\"value\":\"https://example.com\"}}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 150,
+    "prompt_tokens_details": { "cached_tokens": 0 },
+    "completion_tokens": 34,
+    "total_tokens": 184
+  }
+}

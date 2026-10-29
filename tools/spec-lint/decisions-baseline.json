@@ -6,14 +6,5 @@
     "`type=\"minor\"`",
     "The m0-updater mochitests change",
     "Settings' \"Updates are managed by your operating system\""
-  ],
-  "macos-build.md": [
-    "Windows is not a target platform.",
-    "Linux first, macOS next.",
-    "Cross-compile on a GitHub-hosted Linux runner; never build on a hosted Mac.",
-    "No upstream patch for signing.",
-    "Hosted Macs run what was built.",
-    "Ad hoc signed until a Developer ID exists",
-    "Artifact names carry both versions."
   ]
 }

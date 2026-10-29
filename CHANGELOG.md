@@ -4,10 +4,47 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- Agents (MCP): `vimma_open`, `vimma_activate` and `vimma_fill` take `elements: true` and return the page's element list with the step, so an action and the next look are one call. Screenshots default to at most 1024 px, PNG or JPEG, whichever is smaller; `full: true` gives the full-size image.
+
+### Changed
+
+- Agents (MCP): a label from `vimma_elements` stays valid for as long as its page and element do, instead of expiring after 120 seconds, so a slow model's clicks and fills are no longer refused; labels drawn on a screenshot still expire after 120 seconds.
+- Agents (MCP): an agent over a per-minute limit is told which limit it hit, that no question is waiting, and how long to wait, instead of a message saying questions are waiting.
+- Agents (MCP): clicks and fills wait only while the page is busy instead of a fixed second; a fill without a submit returns at once, and a page counts as ready before its slow images finish. Sending a form or paying is caught exactly as before.
+
+## [0.1.11](https://github.com/vimma-browser/vimma/compare/v0.1.10...v0.1.11) · Firefox 159.0 (2026-10-28)
+
+
+### Added
+
+- Control socket: `vimma-ctl state` reports a `loading` flag for each tab, true while the tab is busy, a document is loading, or a new window has not yet started to load its first page. It names no page, so a private window's tabs carry it too.
+
+* **mcp:** one approval lasts the agent's whole session ([#581](https://github.com/vimma-browser/vimma/issues/581)) ([796a266](https://github.com/vimma-browser/vimma/commit/796a266844bd440b7a68976822fe97e1fbec66af)), closes [#578](https://github.com/vimma-browser/vimma/issues/578)
+
+
 ### Fixed
 
+- macOS: back, forward, the tab digits and the address bar have Firefox's macOS keys, `cmd+left` / `cmd+right` and `cmd+[` / `cmd+]`, `cmd+1` to `cmd+9` and `cmd+l`, in place of the Linux defaults `alt+left`, `alt+right`, `alt+1` to `alt+9` and `alt+d`, which never ran on a Mac because Option types characters there. Linux keeps its keys. A new help snapshot holds the macOS keymap, and the `defaults.toml` snapshot lists the macOS keys as comments under `[keys]`.
+- Find: on Firefox 160, `n` and `N` in a PDF keep the find bar closed, so the focus stays on the page and the next `N` moves to the previous match instead of typing into the bar.
+- Updates: an installed release no longer offers itself as a security update. Release builds now keep one build ID from the binary to the packaged `application.ini`, and Vimma never offers the version it runs, dropping a saved offer of it at startup.
+- Private windows: closing a private window in any way brings the normal window back on the closed window's workspace. When Hyprland reported the close before the window's unload ran, the normal window could land on the active workspace instead.
+- Workspaces: a workspace could lose its tab list (tab search and the side panel showing one "New Tab") while its tabs stayed open, when a restore into the window ended with a workspace rebuild that failed partway. The rebuild now replaces the window's model only once it is complete, a failed one keeps the current model, and selecting a tab the model does not know puts it back.
 - Releases: publishing a release now starts the Homebrew tap update whenever the macOS cask is already on the release, so `brew upgrade --cask vimma` finds new releases. Releases 0.1.9 and 0.1.10 had missed the tap because their macOS files reached the draft before it was published; 0.1.10 was pushed to the tap by hand.
 - Releases: publishing a release now tells vimma.dev at once, so the site no longer waits for its scheduled sync to show it. The workflow authenticates as the GitHub App `vimma-site-dispatch`; the token secret it used before was never set, so no release or bindings change had reached the site.
+
+* **e2e:** m3-private-workspace waits for the private start page to load ([#568](https://github.com/vimma-browser/vimma/issues/568)) ([5897b09](https://github.com/vimma-browser/vimma/commit/5897b09d814320734a02f58d1280ca30db9e9d1c)), closes [#567](https://github.com/vimma-browser/vimma/issues/567)
+* **find:** n and N in a pdf keep the find bar closed on firefox 160 ([#560](https://github.com/vimma-browser/vimma/issues/560)) ([a1f5be8](https://github.com/vimma-browser/vimma/commit/a1f5be87131e4a64ceaf048b834bb5a5560fc12b)), closes [#548](https://github.com/vimma-browser/vimma/issues/548)
+* **grep:** a step that ends after grep reopens leaves the new search alone ([71c0117](https://github.com/vimma-browser/vimma/commit/71c01175f3030ccf5701a173d3a524fffc1075dc))
+* **keys:** the default alt keys are firefox's cmd keys on macos ([50f067c](https://github.com/vimma-browser/vimma/commit/50f067cb882a080fa3d33d0a6f717402861d5cd2))
+* **private:** a close read before the unload brings the normal window back to its workspace ([#559](https://github.com/vimma-browser/vimma/issues/559)) ([33ecab0](https://github.com/vimma-browser/vimma/commit/33ecab02f0ce1d5a684bbc921bfb55315cb0345f)), closes [#554](https://github.com/vimma-browser/vimma/issues/554)
+* **private:** a close read during the swap back keeps the record its rescue needs ([#571](https://github.com/vimma-browser/vimma/issues/571)) ([8fbcd35](https://github.com/vimma-browser/vimma/commit/8fbcd3591ee7bf49ce9b3be8dd867d3f9435054b)), closes [#570](https://github.com/vimma-browser/vimma/issues/570)
+* **release:** start the homebrew tap update when a release is published ([#553](https://github.com/vimma-browser/vimma/issues/553)) ([49061ab](https://github.com/vimma-browser/vimma/commit/49061ab31b59bf44498c1fb05facf365f1f577c0))
+* **update-publish:** give the manifest push's rebase a git identity ([7afddf3](https://github.com/vimma-browser/vimma/commit/7afddf3ed8d4ae5a984ba22fd936e185c7b2b446)), closes [#530](https://github.com/vimma-browser/vimma/issues/530)
+* **update-publish:** give the manifest push's rebase a git identity ([#558](https://github.com/vimma-browser/vimma/issues/558)) ([7afddf3](https://github.com/vimma-browser/vimma/commit/7afddf3ed8d4ae5a984ba22fd936e185c7b2b446))
+* **updates:** a release no longer offers itself as an update ([#565](https://github.com/vimma-browser/vimma/issues/565)) ([ab0525b](https://github.com/vimma-browser/vimma/commit/ab0525b62bb8ee695268c7d237283d00d835cb63)), closes [#563](https://github.com/vimma-browser/vimma/issues/563)
+* **workspaces:** a failed rebuild keeps the window's tabs ([#547](https://github.com/vimma-browser/vimma/issues/547)) ([273946d](https://github.com/vimma-browser/vimma/commit/273946d0e3dec010610a0aa16b1aae11c8135dcf)), closes [#546](https://github.com/vimma-browser/vimma/issues/546)
 
 ## [0.1.10](https://github.com/vimma-browser/vimma/compare/v0.1.9...v0.1.10) · Firefox 159.0 (2026-10-27)
 

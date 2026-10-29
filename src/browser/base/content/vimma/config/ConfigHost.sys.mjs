@@ -143,6 +143,7 @@ function apply(next, text) {
   PrivateSwap.configure(config.private.placement);
   WorkspaceRouter.setRoutes(config.routes);
   McpHost.configure(config.mcp);
+  McpHost.configureAgent(config.agent);
   if (config.ui.toolbar !== appliedToolbar) {
     appliedToolbar = config.ui.toolbar;
     Toolbar.setHidden(config.ui.toolbar === "hidden");
@@ -203,7 +204,7 @@ SearchHost.onErrors = showErrors;
  */
 function use(path, text) {
   const previous = active;
-  const r = reloadConfig(active, text);
+  const r = reloadConfig(active, text, { mac: Services.appinfo.OS === "Darwin" });
   active = r.active;
   if (active !== previous) apply(active, text);
   // A file with errors never turns update checks on (docs/specs/m6a-updater.md decision 31).
@@ -497,7 +498,7 @@ export const ConfigHost = {
     } catch (e) {
       if (!notFound(e)) return `cannot read ${path}`;
     }
-    const r = appendRouteText(text, rule);
+    const r = appendRouteText(text, rule, { mac: Services.appinfo.OS === "Darwin" });
     if ("error" in r) return r.error;
     try {
       if ("create" in r) {

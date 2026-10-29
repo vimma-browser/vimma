@@ -12,7 +12,7 @@
 //
 // `f` lists the tab's visible links with labels (D12, D16; security.md M21), collected under the
 // tab's own key so the user's hint mode is left alone, and kept per tab and connection, bound to
-// the document they were collected from, for AGENT_LINKS.ttlMs. `f<label>` follows one as a load
+// the document they were collected from (for AGENT_LINKS.ttlMs at most; core's labelsCurrent). `f<label>` follows one as a load
 // of its href with the page's own principal, in the same tab: no click event fires, so no page
 // handler runs (M18). A link to another site is asked as a `vimma_open` of its URL first (D18).
 // `vimma_elements` (ctl/AgentAct.sys.mjs, docs/specs/mcp-forms.md F3) keeps its labels in the
@@ -20,12 +20,14 @@
 // an element list only while the link is still in the page (F4). `vimma_activate` clicks, and
 // `vimma_fill` fills, only an element of a `vimma_elements` list (`element`).
 
-import { AGENT_LINKS, agentLinkList, labelAgentLinks } from "../core/agent-keys.mjs";
+import { AGENT_LINKS, agentLinkList, labelAgentLinks, labelsCurrent } from "../core/agent-keys.mjs";
+import { AGENT_ELEMENTS } from "../core/agent-act.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
 import { urlRoot, urlUp } from "../core/pageurl.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
+import { AgentAct } from "./AgentAct.sys.mjs";
 import { AgentShot } from "./AgentShot.sys.mjs";
 
 /** @import { AgentStep } from "../core/agent-keys.mjs" */
@@ -179,20 +181,21 @@ function pageMark(browser) {
 }
 
 /**
- * Waits until the page left `mark` and finished loading, or until `until`. An initial
- * about:blank (a process switch makes one in the tab) is a step on the way, not the page.
+ * Waits until the page left `mark` and is ready (AgentAct.ready: loaded, or past its
+ * DOMContentLoaded and quiet a moment; issue #579), or until `until`. An initial about:blank
+ * (a process switch makes one in the tab) is a step on the way, not the page.
  * @param {Browser} browser @param {{ doc: number, url: string }} mark @param {number} until
- * @returns {Promise<boolean>} whether it loaded in time
+ * @returns {Promise<boolean>} whether it was ready in time
  */
-async function loaded(browser, mark, until) {
-  for (;;) {
-    const now = pageMark(browser);
-    const moved = now.doc !== mark.doc || now.url !== mark.url;
-    const initial = browser.browsingContext?.currentWindowGlobal?.isInitialDocument ?? true;
-    if (moved && !initial && !browser.webProgress?.isLoadingDocument) return true;
-    if (Date.now() > until) return false;
-    await sleep(50);
-  }
+function loaded(browser, mark, until) {
+  return AgentAct.ready(
+    browser,
+    (/** @type {any} */ wg) => {
+      const now = pageMark(browser);
+      return (now.doc !== mark.doc || now.url !== mark.url) && !wg.isInitialDocument;
+    },
+    until,
+  );
 }
 
 /**
@@ -235,8 +238,10 @@ function findOnce(browser, query, again, backward) {
 export const AgentDrive = {
   /** Test-only: called after each step with the number of steps done. */
   _onStep: /** @type {((n: number) => void | Promise<void>) | null} */ (null),
-  /** Test-only: how long labels live, in place of AGENT_LINKS.ttlMs. */
+  /** Test-only: how long `f`'s labels live, in place of AGENT_LINKS.ttlMs. */
   _linkTtlMs: /** @type {number | null} */ (null),
+  /** Test-only: how long a list's labels are drawn, in place of AGENT_ELEMENTS.drawMs. */
+  _drawMs: /** @type {number | null} */ (null),
   /** Test-only: the wait for the page a step loaded. */
   _loaded: loaded,
 
@@ -265,34 +270,29 @@ export const AgentDrive = {
 
   /**
    * The connection's labels for the page now in `browser`, while they are current: collected on
-   * this document and URL less than their lifetime ago (D12; mcp-forms F3); else null.
+   * this document and URL, and an `f` list less than its lifetime ago (labelsCurrent); else null.
    * @param {unknown} conn @param {Browser} browser
    * @returns {LinkSession | null}
    */
   current(conn, browser) {
     const session = sessions.get(conn)?.get(browser);
-    const ttl = this._linkTtlMs ?? AGENT_LINKS.ttlMs;
-    const now = pageMark(browser);
-    if (
-      !session ||
-      Date.now() - session.at >= ttl ||
-      now.doc !== session.mark.doc ||
-      now.url !== session.mark.url
-    ) {
-      return null;
-    }
-    return session;
+    const page = { now: Date.now(), mark: pageMark(browser) };
+    return labelsCurrent(session, page, this._linkTtlMs ?? AGENT_LINKS.ttlMs)
+      ? /** @type {LinkSession} */ (session)
+      : null;
   },
 
   /**
    * The labels of the connection's current `vimma_elements` list of the page now in `browser`,
    * to draw on a screenshot (mcp-forms F20), with the top frame's scroll position when it was
-   * listed; null when there is none: `f`'s link list, an old list, or one of another page.
+   * listed; null when there is none: `f`'s link list, a list of another page, or one older than
+   * AGENT_ELEMENTS.drawMs, whose rects the page may have moved since.
    * @param {unknown} conn @param {Browser} browser
    */
   elementLabels(conn, browser) {
     const session = this.current(conn, browser);
     if (session?.source !== "elements") return null;
+    if (Date.now() - session.at >= (this._drawMs ?? AGENT_ELEMENTS.drawMs)) return null;
     return { byLabel: session.byLabel, scroll: session.scroll ?? null };
   },
 
@@ -354,11 +354,8 @@ export const AgentDrive = {
     if (!labels) sessions.set(conn, (labels = new WeakMap()));
     const ttl = this._linkTtlMs ?? AGENT_LINKS.ttlMs;
     /** Whether `session` still names the links of the page in the tab (D12). */
-    const current = (/** @type {LinkSession | undefined} */ session) => {
-      if (!session || Date.now() - session.at >= ttl) return false;
-      const now = pageMark(browser);
-      return now.doc === session.mark.doc && now.url === session.mark.url;
-    };
+    const current = (/** @type {LinkSession | undefined} */ session) =>
+      labelsCurrent(session, { now: Date.now(), mark: pageMark(browser) }, ttl);
 
     /** Why the call must stop now, or null. @returns {KeysResult["stopped"] | null} */
     const halt = () =>

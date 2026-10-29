@@ -11,6 +11,7 @@
 use crate::json::Value;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::time::Duration;
 
 /// The newest protocol version this client speaks; it falls back to 1 for an older Vimma.
 pub const PROTOCOL: u64 = 2;
@@ -36,6 +37,9 @@ pub const ERROR_CODES: [&str; 11] = [
     "role-off",
     "denied",
 ];
+/// vimma-core's `MAX_RETRY_AFTER`: the longest wait a used-up rate names, in ms (one minute,
+/// the window of every per-connection rate).
+pub const MAX_RETRY_AFTER: u64 = 60_000;
 /// vimma-core's `DENY_REASONS`: why an agent request was denied.
 pub const DENY_REASONS: [&str; 7] = [
     "user",
@@ -124,6 +128,8 @@ pub struct ErrorBody {
     pub message: String,
     /// Why, for `denied` (protocol 2); `None` for every other code.
     pub reason: Option<String>,
+    /// For a `busy` denial from a used-up rate: how long until the next call is allowed.
+    pub retry_after: Option<Duration>,
 }
 
 /// A decoded response envelope; `id` is `None` for handshake errors.
@@ -344,7 +350,11 @@ pub fn decode_response(value: &Value) -> Result<Response, DecodeError> {
         (true, _, _) => Err(fail("ok: true needs result and no error")),
         (false, None, Some(error)) => {
             let error = as_object(error, "error")?;
-            only_fields(error, &["code", "message", "reason"], "error.")?;
+            only_fields(
+                error,
+                &["code", "message", "reason", "retryAfter"],
+                "error.",
+            )?;
             let code = string_field(error, "code")
                 .ok()
                 .filter(|code| ERROR_CODES.contains(code))
@@ -372,12 +382,28 @@ pub fn decode_response(value: &Value) -> Result<Response, DecodeError> {
                 (_, Some(_)) => return Err(fail("error.reason is only for denied")),
                 (_, None) => None,
             };
+            // A used-up rate says when the next call is allowed (issue #592).
+            let retry_after = match error.get("retryAfter") {
+                None => None,
+                Some(_) if code != "denied" || reason.as_deref() != Some("busy") => {
+                    return Err(fail("error.retryAfter is only for a busy denial"));
+                }
+                Some(ms) => match ms.as_u64() {
+                    Some(ms @ 1..=MAX_RETRY_AFTER) => Some(Duration::from_millis(ms)),
+                    _ => {
+                        return Err(fail(&format!(
+                            "error.retryAfter must be a whole number from 1 to {MAX_RETRY_AFTER}"
+                        )));
+                    }
+                },
+            };
             Ok(Response::Err {
                 id,
                 error: ErrorBody {
                     code: code.to_string(),
                     message: message.to_string(),
                     reason,
+                    retry_after,
                 },
             })
         }
@@ -911,6 +937,7 @@ mod tests {
                     code: "unauthorized".into(),
                     message: "no".into(),
                     reason: None,
+                    retry_after: None,
                 }
             })
         );
@@ -1152,6 +1179,7 @@ mod tests {
                     code: "denied".into(),
                     message: "no".into(),
                     reason: Some("timeout".into()),
+                    retry_after: None,
                 },
             })
         );
@@ -1163,5 +1191,37 @@ mod tests {
         );
         assert!(decode(r#"{"type":"response","id":2,"ok":false,"error":{"code":"denied","message":"no","reason":"bored"}}"#).is_err());
         assert!(decode(r#"{"type":"response","id":2,"ok":false,"error":{"code":"failed","message":"no","reason":"user"}}"#).is_err());
+    }
+
+    // Issue #592: a used-up rate is a busy denial with the milliseconds until the next call.
+    #[test]
+    fn a_busy_denial_may_say_when_the_next_call_is_allowed() {
+        let decode = |text: &str| decode_response(&parse(text).unwrap());
+        let error = |rest: &str| {
+            format!(
+                r#"{{"type":"response","id":2,"ok":false,"error":{{"code":"denied","message":"too many",{rest}}}}}"#
+            )
+        };
+        assert_eq!(
+            decode(&error(r#""reason":"busy","retryAfter":12000"#)),
+            Ok(Response::Err {
+                id: Some(2),
+                error: ErrorBody {
+                    code: "denied".into(),
+                    message: "too many".into(),
+                    reason: Some("busy".into()),
+                    retry_after: Some(Duration::from_secs(12)),
+                },
+            })
+        );
+        for bad in ["0", "-1", "1.5", "60001", r#""5""#, "null"] {
+            let text = error(&format!(r#""reason":"busy","retryAfter":{bad}"#));
+            assert!(decode(&text).is_err(), "{bad}");
+        }
+        assert!(decode(&error(r#""reason":"user","retryAfter":5"#)).is_err());
+        assert!(
+            decode(r#"{"type":"response","id":2,"ok":false,"error":{"code":"failed","message":"m","retryAfter":5}}"#)
+                .is_err()
+        );
     }
 }

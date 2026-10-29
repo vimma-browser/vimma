@@ -319,6 +319,8 @@ function checkpointLine(q, who) {
       parts.push(...sentParts(sent, "  "));
     }
   }
+  // Issue #584: its yes also returns the page's element list after the step.
+  if (w.elements === true) parts.push({ text: ", then vimma_elements" });
   return { parts, hint: pay ? "y pay · n stop" : "y send it · n stop" };
 }
 
@@ -393,7 +395,9 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
   /** @type {Part[]} */
   let parts;
   // mcp-grants G3: a grant covers every tool of the connection; its notice says what still asks.
-  let hint = `y once · ${grantMinutes}a ${grantMinutes} min · n deny · x mute`;
+  // mcp-session-grants S1: grant_minutes 0, the default, makes a bare `a` last the connection.
+  const grant = grantMinutes ? `${grantMinutes}a ${grantMinutes} min` : "a until it quits";
+  let hint = `y once · ${grant} · n deny · x mute`;
   const w = q.what ?? {};
   if (q.tool === FULL_CONTROL) {
     // The code the client printed on its own terminal (security.md S13): the user answers
@@ -473,6 +477,8 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
     } else {
       parts = [...head, ...tabParts(w)];
     }
+    // Issue #584: a step that returns the page's element list asks for that list too.
+    if (w.elements === true) parts.push({ text: ", then vimma_elements" });
   }
   return { parts, hint, label: parts.map((p) => p.text).join("") };
 }
@@ -525,7 +531,8 @@ export function grantNotice(q, { minutes, capped }, released = 0) {
     ? ` · it also ran ${released} waiting call${released === 1 ? "" : "s"} (:mcp log)`
     : "";
   return (
-    `${clientName(q.label)} may use the agent workspace for ${minutes} min${cap}; ` +
+    `${clientName(q.label)} may use the agent workspace ` +
+    `${minutes === Infinity ? "until it quits" : `for ${minutes} min${cap}`}; ` +
     `${STILL_ASKS} (ctrl+b shift+a ends it)${also}`
   );
 }
@@ -542,6 +549,17 @@ const fieldCount = (fields) => {
  */
 export function ranNotice(q, until, now) {
   const left = Math.max(1, Math.ceil((until - now) / 60_000));
+  const grant = `(grant${until === Infinity ? "" : `, ${left}m left`})`;
+  return `${clientName(q.label)} ${stepText(q)} ${grant}`;
+}
+
+/**
+ * What a call did, in the words of its notice (`clicked button "Lisää" in "Maito"`): the notice
+ * after a call under a grant, and a step of the built-in agent's transcript
+ * (docs/specs/builtin-agent.md Behaviour 12).
+ * @param {{ tool: string, what: Record<string, any> }} q
+ */
+export function stepText(q) {
   const w = q.what ?? {};
   const did =
     q.tool === "vimma_read_page"
@@ -570,7 +588,26 @@ export function ranNotice(q, until, now) {
                           : q.tool === DOWNLOAD_TOOL
                             ? `downloads "${cutTitle(w.name)}"`
                             : `used ${q.tool}`;
-  return `${clientName(q.label)} ${did} (grant, ${left}m left)`;
+  const listed = w.elements === true ? " and listed the buttons and fields after it" : "";
+  return `${did}${listed}`;
+}
+
+/**
+ * A checkpoint as the built-in agent's transcript keeps it once asked
+ * (docs/specs/builtin-agent.md Behaviour 12): `▲ asked to pay on shop.example · the page says
+ * "Total 42,90 €"`, or `▲ asked to send a form to shop.example`.
+ * @param {{ what: Record<string, any> }} q
+ */
+export function checkpointText(q) {
+  const w = q.what ?? {};
+  if (w.pay && typeof w.pay === "object") {
+    const total = truncate(pageClean(w.pay.total), TOTAL_COLUMNS, "end");
+    return `${CHECKPOINT_GLYPH} asked to pay on ${paySite(w.pay)}${
+      total ? ` · the page says "${total}"` : ""
+    }`;
+  }
+  const to = clean(w.submit?.host) || displayUrl(clean(w.submit?.action));
+  return `${CHECKPOINT_GLYPH} asked to send a form to ${to}`;
 }
 
 /**

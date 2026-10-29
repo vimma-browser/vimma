@@ -27,14 +27,14 @@ const { VimmaControl } = ChromeUtils.importESModule(
 const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
 );
-const { AgentAct } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
-);
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+const { AgentDrive } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs",
 );
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
@@ -56,7 +56,6 @@ const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
 registerCleanupFunction(async () => {
-  AgentAct._settleMs = null;
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   await VimmaControl.settled();
@@ -100,7 +99,7 @@ const clients = [];
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
-  AgentAct._settleMs = 300;
+  AgentDrive._linkTtlMs = null;
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -115,7 +114,12 @@ async function agentClient(name = "example-agent") {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
   clients.push(c);
   await c.handshake({ protocol: 2, role: "agent" });
-  await c.call("agent-hello", { client: { name } });
+  // As vimma-ctl of this Vimma's version says it in its hello: a rate refusal's retryAfter
+  // goes only to a client that new (issue #592).
+  const { AppConstants } = ChromeUtils.importESModule(
+    "resource://gre/modules/AppConstants.sys.mjs",
+  );
+  await c.call("agent-hello", { client: { name }, ctl: AppConstants.MOZ_APP_VERSION_DISPLAY });
   return c;
 }
 
@@ -169,11 +173,6 @@ const seen = (tab) =>
     gesture: content.document.hasValidTransientUserGestureActivation,
     title: content.document.title,
   }));
-
-add_task(async function setup() {
-  // The wait for a page a click may start: short here, so a test of many clicks stays quick.
-  AgentAct._settleMs = 300;
-});
 
 addTidyTask(async function test_activate_clicks_a_button_in_a_background_tab() {
   await mcp(true);
@@ -319,6 +318,45 @@ addTidyTask(async function test_activate_follows_a_same_site_link_as_an_open() {
   await mcp(false);
 });
 
+addTidyTask(async function test_element_labels_last_while_their_element_is_there() {
+  // Issue #591: a slow model takes longer than f's link lifetime between listing and clicking.
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // As if f's lifetime had passed since the list: an element list has none of its own (F3).
+  AgentDrive._linkTtlMs = 0;
+  const r = await activate(c, tab, by["Add to list"]);
+  Assert.ok(r.ok, `a label of the same page and element still clicks: ${r.error?.message}`);
+  // What ends a label is its element leaving the page (F4), not the time.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
+    content.document.getElementById("ask").remove(),
+  );
+  const gone = await activate(c, tab, by.Remove, null);
+  Assert.equal(gone.error?.message, "that element is gone: call vimma_elements again");
+  // So is one the page moved into a document of its own frame: still connected, but no longer
+  // on the page the label was listed on.
+  Services.prefs.setIntPref(ASK_TIMEOUT, 3000);
+  await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
+    const frame = content.document.createElement("iframe");
+    frame.srcdoc = "<p>frame</p>";
+    const ready = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    content.document.body.append(frame);
+    await ready;
+    const doc = frame.contentDocument;
+    doc.body.append(doc.adoptNode(content.document.getElementById("add")));
+  });
+  const moved = await activate(c, tab, by["Add to list"], null);
+  Assert.equal(
+    moved.error?.message,
+    "that element is gone: call vimma_elements again",
+    "an element adopted into another document is gone",
+  );
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 addTidyTask(async function test_activate_reports_a_dialog() {
   await mcp(true);
   const tab = await openAgentTab();
@@ -399,6 +437,14 @@ addTidyTask(async function test_activate_under_a_grant_notice_log_and_rate() {
   }
   Assert.equal(busy?.i, 28, "the 31st click in a minute is refused");
   Assert.equal(busy?.x.error.reason, "busy", "as busy");
+  // Issue #592: it names the limit and when the next call is allowed.
+  Assert.equal(
+    busy?.x.error.message,
+    "too many vimma_activate and vimma_fill calls from this agent in the last minute (at most 30)",
+    "naming the limit it hit",
+  );
+  const wait = busy?.x.error.retryAfter;
+  Assert.ok(wait >= 1 && wait <= 60_000, `and the wait for the next call: ${wait} ms`);
   Assert.equal(AgentGate.log[0].outcome, "busy", "and logged");
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);

@@ -9,6 +9,7 @@ import {
   agentLinkLines,
   agentLinkList,
   labelAgentLinks,
+  labelsCurrent,
   parseAgentKeys,
   shownKeys,
 } from "../src/agent-keys.mjs";
@@ -362,5 +363,39 @@ describe("the keys as the question shows them (D14)", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(shownKeys(r.steps)).toBe('3j /"pri\\"cing"⏎ <C-d> gg');
+  });
+});
+
+describe("how long labels last (D12; mcp-forms F3; issue #591)", () => {
+  const mark = { doc: 7, url: "https://example.com/a" };
+  const at = 1_000_000;
+  const later = (ms) => ({ now: at + ms, mark });
+
+  test("f's links last AGENT_LINKS.ttlMs on their page", () => {
+    const links = { mark, at, source: "links" };
+    expect(labelsCurrent(links, later(AGENT_LINKS.ttlMs - 1))).toBe(true);
+    expect(labelsCurrent(links, later(AGENT_LINKS.ttlMs))).toBe(false);
+  });
+
+  test("an element list's labels last as long as their page, however slow the agent", () => {
+    const elements = { mark, at, source: "elements" };
+    expect(labelsCurrent(elements, later(AGENT_LINKS.ttlMs * 100))).toBe(true);
+  });
+
+  test("another document or URL ends either list, and no list is never current", () => {
+    for (const source of ["links", "elements"]) {
+      const session = { mark, at, source };
+      expect(labelsCurrent(session, { now: at, mark: { ...mark, doc: 8 } })).toBe(false);
+      expect(labelsCurrent(session, { now: at, mark: { ...mark, url: `${mark.url}#b` } })).toBe(
+        false,
+      );
+    }
+    expect(labelsCurrent(null, later(0))).toBe(false);
+    expect(labelsCurrent(undefined, later(0))).toBe(false);
+  });
+
+  test("a shorter link lifetime can be given (tests)", () => {
+    expect(labelsCurrent({ mark, at, source: "links" }, later(0), 0)).toBe(false);
+    expect(labelsCurrent({ mark, at, source: "elements" }, later(0), 0)).toBe(true);
   });
 });

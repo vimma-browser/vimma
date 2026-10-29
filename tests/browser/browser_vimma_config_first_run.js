@@ -92,7 +92,8 @@ add_task(async function a_missing_file_is_created_from_the_template_once() {
   Assert.deepEqual(ConfigHost.errors, [], "a valid config");
   Assert.deepEqual(
     bindingTable(ConfigHost.keymap),
-    bindingTable(compileKeymap()),
+    // The platform's defaults: macOS has its own (docs/specs/macos-build.md decision 29).
+    bindingTable(compileKeymap({}, { mac: Services.appinfo.OS === "Darwin" })),
     "that changes no binding",
   );
   await t.restore();

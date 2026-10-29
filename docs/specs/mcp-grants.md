@@ -49,10 +49,12 @@ changed) are already asked separately, whatever is granted.
    item 3, run at once, each a `:mcp log` row of a call under a grant, and the grant's notice
    ends `· it also ran 2 waiting calls (:mcp log)`, since the user answered only the one on the
    line. They get no notice each, because notices replace each other and the grant's would be
-   gone at once.
+   gone at once. (Since changed: a bare `a` grants until the agent quits, with no time limit, and
+   a count gives minutes; [mcp-session-grants](mcp-session-grants.md) S1, S2.)
 2. **Other connections still ask.** A grant belongs to one connection (one `vimma-ctl mcp`
    process, one agent session), as in vimma-mcp 21; another agent, or the same agent after a
-   reconnect, asks again.
+   reconnect, asks again. (Since changed: a reconnect of the same `vimma-ctl mcp` process within
+   2 minutes keeps its grant; [mcp-session-grants](mcp-session-grants.md) S3.)
 3. **What still asks under a grant.** With only `y` and `n`, and a yes never makes a grant:
    - a form submission (mcp-forms F15), with its destination;
    - `vimma_show` (mcp-drive D4), which switches the user's view;
@@ -67,7 +69,8 @@ changed) are already asked separately, whatever is granted.
    (Since changed: the hint says `all but forms and paying`; [mcp-checkpoints](mcp-checkpoints.md)
    Behaviour 8. Since changed again: the hint is `y once · 10a 10 min · n deny · x mute`, and the
    grant's notice (item 5) alone says what still asks, so that a usual question fits one line;
-   mcp-checkpoints Behaviour 8.)
+   mcp-checkpoints Behaviour 8. Since changed again: with `grant_minutes = 0`, the default, the
+   hint is `y once · a until it quits · n deny · x mute`; [mcp-session-grants](mcp-session-grants.md) Behaviour 1.)
 5. **The grant's notice names the scope and the way out.**
    `claude-code may use the agent workspace for 10 min; sending a form still asks (ctrl+b shift+a ends it)`.
    (Since changed: the notice says `sending a form or paying still asks`; mcp-checkpoints

@@ -172,6 +172,39 @@ const keys = {
   addon_picker: ["prefix+e"],
 };
 
+/**
+ * The default keys that differ on macOS (docs/specs/macos-build.md decision 29): Firefox's macOS
+ * chords where Linux's are `alt` chords, since Option types characters on a Mac (Option+1 is
+ * `¡`) or moves the caret by word (Option+left), so those keydowns never reach a binding.
+ * engine/browser/base/content/browser-sets.inc.xhtml, Firefox 159: goBackKb / goForwardKb are
+ * accel+arrow on XP_MACOSX (lines 228-231), goBackKb2 / goForwardKb2 accel+[ and accel+] on
+ * XP_UNIX, macOS included (232-235), focusURLBar accel+L without the alt+D twin (146-151), and
+ * key_selectTab1..8 / key_selectLastTab accel+1..9 outside XP_GNOME (382-396). goHome stays
+ * alt+home (236): Option+Home types nothing. Every other key is Linux's on both.
+ * @type {Readonly<Record<string, string[]>>}
+ */
+export const MAC_KEYS = Object.freeze({
+  ...Object.fromEntries(
+    Array.from({ length: 8 }, (_, i) => [
+      `select_tab_${i + 1}`,
+      [`prefix+${i + 1}`, `meta+${i + 1}`],
+    ]),
+  ),
+  select_last_tab: ["meta+9"],
+  history_back: ["meta+left", "meta+["],
+  history_forward: ["meta+right", "meta+]"],
+  focus_urlbar: ["ctrl+l", "meta+l"],
+});
+
+/**
+ * The default `[keys]` of a platform: Linux's, with MAC_KEYS on macOS.
+ * @param {{ mac?: boolean }} [options]
+ * @returns {Readonly<Record<string, string | string[]>>}
+ */
+export function defaultKeys({ mac = false } = {}) {
+  return mac ? MAC_MERGED : keys;
+}
+
 const modal = {
   leader: " ",
   timeout_ms: 800,
@@ -356,6 +389,9 @@ const modal = {
   },
 };
 
+/** keys with MAC_KEYS over it, in keys' order. */
+const MAC_MERGED = Object.freeze({ ...keys, ...MAC_KEYS });
+
 /** Values a `[workspaces.<name>]` table takes for keys it leaves out. */
 export const WORKSPACE_DEFAULTS = Object.freeze({ color: "gray", icon: "circle", autofill: true });
 
@@ -388,7 +424,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   mcp: {
     workspace: "agent",
     ask_timeout: 50,
-    grant_minutes: 10,
+    grant_minutes: 0,
     grant_max_minutes: 480,
     max_read_chars: 200000,
     notify: true,
@@ -420,6 +456,12 @@ export function formatDefaultsToml() {
   for (const [name, value] of Object.entries(keys)) {
     const v = Array.isArray(value) ? `[${value.map(tomlString).join(", ")}]` : tomlString(value);
     lines.push(`${tomlKey(name)} = ${v}`);
+  }
+  lines.push(
+    "# On macOS these default to Firefox's macOS keys instead, since Option types characters:",
+  );
+  for (const [name, value] of Object.entries(MAC_KEYS)) {
+    lines.push(`# ${tomlKey(name)} = [${value.map(tomlString).join(", ")}]`);
   }
   lines.push(
     "",
@@ -536,9 +578,10 @@ function mcpLines() {
   const m = /** @type {Required<NonNullable<UserConfig["mcp"]>>} */ (DEFAULT_CONFIG.mcp);
   return [
     "# Local AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and",
-    "# every request asks you first. Left out, :mcp on|off sets enabled and remembers it; set",
-    "# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300); a bare `a`",
-    "# grants grant_minutes, a count before it up to grant_max_minutes (at most 1440).",
+    "# each asks you first. Left out, :mcp on|off sets enabled and remembers it; set",
+    "# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300). A bare `a`",
+    "# allows the agent until it quits (grant_minutes = 0), or for grant_minutes; a count before",
+    "# it allows that many minutes, up to grant_max_minutes (at most 1440).",
     "[mcp]",
     "# enabled = false",
     `workspace = ${tomlString(m.workspace)}`,

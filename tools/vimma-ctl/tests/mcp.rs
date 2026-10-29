@@ -530,8 +530,9 @@ fn stdin_eof_exits_0_and_closes_the_socket() {
     vimma.wait_for("the socket to close", |s| s.closed == 1);
 }
 
-// The connection dropped while a call waited: a tool error, and the next call reconnects as a
-// new connection (no grants carried over).
+// The connection dropped while a call waited: a tool error, and the next call reconnects. Both
+// hellos carry the same session id, so Vimma gives the new connection the grant the dropped one
+// held (docs/specs/mcp-session-grants.md S3, S4).
 #[test]
 fn a_dropped_connection_fails_the_waiting_call_and_the_next_call_reconnects() {
     let vimma = FakeVimma::start(Box::new(|req| match str_of(req, "command") {
@@ -558,7 +559,41 @@ fn a_dropped_connection_fails_the_waiting_call_and_the_next_call_reconnects() {
     let r = mcp.call(3, "vimma_tabs", "{}");
     assert!(!is_error(&r), "{r}");
     assert_eq!(vimma.seen().hellos.len(), 2);
+    let sessions: Vec<String> = vimma
+        .seen()
+        .requests
+        .iter()
+        .filter(|r| str_of(r, "command") == "agent-hello")
+        .map(|r| str_of(r.get("args").unwrap(), "session").to_string())
+        .collect();
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(sessions[0], sessions[1]);
     mcp.finish();
+}
+
+// mcp-session-grants S4: the session id is random per process, 64 lowercase hex characters.
+#[test]
+fn each_process_has_its_own_session_id() {
+    let session = || {
+        let vimma = FakeVimma::answering(r#"{"tabs":[]}"#);
+        let mut mcp = Mcp::start(&vimma.profile);
+        mcp.send(INIT);
+        mcp.next();
+        mcp.call(2, "vimma_tabs", "{}");
+        mcp.finish();
+        let hello = &vimma.seen().requests[0];
+        str_of(hello.get("args").unwrap(), "session").to_string()
+    };
+    let (a, b) = (session(), session());
+    for s in [&a, &b] {
+        assert_eq!(s.len(), 64, "{s}");
+        assert!(
+            s.bytes()
+                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)),
+            "{s}"
+        );
+    }
+    assert_ne!(a, b);
 }
 
 // MCP notifications/cancelled withdraws the question in Vimma (decision 17): agent-cancel with

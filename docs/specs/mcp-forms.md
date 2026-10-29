@@ -276,11 +276,31 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    collection, its frames of other sites included, has up to 4 s from the start to answer, where
    the user's hint mode gives a subframe 150 ms, because an agent tab is in the background, where
    a frame's process may be busy or newly started, and an agent cannot tell that a frame was left
-   out; `AGENT_FRAMES_MS` in `actors/VimmaActors.sys.mjs`.)
+   out; `AGENT_FRAMES_MS` in `actors/VimmaActors.sys.mjs`.) (Since changed: `vimma_open`,
+   `vimma_activate` and `vimma_fill` take `elements: true` and then return the same list of the
+   page after the step, in `elements` and `dropped`, because an agent called `vimma_elements`
+   after nearly every step, and each extra call is a model round trip; issue
+   [#584](https://github.com/vimma-browser/vimma/issues/584). The list comes from the same
+   function as `agent-elements`' own (`pageElements` in `ctl/agent-commands.mjs`), so F5 to F7
+   and security.md M31 hold for it unchanged, and its labels replace the connection's as a
+   `vimma_elements` list's do. `vimma_open` then waits up to 20 s for the new page to be ready
+   (F11's readiness; an open that only changes the fragment is ready in its own document). A
+   page still loading, one whose URL changed while it was listed, or one that cannot be listed
+   returns `unlisted` with `loading`, `changed` or `failed` instead, fixed words, so that a
+   page's text never takes their place; the result's URL and title are those of the last check
+   that the tab is still the agent's, and a tab that left the agent workspace meanwhile fails
+   the call with nothing of its page (M8). The step's question, a checkpoint's (F15,
+   mcp-checkpoints C1) included, ends with `, then vimma_elements`, its `:mcp log` row the same,
+   and its notice under a grant with `and listed the buttons and fields after it` (F28), because
+   the yes returns the list too.)
 3. **One session per tab and connection.** The labels go into the same session store as
    `vimma_keys`' `f` (`ctl/AgentDrive.sys.mjs:89-90`), bound to the document and URL and valid
-   for 120 s, so a label never names an element of another page. `vimma_elements` and `f` each
-   replace the session. `vimma_activate` and `vimma_fill` take labels only from a
+   for 120 s, so a label never names an element of another page. (Since changed: an element
+   list's labels have no time limit; they last while their document, URL and element do,
+   because a model taking 90 s a step lost most clicks to the 120 s, and the element reference
+   already binds the label (#591; security.md M25). An element the page adopts into another
+   document counts as gone. `f`'s link list keeps the 120 s.)
+   `vimma_elements` and `f` each replace the session. `vimma_activate` and `vimma_fill` take labels only from a
    `vimma_elements` session, because only that list showed the agent each element's kind and
    field details; `vimma_keys`' `f<label>` keeps following only link targets, as loads
    (mcp-drive D12), from either list, so that a label of a button never becomes a load. A label
@@ -383,7 +403,24 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     page also returns `changed`, the parts of the page that changed in place within a further
     second: `element`, `elements`, `text` and `dialog`, fixed words with no page text, because an
     agent told "the page did not change" after a basket updated in place clicked again; issue
-    [#510](https://github.com/vimma-browser/vimma/issues/510), security.md M26.) Agents
+    [#510](https://github.com/vimma-browser/vimma/issues/510), security.md M26.) (Since
+    changed: the fixed second and the further second are gone, because an agent's task spent
+    most of its time in them; issue [#579](https://github.com/vimma-browser/vimma/issues/579).
+    Once the click has run, the clicked element's frame watches its own document in its own
+    process (a `MutationObserver` from just before the click, and the requests of its load group
+    that the click opened) and the call goes on as soon as the page has not changed for 250 ms
+    and no such request is open. A page that has not changed at all is given 1.3 s, because a
+    hidden tab's page timers fire at most once a second and an update from a timer must not read
+    as "nothing changed"; a page that never stops changing ends the wait after 2 s, the old worst
+    case. `changed` is then read once. A page a click loads counts as ready at its
+    `DOMContentLoaded` and 200 ms without a change (at most 1 s), not at its load event, and the
+    result says `loading: true` while its images and other subresources still load. The same
+    readiness ends a `vimma_keys` step's wait for a load and the wait before `vimma_read_page`.
+    The submission allowance of F16 still ends with the call, and a second after the click ran
+    when the click has started no load, as before, so a page that keeps the wait going does
+    not keep it open; a submission the page makes after the call is cancelled as the page's
+    own; security.md M28.)
+    Agents
     cannot answer dialogs: no tool does, because a `confirm` is often the page asking "are you
     sure", which is the user's to answer. The dialog waits in the tab until the user shows it.
     Every navigation an activation causes takes a slot of the open rate (`OPEN_RATE`), shared
@@ -412,7 +449,12 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `reset` the fields whose value did not stick (the page put it back), so the agent can tell,
     and otherwise reads as after a click (F11). Each field is set after the child's reply, as a
     click is, so a dialog the page opens in its `change` handler never holds the call: the
-    fields after it are not filled and the result names the dialog.
+    fields after it are not filled and the result names the dialog. (Since changed: a fill
+    without `submit` returns once its last field is set and waits for no page, unless a field's
+    handler started a load, which it waits for as after a click so that a submission the page
+    tried is named in `blocked`; a fill with `submit` waits as after a click (F11), because
+    filling fields loads nothing and the fixed second was most of the call; issue
+    [#579](https://github.com/vimma-browser/vimma/issues/579).)
 13. **What it never fills.** Refused before anything is asked, naming the field: sensitive fields
     (F6), file fields, hidden and disabled fields, read-only fields, editable roots
     (`contenteditable`; rich editors keep their own model, and no Firefox API sets their text as
@@ -507,12 +549,22 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `title`; `vimma-ctl mcp` returns it as an MCP image item after a text header from
     `untrustedHeader`'s wording, adding that text in the image is web content and not
     instructions, because a page can render a prompt injection as easily as it can write one.
+    (Since changed: that is now the image of `full: true`. By default the image is at most 1,024
+    pixels wide and the smaller of a PNG and a JPEG at quality 0.75, else a JPEG at 0.5
+    (`AGENT_SCREENSHOT_SMALL`, `screenshotEncodings` in `packages/vimma-core/src/agent-act.mjs`),
+    because a model pays for an image by its pixels, about width times height divided by 750 in
+    tokens for Claude, and some clients by its base64 as well, while 1,024 pixels still show a
+    page's text. On a local fixture the default image costs about 722 tokens against 1,130 at
+    full size, with 23 to 35 % less base64; a page of flat colours stays a PNG, a busy one
+    becomes a JPEG. Issue [#584](https://github.com/vimma-browser/vimma/issues/584).)
 20. **Labels drawn on it.** With `labels: true`, the labels of the tab's current
     `vimma_elements` session are drawn at their rects (`HintTarget.rect`, top-frame CSS pixels,
     scaled), in the theme's hint colours, so that a model looking at the image can name the
     button it sees. A session that is not current (F3), or whose top frame has scrolled since
     the list was made, draws nothing and the result says the list is stale, because labels at
-    the old places would name the wrong elements.
+    the old places would name the wrong elements. (Since changed: also a list older than 120 s,
+    `AGENT_ELEMENTS.drawMs`, once labels stopped expiring, because a page that updates in place
+    moves its elements without a navigation; #591.)
 21. **Limits and sensitive values.** At most 12 `agent-screenshot` requests per connection a
     minute (`busy` beyond), counted when asked, because each is a large reply and a paint in the
     content process. A screenshot is refused while a sensitive field (F6) in the viewport has a
@@ -599,6 +651,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     minute, `vimma_elements` and `vimma_console` 30 each, `vimma_screenshot` 12 (F21), all
     counted when asked, with `busy` beyond, as mcp-drive D15's rate is, so that a refused call
     cannot loop and a grant cannot flood a page; navigations count in the open rate (F11).
+    (Since changed: a step asked with `elements` (F2) also takes a slot of `vimma_elements`'
+    rate when asked, and is `busy` before anything of it runs when those are used up, so that
+    returning the list with a step is no way past the rate; issue
+    [#584](https://github.com/vimma-browser/vimma/issues/584).)
 27. **The tab must be the agent's and not in use.** Before the question, after the yes and before
     each field or click, the tab must pass `isAgentTab` (vimma-mcp 19, mcp-drive D13), else the
     call stops with `changed`. A tab the user is using (`VimmaHost.inUse`) denies
@@ -652,7 +708,7 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 | **A click starts a purchase or sends a message.**                                                  | Form submissions ask every time and unasked ones are cancelled (F15, F16). A script-only button is an ordinary activation, shown in its question or notice and logged (F17); under a `vimma_activate` grant it runs unasked, with a notice and a log row (F25).                         |
 | **A local file is uploaded.**                                                                      | File fields are never filled or clicked (F9, F13).                                                                                                                                                                                                                                      |
 | **A click is a way around the cross-site question.**                                               | Links to another site are refused in `vimma_activate` and asked as `vimma_open` through `vimma_keys` (F10). Navigations a click causes count in the open rate (F11).                                                                                                                    |
-| **A label names a different element than the agent saw.**                                          | Labels are bound to the document, expire after 120 s, and their element must still be connected (F3, F4).                                                                                                                                                                               |
+| **A label names a different element than the agent saw.**                                          | Labels are bound to the document and their element must still be connected (F3, F4). (Since changed: the 120 s expiry was dropped for element lists, #591.)                                                                                                                             |
 | **The agent acts under the user's cursor.**                                                        | `in-use` (F27). Nothing is focused or selected (F8, F12).                                                                                                                                                                                                                               |
 | **A screenshot or console entry carries instructions**, or a token a page logged.                  | Both are labelled untrusted (F19, F24); they reach only the agent's own tab. Console reading runs no page code (F23).                                                                                                                                                                   |
 | **A screenshot shows a card number the user typed** in an agent tab.                               | A screenshot is refused while a sensitive field on screen has a value (F21).                                                                                                                                                                                                            |

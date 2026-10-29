@@ -160,6 +160,13 @@ jobs:
       - name: Import patches and our sources
         run: npm run import
 
+      # #563: buildid.h is written again when `./mach package` runs, and without a fixed
+      # MOZ_BUILD_DATE it takes the time then, so the packaged application.ini (what the update
+      # manifest offers) named a later build than the binary (what appinfo.appBuildID says) and
+      # the release offered itself as an update. One UTC time for every mach call of this job.
+      - name: Fix the build ID for every mach call
+        run: echo "MOZ_BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
+
       # As nightly.yml: mach must not see engine/'s empty repository, or --enable-bootstrap finds
       # none of Mozilla's toolchains (its taskgraph hashes only the files a repository tracks).
       - name: Build
@@ -197,6 +204,11 @@ jobs:
           (cd engine && ./mach package)
           rm -rf release && mkdir release
           cp "$MOZ_OBJDIR"/dist/vimma-*.en-US.linux-x86_64.tar.xz release/
+          # the build ID the binary runs with is the one its application.ini gives the manifest
+          unpacked=$(mktemp -d)
+          tar -xJf release/vimma-*.en-US.linux-x86_64.tar.xz -C "$unpacked"
+          node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"
+          rm -rf "$unpacked"
 
       - name: Delete the Safe Browsing key file
         if: always()
@@ -596,6 +608,9 @@ jobs:
       contents: read
     outputs:
       sha: ${{ steps.tag.outputs.sha }}
+      # The hash of the signed app's manifest, for macos-notarise: a job's outputs cannot be
+      # changed by another job, while an artifact can be replaced by any job of the run.
+      manifest_sha256: ${{ steps.package.outputs.manifest_sha256 }}
     steps:
       - name: Check the tag's form
         run: |
@@ -697,6 +712,13 @@ jobs:
       - name: Rust standard library for aarch64-apple-darwin
         run: rustup target add aarch64-apple-darwin
 
+      # As build (#563): buildid.h is written again when `./mach package` runs, and without a fixed
+      # MOZ_BUILD_DATE it takes the time then, so the packaged application.ini (what the update
+      # manifest offers) named a later build than the binary (what appinfo.appBuildID says) and
+      # the release offered itself as an update. One UTC time for every mach call of this job.
+      - name: Fix the build ID for every mach call
+        run: echo "MOZ_BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
+
       # SURFER_PLATFORM picks configs/macos/mozconfig (--target=aarch64-apple-darwin).
       - name: Build
         env:
@@ -712,12 +734,15 @@ jobs:
       # the Homebrew cask for that dmg. Their own SHA256SUMS-macos keeps SHA256SUMS, which the AUR
       # and the updater read, as it is.
       - name: Package, ad hoc sign and checksum the dmg
+        id: package
         env:
           RCODESIGN: ${{ runner.temp }}/rcodesign/rcodesign
           # signed into Vimma.app/Contents/MacOS with the app (spec ship-vimma-ctl)
           VIMMA_CTL: ${{ github.workspace }}/ctl/vimma-ctl
           # its notices, into Vimma.app/Contents/Resources (#516)
           VIMMA_CTL_LICENSES: ${{ github.workspace }}/ctl/vimma-ctl-licenses
+          # the signed app's manifest; its hash is the job output macos-notarise checks against
+          VIMMA_APP_MANIFEST: ${{ vars.MACOS_SIGNING == 'developer-id' && format('{0}/vimma-app.manifest', runner.temp) || '' }}
         run: |
           # download-artifact does not keep the mode
           chmod 755 "$VIMMA_CTL"
@@ -727,6 +752,45 @@ jobs:
           tools/package/macos-dmg.sh "$MOZ_OBJDIR"/dist/vimma-*.en-US.mac.dmg "release-macos/$dmg"
           node tools/package/cask.mjs --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb
           (cd release-macos && sha256sum "$dmg" vimma.rb > SHA256SUMS-macos && cat SHA256SUMS-macos)
+          if [ -n "$VIMMA_APP_MANIFEST" ]; then
+            echo "manifest_sha256=$(sha256sum < "$VIMMA_APP_MANIFEST" | cut -d " " -f 1)" >> "$GITHUB_OUTPUT"
+          fi
+
+      # macos-unpack and macos-pack have no engine/ to run mach in, so they get the disk-image tools
+      # this job's mach bootstrapped, found as make_dmg.py finds them
+      # (python/mozbuild/mozbuild/action), for the same runner image. macos-notarise, which holds
+      # the Apple secrets, never gets them.
+      - name: Disk-image tools for macos-unpack
+        if: vars.MACOS_SIGNING == 'developer-id'
+        run: |
+          mkdir dmg-tools
+          (cd engine && ./mach python -c '
+          import buildconfig
+          from mozbuild.bootstrap import bootstrap_toolchain
+          s = buildconfig.substs
+          print(s.get("DMG_TOOL") or bootstrap_toolchain("dmg/dmg"))
+          print(s.get("HFS_TOOL") or bootstrap_toolchain("dmg/hfsplus"))
+          print(s.get("MKFSHFS") or bootstrap_toolchain("hfsplus/newfs_hfs"))') > dmg-tools.txt
+          n=1
+          for name in dmg hfsplus newfs_hfs; do
+            path=$(tail -n 3 dmg-tools.txt | sed -n "${n}p")
+            [ -x "$path" ] || { cat dmg-tools.txt; echo "::error::mach found no $name tool"; exit 1; }
+            cp "$path" "dmg-tools/$name"
+            n=$((n + 1))
+          done
+          ls -l dmg-tools
+
+      - name: Say the dmg is ad hoc signed
+        if: vars.MACOS_SIGNING != 'developer-id'
+        run: |
+          {
+            echo "### macOS: ad hoc signed, not notarised"
+            echo
+            echo "The repository variable MACOS_SIGNING is not \`developer-id\`, so this release's"
+            echo "\`.dmg\` is ad hoc signed and not notarised: Gatekeeper refuses its first open until"
+            echo "the user chooses Open Anyway (docs/runbook.md, \"macOS in a release\")."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::the macOS dmg is ad hoc signed and not notarised (MACOS_SIGNING is not developer-id)"
 
       - name: Delete the Safe Browsing key file
         if: always()
@@ -745,14 +809,265 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # A hosted Mac runs what was built: checksum, signature, arm64, the version line against the
-  # tag, the Safe Browsing key, a page rendered headless, and the Homebrew cask installing the dmg.
-  macos-smoke:
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: vars.MACOS_SIGNING == 'developer-id'
+        with:
+          name: macos-dmg-tools
+          path: dmg-tools/
+          retention-days: 1
+          if-no-files-found: error
+
+  # Developer ID (spec macos-build, decisions 23 to 28), only while the repository variable
+  # MACOS_SIGNING is `developer-id`; then a missing secret fails the release rather than shipping
+  # an ad hoc dmg. Three jobs, each on its own runner, so that the disk-image tools macos-build
+  # hands over never run on a runner that holds the Apple secrets (docs/security.md, B14):
+  # macos-unpack opens the ad hoc dmg with them, macos-notarise signs, notarises and staples the app
+  # with the pinned rcodesign alone, and macos-pack packs the signed app with them again and
+  # replaces the `macos` artifact. They run before macos-smoke, so the hosted Mac checks what is
+  # published.
+  macos-unpack:
     needs: macos-build
     if: >-
       vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
-      vars.MACOS_RELEASE_ENABLED == 'true'
+      vars.MACOS_RELEASE_ENABLED == 'true' &&
+      vars.MACOS_SIGNING == 'developer-id'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.macos-build.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos
+          path: release-macos
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-dmg-tools
+          path: dmg-tools
+
+      # tar keeps the app's links and modes, which an artifact's zip would lose.
+      - name: Unpack the ad hoc dmg
+        env:
+          DMG_TOOLS: ${{ github.workspace }}/dmg-tools
+        run: |
+          (cd release-macos && sha256sum -c SHA256SUMS-macos)
+          # download-artifact does not keep the mode
+          chmod 755 dmg-tools/dmg dmg-tools/hfsplus dmg-tools/newfs_hfs
+          dmg="vimma-${TAG#v}-macos-aarch64.dmg"
+          tools/package/macos-dmg-unpack.sh "release-macos/$dmg" volume
+          tar -C volume -cf macos-volume.tar .
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-volume
+          path: macos-volume.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  # The only job with the Apple secrets, from the macos-sign environment, which only main may deploy
+  # from. It runs the pinned rcodesign (fetch-rcodesign.sh checks its SHA-256) and
+  # tools/package/macos-sign-app.sh, and no program the build produced: the volume arrives as
+  # data, is unpacked and its links checked before any credential is written.
+  macos-notarise:
+    needs: [macos-build, macos-unpack]
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' &&
+      vars.MACOS_RELEASE_ENABLED == 'true' &&
+      vars.MACOS_SIGNING == 'developer-id'
+    environment: macos-sign
+    # `shell: bash` runs each step with -eo pipefail; GitHub's default bash -e has no pipefail
+    defaults:
+      run:
+        shell: bash
+    runs-on: ubuntu-24.04
+    # Notarisation usually answers in minutes (Zen: 6.5 minutes); rcodesign waits up to an hour.
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.macos-build.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-volume
+          path: macos-volume
+
+      - name: rcodesign (pinned)
+        run: |
+          tools/package/fetch-rcodesign.sh "$RUNNER_TEMP/rcodesign"
+
+      # The app must be the one macos-dmg.sh signed ad hoc in macos-build: the hash of its manifest
+      # is a job output of macos-build, which no other job can change, so a replaced unpack tool
+      # cannot have changed the app; checked before any credential exists.
+      - name: The unsigned app
+        env:
+          MANIFEST_SHA256: ${{ needs.macos-build.outputs.manifest_sha256 }}
+        run: |
+          mkdir "$RUNNER_TEMP/volume"
+          tar -xf macos-volume/macos-volume.tar --no-same-owner -C "$RUNNER_TEMP/volume" ./Vimma.app
+          # the script's own exit status decides: a manifest it stopped writing is never hashed
+          if ! tools/package/macos-app-manifest.sh "$RUNNER_TEMP/volume/Vimma.app" > "$RUNNER_TEMP/unpacked.manifest"; then
+            echo "::error::the manifest of Vimma.app from macos-unpack could not be made"
+            exit 1
+          fi
+          sum=$(sha256sum < "$RUNNER_TEMP/unpacked.manifest")
+          [[ $MANIFEST_SHA256 =~ ^[0-9a-f]{64}$ ]] || { echo "::error::macos-build gave no manifest hash"; exit 1; }
+          [ "${sum%% *}" = "$MANIFEST_SHA256" ] ||
+            { echo "::error::Vimma.app from macos-unpack is not the app macos-build signed"; exit 1; }
+
+      # Files only the runner's user can read, written by the shell's printf builtin, so no secret
+      # is on a command line, in the log or in an artifact.
+      - name: Signing credentials
+        env:
+          APPLE_DEVELOPER_ID_P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_NOTARY_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=
+          for name in APPLE_DEVELOPER_ID_P12 APPLE_DEVELOPER_ID_P12_PASSWORD APPLE_NOTARY_API_KEY APPLE_TEAM_ID; do
+            if [ -z "$(printenv "$name")" ]; then
+              echo "::error::secret $name is not set in the macos-sign environment, and MACOS_SIGNING is developer-id"
+              missing=1
+            fi
+          done
+          [ -z "$missing" ] || exit 1
+          dir="$RUNNER_TEMP/apple-signing"
+          (
+            umask 077
+            mkdir "$dir"
+            printf '%s' "$APPLE_DEVELOPER_ID_P12" | base64 -d > "$dir/developer-id.p12"
+            printf '%s' "$APPLE_DEVELOPER_ID_P12_PASSWORD" > "$dir/p12-password"
+            printf '%s' "$APPLE_NOTARY_API_KEY" > "$dir/notary-api-key.json"
+          )
+
+      - name: Sign with the Developer ID, notarise and staple
+        env:
+          RCODESIGN: ${{ runner.temp }}/rcodesign/rcodesign
+          APPLE_P12_FILE: ${{ runner.temp }}/apple-signing/developer-id.p12
+          APPLE_P12_PASSWORD_FILE: ${{ runner.temp }}/apple-signing/p12-password
+          APPLE_NOTARY_API_KEY_FILE: ${{ runner.temp }}/apple-signing/notary-api-key.json
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          tools/package/macos-sign-app.sh "$RUNNER_TEMP/volume/Vimma.app"
+
+      - name: Delete the signing credentials
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/apple-signing"
+
+      - name: The signed app
+        run: |
+          tar -C "$RUNNER_TEMP/volume" -cf macos-signed-app.tar Vimma.app
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-signed-app
+          path: macos-signed-app.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  # The signed app back into the volume with its art, packed with the disk-image tools on a runner
+  # that never held a credential; then the cask without its Open Anyway caveat and the checksums.
+  macos-pack:
+    needs: [macos-build, macos-unpack, macos-notarise]
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' &&
+      vars.MACOS_RELEASE_ENABLED == 'true' &&
+      vars.MACOS_SIGNING == 'developer-id'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.macos-build.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos
+          path: release-macos
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-volume
+          path: macos-volume
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-signed-app
+          path: macos-signed-app
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-dmg-tools
+          path: dmg-tools
+
+      - name: Pack the signed app
+        env:
+          DMG_TOOLS: ${{ github.workspace }}/dmg-tools
+        run: |
+          chmod 755 dmg-tools/dmg dmg-tools/hfsplus dmg-tools/newfs_hfs
+          mkdir volume
+          tar -xf macos-volume/macos-volume.tar -C volume
+          rm -rf volume/Vimma.app
+          tar -xf macos-signed-app/macos-signed-app.tar -C volume
+          dmg="vimma-${TAG#v}-macos-aarch64.dmg"
+          tools/package/macos-dmg-pack.sh volume "release-macos/$dmg"
+
+      - name: The cask and checksums for the signed dmg
+        run: |
+          dmg="vimma-${TAG#v}-macos-aarch64.dmg"
+          node tools/package/cask.mjs --notarised --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb
+          (cd release-macos && sha256sum "$dmg" vimma.rb > SHA256SUMS-macos && cat SHA256SUMS-macos)
+          {
+            echo "### macOS: Developer ID, notarised and stapled"
+            echo
+            echo "\`$dmg\` holds Vimma.app signed with Vimma's Developer ID Application certificate,"
+            echo "under the hardened runtime, notarised by Apple and stapled. macos-smoke checks it"
+            echo "with codesign, spctl and stapler on a Mac."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos
+          path: release-macos/
+          overwrite: true
+          retention-days: 7
+          if-no-files-found: error
+
+  # A hosted Mac runs what was built: checksum, signature, arm64, the version line against the
+  # tag, the Safe Browsing key, a page rendered headless, and the Homebrew cask installing the dmg;
+  # for a Developer ID release also the Developer ID of Vimma's team, notarisation and Gatekeeper.
+  # Once MACOS_SIGNING is developer-id, it never takes the ad hoc dmg in place of a skipped or
+  # failed macos-pack. !cancelled(), not always(), so that cancelling the run stops it.
+  macos-smoke:
+    needs: [macos-build, macos-pack]
+    if: >-
+      !cancelled() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' &&
+      vars.MACOS_RELEASE_ENABLED == 'true' &&
+      needs.macos-build.result == 'success' &&
+      (needs.macos-pack.result == 'success' ||
+      (needs.macos-pack.result == 'skipped' && vars.MACOS_SIGNING != 'developer-id'))
     runs-on: macos-15
     timeout-minutes: 20
     permissions:
@@ -791,6 +1106,8 @@ jobs:
           expected=$(node tools/release/version-line.mjs)
           case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;; *) echo "::error::surfer.json gives '$expected', tag is $TAG"; exit 1 ;; esac
           [ "$version" = "$expected" ] || { echo "::error::--version is '$version', want '$expected'"; exit 1; }
+          # the build ID the app runs with is the one its application.ini gives the manifest (#563)
+          node tools/release/build-id.mjs --binary "$APP/Contents/MacOS/vimma" --ini "$APP/Contents/Resources/application.ini"
           ctl=$("$APP/Contents/MacOS/vimma-ctl" --version)
           [ "$ctl" = "vimma-ctl ${TAG#v} (protocol 2)" ] || { echo "::error::vimma-ctl --version is '$ctl'"; exit 1; }
           test -s "$APP/Contents/Resources/vimma-ctl-licenses/rust-std-COPYRIGHT.html"
@@ -811,6 +1128,15 @@ jobs:
           # Vimma's icon and bundle identifier (spec macos-homebrew), as the weekly smoke checks
           tools/package/macos-app-check.sh "$APP"
 
+      # codesign -dvv, spctl --assess and stapler validate (spec macos-build, decision 23).
+      - name: Developer ID, notarisation and Gatekeeper
+        if: vars.MACOS_SIGNING == 'developer-id'
+        env:
+          # Vimma's Apple team ID, public in every signature, so a variable, not a secret
+          EXPECTED_TEAM_ID: ${{ vars.MACOS_TEAM_ID }}
+        run: |
+          tools/package/macos-developer-id-check.sh "$APP"
+
       # brew style, an offline brew audit, then brew install --cask from the dmg in Homebrew's
       # download cache and brew uninstall --zap (spec macos-homebrew, decision 9).
       - name: The Homebrew cask installs the dmg
@@ -820,9 +1146,12 @@ jobs:
   # As sign: cosign keyless, the same identity (release.yml at refs/heads/main); no repository code.
   macos-sign:
     needs: [macos-build, macos-smoke]
+    # !cancelled() with the results: the signing jobs, ancestors, are skipped for an ad hoc release,
+    # and a skipped ancestor would skip this job too; a cancelled run still stops it.
     if: >-
-      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      !cancelled() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
+      needs.macos-build.result == 'success' && needs.macos-smoke.result == 'success' &&
       vars.MACOS_RELEASE_ENABLED == 'true' &&
       vars.SIGNING_ENABLED == 'true'
     runs-on: ubuntu-24.04
@@ -853,7 +1182,7 @@ jobs:
   macos-publish:
     needs: [macos-build, macos-smoke, macos-sign]
     if: >-
-      always() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      !cancelled() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
       vars.MACOS_RELEASE_ENABLED == 'true' &&
       needs.macos-smoke.result == 'success' &&
@@ -906,9 +1235,11 @@ jobs:
   # No repository code, and no token beyond starting a workflow.
   macos-tap:
     needs: macos-publish
+    # as macos-sign: an ad hoc release skips the signing jobs, its ancestors
     if: >-
-      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      !cancelled() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
+      needs.macos-publish.result == 'success' &&
       vars.MACOS_RELEASE_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -947,6 +1278,9 @@ jobs:
       - publish
       - macos-ctl
       - macos-build
+      - macos-unpack
+      - macos-notarise
+      - macos-pack
       - macos-smoke
       - macos-sign
       - macos-publish

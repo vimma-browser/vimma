@@ -108,6 +108,10 @@ describe("help table", () => {
     expect(renderHelpText(bindingTable(compileKeymap()))).toMatchSnapshot();
   });
 
+  test("help text for the macOS defaults matches the snapshot (#386)", () => {
+    expect(renderHelpText(bindingTable(compileKeymap({}, { mac: true })))).toMatchSnapshot();
+  });
+
   test("help text marks overrides with an asterisk", () => {
     const txt = renderHelpText(bindingTable(compileKeymap({ keys: { new_tab: ["ctrl+alt+c"] } })));
     expect(txt).toMatch(/\* new_tab/);

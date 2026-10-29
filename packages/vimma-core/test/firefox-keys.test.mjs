@@ -1,6 +1,8 @@
 // Firefox's own shortcuts (docs/specs/key-handling-batch.md § 1): which <key> elements of
 // #mainKeyset Vimma turns off.
+import { readFileSync } from "node:fs";
 import { describe, test, expect } from "vitest";
+import { parseConfig } from "../src/config.mjs";
 import {
   FIREFOX_SHORTCUTS,
   FIREFOX_SHORTCUTS_MACOS,
@@ -386,6 +388,26 @@ describe("pageFirst (who goes first: decision 6)", () => {
     expect(pageFirst("ctrl+s", { mode: "insert" })).toBe(true);
   });
 
+  test("on macOS Firefox's macOS chords Vimma binds are the page's first, as Firefox let them", () => {
+    for (const chord of ["meta+left", "meta+right", "meta+[", "meta+]", "meta+1", "meta+9"]) {
+      expect(pageFirst(chord, { mac: true }), chord).toBe(true);
+      expect(pageFirst(chord), `${chord} on Linux`).toBe(false);
+    }
+    expect(pageFirst("meta+l", { mac: true })).toBe(true);
+    expect(pageFirst("meta+[", { mac: true, mode: "insert" })).toBe(true);
+    // The rest of the keymap is Linux's on both, and so is who goes first on it.
+    for (const [chord, want] of [
+      ["ctrl+s", true],
+      ["ctrl+l", true],
+      ["ctrl+t", false],
+      ["ctrl+u", false],
+      ["alt+home", true],
+    ]) {
+      expect(pageFirst(/** @type {string} */ (chord), { mac: true }), chord).toBe(want);
+    }
+    expect(pageFirst("f11", { mac: true, fullScreen: true })).toBe(false);
+  });
+
   test("f11 is the page's first, but Firefox's own in full screen", () => {
     expect(pageFirst("f11")).toBe(true);
     expect(pageFirst("f11", { fullScreen: true })).toBe(false);
@@ -421,7 +443,7 @@ describe("bound means off (decision 2)", () => {
 
 // Issue #384, docs/specs/macos-build.md: Firefox 158's keys in a macOS browser window.
 describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
-  const keymap = compileKeymap();
+  const keymap = compileKeymap({}, { mac: true });
   const rows = FIREFOX_SHORTCUTS_MACOS;
   const keyRows = rows.filter((r) => r.id && (r.source === "main" || r.source === "devtools"));
   const byId = new Map(keyRows.map((r) => [r.id, r]));
@@ -450,13 +472,9 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
 
   test.each([
     ["key_newNavigatorTab", "meta+t"],
-    ["focusURLBar", "meta+l"],
     ["key_close", "meta+w"],
     ["key_search2", "alt+meta+f"],
     ["key_openDownloads", "meta+j"],
-    ["goBackKb", "meta+left"],
-    ["goForwardKb", "meta+right"],
-    ["goBackKb2", "meta+["],
     ["showAllHistoryKb", "meta+y"],
     ["key_gotoHistory", "shift+meta+h"],
     ["key_enterFullScreen", "ctrl+meta+f"],
@@ -464,9 +482,6 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
     ["key_togglePictureInPicture", "alt+meta+}"],
     ["viewGenaiChatSidebarKb", "ctrl+x"],
     ["toggleSidebarKb", "ctrl+z"],
-    ["key_selectTab1", "meta+1"],
-    ["key_selectTab8", "meta+8"],
-    ["key_selectLastTab", "meta+9"],
     ["key_toggleToolbox", "alt+meta+i"],
     ["key_browserToolbox", "alt+shift+meta+i"],
     ["key_inspector", "alt+meta+c"],
@@ -478,6 +493,21 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
     const row = byId.get(id);
     expect(row).toMatchObject({ chord, fate: "c" });
     expect(row?.action).toBeUndefined();
+  });
+
+  // Issue #386: Vimma's macOS defaults bind these instead of Linux's alt keys (decision 29).
+  test.each([
+    ["goBackKb", "meta+left", "history_back", "a"],
+    ["goForwardKb", "meta+right", "history_forward", "a"],
+    ["goBackKb2", "meta+[", "history_back", "a"],
+    ["goForwardKb2", "meta+]", "history_forward", "a"],
+    ["focusURLBar", "meta+l", "focus_urlbar", "a"],
+    ["key_selectTab1", "meta+1", "select_tab_1", "a"],
+    ["key_selectTab8", "meta+8", "select_tab_8", "a"],
+    ["key_selectLastTab", "meta+9", "select_last_tab", "b"],
+    ["goHome", "alt+home", "go_home", "b"],
+  ])("accel is cmd: %s is %s, Vimma's %s in every mode, page first", (id, chord, action, f) => {
+    expect(byId.get(id)).toMatchObject({ chord, fate: f, action, modes: "all", first: "P" });
   });
 
   test("keys on the same chord as on Linux keep their Vimma action", () => {
@@ -578,6 +608,65 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
     for (const r of rows) {
       if (r.fate !== "c" || r.conditional) continue;
       expect(bound.has(r.chord), `${r.chord} (${r.id})`).toBe(false);
+    }
+  });
+});
+
+// Issue #385, docs/specs/macos-build.md decision 30: on macOS, "all" keeps Firefox's cmd keys
+// that Vimma does not bind off, as on Linux, and the guide's `[firefox] enable` example is how
+// a user gets some back.
+describe("macOS: the guide's [firefox] enable example", () => {
+  const guide = readFileSync(new URL("../../../docs/guide.md", import.meta.url), "utf8");
+  const examples = [...guide.matchAll(/```toml\n([\s\S]*?)```/g)]
+    .map((m) => /** @type {string} */ (m[1]))
+    .filter((text) => text.includes("[firefox]") && text.includes('"meta+'));
+  /** Every key of a macOS window's keysets, as the host reads them. */
+  const keys = FIREFOX_SHORTCUTS_MACOS.filter(
+    (r) => r.id && (r.source === "main" || r.source === "devtools"),
+  ).map((r) => ({ id: r.id, chord: r.chord, fate: r.fate }));
+  /** @param {string} text config.toml */
+  const onWith = (text) => {
+    const { config, keymap, errors } = parseConfig(text, { mac: true });
+    expect(errors).toEqual([]);
+    const plan = planFirefoxKeys(keys, /** @type {any} */ (config).firefox, {
+      bound: boundChords(/** @type {any} */ (keymap)),
+      mac: true,
+    });
+    const off = new Set(plan.off);
+    return keys.filter((k) => !off.has(k));
+  };
+
+  // The default itself ("all" turns cmd+t off and keeps cmd+q on macOS) is pinned above, in
+  // '"all" on macOS keeps cmd+q and reads the macOS fates' and "cmd+q quits as macOS runs it".
+  test("the guide's example parses on macOS and re-enables exactly the cmd keys it lists", () => {
+    expect(examples, "one [firefox] example with meta+ keys in docs/guide.md").toHaveLength(1);
+    const text = /** @type {string} */ (examples[0]);
+    const { config } = parseConfig(text, { mac: true });
+    const firefox = /** @type {any} */ (config).firefox;
+    expect(firefox.disable).toBe("all");
+    expect(firefox.enable).toContain("meta+t");
+    expect(firefox.enable.every((/** @type {string} */ c) => c.includes("meta+"))).toBe(true);
+    // Only the listed chords come back; Firefox's fate d keys (cmd+q, the editor's) stay on.
+    const on = onWith(text);
+    const back = new Set(on.filter((k) => k.fate !== "d").map((k) => k.chord));
+    expect([...back].sort()).toEqual([...firefox.enable].sort());
+    expect(on.map((k) => k.chord)).toContain("meta+q");
+    // Without the example, the same keys are off.
+    const byDefault = onWith("schema = 2\n").map((k) => k.chord);
+    for (const chord of firefox.enable) expect(byDefault, chord).not.toContain(chord);
+  });
+
+  // Decision 30 covers only the cmd keys Vimma does not bind: an example that enabled one of
+  // decision 29's (cmd+l, cmd+1, cmd+[, cmd+left) would take a Vimma key away from the user.
+  test("the guide's example enables no chord the macOS keymap binds", () => {
+    const text = /** @type {string} */ (examples[0]);
+    const { config, keymap } = parseConfig(text, { mac: true });
+    const enable = /** @type {any} */ (config).firefox.enable;
+    for (const bound of [
+      boundChords(/** @type {any} */ (keymap)),
+      boundChords(compileKeymap({}, { mac: true })),
+    ]) {
+      expect(enable.filter((/** @type {string} */ c) => bound.has(c))).toEqual([]);
     }
   });
 });

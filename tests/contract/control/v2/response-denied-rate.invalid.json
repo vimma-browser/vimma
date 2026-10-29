@@ -1,0 +1,15 @@
+{
+  "description": "retryAfter is a whole number of milliseconds from 1 to 60000",
+  "kind": "response",
+  "message": {
+    "type": "response",
+    "id": 3,
+    "ok": false,
+    "error": {
+      "code": "denied",
+      "message": "too many vimma_keys calls from this agent in the last minute (at most 30)",
+      "reason": "busy",
+      "retryAfter": 1.5
+    }
+  }
+}

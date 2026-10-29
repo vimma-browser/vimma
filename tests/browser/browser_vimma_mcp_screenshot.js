@@ -51,6 +51,7 @@ const SENSITIVE = "a payment or password field on screen has a value; Vimma does
 const UNCHECKED = "Vimma could not check every frame of this page for payment fields";
 
 registerCleanupFunction(async () => {
+  AgentDrive._drawMs = null;
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   await VimmaControl.settled();
@@ -196,7 +197,7 @@ add_task(async function test_screenshot_of_a_background_tab_shows_its_page() {
   });
   const before = { workspace: activeName(), selected: gBrowser.selectedTab };
   const c = await agentClient();
-  const r = await screenshot(c, tab);
+  const r = await screenshot(c, tab, { full: true });
   Assert.ok(r.ok, `vimma_screenshot runs: ${JSON.stringify(r.error)}`);
   Assert.equal(r.result.url, SHOT, "the page");
   Assert.equal(r.result.title, "Screenshot agent fixture", "its title");
@@ -220,7 +221,7 @@ add_task(async function test_screenshot_of_a_background_tab_shows_its_page() {
   Assert.ok(!tab.linkedBrowser.docShellIsActive, "and inactive");
   // A zoomed page is captured as it shows: the same viewport, its contents larger.
   tab.linkedBrowser.fullZoom = 2;
-  const zoomed = await screenshot(c, tab);
+  const zoomed = await screenshot(c, tab, { full: true });
   tab.linkedBrowser.fullZoom = 1;
   const big = await decode(zoomed.result);
   // The zoomed viewport is a whole number of the page's CSS pixels: a pixel more at most.
@@ -235,12 +236,67 @@ add_task(async function test_screenshot_of_a_background_tab_shows_its_page() {
   await mcp(false);
 });
 
+// Issue #584: by default the image is at most 1,024 pixels wide, and the smaller of a PNG and a
+// JPEG: a flat page stays a PNG, a busy one becomes a JPEG of far fewer bytes than the full
+// image; labels are drawn on it all the same, scaled to it.
+add_task(async function test_screenshot_is_smaller_unless_asked_full() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.document.getElementById("band").style.background = "rgb(255, 0, 0)";
+  });
+  const c = await agentClient();
+  const small = await screenshot(c, tab);
+  Assert.ok(small.ok, `the default screenshot runs: ${JSON.stringify(small.error)}`);
+  const { width, height } = tab.linkedBrowser.getBoundingClientRect();
+  const scale = Math.min(window.devicePixelRatio, 1024 / width);
+  const image = await decode(small.result);
+  Assert.deepEqual([image.width, image.height], [small.result.width, small.result.height]);
+  Assert.ok(image.width <= 1024, `at most 1,024 pixels wide: ${image.width}`);
+  // drawSnapshot rounds a scaled size to whole pixels: one pixel either way.
+  Assert.ok(Math.abs(image.width - width * scale) < 1, `the viewport's width: ${image.width}`);
+  Assert.ok(Math.abs(image.height - height * scale) < 1, `and height: ${image.height}`);
+  Assert.ok(near(image.at(10, 10), [255, 0, 0], 24), `the page: ${image.at(10, 10)}`);
+  const full = await screenshot(c, tab, { full: true });
+  Assert.equal(full.result.mimeType, "image/png", "full: a PNG");
+  Assert.ok(full.result.width > small.result.width, "wider");
+  info(
+    `flat page: default ${small.result.data.length} B of base64, full ${full.result.data.length} B`,
+  );
+  Assert.equal(small.result.mimeType, "image/png", "a flat page is smaller as a PNG");
+  Assert.ok(small.result.data.length < full.result.data.length, "and smaller than the full one");
+  const noisy = await openAgentTab(`${SHOT}?noise=4`);
+  const busy = await screenshot(c, noisy);
+  const busyFull = await screenshot(c, noisy, { full: true });
+  info(`busy page: default ${busy.result.data.length} B, full ${busyFull.result.data.length} B`);
+  Assert.equal(busy.result.mimeType, "image/jpeg", "a busy page is smaller as a JPEG");
+  Assert.ok(busy.result.data.length < busyFull.result.data.length, "and smaller than the full");
+  BrowserTestUtils.removeTab(noisy);
+  // Labels are drawn on the default image too, at their elements' corners scaled to it.
+  const go = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const b = content.document.getElementById("go").getBoundingClientRect();
+    return { x: b.x, y: b.y };
+  });
+  Assert.ok((await elements(c, tab)).ok, "vimma_elements lists the page");
+  const r = await screenshot(c, tab, { labels: true });
+  Assert.ok(r.result.labels > 0, "labels are drawn");
+  const labelled = await decode(r.result);
+  const style = getComputedStyle(document.documentElement);
+  const hint = rgb(style.getPropertyValue("--vimma-hint-bg").trim() || "#1bf587");
+  // In the label's left padding, halfway down: its colour, clear of the letters and corners.
+  const at = labelled.at(go.x * scale + 1, go.y * scale + 7 * scale);
+  Assert.ok(near(at, hint, 24), `the button's label at its scaled corner: ${at} vs ${hint}`);
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 add_task(async function test_screenshot_fits_the_reply_line() {
   await mcp(true);
   const c = await agentClient();
   // Coarse noise: too much for a PNG within the reply, not for a JPEG.
   const tab = await openAgentTab(`${SHOT}?noise=4`);
-  let r = await screenshot(c, tab);
+  let r = await screenshot(c, tab, { full: true });
   Assert.ok(r.ok, `a noisy page is captured: ${JSON.stringify(r.error)}`);
   Assert.equal(r.result.mimeType, "image/jpeg", "as a JPEG (F19)");
   Assert.ok(r.result.data.length <= 700 * 1024, "whose base64 fits 700 KiB");
@@ -250,7 +306,7 @@ add_task(async function test_screenshot_fits_the_reply_line() {
   // An image that fits no encoding is refused, with nothing sent. The real limit takes a
   // screen larger than the test window's, so the test lowers it.
   AgentShot._base64Max = 64 * 1024;
-  r = await screenshot(c, tab);
+  r = await screenshot(c, tab, { full: true });
   AgentShot._base64Max = null;
   Assert.equal(r.error?.code, "failed", "a screenshot too large for the reply is refused");
   Assert.equal(r.error?.message, "the screenshot is too large", "and says so");
@@ -265,7 +321,7 @@ add_task(async function test_screenshot_draws_labels() {
   const tab = await openAgentTab();
   const c = await agentClient();
   // Without a current element list nothing is drawn, and the result says so (F20).
-  let r = await screenshot(c, tab, { labels: true });
+  let r = await screenshot(c, tab, { labels: true, full: true });
   Assert.ok(r.ok, "a screenshot with labels runs");
   Assert.deepEqual([r.result.labels, r.result.stale], [0, true], "no list: stale, none drawn");
   const go = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
@@ -276,7 +332,7 @@ add_task(async function test_screenshot_draws_labels() {
   const listed = await elements(c, tab);
   Assert.ok(listed.ok, "vimma_elements lists the page");
   const count = listed.result.elements.split("\n").filter((l) => l.includes('"label"')).length;
-  r = await screenshot(c, tab, { labels: true });
+  r = await screenshot(c, tab, { labels: true, full: true });
   Assert.ok(r.ok, "and the screenshot runs");
   Assert.equal(r.result.labels, count, "every listed label on screen is drawn");
   Assert.ok(!("stale" in r.result), "from a current list");
@@ -291,8 +347,13 @@ add_task(async function test_screenshot_draws_labels() {
   );
   Assert.ok(!near(plain.at(...corner), hint), "where the page alone draws no hint colour");
   // Without labels asked, the same page has none.
-  r = await screenshot(c, tab);
+  r = await screenshot(c, tab, { full: true });
   Assert.ok(!near((await decode(r.result)).at(...corner), hint), "no labels unless asked");
+  // A list older than the draw limit may have moved under a page's own updates: stale (F20).
+  AgentDrive._drawMs = 0;
+  r = await screenshot(c, tab, { labels: true, full: true });
+  AgentDrive._drawMs = null;
+  Assert.deepEqual([r.result.labels, r.result.stale], [0, true], "an old list: stale");
   // Once the page scrolled, the list's places are wrong: nothing is drawn, and it is stale.
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.scrollTo(0, 40));
   r = await screenshot(c, tab, { labels: true });

@@ -32,6 +32,9 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const { VimmaActors } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
 );
+const { AgentDrive } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs",
+);
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
@@ -116,6 +119,7 @@ const clients = [];
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
+  AgentDrive._linkTtlMs = null;
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -345,6 +349,8 @@ addTidyTask(async function test_f_follows_only_links_from_an_elements_list() {
   );
   Assert.equal(r.result.url, FORM, "nothing loaded or submitted");
   const plans = one(items, (e) => e.kind === "link", "link");
+  // f's own link list would have expired by now; an element list's labels do not (issue #591).
+  AgentDrive._linkTtlMs = 0;
   r = await keys(c, tab, `f${plans.label}`);
   Assert.equal(r.result.steps[0].ok, true, "a link's label from the list follows");
   Assert.equal(r.result.url, `${PAGE}?plans`, "as a load of its href");
@@ -431,5 +437,181 @@ addTidyTask(async function test_elements_under_a_grant_notice_log_and_rate() {
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+/**
+ * `command` with `elements: true`, answered with `answer` (null: a grant runs it).
+ * @param {any} c @param {string} command @param {object} args @param {object | null} [answer]
+ */
+async function withList(c, command, args, answer = { kind: "once" }) {
+  const id = c.request(command, { ...args, elements: true });
+  if (answer) {
+    const q = await question();
+    Assert.equal(q.what.elements, true, `${command}'s question names the list (#584)`);
+    AgentGate.answer(q.id, answer);
+  }
+  const r = await c.response(id);
+  if (r.ok) {
+    const v = validateMessage(r, { command });
+    Assert.deepEqual(v.errors, [], `a valid ${command} result with a list`);
+  }
+  return r;
+}
+
+/**
+ * That `list` keeps the M31 rules this file checks on vimma_elements' own; its items.
+ * @param {string} list @param {string} what
+ */
+function checkM31(list, what) {
+  Assert.ok(
+    list.startsWith("<untrusted-web-content>\n") && list.endsWith("\n</untrusted-web-content>"),
+    `${what}: inside the untrusted-content delimiters (M31)`,
+  );
+  Assert.equal(list.split("<untrusted-web-content>").length, 2, `${what}: one opening delimiter`);
+  for (const secret of SECRETS) {
+    Assert.ok(!list.includes(secret), `${what}: the value ${secret} never reaches the agent`);
+  }
+  const items = parsed(list).filter((e) => "label" in e);
+  for (const name of ["password", "old", "code", "cardnumber", "expiry", "cvc", "card2", "pin"]) {
+    const field = one(items, (e) => e.name === name, `${what}: ${name} field`);
+    Assert.equal(field.sensitive, true, `${what}: ${name} is sensitive`);
+    Assert.ok(!("value" in field), `${what}: ${name} has no value`);
+  }
+  return items;
+}
+
+// Issue #584 (security.md M31): an open, a click and a fill asked with elements return the list
+// vimma_elements would return of the page after them, made the same way, and its labels are the
+// connection's current ones.
+addTidyTask(async function test_steps_return_the_element_list_vimma_elements_would() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  let items = parsed((await elements(c, tab)).result.elements).filter((e) => "label" in e);
+  const email = one(items, (e) => e.name === "email", "email field");
+  const fill = await withList(c, "agent-fill", {
+    tab: idOf(tab),
+    fields: [{ label: email.label, value: "ada@example.com" }],
+  });
+  Assert.ok(fill.ok, `a fill with elements runs: ${JSON.stringify(fill.error)}`);
+  Assert.equal(fill.result.filled, 1, "the field is filled");
+  items = checkM31(fill.result.elements, "after a fill");
+  Assert.equal(
+    one(items, (e) => e.name === "email", "email field").value,
+    "ada@example.com",
+    "the list is the page after the fill",
+  );
+  const after = await elements(c, tab);
+  Assert.deepEqual(
+    parsed(fill.result.elements),
+    parsed(after.result.elements),
+    "the same list vimma_elements makes of that page",
+  );
+  Assert.equal(fill.result.dropped, after.result.dropped, "with the same count left out");
+
+  const menu = one(items, (e) => e.text === "Menu", "script button");
+  const click = await withList(c, "agent-activate", { tab: idOf(tab), label: menu.label });
+  Assert.ok(click.ok, `a click with elements runs: ${JSON.stringify(click.error)}`);
+  Assert.equal(click.result.navigated, false, "the click loaded no page");
+  items = checkM31(click.result.elements, "after a click");
+  // A label of the returned list is the connection's current one: it clicks with no new list.
+  const again = one(items, (e) => e.text === "Menu", "script button");
+  const id = c.request("agent-activate", { tab: idOf(tab), label: again.label });
+  AgentGate.answer((await question()).id, { kind: "once" });
+  Assert.ok((await c.response(id)).ok, "a label of the returned list clicks");
+
+  const open = await withList(c, "agent-open", { url: FORM, tab: idOf(tab) });
+  Assert.ok(open.ok, `an open with elements runs: ${JSON.stringify(open.error)}`);
+  Assert.equal(open.result.tab, idOf(tab), "in the tab asked");
+  Assert.equal(open.result.url, FORM, "the page it loaded");
+  Assert.equal(open.result.title, "Form agent fixture", "once it was ready");
+  items = checkM31(open.result.elements, "after an open");
+  const plans = one(items, (e) => e.kind === "link", "link");
+  const r = await keys(c, tab, `f${plans.label}`);
+  Assert.equal(r.result.steps[0].ok, true, "f follows a link of the open's list");
+  // A new tab too.
+  const fresh = await withList(c, "agent-open", { url: FORM });
+  Assert.ok(fresh.ok, `an open of a new tab with elements runs: ${JSON.stringify(fresh.error)}`);
+  Assert.notEqual(fresh.result.tab, idOf(tab), "a new tab");
+  checkM31(fresh.result.elements, "after an open of a new tab");
+  Assert.equal(activeName(), "main", "the window stayed on its workspace (M25)");
+  c.close();
+  await mcp(false);
+});
+
+// Issue #584 (security.md M8, M23): an open asked with elements says nothing of a tab that left
+// the agent workspace while its page loaded; a same-document open is listed without waiting for
+// a new document; :mcp log's row names the list.
+addTidyTask(async function test_a_steps_list_says_nothing_of_a_tab_that_left() {
+  await mcp(true);
+  const c = await agentClient();
+  const slow = `${DIR}file_vimma_agent_slow.sjs?wait=4000`;
+  const id = c.request("agent-open", { url: slow, elements: true });
+  AgentGate.answer((await question()).id, { kind: "grant", minutes: 12 });
+  await until(() => agentTabs().length === 1, "the open's tab");
+  const closed = Date.now();
+  BrowserTestUtils.removeTab(agentTabs()[0]);
+  const r = await c.response(id);
+  Assert.equal(r.error?.code, "failed", `refused: ${JSON.stringify(r)}`);
+  Assert.less(Date.now() - closed, 3000, "as soon as the tab closed, not after the wait");
+  Assert.ok(!JSON.stringify(r).includes("slow.sjs"), "with nothing of the page");
+  Assert.equal(AgentGate.log[0].outcome, "stopped", "and :mcp log says it stopped");
+
+  const tab = await openAgentTab();
+  const t0 = Date.now();
+  const hash = await c.call("agent-open", { url: `${FORM}#plans`, tab: idOf(tab), elements: true });
+  Assert.ok(
+    hash.ok && hash.result.elements,
+    `a same-document open is listed: ${hash.error?.message}`,
+  );
+  Assert.less(Date.now() - t0, 5000, "without waiting out the page's load");
+  Assert.equal(
+    AgentGate.log[0].detail,
+    `${FORM}#plans, then vimma_elements`,
+    ":mcp log's row names the list",
+  );
+  c.close();
+  await mcp(false);
+});
+
+// Issue #584 (mcp-forms F26): a step's list counts as a vimma_elements call, when asked and
+// before anything is done; with the lists used up, a step asked with elements is refused unrun.
+addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
+  await mcp(true);
+  Services.prefs.setIntPref(ASK_TIMEOUT, 200);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  let r = await elements(c, tab, { kind: "grant", minutes: 12 });
+  const items = parsed(r.result.elements).filter((e) => "label" in e);
+  const menu = one(items, (e) => e.text === "Menu", "script button");
+  for (let i = 0; i < 28; i++) {
+    Assert.ok((await c.call("agent-elements", { tab: idOf(tab) })).ok, `list ${i + 2}`);
+  }
+  // The page shows payment card fields, so a click there asks under the grant too (C6).
+  r = await withList(c, "agent-activate", { tab: idOf(tab), label: menu.label });
+  Assert.ok(r.ok, `the 30th list in a minute is a click's: ${JSON.stringify(r.error)}`);
+  r = await c.call("agent-elements", { tab: idOf(tab) });
+  Assert.equal(r.error?.reason, "busy", "the 31st list is refused as busy");
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.document.title = "Form agent fixture";
+  });
+  r = await c.call("agent-activate", { tab: idOf(tab), label: menu.label, elements: true });
+  Assert.equal(r.error?.reason, "busy", "a click asked with elements is refused as busy");
+  Assert.equal(
+    r.error?.message,
+    "too many vimma_elements calls from this agent in the last minute (at most 30)",
+    "naming the elements rate",
+  );
+  // Issue #592: a client naming no vimma-ctl version may predate retryAfter (decision 6).
+  Assert.ok(!("retryAfter" in r.error), "and no retryAfter to a client that names no version");
+  const title = await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.title);
+  Assert.equal(title, "Form agent fixture", "and nothing was clicked");
+  Assert.equal(AgentGate.log[0].outcome, "busy", "the refusal is in :mcp log");
+  r = await c.call("agent-open", { url: FORM, elements: true });
+  Assert.equal(r.error?.reason, "busy", "so is an open asked with elements");
+  Assert.equal(agentTabs().length, 1, "which opened nothing");
+  c.close();
+  Services.prefs.clearUserPref(ASK_TIMEOUT);
   await mcp(false);
 });

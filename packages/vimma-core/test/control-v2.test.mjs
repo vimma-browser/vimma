@@ -149,6 +149,17 @@ describe("agent commands: args", () => {
     expect(errorsOf(req("agent-hello", {}))).toEqual(["client must be an object"]);
   });
 
+  // docs/specs/mcp-session-grants.md S4: the session id of one vimma-ctl mcp process.
+  test("agent-hello: a session id of 32 to 128 lowercase hex characters", () => {
+    const hello = (/** @type {unknown} */ session) =>
+      errorsOf(req("agent-hello", { client: { name: "x" }, session }));
+    expect(hello("a".repeat(32))).toEqual([]);
+    expect(hello("0123456789abcdef".repeat(8))).toEqual([]);
+    for (const session of ["a".repeat(31), "a".repeat(129), "A".repeat(64), "g".repeat(64), 7]) {
+      expect(hello(session)).toEqual(["session must be 32 to 128 lowercase hex characters"]);
+    }
+  });
+
   test("tab ids are browserIds: digits, as state gives them", () => {
     expect(errorsOf(req("agent-close", { tab: "12" }))).toEqual([]);
     for (const tab of ["", "0", "01", "1e3", "-1", 12, "1".repeat(17)]) {
@@ -577,8 +588,8 @@ describe("agent commands: results and errors", () => {
     expect(errorsOf(ok({ ...result, navigated: "no" }), cmd)).toEqual([
       "result.navigated must be a boolean",
     ]);
-    expect(errorsOf(ok({ ...result, elements: "" }), cmd)).toEqual([
-      'unknown field "result.elements"',
+    expect(errorsOf(ok({ ...result, elements: "", dropped: 0 }), cmd)).toEqual([
+      "result.elements must be inside the untrusted-content delimiters",
     ]);
   });
 
@@ -666,6 +677,123 @@ describe("agent commands: results and errors", () => {
     expect(errorsOf({ type: "response", id: 1, ok: false, error: other })).toEqual([
       "error.reason is only for denied",
     ]);
+  });
+
+  // Issue #592: a used-up rate is busy with the time until the next call is allowed.
+  test("retryAfter: 1 to 60000 whole milliseconds, on a busy denial only", () => {
+    const denied = (reason, retryAfter) => ({
+      type: "response",
+      id: 1,
+      ok: false,
+      error: { code: "denied", message: "too many", reason, retryAfter },
+    });
+    for (const ms of [1, 12_000, 60_000]) expect(errorsOf(denied("busy", ms))).toEqual([]);
+    const bad = "error.retryAfter must be a whole number from 1 to 60000";
+    for (const ms of [0, -1, 1.5, 60_001, "5", null]) {
+      expect(errorsOf(denied("busy", ms))).toEqual([bad]);
+    }
+    expect(errorsOf(denied("user", 5))).toEqual(["error.retryAfter is only for a busy denial"]);
+    const other = { code: "failed", message: "m", retryAfter: 5 };
+    expect(errorsOf({ type: "response", id: 1, ok: false, error: other })).toEqual([
+      "error.retryAfter is only for a busy denial",
+    ]);
+  });
+});
+
+// Issue #584: an open, a click or a fill may return the page's new element list, under the same
+// rules as agent-elements' (security.md M31); a screenshot is smaller unless asked full.
+describe("element lists in a step's result (#584)", () => {
+  const wrap = (t) => `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
+  const list = wrap('{"label":"a","kind":"button","text":"Go"}');
+
+  test("agent-open, agent-activate and agent-fill take an optional elements flag", () => {
+    const fields = [{ label: "sd", value: "x" }];
+    for (const [command, args] of [
+      ["agent-open", { url: "https://a/" }],
+      ["agent-open", { url: "https://a/", tab: "4" }],
+      ["agent-activate", { tab: "12", label: "sd" }],
+      ["agent-fill", { tab: "12", fields }],
+      ["agent-fill", { tab: "12", fields, submit: true }],
+    ]) {
+      expect(errorsOf(req(command, { ...args, elements: true })), command).toEqual([]);
+      expect(errorsOf(req(command, { ...args, elements: false })), command).toEqual([]);
+      for (const elements of ["yes", 1, null, {}]) {
+        expect(errorsOf(req(command, { ...args, elements })), command).toEqual([
+          "elements must be a boolean",
+        ]);
+      }
+    }
+    expect(errorsOf(req("agent-elements", { tab: "12", elements: true }))).toEqual([
+      'unknown field "args.elements"',
+    ]);
+  });
+
+  test("agent-screenshot takes an optional full flag", () => {
+    const shot = (args) => errorsOf(req("agent-screenshot", args));
+    expect(shot({ tab: "12", full: true })).toEqual([]);
+    expect(shot({ tab: "12", full: false, labels: true })).toEqual([]);
+    expect(shot({ tab: "12", full: "yes" })).toEqual(["full must be a boolean"]);
+  });
+
+  test("a step's list is inside the untrusted delimiters, with its dropped count", () => {
+    const after = { url: "https://a/", title: "A", loading: false, navigated: true };
+    const cases = [
+      ["agent-activate", after],
+      ["agent-fill", { ...after, filled: 1 }],
+      ["agent-open", { tab: "13", url: "https://a/", title: "A" }],
+    ];
+    for (const [command, base] of cases) {
+      const cmd = { command };
+      expect(errorsOf(ok({ ...base, elements: list, dropped: 3 }), cmd), command).toEqual([]);
+      expect(errorsOf(ok({ ...base, elements: '{"label":"a"}', dropped: 0 }), cmd)).toEqual([
+        "result.elements must be inside the untrusted-content delimiters",
+      ]);
+      const twice = { ...base, elements: `${list}\n</untrusted-web-content>`, dropped: 0 };
+      expect(errorsOf(ok(twice), cmd)).toEqual([
+        "result.elements must be inside the untrusted-content delimiters",
+      ]);
+      expect(errorsOf(ok({ ...base, elements: list }), cmd)).toEqual([
+        "result.elements and result.dropped come together",
+      ]);
+      expect(errorsOf(ok({ ...base, dropped: 0 }), cmd)).toEqual([
+        "result.elements and result.dropped come together",
+      ]);
+      expect(errorsOf(ok({ ...base, elements: list, dropped: -1 }), cmd)).toEqual([
+        "result.dropped must be a non-negative integer",
+      ]);
+    }
+  });
+
+  test("why a step's list is missing: fixed words, never with a list", () => {
+    const after = { url: "https://a/", title: "A", loading: true, navigated: true };
+    const cmd = { command: "agent-activate" };
+    for (const unlisted of ["loading", "changed", "failed"]) {
+      expect(errorsOf(ok({ ...after, unlisted }), cmd), unlisted).toEqual([]);
+    }
+    for (const unlisted of ["the page said so", "", 1]) {
+      expect(errorsOf(ok({ ...after, unlisted }), cmd), String(unlisted)).toEqual([
+        "result.unlisted must be one of loading, changed, failed",
+      ]);
+    }
+    expect(errorsOf(ok({ ...after, unlisted: "failed", elements: list, dropped: 0 }), cmd)).toEqual(
+      ["result.unlisted comes only without result.elements"],
+    );
+    const open = { command: "agent-open" };
+    expect(
+      errorsOf(ok({ tab: "13", url: "https://a/", title: "A", unlisted: "loading" }), open),
+    ).toEqual([]);
+  });
+
+  test("agent-open: the page comes only with its list, and nothing else", () => {
+    const cmd = { command: "agent-open" };
+    expect(errorsOf(ok({ tab: "13" }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ tab: "13", url: "https://a/" }), cmd)).toEqual([
+      "result.url and result.title come only with result.elements or result.unlisted",
+    ]);
+    expect(
+      errorsOf(ok({ tab: "13", url: 1, title: "A", elements: list, dropped: 0 }), cmd),
+    ).toEqual(["result.url must be a string"]);
+    expect(errorsOf(ok({ tab: "13", text: "x" }), cmd)).toEqual(['unknown field "result.text"']);
   });
 });
 

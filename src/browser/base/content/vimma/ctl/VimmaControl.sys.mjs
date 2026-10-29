@@ -290,6 +290,24 @@ function paneState(win, visible) {
   };
 }
 
+/**
+ * `state.tabs[].loading`: the tab's page is loading or still to load. It names no page, so a
+ * private window keeps it, where it is the only sign of a loaded page (#567). A new window is
+ * listed before it starts to load its first page, which it does in delayed startup
+ * (browser-init.js): until then its tabs are on their initial about:blank and not busy yet.
+ * @param {any} win @param {any} tab
+ */
+function tabLoading(win, tab) {
+  if (tab.hasAttribute("busy")) return true;
+  // A lazy (restored or unloaded) tab loads nothing, and reading its browser's webProgress
+  // would insert the browser and start a content process: `state` stays read-only (S9).
+  if (!tab.linkedPanel || tab.hasAttribute("pending")) return false;
+  const browser = tab.linkedBrowser;
+  if (browser.webProgress?.isLoadingDocument) return true;
+  if (win.gBrowserInit?.delayedStartupFinished === true) return false;
+  return browser.browsingContext?.currentWindowGlobal?.isInitialDocument ?? true;
+}
+
 /** @type {Record<string, (args: any) => object>} */
 const COMMANDS = {
   "send-keys"({ keys }) {
@@ -319,6 +337,7 @@ const COMMANDS = {
         title: hidden ? null : tab.label,
         selected: tab.selected,
         pinned: tab.pinned,
+        loading: tabLoading(win, tab),
       })),
       panes: paneState(win, visible),
     };
@@ -710,6 +729,7 @@ class Connection {
           code: e.code,
           message: e.message,
           ...(e.reason ? { reason: e.reason } : {}),
+          ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}),
         };
         this.respond(id, { error });
       } else {
@@ -1007,8 +1027,10 @@ function enqueue(step) {
 }
 
 function apply() {
-  // `:mcp off` (or [mcp] enabled = false): the log of agent calls goes too (mcp-drive D14).
-  if (!McpHost.state.enabled) AgentGate.clearLog();
+  // `:mcp off` (or [mcp] enabled = false): the log of agent calls goes too (mcp-drive D14), and
+  // so do the grants, a dropped link's included (mcp-session-grants S5).
+  if (McpHost.state.enabled) AgentGate.on();
+  else AgentGate.off();
   return enqueue(() => (enabledRoles().length ? startServer() : stopServer()));
 }
 

@@ -27,7 +27,9 @@ export {
 /**
  * F5: at most `max` targets a list, each text and caption cut at `text`, each value at `value`,
  * each href at `href` characters, at most `options` options a select and `forms` forms a list,
- * at most `bytes` of the reply line; labels live `ttlMs`, as `f`'s do (mcp-drive D12).
+ * at most `bytes` of the reply line. Labels last while their page and element do
+ * (`labelsCurrent`); a screenshot draws them (F20) only for `drawMs`, because their rects are
+ * those of the list and a page that updates in place moves its elements without a navigation.
  */
 export const AGENT_ELEMENTS = Object.freeze({
   max: AGENT_LINKS.max,
@@ -37,7 +39,7 @@ export const AGENT_ELEMENTS = Object.freeze({
   options: 50,
   forms: 64,
   bytes: 768 * 1024,
-  ttlMs: AGENT_LINKS.ttlMs,
+  drawMs: 120_000,
 });
 
 /**
@@ -521,16 +523,45 @@ export const AGENT_SCREENSHOT = Object.freeze({
 });
 
 /**
+ * `vimma_screenshot`'s default image (issue #584): a model pays for a screenshot by its pixels,
+ * and some clients by its base64 too, so unless `full` is asked the image is at most `width`
+ * pixels wide, and the smaller of a PNG and a JPEG at `jpeg[0]` (a page of flat colours is
+ * smaller as a PNG, a photo as a JPEG), else a JPEG at the next quality.
+ */
+export const AGENT_SCREENSHOT_SMALL = Object.freeze({
+  width: 1024,
+  jpeg: Object.freeze([0.75, 0.5]),
+});
+
+/**
+ * How a screenshot is encoded (F19, issue #584): the smallest of `smallest` whose base64 fits,
+ * else the first of `then` that fits.
+ * @param {boolean} full
+ * @returns {{ smallest: { type: string, quality?: number }[],
+ *   then: { type: string, quality?: number }[] }}
+ */
+export function screenshotEncodings(full) {
+  const jpeg = (/** @type {number} */ quality) => ({ type: "image/jpeg", quality });
+  const png = { type: "image/png" };
+  if (full) return { smallest: [png], then: AGENT_SCREENSHOT.jpeg.map(jpeg) };
+  const [first, ...rest] = AGENT_SCREENSHOT_SMALL.jpeg;
+  return { smallest: [png, jpeg(/** @type {number} */ (first))], then: rest.map(jpeg) };
+}
+
+/**
  * The scale a viewport `width` by `height` CSS pixels is drawn at (F18): the device pixel ratio,
- * or less so the image is at most AGENT_SCREENSHOT.width pixels wide and AGENT_SCREENSHOT.height
- * high; null when there is nothing to draw. Without a height only the width limits it.
+ * or less so the image is at most `maxWidth` (never more than AGENT_SCREENSHOT.width) pixels
+ * wide and AGENT_SCREENSHOT.height high; null when there is nothing to draw. Without a height
+ * only the width limits it.
  * @param {number} width @param {number} dpr @param {number} [height]
+ * @param {number} [maxWidth]
  * @returns {number | null}
  */
-export function screenshotScale(width, dpr, height = 1) {
+export function screenshotScale(width, dpr, height = 1, maxWidth = AGENT_SCREENSHOT.width) {
   if (!(width > 0) || !(height > 0)) return null;
   const ratio = dpr > 0 ? dpr : 1;
-  return Math.min(ratio, AGENT_SCREENSHOT.width / width, AGENT_SCREENSHOT.height / height);
+  const wide = Math.min(maxWidth, AGENT_SCREENSHOT.width);
+  return Math.min(ratio, wide / width, AGENT_SCREENSHOT.height / height);
 }
 
 /**

@@ -50,9 +50,9 @@ What works today, each with the section that explains it:
   token-protected control socket; local AI agents reach one [agent workspace](#agent-workspace)
   through MCP, where they can read, open, scroll and search pages, follow their links, list and
   click their buttons, fill their fields (never a password or card number), take a screenshot,
-  read a page's errors and show you a page. Every request asks you first, one answer can let an
-  agent work through a task for some minutes, and sending a form or paying asks every time,
-  showing what is sent or the total the page states.
+  read a page's errors and show you a page. An agent asks you first, one answer lets it work
+  through its task until it quits, and sending a form or paying asks every time, showing what is
+  sent or the total the page states.
 
 ## Every key is yours
 
@@ -157,8 +157,14 @@ A release may also carry, for Macs with Apple Silicon (M1 or later), `vimma-X.Y.
 with its checksum file `SHA256SUMS-macos`. There is no build for Intel Macs. Open the `.dmg` and
 drag Vimma into Applications.
 
-**The first open.** The app is not yet notarised by Apple, so the first time you open it macOS
-says "Apple could not verify “Vimma” is free of malware". To open it:
+**The first open.** A release signed with Vimma's Developer ID and notarised by Apple opens like
+any other app: macOS asks only whether to open an app downloaded from the internet. To check
+which kind you have, run `spctl --assess -vv /Applications/Vimma.app`; a notarised release prints
+`accepted` and `source=Notarized Developer ID`, and its Homebrew cask shows no caveat.
+
+An older release, or a build from a pull request or `macos.yml`, is only ad hoc signed, so the
+first time you open it macOS says "Apple could not verify “Vimma” is free of malware". To open
+it:
 
 1. Choose **Done** in that dialog, not **Move to Trash**.
 2. Open System Settings → Privacy & Security and scroll down to Security.
@@ -169,9 +175,10 @@ Since macOS 15, Control-clicking the app and choosing Open no longer gets past t
 button in System Settings does. macOS remembers the choice for this copy of Vimma; a newer
 `.dmg`, or a `brew upgrade`, may ask again.
 
-From a terminal, the same result in one step: this removes the quarantine flag the download
-carries, which also switches off macOS's check of this copy, so use it only on a `.dmg` you
-downloaded from the release (or verified as below).
+For such an ad hoc signed build only, the same result in one step from a terminal: this removes
+the quarantine flag the download carries, which also switches off macOS's check of this copy, so
+use it only on a `.dmg` you downloaded from the release (or verified as below). A notarised
+release never needs it.
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Vimma.app && open -a Vimma
@@ -182,7 +189,7 @@ and the same `xattr` command clears it.
 
 Vimma on a Mac tells you when a newer release is out, as on Linux ([Updates](#updates)); to
 update, install the newer `.dmg` over the old one, or run `brew upgrade --cask vimma`. Passkeys
-do not work in these builds. Your profile lives in `~/Library/Application Support/Vimma/`, and
+stored in macOS (iCloud Keychain) do not work in Vimma yet, notarised or not. Your profile lives in `~/Library/Application Support/Vimma/`, and
 macOS keeps Vimma's window state under its bundle identifier, `dev.vimma.browser`. To
 check the `.dmg` before you open it, verify `SHA256SUMS-macos` with cosign as in "Arch Linux"
 below (same identity), then run `shasum -a 256 -c --ignore-missing SHA256SUMS-macos`.
@@ -195,8 +202,9 @@ brew install --cask vimma-browser/tap/vimma
 ```
 
 Homebrew checks the download against the SHA-256 the cask pins, puts Vimma in Applications and
-`vimma` on your `PATH`. The first open still needs **Open Anyway**, as in "The first open"
-above; `brew info vimma` shows that note again. The cask comes from the release itself: each
+`vimma` on your `PATH`. A notarised release opens at once; an ad hoc signed one still needs
+**Open Anyway** on its first open, as in "The first open" above, and `brew info vimma` shows that
+note again. The cask comes from the release itself: each
 release carries it as `vimma.rb`, listed and signed in `SHA256SUMS-macos`, and the tap gets that
 file once the release is published.
 
@@ -207,7 +215,8 @@ file once the release is published.
 | Remove Vimma and its profile, caches and prefs | `brew uninstall --zap --cask vimma` |
 
 Vimma does not update itself, so `brew upgrade` (or `brew upgrade --cask vimma`) is how a
-Homebrew install gets a new release; after an upgrade macOS may ask for **Open Anyway** again.
+Homebrew install gets a new release; after an upgrade to an ad hoc signed release, macOS may ask
+for **Open Anyway** again.
 When a newer release is out, Vimma's [update notice](#updates) says so, and `:update` shows that
 command; Vimma counts as a Homebrew install when it runs from `/Applications/Vimma.app` and
 `/opt/homebrew/Caskroom/vimma/` exists.
@@ -654,8 +663,9 @@ with `F11` keeps it. From the left:
 - on the right, the **search** in this page: `/word [2/5]` (match 2 of 5), or
   `/zzz not found` in red;
 - `◇ agent` while a local AI agent is connected ([agent workspace](#agent-workspace)):
-  `◇ agent 2?` when 2 of its requests wait for your answer, `◇ agent 14m` while a grant you gave
-  has 14 minutes left, and `◇ agent ·` for a moment after a request ran;
+  `◇ agent 2?` when 2 of its requests wait for your answer, `◇ agent granted` while it may act
+  without asking (`◇ agent 14m` for a grant of minutes with 14 left), and `◇ agent ·` for a
+  moment after a request ran;
 - `loading` while the page loads, then its **URL** without `https://`;
 - with the [toolbar hidden](#hiding-the-toolbar), `not secure` in red for a page Firefox's
   address bar would warn about (an `http:` page keeps its `http://`), `using camera, mic` (or
@@ -870,7 +880,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `j` / `k`, `h` / `l`                                                                    | Normal mode: scroll down / up, left / right by a step. A count repeats: `3j`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `d` / `u`, `ctrl+d` / `ctrl+u`                                                          | Normal mode: scroll half a page down / up, as in Vimium and Vim. `ctrl+e` / `ctrl+y` scroll a step down / up, as `j` / `k`. In insert mode the page gets them; in a text field `ctrl+u` deletes to the line's start.                                                                                                                                                                                                                                                                                                                                                                      |
 | `gg` / `G`                                                                              | Normal mode: go to the top / bottom of the page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `H` / `L`, `ctrl+o` / `ctrl+i`, `alt+left` / `alt+right`, `ctrl+[` / `ctrl+]`           | Back / forward in the page's history (in a split, the focused pane's), `ctrl+o` / `ctrl+i` as Vim's jump list. `H`, `L`, `ctrl+o`, `ctrl+i`, `ctrl+[` and `ctrl+]` in normal mode; Firefox's `alt+left` / `alt+right` in every mode, the address bar too. A count moves that many pages, stopping at the first or last: `3H`.                                                                                                                                                                                                                                                             |
+| `H` / `L`, `ctrl+o` / `ctrl+i`, `alt+left` / `alt+right`, `ctrl+[` / `ctrl+]`           | Back / forward in the page's history (in a split, the focused pane's), `ctrl+o` / `ctrl+i` as Vim's jump list. `H`, `L`, `ctrl+o`, `ctrl+i`, `ctrl+[` and `ctrl+]` in normal mode; Firefox's `alt+left` / `alt+right` in every mode, the address bar too. On macOS these two are Firefox's `cmd+left` / `cmd+right` and `cmd+[` / `cmd+]`, in every mode ([On macOS](#on-macos-the-alt-keys-are-cmd-keys)). A count moves that many pages, stopping at the first or last: `3H`.                                                                                                           |
 | `r`, `F5`, `ctrl+r`                                                                     | Reloads the page (in a split, the focused pane's); `r` in normal mode, Firefox's `F5` and `ctrl+r` everywhere. In insert mode `H`, `L` and `r` are typed into the field. `ctrl+F5` / `ctrl+shift+r` reload bypassing the cache.                                                                                                                                                                                                                                                                                                                                                           |
 | `i`                                                                                     | Normal mode: focus the text field you were last in (else the first) and enter insert mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `gi`                                                                                    | Normal mode: focus the first visible text field, insert mode; `3gi` the third (or the last). With none, it says so and stays normal.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -878,7 +888,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `p` / `P`                                                                               | Normal mode: opens the clipboard here / in a new tab, as `:open` / `:tabnew`: a URL loads, other text is searched. No `javascript:`, `data:`.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `gu` / `gU`                                                                             | Normal mode: up one level in the URL / to the site's root, without query and hash; `2gu` goes up two. At the top it says so.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `gf`                                                                                    | Normal mode: the page's source in a new tab, as Firefox's `ctrl+u` does. In insert mode `gi`, `yy`, `p`, `P`, `gu`, `gU` and `gf` are typed into the field.                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `I`, `ctrl+l`, `alt+d`                                                                  | Focus the address bar with its text selected (in a split, the focused pane's); closes an open panel first. `I` in normal and copy mode, Firefox's `ctrl+l` and `alt+d` everywhere.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `I`, `ctrl+l`, `alt+d`                                                                  | Focus the address bar with its text selected (in a split, the focused pane's); closes an open panel first. `I` in normal and copy mode, Firefox's `ctrl+l` and `alt+d` everywhere (`ctrl+l` and `cmd+l` on macOS).                                                                                                                                                                                                                                                                                                                                                                        |
 | `f` / `gF`                                                                              | Normal mode: link hints. Type a label to follow it, or, with `gF`, to open the link in a background tab. `Backspace` undoes a key, `Esc` cancels.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `F`                                                                                     | Normal mode: element focus ([above](#copying-a-paragraph-element-focus)). Type a label to outline a text block; `y` copies it, `v` selects it in copy mode.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `/` / `?`                                                                               | Normal mode: find in the page (below). `Enter` stays on the match, `Esc` goes back to where you were.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -891,7 +901,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b c`, `ctrl+t`, `t`                                                               | Opens a new tab (the start page, address bar focused).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `t` in normal mode.                                                                     |
 | `ctrl+b n` / `ctrl+b p`, `ctrl+tab` / `ctrl+shift+tab`, `ctrl+pagedown` / `ctrl+pageup` | Next / previous tab, wrapping around at the ends. Hidden tabs are skipped. `gt` / `gT` in normal mode; `3gt` goes to tab 3.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `ctrl+b 1..9`, `alt+1..8`, `alt+9`                                                      | Tab 1 to 9, counting visible tabs (pinned tabs first); Firefox's `alt+9` is the last tab. With fewer tabs than N, nothing happens. `ctrl+shift+pageup` / `ctrl+shift+pagedown` move the tab left / right among them.                                                                                                                                                                                                                                                                                                                                                                      |
+| `ctrl+b 1..9`, `alt+1..8`, `alt+9`                                                      | Tab 1 to 9, counting visible tabs (pinned tabs first); Firefox's `alt+9` is the last tab. On macOS Firefox's `cmd+1..8` and `cmd+9` instead. With fewer tabs than N, nothing happens. `ctrl+shift+pageup` / `ctrl+shift+pagedown` move the tab left / right among them.                                                                                                                                                                                                                                                                                                                   |
 | `:`                                                                                     | Normal mode: opens the command line at the bottom of the window ([below](#the-command-line)). In a text field `:` is typed.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b g`, `ctrl+shift+a`, `b`                                                         | Opens tab search over the page, ready to type (`b` in normal mode; `ctrl+shift+a` is Firefox's tab search key): every tab of every workspace and window, and the recently closed ones ([below](#tab-search-and-tab-rename)).                                                                                                                                                                                                                                                                                                                                                              |
 | `ctrl+b f g`                                                                            | Opens [live grep](#live-grep): search the text of the workspace's tabs as you type. `]q` / `[q` in normal mode step through its results afterwards.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -1079,18 +1089,6 @@ only. Three are left alone: the `alt+letter` keys that open the menu bar's menus
 and a bare `alt` tap and `'` (quick find for links) do nothing (the `ui.key.menuAccessKeyFocuses`
 and `accessibility.typeaheadfind.manual` prefs are `false` in Vimma's defaults).
 
-**On macOS** Firefox's keys use `cmd` where Linux has `ctrl` (`cmd+t`, `cmd+l`, `cmd+w`, written
-`meta+t` in config.toml), and it has tab keys of its own: `meta+{` and `meta+}` (cmd+shift+[ and
-cmd+shift+]), also with `ctrl` (`ctrl+meta+{`, `ctrl+meta+}`), and `alt+meta+left`,
-`alt+meta+right`, `alt+meta+up` and `alt+meta+down`. Its sidebar keys use `ctrl`: `ctrl+x` (AI
-chatbot), `ctrl+z` (show or hide the sidebar) and `ctrl+u` (open tabs, which stays Vimma's
-half-page scroll). Vimma's keymap is the same as on Linux, so the others are unbound, and the
-default `disable = "all"` turns them off, `ctrl+x` and `ctrl+z` included:
-`[firefox] enable = ["meta+t"]` or `["meta+{"]` gives one back. In a windowed Mac build a key that
-also has a menu bar item (`cmd+t` is File > New Tab) may still run from the menu bar; this has not
-been checked on a Mac yet. `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt`
-access keys.
-
 **Any Firefox command from a key.** `:firefox <id>` runs one of the window's commands or keys by
 its id (Tab completes them): `:firefox Tools:Downloads`, `:firefox key_search2`. A value that
 starts with `:` in a `[modal.<mode>]` table binds a key to a command line; such bindings are
@@ -1100,6 +1098,60 @@ listed in `ctrl+b ?` under "Commands":
 [modal.normal]
 "<C-S-y>" = ":firefox Tools:Downloads"
 ```
+
+#### On macOS the alt keys are cmd keys
+
+Option types characters on a Mac (Option+1 is `¡`) and moves the caret by word (Option+left),
+so the default keys that are `alt` chords on Linux would never run there. On macOS they are
+Firefox's own macOS keys instead, the ones a Mac user already knows (written `meta` in
+config.toml):
+
+| Action                                      | Linux                    | macOS                                       |
+| ------------------------------------------- | ------------------------ | ------------------------------------------- |
+| Back / forward (`history_back`, `_forward`) | `alt+left` / `alt+right` | `cmd+left` / `cmd+right`, `cmd+[` / `cmd+]` |
+| Tab 1 to 8 (`select_tab_1` … `_8`)          | `alt+1` … `alt+8`        | `cmd+1` … `cmd+8`                           |
+| Last tab (`select_last_tab`)                | `alt+9`                  | `cmd+9`                                     |
+| Address bar (`focus_urlbar`)                | `ctrl+l`, `alt+d`        | `ctrl+l`, `cmd+l`                           |
+
+`alt+home` (home page) is the same on both, as in Firefox: Option+Home types nothing. Everything
+else, `ctrl+b`, `H` / `L` and `ctrl+[` / `ctrl+]` included, is the same as on Linux. As on
+Linux, the page and a text field have these keys first: `cmd+left` in a text field or the
+address bar moves to the start of the line, and `cmd+[` goes back from there.
+[bindings.md](bindings.md#on-macos) lists them, `ctrl+b ?` shows the ones in force, and a
+`[keys]` list in config.toml replaces them as it does any default.
+
+The same holds for an `alt` chord of your own on a letter, digit or symbol key: Option+j types `∆`, and Vimma matches the
+character ([Keyboard layouts](#keyboard-layouts)), so an `alt+j` binding never runs on a Mac, as
+in a Mac terminal by default. Bind such an action to a `ctrl` or `meta` (`cmd`) chord there.
+
+**Firefox's other macOS keys** use `cmd` where Linux has `ctrl` (`cmd+t`, `cmd+w`, written
+`meta+t` in config.toml), and it has tab keys of its own: `meta+{` and `meta+}` (cmd+shift+[ and
+cmd+shift+]), also with `ctrl` (`ctrl+meta+{`, `ctrl+meta+}`), and `alt+meta+left`,
+`alt+meta+right`, `alt+meta+up` and `alt+meta+down`. Its sidebar keys use `ctrl`: `ctrl+x` (AI
+chatbot), `ctrl+z` (show or hide the sidebar) and `ctrl+u` (open tabs, which stays Vimma's
+half-page scroll). The default `disable = "all"` turns the others off, `ctrl+x` and `ctrl+z`
+included, as it does Firefox's unbound keys on Linux. Vimma's own keys do
+the same things: `ctrl+t` or `t` for a new tab, `x` to close it, and the `cmd+l` and `cmd+1..9`
+above. `cmd+q` stays macOS's own quit key, and the Mac menu bar has no `alt` access keys.
+
+To have Firefox's common `cmd` keys back, list them in `enable` (`cmd+t` works there too, and
+means `meta+t`); each then runs exactly as in Firefox, and the others stay off:
+
+```toml
+schema = 2
+
+[firefox]
+enable = [
+  "meta+t", "meta+n", "meta+w", # new tab, new window, close tab
+  "shift+meta+t",               # restore the last closed tab, window or session
+  "meta+r", "meta+f", "meta+g", # reload, find, next match
+]
+```
+
+In a windowed Mac build a key that is off may still run from the menu bar when it has a menu
+item there (`cmd+t` is File > New Tab, `cmd+w` File > Close Tab): macOS's menu bar takes the
+item's key from Firefox's shortcut without seeing that it is off. This has not been checked on a
+Mac yet.
 
 ### Firefox's shortcuts on Vim's keys
 
@@ -1353,7 +1405,7 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 | `:mcp`           | Says whether agents are on or off, which workspace is theirs, and how many agents, questions and grants.            |
 | `:mcp on`        | Asks `Let local AI agents ask to use the "agent" workspace? Every request asks you first. y/N`, then turns them on. |
 | `:mcp off`       | Turns agents off, without a question. Connected agents are disconnected and their grants end.                       |
-| `:mcp revoke`    | Ends every time-limited grant you gave agents, at once.                                                             |
+| `:mcp revoke`    | Ends every grant you gave agents, at once.                                                                          |
 | `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                   |
 | `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.      |
 | `ctrl+b shift+a` | Answers the waiting agent request; with none, ends every grant at once.                                             |
@@ -1503,7 +1555,8 @@ with the rest of your computer.
   remove it.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
   `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots, 30 console reads and 6 `vimma_show` calls a minute, and a minute of silence after three noes
-  in a row. Its pages get no permission prompts, pop-ups or other
+  in a row. A call over one of these rates is refused with the limit it hit and the seconds
+  until the next call is allowed, so the agent waits for the rate, not for you. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
 
@@ -1514,8 +1567,9 @@ with the rest of your computer.
   paying, showing you a page and a dangerous or unscanned download still ask
   ([What a grant covers](#what-a-grant-covers)). A grant given for a read therefore also means
   "let it fetch any address", and an address can carry what the agent has read elsewhere. Every
-  call under a grant shows a notice and a row in `:mcp log`, so you can see where it went; give
-  a grant for a task you are watching, and answer `y` one at a time otherwise.
+  call under a grant shows a notice and a row in `:mcp log`, so you can see where it went. A bare
+  `a` lasts until the agent quits, which can be hours: give a grant for a task you are watching,
+  a count (`15a`) when you want it to lapse by itself, and answer `y` one at a time otherwise.
 - **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.
   Grants belong to the connection, not the name, and `:mcp` shows the program that started it.
 - **The rest of your computer is the agent tool's matter.** An agent with a shell or file tools
@@ -1593,13 +1647,21 @@ focus and hint mode.
   a payment card field are listed as sensitive, with no value, so the agent can tell you what to
   type and where. Card fields are recognised by their `autocomplete` attribute and by the
   heuristics Firefox's form autofill uses, which also catch card forms without the attribute.
-- **Labels by the same rules as `f`.** They last two minutes on the page that listed them, and a
-  new list or `f` replaces them. `vimma_keys` with `f` and a label from the list follows a link,
+- **Labels that wait for a slow model.** They last as long as the page that listed them and
+  the element they name: a navigation, a new list or `f`, or the page removing the element ends
+  them, however long the agent took to choose. `vimma_keys` with `f` and a label from the list follows a link,
   as a load of its address; the label of a button or a field is refused, and so is a link the
   page has replaced since it was listed.
 - **A grant covers it:** each call then shows
   `claude-code listed the buttons and fields of "Sign up · Example" (grant, 12m left)`. The list
   holds no page text beyond the elements' own. At most 30 calls a minute; each is in `:mcp log`.
+- **With a step, in one call.** An agent can ask `vimma_open`, `vimma_activate` or `vimma_fill`
+  for the page's list too (`elements`), so it does not need a second call to see the page after
+  its step; `vimma_open` then waits until the page is ready. The list is made exactly as
+  `vimma_elements` makes it, with the same rules for secrets, and counts as one of its 30 calls
+  a minute. The step's question ends with `, then vimma_elements`, and its notice under a grant
+  with `and listed the buttons and fields after it`. A page still loading, or one that changed
+  while it was listed, is not listed; the agent is told so and lists it itself.
 
 #### Clicking on a page
 
@@ -1609,12 +1671,15 @@ clickable element. The question names the tab and the element,
 `◇ claude-code wants vimma_activate: 2 "List · Example" example.com/list  sg button "Add to list"`,
 and on `y` the element is clicked in the background: the tab is not selected and nothing in it is
 focused. The agent gets the page after the click, whether a new page loaded, and any dialog the
-page opened. When no page loaded, it is told which parts of the page changed in place within
-about 2 seconds (the clicked element, other listed elements, the page's text, a dialog drawn by
-the page), or that nothing did, so that a button that updates a basket in place is not pressed
-twice. It gets no page text this way: it calls `vimma_elements` to see what changed. Only the
-frame of the clicked element is compared, so a button inside an embedded frame that updates the
-page around it reads as no change.
+page opened. When no page loaded, it is told which parts of the page changed in place (the
+clicked element, other listed elements, the page's text, a dialog drawn by the page), or that
+nothing did, so that a button that updates a basket in place is not pressed twice. The answer
+comes as soon as the page has settled: a quarter of a second after its last change and once the
+requests the click started have answered, a little over a second when nothing changed, at most
+2 seconds. A click that loads a page answers once that page's content is in, without waiting
+for its images; the result says it is still loading. It gets no page text this way: it calls
+`vimma_elements` to see what changed. Only the frame of the clicked element is compared, so a
+button inside an embedded frame that updates the page around it reads as no change.
 
 - **A plain click, no user activation.** The page gets the same click your `f` hints give it,
   never a mouse press from the system. It therefore cannot do what needs a real gesture of yours
@@ -1656,7 +1721,8 @@ The question names the tab and every field with its value,
 and on `y` the fields are set in the background, in order, as Firefox's own form autofill sets
 them: the page gets its `input` and `change` events, nothing in it is focused, and no key is
 pressed. The agent learns how many fields were filled and which values the page put back (some
-pages react to key presses only, which Vimma never sends).
+pages react to key presses only, which Vimma never sends). A fill that sends nothing answers as
+soon as its last field is set.
 
 - **Never your secrets.** Password fields (also one a "show password" button turned into text),
   fields the page draws as dots, one-time codes and payment card fields (by their autocomplete
@@ -1687,9 +1753,11 @@ pages react to key presses only, which Vimma never sends).
 `vimma_screenshot` lets an agent see what an agent tab shows, to check the effect of a click or
 a fill. The question names the tab,
 `◇ claude-code wants vimma_screenshot: 2 "Sign up · Example" example.com/signup`, and on `y`
-the agent gets an image of the tab's viewport (what you would see with the tab selected), at
-most 1,280 pixels wide, taken in the background: the tab is not selected or shown, and your
-window keeps its workspace, tab and mode. With `labels`, the labels of the agent's last
+the agent gets an image of the tab's viewport (what you would see with the tab selected), taken
+in the background: the tab is not selected or shown, and your window keeps its workspace, tab and
+mode. The image is at most 1,024 pixels wide, as a PNG or a JPEG, whichever is smaller, which
+keeps the cost of a screenshot to the agent down; with `full`, it is at most 1,280 pixels wide
+and a PNG when that fits. With `labels`, the labels of the agent's last
 `vimma_elements` list of that page are drawn on it in your theme's hint colours, while the page
 has not scrolled since.
 
@@ -1801,7 +1869,7 @@ on it.
 Each request an agent makes appears as one line at the foot of the window, above the status bar:
 
 ```
-◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · 10a 10 min · n deny · x mute
+◇ claude-code wants vimma_read_page: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls   y once · a until it quits · n deny · x mute
 ```
 
 It names the agent (as the agent calls itself), the tool, and what it touches: the tab's place,
@@ -1812,7 +1880,8 @@ of agent tabs for the tab list.
 | Key                   | Answer                                                                           |
 | --------------------- | -------------------------------------------------------------------------------- |
 | `y`                   | Allow this request once.                                                         |
-| a count, then `a`     | Allow this agent every tool for that many minutes (`15a`); a bare `a` gives 10.  |
+| `a`                   | Allow this agent every tool until it quits.                                      |
+| a count, then `a`     | Allow this agent every tool for that many minutes only (`15a`).                  |
 | `n`, `Esc` or `Enter` | Deny it.                                                                         |
 | `x`                   | Deny it and everything else this agent asked, and ignore it until it reconnects. |
 | `Backspace`           | Take back a digit of the count.                                                  |
@@ -1837,18 +1906,21 @@ of agent tabs for the tab list.
   Hyprland, the workspace is highlighted) and a desktop notification says, for example,
   `claude-code asks to use Vimma's agent workspace (read a page)`. It carries no address or
   title and no buttons: you answer in Vimma. `[mcp] notify = false` turns the notification off.
-- **Grants show.** `◇ agent 14m` counts down the shortest one, and each request a grant lets
-  through shows a notice (`claude-code read "Pull requests · vimma-browser/vimma" (grant, 14m left)`).
-  `ctrl+b shift+a` with nothing waiting, or `:mcp revoke`, ends them all at once. A grant
-  also ends when the agent disconnects or `:mcp off` runs, and is never written to disk.
+- **Grants show.** `◇ agent granted` while an agent may act without asking (`◇ agent 14m` counts
+  down a grant of minutes), and each request a grant lets through shows a notice
+  (`claude-code read "Pull requests · vimma-browser/vimma" (grant)`). `ctrl+b shift+a` with
+  nothing waiting, or `:mcp revoke`, ends them all at once. A grant also ends when the agent
+  quits or `:mcp off` runs, and is never written to disk.
 
 #### What a grant covers
 
-One grant covers a task. Answer any request with `15a`, and that agent may use every tool for
-15 minutes without asking: read pages, list tabs, open and close tabs, press keys and follow
+One grant covers a task. Answer any request with `a`, and that agent may use every tool until
+it quits, without asking: read pages, list tabs, open and close tabs, press keys and follow
 links, list a page's buttons and fields, click, fill, take screenshots, read a page's errors and
 download. The notice says so:
-`claude-code may use the agent workspace for 15 min; sending a form or paying still asks (ctrl+b shift+a ends it)`.
+`claude-code may use the agent workspace until it quits; sending a form or paying still asks (ctrl+b shift+a ends it)`.
+Answer `15a` instead to allow it for 15 minutes only; `[mcp] grant_minutes` makes a bare `a` a
+grant of that many minutes.
 The question's hint leaves that out, so the line stays short; the notice says it the moment you
 answer. Requests that wait when you answer run at once.
 
@@ -1863,8 +1935,9 @@ ending the one in force:
 - **A dangerous or unscanned download**, and a download a page started by itself
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
 
-A grant belongs to one agent session: another agent, or the same one after it reconnects, asks
-again.
+A grant belongs to one agent session, the one `vimma-ctl mcp` process your agent tool started:
+another agent asks again. If that agent's connection drops (a suspended laptop, Vimma closing an
+idle link) and it reconnects within two minutes, it keeps its grant; later, it asks again.
 
 #### Checkpoints: sending a form and paying
 
@@ -2265,7 +2338,8 @@ restore all forget it, and so do Vimma's own files.
   private workspace to see them (on Hyprland and macOS the normal window swaps back into place;
   the private workspace stays one key away). Routing rules never send a page into or out of it.
 - **Scripts:** `vimma-ctl state` in the private workspace says `"private": true` and
-  `"workspace": "private"`, and gives every tab's `url` and `title` as `null`. `vimma-ctl open`
+  `"workspace": "private"`, and gives every tab's `url` and `title` as `null`; each tab's
+  `loading` still says whether its page has finished loading. `vimma-ctl open`
   and `send-keys` act on the focused window, so with the private workspace focused they load
   into it and type there.
 - **Diagnostics:** `about:vimma` and `:bug` in a normal window leave private windows out, and
@@ -2745,7 +2819,8 @@ accent = "#ff9e64"
   `"window"`: it is a window of its own beside it); `[mcp]` (local AI agents:
   `enabled`, which wins over `:mcp on|off`; `workspace`, the [agent workspace](#agent-workspace)'s
   name, default `"agent"`, never `"private"`; `ask_timeout`, 10 to 300 seconds, default 50;
-  `grant_minutes`, default 10, at most `grant_max_minutes`, 1 to 1440, default 480;
+  `grant_minutes`, what a bare `a` allows: 0, the default, until the agent quits, or that many
+  minutes, at most `grant_max_minutes`, 1 to 1440, default 480;
   `max_read_chars`, 1,000 to 500,000, default 200,000; `notify`, default `true`;
   `download_dir`, `download_max_mb` and `clamav_max_age_days`, [above](#downloads-from-the-agent-workspace)); `[search]`
   (the default engine and `@aliases`, [below](#search-engines)); `[ui] toolbar` (`"shown"`, the
@@ -2893,7 +2968,9 @@ another key, one for another channel or platform, or one older than a file it al
 Except for the AppImage, it installs nothing; it tells you.
 
 - **A newer version:** the status bar's right side shows `⇡ 0.3.1 available`, dim. A release that
-  carries a Firefox security fix shows `⇡ 0.3.1 security: :update` in the error colour.
+  carries a Firefox security fix shows `⇡ 0.3.1 security: :update` in the error colour. The
+  version you are running is never offered: once it is installed, the notice goes at the next
+  start.
 - **The first time a version is offered**, a message above the status bar says
   `Vimma 0.3.1 is available · :update shows the command` (or `fixes security issues` for a
   security release) for a few seconds. It takes no focus and no keys, and is not shown again for

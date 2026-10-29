@@ -18,7 +18,7 @@
 // Every agent request that is answered, runs under a grant or is denied goes into `:mcp log`
 // (docs/specs/mcp-drive.md D14), the last 100, in memory only like the grants.
 
-import { AgentLog, AgentQueue, grantLength } from "../core/agent.mjs";
+import { AgentLog, AgentQueue, grantLength, isBuiltinConn } from "../core/agent.mjs";
 import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL, isCheckpoint } from "../core/agent-prompt.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 
@@ -33,7 +33,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 /** Test-only: the ask timeout in ms, in place of `[mcp] ask_timeout`. */
 const ASK_TIMEOUT_PREF = "vimma.mcp.askTimeoutMs";
 const DEFAULT_ASK_TIMEOUT_S = 50;
-const DEFAULT_GRANT = { grantMinutes: 10, grantMaxMinutes: 480 };
+const DEFAULT_GRANT = { grantMinutes: 0, grantMaxMinutes: 480 };
 
 /**
  * @typedef {{ allow: true, grant?: { until: number } }
@@ -99,7 +99,8 @@ function record(conn, tool, what, outcome, why) {
     client: labels.get(conn)?.client ?? "",
     tool,
     title: typeof w.title === "string" ? w.title : "",
-    detail,
+    // A step that also lists the page says so, as its question did (issue #584).
+    detail: w.elements === true ? `${detail}, then vimma_elements` : detail,
     outcome,
     ...(why ? { why } : {}),
   });
@@ -198,20 +199,23 @@ export const AgentGate = {
    * An agent connection said hello: it may ask from now on.
    * @param {ConnId} conn
    * @param {{ client: string, version?: string, via?: string }} label  self-reported: labels only
+   * @param {string} [session]  its `vimma-ctl mcp` process's id, which gets back the grant of
+   *   that process's dropped link (docs/specs/mcp-session-grants.md S3)
    */
-  connect(conn, label) {
-    queue.connect(conn);
+  connect(conn, label, session) {
+    queue.connect(conn, { ...(session ? { session } : {}), now: Date.now() });
     labels.set(conn, { ...label, since: Date.now() });
     changed();
   },
 
   /**
-   * The connection closed: its waiting requests go unanswered and its grants end (decision 22).
+   * The connection closed: its waiting requests go unanswered and its grant ends (decision 22),
+   * unless the same session reconnects in time (mcp-session-grants S3).
    * @param {ConnId} conn
    */
   disconnect(conn) {
     const had = labels.delete(conn);
-    for (const id of queue.disconnect(conn)) {
+    for (const id of queue.disconnect(conn, Date.now())) {
       const p = pending.get(id);
       if (!p) continue;
       pending.delete(id);
@@ -376,6 +380,42 @@ export const AgentGate = {
   },
 
   /**
+   * A built-in conversation's task was sent with `Enter` (docs/specs/builtin-agent.md B18): the
+   * user's own key press in Vimma's window grants that conversation's connection for its
+   * lifetime, with no question. Only AgentChat calls it, for its own connections.
+   * @param {ConnId} conn
+   * @returns {boolean} false for a connection that is not open
+   */
+  grantConnection(conn) {
+    if (!isBuiltinConn(conn) || !labels.has(conn)) return false;
+    const made = queue.grantConnection(conn, Date.now());
+    if (made) changed();
+    return made;
+  },
+
+  /**
+   * End one connection's grant (`ctrl+Enter`, a stopped conversation: builtin-agent B18).
+   * @param {ConnId} conn
+   * @returns {boolean} whether it had one
+   */
+  endGrant(conn) {
+    const ended = queue.endGrant(conn);
+    if (ended) changed();
+    return ended;
+  },
+
+  /**
+   * A connection's new name (a conversation titled by its first message, Behaviour 19, 31).
+   * @param {ConnId} conn @param {string} client
+   */
+  relabel(conn, client) {
+    const label = labels.get(conn);
+    if (!label) return;
+    labels.set(conn, { ...label, client });
+    changed();
+  },
+
+  /**
    * End every grant (`:mcp revoke`, decision 22).
    * @returns {number} how many ended
    */
@@ -426,9 +466,19 @@ export const AgentGate = {
     record(conn, tool, what, outcome, why);
   },
 
-  /** `:mcp off`: the log goes with the agents. */
-  clearLog() {
+  /**
+   * `:mcp off`: the log goes with the agents, and so does every grant, those waiting for a
+   * reconnect included, before the server closes the connections (mcp-session-grants S5).
+   */
+  off() {
     log.clear();
+    queue.forgetSessions();
+    changed();
+  },
+
+  /** MCP is on: a reconnect of a session keeps its grant again (mcp-session-grants S3). */
+  on() {
+    queue.resumeSessions();
   },
 
   /** When an allowed request last ran, or null. */

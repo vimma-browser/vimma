@@ -534,7 +534,11 @@ Instead:
    unknown (Zen's zombie sweep): it goes to the active workspace. Live tabs are the truth; the
    snapshot only supplies order, active tabs, pane layouts and labels.
 5. The active workspace is the workspace of `gBrowser.selectedTab`; apply visibility (SessionStore
-   already restored `hidden`, so this is normally a no-op) and write the window value.
+   already restored `hidden`, so this is normally a no-op) and write the window value. (Since
+   changed: a rebuild that fails partway keeps the current model instead of replacing it, and
+   selecting a live tab the model does not know adopts it, as step 4 does on a rebuild: issue
+   [#546](https://github.com/vimma-browser/vimma/issues/546), where one failed rebuild emptied a
+   workspace's tab list while its tabs stayed open.)
 6. Scroll: nothing to do; SessionStore restores it when each tab restores (lazy tabs on first
    selection).
 

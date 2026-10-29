@@ -20,9 +20,6 @@ const { VimmaControl } = ChromeUtils.importESModule(
 const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
 );
-const { AgentAct } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
-);
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
@@ -64,7 +61,6 @@ const clients = [];
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
-  AgentAct._settleMs = null;
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -132,8 +128,6 @@ async function activate(c, tab, label) {
 
 addTidyTask(async function test_activate_says_what_changed_in_place() {
   await mcp(true);
-  // The real waits: a hidden tab's timers run at most once a second, as the agent's always do.
-  AgentAct._settleMs = null;
   const tab = await openAgentTab();
   const c = await agentClient();
   const by = await labels(c, tab);

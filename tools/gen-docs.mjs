@@ -3,6 +3,7 @@
 import { writeFileSync } from "node:fs";
 import {
   FIREFOX_SHORTCUTS,
+  MAC_KEYS,
   bindingTable,
   bindingsJson,
   compileKeymap,
@@ -40,6 +41,23 @@ for (const r of rows) {
     group = r.group;
   }
   const keys = r.bindings.length ? r.bindings.map((b) => `\`${cell(b)}\``).join(", ") : "—";
+  lines.push(`| ${cell(r.description)} | \`${r.name}\` | ${keys} |`);
+}
+// docs/specs/macos-build.md decision 29: the defaults macOS has instead of Linux's alt keys.
+const macKeymap = compileKeymap({}, { mac: true });
+lines.push(
+  "",
+  "## On macOS",
+  "",
+  "Option types characters on a Mac, so the defaults that are `alt` chords on Linux are Firefox's",
+  "macOS keys there (`meta` is `cmd`). Every other binding is the same on both.",
+  "",
+  "| Action | Config name | Bindings on macOS |",
+  "| --- | --- | --- |",
+);
+for (const r of bindingTable(macKeymap)) {
+  if (!(r.name in MAC_KEYS)) continue;
+  const keys = r.bindings.map((b) => `\`${cell(b)}\``).join(", ");
   lines.push(`| ${cell(r.description)} | \`${r.name}\` | ${keys} |`);
 }
 // docs/specs/firefox-keys.md: every key Firefox handles in a window, and what it is in Vimma.

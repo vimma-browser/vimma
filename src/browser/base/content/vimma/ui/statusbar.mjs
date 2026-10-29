@@ -66,7 +66,8 @@ const styled = new WeakSet();
  *   workspace?: { name: string, index: number, color?: string } | null,
  *   configErrors?: readonly ConfigError[], configFile?: string,
  *   alerts?: readonly string[],
- *   agent?: { waiting: number, minutes: number | null, ran: boolean } | null,
+ *   agent?: { waiting: number, minutes: number | null, ran: boolean,
+ *     builtin?: string | null } | null,
  *   update?: import("../core/updates.mjs").UpdateNotice | null,
  *   element?: import("../core/statusbar.mjs").ElementStatus | null }} status
  * @property {(fn: () => void) => () => void} subscribe  host state changes; returns unsubscribe

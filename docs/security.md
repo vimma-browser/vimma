@@ -70,8 +70,14 @@ only the agent workspace, and every request asks you first (§12).
 - S8. `reload-theme` **never** takes an argument; it reads only the theme folder Vimma's own
   prefs name. [`test_reload_theme`](../tests/browser/browser_vimma_control.js),
   [`takes no args`](../packages/vimma-core/test/control.test.mjs)
-- S9. `state` **must** be read-only: it changes no tab, selection, mode or workspace.
-  [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js)
+- S9. `state` **must** be read-only: it changes no tab, selection, mode or workspace, and never
+  gives an unloaded tab its browser. In a private window it **never** reports a tab's URL or
+  title; it keeps each tab's id, place, selection, pinning and whether its page is still loading,
+  and the pane structure.
+  [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
+  [`control_state_never_inserts_a_lazy_tab`](../tests/browser/browser_vimma_security_invariants.js),
+  [`vimma_ctl_state_withholds_private_urls_and_titles`](../tests/browser/browser_vimma_private_workspace.js),
+  [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../tests/browser/browser_vimma_private_workspace.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../tests/browser/browser_vimma_control.js),
@@ -729,7 +735,10 @@ them, never a password, payment card, one-time-code or file field: M25, M27, M28
 `vimma_screenshot` (an image of an agent tab's viewport, refused while a password or payment
 card field on screen has a value: M25, M31, M32) and `vimma_console` (an agent tab's script
 errors, console errors and warnings and failed requests, read without running page code: M25,
-M30, M31, M32), in force.
+M30, M31, M32), in force. Since [#584](https://github.com/vimma-browser/vimma/issues/584),
+`vimma_open`, `vimma_activate` and `vimma_fill` can return the page's element list in their
+result, made and limited as a `vimma_elements` call (M31, M32), and a screenshot is smaller
+unless the agent asks for it at full size (M31).
 
 [mcp-grants](specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a
 grant given in answer to any question, a read included, lets that agent open URLs, follow links,
@@ -745,9 +754,21 @@ a step that may pay, a show, a dangerous or unscanned download and a page's own 
 ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
 makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
 spends and leaves the grant as it was (M28, M33). The question's hint names only the keys
-(`10a 10 min`), so that the question fits one line; the guide's key table says that `a` covers
-every tool, and the grant's notice, shown the moment it is made, says so and names what still
-asks and the key that ends it.
+(`a until it quits`, or `10a 10 min`), so that the question fits one line; the guide's key
+table says that `a` covers every tool, and the grant's notice, shown the moment it is made, says
+so and names what still asks and the key that ends it.
+
+[mcp-session-grants](specs/mcp-session-grants.md) makes a bare `a` last the agent's whole
+session by default (`[mcp] grant_minutes = 0`): the grant has no time limit and ends when the
+agent's connection closes, on `ctrl+b shift+a`, `:mcp revoke` or `:mcp off`, or when Vimma quits.
+A count before `a` (`10a`), or `grant_minutes` above 0, still gives a timed grant. One answer
+therefore lets an agent act for as long as it runs, possibly hours, rather than ten minutes: the
+notices, the status bar's `◇ agent granted`, `:mcp log`, the rate limits and the checkpoints are
+what bound it, and the guide advises a grant only for a task you are watching. A `vimma-ctl mcp`
+process sends a random 256-bit session id in its `agent-hello`; if its link drops, its grant
+waits for a connection with the same id for two minutes and then ends (M5). The id is not a
+credential beyond the token: it is sent only over the authenticated socket, and a process that
+can read it out of `vimma-ctl`'s memory runs as the user and can read the token as well (§11).
 
 - M1. Every agent command but `agent-hello`, `agent-ping` and `agent-cancel` **must** wait for
   your yes, or run under an unexpired grant of that connection, which covers every tool but those
@@ -797,9 +818,27 @@ asks and the key that ends it.
   [`test_a_window_not_in_front_gets_attention_and_a_notification`](../tests/browser/browser_vimma_mcp_control.js),
   [`any other key neither allows nor denies`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a hostile title of 300 characters is literal text cut at 60 columns`](../packages/vimma-core/test/agent-prompt.test.mjs)
-- M5. Grants **must** be per connection, at most one each, capped at `[mcp] grant_max_minutes`,
-  held in memory only, and end on `:mcp revoke`, on `ctrl+b shift+a` with no question waiting
-  (one key, no second question), when their connection closes, on `:mcp off` and at expiry.
+- M5. Grants **must** be per connection, at most one each, held in memory only, and end on
+  `:mcp revoke`, on `ctrl+b shift+a` with no question waiting (one key, no second question), when
+  their connection closes and no reconnect of its session claims the grant within 2 minutes, on
+  `:mcp off` and, for a timed grant (a count, capped at `[mcp] grant_max_minutes`, or
+  `grant_minutes` above 0), at expiry. A grant of a connection that closed **must** be given back
+  only to a connection whose `agent-hello` carries the same session id (32 to 128 lowercase hex
+  characters), within 2 minutes of the close, once, and never while another open connection holds
+  that id; **never** when the connection was muted (`x`); and never for a connection that said
+  hello or closed after `:mcp off`, until MCP is on again. `:mcp revoke`, `ctrl+b shift+a` and
+  `:mcp off` **must** end such a waiting grant too.
+  [`a muted connection's grant is not kept for a reconnect`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`while MCP is off no session is taken or parked, until it is on again`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`keeps its grant within RECONNECT_MS`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`asks again after RECONNECT_MS`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`another session, or none, gets nothing, and the parked grant stays for its own`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a second connection claiming a live session gets nothing`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`revoke ends a parked grant too`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`turning MCP off ends the parked grants and those of the open connections`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`agent-hello: a session id of 32 to 128 lowercase hex characters`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`test_a_reconnect_of_the_same_session_keeps_its_grant`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`grant_minutes 0: a bare a lasts the whole connection, a count is still minutes`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`grants end on revoke and on disconnect, and are listed shortest first`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a connection holds at most one grant`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`the length: a count, or the default for a bare a, capped at grant_max_minutes`](../packages/vimma-core/test/agent-gate.test.mjs),
@@ -968,7 +1007,9 @@ asks and the key that ends it.
   principal may load anything. Its label **must** be from this connection's last `f` on that
   tab, of the top document still shown at the same URL and, for a link in a frame, of that
   frame's document still shown, no older than 120 s; otherwise the step is refused with `stale
-labels: send f again`. The label names the href captured when `f` ran, so a frame that
+labels: send f again`. The 120 s bound `f`'s own list because the child keeps none of its
+  links, so nothing else ends a label of a link the page has since replaced; a `vimma_elements`
+  list's labels are held by element instead (M25). The label names the href captured when `f` ran, so a frame that
   changed its URL without a new document cannot change where a follow goes. A follow to another site (another
   registrable domain, eTLD+1) **must** be asked as a `vimma_open` of its whole URL, unless the
   connection holds a grant, and a no stops the call (`stopped: "denied"`); it is
@@ -1019,10 +1060,20 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   size and characters, the find queries and the counts it can see first; the browser checks all
   of it again. More than 6 `agent-show` calls of one connection a minute (mcp-drive D7), counted
   when asked and before the question, are `busy`, so a refused show cannot be retried in a loop.
+  A `busy` denial for a used-up rate (M20's keys and shows, M3's opens and M32's lists, clicks,
+  fills, screenshots and console reads) names the limit and, to a vimma-ctl at least as new as
+  Vimma, carries `retryAfter`, the milliseconds from 1 to 60000 until the next call is allowed,
+  so an agent waits for the rate rather than for a question that is not there (issue #592); the
+  validators take `retryAfter` on a `busy` denial only. It is learnt from the connection's own
+  calls alone, and the refusal still comes before anything else is learnt.
   [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
   [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
+  [`the refusal names the calls, the limit and the wait`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`retryAfter: 1 to 60000 whole milliseconds, on a busy denial only`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a_rate_limit_names_the_limit_and_the_wait`](../tools/vimma-ctl/src/mcp.rs),
+  [`a_busy_denial_with_retry_after_is_a_rate_limit`](../tools/vimma-ctl/src/mcp_serve.rs),
   [`test_loads_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_follows_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_follow.js),
   [`a label is lowercase hint characters, at most the longest label of 200 links`](../packages/vimma-core/test/agent-keys.test.mjs),
@@ -1098,9 +1149,21 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   nothing on the page (no click, no focus, no event). It lists nothing on a page that is not http
   or https. Each frame's child keeps the agent's elements apart from the user's hint targets, so
   a list never cancels the user's hint mode in the same window and never takes the user's targets
-  from the page; its labels replace the connection's last `f` on that tab and live by M18's
-  rules, and `f<label>` follows only a link from the list, as a load (M18), and only while the
-  link is still in its document. `agent-activate` (F8-F11) is held the same way: it clicks only
+  from the page; its labels replace the connection's last `f` on that tab and are bound as M18's
+  are, to this connection, that tab, the top document still shown at the same URL and, for an
+  element in a frame, that frame's document still shown, but with no time limit: a label lasts
+  until the page navigates, its document changes, a new list or `f` replaces it, or its element
+  leaves the page, each of which refuses it (`stale labels` or `that element is gone`). An
+  element counts as on the page only while it is connected and still belongs to the document
+  it was listed in, so one the page adopts into another document (a frame of its own) is gone
+  too. The child holds each listed element by reference, so a label can only ever name the
+  element the agent was shown. A time limit added nothing to that, since a page can change an
+  element's text within any lifetime, and it refused most clicks of a model that takes 90 s a
+  step. What a click or a fill then does is asked and checked at that moment, from the element
+  as it is then and never from the list (M26-M28, M33). `f<label>` follows only a link from the
+  list, as a load of the href the list showed (M18), and only while the link is still in its
+  document. `agent-activate`
+  (F8-F11) is held the same way: it clicks only
   an element of the connection's current `vimma_elements` list, on an http or https page, with
   the tab never selected and the element never focused, and it is denied as `in-use` while you
   are using the tab, before the question and after the yes. `agent-fill` (F12) is held the same
@@ -1121,6 +1184,9 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_agent_labels_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_f_follows_only_links_from_an_elements_list`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_labels_of_a_gone_element_are_refused`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_element_labels_last_while_their_element_is_there`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_screenshot_draws_labels`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`an element list's labels last as long as their page, however slow the agent`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-elements: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs),
   [`test_activate_clicks_a_button_in_a_background_tab`](../tests/browser/browser_vimma_mcp_activate.js),
   [`test_activate_in_use_while_the_user_types`](../tests/browser/browser_vimma_mcp_activate.js),
@@ -1154,9 +1220,9 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   listed elements, the frame's text outside scripts and styles, a visible dialog element), as
   fixed words from a list that both the browser and `vimma-ctl mcp` check; the comparison runs in
   the clicked element's frame's child, which keeps only a hash of the text, sends no page text
-  and reads no sensitive field's value, as in `vimma_elements` (M31). That check waits up to one
-  more second after the submission allowance of M28 is closed, so it opens nothing, and a
-  submission the page tries meanwhile is still stopped and named.
+  and reads no sensitive field's value, as in `vimma_elements` (M31). That check runs once the
+  clicked element's frame has settled (M28), after the submission allowance of M28 is closed,
+  so it opens nothing; a submission the page tries during the call is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../tests/browser/browser_vimma_mcp_activate.js),
   [`test_activate_says_what_changed_in_place`](../tests/browser/browser_vimma_mcp_activate_changes.js),
   [`activate_says_what_changed_in_place`](../tools/vimma-ctl/src/mcp.rs),
@@ -1220,7 +1286,19 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   host, port and path) it named; a redirect of a submission let through follows on. The call's
   wait for a page counts from when the click or the submission ran in the page's process, not
   from the child's reply before it, so that the allowance is still open when a busy process runs
-  the step late; it still ends with the call. That wait is bounded: a child that does not answer
+  the step late; it still ends with the call. A step that starts no load ends its call once the
+  step's frame has settled, which its own process tells: no change to its document for 250 ms
+  and no request the step opened still open, 1.3 s when the page has not changed at all, at
+  most 2 s; a load the step started is waited for until the new page has had its
+  `DOMContentLoaded` and 200 ms without a change. A submission the step itself makes starts its
+  load in that process before the settle's answer, over the same IPC channel, so the call waits
+  for that load with the allowance open. A step that has started no load a second after it ran
+  has its allowance withdrawn then, while the wait goes on, so a page that keeps itself busy
+  (changing its document, holding a request open) never keeps the allowance open longer than
+  the second it had before; the parent bounds each of these answers itself, so a page that
+  blocks its own process cannot hold the call either. A submission the page makes later, after
+  the call, is outside the allowance and is cancelled while the mark stays, as any other, though
+  the result can no longer name it. That wait is bounded: a child that does not answer
   whether the step ran is taken as having run after 1 s, one that keeps answering that it has not
   run yet after 5 s, and the whole wait ends after 20 s. When the child skips a step, because the
   page changed the element or the form as it was pressed, it tells the parent in the same task,
@@ -1244,6 +1322,10 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   submission's `submit` listener: such a button is an ordinary click (mcp-forms F17).
   [`test_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_page_script_submit_after_a_click_is_cancelled`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_a_submission_the_page_makes_after_a_click_is_still_cancelled`](../tests/browser/browser_vimma_mcp_waits.js),
+  [`test_an_allowed_submission_the_page_holds_back_is_cancelled_later`](../tests/browser/browser_vimma_mcp_waits.js),
+  [`test_a_page_kept_busy_does_not_keep_the_allowance_open`](../tests/browser/browser_vimma_mcp_waits.js),
+  [`test_an_allowed_submission_to_a_slow_server_goes_through`](../tests/browser/browser_vimma_mcp_waits.js),
   [`test_users_own_submit_in_an_agent_tab_goes_through`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submit_sent_elsewhere_than_asked_is_stopped`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submit_listener_moving_the_destination_is_stopped`](../tests/browser/browser_vimma_mcp_submit.js),
@@ -1331,6 +1413,23 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   one form autofill's heuristics infer as a payment card field, with, in a card form, any field
   they leave to their machine-learning model; if the heuristics fail, every field of that form
   counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned.
+  The list `agent-open`, `agent-activate` and `agent-fill` return when asked with `elements`
+  (issue #584) **must** be made by the same code as `agent-elements`' own, so every rule above
+  holds for it, and the validator and `vimma-ctl mcp` check it the same way; it is made only
+  after the step, of a page that is no longer loading, and only while the tab is still an agent
+  tab with the URL it had when the list began (else the result says why, in fixed words, and
+  holds no list); the result's URL and title are read at the last such check, and a tab that
+  left the agent workspace meanwhile fails the call, noted in `:mcp log`, with nothing of its
+  page; its labels become the connection's current ones as a `vimma_elements` list's do. The
+  step's question (a checkpoint's included), its `:mcp log` row and its notice under a grant say
+  that the list is taken too.
+  [`test_a_steps_list_says_nothing_of_a_tab_that_left`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_steps_return_the_element_list_vimma_elements_would`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`a step's list is inside the untrusted delimiters, with its dropped count`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`why a step's list is missing: fixed words, never with a list`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../tools/vimma-ctl/src/mcp.rs),
+  [`an_open_with_elements_lists_the_page_it_loaded`](../tools/vimma-ctl/src/mcp.rs),
+  [`a step that returns the element list says so in the question and the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`test_password_and_card_fields_are_sensitive_without_values`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
   [`passwords, one-time codes and every cc-* name are sensitive; email is not`](../packages/vimma-core/test/agent-act.test.mjs),
@@ -1347,13 +1446,15 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`elements_list_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
 
   `agent-screenshot`'s image (F19) **must** be a PNG, or a JPEG when the PNG does not fit, whose
-  base64 is at most 700 KiB, at most 1,280 by 16,384 pixels; the protocol validator and
+  base64 is at most 700 KiB, at most 1,280 by 16,384 pixels; unless asked `full`, it is at most
+  1,024 pixels wide and the smaller of a PNG and a JPEG (issue #584); the protocol validator and
   `vimma-ctl mcp` **must** refuse any other type, size or encoding, and `vimma-ctl mcp` **must**
   pass it on as an MCP image item only after the untrusted header, which says that text in the
   image is web content and not from you. Labels drawn on it (F20) come only from the
   connection's current `vimma_elements` list of that page, and only while its top frame has
-  not scrolled since the list was made; else none is drawn and the result says the list is
-  stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
+  not scrolled since the list was made and for 120 s after it, because they are drawn at the
+  places the list recorded and a page that updates in place moves its elements without a
+  navigation; else none is drawn and the result says the list is stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
   meets the viewport of any frame of the tab: each frame's child checks, just before and again
   just after the drawing, every form control of its document and its open and closed shadow
   trees, a number field showing text it cannot parse and an autofill preview counting as a
@@ -1371,6 +1472,7 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   within the moment of the drawing, between the two checks, is not seen by either.
   [`test_screenshot_refused_while_a_sensitive_value_is_on_screen`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`test_screenshot_fits_the_reply_line`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`test_screenshot_is_smaller_unless_asked_full`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`test_screenshot_draws_labels`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`test_screenshot_and_the_agents_own_steps_exclude_each_other`](../tests/browser/browser_vimma_mcp_screenshot.js),
   [`the scale: at most 1,280 pixels wide, at most the device pixel ratio`](../packages/vimma-core/test/agent-act.test.mjs),
@@ -1395,12 +1497,15 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
 - M32. More than 30 `agent-elements` calls, 30 `agent-activate` and `agent-fill` calls
   together, 12 `agent-screenshot` calls, or 30 `agent-console` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
   question, **must** be denied as `busy`, so a grant cannot flood a page and a refused call
-  cannot loop; every call, asked, under a grant or denied, **must** be in `:mcp log` (M23), a
+  cannot loop; an `agent-open`, `agent-activate` or `agent-fill` asked with `elements` counts
+  as an `agent-elements` call as well (issue #584), and with those used up it is denied as
+  `busy` before anything of it runs; every call, asked, under a grant or denied, **must** be in `:mcp log` (M23), a
   click with its element, a fill with its fields and values (one refused before its question,
   with its labels), and a submission with its destination, and a call under a grant shows a notice naming the page (and for a click, the
   element; for a fill, how many fields).
   [`at most 30 agent-elements per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_elements_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_a_steps_list_counts_as_an_elements_call`](../tests/browser/browser_vimma_mcp_elements.js),
   [`vimma_elements: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`at most 30 agent-activate per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_activate_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_activate.js),
@@ -1462,6 +1567,180 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`says older for a client that names no version: it predates the check`](../packages/vimma-core/test/ctl-version.test.mjs),
   [`is optional, and refused with the whole hello when it is not a version`](../packages/vimma-core/test/ctl-version.test.mjs)
 
+### The built-in agent (`agent/AgentChat.sys.mjs`, `agent/AgentKeys.sys.mjs`)
+
+Vimma's own agent ([builtin-agent](specs/builtin-agent.md),
+[ADR-023](adr/023-in-browser-model-client.md)): a model the user picks, local or hosted, runs
+tasks the user types in Vimma, through the same agent commands and gate as an MCP agent. It is
+behind `vimma.feature.agentChat` (off) until its conversations are kept and it has its key
+(builtin-agent B22); what is in force:
+
+**Reach:** the agent workspace's tabs that its conversation owns, through `runAgentCommand` in
+the browser's process, so every rule above holds for it, with no `:mcp on` and no socket. It
+has no shell, files or network of its own: the agent workspace and the model's endpoint are its
+only ways to send anything. Page text reaches the model inside the untrusted-content delimiters,
+a mitigation and not a guarantee (M7), so a page can steer it; a steered model under its
+conversation's grant can do what any grant allows (above), within its own tabs and its budget.
+
+**The conversation grant.** A task the user sends from Vimma's own chat window is known to come
+from the user, so sending it with `Enter` grants that conversation's connection, with no
+question and no expiry, until it is stopped (B18). Nothing but Vimma's chrome calls it: the
+control socket has no command that sends a task, and page key events never reach chrome. The
+steps that cannot be taken back still ask under it.
+
+**The model's endpoint.** Requests carry the system text, the tool definitions, the user's
+messages and every tool result (page text, element lists, console entries, screenshots for a
+model with vision) to the endpoint the user configured, and nowhere else. A hosted provider's
+own terms decide what it keeps. A server on 127.0.0.1 may itself forward to a hosted model;
+Vimma sees only the address.
+
+**API keys.** A key is a login of the origin `chrome://vimma-agent` whose password is the key,
+with the endpoint origin it was entered for, encrypted with OSKeyStore. Such a login is listed in `about:logins`, exported with the other
+passwords and synced when the user syncs passwords; those copies hold only the ciphertext. With
+a desktop keyring (GNOME Keyring, KWallet through libsecret) OSKeyStore's secret lives outside
+the profile, so a copied profile does not reveal the key; without one it lives in `key4.db`,
+protected by the primary password like saved passwords, and readable by anyone who reads the
+profile when no primary password is set. Other processes running as the user are out of scope
+(§11).
+
+- M35. The built-in agent **must** act only through `runAgentCommand`, on one gate connection per
+  conversation (`builtin:<n>`, an id no socket connection can have), with the arguments checked
+  as a socket request's, so every rule of §12 applies to it; it **must** work with MCP off, and
+  `:mcp off` **must not** end its grants.
+  [`test_works_with_mcp_off_and_enter_grants_without_a_question`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`a built-in connection's grant does not cover another conversation`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`:mcp off ends the MCP grants and leaves a conversation's`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`the built-in connection ids are the only ones that say built-in`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`every agent tool has its command, and nothing else does`](../packages/vimma-core/test/agent-results.test.mjs)
+- M36. A conversation **must** see and act only on the agent tabs it owns (opened, given, or
+  opened from one it owns) and **must** be refused another tab with the error a tab outside the
+  agent workspace gets; an MCP agent **must** see and act only on the agent tabs no conversation
+  owns. Ownership is kept in memory by tab, so a tab keeps its owner when it is unloaded and
+  when its opener closes; after a restart no tab is owned.
+  [`test_two_conversations_see_only_their_tabs`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_an_unloaded_tab_stays_its_conversations`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_tabs_opened_from_an_owned_tab_stay_owned`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_mcp_agent_sees_only_unowned_tabs`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`a tab belongs to the conversation that opened it`](../packages/vimma-core/test/agent-owners.test.mjs),
+  [`a tab a page opened belongs to its opener's conversation`](../packages/vimma-core/test/agent-owners.test.mjs)
+- M37. A conversation's grant **must** be made only by the user sending a task without asking
+  every step (`Enter`) or by an answer to its question; it **must** have no expiry, **must** end
+  on a send that asks every step (`ctrl+Enter`), on stopping the conversation, on
+  `ctrl+b shift+a`, on `:mcp revoke` and when the conversation is deleted, and **must never**
+  cover another conversation. Form submissions, payment steps, `vimma_show` and the downloads
+  that always ask **must** ask under it (M19, M28, M33).
+  [`test_ctrl_enter_asks_every_step_and_ends_the_grant`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_grant_covers_later_tasks_until_stopped`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_checkpoint_and_show_ask_under_the_conversation_grant`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`a conversation grant has no expiry and ends on stop`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a conversation grant leaves checkpoints asking`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`:mcp revoke ends a conversation grant as any other`](../packages/vimma-core/test/agent-gate.test.mjs)
+- M38. An `agent-hello` whose client name starts with `built-in` (in any case, with any
+  separator or none, after invisible characters or in compatibility forms) **must** be shown
+  with ` (mcp)` after it, so no other program passes as the built-in agent in a question, a
+  notice or `:mcp log`. Look-alike letters of other scripts are not caught; the name is a label
+  and grants nothing.
+  [`a client named built-in over MCP is shown with (mcp)`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_mcp_agent_sees_only_unowned_tabs`](../tests/browser/browser_vimma_agent_conversations.js)
+- M39. Model requests **must** go only to the configured endpoint, `https://` unless on a
+  loopback address, with `credentials: "omit"` and `redirect: "error"`; `[agent] local_only`
+  **must** refuse every endpoint off this machine, in config.toml and at each request. Setup's
+  probe **must** ask only 127.0.0.1 on the local servers' ports, with a timeout of 1 s, and only
+  when setup asks.
+  [`test_requests_only_to_the_endpoint_without_credentials_or_redirects`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`posts to the endpoint without credentials or redirects, and parses the reply`](../packages/vimma-core/test/agent-providers.test.mjs),
+  [`a refused endpoint makes no request`](../packages/vimma-core/test/agent-providers.test.mjs),
+  [`local_only refuses a remote endpoint`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`an endpoint off this machine must be https, and carry no user name`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`lists the models of the servers that answer, with no cookies and no redirects`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`test_probe_only_on_setup_and_only_loopback`](../tests/browser/browser_vimma_agent_conversations.js)
+- M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key and
+  the endpoint origin it was entered for, encrypted with OSKeyStore, and **must** be sent only to
+  that origin (a provider whose endpoint config.toml changes gets no key), and **must never** be
+  in a pref, config.toml (a key field there is a
+  config error that does not repeat the value), a file of Vimma's, `:mcp log`, a notice, the
+  conversation or an error text (a provider's error is cut at 200 characters with the key
+  replaced by `•••`); it goes only into the provider's request header.
+  [`test_key_stored_as_a_login_only`](../tests/browser/browser_vimma_agent_keys.js),
+  [`test_stored_login_holds_only_the_keystore_ciphertext`](../tests/browser/browser_vimma_agent_keys.js),
+  [`test_key_never_in_log_notice_or_error`](../tests/browser/browser_vimma_agent_keys.js),
+  [`test_key_deleted`](../tests/browser/browser_vimma_agent_keys.js),
+  [`test_a_key_goes_only_to_the_endpoint_it_was_stored_for`](../tests/browser/browser_vimma_agent_keys.js),
+  [`a key field in [agent] is an error, with its line`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`the key's value never appears in the error`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`a provider error is cut and never contains the key`](../packages/vimma-core/test/agent-providers.test.mjs)
+- M41. At most `[agent] max_running` conversations (default 3) **must** run a task at once. A
+  task **must** stop at its budget (`max_steps`, `max_tokens`, `max_cost`), which nothing the
+  model writes raises, and after the same call has its arguments refused or is denied three
+  times in a row; `ctrl+b shift+a`
+  with no question waiting **must** stop every running task.
+  [`test_max_running`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_ctrl_b_shift_a_stops_every_task`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`a task stops at max_steps`](../packages/vimma-core/test/agent-budget.test.mjs),
+  [`a task ends after the same call is refused three times in a row`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`max_running and keep_days parse within their bounds`](../packages/vimma-core/test/config-agent.test.mjs)
+
+**The chat window** (`ui/agent-chat.mjs`, `host/agent-chat-ops.mjs`, `host/agent-ui.mjs`):
+Vimma's own chrome, a box in the side panel's slot, never a page. It shows the user's messages,
+the model's replies, a line per step and the gate's questions of its open conversation, so it
+holds text a page may have written (a reply quoting it, a tab's title or a button's words in a
+step) with chrome privileges. The rules keep that text inert and keep the model from answering
+for the user.
+
+- M42. The chat window **must** set every value as text: no Markdown, HTML, image or link the
+  model or a page wrote becomes markup, a request or a link; C0, C1 and bidi control characters
+  are removed from the user's and the model's text, and the model's lines sit indented under the
+  `agent` label, never at the window's edge where Vimma's own lines start. A step's line is built
+  from the loop's and the gate's events, never from a tool's result, so no page text a result
+  carries reaches the window, and a tool name the model made up is shown on one line, cut.
+  [`test_reply_rendered_as_text`](../tests/browser/browser_vimma_agent_chat.js),
+  [`bidi overrides and control characters go; line breaks and tabs stay`](../packages/vimma-core/test/agent-chat.test.mjs),
+  [`a reply line starting with a question glyph is indented under the agent label`](../packages/vimma-core/test/agent-chat.test.mjs),
+  [`a step the gate says nothing of shows the loop's own name for it`](../packages/vimma-core/test/agent-chat.test.mjs),
+  [`a tool name the model made up stays on one line, cut short`](../packages/vimma-core/test/agent-chat.test.mjs)
+- M43. A question of the open conversation **must** show only in the window's prompt slot, an
+  element outside the transcript that only `host/agent-ui.mjs` fills from `AgentGate`, and in
+  one place at a time (the question line when the window is closed or open on another
+  conversation). The slot **must** take keys only while focus is in the window and only once
+  armed (`security.dialog_enable_delay`, M4), arming again whenever focus comes into the window
+  from outside it; while it shows, the input **must** be read-only and
+  `Enter` **must not** send; nothing typed in the input and nothing the model writes **must**
+  answer a question, make a grant or fill the slot.
+  [`test_question_in_the_prompt_slot_and_never_answered_by_the_input`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_question_on_the_question_line_when_closed`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_slot_arms_again_when_focus_comes_back_into_the_window`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_shift_enter_adds_a_line_and_ctrl_enter_asks`](../tests/browser/browser_vimma_agent_chat.js)
+- M44. Giving a tab to a conversation (`P`, `:agent give`) **must** move a tab of another
+  workspace to the agent workspace only after a `y`, reopened there with the agent workspace's
+  container and without its history, and only if that tab is still selected and the agent
+  workspace unchanged at the answer; a tab another conversation owns **must not** be given.
+  Opening the window from a workspace **must not** let the agent read that workspace's tabs
+  where they are: only a tab moved to the agent workspace reaches it.
+  [`test_give_moves_the_tab_after_y_and_makes_it_the_conversations`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_opened_from_another_workspace_reads_none_of_its_tabs`](../tests/browser/browser_vimma_agent_chat.js)
+- M45. Before a conversation's first task to an endpoint off this machine (and again after its
+  provider changes), the window **must** say where page text, field values, screenshots and the
+  user's messages go and send nothing without a `y` to that endpoint; `AgentChat.send` itself
+  **must** refuse a task the notice was not answered for. While `vimma.feature.agentChat` is off,
+  `:agent` **must not** run, complete or be suggested.
+  [`test_external_provider_notice_before_first_task`](../tests/browser/browser_vimma_agent_chat.js),
+  [`the notice before the first task names the host and, when known, who runs it`](../packages/vimma-core/test/agent-chat.test.mjs),
+  [`test_agent_command_hidden_without_the_feature_pref`](../tests/browser/browser_vimma_agent_chat.js),
+  [`a hidden action's commands do not exist: not run, not completed, not suggested`](../packages/vimma-core/test/cmdline.test.mjs)
+- M46. A hosted provider's key **must** be typed only into the window's password field, which
+  hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
+  window, the transcript, the status bar or a notice (which may show its last four characters),
+  nor kept in a pref or the conversation, and an error storing it **must not** be shown with its
+  text, nor recorded in Vimma's key log or its debug output. Any way out of the field (Esc,
+  closing the window, another view) empties it. A provider that needs a key and has none for
+  its endpoint **must** be asked for it, and `AgentChat.send` **must** refuse it, before any
+  request is sent; an endpoint **must not** carry a query or a fragment; `x` in the picker
+  deletes a key after a `y`.
+  [`test_hosted_openai_compatible_provider_set_up_in_the_window`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_hosted_anthropic_provider_asks_for_its_key_before_the_task`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless`](../tests/browser/browser_vimma_agent_chat.js),
+  [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
+
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 
 Whether a key is Vimma's or the page's depends on the tab's mode, which the content actor's focus
@@ -1515,7 +1794,8 @@ Its ad hoc signature proves nothing about who built the app.
 `release.yml`'s macOS jobs, which run only while the variable `MACOS_RELEASE_ENABLED` is `true`,
 hold every rule below that the Linux jobs hold: the same tag checks, the `build` environment for
 the key, cosign under the same identity, and the same refusal to replace a published release's
-files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no Linux release.
+files (B6, B9, B10). Apple's Developer ID signing and notarisation add the `macos-sign`
+environment and its secrets (B14). No Linux job needs them, so a macOS failure holds back no Linux release.
 [`no Linux job needs a macOS job`](../tools/package/test/release-workflow.test.mjs),
 [`macos-build checks the tag like build, then cross-builds with the key`](../tools/package/test/release-workflow.test.mjs),
 [`the build jobs check out clean and restore nothing from the Actions cache`](../tools/test/full-build-workflows.test.mjs),
@@ -1824,9 +2104,10 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   permissions set `sha_pinning_required`, so GitHub refuses an action not pinned to a full
   commit SHA (docs/runbook.md, "Release packages", step 7, for both). The check is not
   required, so it never holds `homebrew.yml`'s push; it reports a pushed cask that Homebrew
-  would reject. **⚠ limit:** the `.dmg` is ad hoc signed and not
-  notarised, so Gatekeeper cannot vouch for it; the cask's caveats tell users to choose Open Anyway
-  in System Settings, and never to remove the quarantine flag.
+  would reject. **⚠ limit:** while `MACOS_SIGNING` is not `developer-id` (B14), the `.dmg` is
+  ad hoc signed and not notarised, so Gatekeeper cannot vouch for it; the cask's caveats then tell
+  users to choose Open Anyway in System Settings, and never to remove the quarantine flag. A
+  notarised release's cask has no caveats.
   [`names the release dmg for the version and pins its sha256`](../tools/package/test/cask.test.mjs),
   [`refuses a pre-release, a version that is not SemVer, and a bad sha256`](../tools/package/test/cask.test.mjs),
   [`refuses repo %j`](../tools/package/test/cask.test.mjs),
@@ -1941,6 +2222,106 @@ files (B6, B9, B10). No Linux job needs them, so a macOS failure holds back no L
   [`without the app's ID, logs a notice and succeeds instead of failing`](../tools/test/site-dispatch-workflow.test.mjs),
   [`never runs for a pre-release or outside vimma-browser/vimma`](../tools/test/site-dispatch-workflow.test.mjs)
 
+- B14. A macOS release is signed with Vimma's Apple Developer ID and notarised only while the
+  repository variable `MACOS_SIGNING` is `developer-id` (spec
+  [macos-build](specs/macos-build.md), decisions 23 to 28). The four Apple secrets,
+  `APPLE_DEVELOPER_ID_P12` (the Developer ID Application certificate and its private key, as
+  base64 PKCS #12), `APPLE_DEVELOPER_ID_P12_PASSWORD`, `APPLE_NOTARY_API_KEY` (an App Store
+  Connect API key, as the JSON `rcodesign encode-app-store-connect-api-key` writes) and
+  `APPLE_TEAM_ID`, **must** be secrets of the `macos-sign` environment only, and only
+  `release.yml`'s `macos-notarise` job reads them. Signing is split over three jobs, each on its
+  own runner, so that no program the build produced ever runs where the secrets are: the
+  disk-image tools that `macos-build`'s `mach` bootstrapped (`dmg`, `hfsplus`, `newfs_hfs`),
+  handed over as an artifact and not checked against a pinned hash, parse the untrusted disk image
+  in `macos-unpack` and pack the signed app in `macos-pack`, neither of which holds a secret, so a
+  replaced tool, or a process it leaves behind, never sees a credential. `macos-notarise` **must
+  not** run any binary from an artifact: it downloads the unpacked volume only as a tar file,
+  fetches rcodesign by `fetch-rcodesign.sh`, which checks its SHA-256, and runs only that and
+  `tools/package/macos-sign-app.sh`, which calls rcodesign and standard system tools. It holds a
+  read-only token and no OIDC permission, and checks out the commit `macos-build` built. The
+  job must equal its golden copy, `tools/package/test/macos-notarise.golden.txt`, line for line
+  apart from the commits its actions are pinned to, and the workflow's top-level keys and `env:`
+  are fixed, so any change to a command, a step key (`shell:`, `env:`, `working-directory:`) or a
+  job key (`defaults:`, `container:`) is a visible change to that file in review. Before any
+  credential is written, the app is unpacked and the SHA-256 of its manifest
+  (`macos-app-manifest.sh`: every path, type, executable bit and SHA-256, computed with coreutils
+  and `sha256sum` only) must equal `macos-build`'s job output `manifest_sha256`, the hash of the
+  manifest of the app `macos-dmg.sh` signed ad hoc there. The script refuses any name that is not
+  printable ASCII before it prints anything, and the step hashes its output only when the script
+  succeeded, under `shell: bash` (`-eo pipefail`) for every step of the job, so a manifest it
+  stopped writing partway, which could otherwise match while hiding a subtree, is never accepted.
+  Only the hash reaches this job, as a job
+  output, because an artifact can be deleted and uploaded again by any job of the run with its
+  `ACTIONS_RUNTIME_TOKEN`, while a job's outputs cannot be changed by another job. So a replaced
+  `macos-volume` artifact, or an app a replaced unpack tool changed, is refused before any
+  credential exists. A replaced `macos-signed-app` or `macos` artifact would have to carry
+  Vimma's Developer ID signature, notarised, for the tag's version line, or `macos-smoke`'s
+  signature, team and version checks fail. The manifest refuses any symlink, as Vimma.app has none,
+  and the sign script refuses a symlink again, as well as a name rcodesign's scope syntax could
+  misread (such as `:` or `@`) and an `Info.plist` whose `CFBundleExecutable` is not one plain
+  file name (letters, digits, `.`, `_`, `+`, `-` and spaces, since Firefox's helpers such as
+  "Vimma GPU Helper" have spaces in their names), so
+  rcodesign cannot be led to read or write a file outside the bundle. The
+  shell's `printf` writes the p12, its password and the key to files of mode 600 under
+  `$RUNNER_TEMP`; rcodesign gets only their paths, never a secret on a command line; an
+  `always()` step deletes them before the signed app is uploaded; no step echoes a secret. Before
+  signing, the certificate's subject must be a Developer ID Application certificate whose team
+  ID is `APPLE_TEAM_ID`. rcodesign's `--for-notarization` refuses any other certificate and a
+  signature without Apple's timestamp. With `MACOS_SIGNING` set, a missing secret fails the
+  release; it never falls back to an ad hoc `.dmg`. A hosted Mac then checks the published app
+  with `codesign -dvv`, `spctl --assess` and `stapler validate`, and requires its team ID to be
+  the repository variable `MACOS_TEAM_ID` (public in every signature, so not a secret), before
+  `macos-sign` cosigns it; Gatekeeper alone would accept any team's notarised app. **⚠
+  setting:** the `macos-sign` environment's only deployment policy is the branch `main`, so no
+  branch or tag can run an edited workflow that reads the secrets (as in B6), and no repository
+  secret of these names exists. It has no required reviewer, since a Firefox security release
+  ships without a person. **⚠ limit:** whoever can merge to `main` can change `release.yml` to
+  misuse the secrets, as for every other environment. **⚠ limit:** the manifest hash comes from
+  the same release run as the build, so it guards against `macos-unpack`, not against a
+  compromised build, which signs what it builds anyway. Nor does it catch a disk-image tool that
+  is already malicious inside `macos-build`: `macos-dmg.sh` runs mach's `unpack_dmg` with the same
+  tools before it writes the manifest, so the manifest describes whatever that tool produced, and
+  such a tool, running inside `macos-build`, could also write the `manifest_sha256` output itself.
+  **⚠ limit:** nothing pins the
+  disk-image tools themselves. A replaced tool in `macos-pack` could pack a different app than
+  the one notarised, which `macos-smoke`'s signature checks then fail; it could also add other
+  entries to the `.dmg`, which is not signed, or point its Applications link elsewhere, and
+  `macos-dmg-check.sh` checks only the art files, not that nothing else is on the volume.
+  **A leaked p12** lets its holder sign any Mac software that Gatekeeper accepts as Vimma's team,
+  and, with any API key of the team, notarise it, until Apple revokes the certificate. The
+  response is in `docs/runbook.md`, "Developer ID signing": unset `MACOS_SIGNING` so releases go
+  out ad hoc, delete the secrets, ask Apple to revoke the certificate, then issue a new one. Once
+  Apple revokes it, Gatekeeper refuses software signed with it; whether Vimma releases signed
+  before the leak keep opening depends on the date Apple revokes it from (**unverified**: no
+  revocation has been tried). **A leaked API key** lets its holder notarise and read the team's
+  notarisation history, not sign: revoke it in App Store Connect (Users and Access,
+  Integrations) and create a new one. The certificate's expiry is read from the certificate
+  (its `notAfter` date, or the certificate list on developer.apple.com), not assumed, and it is
+  renewed as the runbook's "Rotating" paragraph says, with a reminder 60 days before that date.
+  [`the Apple secrets come from the macos-sign environment, in macos-notarise alone`](../tools/package/test/release-workflow.test.mjs),
+  [`the macos-sign job runs no binary of the build: only the pinned rcodesign`](../tools/package/test/release-workflow.test.mjs),
+  [`runs rcodesign and no disk-image tool, mach, node or other program of the build`](../tools/package/test/macos-developer-id.test.mjs),
+  [`refuses a symlink that leaves the app, before rcodesign runs`](../tools/package/test/macos-developer-id.test.mjs),
+  [`refuses every symlink, even one that stays inside the app, and an app that is a link`](../tools/package/test/macos-developer-id.test.mjs),
+  [`refuses a file name outside [A-Za-z0-9._+ -] in a path it scopes a setting to`](../tools/package/test/macos-developer-id.test.mjs),
+  [`signs the released 0.1.10 bundle's layout, spaced helper names passed intact`](../tools/package/test/macos-developer-id.test.mjs),
+  [`refuses a CFBundleExecutable with a / or .., and a binary Info.plist`](../tools/package/test/macos-developer-id.test.mjs),
+  [`changes when a byte, an executable bit or a file name changes`](../tools/package/test/macos-developer-id.test.mjs),
+  [`macos-notarise checks the app against macos-build's manifest hash before the credentials`](../tools/package/test/release-workflow.test.mjs),
+  [`the check catches %s`](../tools/package/test/release-workflow.test.mjs),
+  [`a manifest script that stops partway never passes the hash check`](../tools/package/test/release-workflow.test.mjs),
+  [`refuses a name with a newline, a control character or a non-ASCII byte, printing nothing`](../tools/package/test/macos-developer-id.test.mjs),
+  [`%s runs only when MACOS_SIGNING is developer-id, after %s`](../tools/package/test/release-workflow.test.mjs),
+  [`writes the credentials to owner-only files and fails when one is missing`](../tools/package/test/release-workflow.test.mjs),
+  [`removes the credentials in an always() step before anything is uploaded`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-smoke takes the ad hoc dmg only when Developer ID is off`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-smoke checks the Developer ID of Vimma's team, notarisation and Gatekeeper`](../tools/package/test/release-workflow.test.mjs),
+  [`fails %s`](../tools/package/test/macos-developer-id.test.mjs),
+  [`checks the certificate is a Developer ID Application of APPLE_TEAM_ID before signing`](../tools/package/test/macos-developer-id.test.mjs),
+  [`passes the password and the API key as files, never on a command line`](../tools/package/test/macos-developer-id.test.mjs),
+  [`signs in one rcodesign run, nested code inside-out with mach macos-sign's settings`](../tools/package/test/macos-developer-id.test.mjs),
+  [`the browser gets Firefox's production entitlements without the restricted pair`](../tools/package/test/macos-developer-id.test.mjs)
+
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 
 `ctrl+b f g` searches the text of the tabs in its scope: the parent sends the query to each
@@ -1971,9 +2352,9 @@ Rules:
   private tab, open or recently closed, and a private window **never** lists a normal tab, open
   or recently closed, nor a closed normal window. A window SessionStore does not track yet is
   skipped, not searched.
-  [`private_tabs_never_reach_a_normal_window_and_back`](../tests/browser/browser_vimma_live_grep.js),
-  [`all_windows_searches_the_other_windows_and_enter_goes_there`](../tests/browser/browser_vimma_live_grep.js),
-  [`a_window_sessionstore_does_not_track_is_skipped`](../tests/browser/browser_vimma_live_grep.js)
+  [`private_tabs_never_reach_a_normal_window_and_back`](../tests/browser/browser_vimma_live_grep_windows.js),
+  [`all_windows_searches_the_other_windows_and_enter_goes_there`](../tests/browser/browser_vimma_live_grep_windows.js),
+  [`a_window_sessionstore_does_not_track_is_skipped`](../tests/browser/browser_vimma_live_grep_windows.js)
 - L2. A frame's reply comes from a content process that may be compromised: the parent **must**
   copy it field by field, cut to the limits (100 listed and 1,000 counted matches a frame, lines
   of 162 characters, 21 preview lines of 302 characters, a preview's match within its line),
@@ -1993,7 +2374,7 @@ Rules:
   their results **must** be marked as the agent's, so an agent's page is never taken for yours;
   a recently closed tab or window is the agent's when the tab its row shows was in the agent
   workspace's container.
-  [`agent_tabs_only_in_window_scope_marked_and_last`](../tests/browser/browser_vimma_live_grep.js),
+  [`agent_tabs_only_in_window_scope_marked_and_last`](../tests/browser/browser_vimma_live_grep_windows.js),
   [`agent workspace rows are marked and come last`](../packages/vimma-core/test/grep.test.mjs),
   [`a closed window takes the agent marking of the tab it shows`](../packages/vimma-core/test/grep.test.mjs)
 - L5. Page text **must not** outlive the picker: when it closes, every frame the query was sent
@@ -2002,12 +2383,16 @@ Rules:
   disk or in the session store, and drops a tab's lines when the tab or its window closes, and
   stops watching a closed window. The recently closed titles and URLs a search sends to the
   parent's worker are held under one key a picker session and dropped when the picker closes.
+  A `]q`/`[q` step that ends after the picker opened again leaves its frame to that search,
+  which tells it to drop its text when it closes.
   [`closing_tells_every_searched_frame_to_drop_its_text`](../tests/browser/browser_vimma_live_grep.js),
+  [`a_step_that_ends_after_grep_reopens_leaves_the_new_search_alone`](../tests/browser/browser_vimma_live_grep.js),
+  [`a_step_whose_tab_switch_ends_after_grep_reopens_stops_there`](../tests/browser/browser_vimma_live_grep.js),
   [`a_reply_held_past_close_still_gets_grep_end`](../tests/browser/browser_vimma_live_grep.js),
   [`the_grep_list_steps_with_bracket_q_and_grep_resumes`](../tests/browser/browser_vimma_live_grep.js),
   [`pruneGrepList drops a closed tab's rows and keeps its place`](../packages/vimma-core/test/grep.test.mjs),
-  [`the_grep_list_drops_a_closed_windows_lines`](../tests/browser/browser_vimma_live_grep.js),
-  [`the_closed_titles_have_one_matcher_key_until_close`](../tests/browser/browser_vimma_live_grep.js)
+  [`the_grep_list_drops_a_closed_windows_lines`](../tests/browser/browser_vimma_live_grep_windows.js),
+  [`the_closed_titles_have_one_matcher_key_until_close`](../tests/browser/browser_vimma_live_grep_windows.js)
 - L6. A regular expression **must** run on page text only in a worker thread of the page's
   content process (one a process, shared by its frames), and on recently closed titles and URLs
   only in a worker thread of the parent process, line by line, and a query **must** be stopped
@@ -2022,7 +2407,7 @@ Rules:
   [`grep_end_resets_the_frames_generation`](../tests/browser/browser_vimma_live_grep.js),
   [`one_worker_a_process_and_none_for_a_blank_frame`](../tests/browser/browser_vimma_live_grep.js),
   [`an_over_long_query_says_so_and_is_not_sent`](../tests/browser/browser_vimma_live_grep.js),
-  [`a_catastrophic_pattern_on_closed_titles_never_freezes_the_browser`](../tests/browser/browser_vimma_live_grep.js),
+  [`a_catastrophic_pattern_on_closed_titles_never_freezes_the_browser`](../tests/browser/browser_vimma_live_grep_windows.js),
   [`a match never spans two lines`](../packages/vimma-core/test/grep.test.mjs)
 - L7. A page **must not** be able to make the parent hold an unbounded search: at most 100
   frames are searched in a tab, and at most 2,000 matches are held, those of the replies first
@@ -2071,13 +2456,19 @@ _Pages_ and _extensions_ cannot reach it.
   [`refusals_show_after_three_in_a_row`](../tests/browser/browser_vimma_update_check.js)
 - UP2. A verified manifest is **never** accepted for another channel or platform, with a serial
   older than one this profile accepted or than the running build's ID (replay), or with a serial
-  more than a day ahead of the clock, and an older or equal build is **never** offered
-  (downgrade). Withholding updates or serving an old
+  more than a day ahead of the clock, and an older or equal build, or the Vimma version that is
+  already running, is **never** offered (downgrade). A release build **must** carry one build ID
+  in its binary and its `application.ini` (the manifest's source): release.yml and nightly.yml fix
+  `MOZ_BUILD_DATE` and fail a package whose two differ. Withholding updates or serving an old
   manifest for long is what a compromised host can still do; the feed's age shows after 45 days
   (7 for nightly).
   [`channel and target mismatches are refused`](../packages/vimma-core/test/updates.test.mjs),
   [`replay: a serial below the one accepted, or below this build, is refused; equal is accepted`](../packages/vimma-core/test/updates.test.mjs),
   [`downgrade: an older or equal build is no offer, not an error`](../packages/vimma-core/test/updates.test.mjs),
+  [`the Vimma version already running is no offer, whatever its build ID`](../packages/vimma-core/test/updates.test.mjs),
+  [`the_vimma_version_running_is_never_offered`](../tests/browser/browser_vimma_update_check.js),
+  [`a packaged build ID that differs from the binary's is a problem`](../tools/release/test/build-id.test.mjs),
+  [`release.yml's Linux and macOS builds fix MOZ_BUILD_DATE before they build`](../tools/package/test/release-workflow.test.mjs),
   [`a release feed older than 45 days and a nightly one older than 7 are stale`](../packages/vimma-core/test/updates.test.mjs),
   [`replay_is_refused_and_downgrade_offers_nothing`](../tests/browser/browser_vimma_update_check.js),
   [`a serial more than a day ahead of the clock is refused; up to a day is accepted`](../packages/vimma-core/test/updates.test.mjs),
@@ -2201,6 +2592,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`the publish job verifies with the browser's verifier and with openssl before any push`](../tools/update/test/update-workflow.test.mjs),
   [`the deploy key lives in its own environment and reaches only the push step`](../tools/update/test/update-workflow.test.mjs),
   [`pushes one commit naming the version to main, never forced, to a pinned host key`](../tools/update/test/update-workflow.test.mjs),
+  [`a push the other target's run beat rebases and lands, with no git identity configured`](../tools/update/test/update-workflow.test.mjs),
   [`signs the body so that the browser's verifier accepts it under the KMS key`](../tools/update/test/update-workflow.test.mjs),
   [`refuses to sign %s`](../tools/update/test/update-workflow.test.mjs),
   [`every asset must be listed with the hash of the file that was downloaded`](../tools/update/test/manifest.test.mjs),

@@ -169,6 +169,20 @@ describe("status bar segments", () => {
     expect(s[1]).toMatchObject({ id: "workspace", text: "◆ private", fg: "--vimma-text-magenta" });
   });
 
+  // docs/specs/builtin-agent.md Behaviour 35: the built-in agent's running tasks, unless a
+  // question waits, which comes first.
+  test("the agent segment shows the built-in agent's running tasks", () => {
+    const at = (/** @type {any} */ agent) =>
+      statusSegments({ ...base, agent }).find((s) => s.id === "agent");
+    const builtin = "◇ built-in 14/60 · 212k tok";
+    expect(at({ waiting: 0, minutes: Infinity, ran: true, builtin })).toMatchObject({
+      text: builtin,
+      fg: "--vimma-text-cyan",
+      bg: null,
+    });
+    expect(at({ waiting: 1, minutes: Infinity, ran: false, builtin })?.text).toBe("◇ agent 1?");
+  });
+
   // docs/specs/vimma-mcp.md decision 24: glyph and word carry it without colour.
   test("the agent segment: ◇ agent, ◇ agent 2?, ◇ agent 14m, ◇ agent · in cyan, on the right", () => {
     const at = (/** @type {any} */ agent) =>
@@ -182,6 +196,8 @@ describe("status bar segments", () => {
     });
     expect(at({ waiting: 2, minutes: 14, ran: false })?.text).toBe("◇ agent 2?");
     expect(at({ waiting: 0, minutes: 14, ran: false })?.text).toBe("◇ agent 14m");
+    // docs/specs/mcp-session-grants.md S1: a grant for the whole connection has no minutes.
+    expect(at({ waiting: 0, minutes: Infinity, ran: false })?.text).toBe("◇ agent granted");
     // A question waiting says so even just after a request ran: the question comes first.
     expect(at({ waiting: 1, minutes: null, ran: true })?.text).toBe("◇ agent 1?");
     expect(at({ waiting: 0, minutes: 14, ran: true })).toMatchObject({

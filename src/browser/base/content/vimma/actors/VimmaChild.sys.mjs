@@ -17,6 +17,7 @@ import {
   scriptErrorSource,
 } from "../core/agent-act.mjs";
 import { cutTo } from "../core/agent-keys.mjs";
+import { quietVerdict } from "../core/agent-wait.mjs";
 import { collectTargets, linkText } from "./hint-collect.mjs";
 import {
   actTargetOf,
@@ -39,6 +40,11 @@ import { textOfDocument } from "./text-model.mjs";
 import { GrepMatcher } from "./grep-matcher.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
+
+const lazy = /** @type {any} */ ({});
+ChromeUtils.defineESModuleGetters(lazy, {
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
+});
 /** @import { ScrollKind } from "./VimmaActors.sys.mjs" */
 
 /** j/k/h/l step in CSS pixels (Vimium's scrollStepSize). */
@@ -215,6 +221,16 @@ export class VimmaChild extends JSWindowActorChild {
    * @type {{ gen: number, id: number, outcome: "pending" | "kept" | "reset" | "skipped" } | null}
    */
   #agentFill = null;
+  /**
+   * The requests this document had open just before the agent's last click or submission here
+   * (issue #579): only the ones the step started keep its wait going, not a page's long poll.
+   */
+  #netBase = 0;
+  /**
+   * The changes to this document since the agent's last step here began (`#startStepWatch`).
+   * @type {{ doc: Document, at: number, last: number | null, observer: any } | null}
+   */
+  #stepWatch = null;
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
   #emptySearchAt = 0;
   /** Copy mode in this document (m1-copy-mode). */
@@ -573,6 +589,8 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#activateHint(msg.data);
       case "Vimma:AgentElement":
         return this.#agentElement(msg.data);
+      case "Vimma:AgentQuiet":
+        return this.#agentQuiet(msg.data);
       case "Vimma:AgentConsole":
         // An agent's vimma_console (docs/specs/mcp-forms.md F22, F23): this frame's own errors.
         try {
@@ -736,6 +754,26 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   /**
+   * Whether `el` is still in this frame's document. Connected alone is not enough: a page can
+   * adopt a listed element into another document (a frame of its own), where a click or fill
+   * would act outside the frame the parent checked (security.md M25).
+   * @param {Element | null | undefined} el
+   * @returns {el is Element}
+   */
+  #onPage(el) {
+    return !!el?.isConnected && el.ownerDocument === this.document;
+  }
+
+  /**
+   * The agent's listed element `id`, while it is in this frame's document (#onPage).
+   * @param {number} id
+   */
+  #agentListed(id) {
+    const el = this.#agentEls.els[id]?.deref();
+    return el && this.#onPage(el) ? el : undefined;
+  }
+
+  /**
    * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
@@ -744,10 +782,10 @@ export class VimmaChild extends JSWindowActorChild {
    */
   #agentElement(data) {
     const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
-    const el = known ? this.#agentEls.els[data.id]?.deref() : undefined;
+    const el = known ? this.#agentListed(data.id) : undefined;
     switch (data?.op) {
       case "alive":
-        return !!el?.isConnected;
+        return this.#onPage(el);
       case "inspect":
         return actTargetOf(el);
       case "activate":
@@ -775,6 +813,10 @@ export class VimmaChild extends JSWindowActorChild {
         return fillTargetOf(el, data.value);
       case "fill":
         return this.#agentFillField(el, data);
+      case "loading":
+        // After a fill (issue #579): whether the fields' handlers started a load in this frame.
+        // Asked after their task, so a submission they queued has started by now.
+        return !!(/** @type {any} */ (this.docShell)?.isLoadingDocument);
       case "fill-outcome": {
         const last = this.#agentFill;
         return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
@@ -789,7 +831,7 @@ export class VimmaChild extends JSWindowActorChild {
         /** @type {Set<Element>} */
         const skip = new Set();
         for (const id of Array.isArray(data.skip) ? data.skip : []) {
-          const field = isIndex(id) ? this.#agentEls.els[id]?.deref() : undefined;
+          const field = isIndex(id) ? this.#agentListed(id) : undefined;
           if (field) skip.add(field);
         }
         return sentFieldsOf(el, data.by === "form" ? "form" : "click", skip);
@@ -809,7 +851,7 @@ export class VimmaChild extends JSWindowActorChild {
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentFillField(el, asked) {
-    if (!el?.isConnected) return "gone";
+    if (!this.#onPage(el)) return "gone";
     if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
     const value = asked.value;
     if (typeof value !== "string" && typeof value !== "boolean") return "changed";
@@ -819,7 +861,7 @@ export class VimmaChild extends JSWindowActorChild {
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
       // A busy page can delay this past the parent's wait: then nothing is set.
-      if (Date.now() > until || !el.isConnected || !this.#fillAsAsked(el, asked)) {
+      if (Date.now() > until || !this.#onPage(el) || !this.#fillAsAsked(el, asked)) {
         fill.outcome = "skipped";
         return;
       }
@@ -852,7 +894,7 @@ export class VimmaChild extends JSWindowActorChild {
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentSubmit(el, asked) {
-    if (!el?.isConnected) return "gone";
+    if (!this.#onPage(el)) return "gone";
     if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
     const form = /** @type {any} */ (el).form;
     const now = form ? defaultSubmitOf(form) : null;
@@ -873,7 +915,7 @@ export class VimmaChild extends JSWindowActorChild {
           // the test's page function threw: the check below sees what it left
         }
       }
-      const again = form.isConnected ? defaultSubmitOf(form) : null;
+      const again = this.#onPage(form) ? defaultSubmitOf(form) : null;
       if (
         Date.now() > until ||
         !again ||
@@ -885,6 +927,7 @@ export class VimmaChild extends JSWindowActorChild {
         return;
       }
       sent.outcome = "clicked";
+      this.#startStepWatch();
       form.requestSubmit(again.submitter ?? undefined);
     });
     return "ok";
@@ -913,15 +956,16 @@ export class VimmaChild extends JSWindowActorChild {
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
       try {
-        if (Date.now() <= until && el.isConnected) {
+        if (Date.now() <= until && this.#onPage(el)) {
           this.#agentWatch = { gen: asked.gen, id: asked.id, before: this.#pageMarks(asked.id) };
         }
       } catch {
         // The page's DOM broke the snapshot: the click and its outcome (M28) go on without it.
       }
+      this.#startStepWatch();
       // A busy page can delay this past the parent's wait: then nothing is clicked.
       const ran =
-        Date.now() <= until && el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
+        Date.now() <= until && this.#onPage(el) && this.#press(el, () => this.#asAsked(el, asked));
       if (!ran) this.#skipped();
       click.outcome = ran ? "clicked" : "skipped";
     });
@@ -929,11 +973,130 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   /**
+   * Starts watching for changes to this document as the agent's step runs here, for
+   * `#agentQuiet`, which the parent asks only once the step has run: the page's handlers may
+   * have changed it by then. Also notes the requests open before the step.
+   */
+  #startStepWatch() {
+    this.#endStepWatch();
+    this.#netBase = this.#openRequests();
+    const doc = this.document;
+    const win = /** @type {any} */ (this.contentWindow);
+    if (!doc || !win) return;
+    /** @type {{ doc: Document, at: number, last: number | null, observer: any }} */
+    const watch = { doc, at: Date.now(), last: null, observer: null };
+    try {
+      watch.observer = new win.MutationObserver(() => {
+        watch.last = Date.now();
+      });
+      watch.observer.observe(doc, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        characterData: true,
+      });
+    } catch {
+      // no observer: the quiet wait sees only later changes
+    }
+    this.#stepWatch = watch;
+  }
+
+  #endStepWatch() {
+    this.#stepWatch?.observer?.disconnect();
+    this.#stepWatch = null;
+  }
+
+  /** How many requests this document has open: its loads, fetches and XHRs (its load group). */
+  #openRequests() {
+    try {
+      // Every request, not `activeCount`: that counts only foreground ones, and fetches and
+      // XHRs are background requests (nsLoadGroup::AddRequest, LOAD_BACKGROUND).
+      const group = /** @type {any} */ (this.document)?.documentLoadGroup;
+      return group ? [...group.requests].length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Waits until this frame's page has settled after an agent's step (docs/specs/mcp-forms.md
+   * F11, issue #579), so that the parent's call returns as soon as the page has, instead of
+   * after a fixed second. With `ready`, a new page waits for its DOMContentLoaded first, and a
+   * page already complete answers at once. Then it waits until the document has not changed
+   * for `quiet` ms (`still` ms when it has not changed at all), and, with `net`, until no
+   * request the step started is open, for at most `max` ms (core quietVerdict), and never
+   * past `until` (ms since the epoch). A MutationObserver sees the changes, which the page
+   * cannot hide from it; only whether the page changed is kept, none of what it shows.
+   * @param {{ ready?: unknown, net?: unknown, quiet?: unknown, still?: unknown, max?: unknown,
+   *   until?: unknown }} data
+   * @returns {Promise<{ settled: "quiet" | "busy", state: string } | null>} null: the
+   *   document went away, or its time ran out before its DOMContentLoaded
+   */
+  async #agentQuiet(data) {
+    /** @param {unknown} v @param {number} cap */
+    const ms = (v, cap) => (typeof v === "number" && v >= 0 ? Math.min(v, cap) : 0);
+    const limits = {
+      quiet: ms(data?.quiet, 5000),
+      still: ms(data?.still, 5000),
+      max: ms(data?.max, 10000),
+    };
+    const until = Math.min(typeof data?.until === "number" ? data.until : 0, Date.now() + 30000);
+    const doc = this.document;
+    const win = /** @type {any} */ (this.contentWindow);
+    if (!doc || !win) return null;
+    const gone = () => {
+      try {
+        return !(/** @type {any} */ (this.manager)?.isCurrentGlobal) || this.document !== doc;
+      } catch {
+        return true;
+      }
+    };
+    // Chrome timers: a hidden tab's page timers are held to one a second, these are not.
+    const tick = () => new Promise((resolve) => lazy.setTimeout(resolve, 25));
+    if (data?.ready && doc.readyState === "complete")
+      return { settled: "quiet", state: "complete" };
+    while (data?.ready && doc.readyState === "loading") {
+      if (gone() || Date.now() > until) return null;
+      await tick();
+    }
+    if (gone()) return null;
+    // After a step, its own watch saw what the page did as it was pressed, before this call.
+    const step = !data?.ready && this.#stepWatch?.doc === doc ? this.#stepWatch : null;
+    this.#endStepWatch();
+    const start = step?.at ?? Date.now();
+    /** @type {number | null} */
+    let last = data?.ready ? start : (step?.last ?? null);
+    const observer = new win.MutationObserver(() => {
+      last = Date.now();
+    });
+    observer.observe(doc, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true,
+    });
+    try {
+      for (;;) {
+        if (gone()) return null;
+        const now = Date.now();
+        const netBusy = !!data?.net && this.#openRequests() > this.#netBase;
+        const sinceChange = last === null ? null : now - last;
+        const verdict = quietVerdict({ elapsed: now - start, sinceChange, netBusy }, limits);
+        if (verdict) return { settled: verdict, state: doc.readyState };
+        if (now > until) return { settled: "busy", state: doc.readyState };
+        await tick();
+      }
+    } finally {
+      observer.disconnect();
+    }
+  }
+
+  /**
    * This frame's page as a click on the listed element `id` could change it in place (#510).
    * @param {number} id
    */
   #pageMarks(id) {
-    const listed = this.#agentEls.els.map((ref) => ref.deref());
+    const listed = this.#agentEls.els.map((_, i) => this.#agentListed(i));
     return pageMarks(/** @type {Document} */ (this.document), listed, id);
   }
 
@@ -1084,7 +1247,7 @@ export class VimmaChild extends JSWindowActorChild {
       const buttons = type === "mousedown" ? 1 : 0;
       el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));
     }
-    if (!el.isConnected || !still()) return false;
+    if (!this.#onPage(el) || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();
     else el.dispatchEvent(new win.MouseEvent("click", init));

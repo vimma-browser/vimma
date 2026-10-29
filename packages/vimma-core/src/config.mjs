@@ -24,6 +24,7 @@ import { KeyNotationError, formatKey, parseKey } from "./keys.mjs";
 import { BOOKMARKS_ROOTS } from "./bookmarks.mjs";
 import { quarantineProblem, resolveDownloadDir } from "./agent-downloads.mjs";
 import { resolveSearch, validateSearch } from "./search.mjs";
+import { checkEndpoint } from "./agent-providers.mjs";
 
 /** @import { Keymap } from "./keymap.mjs" */
 /** @import { UserConfig } from "./defaults.mjs" */
@@ -77,6 +78,20 @@ import { resolveSearch, validateSearch } from "./search.mjs";
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]` (schema 2),
  *   docs/specs/m6a-updater.md
+ * @property {AgentConfig} agent                         `[agent]` (schema 2),
+ *   docs/specs/builtin-agent.md
+ */
+
+/**
+ * A model provider of `[[agent.providers]]`: where requests go and which model, never a key (B8).
+ * @typedef {{ name: string, kind: "openai" | "anthropic", endpoint: string, model: string,
+ *   vision: boolean, priceIn?: number, priceOut?: number }} AgentProviderConfig
+ */
+/**
+ * `[agent]` (docs/specs/builtin-agent.md Behaviour 8). `default` is a provider's name, or null.
+ * @typedef {{ default: string | null, localOnly: boolean, maxRunning: number, maxSteps: number,
+ *   maxTokens: number, maxCost: number, keepDays: number | null,
+ *   providers: AgentProviderConfig[] }} AgentConfig
  */
 
 /**
@@ -181,6 +196,7 @@ const TOP_KEYS = [
   "ui",
   "search",
   "updates",
+  "agent",
 ];
 const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
@@ -213,6 +229,7 @@ const SCHEMA_2_KEYS = [
   "ui",
   "search",
   "updates",
+  "agent",
 ];
 /** `[bookmarks]` (docs/specs/bookmarks.md, decision 2). */
 const BOOKMARKS_KEYS = ["root"];
@@ -250,6 +267,44 @@ export const MCP_BOUNDS = Object.freeze({
   downloadMaxMb: Object.freeze({ min: 1, max: 4096 }),
   clamavMaxAgeDays: Object.freeze({ min: 1, max: 90 }),
 });
+
+/**
+ * `[agent]`'s defaults (docs/specs/builtin-agent.md B10, B17). Kept here rather than in
+ * DEFAULT_CONFIG while the built-in agent is unfinished, so defaults.toml does not list it.
+ * The budgets are agent-budget.mjs's DEFAULT_LIMITS.
+ */
+export const AGENT_DEFAULTS = Object.freeze({
+  maxRunning: 3,
+  maxSteps: 100,
+  maxTokens: 2_000_000,
+  maxCost: 2,
+});
+const AGENT_KEYS = [
+  "default",
+  "local_only",
+  "max_running",
+  "max_steps",
+  "max_tokens",
+  "max_cost",
+  "keep_days",
+  "providers",
+];
+const AGENT_PROVIDER_KEYS = [
+  "name",
+  "kind",
+  "endpoint",
+  "model",
+  "vision",
+  "price_in",
+  "price_out",
+];
+/** Fields that would hold a key or a password: config.toml is shared and kept in dotfiles (B8). */
+const SECRET_KEYS = new Set(["key", "api_key", "apikey", "token", "password", "secret"]);
+const SECRET_IN_CONFIG =
+  "an API key must not be in config.toml: Vimma keeps it in login storage, set in the agent's setup";
+const MAX_PROVIDER_NAME = 32;
+const MAX_MODEL = 200;
+const MAX_PRICE = 1_000_000;
 
 /** The private workspace's name (privatews.mjs): never the agent workspace's. */
 const PRIVATE_WORKSPACE_NAME = "private";
@@ -568,6 +623,10 @@ function validate(raw, declared) {
 
   if (declared >= 2 && isTable(raw.mcp)) validateMcp(raw.mcp, { fail, typeError, unknownKey });
 
+  if (declared >= 2 && isTable(raw.agent)) {
+    validateAgent(raw.agent, { fail, typeError, unknownKey });
+  }
+
   // docs/specs/search-engines.md, decision 2.
   if (declared >= 2 && isTable(raw.search)) problems.push(...validateSearch(raw.search));
 
@@ -686,8 +745,9 @@ function validateMcp(mcp, { fail, typeError, unknownKey }) {
       integer(path, v, g.min, g.max, " (minutes)");
     } else if (key === "grant_minutes") {
       if (typeof v !== "bigint") typeError(path, v, "an integer");
-      else if (v < 1n || (grantMax !== undefined && v > BigInt(grantMax))) {
-        fail(path, `must be an integer between 1 and grant_max_minutes (${grantMax})`);
+      // 0: a bare `a` grants the whole connection (docs/specs/mcp-session-grants.md S1).
+      else if (v < 0n || (grantMax !== undefined && v > BigInt(grantMax))) {
+        fail(path, `must be an integer between 0 and grant_max_minutes (${grantMax})`);
       }
     } else if (key === "max_read_chars") {
       integer(path, v, MCP_BOUNDS.maxReadChars.min, MCP_BOUNDS.maxReadChars.max);
@@ -703,6 +763,130 @@ function validateMcp(mcp, { fail, typeError, unknownKey }) {
       else if (problem) fail(path, problem);
     } else unknownKey(path, key, MCP_KEYS);
   }
+}
+
+/**
+ * `[agent]` (docs/specs/builtin-agent.md Behaviour 8-9): bounded numbers, providers by endpoint
+ * and model only, a key field an error whose message never repeats the value (B8), and every
+ * endpoint checked as each request is (B11), `local_only` included.
+ * @param {Record<string, unknown>} agent
+ * @param {{ fail: (path: Path, message: string, suggestion?: string) => void,
+ *   typeError: (path: Path, v: unknown, expected: string) => void,
+ *   unknownKey: (path: Path, key: string, known: readonly string[]) => void }} report
+ */
+function validateAgent(agent, { fail, typeError, unknownKey }) {
+  /** @param {Path} path @param {unknown} v @param {number} min @param {number} max */
+  const integer = (path, v, min, max, unit = "") => {
+    if (typeof v !== "bigint") typeError(path, v, "an integer");
+    else if (v < BigInt(min) || v > BigInt(max)) {
+      fail(path, `must be an integer between ${min} and ${max}${unit}`);
+    }
+  };
+  /** @param {Path} path @param {unknown} v @param {number} max @returns {boolean} */
+  const text = (path, v, max) => {
+    if (typeof v !== "string") typeError(path, v, "a string");
+    else if ([...v].length < 1 || [...v].length > max) fail(path, `must be 1 to ${max} characters`);
+    else if (hasControl(v)) fail(path, "must not contain control characters");
+    else return true;
+    return false;
+  };
+  const localOnly = agent.local_only === true;
+  for (const [key, v] of Object.entries(agent)) {
+    const path = ["agent", key];
+    if (SECRET_KEYS.has(key.toLowerCase())) fail(path, SECRET_IN_CONFIG);
+    else if (key === "local_only") {
+      if (typeof v !== "boolean") typeError(path, v, "a boolean");
+    } else if (key === "default") text(path, v, MAX_PROVIDER_NAME);
+    else if (key === "max_running") integer(path, v, 1, 10);
+    else if (key === "max_steps") integer(path, v, 1, 1000);
+    else if (key === "max_tokens") integer(path, v, 1000, 100_000_000);
+    else if (key === "keep_days") integer(path, v, 1, 3650, " (days)");
+    else if (key === "max_cost") {
+      if (typeof v !== "number" && typeof v !== "bigint") typeError(path, v, "a number");
+      else if (!(Number(v) > 0 && Number(v) <= 1000)) {
+        fail(path, "must be a number above 0 and at most 1000");
+      }
+    } else if (key === "providers") {
+      if (!Array.isArray(v)) typeError(path, v, "[[agent.providers]] tables");
+    } else unknownKey(path, key, AGENT_KEYS);
+  }
+  const providers = Array.isArray(agent.providers) ? agent.providers : [];
+  /** @type {Set<string>} */
+  const names = new Set();
+  providers.forEach((p, i) => {
+    const at = ["agent", "providers", i];
+    if (!isTable(p)) {
+      typeError(at, p, "a table");
+      return;
+    }
+    if (!("kind" in p && "endpoint" in p && "model" in p)) {
+      fail(at, 'a provider needs "kind", "endpoint" and "model"');
+    }
+    if ("price_in" in p !== "price_out" in p) fail(at, "price_in and price_out go together");
+    for (const [key, v] of Object.entries(p)) {
+      const path = [...at, key];
+      if (SECRET_KEYS.has(key.toLowerCase())) fail(path, SECRET_IN_CONFIG);
+      else if (key === "name") {
+        if (!text(path, v, MAX_PROVIDER_NAME)) continue;
+        if (names.has(/** @type {string} */ (v))) fail(path, `a second provider named "${v}"`);
+        names.add(/** @type {string} */ (v));
+      } else if (key === "kind") {
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (v !== "openai" && v !== "anthropic") {
+          fail(path, 'must be "openai" or "anthropic"', closest(v, ["openai", "anthropic"]));
+        }
+      } else if (key === "endpoint") {
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else {
+          const refused = checkEndpoint(v, { localOnly });
+          if (refused) fail(path, refused);
+        }
+      } else if (key === "model") text(path, v, MAX_MODEL);
+      else if (key === "vision") {
+        if (typeof v !== "boolean") typeError(path, v, "a boolean");
+      } else if (key === "price_in" || key === "price_out") {
+        if (typeof v !== "number" && typeof v !== "bigint") typeError(path, v, "a number");
+        else if (!(Number(v) >= 0 && Number(v) <= MAX_PRICE)) {
+          fail(path, `must be a number from 0 to ${MAX_PRICE} (per million tokens)`);
+        }
+      } else unknownKey(path, key, AGENT_PROVIDER_KEYS);
+    }
+  });
+  if (typeof agent.default === "string" && !names.has(agent.default)) {
+    fail(["agent", "default"], `no provider is named "${agent.default}"`);
+  }
+}
+
+/**
+ * `[agent]` with the defaults filled in (camelCase, as ResolvedConfig keeps it).
+ * @param {any} agent  valid
+ * @returns {AgentConfig}
+ */
+function resolveAgent(agent) {
+  /** @type {any[]} */
+  const providers = Array.isArray(agent?.providers) ? agent.providers : [];
+  const num = (/** @type {unknown} */ v, /** @type {number | null} */ d) =>
+    v === undefined ? d : Number(v);
+  return {
+    default: agent?.default ?? null,
+    localOnly: agent?.local_only ?? false,
+    maxRunning: /** @type {number} */ (num(agent?.max_running, AGENT_DEFAULTS.maxRunning)),
+    maxSteps: /** @type {number} */ (num(agent?.max_steps, AGENT_DEFAULTS.maxSteps)),
+    maxTokens: /** @type {number} */ (num(agent?.max_tokens, AGENT_DEFAULTS.maxTokens)),
+    maxCost: /** @type {number} */ (num(agent?.max_cost, AGENT_DEFAULTS.maxCost)),
+    keepDays: num(agent?.keep_days, null),
+    providers: providers.map((p) => ({
+      name: p.name,
+      kind: p.kind,
+      endpoint: p.endpoint,
+      model: p.model,
+      // B7: a model that sees images is the rule for Anthropic's, the exception for local ones.
+      vision: p.vision ?? p.kind === "anthropic",
+      ...(p.price_in === undefined
+        ? {}
+        : { priceIn: Number(p.price_in), priceOut: Number(p.price_out) }),
+    })),
+  };
 }
 
 /**
@@ -837,6 +1021,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },
+    agent: resolveAgent(/** @type {any} */ (user).agent),
   };
 }
 
@@ -850,9 +1035,10 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
 
 /**
  * @param {string} text  contents of config.toml
+ * @param {{ mac?: boolean }} [options]  compile over macOS's default keys (compileKeymap)
  * @returns {ParseResult}
  */
-export function parseConfig(text) {
+export function parseConfig(text, { mac = false } = {}) {
   /** @param {ConfigError[]} errors @returns {ParseResult} */
   const failed = (errors) => ({ config: null, keymap: null, errors, migratedFrom: null });
 
@@ -894,12 +1080,10 @@ export function parseConfig(text) {
   let keymap = null;
   if (!problems.some((p) => KEYMAP_SECTIONS.has(/** @type {string} */ (p.path[0])))) {
     try {
-      keymap = compileKeymap({
-        keys: user.keys,
-        modal: user.modal,
-        unbind: user.unbind,
-        firefox: user.firefox,
-      });
+      keymap = compileKeymap(
+        { keys: user.keys, modal: user.modal, unbind: user.unbind, firefox: user.firefox },
+        { mac },
+      );
     } catch (e) {
       /* c8 ignore next */
       if (!(e instanceof KeymapError)) throw e;
@@ -934,14 +1118,18 @@ export function parseConfig(text) {
  * Apply new config text atomically: on any error the previous config stays active (plan M5).
  * @param {ActiveConfig | null} active  the config in use, null before the first load
  * @param {string} text
+ * @param {{ mac?: boolean }} [options]  macOS's default keys (compileKeymap)
  * @returns {{ active: ActiveConfig, errors: ConfigError[], kept: boolean }}
  *   kept: the text was not applied; `active` is the previous config, or the defaults
  */
-export function reloadConfig(active, text) {
-  const r = parseConfig(text);
+export function reloadConfig(active, text, { mac = false } = {}) {
+  const r = parseConfig(text, { mac });
   if (r.config && r.keymap)
     return { active: { config: r.config, keymap: r.keymap }, errors: [], kept: false };
-  const fallback = active ?? { config: mergeWithDefaults({}), keymap: compileKeymap() };
+  const fallback = active ?? {
+    config: mergeWithDefaults({}),
+    keymap: compileKeymap({}, { mac }),
+  };
   return { active: fallback, errors: r.errors, kept: true };
 }
 
@@ -967,17 +1155,18 @@ export function rawUpdatesCheck(text) {
  * is refused with the reason, and nothing is written.
  * @param {string | null} text  config.toml as it is, null when missing
  * @param {{ domain: string, workspace: string }} rule
+ * @param {{ mac?: boolean }} [options]  check it with macOS's default keys (compileKeymap)
  * @returns {{ append: string } | { create: string } | { error: string }}
  */
-export function appendRouteText(text, { domain, workspace }) {
+export function appendRouteText(text, { domain, workspace }, { mac = false } = {}) {
   const block = `[[routes]]\ndomain = ${JSON.stringify(domain)}\nworkspace = ${JSON.stringify(workspace)}\n`;
   const base = text ?? formatConfigTemplate();
-  if (text !== null && parseConfig(text).errors.length) {
+  if (text !== null && parseConfig(text, { mac }).errors.length) {
     return { error: "config.toml does not parse now; fix it first (:config shows it)" };
   }
   const glue = base === "" ? "" : base.endsWith("\n") ? "\n" : "\n\n";
   const added = `${glue}${block}`;
-  const after = parseConfig(base + added);
+  const after = parseConfig(base + added, { mac });
   const first = after.errors[0];
   if (first) {
     return {

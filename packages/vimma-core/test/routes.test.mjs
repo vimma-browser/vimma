@@ -383,6 +383,17 @@ describe("describing and adding rules", () => {
     expect(after.panes.max).toBe(2);
   });
 
+  test("appendRouteText checks the file with the platform's keymap (#386)", () => {
+    const rule = { domain: "a.com", workspace: "w" };
+    // alt+d is focus_urlbar on Linux only; meta+l is focus_urlbar on macOS only.
+    const altD = v2("[keys]", 'reload = ["alt+d"]');
+    const metaL = v2("[keys]", 'reload = ["meta+l"]');
+    expect(appendRouteText(altD, rule)).toHaveProperty("error");
+    expect(appendRouteText(altD, rule, { mac: true })).toHaveProperty("append");
+    expect(appendRouteText(metaL, rule)).toHaveProperty("append");
+    expect(appendRouteText(metaL, rule, { mac: true })).toHaveProperty("error");
+  });
+
   test("appendRouteText quotes a workspace name as a TOML string", () => {
     const r = appendRouteText(v2(), { domain: "a.com", workspace: 'say "hi"' });
     expect(r).toMatchObject({ append: expect.stringContaining('workspace = "say \\"hi\\""') });

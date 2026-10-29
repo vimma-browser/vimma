@@ -6,6 +6,9 @@ import { describe, test, expect } from "vitest";
 import fc from "fast-check";
 import {
   AgentQueue,
+  builtinLabel,
+  isBuiltinConn,
+  mcpClientName,
   ACT_RATE,
   AGENT_TOOLS,
   ALWAYS_ASK,
@@ -21,6 +24,7 @@ import {
   OpenRate,
   MUTE_MS,
   QUEUE_LIMITS,
+  RECONNECT_MS,
   UNTRUSTED_CLOSE,
   UNTRUSTED_OPEN,
   grantLength,
@@ -206,12 +210,147 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
     expect(q.waiting.map((r) => r.id)).toEqual([c.id, d.id, e.id]);
   });
 
-  test("a reconnect asks again", () => {
+  test("a connection without a session asks again after a reconnect", () => {
     const q = queue();
     q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 5 }, 0);
     q.disconnect(1);
     q.connect(1);
     expect(q.ask(1, READ, 1000).kind).toBe("wait");
+  });
+
+  // docs/specs/mcp-session-grants.md S1: a grant for the whole connection has no end.
+  test("a grant for the whole connection runs until the connection closes", () => {
+    const q = queue();
+    const a = q.ask(1, READ, 0);
+    expect(q.answer(a.id, { kind: "grant", minutes: Infinity }, 0).grant).toEqual({
+      conn: 1,
+      until: Infinity,
+    });
+    expect(q.ask(1, OPEN, 1e12)).toEqual({ kind: "run", grant: { conn: 1, until: Infinity } });
+    expect(q.grants(1e12)).toEqual([{ conn: 1, until: Infinity }]);
+    q.disconnect(1, 1e12);
+    expect(q.grants(1e12)).toEqual([]);
+  });
+
+  // mcp-session-grants S3: the same vimma-ctl mcp process (its session id) keeps its grant
+  // across a dropped link, for RECONNECT_MS only.
+  describe("a reconnect of the same session", () => {
+    const S = "a".repeat(64);
+    /** A queue whose connection 1 of session S holds a grant ending at `until` minutes. */
+    function granted(minutes = Infinity) {
+      const q = new AgentQueue();
+      q.connect(1, { session: S, now: 0 });
+      q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes }, 0);
+      return q;
+    }
+
+    test("keeps its grant within RECONNECT_MS", () => {
+      const q = granted();
+      q.disconnect(1, 1000);
+      expect(q.grants(1000)).toEqual([]);
+      q.connect(3, { session: S, now: 1000 + RECONNECT_MS });
+      expect(q.ask(3, OPEN, 1000 + RECONNECT_MS)).toEqual({
+        kind: "run",
+        grant: { conn: 3, until: Infinity },
+      });
+    });
+
+    test("keeps a timed grant's end, and not one that ended", () => {
+      const q = granted(5);
+      q.disconnect(1, MIN);
+      q.connect(3, { session: S, now: 2 * MIN });
+      expect(q.grants(2 * MIN)).toEqual([{ conn: 3, until: 5 * MIN }]);
+      const r = granted(5);
+      r.disconnect(1, 4 * MIN);
+      r.connect(3, { session: S, now: 5 * MIN });
+      expect(r.ask(3, READ, 5 * MIN).kind).toBe("wait");
+    });
+
+    test("asks again after RECONNECT_MS", () => {
+      const q = granted();
+      q.disconnect(1, 1000);
+      q.connect(3, { session: S, now: 1001 + RECONNECT_MS });
+      expect(q.ask(3, READ, 1001 + RECONNECT_MS).kind).toBe("wait");
+    });
+
+    test("another session, or none, gets nothing, and the parked grant stays for its own", () => {
+      const q = granted();
+      q.disconnect(1, 0);
+      q.connect(3, { session: "b".repeat(64), now: 0 });
+      q.connect(4, { now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+      expect(q.ask(4, READ, 0).kind).toBe("wait");
+      q.connect(5, { session: S, now: 0 });
+      expect(q.ask(5, READ, 0).kind).toBe("run");
+    });
+
+    test("a parked grant is restored once", () => {
+      const q = granted();
+      q.disconnect(1, 0);
+      q.connect(3, { session: S, now: 0 });
+      q.connect(4, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("run");
+      expect(q.ask(4, READ, 0).kind).toBe("wait");
+    });
+
+    test("a second connection claiming a live session gets nothing", () => {
+      const q = granted();
+      q.connect(3, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+      // Nor does it park the first one's grant when it closes.
+      q.disconnect(3, 0);
+      q.connect(4, { session: S, now: 0 });
+      expect(q.ask(4, READ, 0).kind).toBe("wait");
+      expect(q.ask(1, READ, 0).kind).toBe("run");
+    });
+
+    test("revoke ends a parked grant too", () => {
+      const q = granted();
+      q.disconnect(1, 0);
+      q.revoke(0);
+      q.connect(3, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+    });
+
+    test("a muted connection's grant is not kept for a reconnect", () => {
+      const q = granted();
+      const d = q.ask(1, "vimma_download", 0, { always: true });
+      q.answer(d.id, { kind: "mute" }, 0);
+      q.disconnect(1, 0);
+      q.connect(3, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+    });
+
+    test("while MCP is off no session is taken or parked, until it is on again", () => {
+      const q = new AgentQueue();
+      q.forgetSessions();
+      // A connection that said hello while :mcp off was closing the others.
+      q.connect(1, { session: S, now: 0 });
+      q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: Infinity }, 0);
+      q.disconnect(1, 0);
+      q.resumeSessions();
+      q.connect(2, { session: S, now: 0 });
+      expect(q.ask(2, READ, 0).kind).toBe("wait");
+      // On again, sessions work as before.
+      q.answer(q.ask(2, READ, 0).id, { kind: "grant", minutes: Infinity }, 0);
+      q.disconnect(2, 0);
+      q.connect(3, { session: S, now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("run");
+    });
+
+    test("turning MCP off ends the parked grants and those of the open connections", () => {
+      const q = granted();
+      q.connect(2, { session: "c".repeat(64), now: 0 });
+      q.answer(q.ask(2, READ, 0).id, { kind: "grant", minutes: Infinity }, 0);
+      q.disconnect(1, 0);
+      q.forgetSessions();
+      // :mcp off closes the open ones afterwards: they must not park what they held.
+      q.disconnect(2, 0);
+      q.connect(3, { session: S, now: 0 });
+      q.connect(4, { session: "c".repeat(64), now: 0 });
+      expect(q.ask(3, READ, 0).kind).toBe("wait");
+      expect(q.ask(4, READ, 0).kind).toBe("wait");
+    });
   });
 
   test("a connection holds at most one grant", () => {
@@ -241,6 +380,14 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
     expect(grantLength(15, config)).toEqual({ minutes: 15, capped: false });
     expect(grantLength(900, config)).toEqual({ minutes: 480, capped: true });
     expect(grantLength(0, config)).toEqual({ minutes: 1, capped: false });
+  });
+
+  // mcp-session-grants S1: grant_minutes = 0, the default, makes a bare a last the connection.
+  test("grant_minutes 0: a bare a lasts the whole connection, a count is still minutes", () => {
+    const config = { grantMinutes: 0, grantMaxMinutes: 480 };
+    expect(grantLength(null, config)).toEqual({ minutes: Infinity, capped: false });
+    expect(grantLength(15, config)).toEqual({ minutes: 15, capped: false });
+    expect(grantLength(900, config)).toEqual({ minutes: 480, capped: true });
   });
 });
 
@@ -339,6 +486,47 @@ describe("the elements rate (mcp-forms F26)", () => {
     expect(ok.filter(Boolean)).toHaveLength(30);
     expect(r.take(2, 3300)).toBe(true);
     expect(r.take(1, 60_001)).toBe(true);
+  });
+});
+
+// Issue #592: a rate refusal names its limit and when the next call is allowed, so an agent
+// waits for the rate instead of for a question that is not there.
+describe("a used-up rate says when the next call is allowed", () => {
+  test("retryAfter is 0 with a slot left, else the time until the oldest call leaves", () => {
+    const r = new CallRate({ max: 3, ms: 60_000 });
+    expect(r.retryAfter(1, 0)).toBe(0);
+    r.take(1, 1_000);
+    r.take(1, 5_000);
+    expect(r.retryAfter(1, 6_000)).toBe(0);
+    r.take(1, 9_000);
+    expect(r.retryAfter(1, 10_000)).toBe(51_000);
+    expect(r.retryAfter(1, 60_999)).toBe(1);
+    expect(r.retryAfter(1, 61_000)).toBe(0);
+    expect(r.take(1, 61_000)).toBe(true);
+    expect(r.retryAfter(2, 10_000)).toBe(0);
+  });
+
+  test("retryAfter is at most the window, even after the clock went back", () => {
+    const r = new CallRate({ max: 1, ms: 60_000 });
+    r.take(1, 100_000);
+    expect(r.retryAfter(1, 40_000)).toBe(60_000);
+    expect(r.refusal(1, 40_000, "opens").retryAfter).toBe(60_000);
+  });
+
+  test("retryAfter counts nothing", () => {
+    const r = new CallRate({ max: 1, ms: 60_000 });
+    r.retryAfter(1, 0);
+    expect(r.take(1, 0)).toBe(true);
+    expect(r.take(1, 1)).toBe(false);
+  });
+
+  test("the refusal names the calls, the limit and the wait", () => {
+    const r = new CallRate(KEYS_RATE);
+    for (let i = 0; i < 30; i++) r.take(1, 20_000 + i);
+    expect(r.refusal(1, 68_000, "vimma_keys calls")).toEqual({
+      message: "too many vimma_keys calls from this agent in the last minute (at most 30)",
+      retryAfter: 12_000,
+    });
   });
 });
 
@@ -602,6 +790,17 @@ describe(":mcp revoke and :mcp's status", () => {
       }),
     ).toBe(" · 2 agents connected · 3 waiting · 2 grants, the first ends in 15m");
   });
+
+  test("a grant for the whole connection says it lasts until its agent quits", () => {
+    const one = { connections: 1, waiting: 0, grants: [{ until: Infinity }], now: 0 };
+    expect(mcpActivity(one)).toBe(" · 1 agent connected · 1 grant, until its agent quits");
+    expect(
+      mcpActivity({ ...one, connections: 2, grants: [{ until: Infinity }, { until: Infinity }] }),
+    ).toBe(" · 2 agents connected · 2 grants, until their agents quit");
+    expect(
+      mcpActivity({ ...one, connections: 2, grants: [{ until: 5 * MIN }, { until: Infinity }] }),
+    ).toBe(" · 2 agents connected · 2 grants, the first ends in 5m");
+  });
 });
 
 // docs/specs/vimma-mcp.md, decision 31 d (sub-PR 2c), mcp-grants G2: a dangerous download asks
@@ -658,5 +857,102 @@ describe("vimma_show always asks (mcp-drive D4)", () => {
     expect(b.kind).toBe("wait");
     q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.waiting.map((r) => r.id)).toContain(b.id);
+  });
+});
+
+// docs/specs/builtin-agent.md B5, B18, Behaviour 24-26, 31: a built-in conversation is one
+// connection; sending a task with `Enter` grants it for the connection's lifetime, with no
+// question, and `ctrl+Enter` ends that grant.
+describe("the conversation grant (builtin-agent B18)", () => {
+  test("a conversation grant has no expiry and ends on stop", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    expect(q.grantConnection("builtin:1", 0)).toBe(true);
+    expect(q.grants(0)).toEqual([{ conn: "builtin:1", until: Infinity }]);
+    expect(q.ask("builtin:1", READ, 365 * 24 * 60 * MIN).kind).toBe("run");
+    expect(q.endGrant("builtin:1")).toBe(true);
+    expect(q.ask("builtin:1", READ, 0).kind).toBe("wait");
+    expect(q.endGrant("builtin:1")).toBe(false);
+  });
+
+  test("a built-in connection's grant does not cover another conversation", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    q.connect("builtin:2");
+    q.connect(7);
+    q.grantConnection("builtin:1", 0);
+    expect(q.ask("builtin:2", READ, 0).kind).toBe("wait");
+    expect(q.ask(7, READ, 0).kind).toBe("wait");
+  });
+
+  test("a conversation grant leaves checkpoints asking", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    q.grantConnection("builtin:1", 0);
+    expect(q.ask("builtin:1", "vimma_activate", 0, { always: true }).kind).toBe("wait");
+    expect(q.ask("builtin:1", "vimma_show", 0).kind).toBe("wait");
+  });
+
+  test("the user's send lifts a mute, and a closed connection is not granted", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    for (let i = 0; i < 3; i++) {
+      q.answer(/** @type {any} */ (q.ask("builtin:1", READ, i)).id, { kind: "deny" }, i);
+    }
+    expect(q.ask("builtin:1", READ, 10).kind).toBe("deny");
+    q.grantConnection("builtin:1", 10);
+    expect(q.ask("builtin:1", READ, 11).kind).toBe("run");
+    expect(q.grantConnection("builtin:9", 0)).toBe(false);
+  });
+
+  test(":mcp revoke ends a conversation grant as any other", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    q.grantConnection("builtin:1", 0);
+    expect(q.revoke(0)).toBe(1);
+    expect(q.grants(0)).toEqual([]);
+  });
+});
+
+describe("names (builtin-agent Behaviour 31)", () => {
+  test("a conversation is named built-in and its title", () => {
+    expect(builtinLabel("Weekly groceries")).toBe("built-in · Weekly groceries");
+  });
+
+  test("a client named built-in over MCP is shown with (mcp)", () => {
+    expect(mcpClientName("built-in")).toBe("built-in (mcp)");
+    expect(mcpClientName("Built-In · Weekly groceries")).toBe("Built-In · Weekly groceries (mcp)");
+    expect(mcpClientName("  built-in")).toBe("  built-in (mcp)");
+    expect(mcpClientName("builtin")).toBe("builtin (mcp)");
+    expect(mcpClientName("claude-code")).toBe("claude-code");
+    // Invisible characters, other separators and compatibility forms do not get past it.
+    for (const name of [
+      "\u200bbuilt-in",
+      "\ufeffbuilt-in",
+      "built in",
+      "built_in",
+      "built\u2011in",
+      "ｂｕｉｌｔ-ｉｎ",
+    ]) {
+      expect(mcpClientName(name)).toBe(`${name} (mcp)`);
+    }
+  });
+
+  test("the built-in connection ids are the only ones that say built-in", () => {
+    expect(isBuiltinConn("builtin:3")).toBe(true);
+    expect(isBuiltinConn(3)).toBe(false);
+    expect(isBuiltinConn("full")).toBe(false);
+  });
+});
+
+describe("the built-in agent and :mcp off (builtin-agent Behaviour 33)", () => {
+  test(":mcp off ends the MCP grants and leaves a conversation's", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1");
+    q.connect(7);
+    q.grantConnection("builtin:1", 0);
+    q.answer(/** @type {any} */ (q.ask(7, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    q.forgetSessions();
+    expect(q.grants(1)).toEqual([{ conn: "builtin:1", until: Infinity }]);
   });
 });

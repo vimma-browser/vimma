@@ -370,6 +370,43 @@ add_task(async function a_newer_window_value_is_left_untouched() {
   await BrowserTestUtils.closeWindow(win);
 });
 
+add_task(async function a_failed_reconcile_keeps_the_windows_tabs() {
+  const A = workspace("ml-a");
+  const win = await openWindow();
+  const ww = WindowWorkspaces.get(win);
+  ww.switchTo({ id: A.id });
+  for (const n of [1, 2, 3]) await openIn(win, `${PAGE}?ml${n}`);
+  const before = ww.model.workspaces.find((w) => w.id === A.id).tabs;
+  Assert.greater(before.length, 1, "the workspace holds its tabs before the restore");
+
+  // A tab opened inside a restore bracket (SessionStore busy, m3 sub-spec 3): its TabOpen is
+  // dropped, and a tab selected afterwards joins the model (issue #546).
+  win.dispatchEvent(new win.Event("SSWindowStateBusy"));
+  const stray = await openIn(win, `${PAGE}?ml-stray`);
+  Assert.equal(workspaceOf(win, stray), null, "the stray tab is not in the model yet");
+
+  // The reconcile at the end of the bracket fails: the live model must survive it.
+  WorkspaceStore.defaultUserContextId = () => {
+    throw new Error("injected reconcile failure");
+  };
+  try {
+    win.dispatchEvent(new win.Event("SSWindowStateReady"));
+  } finally {
+    delete WorkspaceStore.defaultUserContextId;
+  }
+  Assert.deepEqual(
+    ww.model.workspaces.find((w) => w.id === A.id).tabs,
+    before,
+    "a failed reconcile keeps the workspace's tabs",
+  );
+
+  // Selecting the stray tab puts it in the model, in the active workspace.
+  win.gBrowser.selectedTab = ww.tabOf(before[0]);
+  win.gBrowser.selectedTab = stray;
+  await until(() => workspaceOf(win, stray) === A.id, "the selected stray tab joins its workspace");
+  await BrowserTestUtils.closeWindow(win);
+});
+
 add_task(function restart_restores_the_session_and_sync_leaves_it_alone() {
   const defaults = Services.prefs.getDefaultBranch("");
   Assert.equal(defaults.getIntPref("browser.startup.page"), 3, "startup resumes the session");
