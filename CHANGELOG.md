@@ -10,6 +10,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
+- Agents (MCP): a label from `vimma_elements` stays valid for as long as its page and element do, instead of expiring after 120 seconds, so a slow model's clicks and fills are no longer refused; labels drawn on a screenshot still expire after 120 seconds.
+- Agents (MCP): an agent over a per-minute limit is told which limit it hit, that no question is waiting, and how long to wait, instead of a message saying questions are waiting.
 - Agents (MCP): clicks and fills wait only while the page is busy instead of a fixed second; a fill without a submit returns at once, and a page counts as ready before its slow images finish. Sending a form or paying is caught exactly as before.
 
 ## [0.1.11](https://github.com/vimma-browser/vimma/compare/v0.1.10...v0.1.11) · Firefox 159.0 (2026-10-28)
