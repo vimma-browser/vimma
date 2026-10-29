@@ -202,7 +202,11 @@ addTidyTask(async function test_setup_lists_only_found_clis_and_stores_the_path(
       ["claude-code"],
       "the one supported CLI on PATH is listed",
     );
-    Assert.equal(found[0].label, `claude 2.1.303 · ${fake.bin}`, "with its version and path");
+    // The path as it resolves (on macOS /var is a link to /private/var).
+    const real = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    real.initWithPath(fake.bin);
+    real.normalize();
+    Assert.equal(found[0].label, `claude 2.1.303 · ${real.path}`, "with its version and path");
     Assert.equal(found[0].problem, null, "and nothing wrong with its file");
     Services.env.set("PATH", "/nonexistent-vimma-test");
     Assert.deepEqual(await AgentCli.find(), [], "none found, none listed");
@@ -352,6 +356,7 @@ addTidyTask(async function test_runs_in_an_empty_private_directory_removed_after
 });
 
 addTidyTask(async function test_a_run_folder_others_can_write_above_is_refused() {
+  if (!(await needCtl())) return;
   const runtime = Services.env.get("XDG_RUNTIME_DIR");
   const shared = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-shared", 0o700);
   const base = PathUtils.join(shared, "run");
@@ -609,6 +614,7 @@ addTidyTask(async function test_cli_that_ignores_sigterm_is_killed_and_takes_no_
 });
 
 addTidyTask(async function test_missing_or_failing_cli_reports_its_error() {
+  if (!(await needCtl())) return;
   const c = conversation();
   const result = await run(c.id, "[[fail 1 Invalid API key · Please run /login]]");
   Assert.equal(result.outcome, "error");
