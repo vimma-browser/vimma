@@ -370,7 +370,8 @@
     }
 
     &[readonly] {
-      opacity: 0.6;
+      border-style: dashed;
+      color: var(--vimma-fg-dim, GrayText);
     }
 
     &[hidden] {
