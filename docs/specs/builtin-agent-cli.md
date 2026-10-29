@@ -623,11 +623,12 @@ Claude Code's stream-json, scripted by the task's text; it also covers
 - README: the agents line names agent CLIs as providers, with the last PR.
 - `CHANGELOG.md`: added by the maintainer at merge.
 
-The guide's section and `limits.md`'s lines land with the pull request that turns
-`vimma.feature.agentCli` on (Delivery 3), not with Delivery 2, because CONTRIBUTING.md
-("Unfinished features") has the pull request that finishes a feature add its docs, and a guide
-section for a feature no release shows would describe what users cannot use; builtin-agent B22
-does the same for the chat window.
+The guide's section, "Using an agent CLI in the chat window", lands with Delivery 2 and says
+that the feature is in progress and which prefs turn it on, because Claude Code works from
+Delivery 2 and whoever turns it on needs the setup, the `config.toml` form and what stays
+outside Vimma's gate. `limits.md`'s lines land with the pull request that turns
+`vimma.feature.agentCli` on (Delivery 3), because CONTRIBUTING.md ("Unfinished features") has
+the pull request that finishes a feature add its docs.
 
 ## Delivery
 
@@ -642,12 +643,12 @@ window (its Delivery 4), which this feature needs.
    `agent-cli.mjs` with Claude Code's builder and parser and recorded fixtures,
    `agent/AgentCli.sys.mjs`, setup, the notice and the header with the CLI's own tools from its
    init, budgets, `max_minutes` and the cost shown without `max_cost`, C2's exception and the
-   rules on the CLI's own tools in security.md, ADR-023 and mochitests.
+   rules on the CLI's own tools in security.md, ADR-023, the guide's section and mochitests.
 3. `feat(agent): codex as a provider of the chat window` (C12): Codex's builder and parser with
    fixtures recorded against a scripted server, the queued instruction of Behaviour 10, the
    check of how its MCP server receives the ticket, and the check of whether its events report
    its effective sandbox for the header; the feature flag's default becomes
-   `true`, the guide and limits.md describe agent CLIs (Docs and changelog), the `agent-cli`
+   `true`, the guide adds Codex and limits.md describes agent CLIs (Docs and changelog), the `agent-cli`
    e2e scenario lands with what the harness needs for it (Tests), and the status becomes
    `implemented`.
 4. Gemini CLI and opencode: one issue each, opened with PR 3, for the checks of C12.

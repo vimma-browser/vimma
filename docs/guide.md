@@ -1510,6 +1510,80 @@ denied.` Codex CLI gives up on a tool call
   shipped it names no version, and the notice says `vimma-ctl is older than Vimma`. Point your
   tool at the `vimma-ctl` that came with Vimma (step 1) to end it.
 
+To use Claude Code without a terminal and without `:mcp on`, run it from Vimma's chat window
+instead: see [Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window).
+
+#### Using an agent CLI in the chat window
+
+If you already use Claude Code, Vimma's built-in agent window can run it for you: you write
+the task in Vimma, Claude Code does the work on its own login (a Claude plan works, no API
+key), and in the browser it reaches only the agent workspace, through the same questions and
+grants as any agent. This is in progress: turn on `vimma.feature.agentChat` and
+`vimma.feature.agentCli` in `about:config` to try it. Codex follows.
+
+**Setting it up from the window.** `:agent` opens the window; `Esc`, then `m`, lists the
+providers. Pick `add: agent CLI (Claude Code)`: Vimma looks for `claude` on your `PATH` (only
+now, never in the background) and lists it with its version and full path, for example
+`claude 2.1.303 · /home/you/.local/bin/claude`. `Enter` uses it. That path is kept in the pref
+`vimma.agent.cli.claude-code.path`, never in `config.toml`, and is checked before every task:
+it must be a regular executable file of yours or root's that no other user can write, in
+folders no other user can write. The provider is added to `config.toml` for you, and becomes
+`[agent] default` when you had none. Install Claude Code and log in to it in a terminal first.
+
+**Or in `config.toml`.** `[agent]` needs `schema = 2` at the top of the file; without it the
+whole section is refused.
+
+```toml
+schema = 2
+
+[agent]
+default = "claude"
+
+[[agent.providers]]
+name = "claude"
+kind = "cli"
+cli = "claude-code"   # the only one so far
+model = "sonnet"      # optional: Claude Code's own model option; unset, its default
+max_minutes = 30      # optional: the longest one task may run (1 to 1440, default 30)
+```
+
+A CLI provider names no program, arguments or environment: a `command`, `path`, `args`, `env`
+or `endpoint` key in one is an error. The program is the one you picked in the window. With
+`[agent] local_only = true` a CLI provider is refused, because Vimma cannot see where a CLI
+sends what it reads.
+
+**What happens when you send a task.**
+
+- The first task of a conversation says where data goes and asks `y`: page text, field values,
+  screenshots and your messages go to Claude Code, which sends them to the model it is set up
+  for.
+- Claude Code runs in a new empty folder of yours (in `$XDG_RUNTIME_DIR`, else
+  `~/.cache/vimma-agent-cli`), removed when the task ends, with no shell around it. Each task
+  is a new run given the conversation so far; Claude Code keeps no session of its own.
+- In the browser it has only Vimma's tools, on the conversation's own agent tabs. Sending with
+  `Enter` grants the conversation, so steps run without asking; sending a form, paying and
+  `vimma_show` still ask. Each step is a line in the transcript, from Vimma's own record.
+- **Its own tools are outside Vimma's gate.** Claude Code keeps the shell, file and web tools
+  its own settings allow (`~/.claude/settings.json` and its permission rules). Vimma does not
+  approve, refuse or confine them: they act with your rights. The header lists the ones it
+  reported for the run (`its own tools: Bash, Read, Write, WebFetch +3`), and each use is a
+  line marked `◆` (`◆ claude-code ran its own tool: Bash "ls ~/Downloads"`), with
+  `refused by its settings` when its settings said no. A page that steers the model can make
+  it use them, so allow only what you would allow it in a terminal.
+- A message you send while it works is added to the running task. `s` (or `:agent stop`,
+  `ctrl+b shift+a`) stops it: its access to the browser ends first, then Claude Code gets 3 s
+  to exit before it is killed. A shell command it started may outlive the stop.
+
+**Budgets and cost.** `[agent] max_steps` counts the steps that reach the browser and
+`max_tokens` the tokens Claude Code reports; `max_minutes` stops a task that runs too long.
+The cost runs on your own Claude login or plan. The status bar shows the cost Claude Code
+reports as its own estimate, `≈ $0.41 (claude-code)`, at list prices even on a plan, so it is
+not a bill, and `[agent] max_cost` does not apply to it.
+
+**Saved conversations keep their provider.** A conversation you reopen still uses the provider
+it was started with. To use the CLI, start a new conversation with `Esc`, then `n`, or switch
+the open one with `Esc`, then `m`.
+
 #### When to use Playwright instead
 
 Vimma's agent tools are for tasks an agent does for you in your own browser: shopping, filling in
