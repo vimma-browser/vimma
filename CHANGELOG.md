@@ -17,6 +17,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Fixed
 
+- Agents (MCP): pages that send a `Cross-Origin-Opener-Policy` header open in agent tabs instead of failing with `NS_ERROR_DOM_COOP_FAILED`. Agent tabs keep their pop-up sandbox; such pages lose only `crossOriginIsolated` there ([docs/limits.md](docs/limits.md)).
+- Agents (MCP): a step that lands on Firefox's error page is reported to the agent as an error naming the reason, instead of a success with an empty element list, so an agent no longer opens the same failing page again and again.
 - Workspaces: tab search and the side panel no longer lose a window's tabs after the last window is closed and a new one opened (on macOS, from the Dock), or after a session restore that stops partway; until a restart they listed one tab while the status bar counted them all. The `:bug` report now shows the open tabs beside the workspaces' count and names a restore that never finished.
 
 ## [0.1.11](https://github.com/vimma-browser/vimma/compare/v0.1.10...v0.1.11) · Firefox 159.0 (2026-10-28)
