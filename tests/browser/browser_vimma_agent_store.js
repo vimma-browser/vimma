@@ -479,3 +479,19 @@ addTidyTask(async function test_setup_writes_the_provider_and_default_to_config(
     await IOUtils.remove(dir, { recursive: true });
   }
 });
+
+addTidyTask(async function test_setup_creates_a_missing_config_with_the_provider() {
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-agent-config");
+  const path = PathUtils.join(dir, "config.toml");
+  await SpecialPowers.pushPrefEnv({ set: [[CONFIG_PATH_PREF, path]] });
+  try {
+    const r = await ConfigHost.addAgentProvider(PROVIDER, { makeDefault: true });
+    Assert.deepEqual(r, { name: "scripted" }, "written to a config.toml that did not exist");
+    Assert.equal(McpHost.agentConfig?.default, "scripted", "and read: it is [agent] default");
+    Assert.equal((await IOUtils.stat(path)).permissions, 0o600, "the user's alone");
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(dir, { recursive: true });
+  }
+});

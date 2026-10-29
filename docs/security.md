@@ -1771,6 +1771,7 @@ for the user.
   [`test_clear_context`](../tests/browser/browser_vimma_agent_store.js),
   [`test_only_the_final_reply_is_stored_and_temp_files_go`](../tests/browser/browser_vimma_agent_store.js),
   [`a long conversation keeps its newest entries within MAX_RECORD_BYTES`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`a single entry over MAX_RECORD_BYTES is cut`](../packages/vimma-core/test/agent-store.test.mjs),
   [`a stored conversation holds messages, replies and summaries, never tool output`](../packages/vimma-core/test/agent-store.test.mjs),
   [`the provider keeps its prices and never a key`](../packages/vimma-core/test/agent-store.test.mjs),
   [`refuses another version, a bad provider or an unknown entry`](../packages/vimma-core/test/agent-store.test.mjs),
@@ -1790,6 +1791,7 @@ for the user.
   vision and prices, never its key, and only when the file parses before and after the edit, with
   every other key unchanged.
   [`test_setup_writes_the_provider_and_default_to_config`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_setup_creates_a_missing_config_with_the_provider`](../tests/browser/browser_vimma_agent_store.js),
   [`never writes a key, and refuses a file that does not parse`](../packages/vimma-core/test/agent-config.test.mjs),
   [`keeps every other line of the file`](../packages/vimma-core/test/agent-config.test.mjs)
 

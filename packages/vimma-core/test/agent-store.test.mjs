@@ -83,6 +83,16 @@ describe("storedRecord's size", () => {
   });
 });
 
+describe("storedRecord's size, one entry", () => {
+  test("a single entry over MAX_RECORD_BYTES is cut", () => {
+    const stored = [{ kind: "user", text: "x".repeat(MAX_RECORD_BYTES + 10) }];
+    const record = storedRecord({ ...conversation, stored });
+    const bytes = new TextEncoder().encode(JSON.stringify(record)).length;
+    expect(bytes).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+    expect(record.entries[0]?.text.startsWith("xxx")).toBe(true);
+  });
+});
+
 describe("readRecord", () => {
   test("reads what storedRecord wrote", () => {
     const record = storedRecord(conversation);

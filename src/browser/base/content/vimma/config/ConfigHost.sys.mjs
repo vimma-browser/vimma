@@ -542,7 +542,14 @@ export const ConfigHost = {
     try {
       const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
       file.initWithPath(path);
-      if (file.isSymlink()) {
+      // isSymlink is lstat: a missing config.toml throws, and is created from the template.
+      let link = false;
+      try {
+        link = file.isSymlink();
+      } catch (e) {
+        if (/** @type {any} */ (e)?.result !== Cr.NS_ERROR_FILE_NOT_FOUND) throw e;
+      }
+      if (link) {
         // A link to nothing: writing would replace the user's link with a plain file.
         if (!file.exists())
           return { error: `${path} is a link to a missing file; nothing written` };

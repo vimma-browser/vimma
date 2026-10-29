@@ -105,6 +105,16 @@ export function storedRecord(c) {
   while (over > 0 && record.entries.length > 1) {
     over -= size(record.entries.shift()) + 1;
   }
+  const last = record.entries[0];
+  if (over > 0 && last) {
+    // One entry alone is too long: its start is kept, cut by characters until it fits.
+    const chars = [...last.text];
+    const keep = Math.max(0, chars.length - over);
+    last.text = chars.slice(0, keep).join("");
+    while (size(record) > MAX_RECORD_BYTES && last.text) {
+      last.text = [...last.text].slice(0, -1024).join("");
+    }
+  }
   return record;
 }
 
