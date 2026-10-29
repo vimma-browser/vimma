@@ -2853,7 +2853,7 @@ accent = "#ff9e64"
   Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[updates] check`
   (`true`, the default, or `false`: no [update check](#updates) at all).
 - **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[firefox]`,
-  `[bookmarks]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`,
+  `[bookmarks]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,
   `hint_chars`, `insert_editing`, `[theme] name` and `appearance`. Every key is in the template
   `:config` writes, with its default commented out (the same as
   [`defaults.toml`](../packages/vimma-core/defaults.toml) in the source).

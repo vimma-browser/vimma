@@ -446,6 +446,16 @@ function stop() {
 
 export const ConfigHost = {
   /**
+   * The last read's errors, which kept the file from applying (`[search]`'s, found after it
+   * applied, are not among them), and the file they are about: why the agent window has no model
+   * (docs/specs/builtin-agent.md, Behaviour 6).
+   * @returns {{ errors: readonly ConfigError[], file: string }}
+   */
+  get refused() {
+    return { errors, file: PathUtils.filename(errorsPath || configPath()) };
+  },
+
+  /**
    * Once per browser window (vimma.js), after VimmaHost and PaneViews: the config in force now,
    * and polling while any window is open.
    * @param {Window} win

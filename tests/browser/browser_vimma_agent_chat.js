@@ -45,6 +45,9 @@ const { AgentKeys } = ChromeUtils.importESModule(
 const { AGENT_DEFAULTS } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/config.mjs",
 );
+const { ConfigHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
+);
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
@@ -183,6 +186,38 @@ addTidyTask(async function test_header_says_where_it_works() {
       "is named, since sending with Enter is the grant (Behaviour 6, 24)",
   );
   Assert.equal(box().getAttribute("role"), "region", "a region of Vimma's own chrome");
+});
+
+addTidyTask(async function test_a_refused_config_is_named_instead_of_setup() {
+  // [agent] without `schema = 2`: the file is refused, so no model is set up, and the window
+  // names the error and its line rather than sending the user to setup (Behaviour 6).
+  const name = "vimma-agent-refused.toml";
+  const file = PathUtils.join(PathUtils.tempDir, name);
+  const error = `${name}:1: agent: is new in schema 2: put schema = 2 at the top of the file`;
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: null, providers: [] });
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
+  try {
+    await IOUtils.writeUTF8(file, `[agent]\ndefault = "local"\n`);
+    await ConfigHost.reload();
+    await openPage();
+    runCommand("agent");
+    await until(isOpen, "the window opened");
+    Assert.equal(header()[0], `no model: ${error}`, "the header names the error and its line");
+    Assert.ok(
+      logText().includes(`has errors, so none of it applies, [agent] included.${error}`),
+      `and so does the window, in place of the setup steps: ${logText()}`,
+    );
+    VimmaHost._state(window).agentChat.give();
+    await until(
+      () => ($("vimma-notice")?.textContent ?? "") === `agent: no model: ${error}`,
+      "an action that needs a model names it too",
+    );
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(file);
+    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  }
 });
 
 addTidyTask(async function test_enter_grants_and_the_transcript_shows_each_step() {
