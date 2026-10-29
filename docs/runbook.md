@@ -377,6 +377,13 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   screenshot each time the harness answers a question. Only the hand-run results go into
   `agent-bench.md`, with the hardware, the server and its version, the model's size,
   quantisation and context length, and the Vimma commit the run prints.
+- After the results, a second table says per run where the time went (the model's and the
+  tools') and what a request held: the mean and largest input tokens a model turn, the mean
+  output tokens, and the share of the characters sent that were tool definitions,
+  instructions, the model's calls, earlier results and new results
+  (`tools/agent-bench/breakdown.mjs`). `--out` has the same per turn (`turns`), and each call's
+  time (`ms`). Use it to measure a change that should make the agent faster or cheaper before
+  and after.
 - The browser reaches only `127.0.0.1` and `localhost` (the site suite's offline prefs), so a
   URL a model makes up loads nothing off the machine; only the model's own requests leave it,
   and only for a hosted provider.
