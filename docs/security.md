@@ -2258,7 +2258,7 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   the API's `releases/tags/<tag>`, which answers 404 for a draft; it also requires `draft` to be
   false and the file's upload to be complete, never requests the file itself (any request for a
   release file counts as a download, docs/runbook.md, "Release download counts"), and fails on
-  any answer other than 200 or 404, so a rate limit or an outage never passes for a release
+  any answer other than 200 or 404 and on a 200 that is not a release, so a rate limit or an outage never passes for a release
   without the cask. Starting `homebrew.yml` grants nothing: its `homebrew` job still downloads
   the cask and checks it as above. `start` runs the tag's copy of `homebrew.yml`, which anyone with write
   access can edit on a tag of their own: an edited copy may ask for any permissions and read the

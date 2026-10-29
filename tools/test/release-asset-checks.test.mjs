@@ -68,8 +68,9 @@ const CHECKS = /** @type {const} */ ([
 ]);
 
 /**
- * Runs a step with a stub `curl` that answers the release API with `code` and `body`, and a stub
- * `gh` that logs its arguments.
+ * Runs a step with a stub `curl` that answers the release API with `code` and `body` (a string
+ * is served as it is), and a stub `gh` that logs its arguments. Code 0 is a network error: curl
+ * prints 000 and exits 7.
  * @param {string} run
  * @param {{ code?: number, body?: unknown }} api
  */
@@ -79,7 +80,10 @@ const runWith = (run, { code = 200, body }) => {
   mkdirSync(bin);
   const log = join(dir, "log");
   writeFileSync(log, "");
-  writeFileSync(join(dir, "body.json"), JSON.stringify(body ?? { message: "Not Found" }));
+  writeFileSync(
+    join(dir, "body.json"),
+    typeof body === "string" ? body : JSON.stringify(body ?? { message: "Not Found" }),
+  );
   // curl [...] -o <file> [...] -w '%{http_code}' <url>: logs, writes the body, prints the code;
   // with -f, as curl does, a code of 400 or more is an error and prints nothing.
   writeFileSync(
@@ -91,6 +95,7 @@ while [ $# -gt 0 ]; do
   case "$1" in -o) out=$2; shift ;; -w) w=$2; shift ;; -f*) fail=1 ;; esac
   shift
 done
+if [ ${code} = 0 ]; then [ -z "$w" ] || printf 000; exit 7; fi
 if [ ${code} -ge 400 ] && [ $fail = 1 ]; then exit 22; fi
 cat "${join(dir, "body.json")}" > "$out"
 [ -z "$w" ] || printf ${code}
@@ -173,6 +178,17 @@ describe.each(CHECKS)("%s %s: %s", (file, job, step, asset, dispatch) => {
   // the workflow's failure report says so.
   it.each([403, 500])("fails when the release API answers %i", (code) => {
     const result = runWith(run, { code, body: { message: "API rate limit exceeded" } });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("::error::");
+    expect(result.gh).toEqual([]);
+  });
+
+  it.each([
+    ["the network fails (curl prints 000)", { code: 0 }],
+    ["the release API answers 200 with a body that is not JSON", { body: "<html>busy</html>" }],
+    ["the release API answers 200 with JSON that is not a release", { body: [] }],
+  ])("fails when %s", (_, api) => {
+    const result = runWith(run, api);
     expect(result.status).not.toBe(0);
     expect(result.stdout).toContain("::error::");
     expect(result.gh).toEqual([]);

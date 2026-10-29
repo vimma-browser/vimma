@@ -106,7 +106,9 @@ jobs:
           code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
           case "$code" in
-            200|404) ;;
+            200) jq -e '.assets | type == "array"' "$RUNNER_TEMP/release.json" > /dev/null 2>&1 \
+                 || { echo "::error::the release API's answer for $TAG is not a release"; exit 1; } ;;
+            404) ;;
             *) echo "::error::the release API answered $code for $TAG"; exit 1 ;;
           esac
           if [ "$code" = 200 ] && jq -e --arg f "vimma-${TAG#v}-macos-aarch64.dmg" \

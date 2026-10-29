@@ -2120,7 +2120,7 @@ several minutes after the requests.
 So a workflow that only needs to know whether a file is on a published release reads the
 release's metadata instead: `homebrew.yml`'s `start`, `release.yml`'s `macos-tap` and
 `update-publish.yml`'s `start`. That endpoint answers 404 for a draft, as the download URLs do,
-and any answer other than 200 or 404 fails the job rather than pass for a missing file. Every
+and any answer other than 200 or 404, or a 200 that is not a release, fails the job rather than pass for a missing file. Every
 other fetch needs the file's bytes, to check its hash and signature, and no route to the bytes
 goes uncounted, so these still add one download per file per job on each release:
 
