@@ -67,7 +67,18 @@ jobs:
             || { echo "::error::'$TAG' is not a vX.Y.Z release tag"; exit 1; }
           # The macOS files usually reach the release after it is published, and then
           # release.yml's macos-tap starts the push; a draft published after them has the cask now.
-          if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma.rb"; then
+          # The release's metadata, never the file: GitHub counts any request for a release file,
+          # a HEAD too, as a download (docs/runbook.md, "Release download counts"). A draft
+          # answers 404 here, as at its download URLs.
+          code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
+          case "$code" in
+            200|404) ;;
+            *) echo "::error::the release API answered $code for $TAG"; exit 1 ;;
+          esac
+          if [ "$code" = 200 ] && jq -e --arg f "vimma.rb" \
+            '.draft == false and any(.assets[]; .name == $f and .state == "uploaded")' \
+            "$RUNNER_TEMP/release.json" > /dev/null; then
             gh workflow run homebrew.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
             echo "Started homebrew.yml on main for $TAG" >> "$GITHUB_STEP_SUMMARY"
           else

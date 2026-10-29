@@ -100,8 +100,21 @@ jobs:
           gh workflow run update-publish.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
           # The macOS manifest needs the .dmg, which usually reaches the release after this, and
           # then release.yml's macos-tap starts it; a draft published after its .dmg has it now.
-          if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma-${TAG#v}-macos-aarch64.dmg"; then
+          # The release's metadata, never the file: GitHub counts any request for a release file,
+          # a HEAD too, as a download (docs/runbook.md, "Release download counts"). A draft
+          # answers 404 here, as at its download URLs.
+          code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
+          case "$code" in
+            200|404) ;;
+            *) echo "::error::the release API answered $code for $TAG"; exit 1 ;;
+          esac
+          if [ "$code" = 200 ] && jq -e --arg f "vimma-${TAG#v}-macos-aarch64.dmg" \
+            '.draft == false and any(.assets[]; .name == $f and .state == "uploaded")' \
+            "$RUNNER_TEMP/release.json" > /dev/null; then
             gh workflow run update-publish.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG" -f target=macos
+          else
+            echo "::notice::$TAG has no .dmg yet; release.yml's macos-tap starts the macOS manifest when it lands"
           fi
 
   prepare:
