@@ -1690,6 +1690,12 @@ button inside an embedded frame that updates the page around it reads as no chan
   ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)):
   `▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", password •••, + 1 hidden`.
   A `y` sends that one form; it never makes or ends a grant.
+- **A search is an open.** Vimma's instructions tell an agent to search a site by opening its
+  results page by URL (`https://shop.example/search?q=oat+drink`) rather than through the
+  search form, which takes the agent one step instead of three. Such a search is covered by a
+  grant like any other open and shows its notice and `:mcp log` row; a search the agent sends
+  through the form asks as a form submission. The instructions limit this to searches; any
+  other form still asks.
 - **A click that may pay asks every time** too: on a page that shows a payment card field, or
   on a button that says it pays (`Pay now`, `Place order`, `Vahvista tilaus` and the like),
   even when the button sends no form.

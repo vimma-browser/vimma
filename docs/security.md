@@ -758,6 +758,16 @@ spends and leaves the grant as it was (M28, M33). The question's hint names only
 table says that `a` covers every tool, and the grant's notice, shown the moment it is made, says
 so and names what still asks and the key that ends it.
 
+Under [agent-speed](specs/agent-speed.md) S2, the agent instructions (vimma-ctl's
+`INSTRUCTIONS`, which are also the built-in agent's system text) tell an agent to search a site
+by opening its search results by URL with `elements: true` rather than by filling the search
+field and sending the form, and to do so only for a search. Such a search is a load, not a form
+submission: it gives no new reach, since any URL could already be opened under a grant, and it
+is under the same rules as every other open (M6, the open rate of M3, the notice and the
+`:mcp log` row of M23). It skips only the form question; the words of the search are what the
+agent puts in the URL, the same risk as any open (mcp-grants, above). A form sent through the
+page, a search included, is still a form submission and asked every time (M28).
+
 [mcp-session-grants](specs/mcp-session-grants.md) makes a bare `a` last the agent's whole
 session by default (`[mcp] grant_minutes = 0`): the grant has no time limit and ends when the
 agent's connection closes, on `ctrl+b shift+a`, `:mcp revoke` or `:mcp off`, or when Vimma quits.
