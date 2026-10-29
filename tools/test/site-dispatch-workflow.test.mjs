@@ -20,10 +20,15 @@ function withOf(action) {
   );
 }
 
-/** Every `run:` script's text: a block's lines without the `run: |` line, or a one-line value. */
-function runScripts() {
-  const blocks = [...text.matchAll(/\n( +)run: \|\n((?:\1 {2}.*\n|\n)+)/g)].map((m) => m[2] ?? "");
-  const lines = [...text.matchAll(/^ +(?:- )?run: (?![|>])(.+)$/gm)].map((m) => m[1] ?? "");
+/**
+ * Every `run:` script's text: a block's lines without the `run: |` line, or a one-line value.
+ * @param {string} [source]
+ */
+function runScripts(source = text) {
+  const blocks = [
+    ...source.matchAll(/^( +)(?:- )?run: [|>][-+0-9]*(?: +#.*)?\n((?:\1 {2}.*\n|\n)+)/gm),
+  ].map((m) => m[2] ?? "");
+  const lines = [...source.matchAll(/^ +(?:- )?run: (?![|>])(.+)$/gm)].map((m) => m[1] ?? "");
   return [...blocks, ...lines];
 }
 
@@ -127,6 +132,27 @@ describe("site dispatch workflow (site-dispatch.yml)", () => {
   it("sends the dispatch to vimma-site only", () => {
     const targets = [...text.matchAll(/repos\/([\w-]+\/[\w-]+)\//g)].map((m) => m[1]);
     expect(targets).toEqual(["vimma-browser/vimma-site"]);
+  });
+
+  // The env-only check below is as good as the scripts runScripts() finds.
+  it("finds every form of run: script, so none escapes the env-only check", () => {
+    const forms = [
+      "run: |",
+      "- run: |",
+      "run: >",
+      "run: |-",
+      "run: |+",
+      "run: >-",
+      "run: | # a comment",
+      "run: echo one line",
+      '- run: "echo quoted"',
+    ];
+    const source = forms
+      .map((form) =>
+        form.includes("echo") ? `      ${form}\n` : `      ${form}\n        echo body\n`,
+      )
+      .join("");
+    expect(runScripts(`\n${source}`)).toHaveLength(forms.length);
   });
 
   it("passes the tag and every event value to run: through env only", () => {

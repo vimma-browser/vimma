@@ -2511,7 +2511,7 @@ the app's page if it is not at hand. Generate one and delete the old key there t
 repository secret should be considered exposed (it was readable by any tag's or branch's copy of a
 workflow). To rotate the key, generate a new one on the app's page,
 `gh secret set SITE_DISPATCH_APP_KEY --env site-dispatch < new-key.pem`, then delete the old key
-there. Until the variable exists the job skips with a notice. Re-send by hand with
+there. Without the variable or the key the token step fails and the run goes red. Re-send by hand with
 `gh workflow run site-dispatch.yml --ref main` (`-f release=true` for a release); from any other
 ref the dispatch job does not run.
 

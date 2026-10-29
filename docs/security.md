@@ -2295,9 +2295,8 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   SHA, **must** mint the token for `vimma-site` alone with `contents: write`, what the
   `repository_dispatch` endpoint requires; the token lasts an hour, and the one API call goes to
   `vimma-site`'s `dispatches`. Without the variable or the key the job fails, so a release the
-  site was never told about shows as a red run. A
-  published release runs only `start`, from the tag's copy of the file, which anyone with write
-  access can edit on a tag of their own; `start` holds only `actions: write`, no environment and
+  site was never told about shows as a red run. A published release runs only `start`, from the
+  tag's copy of the file, which anyone with write access can edit on a tag of their own; `start` holds only `actions: write`, no environment and
   no secret, runs no repository code, and starts `site-dispatch.yml` on `main` with
   `release=true`, as `homebrew.yml` does (B11). An edited copy on a tag or branch may ask for any
   permissions and read the repository's and organisation's secrets, but gets nothing a
@@ -2319,6 +2318,7 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`pins every action by full commit SHA and checks nothing out`](../tools/test/site-dispatch-workflow.test.mjs),
   [`sends the dispatch to vimma-site only`](../tools/test/site-dispatch-workflow.test.mjs),
   [`passes the tag and every event value to run: through env only`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`finds every form of run: script, so none escapes the env-only check`](../tools/test/site-dispatch-workflow.test.mjs),
   [`keeps the release event's run, a release dispatch and a bindings dispatch apart`](../tools/test/site-dispatch-workflow.test.mjs),
   [`fails without the app's ID or key instead of skipping the dispatch`](../tools/test/site-dispatch-workflow.test.mjs),
   [`never runs for a pre-release or outside vimma-browser/vimma`](../tools/test/site-dispatch-workflow.test.mjs)
