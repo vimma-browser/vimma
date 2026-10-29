@@ -19,6 +19,9 @@ import {
   entryView,
   externalNotice,
   needsKey,
+  noModelLines,
+  noModelNotice,
+  noModelReason,
   whereDataGoes,
 } from "../core/agent-chat.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
@@ -99,6 +102,12 @@ function freeName(base) {
   let name = base;
   for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
   return name;
+}
+
+/** Why there is no model when config.toml was refused, else null (Behaviour 6). */
+function refused() {
+  const { errors, file } = lazy.ConfigHost.refused;
+  return noModelReason(errors, file);
 }
 
 /** The provider `[agent] default` names, else the first configured, else none (setup). */
@@ -273,11 +282,17 @@ export class AgentChatWindow {
     this.render();
   }
 
+  /** No model to act with: the setup hint, or the error that kept config.toml from applying. */
+  sayNoModel() {
+    const why = refused();
+    this.host.say(noModelNotice(why), why !== null);
+  }
+
   /** `n`, `:agent new`: a new conversation, with the default provider and no grant (B5). */
   newConversation() {
     const id = this.create();
     if (id === null) {
-      this.host.say("agent: no model is set up; add one under [agent] in config.toml");
+      this.sayNoModel();
       return;
     }
     this.open({ conversation: id });
@@ -323,7 +338,7 @@ export class AgentChatWindow {
   /** `P`, `:agent give` (Behaviour 17). */
   give() {
     if (this.conversation === null) {
-      this.host.say("agent: no model is set up; add one under [agent] in config.toml");
+      this.sayNoModel();
       return;
     }
     this.host.give(this.conversation);
@@ -455,7 +470,7 @@ export class AgentChatWindow {
     if (!text.trim()) return;
     const id = this.conversation;
     if (id === null) {
-      this.host.say("agent: no model is set up; add one under [agent] in config.toml");
+      this.sayNoModel();
       return;
     }
     const go = () => {
@@ -849,6 +864,7 @@ export class AgentChatWindow {
       granted: !!c?.granted,
       localOnly: !!config?.localOnly,
       budget: c?.running ? c.budget : null,
+      refused: c ? null : refused(),
     });
     this.head.forEach((h, i) => (h.textContent = lines[i] ?? ""));
     const log = /** @type {HTMLElement} */ (this.log);
@@ -893,14 +909,10 @@ export class AgentChatWindow {
     }
     log.setAttribute("role", "log");
     if (!c) {
+      const { file } = lazy.ConfigHost.refused;
       log.replaceChildren(
-        el(doc, "div", "vimma-agent-chat-empty", "No model is set up for the built-in agent."),
-        el(
-          doc,
-          "div",
-          "vimma-agent-chat-empty",
-          "Add a provider under [agent] in config.toml, or press Esc, then m to look for a " +
-            "local model server (Ollama, LM Studio, llama.cpp) on this machine.",
+        ...noModelLines(refused(), file).map((line) =>
+          el(doc, "div", "vimma-agent-chat-empty", line),
         ),
       );
       this.drawn = -1;

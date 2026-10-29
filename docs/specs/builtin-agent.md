@@ -100,7 +100,13 @@ first, so that what the guide says a model can do is what the bench measured.
    is not one of the probed servers says `local endpoint 127.0.0.1:8000`, because Vimma cannot
    see whether that server forwards to a hosted model (Security and privacy). The second says
    `works in: agent workspace`, then the conversation's grant (`granted`, or `asks every step`)
-   and, while a task runs, its steps (`14/60 steps`).
+   and, while a task runs, its steps (`14/60 steps`). With no model, the first line says
+   `no model set up`, unless `config.toml` has errors: a file with errors applies none of its
+   tables, `[agent]` included, so the line names the error and its line instead
+   (`no model: config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file`).
+   The window's body says the same in place of the setup steps, and so does the notice when
+   `:agent give`, `n` or a send needs a model. Otherwise the setup hint would send the user to
+   set up a model the file already lists.
 7. **A picker switches models.** In the window, `m` (normal mode) opens a picker of the
    configured providers and the models the local servers report. Each conversation remembers
    its provider and model, so one conversation can run small tasks locally and another a harder
@@ -108,6 +114,8 @@ first, so that what the guide says a model can do is what the bench measured.
 8. **`config.toml` may list providers**, by endpoint and model only:
 
    ```toml
+   schema = 2                  # at the top of the file: [agent] is new in schema 2
+
    [agent]
    default = "local"           # a provider name below
    local_only = false          # true: refuse any provider that is not on 127.0.0.1 or ::1
