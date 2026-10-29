@@ -364,8 +364,8 @@ describe("the loop", () => {
     expect(s.bodies[0].messages.at(-1)).toEqual({
       role: "user",
       content:
-        "(Vimma: the model server failed on your last turn with " +
-        "500: prediction aborted, token repeat limit reached. Go on with the task.)",
+        "(Vimma: the model server failed on your last turn with HTTP status 500. Go on with " +
+        "the task.)",
     });
   });
 

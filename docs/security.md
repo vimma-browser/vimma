@@ -1565,8 +1565,8 @@ model with vision) to the endpoint the user configured, and nowhere else. A host
 own terms decide what it keeps. A server on 127.0.0.1 may itself forward to a hosted model;
 Vimma sees only the address.
 
-**API keys.** A key is a login of the origin `chrome://vimma-agent` whose password is the key
-encrypted with OSKeyStore. Such a login is listed in `about:logins`, exported with the other
+**API keys.** A key is a login of the origin `chrome://vimma-agent` whose password is the key,
+with the endpoint origin it was entered for, encrypted with OSKeyStore. Such a login is listed in `about:logins`, exported with the other
 passwords and synced when the user syncs passwords; those copies hold only the ciphertext. With
 a desktop keyring (GNOME Keyring, KWallet through libsecret) OSKeyStore's secret lives outside
 the profile, so a copied profile does not reveal the key; without one it lives in `key4.db`,
@@ -1586,8 +1586,11 @@ profile when no primary password is set. Other processes running as the user are
 - M36. A conversation **must** see and act only on the agent tabs it owns (opened, given, or
   opened from one it owns) and **must** be refused another tab with the error a tab outside the
   agent workspace gets; an MCP agent **must** see and act only on the agent tabs no conversation
-  owns. Ownership is kept in memory: after a restart no tab is owned.
+  owns. Ownership is kept in memory by tab, so a tab keeps its owner when it is unloaded and
+  when its opener closes; after a restart no tab is owned.
   [`test_two_conversations_see_only_their_tabs`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_an_unloaded_tab_stays_its_conversations`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_tabs_opened_from_an_owned_tab_stay_owned`](../tests/browser/browser_vimma_agent_conversations.js),
   [`test_mcp_agent_sees_only_unowned_tabs`](../tests/browser/browser_vimma_agent_conversations.js),
   [`a tab belongs to the conversation that opened it`](../packages/vimma-core/test/agent-owners.test.mjs),
   [`a tab a page opened belongs to its opener's conversation`](../packages/vimma-core/test/agent-owners.test.mjs)
@@ -1603,9 +1606,11 @@ profile when no primary password is set. Other processes running as the user are
   [`a conversation grant has no expiry and ends on stop`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a conversation grant leaves checkpoints asking`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`:mcp revoke ends a conversation grant as any other`](../packages/vimma-core/test/agent-gate.test.mjs)
-- M38. An `agent-hello` whose client name starts with `built-in` (in any case, with or without
-  the hyphen) **must** be shown with ` (mcp)` after it, so no other program passes as the
-  built-in agent in a question, a notice or `:mcp log`.
+- M38. An `agent-hello` whose client name starts with `built-in` (in any case, with any
+  separator or none, after invisible characters or in compatibility forms) **must** be shown
+  with ` (mcp)` after it, so no other program passes as the built-in agent in a question, a
+  notice or `:mcp log`. Look-alike letters of other scripts are not caught; the name is a label
+  and grants nothing.
   [`a client named built-in over MCP is shown with (mcp)`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_mcp_agent_sees_only_unowned_tabs`](../tests/browser/browser_vimma_agent_conversations.js)
 - M39. Model requests **must** go only to the configured endpoint, `https://` unless on a
@@ -1620,8 +1625,10 @@ profile when no primary password is set. Other processes running as the user are
   [`an endpoint off this machine must be https, and carry no user name`](../packages/vimma-core/test/config-agent.test.mjs),
   [`lists the models of the servers that answer, with no cookies and no redirects`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`test_probe_only_on_setup_and_only_loopback`](../tests/browser/browser_vimma_agent_conversations.js)
-- M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key
-  encrypted with OSKeyStore, and **must never** be in a pref, config.toml (a key field there is a
+- M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key and
+  the endpoint origin it was entered for, encrypted with OSKeyStore, and **must** be sent only to
+  that origin (a provider whose endpoint config.toml changes gets no key), and **must never** be
+  in a pref, config.toml (a key field there is a
   config error that does not repeat the value), a file of Vimma's, `:mcp log`, a notice, the
   conversation or an error text (a provider's error is cut at 200 characters with the key
   replaced by `•••`); it goes only into the provider's request header.
@@ -1629,6 +1636,7 @@ profile when no primary password is set. Other processes running as the user are
   [`test_stored_login_holds_only_the_keystore_ciphertext`](../tests/browser/browser_vimma_agent_keys.js),
   [`test_key_never_in_log_notice_or_error`](../tests/browser/browser_vimma_agent_keys.js),
   [`test_key_deleted`](../tests/browser/browser_vimma_agent_keys.js),
+  [`test_a_key_goes_only_to_the_endpoint_it_was_stored_for`](../tests/browser/browser_vimma_agent_keys.js),
   [`a key field in [agent] is an error, with its line`](../packages/vimma-core/test/config-agent.test.mjs),
   [`the key's value never appears in the error`](../packages/vimma-core/test/config-agent.test.mjs),
   [`a provider error is cut and never contains the key`](../packages/vimma-core/test/agent-providers.test.mjs)

@@ -395,6 +395,55 @@ addTidyTask(async function test_mcp_agent_sees_only_unowned_tabs() {
   mcp.close();
 });
 
+/** An MCP connection after its hello, with a grant; returns the ids agent-tabs lists. */
+async function mcpTabs() {
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await VimmaControl.settled();
+  const mcp = new Client(/** @type {number} */ (VimmaControl.port));
+  await mcp.handshake({ protocol: 2, role: "agent" });
+  await mcp.call("agent-hello", { client: { name: "example" } });
+  const listing = mcp.request("agent-tabs", {});
+  AgentGate.answer((await question()).id, { kind: "once" });
+  const ids = (await mcp.response(listing)).result.tabs.map((/** @type {any} */ t) => t.id);
+  mcp.close();
+  return ids;
+}
+
+addTidyTask(async function test_an_unloaded_tab_stays_its_conversations() {
+  const c = AgentChat.create({ provider: PROVIDER });
+  await AgentChat.send(c.id, script([openStep(`${PAGE}?owned`), { reply: "ok" }]));
+  await AgentChat.done(c.id);
+  const [tab] = agentTabs();
+  gBrowser.discardBrowser(tab, true);
+  await until(() => !tab.linkedPanel, "the tab was unloaded");
+  Assert.deepEqual(await mcpTabs(), [], "an MCP agent does not see the unloaded owned tab");
+  await AgentChat.send(c.id, script([{ call: "vimma_tabs", args: {} }, { reply: "ok" }]));
+  const list = toolTexts(await AgentChat.done(c.id)).at(-1);
+  Assert.ok(list.startsWith("1 tab in Vimma's agent workspace"), "its conversation still does");
+});
+
+addTidyTask(async function test_tabs_opened_from_an_owned_tab_stay_owned() {
+  const c = AgentChat.create({ provider: PROVIDER });
+  await AgentChat.send(c.id, script([openStep(`${PAGE}?owned`), { reply: "ok" }]));
+  await AgentChat.done(c.id);
+  const [owned] = agentTabs();
+  // tabbrowser's addTab takes the opener as its browser, as a page's window.open passes it.
+  const opts = (/** @type {any} */ opener) => ({
+    openerBrowser: opener.linkedBrowser,
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  const child = gBrowser.addTab(`${PAGE}?child`, opts(owned));
+  const grandchild = gBrowser.addTab(`${PAGE}?grandchild`, opts(child));
+  await BrowserTestUtils.browserLoaded(grandchild.linkedBrowser);
+  BrowserTestUtils.removeTab(owned);
+  Assert.deepEqual(
+    await mcpTabs(),
+    [],
+    "neither a tab opened from it nor one opened from that is an MCP agent's, its opener gone",
+  );
+});
+
 addTidyTask(async function test_max_running() {
   const convs = [1, 2, 3, 4].map(() => AgentChat.create({ provider: PROVIDER }));
   for (const c of convs.slice(0, 3)) {

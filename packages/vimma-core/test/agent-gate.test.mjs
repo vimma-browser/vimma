@@ -884,6 +884,17 @@ describe("names (builtin-agent Behaviour 31)", () => {
     expect(mcpClientName("  built-in")).toBe("  built-in (mcp)");
     expect(mcpClientName("builtin")).toBe("builtin (mcp)");
     expect(mcpClientName("claude-code")).toBe("claude-code");
+    // Invisible characters, other separators and compatibility forms do not get past it.
+    for (const name of [
+      "\u200bbuilt-in",
+      "\ufeffbuilt-in",
+      "built in",
+      "built_in",
+      "built\u2011in",
+      "ｂｕｉｌｔ-ｉｎ",
+    ]) {
+      expect(mcpClientName(name)).toBe(`${name} (mcp)`);
+    }
   });
 
   test("the built-in connection ids are the only ones that say built-in", () => {

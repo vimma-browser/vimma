@@ -18,7 +18,7 @@
 // Every agent request that is answered, runs under a grant or is denied goes into `:mcp log`
 // (docs/specs/mcp-drive.md D14), the last 100, in memory only like the grants.
 
-import { AgentLog, AgentQueue, grantLength } from "../core/agent.mjs";
+import { AgentLog, AgentQueue, grantLength, isBuiltinConn } from "../core/agent.mjs";
 import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL, isCheckpoint } from "../core/agent-prompt.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 
@@ -387,7 +387,7 @@ export const AgentGate = {
    * @returns {boolean} false for a connection that is not open
    */
   grantConnection(conn) {
-    if (NOT_AGENTS.has(conn) || !labels.has(conn)) return false;
+    if (!isBuiltinConn(conn) || !labels.has(conn)) return false;
     const made = queue.grantConnection(conn, Date.now());
     if (made) changed();
     return made;

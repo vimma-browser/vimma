@@ -144,9 +144,14 @@ async function runTool(c, name, args, { signal }) {
   }
 }
 
-/** The key for `provider`'s requests: stored, or none (a local server takes none). */
-async function keyFor(/** @type {AgentProviderConfig} */ provider) {
-  return (await AgentKeys.has(provider.name)) ? ((await AgentKeys.get(provider.name)) ?? "") : "";
+/**
+ * The key for `provider`'s requests: the one stored for its name and endpoint, or none (a
+ * local server takes none).
+ * @param {AgentProviderConfig} provider
+ */
+async function keyFor(provider) {
+  if (!(await AgentKeys.has(provider.name))) return "";
+  return (await AgentKeys.get(provider.name, provider.endpoint)) ?? "";
 }
 
 /** What a conversation shows of itself: never its key, which it does not hold. */
@@ -224,9 +229,10 @@ export const AgentChat = {
       c.title = titleOf(text);
       AgentGate.relabel(c.conn, builtinLabel(c.title));
     }
-    if (ask) AgentGate.endGrant(c.conn);
-    else AgentGate.grantConnection(c.conn);
+    /** The send's effect on the grant: made by Enter, ended by ctrl+Enter (B18). */
+    const applyGrant = () => (ask ? AgentGate.endGrant(c.conn) : AgentGate.grantConnection(c.conn));
     if (c.task && !c.stopped) {
+      applyGrant();
       c.task.steer(text);
       return { steered: true };
     }
@@ -243,6 +249,8 @@ export const AgentChat = {
       return { refused: `the key of ${c.provider.name} could not be read` };
     }
     if (!conversations.has(id) || !c.starting) return { refused: "the conversation was stopped" };
+    // Only now, so a send that starts no task leaves no grant behind.
+    applyGrant();
     const limits = config() ?? AGENT_DEFAULTS;
     const budget = new Budget(
       { maxSteps: limits.maxSteps, maxTokens: limits.maxTokens, maxCost: limits.maxCost },

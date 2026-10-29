@@ -3,8 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The built-in agent's API keys (docs/specs/builtin-agent.md B8, security.md §12): one login per
-// provider, of the origin chrome://vimma-agent, whose password is the key encrypted with
-// OSKeyStore. Login storage alone would put the key in a password export and in Sync, readable
+// provider, of the origin chrome://vimma-agent, whose password is the key and the origin it was
+// entered for, encrypted with OSKeyStore. The origin binds the key to its endpoint: a provider
+// whose endpoint config.toml changes (an edited or pulled dotfile) gets no key until it is
+// entered again. Login storage alone would put the key in a password export and in Sync, readable
 // wherever the passwords are; with the OSKeyStore layer those copies are useless without the
 // desktop keyring (or, without one, the profile's key4.db, as for saved cards). Never a pref,
 // config.toml or a file of Vimma's. The key leaves this module only for the provider's request.
@@ -36,13 +38,14 @@ const fromBytes = (/** @type {string} */ s) =>
 
 export const AgentKeys = {
   /**
-   * Store `key` for `provider`, replacing any key it had.
+   * Store `key` for `provider` at `endpoint`, replacing any key it had.
    * @param {string} provider  a name of `[[agent.providers]]`
-   * @param {string} key
+   * @param {string} key @param {string} endpoint
    */
-  async set(provider, key) {
+  async set(provider, key, endpoint) {
     if (!provider || !key) throw new Error("a provider and a key are needed");
-    const cipher = await lazy.OSKeyStore.encrypt(key);
+    const origin = new URL(endpoint).origin;
+    const cipher = await lazy.OSKeyStore.encrypt(JSON.stringify({ key, origin }));
     const login = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(Ci.nsILoginInfo);
     login.init(KEY_ORIGIN, null, REALM, provider, cipher, "", "");
     const old = await search(provider);
@@ -55,23 +58,26 @@ export const AgentKeys = {
   },
 
   /**
-   * `provider`'s key, or null. Only for the provider's request.
-   * @param {string} provider
+   * `provider`'s key for a request to `endpoint`, or null: none stored, or stored for another
+   * origin. Only for the provider's request.
+   * @param {string} provider @param {string} endpoint
    * @returns {Promise<string | null>}
    */
-  async get(provider) {
+  async get(provider, endpoint) {
     const [login] = await search(provider);
     if (!login) return null;
-    return fromBytes(await lazy.OSKeyStore.decrypt(login.password, TRIGGER));
+    const stored = JSON.parse(fromBytes(await lazy.OSKeyStore.decrypt(login.password, TRIGGER)));
+    if (stored?.origin !== new URL(endpoint).origin || typeof stored.key !== "string") return null;
+    return stored.key;
   },
 
   /**
    * What setup shows of a stored key: its last four characters (Behaviour 3).
-   * @param {string} provider
+   * @param {string} provider @param {string} endpoint
    * @returns {Promise<string | null>}
    */
-  async hint(provider) {
-    const key = await this.get(provider);
+  async hint(provider, endpoint) {
+    const key = await this.get(provider, endpoint);
     return key === null ? null : `key stored · ends …${[...key].slice(-4).join("")}`;
   },
 

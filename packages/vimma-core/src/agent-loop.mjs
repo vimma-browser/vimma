@@ -204,11 +204,13 @@ async function run(opts, signal, pending) {
       const server = e instanceof ProviderError && (e.status ?? 0) >= 500;
       if (!server || ++serverErrors >= SERVER_ERRORS) return { outcome: "error", messages, error };
       emit({ type: "server-error", error });
-      // The failed turn produced nothing; the next one is told why, so the model does not take
-      // the silence for an answer.
+      // The failed turn produced nothing; the next one is told so. Only the status: the error's
+      // body may quote the request, page text included, which must not come back as the user's.
       messages.push({
         role: "user",
-        text: `(Vimma: the model server failed on your last turn with ${error}. Go on with the task.)`,
+        text: `(Vimma: the model server failed on your last turn with HTTP status ${
+          /** @type {ProviderError} */ (e).status
+        }. Go on with the task.)`,
       });
       continue;
     }

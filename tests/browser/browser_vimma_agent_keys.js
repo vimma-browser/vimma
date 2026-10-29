@@ -28,6 +28,7 @@ const { AgentGate } = ChromeUtils.importESModule(
 );
 
 const KEY = "sk-test-0123456789-a1b2";
+const ENDPOINT = "https://api.example.com/v1";
 
 add_setup(async () => {
   OSKeyStoreTestUtils.setup();
@@ -58,7 +59,7 @@ function allPrefs() {
 }
 
 add_task(async function test_key_stored_as_a_login_only() {
-  await AgentKeys.set("hosted", KEY);
+  await AgentKeys.set("hosted", KEY, ENDPOINT);
   const logins = await Services.logins.searchLoginsAsync({ origin: KEY_ORIGIN });
   Assert.equal(logins.length, 1, "one login of chrome://vimma-agent");
   Assert.equal(logins[0].username, "hosted", "named by the provider");
@@ -81,28 +82,46 @@ add_task(async function test_key_stored_as_a_login_only() {
     if (bytes && holds(bytes)) holding.push(PathUtils.filename(path));
   }
   Assert.deepEqual(holding, [], "no file of the profile holds the key in clear");
-  Assert.equal(await AgentKeys.get("hosted"), KEY, "read back");
-  Assert.equal(await AgentKeys.hint("hosted"), "key stored · ends …a1b2", "shown as its end only");
+  Assert.equal(await AgentKeys.get("hosted", ENDPOINT), KEY, "read back");
+  Assert.equal(
+    await AgentKeys.hint("hosted", ENDPOINT),
+    "key stored · ends …a1b2",
+    "shown as its end only",
+  );
 });
 
 add_task(async function test_stored_login_holds_only_the_keystore_ciphertext() {
-  await AgentKeys.set("hosted", KEY);
+  await AgentKeys.set("hosted", KEY, ENDPOINT);
   const [login] = await Services.logins.searchLoginsAsync({ origin: KEY_ORIGIN });
   Assert.ok(!login.password.includes(KEY), "the login does not hold the key");
   Assert.ok(!login.password.includes("a1b2"), "nor any part of it in clear");
-  Assert.equal(
-    await OSKeyStore.decrypt(login.password, "test"),
-    KEY,
-    "it holds the key encrypted with OSKeyStore",
+  Assert.deepEqual(
+    JSON.parse(await OSKeyStore.decrypt(login.password, "test")),
+    { key: KEY, origin: "https://api.example.com" },
+    "it holds the key and the origin it is for, encrypted with OSKeyStore",
   );
-  await AgentKeys.set("hosted", `${KEY}-new`);
+  await AgentKeys.set("hosted", `${KEY}-new`, ENDPOINT);
   const again = await Services.logins.searchLoginsAsync({ origin: KEY_ORIGIN });
   Assert.equal(again.length, 1, "replacing a key keeps one login");
-  Assert.equal(await AgentKeys.get("hosted"), `${KEY}-new`, "with the new key");
+  Assert.equal(await AgentKeys.get("hosted", ENDPOINT), `${KEY}-new`, "with the new key");
+});
+
+add_task(async function test_a_key_goes_only_to_the_endpoint_it_was_stored_for() {
+  await AgentKeys.set("hosted", KEY, ENDPOINT);
+  Assert.equal(await AgentKeys.get("hosted", ENDPOINT), KEY, "for its endpoint");
+  Assert.equal(
+    await AgentKeys.get("hosted", "https://api.example.com/other"),
+    KEY,
+    "another path of the same origin",
+  );
+  Assert.equal(
+    await AgentKeys.get("hosted", "https://elsewhere.example/v1"),
+    null,
+    "never for another origin: a provider renamed in config.toml gets no key",
+  );
 });
 
 add_task(async function test_key_never_in_log_notice_or_error() {
-  await AgentKeys.set("hosted", KEY);
   const server = new HttpServer();
   /** @type {string[]} */
   const auth = [];
@@ -112,6 +131,8 @@ add_task(async function test_key_never_in_log_notice_or_error() {
     res.write(`invalid key ${KEY}`);
   });
   server.start(-1);
+  const endpoint = `http://127.0.0.1:${server.identity.primaryPort}/v1`;
+  await AgentKeys.set("hosted", KEY, endpoint);
   /** @type {string[]} */
   const notices = [];
   const onGate = (/** @type {any} */ e) => {
@@ -122,7 +143,7 @@ add_task(async function test_key_never_in_log_notice_or_error() {
     provider: {
       name: "hosted",
       kind: "openai",
-      endpoint: `http://127.0.0.1:${server.identity.primaryPort}/v1`,
+      endpoint,
       model: "m",
       vision: false,
     },
@@ -143,13 +164,13 @@ add_task(async function test_key_never_in_log_notice_or_error() {
 });
 
 add_task(async function test_key_deleted() {
-  await AgentKeys.set("hosted", KEY);
+  await AgentKeys.set("hosted", KEY, ENDPOINT);
   Assert.ok(await AgentKeys.delete("hosted"), "deleted");
   Assert.equal(
     (await Services.logins.searchLoginsAsync({ origin: KEY_ORIGIN })).length,
     0,
     "its login is gone",
   );
-  Assert.equal(await AgentKeys.get("hosted"), null, "no key");
-  Assert.equal(await AgentKeys.hint("hosted"), null, "no hint");
+  Assert.equal(await AgentKeys.get("hosted", ENDPOINT), null, "no key");
+  Assert.equal(await AgentKeys.hint("hosted", ENDPOINT), null, "no hint");
 });

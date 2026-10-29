@@ -297,13 +297,16 @@ export const isBuiltinConn = (conn) =>
 export const builtinLabel = (title) => `built-in · ${title}`;
 
 /**
- * An MCP client's name as shown: one that starts with "built-in" (in any case, with or without
- * the hyphen, after spaces) gets ` (mcp)`, so no other program can pass as the built-in agent
- * (Behaviour 31).
+ * An MCP client's name as shown: one that starts with "built-in" (in any case, with any
+ * separator or none, after spaces, invisible characters or compatibility look-alikes) gets
+ * ` (mcp)`, so no other program can pass as the built-in agent (Behaviour 31). Look-alikes of
+ * other scripts are not caught; the label is the client's own claim, which grants nothing.
  * @param {string} name  the client's self-reported name
  */
 export function mcpClientName(name) {
-  return /^\s*built-?in/i.test(name) ? `${name} (mcp)` : name;
+  // Compatibility forms folded, invisible format characters dropped, any separator allowed.
+  const plain = name.normalize("NFKC").replace(/\p{Cf}/gu, "");
+  return /^[\s\p{P}]*built[\s\p{P}]*in/iu.test(plain) ? `${name} (mcp)` : name;
 }
 
 /**

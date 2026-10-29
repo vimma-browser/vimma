@@ -28,7 +28,6 @@ import {
   mcpClientName,
   wrapUntrusted,
 } from "../core/agent.mjs";
-import { TabOwners } from "../core/agent-owners.mjs";
 import { actDetail, fillDetail } from "../core/agent-act.mjs";
 import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
 import { fillFits, shownNotice } from "../core/agent-prompt.mjs";
@@ -131,23 +130,42 @@ const denied = (reason) => new AgentError("denied", DENIED[reason] ?? reason, re
 
 /**
  * Which built-in conversation owns which agent tab (docs/specs/builtin-agent.md B17, Behaviour
- * 30), by the tab's browser id. In memory only: after a restart no tab is owned.
+ * 30), by the tab element: unloading a tab gives its browser a new id but keeps the element, and
+ * a tab moved between workspaces is reopened as a new element, which belongs to none. In memory
+ * only: after a restart no tab is owned.
+ * @type {WeakMap<Tab, ConnId>}
  */
-const owners = new TabOwners();
+const owners = new WeakMap();
+/** @type {Map<ConnId, Set<WeakRef<Tab>>>} each conversation's tabs, to let them go with it */
+const ownedBy = new Map();
+
+/** @param {Tab} tab @param {ConnId} conn */
+function own(tab, conn) {
+  owners.set(tab, conn);
+  let set = ownedBy.get(conn);
+  if (!set) ownedBy.set(conn, (set = new Set()));
+  set.add(new WeakRef(tab));
+}
 
 /**
  * The conversation `tab` belongs to, or null. A tab a page or the user opened from an owned tab
- * (its `openerTab`, set by tabbrowser's addTab) belongs to the opener's conversation, decided
- * the first time it is looked at.
+ * (its `openerTab`, set by tabbrowser's addTab), or from a tab opened so, belongs to that
+ * conversation, even when the opener has closed since: the element and its owner stay known.
  * @param {Tab} tab
+ * @returns {ConnId | null}
  */
 function ownerOf(tab) {
-  const own = owners.owner(tabId(tab));
-  if (own !== null) return own;
-  const opener = tab.openerTab;
-  if (!opener?.linkedBrowser) return null;
-  owners.openedBy(tabId(tab), tabId(opener));
-  return owners.owner(tabId(tab));
+  /** @type {Set<Tab>} */
+  const seen = new Set();
+  for (let t = tab; t && !seen.has(t); t = t.openerTab) {
+    seen.add(t);
+    const conn = owners.get(t);
+    if (conn !== undefined) {
+      if (t !== tab) own(tab, conn);
+      return conn;
+    }
+  }
+  return null;
 }
 
 /**
@@ -189,8 +207,7 @@ function isAgentTab(win, tab, agent, conn) {
   const model = ww?.model;
   if (!ww || !model || ww.isForeign(tab)) return false;
   if (workspaceOfTab(model, ww.idOf(tab))?.id !== agent.id) return false;
-  // A lazy tab has no browser id yet, so nothing owns it; it is named once it has one.
-  return !tab.linkedPanel || visibleTo(tab, conn);
+  return visibleTo(tab, conn);
 }
 
 /**
@@ -207,8 +224,7 @@ function agentTabs(agent, conn, name = false) {
       .filter((/** @type {Tab} */ t) => isAgentTab(win, t, agent, conn))
       .flatMap((/** @type {Tab} */ tab) => {
         if (name && !tab.linkedPanel) win.gBrowser.insertBrowser(tab);
-        // Checked again once named: only then can the tab be owned.
-        return !name || visibleTo(tab, conn) ? [{ win, tab }] : [];
+        return [{ win, tab }];
       }),
   );
 }
@@ -754,7 +770,8 @@ const COMMANDS = {
         skipAnimation: true,
       }),
     );
-    if (isBuiltinConn(conn)) owners.opened(tabId(tab), conn);
+    // Not for a conversation deleted while the open ran: its tab would belong to no one alive.
+    if (isBuiltinConn(conn) && AgentGate.isConnected(conn)) own(tab, conn);
     AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
     return opened(win, tab, 0);
   },
@@ -1541,15 +1558,19 @@ export function builtinHello(conn, state, label) {
 export const AgentTabOwners = {
   /** @param {Tab} tab @param {ConnId} conn */
   give(tab, conn) {
-    owners.given(tabId(tab), conn);
+    own(tab, conn);
   },
   /** @param {Tab} tab @returns {ConnId | null} */
   ownerOf(tab) {
-    return tab.linkedPanel ? ownerOf(tab) : null;
+    return ownerOf(tab);
   },
   /** @param {ConnId} conn */
   forget(conn) {
-    for (const tab of owners.tabsOf(conn)) owners.closed(tab);
+    for (const ref of ownedBy.get(conn) ?? []) {
+      const tab = ref.deref();
+      if (tab && owners.get(tab) === conn) owners.delete(tab);
+    }
+    ownedBy.delete(conn);
   },
 };
 

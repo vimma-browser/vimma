@@ -443,7 +443,9 @@ agent to a part of the profile, or publishes which steps always ask.
    one, visible and deletable in `about:logins`, and never written where Firefox's Smart Window
    keeps its key (a pref in clear text, Research). `config.toml` is a file users share and keep
    in dotfile repositories, so a key there would leak with it; a key field is a config error.
-   The key is encrypted with `OSKeyStore` before it is stored, the key that also protects stored
+   The key is stored with the origin of the endpoint it was entered for, so that a provider
+   whose endpoint changes in `config.toml` (an edited or pulled dotfile) is not sent it, and
+   both are encrypted with `OSKeyStore` before they are stored, the key that also protects stored
    conversations (B15), and the login holds only the ciphertext, so that a copied profile, a
    password export or a synced copy is useless without the user's desktop keyring, at the cost
    of a key that does not move to a new machine. That cost is accepted because an API key spends
