@@ -464,7 +464,11 @@ agent to a part of the profile, or publishes which steps always ask.
     table for known models shipped with Vimma, because it goes out of date with every price
     change and would state a wrong cost as fact. The defaults (60 steps, 1,000,000 tokens)
     cover about three times the 20 calls one three-item basket took (Problem), and the bench's
-    results replace them before delivery PR 3.
+    results replace them before delivery PR 3. The first results
+    ([agent-bench.md](../agent-bench.md)) show a scripted agent on the shortest path needing
+    51 steps and 490,000 tokens for ten items, so delivery PR 3 sets 100 steps and 2,000,000
+    tokens, because 60 and 1,000,000 leave a model no room for the detours every measured model
+    took.
 11. **Network calls go only to the configured endpoint** (B11, Behaviour 1-4, 9). Each request
     is a `fetch` from the parent process to the provider's endpoint as configured, with
     `credentials: "omit"` (no cookies of any container) and `redirect: "error"`, so that an
