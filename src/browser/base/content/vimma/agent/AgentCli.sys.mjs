@@ -268,6 +268,7 @@ export const AgentCli = {
    * @param {string} cli @param {string} path  as `find` listed it
    */
   use(cli, path) {
+    if (!this.enabled) throw new Error(`agent CLIs are off (${CLI_FEATURE_PREF})`);
     if (!Object.hasOwn(CLIS, cli)) throw new Error(`no supported CLI named ${cli}`);
     if (!PathUtils.isAbsolute(path)) throw new Error("the path is not absolute");
     Services.prefs.setStringPref(pathPref(cli), path);
@@ -275,17 +276,21 @@ export const AgentCli = {
 
   /**
    * The version the program prints, or null: run with its fixed argument, no shell, in the
-   * private run folder, killed after 5 s.
-   * @param {string} path  checked
+   * private run folder, killed after 5 s. Only a program that passes C4's checks, and only
+   * while agent CLIs are on, whoever calls it.
+   * @param {string} path
    */
   async version(path) {
+    if (!this.enabled) return null;
+    const r = await inspect(path);
+    if ("problem" in r) return null;
     /** @type {any} */
     let proc;
     /** @type {any} */
     let timer;
     try {
       proc = await lazy.Subprocess.call({
-        command: path,
+        command: r.path,
         arguments: versionArguments(),
         environment: cliEnvironment(lazy.Subprocess.getEnvironment()),
         workdir: await runBase(),
@@ -317,6 +322,7 @@ export const AgentCli = {
    * @returns {Promise<"available" | "gone">}
    */
   async availability(provider) {
+    if (!this.enabled) return "gone";
     const path = Services.prefs.getStringPref(pathPref(provider.cli ?? ""), "");
     if (!path || !Object.hasOwn(CLIS, provider.cli ?? "")) return "gone";
     return (await this.check(path)) === null ? "available" : "gone";
@@ -471,9 +477,19 @@ export const AgentCli = {
             return;
           }
           if (e.type === "reply") reply = e.text;
+          if (e.type === "usage") {
+            // At each model call, not only at the turn's end, so max_tokens can stop a turn
+            // that keeps calling (M59).
+            o.budget.addUsage({ input: e.input, output: e.output, estimated: false });
+            const over = o.budget.exceeded();
+            if (over) {
+              overBudget(over);
+              return;
+            }
+          }
           if (e.type === "result") {
             result = e;
-            if (e.usage) o.budget.addUsage({ ...e.usage, estimated: false });
+            if (e.rest) o.budget.addUsage({ ...e.rest, estimated: false });
             if (e.cost !== null) o.budget.reportCost(e.cost);
             // The run ends when nothing is queued: the CLI exits once its input closes.
             if (e.queued === 0) {

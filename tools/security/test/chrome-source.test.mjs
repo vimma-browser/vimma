@@ -128,9 +128,13 @@ describe("chrome code", () => {
       /lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: claudeArguments\(\{ mcpConfig: file, model: o\.provider\.model \}\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
     );
     expect(text).toMatch(
-      /lazy\.Subprocess\.call\(\{\s*command: path,\s*arguments: versionArguments\(\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: await runBase\(\),\s*stderr: "pipe",\s*\}\)/,
+      /lazy\.Subprocess\.call\(\{\s*command: r\.path,\s*arguments: versionArguments\(\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: await runBase\(\),\s*stderr: "pipe",\s*\}\)/,
     );
-    // `version` runs only a path `inspect` passed; the run only `checked`, inspect's result.
+    // `version` runs only a path `inspect` passed, checked inside it whoever calls it, and only
+    // while agent CLIs are on; the run only `checked`, inspect's result.
+    expect(text).toMatch(
+      /async version\(path\) \{\s*if \(!this\.enabled\) return null;\s*const r = await inspect\(path\);\s*if \("problem" in r\) return null;/,
+    );
     expect(text).toContain("const checked = await inspect(path);");
     expect(text).toContain("const version = await this.version(r.path);");
     expect(text.match(/pathSearch\(/g)).toEqual(["pathSearch("]);
@@ -187,8 +191,9 @@ describe("chrome code", () => {
     expect(script).toContain(`'exec "$2"'`);
   });
 
-  // js-ctypes reaches any native function. Its one use is the owner of clamd's socket, read with
-  // statx(2) on Linux and lstat(2) on macOS (security.md C2, M13): nothing else may load a
+  // js-ctypes reaches any native function. Its one use is a file's owner and mode (clamd's
+  // socket, M13, and an agent CLI's path checks, M55), read with statx(2) on Linux and
+  // lstat(2) on macOS (security.md C2): nothing else may load a
   // library or declare a function. lstat's symbol is named in one table, by architecture, and
   // libSystem by its absolute path, since dyld searches the working directory for a bare name.
   test("never calls native code, but statx or lstat on clamd's socket", () => {

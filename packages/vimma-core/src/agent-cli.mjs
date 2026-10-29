@@ -277,12 +277,16 @@ export function pathProblem(f) {
  *   | { type: "reply", text: string }
  *   | { type: "own-tool", id: string, text: string }
  *   | { type: "own-tool-refused", id: string }
+ *   | { type: "usage", input: number, output: number }
  *   | { type: "result", ok: boolean, error: string | null,
- *       usage: { input: number, output: number } | null, cost: number | null, queued: number }
+ *       usage: { input: number, output: number } | null,
+ *       rest: { input: number, output: number } | null, cost: number | null, queued: number }
  *   | { type: "fail", error: string }} CliEvent
  *   What a CLI's stream means for the transcript (C8). `own-tool-refused`: the CLI's own
- *   settings refused that step. `queued`: turns the CLI still has to run for lines written
- *   during this one. `fail` ends the run.
+ *   settings refused that step. `usage`: one model call's tokens, as soon as it is made, so
+ *   `max_tokens` can stop a turn before it ends (M59). `rest`: what the turn's `usage` (its
+ *   total) adds to the calls already reported. `queued`: turns the CLI still has to run for
+ *   lines written during this one. `fail` ends the run.
  */
 
 const CLAUDE = /** @type {CliInfo} */ (CLIS["claude-code"]);
@@ -305,6 +309,10 @@ export class ClaudeStream {
     this.failed = false;
     /** @type {string | null} the version from the init, for a stream that stops parsing */
     this.version = null;
+    /** Model calls whose usage was reported, by message id: each repeats it per block. */
+    this.calls = new Set();
+    /** What this turn's calls reported so far. */
+    this.turn = { input: 0, output: 0 };
   }
 
   /** @param {string} chunk @returns {CliEvent[]} */
@@ -371,7 +379,10 @@ export class ClaudeStream {
     }
     if (m.type === "system" && m.subtype === "init") return this.init(m);
     if (m.type === "system" && m.subtype === "permission_denied") {
-      if (typeof m.tool_use_id === "string" && !String(m.tool_name).startsWith("mcp__")) {
+      if (
+        typeof m.tool_use_id === "string" &&
+        !String(m.tool_name).startsWith(`mcp__${MCP_SERVER}__`)
+      ) {
         return [{ type: "own-tool-refused", id: m.tool_use_id }];
       }
       this.ignored++;
@@ -405,8 +416,9 @@ export class ClaudeStream {
         type: "init",
         model: typeof m.model === "string" ? plain(m.model) : "",
         version: this.version ?? "",
-        // The browser's tools are Vimma's own, shown as steps from the gate (C7).
-        tools: tools.filter((t) => !t.startsWith("mcp__")).map(plain),
+        // The browser's tools are Vimma's own, shown as steps from the gate (C7); any other
+        // server's are the CLI's own, and listed as such.
+        tools: tools.filter((t) => !t.startsWith(`mcp__${MCP_SERVER}__`)).map(plain),
       },
     ];
   }
@@ -421,6 +433,15 @@ export class ClaudeStream {
     }
     /** @type {CliEvent[]} */
     const out = [];
+    const { id, usage } = m.message;
+    if (typeof id === "string" && isObject(usage) && !this.calls.has(id)) {
+      this.calls.add(id);
+      const input = count(usage.input_tokens) ?? 0;
+      const output = count(usage.output_tokens) ?? 0;
+      this.turn.input += input;
+      this.turn.output += output;
+      out.push({ type: "usage", input, output });
+    }
     for (const block of m.message.content) {
       if (!isObject(block)) continue;
       if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
@@ -450,13 +471,21 @@ export class ClaudeStream {
     const error = m.is_error
       ? plain(typeof m.result === "string" && m.result ? m.result : (m.subtype ?? "error"))
       : null;
+    const seen = this.turn;
+    this.turn = { input: 0, output: 0 };
+    const none = input === null && output === null;
     return [
       {
         type: "result",
         ok: !m.is_error,
         error,
-        usage:
-          input === null && output === null ? null : { input: input ?? 0, output: output ?? 0 },
+        usage: none ? null : { input: input ?? 0, output: output ?? 0 },
+        rest: none
+          ? null
+          : {
+              input: Math.max(0, (input ?? 0) - seen.input),
+              output: Math.max(0, (output ?? 0) - seen.output),
+            },
         cost: count(m.total_cost_usd),
         queued: count(m.queued_turn_count) ?? 0,
       },

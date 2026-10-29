@@ -178,25 +178,28 @@ describe("claude-code's stream (C7, C8)", () => {
     const { out, stream } = events(fixture("claude-code-2.1.303-task"));
     expect(out.map((e) => e.type)).toEqual([
       "init",
+      "usage",
       "reply",
       "own-tool",
       "own-tool-refused",
+      "usage",
       "reply",
       "result",
     ]);
     expect(out[0]).toMatchObject({ type: "init", model: "claude-sonnet-5-5", version: "2.1.303" });
-    expect(out[1]).toEqual({ type: "reply", text: "Let me look at the tabs." });
-    expect(out[2]).toEqual({
+    expect(out[2]).toEqual({ type: "reply", text: "Let me look at the tabs." });
+    expect(out[3]).toEqual({
       type: "own-tool",
       id: "toolu_msg_fake_1_1",
       text: 'claude-code ran its own tool: Bash "ls ~/Downloads"',
     });
-    expect(out[3]).toEqual({ type: "own-tool-refused", id: "toolu_msg_fake_1_1" });
-    expect(out[5]).toEqual({
+    expect(out[4]).toEqual({ type: "own-tool-refused", id: "toolu_msg_fake_1_1" });
+    expect(out[7]).toEqual({
       type: "result",
       ok: true,
       error: null,
       usage: { input: 2400, output: 80 },
+      rest: { input: 0, output: 78 },
       cost: 0.0056,
       queued: 0,
     });
@@ -236,6 +239,7 @@ describe("claude-code's stream (C7, C8)", () => {
       ok: false,
       error: "Invalid API key · Fix external API key",
       usage: { input: 0, output: 0 },
+      rest: { input: 0, output: 0 },
       cost: 0,
       queued: 0,
     });
@@ -261,6 +265,71 @@ describe("claude-code's stream (C7, C8)", () => {
       .replace('"status":"connected"', '"status":"failed"');
     const { out } = events(`${init}\n`);
     expect(out).toEqual([{ type: "fail", error: "claude-code could not start vimma-ctl" }]);
+  });
+
+  test("each model call's usage counts as it comes, once, and the result adds only the rest", () => {
+    // max_tokens must be able to stop a turn before it ends (M59), and Claude Code repeats a
+    // call's usage on each of its content blocks.
+    const { out } = events(fixture("claude-code-2.1.303-task"));
+    expect(out.filter((e) => e.type === "usage")).toEqual([
+      { type: "usage", input: 1200, output: 1 },
+      { type: "usage", input: 1200, output: 1 },
+    ]);
+    expect(out.at(-1)).toMatchObject({
+      type: "result",
+      usage: { input: 2400, output: 80 },
+      rest: { input: 0, output: 78 },
+    });
+    const call = (/** @type {string} */ id, /** @type {number} */ input) =>
+      JSON.stringify({
+        type: "assistant",
+        message: { id, content: [{ type: "text", text: "x" }], usage: { input_tokens: input } },
+      });
+    const result = JSON.stringify({
+      type: "result",
+      is_error: false,
+      usage: { input_tokens: 500, output_tokens: 9 },
+    });
+    const turns = events(
+      [call("a", 300), call("a", 300), result, call("b", 700), result].join("\n") + "\n",
+    ).out;
+    expect(turns.filter((e) => e.type === "usage").map((e) => e.input)).toEqual([300, 700]);
+    // A turn whose calls reported more than its result counts nothing more at its end.
+    expect(turns.filter((e) => e.type === "result").map((e) => e.rest)).toEqual([
+      { input: 200, output: 9 },
+      { input: 0, output: 9 },
+    ]);
+  });
+
+  test("tools of another mcp server are the cli's own, listed and marked, not hidden", () => {
+    // Only Vimma's tools are steps from the gate (C7): a server that is not Vimma's, however
+    // it got loaded, must show in the header and as own-tool lines (M57, M58).
+    const init = JSON.stringify({
+      type: "system",
+      subtype: "init",
+      tools: ["Bash", "mcp__vimma__vimma_tabs", "mcp__other__fetch"],
+      mcp_servers: [
+        { name: "vimma", status: "connected" },
+        { name: "other", status: "connected" },
+      ],
+      model: "m",
+    });
+    const use = JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", id: "u1", name: "mcp__other__fetch", input: {} }],
+      },
+    });
+    const denied = JSON.stringify({
+      type: "system",
+      subtype: "permission_denied",
+      tool_use_id: "u1",
+      tool_name: "mcp__other__fetch",
+    });
+    const { out } = events(`${init}\n${use}\n${denied}\n`);
+    expect(out[0]).toMatchObject({ type: "init", tools: ["Bash", "mcp__other__fetch"] });
+    expect(out[1]).toMatchObject({ type: "own-tool", id: "u1" });
+    expect(out[2]).toEqual({ type: "own-tool-refused", id: "u1" });
   });
 
   test("an unknown event is ignored and counted", () => {
@@ -321,6 +390,7 @@ describe("claude-code's stream (C7, C8)", () => {
       ok: false,
       error: "Invalid API key · Please run /login",
       usage: { input: 0, output: 0 },
+      rest: { input: 0, output: 0 },
       cost: 0,
       queued: 0,
     });

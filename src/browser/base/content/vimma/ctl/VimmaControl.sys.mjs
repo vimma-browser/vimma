@@ -1305,7 +1305,8 @@ export const VimmaControl = {
    * A one-time ticket for an agent CLI's run (docs/specs/builtin-agent-cli.md C3): 256 random
    * bits bound to the conversation's gate connection, good for one connection (and its
    * reconnects by session id) until `revokeTicket`. Starts the listener if it is off. The
-   * ticket goes only into the CLI's environment: never a pref, a file, a log or a notice.
+   * ticket goes only into the run's 0600 MCP configuration, for the CLI's `vimma-ctl mcp`
+   * (security.md M53, M56): never a pref, a profile file, a log or a notice.
    * @param {{ conn: string, state: import("./agent-commands.mjs").AgentConn, label: string,
    *   onCommand?: (command: string) => string | null }} binding
    *   the conversation's connection and state, the CLI's name for a notice, and the run's

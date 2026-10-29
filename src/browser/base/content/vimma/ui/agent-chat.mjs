@@ -673,7 +673,7 @@ export class AgentChatWindow {
     const asked = [...providers, ...(current ? [current] : [])];
     const locals = asked.filter((p) => p.kind === "openai" && isLocalEndpoint(p.endpoint));
     // An agent CLI's program: its path pref set and its file still passing C4's checks.
-    const clis = asked.filter((p) => p.kind === "cli");
+    const clis = asked.filter((p) => p.kind === "cli" && lazy.AgentCli.enabled);
     Promise.all([
       lazy.AgentChat.probe({
         extra: locals.map((p) => ({ server: p.name, endpoint: p.endpoint })),

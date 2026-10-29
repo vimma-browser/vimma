@@ -323,14 +323,15 @@ text that pages, add-ons and bookmarks choose.
   per CLI, the task on its standard input, no shell, and only when the user sends a task in the
   chat window; its `--version` is the only other call, with that fixed argument, while setup
   lists what a search of `PATH` found. Chrome code **never** calls
-  native code, with one exception: the owner and type of clamd's socket (M13), read through
-  js-ctypes with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
+  native code, with one exception: the owner and mode of a file, read through js-ctypes for
+  clamd's socket (M13) and for the agent CLI's checks (M55: the program, `vimma-ctl`, the run
+  folder and every folder above each), read with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
   `/usr/lib/libSystem.B.dylib` on macOS (`lstat` on arm64, `lstat$INODE64` on x86_64, the same
   144-byte `struct stat`), neither following a symlink. libSystem is opened by its absolute path,
   which dyld resolves from its shared cache, because for a bare name dyld also searches the
   working directory of a process without the hardened runtime, so a library planted where Vimma
   starts would be loaded. Any other system or architecture, a failed call or a struct of
-  another size gives no owner, so clamd is not used. [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
+  another size gives no owner, so clamd is not used and an agent CLI is refused. [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
   [`never starts a process, but ClamAV, an AppImage's restart and an agent CLI`](../tools/security/test/chrome-source.test.mjs),
   [`starts an agent CLI only from its checked path, with fixed arguments and no shell`](../tools/security/test/chrome-source.test.mjs),
   [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
@@ -1973,8 +1974,12 @@ own process, not a process group.
   the user's (in `$XDG_RUNTIME_DIR`, else `~/.cache/vimma-agent-cli`), outside the profile,
   with no folder above it that another user owns or can write, sticky ones included, since the
   CLI reads instruction files from every folder above its working folder; the folder is removed
-  with the run. Nothing **must** start before a task is sent but setup's `--version`, and
-  nothing at all while `vimma.feature.agentCli` is off. A run **must** end, and revoke its
+  with the run. Nothing **must** start before a task is sent but setup's `--version`, of a
+  program that passes these checks, and nothing at all while `vimma.feature.agentCli` is off,
+  when the model picker does not look at a CLI's file either. The checks cover the file the
+  path names: when that file is a script, its `#!` interpreter (such as `node` through
+  `/usr/bin/env`) is found on the user's `PATH` as it is in a terminal, so a `PATH` entry
+  other users can write lets them choose it, there as here. A run **must** end, and revoke its
   ticket, when the CLI's work is done even if a child of it keeps its output open.
   [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../tests/browser/browser_vimma_agent_cli_run.js),
@@ -2012,17 +2017,23 @@ own process, not a process group.
   conversation's first task with a CLI (and after a provider change), the window **must** say
   where page text goes and that those tools are not confined, and send nothing without a `y`;
   `AgentChat.send` **must** refuse a task the notice was not answered for. The header **must**
-  list the tools the CLI reported as enabled for its run.
+  list the tools the CLI reported as enabled for its run: every tool but Vimma's own, those of
+  any other MCP server included, and each use of those is a `◆` line.
   [`test_first_task_notice_says_the_clis_own_tools_are_not_confined`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_header_lists_the_clis_own_tools_from_its_init`](../tests/browser/browser_vimma_agent_cli_run.js),
-  [`an agent CLI: its name, the model it reported, and that it decides where data goes`](../packages/vimma-core/test/agent-chat.test.mjs)
+  [`an agent CLI: its name, the model it reported, and that it decides where data goes`](../packages/vimma-core/test/agent-chat.test.mjs),
+  [`test_another_mcp_servers_tools_are_listed_as_its_own`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`tools of another mcp server are the cli's own, listed and marked, not hidden`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M59. A CLI task's steps **must** be counted where they reach the gate, and the next one
   refused at `max_steps`, so a CLI cannot under-report them; `max_minutes` (default 30)
-  **must** stop it; tokens the CLI reports count toward `max_tokens`. `max_cost` is not
+  **must** stop it; tokens the CLI reports count toward `max_tokens` at each model call, so
+  that limit **must** stop a turn still running, not only end it. `max_cost` is not
   enforced for a CLI, whose reported cost is shown as its own estimate (`≈`), and the first task
   says so. A stream line over 1 MiB, or more than 64 MiB of output, **must** end the run.
   [`test_max_steps_counted_by_the_gate`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_max_minutes_stops_the_task`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_max_tokens_stops_a_turn_before_it_ends`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`each model call's usage counts as it comes, once, and the result adds only the rest`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`test_max_cost_set_is_reported_as_not_applying`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`a cli task stops at max_minutes`](../packages/vimma-core/test/agent-budget.test.mjs),
   [`reported cost is shown and max_cost does not stop a cli task`](../packages/vimma-core/test/agent-budget.test.mjs),

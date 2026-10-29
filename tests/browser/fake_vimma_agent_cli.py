@@ -14,6 +14,7 @@
 #   [[fail CODE TEXT]]                        TEXT on stderr, exit CODE before any result
 #   [[vimma-failed]] [[no-usage]]             init says vimma did not start; result has no usage
 #   [[orphan]]                                leave a child holding stdout open after exiting
+#   [[usage N]]                               a model call that used N input tokens
 # Everything it was given goes to the JSON file FAKE_CLI_REPORT names, rewritten as it runs.
 import json
 import os
@@ -24,7 +25,7 @@ import sys
 import time
 
 REPORT = os.environ.get("FAKE_CLI_REPORT")
-TOOLS = os.environ.get("FAKE_CLI_TOOLS", "Bash,Read,Write,WebFetch,Edit,Glob,Grep")
+TOOLS = os.environ.get("FAKE_CLI_TOOLS") or "Bash,Read,Write,WebFetch,Edit,Glob,Grep"
 report = {
     "args": sys.argv[1:],
     "cwd": os.getcwd(),
@@ -153,6 +154,11 @@ for d in directives:
         field = {"Bash": "command", "Read": "file_path", "WebFetch": "url"}.get(name, "input")
         out({"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": f"own{n}", "name": name, "input": {field: text}}]}})
+    elif word == "usage":
+        n += 1
+        out({"type": "assistant", "message": {"id": f"msg{n}", "content": [
+            {"type": "text", "text": "thinking it over"}],
+            "usage": {"input_tokens": int(rest), "output_tokens": 1}}})
     elif word == "sleep":
         time.sleep(float(rest))
     elif word == "ignore-term":

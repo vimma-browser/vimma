@@ -235,6 +235,7 @@ addTidyTask(async function test_path_checks_refuse_a_file_others_can_write() {
   await IOUtils.setPermissions(fake.bin, 0o722, false);
   try {
     Assert.equal(await AgentCli.check(fake.bin), "other users can write it");
+    Assert.equal(await AgentCli.version(fake.bin), null, "nor is it asked its version");
     const c = conversation();
     const result = await run(c.id, "hello");
     Assert.equal(result.outcome, "error", "the task does not start the file");
@@ -296,6 +297,9 @@ addTidyTask(async function test_feature_off_starts_nothing() {
     }).done;
     Assert.equal(direct.outcome, "error", "the runner refuses too");
     Assert.deepEqual(await AgentCli.find(), [], "and setup finds nothing");
+    Assert.equal(await AgentCli.version(fake.bin), null, "nor asks a program its version");
+    Assert.equal(await AgentCli.availability(CLI), "gone", "and the picker offers no CLI");
+    Assert.throws(() => AgentCli.use("claude-code", fake.bin), /off/, "nor keeps a path");
     Assert.ok(!(await IOUtils.exists(fake.report)), "nothing ran");
   } finally {
     await SpecialPowers.popPrefEnv();
@@ -571,6 +575,34 @@ addTidyTask(async function test_max_steps_counted_by_the_gate() {
   Assert.deepEqual(result.exceeded, { limit: "steps", used: 2, max: 2 });
   const steps = entries(c.id).filter((e) => e.kind === "step");
   Assert.equal(steps.length, 2, "two steps reached the gate");
+});
+
+addTidyTask(async function test_max_tokens_stops_a_turn_before_it_ends() {
+  if (!(await needCtl())) return;
+  McpHost.configureAgent({
+    ...AGENT_DEFAULTS,
+    maxTokens: 1000,
+    default: "claude",
+    providers: [CLI],
+  });
+  const c = conversation();
+  const started = Date.now();
+  const result = await run(c.id, "[[usage 1500]] [[sleep 30]]");
+  Assert.equal(result.outcome, "budget", `stopped by its tokens: ${JSON.stringify(result)}`);
+  Assert.equal(result.exceeded.limit, "tokens");
+  Assert.less(Date.now() - started, 15000, "at the model call, not at the turn's end");
+});
+
+addTidyTask(async function test_another_mcp_servers_tools_are_listed_as_its_own() {
+  if (!(await needCtl())) return;
+  Services.env.set("FAKE_CLI_TOOLS", "Bash,mcp__other__fetch");
+  try {
+    const c = conversation();
+    await run(c.id, "hello");
+    Assert.deepEqual(AgentChat.get(c.id).cli.tools, ["Bash", "mcp__other__fetch"]);
+  } finally {
+    Services.env.set("FAKE_CLI_TOOLS", "");
+  }
 });
 
 addTidyTask(async function test_max_minutes_stops_the_task() {
