@@ -1737,6 +1737,7 @@ vision; its key stays in login storage.
   [`lists the models of the servers that answer, with no cookies and no redirects`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`the probe also asks the configured local endpoints, once each, never a remote one`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`a provider off this machine, or Anthropic's API, gets no request`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`its server lists it, or no longer does`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`test_probe_only_on_setup_and_only_loopback`](../tests/browser/browser_vimma_agent_conversations.js)
 - M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key and
   the endpoint origin it was entered for, encrypted with OSKeyStore, and **must** be sent only to

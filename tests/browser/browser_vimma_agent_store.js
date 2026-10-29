@@ -593,6 +593,45 @@ addTidyTask(async function test_D_in_the_picker_makes_the_model_the_default() {
   });
 });
 
+// The check before a task is an await: a second send in it, or a send after a stop in it, must
+// not start a second task that `s` could no longer reach.
+addTidyTask(async function test_a_send_while_a_task_starts_starts_no_second_task() {
+  const c = AgentChat.create({ provider: PROVIDER });
+  const both = await Promise.all([
+    AgentChat.send(c.id, script([{ reply: "one" }])),
+    AgentChat.send(c.id, script([{ reply: "two" }])),
+  ]);
+  Assert.deepEqual(
+    both.map((r) => ("started" in r ? "started" : r.refused)),
+    ["started", "a task is starting; s stops it"],
+    "the second send is refused",
+  );
+  await AgentChat.done(c.id);
+  const first = AgentChat.send(c.id, script([{ reply: "three" }]));
+  AgentChat.stop(c.id);
+  const second = AgentChat.send(c.id, script([{ reply: "four" }]));
+  Assert.deepEqual(
+    await first,
+    { refused: "the conversation was stopped" },
+    "stopped in its check",
+  );
+  Assert.deepEqual(await second, { started: true }, "the send after the stop starts");
+  await AgentChat.done(c.id);
+  const sent = requests.filter((r) => r.path === "/v1/chat/completions");
+  Assert.equal(sent.length, 2, "one model request for each task that started");
+});
+
+// The session's choice is dropped when [agent]'s providers change, so a provider the user
+// removed or changed in config.toml is not used for new conversations.
+addTidyTask(async function test_the_session_choice_ends_when_the_providers_change() {
+  const other = { ...PROVIDER, model: "scripted-2" };
+  AgentChat.choose(other);
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  Assert.equal(AgentChat.chosen, other, "a read with the same providers keeps it");
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [other] });
+  Assert.equal(AgentChat.chosen, null, "changed providers drop it");
+});
+
 // Behaviour 7: a conversation whose model its server no longer lists asks for another before
 // the task starts, instead of failing in its middle.
 addTidyTask(async function test_a_model_no_longer_there_asks_for_another() {

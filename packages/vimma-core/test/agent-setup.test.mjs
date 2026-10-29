@@ -213,6 +213,8 @@ describe("whether a local model is still there", () => {
         { server: "vllm", endpoint: "http://127.0.0.1:8000/v1/" },
         { server: "local", endpoint: "http://127.0.0.1:11434/v1" },
         { server: "far", endpoint: "https://llm.example/v1" },
+        { server: "user", endpoint: "http://u:p@127.0.0.1:9000/v1" },
+        { server: "lookalike", endpoint: "http://127.0.0.1.evil.example:9000/v1" },
       ],
     });
     expect(found).toEqual([
