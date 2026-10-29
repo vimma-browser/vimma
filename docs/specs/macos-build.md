@@ -1,7 +1,9 @@
 # Spec: macos-build
 
-Status: draft (sub-PRs 1, 3, 6 and 7 built; sub-PR 2 built except its two macOS mochitests;
-sub-PR 5's macOS key inventory built, #384; the macOS default keys built, #386) · Area: `configs/macos/mozconfig`,
+Status: implemented, except the leftovers in
+[#612](https://github.com/vimma-browser/vimma/issues/612) (sub-PR 4's e2e smoke scenarios) and
+[#613](https://github.com/vimma-browser/vimma/issues/613) (sub-PR 5's native menu bar check) ·
+Area: `configs/macos/mozconfig`,
 `configs/macos/entitlements/` (new), `tools/package/macos-dmg.sh` (new),
 `tools/package/macos-dmg-unpack.sh`, `macos-sign-app.sh`, `macos-dmg-pack.sh` and
 `macos-developer-id-check.sh` (new),
@@ -62,13 +64,16 @@ nothing until the release gate opens. Windows is not a target platform.
    `[firefox] disable = "all"` keeps `cmd+q` (fate d in the macOS inventory, decision 22).
 5. A character typed with Option matches a binding for that character: Option+shift+8 on a Finnish
    layout types `{` and fires a `{` binding. An `alt+<letter>` binding does not fire on a Mac
-   (open question 4), so the defaults that are `alt` chords on Linux are Firefox's macOS keys
+   (decision 31), so the defaults that are `alt` chords on Linux are Firefox's macOS keys
    there: `cmd+left` / `cmd+right` and `cmd+[` / `cmd+]` go back and forward, `cmd+1` to
    `cmd+8` select a tab, `cmd+9` the last one and `cmd+l` focuses the address bar
    (decision 29).
 6. Without Omarchy, Vimma uses its built-in palette and follows the system's light or dark
    setting live. Nothing mentions Omarchy or Hyprland, and no Omarchy path is polled.
-7. The private workspace opens as its own window, as on any non-Hyprland system.
+7. The private workspace opens as its own window, as on any non-Hyprland system. (Since changed:
+   on macOS the private workspace takes the normal window's place; spec
+   [private-swap-macos](private-swap-macos.md), issue
+   [#415](https://github.com/vimma-browser/vimma/issues/415).)
 8. `vimma-ctl` with no `--profile` and no `VIMMA_PROFILE` finds the running Vimma, whose profiles
    live in `~/Library/Application Support/Vimma/`. A discovery file left by a crashed Vimma is
    reported as stale, as on Linux.
@@ -289,7 +294,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 | Agent attention         | `vimma/host/agent-ui.mjs:180-188` (vimma-mcp)                                                                       | `getAttention()` bounces the Dock icon (`widget/cocoa/nsCocoaWindow.mm:7338-7341`); `nsIAlertsService` posts through `widget/cocoa/MacOSNotificationCenter.mm`. Whether an ad hoc app may post is **unverified** | A hand check                                        |
 | `vimma-ctl mcp` caller  | `tools/vimma-ctl/src/mcp_serve.rs:508-519` (`parent_name`): `/proc/<ppid>/comm` on Linux only                       | No `/proc` on macOS; the caller gets no name label                                                                                                                                                               | The macOS process name (decision 21)                |
 | Keys: accel             | `vimma/host/firefox-keys.mjs:60-62`; `xulKeyChord`, `planFirefoxKeys` in `packages/vimma-core/src/firefox-keys.mjs` | `accel` is meta; `disable = "all"` keeps `cmd+q`                                                                                                                                                                 | The macOS key inventory (decision 22)               |
-| Keys: Option characters | `packages/vimma-core/src/keys.mjs:376-406`; `widget/cocoa/nsCocoaUtils.mm:725-731` (Option sets AltGraph)           | Option+shift+8 is `{` and matches a `{` binding (key-handling-batch). Option+j types `∆`, so an `alt+j` binding never fires                                                                                      | Open question 4                                     |
+| Keys: Option characters | `packages/vimma-core/src/keys.mjs:376-406`; `widget/cocoa/nsCocoaUtils.mm:725-731` (Option sets AltGraph)           | Option+shift+8 is `{` and matches a `{` binding (key-handling-batch). Option+j types `∆`, so an `alt+j` binding never fires                                                                                      | Decision 31                                         |
 | Keys: text bindings     | `packages/vimma-core/src/editable.mjs:119-121`; `vimma/host/VimmaHost.sys.mjs:144, 1691-1696`                       | On macOS Vimma leaves `ctrl+h` to Cocoa, which already deletes backward (`widget/cocoa/NativeKeyBindings.mm:87`)                                                                                                 | Nothing                                             |
 | Keys: native menu bar   | `widget/cocoa/nsMenuItemX.mm:316-383` (Firefox 159)                                                                 | Each menu item takes its key equivalent from its `<key>` element, without reading its `disabled`. That the item still runs in a windowed build is **unverified**                                                 | A hand check; the macOS key inventory               |
 | Dev tools               | `tools/start.mjs:40` (Linux objdir), 197 (`/proc/locks`); `tools/mochitest.mjs:53` (`dist/bin/…`)                   | Wrong paths on a Mac                                                                                                                                                                                             | Platform paths                                      |
@@ -307,9 +312,13 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 2. **Linux first, macOS next.** Linux x86_64 stays the platform every feature is built and
    gated on. macOS is the second platform and gets this spec's CI; features may be Linux-only
    (decision 11), never Mac-only.
-3. **arm64 only, until open question 1 says otherwise.** Every Mac sold since 2023 is Apple
-   Silicon, GitHub's Intel macOS images end in 2027, and one architecture halves the build. The
-   cross build sets `--target=aarch64-apple-darwin`, so the deployment target is 11.0.
+3. **arm64 only.** Every Mac sold since 2023 is Apple Silicon, GitHub's Intel macOS images end
+   in 2027, and one architecture halves the build and the download. The cross build sets
+   `--target=aarch64-apple-darwin`, so the deployment target is 11.0. Intel Mac owners cannot run
+   Vimma; an x86_64 `.dmg` is added only if a tester needs one. Rejected: a universal build via
+   `unify.py`, because it doubles the build time and the download and needs a Mac, or a Linux port
+   of the unify step, to merge the two; and a separate x86_64 `.dmg` now, because it doubles the
+   builds for Macs no current tester has.
 
 ### Where the build runs
 
@@ -323,16 +332,20 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
    clang (lld) and the DMG tools come through `--enable-bootstrap` and `bootstrap_toolchain`, and
    sub-PR 3 adds an explicit `mach artifact toolchain` fetch of cctools, libdmg and hfsplus only if
    bootstrap proves insufficient. The file stays usable on a Mac host for a contributor who builds
-   natively. The runner type follows build-supply-chain decision 6 (open question 6 confirms it for macOS):
-   - The standard `ubuntu-24.04` runner first: free, 16 GB RAM, and about 85 GB free disk
+   natively. The runner type follows build-supply-chain decision 6, as for Linux:
+   - The standard `ubuntu-24.04` runner: free, 16 GB RAM, and about 85 GB free disk
      measured against the 30 GB a build needs. A disk guard fails the job before the download when
      less than 40 GB is free (build-supply-chain decision 9). Freeing disk (`jlumbroso/free-disk-space`, as Zen
      does) is the fallback if the image shrinks; it is not needed today.
    - A cold cross build on 4 CPUs is estimated at 1.5 to 3 hours (from build-supply-chain's estimate of at least
      116 minutes for a Linux build on 4 CPUs, and Zen's 28-53 minutes on 8 vCPU); sub-PR 3
-     measured 133 minutes for the whole job, 44 GB of disk with the swap file. If it exceeds build-supply-chain's 4-hour threshold, the macOS build follows the
-     Linux release to a larger hosted Linux runner, which needs an organisation on the GitHub Team
-     plan (paid, about $0.042 per minute for 16 cores).
+     measured 133 minutes for the whole job, 44 GB of disk with the swap file. That is well within
+     both the 6-hour job limit and build-supply-chain's 4-hour threshold, so the macOS build stays
+     on the free runner. If it ever exceeds 4 hours, the macOS build follows the Linux release to
+     a larger hosted Linux runner, which needs an organisation on the GitHub Team plan (paid,
+     about $0.042 per minute for 16 cores).
+   - Rejected: a larger hosted Linux runner now. It would take about 40 minutes instead of 133,
+     but costs money and a paid plan for a build that already fits the free runner's limits.
    - Rejected: building on a hosted Mac. The documented 14 GB SSD is under half of what a build
      needs, on the free runner and on the paid `xlarge` alike, and the free arm64 Mac has 3 cores
      and 7 GB RAM.
@@ -646,6 +659,36 @@ enable` exists for exactly this case, a Firefox key wanted back as Firefox runs 
     keeping Firefox's unbound `cmd` keys on under `"all"`, because `"all"` would then mean something
     else on a Mac. A key that is off may still run from its native menu bar item in a windowed build
     (decision 22).
+31. **`alt+<letter>` bindings on a Mac are documented, not remapped.** Option types a character
+    on a Mac (Option+j is `∆`), and Vimma matches a character typed with Option as that character
+    (behaviour 5), so a user's `alt+j` never fires there. `docs/guide.md` says so in its macOS
+    keys section, as Mac terminals behave by default, so that a user knows to bind such an action
+    to a `ctrl` or `cmd` chord on a Mac. The default `alt` keys that Option would type over are
+    Firefox's macOS `cmd` keys there (decision 29), so no default is lost. Rejected for now: an
+    "Option as alt" setting that matches the physical key, because it is more code and a second
+    matching rule beside the layout rule; it can follow if users ask for it.
+
+### Order of work, hand checks and the macOS check
+
+32. **Sub-PRs 1 and 2 first, as a lane beside M6a; the rest after M6a.** Sub-PRs 1 and 2 cost
+    nothing, need no full build and find Linux assumptions while the code is fresh, and running
+    them early means the updater's MAR and manifest work (M6a) is designed with a second platform
+    in view. The full build, the release jobs and the Developer ID follow, the Developer ID when
+    the release gate nears. Rejected: macOS entirely after M6, because Linux assumptions would
+    keep accumulating until then; and all of it at once, because the full build and release work
+    would compete with M6a.
+33. **The hand checks run on an Apple Silicon Mac the maintainer has.** CI covers launch, the
+    signature and smoke, but keys, Gatekeeper and the native menu bar need a person at a real
+    Mac (Tests, "Hand checks on a real Mac"). A trusted tester runs the list if that Mac is not
+    available. Rejected: a rented cloud Mac, because interactive key testing over a remote
+    session is slow and a last resort.
+34. **The macOS front-end job is informational, then required once it is stable.** The
+    `mochitest (artifact build, macOS)` job in `e2e.yml` fails visibly but is not a required
+    check, because a new job on a runner type with no history here could be flaky and would then
+    block every pull request. It becomes required once it has been green and not flaky for about
+    two weeks, as the Linux e2e job was. That needs
+    [#605](https://github.com/vimma-browser/vimma/issues/605) fixed first: the job currently times
+    out in unrelated tests on most runs. Rejected: required at once, for the reason above.
 
 ### Not in this spec
 
@@ -703,8 +746,14 @@ exactly the cmd keys it lists`.
 **Mochitests, headless, artifact build, on `macos-15` (sub-PRs 1 and 2):**
 
 - the existing suite; each failure is fixed, or marked `skip-if` for macOS in
-  `tests/browser/browser.toml` with an issue, never loosened
-- `browser_vimma_private_swap.js`: `the swap gate answers not on wayland on macos`
+  `tests/browser/browser.toml` with an issue, never loosened. Two files are skipped on macOS:
+  `browser_vimma_tabstrip.js` ([#576](https://github.com/vimma-browser/vimma/issues/576)) and
+  `browser_vimma_private_workspace.js`, whose cause is fixed and whose skip goes with
+  [#614](https://github.com/vimma-browser/vimma/issues/614)
+- `browser_vimma_private_swap.js`, run on macOS unchanged. The planned test
+  `the swap gate answers not on wayland on macos` was not written: on macOS the backend switch
+  of [private-swap-macos](private-swap-macos.md) selects the native swap and never asks the
+  Hyprland gate, and `browser_vimma_private_swap_native.js` tests that backend
 - `browser_vimma_theme_appearance.js`: the existing "no poll timer runs" detection test, run on
   macOS unchanged
 - `browser_vimma_firefox_keys.js`: `accel is cmd and disable all keeps cmd+q on macos`
@@ -748,7 +797,7 @@ ad hoc dmg only when Developer ID is off` and `macos-smoke checks the Developer 
 notarisation and Gatekeeper`. The real signature, notarisation and Gatekeeper's verdict are checked
 by the first signed release's `macos-smoke`.
 
-**Hand checks on a real Mac (open question 3):** Open Anyway on the current macOS; `ctrl+b` and
+**Hand checks on a real Mac (decision 33):** Open Anyway on the current macOS; `ctrl+b` and
 every `ctrl+b` key; Option-composed `{` `}` `[` `]` `@` `|` `~` on a Finnish layout; `cmd+q`,
 `cmd+w`, `cmd+t`, `cmd+l` with the default `[firefox] disable = "all"` and with the guide's
 `enable` example; the native menu bar's key equivalents after firefox-keys turns keys off;
@@ -785,31 +834,38 @@ With the sub-PRs:
 Each sub-PR is independently mergeable and tested. Sub-PRs 1 and 2 need no Mac, no money and no
 full build.
 
-1. **`ci(macos): front-end tests on a mac runner`.** `artifact-build.mjs` picks the namespace and
-   `.app` layout by platform; `mochitest.mjs` and `start.mjs` learn the macOS paths and skip
+1. **`ci(macos): front-end tests on a mac runner`** (built). `artifact-build.mjs` picks the
+   namespace and `.app` layout by platform; `mochitest.mjs` and `start.mjs` learn the macOS paths and skip
    `/proc/locks` on macOS. A new `macos-15` job in `e2e.yml`: `npm ci`, Vitest, artifact build,
-   the mochitests headless, and a `df` line recording the free disk. Not required at first (open
-   question 5).
-2. **`fix(macos): platform fallbacks`.** vimma-ctl's macOS profile root and `kill(pid, 0)` stale
-   check, with tests (decisions 19 and 20); the MCP caller's name (decision 21); a macOS cargo
+   the mochitests headless, and a `df` line recording the free disk. Not required at first
+   (decision 34).
+2. **`fix(macos): platform fallbacks`** (built). vimma-ctl's macOS profile root and
+   `kill(pid, 0)` stale check, with tests (decisions 19 and 20); the MCP caller's name (decision 21); a macOS cargo
    job in `ci.yml`, informational like sub-PR 1's; the config path stays (decision 18). The
-   swap-gate and keys mochitests on macOS run in sub-PR 1's Mac job, so they follow it.
-3. **`build(macos): an arm64 cross build`.** ADR-018. `configs/macos/mozconfig` for the cross
-   build; `macos.yml` on `ubuntu-24.04` (decision 5) with build-supply-chain's source verification and disk
+   swap-gate and keys mochitests on macOS run in sub-PR 1's Mac job, so they follow it: the keys
+   task runs there in `browser_vimma_firefox_keys.js`, and the swap gate on macOS became
+   private-swap-macos's backend switch (Tests).
+3. **`build(macos): an arm64 cross build`** (built). ADR-018. `configs/macos/mozconfig` for the
+   cross build; `macos.yml` on `ubuntu-24.04` (decision 5) with build-supply-chain's source verification and disk
    guard; `npm run import`, `surfer build`, `./mach package`, ad hoc `rcodesign` (decision 10),
    upload as an artifact. Measures the cold build time and sets `timeout-minutes`. It also
    carries the first `macos-15` smoke job (mount, `codesign --verify --deep --strict`, arm64,
    `vimma --version`, a page rendered headless), so no `.dmg` is uploaded untested. The branding
    `.icns` and DMG background (decision 17) follow separately (issue #393). After the
    build-supply-chain source-verification sub-PR.
-4. **`test(macos): smoke the dmg on a mac`.** The smoke job gains the two smoke scenarios through
-   `vimma-ctl`, launched with `MOZ_HEADLESS=1`. The e2e launcher learns `MOZ_HEADLESS` instead of
-   Xvfb on macOS, the `.app` binary path and "no screenshots".
-5. **`docs(macos): keys inventory`.** The macOS firefox-keys inventory, `FIREFOX_SHORTCUTS_MACOS`
-   (decision 22, built with #384), the native menu bar check (whether a `<key>` that is off
-   still runs from its menu item in a windowed build), and Option/alt behaviour in
-   `docs/guide.md`.
-6. **`build(macos): a dmg in every release`.** The four macOS jobs in `release.yml` behind
+4. **`test(macos): smoke the dmg on a mac`** (not built; follow-up work outside this spec in
+   [#612](https://github.com/vimma-browser/vimma/issues/612)). The smoke job gains the two smoke
+   scenarios through `vimma-ctl`, launched with `MOZ_HEADLESS=1`. The e2e launcher learns
+   `MOZ_HEADLESS` instead of Xvfb on macOS, the `.app` binary path and "no screenshots". The smoke
+   jobs built with sub-PRs 3, 6 and 7 check the mount, the signature, the version lines and a page
+   rendered headless, but do not drive the browser through `vimma-ctl`.
+5. **`docs(macos): keys inventory`** (built, except the menu bar check). The macOS firefox-keys
+   inventory, `FIREFOX_SHORTCUTS_MACOS` (decision 22, built with #384), and the macOS default keys
+   (decisions 29 and 30, #385 and #386); the Option/alt behaviour in `docs/guide.md` ("On macOS the
+   alt keys are cmd keys", decision 31). The native menu bar check (whether a `<key>` that is off
+   still runs from its menu item in a windowed build) is a hand check not yet run, follow-up work
+   outside this spec in [#613](https://github.com/vimma-browser/vimma/issues/613).
+6. **`build(macos): a dmg in every release`** (built). The four macOS jobs in `release.yml` behind
    `MACOS_RELEASE_ENABLED` (decision 12): the cross build with the Safe Browsing key, the
    `macos-15` smoke check against the tag, cosign, and an add-only upload. The guide's macOS
    install section.
@@ -817,7 +873,9 @@ full build.
    `macos-notarise` and `macos-pack` jobs behind `MACOS_SIGNING` (decisions 23 to 28): secrets in
    the `macos-sign` environment; `rcodesign
 sign` with Vimma's production entitlements; `rcodesign notary-submit --wait --staple` on the
-   app; a new `.dmg` and cask; the Developer ID checks in `macos-smoke`. Passkeys follow in #544.
+   app; a new `.dmg` and cask; the Developer ID checks in `macos-smoke`. Passkeys follow in
+   [#544](https://github.com/vimma-browser/vimma/issues/544). v0.1.11 is the first release signed
+   with the Developer ID and notarised.
 
 Time and cost per run:
 
@@ -829,39 +887,3 @@ Time and cost per run:
 | Same on a 16-core larger Linux runner (fallback)  | about 40 min (estimate)                           | about $1.70, plus a Team plan |
 | Sub-PR 4 smoke on `macos-15`                      | about 10 min                                      | $0                            |
 | Sub-PR 7 signing and notarisation                 | about 7 min more (Zen: 29 s and 6.5 min)          | 99 USD a year                 |
-
-## Open questions
-
-1. **arm64 only, or universal?** (a) arm64 only: one build, a smaller download, matches every
-   current Mac; Intel Mac owners cannot run it. (b) universal via `unify.py`: covers Intel Macs,
-   but doubles the build time and the download and needs a Mac (or a Linux port of the unify
-   step) to merge. (c) separate x86_64 `.dmg`: covers Intel without unify, doubles the builds.
-   **Recommendation: (a)**, and add x86_64 only if a tester has an Intel Mac, since GitHub's
-   Intel images end in 2027.
-2. **Change the roadmap order?** (a) macOS entirely after M6: nothing competes with the updater
-   and the daily-driver work. (b) sub-PRs 1 and 2 now, as a parallel lane, the rest after M6a:
-   they cost nothing, need no full build and find Linux assumptions while the code is fresh.
-   (c) all of it now: earliest Mac build, but competes with M6a. **Recommendation: (b)**, so the
-   updater's MAR and manifest work is designed with a second platform in view; sub-PR 7 when the
-   gate nears.
-3. **Is a Mac available for the hand checks?** (a) the maintainer's Apple Silicon Mac: enough.
-   (b) none: CI covers launch and smoke, but keys, Gatekeeper and the menu bar need a person, so a
-   trusted tester runs the list. (c) a rented cloud Mac: last resort, slow for interactive key
-   testing. **Recommendation: (a) if available, else (b)**, before a macOS build is called
-   working.
-4. **`alt+<letter>` bindings on a Mac.** Option+j types `∆`, so a user's `alt+j` never fires.
-   (a) document it: Option is for characters on a Mac, as in Mac terminals by default. (b) an
-   "Option as alt" setting matching the physical key: more code and a second matching rule.
-   **Recommendation: (a)** now; the default `alt` keys that Option would type over are Firefox's
-   macOS `cmd` keys there (decision 29), and (b) can follow if users ask.
-5. **Is the macOS front-end job required for merging?** (a) required at once: catches every
-   macOS break, but a new and possibly flaky job blocks all pull requests. (b) informational,
-   then required once green and not flaky for two weeks, as the Linux e2e job was.
-   **Recommendation: (b).**
-6. **Which hosted runner runs the cross build?** No self-hosted machine is planned (decision 4).
-   (a) the standard `ubuntu-24.04` runner: free, 85 GB measured free disk, 1.5-3 hours estimated,
-   within the 6-hour limit. (b) a larger hosted Linux runner: about 40 minutes, but paid and only
-   for organisations on the Team plan. (c) a hosted Mac, natively: documented 14 GB disk, too
-   small for a 30 GB build even on the paid `xlarge`. **Recommendation: (a)**, as build-supply-chain decides for
-   Linux, moving to (b) together with the Linux release only if sub-PR 3 measures more than 4
-   hours.

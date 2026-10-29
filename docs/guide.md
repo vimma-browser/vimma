@@ -1120,6 +1120,10 @@ address bar moves to the start of the line, and `cmd+[` goes back from there.
 [bindings.md](bindings.md#on-macos) lists them, `ctrl+b ?` shows the ones in force, and a
 `[keys]` list in config.toml replaces them as it does any default.
 
+The same holds for an `alt` chord of your own: Option+j types `∆`, and Vimma matches the
+character ([Keyboard layouts](#keyboard-layouts)), so an `alt+j` binding never runs on a Mac, as
+in a Mac terminal by default. Bind such an action to a `ctrl` or `meta` (`cmd`) chord there.
+
 **Firefox's other macOS keys** use `cmd` where Linux has `ctrl` (`cmd+t`, `cmd+w`, written
 `meta+t` in config.toml), and it has tab keys of its own: `meta+{` and `meta+}` (cmd+shift+[ and
 cmd+shift+]), also with `ctrl` (`ctrl+meta+{`, `ctrl+meta+}`), and `alt+meta+left`,

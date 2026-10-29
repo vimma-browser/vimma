@@ -22,8 +22,8 @@ tools for such a build.
   objdir and compiler cache, a disk guard and a 16 GB swap file. No job builds on a hosted Mac.
 - One architecture: `configs/macos/mozconfig` sets `--target=aarch64-apple-darwin`. Every Mac
   sold since 2023 is Apple Silicon, GitHub's Intel macOS images end in 2027, and one architecture
-  halves the build. An Intel or universal build is a later decision (spec macos-build, open
-  question 1).
+  halves the build. An Intel or universal build is added only if a tester needs one (spec
+  macos-build, decision 3).
 - `configs/macos/mozconfig` is read only when Surfer builds for darwin (`SURFER_PLATFORM=darwin`
   on Linux, or a Mac host), so the Linux build does not change. A test checks that the Linux and
   common mozconfigs name no target.

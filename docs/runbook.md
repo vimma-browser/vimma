@@ -724,13 +724,16 @@ Linux job, and on a manual run without a `firefox-version`. It does not run when
 `upstream-beta.yml` call `e2e.yml` with a version, because a macOS failure must never block a
 Linux release (spec macos-build, decision 13). It does not build `vimma-ctl`, so
 `browser_vimma_control.js` skips there; vimma-ctl's own macOS tests run in `ci.yml` (`vimma-ctl
-on macOS`). The e2e scenarios follow with the spec's sub-PR 4.
+on macOS`). The e2e scenarios on macOS are follow-up work
+([#612](https://github.com/vimma-browser/vimma/issues/612)).
 
 **Informational, not required.** The job is new and its runner type has no history in this
-repository, so a flaky macOS run would otherwise block every pull request (spec macos-build, open
-question 6). It fails visibly, with no `continue-on-error`, and the ruleset "main" must not list
+repository, so a flaky macOS run would otherwise block every pull request (spec macos-build,
+decision 34). It fails visibly, with no `continue-on-error`, and the ruleset "main" must not list
 it among the required checks ("Merging and branch protection" above). It becomes a candidate for
-a required check once it has been green and not flaky for about two weeks, as the Linux job was.
+a required check once it has been green and not flaky for about two weeks, as the Linux job was;
+that needs its timeouts in unrelated tests fixed first
+([#605](https://github.com/vimma-browser/vimma/issues/605)).
 
 When it fails:
 
