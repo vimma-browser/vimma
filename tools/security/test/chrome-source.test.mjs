@@ -196,7 +196,7 @@ describe("chrome code", () => {
   // lstat(2) on macOS (security.md C2): nothing else may load a
   // library or declare a function. lstat's symbol is named in one table, by architecture, and
   // libSystem by its absolute path, since dyld searches the working directory for a bare name.
-  test("never calls native code, but statx or lstat on clamd's socket", () => {
+  test("never calls native code, but statx or lstat for a file's owner and mode", () => {
     const CLAM = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
     const all = hits(/ctypes/);
     expect(all.filter((h) => !h.startsWith(`${CLAM}:`))).toEqual([]);

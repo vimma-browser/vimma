@@ -301,6 +301,40 @@ describe("claude-code's stream (C7, C8)", () => {
     ]);
   });
 
+  test("cached input counts as input, as a hosted provider's does", () => {
+    // Claude Code caches its prompt: most of a call's input is cache creation or reads, and
+    // max_tokens must mean the same for a CLI as for the Messages API provider.
+    const call = JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "c1",
+        content: [{ type: "text", text: "x" }],
+        usage: {
+          input_tokens: 3,
+          cache_creation_input_tokens: 900,
+          cache_read_input_tokens: 5000,
+          output_tokens: 1,
+        },
+      },
+    });
+    const result = JSON.stringify({
+      type: "result",
+      is_error: false,
+      usage: {
+        input_tokens: 3,
+        cache_creation_input_tokens: 900,
+        cache_read_input_tokens: 5000,
+        output_tokens: 40,
+      },
+    });
+    const { out } = events(`${call}\n${result}\n`);
+    expect(out[0]).toEqual({ type: "usage", input: 5903, output: 1 });
+    expect(out[2]).toMatchObject({
+      usage: { input: 5903, output: 40 },
+      rest: { input: 0, output: 39 },
+    });
+  });
+
   test("tools of another mcp server are the cli's own, listed and marked, not hidden", () => {
     // Only Vimma's tools are steps from the gate (C7): a server that is not Vimma's, however
     // it got loaded, must show in the header and as own-tool lines (M57, M58).

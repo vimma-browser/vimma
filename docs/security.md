@@ -337,7 +337,7 @@ text that pages, add-ons and bookmarks choose.
   [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
   [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../packages/vimma-core/test/restart.test.mjs),
   [`starts the AppImage only once the old process has exited, with no arguments`](../packages/vimma-core/test/restart.test.mjs),
-  [`never calls native code, but statx or lstat on clamd's socket`](../tools/security/test/chrome-source.test.mjs)
+  [`never calls native code, but statx or lstat for a file's owner and mode`](../tools/security/test/chrome-source.test.mjs)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
   - The status bar **must** always show the selected page's real address with its registrable
@@ -2026,7 +2026,8 @@ own process, not a process group.
   [`tools of another mcp server are the cli's own, listed and marked, not hidden`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M59. A CLI task's steps **must** be counted where they reach the gate, and the next one
   refused at `max_steps`, so a CLI cannot under-report them; `max_minutes` (default 30)
-  **must** stop it; tokens the CLI reports count toward `max_tokens` at each model call, so
+  **must** stop it; tokens the CLI reports (cached input included, as for a hosted provider)
+  count toward `max_tokens` at each model call, so
   that limit **must** stop a turn still running, not only end it. `max_cost` is not
   enforced for a CLI, whose reported cost is shown as its own estimate (`≈`), and the first task
   says so. A stream line over 1 MiB, or more than 64 MiB of output, **must** end the run.
@@ -2034,6 +2035,7 @@ own process, not a process group.
   [`test_max_minutes_stops_the_task`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_max_tokens_stops_a_turn_before_it_ends`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`each model call's usage counts as it comes, once, and the result adds only the rest`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`cached input counts as input, as a hosted provider's does`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`test_max_cost_set_is_reported_as_not_applying`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`a cli task stops at max_minutes`](../packages/vimma-core/test/agent-budget.test.mjs),
   [`reported cost is shown and max_cost does not stop a cli task`](../packages/vimma-core/test/agent-budget.test.mjs),

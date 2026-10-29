@@ -295,6 +295,17 @@ const CLAUDE = /** @type {CliInfo} */ (CLIS["claude-code"]);
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 /** @param {unknown} v */
 const count = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+/**
+ * A usage block's input tokens, cache creation and reads included, as the Messages API
+ * provider counts them: Claude Code caches its prompt, so most of a call's input is cached.
+ * Null when it reports none. @param {Record<string, any> | undefined} u
+ */
+const inputTokens = (u) => {
+  const parts = [u?.input_tokens, u?.cache_creation_input_tokens, u?.cache_read_input_tokens]
+    .map(count)
+    .filter((n) => n !== null);
+  return parts.length ? parts.reduce((a, b) => a + b, 0) : null;
+};
 
 /**
  * Claude Code's `stream-json` output read as the transcript's entries (C8): `push` takes the
@@ -436,7 +447,7 @@ export class ClaudeStream {
     const { id, usage } = m.message;
     if (typeof id === "string" && isObject(usage) && !this.calls.has(id)) {
       this.calls.add(id);
-      const input = count(usage.input_tokens) ?? 0;
+      const input = inputTokens(usage) ?? 0;
       const output = count(usage.output_tokens) ?? 0;
       this.turn.input += input;
       this.turn.output += output;
@@ -466,7 +477,7 @@ export class ClaudeStream {
     if (typeof m.is_error !== "boolean" || (usage !== undefined && !isObject(usage))) {
       return this.unreadable();
     }
-    const input = count(usage?.input_tokens);
+    const input = inputTokens(usage);
     const output = count(usage?.output_tokens);
     const error = m.is_error
       ? plain(typeof m.result === "string" && m.result ? m.result : (m.subtype ?? "error"))
