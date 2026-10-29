@@ -294,26 +294,64 @@ addTidyTask(async function test_second_connection_with_a_ticket_is_refused() {
   Assert.ok((await again.call("agent-ping")).ok, "the session's own reconnect gets in");
   again.close();
 
+  // A first connection that sent no session id spends the ticket: nobody can come back on it.
+  const d = AgentChat.create({ provider: PROVIDER });
+  const spent = await AgentChat.issueTicket(d.id, "claude-code");
+  const silent = new Client(spent.port);
+  Assert.equal((await ticketHandshake(silent, spent.ticket))?.type, "welcome", "its first one");
+  silent.close();
+  await until(() => VimmaControl.connections === 0, "it closed without an agent-hello");
+  const notices3 = await noticesDuring(async () => {
+    const next = new Client(spent.port);
+    const refused = await ticketHandshake(next, spent.ticket);
+    Assert.equal(refused?.error?.code, "unauthorized", "no later connection gets in");
+    next.close();
+  });
+  Assert.deepEqual(notices3, ["a second program used claude-code's ticket and was refused"]);
+
+  // With another ticket keeping the listener up, the server itself refuses a revoked ticket.
   VimmaControl.revokeTicket(ticket);
+  Assert.equal(VimmaControl.port, port, "the listener stays for the other ticket");
   const late = new Client(port);
-  Assert.notEqual((await ticketHandshake(late, ticket))?.type, "welcome", "a revoked ticket");
+  const revoked = await ticketHandshake(late, ticket);
+  Assert.equal(revoked?.error?.code, "unauthorized", "a revoked ticket is refused before a proof");
   late.close();
+  VimmaControl.revokeTicket(spent.ticket);
+});
+
+addTidyTask(async function test_a_request_id_in_flight_is_not_reused() {
+  const c = AgentChat.create({ provider: PROVIDER });
+  const { ticket, port } = await AgentChat.issueTicket(c.id, "claude-code");
+  const client = await connect(port, ticket);
+  client.request("agent-open", { url: PAGE }, 7);
+  await until(() => AgentGate.waiting.length > 0, "the step asks");
+  const again = await client.response(client.request("agent-tabs", {}, 7));
+  Assert.equal(again.error?.code, "bad-request", "a second request with id 7 is refused");
+  Assert.equal(AgentGate.waiting.length, 1, "and asks nothing");
+  client.close();
+  await until(() => AgentGate.waiting.length === 0, "the first one's question is withdrawn");
+  VimmaControl.revokeTicket(ticket);
 });
 
 addTidyTask(async function test_stop_and_delete_close_the_ticket_connection() {
   const c = AgentChat.create({ provider: PROVIDER });
   const { ticket, port } = await AgentChat.issueTicket(c.id, "claude-code");
   const client = await connect(port, ticket);
+  // Another conversation's ticket keeps the listener up, so the server's refusal is tested.
+  const keeper = AgentChat.create({ provider: PROVIDER });
+  const kept = await AgentChat.issueTicket(keeper.id, "claude-code");
   // A question waiting on the ticket's connection is withdrawn with it.
   client.request("agent-open", { url: PAGE });
   await until(() => AgentGate.waiting.length > 0, "the step asks");
   AgentChat.stop(c.id);
   Assert.equal(await client.take(() => false), null, "and closes the ticket's connection");
   Assert.equal(AgentGate.waiting.length, 0, "no question of it waits");
+  Assert.equal(VimmaControl.port, port, "the other ticket keeps the listener");
   const late = new Client(port);
   const refused = await ticketHandshake(late, ticket);
-  Assert.notEqual(refused?.type, "welcome", "the stop ended the ticket");
+  Assert.equal(refused?.error?.code, "unauthorized", "the stop ended the ticket");
   late.close();
+  VimmaControl.revokeTicket(kept.ticket);
 
   const d = AgentChat.create({ provider: PROVIDER });
   const second = await AgentChat.issueTicket(d.id, "claude-code");

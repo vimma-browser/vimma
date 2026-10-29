@@ -1886,13 +1886,18 @@ that reads it from the CLI's environment gains nothing the conversation does not
 only until the run ends.
 
 - M51. A ticket **must** be 256 random bits, made only by chrome code for one conversation's
-  connection, good until it is revoked, for one connection at a time: the first connection's
+  connection, good until it is revoked (when its conversation is stopped or deleted; the run
+  that ends **must** revoke it too, once runs exist), for one connection at a time: the first
+  connection's
   `vimma-ctl mcp` session id is the only way back in after that connection drops. A second
   connection while one lives, a later one without that session id, and one after a first that
   sent none **must** be refused, with the notice
   `a second program used <cli>'s ticket and was refused`. A revoked or unknown ticket's hello
-  **must** be refused before any proof is sent.
+  **must** be refused before any proof is sent. A request id still in flight on the connection
+  **must not** be taken again, so every waiting question stays reachable by `agent-cancel` and
+  by the connection's end.
   [`test_second_connection_with_a_ticket_is_refused`](../tests/browser/browser_vimma_agent_cli.js),
+  [`test_a_request_id_in_flight_is_not_reused`](../tests/browser/browser_vimma_agent_cli.js),
   [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js)
 - M52. A ticket's connection **must** act as its conversation's connection (M35-M37): asked
   about under the conversation's label, covered by its grant and by no other, on the tabs it
@@ -1910,8 +1915,9 @@ only until the run ends.
   [`the_ticket_is_never_printed`](../tools/vimma-ctl/tests/mcp.rs),
   [`a_ticket_whose_task_ended_never_says_to_turn_on_mcp`](../tools/vimma-ctl/tests/mcp.rs)
 - M54. Stopping or deleting a conversation **must** revoke its tickets and close their
-  connections at once, before its grant ends, so nothing a CLI sends after the stop reaches the
-  browser; a question the connection waited on is withdrawn.
+  connections at once, before its grant ends, so no command a CLI sends after the stop reaches
+  the browser; a question the connection waited on is withdrawn, and a step already past its
+  question finishes, as any stopped task's does (Behaviour 16 of builtin-agent).
   [`test_stop_and_delete_close_the_ticket_connection`](../tests/browser/browser_vimma_agent_cli.js)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)

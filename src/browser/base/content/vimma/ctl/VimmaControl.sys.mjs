@@ -769,6 +769,9 @@ class Connection {
       cancel();
       return { cancelled: true };
     }
+    // One request per id at a time: a second would take the first's entry, leaving its
+    // question beyond agent-cancel and the withdrawal when the connection drops.
+    if (this.rids.has(id)) throw new AgentError("bad-request", `request id ${id} is in flight`);
     const rid = --ticketRids;
     this.rids.set(id, rid);
     try {
@@ -863,7 +866,8 @@ class Connection {
     const args = /** @type {any} */ (m.args);
     // A ticket's later connection must be the same vimma-ctl process: its session id says so.
     if (this.ticket && this.reconnect && !this.helloed) {
-      if (command !== "agent-hello" || args.session !== this.ticket.session) {
+      const session = typeof args.session === "string" ? args.session : "";
+      if (command !== "agent-hello" || !tokensEqual(session, this.ticket.session ?? "")) {
         this.refuseTicket(id);
         return;
       }

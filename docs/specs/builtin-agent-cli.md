@@ -544,6 +544,7 @@ stream and drives `vimma-ctl mcp`'s protocol with the ticket it is given:
 `test_runs_in_an_empty_private_directory_removed_after`;
 `test_ticket_connection_acts_as_the_conversation`; `test_ticket_listener_with_mcp_off_takes_only_tickets`;
 `test_mcp_agents_cannot_keep_out_a_ticket`; `test_second_connection_with_a_ticket_is_refused`;
+`test_a_request_id_in_flight_is_not_reused`;
 `test_ticket_never_in_prefs_files_notices_or_log`; `test_stop_and_delete_close_the_ticket_connection`;
 `test_ticket_never_in_cmdline_prefs_or_log`;
 `test_enter_grant_covers_cli_steps_and_checkpoints_ask`; `test_stop_closes_the_connection_before_the_signal`;
