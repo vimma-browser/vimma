@@ -457,7 +457,6 @@ export const AgentChat = {
       localOnly,
       onEvent: (e) => {
         c.transcript.task(e);
-        if (e.type === "reply") c.stored.push({ kind: "agent", text: e.text });
         changed();
       },
     });
@@ -470,6 +469,9 @@ export const AgentChat = {
         c.messages = result.messages;
         if (c.task === handle) c.task = null;
         c.last = { outcome: result.outcome, ...(result.error ? { error: result.error } : {}) };
+        // Only the task's final reply is kept, not the text that came with its tool calls,
+        // which most often restates the page it was reading.
+        if (result.reply) c.stored.push({ kind: "agent", text: result.reply });
         summarize(c, result.outcome);
         c.transcript.end(result);
         changed();
@@ -595,6 +597,8 @@ export const AgentChat = {
    */
   async prune() {
     if (!this.enabled) return;
+    // After a read under way, so a conversation whose file goes is not read back into memory.
+    await restoring;
     const keepDays = config()?.keepDays ?? null;
     if (keepDays === null) return;
     const now = Date.now();

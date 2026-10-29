@@ -26,11 +26,12 @@ const server = new HttpServer();
 
 /**
  * The scripted model. A task is `SCRIPT:` and a JSON list of steps: `{ call, args }` for a tool
- * call, `{ reply }` for a reply, `{ hold: true }` to wait until the test releases it. Step n
- * answers the model's n-th turn after the task's message. In args, `$tab` is the last tab id a
- * tool result named, and `$label:Words` the label of the element with those words in the last
- * element list. It answers in OpenAI's chat completions format, or in Anthropic's Messages
- * format (`anthropic`), whose requests it reads into the same shape first.
+ * call (with `say`, the text that comes with it), `{ reply }` for a reply, `{ hold: true }` to
+ * wait until the test releases it. Step n answers the model's n-th turn after the task's
+ * message. In args, `$tab` is the last tab id a tool result named, and `$label:Words` the label
+ * of the element with those words in the last element list. It answers in OpenAI's chat
+ * completions format, or in Anthropic's Messages format (`anthropic`), whose requests it reads
+ * into the same shape first.
  */
 function chatCompletions(/** @type {any} */ req, /** @type {any} */ res) {
   scripted(req, res, "openai");
@@ -117,7 +118,7 @@ function scripted(req, res, format) {
     const message = step.call
       ? {
           role: "assistant",
-          content: "",
+          content: step.say ?? "",
           tool_calls: [
             {
               id: `call_${after.length}`,

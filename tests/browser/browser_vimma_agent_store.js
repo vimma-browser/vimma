@@ -307,6 +307,46 @@ addTidyTask(async function test_delete_and_forget_all_remove_files() {
   Assert.deepEqual(AgentChat.list(), [], "and every conversation");
 });
 
+addTidyTask(async function test_a_deleted_conversations_task_writes_nothing_after() {
+  const c = AgentChat.create({ provider: PROVIDER });
+  const task = script([{ hold: true }]);
+  await AgentChat.send(c.id, task);
+  await until(() => held.has(task), "the model's reply is held");
+  await AgentChat.flush();
+  Assert.equal((await storedFiles()).length, 1, "the message was stored");
+  const done = AgentChat.done(c.id).catch(() => {});
+  await AgentChat.delete(c.id);
+  Assert.deepEqual(await storedFiles(), [], "d removed the file");
+  held.get(task)();
+  held.delete(task);
+  await done;
+  await TestUtils.waitForTick();
+  await AgentChat.flush();
+  Assert.deepEqual(await storedFiles(), [], "the task that ended after wrote nothing back");
+});
+
+addTidyTask(async function test_only_the_final_reply_is_stored_and_temp_files_go() {
+  const c = AgentChat.create({ provider: PROVIDER });
+  // A turn with a tool call carries text too; only the task's final reply is kept.
+  await AgentChat.send(
+    c.id,
+    script([{ call: "vimma_tabs", args: {}, say: "Looking at the tabs." }, { reply: "Final." }]),
+  );
+  await AgentChat.done(c.id);
+  await AgentChat.flush();
+  const { plain } = await decrypted(AgentChat.get(c.id).uid);
+  Assert.deepEqual(
+    JSON.parse(plain).entries.map((/** @type {any} */ e) => e.kind),
+    ["user", "agent", "summary"],
+    "the message, the final reply and the summary",
+  );
+  // A temporary file a crash left between write and rename goes with forget all.
+  const tmp = PathUtils.join(AgentStore.dir, `${AgentChat.get(c.id).uid}.conv.0a1b2c3d.tmp`);
+  await IOUtils.writeUTF8(tmp, "left by a crash");
+  await AgentChat.forgetAll();
+  Assert.deepEqual(await IOUtils.getChildren(AgentStore.dir), [], "nothing is left");
+});
+
 addTidyTask(async function test_keep_days() {
   const old = await ranTask();
   const recent = await ranTask();

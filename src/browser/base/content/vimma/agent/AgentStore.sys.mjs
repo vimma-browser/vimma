@@ -24,6 +24,9 @@ const SUFFIX = ".conv";
 const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** A conversation's file, or the temporary file a save writes before its rename. */
+const NAME =
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.conv(\.[0-9a-f]{8}\.tmp)?$/;
 
 /** @typedef {import("../core/agent-store.mjs").StoredRecord} StoredRecord */
 
@@ -38,7 +41,11 @@ function fileOf(id) {
 /** OSKeyStore decrypts to bytes, one character a byte. @param {string} s */
 const fromBytes = (s) => new TextDecoder().decode(Uint8Array.from(s, (c) => c.charCodeAt(0)));
 
-/** The conversation files there are, with their times. @returns {Promise<{ id: string, path: string, modified: number }[]>} */
+/**
+ * The store's files with their times: the conversations' and, as `temp`, a save's temporary
+ * file that a crash left before its rename, which every removal takes too.
+ * @returns {Promise<{ id: string, path: string, modified: number, temp: boolean }[]>}
+ */
 async function files() {
   let children;
   try {
@@ -47,18 +54,19 @@ async function files() {
     if (/** @type {any} */ (e)?.name === "NotFoundError") return [];
     throw e;
   }
-  /** @type {{ id: string, path: string, modified: number }[]} */
+  /** @type {{ id: string, path: string, modified: number, temp: boolean }[]} */
   const out = [];
   for (const path of children) {
-    const name = PathUtils.filename(path);
-    if (!name.endsWith(SUFFIX) || !UUID.test(name.slice(0, -SUFFIX.length))) continue;
+    const m = NAME.exec(PathUtils.filename(path));
+    if (!m) continue;
     try {
       const stat = await IOUtils.stat(path);
       if (stat.type !== "regular") continue;
       out.push({
-        id: name.slice(0, -SUFFIX.length),
+        id: /** @type {string} */ (m[1]),
         path,
         modified: stat.lastModified ?? 0,
+        temp: !!m[2],
       });
     } catch {
       // gone meanwhile
@@ -91,6 +99,8 @@ export const AgentStore = {
         if (!(await IOUtils.exists(dir()))) {
           await IOUtils.makeDirectory(dir(), { createAncestors: true, permissions: DIR_MODE });
         }
+        // Every time: a folder made otherwise (a copied profile, a restored backup) is narrowed.
+        await IOUtils.setPermissions(dir(), DIR_MODE, false);
         const tmp = `${path}.${Services.uuid.generateUUID().toString().slice(1, 9)}.tmp`;
         try {
           await IOUtils.writeUTF8(tmp, cipher, { mode: "create" });
@@ -118,6 +128,7 @@ export const AgentStore = {
     /** @type {StoredRecord[]} */
     const records = [];
     for (const f of await files()) {
+      if (f.temp) continue;
       try {
         const cipher = await IOUtils.readUTF8(f.path);
         const record = readRecord(
@@ -140,9 +151,12 @@ export const AgentStore = {
   async remove(id) {
     await (writing.get(id) ?? Promise.resolve()).catch(() => {});
     await IOUtils.remove(fileOf(id), { ignoreAbsent: true });
+    for (const f of await files()) {
+      if (f.id === id) await IOUtils.remove(f.path, { ignoreAbsent: true });
+    }
   },
 
-  /** `:agent forget all` (Behaviour 23): every conversation file, readable or not. */
+  /** `:agent forget all` (Behaviour 23): every file of the store, readable or not. */
   async removeAll() {
     await Promise.allSettled([...writing.values()]);
     for (const f of await files()) await IOUtils.remove(f.path, { ignoreAbsent: true });
@@ -158,9 +172,10 @@ export const AgentStore = {
     /** @type {string[]} */
     const removed = [];
     for (const f of await files()) {
-      if (!isExpired(f.modified) || writing.has(f.id)) continue;
+      // A temporary file outside a save under way was left by a crash: it goes whatever its age.
+      if ((!f.temp && !isExpired(f.modified)) || writing.has(f.id)) continue;
       await IOUtils.remove(f.path, { ignoreAbsent: true });
-      removed.push(f.id);
+      if (!f.temp) removed.push(f.id);
     }
     return removed;
   },

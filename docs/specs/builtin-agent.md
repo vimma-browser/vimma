@@ -548,7 +548,9 @@ agent to a part of the profile, or publishes which steps always ask.
     who never opens it is never asked to unlock a keyring at start. The summary's hosts come
     from the URLs the gate was asked about, as the URL parser writes their hosts, never a path
     or query a page put there. Writing a file through a temporary file and a rename leaves the
-    old file or the new one after a crash.
+    old file or the new one after a crash. Of the agent's replies only each task's final one is
+    kept, because the text that comes with a tool call most often restates the page being read,
+    and a stored reply is sent again as the agent's own words.
 16. **The window opens anywhere; the agent works in one place** (B16, Behaviour 6, 10, 17).
     Opening the window from any workspace changes nothing about reach, because the window is
     Vimma's interface and the tools act only on agent-workspace tabs (B2); the header's

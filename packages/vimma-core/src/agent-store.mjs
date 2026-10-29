@@ -28,6 +28,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** Hosts a summary names before `and N more`. */
 const MAX_HOSTS = 10;
 const DAY_MS = 86_400_000;
+/**
+ * The most UTF-8 bytes a record may take. OSKeyStore's decrypt builds its string with one
+ * argument a byte (`String.fromCharCode.apply`, toolkit/modules/OSKeyStore.sys.mjs), which
+ * fails above about 500,000, and a file it cannot decrypt would drop out of the list.
+ */
+export const MAX_RECORD_BYTES = 400_000;
 
 /** @param {unknown} v @returns {v is Record<string, any>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -77,6 +83,7 @@ const isEntry = (e) => isObject(e) && ENTRY_KINDS.has(e.kind) && typeof e.text =
  * What is written of a conversation: its id, title, times, provider, and its stored entries
  * (messages, replies, summaries). Everything else it holds in memory (the model's messages with
  * their tool results, the transcript's step lines, its gate state) is left out by construction.
+ * A conversation longer than MAX_RECORD_BYTES keeps its newest entries.
  * @param {{ uid: string, title: string, created: number, used: number, provider: unknown,
  *   stored: unknown[] }} c
  * @returns {StoredRecord}
@@ -84,7 +91,7 @@ const isEntry = (e) => isObject(e) && ENTRY_KINDS.has(e.kind) && typeof e.text =
 export function storedRecord(c) {
   const provider = storedProvider(c.provider);
   if (!provider) throw new Error("the conversation's provider cannot be stored");
-  return {
+  const record = {
     v: STORE_VERSION,
     id: c.uid,
     title: c.title,
@@ -93,6 +100,12 @@ export function storedRecord(c) {
     provider,
     entries: c.stored.filter(isEntry).map((e) => ({ kind: e.kind, text: e.text })),
   };
+  const size = (/** @type {unknown} */ v) => new TextEncoder().encode(JSON.stringify(v)).length;
+  let over = size(record) - MAX_RECORD_BYTES;
+  while (over > 0 && record.entries.length > 1) {
+    over -= size(record.entries.shift()) + 1;
+  }
+  return record;
 }
 
 /**

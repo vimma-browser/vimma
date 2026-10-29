@@ -3,6 +3,7 @@
 // reopened conversation sends the model, and when `keep_days` deletes one.
 import { describe, expect, test } from "vitest";
 import {
+  MAX_RECORD_BYTES,
   STORE_VERSION,
   expired,
   hostsOf,
@@ -66,6 +67,19 @@ describe("storedRecord", () => {
     });
     expect(record.provider).toEqual({ ...provider, priceIn: 3, priceOut: 15 });
     expect(JSON.stringify(record)).not.toContain("sk-secret");
+  });
+});
+
+describe("storedRecord's size", () => {
+  test("a long conversation keeps its newest entries within MAX_RECORD_BYTES", () => {
+    const big = "é".repeat(50_000);
+    const stored = Array.from({ length: 20 }, (_, i) => ({ kind: "user", text: `${i} ${big}` }));
+    const record = storedRecord({ ...conversation, stored });
+    const bytes = new TextEncoder().encode(JSON.stringify(record)).length;
+    expect(bytes).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+    expect(record.entries.length).toBeGreaterThan(0);
+    expect(record.entries.at(-1)?.text.startsWith("19 ")).toBe(true);
+    expect(record.entries[0]?.text.startsWith("0 ")).toBe(false);
   });
 });
 
