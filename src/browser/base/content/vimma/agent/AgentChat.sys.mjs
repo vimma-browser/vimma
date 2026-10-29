@@ -11,13 +11,24 @@
 // `ask` (`ctrl+Enter`) ends that grant so every step asks. The model loop is vimma-core's, the
 // one the bench measures. Each conversation keeps its transcript (core agent-chat.mjs), built
 // from the loop's events and the gate's events for its connection, which the chat window
-// (ui/agent-chat.mjs) draws. Kept in memory; the stored conversations come in a later delivery,
-// and until the feature is finished its pref keeps it off.
+// (ui/agent-chat.mjs) draws. Each conversation is also kept across restarts (B15, Behaviour
+// 19-23): its messages, the agent's replies and Vimma's own task summaries, never page text or
+// tool output, encrypted in its own file (AgentStore.sys.mjs). A reopened or cleared one sends the
+// model only those. Until the feature is finished its pref keeps it off.
 
 import { Budget } from "../core/agent-budget.mjs";
 import { Transcript, isLocalEndpoint, needsKey } from "../core/agent-chat.mjs";
-import { clearContext, startTask } from "../core/agent-loop.mjs";
+import { startTask } from "../core/agent-loop.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
+import {
+  expired,
+  hostsOf,
+  modelMessages,
+  restoredEntries,
+  stoppedAtCheckpoint,
+  storedRecord,
+  taskSummary,
+} from "../core/agent-store.mjs";
 import { failureResult, toolCommand, toolResult } from "../core/agent-results.mjs";
 import { modelChoices, prepareLocalModel, probeLocal } from "../core/agent-setup.mjs";
 import { AGENT_INSTRUCTIONS, agentTools } from "../core/agent-tools.mjs";
@@ -33,11 +44,13 @@ import {
   runAgentCommand,
 } from "../ctl/agent-commands.mjs";
 import { AgentGate } from "../ctl/AgentGate.sys.mjs";
-import { McpHost } from "../host/mcp-ops.mjs";
+import { AGENT_CONFIG_TOPIC, McpHost } from "../host/mcp-ops.mjs";
 import { AgentKeys } from "./AgentKeys.sys.mjs";
+import { AgentStore } from "./AgentStore.sys.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  setInterval: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
@@ -52,15 +65,19 @@ ChromeUtils.defineESModuleGetters(lazy, {
  *   stopped: boolean,
  *   budget: Budget | null, done: Promise<TaskResult> | null,
  *   last: { outcome: string, error?: string } | null, transcript: Transcript,
- *   confirmed: string | null, granted: boolean }} Conversation
+ *   confirmed: string | null, granted: boolean, uid: string, created: number, used: number,
+ *   stored: StoredEntry[], taskStart: number, urls: unknown[] }} Conversation
  *   `confirmed`: the endpoint whose notice of what leaves the machine the user answered y to
  *   (Behaviour 5); `granted`: whether it had a grant at the last change, for the transcript's
- *   notice when that changes
+ *   notice when that changes; `uid`: its file's name; `stored`: what its file holds (B15);
+ *   `taskStart`: where the running task's transcript entries begin; `urls`: the pages its task
+ *   was asked about, for the summary's hosts
+ * @typedef {import("../core/agent-store.mjs").StoredEntry} StoredEntry
  */
 
 /**
- * Unfinished: off until the conversations are kept and the window has its key (deliveries 5
- * and 6; CONTRIBUTING.md, "Unfinished features").
+ * Unfinished: off until the window has its key (delivery 6; builtin-agent B22; CONTRIBUTING.md,
+ * "Unfinished features").
  */
 export const FEATURE_PREF = "vimma.feature.agentChat";
 /** A conversation's title: the first line of its first message, cut at 40 columns (Behaviour 19). */
@@ -73,6 +90,12 @@ let nextId = 1;
 let nextRid = 1;
 /** @type {Set<() => void>} */
 const listeners = new Set();
+/** Saves under way, which `flush` waits for. @type {Set<Promise<void>>} */
+const saves = new Set();
+/** @type {Promise<void> | null} the stored conversations' first read, once started */
+let restoring = null;
+/** `keep_days` runs at start and then once a day (Behaviour 20). */
+const PRUNE_EVERY_MS = 86_400_000;
 
 function changed() {
   for (const c of conversations.values()) {
@@ -105,6 +128,8 @@ function onGate(event) {
   if (event && event.kind !== "notice") {
     const q = event.kind === "ran" ? event : event.question;
     const c = [...conversations.values()].find((x) => x.conn === q.conn);
+    const what = /** @type {Record<string, any>} */ (q.what);
+    if (c?.task) c.urls.push(what?.url, what?.current);
     c?.transcript.gate({
       kind: event.kind,
       tool: q.tool,
@@ -139,6 +164,122 @@ function conversation(id) {
 function titleOf(text) {
   const line = text.split("\n").find((l) => l.trim()) ?? "";
   return [...line.trim()].slice(0, TITLE_COLUMNS).join("") || "New conversation";
+}
+
+/**
+ * Writes conversation `c`'s file, encrypted, once it holds a message: what it stored, never its
+ * tool results (B15). A save that fails (no keyring, a full disk) leaves it in memory only.
+ * @param {Conversation} c
+ */
+function persist(c) {
+  // A deleted conversation's task may still end after its file went: nothing comes back.
+  if (!c.stored.length || conversations.get(c.id) !== c) return;
+  const save = AgentStore.save(storedRecord(c)).catch((e) => {
+    // Only the error's name: its text could carry what was being written.
+    console.error("vimma agent: a conversation could not be stored", /** @type {any} */ (e)?.name);
+  });
+  saves.add(save);
+  save.finally(() => saves.delete(save));
+}
+
+/**
+ * A conversation's in-memory parts, on a connection of its own that starts without a grant (B5):
+ * a new one, or a stored one read back.
+ * @param {{ provider: AgentProviderConfig, title: string, uid?: string, created?: number,
+ *   used?: number, stored?: StoredEntry[] }} o
+ * @returns {Conversation}
+ */
+function make(o) {
+  const id = nextId++;
+  const now = Date.now();
+  const stored = o.stored ?? [];
+  /** @type {Conversation} */
+  const c = {
+    id,
+    conn: `${BUILTIN_CONN_PREFIX}${id}`,
+    title: o.title,
+    provider: o.provider,
+    state: {},
+    // A stored conversation starts with a clean context: what it stored, no page (Behaviour 21).
+    messages: modelMessages(stored),
+    task: null,
+    starting: false,
+    stopped: false,
+    budget: null,
+    done: null,
+    last: null,
+    transcript: new Transcript(),
+    confirmed: null,
+    granted: false,
+    uid: o.uid ?? Services.uuid.generateUUID().toString().slice(1, -1),
+    created: o.created ?? now,
+    used: o.used ?? now,
+    stored,
+    taskStart: 0,
+    urls: [],
+  };
+  for (const e of restoredEntries(stored)) {
+    if (e.kind === "user") c.transcript.user(e.text);
+    else if (e.kind === "agent") c.transcript.task({ type: "reply", text: e.text });
+    else c.transcript.notice(e.text);
+  }
+  if (!gateListening) {
+    gateListening = true;
+    AgentGate.addListener(onGate);
+  }
+  builtinHello(c.conn, c.state, {
+    client: builtinLabel(c.title || "New conversation"),
+    via: `${o.provider.name} · ${o.provider.model}`,
+  });
+  conversations.set(id, c);
+  return c;
+}
+
+/**
+ * The conversation leaves memory with its connection, its grant and its claim on its tabs.
+ * @param {Conversation} c
+ */
+function drop(c) {
+  AgentChat.stop(c.id);
+  AgentGate.disconnect(c.conn);
+  forgetAgentConnection(c.conn);
+  AgentTabOwners.forget(c.conn);
+  conversations.delete(c.id);
+}
+
+/**
+ * The summary Vimma stores for a task that ended (B15): outcome, counts and hosts.
+ * @param {Conversation} c @param {string} outcome
+ */
+function summarize(c, outcome) {
+  const status = c.budget?.status();
+  const text = taskSummary({
+    outcome,
+    checkpoint: stoppedAtCheckpoint(c.transcript.entries.slice(c.taskStart)),
+    steps: status?.steps ?? 0,
+    tokens: status?.tokens ?? 0,
+    estimated: status?.estimated ?? false,
+    hosts: hostsOf(c.urls),
+  });
+  c.stored.push({ kind: "summary", text });
+  c.used = Date.now();
+  persist(c);
+}
+
+/** `keep_days` in force when it last ran, so a changed value runs it again. */
+let prunedWith = /** @type {number | null | undefined} */ (undefined);
+let pruneTimer = /** @type {any} */ (null);
+
+/** config.toml was read: `keep_days` runs at start, when it changes, and once a day. */
+function onConfig() {
+  if (!AgentChat.enabled) return;
+  const keepDays = config()?.keepDays ?? null;
+  if (pruneTimer === null) {
+    pruneTimer = lazy.setInterval(() => AgentChat.prune(), PRUNE_EVERY_MS);
+  }
+  if (keepDays === prunedWith) return;
+  prunedWith = keepDays;
+  AgentChat.prune();
 }
 
 /**
@@ -209,6 +350,8 @@ function view(/** @type {Conversation} */ c) {
     granted: AgentGate.grants().some((g) => g.conn === c.conn),
     budget: c.budget?.status() ?? null,
     last: c.last,
+    uid: c.uid,
+    used: c.used,
   };
 }
 
@@ -225,34 +368,7 @@ export const AgentChat = {
     if (!this.enabled) {
       throw new Error(`the built-in agent is unfinished and off (${FEATURE_PREF})`);
     }
-    const id = nextId++;
-    /** @type {Conversation} */
-    const c = {
-      id,
-      conn: `${BUILTIN_CONN_PREFIX}${id}`,
-      title,
-      provider,
-      state: {},
-      messages: [],
-      task: null,
-      starting: false,
-      stopped: false,
-      budget: null,
-      done: null,
-      last: null,
-      transcript: new Transcript(),
-      confirmed: null,
-      granted: false,
-    };
-    if (!gateListening) {
-      gateListening = true;
-      AgentGate.addListener(onGate);
-    }
-    builtinHello(c.conn, c.state, {
-      client: builtinLabel(title || "New conversation"),
-      via: `${provider.name} · ${provider.model}`,
-    });
-    conversations.set(id, c);
+    const c = make({ provider, title });
     changed();
     return view(c);
   },
@@ -287,6 +403,9 @@ export const AgentChat = {
     const applyGrant = () => (ask ? AgentGate.endGrant(c.conn) : AgentGate.grantConnection(c.conn));
     if (c.task && !c.stopped) {
       c.transcript.user(text, { during: true });
+      c.stored.push({ kind: "user", text });
+      c.used = Date.now();
+      persist(c);
       applyGrant();
       c.task.steer(text);
       changed();
@@ -315,6 +434,11 @@ export const AgentChat = {
       return { refused: `${c.provider.name} has no API key; m in the window sets one` };
     }
     c.transcript.user(text);
+    c.stored.push({ kind: "user", text });
+    c.used = Date.now();
+    c.taskStart = c.transcript.entries.length;
+    c.urls = [];
+    persist(c);
     // Only now, so a send that starts no task leaves no grant behind.
     applyGrant();
     const limits = config() ?? AGENT_DEFAULTS;
@@ -346,6 +470,10 @@ export const AgentChat = {
         c.messages = result.messages;
         if (c.task === handle) c.task = null;
         c.last = { outcome: result.outcome, ...(result.error ? { error: result.error } : {}) };
+        // Only the task's final reply is kept, not the text that came with its tool calls,
+        // which most often restates the page it was reading.
+        if (result.reply) c.stored.push({ kind: "agent", text: result.reply });
+        summarize(c, result.outcome);
         c.transcript.end(result);
         changed();
         return result;
@@ -353,6 +481,7 @@ export const AgentChat = {
       (e) => {
         if (c.task === handle) c.task = null;
         c.last = { outcome: "error", error: String(e?.message ?? e) };
+        summarize(c, "error");
         c.transcript.end(c.last);
         changed();
         throw e;
@@ -393,18 +522,103 @@ export const AgentChat = {
   },
 
   /**
-   * The conversation goes, with its connection, its grant and its claim on its tabs.
+   * `d` (Behaviour 19): the conversation goes, with its file, its connection, its grant and its
+   * claim on its tabs.
    * @param {number} id
+   * @returns {Promise<void>} settled once its file is removed
    */
   delete(id) {
     const c = conversations.get(id);
-    if (!c) return;
-    this.stop(id);
-    AgentGate.disconnect(c.conn);
-    forgetAgentConnection(c.conn);
-    AgentTabOwners.forget(c.conn);
-    conversations.delete(id);
+    if (!c) return Promise.resolve();
+    drop(c);
     changed();
+    return AgentStore.remove(c.uid).catch((e) =>
+      console.error("vimma agent: a conversation's file could not be removed", e?.name),
+    );
+  },
+
+  /**
+   * `:agent forget all` (Behaviour 23): running tasks stop, and every conversation goes with
+   * every file of the store, those it could not read included.
+   */
+  async forgetAll() {
+    for (const c of [...conversations.values()]) drop(c);
+    changed();
+    await AgentStore.removeAll();
+  },
+
+  /**
+   * The stored conversations, read once (Behaviour 19-21): each starts with a clean context and
+   * no grant. Settled when read, or when the store could not be read.
+   * @returns {Promise<void>}
+   */
+  restore() {
+    restoring ??= (async () => {
+      if (!this.enabled) return;
+      try {
+        const known = new Set([...conversations.values()].map((c) => c.uid));
+        for (const r of await AgentStore.loadAll()) {
+          if (known.has(r.id)) continue;
+          make({
+            provider: /** @type {AgentProviderConfig} */ (r.provider),
+            title: r.title,
+            uid: r.id,
+            created: r.created,
+            used: r.used,
+            stored: r.entries,
+          });
+        }
+      } catch (e) {
+        console.error("vimma agent: the stored conversations could not be read", e);
+      }
+      changed();
+    })();
+    return restoring;
+  },
+
+  /** Whether the stored conversations were read, or are being read. */
+  get restored() {
+    return restoring !== null;
+  },
+
+  /**
+   * What a restart does to the conversations in memory, which tests use to read the files
+   * again: every one is dropped, its file kept.
+   */
+  reset() {
+    for (const c of [...conversations.values()]) drop(c);
+    restoring = null;
+    changed();
+  },
+
+  /**
+   * `keep_days` (Behaviour 20): conversations not used for that many days go, files and all.
+   * A conversation's file is written whenever it is used, so its time is its last use.
+   * @returns {Promise<void>}
+   */
+  async prune() {
+    if (!this.enabled) return;
+    // After a read under way, so a conversation whose file goes is not read back into memory.
+    await restoring;
+    const keepDays = config()?.keepDays ?? null;
+    if (keepDays === null) return;
+    const now = Date.now();
+    let removed;
+    try {
+      removed = new Set(await AgentStore.prune((modified) => expired(modified, now, keepDays)));
+    } catch (e) {
+      console.error("vimma agent: keep_days could not run", e);
+      return;
+    }
+    for (const c of [...conversations.values()]) {
+      if (removed.has(c.uid) && !isRunning(c)) drop(c);
+    }
+    if (removed.size) changed();
+  },
+
+  /** Settled once every save under way is written or has failed. */
+  async flush() {
+    await Promise.allSettled([...saves]);
   },
 
   /** @param {number} id */
@@ -435,6 +649,7 @@ export const AgentChat = {
     c.provider = provider;
     AgentGate.relabel(c.conn, builtinLabel(c.title || "New conversation"));
     c.transcript.notice(`model: ${provider.name} · ${provider.model}`);
+    persist(c);
     changed();
     return null;
   },
@@ -450,15 +665,16 @@ export const AgentChat = {
   },
 
   /**
-   * `C`, `:agent clear` (Behaviour 22): the model is sent only the messages and replies from
-   * now on, not the pages read before. Refused while a task runs.
+   * `C`, `:agent clear` (Behaviour 22): the model is sent only the messages, replies and task
+   * summaries from now on, not the pages read before, as a reopened conversation is. Refused
+   * while a task runs.
    * @param {number} id
    * @returns {string | null} why not
    */
   clear(id) {
     const c = conversation(id);
     if (isRunning(c)) return "a task is running; s stops it";
-    c.messages = clearContext(c.messages);
+    c.messages = modelMessages(c.stored);
     forgetListedSites(c.conn);
     c.transcript.notice("context cleared: earlier page reads are no longer sent to the model");
     changed();
@@ -538,3 +754,6 @@ export const AgentChat = {
     listeners.delete(listener);
   },
 };
+
+Services.obs.addObserver(onConfig, AGENT_CONFIG_TOPIC);
+if (McpHost.agentConfig) onConfig();

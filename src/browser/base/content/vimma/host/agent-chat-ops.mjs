@@ -113,7 +113,7 @@ export function runAgentCommand(chat, text, say) {
       chat.clear();
       return;
     case "give":
-      if (chat.open()) chat.give();
+      chat.open({ then: () => chat.give() });
       return;
     case "forget":
       chat.forgetAll();

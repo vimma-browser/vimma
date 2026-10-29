@@ -1614,13 +1614,13 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`says older for a client that names no version: it predates the check`](../packages/vimma-core/test/ctl-version.test.mjs),
   [`is optional, and refused with the whole hello when it is not a version`](../packages/vimma-core/test/ctl-version.test.mjs)
 
-### The built-in agent (`agent/AgentChat.sys.mjs`, `agent/AgentKeys.sys.mjs`)
+### The built-in agent (`agent/AgentChat.sys.mjs`, `agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`)
 
 Vimma's own agent ([builtin-agent](specs/builtin-agent.md),
 [ADR-023](adr/023-in-browser-model-client.md)): a model the user picks, local or hosted, runs
 tasks the user types in Vimma, through the same agent commands and gate as an MCP agent. It is
-behind `vimma.feature.agentChat` (off) until its conversations are kept and it has its key
-(builtin-agent B22); what is in force:
+behind `vimma.feature.agentChat` (off) until it has its key (builtin-agent B22); what is in
+force:
 
 **Reach:** the agent workspace's tabs that its conversation owns, through `runAgentCommand` in
 the browser's process, so every rule above holds for it, with no `:mcp on` and no socket. It
@@ -1649,6 +1649,21 @@ the profile, so a copied profile does not reveal the key; without one it lives i
 protected by the primary password like saved passwords, and readable by anyone who reads the
 profile when no primary password is set. Other processes running as the user are out of scope
 (§11).
+
+**Stored conversations.** Each conversation is one file in `<profile>/vimma/agent/`, named by a
+random UUID, holding the user's messages, each task's final reply, the conversation's title, provider
+and model, and a summary per task that Vimma writes (outcome, step and token counts, the hosts
+the task was asked about), encrypted with the same OSKeyStore secret as the keys. They hold no
+page text, tool result, element list, screenshot or step line, and not the text that comes with
+the model's tool calls, which most often restates the page. A final reply may still quote what a
+page said, an injection included: a reopened or cleared conversation sends it to the model again
+as the agent's own earlier words, so a page that steered one task can steer a later one through
+its reply. The hosts are a partial history of the agent workspace. They are not in Sync, the
+session store or `about:logins`. With a desktop keyring a copied profile does not reveal them;
+without one they are as safe as saved passwords. A deleted file is removed, not overwritten. A
+reopened or cleared conversation sends its provider the stored text again, and nothing else from
+before. Setup writes the provider it set up to `config.toml` by name, kind, endpoint, model and
+vision; its key stays in login storage.
 
 - M35. The built-in agent **must** act only through `runAgentCommand`, on one gate connection per
   conversation (`builtin:<n>`, an id no socket connection can have), with the arguments checked
@@ -1787,6 +1802,45 @@ for the user.
   [`test_hosted_anthropic_provider_asks_for_its_key_before_the_task`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless`](../tests/browser/browser_vimma_agent_chat.js),
   [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
+- M47. A stored conversation **must** hold only the user's messages, each task's final reply and
+  Vimma's own task summaries (with its title, provider, model and times), never a tool result,
+  page text, an element list, a screenshot, a step line or an API key, and **must** be written
+  only encrypted with OSKeyStore, as a 0600 file in a 0700 folder: a record that cannot be
+  encrypted stays in memory and nothing is written; the folder is set to 0700 at every save, and a
+  record over 400,000 bytes keeps its newest entries, so OSKeyStore can decrypt it. A record
+  read back **must** be checked
+  (version, a UUID id, known entry kinds, a provider of a known kind with an http or https
+  endpoint) and fields it does not know dropped. A reopened conversation, and one whose context
+  is cleared, **must** send the model only those entries, with no grant until a task is sent.
+  [`test_stored_file_is_encrypted_and_holds_no_tool_output`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_nothing_written_in_clear_when_it_cannot_be_encrypted`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_reopened_conversation_starts_with_a_clean_context`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_clear_context`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_only_the_final_reply_is_stored_and_temp_files_go`](../tests/browser/browser_vimma_agent_store.js),
+  [`a long conversation keeps its newest entries within MAX_RECORD_BYTES`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`a single entry over MAX_RECORD_BYTES is cut`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`a stored conversation holds messages, replies and summaries, never tool output`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`the provider keeps its prices and never a key`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`refuses another version, a bad provider or an unknown entry`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`a task summary names outcome, counts and hosts, and no page text`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`http and https hosts only, once each, in order`](../packages/vimma-core/test/agent-store.test.mjs)
+- M48. `d` in the conversation list (after a `y`) **must** remove that conversation's file;
+  `:agent forget all` (after a `y` naming the count) **must** stop running tasks and remove every
+  file of the store, those it cannot read and a save's temporary files included; `[agent] keep_days` **must** remove the files
+  not written for that many days, at start, when it changes and once a day, from the files' times
+  alone, so it never needs the keyring. A deleted conversation's task that ends afterwards
+  **must not** write its file again.
+  [`test_delete_and_forget_all_remove_files`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_a_deleted_conversations_task_writes_nothing_after`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_keep_days`](../tests/browser/browser_vimma_agent_store.js),
+  [`only with keep_days, and only when unused for longer`](../packages/vimma-core/test/agent-store.test.mjs)
+- M49. Setup **must** write to `config.toml` only the provider's name, kind, endpoint, model,
+  vision and prices, never its key, and only when the file parses before and after the edit, with
+  every other key unchanged.
+  [`test_setup_writes_the_provider_and_default_to_config`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_setup_creates_a_missing_config_with_the_provider`](../tests/browser/browser_vimma_agent_store.js),
+  [`never writes a key, and refuses a file that does not parse`](../packages/vimma-core/test/agent-config.test.mjs),
+  [`keeps every other line of the file`](../packages/vimma-core/test/agent-config.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 
@@ -1824,7 +1878,7 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
   [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
 
-## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`)
+## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`, `site-dispatch.yml`)
 
 Vimma's binaries are built from Mozilla's Firefox source, this repository, and the npm packages
 that drive the build, chiefly Surfer. These rules keep what reaches a build pinned and reviewed.
@@ -2226,7 +2280,6 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`macos-ctl builds vimma-ctl on a Mac from the commit it checked, like build`](../tools/package/test/release-workflow.test.mjs),
   [`macos-build signs the Mac vimma-ctl into the app, from the same commit`](../tools/package/test/release-workflow.test.mjs),
   [`package puts vimma-ctl into every package and checks it in each`](../tools/package/test/release-workflow.test.mjs)
-
 - B14. A macOS release is signed with Vimma's Apple Developer ID and notarised only while the
   repository variable `MACOS_SIGNING` is `developer-id` (spec
   [macos-build](specs/macos-build.md), decisions 23 to 28). The four Apple secrets,
@@ -2326,6 +2379,50 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`passes the password and the API key as files, never on a command line`](../tools/package/test/macos-developer-id.test.mjs),
   [`signs in one rcodesign run, nested code inside-out with mach macos-sign's settings`](../tools/package/test/macos-developer-id.test.mjs),
   [`the browser gets Firefox's production entitlements without the restricted pair`](../tools/package/test/macos-developer-id.test.mjs)
+
+- B15. `site-dispatch.yml` (spec [site-keys-mirror](specs/site-keys-mirror.md)) tells
+  `vimma-browser/vimma-site` about a published release (`vimma-release`, never for a
+  pre-release) or a change to `docs/bindings.json` on `main` (`vimma-bindings`). Its `dispatch`
+  job holds the private key of the org's GitHub App `vimma-site-dispatch`, the secret
+  `SITE_DISPATCH_APP_KEY` of the `site-dispatch` environment, with the app's client ID in the
+  variable `SITE_DISPATCH_APP_ID`. The key **must** reach only `main`'s copy of the workflow:
+  with it a token can push to `vimma-site`'s branches, and `release-sync.yml` there sets
+  auto-merge on its `release-sync/<tag>` pull requests and keeps commits pushed to them by hand,
+  while `vimma-site`'s `main` ruleset asks for no approval, only the `build` check. A commit
+  pushed to an open release-sync branch therefore merges itself and deploys to vimma.dev.
+  `dispatch` **must** declare `environment: site-dispatch` and run only for a push to `main` or a
+  `workflow_dispatch` on `refs/heads/main`. Its `GITHUB_TOKEN` has no permission, it checks
+  nothing out and runs no repository code. `actions/create-github-app-token`, pinned by commit
+  SHA, **must** mint the token for `vimma-site` alone with `contents: write`, what the
+  `repository_dispatch` endpoint requires; the token lasts an hour, and the one API call goes to
+  `vimma-site`'s `dispatches`. Without the variable or the key the job fails, so a release the
+  site was never told about shows as a red run. A published release runs only `start`, from the
+  tag's copy of the file, which anyone with write access can edit on a tag of their own; `start` holds only `actions: write`, no environment and
+  no secret, runs no repository code, and starts `site-dispatch.yml` on `main` with
+  `release=true`, as `homebrew.yml` does (B11). An edited copy on a tag or branch may ask for any
+  permissions and read the repository's and organisation's secrets, but gets nothing a
+  write-access user cannot already get by pushing a branch: it cannot deploy to the
+  `site-dispatch` environment, so it cannot reach the key. Event values, the release's tag among
+  them, reach the shell only through `env`. **⚠ setting:** the `site-dispatch` environment's
+  only deployment policy is the branch `main`, and the repository holds no
+  `SITE_DISPATCH_APP_KEY` of its own (docs/runbook.md, "vimma.dev's keys"). **⚠ setting:** the
+  app holds only Contents read and write (with Metadata read) and is installed on `vimma-site`
+  alone, so a leaked key reaches no other repository and cannot change `vimma-site`'s workflows
+  (that needs the Workflows permission). **⚠ limit:** the Cloudflare Workers and Pages app builds
+  `vimma-site`'s pushed branches, so a leaked key could also get a branch of its own built as a
+  preview.
+  [`the job that uses the key deploys to site-dispatch and runs only from main`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`the release event never reaches the key: start only starts main's copy`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`has no permission at the top level, and only start asks for one: actions: write`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`mints the app token for vimma-browser/vimma-site alone, with contents: write only`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`holds the app's key and no other secret, and no personal token`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`pins every action by full commit SHA and checks nothing out`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`sends the dispatch to vimma-site only`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`passes the tag and every event value to run: through env only`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`finds every form of run: script, so none escapes the env-only check`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`keeps the release event's run, a release dispatch and a bindings dispatch apart`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`fails without the app's ID or key instead of skipping the dispatch`](../tools/test/site-dispatch-workflow.test.mjs),
+  [`never runs for a pre-release or outside vimma-browser/vimma`](../tools/test/site-dispatch-workflow.test.mjs)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 

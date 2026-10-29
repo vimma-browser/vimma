@@ -44,6 +44,9 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
+const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/OSKeyStoreTestUtils.sys.mjs",
+);
 
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -92,6 +95,9 @@ add_setup(async () => {
       [ASK_TIMEOUT, 20000],
     ],
   });
+  // Conversations are stored, encrypted with OSKeyStore: under a test label, never the user's.
+  OSKeyStoreTestUtils.setup();
+  registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());
 });
 
 /** The oldest waiting question, once there is one. */

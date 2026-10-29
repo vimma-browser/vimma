@@ -18,7 +18,7 @@ import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "./panes.mjs";
 import { MAIN_SIZE_DEFAULT } from "./layouts.mjs";
 import { APPEARANCES, BUILTIN_THEMES, PALETTE_KEYS, isHexColor, normalizeHex } from "./theme.mjs";
 import { resolveRoutes, validateRoutes } from "./routes.mjs";
-import { formatPath, locateKeys, parsePath, parseToml } from "./toml.mjs";
+import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral } from "./toml.mjs";
 import { canonicalChord, isShortcutChord } from "./firefox-keys.mjs";
 import { KeyNotationError, formatKey, parseKey } from "./keys.mjs";
 import { BOOKMARKS_ROOTS } from "./bookmarks.mjs";
@@ -1174,6 +1174,101 @@ export function appendRouteText(text, { domain, workspace }, { mac = false } = {
     };
   }
   return text === null ? { create: base + added } : { append: added };
+}
+
+/**
+ * The first `[[agent.providers]]` header of `text`, as a line index, or -1. Where `[agent]` goes
+ * in a file that has only its providers: a table header after them would not parse in every
+ * TOML reader.
+ * @param {string[]} lines
+ */
+function firstProvidersHeader(lines) {
+  return lines.findIndex((l) => /^[ \t]*\[\[[ \t]*agent[ \t]*\.[ \t]*providers[ \t]*\]\]/.test(l));
+}
+
+/** @param {any} raw  parsed TOML @returns {string} everything but `[agent]`, comparable */
+const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
+
+/**
+ * The provider setup picked, added to config.toml text (docs/specs/builtin-agent.md Behaviour 2,
+ * B12) as `[[agent.providers]]` with its name, kind, endpoint, model, vision and prices only,
+ * and, with `makeDefault`, named by `[agent] default`. A provider the file has already (the same
+ * kind, endpoint and model) is not added again; a taken name gets a number. Every other line of
+ * the file stays as it is: the new table goes at the end, `default` is set by its line alone.
+ * Refused, with nothing to write, when the file does not parse now or would not with the edit.
+ * @param {string | null} text  config.toml, null when it does not exist (the template is used)
+ * @param {{ name: string, kind: string, endpoint: string, model: string, vision?: boolean,
+ *   priceIn?: number, priceOut?: number }} provider
+ * @param {{ makeDefault: boolean, mac?: boolean }} opts
+ * @returns {{ text: string, name: string } | { error: string }}
+ */
+export function addAgentProviderText(text, provider, { makeDefault, mac = false }) {
+  const base = text ?? formatConfigTemplate();
+  const before = parseConfig(base, { mac });
+  if (before.errors.length || !before.config) {
+    return { error: "config.toml does not parse now; fix it first (:config shows it)" };
+  }
+  const providers = before.config.agent.providers;
+  const known = providers.find(
+    (p) =>
+      p.kind === provider.kind && p.endpoint === provider.endpoint && p.model === provider.model,
+  );
+  let name = known?.name ?? provider.name;
+  if (!known) {
+    const taken = new Set(providers.map((p) => p.name));
+    for (let n = 2; taken.has(name); n++) name = `${provider.name}-${n}`;
+  }
+  let out = base;
+  if (makeDefault && before.config.agent.default !== name) {
+    const r = setTomlKeys(out, [{ table: "agent", key: "default", value: name }]);
+    if (r.ok) out = r.text;
+    else {
+      // `agent` exists only through `[[agent.providers]]`: `[agent]` goes before them.
+      const lines = out.split("\n");
+      const at = firstProvidersHeader(lines);
+      if (at < 0) return { error: `config.toml cannot take [agent] default: ${r.error.message}` };
+      lines.splice(at, 0, "[agent]", `default = ${tomlLiteral(name)}`, "");
+      out = lines.join("\n");
+    }
+  }
+  if (!known) {
+    const block = [
+      "[[agent.providers]]",
+      `name = ${tomlLiteral(name)}`,
+      `kind = ${tomlLiteral(provider.kind)}`,
+      `endpoint = ${tomlLiteral(provider.endpoint)}`,
+      `model = ${tomlLiteral(provider.model)}`,
+      `vision = ${provider.vision === true}`,
+      ...(typeof provider.priceIn === "number" && typeof provider.priceOut === "number"
+        ? [`price_in = ${provider.priceIn}`, `price_out = ${provider.priceOut}`]
+        : []),
+    ];
+    const glue = out === "" ? "" : out.endsWith("\n") ? "\n" : "\n\n";
+    out = `${out}${glue}${block.join("\n")}\n`;
+  }
+  const after = parseConfig(out, { mac });
+  const first = after.errors[0];
+  if (first || !after.config) {
+    const why = first ? `${first.path ? `${first.path}: ` : ""}${first.message}` : "";
+    return { error: `config.toml does not parse with the provider added: ${why}` };
+  }
+  const agent = after.config.agent;
+  const added = agent.providers.find((p) => p.name === name);
+  const rawBefore = parseToml(base);
+  const rawAfter = parseToml(out);
+  if (
+    !added ||
+    added.endpoint !== provider.endpoint ||
+    added.model !== provider.model ||
+    added.kind !== provider.kind ||
+    (makeDefault && agent.default !== name) ||
+    !rawBefore.ok ||
+    !rawAfter.ok ||
+    withoutAgent(rawBefore.value) !== withoutAgent(rawAfter.value)
+  ) {
+    return { error: "the edit would change other keys of config.toml; nothing written" };
+  }
+  return { text: out, name };
 }
 
 /**

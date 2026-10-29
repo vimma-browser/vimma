@@ -24,6 +24,8 @@ import { ControlHost } from "./control-ops.mjs";
 export const MCP_ENABLED_PREF = "vimma.mcp.enabled";
 /** Told when `[mcp]` was (re)read: the socket's agent role may have to start or stop. */
 export const MCP_CHANGED_TOPIC = "vimma-mcp-changed";
+/** Told when `[agent]` was (re)read: the built-in agent's `keep_days` may have to run. */
+export const AGENT_CONFIG_TOPIC = "vimma-agent-config";
 
 const lazy = /** @type {any} */ ({});
 // Lazily, at call time: AgentGate reads `[mcp]` from this module too.
@@ -61,6 +63,7 @@ export const McpHost = {
    */
   configureAgent(agent) {
     agentConfig = agent;
+    Services.obs.notifyObservers(null, AGENT_CONFIG_TOPIC);
   },
 
   /** `[agent]` in force, or null before config.toml was read. */
