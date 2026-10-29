@@ -7,10 +7,14 @@ import {
   MIN_CONTEXT,
   OLLAMA_DEFAULT_CONTEXT,
   ctxModelName,
+  localModelState,
   modelChoices,
   ollamaContext,
+  pickerEntries,
   prepareLocalModel,
   probeLocal,
+  providerKey,
+  unavailableText,
 } from "../src/agent-setup.mjs";
 
 /**
@@ -154,5 +158,142 @@ describe("the context length of a local Ollama model", () => {
       context: null,
       made: false,
     });
+  });
+});
+
+// Behaviour 7: the picker shows which models are there now, and a conversation whose model is
+// gone asks for another before a task starts rather than failing in its middle.
+describe("whether a local model is still there", () => {
+  const MODELS = "http://127.0.0.1:11434/v1/models";
+  const local = (/** @type {string} */ model) => ({
+    name: "local",
+    kind: /** @type {const} */ ("openai"),
+    endpoint: "http://127.0.0.1:11434/v1",
+    model,
+    vision: false,
+  });
+
+  test("its server lists it, or no longer does", async () => {
+    const { fetch, calls } = fake({ [MODELS]: { data: [{ id: "qwen3:14b" }] } });
+    expect(await localModelState(fetch, local("qwen3:14b"))).toBe("available");
+    expect(await localModelState(fetch, local("llama3:8b"))).toBe("gone");
+    expect(calls[0].url).toBe(MODELS);
+    expect(calls[0].init).toMatchObject({ method: "GET", credentials: "omit", redirect: "error" });
+  });
+
+  test("nothing answers on its port", async () => {
+    const { fetch } = fake({});
+    expect(await localModelState(fetch, local("qwen3:14b"))).toBe("down");
+  });
+
+  test("a server without a model list, or a slow one, is not judged", async () => {
+    expect(await localModelState(fake({ [MODELS]: 404 }).fetch, local("m"))).toBe("unknown");
+    const slow = fake({ [MODELS]: "hang" });
+    expect(await localModelState(slow.fetch, local("m"), { timeoutMs: 50 })).toBe("unknown");
+  });
+
+  test("the window's words for a model that is not there", () => {
+    expect(unavailableText(local("qwen3:14b"), "gone")).toBe(
+      "qwen3:14b is no longer available: 127.0.0.1:11434 does not list it",
+    );
+    expect(unavailableText(local("qwen3:14b"), "down")).toBe(
+      "qwen3:14b is not available: nothing answers at 127.0.0.1:11434",
+    );
+    expect(unavailableText(local("qwen3:14b"), "available")).toBeNull();
+    expect(unavailableText(local("qwen3:14b"), "unknown")).toBeNull();
+  });
+
+  test("the probe also asks the configured local endpoints, once each, never a remote one", async () => {
+    const { fetch, calls } = fake({
+      "http://127.0.0.1:8000/v1/models": { data: [{ id: "a" }] },
+      "http://127.0.0.1:11434/v1/models": { data: [{ id: "b" }] },
+    });
+    const found = await probeLocal(fetch, {
+      extra: [
+        { server: "vllm", endpoint: "http://127.0.0.1:8000/v1/" },
+        { server: "local", endpoint: "http://127.0.0.1:11434/v1" },
+        { server: "far", endpoint: "https://llm.example/v1" },
+      ],
+    });
+    expect(found).toEqual([
+      { server: "ollama", endpoint: "http://127.0.0.1:11434/v1", models: ["b"] },
+      { server: "vllm", endpoint: "http://127.0.0.1:8000/v1", models: ["a"] },
+    ]);
+    expect(calls.map((c) => c.url).sort()).toEqual([
+      "http://127.0.0.1:11434/v1/models",
+      "http://127.0.0.1:1234/v1/models",
+      "http://127.0.0.1:8000/v1/models",
+      "http://127.0.0.1:8080/v1/models",
+    ]);
+  });
+
+  test("a provider off this machine, or Anthropic's API, gets no request", async () => {
+    const { fetch, calls } = fake({});
+    const hosted = { ...local("m"), endpoint: "https://llm.example/v1" };
+    expect(await localModelState(fetch, hosted)).toBe("unknown");
+    const anthropic = { ...local("m"), kind: /** @type {const} */ ("anthropic") };
+    expect(await localModelState(fetch, anthropic)).toBe("unknown");
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("the picker's entries", () => {
+  const OLLAMA = "http://127.0.0.1:11434/v1";
+  const provider = (
+    /** @type {string} */ name,
+    /** @type {string} */ endpoint,
+    /** @type {string} */ model,
+  ) => ({ name, kind: /** @type {const} */ ("openai"), endpoint, model, vision: false });
+  const local = provider("local", OLLAMA, "qwen3:14b");
+  const hosted = provider("hosted", "https://llm.example/v1", "big");
+  const found = [{ server: "ollama", endpoint: OLLAMA, models: ["qwen3:14b", "llama3:8b"] }];
+
+  test("configured providers first, then what the servers list that none names", () => {
+    const states = new Map([[providerKey(local), /** @type {const} */ ("available")]]);
+    const entries = pickerEntries({ providers: [local, hosted], found, states, current: null });
+    expect(entries).toEqual([
+      { provider: local, state: "available", current: false },
+      { provider: hosted, state: null, current: false },
+      {
+        local: { server: "ollama", endpoint: OLLAMA, model: "llama3:8b" },
+        state: "available",
+        current: false,
+      },
+    ]);
+  });
+
+  test("before the probe answers, a local provider's state is not known", () => {
+    const entries = pickerEntries({ providers: [local], found: null, states: null, current: null });
+    expect(entries).toEqual([{ provider: local, state: null, current: false }]);
+  });
+
+  test("a configured model its server no longer lists is shown as gone", () => {
+    const states = new Map([[providerKey(local), /** @type {const} */ ("gone")]]);
+    const entries = pickerEntries({ providers: [local], found: [], states, current: null });
+    expect(entries).toEqual([{ provider: local, state: "gone", current: false }]);
+  });
+
+  test("the conversation's model is marked, and listed even when no longer there", () => {
+    const picked = provider("ollama", OLLAMA, "llama3:8b");
+    expect(
+      pickerEntries({ providers: [], found, states: new Map(), current: picked }).map(
+        (e) => e.current,
+      ),
+    ).toEqual([false, true]);
+    const gone = provider("ollama", OLLAMA, "mistral:7b");
+    const states = new Map([[providerKey(gone), /** @type {const} */ ("gone")]]);
+    expect(pickerEntries({ providers: [], found, states, current: gone })[0]).toEqual({
+      provider: gone,
+      state: "gone",
+      current: true,
+    });
+  });
+
+  test("a configured provider in use is marked, not listed twice", () => {
+    const entries = pickerEntries({ providers: [local], found, states: null, current: local });
+    expect(entries.filter((e) => e.current)).toEqual([
+      { provider: local, state: null, current: true },
+    ]);
+    expect(entries).toHaveLength(2);
   });
 });

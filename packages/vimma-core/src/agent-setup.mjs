@@ -60,17 +60,31 @@ const isModelName = (id) =>
 /**
  * The local servers that answer `GET /v1/models` within the timeout, with their models.
  * @param {Fetch} fetch
- * @param {{ servers?: readonly { server: string, port: number }[], timeoutMs?: number,
- *   timeout?: Timeout }} [opts]  `servers`: in place of LOCAL_SERVERS (a test's own server)
+ * @param {{ servers?: readonly { server: string, port: number }[],
+ *   extra?: readonly { server: string, endpoint: string }[], timeoutMs?: number,
+ *   timeout?: Timeout }} [opts]  `servers`: in place of LOCAL_SERVERS (a test's own server);
+ *   `extra`: the configured providers' local endpoints, so that a server on another port
+ *   (vLLM's 8000) lists its models too; one off this machine is never asked
  * @returns {Promise<LocalServer[]>}
  */
 export async function probeLocal(
   fetch,
-  { servers = LOCAL_SERVERS, timeoutMs = PROBE_TIMEOUT_MS, timeout = defaultTimeout } = {},
+  {
+    servers = LOCAL_SERVERS,
+    extra = [],
+    timeoutMs = PROBE_TIMEOUT_MS,
+    timeout = defaultTimeout,
+  } = {},
 ) {
+  /** @type {Map<string, string>} endpoint → server, the usual ports' names first */
+  const asked = new Map();
+  for (const { server, port } of servers) asked.set(`http://127.0.0.1:${port}/v1`, server);
+  for (const { server, endpoint } of extra) {
+    const base = endpoint.replace(/\/+$/, "");
+    if (!checkEndpoint(base, { localOnly: true }) && !asked.has(base)) asked.set(base, server);
+  }
   const found = await Promise.all(
-    servers.map(async ({ server, port }) => {
-      const endpoint = `http://127.0.0.1:${port}/v1`;
+    [...asked].map(async ([endpoint, server]) => {
       try {
         const json = await request(fetch, `${endpoint}/models`, timeout(timeoutMs));
         const data = Array.isArray(json?.data) ? json.data : [];
@@ -92,6 +106,113 @@ export function modelChoices(found) {
   return found.flatMap(({ server, endpoint, models }) =>
     models.map((model) => ({ label: `${server} · ${model}`, server, endpoint, model })),
   );
+}
+
+/**
+ * @typedef {"available" | "gone" | "down" | "unknown"} ModelState  whether a local server still
+ *   has a model: it lists it, it lists others, nothing answers on its port, or it could not say
+ *   (no model list, no answer in time, a provider off this machine that is never asked)
+ * @typedef {import("./config.mjs").AgentProviderConfig} AgentProviderConfig
+ */
+
+/** The same kind, endpoint and model: one model, whatever its provider is named. */
+export const providerKey = (/** @type {AgentProviderConfig} */ p) =>
+  `${p.kind}\n${p.endpoint.replace(/\/+$/, "")}\n${p.model}`;
+
+/**
+ * Whether `provider`'s local server still lists its model (Behaviour 7): one `GET /v1/models` to
+ * the provider's own endpoint, only on this machine and only for an OpenAI-compatible server.
+ * Only "nothing answers" and "lists others" count against it, so a server without the route
+ * or one busy loading a model is never refused a task it could run.
+ * @param {Fetch} fetch @param {AgentProviderConfig} provider
+ * @param {{ timeoutMs?: number, timeout?: Timeout }} [opts]
+ * @returns {Promise<ModelState>}
+ */
+export async function localModelState(
+  fetch,
+  provider,
+  { timeoutMs = PROBE_TIMEOUT_MS, timeout = defaultTimeout } = {},
+) {
+  if (provider.kind !== "openai" || checkEndpoint(provider.endpoint, { localOnly: true })) {
+    return "unknown";
+  }
+  const url = `${provider.endpoint.replace(/\/+$/, "")}/models`;
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: {},
+      credentials: "omit",
+      redirect: "error",
+      signal: timeout(timeoutMs),
+    });
+  } catch (e) {
+    return /** @type {any} */ (e)?.name === "AbortError" ? "unknown" : "down";
+  }
+  if (!res.ok) return "unknown";
+  try {
+    const data = JSON.parse(await res.text())?.data;
+    if (!Array.isArray(data)) return "unknown";
+    return data.some((/** @type {any} */ m) => m?.id === provider.model) ? "available" : "gone";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * What the window says of a model whose server does not list it, or null when it may be used.
+ * @param {AgentProviderConfig} provider @param {ModelState | null} state
+ */
+export function unavailableText(provider, state) {
+  const host = URL.canParse(provider.endpoint) ? new URL(provider.endpoint).host : "";
+  if (state === "gone") return `${provider.model} is no longer available: ${host} does not list it`;
+  if (state === "down") return `${provider.model} is not available: nothing answers at ${host}`;
+  return null;
+}
+
+/**
+ * @typedef {{ provider?: AgentProviderConfig,
+ *   local?: { server: string, endpoint: string, model: string },
+ *   state: ModelState | null, current: boolean }} PickerEntry  `state` null: not known yet, or
+ *   never asked (a hosted provider)
+ */
+
+/**
+ * The model picker's entries (Behaviour 7): the conversation's own model first when nothing
+ * else lists it (so a model that is gone is seen as gone), then the configured providers, then
+ * the models the local servers list that no provider names.
+ * @param {{ providers: AgentProviderConfig[], found: LocalServer[] | null,
+ *   states: Map<string, ModelState> | null, current: AgentProviderConfig | null }} o
+ *   `found`: the probe's servers, null until it answers; `states`: by providerKey
+ * @returns {PickerEntry[]}
+ */
+export function pickerEntries({ providers, found, states, current }) {
+  const currentKey = current ? providerKey(current) : null;
+  const known = new Set(providers.map(providerKey));
+  /** @type {PickerEntry[]} */
+  const locals = (found ?? []).flatMap(({ server, endpoint, models }) =>
+    models
+      .map((model) => ({ server, endpoint, model }))
+      .filter((l) => !known.has(providerKey({ name: "", kind: "openai", vision: false, ...l })))
+      .map((local) => ({
+        local,
+        state: /** @type {ModelState} */ ("available"),
+        current: providerKey({ name: "", kind: "openai", vision: false, ...local }) === currentKey,
+      })),
+  );
+  /** @type {PickerEntry[]} */
+  const configured = providers.map((p) => ({
+    provider: p,
+    state: states?.get(providerKey(p)) ?? null,
+    current: providerKey(p) === currentKey,
+  }));
+  const listed = [...configured, ...locals].some((e) => e.current);
+  /** @type {PickerEntry[]} */
+  const own =
+    current && !listed
+      ? [{ provider: current, state: states?.get(providerKey(current)) ?? null, current: true }]
+      : [];
+  return [...own, ...configured, ...locals];
 }
 
 /** `qwen2.5:7b` with 32768 → `qwen2.5:7b-ctx32768` (the bench's names too). */

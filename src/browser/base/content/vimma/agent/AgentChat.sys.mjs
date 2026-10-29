@@ -30,7 +30,14 @@ import {
   taskSummary,
 } from "../core/agent-store.mjs";
 import { failureResult, toolCommand, toolResult } from "../core/agent-results.mjs";
-import { modelChoices, prepareLocalModel, probeLocal } from "../core/agent-setup.mjs";
+import {
+  localModelState,
+  modelChoices,
+  prepareLocalModel,
+  probeLocal,
+  providerKey,
+  unavailableText,
+} from "../core/agent-setup.mjs";
 import { AGENT_INSTRUCTIONS, agentTools } from "../core/agent-tools.mjs";
 import { BUILTIN_CONN_PREFIX, builtinLabel } from "../core/agent.mjs";
 import { AGENT_DEFAULTS } from "../core/config.mjs";
@@ -96,6 +103,12 @@ const listeners = new Set();
 const saves = new Set();
 /** @type {Promise<void> | null} the stored conversations' first read, once started */
 let restoring = null;
+/**
+ * The model picked in the window this session (Behaviour 7), which new conversations use until
+ * a restart; `[agent] default` changes only when the user asks for it.
+ * @type {AgentProviderConfig | null}
+ */
+let chosen = null;
 /** `keep_days` runs at start and then once a day (Behaviour 20). */
 const PRUNE_EVERY_MS = 86_400_000;
 
@@ -380,7 +393,8 @@ export const AgentChat = {
    * without (Enter) the key press grants the conversation's connection. A message sent while a
    * task runs reaches the model at its next turn.
    * @param {number} id @param {string} text @param {{ ask?: boolean }} [opts]
-   * @returns {Promise<{ started: true } | { steered: true } | { refused: string }>}
+   * @returns {Promise<{ started: true } | { steered: true } | { refused: string, pick?: true }>}
+   *   `pick`: the conversation's model is not there, and the window opens the picker
    */
   async send(id, text, { ask = false } = {}) {
     const c = conversation(id);
@@ -416,6 +430,16 @@ export const AgentChat = {
     // Held from here, before the awaits, so two sends cannot both take the last place.
     c.starting = true;
     changed();
+    // Asked before the task, not found in its middle: a model its local server no longer lists
+    // gets another picked, with the message kept (Behaviour 7).
+    const state = await localModelState(parentFetch, c.provider, { timeout });
+    if (!conversations.has(id) || !c.starting) return { refused: "the conversation was stopped" };
+    const gone = unavailableText(c.provider, state);
+    if (gone) {
+      c.starting = false;
+      changed();
+      return { refused: `${gone}; pick another model`, pick: true };
+    }
     let key;
     try {
       key = await keyFor(c.provider);
@@ -606,6 +630,7 @@ export const AgentChat = {
   reset() {
     for (const c of [...conversations.values()]) drop(c);
     restoring = null;
+    chosen = null;
     changed();
   },
 
@@ -670,6 +695,38 @@ export const AgentChat = {
     persist(c);
     changed();
     return null;
+  },
+
+  /** The model picked this session, which new conversations use; null: `[agent] default`. */
+  get chosen() {
+    return chosen;
+  },
+
+  /**
+   * The picker's choice for new conversations until a restart (Behaviour 7).
+   * @param {AgentProviderConfig | null} provider
+   */
+  choose(provider) {
+    chosen = provider;
+  },
+
+  /**
+   * Whether each local provider's server still lists its model, by providerKey (Behaviour 7):
+   * asked only while the picker is open, and only of the providers' own endpoints.
+   * @param {AgentProviderConfig[]} providers
+   * @returns {Promise<Map<string, import("../core/agent-setup.mjs").ModelState>>}
+   */
+  async modelStates(providers) {
+    const states = await Promise.all(
+      providers.map(
+        async (p) =>
+          /** @type {const} */ ([
+            providerKey(p),
+            await localModelState(parentFetch, p, { timeout }),
+          ]),
+      ),
+    );
+    return new Map(states);
   },
 
   /**
@@ -741,8 +798,11 @@ export const AgentChat = {
   },
 
   /**
-   * Setup's probe of the local servers (Behaviour 2): only on 127.0.0.1, only when setup asks.
-   * @param {{ servers?: { server: string, port: number }[] }} [opts]  a test's own server
+   * Setup's probe of the local servers (Behaviour 2, 7): only on this machine, only while the
+   * picker is open.
+   * @param {{ servers?: { server: string, port: number }[],
+   *   extra?: { server: string, endpoint: string }[] }} [opts]  `servers`: a test's own server;
+   *   `extra`: the configured providers' local endpoints
    */
   probe(opts) {
     return probeLocal(parentFetch, { ...opts, timeout });

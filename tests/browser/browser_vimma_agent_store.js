@@ -136,6 +136,8 @@ async function tidy() {
   AgentChat.stopAll();
   for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
   await AgentChat.forgetAll();
+  // The picker's choice lasts the session; each test starts from [agent] default.
+  AgentChat.choose(null);
   AgentGate.revoke();
   for (const release of held.values()) release();
   held.clear();
@@ -494,4 +496,130 @@ addTidyTask(async function test_setup_creates_a_missing_config_with_the_provider
     await ConfigHost.reload();
     await IOUtils.remove(dir, { recursive: true });
   }
+});
+
+/** The models view's row with `text`, selected from wherever the selection starts. */
+function selectRow(/** @type {string} */ text) {
+  const all = rows();
+  const at = all.findIndex((r) => r.textContent.includes(text));
+  Assert.ok(at >= 0, `the picker lists ${text}: ${all.map((r) => r.textContent).join(" | ")}`);
+  for (let i = 0; i < all.length; i++) EventUtils.synthesizeKey("k");
+  for (let i = 0; i < at; i++) EventUtils.synthesizeKey("j");
+}
+
+/** A config.toml of the test's own, read, and removed after `task`. */
+async function withConfig(/** @type {(path: string) => Promise<void>} */ task) {
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-agent-config");
+  const path = PathUtils.join(dir, "config.toml");
+  await IOUtils.writeUTF8(path, "schema = 2\n# mine\n");
+  await SpecialPowers.pushPrefEnv({ set: [[CONFIG_PATH_PREF, path]] });
+  try {
+    await ConfigHost.reload();
+    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+    await task(path);
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(dir, { recursive: true });
+  }
+}
+
+const notice = () => $("vimma-notice")?.textContent ?? "";
+
+// Behaviour 7: the picker lists the local server's models live; a choice applies to the
+// conversation and to new ones of this session, and the conversation keeps it across a restart,
+// with config.toml left as it was.
+addTidyTask(async function test_the_picker_switches_the_model_for_this_session_only() {
+  await withConfig(async (path) => {
+    await openPage();
+    runCommand("agent model");
+    await until(() => logText().includes("scripted · scripted-2"), "the server's other model");
+    const using = rows().find((r) => r.getAttribute("aria-selected") === "true");
+    Assert.ok(using?.textContent.includes("in use"), "the selected row is the conversation's");
+    selectRow("scripted · scripted-2");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(() => document.activeElement === input(), "back in the input");
+    const header = () => box().querySelector(".vimma-agent-chat-head")?.textContent ?? "";
+    Assert.ok(header().startsWith("scripted · scripted-2 · "), `the header: ${header()}`);
+    EventUtils.sendString(script([{ reply: "on the second model" }]));
+    EventUtils.synthesizeKey("KEY_Enter");
+    const id = chat().conversation;
+    await until(() => AgentChat.get(id).last !== null, "the task ended");
+    Assert.equal(requests.at(-1).body.model, "scripted-2", "the task went to the chosen model");
+    Assert.equal(await IOUtils.readUTF8(path), "schema = 2\n# mine\n", "config.toml untouched");
+    Assert.equal(McpHost.agentConfig.default, "scripted", "[agent] default unchanged");
+    chat().newConversation();
+    await until(() => chat().conversation !== id, "a new conversation");
+    Assert.equal(
+      AgentChat.get(chat().conversation).provider.model,
+      "scripted-2",
+      "a new conversation of this session uses the choice",
+    );
+    await AgentChat.flush();
+    const uid = AgentChat.get(id).uid;
+    chat().close();
+    AgentChat.reset();
+    await AgentChat.restore();
+    const back = AgentChat.list().find((/** @type {any} */ c) => c.uid === uid);
+    Assert.equal(back?.provider.model, "scripted-2", "after a restart the conversation keeps it");
+    Assert.equal(
+      AgentChat.get(/** @type {number} */ (chat().create())).provider.model,
+      "scripted",
+      "and a new one after a restart uses [agent] default again",
+    );
+  });
+});
+
+addTidyTask(async function test_D_in_the_picker_makes_the_model_the_default() {
+  await withConfig(async (path) => {
+    await openPage();
+    runCommand("agent model");
+    await until(() => logText().includes("scripted · scripted-2"), "the server's other model");
+    Assert.ok(box().textContent.includes("D default"), "the hint offers it");
+    selectRow("scripted · scripted-2");
+    EventUtils.synthesizeKey("D", { shiftKey: true });
+    await until(() => /\[agent\] default/.test(notice()), "the notice says it is the default");
+    const text = await IOUtils.readUTF8(path);
+    Assert.ok(text.startsWith("schema = 2\n# mine\n"), "the file's lines kept");
+    Assert.ok(text.includes('model = "scripted-2"'), `the model written: ${text}`);
+    await until(
+      () =>
+        McpHost.agentConfig.default ===
+        McpHost.agentConfig.providers.find((/** @type {any} */ p) => p.model === "scripted-2")
+          ?.name,
+      "[agent] default names it",
+    );
+    Assert.equal(AgentChat.get(chat().conversation).provider.model, "scripted-2", "and in use");
+  });
+});
+
+// Behaviour 7: a conversation whose model its server no longer lists asks for another before
+// the task starts, instead of failing in its middle.
+addTidyTask(async function test_a_model_no_longer_there_asks_for_another() {
+  const gone = { ...PROVIDER, name: "gone", model: "removed-model" };
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "gone", providers: [gone, PROVIDER] });
+  await openPage();
+  runCommand("agent");
+  await until(() => document.activeElement === input(), "the window is open");
+  const task = script([{ reply: "ran" }]);
+  EventUtils.sendString(task);
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => log()?.getAttribute("role") === "listbox", "the picker opened");
+  Assert.ok(/removed-model is no longer available/.test(notice()), `why: ${notice()}`);
+  Assert.equal(requests.length, 0, "nothing was sent to the model");
+  await until(
+    () => rows().some((r) => /gone · removed-model.*not available/.test(r.textContent)),
+    "the picker shows it as not available",
+  );
+  selectRow("gone · removed-model");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => /pick another/.test(notice()), "it cannot be picked");
+  selectRow("scripted · scripted");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => document.activeElement === input(), "back in the input");
+  Assert.equal(input().value, task, "with the task kept");
+  EventUtils.synthesizeKey("KEY_Enter");
+  const id = chat().conversation;
+  await until(() => AgentChat.get(id).last !== null, "the task ran on the other model");
+  Assert.equal(AgentChat.get(id).last.outcome, "done");
 });
