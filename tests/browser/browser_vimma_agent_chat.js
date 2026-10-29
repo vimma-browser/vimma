@@ -135,6 +135,8 @@ async function tidy() {
   AgentChat.stopAll();
   for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
   for (const c of AgentChat.list()) AgentChat.delete(c.id);
+  // The picker's choice lasts the session; each test starts from [agent] default.
+  AgentChat.choose(null);
   AgentGate.revoke();
   for (const release of held.values()) release();
   held.clear();

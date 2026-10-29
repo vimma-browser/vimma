@@ -30,7 +30,14 @@ import {
   taskSummary,
 } from "../core/agent-store.mjs";
 import { failureResult, toolCommand, toolResult } from "../core/agent-results.mjs";
-import { modelChoices, prepareLocalModel, probeLocal } from "../core/agent-setup.mjs";
+import {
+  localModelState,
+  modelChoices,
+  prepareLocalModel,
+  probeLocal,
+  providerKey,
+  unavailableText,
+} from "../core/agent-setup.mjs";
 import { AGENT_INSTRUCTIONS, agentTools } from "../core/agent-tools.mjs";
 import { BUILTIN_CONN_PREFIX, builtinLabel } from "../core/agent.mjs";
 import { AGENT_DEFAULTS } from "../core/config.mjs";
@@ -63,7 +70,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
  * @typedef {import("../core/agent-providers.mjs").ChatMessage} ChatMessage
  * @typedef {{ id: number, conn: string, title: string, provider: AgentProviderConfig,
  *   state: import("../ctl/agent-commands.mjs").AgentConn, messages: ChatMessage[],
- *   task: { stop(): void, steer(text: string): void } | null, starting: boolean,
+ *   task: { stop(): void, steer(text: string): void } | null, starting: boolean, attempt: number,
  *   stopped: boolean,
  *   budget: Budget | null, done: Promise<TaskResult> | null,
  *   last: { outcome: string, error?: string } | null, transcript: Transcript,
@@ -98,6 +105,14 @@ const listeners = new Set();
 const saves = new Set();
 /** @type {Promise<void> | null} the stored conversations' first read, once started */
 let restoring = null;
+/**
+ * The model picked in the window this session (Behaviour 7), which new conversations use until
+ * a restart; `[agent] default` changes only when the user asks for it.
+ * @type {AgentProviderConfig | null}
+ */
+let chosen = null;
+/** `[agent]`'s providers as last read, to tell a changed file from one read again. */
+let providersRead = "";
 /** `keep_days` runs at start and then once a day (Behaviour 20). */
 const PRUNE_EVERY_MS = 86_400_000;
 
@@ -208,6 +223,7 @@ function make(o) {
     messages: modelMessages(stored),
     task: null,
     starting: false,
+    attempt: 0,
     stopped: false,
     budget: null,
     done: null,
@@ -277,6 +293,13 @@ let pruneTimer = /** @type {any} */ (null);
 
 /** config.toml was read: `keep_days` runs at start, when it changes, and once a day. */
 function onConfig() {
+  // A provider removed or changed in config.toml is not used for new conversations: the
+  // session's choice gives way to the file once its providers change.
+  const providers = JSON.stringify(config()?.providers ?? []);
+  if (providers !== providersRead) {
+    providersRead = providers;
+    chosen = null;
+  }
   if (!AgentChat.enabled) return;
   const keepDays = config()?.keepDays ?? null;
   if (pruneTimer === null) {
@@ -384,12 +407,16 @@ export const AgentChat = {
    * without (Enter) the key press grants the conversation's connection. A message sent while a
    * task runs reaches the model at its next turn.
    * @param {number} id @param {string} text @param {{ ask?: boolean }} [opts]
-   * @returns {Promise<{ started: true } | { steered: true } | { refused: string }>}
+   * @returns {Promise<{ started: true } | { steered: true } | { refused: string, pick?: true }>}
+   *   `pick`: the conversation's model is not there, and the window opens the picker
    */
   async send(id, text, { ask = false } = {}) {
     const c = conversation(id);
     const max = config()?.maxRunning ?? AGENT_DEFAULTS.maxRunning;
     const localOnly = config()?.localOnly ?? false;
+    // A task between Enter and its first request has nothing to steer yet, and a second start
+    // would leave the first where `s` cannot reach it.
+    if (c.starting && !c.task) return { refused: "a task is starting; s stops it" };
     if (!isRunning(c)) {
       if (this.running >= max) {
         return { refused: `${max} agent tasks are running ([agent] max_running); s stops one` };
@@ -422,11 +449,25 @@ export const AgentChat = {
     }
     // Held from here, before the awaits, so two sends cannot both take the last place.
     c.starting = true;
+    // This send's hold: a stop, then another send, during an await below makes it stale.
+    const attempt = ++c.attempt;
+    const stale = () => !conversations.has(id) || !c.starting || c.attempt !== attempt;
     changed();
+    // Asked before the task, not found in its middle: a model its local server no longer lists
+    // gets another picked, with the message kept (Behaviour 7).
+    const state = await localModelState(parentFetch, c.provider, { timeout });
+    if (stale()) return { refused: "the conversation was stopped" };
+    const gone = unavailableText(c.provider, state);
+    if (gone) {
+      c.starting = false;
+      changed();
+      return { refused: `${gone}; pick another model`, pick: true };
+    }
     let key;
     try {
       key = await keyFor(c.provider);
     } catch (e) {
+      if (stale()) return { refused: "the conversation was stopped" };
       c.starting = false;
       changed();
       console.error(
@@ -435,7 +476,7 @@ export const AgentChat = {
       );
       return { refused: `the key of ${c.provider.name} could not be read` };
     }
-    if (!conversations.has(id) || !c.starting) return { refused: "the conversation was stopped" };
+    if (stale()) return { refused: "the conversation was stopped" };
     // A provider that needs a key gets no request without one (security.md M46).
     if (!key && needsKey(c.provider)) {
       c.starting = false;
@@ -613,6 +654,7 @@ export const AgentChat = {
   reset() {
     for (const c of [...conversations.values()]) drop(c);
     restoring = null;
+    chosen = null;
     changed();
   },
 
@@ -677,6 +719,38 @@ export const AgentChat = {
     persist(c);
     changed();
     return null;
+  },
+
+  /** The model picked this session, which new conversations use; null: `[agent] default`. */
+  get chosen() {
+    return chosen;
+  },
+
+  /**
+   * The picker's choice for new conversations until a restart (Behaviour 7).
+   * @param {AgentProviderConfig | null} provider
+   */
+  choose(provider) {
+    chosen = provider;
+  },
+
+  /**
+   * Whether each local provider's server still lists its model, by providerKey (Behaviour 7):
+   * asked only while the picker is open, and only of the providers' own endpoints.
+   * @param {AgentProviderConfig[]} providers
+   * @returns {Promise<Map<string, import("../core/agent-setup.mjs").ModelState>>}
+   */
+  async modelStates(providers) {
+    const states = await Promise.all(
+      providers.map(
+        async (p) =>
+          /** @type {const} */ ([
+            providerKey(p),
+            await localModelState(parentFetch, p, { timeout }),
+          ]),
+      ),
+    );
+    return new Map(states);
   },
 
   /**
@@ -748,8 +822,11 @@ export const AgentChat = {
   },
 
   /**
-   * Setup's probe of the local servers (Behaviour 2): only on 127.0.0.1, only when setup asks.
-   * @param {{ servers?: { server: string, port: number }[] }} [opts]  a test's own server
+   * Setup's probe of the local servers (Behaviour 2, 7): only on this machine, only while the
+   * picker is open.
+   * @param {{ servers?: { server: string, port: number }[],
+   *   extra?: { server: string, endpoint: string }[] }} [opts]  `servers`: a test's own server;
+   *   `extra`: the configured providers' local endpoints
    */
   probe(opts) {
     return probeLocal(parentFetch, { ...opts, timeout });

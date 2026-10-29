@@ -1729,14 +1729,19 @@ vision; its key stays in login storage.
 - M39. Model requests **must** go only to the configured endpoint, `https://` unless on a
   loopback address, with `credentials: "omit"` and `redirect: "error"`; `[agent] local_only`
   **must** refuse every endpoint off this machine, in config.toml and at each request. Setup's
-  probe **must** ask only 127.0.0.1 on the local servers' ports, with a timeout of 1 s, and only
-  when setup asks.
+  probe **must** ask only 127.0.0.1 on the local servers' ports and the configured providers'
+  own loopback endpoints, with a timeout of 1 s, and only while the model picker is open. The
+  check before a task that a local model is still listed **must** ask only the conversation's
+  own loopback endpoint, and never an endpoint off this machine.
   [`test_requests_only_to_the_endpoint_without_credentials_or_redirects`](../tests/browser/browser_vimma_agent_conversations.js),
   [`posts to the endpoint without credentials or redirects, and parses the reply`](../packages/vimma-core/test/agent-providers.test.mjs),
   [`a refused endpoint makes no request`](../packages/vimma-core/test/agent-providers.test.mjs),
   [`local_only refuses a remote endpoint`](../packages/vimma-core/test/config-agent.test.mjs),
   [`an endpoint off this machine must be https, and carry no user name`](../packages/vimma-core/test/config-agent.test.mjs),
   [`lists the models of the servers that answer, with no cookies and no redirects`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`the probe also asks the configured local endpoints, once each, never a remote one`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`a provider off this machine, or Anthropic's API, gets no request`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`its server lists it, or no longer does`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`test_probe_only_on_setup_and_only_loopback`](../tests/browser/browser_vimma_agent_conversations.js)
 - M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key and
   the endpoint origin it was entered for, encrypted with OSKeyStore, and **must** be sent only to

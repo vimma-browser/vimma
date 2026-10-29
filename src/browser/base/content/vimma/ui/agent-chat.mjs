@@ -24,7 +24,8 @@ import {
   noModelReason,
   whereDataGoes,
 } from "../core/agent-chat.mjs";
-import { checkEndpoint } from "../core/agent-providers.mjs";
+import { checkEndpoint, isLocalEndpoint } from "../core/agent-providers.mjs";
+import { pickerEntries, unavailableText } from "../core/agent-setup.mjs";
 import { lastUseText } from "../core/agent-store.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
@@ -62,7 +63,7 @@ const INSERT_HINT = "Enter sends · ctrl+Enter asks every step · shift+Enter ne
 const NORMAL_HINT =
   "i write · j k move · s stop · m model · n new · c list · P give · y copy · q close";
 const LIST_HINT = "j k move · Enter open · d delete · n new · / filter · Esc back";
-const MODELS_HINT = "j k move · Enter use · x delete its key · Esc back";
+const MODELS_HINT = "j k move · Enter use · D default · x delete its key · Esc back";
 const SLOT_HINT = "a question waits: answer it here";
 
 /**
@@ -79,7 +80,8 @@ const SLOT_HINT = "a question waits: answer it here";
  *   question may move between the line and the slot, and the status bar redraws
  * @typedef {{ label: string, detail: string, provider?: AgentProviderConfig,
  *   add?: "anthropic" | "openai",
- *   local?: { endpoint: string, model: string, server: string }, id?: number }} Row
+ *   local?: { endpoint: string, model: string, server: string }, id?: number,
+ *   unavailable?: string, current?: boolean }} Row  `unavailable`: why it cannot be picked
  */
 
 /** @param {Document} doc @param {string} tag @param {string} className @param {string} [text] */
@@ -110,11 +112,19 @@ function refused() {
   return noModelReason(errors, file);
 }
 
-/** The provider `[agent] default` names, else the first configured, else none (setup). */
+/**
+ * The model picked this session (Behaviour 7), else the provider `[agent] default` names, else
+ * the first configured, else none (setup).
+ */
 function defaultProvider() {
   const config = lazy.McpHost.agentConfig;
   const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []);
-  return providers.find((p) => p.name === config?.default) ?? providers[0] ?? null;
+  return (
+    lazy.AgentChat.chosen ??
+    providers.find((p) => p.name === config?.default) ??
+    providers[0] ??
+    null
+  );
 }
 
 export class AgentChatWindow {
@@ -480,6 +490,8 @@ export class AgentChatWindow {
         (/** @type {any} */ r) => {
           if ("refused" in r) {
             if (!input.value) input.value = text;
+            // The model is not there: another is picked, and the message waits for it.
+            if (r.pick && this.opened && this.conversation === id) this.open({ view: "models" });
             this.host.say(`agent: ${r.refused}`, true);
           }
         },
@@ -555,52 +567,103 @@ export class AgentChatWindow {
     } else if (this.view === "models" && key === "x") {
       this.deleteKey();
       return;
+    } else if (this.view === "models" && (key === "D" || key === "shift+d")) {
+      this.pick({ makeDefault: true });
+      return;
     }
     this.render();
   }
 
-  /** The models view (Behaviour 7): the configured providers, then what local servers report. */
+  /**
+   * The models view (Behaviour 7): the conversation's model when nothing else lists it, the
+   * configured providers, setup's hosted providers, then what the local servers list now; the
+   * conversation's model is selected, and one that is not there is shown as such.
+   */
   loadModels() {
     const config = lazy.McpHost.agentConfig;
-    /** @type {Row[]} */
-    const rows = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []).map((p) => ({
-      label: `${p.name} · ${p.model}`,
-      detail: whereDataGoes(p.endpoint),
-      provider: p,
-    }));
-    // Setup's hosted providers (Behaviour 3): before the probe's rows, which come later.
-    rows.push(
-      { label: "add: Anthropic (Messages API)", detail: "api key", add: "anthropic" },
-      { label: "add: OpenAI-compatible endpoint", detail: "https:// and api key", add: "openai" },
-    );
-    this.rows = rows;
-    for (const row of rows) {
-      const p = row.provider;
-      if (!p || !needsKey(p)) continue;
+    const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []);
+    const current =
+      this.conversation === null ? null : lazy.AgentChat.get(this.conversation).provider;
+    /** @type {Map<string, string>} key hints, which arrive one by one */
+    const hints = new Map();
+    let first = true;
+    /** @param {any} found @param {any} states */
+    const draw = (found, states) => {
+      const selected = this.rows[this.row]?.label;
+      const entries = pickerEntries({ providers, found, states, current });
+      /** @type {Row[]} */
+      const rows = entries.map((e) => {
+        const p = e.provider;
+        const what = p
+          ? { label: `${p.name} · ${p.model}`, provider: p, endpoint: p.endpoint }
+          : {
+              label: `${e.local?.server} · ${e.local?.model}`,
+              local: e.local,
+              endpoint: e.local?.endpoint ?? "",
+            };
+        const unavailable = p ? unavailableText(p, e.state) : null;
+        // Short, so the label keeps its room; Enter on the row says why in full.
+        const detail = unavailable
+          ? "not available"
+          : ((p && hints.get(what.label)) ?? whereDataGoes(what.endpoint));
+        return {
+          label: what.label,
+          detail: e.current ? `in use · ${detail}` : detail,
+          ...(what.provider ? { provider: what.provider } : {}),
+          ...(what.local ? { local: what.local } : {}),
+          ...(unavailable ? { unavailable } : {}),
+          current: e.current,
+        };
+      });
+      // Setup's hosted providers (Behaviour 3): before the local servers' models.
+      const at = rows.findIndex((r) => r.local);
+      rows.splice(
+        at < 0 ? rows.length : at,
+        0,
+        { label: "add: Anthropic (Messages API)", detail: "api key", add: "anthropic" },
+        { label: "add: OpenAI-compatible endpoint", detail: "https:// and api key", add: "openai" },
+      );
+      this.rows = rows;
+      const keep = first ? -1 : rows.findIndex((r) => r.label === selected);
+      this.row =
+        keep >= 0
+          ? keep
+          : Math.max(
+              0,
+              rows.findIndex((r) => r.current),
+            );
+      first = false;
+      this.render();
+    };
+    draw(null, null);
+    for (const p of providers) {
+      if (!needsKey(p)) continue;
       lazy.AgentKeys.hint(p.name, p.endpoint).then(
         (/** @type {string | null} */ hint) => {
-          row.detail = hint ?? "no key · Enter adds one";
+          hints.set(`${p.name} · ${p.model}`, hint ?? "no key · Enter adds one");
+          const row = this.rows.find((r) => r.provider === p);
+          if (row && !row.unavailable) {
+            row.detail = `${row.current ? "in use · " : ""}${hints.get(row.label)}`;
+          }
           if (this.view === "models") this.render();
         },
         () => {},
       );
     }
-    this.row = 0;
-    this.render();
-    // Asked only now, while the picker is open, and only on 127.0.0.1 (Behaviour 2, B12).
-    lazy.AgentChat.probe().then(
-      (/** @type {any[]} */ found) => {
+    // Asked only now, while the picker is open, and only on this machine (Behaviour 2, 7, B12):
+    // the usual ports, and the configured providers' own endpoints.
+    const locals = [...providers, ...(current ? [current] : [])].filter(
+      (p) => p.kind === "openai" && isLocalEndpoint(p.endpoint),
+    );
+    Promise.all([
+      lazy.AgentChat.probe({
+        extra: locals.map((p) => ({ server: p.name, endpoint: p.endpoint })),
+      }),
+      lazy.AgentChat.modelStates(locals),
+    ]).then(
+      ([found, states]) => {
         if (!this.opened || this.view !== "models") return;
-        for (const s of found) {
-          for (const model of s.models) {
-            this.rows.push({
-              label: `${s.server} · ${model}`,
-              detail: whereDataGoes(s.endpoint),
-              local: { endpoint: s.endpoint, model, server: s.server },
-            });
-          }
-        }
-        this.render();
+        draw(found, states);
       },
       (/** @type {any} */ e) => console.error("vimma agent: probe failed", e),
     );
@@ -629,7 +692,12 @@ export class AgentChatWindow {
     this.render();
   }
 
-  async pick() {
+  /**
+   * `Enter` (or `D`, `makeDefault`) on a row: a conversation opens, or the model is used by the
+   * open conversation and this session's new ones (Behaviour 7).
+   * @param {{ makeDefault?: boolean }} [opts]
+   */
+  async pick({ makeDefault = false } = {}) {
     const row = this.rows[this.row];
     if (!row) return;
     if (this.view === "list" && row.id !== undefined) {
@@ -638,6 +706,10 @@ export class AgentChatWindow {
     }
     if (row.add) {
       this.addProvider(row.add);
+      return;
+    }
+    if (row.unavailable) {
+      this.host.say(`agent: ${row.unavailable}; pick another model`, true);
       return;
     }
     let provider = row.provider;
@@ -666,52 +738,72 @@ export class AgentChatWindow {
       }
     }
     if (!provider) return;
-    this.useProvider(provider);
+    if (!this.useProvider(provider)) return;
     this.insert();
     const picked = provider;
-    this.remember(picked).then((note) => {
+    // config.toml changes only for setup (no provider yet) or when asked with D (B12).
+    const setup = !(lazy.McpHost.agentConfig?.providers ?? []).length;
+    if (!makeDefault && !setup) {
+      this.host.say(
+        `agent: ${picked.name} · ${picked.model} until a restart; D in the picker makes it the default`,
+      );
+      return;
+    }
+    this.remember(picked, { makeDefault: true }).then((note) => {
       if (note)
         this.host.say(`agent: ${picked.name} · ${picked.model}${note}`, note.startsWith(";"));
     });
   }
 
   /**
-   * A provider picked in the window that config.toml does not list goes there (Behaviour 2-3),
-   * so that it is in the picker after a restart; when none was set up, it becomes
-   * `[agent] default`, which new conversations use. Its key stays in login storage.
+   * A provider goes to config.toml (B12): a hosted provider added in the window, so that its
+   * key has a provider after a restart, and, with `makeDefault` (setup, or `D` in the picker),
+   * as `[agent] default`, which new conversations use. Its key stays in login storage.
    * @param {AgentProviderConfig} provider
-   * @returns {Promise<string>} what the notice adds: "" when the file lists it already
+   * @param {{ makeDefault?: boolean }} [opts]  without it, a listed provider writes nothing
+   * @returns {Promise<string>} what the notice adds: "" when nothing was written
    */
-  async remember(provider) {
-    const providers = /** @type {AgentProviderConfig[]} */ (
-      lazy.McpHost.agentConfig?.providers ?? []
-    );
-    const listed = providers.some(
+  async remember(provider, { makeDefault = false } = {}) {
+    const config = lazy.McpHost.agentConfig;
+    const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []);
+    const listed = providers.find(
       (p) =>
         p.kind === provider.kind && p.endpoint === provider.endpoint && p.model === provider.model,
     );
-    if (listed) return "";
-    const makeDefault = providers.length === 0;
-    const r = await lazy.ConfigHost.addAgentProvider(provider, { makeDefault });
+    const asDefault = makeDefault || providers.length === 0;
+    if (listed && (!asDefault || config?.default === listed.name)) {
+      return asDefault ? " · already [agent] default" : "";
+    }
+    const r = await lazy.ConfigHost.addAgentProvider(provider, { makeDefault: asDefault });
     if ("error" in r) return `; not saved to config.toml (${r.error})`;
-    return makeDefault ? " · saved to config.toml as [agent] default" : " · saved to config.toml";
+    return asDefault ? " · saved to config.toml as [agent] default" : " · saved to config.toml";
   }
 
-  /** @param {AgentProviderConfig} provider */
+  /**
+   * The open conversation's model, and this session's new conversations' (Behaviour 7).
+   * @param {AgentProviderConfig} provider
+   * @returns {boolean} whether it is in use (a running task keeps its model)
+   */
   useProvider(provider) {
     if (this.conversation === null) {
       this.conversation = lazy.AgentChat.create({ provider }).id;
-      return;
+      lazy.AgentChat.choose(provider);
+      return true;
     }
+    const now = lazy.AgentChat.get(this.conversation).provider;
     if (
-      lazy.AgentChat.get(this.conversation).provider.endpoint === provider.endpoint &&
-      lazy.AgentChat.get(this.conversation).provider.model === provider.model &&
-      lazy.AgentChat.get(this.conversation).provider.name === provider.name
+      now.endpoint !== provider.endpoint ||
+      now.model !== provider.model ||
+      now.name !== provider.name
     ) {
-      return;
+      const refused = lazy.AgentChat.setProvider(this.conversation, provider);
+      if (refused) {
+        this.host.say(`agent: ${refused}`, true);
+        return false;
+      }
     }
-    const refused = lazy.AgentChat.setProvider(this.conversation, provider);
-    if (refused) this.host.say(`agent: ${refused}`, true);
+    lazy.AgentChat.choose(provider);
+    return true;
   }
 
   /**

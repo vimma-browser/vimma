@@ -110,10 +110,25 @@ first, so that what the guide says a model can do is what the bench measured.
    The window's body says the same in place of the setup steps, and so does the notice when
    `:agent give`, `n` or a send needs a model. Otherwise the setup hint would send the user to
    set up a model the file already lists.
-7. **A picker switches models.** In the window, `m` (normal mode) opens a picker of the
-   configured providers and the models the local servers report. Each conversation remembers
-   its provider and model, so one conversation can run small tasks locally and another a harder
-   task on a hosted model.
+7. **A picker switches models.** In the window, `m` (normal mode) or `:agent model` opens a
+   picker of every model available now: the configured providers, then the models the local
+   servers list, asked while the picker opens (the usual ports of item 2 and every configured
+   provider's own local endpoint, so a vLLM server on port 8000 lists its models too). The
+   conversation's model is selected and marked `in use`. `Enter` uses the selected model for
+   the open conversation, whose header shows it, and for the new conversations of this
+   session, and leaves `config.toml` as it is, because trying a model is not deciding to keep
+   it and the file is the user's own (B12). `D` does the same and makes it `[agent] default`
+   in `config.toml`, adding it as a provider when the file does not list it. Each conversation
+   keeps its provider and model across restarts (Behaviour 20), so one conversation can run
+   small tasks locally and another a harder task on a hosted model. A local model its server no
+   longer lists, or whose server does not answer, is shown `not available` and cannot be
+   picked. Before each task the conversation asks its local server, once, whether the model is
+   still listed; when it is not, the task does not start, the window says why and opens the
+   picker, and the message stays in the input for the model picked next, because a task that
+   fails at its first request has already been given the grant and a step count for nothing.
+   A server that answers without a model list, or not within the probe's second, is not judged,
+   so a busy server is never refused a task it could run. A hosted provider is not asked: it
+   gets no request before the first task (item 4).
 8. **`config.toml` may list providers**, by endpoint and model only:
 
    ```toml
@@ -506,8 +521,11 @@ agent to a part of the profile, or publishes which steps always ask.
     `credentials: "omit"` (no cookies of any container) and `redirect: "error"`, so that an
     endpoint cannot forward the request, and its page text, to another address. External
     endpoints must be `https://`; `http://` is accepted only for loopback addresses. The model's
-    output cannot name an endpoint. The local probe of Behaviour 2 is the only other request,
-    and only to `127.0.0.1`.
+    output cannot name an endpoint. The other requests are the picker's local probe
+    (Behaviour 2, 7: `127.0.0.1` on the usual ports, and the configured providers' own loopback
+    endpoints) and the check before a task that a local model is still listed (Behaviour 7,
+    one `GET /v1/models` to the conversation's own loopback endpoint), all on this machine,
+    with the same `credentials: "omit"` and `redirect: "error"`.
 12. **Setup offers local first, and probes only when asked** (B12, Behaviour 2-5). A local model
     is the choice where nothing leaves the machine, so setup lists it first; probing ports in
     the background would make Vimma contact local services the user did not ask about. A hosted
@@ -515,14 +533,17 @@ agent to a part of the profile, or publishes which steps always ask.
     agent reads, including what the agent workspace's logins show (an address, an order
     history), goes to that provider. When the probe finds a local server, its first model is
     preselected and `[agent] default` points to it once the user confirms setup, because
-    nothing then leaves the machine and the user still confirms the choice. A provider chosen
-    in the window that `config.toml` does not list is added to it as `[[agent.providers]]`, by
-    name, kind, endpoint, model and vision, and becomes `[agent] default` when no provider was
-    set up, so that a restart keeps the choice and new conversations use it; the file's other
-    lines are kept and nothing is written when it does not parse, because `config.toml` is the
-    user's own file and may live in a dotfile repository. The key stays in login storage (B8).
-    A provider the file lists already only changes the conversation, so the picker never
-    rewrites the user's default. Setup checks an
+    nothing then leaves the machine and the user still confirms the choice. A provider is
+    written to `config.toml` as `[[agent.providers]]`, by name, kind, endpoint, model and
+    vision, in three cases only: setup, when no provider was set up, where it also becomes
+    `[agent] default` so that a restart keeps the choice; a hosted provider added in the window
+    (B24), whose key is stored by its name and would otherwise have no provider to belong to
+    after a restart; and `D` in the picker, which makes it `[agent] default`. A model picked
+    with `Enter` from a configured provider or a local server only changes the conversation and
+    this session's new conversations (Behaviour 7), so switching models to try one never
+    rewrites the user's file or default. The file's other lines are kept and nothing is written
+    when it does not parse, because `config.toml` is the user's own file and may live in a
+    dotfile repository. The key stays in login storage (B8). Setup checks an
     Ollama model's context and makes a copy with `num_ctx` set when it is below 32,768 tokens,
     because Ollama's OpenAI-compatible API takes no context length and its default of 4,096
     holds less than the tool definitions, while a ten-item list needs about 19,000 tokens on the
@@ -853,7 +874,11 @@ out for a provider without vision`.
 never passed on`; a test per fixed sentence that it is in `mcp.rs`.
 - `agent-setup.test.mjs`: `only 127.0.0.1 on Ollama's, LM Studio's and llama.cpp's ports`;
   `lists the models of the servers that answer, with no cookies and no redirects`;
-  `a model with less gets a copy with num_ctx set, sharing its weights`.
+  `a model with less gets a copy with num_ctx set, sharing its weights`;
+  `the probe also asks the configured local endpoints, once each, never a remote one`;
+  `its server lists it, or no longer does`; `nothing answers on its port`; `a server without
+a model list, or a slow one, is not judged`; `a provider off this machine, or Anthropic's API,
+gets no request`; `the conversation's model is marked, and listed even when no longer there`.
 - `config.test.mjs`: `[agent] providers parse`; `a key field in [agent] is an error`;
   `local_only refuses a remote endpoint`; `max_running and keep_days parse`;
   `task_grant_minutes is not a key of [agent]`.
@@ -886,7 +911,10 @@ checkpoints asking`; `a conversation grant has no expiry and ends on stop`.
   `test_reopened_conversation_starts_with_a_clean_context`; `test_clear_context`;
   `test_delete_and_forget_all_remove_files`; `test_keep_days`;
   `test_list_shows_stored_conversations_newest_first`;
-  `test_setup_writes_the_provider_and_default_to_config`.
+  `test_setup_writes_the_provider_and_default_to_config`;
+  `test_the_picker_switches_the_model_for_this_session_only`;
+  `test_D_in_the_picker_makes_the_model_the_default`;
+  `test_a_model_no_longer_there_asks_for_another`.
 - `browser_vimma_agent_keys.js` (new): `test_key_stored_as_a_login_only` (no pref, no config,
   no file but the logins); `test_stored_login_holds_only_the_keystore_ciphertext`;
   `test_key_never_in_log_notice_transcript_or_store`;
