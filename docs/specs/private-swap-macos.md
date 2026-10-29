@@ -357,7 +357,8 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
     `config.mjs`), so that existing configs keep working: `"swap"` means the native swap on
     macOS and Hyprland's swap on Hyprland; `"window"` opts out everywhere. No new key, action or
     binding. macOS gets the swap by default, since the hand checks run before the delivering PR
-    merges and `"window"` stays one line away. Rejected: `"window"` on macOS until the hand
+    merges and `"window"` stays one line away (only the swap itself was checked before 0.1.11;
+    the rest are in [#623](https://github.com/vimma-browser/vimma/issues/623)). Rejected: `"window"` on macOS until the hand
     checks have run on a released build, because that needs a per-platform default, so the same
     `config.toml` would mean different things on Linux and macOS. The comment that
     `defaults.mjs` writes into the generated `config.toml` names macOS next to Hyprland.
@@ -492,7 +493,8 @@ component (the control socket, MCP, the agent gate, content actors) is touched.
 
 On the current macOS release, with a windowed build: entering the private workspace shows the
 private window in the normal window's place and hides the normal window, and leaving it swaps
-back, as Behaviour describes. With the AeroSpace tiling window manager running, AeroSpace had
-trouble with the swapped windows; the cause is in AeroSpace, not in the swap. The other hand
+back. The window's frame was not compared, and the window was neither zoomed nor in full screen.
+With the AeroSpace tiling window manager running, AeroSpace had trouble with the swapped windows;
+that was not investigated here. The other hand
 checks (Tests, "By hand on a Mac") have not been run yet; they are tracked in
 [#623](https://github.com/vimma-browser/vimma/issues/623).
