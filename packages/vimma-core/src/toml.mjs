@@ -351,7 +351,7 @@ export function locateKeys(text) {
  */
 
 /** A TOML literal for `value`: a basic string, a boolean or an integer. */
-function tomlLiteral(/** @type {string | boolean | number} */ value) {
+export function tomlLiteral(/** @type {string | boolean | number} */ value) {
   if (typeof value !== "string") return String(value);
   // JSON's escapes are valid TOML except that TOML also requires DEL to be escaped.
   return JSON.stringify(value).replace(/\x7f/g, "\\u007F");

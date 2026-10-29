@@ -1567,13 +1567,13 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`says older for a client that names no version: it predates the check`](../packages/vimma-core/test/ctl-version.test.mjs),
   [`is optional, and refused with the whole hello when it is not a version`](../packages/vimma-core/test/ctl-version.test.mjs)
 
-### The built-in agent (`agent/AgentChat.sys.mjs`, `agent/AgentKeys.sys.mjs`)
+### The built-in agent (`agent/AgentChat.sys.mjs`, `agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`)
 
 Vimma's own agent ([builtin-agent](specs/builtin-agent.md),
 [ADR-023](adr/023-in-browser-model-client.md)): a model the user picks, local or hosted, runs
 tasks the user types in Vimma, through the same agent commands and gate as an MCP agent. It is
-behind `vimma.feature.agentChat` (off) until its conversations are kept and it has its key
-(builtin-agent B22); what is in force:
+behind `vimma.feature.agentChat` (off) until it has its key (builtin-agent B22); what is in
+force:
 
 **Reach:** the agent workspace's tabs that its conversation owns, through `runAgentCommand` in
 the browser's process, so every rule above holds for it, with no `:mcp on` and no socket. It
@@ -1602,6 +1602,18 @@ the profile, so a copied profile does not reveal the key; without one it lives i
 protected by the primary password like saved passwords, and readable by anyone who reads the
 profile when no primary password is set. Other processes running as the user are out of scope
 (§11).
+
+**Stored conversations.** Each conversation is one file in `<profile>/vimma/agent/`, named by a
+random UUID, holding the user's messages, the agent's replies, the conversation's title, provider
+and model, and a summary per task that Vimma writes (outcome, step and token counts, the hosts
+the task was asked about), encrypted with the same OSKeyStore secret as the keys. They hold no
+page text, tool result, element list, screenshot or step line, but a reply may quote what a page
+said, and the hosts are a partial history of the agent workspace. They are not in Sync, the
+session store or `about:logins`. With a desktop keyring a copied profile does not reveal them;
+without one they are as safe as saved passwords. A deleted file is removed, not overwritten. A
+reopened or cleared conversation sends its provider the stored text again, and nothing else from
+before. Setup writes the provider it set up to `config.toml` by name, kind, endpoint, model and
+vision; its key stays in login storage.
 
 - M35. The built-in agent **must** act only through `runAgentCommand`, on one gate connection per
   conversation (`builtin:<n>`, an id no socket connection can have), with the arguments checked
@@ -1740,6 +1752,38 @@ for the user.
   [`test_hosted_anthropic_provider_asks_for_its_key_before_the_task`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless`](../tests/browser/browser_vimma_agent_chat.js),
   [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
+- M47. A stored conversation **must** hold only the user's messages, the agent's replies and
+  Vimma's own task summaries (with its title, provider, model and times), never a tool result,
+  page text, an element list, a screenshot, a step line or an API key, and **must** be written
+  only encrypted with OSKeyStore, as a 0600 file in a 0700 folder: a record that cannot be
+  encrypted stays in memory and nothing is written. A record read back **must** be checked
+  (version, a UUID id, known entry kinds, a provider of a known kind with an http or https
+  endpoint) and fields it does not know dropped. A reopened conversation, and one whose context
+  is cleared, **must** send the model only those entries, with no grant until a task is sent.
+  [`test_stored_file_is_encrypted_and_holds_no_tool_output`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_nothing_written_in_clear_when_it_cannot_be_encrypted`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_reopened_conversation_starts_with_a_clean_context`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_clear_context`](../tests/browser/browser_vimma_agent_store.js),
+  [`a stored conversation holds messages, replies and summaries, never tool output`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`the provider keeps its prices and never a key`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`refuses another version, a bad provider or an unknown entry`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`a task summary names outcome, counts and hosts, and no page text`](../packages/vimma-core/test/agent-store.test.mjs),
+  [`http and https hosts only, once each, in order`](../packages/vimma-core/test/agent-store.test.mjs)
+- M48. `d` in the conversation list (after a `y`) **must** remove that conversation's file;
+  `:agent forget all` (after a `y` naming the count) **must** stop running tasks and remove every
+  file of the store, those it cannot read included; `[agent] keep_days` **must** remove the files
+  not written for that many days, at start, when it changes and once a day, from the files' times
+  alone, so it never needs the keyring. A deleted conversation's task that ends afterwards
+  **must not** write its file again.
+  [`test_delete_and_forget_all_remove_files`](../tests/browser/browser_vimma_agent_store.js),
+  [`test_keep_days`](../tests/browser/browser_vimma_agent_store.js),
+  [`only with keep_days, and only when unused for longer`](../packages/vimma-core/test/agent-store.test.mjs)
+- M49. Setup **must** write to `config.toml` only the provider's name, kind, endpoint, model,
+  vision and prices, never its key, and only when the file parses before and after the edit, with
+  every other key unchanged.
+  [`test_setup_writes_the_provider_and_default_to_config`](../tests/browser/browser_vimma_agent_store.js),
+  [`never writes a key, and refuses a file that does not parse`](../packages/vimma-core/test/agent-config.test.mjs),
+  [`keeps every other line of the file`](../packages/vimma-core/test/agent-config.test.mjs)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 
