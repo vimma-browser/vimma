@@ -32,6 +32,9 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const { VimmaActors } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
 );
+const { AgentDrive } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs",
+);
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
@@ -116,6 +119,7 @@ const clients = [];
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
+  AgentDrive._linkTtlMs = null;
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -345,6 +349,8 @@ addTidyTask(async function test_f_follows_only_links_from_an_elements_list() {
   );
   Assert.equal(r.result.url, FORM, "nothing loaded or submitted");
   const plans = one(items, (e) => e.kind === "link", "link");
+  // f's own link list would have expired by now; an element list's labels do not (issue #591).
+  AgentDrive._linkTtlMs = 0;
   r = await keys(c, tab, `f${plans.label}`);
   Assert.equal(r.result.steps[0].ok, true, "a link's label from the list follows");
   Assert.equal(r.result.url, `${PAGE}?plans`, "as a load of its href");

@@ -1642,8 +1642,9 @@ focus and hint mode.
   a payment card field are listed as sensitive, with no value, so the agent can tell you what to
   type and where. Card fields are recognised by their `autocomplete` attribute and by the
   heuristics Firefox's form autofill uses, which also catch card forms without the attribute.
-- **Labels by the same rules as `f`.** They last two minutes on the page that listed them, and a
-  new list or `f` replaces them. `vimma_keys` with `f` and a label from the list follows a link,
+- **Labels that wait for a slow model.** They last as long as the page that listed them and
+  the element they name: a navigation, a new list or `f`, or the page removing the element ends
+  them, however long the agent took to choose. `vimma_keys` with `f` and a label from the list follows a link,
   as a load of its address; the label of a button or a field is refused, and so is a link the
   page has replaced since it was listed.
 - **A grant covers it:** each call then shows

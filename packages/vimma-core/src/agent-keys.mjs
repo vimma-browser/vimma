@@ -48,7 +48,7 @@ export const AGENT_KEY_LIMITS = Object.freeze({ chars: 512, actions: 32, count: 
 
 /**
  * D12: at most `max` links a list, each link's text cut at `text` and its href at `href`
- * characters; labels live `ttlMs`. `label` is the longest label `max` links get over
+ * characters; `f`'s labels live `ttlMs` (an element list's do not: `labelsCurrent`). `label` is the longest label `max` links get over
  * DEFAULT_HINT_CHARS, so a longer one can name no link.
  */
 export const AGENT_LINKS = Object.freeze({
@@ -58,6 +58,23 @@ export const AGENT_LINKS = Object.freeze({
   ttlMs: 120_000,
   label: Math.max(...hintLabels(200, DEFAULT_HINT_CHARS).map((l) => l.length)),
 });
+
+/**
+ * Whether a connection's labels still name what they listed (D12; mcp-forms F3; security.md
+ * M18, M25): only on the document and URL they were collected on. `f`'s link list also lasts at
+ * most `linkTtlMs`, because the child keeps none of its links and nothing else would end a label
+ * of a link the page has since replaced. An element list has no time limit: the child holds each
+ * of its elements, so a label of an element that left the page is refused as gone (F4), and a
+ * model that takes minutes a step must still be able to click what it was shown (issue #591).
+ * @param {{ mark: { doc: number, url: string }, at: number, source: "links" | "elements" }
+ *   | null | undefined} session
+ * @param {{ now: number, mark: { doc: number, url: string } }} page  the time and the page now
+ * @param {number} [linkTtlMs]
+ */
+export function labelsCurrent(session, { now, mark }, linkTtlMs = AGENT_LINKS.ttlMs) {
+  if (!session || session.mark.doc !== mark.doc || session.mark.url !== mark.url) return false;
+  return session.source === "elements" || now - session.at < linkTtlMs;
+}
 
 /** The characters of a label (D12): the default ones, never the user's `hint_chars` (D10). */
 const LABEL_CHARS = new Set(DEFAULT_HINT_CHARS);

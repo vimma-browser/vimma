@@ -33,6 +33,9 @@ const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
+const { AgentDrive } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs",
+);
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
@@ -96,6 +99,7 @@ const clients = [];
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
+  AgentDrive._linkTtlMs = null;
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -304,6 +308,27 @@ addTidyTask(async function test_activate_follows_a_same_site_link_as_an_open() {
   // Its labels are gone with the page.
   const again = await c.call("agent-activate", { tab: idOf(tab), label: by["Add to list"] });
   Assert.equal(again.error?.message, "stale labels: call vimma_elements again");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_element_labels_last_while_their_element_is_there() {
+  // Issue #591: a slow model takes longer than f's link lifetime between listing and clicking.
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // As if f's lifetime had passed since the list: an element list has none of its own (F3).
+  AgentDrive._linkTtlMs = 0;
+  const r = await activate(c, tab, by["Add to list"]);
+  Assert.ok(r.ok, `a label of the same page and element still clicks: ${r.error?.message}`);
+  // What ends a label is its element leaving the page (F4), not the time.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
+    content.document.getElementById("ask").remove(),
+  );
+  const gone = await activate(c, tab, by.Remove, null);
+  Assert.equal(gone.error?.message, "that element is gone: call vimma_elements again");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

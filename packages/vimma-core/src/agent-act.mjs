@@ -27,7 +27,8 @@ export {
 /**
  * F5: at most `max` targets a list, each text and caption cut at `text`, each value at `value`,
  * each href at `href` characters, at most `options` options a select and `forms` forms a list,
- * at most `bytes` of the reply line; labels live `ttlMs`, as `f`'s do (mcp-drive D12).
+ * at most `bytes` of the reply line. Labels last while their page and element do
+ * (`labelsCurrent`).
  */
 export const AGENT_ELEMENTS = Object.freeze({
   max: AGENT_LINKS.max,
@@ -37,7 +38,6 @@ export const AGENT_ELEMENTS = Object.freeze({
   options: 50,
   forms: 64,
   bytes: 768 * 1024,
-  ttlMs: AGENT_LINKS.ttlMs,
 });
 
 /**

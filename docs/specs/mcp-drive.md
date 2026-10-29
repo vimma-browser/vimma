@@ -286,6 +286,8 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     document that was collected (its window global); a label against a session that is missing,
     older than 120 s, or from a page that has navigated since is refused with
     `stale labels: send f again`, because a label of an old page could name a different link.
+    (Since changed: labels from a `vimma_elements` list, which `f<label>` also follows, have no
+    time limit and last while their page and element do; mcp-forms F3, #591.)
     - **A follow is a load, not a click.** The link's `href` is loaded in the same tab with the
       page's own principal after `checkLoadURIWithPrincipal`, as `openInBackground` does
       (`VimmaActors.sys.mjs:294-322`), but in place. No click event fires, so the page's own
@@ -485,6 +487,7 @@ Until then §12 names this spec as planned.
 - **M18.** A follow **must** load only an http or https href the page could link to, in the same
   tab, with no click event, from labels of the current document no older than 120 s; a follow
   to another site **must** ask as `vimma_open` unless a `vimma_open` grant is in force.
+  (Since changed: the 120 s applies to `f`'s own list only; security.md M25, #591.)
 - **M19.** `agent-show` **must** always ask (no grant covers it), switch only the normal window
   that holds the agent tab, only to the agent workspace, and **never** raise or focus a window.
 - **M20.** The limits of D7, D12 and D15 **must** deny with `busy` or `invalid-args`.

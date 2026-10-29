@@ -126,9 +126,10 @@ the first three lists, at most 30 minutes each. All three runs reached the time 
   agent's clicks and loads were refused as `busy`, and the reply text (`Too many agent requests
 are waiting in Vimma; wait for the user to answer them`) names questions when the cause is
   the rate.
-- **Labels expire before a slow model uses them.** `vimma_elements` labels live 120 seconds;
+- **Labels expired before a slow model used them.** `vimma_elements` labels lived 120 seconds;
   with turns of 90 seconds or more, 8 of qwen3.8:27b's 13 clicks were refused as
-  `stale labels`, each costing two more steps.
+  `stale labels`, each costing two more steps. Since #591 an element list's labels last as long
+  as their page and element do.
 - **Context length matters.** With Ollama's default of 4096 tokens the tool definitions alone do
   not fit; the scripted floor's last turns need about 19,000 tokens, so a local model needs a
   context of at least 32,768 tokens for a ten-item list.
