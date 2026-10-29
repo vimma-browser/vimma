@@ -15,7 +15,7 @@ import { compileKeymap } from "../core/keymap.mjs";
 import { formatConfigError } from "../core/config.mjs";
 import { leaves } from "../core/panes.mjs";
 import { describeRoute } from "../core/routes.mjs";
-import { redactReport } from "../core/report.mjs";
+import { redactReport, workspaceReport } from "../core/report.mjs";
 import { ConfigHost } from "../config/ConfigHost.sys.mjs";
 import { ENABLED_PREF, VimmaControl } from "../ctl/VimmaControl.sys.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
@@ -63,7 +63,10 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  *   name: string | null }} theme
  *   name: the Omarchy theme's, or the built-in palette's when that is shown
  * @property {{ count: number, window: { name: string, active: boolean, tabs: number,
- *   panes: number }[] }} workspaces
+ *   panes: number }[], live: number | null, pendingMs: number | null,
+ *   recovered: { reason: string, afterMs: number, agoMs: number } | null,
+ *   lastError: string | null }} workspaces  `live`: the window's open unpinned tabs (null
+ *   without workspaces), beside the model's; the rest from WindowWorkspaces.health
  * @property {{ enabled: boolean, port: number | null, status: string }} control  `status`:
  *   full control's state with the minutes `:control on` left (docs/specs/vimma-mcp.md 29 D)
  * @property {{ enabled: boolean, from: "config" | "pref", workspace: string | null,
@@ -221,6 +224,18 @@ function workspacesOf(win) {
 }
 
 /**
+ * How `win`'s workspace model stands against its live tabs (WindowWorkspaces.health); no
+ * counts for a window without workspaces.
+ * @param {Window} win
+ */
+function healthOf(win) {
+  const ww = WindowWorkspaces.get(win);
+  if (!ww?.model) return { live: null, pendingMs: null, recovered: null, lastError: null };
+  const { live, pendingMs, recovered, lastError } = ww.health();
+  return { live, pendingMs, recovered, lastError };
+}
+
+/**
  * The report's update line: on or off, the install type, the last result; no URL or path.
  * @param {AboutData["updates"]} u
  */
@@ -307,6 +322,7 @@ export const AboutVimma = {
       workspaces: {
         count: WorkspaceStore.definitions.workspaces.length,
         window: workspacesOf(win),
+        ...healthOf(win),
       },
       control: {
         enabled: Services.prefs.getBoolPref(ENABLED_PREF, false),
@@ -318,6 +334,16 @@ export const AboutVimma = {
       firefoxKeys: VimmaHost.firefoxKeys(win),
       windowManager: PrivateSwap.status,
     };
+  },
+
+  /**
+   * The workspace lines of the report past its first: a restore pending or never finished, the
+   * last rebuild error. The page shows them under the workspace count.
+   * @param {AboutData} data
+   * @returns {string[]}
+   */
+  workspaceNotes(data) {
+    return workspaceReport(data.workspaces).slice(1);
   },
 
   /**
@@ -357,9 +383,7 @@ export const AboutVimma = {
         (data.theme.name ? `, ${data.theme.name}` : ""),
       ...(data.theme.lastError ? [`  error: ${data.theme.lastError}`] : []),
       ...data.theme.warnings.map((w) => `  warning: ${w}`),
-      `Workspaces: ${data.workspaces.count}; this window: ${
-        data.workspaces.window.map((w) => `${w.name} ${w.tabs}t/${w.panes}p`).join(", ") || "none"
-      }`,
+      ...workspaceReport(data.workspaces),
       // Only counts: a rule's domain can name the user's employer.
       `Routes: ${data.routes.rules.length}` +
         ` (${data.routes.rules.filter((r) => r.skipped).length} skipped)`,

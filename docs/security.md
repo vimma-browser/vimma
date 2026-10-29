@@ -903,8 +903,10 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   browser-scoped DENY, set on each HTTP response and when each document's window global is
   created, so a page a service worker serves is covered). They **must** open no new window or
   tab (`SANDBOXED_AUXILIARY_NAVIGATION` on every agent tab, which is reloaded if it had loaded
-  without it) and launch no other app through an external protocol (Firefox's chooser is
-  wrapped for the agent container). Their downloads follow M11-M13. A tab of another workspace
+  without it; a top-level document it loads over HTTP loses its `Cross-Origin-Opener-Policy`,
+  which Firefox refuses in a sandboxed tab, since an agent tab has no opener and opens no window)
+  and launch no other app through an external protocol (Firefox's chooser is wrapped for the
+  agent container). Their downloads follow M11-M13. A tab of another workspace
   still asks, opens pop-ups and downloads as before.
   [`test_the_agent_container_asks_for_nothing`](../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_another_workspace_still_asks`](../tests/browser/browser_vimma_mcp_agent_pages.js),
@@ -912,7 +914,9 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_site_permissions_are_per_workspace`](../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_a_page_from_a_service_worker_is_denied_too`](../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_a_sweep_reloads_agent_tabs_that_loaded_unsandboxed`](../tests/browser/browser_vimma_mcp_agent_pages.js),
-  [`test_agent_pages_launch_no_app`](../tests/browser/browser_vimma_mcp_agent_pages.js)
+  [`test_agent_pages_launch_no_app`](../tests/browser/browser_vimma_mcp_agent_pages.js),
+  [`test_builtin_agent_opens_coop_pages`](../tests/browser/browser_vimma_agent_coop.js),
+  [`test_mcp_agent_opens_coop_pages`](../tests/browser/browser_vimma_agent_coop.js)
 - M11. A download from the agent workspace (by its container, its tab's container, or being written
   to the quarantine folder) **must** ask in the question line first (its name, size, type and host,
   **never** the URL). It is the `vimma_download` of an agent connection only when it is the very

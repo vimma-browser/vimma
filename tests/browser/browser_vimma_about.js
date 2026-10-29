@@ -211,6 +211,42 @@ add_task(async function bug_copies_a_redacted_report() {
   while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
 });
 
+add_task(async function the_report_counts_open_tabs_beside_the_workspace_model() {
+  // Issue #546: tab search and the side panel list the model's tabs, the status bar the open
+  // ones. The report says both, so a model out of step shows in the next `:bug`.
+  const { AboutVimma } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/about/AboutVimma.sys.mjs",
+  );
+  const { WindowWorkspaces } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
+  );
+  await WorkspaceStore.init();
+  const page = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?count`);
+  const ww = WindowWorkspaces.get(window);
+  await until(
+    () => ww.idOf(page) && ww.model?.workspaces.some((w) => w.tabs.includes(ww.idOf(page))),
+    "the tab is in the model",
+  );
+  const live = gBrowser.tabs.filter((t) => !t.pinned && !t.closing).length;
+  const text = AboutVimma.report(await AboutVimma.collect(window));
+  Assert.stringContains(text, `; open tabs ${live}, in workspaces ${live}\n`, "both counts");
+  Assert.ok(!text.includes("restore pending"), "no restore under way");
+
+  // A restore under way: the report says so, and for how long.
+  window.dispatchEvent(new window.Event("SSWindowStateBusy"));
+  try {
+    const pending = AboutVimma.report(await AboutVimma.collect(window));
+    Assert.stringMatches(
+      pending,
+      /\n {2}restore pending: \d+s \(SessionStore/,
+      "the pending restore",
+    );
+  } finally {
+    window.dispatchEvent(new window.Event("SSWindowStateReady"));
+  }
+  BrowserTestUtils.removeTab(page);
+});
+
 add_task(async function vim_keys_scroll_it() {
   const tab = await openAbout();
   const browser = tab.linkedBrowser;

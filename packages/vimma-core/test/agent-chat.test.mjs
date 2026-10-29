@@ -250,7 +250,7 @@ describe("the header (Behaviour 6)", () => {
   test("says where data goes and where the agent works", () => {
     expect(chatHeader({ provider: local, granted: false })).toEqual([
       "local · qwen3:14b · stays on this machine",
-      "works in: agent workspace · asks every step",
+      "works in: agent workspace",
     ]);
     expect(
       chatHeader({
@@ -267,6 +267,20 @@ describe("the header (Behaviour 6)", () => {
       "anthropic · claude-sonnet-4-5 · page text sent to api.anthropic.com",
       "works in: agent workspace · granted · 14/60 steps",
     ]);
+  });
+
+  test("asks every step only for a task sent with ctrl+Enter (Behaviour 24-25)", () => {
+    // Before any task nothing is granted or asked: sending with Enter will be the grant.
+    expect(chatHeader({ provider: local, granted: false, asking: false })[1]).toBe(
+      "works in: agent workspace",
+    );
+    expect(chatHeader({ provider: local, granted: false, asking: true })[1]).toBe(
+      "works in: agent workspace · asks every step",
+    );
+    // A grant given in answer to one of those questions shows as a grant.
+    expect(chatHeader({ provider: local, granted: true, asking: true })[1]).toBe(
+      "works in: agent workspace · granted",
+    );
   });
 
   test("a local address that was not probed is named, not called private", () => {
@@ -288,8 +302,12 @@ describe("the header (Behaviour 6)", () => {
   test("an agent CLI: its name, the model it reported, and that it decides where data goes", () => {
     expect(chatHeader({ provider: claude, granted: false })).toEqual([
       "claude-code · sent where Claude Code sends it",
-      "works in: agent workspace · asks every step · its own tools: as its configuration allows",
+      "works in: agent workspace · its own tools: as its configuration allows",
     ]);
+    // A task sent with ctrl+Enter asks every step, and the header says so.
+    expect(chatHeader({ provider: claude, granted: false, asking: true })[1]).toBe(
+      "works in: agent workspace · asks every step · its own tools: as its configuration allows",
+    );
     expect(
       chatHeader({
         provider: { ...claude, model: "sonnet" },

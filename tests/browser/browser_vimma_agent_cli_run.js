@@ -467,7 +467,7 @@ addTidyTask(async function test_header_lists_the_clis_own_tools_from_its_init() 
   const before = AgentChat.get(c.id);
   Assert.equal(
     chatHeader({ provider: before.provider, granted: false, cli: before.cli })[1],
-    "works in: agent workspace · asks every step · its own tools: as its configuration allows",
+    "works in: agent workspace · its own tools: as its configuration allows",
     "before its first run",
   );
   await run(c.id, "hello");

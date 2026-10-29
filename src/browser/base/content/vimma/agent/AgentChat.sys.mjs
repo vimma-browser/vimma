@@ -69,14 +69,16 @@ ChromeUtils.defineESModuleGetters(lazy, {
  *   stopped: boolean,
  *   budget: Budget | null, done: Promise<TaskResult> | null,
  *   last: { outcome: string, error?: string } | null, transcript: Transcript,
- *   confirmed: string | null, granted: boolean, uid: string, created: number, used: number,
- *   stored: StoredEntry[], taskStart: number, urls: unknown[],
+ *   confirmed: string | null, granted: boolean, asking: boolean, uid: string, created: number,
+ *   used: number, stored: StoredEntry[], taskStart: number, urls: unknown[],
  *   cli: { model: string, tools: string[] | null } | null, costNoted: boolean }} Conversation
  *   `confirmed`: the endpoint (or `cli:<id>`, core noticeTarget) whose notice of what leaves the
  *   machine the user answered y to (Behaviour 5); `cli`: what an agent CLI reported when its
  *   last run started, for the header (builtin-agent-cli C7); `costNoted`: the transcript said
- *   that max_cost does not apply to its CLI (C13); `granted`: whether it had a grant at the last change, for the transcript's
- *   notice when that changes; `uid`: its file's name; `stored`: what its file holds (B15);
+ *   that max_cost does not apply to its CLI (C13); `granted`: whether it had a grant at the last
+ *   change, for the transcript's notice when that changes; `asking`: its latest task was sent
+ *   with ctrl+Enter, so the header says each step asks (Behaviour 6, 25); `uid`: its file's
+ *   name; `stored`: what its file holds (B15);
  *   `taskStart`: where the running task's transcript entries begin; `urls`: the pages its task
  *   was asked about, for the summary's hosts
  * @typedef {import("../core/agent-store.mjs").StoredEntry} StoredEntry
@@ -221,6 +223,7 @@ function make(o) {
     transcript: new Transcript(),
     confirmed: null,
     granted: false,
+    asking: false,
     uid: o.uid ?? Services.uuid.generateUUID().toString().slice(1, -1),
     created: o.created ?? now,
     used: o.used ?? now,
@@ -426,6 +429,7 @@ function view(/** @type {Conversation} */ c) {
     cli: c.cli,
     running: isRunning(c),
     granted: AgentGate.grants().some((g) => g.conn === c.conn),
+    asking: c.asking,
     budget: c.budget?.status() ?? null,
     last: c.last,
     uid: c.uid,
@@ -478,7 +482,10 @@ export const AgentChat = {
       AgentGate.relabel(c.conn, builtinLabel(c.title));
     }
     /** The send's effect on the grant: made by Enter, ended by ctrl+Enter (B18). */
-    const applyGrant = () => (ask ? AgentGate.endGrant(c.conn) : AgentGate.grantConnection(c.conn));
+    const applyGrant = () => {
+      c.asking = ask;
+      return ask ? AgentGate.endGrant(c.conn) : AgentGate.grantConnection(c.conn);
+    };
     if (c.task && !c.stopped) {
       c.transcript.user(text, { during: true });
       c.stored.push({ kind: "user", text });

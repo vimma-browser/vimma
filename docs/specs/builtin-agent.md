@@ -99,8 +99,11 @@ first, so that what the guide says a model can do is what the bench measured.
    `anthropic · claude-sonnet-4-5 · page text sent to api.anthropic.com`. A local address that
    is not one of the probed servers says `local endpoint 127.0.0.1:8000`, because Vimma cannot
    see whether that server forwards to a hosted model (Security and privacy). The second says
-   `works in: agent workspace`, then the conversation's grant (`granted`, or `asks every step`)
-   and, while a task runs, its steps (`14/60 steps`).
+   `works in: agent workspace`, then the conversation's approval and, while a task runs, its
+   steps (`14/60 steps`). The approval is `granted` while the conversation holds a grant, and
+   `asks every step` when its latest task was sent with `ctrl+Enter` and no grant stands
+   (Behaviour 24-25). Without either, as before the first task, it names none, because the next
+   task sent with `Enter` is itself the grant and nothing would ask.
 7. **A picker switches models.** In the window, `m` (normal mode) opens a picker of the
    configured providers and the models the local servers report. Each conversation remembers
    its provider and model, so one conversation can run small tasks locally and another a harder
