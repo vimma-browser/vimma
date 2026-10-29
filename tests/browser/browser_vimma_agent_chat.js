@@ -178,11 +178,9 @@ addTidyTask(async function test_header_says_where_it_works() {
   Assert.ok(box().getBoundingClientRect().width >= 400, "about 420 px wide");
   Assert.deepEqual(
     header(),
-    [
-      `scripted · scripted · local endpoint 127.0.0.1:${PORT}`,
-      "works in: agent workspace · asks every step",
-    ],
-    "the provider, where data goes, and where the agent works (Behaviour 6)",
+    [`scripted · scripted · local endpoint 127.0.0.1:${PORT}`, "works in: agent workspace"],
+    "the provider, where data goes, and where the agent works; before a task, no approval " +
+      "is named, since sending with Enter is the grant (Behaviour 6, 24)",
   );
   Assert.equal(box().getAttribute("role"), "region", "a region of Vimma's own chrome");
 });
@@ -223,6 +221,10 @@ addTidyTask(async function test_shift_enter_adds_a_line_and_ctrl_enter_asks() {
   send(script([openStep(PAGE), { reply: "done" }]), { ask: true });
   await until(slotOpen, "the step asks in the prompt slot (Behaviour 25, 27)");
   Assert.ok(!AgentGate.grants().some((g) => g.conn === AgentChat.get(openId()).conn), "no grant");
+  Assert.ok(
+    header()[1].startsWith("works in: agent workspace · asks every step"),
+    "the header says a ctrl+Enter task asks every step (Behaviour 6, 25)",
+  );
 });
 
 addTidyTask(async function test_question_in_the_prompt_slot_and_never_answered_by_the_input() {
