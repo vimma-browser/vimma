@@ -251,9 +251,10 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    would save only the tools' time, which is under 2 % of a run.
 7. **Rates stay as they are** (S7), because the open rate bounds what a steered model can send
    out in URLs (builtin-agent, "Prompt injection"). At 10 loads a minute a ten-item list needs
-   at least a minute of loads, which fits the goal. The `busy` refusal instead says which rate
-   was reached and when it frees a slot (Delivery 7), so that a model waits instead of
-   retrying, as [agent-bench.md](../agent-bench.md) found.
+   at least a minute of loads, which fits the goal. A refusal that names the rate and when the
+   next call is allowed lets a model wait instead of retrying, as
+   [agent-bench.md](../agent-bench.md) found; that change is
+   [#594](https://github.com/vimma-browser/vimma/pull/594), outside this spec.
 8. **Local models: GPU, the right model, thinking off for steps** (S8). The bench machine's
    GPU is unused because Ollama leaves out integrated GPUs by default (Research); the runbook
    and the guide give the setting, and the bench records where each model ran (`ollama ps`).
