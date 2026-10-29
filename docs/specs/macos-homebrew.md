@@ -621,5 +621,5 @@ joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
    but each release waits for Homebrew's review. **Recommendation: (b)**, keeping the tap until
    the official cask is accepted.
 2. **Intel Macs.** (a) none, as macos-build decides: Homebrew 7 already puts Intel at tier 3.
-   (b) an x86_64 `.dmg` and `on_intel` in the cask, if macos-build's open question 1 adds one.
+   (b) an x86_64 `.dmg` and `on_intel` in the cask, if macos-build adds one (its decision 3).
    **Recommendation: (a).**
