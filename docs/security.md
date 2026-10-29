@@ -1007,7 +1007,9 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   principal may load anything. Its label **must** be from this connection's last `f` on that
   tab, of the top document still shown at the same URL and, for a link in a frame, of that
   frame's document still shown, no older than 120 s; otherwise the step is refused with `stale
-labels: send f again`. The label names the href captured when `f` ran, so a frame that
+labels: send f again`. The 120 s bound `f`'s own list because the child keeps none of its
+  links, so nothing else ends a label of a link the page has since replaced; a `vimma_elements`
+  list's labels are held by element instead (M25). The label names the href captured when `f` ran, so a frame that
   changed its URL without a new document cannot change where a follow goes. A follow to another site (another
   registrable domain, eTLD+1) **must** be asked as a `vimma_open` of its whole URL, unless the
   connection holds a grant, and a no stops the call (`stopped: "denied"`); it is
@@ -1137,9 +1139,21 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   nothing on the page (no click, no focus, no event). It lists nothing on a page that is not http
   or https. Each frame's child keeps the agent's elements apart from the user's hint targets, so
   a list never cancels the user's hint mode in the same window and never takes the user's targets
-  from the page; its labels replace the connection's last `f` on that tab and live by M18's
-  rules, and `f<label>` follows only a link from the list, as a load (M18), and only while the
-  link is still in its document. `agent-activate` (F8-F11) is held the same way: it clicks only
+  from the page; its labels replace the connection's last `f` on that tab and are bound as M18's
+  are, to this connection, that tab, the top document still shown at the same URL and, for an
+  element in a frame, that frame's document still shown, but with no time limit: a label lasts
+  until the page navigates, its document changes, a new list or `f` replaces it, or its element
+  leaves the page, each of which refuses it (`stale labels` or `that element is gone`). An
+  element counts as on the page only while it is connected and still belongs to the document
+  it was listed in, so one the page adopts into another document (a frame of its own) is gone
+  too. The child holds each listed element by reference, so a label can only ever name the
+  element the agent was shown. A time limit added nothing to that, since a page can change an
+  element's text within any lifetime, and it refused most clicks of a model that takes 90 s a
+  step. What a click or a fill then does is asked and checked at that moment, from the element
+  as it is then and never from the list (M26-M28, M33). `f<label>` follows only a link from the
+  list, as a load of the href the list showed (M18), and only while the link is still in its
+  document. `agent-activate`
+  (F8-F11) is held the same way: it clicks only
   an element of the connection's current `vimma_elements` list, on an http or https page, with
   the tab never selected and the element never focused, and it is denied as `in-use` while you
   are using the tab, before the question and after the yes. `agent-fill` (F12) is held the same
@@ -1160,6 +1174,9 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   [`test_agent_labels_leave_the_users_hint_mode_alone`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_f_follows_only_links_from_an_elements_list`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_labels_of_a_gone_element_are_refused`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_element_labels_last_while_their_element_is_there`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_screenshot_draws_labels`](../tests/browser/browser_vimma_mcp_screenshot.js),
+  [`an element list's labels last as long as their page, however slow the agent`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-elements: a tab and no other field`](../packages/vimma-core/test/control-v2.test.mjs),
   [`test_activate_clicks_a_button_in_a_background_tab`](../tests/browser/browser_vimma_mcp_activate.js),
   [`test_activate_in_use_while_the_user_types`](../tests/browser/browser_vimma_mcp_activate.js),
@@ -1425,8 +1442,9 @@ labels: send f again`. The label names the href captured when `f` ran, so a fram
   pass it on as an MCP image item only after the untrusted header, which says that text in the
   image is web content and not from you. Labels drawn on it (F20) come only from the
   connection's current `vimma_elements` list of that page, and only while its top frame has
-  not scrolled since the list was made; else none is drawn and the result says the list is
-  stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
+  not scrolled since the list was made and for 120 s after it, because they are drawn at the
+  places the list recorded and a page that updates in place moves its elements without a
+  navigation; else none is drawn and the result says the list is stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
   meets the viewport of any frame of the tab: each frame's child checks, just before and again
   just after the drawing, every form control of its document and its open and closed shadow
   trees, a number field showing text it cannot parse and an autofill preview counting as a

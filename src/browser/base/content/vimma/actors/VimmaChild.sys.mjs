@@ -754,6 +754,26 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   /**
+   * Whether `el` is still in this frame's document. Connected alone is not enough: a page can
+   * adopt a listed element into another document (a frame of its own), where a click or fill
+   * would act outside the frame the parent checked (security.md M25).
+   * @param {Element | null | undefined} el
+   * @returns {el is Element}
+   */
+  #onPage(el) {
+    return !!el?.isConnected && el.ownerDocument === this.document;
+  }
+
+  /**
+   * The agent's listed element `id`, while it is in this frame's document (#onPage).
+   * @param {number} id
+   */
+  #agentListed(id) {
+    const el = this.#agentEls.els[id]?.deref();
+    return el && this.#onPage(el) ? el : undefined;
+  }
+
+  /**
    * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
@@ -762,10 +782,10 @@ export class VimmaChild extends JSWindowActorChild {
    */
   #agentElement(data) {
     const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
-    const el = known ? this.#agentEls.els[data.id]?.deref() : undefined;
+    const el = known ? this.#agentListed(data.id) : undefined;
     switch (data?.op) {
       case "alive":
-        return !!el?.isConnected;
+        return this.#onPage(el);
       case "inspect":
         return actTargetOf(el);
       case "activate":
@@ -811,7 +831,7 @@ export class VimmaChild extends JSWindowActorChild {
         /** @type {Set<Element>} */
         const skip = new Set();
         for (const id of Array.isArray(data.skip) ? data.skip : []) {
-          const field = isIndex(id) ? this.#agentEls.els[id]?.deref() : undefined;
+          const field = isIndex(id) ? this.#agentListed(id) : undefined;
           if (field) skip.add(field);
         }
         return sentFieldsOf(el, data.by === "form" ? "form" : "click", skip);
@@ -831,7 +851,7 @@ export class VimmaChild extends JSWindowActorChild {
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentFillField(el, asked) {
-    if (!el?.isConnected) return "gone";
+    if (!this.#onPage(el)) return "gone";
     if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
     const value = asked.value;
     if (typeof value !== "string" && typeof value !== "boolean") return "changed";
@@ -841,7 +861,7 @@ export class VimmaChild extends JSWindowActorChild {
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
       // A busy page can delay this past the parent's wait: then nothing is set.
-      if (Date.now() > until || !el.isConnected || !this.#fillAsAsked(el, asked)) {
+      if (Date.now() > until || !this.#onPage(el) || !this.#fillAsAsked(el, asked)) {
         fill.outcome = "skipped";
         return;
       }
@@ -874,7 +894,7 @@ export class VimmaChild extends JSWindowActorChild {
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentSubmit(el, asked) {
-    if (!el?.isConnected) return "gone";
+    if (!this.#onPage(el)) return "gone";
     if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
     const form = /** @type {any} */ (el).form;
     const now = form ? defaultSubmitOf(form) : null;
@@ -895,7 +915,7 @@ export class VimmaChild extends JSWindowActorChild {
           // the test's page function threw: the check below sees what it left
         }
       }
-      const again = form.isConnected ? defaultSubmitOf(form) : null;
+      const again = this.#onPage(form) ? defaultSubmitOf(form) : null;
       if (
         Date.now() > until ||
         !again ||
@@ -936,7 +956,7 @@ export class VimmaChild extends JSWindowActorChild {
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
       try {
-        if (Date.now() <= until && el.isConnected) {
+        if (Date.now() <= until && this.#onPage(el)) {
           this.#agentWatch = { gen: asked.gen, id: asked.id, before: this.#pageMarks(asked.id) };
         }
       } catch {
@@ -945,7 +965,7 @@ export class VimmaChild extends JSWindowActorChild {
       this.#startStepWatch();
       // A busy page can delay this past the parent's wait: then nothing is clicked.
       const ran =
-        Date.now() <= until && el.isConnected && this.#press(el, () => this.#asAsked(el, asked));
+        Date.now() <= until && this.#onPage(el) && this.#press(el, () => this.#asAsked(el, asked));
       if (!ran) this.#skipped();
       click.outcome = ran ? "clicked" : "skipped";
     });
@@ -1076,7 +1096,7 @@ export class VimmaChild extends JSWindowActorChild {
    * @param {number} id
    */
   #pageMarks(id) {
-    const listed = this.#agentEls.els.map((ref) => ref.deref());
+    const listed = this.#agentEls.els.map((_, i) => this.#agentListed(i));
     return pageMarks(/** @type {Document} */ (this.document), listed, id);
   }
 
@@ -1227,7 +1247,7 @@ export class VimmaChild extends JSWindowActorChild {
       const buttons = type === "mousedown" ? 1 : 0;
       el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));
     }
-    if (!el.isConnected || !still()) return false;
+    if (!this.#onPage(el) || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();
     else el.dispatchEvent(new win.MouseEvent("click", init));

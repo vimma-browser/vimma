@@ -295,8 +295,12 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    the yes returns the list too.)
 3. **One session per tab and connection.** The labels go into the same session store as
    `vimma_keys`' `f` (`ctl/AgentDrive.sys.mjs:89-90`), bound to the document and URL and valid
-   for 120 s, so a label never names an element of another page. `vimma_elements` and `f` each
-   replace the session. `vimma_activate` and `vimma_fill` take labels only from a
+   for 120 s, so a label never names an element of another page. (Since changed: an element
+   list's labels have no time limit; they last while their document, URL and element do,
+   because a model taking 90 s a step lost most clicks to the 120 s, and the element reference
+   already binds the label (#591; security.md M25). An element the page adopts into another
+   document counts as gone. `f`'s link list keeps the 120 s.)
+   `vimma_elements` and `f` each replace the session. `vimma_activate` and `vimma_fill` take labels only from a
    `vimma_elements` session, because only that list showed the agent each element's kind and
    field details; `vimma_keys`' `f<label>` keeps following only link targets, as loads
    (mcp-drive D12), from either list, so that a label of a button never becomes a load. A label
@@ -558,7 +562,9 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     scaled), in the theme's hint colours, so that a model looking at the image can name the
     button it sees. A session that is not current (F3), or whose top frame has scrolled since
     the list was made, draws nothing and the result says the list is stale, because labels at
-    the old places would name the wrong elements.
+    the old places would name the wrong elements. (Since changed: also a list older than 120 s,
+    `AGENT_ELEMENTS.drawMs`, once labels stopped expiring, because a page that updates in place
+    moves its elements without a navigation; #591.)
 21. **Limits and sensitive values.** At most 12 `agent-screenshot` requests per connection a
     minute (`busy` beyond), counted when asked, because each is a large reply and a paint in the
     content process. A screenshot is refused while a sensitive field (F6) in the viewport has a
@@ -702,7 +708,7 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 | **A click starts a purchase or sends a message.**                                                  | Form submissions ask every time and unasked ones are cancelled (F15, F16). A script-only button is an ordinary activation, shown in its question or notice and logged (F17); under a `vimma_activate` grant it runs unasked, with a notice and a log row (F25).                         |
 | **A local file is uploaded.**                                                                      | File fields are never filled or clicked (F9, F13).                                                                                                                                                                                                                                      |
 | **A click is a way around the cross-site question.**                                               | Links to another site are refused in `vimma_activate` and asked as `vimma_open` through `vimma_keys` (F10). Navigations a click causes count in the open rate (F11).                                                                                                                    |
-| **A label names a different element than the agent saw.**                                          | Labels are bound to the document, expire after 120 s, and their element must still be connected (F3, F4).                                                                                                                                                                               |
+| **A label names a different element than the agent saw.**                                          | Labels are bound to the document and their element must still be connected (F3, F4). (Since changed: the 120 s expiry was dropped for element lists, #591.)                                                                                                                             |
 | **The agent acts under the user's cursor.**                                                        | `in-use` (F27). Nothing is focused or selected (F8, F12).                                                                                                                                                                                                                               |
 | **A screenshot or console entry carries instructions**, or a token a page logged.                  | Both are labelled untrusted (F19, F24); they reach only the agent's own tab. Console reading runs no page code (F23).                                                                                                                                                                   |
 | **A screenshot shows a card number the user typed** in an agent tab.                               | A screenshot is refused while a sensitive field on screen has a value (F21).                                                                                                                                                                                                            |
