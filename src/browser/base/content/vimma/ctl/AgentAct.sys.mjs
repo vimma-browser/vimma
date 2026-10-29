@@ -44,6 +44,7 @@ import { AGENT_WAITS } from "../core/agent-wait.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { cutTo, shown } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
+import { errorPageText, loadErrorOf } from "../core/load-errors.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
@@ -845,6 +846,15 @@ export const AgentAct = {
   },
 
   /**
+   * The LOAD_ERRORS code of the Firefox error page the browser's top document is, or null
+   * (issue #643). The document's URI, not the tab's, which keeps the address that failed.
+   * @param {any} browser
+   */
+  loadError(browser) {
+    return loadErrorOf(String(browser.documentURI?.spec ?? ""));
+  },
+
+  /**
    * The elements on screen in `tab`, labelled, as the reply's `elements`, `dropped` and
    * `repeated`, with the labels for AgentDrive.remember once the caller has checked the tab
    * again; or why nothing is listed. `query` and `kinds` keep only the matching elements
@@ -860,6 +870,10 @@ export const AgentAct = {
    */
   async elements(tab, { query, kinds, seen } = {}) {
     const browser = tab.linkedBrowser;
+    // Firefox's error page, named as such (issue #643): "not an http page" sent models back to
+    // the same open.
+    const failed = AgentAct.loadError(browser);
+    if (failed) return { refused: `the page did not load: ${errorPageText(failed)}` };
     if (!onTheWeb(browser.contentPrincipal)) {
       return { refused: "elements are listed only on http and https pages" };
     }

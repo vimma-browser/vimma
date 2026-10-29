@@ -280,6 +280,9 @@ support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 ["browser_vimma_agent_coop.js"]
 support-files = ["file_vimma_agent_coop.sjs", "head_vimma_control.js"]
 
+["browser_vimma_agent_load_error.js"]
+support-files = ["head_vimma_control.js"]
+
 ["browser_vimma_mcp_agent_pages.js"]
 support-files = [
   "file_vimma_agent_page.html",

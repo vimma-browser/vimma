@@ -18,6 +18,7 @@ import {
   isAgentLabel,
 } from "./agent-act.mjs";
 import { isCtlVersion } from "./ctl-version.mjs";
+import { LOAD_ERRORS } from "./load-errors.mjs";
 import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
@@ -71,10 +72,11 @@ export const DIALOG_TYPES = Object.freeze(["alert", "confirm", "prompt"]);
 export const ACTIVATE_CHANGES = Object.freeze(["element", "elements", "text", "dialog"]);
 /**
  * Why an open, a click or a fill asked with `elements` returns no element list (issue #584):
- * the page was still loading, it changed while it was listed, or it could not be listed (not an
- * http or https page, or it did not answer). Words only, never the page's text.
+ * the page was still loading, it changed while it was listed, it could not be listed (not an
+ * http or https page, or it did not answer), or it did not load: Firefox showed its error page,
+ * named in `loadError` (issue #643). Words only, never the page's text.
  */
-export const STEP_UNLISTED = Object.freeze(["loading", "changed", "failed"]);
+export const STEP_UNLISTED = Object.freeze(["loading", "changed", "failed", "error"]);
 /**
  * Why an agent request was `denied` (vimma-mcp decision 4). `in-use`: the user is typing in that
  * tab, or a key sequence or hint mode is under way there (mcp-drive D13).
@@ -652,6 +654,14 @@ function checkStepList(result, errors) {
       errors.push(`result.unlisted must be one of ${STEP_UNLISTED.join(", ")}`);
     } else if (listed) errors.push("result.unlisted comes only without result.elements");
   }
+  if ("loadError" in result !== (result.unlisted === "error")) {
+    errors.push("result.loadError comes with result.unlisted error, and only with it");
+  } else if (
+    "loadError" in result &&
+    !(typeof result.loadError === "string" && Object.hasOwn(LOAD_ERRORS, result.loadError))
+  ) {
+    errors.push("result.loadError must be one of Firefox's error codes Vimma names, or other");
+  }
 }
 
 /**
@@ -662,7 +672,7 @@ function checkStepList(result, errors) {
 function checkOpenResult(result, errors) {
   noExtraFields(
     result,
-    ["tab", "url", "title", "elements", "dropped", "repeated", "unlisted"],
+    ["tab", "url", "title", "elements", "dropped", "repeated", "unlisted", "loadError"],
     errors,
     "result.",
   );
@@ -769,6 +779,7 @@ function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([]
       "dropped",
       "repeated",
       "unlisted",
+      "loadError",
       ...extra,
     ],
     errors,

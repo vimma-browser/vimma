@@ -1,0 +1,17 @@
+{
+  "description": "The open ended on Firefox's error page: unlisted error and the error's code from Vimma's fixed list (issue #643)",
+  "kind": "response",
+  "command": "agent-open",
+  "message": {
+    "type": "response",
+    "id": 4,
+    "ok": true,
+    "result": {
+      "tab": "12",
+      "url": "https://shop.invalid/",
+      "title": "Server Not Found",
+      "unlisted": "error",
+      "loadError": "dnsNotFound"
+    }
+  }
+}
