@@ -17,6 +17,7 @@
 /* global tidyTask -- from head_vimma_control.js */
 /* global requests, held, PORT, PROVIDER, script, openStep -- from head_vimma_agent_model.js */
 /* global add_setup, focusContent -- the harness and head.js */
+/* global InspectorUtils, goDoCommand -- the browser window's globals */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 Services.scriptloader.loadSubScript(
@@ -511,6 +512,59 @@ addTidyTask(async function test_a_key_typed_and_left_is_dropped_and_no_task_goes
     chat.askKey(anthropic);
     Assert.equal(keyField().value, "", "so the next key starts empty");
   } finally {
+    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  }
+});
+
+addTidyTask(async function test_an_entered_key_is_never_shown_again_nor_copied_out() {
+  const anthropic = {
+    name: "mock-anthropic",
+    kind: "anthropic",
+    endpoint: `http://127.0.0.1:${PORT}/anthropic`,
+    model: "claude-mock",
+    vision: true,
+  };
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: anthropic.name, providers: [anthropic] });
+  try {
+    await openChat();
+    const chat = VimmaHost._state(window).agentChat;
+    chat.askKey(anthropic);
+    await until(keyOpen, "the key field is open");
+    EventUtils.sendString(SECRET);
+    const field = keyField();
+    // Chrome documents always get the password field's eye button (TextControlElement::
+    // CreateButton); the key field must not draw it.
+    const eye = InspectorUtils.getChildrenForNode(field, true, false).find(
+      (n) => n.localName === "button",
+    );
+    Assert.ok(!eye?.checkVisibility(), "no reveal button");
+    field.revealPassword = true;
+    Assert.ok(!field.revealPassword, "nothing reveals the key, the context menu's item included");
+    let menus = 0;
+    const counted = () => menus++;
+    document.addEventListener("popupshowing", counted);
+    field.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    document.removeEventListener("popupshowing", counted);
+    $("textbox-contextmenu")?.hidePopup();
+    Assert.equal(menus, 0, "no context menu over the field");
+    SpecialPowers.clipboardCopyString("unchanged");
+    field.focus();
+    field.select();
+    goDoCommand("cmd_copy");
+    goDoCommand("cmd_cut");
+    Assert.equal(
+      SpecialPowers.getClipboardData("text/plain"),
+      "unchanged",
+      "neither copy nor cut takes the key out",
+    );
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(async () => await AgentKeys.has(anthropic.name), "the key is stored");
+    chat.askKey(anthropic);
+    await until(keyOpen, "changing it opens the field again");
+    Assert.equal(keyField().value, "", "empty: the stored key is not filled in");
+    chat.cancelKey();
+  } finally {
+    await AgentKeys.delete(anthropic.name);
     McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
   }
 });
