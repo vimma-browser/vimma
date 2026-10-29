@@ -1,0 +1,8 @@
+{
+  "description": "After the server proved it knows the ticket, the client sends it in place of the token",
+  "kind": "auth",
+  "message": {
+    "type": "auth",
+    "ticket": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718"
+  }
+}

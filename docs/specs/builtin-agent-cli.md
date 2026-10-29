@@ -1,7 +1,8 @@
 # Spec: builtin-agent-cli
 
-Status: draft · Area: `packages/vimma-core/src/` (new `agent-cli.mjs`: argument builders and
-stream parsers per CLI; `config.mjs` for `kind = "cli"`; `control.mjs` for the ticket hello);
+Status: accepted (Delivery 1 built) · Area: `packages/vimma-core/src/` (new `agent-cli.mjs`:
+argument builders and stream parsers per CLI; `config.mjs` for `kind = "cli"`; `control.mjs` for
+the ticket hello);
 `src/browser/base/content/vimma/` (new `agent/AgentCli.sys.mjs`: the process runner;
 `agent/AgentChat.sys.mjs`, `ui/agent-chat.mjs` for setup and the header; `ctl/VimmaControl.sys.mjs`
 and `ctl/agent-commands.mjs` for ticket connections); `tools/vimma-ctl` (`src/mcp_serve.rs`,
@@ -286,13 +287,19 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    written mode 0600 in the run's 0700 directory; Codex's `mcp_servers.vimma.env`, whose
    delivery without the command line is checked in its PR), never in a process's arguments,
    which other users can read in `/proc/<pid>/cmdline`. The handshake is S4's with the ticket
-   as the key, so the server proves it knows the ticket before the client sends anything. One
+   as the key, so the server proves it knows the ticket before the client sends anything. The
+   hello names the ticket by its id, HMAC-SHA256(ticket, `vimma-ticket` NUL), because the server
+   must know which live ticket to prove before the client may send one, and the id gives a
+   squatter on a stale port nothing it could use. With a ticket, `vimma-ctl mcp` never reads the
+   discovery file, because a process the CLI runs must never hold the token. One
    ticket serves one connection; a reconnect of the same `vimma-ctl` process uses its session id
    (mcp-session-grants) within the same run; a second connection with the ticket is refused and
    shown as a notice, `a second program used claude-code's ticket and was refused`. A process
    that reads the ticket (the CLI's own shell can read its environment) reaches only what the
    conversation already reaches, on the conversation's tabs and grant, since the ticket names
-   nothing else. The listener runs with MCP off, for tickets only, because it accepts nothing
+   nothing else. A ticket's connection counts toward S5's eight connections but not its four
+   agents, because a task the user started must not be kept out by MCP agents. The listener
+   runs with MCP off, for tickets only, writing no discovery file, because it accepts nothing
    but a ticket that only Vimma has handed out, for one run, and a CLI provider then works with
    MCP and full control off, as the chat window's other providers do (M35). Rejected: the
    token, because it opens every agent connection; a ticket in the command line, for `/proc`;
@@ -517,7 +524,7 @@ characters`. The recorded streams are fixtures made by runs against a scripted s
 - `config-agent.test.mjs`: `a cli provider parses with cli and model`; `command, path, args and
 env in a cli provider are errors with their line`; `local_only refuses a cli provider`;
   `max_minutes parses within its bounds`.
-- `control-v2.test.mjs`: `an agent-hello with a ticket validates; a ticket and a token together
+- `control-v2.test.mjs`: `an agent hello with a ticket validates; a ticket and a token together
 do not`.
 - `agent-budget.test.mjs`: `a cli task stops at max_minutes`; `reported cost is shown and
 max_cost does not stop a cli task`; `reported tokens count toward max_tokens`; `no report
@@ -536,7 +543,9 @@ stream and drives `vimma-ctl mcp`'s protocol with the ticket it is given:
 `test_no_process_before_a_task`; `test_task_on_stdin_and_fixed_arguments`;
 `test_runs_in_an_empty_private_directory_removed_after`;
 `test_ticket_connection_acts_as_the_conversation`; `test_ticket_listener_with_mcp_off_takes_only_tickets`;
-`test_second_connection_with_a_ticket_is_refused`; `test_ticket_never_in_cmdline_prefs_or_log`;
+`test_mcp_agents_cannot_keep_out_a_ticket`; `test_second_connection_with_a_ticket_is_refused`;
+`test_ticket_never_in_prefs_files_notices_or_log`; `test_stop_and_delete_close_the_ticket_connection`;
+`test_ticket_never_in_cmdline_prefs_or_log`;
 `test_enter_grant_covers_cli_steps_and_checkpoints_ask`; `test_stop_closes_the_connection_before_the_signal`;
 `test_cli_that_ignores_sigterm_is_killed_and_takes_no_step`; `test_own_tool_lines_are_marked`;
 `test_first_task_notice_says_the_clis_own_tools_are_not_confined`;

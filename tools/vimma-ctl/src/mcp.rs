@@ -366,6 +366,8 @@ pub enum Failure {
     Refused { code: String, message: String },
     /// No discovery file, a stale one, or nothing listening.
     NotRunning(String),
+    /// Run by Vimma with a ticket, and nothing listens for it: the task ended or was stopped.
+    TaskEnded(String),
     /// Vimma runs, but its agent role is off.
     McpOff,
     /// Vimma speaks only this older protocol.
@@ -2718,6 +2720,10 @@ pub fn failure_text(failure: &Failure) -> String {
         Failure::NotRunning(detail) => format!(
             "Vimma is not running, or its MCP is off: start Vimma and run :mcp on in it (answer \
              y), then try again. ({detail})"
+        ),
+        Failure::TaskEnded(detail) => format!(
+            "this task's connection to Vimma has ended: the user stopped the task, or it \
+             finished. Do not try again, and stop here. ({detail})"
         ),
         Failure::McpOff => "MCP is off in Vimma: run :mcp on in Vimma (and answer y), then try \
                             again."

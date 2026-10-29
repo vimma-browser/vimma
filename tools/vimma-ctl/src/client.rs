@@ -121,13 +121,14 @@ impl Client {
             .checked_add(timeout)
             .ok_or_else(|| Error::Protocol("timeout out of range".to_string()))?;
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, discovery.port));
-        let stream = TcpStream::connect_timeout(&addr, timeout).map_err(|e| {
-            Error::NotRunning(format!(
-                "Vimma is not running (or the control socket is off): cannot connect to {addr}: \
-                 {e}; the discovery file may be stale (pid {})",
-                discovery.pid
-            ))
-        })?;
+        // A ticket's connection is the agent role only (docs/specs/builtin-agent-cli.md C3).
+        if discovery.ticket && role != Role::Agent {
+            return Err(Error::Protocol(
+                "a ticket connects as the agent role only".into(),
+            ));
+        }
+        let stream = TcpStream::connect_timeout(&addr, timeout)
+            .map_err(|e| not_listening(discovery, addr, &e))?;
         let mut client = Self {
             reader: BufReader::new(stream),
             deadline,
@@ -138,8 +139,10 @@ impl Client {
         let nonce = random_nonce().map_err(|e| {
             Error::Protocol(format!("cannot read random bytes for the handshake: {e}"))
         })?;
-        // 1. hello: a fresh nonce and no token.
-        let hello = if protocol >= 2 {
+        // 1. hello: a fresh nonce and no token; a ticket only by its id.
+        let hello = if discovery.ticket {
+            protocol::hello_ticket(&nonce, &protocol::ticket_id(&discovery.token))
+        } else if protocol >= 2 {
             protocol::hello_v2(&nonce, role)
         } else {
             protocol::hello(&nonce)
@@ -157,18 +160,16 @@ impl Client {
         // stale discovery file's port cannot: it has seen only the nonce. It gets nothing more.
         let expected = protocol::challenge_proof(&discovery.token, &nonce);
         if !crate::hmac::constant_time_eq(challenge.proof.as_bytes(), expected.as_bytes()) {
-            return Err(Error::Impostor(format!(
-                "the server on port {} did not prove it knows the token: it is not this Vimma \
-                 (the discovery file may be stale); neither the token nor the command was sent",
-                discovery.port
-            )));
+            return Err(impostor(discovery));
         }
         // 3. auth: now the token; 4. welcome. While MCP is on (the `agent` role is served), Vimma
         // asks the user before it welcomes a full connection: wait for that answer, then give
         // the command its own timeout.
         // Only a full connection is asked about; an agent's requests are asked one by one.
         let asks = role == Role::Full && protocol >= 2 && discovery.roles.contains(&Role::Agent);
-        if asks {
+        if discovery.ticket {
+            client.send(&protocol::auth_ticket(&discovery.token))?;
+        } else if asks {
             let code = random_code().map_err(|e| {
                 Error::Protocol(format!("cannot read random bytes for the code: {e}"))
             })?;
@@ -404,6 +405,39 @@ fn io_error(e: &io::Error, timeout: Duration) -> Error {
 }
 
 /// Whether the discovery file says Vimma serves `role`, before connecting.
+/// Nothing listens on the port: for a ticket, its task has ended.
+fn not_listening(discovery: &Discovery, addr: SocketAddr, e: &io::Error) -> Error {
+    Error::NotRunning(if discovery.ticket {
+        format!(
+            "Vimma no longer listens for this task's connection on {addr} (the task ended or \
+             was stopped): {e}"
+        )
+    } else {
+        format!(
+            "Vimma is not running (or the control socket is off): cannot connect to {addr}: \
+             {e}; the discovery file may be stale (pid {})",
+            discovery.pid
+        )
+    })
+}
+
+/// The server's proof did not check out: neither the key nor a command was sent.
+fn impostor(discovery: &Discovery) -> Error {
+    Error::Impostor(if discovery.ticket {
+        format!(
+            "the server on port {} did not prove it knows this task's ticket: it is not Vimma; \
+             neither the ticket nor a command was sent",
+            discovery.port
+        )
+    } else {
+        format!(
+            "the server on port {} did not prove it knows the token: it is not this Vimma (the \
+             discovery file may be stale); neither the token nor the command was sent",
+            discovery.port
+        )
+    })
+}
+
 fn check_role(discovery: &Discovery, role: Role) -> Result<(), Error> {
     match role {
         // vimma-ctl's commands are the `full` role. A protocol 2 Vimma says which roles it
@@ -528,6 +562,7 @@ mod tests {
             pid: 1,
             roles: vec![Role::Full],
             version: None,
+            ticket: false,
         };
         let result = Client::connect(&discovery, Duration::MAX);
         assert!(matches!(result, Err(Error::NotRunning(_))), "{result:?}");
