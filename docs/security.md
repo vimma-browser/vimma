@@ -1727,6 +1727,14 @@ for the user.
   [`the notice before the first task names the host and, when known, who runs it`](../packages/vimma-core/test/agent-chat.test.mjs),
   [`test_agent_command_hidden_without_the_feature_pref`](../tests/browser/browser_vimma_agent_chat.js),
   [`a hidden action's commands do not exist: not run, not completed, not suggested`](../packages/vimma-core/test/cmdline.test.mjs)
+- M46. A hosted provider's key **must** be typed only into the window's password field, which
+  hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
+  window, the transcript, the status bar or a notice (which may show its last four characters),
+  nor kept in a pref or the conversation, and an error storing it **must not** be shown with its
+  text. A provider that needs a key and has none for its endpoint **must** be asked for it
+  before any request is sent; `x` in the picker deletes it after a `y`.
+  [`test_hosted_openai_compatible_provider_set_up_in_the_window`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_hosted_anthropic_provider_asks_for_its_key_before_the_task`](../tests/browser/browser_vimma_agent_chat.js)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 

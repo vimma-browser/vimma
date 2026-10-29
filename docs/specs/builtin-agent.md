@@ -612,13 +612,26 @@ agent to a part of the profile, or publishes which steps always ask.
 22. **The window ships behind the feature pref** (B22). `vimma.feature.agentChat` stays `false`
     after delivery 4, so neither `:agent`, the window nor its status bar text shows in a
     release, because a released window would still lose every conversation at a restart, which
-    Behaviour 20 says it keeps, and would have no way to enter a hosted provider's key, so the
-    user's first hosted task would fail; both come with delivery 5, and the window's key with
-    delivery 6. The pref turns on, and the guide, limits.md and the README describe the agent,
-    in the pull request that completes the last of them. Rejected: turning it on now with the
-    guide saying what is missing, because a feature that sends page text to a model should
-    reach users whole, with its setup and the review of the stored conversations.
-23. **One window per browser window, never in a private one** (B23, Behaviour 10). Each
+    Behaviour 20 says it keeps, and a provider chosen in the window would last only until the
+    restart, since setup does not yet write `[agent] default`; both come with delivery 5, and
+    the window's key with delivery 6. The pref turns on, and the guide, limits.md and the
+    README describe the agent, in the pull request that completes the last of them. Rejected:
+    turning it on now with the guide saying what is missing, because a feature that sends page
+    text to a model should reach users whole, with its stored conversations reviewed.
+23. **A hosted provider is set up in the window** (B24, Behaviour 3). The model picker (`m`,
+    `:agent model`) lists the configured providers, `add: Anthropic (Messages API)` and
+    `add: OpenAI-compatible endpoint`, then the local servers' models. Adding asks the endpoint
+    (`https://` off this machine, as B11 requires) and the model on the prompt line, then the
+    key in a masked field inside the window; a configured hosted provider without a key, chosen
+    in the picker or sent a task, asks for its key the same way, and the task stays in the input
+    until it is stored. The key goes from the field straight to `AgentKeys` (B8) and the field is
+    emptied at once, so it is never drawn, kept by the window, or written to the transcript, a
+    notice (which shows only its last four characters), a pref or config.toml; `x` on a provider
+    in the picker deletes its key after `y/N`. The endpoint and model are asked on the prompt
+    line because neither is secret, while the key gets a password field because the prompt line
+    draws what is typed. Rejected: asking the key on the prompt line, because it would be shown
+    on screen while typed.
+24. **One window per browser window, never in a private one** (B23, Behaviour 10). Each
     normal browser window has its own chat window, open on one conversation at a time, and a
     question shows in the slot of the window open on its conversation, else on the question
     line. A private window does not open it, because the agent's questions are answered only in
@@ -911,18 +924,18 @@ Each PR is mergeable and tested on its own; the window appears only in PR 4.
    storage, the ADR, security.md, with mochitests. The `:agent` commands come with the window
    (delivery 4) rather than here, because without the window the agent's replies and steps
    have nowhere to go but the notice line, where each one replaces the last (Design 1).
-4. `feat(agent): the chat window` (B1, B9, B16, B19-B23, Behaviour 10-18, 27-28, 34-35): the
+4. `feat(agent): the chat window` (B1, B9, B16, B19-B24, Behaviour 10-18, 27-28, 34-35): the
    window, the transcript, the prompt slot, giving a page, the `:agent` commands, the model
    picker with the local probe (Behaviour 7), the status bar segment, security.md's rules for
-   the window, mochitests, and e2e screenshots with the Omarchy theme. The conversation list,
-   clearing and forgetting work in memory. The feature pref stays off (B22), so the guide,
+   the window, mochitests, and e2e screenshots with the Omarchy theme. Hosted providers are
+   set up in the window (B24): Anthropic's Messages API or an OpenAI-compatible endpoint, with
+   the key in a masked field, tested end to end against a mock of both APIs. The conversation
+   list, clearing and forgetting work in memory. The feature pref stays off (B22), so the guide,
    limits.md and the README change when it turns on.
 5. `feat(agent): conversations kept across restarts` (B15, Behaviour 19-23): the encrypted
-   store behind the list, clearing the context, deleting and `keep_days`, and setup's remaining
-   screens (Behaviour 1-3, 5): the masked field that stores a hosted provider's key and setup's
-   confirmation that makes `[agent] default`, with security.md's rules and mochitests. The key
-   field comes here rather than with the window because the key and the conversations are the
-   two secrets the agent stores, both encrypted with `OSKeyStore`, and one review covers them.
+   store behind the list, clearing the context, deleting and `keep_days`, and setup's
+   confirmation that writes the chosen provider and `[agent] default` to config.toml
+   (Behaviour 2), with security.md's rules and mochitests.
 6. `feat(keys): a key opens the agent chat window` (B13): one keymap PR, with the regenerated
    bindings docs, the help snapshot and a screenshot of `ctrl+b ?`.
 7. The `query` and `kinds` filters of `vimma_elements` (B2), in their own spec for MCP and the

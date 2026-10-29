@@ -35,6 +35,12 @@ const { McpHost } = ChromeUtils.importESModule("chrome://browser/content/vimma/h
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
+const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/OSKeyStoreTestUtils.sys.mjs",
+);
+const { AgentKeys } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
+);
 const { AGENT_DEFAULTS } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/config.mjs",
 );
@@ -120,6 +126,8 @@ let savedConfig = null;
 async function tidy() {
   const chat = VimmaHost._state(window).agentChat;
   chat.close();
+  // A draft left in the input would join the next test's message.
+  if (input()) input().value = "";
   AgentChat.stopAll();
   for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
   for (const c of AgentChat.list()) AgentChat.delete(c.id);
@@ -144,6 +152,8 @@ add_setup(async () => {
       [ARMING, 300],
     ],
   });
+  OSKeyStoreTestUtils.setup();
+  registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());
   savedConfig = McpHost.agentConfig;
   McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
   registerCleanupFunction(() => McpHost.configureAgent(savedConfig));
@@ -336,6 +346,8 @@ addTidyTask(async function test_give_moves_the_tab_after_y_and_makes_it_the_conv
 addTidyTask(async function test_external_provider_notice_before_first_task() {
   const external = { ...PROVIDER, name: "far", endpoint: "https://example.com/v1" };
   McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "far", providers: [external] });
+  // A hosted provider asks for its key first; this one has one.
+  await AgentKeys.set("far", "sk-test-far", external.endpoint);
   try {
     await openChat();
     Assert.equal(header()[0], "far · scripted · page text sent to example.com");
@@ -354,6 +366,124 @@ addTidyTask(async function test_external_provider_notice_before_first_task() {
     AgentChat.confirm(openId(), "https://elsewhere.example/v1");
     Assert.ok(AgentChat.needsNotice(openId()), "a y to another endpoint confirms nothing");
   } finally {
+    await AgentKeys.delete("far");
+    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  }
+});
+
+const SECRET = "sk-test-SECRET-9f3a";
+
+/** The key field: masked, in the window, never the transcript. */
+const keyField = () => /** @type {HTMLInputElement} */ ($("vimma-agent-chat-key"));
+const keyOpen = () => !!keyField() && !keyField().parentElement.hidden;
+
+/** Nothing Vimma shows or keeps outside login storage holds the key (Behaviour 3, M40). */
+function assertKeyNowhere() {
+  Assert.ok(!box().textContent.includes(SECRET), "not in the window");
+  Assert.ok(!$("vimma-statusbar").textContent.includes(SECRET), "not in the status bar");
+  Assert.ok(!($("vimma-notice")?.textContent ?? "").includes(SECRET), "not in a notice");
+  Assert.equal(keyField()?.value ?? "", "", "the field is emptied");
+  const prefs = Services.prefs.getChildList("").filter((name) => {
+    const type = Services.prefs.getPrefType(name);
+    return (
+      type === Services.prefs.PREF_STRING && Services.prefs.getStringPref(name, "").includes(SECRET)
+    );
+  });
+  Assert.deepEqual(prefs, [], "not in any pref");
+  Assert.ok(
+    !JSON.stringify(AgentChat.list()).includes(SECRET) &&
+      !JSON.stringify(AgentChat.transcript(openId()).entries).includes(SECRET),
+    "not in the conversation",
+  );
+}
+
+addTidyTask(async function test_hosted_openai_compatible_provider_set_up_in_the_window() {
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: null, providers: [] });
+  const name = "127.0.0.1";
+  try {
+    await openPage();
+    runCommand("agent model");
+    await until(
+      () => logText().includes("add: OpenAI-compatible endpoint"),
+      "the picker offers a hosted provider",
+    );
+    const rows = [...log().querySelectorAll(".vimma-agent-chat-row")].map((r) => r.textContent);
+    const at = rows.findIndex((r) => r.includes("add: OpenAI-compatible endpoint"));
+    for (let i = 0; i < at; i++) EventUtils.synthesizeKey("j");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(() => !!$("vimma-rename") && !$("vimma-rename").hidden, "it asks the endpoint");
+    EventUtils.sendString(`http://127.0.0.1:${PORT}/v1`);
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(() => /model/.test($("vimma-rename").textContent), "then the model");
+    EventUtils.sendString("scripted");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(keyOpen, "then the key, in the window");
+    Assert.equal(keyField().type, "password", "masked");
+    Assert.equal(document.activeElement, keyField(), "focused");
+    EventUtils.sendString(SECRET);
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(() => !keyOpen(), "the key is stored");
+    await until(
+      () => /127\.0\.0\.1: key stored · ends …9f3a/.test($("vimma-notice")?.textContent ?? ""),
+      "the notice shows only its last four characters",
+    );
+    Assert.equal(header()[0], `127.0.0.1 · scripted · local endpoint 127.0.0.1:${PORT}`);
+    await until(() => document.activeElement === input(), "back in the input");
+    send(script([openStep(PAGE), { reply: "Opened it." }]));
+    await finished();
+    await until(() => logText().includes("Opened it."), "the reply is shown");
+    Assert.ok(
+      logText().includes("opened example.com — ran under grant"),
+      `and the step: ${logText()}`,
+    );
+    Assert.equal(requests.at(-1).authorization, `Bearer ${SECRET}`, "the key went to the endpoint");
+    assertKeyNowhere();
+  } finally {
+    await AgentKeys.delete(name);
+    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  }
+});
+
+addTidyTask(async function test_hosted_anthropic_provider_asks_for_its_key_before_the_task() {
+  const anthropic = {
+    name: "mock-anthropic",
+    kind: "anthropic",
+    endpoint: `http://127.0.0.1:${PORT}/anthropic`,
+    model: "claude-mock",
+    vision: true,
+  };
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: anthropic.name, providers: [anthropic] });
+  try {
+    await openChat();
+    send(script([openStep(PAGE), { reply: "Opened it." }]));
+    await until(keyOpen, "no key yet: the window asks for it first");
+    Assert.ok(box().textContent.includes("API key for mock-anthropic"), "naming the provider");
+    Assert.ok(!requests.length, "and nothing was sent");
+    EventUtils.sendString(SECRET);
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(() => document.activeElement === input(), "back in the input");
+    Assert.ok(input().value.startsWith("SCRIPT:"), "with the task still there");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await finished();
+    await until(() => logText().includes("Opened it."), "the Messages API's reply is shown");
+    Assert.ok(logText().includes("opened example.com — ran under grant"), "and the step");
+    const sent = requests.filter((r) => r.path === "/anthropic/v1/messages");
+    Assert.ok(sent.length >= 2, "both turns went to the Messages API");
+    Assert.ok(
+      sent.every((r) => r.apiKey === SECRET),
+      "with the key in x-api-key",
+    );
+    assertKeyNowhere();
+    // The picker shows the stored key by its last four characters and deletes it after y.
+    EventUtils.synthesizeKey("KEY_Escape");
+    EventUtils.synthesizeKey("m");
+    await until(() => logText().includes("key stored · ends …9f3a"), "the picker names the key");
+    EventUtils.synthesizeKey("x");
+    await until(() => !!$("vimma-rename") && !$("vimma-rename").hidden, "it asks first");
+    EventUtils.synthesizeKey("y");
+    await until(async () => !(await AgentKeys.has(anthropic.name)), "x deleted the key");
+  } finally {
+    await AgentKeys.delete(anthropic.name);
     McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
   }
 });

@@ -18,8 +18,10 @@ import {
   chatKey,
   entryView,
   externalNotice,
+  isLocalEndpoint,
   whereDataGoes,
 } from "../core/agent-chat.mjs";
+import { checkEndpoint } from "../core/agent-providers.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
 import { buildPanelBox, giveFocusBack, rememberFocus } from "./side-panel.mjs";
@@ -28,6 +30,7 @@ const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   // Lazily: AgentChat reaches VimmaHost through the agent commands, and VimmaHost builds this.
   AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
+  AgentKeys: "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
   McpHost: "chrome://browser/content/vimma/host/mcp-ops.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
@@ -36,13 +39,25 @@ export const CHAT_ID = "vimma-agent-chat";
 export const CHAT_INPUT_ID = "vimma-agent-chat-input";
 export const CHAT_LOG_ID = "vimma-agent-chat-log";
 export const CHAT_SLOT_ID = "vimma-agent-chat-slot";
+export const CHAT_KEY_ID = "vimma-agent-chat-key";
+/** Anthropic's API, which setup's "add: Anthropic" uses (Behaviour 3). */
+const ANTHROPIC_ENDPOINT = "https://api.anthropic.com";
+const ANTHROPIC_MODEL = "claude-sonnet-4-5";
+const KEY_HINT = "Enter stores it, encrypted, in login storage · Esc cancels";
+
+/**
+ * Whether a provider's requests need an API key: Anthropic's always; an OpenAI-compatible
+ * endpoint off this machine (a local server takes none).
+ * @param {{ kind: string, endpoint: string }} p
+ */
+const needsKey = (p) => p.kind === "anthropic" || !isLocalEndpoint(p.endpoint);
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 const INSERT_HINT = "Enter sends · ctrl+Enter asks every step · shift+Enter new line · Esc";
 const NORMAL_HINT =
   "i write · j k move · s stop · m model · n new · c list · P give · y copy · q close";
 const LIST_HINT = "j k move · Enter open · d delete · n new · Esc back";
-const MODELS_HINT = "j k move · Enter use · Esc back";
+const MODELS_HINT = "j k move · Enter use · x delete its key · Esc back";
 const SLOT_HINT = "a question waits: answer it here";
 
 /**
@@ -53,9 +68,12 @@ const SLOT_HINT = "a question waits: answer it here";
  * @property {(id: number) => void} give  `P`, `:agent give`: the selected tab to conversation id
  * @property {(text: string) => void} copy  to the clipboard
  * @property {() => void} rearm  focus came into the window: its slot's question arms again
+ * @property {(o: { label: string, value?: string, submit: (text: string) => void }) => void}
+ *   prompt  a line of text on the prompt line (a hosted provider's endpoint and model)
  * @property {() => void} changed  the window opened, closed or switched conversation: the
  *   question may move between the line and the slot, and the status bar redraws
  * @typedef {{ label: string, detail: string, provider?: AgentProviderConfig,
+ *   add?: "anthropic" | "openai",
  *   local?: { endpoint: string, model: string, server: string }, id?: number }} Row
  */
 
@@ -99,8 +117,14 @@ export class AgentChatWindow {
     });
     /** @type {number | null} the conversation shown */
     this.conversation = null;
-    /** @type {"chat" | "models" | "list"} */
+    /** @type {"chat" | "models" | "list" | "key"} */
     this.view = "chat";
+    /** @type {HTMLInputElement | null} the masked key field (Behaviour 3) */
+    this.keyInput = null;
+    /** @type {HTMLElement | null} */
+    this.keyLabel = null;
+    /** @type {AgentProviderConfig | null} the provider whose key the field asks for */
+    this.keyFor = null;
     /** @type {Row[]} the models or conversations listed */
     this.rows = [];
     this.row = 0;
@@ -205,8 +229,9 @@ export class AgentChatWindow {
   /** The input, in insert mode. */
   insert() {
     this.view = "chat";
-    this.input?.focus();
+    // Drawn first: the input is hidden in the other views, and a hidden field takes no focus.
     this.render();
+    this.input?.focus();
   }
 
   /** Normal mode: the transcript has focus. */
@@ -279,6 +304,20 @@ export class AgentChatWindow {
       e.stopPropagation();
       return true;
     };
+    if (this.view === "key") {
+      // Typing goes to the masked field; only Enter and Esc are the window's.
+      if (key === "enter") {
+        consume();
+        this.storeKey();
+        return true;
+      }
+      if (key === "esc") {
+        consume();
+        this.cancelKey();
+        return true;
+      }
+      return false;
+    }
     if (this.view !== "chat") {
       if (chord.ctrl || chord.alt || chord.meta) return false;
       consume();
@@ -395,6 +434,30 @@ export class AgentChatWindow {
         },
       );
     };
+    const chosen = lazy.AgentChat.get(id).provider;
+    if (needsKey(chosen)) {
+      // A hosted provider without a key for its endpoint: the key first, and the task stays in
+      // the input to be sent once it is stored (Behaviour 3).
+      lazy.AgentKeys.hint(chosen.name, chosen.endpoint).then(
+        (/** @type {string | null} */ hint) => {
+          if (hint === null) this.askKey(chosen);
+          else this.afterKey(id, go);
+        },
+        (/** @type {any} */ e) => {
+          console.error("vimma agent: the key could not be read", e);
+          this.askKey(chosen);
+        },
+      );
+      return;
+    }
+    this.afterKey(id, go);
+  }
+
+  /**
+   * The rest of a send once its provider has the key it needs: Behaviour 5's notice, then go.
+   * @param {number} id @param {() => void} go
+   */
+  afterKey(id, go) {
     if (lazy.AgentChat.needsNotice(id)) {
       const provider = lazy.AgentChat.get(id).provider;
       this.host.ask(externalNotice(provider), () => {
@@ -422,6 +485,9 @@ export class AgentChatWindow {
     } else if (this.view === "list" && key === "d") {
       this.deleteRow();
       return;
+    } else if (this.view === "models" && key === "x") {
+      this.deleteKey();
+      return;
     }
     this.render();
   }
@@ -435,7 +501,23 @@ export class AgentChatWindow {
       detail: whereDataGoes(p.endpoint),
       provider: p,
     }));
+    // Setup's hosted providers (Behaviour 3): before the probe's rows, which come later.
+    rows.push(
+      { label: "add: Anthropic (Messages API)", detail: "api key", add: "anthropic" },
+      { label: "add: OpenAI-compatible endpoint", detail: "https:// and api key", add: "openai" },
+    );
     this.rows = rows;
+    for (const row of rows) {
+      const p = row.provider;
+      if (!p || !needsKey(p)) continue;
+      lazy.AgentKeys.hint(p.name, p.endpoint).then(
+        (/** @type {string | null} */ hint) => {
+          row.detail = hint ?? "no key · Enter adds one";
+          if (this.view === "models") this.render();
+        },
+        () => {},
+      );
+    }
     this.row = 0;
     this.render();
     // Asked only now, while the picker is open, and only on 127.0.0.1 (Behaviour 2, B12).
@@ -481,7 +563,19 @@ export class AgentChatWindow {
       this.open({ conversation: row.id });
       return;
     }
+    if (row.add) {
+      this.addProvider(row.add);
+      return;
+    }
     let provider = row.provider;
+    if (
+      provider &&
+      needsKey(provider) &&
+      (await lazy.AgentKeys.hint(provider.name, provider.endpoint)) === null
+    ) {
+      this.askKey(provider);
+      return;
+    }
     if (row.local) {
       this.host.say(`agent: preparing ${row.local.model}…`);
       try {
@@ -499,13 +593,130 @@ export class AgentChatWindow {
       }
     }
     if (!provider) return;
+    this.useProvider(provider);
+    this.insert();
+  }
+
+  /** @param {AgentProviderConfig} provider */
+  useProvider(provider) {
     if (this.conversation === null) {
       this.conversation = lazy.AgentChat.create({ provider }).id;
-    } else {
-      const refused = lazy.AgentChat.setProvider(this.conversation, provider);
-      if (refused) this.host.say(`agent: ${refused}`, true);
+      return;
     }
+    if (
+      lazy.AgentChat.get(this.conversation).provider.endpoint === provider.endpoint &&
+      lazy.AgentChat.get(this.conversation).provider.model === provider.model &&
+      lazy.AgentChat.get(this.conversation).provider.name === provider.name
+    ) {
+      return;
+    }
+    const refused = lazy.AgentChat.setProvider(this.conversation, provider);
+    if (refused) this.host.say(`agent: ${refused}`, true);
+  }
+
+  /**
+   * Setup's hosted provider (Behaviour 3): Anthropic's API, or an OpenAI-compatible endpoint,
+   * which must be https:// off this machine; then its model on the prompt line, then its key in
+   * the window's masked field. The provider lasts the session; config.toml keeps one for good.
+   * @param {"anthropic" | "openai"} kind
+   */
+  addProvider(kind) {
+    const localOnly = !!lazy.McpHost.agentConfig?.localOnly;
+    /** @param {string} endpoint */
+    const askModel = (endpoint) =>
+      this.host.prompt({
+        label: "agent model: ",
+        value: kind === "anthropic" ? ANTHROPIC_MODEL : "",
+        submit: (model) => {
+          const name = kind === "anthropic" ? "anthropic" : new URL(endpoint).hostname;
+          if (!model.trim()) return this.host.say("agent: a model name is needed", true);
+          return this.askKey({
+            name,
+            kind,
+            endpoint,
+            model: model.trim(),
+            vision: kind === "anthropic",
+          });
+        },
+      });
+    if (kind === "anthropic") {
+      const refused = checkEndpoint(ANTHROPIC_ENDPOINT, { localOnly });
+      if (refused) return this.host.say(`agent: ${refused}`, true);
+      return askModel(ANTHROPIC_ENDPOINT);
+    }
+    return this.host.prompt({
+      label: "agent endpoint (https://…/v1): ",
+      submit: (text) => {
+        const endpoint = text.trim().replace(/\/+$/, "");
+        const refused = checkEndpoint(endpoint, { localOnly });
+        if (refused) return this.host.say(`agent: ${refused}`, true);
+        return askModel(endpoint);
+      },
+    });
+  }
+
+  /**
+   * The masked key field for `provider` (Behaviour 3): what is typed there goes only to login
+   * storage, encrypted with OSKeyStore (B8), and is never drawn, logged or kept by the window.
+   * @param {AgentProviderConfig} provider
+   */
+  askKey(provider) {
+    if (!this.opened) this.open();
+    this.keyFor = provider;
+    this.view = "key";
+    this.render();
+    /** @type {HTMLInputElement} */ (this.keyInput).focus();
+  }
+
+  cancelKey() {
+    const field = /** @type {HTMLInputElement} */ (this.keyInput);
+    field.value = "";
+    this.keyFor = null;
     this.insert();
+  }
+
+  async storeKey() {
+    const field = /** @type {HTMLInputElement} */ (this.keyInput);
+    const provider = this.keyFor;
+    // Out of the field at once: it holds the key only while it is typed.
+    const key = field.value.trim();
+    field.value = "";
+    if (!provider) return this.insert();
+    if (!key) {
+      this.host.say(`agent: ${provider.name} needs an API key`, true);
+      return undefined;
+    }
+    try {
+      await lazy.AgentKeys.set(provider.name, key, provider.endpoint);
+      const hint = await lazy.AgentKeys.hint(provider.name, provider.endpoint);
+      this.host.say(`agent: ${provider.name}: ${hint ?? "key stored"}`);
+    } catch (e) {
+      // The error's text is not shown: it could carry what was typed.
+      console.error("vimma agent: the key could not be stored", /** @type {any} */ (e)?.name);
+      this.host.say(`agent: the key for ${provider.name} could not be stored`, true);
+      return undefined;
+    }
+    this.keyFor = null;
+    this.useProvider(provider);
+    this.insert();
+    return undefined;
+  }
+
+  /** `x` on a provider in the picker: its stored key goes, after a y (Behaviour 3). */
+  deleteKey() {
+    const p = this.rows[this.row]?.provider;
+    if (!p) return;
+    this.host.ask(`Delete the API key of ${p.name}? y/N`, () => {
+      lazy.AgentKeys.delete(p.name).then(
+        (/** @type {boolean} */ had) => {
+          this.host.say(
+            had ? `agent: deleted the key of ${p.name}` : `agent: ${p.name} has no key`,
+          );
+          if (this.opened && this.view === "models") this.loadModels();
+        },
+        (/** @type {any} */ e) => console.error("vimma agent: deleting the key failed", e?.name),
+      );
+    });
   }
 
   deleteRow() {
@@ -544,6 +755,14 @@ export class AgentChatWindow {
     const log = /** @type {HTMLElement} */ (this.log);
     const input = /** @type {HTMLTextAreaElement} */ (this.input);
     input.hidden = this.view !== "chat";
+    const keyBox = /** @type {HTMLElement} */ (this.keyInput?.parentElement);
+    keyBox.hidden = this.view !== "key";
+    if (this.view === "key") {
+      /** @type {HTMLElement} */ (this.keyLabel).textContent =
+        `API key for ${this.keyFor?.name ?? ""} (${whereDataGoes(this.keyFor?.endpoint ?? "")})`;
+      /** @type {HTMLElement} */ (this.hint).textContent = KEY_HINT;
+      return;
+    }
     if (this.view !== "chat") {
       log.setAttribute("role", "listbox");
       log.replaceChildren(
@@ -664,7 +883,19 @@ export class AgentChatWindow {
     input.rows = 3;
     input.setAttribute("aria-label", "Task for the agent");
     input.placeholder = "Write a task for the agent";
-    log.after(slotBox, input);
+    // The masked key field (Behaviour 3): a password field, so the key is never drawn.
+    const keyBox = el(doc, "label", "vimma-agent-chat-keybox");
+    keyBox.hidden = true;
+    const keyLabel = el(doc, "div", "vimma-agent-chat-keylabel");
+    const keyInput = /** @type {HTMLInputElement} */ (doc.createElementNS(HTML_NS, "input"));
+    keyInput.id = CHAT_KEY_ID;
+    keyInput.type = "password";
+    keyInput.autocomplete = "off";
+    keyInput.className = "vimma-agent-chat-input";
+    keyBox.append(keyLabel, keyInput);
+    log.after(slotBox, input, keyBox);
+    this.keyInput = keyInput;
+    this.keyLabel = keyLabel;
     this.hint = /** @type {HTMLElement} */ (box.querySelector(".vimma-panel-hint"));
     this.box = box;
     this.log = log;

@@ -1534,6 +1534,7 @@ export const VimmaHost = {
             .getService(Ci.nsIClipboardHelper)
             .copyString(text),
         rearm: () => AgentUi.rearmSlot(win),
+        prompt: (o) => state.rename.prompt(o),
         changed: () => {
           AgentUi.refresh();
           this._emit(state);

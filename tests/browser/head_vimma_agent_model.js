@@ -14,7 +14,10 @@
 const { HttpServer } = ChromeUtils.importESModule("resource://testing-common/httpd.sys.mjs");
 
 /** What the scripted model was sent: path, the headers that matter, and the body. */
-/** @type {{ path: string, cookie: string | null, authorization: string | null, body: any }[]} */
+/**
+ * @type {{ path: string, cookie: string | null, authorization: string | null, body: any,
+ *   apiKey?: string | null }[]}
+ */
 const requests = [];
 /** Replies held back until the test releases them, by the task text that asked. */
 /** @type {Map<string, () => void>} */
@@ -26,9 +29,41 @@ const server = new HttpServer();
  * call, `{ reply }` for a reply, `{ hold: true }` to wait until the test releases it. Step n
  * answers the model's n-th turn after the task's message. In args, `$tab` is the last tab id a
  * tool result named, and `$label:Words` the label of the element with those words in the last
- * element list.
+ * element list. It answers in OpenAI's chat completions format, or in Anthropic's Messages
+ * format (`anthropic`), whose requests it reads into the same shape first.
  */
 function chatCompletions(/** @type {any} */ req, /** @type {any} */ res) {
+  scripted(req, res, "openai");
+}
+
+/** Anthropic's Messages API, as the scripted model. */
+function anthropicMessages(/** @type {any} */ req, /** @type {any} */ res) {
+  scripted(req, res, "anthropic");
+}
+
+/**
+ * An Anthropic request's messages in OpenAI's shape: a tool result block becomes a `tool`
+ * message with its text.
+ * @param {any[]} messages
+ */
+const fromAnthropic = (messages) =>
+  messages.flatMap((m) => {
+    if (m.role === "assistant") return [{ role: "assistant" }];
+    if (typeof m.content === "string") return [{ role: "user", content: m.content }];
+    return m.content
+      .filter((/** @type {any} */ b) => b.type === "tool_result")
+      .map((/** @type {any} */ b) => ({
+        role: "tool",
+        content: (Array.isArray(b.content) ? b.content : [{ text: String(b.content) }])
+          .map((/** @type {any} */ c) => c.text ?? "")
+          .join("\n"),
+      }));
+  });
+
+/**
+ * @param {any} req @param {any} res @param {"openai" | "anthropic"} format
+ */
+function scripted(req, res, format) {
   const stream = req.bodyInputStream;
   const body = JSON.parse(NetUtil.readInputStreamToString(stream, stream.available()));
   const header = (/** @type {string} */ h) => (req.hasHeader(h) ? req.getHeader(h) : null);
@@ -36,10 +71,11 @@ function chatCompletions(/** @type {any} */ req, /** @type {any} */ res) {
     path: req.path,
     cookie: header("Cookie"),
     authorization: header("Authorization"),
+    apiKey: header("x-api-key"),
     body,
   });
   /** @type {any[]} */
-  const messages = body.messages;
+  const messages = format === "anthropic" ? fromAnthropic(body.messages) : body.messages;
   const at = messages.findLastIndex(
     (m) => m.role === "user" && String(m.content).startsWith("SCRIPT:"),
   );
@@ -62,7 +98,22 @@ function chatCompletions(/** @type {any} */ req, /** @type {any} */ res) {
     }
     return v;
   };
+  const args = () =>
+    Object.fromEntries(Object.entries(step.args ?? {}).map(([k, v]) => [k, resolve(v)]));
   const send = () => {
+    res.setHeader("Content-Type", "application/json", false);
+    if (format === "anthropic") {
+      res.write(
+        JSON.stringify({
+          content: step.call
+            ? [{ type: "tool_use", id: `toolu_${after.length}`, name: step.call, input: args() }]
+            : [{ type: "text", text: step.reply ?? "done" }],
+          stop_reason: step.call ? "tool_use" : "end_turn",
+          usage: { input_tokens: 100, output_tokens: 10 },
+        }),
+      );
+      return;
+    }
     const message = step.call
       ? {
           role: "assistant",
@@ -73,17 +124,12 @@ function chatCompletions(/** @type {any} */ req, /** @type {any} */ res) {
               type: "function",
               function: {
                 name: step.call,
-                arguments: JSON.stringify(
-                  Object.fromEntries(
-                    Object.entries(step.args ?? {}).map(([k, v]) => [k, resolve(v)]),
-                  ),
-                ),
+                arguments: JSON.stringify(args()),
               },
             },
           ],
         }
       : { role: "assistant", content: step.reply ?? "done" };
-    res.setHeader("Content-Type", "application/json", false);
     res.write(
       JSON.stringify({
         choices: [{ message, finish_reason: step.call ? "tool_calls" : "stop" }],
@@ -103,6 +149,7 @@ function chatCompletions(/** @type {any} */ req, /** @type {any} */ res) {
 }
 
 server.registerPathHandler("/v1/chat/completions", chatCompletions);
+server.registerPathHandler("/anthropic/v1/messages", anthropicMessages);
 server.registerPathHandler("/v1/models", (_req, res) => {
   res.setHeader("Content-Type", "application/json", false);
   res.write(JSON.stringify({ data: [{ id: "scripted" }, { id: "scripted-2" }] }));

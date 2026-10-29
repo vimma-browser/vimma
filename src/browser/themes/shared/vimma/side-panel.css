@@ -353,6 +353,23 @@
     }
   }
 
+  /* Setup's masked key field (Behaviour 3): its label, then the password field. */
+  & .vimma-agent-chat-keybox {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-block-end: 0.25rem;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  & .vimma-agent-chat-keylabel {
+    margin: 0 0.75rem;
+    color: var(--vimma-text-yellow, inherit);
+  }
+
   & .vimma-agent-chat-input {
     box-sizing: border-box;
     width: auto;
