@@ -1,6 +1,6 @@
 # Spec: agent-speed
 
-Status: draft (Delivery 1 in #603) · Area: `tools/agent-bench/` (the scripted floor, the
+Status: draft (Delivery 1 in #603, Delivery 3 for #598) · Area: `tools/agent-bench/` (the scripted floor, the
 per-step breakdown); `packages/vimma-core/src/` (`agent-loop.mjs`, `agent-providers.mjs`,
 `agent-tools-data.mjs`, `agent-act.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: tool descriptions and
 `INSTRUCTIONS`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
