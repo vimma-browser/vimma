@@ -1,14 +1,17 @@
 # Spec: builtin-agent
 
-Status: draft (Delivery 1-4 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
+Status: draft (Delivery 1-5 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
 `agent-providers.mjs`, `agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`,
-`agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs`; `agent.mjs` and
+`agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs`, `agent-store.mjs`;
+`agent.mjs` and
 `agent-prompt.mjs`
 for the built-in label and the conversation grant; `config.mjs` for `[agent]`; `actions.mjs` and
-`defaults.mjs` for the key); `src/browser/base/content/vimma/` (new `agent/AgentChat.sys.mjs`,
+`defaults.mjs` for the key; `config.mjs` also for setup's edit of config.toml);
+`src/browser/base/content/vimma/` (new `agent/AgentChat.sys.mjs`,
 `agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`, `ui/agent-chat.mjs`;
 `ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `host/workspace-ops.mjs`, `host/mcp-ops.mjs`,
-`ui/statusbar.mjs`, `ui/side-panel.mjs`, `host/agent-ui.mjs`, new `host/agent-chat-ops.mjs`);
+`ui/statusbar.mjs`, `ui/side-panel.mjs`, `host/agent-ui.mjs`, new `host/agent-chat-ops.mjs`,
+`config/ConfigHost.sys.mjs`);
 new `tools/agent-bench/`;
 `tests/e2e/fixtures/`;
 `docs/guide.md`, `docs/security.md`, `docs/limits.md`, README · Upstream patches: none · ADR: a
@@ -499,7 +502,14 @@ agent to a part of the profile, or publishes which steps always ask.
     agent reads, including what the agent workspace's logins show (an address, an order
     history), goes to that provider. When the probe finds a local server, its first model is
     preselected and `[agent] default` points to it once the user confirms setup, because
-    nothing then leaves the machine and the user still confirms the choice. Setup checks an
+    nothing then leaves the machine and the user still confirms the choice. A provider chosen
+    in the window that `config.toml` does not list is added to it as `[[agent.providers]]`, by
+    name, kind, endpoint, model and vision, and becomes `[agent] default` when no provider was
+    set up, so that a restart keeps the choice and new conversations use it; the file's other
+    lines are kept and nothing is written when it does not parse, because `config.toml` is the
+    user's own file and may live in a dotfile repository. The key stays in login storage (B8).
+    A provider the file lists already only changes the conversation, so the picker never
+    rewrites the user's default. Setup checks an
     Ollama model's context and makes a copy with `num_ctx` set when it is below 32,768 tokens,
     because Ollama's OpenAI-compatible API takes no context length and its default of 4,096
     holds less than the tool definitions, while a ten-item list needs about 19,000 tokens on the
@@ -531,7 +541,16 @@ agent to a part of the profile, or publishes which steps always ask.
     Vimma's, not the model's, because a summary the model wrote would be page text by another
     route and cost a request. Rejected: memory only, because the instructions would be retyped
     every session; storing the full transcript, because it holds every page read; the
-    session store, because it is not encrypted and is copied into backups.
+    session store, because it is not encrypted and is copied into backups. A file is written
+    when the conversation is used (a message sent, a task ended, its model changed), so its
+    time is its last use and `keep_days` deletes by the files' times alone, without the
+    keyring. The files are read, and so decrypted, only when the window first opens, so a user
+    who never opens it is never asked to unlock a keyring at start. The summary's hosts come
+    from the URLs the gate was asked about, as the URL parser writes their hosts, never a path
+    or query a page put there. Writing a file through a temporary file and a rename leaves the
+    old file or the new one after a crash. Of the agent's replies only each task's final one is
+    kept, because the text that comes with a tool call most often restates the page being read,
+    and a stored reply is sent again as the agent's own words.
 16. **The window opens anywhere; the agent works in one place** (B16, Behaviour 6, 10, 17).
     Opening the window from any workspace changes nothing about reach, because the window is
     Vimma's interface and the tools act only on agent-workspace tabs (B2); the header's
@@ -618,6 +637,10 @@ agent to a part of the profile, or publishes which steps always ask.
     README describe the agent, in the pull request that completes the last of them. Rejected:
     turning it on now with the guide saying what is missing, because a feature that sends page
     text to a model should reach users whole, with its stored conversations reviewed.
+    Delivery 5 closes both reasons about restarts: conversations are kept and setup writes
+    `[agent] default`. What remains is the window's key (delivery 6), which changes how the
+    window is found, not what it may do; whether the pref turns on before it is the open
+    question below.
 23. **A hosted provider is set up in the window** (B24, Behaviour 3). The model picker (`m`,
     `:agent model`) lists the configured providers, `add: Anthropic (Messages API)` and
     `add: OpenAI-compatible endpoint`, then the local servers' models. Adding asks the endpoint
@@ -793,9 +816,16 @@ messages, replies and summaries only`.
 - `agent-budget.test.mjs`: `a task stops at max_steps, max_tokens and max_cost`; `cost is
 computed only with prices`; `continue grants the same budget again`.
 - `agent-chat.test.mjs`: `transcript entries for a step, a checkpoint and a gate notice`;
-  `a stored conversation holds messages, replies and summaries, never tool output`;
-  `a task summary names outcome, counts and hosts, and no page text`; `a reply line starting
-with a question glyph is indented under the agent label`.
+  `a reply line starting with a question glyph is indented under the agent label`.
+- `agent-store.test.mjs`: `a stored conversation holds messages, replies and summaries, never
+tool output`; `the provider keeps its prices and never a key`; `refuses another version, a bad
+provider or an unknown entry`; `a reopened conversation sends messages, replies and summaries
+only`; `a task summary names outcome, counts and hosts, and no page text`; `http and https
+hosts only, once each, in order`; `only with keep_days, and only when unused for longer`.
+- `agent-config.test.mjs`: `setup's provider becomes [agent] default in a missing file`; `keeps
+every other line of the file`; `adds a provider without changing the default`; `a provider the
+file has already is not added again`; `never writes a key, and refuses a file that does not
+parse`.
 - `agent-owners.test.mjs`: `a tab belongs to the conversation that opened it`; `a tab a page
 opened belongs to its opener's conversation`; `a given tab belongs to the open conversation`;
   `a moved tab belongs to none`; `ownership ends when the tab closes`.
@@ -833,10 +863,13 @@ checkpoints asking`; `a conversation grant has no expiry and ends on stop`.
 - `browser_vimma_agent_conversations.js` (new): `test_two_conversations_see_only_their_tabs`;
   `test_other_conversations_tab_refused_as_outside`;
   `test_mcp_agent_sees_only_unowned_tabs`; `test_max_running`;
-  `test_questions_name_the_conversation`; `test_status_bar_counts_agents`;
-  `test_stored_file_is_encrypted_and_holds_no_tool_output`;
+  `test_questions_name_the_conversation`; `test_status_bar_counts_agents`.
+- `browser_vimma_agent_store.js` (new): `test_stored_file_is_encrypted_and_holds_no_tool_output`;
+  `test_nothing_written_in_clear_when_it_cannot_be_encrypted`;
   `test_reopened_conversation_starts_with_a_clean_context`; `test_clear_context`;
-  `test_delete_and_forget_all_remove_files`; `test_keep_days`.
+  `test_delete_and_forget_all_remove_files`; `test_keep_days`;
+  `test_list_shows_stored_conversations_newest_first`;
+  `test_setup_writes_the_provider_and_default_to_config`.
 - `browser_vimma_agent_keys.js` (new): `test_key_stored_as_a_login_only` (no pref, no config,
   no file but the logins); `test_stored_login_holds_only_the_keystore_ciphertext`;
   `test_key_never_in_log_notice_transcript_or_store`;
@@ -944,4 +977,12 @@ Each PR is mergeable and tested on its own; the window appears only in PR 4.
 
 ## Open questions
 
-None. The answers are decisions in Design.
+1. **When `vimma.feature.agentChat` turns on** (B22). (a) In delivery 6's pull request, with the
+   window's key, the guide, limits.md and the README, as B22 says. (b) Now, after delivery 5,
+   with `:agent` as the only way in until delivery 6, and the guide, limits.md and the README in
+   the same change. (c) After the bench's results for a local model ([#599](https://github.com/vimma-browser/vimma/issues/599)), so
+   the guide can name one that does the tasks. **Recommendation: (a)**, because every reason
+   B22 gives about safety and data is closed by delivery 5, and the key is the one step left,
+   one keymap pull request away; turning the pref on with it changes the guide, the help
+   snapshot and the README once, and a released window reached only by `:agent` would be found
+   by few users before the key arrives. The other decisions are in Design.

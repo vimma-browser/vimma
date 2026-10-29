@@ -22,6 +22,7 @@ import {
   whereDataGoes,
 } from "../core/agent-chat.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
+import { lastUseText } from "../core/agent-store.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
 import { buildPanelBox, giveFocusBack, rememberFocus } from "./side-panel.mjs";
@@ -31,6 +32,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   // Lazily: AgentChat reaches VimmaHost through the agent commands, and VimmaHost builds this.
   AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
   AgentKeys: "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
+  ConfigHost: "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
   McpHost: "chrome://browser/content/vimma/host/mcp-ops.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
@@ -50,7 +52,7 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 const INSERT_HINT = "Enter sends · ctrl+Enter asks every step · shift+Enter new line · Esc";
 const NORMAL_HINT =
   "i write · j k move · s stop · m model · n new · c list · P give · y copy · q close";
-const LIST_HINT = "j k move · Enter open · d delete · n new · Esc back";
+const LIST_HINT = "j k move · Enter open · d delete · n new · / filter · Esc back";
 const MODELS_HINT = "j k move · Enter use · x delete its key · Esc back";
 const SLOT_HINT = "a question waits: answer it here";
 
@@ -78,6 +80,20 @@ const el = (doc, tag, className, text = "") => {
   node.textContent = text;
   return node;
 };
+
+/**
+ * A name for a provider set up in the window: `base`, or with a number when config.toml has a
+ * provider of that name already, so its key (stored by name) and the file agree.
+ * @param {string} base
+ */
+function freeName(base) {
+  const taken = new Set(
+    (lazy.McpHost.agentConfig?.providers ?? []).map((/** @type {any} */ p) => p.name),
+  );
+  let name = base;
+  for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+  return name;
+}
 
 /** The provider `[agent] default` names, else the first configured, else none (setup). */
 function defaultProvider() {
@@ -123,6 +139,8 @@ export class AgentChatWindow {
     this.storing = false;
     /** @type {Row[]} the models or conversations listed */
     this.rows = [];
+    /** The conversation list's filter by title (Behaviour 19), lower case. */
+    this.filter = "";
     this.row = 0;
     /** The entry selected in normal mode, for `y`; -1: none yet (the last). */
     this.entry = -1;
@@ -165,13 +183,20 @@ export class AgentChatWindow {
 
   /**
    * Opens the window on the last conversation shown, else a new one with the default provider.
-   * @param {{ conversation?: number, view?: "chat" | "models" | "list" }} [opts]
+   * @param {{ conversation?: number, view?: "chat" | "models" | "list", then?: () => void }} [opts]
+   *   `then`: run once it is open, which waits for the stored conversations the first time
    * @returns {boolean} whether it opened
    */
-  open({ conversation, view = "chat" } = {}) {
+  open({ conversation, view = "chat", then } = {}) {
     if (lazy.PrivateBrowsingUtils.isWindowPrivate(this.win)) {
       this.host.say("the built-in agent works in a normal window");
       return false;
+    }
+    if (!lazy.AgentChat.restored) {
+      // The stored conversations are read (and decrypted) only when the window first opens,
+      // so a user who never opens it is never asked for the keyring (B15).
+      lazy.AgentChat.restore().then(() => this.open({ conversation, view, then }));
+      return true;
     }
     const known = new Set(lazy.AgentChat.list().map((/** @type {any} */ c) => c.id));
     if (conversation !== undefined) this.conversation = conversation;
@@ -193,8 +218,12 @@ export class AgentChatWindow {
     if (view === "chat") this.insert();
     else /** @type {HTMLElement} */ (this.log).focus();
     if (view === "models") this.loadModels();
-    if (view === "list") this.loadList();
+    if (view === "list") {
+      this.filter = "";
+      this.loadList();
+    }
     this.host.changed();
+    then?.();
     return true;
   }
 
@@ -261,19 +290,27 @@ export class AgentChatWindow {
     if (refused) this.host.say(`agent: ${refused}`);
   }
 
-  /** `:agent forget all` (Behaviour 23): after a y, every conversation goes. */
-  forgetAll() {
+  /**
+   * `:agent forget all` (Behaviour 23): after a y, running tasks stop and every conversation
+   * goes, with every file of the store.
+   */
+  async forgetAll() {
+    await lazy.AgentChat.restore();
     const n = lazy.AgentChat.list().length;
     if (!n) {
       this.host.say("agent: there are no conversations");
       return;
     }
     this.host.ask(`Delete all ${n} agent conversation${n === 1 ? "" : "s"}? y/N`, () => {
-      lazy.AgentChat.stopAll();
-      for (const c of lazy.AgentChat.list()) lazy.AgentChat.delete(c.id);
       this.conversation = null;
       if (this.opened) this.close();
-      this.host.say(`agent: deleted ${n} conversation${n === 1 ? "" : "s"}`);
+      lazy.AgentChat.forgetAll().then(
+        () => this.host.say(`agent: deleted ${n} conversation${n === 1 ? "" : "s"}`),
+        (/** @type {any} */ e) => {
+          console.error("vimma agent: forget all failed", e?.name);
+          this.host.say("agent: some conversation files could not be deleted", true);
+        },
+      );
     });
   }
 
@@ -483,6 +520,17 @@ export class AgentChatWindow {
     } else if (this.view === "list" && key === "d") {
       this.deleteRow();
       return;
+    } else if (this.view === "list" && key === "/") {
+      this.host.prompt({
+        label: "filter: ",
+        value: this.filter,
+        submit: (text) => {
+          this.filter = text.trim().toLowerCase();
+          this.loadList();
+          this.log?.focus();
+        },
+      });
+      return;
     } else if (this.view === "models" && key === "x") {
       this.deleteKey();
       return;
@@ -537,14 +585,20 @@ export class AgentChatWindow {
     );
   }
 
-  /** The conversations view (Behaviour 19), newest first, in memory. */
+  /**
+   * The conversations view (Behaviour 19): the stored ones and those of this session, newest
+   * first, by title, provider, model and last use, filtered by title after `/`.
+   */
   loadList() {
+    const now = Date.now();
     this.rows = lazy.AgentChat.list()
-      .slice()
-      .reverse()
+      .filter((/** @type {any} */ c) =>
+        (c.title || "New conversation").toLowerCase().includes(this.filter),
+      )
+      .sort((/** @type {any} */ a, /** @type {any} */ b) => b.used - a.used || b.id - a.id)
       .map((/** @type {any} */ c) => ({
         label: `${c.running ? "▶ " : ""}${c.title || "New conversation"}`,
-        detail: `${c.provider.name} · ${c.provider.model}`,
+        detail: `${c.provider.name} · ${c.provider.model} · ${lastUseText(c.used, now)}`,
         id: c.id,
       }));
     this.row = Math.max(
@@ -593,6 +647,33 @@ export class AgentChatWindow {
     if (!provider) return;
     this.useProvider(provider);
     this.insert();
+    const picked = provider;
+    this.remember(picked).then((note) => {
+      if (note)
+        this.host.say(`agent: ${picked.name} · ${picked.model}${note}`, note.startsWith(";"));
+    });
+  }
+
+  /**
+   * A provider picked in the window that config.toml does not list goes there (Behaviour 2-3),
+   * so that it is in the picker after a restart; when none was set up, it becomes
+   * `[agent] default`, which new conversations use. Its key stays in login storage.
+   * @param {AgentProviderConfig} provider
+   * @returns {Promise<string>} what the notice adds: "" when the file lists it already
+   */
+  async remember(provider) {
+    const providers = /** @type {AgentProviderConfig[]} */ (
+      lazy.McpHost.agentConfig?.providers ?? []
+    );
+    const listed = providers.some(
+      (p) =>
+        p.kind === provider.kind && p.endpoint === provider.endpoint && p.model === provider.model,
+    );
+    if (listed) return "";
+    const makeDefault = providers.length === 0;
+    const r = await lazy.ConfigHost.addAgentProvider(provider, { makeDefault });
+    if ("error" in r) return `; not saved to config.toml (${r.error})`;
+    return makeDefault ? " · saved to config.toml as [agent] default" : " · saved to config.toml";
   }
 
   /** @param {AgentProviderConfig} provider */
@@ -626,7 +707,7 @@ export class AgentChatWindow {
         label: "agent model: ",
         value: kind === "anthropic" ? ANTHROPIC_MODEL : "",
         submit: (model) => {
-          const name = kind === "anthropic" ? "anthropic" : new URL(endpoint).hostname;
+          const name = freeName(kind === "anthropic" ? "anthropic" : new URL(endpoint).hostname);
           if (!model.trim()) return this.host.say("agent: a model name is needed", true);
           return this.askKey({
             name,
@@ -693,10 +774,10 @@ export class AgentChatWindow {
     // One store at a time: a second Enter while this one runs neither errs nor races it.
     this.storing = true;
     this.keyFor = null;
+    let hint;
     try {
       await lazy.AgentKeys.set(provider.name, key, provider.endpoint);
-      const hint = await lazy.AgentKeys.hint(provider.name, provider.endpoint);
-      this.host.say(`agent: ${provider.name}: ${hint ?? "key stored"}`);
+      hint = await lazy.AgentKeys.hint(provider.name, provider.endpoint);
     } catch (e) {
       // The error's text is not shown: it could carry what was typed.
       console.error("vimma agent: the key could not be stored", /** @type {any} */ (e)?.name);
@@ -709,6 +790,8 @@ export class AgentChatWindow {
     this.keyFor = null;
     this.useProvider(provider);
     this.insert();
+    const note = await this.remember(provider);
+    this.host.say(`agent: ${provider.name}: ${hint ?? "key stored"}${note}`, note.startsWith(";"));
     return undefined;
   }
 
