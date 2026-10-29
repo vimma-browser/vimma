@@ -14,6 +14,9 @@
 
 /* global E10SUtils -- a browser window global */
 
+const { WorkspaceStore } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
+);
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
@@ -31,10 +34,28 @@ const PAGE = "https://example.com/";
 
 /** @type {Window[]} */
 const windows = [];
+/** @type {string[]} */
+const created = [];
 
 registerCleanupFunction(async () => {
   for (const w of windows) if (!w.closed) await BrowserTestUtils.closeWindow(w);
+  for (const id of created) await WorkspaceStore.deleteWorkspace(id, { confirmed: true });
 });
+
+/** @param {string} name */
+function workspace(name) {
+  const w = WorkspaceStore.addWorkspace({ name, color: "blue", icon: "briefcase" });
+  created.push(w.id);
+  return w;
+}
+
+/** Restores `winState` into `win`, overwriting its tabs, and waits for SessionStore to finish. */
+async function restoreInto(win, winState) {
+  const restored = BrowserTestUtils.waitForEvent(win, "SSWindowRestored");
+  SessionStore.setWindowState(win, JSON.stringify({ windows: [winState] }), true);
+  await restored;
+  await TestUtils.waitForTick();
+}
 
 /** @param {() => boolean} cond @param {string} msg */
 function until(cond, msg) {
@@ -123,7 +144,23 @@ async function closeAsLastWindow(win) {
   await closed;
 }
 
-async function lastWindowCase(prepare) {
+/**
+ * Opens tabs in the reopened window and checks that its model follows them.
+ * @param {Window} win
+ */
+async function usedInStep(win) {
+  await useWindow(win);
+  info(`out of step right after use: ${outOfStep(win).join("; ") || "nothing"}`);
+  await until(() => outOfStep(win).length === 0, "the model catches up with the live tabs");
+  Assert.deepEqual(outOfStep(win), [], "every live tab is in the model, and back");
+}
+
+/**
+ * Closes a window prepared by `prepare` as the last one, opens another, then runs `then` on it.
+ * @param {(first: Window) => Promise<void>} prepare
+ * @param {(win: Window) => Promise<void>} [then]
+ */
+async function lastWindowCase(prepare, then = usedInStep) {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["browser.tabs.warnOnClose", false],
@@ -149,10 +186,7 @@ async function lastWindowCase(prepare) {
       brackets.seen.includes("SSWindowStateBusy"),
       "SessionStore restored the closed window's leftovers into the reopened one",
     );
-    await useWindow(win);
-    info(`out of step right after use: ${outOfStep(win).join("; ") || "nothing"}`);
-    await until(() => outOfStep(win).length === 0, "the model catches up with the live tabs");
-    Assert.deepEqual(outOfStep(win), [], "every live tab is in the model, and back");
+    await then(win);
   } finally {
     // The next case needs this one to close as the last window again.
     if (win && !win.closed) await BrowserTestUtils.closeWindow(win);
@@ -162,11 +196,61 @@ async function lastWindowCase(prepare) {
   }
 }
 
+/** A window with a closed tab and an open one. @param {Window} first */
+async function withAClosedTab(first) {
+  const gone = await BrowserTestUtils.openNewForegroundTab(first.gBrowser, `${PAGE}?closed`);
+  BrowserTestUtils.removeTab(gone);
+  await BrowserTestUtils.openNewForegroundTab(first.gBrowser, `${PAGE}?kept`);
+}
+
 add_task(async function a_window_reopened_after_the_last_one_closed_with_a_closed_tab() {
-  await lastWindowCase(async (first) => {
-    const gone = await BrowserTestUtils.openNewForegroundTab(first.gBrowser, `${PAGE}?closed`);
-    BrowserTestUtils.removeTab(gone);
-    await BrowserTestUtils.openNewForegroundTab(first.gBrowser, `${PAGE}?kept`);
+  await lastWindowCase(withAClosedTab);
+});
+
+// Once SessionStore's busy count for a window is stuck, a later whole-window restore into it
+// sends no SSWindowStateBusy or SSWindowStateReady, only SSWindowRestoring at its start and
+// sessionstore-single-window-restored at its end. Its tabs open before their tab values and the
+// window value are set, so a model applying them live would save over the restored snapshot.
+add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its_snapshot() {
+  const A = workspace("dr-a");
+  const B = workspace("dr-b");
+  const w0 = await openWindow();
+  const ww0 = WindowWorkspaces.get(w0);
+  ww0.switchTo({ id: A.id });
+  const a1 = await BrowserTestUtils.openNewForegroundTab(w0.gBrowser, `${PAGE}?dr-a1`);
+  const a2 = await BrowserTestUtils.openNewForegroundTab(w0.gBrowser, `${PAGE}?dr-a2`);
+  w0.gBrowser.selectedTab = a1;
+  await until(
+    () => ww0.model.workspaces.find((w) => w.id === A.id).activeTab === ww0.idOf(a1),
+    "A's selected tab is its first page",
+  );
+  ww0.switchTo({ id: B.id });
+  await until(() => w0.gBrowser.selectedTab.userContextId === B.userContextId, "B's start tab");
+  const b1 = await BrowserTestUtils.openNewForegroundTab(w0.gBrowser, `${PAGE}?dr-b1`);
+  const uuid = (/** @type {Element} */ t) => SessionStore.getCustomTabValue(t, "vimma-tab");
+  const uuids = new Map([a1, a2, b1].map((t) => [t, uuid(t)]));
+  await TabStateFlusher.flushWindow(w0);
+  await TestUtils.waitForTick();
+  const winState = JSON.parse(SessionStore.getBrowserState()).windows.find((w) =>
+    w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?dr-b1`)),
+  );
+  await BrowserTestUtils.closeWindow(w0);
+
+  await lastWindowCase(withAClosedTab, async (win) => {
+    const ww = WindowWorkspaces.get(win);
+    Assert.ok(ww.health().recovered, "the reopened window's restore never finished");
+    await restoreInto(win, winState);
+    const model = ww.model;
+    const ws = (/** @type {string} */ id) => model.workspaces.find((w) => w.id === id);
+    Assert.deepEqual(
+      ws(A.id).tabs.slice(-2),
+      [uuids.get(a1), uuids.get(a2)],
+      "A's tabs come back with their uuids",
+    );
+    Assert.equal(ws(A.id).activeTab, uuids.get(a1), "A's selected tab is remembered");
+    Assert.equal(ws(B.id).tabs.at(-1), uuids.get(b1), "B's page comes back with its uuid");
+    Assert.equal(model.active, B.id, "B is the active workspace");
+    Assert.deepEqual(outOfStep(win), [], "every live tab is in the model, and back");
   });
 });
 
@@ -180,6 +264,17 @@ add_task(async function a_window_reopened_after_the_last_one_closed_with_a_pinne
 });
 
 add_task(async function a_restore_that_throws_partway_does_not_stop_the_model() {
+  // The test-only bound, short: the timer ends the stuck restore without a real 5 s wait.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.workspaces.stuckRestoreMs", 200]] });
+  try {
+    await throwingRestore();
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
+/** The case above, with the bound at 200 ms. */
+async function throwingRestore() {
   const win = await openWindow();
   const ww = WindowWorkspaces.get(win);
   const gone = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, `${PAGE}?undo`);
@@ -209,7 +304,7 @@ add_task(async function a_restore_that_throws_partway_does_not_stop_the_model() 
   Assert.equal(health.pending, false, "the window is no longer waiting for the restore");
   Assert.ok(health.recovered, "the stuck restore is on record");
   await BrowserTestUtils.closeWindow(win);
-});
+}
 
 add_task(async function lazy_tabs_selected_after_a_restore_stay_in_step() {
   const win = await openWindow();

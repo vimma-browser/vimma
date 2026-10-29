@@ -86,7 +86,12 @@ const TAB_EVENTS = [
   "SSTabRestored",
   LABEL_EVENT,
 ];
-const SESSION_EVENTS = ["SSWindowStateBusy", "SSWindowStateReady", "SSWindowClosing"];
+const SESSION_EVENTS = [
+  "SSWindowRestoring",
+  "SSWindowStateBusy",
+  "SSWindowStateReady",
+  "SSWindowClosing",
+];
 
 /**
  * SessionStore's notification at the end of a restore into one window, sent on both paths that
@@ -97,11 +102,20 @@ const WINDOW_RESTORED_TOPIC = "sessionstore-single-window-restored";
 
 /**
  * How long a restore into a window may stay pending without SSWindowStateReady before it is
- * taken as one that never finished. SessionStore's brackets are synchronous (#restoreTab) or end
- * after one timer of 0 ms once the window's tabs are in (#restoreWindowFeatures), so a real one
- * is over long before this; ending one early only runs a reconcile, which the Ready repeats.
+ * taken as one that never finished, by a timer set at the Busy. SessionStore's brackets end
+ * synchronously (#restoreTab) or in a 0 ms timer of the window's that it scheduled before the
+ * Busy (#restoreWindowFeatures), and a chrome window's timers are not throttled, so the timer
+ * never fires inside a real bracket, however long that bracket's synchronous part takes.
  */
 export const STUCK_RESTORE_MS = 5000;
+
+/** Test-only: overrides STUCK_RESTORE_MS, read at each SSWindowStateBusy. */
+const STUCK_RESTORE_PREF = "vimma.workspaces.stuckRestoreMs";
+
+/** The bound in effect: STUCK_RESTORE_MS unless the test-only pref says otherwise. */
+function stuckRestoreMs() {
+  return Services.prefs.getIntPref(STUCK_RESTORE_PREF, STUCK_RESTORE_MS);
+}
 
 /**
  * A page loading into `browser` in the parent process before its layout has started: the
@@ -175,6 +189,8 @@ export class WindowWorkspacesImpl {
   #pendingSince = 0;
   /** The timer that ends a pending restore SessionStore never finishes (STUCK_RESTORE_MS). */
   #stuckTimer = 0;
+  /** The bound of the pending restore (stuckRestoreMs at its SSWindowStateBusy). */
+  #stuckBound = STUCK_RESTORE_MS;
   /**
    * The last restore that never finished: why the wait ended, after how long, and when.
    * @type {{ reason: string, afterMs: number, at: number } | null}
@@ -517,15 +533,22 @@ export class WindowWorkspacesImpl {
   handleEvent(e) {
     if (this.#win.closed) return;
     switch (e.type) {
+      case "SSWindowRestoring":
       case "SSWindowStateBusy":
-        // Our value as it is now, before the restore replaces it (it may not carry ours).
-        this.#save();
-        this.#pending = true;
+        // A whole-window restore sends SSWindowRestoring first, then Busy; once the window's
+        // busy count is stuck (#endStuckRestore) it sends only SSWindowRestoring, and ends with
+        // sessionstore-single-window-restored, which ends the pending (#windowRestored).
+        if (!this.#pending) {
+          // Our value as it is now, before the restore replaces it (it may not carry ours).
+          this.#save();
+          this.#pending = true;
+        }
         this.#pendingSince = Date.now();
         this.#win.clearTimeout(this.#stuckTimer);
+        this.#stuckBound = stuckRestoreMs();
         this.#stuckTimer = this.#win.setTimeout(
           () => this.#endStuckRestore("no SSWindowStateReady"),
-          STUCK_RESTORE_MS,
+          this.#stuckBound,
         );
         return;
       case "SSWindowStateReady":
@@ -542,13 +565,11 @@ export class WindowWorkspacesImpl {
         this.#onLoaded(/** @type {Tab} */ (e.target));
         return;
     }
-    // Tab events inside a restore are not applied: the Ready reconcile reads the live tabs. A
-    // restore pending too long (its timer throttled in a background window) ends here, and the
-    // reconcile reads this event's tab too.
-    if (this.#pending && Date.now() - this.#pendingSince >= STUCK_RESTORE_MS) {
-      this.#endStuckRestore("no SSWindowStateReady");
-      return;
-    }
+    // Tab events inside a restore are not applied: the Ready reconcile reads the live tabs. The
+    // bound is never checked here: a whole-window restore opens its tabs before it sets the
+    // window and tab values, so a rebuild between two of its TabOpens would save over the
+    // snapshot the Ready reads. Only the timer ends a restore that never finishes; every real
+    // bracket ends synchronously or in a 0 ms timer SessionStore scheduled before its Busy.
     if (!this.#model || this.#pending) return;
     const tab = /** @type {Tab} */ (e.target);
     switch (e.type) {

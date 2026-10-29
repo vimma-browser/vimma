@@ -512,10 +512,15 @@ Instead:
   lowering the count leaves it raised the same way. The window then stayed pending for good, with
   every later tab event dropped, which is how tab search and the side panel came to list one tab
   of eleven in issue [#546](https://github.com/vimma-browser/vimma/issues/546). Pending now also
-  ends on `sessionstore-single-window-restored` for the window, which SessionStore sends at the
-  end of both restore paths, and after 5 s without a Ready; either runs the reconcile, and the
-  about:vimma report names the restore that never finished, a restore still pending, and the open
-  tabs beside the model's.)
+  starts on `SSWindowRestoring`, which every whole-window restore sends even when the count is
+  stuck, and also ends on `sessionstore-single-window-restored` for the window, sent at the end of
+  both whole-window restore paths, and by a timer 5 s after the bracket began. The bound is never
+  checked at a tab event: a whole-window restore opens its tabs before it sets the window and tab
+  values, so a rebuild between two of them would save over the snapshot. Either end runs the
+  reconcile. This is described now in `WindowWorkspaces.sys.mjs` (`STUCK_RESTORE_MS`,
+  `#endStuckRestore`; the test-only pref `vimma.workspaces.stuckRestoreMs` overrides the bound),
+  and the about:vimma report that names the restore that never finished, a restore still
+  pending, and the open tabs beside the model's is in `docs/guide.md`, "about:vimma".)
 - **Tab events outside a bracket** are handled in a microtask, so a path that adds a tab and then
   restores it in the same task (undo close, `duplicateTab`) has set `extData` first; if a bracket
   opened meanwhile, the event waits for its `SSWindowStateReady`.
