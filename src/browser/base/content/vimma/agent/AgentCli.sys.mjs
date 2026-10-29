@@ -311,6 +311,18 @@ export const AgentCli = {
   },
 
   /**
+   * Whether a CLI provider could run now, for the model picker: its path pref is set and the
+   * file passes C4's checks. Nothing is started to find out.
+   * @param {AgentProviderConfig} provider
+   * @returns {Promise<"available" | "gone">}
+   */
+  async availability(provider) {
+    const path = Services.prefs.getStringPref(pathPref(provider.cli ?? ""), "");
+    if (!path || !Object.hasOwn(CLIS, provider.cli ?? "")) return "gone";
+    return (await this.check(path)) === null ? "available" : "gone";
+  },
+
+  /**
    * Why the program at `path` may not run now, or null (C4).
    * @param {string} path
    */

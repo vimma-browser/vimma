@@ -16,6 +16,7 @@ import { budgetLimitText } from "./agent-budget.mjs";
 import { CLIS, cliNotice, cliWhere, ownToolsText } from "./agent-cli.mjs";
 import { checkpointText, isCheckpoint, stepText } from "./agent-prompt.mjs";
 import { LOCAL_SERVERS } from "./agent-setup.mjs";
+import { formatConfigError } from "./config.mjs";
 
 /**
  * @typedef {import("./agent-loop.mjs").TaskEvent} TaskEvent
@@ -393,14 +394,63 @@ export function whereDataGoes(endpoint) {
 }
 
 /**
+ * Why no model is set up when config.toml was refused (Behaviour 6): a file with errors applies
+ * none of its tables, `[agent]` included, so the setup hint would mislead. The `[agent]` error
+ * when there is one, else the file's first, with the count as the status bar gives it. Null when
+ * the file was applied.
+ * @param {readonly import("./config.mjs").ConfigError[]} errors
+ * @param {string} file
+ * @returns {string | null}
+ */
+export function noModelReason(errors, file) {
+  const first = errors.find((e) => /^agent(?:$|[.[])/.test(e.path)) ?? errors[0];
+  if (!first) return null;
+  const text = formatConfigError(first, file);
+  return errors.length > 1 ? `${errors.length} errors: ${text}` : text;
+}
+
+/**
+ * The notice when an action needs a model and there is none (`:agent`, `n`, `P`, Enter).
+ * @param {string | null} refused  noModelReason's text
+ */
+export function noModelNotice(refused) {
+  return refused
+    ? `agent: no model: ${refused}`
+    : "agent: no model is set up; add one under [agent] in config.toml";
+}
+
+/**
+ * The window's body with no model: the refused file's error and how it comes into force, or
+ * the setup steps when the file was applied.
+ * @param {string | null} refused  noModelReason's text
+ * @param {string} file  the file it is about
+ * @returns {string[]}
+ */
+export function noModelLines(refused, file) {
+  if (!refused) {
+    return [
+      "No model is set up for the built-in agent.",
+      "Add a provider under [agent] in config.toml, or press Esc, then m to look for a " +
+        "local model server (Ollama, LM Studio, llama.cpp) on this machine.",
+    ];
+  }
+  return [
+    `No model: ${file} has errors, so none of it applies, [agent] included.`,
+    refused,
+    "Fix it and save the file, then press Esc, then n for a new conversation.",
+  ];
+}
+
+/**
  * The window's two header lines (Behaviour 6): the provider, the model and where data goes;
  * where the agent works, its grant and, while a task runs, its steps. `asking`: the latest task
  * was sent with ctrl+Enter. Without a grant or such a task the approval is left unsaid, because
  * the next task sent with Enter is itself the grant (Behaviour 24).
  * @param {{ provider: HeaderProvider | null, granted: boolean, asking?: boolean,
- *   localOnly?: boolean, budget?: BudgetStatus | null,
+ *   localOnly?: boolean, budget?: BudgetStatus | null, refused?: string | null,
  *   cli?: { model: string, tools: string[] | null } | null }} o
- *   `cli`: what an agent CLI reported when its last run started
+ *   `refused`: noModelReason's text, shown in place of the setup hint; `cli`: what an agent
+ *   CLI reported when its last run started
  * @returns {[string, string]}
  */
 export function chatHeader({
@@ -409,6 +459,7 @@ export function chatHeader({
   asking = false,
   localOnly = false,
   budget = null,
+  refused = null,
   cli = null,
 }) {
   const approval = granted ? ["granted"] : asking ? ["asks every step"] : [];
@@ -429,7 +480,9 @@ export function chatHeader({
   }
   const first = provider
     ? `${chatText(provider.name)} · ${chatText(provider.model)} · ${whereDataGoes(provider.endpoint)}`
-    : "no model set up";
+    : refused
+      ? `no model: ${chatText(refused)}`
+      : "no model set up";
   const second = [
     "works in: agent workspace",
     ...approval,

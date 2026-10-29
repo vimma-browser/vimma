@@ -34,6 +34,9 @@ const { McpHost, MCP_ENABLED_PREF } = ChromeUtils.importESModule(
 const { AGENT_DEFAULTS } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/config.mjs",
 );
+const { providerKey } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/agent-setup.mjs",
+);
 const { claudeArguments } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent-cli.mjs",
 );
@@ -307,6 +310,20 @@ addTidyTask(async function test_a_child_holding_the_output_does_not_keep_the_run
   Assert.equal(result.outcome, "done", `done: ${result.error}`);
   Assert.less(Date.now() - started, 10000, "the run ended with the CLI, not with its child");
   Assert.ok(!AgentChat.get(c.id).running, "and the conversation is not left running");
+});
+
+addTidyTask(async function test_a_cli_whose_program_is_gone_is_not_available() {
+  const key = providerKey(CLI);
+  Assert.equal(
+    (await AgentChat.modelStates([CLI])).get(key),
+    "available",
+    "its program is set up and sound",
+  );
+  Services.prefs.clearUserPref(pathPref("claude-code"));
+  Assert.equal((await AgentChat.modelStates([CLI])).get(key), "gone", "no program set up");
+  Services.prefs.setStringPref(pathPref("claude-code"), "/nonexistent/claude");
+  Assert.equal((await AgentChat.modelStates([CLI])).get(key), "gone", "its program is gone");
+  Assert.ok(!(await IOUtils.exists(fake.report)), "and nothing ran to find out");
 });
 
 addTidyTask(async function test_no_process_before_a_task() {
