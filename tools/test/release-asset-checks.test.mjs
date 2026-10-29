@@ -111,6 +111,8 @@ cat "${join(dir, "body.json")}" > "$out"
       TAG: "v0.1.11",
       GITHUB_REPOSITORY: "vimma-browser/vimma",
       RUNNER_TEMP: dir,
+      // Homebrew's jq on a macOS runner refuses to run without HOME
+      HOME: dir,
       GITHUB_STEP_SUMMARY: join(dir, "summary"),
       RELEASE_ENABLED: "true",
       MACOS_RELEASE_ENABLED: "true",
