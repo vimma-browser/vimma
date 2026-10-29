@@ -364,15 +364,18 @@ export function noModelLines(refused, file) {
 
 /**
  * The window's two header lines (Behaviour 6): the provider, the model and where data goes;
- * where the agent works, its grant and, while a task runs, its steps.
- * @param {{ provider: HeaderProvider | null, granted: boolean, localOnly?: boolean,
- *   budget?: BudgetStatus | null, refused?: string | null }} o
+ * where the agent works, its grant and, while a task runs, its steps. `asking`: the latest task
+ * was sent with ctrl+Enter. Without a grant or such a task the approval is left unsaid, because
+ * the next task sent with Enter is itself the grant (Behaviour 24).
+ * @param {{ provider: HeaderProvider | null, granted: boolean, asking?: boolean,
+ *   localOnly?: boolean, budget?: BudgetStatus | null, refused?: string | null }} o
  *   `refused`: noModelReason's text, shown in place of the setup hint
  * @returns {[string, string]}
  */
 export function chatHeader({
   provider,
   granted,
+  asking = false,
   localOnly = false,
   budget = null,
   refused = null,
@@ -384,7 +387,7 @@ export function chatHeader({
       : "no model set up";
   const second = [
     "works in: agent workspace",
-    granted ? "granted" : "asks every step",
+    ...(granted ? ["granted"] : asking ? ["asks every step"] : []),
     ...(budget ? [`${budget.steps}/${budget.maxSteps} steps`] : []),
   ].join(" · ");
   return [localOnly ? `${first} · local only` : first, second];

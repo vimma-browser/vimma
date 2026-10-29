@@ -862,6 +862,7 @@ export class AgentChatWindow {
     const lines = chatHeader({
       provider: c?.provider ?? null,
       granted: !!c?.granted,
+      asking: !!c?.asking,
       localOnly: !!config?.localOnly,
       budget: c?.running ? c.budget : null,
       refused: c ? null : refused(),
