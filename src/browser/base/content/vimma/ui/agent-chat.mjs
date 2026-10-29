@@ -48,6 +48,12 @@ const ANTHROPIC_MODEL = "claude-sonnet-4-5";
 const KEY_HINT = "Enter stores it, encrypted, in login storage · Esc cancels";
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
+// The key field's eye button: `::-moz-reveal` parses only in user-agent sheets, so this one rule
+// goes in as an agent sheet (an author sheet such as side-panel.css drops it).
+const NO_REVEAL_SHEET =
+  "data:text/css," + encodeURIComponent(`#${CHAT_KEY_ID}::-moz-reveal { display: none; }`);
+/** @type {WeakSet<Window>} windows NO_REVEAL_SHEET is loaded into (a second load throws) */
+const noReveal = new WeakSet();
 
 const INSERT_HINT = "Enter sends · ctrl+Enter asks every step · shift+Enter new line · Esc";
 const NORMAL_HINT =
@@ -985,6 +991,25 @@ export class AgentChatWindow {
     keyInput.type = "password";
     keyInput.autocomplete = "off";
     keyInput.className = "vimma-agent-chat-input";
+    if (!noReveal.has(this.win)) {
+      noReveal.add(this.win);
+      try {
+        this.win.windowUtils.loadSheetUsingURIString(
+          NO_REVEAL_SHEET,
+          this.win.windowUtils.AGENT_SHEET,
+        );
+      } catch (e) {
+        // The button would then show but do nothing: the listeners below still cancel it.
+        console.error("vimma agent: the key field's sheet did not load", e);
+      }
+    }
+    // An entered key is never shown again (M46). NO_REVEAL_SHEET hides the eye button, and every
+    // reveal a user can ask for (that button, the textbox context menu's item, `revealPassword`)
+    // goes through the cancelable MozWillToggleReveal; a masked field already refuses copy and cut. The context
+    // menu goes too, since its only use here would be that reveal item; ctrl+v still pastes.
+    for (const type of ["MozWillToggleReveal", "contextmenu", "copy", "cut", "dragstart"]) {
+      keyInput.addEventListener(type, (e) => e.preventDefault());
+    }
     keyBox.append(keyLabel, keyInput);
     log.after(slotBox, input, keyBox);
     this.keyInput = keyInput;

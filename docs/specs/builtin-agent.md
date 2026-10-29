@@ -82,8 +82,10 @@ first, so that what the guide says a model can do is what the bench measured.
    (B12).
 3. **External provider.** The user picks Anthropic (the Messages API) or an OpenAI-compatible
    endpoint (an `https://` address), a model name, and pastes the API key into a masked field.
-   The key goes straight into Firefox's login storage (B8) and is never shown again; setup shows
-   `key stored · ends …a1b2` (its last four characters) and offers to replace or delete it.
+   The key goes straight into Firefox's login storage (B8) and is never shown again: the field
+   has no reveal (eye) button, no context menu, and gives up nothing to copy, cut or drag, and it
+   always opens empty. Setup shows `key stored · ends …a1b2` (its last four characters) and
+   offers to delete it; changing a key means deleting it and entering the new one.
 4. **Choosing starts nothing.** Picking a provider or a model makes no request but the local
    probe of item 2 and, for an external provider, none at all until the first task. The agent
    runs only when the user sends a task.
@@ -652,8 +654,12 @@ agent to a part of the profile, or publishes which steps always ask.
     notice (which shows only its last four characters), a pref or config.toml; `x` on a provider
     in the picker deletes its key after `y/N`. The endpoint and model are asked on the prompt
     line because neither is secret, while the key gets a password field because the prompt line
-    draws what is typed. Rejected: asking the key on the prompt line, because it would be shown
-    on screen while typed.
+    draws what is typed. The field drops Firefox's reveal button and cancels every other reveal,
+    so an entered key is never shown again, and changing it means entering it again. Rejected:
+    asking the key on the prompt line, because it would be shown on screen while typed; and
+    keeping the reveal button for checking a pasted key, because anyone at the screen could
+    then read it while the field is open, and the last four characters in the notice already
+    tell keys apart.
 24. **One window per browser window, never in a private one** (B23, Behaviour 10). Each
     normal browser window has its own chat window, open on one conversation at a time, and a
     question shows in the slot of the window open on its conversation, else on the question

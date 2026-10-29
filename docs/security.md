@@ -1793,14 +1793,18 @@ for the user.
   hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
   window, the transcript, the status bar or a notice (which may show its last four characters),
   nor kept in a pref or the conversation, and an error storing it **must not** be shown with its
-  text, nor recorded in Vimma's key log or its debug output. Any way out of the field (Esc,
-  closing the window, another view) empties it. A provider that needs a key and has none for
+  text, nor recorded in Vimma's key log or its debug output. The field **must not** reveal the
+  key: it has no reveal button, cancels every reveal a user can ask for (`MozWillToggleReveal`), opens no context
+  menu, and gives up nothing to copy, cut or drag; it never holds a stored key, so changing a
+  key means entering it again. Any way out of the field (Esc, closing the window, another
+  view) empties it. A provider that needs a key and has none for
   its endpoint **must** be asked for it, and `AgentChat.send` **must** refuse it, before any
   request is sent; an endpoint **must not** carry a query or a fragment; `x` in the picker
   deletes a key after a `y`.
   [`test_hosted_openai_compatible_provider_set_up_in_the_window`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_hosted_anthropic_provider_asks_for_its_key_before_the_task`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_an_entered_key_is_never_shown_again_nor_copied_out`](../tests/browser/browser_vimma_agent_chat.js),
   [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
 - M47. A stored conversation **must** hold only the user's messages, each task's final reply and
   Vimma's own task summaries (with its title, provider, model and times), never a tool result,
