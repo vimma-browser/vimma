@@ -597,6 +597,8 @@ addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
     "too many vimma_elements calls from this agent in the last minute (at most 30)",
     "naming the elements rate",
   );
+  // Issue #592: a client naming no vimma-ctl version may predate retryAfter (decision 6).
+  Assert.ok(!("retryAfter" in r.error), "and no retryAfter to a client that names no version");
   const title = await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.title);
   Assert.equal(title, "Form agent fixture", "and nothing was clicked");
   Assert.equal(AgentGate.log[0].outcome, "busy", "the refusal is in :mcp log");

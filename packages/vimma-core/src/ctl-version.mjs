@@ -45,6 +45,19 @@ export function compareVersions(a, b) {
 }
 
 /**
+ * Whether vimma-ctl `ctl` is at least as new as Vimma `vimma`, so it reads every reply field this
+ * Vimma sends: a field newer than the client (a rate refusal's `retryAfter`, issue #592) goes only
+ * to such a client, and an older one keeps working with what it knows (decision 6). False when
+ * either version cannot be compared.
+ * @param {string | undefined} ctl
+ * @param {string} vimma
+ * @returns {boolean}
+ */
+export function ctlIsCurrent(ctl, vimma) {
+  return ctl !== undefined && compareVersions(ctl, vimma) >= 0;
+}
+
+/**
  * The notice for an agent connection whose vimma-ctl is `ctl` (undefined: it named none, so it
  * predates the check) on a Vimma of version `vimma`; null when there is nothing to say.
  * @param {string | undefined} ctl

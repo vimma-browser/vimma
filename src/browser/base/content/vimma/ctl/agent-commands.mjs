@@ -29,7 +29,7 @@ import {
 import { actDetail, fillDetail } from "../core/agent-act.mjs";
 import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
 import { fillFits, shownNotice } from "../core/agent-prompt.mjs";
-import { ctlVersionNotice } from "../core/ctl-version.mjs";
+import { ctlIsCurrent, ctlVersionNotice } from "../core/ctl-version.mjs";
 import { MAX_LINE_LENGTH, MAX_READ_CHARS } from "../core/control.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { workspaceOfTab } from "../core/workspaces.mjs";
@@ -113,13 +113,22 @@ export class AgentError extends Error {
 }
 
 /**
- * The `busy` denial of a used-up rate (issue #592): it names the limit and says when the next
- * call is allowed, so an agent does not wait for a question that is not there.
+ * The connections whose vimma-ctl is at least as new as Vimma (agent-hello's `ctl`): only they
+ * get a rate refusal's `retryAfter`, which an older client's strict parser would reject.
+ * @type {Set<ConnId>}
+ */
+const currentCtl = new Set();
+
+/**
+ * The `busy` denial of a used-up rate (issue #592): it names the limit and, to a current
+ * vimma-ctl, says when the next call is allowed, so an agent does not wait for a question that
+ * is not there.
  * @param {CallRate} rate @param {ConnId} conn @param {string} calls  e.g. "vimma_keys calls"
  */
 function rateDenied(rate, conn, calls) {
   const { message, retryAfter } = rate.refusal(conn, Date.now(), calls);
-  return new AgentError("denied", message, "busy", retryAfter);
+  const wait = currentCtl.has(conn) ? retryAfter : undefined;
+  return new AgentError("denied", message, "busy", wait);
 }
 
 /** The denial texts, by reason (decision 4); the MCP layer words them for the model. */
@@ -538,7 +547,9 @@ const COMMANDS = {
     // the user learns why an agent lacks newer ones (spec ship-vimma-ctl, decision 6).
     // Once per client name and version a session, so a client that reconnects, or opens
     // connection after connection, cannot keep the notice line for itself.
-    const notice = ctlVersionNotice(ctl, lazy.AppConstants.MOZ_APP_VERSION_DISPLAY);
+    const vimma = lazy.AppConstants.MOZ_APP_VERSION_DISPLAY;
+    if (ctlIsCurrent(ctl, vimma)) currentCtl.add(conn);
+    const notice = ctlVersionNotice(ctl, vimma);
     const key = `${client.name}\0${ctl ?? ""}`;
     if (notice && !ctlNoticed.has(key)) {
       ctlNoticed.add(key);
@@ -1485,6 +1496,7 @@ export function forgetAgentConnection(conn) {
   actCalls.forget(conn);
   shotCalls.forget(conn);
   consoleCalls.forget(conn);
+  currentCtl.delete(conn);
   AgentDrive.forget(conn);
 }
 

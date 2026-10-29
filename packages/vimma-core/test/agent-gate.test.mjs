@@ -503,6 +503,13 @@ describe("a used-up rate says when the next call is allowed", () => {
     expect(r.retryAfter(2, 10_000)).toBe(0);
   });
 
+  test("retryAfter is at most the window, even after the clock went back", () => {
+    const r = new CallRate({ max: 1, ms: 60_000 });
+    r.take(1, 100_000);
+    expect(r.retryAfter(1, 40_000)).toBe(60_000);
+    expect(r.refusal(1, 40_000, "opens").retryAfter).toBe(60_000);
+  });
+
   test("retryAfter counts nothing", () => {
     const r = new CallRate({ max: 1, ms: 60_000 });
     r.retryAfter(1, 0);

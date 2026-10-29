@@ -223,7 +223,8 @@ export class CallRate {
     const { max, ms } = this.limit;
     const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
     if (recent.length < max) return 0;
-    return Math.min(...recent) + ms - now;
+    // At most the window: a clock set back leaves calls stamped in the future.
+    return Math.min(ms, Math.min(...recent) + ms - now);
   }
 
   /**

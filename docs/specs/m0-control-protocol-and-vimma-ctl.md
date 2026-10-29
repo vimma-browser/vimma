@@ -283,7 +283,8 @@ Spec: [vimma-mcp](vimma-mcp.md) (decisions 2-4), ADR-019. Fixtures:
   A `denied` error carries `reason`: `user`, `timeout`, `busy`, `muted`, `changed` or
   `cancelled`; no other error has a `reason`. (Since changed: a `busy` denial for a used-up
   per-connection rate also carries `retryAfter`, the milliseconds until the next call is
-  allowed, and its message names the limit; see [security.md](../security.md) M20 and M32.)
+  allowed, when the connection's vimma-ctl is at least as new as Vimma, and its message names
+  the limit; see [security.md](../security.md) M20 and M32.)
 - **Agent commands** (role `agent` only; `agent-hello` must come first, and only once):
 
   | Command        | `args`                                                     | `result`                                                                         |
