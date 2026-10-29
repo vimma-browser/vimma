@@ -856,7 +856,8 @@ Each PR is mergeable and tested on its own; the window appears only in PR 4.
 6. `feat(keys): a key opens the agent chat window` (B13): one keymap PR, with the regenerated
    bindings docs, the help snapshot and a screenshot of `ctrl+b ?`.
 7. The `query` and `kinds` filters of `vimma_elements` (B2), in their own spec for MCP and the
-   built-in agent alike, measured by the bench before and after.
+   built-in agent alike, measured by the bench before and after: [agent-speed](agent-speed.md)
+   S3 and S4, [#599](https://github.com/vimma-browser/vimma/issues/599).
 
 ## Open questions
 
