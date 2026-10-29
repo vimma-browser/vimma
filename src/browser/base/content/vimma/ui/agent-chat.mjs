@@ -18,7 +18,7 @@ import {
   chatKey,
   entryView,
   externalNotice,
-  isLocalEndpoint,
+  needsKey,
   whereDataGoes,
 } from "../core/agent-chat.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
@@ -45,12 +45,6 @@ const ANTHROPIC_ENDPOINT = "https://api.anthropic.com";
 const ANTHROPIC_MODEL = "claude-sonnet-4-5";
 const KEY_HINT = "Enter stores it, encrypted, in login storage · Esc cancels";
 
-/**
- * Whether a provider's requests need an API key: Anthropic's always; an OpenAI-compatible
- * endpoint off this machine (a local server takes none).
- * @param {{ kind: string, endpoint: string }} p
- */
-const needsKey = (p) => p.kind === "anthropic" || !isLocalEndpoint(p.endpoint);
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 const INSERT_HINT = "Enter sends · ctrl+Enter asks every step · shift+Enter new line · Esc";
@@ -125,6 +119,8 @@ export class AgentChatWindow {
     this.keyLabel = null;
     /** @type {AgentProviderConfig | null} the provider whose key the field asks for */
     this.keyFor = null;
+    /** A key is being stored. */
+    this.storing = false;
     /** @type {Row[]} the models or conversations listed */
     this.rows = [];
     this.row = 0;
@@ -190,6 +186,7 @@ export class AgentChatWindow {
       lazy.AgentChat.addListener(this.onChange);
     }
     box.hidden = false;
+    this.clearKey();
     this.view = view;
     this.drawn = -1;
     this.render();
@@ -209,6 +206,7 @@ export class AgentChatWindow {
   }
 
   close() {
+    this.clearKey();
     if (!this.opened) return;
     this.opened = false;
     lazy.AgentChat.removeListener(this.onChange);
@@ -444,7 +442,7 @@ export class AgentChatWindow {
           else this.afterKey(id, go);
         },
         (/** @type {any} */ e) => {
-          console.error("vimma agent: the key could not be read", e);
+          console.error("vimma agent: the key could not be read", e?.name);
           this.askKey(chosen);
         },
       );
@@ -662,6 +660,7 @@ export class AgentChatWindow {
    */
   askKey(provider) {
     if (!this.opened) this.open();
+    this.clearKey();
     this.keyFor = provider;
     this.view = "key";
     this.render();
@@ -669,10 +668,14 @@ export class AgentChatWindow {
   }
 
   cancelKey() {
-    const field = /** @type {HTMLInputElement} */ (this.keyInput);
-    field.value = "";
-    this.keyFor = null;
+    this.clearKey();
     this.insert();
+  }
+
+  /** The field holds a key only while it is typed: any way out of it empties it (M46). */
+  clearKey() {
+    if (this.keyInput) this.keyInput.value = "";
+    this.keyFor = null;
   }
 
   async storeKey() {
@@ -681,11 +684,15 @@ export class AgentChatWindow {
     // Out of the field at once: it holds the key only while it is typed.
     const key = field.value.trim();
     field.value = "";
+    if (this.storing) return undefined;
     if (!provider) return this.insert();
     if (!key) {
       this.host.say(`agent: ${provider.name} needs an API key`, true);
       return undefined;
     }
+    // One store at a time: a second Enter while this one runs neither errs nor races it.
+    this.storing = true;
+    this.keyFor = null;
     try {
       await lazy.AgentKeys.set(provider.name, key, provider.endpoint);
       const hint = await lazy.AgentKeys.hint(provider.name, provider.endpoint);
@@ -694,7 +701,10 @@ export class AgentChatWindow {
       // The error's text is not shown: it could carry what was typed.
       console.error("vimma agent: the key could not be stored", /** @type {any} */ (e)?.name);
       this.host.say(`agent: the key for ${provider.name} could not be stored`, true);
+      this.keyFor = provider;
       return undefined;
+    } finally {
+      this.storing = false;
     }
     this.keyFor = null;
     this.useProvider(provider);

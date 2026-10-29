@@ -2096,12 +2096,14 @@ export const VimmaHost = {
       return;
     }
     const mode = this._mode(state);
-    // Keys typed in a private window are never kept (private-workspace decision 8b).
-    if (!state.private) {
+    // Keys typed in a private window are never kept (private-workspace decision 8b), nor those
+    // typed in a password field, such as the built-in agent's API key (security.md M46).
+    const secret = /** @type {any} */ (e.target)?.type === "password";
+    if (!state.private && !secret) {
       this._lastChords.push(key);
       if (this._lastChords.length > MAX_RECORDED) this._lastChords.shift();
     }
-    if (Services.prefs.getBoolPref(DEBUG_PREF, false)) {
+    if (!secret && Services.prefs.getBoolPref(DEBUG_PREF, false)) {
       const mods = MODIFIERS.filter((m) => chord[m]);
       console.debug("vimma key", { key, mods, mode });
     }

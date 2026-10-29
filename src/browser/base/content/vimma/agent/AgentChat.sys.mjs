@@ -15,7 +15,7 @@
 // and until the feature is finished its pref keeps it off.
 
 import { Budget } from "../core/agent-budget.mjs";
-import { Transcript, isLocalEndpoint } from "../core/agent-chat.mjs";
+import { Transcript, isLocalEndpoint, needsKey } from "../core/agent-chat.mjs";
 import { clearContext, startTask } from "../core/agent-loop.mjs";
 import { checkEndpoint } from "../core/agent-providers.mjs";
 import { failureResult, toolCommand, toolResult } from "../core/agent-results.mjs";
@@ -300,10 +300,19 @@ export const AgentChat = {
     } catch (e) {
       c.starting = false;
       changed();
-      console.error("vimma agent: the provider's key could not be read", e);
+      console.error(
+        "vimma agent: the provider's key could not be read",
+        /** @type {any} */ (e)?.name,
+      );
       return { refused: `the key of ${c.provider.name} could not be read` };
     }
     if (!conversations.has(id) || !c.starting) return { refused: "the conversation was stopped" };
+    // A provider that needs a key gets no request without one (security.md M46).
+    if (!key && needsKey(c.provider)) {
+      c.starting = false;
+      changed();
+      return { refused: `${c.provider.name} has no API key; m in the window sets one` };
+    }
     c.transcript.user(text);
     // Only now, so a send that starts no task leaves no grant behind.
     applyGrant();

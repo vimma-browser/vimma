@@ -269,6 +269,13 @@ export function isLocalEndpoint(endpoint) {
   return !!url && LOOPBACK.has(url.hostname);
 }
 
+/**
+ * Whether a provider's requests need an API key: Anthropic's always, an OpenAI-compatible
+ * endpoint off this machine (a local server takes none).
+ * @param {{ kind: string, endpoint: string }} p
+ */
+export const needsKey = (p) => p.kind === "anthropic" || !isLocalEndpoint(p.endpoint);
+
 /** Who runs an API, for the hosts Vimma knows; another host is named by its address only. */
 const VENDORS = Object.freeze({ "api.anthropic.com": "Anthropic" });
 

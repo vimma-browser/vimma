@@ -488,6 +488,33 @@ addTidyTask(async function test_hosted_anthropic_provider_asks_for_its_key_befor
   }
 });
 
+addTidyTask(async function test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless() {
+  const anthropic = {
+    name: "mock-anthropic",
+    kind: "anthropic",
+    endpoint: `http://127.0.0.1:${PORT}/anthropic`,
+    model: "claude-mock",
+    vision: true,
+  };
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: anthropic.name, providers: [anthropic] });
+  try {
+    await openChat();
+    const sent = await AgentChat.send(openId(), "hello");
+    Assert.ok("refused" in sent, "a send without the provider's key is refused");
+    Assert.ok(!requests.length, "and nothing reached the endpoint");
+    send("hello");
+    await until(keyOpen, "the window asks for the key");
+    EventUtils.sendString("half-a-key");
+    const chat = VimmaHost._state(window).agentChat;
+    chat.close();
+    Assert.equal(keyField().value, "", "closing the window drops what was typed");
+    chat.askKey(anthropic);
+    Assert.equal(keyField().value, "", "so the next key starts empty");
+  } finally {
+    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  }
+});
+
 addTidyTask(async function test_opened_from_another_workspace_reads_none_of_its_tabs() {
   await openChat();
   send(script([{ call: "vimma_tabs", args: {} }, { reply: "listed" }]));
