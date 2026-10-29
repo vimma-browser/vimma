@@ -728,7 +728,7 @@ describe("older results leave the context in blocks", () => {
     expect(AGENT_DEFAULTS.keepResults).toBe(KEEP_RESULTS);
   });
 
-  test("a left-out result keeps its first line and says the rest was left out", () => {
+  test("the loop leaves out results older than keep_results in blocks, keeping their first line", () => {
     const out = bodies(pruneResults(conversation(12), 6));
     expect(out[0].content).toEqual([{ type: "text", text: `${HEADER}\n${LEFT_OUT}` }]);
     expect(out[0]).toMatchObject({ id: "c0", name: "vimma_read_page", isError: false });
@@ -793,6 +793,19 @@ describe("older results leave the context in blocks", () => {
     ]);
   });
 
+  test("a left-out screenshot made only of an image keeps its id and says it was left out", () => {
+    const messages = conversation(12);
+    messages[2].results[0].content = [
+      { type: "image", mimeType: "image/png", data: "A".repeat(400) },
+    ];
+    expect(bodies(pruneResults(messages, 6))[0]).toEqual({
+      id: "c0",
+      name: "vimma_read_page",
+      isError: false,
+      content: [{ type: "text", text: LEFT_OUT }],
+    });
+  });
+
   test("a left-out screenshot loses its image", () => {
     const messages = conversation(12);
     messages[2].results[0].content.push({ type: "image", mimeType: "image/png", data: "AAAA" });
@@ -801,7 +814,7 @@ describe("older results leave the context in blocks", () => {
     ]);
   });
 
-  test("pruning changes only the request: the task's messages keep every result", async () => {
+  test("a request's prefix changes only when a block is left out", async () => {
     const script = [];
     for (let i = 0; i < 20; i++)
       script.push({ content: "", tool_calls: [call("vimma_tabs", {}, `c${i}`)] });
