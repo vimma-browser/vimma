@@ -187,9 +187,10 @@ Where the time and the tokens went (`formatBreakdown`):
   for the quantity): 35 steps, 500,000 tokens and 17 minutes for the whole list, completed and
   stopped at the payment checkpoint. On L04 3 of its 5 opens were searches by URL.
 - One run a list is a small sample, and L04's after run used more tokens than its before run
-  only because the before run stopped early. The scripted floor does not read the instructions
-  and kept its path (27 and 63 steps); the longer instructions added about 110 characters a
-  request (1 to 2 points of its share).
+  only because the before run stopped early. Against the paced search floor above (23 steps and
+  231,000 tokens for L10), the model took 12 more steps (3 page reads, 2 element lists, 2
+  `vimma_keys`, a fill and a few more opens and clicks) and twice the tokens, since its own text and longer element lists add to every
+  later request. The longer instructions add about 110 characters to each request.
 
 ## What the results show
 
