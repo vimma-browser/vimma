@@ -14,6 +14,7 @@
 // first.
 
 import {
+  addAgentProviderText,
   appendRouteText,
   formatConfigError,
   rawUpdatesCheck,
@@ -517,6 +518,79 @@ export const ConfigHost = {
     }
     await this.reload();
     return null;
+  },
+
+  /**
+   * The built-in agent's setup (docs/specs/builtin-agent.md Behaviour 2-3): the provider picked
+   * in the chat window goes into config.toml as `[[agent.providers]]`, by name, kind, endpoint,
+   * model and vision only (its key stays in login storage), and with `makeDefault` becomes
+   * `[agent] default`, so that it survives a restart; then the file is read. The file's other
+   * lines stay as they are. Written through a 0600 temporary file renamed over the file a
+   * symlinked config.toml points to, so a dotfile link stays a link; nothing is written when the
+   * file does not parse, would not with the edit, or changed while it was edited.
+   * @param {import("../core/config.mjs").AgentProviderConfig} provider
+   * @param {{ makeDefault: boolean }} opts
+   * @returns {Promise<{ name: string } | { error: string }>} the name it has in the file
+   */
+  async addAgentProvider(provider, { makeDefault }) {
+    const path = configPath();
+    /** @type {string | null} */
+    let text = null;
+    /** @type {any} */
+    let before = null;
+    let target = path;
+    try {
+      const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+      file.initWithPath(path);
+      // isSymlink is lstat: a missing config.toml throws, and is created from the template.
+      let link = false;
+      try {
+        link = file.isSymlink();
+      } catch (e) {
+        if (/** @type {any} */ (e)?.result !== Cr.NS_ERROR_FILE_NOT_FOUND) throw e;
+      }
+      if (link) {
+        // A link to nothing: writing would replace the user's link with a plain file.
+        if (!file.exists())
+          return { error: `${path} is a link to a missing file; nothing written` };
+        target = file.target;
+      }
+      before = await IOUtils.stat(target);
+      text = await IOUtils.readUTF8(target);
+    } catch (e) {
+      if (!notFound(e)) return { error: `cannot read ${path}` };
+    }
+    const r = addAgentProviderText(text, provider, {
+      makeDefault,
+      mac: Services.appinfo.OS === "Darwin",
+    });
+    if ("error" in r) return r;
+    const dir = PathUtils.parent(target) ?? "/";
+    const tmp = PathUtils.join(
+      dir,
+      `.config.toml.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
+    );
+    try {
+      if (!(await IOUtils.exists(dir))) {
+        await IOUtils.makeDirectory(dir, { createAncestors: true, permissions: DIR_MODE });
+      }
+      await IOUtils.writeUTF8(tmp, r.text, { mode: "create" });
+      await IOUtils.setPermissions(tmp, before ? before.permissions : FILE_MODE, false);
+      // The file's text as well as its time: an edit within the time's resolution changes it.
+      const now = await IOUtils.readUTF8(target).catch(() => null);
+      const stat = await IOUtils.stat(target).catch(() => null);
+      if (now !== text || (stat?.lastModified ?? null) !== (before?.lastModified ?? null)) {
+        await IOUtils.remove(tmp);
+        return { error: `${path} changed meanwhile; nothing written` };
+      }
+      await IOUtils.move(tmp, target);
+    } catch (e) {
+      console.error(`vimma: cannot write ${path}`, e);
+      await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
+      return { error: `cannot write ${path}` };
+    }
+    await this.reload();
+    return { name: r.name };
   },
 
   firstRun,
