@@ -10,7 +10,13 @@
  */
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./agent.mjs";
-import { AGENT_FILL, AGENT_SCREENSHOT, hasInvisible, isAgentLabel } from "./agent-act.mjs";
+import {
+  AGENT_FILL,
+  AGENT_SCREENSHOT,
+  ELEMENT_KINDS,
+  hasInvisible,
+  isAgentLabel,
+} from "./agent-act.mjs";
 import { isCtlVersion } from "./ctl-version.mjs";
 import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { parseKey } from "./keys.mjs";
@@ -340,7 +346,7 @@ function checkAgentReadArgs(args, errors) {
  * @param {Obj} args @param {string[]} errors
  */
 function checkAgentOpenArgs(args, errors) {
-  noExtraFields(args, ["url", "tab", "elements"], errors, "args.");
+  noExtraFields(args, ["url", "tab", ...STEP_LIST_ARGS], errors, "args.");
   checkElementsFlag(args, errors);
   const { url } = args;
   if (typeof url !== "string") errors.push("url must be a string");
@@ -358,6 +364,49 @@ function checkAgentOpenArgs(args, errors) {
 function checkElementsFlag(args, errors) {
   if ("elements" in args && typeof args.elements !== "boolean") {
     errors.push("elements must be a boolean");
+  }
+  if (("query" in args || "kinds" in args) && args.elements !== true) {
+    errors.push("query and kinds come only with elements: true");
+  }
+  checkListFilters(args, errors);
+}
+
+/** The arguments of a step that returns an element list (issue #584, agent-speed S4). */
+const STEP_LIST_ARGS = ["elements", "query", "kinds"];
+
+/** The longest `query` of an element list, in code points (builtin-agent B2). */
+const MAX_LIST_QUERY = 200;
+
+/**
+ * An element list's filters (builtin-agent B2, agent-speed Behaviour 4): `query`, words of one
+ * line, and `kinds`, distinct kinds of ELEMENT_KINDS.
+ * @param {Obj} args @param {string[]} errors
+ */
+function checkListFilters(args, errors) {
+  const { query, kinds } = args;
+  if (
+    "query" in args &&
+    !(
+      typeof query === "string" &&
+      query.trim() !== "" &&
+      [...query].length <= MAX_LIST_QUERY &&
+      !FILL_CONTROL.test(query) &&
+      !query.includes("\n") &&
+      !hasInvisible(query)
+    )
+  ) {
+    errors.push(`query must be 1 to ${MAX_LIST_QUERY} characters of one line`);
+  }
+  if (
+    "kinds" in args &&
+    !(
+      Array.isArray(kinds) &&
+      kinds.length > 0 &&
+      new Set(kinds).size === kinds.length &&
+      kinds.every((k) => ELEMENT_KINDS.includes(k))
+    )
+  ) {
+    errors.push(`kinds must be distinct kinds of ${ELEMENT_KINDS.join(", ")}`);
   }
 }
 
@@ -381,7 +430,7 @@ function checkAgentKeysArgs(args, errors) {
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentActivateArgs(args, errors) {
-  noExtraFields(args, ["tab", "label", "elements"], errors, "args.");
+  noExtraFields(args, ["tab", "label", ...STEP_LIST_ARGS], errors, "args.");
   checkTabArg(args, errors);
   checkElementsFlag(args, errors);
   if (!isAgentLabel(args.label)) {
@@ -403,7 +452,7 @@ const isFillValue = (v) =>
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentFillArgs(args, errors) {
-  noExtraFields(args, ["tab", "fields", "submit", "elements"], errors, "args.");
+  noExtraFields(args, ["tab", "fields", "submit", ...STEP_LIST_ARGS], errors, "args.");
   checkTabArg(args, errors);
   checkElementsFlag(args, errors);
   const { fields } = args;
@@ -474,12 +523,14 @@ function checkRequest(m, errors) {
     if ("since" in args && !isCount(args.since)) {
       errors.push("since must be a non-negative integer (ms since the epoch)");
     }
-  } else if (
-    command === "agent-close" ||
-    command === "agent-show" ||
-    command === "agent-elements"
-  ) {
-    // A show names its tab only, never a workspace (mcp-drive D2); a list takes no selector.
+  } else if (command === "agent-elements") {
+    // A list takes no selector (mcp-forms F2): its filters match the checked copies' words.
+    noExtraFields(args, ["tab", "query", "kinds", "full"], errors, "args.");
+    checkTabArg(args, errors);
+    checkListFilters(args, errors);
+    if ("full" in args && typeof args.full !== "boolean") errors.push("full must be a boolean");
+  } else if (command === "agent-close" || command === "agent-show") {
+    // A show names its tab only, never a workspace (mcp-drive D2).
     noExtraFields(args, ["tab"], errors, "args.");
     checkTabArg(args, errors);
   } else if (command === "agent-cancel") {
@@ -533,12 +584,32 @@ const isCount = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0
  * @param {Obj} result @param {string[]} errors
  */
 function checkElementsResult(result, errors) {
-  noExtraFields(result, ["url", "title", "elements", "dropped"], errors, "result.");
+  noExtraFields(result, ["url", "title", "elements", "dropped", "repeated"], errors, "result.");
+  checkRepeated(result, errors);
   checkFields(result, "result", { strings: ["url", "title"] }, errors);
   if (!insideDelimiters(result.elements)) {
     errors.push("result.elements must be inside the untrusted-content delimiters");
   }
   if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+}
+
+/**
+ * The labels a compact list left out as given in the conversation's last list of the site
+ * (agent-speed S4): Vimma's own words, labels only, never the page's, and only with a list.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkRepeated(result, errors) {
+  if (!("repeated" in result)) return;
+  const r = result.repeated;
+  if (!("elements" in result)) errors.push("result.repeated comes only with result.elements");
+  else if (!(
+    Array.isArray(r) &&
+    r.length > 0 &&
+    new Set(r).size === r.length &&
+    r.every((l) => isAgentLabel(l))
+  )) {
+    errors.push("result.repeated must be distinct labels, at least one");
+  }
 }
 
 /**
@@ -548,6 +619,7 @@ function checkElementsResult(result, errors) {
  * @param {Obj} result @param {string[]} errors
  */
 function checkStepList(result, errors) {
+  checkRepeated(result, errors);
   const listed = "elements" in result;
   if (listed !== "dropped" in result) {
     errors.push("result.elements and result.dropped come together");
@@ -572,7 +644,7 @@ function checkStepList(result, errors) {
 function checkOpenResult(result, errors) {
   noExtraFields(
     result,
-    ["tab", "url", "title", "elements", "dropped", "unlisted"],
+    ["tab", "url", "title", "elements", "dropped", "repeated", "unlisted"],
     errors,
     "result.",
   );
@@ -677,6 +749,7 @@ function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([]
       "changed",
       "elements",
       "dropped",
+      "repeated",
       "unlisted",
       ...extra,
     ],

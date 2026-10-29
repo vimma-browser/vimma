@@ -40,6 +40,7 @@ import {
   AgentTabOwners,
   builtinHello,
   forgetAgentConnection,
+  forgetListedSites,
   runAgentCommand,
 } from "../ctl/agent-commands.mjs";
 import { AgentGate } from "../ctl/AgentGate.sys.mjs";
@@ -674,6 +675,7 @@ export const AgentChat = {
     const c = conversation(id);
     if (isRunning(c)) return "a task is running; s stops it";
     c.messages = modelMessages(c.stored);
+    forgetListedSites(c.conn);
     c.transcript.notice("context cleared: earlier page reads are no longer sent to the model");
     changed();
     return null;

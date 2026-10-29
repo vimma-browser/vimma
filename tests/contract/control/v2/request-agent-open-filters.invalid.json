@@ -1,0 +1,13 @@
+{
+  "description": "A query without the element list it filters",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 11,
+    "command": "agent-open",
+    "args": {
+      "query": "oat drink",
+      "url": "https://shop.example/search?q=oat+drink"
+    }
+  }
+}

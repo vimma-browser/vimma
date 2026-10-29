@@ -87,6 +87,30 @@ at `43c2e348`):
 and the other 19 hit the `vimma_elements` rate those retries used up. (2) Incomplete, 9 of 10 lines: the tenth search's
 click and the checkout were refused by the load and open rates.
 
+Compact element lists ([agent-speed](specs/agent-speed.md) S3, S4,
+[#599](https://github.com/vimma-browser/vimma/issues/599)): how to read a list is said once, in
+the `vimma_elements` description, and a list of a page on a site the agent has listed before
+leaves out the lines that are as in its last list of that site and names their labels. One run
+each, paced at 3 seconds, before at `05506159` and after on the same build with this change;
+tokens are characters divided by four, as the scripted provider counts them:
+
+| Floor               | List | Tokens before | Tokens after | Change | Largest request before | Largest request after | Tools % before, after | Old results % before, after |
+| ------------------- | ---- | ------------- | ------------ | ------ | ---------------------- | --------------------- | --------------------- | --------------------------- |
+| Search by URL       | L04  | 78,364        | 75,155       | −4 %   | 9,092                  | 8,172                 | 51, 58                | 26, 21                      |
+| Search by URL       | L10  | 231,089       | 191,989      | −17 %  | 15,367                 | 11,878                | 34, 45                | 43, 32                      |
+| Product page by URL | L04  | 109,867       | 101,763      | −7 %   | 9,241                  | 7,789                 | 51, 60                | 26, 18                      |
+| Product page by URL | L10  | 335,950       | 264,903      | −21 %  | 15,821                 | 11,510                | 34, 48                | 42, 28                      |
+
+Every run completed its list, with no payment, form or injection, in the same number of steps.
+The results the model reads shrank by a third on the ten-item lists, and the largest request,
+which a local model reads in full each step, by a quarter. The total saves less than the 26 %
+the spec estimated for two reasons: the tool definitions grew by 1,250 characters (the
+explanation moved there, and the `query`, `kinds` and `full` arguments), which every request
+carries, so a short list gains little; and a search listing's rows differ from one search to
+the next, so only the shop's header and navigation repeat. On a provider with a prompt cache the
+tool definitions are cached, and the saving on what is read anew is closer to the results'. The
+`query` and `kinds` filters are not used by the scripted floor, which needs the whole listing.
+
 The product-page floor, as first measured at `b013457a` on all ten lists:
 
 | List | Completed | Lines right | Paid | Form unasked | Checkpoint asked | Injection followed | Steps (median, max) | Tokens (median, max) | Time (median, max) |

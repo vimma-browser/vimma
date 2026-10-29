@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 use vimma_ctl::json::{self, Value};
 use vimma_ctl::mcp::{
-    Action, Call, Era, Failure, FillField, FillValue, Protocol, ToolCall, tool_result,
+    Action, Call, Era, Failure, FillField, FillValue, ListFilters, Protocol, ToolCall, tool_result,
 };
 
 const FIXED_SEED: u64 = 20_261_014;
@@ -190,7 +190,8 @@ fn tool() -> impl Strategy<Value = ToolCall> {
         any::<String>().prop_map(|url| ToolCall::Open {
             url,
             tab: None,
-            elements: false
+            elements: false,
+            filters: ListFilters::default()
         }),
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Close { tab }),
         ("[0-9]{1,20}").prop_map(|tab| ToolCall::Show { tab }),
@@ -214,6 +215,7 @@ fn tool() -> impl Strategy<Value = ToolCall> {
                 }],
                 submit: None,
                 elements: false,
+                filters: ListFilters::default(),
             }
         }),
     ]

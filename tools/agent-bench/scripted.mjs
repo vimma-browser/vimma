@@ -87,19 +87,41 @@ function lastToolText(messages) {
 }
 
 /**
- * The label of the first button whose text matches, from an element list: one JSON object a
- * line.
- * @param {string} text @param {RegExp} match
+ * The first button whose text matches, from an element list: one JSON object a line. With
+ * `labels`, only one of those.
+ * @param {string} text @param {RegExp} match @param {Set<string>} [labels]
  */
-function findLabel(text, match) {
+function buttonIn(text, match, labels) {
   for (const line of text.split("\n")) {
     if (!line.startsWith("{")) continue;
     try {
       const el = JSON.parse(line);
+      if (labels && !labels.has(String(el.label))) continue;
       if (el.kind === "button" && match.test(String(el.text ?? ""))) return String(el.label);
     } catch {
       // not an element line
     }
+  }
+  return null;
+}
+
+/** The note a compact list ends with (agent-speed S4), naming the labels it left out. */
+const REPEATED = /^\(\d+ elements? as in your last list of this site: ([a-z, ]+)\)$/m;
+
+/**
+ * The label of the first button whose text matches in the newest list: written in it, or left
+ * out as in an earlier list of the site, whose line the newest of the earlier results gives.
+ * @param {string} text @param {RegExp} match @param {any[]} [messages]
+ */
+function findLabel(text, match, messages = []) {
+  const found = buttonIn(text, match);
+  const repeated = REPEATED.exec(text);
+  if (found || !repeated) return found;
+  const labels = new Set(repeated[1].split(", "));
+  const earlier = messages.filter((m) => m.role === "tool").slice(0, -1);
+  for (let i = earlier.length - 1; i >= 0; i--) {
+    const label = buttonIn(String(earlier[i].content ?? ""), match, labels);
+    if (label) return label;
   }
   return null;
 }
@@ -177,7 +199,9 @@ export function shopper({ base, list, path = "search", catalog }) {
       sub = "listed";
       // An open with elements lists the page it loaded; one that could not list it (the page
       // never loaded, or navigated meanwhile) leaves the list to vimma_elements, as below.
-      if (!search || !findLabel(result, page.button)) return call("vimma_elements", { tab });
+      if (!search || !findLabel(result, page.button, messages)) {
+        return call("vimma_elements", { tab });
+      }
     }
     if (sub === "listed") {
       // vimma_open returns while the page loads: a tab still on its first blank document has no
@@ -186,7 +210,7 @@ export function shopper({ base, list, path = "search", catalog }) {
       if (result.startsWith("Error: ") && retries++ < MAX_RETRIES)
         return call("vimma_elements", { tab });
       retries = 0;
-      const found = findLabel(result, page.button);
+      const found = findLabel(result, page.button, messages);
       if (!found) return { text: `The page has no ${page.name} button.` };
       label = found;
       sub = "clicking";
