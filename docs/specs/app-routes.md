@@ -404,9 +404,11 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
      every process nearer than the agent CLI is one the agent started: a copied shell named
      `ghostty` gives `ghostty,claude,zsh,ghostty`, and an agent running `az login` gives
      `python3,claude,…`, which reaches a user's own `app = "python3"` sign-in rule. The cut covers
-     links an agent opens the normal way, through `BROWSER` or `xdg-open`; it cannot stop an agent
-     that runs `vimma-open --from` or `vimma -vimma-from` itself, which is the boundary
-     docs/security.md §11 already accepts for programs running as the user.
+     links an agent opens with its process chain intact, through `BROWSER` or `xdg-open`. An agent
+     that runs arbitrary commands can still forge a chain: detach a process and rename it, set
+     `TERM_PROGRAM` where the walk still uses it (decision 8), or call `vimma-open --from` or
+     `vimma -vimma-from` itself. That is the boundary docs/security.md §11 already accepts for
+     programs running as the user.
 
 ### Collecting the names
 
@@ -451,10 +453,21 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
    user's `after-display-message` hooks on every link and its cost was not measured; and the
    inherited `GHOSTTY_RESOURCES_DIR`, because it names the terminal that started the server, not
    the one attached. An opt-in client lookup is Open question 6.
-8. **`TERM_PROGRAM` is the farthest name.** When `TERM_PROGRAM`, lower-cased, is a token not
-   already in the list, it is added last (within the cap). Reason: it names the terminal for a
-   chain that does not reach one (VS Code's integrated terminal, a chain cut by `setsid`), and as
-   the farthest name it never outranks a program the walk found.
+8. **`TERM_PROGRAM` only when the walk could not see the terminal.** When the walk ended at a name
+   that is not a token or at the 32-step limit, and `TERM_PROGRAM`, lower-cased, is a token not
+   already in the list, it is added last (within the cap). When the walk ended normally, at pid 1
+   or a stop-list process, it is never added. Reason: in VS Code's integrated terminal on macOS the
+   shell's parent is a helper named `Code Helper (Plugin)` (`ucomm` truncated to 16 bytes), which
+   is not a token, so the walk cannot name the terminal and `TERM_PROGRAM=vscode` does (on Linux,
+   where the parent is named `code`, the walk names it; neither name was observed here). A walk
+   that ended normally either reached the terminal, which is then in the list already (Ghostty's
+   own parent is launchd), or ended because the chain was cut: a job an agent CLI started in the
+   background is reparented to launchd or `systemd --user` when its shell exits, and still
+   inherits `TERM_PROGRAM=ghostty`, so adding it would turn `node` into `node,ghostty`, which
+   reaches the terminal's rules without the agent's name that the cut of decision 5 needs. As the
+   farthest name it never outranks a program the walk found. The acceptance case is unchanged:
+   `python3,zsh,ghostty` reaches Ghostty itself, and `python3,zsh,herdr` ends at herdr's server,
+   which has its own rule.
 9. **`vimma-open` hands the link off and returns at once.** CPython and `gh` wait for the browser
    command to exit (Research, "CLIs"), and a Vimma started as the terminal's child would block them
    and die with the terminal.
@@ -586,8 +599,10 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
   prompt or a remembered "always allow", and that app's next link then carries its name. (3) Every
   program run in a terminal carries the terminal's names, an AI agent's CLI included, so a
   prompt-injected agent's link matches the terminal's rules unless a rule names the agent's CLI:
-  a rule naming the agent workspace drops every name of such a link (decision 5), though an agent
-  that names itself with `--from` or `-vimma-from` is not covered (§11), and the guide
+  a rule naming the agent workspace drops every name of such a link (decision 5), and a detached
+  job of the agent gets no inherited `TERM_PROGRAM` (decision 8), though an agent that forges a
+  chain (detaching and renaming a process, setting `TERM_PROGRAM` where it still applies, or
+  calling `--from` or `-vimma-from`) is not covered (§11), and the guide
   recommends routing agent CLIs (`claude`, `codex`) by name to a workspace with no privileged
   sign-ins. For a workspace that holds privileged sign-ins, the guide recommends pairing `app` with
   `domain`, as the worked example does, so that a forged name opens only the sign-in host there.
@@ -664,7 +679,11 @@ at most eight, never two equal neighbours`.
   - `a daemonised tmux server ends the list at tmux, whatever its clients`;
     `a server under systemd --user ends the list too`; `maps tmux: server to tmux`;
     `never runs tmux or herdr`; `walks one ps listing of the user's own processes` (macOS)
-  - `adds TERM_PROGRAM last when the walk did not find it`
+  - `adds TERM_PROGRAM last when the walk ends at a name that is not a token` (VS Code: a chain
+    ending at `code helper (plu` with `TERM_PROGRAM=vscode` gives `zsh,vscode`)
+  - `a_detached_child_under_an_agent_cli_gets_no_TERM_PROGRAM_name`: a chain `node` whose parent
+    is pid 1, with `TERM_PROGRAM=ghostty`, gives `node` and no `ghostty`
+  - `never adds TERM_PROGRAM when the walk reached the terminal`
   - `keeps the seven nearest names and the farthest past eight`
   - `--from names the app and skips the walk`; `--from refuses a name that is not a token`;
     `--from refuses a URL that is a flag`
