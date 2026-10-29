@@ -510,13 +510,15 @@ function takeListSlot(conn, tool, what) {
  * once `ready` says it is, listed as `agent-elements` lists it, with the tab's URL and title as
  * they were at the last check that it is still the agent's (M8); or, with that URL and title,
  * why there is no list, in STEP_UNLISTED's words: `loading`, `changed` (the page's URL changed
- * while it was listed) or `failed`. A tab that left the agent workspace or closed meanwhile is a
+ * while it was listed), `error` (the load ended on Firefox's error page, named in `loadError`;
+ * issue #643) or `failed`. A tab that left the agent workspace or closed meanwhile is a
  * `failed` refusal that says nothing of its page, noted in `:mcp log` (M23).
  * @param {ConnId} conn @param {string} tool @param {object} what  the step's, for the log
  * @param {AgentWorkspace} agent @param {Win} win @param {Tab} tab
  * @param {() => Promise<boolean>} ready @param {ListOptions} filters  the step's `query` and `kinds`
  * @returns {Promise<{ url: string, title: string }
- *   & ({ elements: string, dropped: number, repeated?: string[] } | { unlisted: string })>}
+ *   & ({ elements: string, dropped: number, repeated?: string[] }
+ *     | { unlisted: string, loadError?: string })>}
  */
 async function stepList(conn, tool, what, agent, win, tab, ready, filters) {
   /** The tab's page now, after checking that it is still an agent tab; or the refusal. */
@@ -539,6 +541,11 @@ async function stepList(conn, tool, what, agent, win, tab, ready, filters) {
   };
   if (!(await ready())) return { ...page(), unlisted: "loading" };
   const before = page();
+  const loadError = AgentAct.loadError(tab.linkedBrowser);
+  if (loadError) {
+    AgentGate.note(conn, tool, what, "failed", "not loaded");
+    return { ...before, unlisted: "error", loadError };
+  }
   const url = tabUrl(tab);
   /** @type {{ url: string, title: string } | null} */
   let after = null;

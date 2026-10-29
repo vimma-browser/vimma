@@ -12,6 +12,7 @@ import {
   pruneResults,
   startTask,
 } from "../src/agent-loop.mjs";
+import { toolResult } from "../src/agent-results.mjs";
 import { untrustedHeader } from "../src/agent.mjs";
 import { AGENT_DEFAULTS } from "../src/config.mjs";
 
@@ -22,7 +23,11 @@ const TOOLS = [
     description: "Open a URL.",
     inputSchema: {
       type: "object",
-      properties: { url: { type: "string" }, tab: { type: "string" } },
+      properties: {
+        url: { type: "string" },
+        tab: { type: "string" },
+        elements: { type: "boolean" },
+      },
       required: ["url"],
       additionalProperties: false,
     },
@@ -405,6 +410,36 @@ describe("the loop", () => {
     const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
     expect(r.calls).toHaveLength(3);
     expect(s.bodies).toHaveLength(3);
+    expect(res.outcome).toBe("error");
+    expect(res.error).toBe(
+      "stopped: vimma_open was refused 3 times in a row with the same arguments",
+    );
+  });
+
+  // Issue #643: a local model opened the same failing URL in tab after tab.
+  test("an open that ends on Firefox's error page three times ends the task", async () => {
+    const same = {
+      content: "",
+      tool_calls: [call("vimma_open", { url: "https://a.invalid/", elements: true })],
+    };
+    const s = server([same, same, same, same]);
+    let tab = 0;
+    const r = runner({
+      vimma_open: () =>
+        toolResult(
+          "vimma_open",
+          { url: "https://a.invalid/", elements: true },
+          {
+            tab: String(++tab),
+            url: "https://a.invalid/",
+            title: "Server Not Found",
+            unlisted: "error",
+            loadError: "dnsNotFound",
+          },
+        ),
+    });
+    const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    expect(r.calls).toHaveLength(3);
     expect(res.outcome).toBe("error");
     expect(res.error).toBe(
       "stopped: vimma_open was refused 3 times in a row with the same arguments",
