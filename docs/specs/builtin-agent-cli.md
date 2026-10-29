@@ -30,7 +30,8 @@ gives it Vimma's tools through `vimma-ctl mcp` bound to the conversation's own g
 and shows the CLI's replies and steps in the transcript. The CLI keeps its own login, model and
 billing, so a user with a Claude or ChatGPT plan can use it without an API key, while the
 browser stays confined exactly as for the built-in agent: the agent workspace, the conversation
-grant, the checkpoints and the budgets.
+grant, the checkpoints and the step budget. The CLI also keeps the shell, file and web tools its
+own configuration allows; Vimma does not confine them, and the window states which are enabled.
 
 ## Problem
 
@@ -82,14 +83,17 @@ grant, the checkpoints and the budgets.
 4. **The first task says where data goes and what the CLI may do.** Before the first task of a
    conversation with a CLI provider (and again after a provider change), the window shows, and
    needs a `y` to:
-   `Page text the agent reads, field values it sees, screenshots and your messages go to Claude Code, which sends them to the model it is set up for. Claude Code's own tools: none. y send · n cancel`.
-   The last sentence names what C7 leaves the CLI: `none` for Claude Code, and
-   `its shell, in Codex's read-only sandbox` for Codex.
+   `Page text the agent reads, field values it sees, screenshots and your messages go to Claude Code, which sends them to the model it is set up for. Claude Code also keeps the tools its own settings allow (shell, files, web); Vimma does not confine them. y send · n cancel`.
 5. **The header says it too.** The header's first line names the CLI, its model when the CLI
    reports one, and where data goes:
-   `claude-code · claude-sonnet-4-5 · sent where Claude Code sends it`. The second line adds
-   the CLI's own tools after the grant:
-   `works in: agent workspace · granted · its own tools: none`.
+   `claude-code · claude-sonnet-4-5 · sent where Claude Code sends it`. The second line states,
+   next to where the agent works, which of the CLI's own tools are enabled for the task, as the
+   CLI reported them when the run started (C7):
+   `works in: agent workspace · granted · its own tools: Bash, Read, Write, WebFetch +3`.
+   A CLI that reports no tool of its own shows `its own tools: none`; before its first run, and
+   for a CLI that does not report its tools (Codex), the line says
+   `its own tools: as its configuration allows`. The transcript's run-started line lists the
+   reported tools in full.
 6. **`local_only` refuses a CLI.** With `[agent] local_only = true`, a CLI provider is refused in
    setup, in the picker and at each task, with
    `an agent CLI may send page text off this machine ([agent] local_only)` (C11).
@@ -109,7 +113,7 @@ grant, the checkpoints and the budgets.
    own (a shell command, a file read or write, a web fetch) is a transcript line of its own,
    `◆ claude-code ran its own tool: Bash "ls ~/Downloads"`, cut at 200 characters, in the
    muted colour, so it is never mistaken for a step in the browser. Vimma shows it; it does not
-   approve or refuse it (C7).
+   approve or refuse it, and the gate never sees it (C7).
 10. **Added instructions.** A message sent while a Claude Code task runs is written to the CLI's
     input at once and reaches the model no later than its next turn, marked
     `(added during the task)` (builtin-agent Behaviour 15). For a CLI without a live input
@@ -132,13 +136,16 @@ grant, the checkpoints and the budgets.
 
 14. **Steps are counted by the gate.** `[agent] max_steps` counts the conversation's calls that
     reach the gate, whatever the CLI reports; at the limit the gate refuses the connection's
-    next call and the task stops as in Behaviour 11 (C10).
-15. **Tokens and cost are the CLI's report.** When the CLI reports tokens (Claude Code's
-    `result.usage`, Codex's `turn.completed.usage`), they count toward `max_tokens` and show in
-    the status bar as for any provider. When it reports a cost (Claude Code's `total_cost_usd`),
-    the status bar shows it as `≈ $0.41 (claude-code)` and `max_cost` applies to it. When it
-    reports neither, the status bar shows steps and time only (`◇ built-in 14/100 · 6 min`) and
-    the transcript's task summary says `tokens not reported by codex`.
+    next call and the task stops as in Behaviour 11 (C10). The CLI's own tool steps
+    (Behaviour 9) do not count, since they never reach the gate.
+15. **Tokens are the CLI's report; cost is shown, not enforced.** When the CLI reports tokens
+    (Claude Code's `result.usage`, Codex's `turn.completed.usage`), they count toward
+    `max_tokens` and show in the status bar as for any provider. When it reports a cost (Claude
+    Code's `total_cost_usd`), the status bar shows it as `≈ $0.41 (claude-code)`, and
+    `max_cost` does not apply to it (C13); when `max_cost` is set, the first task's summary says
+    `max_cost does not apply to claude-code`. When the CLI reports neither, the status bar shows
+    steps and time only (`◇ built-in 14/100 · 6 min`) and the transcript's task summary says
+    `tokens not reported by codex`.
 16. **A time limit.** A CLI task stops after `max_minutes` of wall-clock time (default 30), with
     `stopped: 30 minutes, the limit of max_minutes`, because a CLI can spend time and money on
     its own tools without a single step Vimma counts (C10).
@@ -258,9 +265,8 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    ```text
    claude-code: -p --input-format stream-json --output-format stream-json --verbose
                 --no-session-persistence --strict-mcp-config --mcp-config <file>
-                --tools "" --allowedTools mcp__vimma --permission-mode dontAsk
-                [--model <m>] [--max-budget-usd <c>]
-   codex:       exec --json --ephemeral --skip-git-repo-check --sandbox read-only -C <dir>
+                --allowedTools mcp__vimma --permission-mode dontAsk [--model <m>]
+   codex:       exec --json --ephemeral --skip-git-repo-check -C <dir>
                 -c mcp_servers.vimma.command=<vimma-ctl> [-m <m>] -
    ```
 
@@ -286,8 +292,12 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    shown as a notice, `a second program used claude-code's ticket and was refused`. A process
    that reads the ticket (the CLI's own shell can read its environment) reaches only what the
    conversation already reaches, on the conversation's tabs and grant, since the ticket names
-   nothing else. Rejected: the token, because it opens every agent connection; a ticket in the
-   command line, for `/proc`; a listener only under `:mcp on`, see Open questions 1.
+   nothing else. The listener runs with MCP off, for tickets only, because it accepts nothing
+   but a ticket that only Vimma has handed out, for one run, and a CLI provider then works with
+   MCP and full control off, as the chat window's other providers do (M35). Rejected: the
+   token, because it opens every agent connection; a ticket in the command line, for `/proc`;
+   requiring `:mcp on` for CLI providers, because it opens the agent role to every local
+   process for as long as MCP is on, which is the access builtin-agent B4 chose not to give.
 4. **The program is chosen in setup, never in `config.toml`** (C4, Behaviour 1-2). F3 says no
    config value is run as a command, because `config.toml` is a file users copy from others and
    keep in dotfile repositories, so a CLI provider in `config.toml` names only which supported
@@ -316,23 +326,37 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    loads no project's instruction files, hooks or settings from wherever Vimma was started, and
    its file tools start in a place that holds nothing. It is outside the profile, because a
    directory inside it puts the cookies and logins one `..` away. This does not confine a CLI
-   with a shell, which reaches every file the user can; C7 says so in the window.
-7. **Vimma narrows the CLI's own tools where the CLI offers a flag, and states what is left**
-   (C7, Behaviour 4-5, 9). For a browser task the CLI needs no tool of its own, so Vimma passes
-   the narrowest setting each CLI documents: Claude Code `--tools ""` (no built-in tool, so no
-   shell, files or web fetch, checked in Research) with only `mcp__vimma` allowed and
-   `dontAsk` (anything else is refused without a prompt nobody could answer); Codex
-   `--sandbox read-only`, which still runs shell commands, read-only, under Codex's own sandbox.
-   Vimma does not enforce these: they are the CLI's own permission model, and the window says
-   so in the words of Behaviour 4 and the header's `its own tools:`. What the CLI's model does
-   with a tool it still has is shown in the transcript (Behaviour 9) from the CLI's stream, so
-   it is what the CLI reports, not what Vimma observed. Rejected: reporting only, because a
-   prompt-injected page could otherwise drive a shell with the user's full rights through a
-   task about groceries, which no grant in Vimma covers; Vimma sandboxing the process itself
-   (namespaces, seccomp, Landlock), because that is a launcher of its own per platform, breaks
-   the CLI's login and update paths, and is a larger surface than it removes; refusing Codex
-   because its shell cannot be turned off, because the read-only sandbox bounds it and the
-   window states it, and the user picks the CLI.
+   with a shell or file tools, which reach every file the CLI's own settings let them reach;
+   C7 says so in the window. A file the CLI writes in this directory is removed with it, and
+   the guide says so.
+7. **The CLI keeps the tools its own configuration allows, and the window states them** (C7,
+   Behaviour 4-5, 9). Vimma passes no flag that removes or adds a CLI's own tools: Claude Code
+   runs with the tools and permission rules of its own settings, and Codex with the sandbox
+   and approvals of its own `config.toml`. Vimma adds only what its own server needs:
+   `--allowedTools mcp__vimma`, and `--permission-mode dontAsk`, because a headless run has
+   nobody to answer the CLI's own prompts, so a tool the settings do not already allow is
+   refused instead of waiting. The reasons: a user picks a CLI for what it can do, and tasks
+   that join the browser with the user's files (saving what a page lists, filling a form from a
+   local document) need the CLI's file and shell tools; the CLI's permission settings are a
+   trust decision the user has already made for that CLI in a terminal; and Codex cannot turn
+   its shell off, so a narrowing flag would give one CLI a guarantee the other lacks. Vimma's
+   own guarantee is the browser: the CLI reaches pages only through the conversation's gate
+   connection (C1), and `--strict-mcp-config` keeps every other MCP server out of the run,
+   because another server (a second browser driver, a `vimma-ctl` with the token) would reach
+   pages outside the agent workspace and outside the gate. So that the user sees what the CLI
+   can do, the header lists the CLI's own tools from Claude Code's `system`/`init` `tools`,
+   without `mcp__vimma__*`, as the CLI reported them for this run; for Codex, whose events
+   report no tool list (Research), it says `as its configuration allows`, and PR 3 checks
+   whether Codex reports its effective sandbox, which the header then names. The list is the
+   CLI's report, and the transcript's own-tool lines (Behaviour 9) are taken from the CLI's
+   stream, so both are what the CLI says, not what Vimma observed. Rejected: the narrowest
+   setting each CLI documents (`--tools ""`, `--sandbox read-only`), because it breaks the
+   tasks above, differs per CLI, and would make the window promise a confinement that Vimma
+   does not enforce; a provider key that widens a narrowed default, because it gives two
+   modes to test and explain while the narrowed one fits few of the tasks a CLI is picked for;
+   Vimma sandboxing the process itself (namespaces, seccomp, Landlock), because that is a
+   launcher of its own per platform, breaks the CLI's login and update paths, and is a larger
+   surface than it removes.
 8. **The transcript maps the CLI's stream; the gate's record wins** (C8, Behaviour 8-9, 13).
    `agent-cli.mjs` reads stdout as JSON lines (at most 1 MiB a line, as S5; a run over 64 MiB of
    output is stopped) and maps each CLI's events to the transcript's entries:
@@ -367,10 +391,9 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    stop, and `limits.md` lists it.
 10. **Budgets Vimma can count are enforced in the browser; the CLI's reports add to them**
     (C10, Behaviour 14-16). Steps are counted by the gate, so a CLI cannot under-report them.
-    Tokens and cost come only from the CLI's report, because the CLI talks to its provider and
-    Vimma sees neither the requests nor the prices; where a cost is reported, `max_cost` applies
-    to it and is also passed as `--max-budget-usd`, so the CLI stops itself too. The
-    `max_minutes` limit exists for CLIs only, because a CLI can spend minutes and money on its
+    Tokens come only from the CLI's report, because the CLI talks to its provider and Vimma
+    sees neither the requests nor the prices; where they are reported, `max_tokens` applies,
+    and cost is handled by C13. The `max_minutes` limit exists for CLIs only, because a CLI can spend minutes and money on its
     own tools or its own reasoning without a single step reaching the gate, and wall-clock time
     is the one measure Vimma has of that; 30 minutes is the bench's time limit
     ([agent-speed](agent-speed.md), Summary). Rejected: a token estimate from the stream's text,
@@ -382,12 +405,23 @@ Each CLI was checked as stated; none was run against a real account, and no toke
 12. **Claude Code first, Codex second; others once their output is checked** (C12, Delivery).
     Claude Code first, because each part of this design was checked against it (Research): a
     live input for added instructions, an MCP configuration from a file with every other server
-    left out, its built-in tools off, a reported cost and budget flag, and no session files.
-    Codex second, because its JSON events, `--ephemeral` and read-only sandbox are documented,
-    but its run was not observed and its shell stays on. Gemini CLI and opencode each get their
+    left out, a list of its own tools in its init, a reported cost, and no session files.
+    Codex second, because its JSON events and `--ephemeral` are documented, but its run was
+    not observed and its events report no list of its own tools. Gemini CLI and opencode each get their
     own PR after a run against a scripted server records their events, because neither offers a
     way to keep its session files out of storage that was found, and opencode's event shape is
     unknown; until then they are not offered in setup.
+13. **A CLI's cost is shown, and `max_cost` does not apply to it** (C13, Behaviour 15). The
+    status bar shows a reported cost as `≈ $0.41 (claude-code)`, because it is the only measure
+    of how much of a plan's limit a task used, and the `≈` and the CLI's name say whose estimate
+    it is; the guide says it is not a bill. `max_cost` is not enforced for a CLI provider, and
+    Vimma passes no `--max-budget-usd`, because Claude Code computes the cost at list prices
+    even when the user pays by subscription, so a task would be stopped over money that is not
+    being spent, and Codex reports no cost, so the limit would hold for one CLI only. Steps
+    (C10, counted by the gate), tokens where the CLI reports them, and `max_minutes` still
+    apply. Rejected: applying `max_cost` to the reported cost, for the reasons above; showing the
+    cost only when `max_cost` is set, because the measure is as useful without a limit; never
+    showing it, because the user then has no measure of a task's use of the plan at all.
 
 ## Security and privacy
 
@@ -415,12 +449,16 @@ transcript, as text.
   ends. Other users cannot read it: it is not in any command line, and the MCP configuration
   file is mode 0600 in a 0700 directory. The listener that accepts it is S2's (127.0.0.1 only)
   with S4's handshake, S5's limits and S11's framing and validator.
-- **The CLI's own tools.** With Claude Code, none, by its own flag; with Codex, a shell in its
-  read-only sandbox. These are the CLI's permission model, not Vimma's (C7); the first-task
-  notice and the header say so. A prompt-injected page can steer the CLI's model to use what is
-  left, which for Codex means reading any file the user can and sending it to its provider in
-  the model's context. The guide says that a CLI provider extends the user's trust to the CLI as
-  in a terminal (§11, "What agents do outside Vimma").
+- **The CLI's own tools are outside Vimma's gate.** The CLI keeps the shell, file and web
+  tools its own configuration allows (C7). Vimma neither approves nor refuses them, counts
+  them toward no budget, and does not confine what they do: they act with the user's rights,
+  under the CLI's permission model only. A prompt-injected page can steer the CLI's model to
+  use them, for example to read a file the user can read and send it to the model's provider
+  in its context, or to run a command. What bounds this is the CLI's own settings, set in the
+  CLI by its user; what Vimma adds is that the first-task notice says the tools are not confined,
+  the header lists those the CLI reported for the run, and each use is a marked transcript
+  line. The guide says that a CLI provider extends the user's trust to the CLI as in a
+  terminal (§11, "What agents do outside Vimma").
 - **Where data goes.** Page text goes to the CLI and from it to whatever model the CLI uses,
   under that CLI's terms; Vimma cannot see where, so `local_only` refuses CLIs (C11), and the
   header never says `stays on this machine` for one.
@@ -450,7 +488,14 @@ transcript, as text.
     signalled;
   - a CLI's output **must** be rendered as text and **must never** answer a question, make a
     grant or fill the prompt slot;
-  - steps **must** be counted by the gate; `max_minutes` **must** stop a CLI task;
+  - a CLI's own shell and file tools (and its web tools) are **outside** Vimma's gate: Vimma
+    does not approve, refuse, count or confine them, and they act with the user's rights under
+    the CLI's own permission settings; the window **must** say that they are not confined and
+    **must** list the tools the CLI reports as enabled for the run;
+  - Vimma **must** give a CLI no MCP server but its own (`--strict-mcp-config`), so that the
+    CLI reaches pages only through the gate;
+  - steps **must** be counted by the gate; `max_minutes` **must** stop a CLI task; `max_cost`
+    is not enforced for a CLI, whose reported cost is shown as an estimate;
   - `local_only` **must** refuse every CLI provider;
   - a `command`, `path`, `args` or `env` key in a CLI provider **must** be a config error.
 
@@ -458,8 +503,10 @@ transcript, as text.
 
 ### Vitest (`packages/vimma-core`)
 
-- `agent-cli.test.mjs`: `claude-code's arguments are the fixture, with the model and budget
-only from the provider`; `codex's arguments are the fixture`; `the task is never an argument`;
+- `agent-cli.test.mjs`: `claude-code's arguments are the fixture, with the model only from
+the provider`; `no argument removes or adds a cli's own tools`; `claude-code's init tools
+become the header's list, without mcp__vimma`; `a cli with no reported tool list states its
+configuration`; `codex's arguments are the fixture`; `the task is never an argument`;
   `a recorded claude-code stream maps to replies, own-tool lines, usage and cost`;
   `a recorded codex stream maps to replies, own-tool lines and usage`; `mcp__vimma tool calls
 in the stream are not transcript steps`; `an init whose vimma server is not connected ends
@@ -472,8 +519,9 @@ env in a cli provider are errors with their line`; `local_only refuses a cli pro
   `max_minutes parses within its bounds`.
 - `control-v2.test.mjs`: `an agent-hello with a ticket validates; a ticket and a token together
 do not`.
-- `agent-budget.test.mjs`: `a cli task stops at max_minutes`; `reported cost counts toward
-max_cost; no report shows steps and time only`.
+- `agent-budget.test.mjs`: `a cli task stops at max_minutes`; `reported cost is shown and
+max_cost does not stop a cli task`; `reported tokens count toward max_tokens`; `no report
+shows steps and time only`.
 
 ### Rust (`tools/vimma-ctl`)
 
@@ -491,7 +539,9 @@ stream and drives `vimma-ctl mcp`'s protocol with the ticket it is given:
 `test_second_connection_with_a_ticket_is_refused`; `test_ticket_never_in_cmdline_prefs_or_log`;
 `test_enter_grant_covers_cli_steps_and_checkpoints_ask`; `test_stop_closes_the_connection_before_the_signal`;
 `test_cli_that_ignores_sigterm_is_killed_and_takes_no_step`; `test_own_tool_lines_are_marked`;
-`test_first_task_notice_names_the_cli_and_its_tools`; `test_local_only_refuses_a_cli`;
+`test_first_task_notice_says_the_clis_own_tools_are_not_confined`;
+`test_header_lists_the_clis_own_tools_from_its_init`; `test_only_vimmas_mcp_server_is_given`;
+`test_max_cost_set_is_reported_as_not_applying`; `test_local_only_refuses_a_cli`;
 `test_max_steps_counted_by_the_gate`; `test_max_minutes_stops_the_task`;
 `test_missing_or_failing_cli_reports_its_error`.
 
@@ -499,18 +549,20 @@ stream and drives `vimma-ctl mcp`'s protocol with the ticket it is given:
 
 - `agent-cli`: the fake CLI through the real `vimma-ctl mcp` on the fixture shop, a three-item
   task sent with `Enter`, ending at the payment checkpoint in the prompt slot answered `n`.
-  Screenshots with the Omarchy theme: setup's CLI list, the header, an own-tool line, a stopped
-  task.
+  Screenshots with the Omarchy theme: setup's CLI list, the header with the fake CLI's own
+  tools listed, an own-tool line, a stopped task.
 
 ## Docs and changelog
 
-- `docs/guide.md`, "Built-in agent": "Using an agent CLI": setup, what is sent where, what the
-  CLI's own tools can still do and that the CLI's permission model decides it, how added
-  instructions and stopping work per CLI, budgets and the cost shown; "Connecting an agent's
+- `docs/guide.md`, "Built-in agent": "Using an agent CLI": setup, what is sent where, that the
+  CLI keeps the tools its own settings allow, outside Vimma's gate, and where the window lists
+  them, how added instructions and stopping work per CLI, budgets, and that the cost shown is
+  the CLI's estimate and no limit; "Connecting an agent's
   tool" links to it as the way to use a CLI without `:mcp on`.
 - `docs/security.md`: the changes above, with their tests.
-- `docs/limits.md`, "Agents (MCP)": a CLI's cost is its own estimate; a shell command a CLI
-  started may outlive a stop; Vimma cannot see where a CLI sends page text; supported CLIs and
+- `docs/limits.md`, "Agents (MCP)": a CLI's own tools are outside the gate; a CLI's cost is
+  its own estimate and `max_cost` does not apply to it; a shell command a CLI started may
+  outlive a stop; Vimma cannot see where a CLI sends page text; supported CLIs and
   the versions checked.
 - ADR-023: the amendment of C1.
 - README: the agents line names agent CLIs as providers, with the last PR.
@@ -525,35 +577,19 @@ window (its Delivery 4), which this feature needs.
    ticket hello in `control.mjs`, the ticket-only listener, binding to `builtin:<n>`,
    `vimma-ctl mcp` reading `VIMMA_AGENT_TICKET` and `VIMMA_AGENT_PORT`, security.md S1, S12 and
    §12 rules, vitest, Rust tests and mochitests. No user-visible change.
-2. `feat(agent): claude code as a provider of the chat window` (C2, C4-C12 for Claude Code):
+2. `feat(agent): claude code as a provider of the chat window` (C2, C4-C13 for Claude Code):
    `agent-cli.mjs` with Claude Code's builder and parser and recorded fixtures,
-   `agent/AgentCli.sys.mjs`, setup, the header and notice, budgets and `max_minutes`, C2's
-   exception in security.md, the guide, limits.md, ADR-023, mochitests and e2e with screenshots.
+   `agent/AgentCli.sys.mjs`, setup, the notice and the header with the CLI's own tools from its
+   init, budgets, `max_minutes` and the cost shown without `max_cost`, C2's exception and the
+   rules on the CLI's own tools in security.md, the guide, limits.md, ADR-023, mochitests and
+   e2e with screenshots.
 3. `feat(agent): codex as a provider of the chat window` (C12): Codex's builder and parser with
-   fixtures recorded against a scripted server, the queued instruction of Behaviour 10, and
-   the check of how its MCP server receives the ticket; the feature flag's default becomes
+   fixtures recorded against a scripted server, the queued instruction of Behaviour 10, the
+   check of how its MCP server receives the ticket, and the check of whether its events report
+   its effective sandbox for the header; the feature flag's default becomes
    `true`, and the status becomes `implemented`.
 4. Gemini CLI and opencode: one issue each, opened with PR 3, for the checks of C12.
 
 ## Open questions
 
-1. **The listener with MCP off.** A CLI task needs the control socket's listener for its
-   ticket. Options: (a) start it for the run with only ticket hellos accepted (C3), so a CLI
-   works with MCP and full control off, at the cost of a listening port during CLI tasks that
-   S1 today keeps closed; (b) require `:mcp on` for CLI providers, which keeps S1 as it is but
-   opens the agent role to every local process for as long as MCP is on. Recommendation: (a),
-   because the listener accepts nothing but a ticket that only Vimma has handed out, and (b)
-   widens access exactly where builtin-agent B4 chose not to.
-2. **Keeping the CLI's own configuration.** C7 passes the narrowest tool setting and C2 uses
-   only Vimma's MCP server. Options: (a) as specified, with no way to widen it; (b) a provider
-   key `own_setup = true` that drops `--tools ""`, `--strict-mcp-config` and the sandbox flag, so
-   the CLI runs with the user's own tools, MCP servers and permissions, stated in the header as
-   `its own tools: as configured in claude-code`. Recommendation: (a) for the first two PRs,
-   and (b) only if users ask for tasks that need the CLI's own tools, because those tools are
-   what a prompt-injected page would reach.
-3. **Showing a subscription's cost.** Claude Code reports `total_cost_usd` at list prices even
-   when the user pays by subscription. Options: (a) show it as `≈ $0.41 (claude-code)` and apply
-   `max_cost` to it; (b) show it only when the provider sets `max_cost`; (c) never show it.
-   Recommendation: (a), because it is the only measure of how much of a plan's limit a task
-   used, and the `≈` and the CLI's name say whose estimate it is; the guide says it is not a
-   bill.
+None. The answers are decisions in Design: C3, C7 and C13.
