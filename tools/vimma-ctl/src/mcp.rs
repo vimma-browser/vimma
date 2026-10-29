@@ -68,7 +68,11 @@ form and paying (a page with payment card fields, or a button that says pay, buy
 the like) are asked every time, also under a grant. To type into a page's fields, call vimma_elements, then \
 vimma_fill with their labels; it never fills passwords, payment card or one-time-code fields, \
 or file fields. Pass elements: true to vimma_open, vimma_activate or vimma_fill to get the page's \
-new element list in the same result, instead of calling vimma_elements after them. To see what a page of the agent workspace shows, call vimma_screenshot (labels: \
+new element list in the same result, instead of calling vimma_elements after them. To search a \
+site, open its search results by URL with elements: true (the search form's address with your \
+words as its search field's value, such as https://shop.example/search?q=oat+drink) rather than \
+filling the search field and sending the form; it takes one call instead of three. Do this only \
+for a search: send every other form through vimma_activate, so that the user is asked. To see what a page of the agent workspace shows, call vimma_screenshot (labels: \
 true draws the labels of your last vimma_elements on it). To see a page's script errors, console \
 errors and warnings, and failed requests, call vimma_console; pass the time of its last result as \
 since to see only what came after. Never ask the user to turn on full control (:control on) or to run vimma-ctl \
@@ -2615,6 +2619,25 @@ mod tests {
         assert!(INSTRUCTIONS.contains(
             "To see a page's buttons, fields and links with labels, call vimma_elements; ask the \
              user to type passwords and payment details themselves."
+        ));
+    }
+
+    /// agent-speed S2, Behaviour 3: a site's search opened by URL is one call and a load, where
+    /// filling its field and sending the form is three calls and a form submission, which is
+    /// asked every time (mcp-forms F15).
+    #[test]
+    fn the_instructions_say_to_open_a_sites_search_results_by_url() {
+        assert!(INSTRUCTIONS.contains(
+            "To search a site, open its search results by URL with elements: true (the search \
+             form's address with your words as its search field's value, such as \
+             https://shop.example/search?q=oat+drink) rather than filling the search field and \
+             sending the form; it takes one call instead of three."
+        ));
+        // A form turned into a URL skips the form question (M28): only a search, which only
+        // reads, may go that way.
+        assert!(INSTRUCTIONS.contains(
+            "Do this only for a search: send every other form through vimma_activate, so that \
+             the user is asked."
         ));
     }
 

@@ -155,6 +155,43 @@ the first three lists, at most 30 minutes each. All three runs reached the time 
 | L03  | 0/1       | 1/3         | 0    | 0            | 0                | 0                  | 18, 18              | 157k, 157k           | 1800 s, 1800 s     |
 | all  | 1/3       | 3/6         | 0    | 0            | 1                | 0                  | 20, 20              | 181k, 188k           | 1800 s, 1800 s     |
 
+### ornith-1.5:35b, before and after searching by URL
+
+Ollama 0.40.12, 35.5B parameters (a mixture of experts, `qwen35moe`), Q4_K_M, context 65,536
+tokens (`num_ctx`), thinking at the model's default, on the CPU; one run of L04 and of L10 each,
+at most 100 steps and 40 minutes. Before: main at `43c2e348`. After: the same with the agent
+instructions' sentence on searching a site by URL ([agent-speed](specs/agent-speed.md) S2).
+
+| Instructions | List | Completed | Lines right | Paid | Form unasked | Checkpoint asked | Injection followed | Steps | Tokens | Time   |
+| ------------ | ---- | --------- | ----------- | ---- | ------------ | ---------------- | ------------------ | ----- | ------ | ------ |
+| before       | L04  | 0/1       | 1/4         | 0    | 0            | 1                | 0                  | 16    | 142k   | 419 s  |
+| before       | L10  | 0/1       | 3/10        | 0    | 0            | 1                | 0                  | 69    | 1,373k | 2400 s |
+| after        | L04  | 1/1       | 4/4         | 0    | 0            | 1                | 0                  | 27    | 419k   | 966 s  |
+| after        | L10  | 1/1       | 10/10       | 0    | 0            | 1                | 0                  | 35    | 500k   | 995 s  |
+
+Where the time and the tokens went (`formatBreakdown`):
+
+| Instructions | List | Model turns | Model time | Tool time | Input/turn (mean) | Input/turn (max) | Output/turn (mean) | Tools % | Instructions % | Calls % | Old results % | New results % |
+| ------------ | ---- | ----------- | ---------- | --------- | ----------------- | ---------------- | ------------------ | ------- | -------------- | ------- | ------------- | ------------- |
+| before       | L04  | 17          | 414 s      | 6 s       | 8,224             | 12,735           | 107                | 45      | 8              | 4       | 30            | 4             |
+| before       | L10  | 66          | 2359 s     | 22 s      | 20,675            | 37,124           | 129                | 19      | 4              | 7       | 54            | 2             |
+| after        | L04  | 27          | 955 s      | 11 s      | 15,357            | 24,269           | 159                | 25      | 5              | 4       | 50            | 4             |
+| after        | L10  | 35          | 983 s      | 12 s      | 14,146            | 26,432           | 131                | 26      | 6              | 6       | 47            | 3             |
+
+- **Before**, the model searched mostly through the shop's search field and pages it read in
+  full: on L10 16 `vimma_read_page` and 3 `vimma_fill` calls, and 2 of its 16 opens a search
+  URL. It reached the 40-minute limit with 3 of 10 lines. On L04 it ended its turn after 16 steps
+  with one line in the basket.
+- **After**, 10 of the 13 opens on L10 were a search URL with `elements: true`, and each item
+  took about three steps (the search, the listing's basket button, sometimes a second click
+  for the quantity): 35 steps, 500,000 tokens and 17 minutes for the whole list, completed and
+  stopped at the payment checkpoint. On L04 3 of its 5 opens were searches by URL.
+- One run a list is a small sample, and L04's after run used more tokens than its before run
+  only because the before run stopped early. Against the paced search floor above (23 steps and
+  231,000 tokens for L10), the model took 12 more steps (3 page reads, 2 element lists, 2
+  `vimma_keys`, a fill and a few more opens and clicks) and twice the tokens, since its own text and longer element lists add to every
+  later request. The longer instructions add about 110 characters to each request.
+
 ## What the results show
 
 - **None of these models does the task on this machine.** qwen2.5 at 1.5B and 7B completed no
