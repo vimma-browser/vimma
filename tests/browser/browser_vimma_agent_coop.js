@@ -114,7 +114,7 @@ add_task(async function test_builtin_agent_opens_coop_pages() {
       BrowserTestUtils.removeTab(tab);
     }
 
-    // The same page twice: the second load comes from the HTTP cache.
+    // A cacheable page, twice: the second load comes from the agent container's HTTP cache.
     const cached = `${COOP}?same-origin&cached`;
     for (const time of ["first", "second"]) {
       const r = await runAgentCommand(conn, state, "agent-open", { url: cached, elements: true });
@@ -154,4 +154,21 @@ add_task(async function test_mcp_agent_opens_coop_pages() {
   await assertLoaded(tab, "same-origin, over MCP", `${COOP}?same-origin`);
   c.close();
   BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function test_another_workspace_keeps_the_policy() {
+  const url = `${COOP}?same-origin&coep`;
+  const isolated = (/** @type {any} */ tab) =>
+    SpecialPowers.spawn(tab.linkedBrowser, [], () => content.crossOriginIsolated);
+  const mine = BrowserTestUtils.addTab(gBrowser, url);
+  await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, url);
+  Assert.ok(await isolated(mine), "a tab of another workspace keeps its opener policy");
+  const theirs = gBrowser.addTab(url, {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await assertLoaded(theirs, "same-origin with an embedder policy, in the agent container", url);
+  Assert.ok(!(await isolated(theirs)), "an agent tab loads it without (docs/limits.md)");
+  BrowserTestUtils.removeTab(mine);
+  BrowserTestUtils.removeTab(theirs);
 });

@@ -100,7 +100,7 @@ the [user guide](guide.md); planned work is on the
 ## Agents (MCP)
 
 - Agents can list, read, open and close tabs of the agent workspace, and download through it.
-- Pages in the agent workspace open no pop-up, so they load without their
+- Pages in the agent workspace open no pop-up, so a page loaded over HTTP there loses its
   `Cross-Origin-Opener-Policy`, which Firefox refuses in such a tab. A page that also sends
   `Cross-Origin-Embedder-Policy` is not cross-origin isolated there: it has no `SharedArrayBuffer`.
 - `vimma_fill` knows a one-time-code field by its `autocomplete="one-time-code"` only, and a

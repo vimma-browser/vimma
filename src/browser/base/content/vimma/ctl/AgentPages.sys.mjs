@@ -160,7 +160,9 @@ function onResponse(subject) {
  * http-on-examine-* observers), and every agent tab is sandboxed against pop-ups. What the
  * policy guards, a cross-origin window keeping a reference to the page, cannot happen there:
  * the tab has no opener (it is opened from chrome) and its pages open no window. The page still
- * runs in its site's own process; it loses only `crossOriginIsolated` (SharedArrayBuffer).
+ * runs in its site's own process; it loses only `crossOriginIsolated` (SharedArrayBuffer). A
+ * page a service worker serves reaches no observer and keeps its policy, and loads all the same:
+ * InterceptedHttpChannel ignores that error.
  * @param {any} channel  nsIHttpChannel of a top-level document in the agent container
  */
 function dropOpenerPolicy(channel) {

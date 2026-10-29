@@ -4,7 +4,8 @@
 
 // Fixture for browser_vimma_agent_coop.js: a page sent with the Cross-Origin-Opener-Policy
 // named in its query (`?same-origin`, `?same-origin-allow-popups`), or none (`?none`); with
-// `&cached` the response may be kept in the HTTP cache for an hour. Many sites send one (search
+// `&cached` the response may be kept in the HTTP cache for an hour, and with `&coep` it also
+// sends `Cross-Origin-Embedder-Policy: require-corp`. Many sites send one (search
 // engines, sign-in pages, web apps).
 const PAGE = `<!doctype html>
 <html>
@@ -19,8 +20,12 @@ const PAGE = `<!doctype html>
 </html>`;
 
 function handleRequest(request, response) {
-  const [policy, cached] = request.queryString.split("&");
+  const [policy, ...flags] = request.queryString.split("&");
+  const cached = flags.includes("cached");
   response.setHeader("Cache-Control", cached ? "max-age=3600" : "no-store", false);
+  if (flags.includes("coep")) {
+    response.setHeader("Cross-Origin-Embedder-Policy", "require-corp", false);
+  }
   response.setHeader("Content-Type", "text/html;charset=utf-8", false);
   if (policy && policy !== "none") {
     response.setHeader("Cross-Origin-Opener-Policy", policy, false);

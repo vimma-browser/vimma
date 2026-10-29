@@ -165,8 +165,9 @@ answer for the user, and that never disturbs what the user is doing.
   replacement (`CanonicalBrowsingContext::ReplacedBy`). A sandboxed top-level load whose response
   has a `Cross-Origin-Opener-Policy` other than `unsafe-none` fails with
   `NS_ERROR_DOM_COOP_FAILED` (`HttpBaseChannel::ComputeCrossOriginOpenerPolicyMismatch`, after
-  the `http-on-examine-*` observers), so an agent tab's top-level document is loaded without that
-  header. The policy keeps cross-origin windows from holding a reference to the page; an agent tab
+  the `http-on-examine-*` observers), so an agent tab's top-level document loaded over HTTP is
+  loaded without that header. A page a service worker serves keeps it and loads anyway:
+  `InterceptedHttpChannel` ignores that error. The policy keeps cross-origin windows from holding a reference to the page; an agent tab
   has no opener and its pages open no window, so only `crossOriginIsolated` is lost.
 - **Downloads.** Every download is a `Download` in `DownloadCore.sys.mjs`: `start()` awaits
   `DownloadIntegration.shouldBlockForParentalControls(this)` (`:510-514`) before the saver runs,
