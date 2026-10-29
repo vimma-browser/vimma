@@ -11,6 +11,7 @@
 // gate, grants, checkpoints, confinement) is the runner's side; the loop only bounds the task.
 
 import { ProviderError, callModel } from "./agent-providers.mjs";
+import { isFinalRefusal } from "./agent-results.mjs";
 
 /**
  * @typedef {import("./agent-providers.mjs").ChatMessage} ChatMessage
@@ -46,7 +47,8 @@ const OVER_BUDGET = "Not run: the task reached its budget.";
 /**
  * The same call refused this many times in a row ends the task: a model that repeats a refused
  * call does not learn from the refusal (docs/agent-bench.md: one sent the same refused call 18
- * times), and each repeat spends a step and a turn's tokens.
+ * times), and each repeat spends a step and a turn's tokens. Only refusals the same call meets
+ * again count (isFinalRefusal); waiting for a page to load is not a repeat.
  */
 export const REPEAT_LIMIT = 3;
 /**
@@ -270,7 +272,7 @@ async function run(opts, signal, pending) {
       after = call;
       results.push(result);
       emit({ type: "result", call, result });
-      if (count(call, result.isError)) repeated = call;
+      if (count(call, isFinalRefusal(result))) repeated = call;
     }
     if (signal.aborted) return stopped();
     if (repeated) {

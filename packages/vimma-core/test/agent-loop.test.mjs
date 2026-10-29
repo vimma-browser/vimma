@@ -386,7 +386,10 @@ describe("the loop", () => {
     const same = { content: "", tool_calls: [call("vimma_open", { url: "https://a.example/" })] };
     const s = server([same, same, same, same]);
     const r = runner({
-      vimma_open: () => ({ isError: true, content: [{ type: "text", text: "refused" }] }),
+      vimma_open: () => ({
+        isError: true,
+        content: [{ type: "text", text: "Vimma refused the arguments: url is not a valid URL." }],
+      }),
     });
     const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
     expect(r.calls).toHaveLength(3);
@@ -395,6 +398,43 @@ describe("the loop", () => {
     expect(res.error).toBe(
       "stopped: vimma_open was refused 3 times in a row with the same arguments",
     );
+  });
+
+  test("a user's no to the same call three times ends the task too", async () => {
+    const same = { content: "", tool_calls: [call("vimma_open", { url: "https://a.example/" })] };
+    const s = server([same, same, same, same]);
+    const r = runner({
+      vimma_open: () => ({
+        isError: true,
+        content: [{ type: "text", text: "The user denied this request in Vimma." }],
+      }),
+    });
+    const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    expect(r.calls).toHaveLength(3);
+    expect(res.outcome).toBe("error");
+  });
+
+  test("a refusal that may clear by itself does not count: a page still loading", async () => {
+    const same = { content: "", tool_calls: [call("vimma_tabs", {})] };
+    const s = server([same, same, same, same, same, { content: "Listed." }]);
+    let n = 0;
+    const r = runner({
+      vimma_tabs: () =>
+        ++n < 5
+          ? {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: "Vimma could not do it: elements are listed only on http and https pages.",
+                },
+              ],
+            }
+          : { content: [{ type: "text", text: "1 tab" }] },
+    });
+    const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    expect(r.calls).toHaveLength(5);
+    expect(res.outcome).toBe("done");
   });
 
   test("calls the loop refuses count as refused too", async () => {
@@ -421,7 +461,10 @@ describe("the loop", () => {
       { content: "Gave up." },
     ]);
     const r = runner({
-      vimma_open: () => ({ isError: true, content: [{ type: "text", text: "refused" }] }),
+      vimma_open: () => ({
+        isError: true,
+        content: [{ type: "text", text: "Vimma refused the arguments: url is not a valid URL." }],
+      }),
     });
     const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
     expect(res.outcome).toBe("done");

@@ -544,6 +544,23 @@ function afterStep(tab, elements, result, lines) {
   ];
 }
 
+/** The start of a refusal of the call's arguments, and the user's no, in vimma-ctl's words. */
+export const REFUSED_ARGS = "Vimma refused the arguments: ";
+export const USER_DENIED = "The user denied this request in Vimma.";
+
+/**
+ * Whether a result is a refusal that the same call will meet again: its arguments refused, or
+ * the user's no. A page still loading, a rate or a busy queue clear by themselves, so a model
+ * that waits and asks again is not repeating itself (docs/specs/builtin-agent.md B10).
+ * @param {{ isError?: boolean, content: ToolContent[] }} result
+ */
+export function isFinalRefusal(result) {
+  if (!result.isError) return false;
+  const first = result.content[0];
+  const text = first?.type === "text" ? first.text : "";
+  return text.startsWith(REFUSED_ARGS) || text === USER_DENIED;
+}
+
 /**
  * The text a refusal becomes, for the model and the user reading along (mcp.rs, `failure_text`).
  * @param {Failure} failure
@@ -558,7 +575,7 @@ export function failureText(failure) {
   if (failure.kind === "denied") {
     switch (failure.reason) {
       case "user":
-        return "The user denied this request in Vimma.";
+        return USER_DENIED;
       case "timeout":
         return (
           `No answer in Vimma within ${Math.round(failure.waitedS ?? 0)} s; treated as denied. ` +
@@ -592,7 +609,7 @@ export function failureText(failure) {
   }
   switch (failure.code) {
     case "invalid-args":
-      return `Vimma refused the arguments: ${failure.message}.`;
+      return `${REFUSED_ARGS}${failure.message}.`;
     case "failed":
       return `Vimma could not do it: ${failure.message}.`;
     default:
