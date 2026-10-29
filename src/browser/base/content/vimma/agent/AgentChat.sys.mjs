@@ -52,6 +52,8 @@ const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setInterval: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
+  // Lazily: the control socket imports the host, which loads this module on demand.
+  VimmaControl: "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 });
 
 /**
@@ -512,9 +514,24 @@ export const AgentChat = {
     c.starting = false;
     if (c.task) c.stopped = true;
     c.task?.stop();
+    // An agent CLI's connection closes first, so nothing it sends after the stop reaches the
+    // browser (docs/specs/builtin-agent-cli.md C9).
+    lazy.VimmaControl.revokeTickets(c.conn);
     for (const withdraw of [...(c.state.cancels?.values() ?? [])]) withdraw();
     AgentGate.endGrant(c.conn);
     changed();
+  },
+
+  /**
+   * A one-time ticket that lets an agent CLI's `vimma-ctl mcp` act as this conversation
+   * (docs/specs/builtin-agent-cli.md C1, C3), until the conversation stops or is deleted.
+   * @param {number} id @param {string} label  the CLI's name, for the notice of a refused
+   *   second connection
+   * @returns {Promise<{ ticket: string, port: number }>}
+   */
+  issueTicket(id, label) {
+    const c = conversation(id);
+    return lazy.VimmaControl.issueTicket({ conn: c.conn, state: c.state, label });
   },
 
   /** `ctrl+b shift+a` with no question waiting: every running task stops (Behaviour 16). */

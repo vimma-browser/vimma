@@ -178,6 +178,27 @@ pub struct Discovery {
     pub roles: Vec<Role>,
     /// Vimma's version, when the file names it (docs/specs/ship-vimma-ctl.md, behaviour 5).
     pub version: Option<String>,
+    /// `token` is an agent CLI's one-time ticket, not the discovery file's token: the
+    /// connection names it by its id and is the agent role only (docs/specs/builtin-agent-cli.md
+    /// C3). No discovery file sets it.
+    pub ticket: bool,
+}
+
+impl Discovery {
+    /// Where an agent CLI's `vimma-ctl mcp` connects: the port and ticket Vimma put in its
+    /// environment, in place of a discovery file.
+    #[must_use]
+    pub fn for_ticket(port: u16, ticket: &str) -> Self {
+        Self {
+            protocol: 2,
+            port,
+            token: ticket.to_string(),
+            pid: 0,
+            roles: vec![Role::Agent],
+            version: None,
+            ticket: true,
+        }
+    }
 }
 
 /// Why a message does not follow the protocol.
@@ -211,6 +232,39 @@ pub fn hello_v2(nonce: &str, role: Role) -> Value {
         ("nonce", text(nonce)),
         ("role", text(role.name())),
     ])
+}
+
+/// The message a one-time ticket's id is the HMAC of, with the ticket as the key.
+pub const TICKET_CONTEXT: &str = "vimma-ticket\0";
+
+/// A ticket's id: `HMAC-SHA256(key: ticket, message: TICKET_CONTEXT)`, lowercase hex. The hello
+/// names the ticket by it, so Vimma knows which ticket to prove it knows, and a squatter on the
+/// port learns nothing it could use (docs/specs/builtin-agent-cli.md C3).
+#[must_use]
+pub fn ticket_id(ticket: &str) -> String {
+    crate::hmac::hex(&crate::hmac::hmac_sha256(
+        ticket.as_bytes(),
+        TICKET_CONTEXT.as_bytes(),
+    ))
+}
+
+/// The `hello` of an agent CLI's connection: protocol 2, the agent role, and the ticket's id.
+#[must_use]
+pub fn hello_ticket(nonce: &str, id: &str) -> Value {
+    object([
+        ("type", text("hello")),
+        ("protocol", Value::Number(2.0)),
+        ("nonce", text(nonce)),
+        ("role", text(Role::Agent.name())),
+        ("ticket", text(id)),
+    ])
+}
+
+/// The `auth` line of a ticket's connection: the ticket in place of the token, sent only after
+/// the challenge proved the server knows it.
+#[must_use]
+pub fn auth_ticket(ticket: &str) -> Value {
+    object([("type", text("auth")), ("ticket", text(ticket))])
 }
 
 /// The `auth` line's value, sent only after the challenge checked out.
@@ -539,6 +593,7 @@ pub fn decode_discovery(value: &Value) -> Result<Discovery, DecodeError> {
         pid,
         roles,
         version,
+        ticket: false,
     })
 }
 
@@ -1050,6 +1105,7 @@ mod tests {
                 pid: 1,
                 roles: vec![Role::Full],
                 version: None,
+                ticket: false,
             })
         );
         assert!(decode_discovery(&file("0", TOKEN, "1")).is_err());
@@ -1121,6 +1177,28 @@ mod tests {
         );
     }
 
+    // An agent CLI's one-time ticket (docs/specs/builtin-agent-cli.md C3): the hello names it by
+    // its id, and the auth carries it in place of the token.
+    #[test]
+    fn encodes_v2_auth_with_a_ticket_exactly() {
+        let fixtures = v2_fixtures();
+        let find = |name: &str| {
+            fixtures.iter().find(|(n, _)| n == name).map_or_else(
+                || panic!("{name}"),
+                |(_, f)| f.get("message").unwrap().clone(),
+            )
+        };
+        let auth = find("auth-ticket.valid.json");
+        let ticket = str_field(&auth, "ticket").unwrap();
+        assert_eq!(auth_ticket(ticket), auth);
+        let hello = find("hello-ticket.valid.json");
+        assert_eq!(ticket_id(ticket), str_field(&hello, "ticket").unwrap());
+        assert!(
+            !hello.to_string().contains(ticket),
+            "the hello never names the ticket"
+        );
+    }
+
     #[test]
     fn encodes_v2_hellos_exactly() {
         for (name, fixture) in v2_fixtures() {
@@ -1134,7 +1212,11 @@ mod tests {
                 other => panic!("{name}: role {other:?}"),
             };
             let nonce = str_field(message, "nonce").unwrap();
-            assert_eq!(&hello_v2(nonce, role), message, "{name}");
+            let encoded = match str_field(message, "ticket") {
+                Some(id) => hello_ticket(nonce, id),
+                None => hello_v2(nonce, role),
+            };
+            assert_eq!(&encoded, message, "{name}");
         }
         assert_eq!(
             hello_v2(&"ab".repeat(32), Role::Full).to_string(),

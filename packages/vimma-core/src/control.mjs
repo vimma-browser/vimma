@@ -134,6 +134,12 @@ const unprintable = (cp) =>
 const KINDS = ["hello", "challenge", "auth", "welcome", "request", "response", "discovery"];
 /** Prefix of the challenge's HMAC message, so the proof is good for nothing else. */
 export const CHALLENGE_CONTEXT = "vimma-server\0";
+/**
+ * A one-time ticket's id is HMAC-SHA256(key: the ticket, message: TICKET_CONTEXT), in lowercase
+ * hex (docs/specs/builtin-agent-cli.md C3). The hello names the ticket by its id, so the server
+ * knows which ticket to prove it knows before the client sends the ticket itself.
+ */
+export const TICKET_CONTEXT = "vimma-ticket\0";
 
 /**
  * @typedef {"hello" | "challenge" | "auth" | "welcome" | "request" | "response" | "discovery"} MessageKind
@@ -184,12 +190,17 @@ function checkHello(m, errors) {
   const roles = hasRoles(m);
   noExtraFields(
     m,
-    roles ? ["type", "protocol", "nonce", "role"] : ["type", "protocol", "nonce"],
+    roles ? ["type", "protocol", "nonce", "role", "ticket"] : ["type", "protocol", "nonce"],
     errors,
   );
   checkProtocol(m, errors);
   if (roles) checkRole(m, errors);
   if (!isToken(m.nonce)) errors.push("nonce must be 64 lowercase hex characters");
+  // An agent CLI's connection (docs/specs/builtin-agent-cli.md C3): its ticket's id.
+  if (roles && "ticket" in m) {
+    if (!isToken(m.ticket)) errors.push("ticket must be 64 lowercase hex characters");
+    if (m.role === "full") errors.push('a ticket is for the "agent" role only');
+  }
 }
 
 /**
@@ -203,7 +214,14 @@ function checkChallenge(m, errors) {
 
 /** @param {Obj} m @param {string[]} errors */
 function checkAuth(m, errors) {
-  noExtraFields(m, ["type", "token", "code"], errors);
+  noExtraFields(m, ["type", "token", "code", "ticket"], errors);
+  // A ticket stands in for the token, never beside it, and no full-control code goes with it.
+  if ("ticket" in m) {
+    if (!isToken(m.ticket)) errors.push("ticket must be 64 lowercase hex characters");
+    if ("token" in m) errors.push("an auth carries a token or a ticket, not both");
+    if ("code" in m) errors.push("a ticket's auth carries no code");
+    return;
+  }
   if (!isToken(m.token)) errors.push("token must be 64 lowercase hex characters");
   // The code a full client printed, shown in Vimma's question (docs/specs/vimma-mcp.md 29 C).
   if ("code" in m && (typeof m.code !== "string" || !AUTH_CODE.test(m.code))) {

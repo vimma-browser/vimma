@@ -40,9 +40,13 @@ only the agent workspace, and every request asks you first (§12).
 
 - S1. The socket **must** be off by default and start or stop only with the pref
   `vimma.control.enabled` or `vimma.mcp.enabled` (`:mcp on`, `[mcp] enabled`). Either one starts
-  it, and it stops when both are off.
+  it, and it stops when both are off. The one exception is an agent CLI's one-time ticket (M51):
+  while a ticket is live the socket **may** listen with both switches off, and then **must**
+  take only a hello that names a live ticket, write no discovery file, and stop when the last
+  ticket ends.
   [`test_pref_starts_and_stops_the_server`](../tests/browser/browser_vimma_control.js),
-  [`test_agent_role_has_its_own_switch`](../tests/browser/browser_vimma_mcp_agent.js)
+  [`test_agent_role_has_its_own_switch`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js)
 - S2. It **must** listen on 127.0.0.1 only, never on another interface.
   [`test_pref_starts_and_stops_the_server`](../tests/browser/browser_vimma_control.js)
 - S3. The token file **must** be mode 0600 from its first byte, and `vimma-ctl` **must** refuse
@@ -51,14 +55,22 @@ only the agent workspace, and every request asks you first (§12).
   [`refuses_a_file_others_can_read`](../tools/vimma-ctl/src/discovery.rs),
   [`refuses_an_insecure_discovery_file`](../tools/vimma-ctl/tests/cli.rs)
 - S4. No command **must** run before the HMAC handshake; a wrong token is refused and the
-  connection closed; the token is never sent before the server proved it knows it.
+  connection closed; the token is never sent before the server proved it knows it. A ticket's
+  handshake is the same with the ticket as the key: its hello names the ticket only by its id,
+  HMAC-SHA256(ticket, `vimma-ticket` NUL), and the ticket is sent only after the server's proof;
+  an auth carries a token or a ticket, never both.
   [`test_handshake`](../tests/browser/browser_vimma_control.js),
   [`challenge.valid's proof is HMAC-SHA256(token, vimma-server NUL nonce)`](../packages/vimma-core/test/control.test.mjs),
-  [`a_squatter_gets_neither_the_token_nor_a_command`](../tools/vimma-ctl/tests/cli.rs)
+  [`a_squatter_gets_neither_the_token_nor_a_command`](../tools/vimma-ctl/tests/cli.rs),
+  [`an agent hello with a ticket validates; a ticket and a token together do not`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a_ticket_handshake_proves_the_server_first`](../tools/vimma-ctl/tests/mcp.rs)
 - S5. It **must** cap connections (8 open, of which at most 4 agents; 2 waiting for a hello),
-  line length (1 MiB) and handshake and idle time.
+  line length (1 MiB) and handshake and idle time. A ticket's connection counts toward the 8
+  but not the 4 agents, so MCP agents cannot keep out a task Vimma started; a ticket has one
+  connection at a time (M51).
   [`test_limits`](../tests/browser/browser_vimma_control.js),
-  [`test_agents_cannot_take_every_connection`](../tests/browser/browser_vimma_mcp_agent.js)
+  [`test_agents_cannot_take_every_connection`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_mcp_agents_cannot_keep_out_a_ticket`](../tests/browser/browser_vimma_agent_cli.js)
 - S6. A token file left by a crash **must** be removed at start; a symlink or directory in its
   place is never followed. [`test_stale_discovery_file_removed_at_start`](../tests/browser/browser_vimma_control.js)
 - S7. Only the commands of the connection's role **must** run (`full`: the four of protocol 1;
@@ -95,10 +107,12 @@ only the agent workspace, and every request asks you first (§12).
 - S12. The `full` role **must** run only with `vimma.control.enabled`, and the `agent` role only
   with MCP on; a hello for a role that is off is refused (`role-off`) and closed, and turning a
   switch off closes that role's connections. An agent connection **never** reaches `send-keys`,
-  `state` or protocol 1's `open`.
+  `state` or protocol 1's `open`. A ticket's connection is the agent role whatever the
+  switches say, is not closed by a switch, and ends with its ticket (M51-M54).
   [`test_agent_role_has_its_own_switch`](../tests/browser/browser_vimma_mcp_agent.js),
   [`test_each_role_runs_only_its_commands`](../tests/browser/browser_vimma_mcp_agent.js),
-  [`says_the_control_socket_is_off_when_only_mcp_is_on`](../tools/vimma-ctl/tests/cli.rs)
+  [`says_the_control_socket_is_off_when_only_mcp_is_on`](../tools/vimma-ctl/tests/cli.rs),
+  [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js)
 - S13. While MCP is on, a new `full` connection **must** get its welcome only after the user's
   `y` in the agent question line (no grant covers it, one waits at a time, three noes mute the
   question for a minute); a no, a timeout or a closed connection refuses it (`denied`). An agent
@@ -1863,6 +1877,49 @@ for the user.
   [`a page's line keeps its warning even when the page's title breaks the line`](../packages/vimma-core/test/agent-loop.test.mjs),
   [`the user's messages, the replies and refusals, the user's no among them, stay whole`](../packages/vimma-core/test/agent-loop.test.mjs),
   [`a request's prefix changes only when a block is left out`](../packages/vimma-core/test/agent-loop.test.mjs)
+
+**Agent CLIs** ([builtin-agent-cli](specs/builtin-agent-cli.md), in progress; no process is
+started yet): a conversation will be able to run an agent CLI the user has, such as Claude
+Code, whose `vimma-ctl mcp` acts on the browser as that conversation. What is in force is the
+way in: a one-time ticket that binds one `vimma-ctl mcp` connection to the conversation's gate
+connection. It reaches only what the conversation already reaches, so a process of the user's
+that reads it from the CLI's environment gains nothing the conversation does not have, and
+only until the run ends.
+
+- M51. A ticket **must** be 256 random bits, made only by chrome code for one conversation's
+  connection, good until it is revoked (when its conversation is stopped or deleted; the run
+  that ends **must** revoke it too, once runs exist), for one connection at a time: the first
+  connection's
+  `vimma-ctl mcp` session id is the only way back in after that connection drops. A second
+  connection while one lives, a later one without that session id, and one after a first that
+  sent none **must** be refused, with the notice
+  `a second program used <cli>'s ticket and was refused`. A revoked or unknown ticket's hello
+  **must** be refused before any proof is sent. A request id still in flight on the connection
+  **must not** be taken again, so every waiting question stays reachable by `agent-cancel` and
+  by the connection's end.
+  [`test_second_connection_with_a_ticket_is_refused`](../tests/browser/browser_vimma_agent_cli.js),
+  [`test_a_request_id_in_flight_is_not_reused`](../tests/browser/browser_vimma_agent_cli.js),
+  [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js)
+- M52. A ticket's connection **must** act as its conversation's connection (M35-M37): asked
+  about under the conversation's label, covered by its grant and by no other, on the tabs it
+  owns. Its `agent-hello` **must not** register an MCP agent or change the label, and its
+  closing **must** withdraw only the questions it was waiting on, leaving the conversation, its
+  grant and its tabs.
+  [`test_ticket_connection_acts_as_the_conversation`](../tests/browser/browser_vimma_agent_cli.js)
+- M53. A ticket **must never** be written to a pref, `config.toml`, the discovery file or any
+  file of the profile, a log, a notice or `:mcp log`. `vimma-ctl mcp` **must** take it only
+  from `VIMMA_AGENT_TICKET` (with the port from `VIMMA_AGENT_PORT`), never print it, and with a
+  ticket **must not** read the discovery file, so that process never holds the token. When its
+  ticket's task has ended it **must** tell the model so, and **never** to turn MCP on.
+  [`test_ticket_never_in_prefs_files_notices_or_log`](../tests/browser/browser_vimma_agent_cli.js),
+  [`mcp_connects_with_a_ticket_from_the_environment`](../tools/vimma-ctl/tests/mcp.rs),
+  [`the_ticket_is_never_printed`](../tools/vimma-ctl/tests/mcp.rs),
+  [`a_ticket_whose_task_ended_never_says_to_turn_on_mcp`](../tools/vimma-ctl/tests/mcp.rs)
+- M54. Stopping or deleting a conversation **must** revoke its tickets and close their
+  connections at once, before its grant ends, so no command a CLI sends after the stop reaches
+  the browser; a question the connection waited on is withdrawn, and a step already past its
+  question finishes, as any stopped task's does (Behaviour 16 of builtin-agent).
+  [`test_stop_and_delete_close_the_ticket_connection`](../tests/browser/browser_vimma_agent_cli.js)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 

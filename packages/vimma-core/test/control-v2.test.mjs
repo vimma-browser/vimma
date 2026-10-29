@@ -12,8 +12,10 @@ import {
   LATEST_PROTOCOL,
   PROTOCOLS,
   ROLES,
+  TICKET_CONTEXT,
   validateMessage,
 } from "../src/control.mjs";
+import { createHmac } from "node:crypto";
 
 const FIXTURES = fileURLToPath(new URL("../../../tests/contract/control/v2/", import.meta.url));
 const files = readdirSync(FIXTURES).filter((f) => f.endsWith(".json"));
@@ -105,6 +107,40 @@ describe("hello, welcome and discovery with roles", () => {
     expect(errorsOf(hello({ protocol: 1 }))).toEqual(['unknown field "role"']);
     expect(errorsOf({ type: "hello", protocol: 1, nonce: NONCE })).toEqual([]);
     expect(errorsOf(hello({ token: TOKEN }))).toEqual(['unknown field "token"']);
+  });
+
+  // docs/specs/builtin-agent-cli.md C3: an agent CLI's vimma-ctl connects with a one-time ticket.
+  test("an agent hello with a ticket validates; a ticket and a token together do not", () => {
+    const ID = "661442cdea65ba354557af505e1c360c637bb5de19c74126fa13b700226f8419";
+    const TICKET = "a1b2c3d4e5f60718".repeat(4);
+    expect(errorsOf(hello({ ticket: ID }))).toEqual([]);
+    expect(errorsOf(hello({ role: "full", ticket: ID }))).toEqual([
+      'a ticket is for the "agent" role only',
+    ]);
+    expect(errorsOf(hello({ ticket: "ab" }))).toEqual([
+      "ticket must be 64 lowercase hex characters",
+    ]);
+    expect(errorsOf({ type: "hello", protocol: 1, nonce: NONCE, ticket: ID })).toEqual([
+      'unknown field "ticket"',
+    ]);
+    expect(errorsOf({ type: "auth", ticket: TICKET })).toEqual([]);
+    expect(errorsOf({ type: "auth", ticket: TICKET, token: TOKEN })).toEqual([
+      "an auth carries a token or a ticket, not both",
+    ]);
+    expect(errorsOf({ type: "auth", ticket: TICKET, code: "7F3K" })).toEqual([
+      "a ticket's auth carries no code",
+    ]);
+    expect(errorsOf({ type: "auth", ticket: TICKET.toUpperCase() })).toEqual([
+      "ticket must be 64 lowercase hex characters",
+    ]);
+    expect(errorsOf({ type: "auth" })).toEqual(["token must be 64 lowercase hex characters"]);
+  });
+
+  test("a ticket's id is HMAC-SHA256(ticket, vimma-ticket NUL), and the fixtures agree", () => {
+    const { ticket } = fixture("auth-ticket.valid.json").message;
+    const { ticket: id } = fixture("hello-ticket.valid.json").message;
+    expect(TICKET_CONTEXT).toBe("vimma-ticket\0");
+    expect(createHmac("sha256", ticket).update(TICKET_CONTEXT).digest("hex")).toBe(id);
   });
 
   test("a v2 welcome names the role", () => {

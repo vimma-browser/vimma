@@ -1,0 +1,11 @@
+{
+  "description": "An agent CLI's vimma-ctl names its one-time ticket by its id, HMAC-SHA256(ticket, \"vimma-ticket\" NUL), never by the ticket itself (docs/specs/builtin-agent-cli.md C3)",
+  "kind": "hello",
+  "message": {
+    "type": "hello",
+    "protocol": 2,
+    "nonce": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    "role": "agent",
+    "ticket": "661442cdea65ba354557af505e1c360c637bb5de19c74126fa13b700226f8419"
+  }
+}

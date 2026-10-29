@@ -392,6 +392,9 @@ support-files = ["file_vimma_update_manifest.sjs", "file_vimma_plain.html"]
 ["browser_vimma_password_prompt.js"]
 support-files = ["file_vimma_login.html", "file_vimma_plain.html"]
 
+["browser_vimma_agent_cli.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
+
 ["browser_vimma_agent_conversations.js"]
 support-files = [
   "file_vimma_agent_click.html",
