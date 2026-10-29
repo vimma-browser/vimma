@@ -14,8 +14,12 @@
 
 /* global focusContent -- from head.js */
 /* global Client, tidyTask -- from head_vimma_control.js */
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
+// Compact lists and their filters (agent-speed S4) added three tasks: on a loaded macOS runner
+// the file outgrows the default time (47.6 s of 45).
+requestLongerTimeout(2);
 
 const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
