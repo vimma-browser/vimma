@@ -615,7 +615,10 @@ Claude Code's stream-json, scripted by the task's text; it also covers
 - `docs/limits.md`, "Agents (MCP)": a CLI's own tools are outside the gate; a CLI's cost is
   its own estimate and `max_cost` does not apply to it; a shell command a CLI started may
   outlive a stop; Vimma cannot see where a CLI sends page text; supported CLIs and
-  the versions checked.
+  the versions checked; the run folder is in `$XDG_RUNTIME_DIR`, a small in-memory file
+  system, so a CLI that writes large files there can fill it; and, where it falls back to
+  `~/.cache/vimma-agent-cli`, the user's own instruction files in the home folder apply to
+  every run, as they do to the CLI in a terminal.
 - ADR-023: the amendment of C1.
 - README: the agents line names agent CLIs as providers, with the last PR.
 - `CHANGELOG.md`: added by the maintainer at merge.

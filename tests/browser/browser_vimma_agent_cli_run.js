@@ -351,6 +351,27 @@ addTidyTask(async function test_runs_in_an_empty_private_directory_removed_after
   Assert.ok(!(await IOUtils.exists(report.cwd)), "removed when the run ended");
 });
 
+addTidyTask(async function test_a_run_folder_others_can_write_above_is_refused() {
+  const runtime = Services.env.get("XDG_RUNTIME_DIR");
+  const shared = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-shared", 0o700);
+  const base = PathUtils.join(shared, "run");
+  await IOUtils.makeDirectory(base, { permissions: 0o700 });
+  try {
+    // A sticky folder others can write counts too: they could add an instruction file there.
+    await IOUtils.setPermissions(shared, 0o1777, false);
+    Services.env.set("XDG_RUNTIME_DIR", base);
+    const c = conversation();
+    const result = await run(c.id, "hello");
+    Assert.equal(result.outcome, "error");
+    Assert.ok(result.error.endsWith(`${base} is not a private folder of yours`), result.error);
+    Assert.ok(!(await IOUtils.exists(fake.report)), "the CLI never ran");
+  } finally {
+    Services.env.set("XDG_RUNTIME_DIR", runtime);
+    await IOUtils.setPermissions(shared, 0o700);
+    await IOUtils.remove(shared, { recursive: true });
+  }
+});
+
 addTidyTask(async function test_ticket_never_in_cmdline_prefs_or_log() {
   if (!(await needCtl())) return;
   const c = conversation();

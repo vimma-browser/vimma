@@ -1964,6 +1964,7 @@ own process, not a process group.
   [`test_task_on_stdin_and_fixed_arguments`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_runs_in_an_empty_private_directory_removed_after`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_feature_off_starts_nothing`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_a_run_folder_others_can_write_above_is_refused`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_child_holding_the_output_does_not_keep_the_run`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`claude-code's arguments are the fixture, with the model only from the provider`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`the task is never an argument`](../packages/vimma-core/test/agent-cli.test.mjs),
