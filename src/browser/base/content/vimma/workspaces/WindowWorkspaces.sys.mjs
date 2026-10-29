@@ -339,9 +339,11 @@ export class WindowWorkspacesImpl {
    * Returns why not, or null.
    * @param {Tab} tab  the selected tab, or one outside any split
    * @param {WorkspaceRef} ref
+   * @param {{ onMoved?: (fresh: Tab) => void }} [opts]  told the reopened tab, before the old
+   *   one closes (a tab given to the built-in agent, docs/specs/builtin-agent.md Behaviour 17)
    * @returns {string | null}
    */
-  moveTab(tab, ref) {
+  moveTab(tab, ref, { onMoved } = {}) {
     const model = this.#model;
     if (!model) return "no workspaces in this window";
     const target = findWorkspace(model, ref);
@@ -384,6 +386,7 @@ export class WindowWorkspacesImpl {
       this.#moving = null;
     }
     if (label) setTabLabel(fresh, label);
+    onMoved?.(fresh);
     if (/** @type {any} */ (tab).muted && !fresh.muted) {
       fresh.toggleMuteAudio(/** @type {any} */ (tab).muteReason);
     }

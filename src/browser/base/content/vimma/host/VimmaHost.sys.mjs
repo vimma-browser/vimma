@@ -46,6 +46,8 @@ import { AddonPicker, GotoPicker, MCP_LOG, WorkspacePicker } from "../ui/picker.
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
 import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
+import { AgentChatWindow } from "../ui/agent-chat.mjs";
+import { giveSelectedTab, runAgentCommand } from "./agent-chat-ops.mjs";
 import { quickAdd, runBookmarkEffect } from "./bookmark-actions.mjs";
 import { bookmarksRoot, loadTree, observeBookmarks, setBookmarksRoot } from "./bookmark-ops.mjs";
 import { pickerWorkspaces, tabById } from "./goto.mjs";
@@ -139,6 +141,12 @@ import {
   toggleAddon,
   togglePrivateAccess,
 } from "./addon-ops.mjs";
+
+const lazy = /** @type {any} */ ({});
+ChromeUtils.defineESModuleGetters(lazy, {
+  // Lazily: AgentChat reaches this module through the agent commands.
+  AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
+});
 
 /** @import { Chord } from "../core/keys.mjs" */
 /** @import { ConfigError } from "../core/config.mjs" */
@@ -241,6 +249,10 @@ const PAGE_FIRST_MAX = 16;
  * @property {SidePanel} panel  prefix+b, `panel` mode while open (m3-workspaces 6)
  * @property {BookmarksPanel} bookmarks  prefix+shift+b, in the side panel's slot
  *   and `panel` mode (docs/specs/bookmarks.md)
+ * @property {AgentChatWindow} agentChat  `:agent`, the built-in agent's window in the side
+ *   panel's slot; its keys are its own while focus is in it (docs/specs/builtin-agent.md)
+ * @property {() => void} onAgentChat  the built-in agent's conversations changed: the status
+ *   bar redraws
  * @property {Find} find  `/`, `?`, `n`, `N` over Firefox's find bar (m1-find)
  * @property {boolean} private  a private window: its keys are not logged (private-workspace)
  * @property {boolean} resize  in resize mode (`prefix+r`, m4-split-panes sub-spec 5, ADR-014)
@@ -281,6 +293,7 @@ function vimmaSurfaceOpen(s) {
     s.rename.isOpen ||
     s.panel.isOpen ||
     s.bookmarks.isOpen ||
+    s.agentChat.focused ||
     s.find.typing
   );
 }
@@ -831,6 +844,7 @@ export const RUNNERS = Object.freeze({
     if (s.panel.isOpen) s.panel.close();
     else {
       s.bookmarks.close(); // one panel in the slot at a time
+      s.agentChat.close();
       if (!s.panel.open()) s.notice.show(NO_WORKSPACES);
     }
   },
@@ -894,6 +908,7 @@ export const RUNNERS = Object.freeze({
     if (s.bookmarks.isOpen) s.bookmarks.close();
     else {
       s.panel.close();
+      s.agentChat.close();
       s.bookmarks.open();
     }
   },
@@ -943,6 +958,15 @@ export const RUNNERS = Object.freeze({
       () => s.mcpLog.open(),
     );
     if (said) s.notice.show(said);
+  },
+  // `:agent [word]` (docs/specs/builtin-agent.md Behaviour 14): the built-in agent's window, in
+  // the side panel's slot, one panel at a time. Its action joins actions.mjs with its key (B13).
+  "agent.command": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
+    s.notice.hide();
+    if (!lazy.AgentChat.enabled) return;
+    s.panel.close();
+    s.bookmarks.close();
+    runAgentCommand(s.agentChat, t, (text, error) => s.notice.show(text, { error: !!error }));
   },
   // prefix+shift+a (docs/specs/vimma-mcp.md decision 14): the waiting agent question, or with
   // none, revoke the grants after y/N.
@@ -1328,6 +1352,8 @@ export const VimmaHost = {
           workspace: workspaceNames(win),
           search: SearchHost.completions,
         }),
+        // An unfinished feature's command does not exist while its pref is off (CONTRIBUTING.md).
+        hidden: () => (lazy.AgentChat.enabled ? [] : ["agent.command"]),
       }),
       tabStrip: null,
       toolbar: null,
@@ -1493,6 +1519,27 @@ export const VimmaHost = {
         observe: observeBookmarks,
         effect: (effect) => runBookmarkEffect(bookmarkContext(state), effect),
       }),
+      agentChat: new AgentChatWindow(win, {
+        ask: (question, yes) => state.rename.ask(question, yes),
+        say: (text, error) => state.notice.show(text, { error: !!error }),
+        give: (id) =>
+          giveSelectedTab(
+            win,
+            id,
+            (question, yes) => state.rename.ask(question, yes),
+            (text) => state.notice.show(text),
+          ),
+        copy: (text) =>
+          Cc["@mozilla.org/widget/clipboardhelper;1"]
+            .getService(Ci.nsIClipboardHelper)
+            .copyString(text),
+        rearm: () => AgentUi.rearmSlot(win),
+        changed: () => {
+          AgentUi.refresh();
+          this._emit(state);
+        },
+      }),
+      onAgentChat: () => this._emit(state),
     };
     state.element = new ElementFocus({
       overlay: state.hintOverlay,
@@ -1515,7 +1562,14 @@ export const VimmaHost = {
       noticeOpen: () => !!state.notice.el?.matches(":popover-open"),
       ask: (question, yes) => state.rename.ask(question, yes),
       emit: () => this._emit(state),
+      // docs/specs/builtin-agent.md Behaviour 27: the open conversation's questions, in its window.
+      slot: state.agentChat.slot,
+      slotConn: () => state.agentChat.conn,
+      chatFocused: () => state.agentChat.focused,
+      slotChanged: () => state.agentChat.slotChanged(),
+      focusChat: () => state.agentChat.normal(),
     });
+    lazy.AgentChat.addListener(state.onAgentChat);
     // The update message and the security update question (docs/specs/update-notices.md): the
     // same guards as the agent question, which goes first.
     UpdateUi.register(win, {
@@ -1658,6 +1712,8 @@ export const VimmaHost = {
     state.rename.destroy();
     state.panel.destroy();
     state.bookmarks.destroy();
+    lazy.AgentChat.removeListener(state.onAgentChat);
+    state.agentChat.destroy();
     state.tabStrip?.uninit();
     state.toolbar?.uninit();
     state.promptKeys?.uninit();
@@ -1688,7 +1744,8 @@ export const VimmaHost = {
     if (!state) return { mode: "insert", pending: [] };
     const browser = /** @type {any} */ (win).gBrowser?.selectedBrowser;
     return {
-      mode: state.find.typing ? "command" : this._mode(state),
+      // The chat window's transcript has focus: its normal mode (docs/specs/builtin-agent.md 14).
+      mode: state.find.typing ? "command" : state.agentChat.inNormal ? "normal" : this._mode(state),
       pending: state.dispatcher.pending(),
       find: browser ? state.find.status(browser) : null,
       pane: paneStatus(win),
@@ -2011,6 +2068,11 @@ export const VimmaHost = {
     }
     // Then an open permission prompt's y, n and Tab (toolbar-toggle decision 11a).
     if (state.promptKeys?.onKey(e)) return;
+    // The built-in agent's window, while focus is in it and no sequence (ctrl+b …) is under way.
+    if (state.dispatcher.pending().length === 0 && state.agentChat.onKey(e)) {
+      this._emit(state);
+      return;
+    }
     const chord = chordFromEvent(e);
     if (!chord) return; // a bare modifier
     const key = formatKey(chord);
@@ -2393,7 +2455,8 @@ export const VimmaHost = {
    * @param {Extract<CommandResult, { kind: "run" }>} result
    */
   _runCommand(state, { command, action, text }) {
-    if (PENDING_ACTIONS.includes(action.id)) {
+    // `:agent` runs by its id until its action comes with its key (core PENDING_ACTIONS).
+    if (PENDING_ACTIONS.includes(action.id) && !(action.id in RUNNERS)) {
       state.notice.show(`:${command}${text ? ` ${text}` : ""}: not available yet`);
       return;
     }
