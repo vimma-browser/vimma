@@ -161,7 +161,7 @@ export class Transcript {
             ? "ran under grant"
             : e.kind === "timeout"
               ? "denied (no answer)"
-              : /** @type {Record<string, string>} */ ((ANSWERS)[e.answer ?? ""] ?? "denied");
+              : /** @type {Record<string, string>} */ (ANSWERS[e.answer ?? ""] ?? "denied");
     }
     this.version++;
   }
@@ -234,6 +234,44 @@ export function entryView(entry) {
 
 const LOOPBACK = new Set(["127.0.0.1", "[::1]", "localhost"]);
 const PROBED_PORTS = new Set(LOCAL_SERVERS.map((s) => String(s.port)));
+
+/** @param {string} endpoint @returns {URL | null} */
+function parse(endpoint) {
+  try {
+    return new URL(endpoint);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether requests to `endpoint` stay on this machine as far as Vimma can see: a loopback
+ * address (a local server may still forward them, which the header says).
+ * @param {string} endpoint
+ */
+export function isLocalEndpoint(endpoint) {
+  const url = parse(endpoint);
+  return !!url && LOOPBACK.has(url.hostname);
+}
+
+/** Who runs an API, for the hosts Vimma knows; another host is named by its address only. */
+const VENDORS = Object.freeze({ "api.anthropic.com": "Anthropic" });
+
+/**
+ * What the window asks before a conversation's first task to a provider off this machine
+ * (Behaviour 5), with `y` and `n`.
+ * @param {{ kind: string, endpoint: string }} provider
+ */
+export function externalNotice(provider) {
+  const host = parse(provider.endpoint)?.host ?? chatText(provider.endpoint);
+  const vendor = Object.hasOwn(VENDORS, host)
+    ? /** @type {Record<string, string>} */ (VENDORS)[host]
+    : "";
+  return (
+    "Page text the agent reads, field values it sees, screenshots and your messages are sent " +
+    `to ${host}${vendor ? ` (${vendor})` : ""}. y send · n cancel`
+  );
+}
 
 /**
  * Where the provider's requests go, as the header says it: a probed local server's model stays

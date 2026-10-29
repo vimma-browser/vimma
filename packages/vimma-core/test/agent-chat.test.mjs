@@ -9,6 +9,8 @@ import {
   chatKey,
   chatText,
   entryView,
+  externalNotice,
+  isLocalEndpoint,
   parseAgentCommand,
 } from "../src/agent-chat.mjs";
 
@@ -212,6 +214,31 @@ describe("the header (Behaviour 6)", () => {
 
   test("without a provider it says so", () => {
     expect(chatHeader({ provider: null, granted: false })[0]).toBe("no model set up");
+  });
+});
+
+describe("what leaves the machine (Behaviour 5)", () => {
+  test("only a loopback endpoint is local", () => {
+    expect(isLocalEndpoint("http://127.0.0.1:11434/v1")).toBe(true);
+    expect(isLocalEndpoint("http://[::1]:8000/v1")).toBe(true);
+    expect(isLocalEndpoint("http://localhost:1234/v1")).toBe(true);
+    expect(isLocalEndpoint("https://api.anthropic.com")).toBe(false);
+    expect(isLocalEndpoint("not a url")).toBe(false);
+  });
+
+  test("the notice before the first task names the host and, when known, who runs it", () => {
+    expect(
+      externalNotice({ kind: "anthropic", endpoint: "https://api.anthropic.com", name: "a" }),
+    ).toBe(
+      "Page text the agent reads, field values it sees, screenshots and your messages are " +
+        "sent to api.anthropic.com (Anthropic). y send · n cancel",
+    );
+    expect(
+      externalNotice({ kind: "openai", endpoint: "https://llm.example.com/v1", name: "x" }),
+    ).toBe(
+      "Page text the agent reads, field values it sees, screenshots and your messages are " +
+        "sent to llm.example.com. y send · n cancel",
+    );
   });
 });
 
