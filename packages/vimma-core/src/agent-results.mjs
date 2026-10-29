@@ -10,7 +10,7 @@
 // fails when a sentence here is not in mcp.rs.
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN, untrustedHeader } from "./agent.mjs";
-import { LOAD_ERRORS, errorPageText } from "./load-errors.mjs";
+import { LOAD_ERRORS, NOT_LOADED, errorPageText } from "./load-errors.mjs";
 
 /**
  * @typedef {import("./agent-providers.mjs").ToolContent} ToolContent
@@ -314,7 +314,7 @@ function elementsIntro(tab, dropped, filtered) {
 /** The start of a step's result whose page did not load (issue #643). */
 export const LOAD_FAILED = "The page did not load in tab ";
 /** The start of a refusal of a page that did not load, as `vimma_elements` meets it. */
-const LOAD_FAILED_REFUSAL = "Vimma could not do it: the page did not load: Firefox showed";
+const LOAD_FAILED_REFUSAL = `Vimma could not do it: ${NOT_LOADED}`;
 
 /**
  * Why a step's page did not load, as the error result's first line (mcp.rs, `load_failed`), or

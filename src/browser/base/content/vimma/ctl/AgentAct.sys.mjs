@@ -44,7 +44,7 @@ import { AGENT_WAITS } from "../core/agent-wait.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { cutTo, shown } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
-import { errorPageText, loadErrorOf } from "../core/load-errors.mjs";
+import { NOT_LOADED, errorPageText, loadErrorOf } from "../core/load-errors.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
@@ -873,7 +873,7 @@ export const AgentAct = {
     // Firefox's error page, named as such (issue #643): "not an http page" sent models back to
     // the same open.
     const failed = AgentAct.loadError(browser);
-    if (failed) return { refused: `the page did not load: ${errorPageText(failed)}` };
+    if (failed) return { refused: `${NOT_LOADED}${errorPageText(failed)}` };
     if (!onTheWeb(browser.contentPrincipal)) {
       return { refused: "elements are listed only on http and https pages" };
     }

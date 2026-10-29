@@ -1447,7 +1447,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   after the step, of a page that is no longer loading, and only while the tab is still an agent
   tab with the URL it had when the list began (else the result says why, in fixed words, and
   holds no list; a page that is one of Firefox's error pages is named by its error code, which
-  the validator and `vimma-ctl mcp` accept only from a fixed list, never as the page's text); the result's URL and title are read at the last such check, and a tab that
+  the validator and `vimma-ctl mcp` accept only from a fixed list, never as the page's text;
+  `vimma_elements` on such a tab refuses with the same code, and the built-in agent's stop after
+  three identical refusals counts both); the result's URL and title are read at the last such check, and a tab that
   left the agent workspace meanwhile fails the call, noted in `:mcp log`, with nothing of its
   page; its labels become the connection's current ones as a `vimma_elements` list's do. The
   step's question (a checkpoint's included), its `:mcp log` row and its notice under a grant say
@@ -1496,6 +1498,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a load error: one of Firefox's codes, only with unlisted error`](../packages/vimma-core/test/control-v2.test.mjs),
   [`a code outside the fixed list is other, never the page's text`](../packages/vimma-core/test/load-errors.test.mjs),
   [`a_load_that_ended_on_an_error_page_is_an_error_naming_it`](../tools/vimma-ctl/src/mcp.rs),
+  [`a load that ended on Firefox's error page is an error result naming the error`](../packages/vimma-core/test/agent-results.test.mjs),
+  [`an open that ends on Firefox's error page three times ends the task`](../packages/vimma-core/test/agent-loop.test.mjs),
   [`test_builtin_open_names_the_error_page`](../tests/browser/browser_vimma_agent_load_error.js),
   [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../tools/vimma-ctl/src/mcp.rs),
   [`an_open_with_elements_lists_the_page_it_loaded`](../tools/vimma-ctl/src/mcp.rs),

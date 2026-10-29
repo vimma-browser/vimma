@@ -55,8 +55,11 @@ export const LOAD_ERRORS = Object.freeze({
   other: "an error Vimma does not name",
 });
 
+/** The start of a refusal of a page that did not load, as `vimma_elements` refuses it. */
+export const NOT_LOADED = "the page did not load: ";
+
 /**
- * A load error in Vimma's words, as the model reads it (mcp.rs, `error_page`).
+ * A load error in Vimma's words, as the model reads it (mcp.rs, `with_load_error`).
  * @param {string} code  a LOAD_ERRORS code
  */
 export function errorPageText(code) {
