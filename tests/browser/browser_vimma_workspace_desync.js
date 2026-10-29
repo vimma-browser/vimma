@@ -20,6 +20,9 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
+const { AboutVimma } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/about/AboutVimma.sys.mjs",
+);
 const { pickerWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/goto.mjs",
 );
@@ -238,8 +241,36 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
 
   await lastWindowCase(withAClosedTab, async (win) => {
     const ww = WindowWorkspaces.get(win);
-    Assert.ok(ww.health().recovered, "the reopened window's restore never finished");
-    await restoreInto(win, winState);
+    const stuck = ww.health().recovered;
+    Assert.ok(stuck, "the reopened window's restore never finished");
+
+    // This restore does finish (sessionstore-single-window-restored), only without a Busy or
+    // Ready: neither the console nor the report may call it one that never finished.
+    /** @type {string[]} */
+    const lines = [];
+    const storage = Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage);
+    const onLog = (/** @type {any} */ m) => lines.push((m.arguments ?? []).map(String).join(" "));
+    storage.addLogEventListener(onLog, Services.scriptSecurityManager.getSystemPrincipal());
+    try {
+      await restoreInto(win, winState);
+    } finally {
+      storage.removeLogEventListener(onLog);
+    }
+    Assert.deepEqual(
+      lines.filter((l) => l.includes("never finished")),
+      [],
+      "no warning of a restore that never finished",
+    );
+    const after = ww.health().recovered;
+    Assert.deepEqual(
+      [after?.reason, after?.afterMs],
+      [stuck.reason, stuck.afterMs],
+      "the stuck restore on record is still the first one",
+    );
+    const report = AboutVimma.report(await AboutVimma.collect(win));
+    Assert.equal(report.match(/\n {2}recovered: /g)?.length, 1, "the report names one");
+    Assert.ok(!/\n {2}restore pending/.test(report), "and no restore pending");
+
     const model = ww.model;
     const ws = (/** @type {string} */ id) => model.workspaces.find((w) => w.id === id);
     Assert.deepEqual(
@@ -263,6 +294,17 @@ add_task(async function a_window_reopened_after_the_last_one_closed_with_a_pinne
   });
 });
 
+// The test-only pref of another type (a string here) must not stop the bound: a throw at the
+// Busy, after the window entered pending and before its timer was set, would freeze it again.
+add_task(async function a_bound_pref_of_another_type_still_ends_a_stuck_restore() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.workspaces.stuckRestoreMs", "200"]] });
+  try {
+    await throwingRestore();
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
 add_task(async function a_restore_that_throws_partway_does_not_stop_the_model() {
   // The test-only bound, short: the timer ends the stuck restore without a real 5 s wait.
   await SpecialPowers.pushPrefEnv({ set: [["vimma.workspaces.stuckRestoreMs", 200]] });
@@ -273,7 +315,7 @@ add_task(async function a_restore_that_throws_partway_does_not_stop_the_model() 
   }
 });
 
-/** The case above, with the bound at 200 ms. */
+/** A restore that throws partway, then tabs opened; the calling task sets the bound. */
 async function throwingRestore() {
   const win = await openWindow();
   const ww = WindowWorkspaces.get(win);

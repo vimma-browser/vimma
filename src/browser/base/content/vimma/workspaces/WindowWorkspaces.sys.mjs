@@ -102,17 +102,21 @@ const WINDOW_RESTORED_TOPIC = "sessionstore-single-window-restored";
 
 /**
  * How long a restore into a window may stay pending without SSWindowStateReady before it is
- * taken as one that never finished, by a timer set at the Busy. SessionStore's brackets end
+ * taken as one that never finished, by a timer set at the bracket's start (SSWindowRestoring
+ * or SSWindowStateBusy). SessionStore's brackets end
  * synchronously (#restoreTab) or in a 0 ms timer of the window's that it scheduled before the
  * Busy (#restoreWindowFeatures), and a chrome window's timers are not throttled, so the timer
  * never fires inside a real bracket, however long that bracket's synchronous part takes.
  */
 export const STUCK_RESTORE_MS = 5000;
 
-/** Test-only: overrides STUCK_RESTORE_MS, read at each SSWindowStateBusy. */
+/** Test-only: overrides STUCK_RESTORE_MS, read at each SSWindowRestoring and SSWindowStateBusy. */
 const STUCK_RESTORE_PREF = "vimma.workspaces.stuckRestoreMs";
 
-/** The bound in effect: STUCK_RESTORE_MS unless the test-only pref says otherwise. */
+/**
+ * The bound in effect: STUCK_RESTORE_MS unless the test-only pref says otherwise. Never throws:
+ * getIntPref with a default returns the default for a pref of another type as well.
+ */
 function stuckRestoreMs() {
   return Services.prefs.getIntPref(STUCK_RESTORE_PREF, STUCK_RESTORE_MS);
 }
@@ -189,8 +193,10 @@ export class WindowWorkspacesImpl {
   #pendingSince = 0;
   /** The timer that ends a pending restore SessionStore never finishes (STUCK_RESTORE_MS). */
   #stuckTimer = 0;
-  /** The bound of the pending restore (stuckRestoreMs at its SSWindowStateBusy). */
+  /** The bound of the pending restore (stuckRestoreMs at its bracket's last start event). */
   #stuckBound = STUCK_RESTORE_MS;
+  /** Whether the pending restore sent SSWindowStateBusy, not only SSWindowRestoring. */
+  #busySeen = false;
   /**
    * The last restore that never finished: why the wait ended, after how long, and when.
    * @type {{ reason: string, afterMs: number, at: number } | null}
@@ -538,14 +544,17 @@ export class WindowWorkspacesImpl {
         // A whole-window restore sends SSWindowRestoring first, then Busy; once the window's
         // busy count is stuck (#endStuckRestore) it sends only SSWindowRestoring, and ends with
         // sessionstore-single-window-restored, which ends the pending (#windowRestored).
+        // The bound is read first: nothing may stop the timer being set once pending is.
+        this.#stuckBound = stuckRestoreMs();
         if (!this.#pending) {
           // Our value as it is now, before the restore replaces it (it may not carry ours).
           this.#save();
           this.#pending = true;
+          this.#busySeen = false;
         }
+        if (e.type === "SSWindowStateBusy") this.#busySeen = true;
         this.#pendingSince = Date.now();
         this.#win.clearTimeout(this.#stuckTimer);
-        this.#stuckBound = stuckRestoreMs();
         this.#stuckTimer = this.#win.setTimeout(
           () => this.#endStuckRestore("no SSWindowStateReady"),
           this.#stuckBound,
@@ -684,9 +693,20 @@ export class WindowWorkspacesImpl {
     if (this.#started) this.#reconcile();
   }
 
-  /** Observer: SessionStore finished restoring a window, maybe without SSWindowStateReady. */
+  /**
+   * Observer: SessionStore finished restoring a window, maybe without SSWindowStateReady. After a
+   * Busy, the missing Ready is a restore that never finished as far as the count goes. Without a
+   * Busy (the count was already stuck, so only SSWindowRestoring came), the restore finished
+   * normally and is not reported as stuck.
+   */
   #windowRestored = (/** @type {unknown} */ subject) => {
-    if (subject === this.#win) this.#endStuckRestore("restored without SSWindowStateReady");
+    if (subject !== this.#win || !this.#pending) return;
+    if (this.#busySeen) {
+      this.#endStuckRestore("restored without SSWindowStateReady");
+      return;
+    }
+    this.#endPending();
+    if (this.#started) this.#reconcile();
   };
 
   /** Observer: the store's definitions changed (a workspace added, renamed or deleted). */
