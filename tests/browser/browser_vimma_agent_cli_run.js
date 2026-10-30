@@ -16,7 +16,7 @@
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 
-const { AgentChat, FEATURE_PREF } = ChromeUtils.importESModule(
+const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
 const { AgentCli, CLI_FEATURE_PREF, VIMMA_CTL_PREF, pathPref } = ChromeUtils.importESModule(
@@ -170,7 +170,6 @@ const addTidyTask = (task) => add_task(tidyTask(task, tidy));
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
     set: [
-      [FEATURE_PREF, true],
       [CLI_FEATURE_PREF, true],
       ["vimma.mcp.askTimeoutMs", 20000],
     ],
