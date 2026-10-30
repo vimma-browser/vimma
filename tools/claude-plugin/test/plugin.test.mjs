@@ -36,6 +36,17 @@ describe("manifests", () => {
     expect(market.owner?.name).toBeTruthy();
   });
 
+  // Claude Code caches a git-hosted plugin under its version: plugin.json's, else the marketplace
+  // entry's, else the commit SHA. A pinned string keeps every user on the cached copy until
+  // someone bumps it, so auto-update would never deliver changed hooks; the commit versions it.
+  it("neither manifest pins a version, so each commit is a new version", () => {
+    const manifest = json(join(PLUGIN, ".claude-plugin", "plugin.json"));
+    const market = json(join(ROOT, ".claude-plugin", "marketplace.json"));
+    const entry = market.plugins.find((/** @type {any} */ p) => p.name === manifest.name);
+    expect(manifest).not.toHaveProperty("version");
+    expect(entry).not.toHaveProperty("version");
+  });
+
   it("every hook command runs a script that exists", () => {
     const hooks = json(join(PLUGIN, "hooks", "hooks.json")).hooks.PreToolUse;
     const matchers = hooks.map((/** @type {any} */ h) => h.matcher).sort();
