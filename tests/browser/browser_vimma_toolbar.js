@@ -1089,6 +1089,9 @@ add_task(async function the_status_bar_keeps_the_registrable_domain() {
   try {
     for (const width of ["40ch", "60ch", "90ch"]) {
       bar.style.width = width;
+      // The bar redraws a frame after its ResizeObserver sees the width (and the hidden
+      // toolbar): read before that, the text is still the last one drawn.
+      for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
       await until(() => !!hostShown(segText("url")), `${width}: the host shows`);
       const host = hostShown(segText("url"));
       Assert.ok(
