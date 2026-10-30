@@ -776,9 +776,9 @@ what a test waits for:
   `a_page_first_key_runs_in_a_tab_whose_process_is_still_starting`; it was the tabstrip file's
   first `ctrl+l`, right after `browser_vimma_tab_search.js` started new processes).
 - A Hyprland request timed out when the main thread was held past its 500 ms (a window opening)
-  with the reply already queued behind the timer. The timeout now waits for an idle moment
-  before it gives up (`HyprIpc.sys.mjs`; `browser_vimma_private_swap.js`,
-  `a_reply_held_up_by_a_busy_main_thread_still_counts`).
+  with the reply already queued behind the timer. The 500 ms now count in steps of at most
+  50 ms, so time the main thread was held does not use them up (`HyprIpc.sys.mjs`;
+  `browser_vimma_private_swap.js`, `a_reply_held_up_by_a_busy_main_thread_still_counts`).
 - The toolbar's overflow menu was compared after a fixed 300 ms while CustomizableUI was still
   moving buttons, one layout flush per button. The test now waits for
   `overflowable.isHandlingOverflow()` to end, as Firefox's own tests do.
