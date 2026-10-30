@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.13](https://github.com/vimma-browser/vimma/compare/v0.1.12...v0.1.13) (2026-10-30)
+
+
+### Added
+
+* **agent:** claude code as a provider of the chat window ([#637](https://github.com/vimma-browser/vimma/issues/637)) ([387aee6](https://github.com/vimma-browser/vimma/commit/387aee68562853be10bb983c1ca17b64f6b0168e))
+* **hints:** gF with an upper-case last key opens the link and goes there ([#665](https://github.com/vimma-browser/vimma/issues/665)) ([b708957](https://github.com/vimma-browser/vimma/commit/b708957a144b279231b51ec39b1dc01b25b16e73)), closes [#533](https://github.com/vimma-browser/vimma/issues/533)
+
+
+### Fixed
+
+* **agents:** version the claude plugin by commit so auto-update delivers changes ([#672](https://github.com/vimma-browser/vimma/issues/672)) ([797cb54](https://github.com/vimma-browser/vimma/commit/797cb5403f15c072ac5792f57e0819e1758b3216)), closes [#670](https://github.com/vimma-browser/vimma/issues/670)
+* **ci:** the macos mochitests no longer time out on hidden tabs ([#657](https://github.com/vimma-browser/vimma/issues/657)) ([a0afb39](https://github.com/vimma-browser/vimma/commit/a0afb3923c6ca8dda591a683e5ddac7ef38b33f8))
+* **macos:** keys, hyprland replies and the config poll survive a busy main thread ([#661](https://github.com/vimma-browser/vimma/issues/661)) ([8cbe435](https://github.com/vimma-browser/vimma/commit/8cbe435fc2451c5e87b39843d79f2be4073115d8))
+* **package:** the cask check reads brew's whole command list for brew trust ([#663](https://github.com/vimma-browser/vimma/issues/663)) ([1a34cf4](https://github.com/vimma-browser/vimma/commit/1a34cf42581f3f3b754c70b49661082ee65c848e)), closes [#662](https://github.com/vimma-browser/vimma/issues/662)
+* **package:** the cask check trusts its throwaway tap's cask ([#659](https://github.com/vimma-browser/vimma/issues/659)) ([8921080](https://github.com/vimma-browser/vimma/commit/8921080d809fd2e7ff9bae546d1968d1a7f30129))
+
 ## [Unreleased]
 
 ### Added
