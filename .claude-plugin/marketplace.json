@@ -1,0 +1,11 @@
+{
+  "name": "vimma",
+  "owner": { "name": "Vimma" },
+  "plugins": [
+    {
+      "name": "vimma-guardrails",
+      "source": "./tools/claude-plugin",
+      "description": "Hooks that enforce Vimma's rules for coding agents, and the vimma-pr agent."
+    }
+  ]
+}
