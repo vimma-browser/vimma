@@ -15,17 +15,13 @@
 
 import {
   CLIS,
+  CLI_IDS,
   CLI_STREAM_LIMITS,
-  ClaudeStream,
   KILL_GRACE_MS,
-  claudeArguments,
   cliEnvironment,
   exitText,
-  mcpConfig,
   pathProblem,
   taskPrompt,
-  userLine,
-  versionArguments,
   versionText,
 } from "../core/agent-cli.mjs";
 
@@ -257,7 +253,7 @@ export const AgentCli = {
         out.push({ cli: cli.id, path: found, label: `${cli.bin} · ${found}`, problem: r.problem });
         continue;
       }
-      const version = await this.version(r.path);
+      const version = await this.version(r.path, cli.id);
       out.push({
         cli: cli.id,
         path: r.path,
@@ -293,10 +289,11 @@ export const AgentCli = {
    * The version the program prints, or null: run with its fixed argument, no shell, in the
    * private run folder, killed after 5 s. Only a program that passes C4's checks, and only
    * while agent CLIs are on, whoever calls it.
-   * @param {string} path
+   * @param {string} path @param {string} [id]  its CLI, a key of CLIS: the first unless named
    */
-  async version(path) {
-    if (!this.enabled) return null;
+  async version(path, id = CLI_IDS[0] ?? "") {
+    const cli = CLIS[id];
+    if (!this.enabled || !cli) return null;
     const r = await inspect(path);
     if ("problem" in r) return null;
     /** @type {any} */
@@ -306,7 +303,7 @@ export const AgentCli = {
     try {
       proc = await lazy.Subprocess.call({
         command: r.path,
-        arguments: versionArguments(),
+        arguments: [...cli.versionArgs],
         environment: cliEnvironment(lazy.Subprocess.getEnvironment()),
         workdir: await runBase(),
         stderr: "pipe",
@@ -451,11 +448,15 @@ export const AgentCli = {
         const file = PathUtils.join(dir, "mcp.json");
         await IOUtils.writeUTF8(file, "", { mode: "create" });
         await IOUtils.setPermissions(file, 0o600);
-        const config = mcpConfig({ vimmaCtl: ctl.path, ticket: issued.ticket, port: issued.port });
+        const config = cli.mcpConfig({
+          vimmaCtl: ctl.path,
+          ticket: issued.ticket,
+          port: issued.port,
+        });
         await IOUtils.writeUTF8(file, JSON.stringify(config), { mode: "overwrite" });
         proc = await lazy.Subprocess.call({
           command: checked.path,
-          arguments: claudeArguments({ mcpConfig: file, model: o.provider.model }),
+          arguments: cli.args({ mcpConfig: file, model: o.provider.model }),
           environment: cliEnvironment(lazy.Subprocess.getEnvironment()),
           workdir: dir,
           stderr: "pipe",
@@ -469,13 +470,13 @@ export const AgentCli = {
         tick = lazy.setInterval(() => o.onEvent({ type: "tick" }), TICK_MS);
         if (stopped) end();
         else {
-          await proc.stdin.write(userLine(taskPrompt(o.messages, o.text)));
+          await proc.stdin.write(cli.input(taskPrompt(o.messages, o.text)));
           // Lines added meanwhile, in order, before a later one may go straight to the input.
           while (pending.length) await proc.stdin.write(/** @type {string} */ (pending.shift()));
           live = true;
         }
         const stderr = tail(proc.stderr);
-        const stream = new ClaudeStream();
+        const stream = cli.stream();
         /** @type {Extract<CliEvent, { type: "result" }> | null} */
         let result = null;
         let reply = "";
@@ -579,8 +580,8 @@ export const AgentCli = {
       },
       /** @param {string} text */
       steer(text) {
-        // Claude Code reads a line written during a turn within that turn.
-        const line = userLine(text);
+        // Written at once once the run has its input; before that, queued for it.
+        const line = cli ? cli.input(text) : "";
         if (!inputOpen) return;
         if (live) proc.stdin.write(line).catch(() => {});
         else pending.push(line);

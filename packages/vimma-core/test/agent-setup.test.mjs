@@ -374,6 +374,33 @@ describe("the picker's entries", () => {
       ]);
     });
 
+    test("another CLI's rows come from its CLIS entry alone", () => {
+      /** @type {any} */
+      const clis = {
+        "made-up": {
+          id: "made-up",
+          bin: "mu",
+          title: "Made Up",
+          model: "small",
+          models: ["small", "large", ""],
+        },
+      };
+      const mu = { ...claude, name: "mu", cli: "made-up", model: "small" };
+      const entries = pickerEntries({
+        providers: [mu],
+        found: null,
+        states: null,
+        current: null,
+        clis,
+      });
+      expect(entries.map((e) => [e.provider?.model, !!e.cliModel, !!e.otherModel])).toEqual([
+        ["small", false, false],
+        ["large", true, false],
+        ["", true, false],
+        ["small", false, true],
+      ]);
+    });
+
     test("a model typed earlier, in use and in no list, is listed as the conversation's", () => {
       const typed = as("claude-opus-4-1");
       const entries = pickerEntries({

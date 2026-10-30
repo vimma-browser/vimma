@@ -1909,8 +1909,8 @@ for the user.
   [`the user's messages, the replies and refusals, the user's no among them, stay whole`](../packages/vimma-core/test/agent-loop.test.mjs),
   [`a request's prefix changes only when a block is left out`](../packages/vimma-core/test/agent-loop.test.mjs)
 
-**Agent CLIs** ([builtin-agent-cli](specs/builtin-agent-cli.md), in progress, behind
-`vimma.feature.agentCli`, off): a conversation can run an agent CLI the user has, Claude Code
+**Agent CLIs** ([builtin-agent-cli](specs/builtin-agent-cli.md), on by default;
+`vimma.agent.cli.enabled = false` turns them off): a conversation can run an agent CLI the user has, Claude Code
 for now, whose `vimma-ctl mcp` acts on the browser as that conversation. The way in is a
 one-time ticket that binds one `vimma-ctl mcp` connection to the conversation's gate
 connection. It reaches only what the conversation already reaches, so a process of the user's
@@ -1980,8 +1980,10 @@ own process, not a process group.
   with no folder above it that another user owns or can write, sticky ones included, since the
   CLI reads instruction files from every folder above its working folder; the folder is removed
   with the run. Nothing **must** start before a task is sent but setup's `--version`, of a
-  program that passes these checks, and nothing at all while `vimma.feature.agentCli` is off,
-  when the model picker does not look at a CLI's file either. The checks cover the file the
+  program that passes these checks, and nothing at all while `vimma.agent.cli.enabled` is off,
+  when the model picker does not look at a CLI's file either. The picker's list of a CLI's models
+  is Vimma's own and starts nothing; a model picked or typed there **must** pass the same rule
+  before it is used. The checks cover the file the
   path names: when that file is a script, its `#!` interpreter (such as `node` through
   `/usr/bin/env`) is found on the user's `PATH` as it is in a terminal, so a `PATH` entry
   other users can write lets them choose it, there as here. A run **must** end, and revoke its
@@ -1991,7 +1993,8 @@ own process, not a process group.
   [`test_no_process_before_a_task`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_task_on_stdin_and_fixed_arguments`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_runs_in_an_empty_private_directory_removed_after`](../tests/browser/browser_vimma_agent_cli_run.js),
-  [`test_feature_off_starts_nothing`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_turned_off_starts_nothing`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_the_picker_lists_the_clis_models_and_uses_one`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_run_folder_others_can_write_above_is_refused`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_child_holding_the_output_does_not_keep_the_run`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`claude-code's arguments are the fixture, with the model only from the provider`](../packages/vimma-core/test/agent-cli.test.mjs),
@@ -2005,8 +2008,14 @@ own process, not a process group.
 - M56. The ticket **must** reach the CLI's `vimma-ctl mcp` only through the MCP configuration's
   `env`, in a file that is 0600 in that 0700 folder and removed with it, and **never** through a
   command line. The CLI **must** be given no MCP server but Vimma's (`--strict-mcp-config`), so
-  that it reaches pages only through the gate, and `vimma-ctl` is checked as the CLI is (M55).
+  that it reaches pages only through the gate. That `vimma-ctl` **must** be the one in the
+  folder of Vimma's running binary (Linux reads it from `/proc/self/exe`), else the one the pref
+  `vimma.agent.cli.vimmaCtl` names, never one found on `PATH`. The pref's file is checked as
+  the CLI is (M55). The one beside the binary has its own file checked in full, but not the
+  folders above it: they hold Vimma's binary, so a user who can swap one can already change
+  Vimma itself, and on macOS `/Applications` is writable by the admin group.
   [`test_ticket_never_in_cmdline_prefs_or_log`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_vimma_ctl_beside_the_binary_is_judged_as_the_binary_is`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_only_vimmas_mcp_server_is_given`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`the mcp configuration names only vimma-ctl, with the ticket in its environment`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its

@@ -194,11 +194,13 @@ export function unavailableText(provider, state) {
  * Behaviour 7), under its first provider's name, then the models the local servers list that no
  * provider names.
  * @param {{ providers: AgentProviderConfig[], found: LocalServer[] | null,
- *   states: Map<string, ModelState> | null, current: AgentProviderConfig | null }} o
- *   `found`: the probe's servers, null until it answers; `states`: by providerKey
+ *   states: Map<string, ModelState> | null, current: AgentProviderConfig | null,
+ *   clis?: Readonly<Record<string, { models: readonly string[] }>> }} o
+ *   `found`: the probe's servers, null until it answers; `states`: by providerKey; `clis`:
+ *   the supported CLIs' entries, CLIS unless a test names its own
  * @returns {PickerEntry[]}
  */
-export function pickerEntries({ providers, found, states, current }) {
+export function pickerEntries({ providers, found, states, current, clis = CLIS }) {
   const currentKey = current ? providerKey(current) : null;
   const known = new Set(providers.map(providerKey));
   /** @type {PickerEntry[]} */
@@ -221,7 +223,7 @@ export function pickerEntries({ providers, found, states, current }) {
   /** @type {Map<string, AgentProviderConfig>} each CLI's first provider */
   const bases = new Map();
   for (const p of providers) {
-    if (p.kind === "cli" && p.cli && Object.hasOwn(CLIS, p.cli) && !bases.has(p.cli)) {
+    if (p.kind === "cli" && p.cli && Object.hasOwn(clis, p.cli) && !bases.has(p.cli)) {
       bases.set(p.cli, p);
     }
   }
@@ -231,9 +233,8 @@ export function pickerEntries({ providers, found, states, current }) {
     const named = new Set(
       providers.filter((p) => p.kind === "cli" && p.cli === cli).map((p) => p.model),
     );
-    const info = /** @type {import("./agent-cli.mjs").CliInfo} */ (CLIS[cli]);
     return [
-      ...info.models
+      ...(clis[cli]?.models ?? [])
         .filter((model) => !named.has(model))
         .map((model) => {
           const provider = { ...base, model };

@@ -125,26 +125,33 @@ describe("chrome code", () => {
     const text = readFileSync(join(ROOT, CLI), "utf8");
     expect(text.match(/Subprocess\.call\(/g)).toHaveLength(2);
     expect(text).toMatch(
-      /lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: claudeArguments\(\{ mcpConfig: file, model: o\.provider\.model \}\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
+      /lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(\{ mcpConfig: file, model: o\.provider\.model \}\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
     );
     expect(text).toMatch(
-      /lazy\.Subprocess\.call\(\{\s*command: r\.path,\s*arguments: versionArguments\(\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: await runBase\(\),\s*stderr: "pipe",\s*\}\)/,
+      /lazy\.Subprocess\.call\(\{\s*command: r\.path,\s*arguments: \[\.\.\.cli\.versionArgs\],\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: await runBase\(\),\s*stderr: "pipe",\s*\}\)/,
     );
     // `version` runs only a path `inspect` passed, checked inside it whoever calls it, and only
     // while agent CLIs are on; the run only `checked`, inspect's result.
     expect(text).toMatch(
-      /async version\(path\) \{\s*if \(!this\.enabled\) return null;\s*const r = await inspect\(path\);\s*if \("problem" in r\) return null;/,
+      /async version\(path, id = CLI_IDS\[0\] \?\? ""\) \{\s*const cli = CLIS\[id\];\s*if \(!this\.enabled \|\| !cli\) return null;\s*const r = await inspect\(path\);\s*if \("problem" in r\) return null;/,
     );
     expect(text).toContain("const checked = await inspect(path);");
-    expect(text).toContain("const version = await this.version(r.path);");
+    expect(text).toContain("const version = await this.version(r.path, cli.id);");
+    // The CLI is a CLIS entry, never a value of config.toml's (C2): its arguments, input and
+    // version arguments come from that entry's fixed builders.
+    expect(text).toContain('const cli = CLIS[o.provider.cli ?? ""];');
     expect(text.match(/pathSearch\(/g)).toEqual(["pathSearch("]);
     expect(text).toContain("found = await lazy.Subprocess.pathSearch(cli.bin);");
     // No aliasing, no bracket access, no shell, and the task never an argument.
     expect(text).not.toMatch(/Subprocess\s*\[|=\s*(lazy\.)?Subprocess\b|\}\s*=\s*lazy\b/);
     expect(text).not.toMatch(/lazy\s*\[|nsIProcess|\/bin\/sh|"sh"|"-c"/);
-    expect(text).toContain("await proc.stdin.write(userLine(taskPrompt(o.messages, o.text)));");
+    expect(text).toContain("await proc.stdin.write(cli.input(taskPrompt(o.messages, o.text)));");
     const core = readFileSync(join(ROOT, "packages/vimma-core/src/agent-cli.mjs"), "utf8");
-    expect(core).toContain('export const versionArguments = () => ["--version"];');
+    expect(core).toContain('versionArgs: Object.freeze(["--version"]),');
+    expect(core).toContain(
+      "args: (/** @type {{ mcpConfig: string, model: string }} */ o) => claudeArguments(o),",
+    );
+    expect(core).toContain("input: (/** @type {string} */ text) => userLine(text),");
     expect(core).toMatch(
       /"--permission-mode",\s*"dontAsk",\s*\.\.\.\(model \? \["--model", model\] : \[\]\),/,
     );

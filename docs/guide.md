@@ -54,9 +54,10 @@ What works today, each with the section that explains it:
   through its task until it quits, and sending a form or paying asks every time, showing what is
   sent or the total the page states.
 - **[Vimma's own agent](#vimmas-own-agent)**: `ctrl+b i` opens a chat window where you write a
-  task and watch every step, with a local model (Ollama, LM Studio, llama.cpp) or a hosted one
-  by API key. It works in the agent workspace through the same tools and checkpoints, several
-  conversations can run at once, and conversations are kept, encrypted, without page text.
+  task and watch every step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one
+  by API key, or [Claude Code](#using-an-agent-cli-in-the-chat-window) on its own login. It
+  works in the agent workspace through the same tools and checkpoints, several conversations
+  can run at once, and conversations are kept, encrypted, without page text.
 
 ## Every key is yours
 
@@ -1461,7 +1462,10 @@ it. A private window has no agent. With no model set up, the window says how to 
 - the models of local servers: only while the picker is open, Vimma asks `127.0.0.1` on the
   ports of Ollama (11434), LM Studio (1234) and the llama.cpp server (8080) which models they
   have. An Ollama model with less than 32,768 tokens of context gets a copy with that context,
-  which shares its weights, since a ten-item task needs about 19,000.
+  which shares its weights, since a ten-item task needs about 19,000;
+- `add: agent CLI (Claude Code)`, and once one is set up, its models: Vimma runs the agent CLI
+  you have, on its own login
+  ([Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window)).
 
 A model you pick that `config.toml` does not list is added there (without its key), and the
 first one becomes `[agent] default`, which new conversations use. Choosing a model sends nothing. Each conversation keeps its own model, so one can run locally
@@ -1793,34 +1797,52 @@ instead: see [Using an agent CLI in the chat window](#using-an-agent-cli-in-the-
 
 #### Using an agent CLI in the chat window
 
-If you already use Claude Code, Vimma's built-in agent window can run it for you: you write
-the task in Vimma, Claude Code does the work on its own login (a Claude plan works, no API
-key), and in the browser it reaches only the agent workspace, through the same questions and
-grants as any agent. This is in progress: turn on `vimma.feature.agentCli` in `about:config` to
-try it. Codex follows.
+If you already use an agent CLI, Vimma's built-in agent window can run it for you, headless: you
+write the task in Vimma, the CLI does the work on its own login (a plan of its vendor works, no
+API key), and in the browser it reaches only the agent workspace, through the same questions and
+grants as any agent. You need no terminal and no `:mcp on`. The CLIs it runs so far are listed
+under [Supported CLIs](#supported-clis), each with what is particular to it; the rest of this
+section holds for every one.
 
-**Setting it up from the window.** `:agent` opens the window; `Esc`, then `m`, lists the
-providers. Pick `add: agent CLI (Claude Code)`: Vimma looks for `claude` on your `PATH` (only
-now, never in the background) and lists it with its version and full path, for example
-`claude 2.1.303 · /home/you/.local/bin/claude`. `Enter` picks it, and the prompt line asks
-`agent model:` with `sonnet` filled in: keep it, type another of Claude Code's models (`opus`,
-`haiku` or a full model name), or clear it to leave the choice to Claude Code's own default
-model. A model that starts with `-`, holds a tab or a line break, or is longer than 200
-characters is refused there. That path is kept in the pref
-`vimma.agent.cli.claude-code.path`, never in `config.toml`, and is checked before every task:
-it must be a regular executable file of yours or root's that no other user can write, in
-folders no other user can write. The provider is added to `config.toml` with its model, and
-becomes `[agent] default` when you had none. Install Claude Code and log in to it in a terminal
-first.
+**Before you start.**
 
-**Changing the model later.** Picking Claude Code again in the window uses the provider
-`config.toml` already lists and does not ask again. To change its model, edit `model` in that
-provider (or remove the line for Claude Code's default); new conversations use it, and an open
-one does once you pick the provider again with `m`. To switch between models, add a second provider with another `name` and `model`
-and pick it in the window (`Esc`, then `m`).
+- Install the CLI and log in to it once in a terminal. Vimma runs the same program with the same
+  login.
+- Vimma runs `vimma-ctl` with each task, as the CLI's only way into the browser, and uses the one
+  next to Vimma's own binary. Every release puts it there: `/usr/lib/vimma/vimma-ctl` from the
+  `.deb` and `.rpm`, `/opt/vimma/vimma-ctl` on Arch Linux, `vimma/vimma-ctl` in the tarball,
+  inside the AppImage, and `Vimma.app/Contents/MacOS/vimma-ctl` on macOS. A link to it on your
+  `PATH` does not count. For a build from source, set the pref `vimma.agent.cli.vimmaCtl` in
+  `about:config` to the full path of the `vimma-ctl` you built
+  (`tools/vimma-ctl/target/release/vimma-ctl`).
+- Agent CLIs are on by default. Setting `vimma.agent.cli.enabled` to `false` in `about:config`
+  turns them all off: none is listed, set up or started.
 
-**Or in `config.toml`.** `[agent]` needs `schema = 2` at the top of the file; without it the
-whole section is refused.
+**Setting it up from the window.** `ctrl+b i` (or `:agent`) opens the window; `Esc`, then `m`,
+lists the providers. Pick `add: agent CLI (…)`, which names the CLIs Vimma supports: Vimma looks
+for each one's program on your `PATH` (only now, never in the background) and lists what it
+finds with its version and full path, for example
+`claude 2.1.303 · /home/you/.local/bin/claude`. `Enter` picks one, and the prompt line asks
+`agent model:` with the CLI's suggested model filled in: keep it, type another model the CLI
+takes, or clear it to leave the choice to the CLI's own default model. A model that starts with
+`-`, holds a tab or a line break, or is longer than 200 characters is refused there. The path is
+kept in the pref `vimma.agent.cli.<cli>.path` (`vimma.agent.cli.claude-code.path`), never in
+`config.toml`, and is checked before every task (see "Its program is refused" below). The
+provider is added to `config.toml` with its model, and becomes `[agent] default` when you had
+none.
+
+**Choosing the model.** Once a CLI is set up, `Esc`, then `m`, lists one row for each model Vimma
+knows the CLI takes, under the provider's name (`claude · opus`), a row for the CLI's own default
+model, and a row `… · other model…` that asks for any other model on the prompt line, under the
+same rule as setup. The model `config.toml` names is marked `config.toml`, and the open
+conversation's `in use`. `Enter` uses the model for the open conversation and for new ones until
+Vimma restarts; `D` also keeps it, adding it to `config.toml` as a provider of its own
+(`claude-2`) and making it `[agent] default`. The list is Vimma's own: the CLI is not started to
+show it. A running task keeps the model it started with. A conversation started with another
+provider can be switched to a CLI the same way.
+
+**Or in `config.toml`.** `[agent]` needs `schema = 2` at the top of the file; without it the whole
+section is refused.
 
 ```toml
 schema = 2
@@ -1831,47 +1853,100 @@ default = "claude"
 [[agent.providers]]
 name = "claude"
 kind = "cli"
-cli = "claude-code"   # the only one so far
-model = "sonnet"      # optional: Claude Code's own model option; unset, its default
+cli = "claude-code"   # which CLI: see Supported CLIs
+model = "sonnet"      # optional: the CLI's own model option; unset, its default
 max_minutes = 30      # optional: the longest one task may run (1 to 1440, default 30)
 ```
 
-A CLI provider names no program, arguments or environment: a `command`, `path`, `args`, `env`
-or `endpoint` key in one is an error. The program is the one you picked in the window. With
-`[agent] local_only = true` a CLI provider is refused, because Vimma cannot see where a CLI
-sends what it reads.
+A CLI provider names no program, arguments or environment: a `command`, `path`, `args`, `env` or
+`endpoint` key in one is an error. The program is the one you picked in the window, so set it up
+there once even when the provider is in `config.toml`. With `[agent] local_only = true` a CLI
+provider is refused, because Vimma cannot see where a CLI sends what it reads.
 
 **What happens when you send a task.**
 
 - The first task of a conversation says where data goes and asks `y`: page text, field values,
-  screenshots and your messages go to Claude Code, which sends them to the model it is set up
-  for.
-- Claude Code runs in a new empty folder of yours (in `$XDG_RUNTIME_DIR`, else
-  `~/.cache/vimma-agent-cli`), removed when the task ends, with no shell around it. Each task
-  is a new run given the conversation so far; Claude Code keeps no session of its own.
+  screenshots and your messages go to the CLI, which sends them to the model it is set up for.
+- The CLI runs in a new empty folder of yours (in `$XDG_RUNTIME_DIR`, else
+  `~/.cache/vimma-agent-cli`), removed when the task ends, with no shell around it. Each task is
+  a new run given the conversation so far; the CLI keeps no session of its own.
 - In the browser it has only Vimma's tools, on the conversation's own agent tabs. Sending with
   `Enter` grants the conversation, so steps run without asking; sending a form, paying and
   `vimma_show` still ask. Each step is a line in the transcript, from Vimma's own record.
-- **Its own tools are outside Vimma's gate.** Claude Code keeps the shell, file and web tools
-  its own settings allow (`~/.claude/settings.json` and its permission rules). Vimma does not
-  approve, refuse or confine them: they act with your rights. The header lists the ones it
-  reported for the run (`its own tools: Bash, Read, Write, WebFetch +3`), and each use is a
-  line marked `◆` (`◆ claude-code ran its own tool: Bash "ls ~/Downloads"`), with
-  `refused by its settings` when its settings said no. A page that steers the model can make
+- **Its own tools are outside Vimma's gate.** The CLI keeps the shell, file and web tools its own
+  settings allow. Vimma does not approve, refuse or confine them: they act with your rights. The
+  header lists the ones it reported for the run (`its own tools: Bash, Read, Write, WebFetch +3`),
+  and each use is a line marked `◆` (`◆ claude-code ran its own tool: Bash "ls ~/Downloads"`),
+  with `refused by its settings` when its settings said no. A page that steers the model can make
   it use them, so allow only what you would allow it in a terminal.
 - A message you send while it works is added to the running task. `s` (or `:agent stop`,
-  `ctrl+b shift+a`) stops it: its access to the browser ends first, then Claude Code gets 3 s
-  to exit before it is killed. A shell command it started may outlive the stop.
+  `ctrl+b shift+a`) stops it: its access to the browser ends first, then the CLI gets 3 s to exit
+  before it is killed. A shell command it started may outlive the stop.
 
 **Budgets and cost.** `[agent] max_steps` counts the steps that reach the browser and
-`max_tokens` the tokens Claude Code reports; `max_minutes` stops a task that runs too long.
-The cost runs on your own Claude login or plan. The status bar shows the cost Claude Code
-reports as its own estimate, `≈ $0.41 (claude-code)`, at list prices even on a plan, so it is
-not a bill, and `[agent] max_cost` does not apply to it.
+`max_tokens` the tokens the CLI reports; `max_minutes` stops a task that runs too long. The cost
+runs on your own login or plan. A cost the CLI reports is its own estimate, at list prices even on
+a plan, so it is not a bill: the status bar shows it while the task runs (`≈ $0.41 (claude-code)`),
+and the task's last line keeps it once the task ends (`done · ≈ $0.41 (claude-code estimate)`).
+`[agent] max_cost` does not apply to it.
 
-**Saved conversations keep their provider.** A conversation you reopen still uses the provider
-it was started with. To use the CLI, start a new conversation with `Esc`, then `n`, or switch
-the open one with `Esc`, then `m`.
+**Saved conversations keep their provider.** A conversation you reopen still uses the provider it
+was started with. To use a CLI, start a new conversation with `Esc`, then `n`, or switch the open
+one with `Esc`, then `m`.
+
+**When something goes wrong.** The window's notice line, or the task's last line, says what
+stopped it. `<cli>` is the CLI's name in `config.toml`, such as `claude-code`:
+
+- `<cli> is not available: its program is not set up, gone or refused; add: agent CLI in this
+list finds it again` (the row reads `not available`): the program Vimma stored was moved,
+  updated to another path or fails a check below. Pick `add: agent CLI (…)` again.
+- `no agent CLI found on PATH (looked for …); install one and log in to it first`: install the
+  CLI, or start Vimma from a shell whose `PATH` has it (a version manager such as mise may add it
+  only in your shell).
+- `stopped: <cli> is not set up: m in the window finds it`: `config.toml` names the provider, but
+  its program was never picked in the window on this profile. `Esc`, `m`, then
+  `add: agent CLI (…)`.
+- `stopped: vimma-ctl is not next to Vimma`: a build from source, or a copy of Vimma without its
+  `vimma-ctl`. Set `vimma.agent.cli.vimmaCtl` as in "Before you start".
+- `stopped: <cli> could not start vimma-ctl`: the CLI could not start the `vimma-ctl` it was
+  given; check that the file runs (`vimma-ctl --version`).
+- **Its program is refused.** `<cli> at <path> is refused: <why>`, or
+  `vimma-ctl at <path> is refused: <why>`, means the file fails one of the checks Vimma makes
+  before running it, because a file another user can replace would run their code as you:
+  - `its path is not absolute`, `it does not exist`, `it is not a regular file`,
+    `it is not executable`: the stored path no longer leads to the program.
+  - `it is owned by another user` (only yours or root's are run), `other users can write it`
+    (group or others have write permission: `chmod go-w <path>`).
+  - `a folder it is in is owned by another user`,
+    `a folder it is in can be written by other users`: a folder above the file, up to `/`, is
+    another user's, or writable by others without being sticky as `/tmp` is. Install the CLI
+    under your home folder (`~/.local/bin`) or a system folder instead. The folders above the
+    `vimma-ctl` next to Vimma's binary are not checked, since they hold Vimma itself; its own file
+    is.
+- `stopped: <cli> exited (<code>): <its last error line>`: the CLI stopped with that error, for
+  example when it is not logged in (see its entry under Supported CLIs).
+- `an agent CLI may send page text off this machine ([agent] local_only)`: `[agent] local_only`
+  is on; pick a local model or turn it off.
+- `agent: the model "…" is not a model name: it cannot start with "-"` (or
+  `it has control characters`, `it is longer than 200 characters`): type a model name as the CLI
+  takes it; the prompt line keeps what you typed to correct.
+- `agent CLIs are turned off (vimma.agent.cli.enabled)`: the pref is `false`; set it to `true`.
+
+##### Supported CLIs
+
+**Claude Code** (`cli = "claude-code"`, from version 2.1.303):
+
+- Program: `claude` on your `PATH`. Log in with `claude`, then `/login`; a Claude plan or an
+  Anthropic API key in Claude Code both work.
+- Models: setup suggests `sonnet`; the picker lists `sonnet`, `opus`, `haiku` (Claude Code's
+  aliases for its newest model of each family) and Claude Code's own default model, and
+  `other model…` takes a full model name such as `claude-opus-4-1`.
+- Its own tools follow `~/.claude/settings.json` and its permission rules.
+- It reports tokens and a cost, and a message sent during a task reaches it within that task.
+- Not logged in: `stopped: claude-code exited (1): Invalid API key · Please run /login`; run
+  `claude` in a terminal and `/login`.
+
+Codex follows.
 
 #### When to use Playwright instead
 

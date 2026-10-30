@@ -577,3 +577,60 @@ describe("the program's path (C4)", () => {
     );
   });
 });
+
+// docs/specs/builtin-agent-cli.md, "Adding a CLI": every per-CLI fact is in its CLIS entry, so a
+// new entry that leaves one out fails here rather than in a run.
+describe("every CLIS entry supplies the whole interface", () => {
+  for (const [key, cli] of Object.entries(CLIS)) {
+    test(`${key}`, () => {
+      expect(cli.id).toBe(key);
+      for (const word of [cli.bin, cli.title]) {
+        expect(typeof word).toBe("string");
+        expect(word.length).toBeGreaterThan(0);
+      }
+      expect(modelProblem(cli.model)).toBeNull();
+      expect(cli.models).toContain(cli.model);
+      expect(cli.models).toContain("");
+      for (const m of cli.models) expect(modelProblem(m)).toBeNull();
+      expect(Array.isArray(cli.versionArgs)).toBe(true);
+      const args = cli.args({ mcpConfig: "/run/x/mcp.json", model: "m-1" });
+      expect(args).toContain("m-1");
+      expect(args).toContain("/run/x/mcp.json");
+      expect(() => cli.args({ mcpConfig: "/run/x/mcp.json", model: "--bare" })).toThrow();
+      const config = cli.mcpConfig({
+        vimmaCtl: "/opt/vimma/vimma-ctl",
+        ticket: "t".repeat(64),
+        port: 1,
+      });
+      expect(JSON.stringify(config)).toContain("/opt/vimma/vimma-ctl");
+      expect(args.join(" ")).not.toContain("t".repeat(64));
+      expect(cli.input("hello")).toMatch(/hello[\s\S]*\n$/);
+      const stream = cli.stream();
+      expect(typeof stream.push).toBe("function");
+      expect(typeof stream.end).toBe("function");
+    });
+  }
+});
+
+describe("a CLI's words come from its entry alone", () => {
+  /** @type {any} */
+  const made = {
+    "made-up": {
+      id: "made-up",
+      bin: "mu",
+      title: "Made Up",
+      model: "small",
+      models: ["small", "large", ""],
+    },
+  };
+
+  test("setup's prompt and a model's name use its entry", () => {
+    expect(modelPrompt("made-up", made)).toEqual({
+      label: "agent model: ",
+      value: "small",
+      placeholder: "empty: Made Up's own default model",
+    });
+    expect(cliModelText("made-up", "", made)).toBe("Made Up's own default model");
+    expect(cliModelText("made-up", "large", made)).toBe("large");
+  });
+});

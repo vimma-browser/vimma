@@ -34,9 +34,10 @@ and workspaces, and your hands never leave the keyboard.
   form and paying are checkpoints, asked every time under any grant: the question shows what the
   form sends, or the button, the site and the total the page states.
 - **An agent of its own:** `ctrl+b i` opens a chat window where you write a task and watch every
-  step, with a local model (Ollama, LM Studio, llama.cpp) or a hosted one by API key. It works
-  only in the agent workspace, through the same tools and checkpoints as an MCP agent; several
-  conversations can run at once, and they are kept, encrypted, without the page text they read.
+  step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one by API key, or the
+  Claude Code you already have, on its own login and plan. It works only in the agent
+  workspace, through the same tools and checkpoints as an MCP agent; several conversations can
+  run at once, and they are kept, encrypted, without the page text they read.
 
 ## Install
 

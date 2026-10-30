@@ -147,10 +147,12 @@ describe("the transcript", () => {
     t.end({ outcome: "done", cost: { usd: 0.4123, cli: "claude-code" } });
     t.end({ outcome: "stopped", cost: { usd: 1.5, cli: "claude-code" } });
     t.end({ outcome: "done" });
+    t.end({ outcome: "done", cost: { usd: 0.02, cli: "made-up" } });
     expect(texts(t)).toEqual([
       "end: done · ≈ $0.41 (claude-code estimate)",
       "end: stopped · ≈ $1.50 (claude-code estimate)",
       "end: done",
+      "end: done · ≈ $0.02 (made-up estimate)",
     ]);
   });
 

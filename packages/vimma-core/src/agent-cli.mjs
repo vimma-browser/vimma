@@ -13,13 +13,27 @@
 import { hasControl } from "./strings.mjs";
 
 /**
- * A supported CLI: `id` is its name in config.toml and in the window, `bin` the program setup
+ * @typedef {{ push(chunk: string): CliEvent[], end(): CliEvent[] }} CliStream  a CLI's stdout
+ *   read as the transcript's events (C8)
+ */
+
+/**
+ * A supported CLI, with every fact about it that differs from another's, so that the window,
+ * the conversations and the runner read a new CLI from its entry alone (builtin-agent-cli,
+ * "Adding a CLI"). `id` is its name in config.toml and in the window, `bin` the program setup
  * looks for on PATH, `title` how the window's sentences name it, `model` the model setup
- * suggests on the prompt line (Behaviour 2), one of the CLI's own model aliases, `models` the
- * models the window's picker lists for it (builtin-agent-cli Behaviour 17), "" for the CLI's own default. The list
- * is Vimma's own: the CLI is never started to list its models.
+ * suggests on the prompt line (Behaviour 2), `models` the models the window's picker lists for
+ * it (Behaviour 17), "" for the CLI's own default; that list is Vimma's own, and the CLI is
+ * never started to list its models. `versionArgs` asks its version (Behaviour 1); `args` builds
+ * its command line from the MCP configuration's path and the model, refusing a model
+ * `modelProblem` refuses (C2); `mcpConfig` is the configuration file it reads, with the ticket
+ * in `vimma-ctl mcp`'s environment (C3); `input` is one message on its stdin; `stream` reads its
+ * output, with its usage, cost and own tools (C7, C8, C13).
  * @typedef {{ id: string, bin: string, title: string, model: string,
- *   models: readonly string[] }} CliInfo
+ *   models: readonly string[], versionArgs: readonly string[],
+ *   args: (o: { mcpConfig: string, model: string }) => string[],
+ *   mcpConfig: (o: { vimmaCtl: string, ticket: string, port: number }) => object,
+ *   input: (text: string) => string, stream: () => CliStream }} CliInfo
  */
 
 /** @type {Readonly<Record<string, Readonly<CliInfo>>>} */
@@ -31,6 +45,13 @@ export const CLIS = Object.freeze({
     model: "sonnet",
     // Claude Code's model aliases, which follow its newest model of each family.
     models: Object.freeze(["sonnet", "opus", "haiku", ""]),
+    versionArgs: Object.freeze(["--version"]),
+    args: (/** @type {{ mcpConfig: string, model: string }} */ o) => claudeArguments(o),
+    mcpConfig: (/** @type {{ vimmaCtl: string, ticket: string, port: number }} */ o) =>
+      mcpConfig(o),
+    input: (/** @type {string} */ text) => userLine(text),
+    // Called only once the module has run, after the class is defined.
+    stream: () => new ClaudeStream(),
   }),
 });
 /** The CLIs a provider may name, in the order setup lists them (C12). */
@@ -93,10 +114,11 @@ export function modelProblem(model) {
 /**
  * Setup's prompt line for a CLI's model (Behaviour 2): the CLI's suggested model, editable;
  * cleared, the placeholder says that empty leaves the choice to the CLI.
- * @param {string} cli  a key of CLIS
+ * @param {string} cli  a key of `clis`
+ * @param {Readonly<Record<string, { title: string, model: string }>>} [clis]
  */
-export function modelPrompt(cli) {
-  const info = CLIS[cli];
+export function modelPrompt(cli, clis = CLIS) {
+  const info = clis[cli];
   return {
     label: "agent model: ",
     value: info?.model ?? "",
@@ -106,11 +128,12 @@ export function modelPrompt(cli) {
 
 /**
  * A CLI provider's model as a notice names it.
- * @param {string} cli  a key of CLIS
+ * @param {string} cli  a key of `clis`
  * @param {string} model
+ * @param {Readonly<Record<string, { title: string }>>} [clis]
  */
-export const cliModelText = (cli, model) =>
-  model || `${CLIS[cli]?.title ?? cli}'s own default model`;
+export const cliModelText = (cli, model, clis = CLIS) =>
+  model || `${clis[cli]?.title ?? cli}'s own default model`;
 
 /**
  * Claude Code's arguments (C2): headless, JSON lines both ways, no session kept, Vimma's MCP
@@ -141,11 +164,8 @@ export function claudeArguments({ mcpConfig, model }) {
   ];
 }
 
-/** `claude --version` (Behaviour 1). */
-export const versionArguments = () => ["--version"];
-
 /**
- * The MCP configuration a CLI reads (C3): `vimma-ctl mcp`, with the run's ticket and the
+ * The MCP configuration Claude Code reads (C3): `vimma-ctl mcp`, with the run's ticket and the
  * socket's port in its own environment, never in a command line.
  * @param {{ vimmaCtl: string, ticket: string, port: number }} o
  */
@@ -180,7 +200,7 @@ export function cliEnvironment(env) {
 }
 
 /**
- * One line of the CLI's input: a user message, as JSON (C2). Its text is data, so a leading
+ * One line of Claude Code's input: a user message, as JSON (C2). Its text is data, so a leading
  * `-` or a quote is plain text.
  * @param {string} text
  */
