@@ -1920,7 +1920,14 @@ half a minute; the `pkgbuild.yml` workflow runs it on every change to `tools/pac
 `tools/package/cask-check.sh --stub`: `brew style`, `brew audit --cask --strict`, then
 `brew install --cask` of a stub `.dmg` and `brew uninstall --zap`. The install check refuses to
 run outside GitHub Actions, because `--zap` deletes `~/Library/Application Support/Vimma`; on a
-Mac, `tools/package/cask-check.sh <vimma.rb>` runs only the style and audit checks.
+Mac, `tools/package/cask-check.sh <vimma.rb>` runs only the style and audit checks. The script
+puts the cask in a throwaway local tap, `vimma-check/local`. Homebrew 6.0 and later refuse to load
+a cask from a third-party tap that is not trusted, `brew audit` included, so on a Homebrew that has
+`brew trust` the script runs `brew trust --cask vimma-check/local/vimma` and removes the trust with
+the tap at the end. It never trusts a whole tap or sets `HOMEBREW_NO_REQUIRE_TAP_TRUST`, which
+would turn the check off for every tap on the machine. When a run fails with "Refusing to load
+cask ... from untrusted tap", the trust step did not run: check that `brew commands --quiet` on
+that Homebrew lists `trust`.
 
 **The two `PKGBUILD`s.** `package.mjs` writes one `vimma-bin` PKGBUILD in two variants that
 differ in one line, the install source it records in `/opt/vimma/is-packaged-app`:
