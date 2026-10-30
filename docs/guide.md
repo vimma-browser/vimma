@@ -1507,24 +1507,178 @@ conversation starts without the pages it read before; `C` drops them from a runn
 `d` in the list deletes one, `:agent forget all` deletes them all, and `[agent] keep_days`
 deletes those unused for that many days.
 
-**Which model to use.** The [model bench](agent-bench.md) is all Vimma says about models: on a
-laptop CPU, none of the local models it ran completed its shopping tasks. A hosted model, or a
-larger local model on a GPU, is what the tasks need today.
+**Which model to use.** [Choosing a model for the agent chat](#choosing-a-model-for-the-agent-chat)
+covers local servers, hosted APIs, what a model needs and how to measure your own.
 
-`config.toml` may list providers by endpoint and model, never by key (a key there is a config
-error):
+#### Choosing a model for the agent chat
+
+The chat window works with any model behind an OpenAI-compatible chat API that returns tool
+calls, and with Anthropic's Messages API. Pick one in the window (`Esc`, then `m`), or list it in
+`config.toml` as an `[[agent.providers]]` table: a name, a kind, an endpoint and a model, never a
+key (a `key` or `api_key` field is a config error). `[agent]` is new in config schema 2, so the
+file starts with `schema = 2`; without it the whole file is refused, and the status bar names the
+error. Each example below is a whole `config.toml`. To keep several providers, put their
+`[[agent.providers]]` tables in one file, under one `[agent]`.
+
+**Ollama** (port 11434). Its default context of 4096 tokens holds less than the agent's tool
+definitions. A model you pick in the window gets a copy with 32,768 tokens of context
+(`qwen3:14b-ctx32768`), which shares the original's weights, and the conversation uses the copy.
+For a model you list yourself, make the copy with `num_ctx` set, and list it by that name:
+
+```sh
+printf 'FROM qwen3:14b\nPARAMETER num_ctx 32768\n' > Modelfile
+ollama create qwen3:14b-ctx32768 -f Modelfile
+```
 
 ```toml
+schema = 2
+
 [agent]
-default = "local"
-local_only = false
+default = "ollama"
 
 [[agent.providers]]
-name = "local"
+name = "ollama"
 kind = "openai"             # "openai" (OpenAI-compatible) or "anthropic"
 endpoint = "http://127.0.0.1:11434/v1"
-model = "qwen3:14b"
+model = "qwen3:14b-ctx32768"
 ```
+
+**LM Studio** (port 1234). Start its server (`lms server start`, or its Developer tab) and load
+the model with the context it needs, in the model's load settings or with
+`lms load <model> --context-length 32768`. `model` is the identifier LM Studio lists for it.
+
+```toml
+schema = 2
+
+[agent]
+default = "lm-studio"
+
+[[agent.providers]]
+name = "lm-studio"
+kind = "openai"
+endpoint = "http://127.0.0.1:1234/v1"
+model = "qwen/qwen3-14b"
+```
+
+**llama.cpp** (`llama-server`, port 8080). The context is set when the server starts (`-c`), and
+`--jinja` applies the model's chat template, which tool calls need:
+`llama-server -m qwen3-14b.gguf --alias qwen3-14b -c 32768 --jinja`.
+
+```toml
+schema = 2
+
+[agent]
+default = "llama-cpp"
+
+[[agent.providers]]
+name = "llama-cpp"
+kind = "openai"
+endpoint = "http://127.0.0.1:8080/v1"
+model = "qwen3-14b"
+```
+
+**vLLM** (port 8000). The picker does not look for it, so list it. vLLM returns tool calls only
+when started with a tool-call parser that fits the model, and its context is `--max-model-len`:
+`vllm serve Qwen/Qwen3-14B --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes`.
+
+```toml
+schema = 2
+
+[agent]
+default = "vllm"
+
+[[agent.providers]]
+name = "vllm"
+kind = "openai"
+endpoint = "http://127.0.0.1:8000/v1"
+model = "Qwen/Qwen3-14B"
+```
+
+- **The GPU.** Whether a model runs on your GPU is the server's setting, not Vimma's. `ollama ps`
+  shows where a loaded model runs (`100% GPU`, or `100% CPU`). Some hardware needs a switch:
+  Ollama uses an integrated GPU only with `OLLAMA_IGPU_ENABLE=1` in the server's environment. For
+  drivers and offloading, see each server's own documentation: Ollama's GPU page, LM Studio's GPU
+  offload setting, llama.cpp's build options and `-ngl`, and vLLM's installation guide.
+- **Images.** Set `vision = true` on a provider whose model reads images, so that the agent gets
+  screenshots. For `kind = "openai"` it is off unless set.
+- **`[agent] local_only = true`** refuses every endpoint that is not on this machine
+  (`127.0.0.1`, `[::1]` or `localhost`): in `config.toml` as a config error, in the picker, and
+  for a kept conversation's provider. A server on another computer of your network counts as
+  hosted: it needs `https://`, and Vimma asks for a key for it. An SSH tunnel to a port on
+  `127.0.0.1` makes it local.
+- **Older results** (`[agent] keep_results`). The agent sends the latest tool results whole and
+  only the first line of older ones, in blocks. Unset, it keeps 20 for a provider on this
+  machine, where each block left out makes the server read the conversation again, and 6 for a
+  hosted one, where every token is paid for. A value you set applies to every provider; `0`
+  sends every result whole.
+
+**What a model needs.**
+
+- **Tool calls.** The agent acts only through tool calls that the server returns as such. A
+  model that writes them as text, or a server started without tool support (llama.cpp without
+  `--jinja`, vLLM without `--enable-auto-tool-choice`), gets nothing done.
+- **Context.** A ten-item shopping list needs about 19,000 tokens on the shortest path the
+  tools allow, so give a local model at least 32,768.
+- **Speed.** That shortest path takes 23 tool calls for ten items, and a model takes more. Each
+  call is a model turn that reads the whole conversation.
+
+The [model bench](agent-bench.md) is what Vimma knows about models, measured on one laptop CPU
+without a GPU. There, qwen2.5 at 1.5B and 7B completed no list, a 27B model reached the time
+limit at about 90 seconds a step, and a 35B mixture-of-experts model completed the ten-item list
+in a run of 35 steps and 17 minutes. The bench ran no model on a GPU and no hosted model,
+so it says nothing about them. To measure your own model on the same ten lists and local shop,
+run the bench from a checkout of the repository with a Vimma build and Xvfb
+([runbook](runbook.md#the-agent-model-bench-npm-run-agent-bench-spec-builtin-agent)), with the
+endpoint and model of your server:
+
+```sh
+npm run agent-bench -- --artifact --provider openai --endpoint http://127.0.0.1:8000/v1 \
+  --model Qwen/Qwen3-14B --runs 3 --max-steps 100 --out my-model.json
+```
+
+**Hosted APIs by key.** Anthropic's Messages API (`kind = "anthropic"`), or an OpenAI-compatible
+endpoint over `https://` (`kind = "openai"`). Add one with `add: Anthropic (Messages API)` or
+`add: OpenAI-compatible endpoint` in the picker, or list it:
+
+```toml
+schema = 2
+
+[agent]
+default = "anthropic"
+
+[[agent.providers]]
+name = "anthropic"
+kind = "anthropic"
+endpoint = "https://api.anthropic.com"
+model = "claude-sonnet-4-5"
+
+[[agent.providers]]
+name = "openai"
+kind = "openai"
+endpoint = "https://api.openai.com/v1"
+model = "gpt-4.1"
+```
+
+A listed provider without a key shows `no key · Enter adds one` in the picker, and its first
+task asks for the key before anything is sent. You paste it into a masked field in the window,
+which has no reveal button and gives up nothing to copy. The key is encrypted with your system
+keyring (without one, as Firefox's saved passwords are) and kept in Firefox's login storage for
+that provider and its endpoint's address: a provider whose endpoint changes in `config.toml` is
+not sent it, and a copied profile or a password export is of no use without your keyring. The
+picker then shows `key stored · ends …a1b2`; `x` there deletes it, and changing a key means
+deleting it and entering the new one. A hosted model is paid for: set `price_in` and `price_out`
+on the provider (per million tokens, from your provider's price list), and `[agent] max_cost`
+stops a task at that cost.
+
+**Switching.** `Esc`, then `m` (or `:agent model`), opens the picker, and the model you choose
+applies to the current conversation; choosing sends nothing. Each conversation keeps its
+provider and model, across restarts too, so one can run on a local model and another on a hosted
+one. New conversations start with `[agent] default`. A model you pick that `config.toml` does
+not list is added there, and becomes the default only when none was set; to change the default,
+edit `[agent] default`.
+
+**Claude Code and Codex** run as programs on your computer rather than as models Vimma calls,
+so they are not set up by endpoint: see [CLI providers](specs/builtin-agent-cli.md).
 
 #### Connecting an agent's tool
 
