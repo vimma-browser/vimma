@@ -1833,7 +1833,7 @@ none.
 
 **Choosing the model.** Once a CLI is set up, `Esc`, then `m`, lists one row for each model Vimma
 knows the CLI takes, under the provider's name (`claude · opus`), a row for the CLI's own default
-model, and a row `… · other model…` that asks for any other model on the prompt line, under the
+model (`claude · its default model`), and a row `… · other model…` that asks for any other model on the prompt line, under the
 same rule as setup. The model `config.toml` names is marked `config.toml`, and the open
 conversation's `in use`. `Enter` uses the model for the open conversation and for new ones until
 Vimma restarts; `D` also keeps it, adding it to `config.toml` as a provider of its own

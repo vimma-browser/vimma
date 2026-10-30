@@ -394,7 +394,7 @@ addTidyTask(async function test_the_picker_lists_the_clis_models_and_uses_one() 
       "claude · sonnet",
       "claude · opus",
       "claude · haiku",
-      "claude · Claude Code's own default model",
+      "claude · its default model",
       "claude · other model…",
     ]) {
       Assert.ok(

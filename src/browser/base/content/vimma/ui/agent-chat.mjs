@@ -622,7 +622,8 @@ export class AgentChatWindow {
         }
         const what = p
           ? {
-              label: `${p.name} · ${p.kind === "cli" ? cliModelText(p.cli ?? "", p.model) : p.model}`,
+              // A CLI's own default, short: the row's detail needs its room.
+              label: `${p.name} · ${p.kind === "cli" ? p.model || "its default model" : p.model}`,
               provider: p,
               endpoint: p.endpoint,
             }
@@ -635,8 +636,9 @@ export class AgentChatWindow {
         // Short, so the label keeps its room; Enter on the row says why in full.
         const where =
           (p && hints.get(what.label)) ?? (p ? providerWhere(p) : whereDataGoes(what.endpoint));
-        // An agent CLI's model config.toml names, among the models its list adds.
-        const listed = p?.kind === "cli" && !e.cliModel ? `config.toml · ${where}` : where;
+        // An agent CLI's rows say only which model config.toml names, so that their labels
+        // keep their room; the header says where its data goes.
+        const listed = p?.kind === "cli" ? (e.cliModel ? "agent CLI" : "config.toml") : where;
         const detail = unavailable ? "not available" : listed;
         return {
           label: what.label,
