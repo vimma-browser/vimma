@@ -171,9 +171,11 @@ describe("cask-check.sh", () => {
   // Homebrew that has `brew trust`; a stub brew on the PATH records what the script asks of it.
   /**
    * @param {boolean} hasTrust whether the stub brew knows `brew trust` and `brew untrust`
+   * @param {boolean} [longList] whether `brew commands` lists many more commands after `trust`,
+   *   more than a pipe holds, and fails when its reader stops reading, as brew does on SIGPIPE
    * @returns {{ status: number | null, stderr: string, calls: string[] }}
    */
-  function runWithStubBrew(hasTrust) {
+  function runWithStubBrew(hasTrust, longList = false) {
     const dir = tempDir("vimma-cask-check-brew-");
     const bin = join(dir, "bin");
     const tapRepo = join(dir, "tap");
@@ -189,7 +191,7 @@ describe("cask-check.sh", () => {
         "#!/bin/bash",
         `echo "$*" >> '${log}'`,
         'case "$1" in',
-        `  commands) printf '${commands}\\n' ;;`,
+        `  commands) printf '${commands}\\n'${longList ? " && seq -f 'command%g' 200000" : ""} ;;`,
         `  --repo) echo '${tapRepo}' ;;`,
         "  --version) echo 'Homebrew 0.0.0' ;;",
         hasTrust ? "" : '  trust|untrust) echo "Error: Unknown command: brew $1" >&2; exit 1 ;;',
@@ -223,6 +225,18 @@ describe("cask-check.sh", () => {
     expect(calls.indexOf("untrust --cask vimma-check/local/vimma")).toBeLessThan(
       calls.lastIndexOf("untap --force vimma-check/local"),
     );
+  });
+
+  // `brew commands` lists `trust` before the rest: a check that stops reading at the first match
+  // leaves brew writing into a closed pipe, and under pipefail its failure would read as no trust.
+  it("finds brew trust in a list longer than a pipe holds", () => {
+    const { status, stderr, calls } = runWithStubBrew(true, true);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    expect(calls.filter((call) => /^(un)?trust /.test(call))).toEqual([
+      "trust --cask vimma-check/local/vimma",
+      "untrust --cask vimma-check/local/vimma",
+    ]);
   });
 
   it("runs on a Homebrew without brew trust", () => {

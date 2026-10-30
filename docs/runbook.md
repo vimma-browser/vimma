@@ -1946,8 +1946,9 @@ run outside GitHub Actions, because `--zap` deletes `~/Library/Application Suppo
 Mac, `tools/package/cask-check.sh <vimma.rb>` runs only the style and audit checks. The script
 puts the cask in a throwaway local tap, `vimma-check/local`. Homebrew 6.0 and later refuse to load
 a cask from a third-party tap that is not trusted, `brew audit` included, so on a Homebrew that has
-`brew trust` the script runs `brew trust --cask vimma-check/local/vimma` and removes the trust with
-the tap at the end. It never trusts a whole tap or sets `HOMEBREW_NO_REQUIRE_TAP_TRUST`, which
+`brew trust` the script runs `brew trust --cask vimma-check/local/vimma`, and at the end removes
+the trust with `brew untrust` before it removes the tap: Homebrew keeps the trust in its
+`trust.json`, apart from the tap, so `brew untap` alone would leave it. It never trusts a whole tap or sets `HOMEBREW_NO_REQUIRE_TAP_TRUST`, which
 would turn the check off for every tap on the machine. When a run fails with "Refusing to load
 cask ... from untrusted tap", the trust step did not run: check that `brew commands --quiet` on
 that Homebrew lists `trust`.

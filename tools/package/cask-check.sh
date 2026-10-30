@@ -39,11 +39,16 @@ if [ "${1:-}" = "--stub" ] || [ $# = 2 ]; then
 fi
 
 # Homebrew 6.0 and later refuse to load a cask from a third-party tap that is not trusted, and
-# brew audit loads it. Only the one cask in the throwaway tap is trusted, and the trust goes with
-# the tap; tap trust stays on for everything else. An older Homebrew has no `brew trust` and no
-# such check.
+# brew audit loads it. Only the one cask in the throwaway tap is trusted; tap trust stays on for
+# everything else. The trust is kept in Homebrew's trust.json, apart from the tap, so untapping
+# leaves it: the cleanup removes it with `brew untrust`. An older Homebrew has no `brew trust`
+# and no such check.
+# The whole list is read before it is searched: a `grep -q` would stop reading at `trust`, and
+# brew, killed by SIGPIPE writing the rest, would make the pipeline fail under pipefail.
 has_trust() {
-  brew commands --quiet 2> /dev/null | grep -qx trust
+  local commands
+  commands=$(brew commands --quiet 2> /dev/null) || return 1
+  grep -qx trust <<< "$commands"
 }
 
 work=$(mktemp -d)
