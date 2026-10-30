@@ -959,11 +959,10 @@ export const RUNNERS = Object.freeze({
     );
     if (said) s.notice.show(said);
   },
-  // `:agent [word]` (docs/specs/builtin-agent.md Behaviour 14): the built-in agent's window, in
-  // the side panel's slot, one panel at a time. Its action joins actions.mjs with its key (B13).
+  // `:agent [word]` and prefix+i (docs/specs/builtin-agent.md Behaviour 14, B13): the built-in
+  // agent's window, in the side panel's slot, one panel at a time.
   "agent.command": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
     s.notice.hide();
-    if (!lazy.AgentChat.enabled) return;
     s.panel.close();
     s.bookmarks.close();
     runAgentCommand(s.agentChat, t, (text, error) => s.notice.show(text, { error: !!error }));
@@ -1352,8 +1351,6 @@ export const VimmaHost = {
           workspace: workspaceNames(win),
           search: SearchHost.completions,
         }),
-        // An unfinished feature's command does not exist while its pref is off (CONTRIBUTING.md).
-        hidden: () => (lazy.AgentChat.enabled ? [] : ["agent.command"]),
       }),
       tabStrip: null,
       toolbar: null,
@@ -2460,7 +2457,6 @@ export const VimmaHost = {
    * @param {Extract<CommandResult, { kind: "run" }>} result
    */
   _runCommand(state, { command, action, text }) {
-    // `:agent` runs by its id until its action comes with its key (core PENDING_ACTIONS).
     if (PENDING_ACTIONS.includes(action.id) && !(action.id in RUNNERS)) {
       state.notice.show(`:${command}${text ? ` ${text}` : ""}: not available yet`);
       return;

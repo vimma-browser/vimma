@@ -129,9 +129,6 @@ pref("vimma.update.enabled", true);
 // prettier-ignore
 pref("vimma.update.url", "https://updates.vimma.dev/updates/browser/%BUILD_TARGET%/%CHANNEL%/update.xml");
 
-// The built-in agent (spec builtin-agent): unfinished until its chat window lands, so off.
-pref("vimma.feature.agentChat", false);
-
 // Agent CLIs as the built-in agent's providers (spec builtin-agent-cli): unfinished until Codex
 // is supported, so off.
 pref("vimma.feature.agentCli", false);

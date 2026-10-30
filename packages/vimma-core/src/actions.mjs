@@ -381,7 +381,9 @@ group("Config", [
 // docs/specs/addon-manager.md
 // docs/specs/vimma-mcp.md: local AI agents, confined to the agent workspace. `:mcp on|off|forget`;
 // prefix+shift+a answers the waiting question (decision 14); `:control on <minutes>` (29 D).
+// docs/specs/builtin-agent.md B13: prefix+i opens the built-in agent's window, as `:agent` does.
 group("Agents", [
+  ["agent_chat", "agent.command", "Built-in agent: open its chat window (:agent)"],
   ["mcp_command", "mcp.command", "Agents (MCP): :mcp on, off or forget"],
   ["agent_prompt", "mcp.answer", "Answer the waiting agent request (none: revoke grants)"],
   ["control_command", "control.command", "Full control for a while: :control on <minutes>, off"],

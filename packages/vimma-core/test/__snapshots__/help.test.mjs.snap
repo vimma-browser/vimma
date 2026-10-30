@@ -257,6 +257,7 @@ Config
   theme_appearance          (unbound)                                         Built-in theme: dark, light or the system's (:theme)
 
 Agents
+  agent_chat                ctrl+b i                                          Built-in agent: open its chat window (:agent)
   mcp_command               (unbound)                                         Agents (MCP): :mcp on, off or forget
   agent_prompt              ctrl+b shift+a                                    Answer the waiting agent request (none: revoke grants)
   control_command           (unbound)                                         Full control for a while: :control on <minutes>, off
@@ -524,6 +525,7 @@ Config
   theme_appearance          (unbound)                                         Built-in theme: dark, light or the system's (:theme)
 
 Agents
+  agent_chat                ctrl+b i                                          Built-in agent: open its chat window (:agent)
   mcp_command               (unbound)                                         Agents (MCP): :mcp on, off or forget
   agent_prompt              ctrl+b shift+a                                    Answer the waiting agent request (none: revoke grants)
   control_command           (unbound)                                         Full control for a while: :control on <minutes>, off

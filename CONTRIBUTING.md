@@ -259,6 +259,57 @@ Vimma follows a spec-first, test-first loop ([plan.md](plan.md) §4–§5):
 Before pushing, run `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:py`,
 `npm run license-check` and `npx surfer license-check`.
 
+### Claude Code plugin
+
+The repository is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`) with one
+plugin, `vimma-guardrails` (`tools/claude-plugin/`). Its hooks turn the costliest rules for coding
+agents into checks that block the command before it runs, with a reason that says what to do
+instead, because a written rule is only as good as the memory of whoever follows it. It also
+ships the `vimma-pr` agent, which takes one pull request or issue to merge in its own worktree
+and ends with a fixed report. <!-- process-wording: describes the plugin for coding agents -->
+
+Enable it for a checkout in `.claude/settings.json` (git-ignored, so each checkout opts in), or in
+`~/.claude/settings.json` for every project:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "vimma": { "source": { "source": "github", "repo": "vimma-browser/vimma" } }
+  },
+  "enabledPlugins": { "vimma-guardrails@vimma": true }
+}
+```
+
+To try changes to the plugin itself, point the marketplace at a local checkout instead:
+`"source": { "source": "directory", "path": "/absolute/path/to/vimma" }`, then run
+`/reload-plugins`. `claude plugin validate tools/claude-plugin` checks the manifests, and
+`npm test` runs the hooks' tests (`tools/claude-plugin/test/`).
+
+What the hooks block, on every Bash command (including those inside `bash -c`, `eval`, `$(...)`
+and pipelines, but not text that only mentions them, such as a commit message or a heredoc):
+
+- **`gh pr merge`** without `--subject` and `--body-file <file>`, or with a body file that is
+  missing or empty, or with a message that fails `npx commitlint`. The hook lints the exact
+  squash message itself, so a merge can no longer run after a failed check: a command chained
+  with `;` once merged a pull request with an empty message (#278), and unwrapped squash bodies
+  turned `main` red. Merges through `gh api .../pulls/N/merge` are blocked too. Write the body
+  file in an earlier command: the hook reads it before the command runs.
+- **`pkill -f`**, **`pgrep -f ... | xargs kill`** and **`kill $(pgrep -f ...)`**: a pattern
+  matched against whole command lines also matches the shell that runs it. Kill by exact PID.
+- **Force pushes**: `--force`, `-f`, `--force-with-lease` and `+refspec`. Pushed history is never
+  rewritten; update a branch with `git merge origin/main`.
+- **Dismissing code-scanning, secret-scanning or Dependabot alerts** (`gh api` writes to
+  `.../alerts/...`, and the same request through `curl`), and **`gh workflow disable`**: a check
+  is made green by fixing the finding, never by switching it off.
+
+And on Edit, Write and NotebookEdit: a **subagent** may not change files in a repository's
+primary checkout (a working tree whose `.git` is a directory), because a dev build runs from it.
+It works in a linked worktree under `.claude/worktrees/` instead. The main session is not
+affected (Claude Code marks hook input from a subagent with `agent_id`), nor are the git-ignored
+notes `TESTING.md`, `CURRENT-STATE.md` and `.claude/`. Bash commands that write files are not
+checked: a shell command's targets cannot be read reliably without running it. Set
+`VIMMA_GUARD_ALLOW_MAIN_CHECKOUT=1` in Claude Code's environment to turn this check off.
+
 ## Branch policy
 
 A ruleset protects `main`:

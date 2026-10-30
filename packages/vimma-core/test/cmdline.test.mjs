@@ -230,8 +230,8 @@ describe("command table", () => {
   });
 
   test("PENDING_ACTIONS are exactly the missing ones, not yet in actions.mjs", () => {
-    // :agent's action comes with its key, one keymap change (docs/specs/builtin-agent.md B13).
-    expect(PENDING_ACTIONS).toEqual(["agent.command"]);
+    // :agent's action came with its key, ctrl+b i (docs/specs/builtin-agent.md B13).
+    expect(PENDING_ACTIONS).toEqual([]);
     for (const id of PENDING_ACTIONS) expect(ids.has(id)).toBe(false);
   });
 

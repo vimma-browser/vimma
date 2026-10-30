@@ -53,6 +53,10 @@ What works today, each with the section that explains it:
   read a page's errors and show you a page. An agent asks you first, one answer lets it work
   through its task until it quits, and sending a form or paying asks every time, showing what is
   sent or the total the page states.
+- **[Vimma's own agent](#vimmas-own-agent)**: `ctrl+b i` opens a chat window where you write a
+  task and watch every step, with a local model (Ollama, LM Studio, llama.cpp) or a hosted one
+  by API key. It works in the agent workspace through the same tools and checkpoints, several
+  conversations can run at once, and conversations are kept, encrypted, without page text.
 
 ## Every key is yours
 
@@ -665,7 +669,8 @@ with `F11` keeps it. From the left:
 - `◇ agent` while a local AI agent is connected ([agent workspace](#agent-workspace)):
   `◇ agent 2?` when 2 of its requests wait for your answer, `◇ agent granted` while it may act
   without asking (`◇ agent 14m` for a grant of minutes with 14 left), and `◇ agent ·` for a
-  moment after a request ran;
+  moment after a request ran; `◇ built-in 14/100 · 212k tok` while a task of
+  [Vimma's own agent](#vimmas-own-agent) runs (steps and tokens), `◇ 2 agents` while several do;
 - `loading` while the page loads, then its **URL** without `https://`;
 - with the [toolbar hidden](#hiding-the-toolbar), `not secure` in red for a page Firefox's
   address bar would warn about (an `http:` page keeps its `http://`), `using camera, mic` (or
@@ -1418,6 +1423,263 @@ ever reaches this workspace, and every request asks you first. To let one in, se
 - `about:vimma`'s **Agents (MCP)** section shows the switch, full control's state and the agent
   workspace's tab count.
 
+#### Vimma's own agent
+
+Vimma has an agent of its own: a chat window where you write a task in as many lines as it needs,
+watch every step it takes, add instructions or stop it, all from the keyboard. It needs no
+separate program and no `:mcp on`. It uses the same tools and the same questions as an MCP agent,
+so it works only in the agent workspace and stops at the same checkpoints, whatever model drives
+it.
+
+**Opening it.** `ctrl+b i` (or `:agent`) opens the window where the side panel opens, in any
+normal window, with its input focused. It stays open while you switch workspaces, and `q` closes
+it. A private window has no agent. With no model set up, the window says how to add one.
+
+**Choosing a model.** `Esc`, then `m`, opens the model picker:
+
+- the providers listed under `[agent]` in `config.toml`;
+- `add: Anthropic (Messages API)` and `add: OpenAI-compatible endpoint`: Vimma asks for the
+  endpoint (an `https://` address) and the model on the prompt line, then for the API key in a
+  masked field in the window. The key goes into Firefox's login storage, encrypted, and is never
+  shown again; `x` in the picker deletes it;
+- the models of local servers: only while the picker is open, Vimma asks `127.0.0.1` on the
+  ports of Ollama (11434), LM Studio (1234) and the llama.cpp server (8080) which models they
+  have. An Ollama model with less than 32,768 tokens of context gets a copy with that context,
+  which shares its weights, since a ten-item task needs about 19,000.
+
+A model you pick that `config.toml` does not list is added there (without its key), and the
+first one becomes `[agent] default`, which new conversations use. Choosing a model sends nothing. Each conversation keeps its own model, so one can run locally
+and another on a hosted model. `[agent] local_only = true` refuses every model that is not on
+this machine.
+
+**Where your data goes.** The window's first line names the model and where the data goes:
+`stays on this machine` for a local server's model you picked, or `page text sent to
+api.anthropic.com`. Before the first task to a model off this machine, the window says what is
+sent (page text the agent reads, field values it sees, screenshots and your messages) and sends
+nothing until you press `y`. The provider's own terms apply to what it receives. A local
+address you typed yourself says `local endpoint 127.0.0.1:8000`: that server's own settings
+decide whether it sends anything on.
+
+**Sending a task.** In the input:
+
+| Key           | What it does                                                                              |
+| ------------- | ----------------------------------------------------------------------------------------- |
+| `Enter`       | Sends, and lets this conversation act in the agent workspace without asking at each step. |
+| `ctrl+Enter`  | Sends, and asks you before every step.                                                    |
+| `shift+Enter` | Starts a new line.                                                                        |
+| `Esc`         | Normal mode in the window.                                                                |
+
+Sending with `Enter` is your grant: the window asks no separate question. The grant lasts until
+you stop the task (`s`, `:agent stop` or `ctrl+b shift+a`), `:mcp revoke`, the conversation is
+deleted or Vimma restarts. Sending a form, paying, showing you a page and the downloads that
+always ask still ask every time, in a bordered slot above the input that takes only `y` and `n`;
+nothing you type in the input and nothing the model writes answers it. A message sent while a
+task runs reaches the model at its next turn.
+
+**In normal mode** (after `Esc`): `j`/`k`, `ctrl+d`/`ctrl+u` and `gg`/`G` move through the
+transcript, `i` or `a` goes back to the input, `s` stops the running task, `m` opens the model
+picker, `n` starts a new conversation, `c` lists the conversations, `C` clears the context, `P`
+gives the selected tab to the agent, `y` copies the selected entry, and `q` closes the window.
+`:agent stop`, `new`, `model`, `list`, `clear`, `give` and `forget all` do the same from the
+command line.
+
+**What the transcript shows.** Your messages, the agent's replies as plain text under an
+`agent` label, one line for every step it takes with how it ran (`ran under grant`,
+`asked → yes`, `denied`), and each checkpoint and your answer. Page text appears only where the
+agent quotes it. While a task runs, the status bar shows `◇ built-in 14/100 · 212k tok` (steps
+and tokens), even with the window closed.
+
+**Giving it a page.** `P` (or `:agent give`) asks, then moves the selected tab to the agent
+workspace, where it is reopened with the agent workspace's cookies and without its history, and
+makes it the conversation's. The agent never reads a tab where it is in your own workspaces.
+
+**Several conversations.** Each conversation has its own tabs in the agent workspace (those it
+opened, those you gave it, and those its pages opened) and its own grant; it cannot see another
+conversation's tabs or an MCP agent's. Up to `[agent] max_running` (3) run at once. A task stops
+at `max_steps` (100) tool calls, `max_tokens` (2,000,000) tokens, or, for a provider with
+`price_in` and `price_out` set, `max_cost`, and the transcript names the limit.
+
+**What is kept.** Conversations survive a restart: your messages, the agent's replies, a short
+summary of each task (its outcome, steps, tokens and the sites it loaded), the provider and the
+model, encrypted with your system keyring when you have one (otherwise as Firefox's saved
+passwords are). Page text, element lists and screenshots are never stored. A reopened
+conversation starts without the pages it read before; `C` drops them from a running one.
+`d` in the list deletes one, `:agent forget all` deletes them all, and `[agent] keep_days`
+deletes those unused for that many days.
+
+**Which model to use.** [Choosing a model for the agent chat](#choosing-a-model-for-the-agent-chat)
+covers local servers, hosted APIs, what a model needs and how to measure your own.
+
+#### Choosing a model for the agent chat
+
+The chat window works with any model behind an OpenAI-compatible chat API that returns tool
+calls, and with Anthropic's Messages API. Pick one in the window (`Esc`, then `m`), or list it in
+`config.toml` as an `[[agent.providers]]` table: a name, a kind, an endpoint and a model, never a
+key (a `key` or `api_key` field is a config error). `[agent]` is new in config schema 2, so the
+file starts with `schema = 2`; without it the whole file is refused, and the status bar names the
+error. Each example below is a whole `config.toml`. To keep several providers, put their
+`[[agent.providers]]` tables in one file, under one `[agent]`.
+
+**Ollama** (port 11434). Its default context of 4096 tokens holds less than the agent's tool
+definitions. A model you pick in the window gets a copy with 32,768 tokens of context
+(`qwen3:14b-ctx32768`), which shares the original's weights, and the conversation uses the copy.
+For a model you list yourself, make the copy with `num_ctx` set, and list it by that name:
+
+```sh
+printf 'FROM qwen3:14b\nPARAMETER num_ctx 32768\n' > Modelfile
+ollama create qwen3:14b-ctx32768 -f Modelfile
+```
+
+```toml
+schema = 2
+
+[agent]
+default = "ollama"
+
+[[agent.providers]]
+name = "ollama"
+kind = "openai"             # "openai" (OpenAI-compatible) or "anthropic"
+endpoint = "http://127.0.0.1:11434/v1"
+model = "qwen3:14b-ctx32768"
+```
+
+**LM Studio** (port 1234). Start its server (`lms server start`, or its Developer tab) and load
+the model with the context it needs, in the model's load settings or with
+`lms load <model> --context-length 32768`. `model` is the identifier LM Studio lists for it.
+
+```toml
+schema = 2
+
+[agent]
+default = "lm-studio"
+
+[[agent.providers]]
+name = "lm-studio"
+kind = "openai"
+endpoint = "http://127.0.0.1:1234/v1"
+model = "qwen/qwen3-14b"
+```
+
+**llama.cpp** (`llama-server`, port 8080). The context is set when the server starts (`-c`), and
+`--jinja` applies the model's chat template, which tool calls need:
+`llama-server -m qwen3-14b.gguf --alias qwen3-14b -c 32768 --jinja`.
+
+```toml
+schema = 2
+
+[agent]
+default = "llama-cpp"
+
+[[agent.providers]]
+name = "llama-cpp"
+kind = "openai"
+endpoint = "http://127.0.0.1:8080/v1"
+model = "qwen3-14b"
+```
+
+**vLLM** (port 8000). The picker does not look for it, so list it. vLLM returns tool calls only
+when started with a tool-call parser that fits the model, and its context is `--max-model-len`:
+`vllm serve Qwen/Qwen3-14B --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes`.
+
+```toml
+schema = 2
+
+[agent]
+default = "vllm"
+
+[[agent.providers]]
+name = "vllm"
+kind = "openai"
+endpoint = "http://127.0.0.1:8000/v1"
+model = "Qwen/Qwen3-14B"
+```
+
+- **The GPU.** Whether a model runs on your GPU is the server's setting, not Vimma's. `ollama ps`
+  shows where a loaded model runs (`100% GPU`, or `100% CPU`). Some hardware needs a switch:
+  Ollama uses an integrated GPU only with `OLLAMA_IGPU_ENABLE=1` in the server's environment. For
+  drivers and offloading, see each server's own documentation: Ollama's GPU page, LM Studio's GPU
+  offload setting, llama.cpp's build options and `-ngl`, and vLLM's installation guide.
+- **Images.** Set `vision = true` on a provider whose model reads images, so that the agent gets
+  screenshots. For `kind = "openai"` it is off unless set.
+- **`[agent] local_only = true`** refuses every endpoint that is not on this machine
+  (`127.0.0.1`, `[::1]` or `localhost`): in `config.toml` as a config error, in the picker, and
+  for a kept conversation's provider. A server on another computer of your network counts as
+  hosted: it needs `https://`, and Vimma asks for a key for it. An SSH tunnel to a port on
+  `127.0.0.1` makes it local.
+- **Older results** (`[agent] keep_results`). The agent sends the latest tool results whole and
+  only the first line of older ones, in blocks. Unset, it keeps 20 for a provider on this
+  machine, where each block left out makes the server read the conversation again, and 6 for a
+  hosted one, where every token is paid for. A value you set applies to every provider; `0`
+  sends every result whole.
+
+**What a model needs.**
+
+- **Tool calls.** The agent acts only through tool calls that the server returns as such. A
+  model that writes them as text, or a server started without tool support (llama.cpp without
+  `--jinja`, vLLM without `--enable-auto-tool-choice`), gets nothing done.
+- **Context.** A ten-item shopping list needs about 19,000 tokens on the shortest path the
+  tools allow, so give a local model at least 32,768.
+- **Speed.** That shortest path takes 23 tool calls for ten items, and a model takes more. Each
+  call is a model turn that reads the whole conversation.
+
+The [model bench](agent-bench.md) is what Vimma knows about models, measured on one laptop CPU
+without a GPU. There, qwen2.5 at 1.5B and 7B completed no list, a 27B model reached the time
+limit at about 90 seconds a step, and a 35B mixture-of-experts model completed the ten-item list
+in a run of 35 steps and 17 minutes. The bench ran no model on a GPU and no hosted model,
+so it says nothing about them. To measure your own model on the same ten lists and local shop,
+run the bench from a checkout of the repository with a Vimma build and Xvfb
+([runbook](runbook.md#the-agent-model-bench-npm-run-agent-bench-spec-builtin-agent)), with the
+endpoint and model of your server:
+
+```sh
+npm run agent-bench -- --artifact --provider openai --endpoint http://127.0.0.1:8000/v1 \
+  --model Qwen/Qwen3-14B --runs 3 --max-steps 100 --out my-model.json
+```
+
+**Hosted APIs by key.** Anthropic's Messages API (`kind = "anthropic"`), or an OpenAI-compatible
+endpoint over `https://` (`kind = "openai"`). Add one with `add: Anthropic (Messages API)` or
+`add: OpenAI-compatible endpoint` in the picker, or list it:
+
+```toml
+schema = 2
+
+[agent]
+default = "anthropic"
+
+[[agent.providers]]
+name = "anthropic"
+kind = "anthropic"
+endpoint = "https://api.anthropic.com"
+model = "claude-sonnet-4-5"
+
+[[agent.providers]]
+name = "openai"
+kind = "openai"
+endpoint = "https://api.openai.com/v1"
+model = "gpt-4.1"
+```
+
+A listed provider without a key shows `no key · Enter adds one` in the picker, and its first
+task asks for the key before anything is sent. You paste it into a masked field in the window,
+which has no reveal button and gives up nothing to copy. The key is encrypted with your system
+keyring (without one, as Firefox's saved passwords are) and kept in Firefox's login storage for
+that provider and its endpoint's address: a provider whose endpoint changes in `config.toml` is
+not sent it, and a copied profile or a password export is of no use without your keyring. The
+picker then shows `key stored · ends …a1b2`; `x` there deletes it, and changing a key means
+deleting it and entering the new one. A hosted model is paid for: set `price_in` and `price_out`
+on the provider (per million tokens, from your provider's price list), and `[agent] max_cost`
+stops a task at that cost.
+
+**Switching.** `Esc`, then `m` (or `:agent model`), opens the picker, and the model you choose
+applies to the current conversation; choosing sends nothing. Each conversation keeps its
+provider and model, across restarts too, so one can run on a local model and another on a hosted
+one. New conversations start with `[agent] default`. A model you pick that `config.toml` does
+not list is added there, and becomes the default only when none was set; to change the default,
+edit `[agent] default`.
+
+**Claude Code and Codex** run as programs on your computer rather than as models Vimma calls,
+so they are not set up by endpoint: see [CLI providers](specs/builtin-agent-cli.md).
+
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
@@ -1646,6 +1908,11 @@ with the rest of your computer.
   a count (`15a`) when you want it to lapse by itself, and answer `y` one at a time otherwise.
 - **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.
   Grants belong to the connection, not the name, and `:mcp` shows the program that started it.
+  Only [Vimma's own agent](#vimmas-own-agent) is labelled `built-in`; an MCP agent that calls
+  itself that is shown with `(mcp)` after its name.
+- **Vimma's own agent sends what it reads to its model.** With a hosted model, page text, field
+  values, screenshots and your messages go to that provider. A page can still steer the model
+  (prompt injection), within the agent workspace and the checkpoints.
 - **The rest of your computer is the agent tool's matter.** An agent with a shell or file tools
   runs as you. It can read your files, Vimma's profile included (cookies, saved passwords, and
   the control socket's token in `vimma-control.json`), unless its tool stops it. With the token
