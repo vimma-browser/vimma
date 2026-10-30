@@ -132,6 +132,7 @@ describe("the whitelist (D9)", () => {
     expect(refusal("yy")).toContain("the clipboard is the user's");
     expect(refusal(":")).toContain("the command line is the user's");
     expect(refusal("ctrl+b x")).toContain("the prefix");
+    expect(refusal("ctrl+b i")).toContain("the prefix");
     expect(refusal("gF")).toContain("vimma_open");
     expect(refusal("F")).toContain("hint.element");
     expect(refusal("r")).toContain("form");

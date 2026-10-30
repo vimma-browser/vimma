@@ -168,6 +168,7 @@ const keys = {
   toggle_bookmarks: ["prefix+shift+b"],
   add_bookmark: ["prefix+a"],
   agent_prompt: ["prefix+shift+a"],
+  agent_chat: ["prefix+i"],
   copy_mode: ["prefix+["],
   addon_picker: ["prefix+e"],
 };

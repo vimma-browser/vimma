@@ -6,6 +6,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 
+- Vimma's own agent: `ctrl+b i` (or `:agent`) opens a chat window where you write a task, watch every step in a plain-text transcript, add instructions or stop it. It runs a model you pick, a local one (Ollama, LM Studio, the llama.cpp server) or a hosted one (Anthropic, or an OpenAI-compatible endpoint, with its API key kept encrypted in login storage). Models are set up in the window's picker, which also switches a conversation's model, or under `[agent]` and `[[agent.providers]]` in `config.toml`, where `local_only`, `max_running` and `keep_days` also live; a refused `config.toml` is named in the window. The agent works only in the agent workspace, through the same tools, grants and checkpoints as an MCP agent. Sending with `Enter` lets the conversation act without asking at each step, `ctrl+Enter` asks at every step, and sending a form or paying always asks in the window. Several conversations run at once, each on its own tabs, with step and token limits, and they are kept across restarts, encrypted, without the page text they read. The help overlay and its snapshots list the new key, `agent_chat` in the Agents group.
 - Agents (MCP): `vimma_open`, `vimma_activate` and `vimma_fill` take `elements: true` and return the page's element list with the step, so an action and the next look are one call. Screenshots default to at most 1024 px, PNG or JPEG, whichever is smaller; `full: true` gives the full-size image.
 
 ### Changed

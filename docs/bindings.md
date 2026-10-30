@@ -314,6 +314,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 | Action                                                 | Config name       | Bindings         |
 | ------------------------------------------------------ | ----------------- | ---------------- |
+| Built-in agent: open its chat window (:agent)          | `agent_chat`      | `ctrl+b i`       |
 | Agents (MCP): :mcp on, off or forget                   | `mcp_command`     | —                |
 | Answer the waiting agent request (none: revoke grants) | `agent_prompt`    | `ctrl+b shift+a` |
 | Full control for a while: :control on <minutes>, off   | `control_command` | —                |

@@ -2,15 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/builtin-agent.md, delivery 4 (B1, B9, B16, B19, Behaviour 5-6, 10-17, 27-28,
-// 35). The chat window in the side panel's slot: `:agent` opens it with its input focused; the
-// header says where data goes and where the agent works; Enter sends with the conversation's
-// grant, ctrl+Enter asks every step, shift+Enter adds a line; the transcript shows the user's
-// messages, the agent's replies as text under its label, and a line per step with its outcome;
-// a question of the open conversation waits in the prompt slot, which neither the input nor the
-// model can answer; `:agent give` moves the selected tab to the agent workspace after y and
-// makes it the conversation's; the status bar shows a running task's steps and tokens. The
-// model is the scripted server of head_vimma_agent_model.js.
+// Spec: docs/specs/builtin-agent.md, deliveries 4 and 6 (B1, B9, B13, B16, B19, B22, Behaviour
+// 5-6, 10-17, 27-28, 35). The chat window in the side panel's slot: `:agent` and `ctrl+b i` open
+// it with its input focused; the header says where data goes and where the agent works; Enter
+// sends with the conversation's grant, ctrl+Enter asks every step, shift+Enter adds a line; the
+// transcript shows the user's messages, the agent's replies as text under its label, and a line
+// per step with its outcome; a question of the open conversation waits in the prompt slot, which
+// neither the input nor the model can answer; `:agent give` moves the selected tab to the agent
+// workspace after y and makes it the conversation's; the status bar shows a running task's
+// steps and tokens. The model is the scripted server of head_vimma_agent_model.js.
 
 "use strict";
 
@@ -25,7 +25,7 @@ Services.scriptloader.loadSubScript(
   this,
 );
 
-const { AgentChat, FEATURE_PREF } = ChromeUtils.importESModule(
+const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
@@ -153,7 +153,6 @@ const addTidyTask = (task) => add_task(tidyTask(task, tidy));
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
     set: [
-      [FEATURE_PREF, true],
       ["vimma.mcp.askTimeoutMs", 20000],
       [ARMING, 300],
     ],
@@ -165,17 +164,26 @@ add_setup(async () => {
   registerCleanupFunction(() => McpHost.configureAgent(savedConfig));
 });
 
-addTidyTask(async function test_agent_command_hidden_without_the_feature_pref() {
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE_PREF, false]] });
-  await openPage();
-  runCommand("agent");
-  await until(
-    () => /not a command: "agent"/.test($("vimma-cmdline")?.textContent ?? ""),
-    ":agent is not a command while the feature is off",
+add_task(async function test_the_agent_has_no_feature_pref() {
+  // The window has its key, so the built-in agent ships whole, with no pref to turn it on (B22).
+  Assert.equal(
+    Services.prefs.getPrefType("vimma.feature.agentChat"),
+    Services.prefs.PREF_INVALID,
+    "no vimma.feature.agentChat",
   );
-  Assert.ok(!isOpen(), "and no window opened");
-  EventUtils.synthesizeKey("KEY_Escape");
-  await SpecialPowers.popPrefEnv();
+});
+
+/** `ctrl+b i`, the window's default key (B13). */
+function pressKey() {
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("i");
+}
+
+addTidyTask(async function test_ctrl_b_i_opens_the_window_with_its_input_focused() {
+  await openPage();
+  pressKey();
+  await until(isOpen, "ctrl+b i opened the chat window");
+  await until(() => document.activeElement === input(), "its input has focus");
 });
 
 addTidyTask(async function test_header_says_where_it_works() {

@@ -25,7 +25,7 @@ Services.scriptloader.loadSubScript(
   this,
 );
 
-const { AgentChat, FEATURE_PREF } = ChromeUtils.importESModule(
+const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
@@ -90,10 +90,7 @@ const addTidyTask = (task) => add_task(tidyTask(task, tidy));
 
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      [FEATURE_PREF, true],
-      [ASK_TIMEOUT, 20000],
-    ],
+    set: [[ASK_TIMEOUT, 20000]],
   });
   // Conversations are stored, encrypted with OSKeyStore: under a test label, never the user's.
   OSKeyStoreTestUtils.setup();
@@ -105,16 +102,6 @@ async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
   return AgentGate.waiting[0];
 }
-
-add_task(async function test_nothing_without_the_feature_pref() {
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE_PREF, false]] });
-  Assert.throws(
-    () => AgentChat.create({ provider: PROVIDER }),
-    /vimma\.feature\.agentChat/,
-    "no conversation while the built-in agent is unfinished and off",
-  );
-  await SpecialPowers.popPrefEnv();
-});
 
 addTidyTask(async function test_works_with_mcp_off_and_enter_grants_without_a_question() {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
