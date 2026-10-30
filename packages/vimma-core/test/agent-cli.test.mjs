@@ -9,6 +9,7 @@ import {
   CLI_STREAM_LIMITS,
   CLIS,
   ClaudeStream,
+  MAX_MODEL,
   claudeArguments,
   cliEnvironment,
   cliNotice,
@@ -25,6 +26,7 @@ import {
   userLine,
   versionText,
 } from "../src/agent-cli.mjs";
+import { STORE_VERSION, readRecord } from "../src/agent-store.mjs";
 
 /** @param {string} name */
 const fixture = (name) =>
@@ -110,6 +112,42 @@ describe("claude-code's command line (C2)", () => {
     expect(() => claudeArguments({ mcpConfig: "/m.json", model: "--bare" })).toThrow(
       modelProblem("--bare") ?? "",
     );
+  });
+
+  test("every control character in a model is refused, tab, line feed and DEL included", () => {
+    for (const bad of ["son\tnet", "sonnet\n--bare", "sonnet\r", "son\u007fnet", "\u0000"]) {
+      expect(modelProblem(bad)).toMatch(/it has control characters$/);
+    }
+  });
+
+  test("a model longer than config.toml allows is refused by the same rule", () => {
+    expect(modelProblem("m".repeat(MAX_MODEL))).toBeNull();
+    expect(modelProblem("m".repeat(MAX_MODEL + 1))).toMatch(
+      new RegExp(`it is longer than ${MAX_MODEL} characters$`),
+    );
+    expect(() =>
+      claudeArguments({ mcpConfig: "/m.json", model: "m".repeat(MAX_MODEL + 1) }),
+    ).toThrow(/model/);
+  });
+
+  // A conversation read back from its file brings its provider's model with it: the run builds
+  // its arguments from that model, so a stored option or a stored line break is refused there.
+  test("a restored conversation's stored model is refused when the arguments are built", () => {
+    for (const model of ["--bare", "sonnet\n--bare"]) {
+      const record = readRecord({
+        v: STORE_VERSION,
+        id: "0f8fad5b-d9cb-469f-a165-70867728950e",
+        title: "t",
+        created: 1,
+        used: 2,
+        provider: { name: "claude", kind: "cli", cli: "claude-code", endpoint: "", model },
+        entries: [{ kind: "user", text: "hi" }],
+      });
+      expect(record?.provider.model).toBe(model);
+      expect(() =>
+        claudeArguments({ mcpConfig: "/m.json", model: record?.provider.model ?? "" }),
+      ).toThrow(modelProblem(model) ?? "never");
+    }
   });
 
   test("setup suggests each cli's model, and empty is the cli's own default", () => {

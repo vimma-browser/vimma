@@ -25,7 +25,14 @@ import { BOOKMARKS_ROOTS } from "./bookmarks.mjs";
 import { quarantineProblem, resolveDownloadDir } from "./agent-downloads.mjs";
 import { resolveSearch, validateSearch } from "./search.mjs";
 import { checkEndpoint } from "./agent-providers.mjs";
-import { CLI_IDS, DEFAULT_MAX_MINUTES, MAX_MINUTES, modelProblem } from "./agent-cli.mjs";
+import {
+  CLI_IDS,
+  DEFAULT_MAX_MINUTES,
+  MAX_MINUTES,
+  MAX_MODEL,
+  modelProblem,
+} from "./agent-cli.mjs";
+import { hasControl } from "./strings.mjs";
 
 /** @import { Keymap } from "./keymap.mjs" */
 /** @import { UserConfig } from "./defaults.mjs" */
@@ -321,7 +328,6 @@ const SECRET_KEYS = new Set(["key", "api_key", "apikey", "token", "password", "s
 const SECRET_IN_CONFIG =
   "an API key must not be in config.toml: Vimma keeps it in login storage, set in the agent's setup";
 const MAX_PROVIDER_NAME = 32;
-const MAX_MODEL = 200;
 const MAX_PRICE = 1_000_000;
 
 /** The private workspace's name (privatews.mjs): never the agent workspace's. */
@@ -338,10 +344,6 @@ export const MAX_WORKSPACE_NAME = 32;
 const MAX_FONT = 200;
 const FONT_FORBIDDEN = /["';{}\\<>]/;
 const HOME = /^(?:https?:\/\/|about:)\S+$/;
-
-/** @param {string} s */
-const hasControl = (s) =>
-  [...s].some((ch) => /** @type {number} */ (ch.codePointAt(0)) < 0x20 || ch === "\x7f");
 
 /** @param {unknown} v */
 function typeName(v) {

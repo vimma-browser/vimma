@@ -10,6 +10,8 @@
 // through `vimma-ctl mcp`, bound by a one-time ticket to the conversation's gate connection
 // (C1, C3), so the steps it takes in the browser come from the gate, not from this stream.
 
+import { hasControl } from "./strings.mjs";
+
 /**
  * A supported CLI: `id` is its name in config.toml and in the window, `bin` the program setup
  * looks for on PATH, `title` how the window's sentences name it, `model` the model setup
@@ -30,6 +32,8 @@ export const CLIS = Object.freeze({
 export const CLI_IDS = Object.freeze(Object.keys(CLIS));
 /** The one MCP server a CLI is given: `vimma-ctl mcp` (C7). */
 export const MCP_SERVER = "vimma";
+/** A model's longest name, in characters: a provider's `model` in config.toml, any kind. */
+export const MAX_MODEL = 200;
 /** A CLI task's wall-clock limit, in minutes, unless its provider sets `max_minutes` (C10). */
 export const DEFAULT_MAX_MINUTES = 30;
 export const MAX_MINUTES = 1440;
@@ -60,19 +64,25 @@ function cut(text, n = LINE_CHARS) {
 
 /**
  * Why `model` cannot be a CLI's model, or null (C2, Behaviour 2): a model is a word of the
- * CLI's, never an option (`--bare` as a model would be one), and plain text. Setup's prompt
- * line, config.toml and the command line all apply this rule, so a bad model is refused where
- * it is typed rather than when a task starts. Empty is allowed: the CLI's own default.
+ * CLI's, never an option (`--bare` as a model would be one), plain text without any control
+ * character (a line break included) and at most MAX_MODEL characters. Setup's prompt line,
+ * config.toml and the command line all apply this rule, so a bad model is refused where it is
+ * typed rather than when a task starts or when it is saved. Empty is allowed: the CLI's own
+ * default.
  * @param {string} model
  * @returns {string | null}
  */
 export function modelProblem(model) {
   const why = model.startsWith("-")
     ? 'it cannot start with "-"'
-    : plain(model) !== model
+    : hasControl(model) || plain(model) !== model
       ? "it has control characters"
-      : null;
-  return why && `the model "${plain(model)}" is not a model name: ${why}`;
+      : [...model].length > MAX_MODEL
+        ? `it is longer than ${MAX_MODEL} characters`
+        : null;
+  return (
+    why && `the model "${cut(plain(model).replace(/[\t\n]/g, " "))}" is not a model name: ${why}`
+  );
 }
 
 /**

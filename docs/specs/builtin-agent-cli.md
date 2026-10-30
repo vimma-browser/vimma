@@ -85,8 +85,9 @@ own configuration allows; Vimma does not confine them, and the window states whi
    at setup, and a hand edit of `config.toml` should not be the only way to make it. Empty
    input leaves the choice to the CLI's own default model, which the notice says
    (`agent: claude · Claude Code's own default model · saved to config.toml`). A model that
-   starts with `-` or holds control characters is refused there and asked again, by the rule
-   the command line applies (C2), so it never fails at a task's start; `config.toml` reports
+   starts with `-`, holds any control character (a tab or a line break included) or is longer
+   than 200 characters, the most `config.toml` takes, is refused there and asked again, by the rule
+   the command line applies (C2), so it never fails at a task's start or when it is saved; `config.toml` reports
    such a model as an error with its line. The path pref is written only once a model is
    taken, and the provider goes to `config.toml` with its name, kind, CLI and model. Picking a
    CLI that `config.toml` already lists uses that provider and asks nothing: its model changes

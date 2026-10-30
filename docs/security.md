@@ -1966,7 +1966,8 @@ own process, not a process group.
   owned by the user or root that no other user can write, every folder above it the user's or
   root's and not writable by other users unless sticky. Its arguments **must** come from the
   CLI's fixed builder, with the provider's model the only value in them (a model that starts
-  with `-` or holds control characters is refused, by one rule where setup's prompt line takes
+  with `-`, holds any control character (a tab or a line break included) or is longer than 200
+  characters is refused, by one rule where setup's prompt line takes
   it, where `config.toml` gives it and when the command line is built), the task and the conversation before it **must** go to its standard
   input and never into an argument, and there is no shell. Its environment is Vimma's without
   the `MOZ_`, `VIMMA_`, `XRE_` and `XUL_` variables. It **must** run in a new 0700 folder of

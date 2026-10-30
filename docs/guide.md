@@ -1789,7 +1789,8 @@ now, never in the background) and lists it with its version and full path, for e
 `claude 2.1.303 · /home/you/.local/bin/claude`. `Enter` picks it, and the prompt line asks
 `agent model:` with `sonnet` filled in: keep it, type another of Claude Code's models (`opus`,
 `haiku` or a full model name), or clear it to leave the choice to Claude Code's own default
-model. A model that starts with `-` is refused there. That path is kept in the pref
+model. A model that starts with `-`, holds a tab or a line break, or is longer than 200
+characters is refused there. That path is kept in the pref
 `vimma.agent.cli.claude-code.path`, never in `config.toml`, and is checked before every task:
 it must be a regular executable file of yours or root's that no other user can write, in
 folders no other user can write. The provider is added to `config.toml` with its model, and
