@@ -268,22 +268,34 @@ instead, because a written rule is only as good as the memory of whoever follows
 ships the `vimma-pr` agent, which takes one pull request or issue to merge in its own worktree
 and ends with a fixed report. <!-- process-wording: describes the plugin for coding agents -->
 
-Enable it for a checkout in `.claude/settings.json` (git-ignored, so each checkout opts in), or in
-`~/.claude/settings.json` for every project:
+Install it from GitHub with auto-update on, so new and fixed hooks arrive without a reinstall. In
+Claude Code, run `/plugin marketplace add vimma-browser/vimma`, then
+`/plugin install vimma-guardrails@vimma`, and turn on auto-update under `/plugin` > Marketplaces >
+`vimma` > Enable auto-update. The same setup as settings, for a checkout in `.claude/settings.json`
+(git-ignored, so each checkout opts in) or for every project in `~/.claude/settings.json`:
 
 ```json
 {
   "extraKnownMarketplaces": {
-    "vimma": { "source": { "source": "github", "repo": "vimma-browser/vimma" } }
+    "vimma": {
+      "source": { "source": "github", "repo": "vimma-browser/vimma" },
+      "autoUpdate": true
+    }
   },
   "enabledPlugins": { "vimma-guardrails@vimma": true }
 }
 ```
 
-To try changes to the plugin itself, point the marketplace at a local checkout instead:
-`"source": { "source": "directory", "path": "/absolute/path/to/vimma" }`, then run
-`/reload-plugins`. `claude plugin validate tools/claude-plugin` checks the manifests, and
-`npm test` runs the hooks' tests (`tools/claude-plugin/test/`).
+The plugin's manifest has no `version` field on purpose: Claude Code caches a plugin from a git
+marketplace under its version and falls back to the commit SHA when none is set, so every commit
+on `main` is a new version that auto-update picks up. A pinned version would keep everyone on the
+cached copy until someone remembered to bump it.
+
+To work on the plugin itself, point the marketplace at a local checkout instead:
+`"source": { "source": "directory", "path": "/absolute/path/to/vimma" }`. A directory marketplace
+is read in place, not copied to the cache, so `/reload-plugins` applies edits at once.
+`claude plugin validate tools/claude-plugin` checks the manifests, and `npm test` runs the hooks'
+tests (`tools/claude-plugin/test/`).
 
 What the hooks block, on every Bash command (including those inside `bash -c`, `eval`, `$(...)`
 and pipelines, but not text that only mentions them, such as a commit message or a heredoc):
