@@ -432,6 +432,14 @@ add_task(async function esc_in_normal_mode_stops_a_load_after_the_page() {
       VimmaHost._browserMode(browser) === "normal",
     "the slow page is shown and still loading",
   );
+  // The location changes as soon as the slow page's document exists, before its parser has made
+  // a root element. promiseFocus reads that document's activeElement, which is null until then.
+  await SpecialPowers.spawn(browser, [SLOW], (url) =>
+    ContentTaskUtils.waitForCondition(
+      () => content.location.href === url && content.document.body !== null,
+      "the slow page has its body",
+    ),
+  );
   await SimpleTest.promiseFocus(browser);
   await TestUtils.waitForCondition(
     () => !document.getElementById("Browser:Stop").hasAttribute("disabled"),
