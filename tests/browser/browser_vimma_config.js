@@ -179,6 +179,33 @@ add_task(async function a_broken_line_keeps_the_old_config_and_shows_file_and_li
   await resetConfig();
 });
 
+// A repeating timer leaves the timer list while it fires and comes back after its callback.
+// browser-test.js lists the repeating timers once, as the run starts, and reports any timer
+// not in that list after each file: a poll firing at that moment was reported as left by the
+// first file (browser_vimma_a11y.js on the macOS runner). The poll is a one-shot timer, set
+// again at each tick, so the list never depends on that moment.
+add_task(async function the_poll_is_not_a_repeating_timer_a_test_could_be_blamed_for() {
+  const repeating = () =>
+    Cc["@mozilla.org/timer-manager;1"]
+      .getService(Ci.nsITimerManager)
+      .getTimers()
+      .filter(
+        (t) =>
+          t.type !== Ci.nsITimer.TYPE_ONE_SHOT &&
+          t.type !== Ci.nsITimer.TYPE_ONE_SHOT_LOW_PRIORITY &&
+          t.name.includes("ConfigHost"),
+      )
+      .map((t) => `${t.name} ${t.delay}`);
+  const busyUntil = Date.now() + 300;
+  while (Date.now() < busyUntil) {
+    // The poll (every 100 ms here) fires meanwhile; its callback waits for the main thread.
+  }
+  const listed = repeating();
+  await TestUtils.waitForTick();
+  await new Promise((r) => setTimeout(r, 150));
+  Assert.deepEqual(repeating(), listed, "the harness's list of repeating timers holds");
+});
+
 add_task(async function colon_source_reloads_at_once() {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.pollMs", 600000]] });
   const tab = await openPage("source");

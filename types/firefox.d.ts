@@ -60,7 +60,11 @@ declare const Services: {
     hasListenersFor(target: EventTarget, type: string): boolean;
   };
   // engine/xpcom/threads/nsIThreadManager.idl
-  tm: { readonly mainThread: unknown; dispatchToMainThread(task: () => void): void };
+  tm: {
+    readonly mainThread: unknown;
+    dispatchToMainThread(task: () => void): void;
+    idleDispatchToMainThread(task: () => void, timeout?: number): void;
+  };
   // engine/docshell/base/nsIURIFixup.idl
   uriFixup: {
     getFixupURIInfo(

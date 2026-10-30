@@ -209,7 +209,10 @@ hand check records how long that lasts (a frame or two plus Hyprland's open anim
    `XDG_RUNTIME_DIR` must be an absolute path. The socket is
    `$XDG_RUNTIME_DIR/hypr/<sig>/.socket.sock`, with no other location and no config override.
    Missing variables, a missing socket, a refused connection, no reply within 500 ms, or a
-   probe that fails both dialects all mean "no Hyprland". Placement is then `"window"` for the
+   probe that fails both dialects all mean "no Hyprland". After 500 ms a request still waits
+   for the main thread's next idle moment (at most another 500 ms) before it gives up, so a
+   reply queued behind a window that is opening counts, because only a late Hyprland is a
+   reason to give up. Placement is then `"window"` for the
    session, `about:vimma` says why, and the browser console gets at most one line per session.
    Each later switch retries once if the cause was a timeout.
 4. **Fixed command set, built in core.** `hyprswap.mjs` encodes a closed list of verbs (move,

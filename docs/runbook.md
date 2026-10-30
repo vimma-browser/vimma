@@ -765,6 +765,30 @@ A failure in a hidden-tab test on this job is therefore a real one again. A test
 what a background tab's process sends the parent (session history, a title, typed keys) waits
 for it, as `TabStateFlusher.flush` or a polled value does, instead of reading it once.
 
+**A slower machine, not a different one.** The runner's main thread is often busy for longer
+than on Linux, and the remaining flakes all came from that, each with a fix in the code or in
+what a test waits for:
+
+- A page-first key (`ctrl+l`) pressed into a tab whose content process is still starting was
+  lost: Firefox sends a page that is not ready for input no key and dispatches the keypress at
+  the `<browser>` again, and Vimma waited for a reply that never came. Vimma now runs the key
+  from that second keypress (`browser_vimma_browser_keys.js`,
+  `a_page_first_key_runs_in_a_tab_whose_process_is_still_starting`; it was the tabstrip file's
+  first `ctrl+l`, right after `browser_vimma_tab_search.js` started new processes).
+- A Hyprland request timed out when the main thread was held past its 500 ms (a window opening)
+  with the reply already queued behind the timer. The timeout now waits for an idle moment
+  before it gives up (`HyprIpc.sys.mjs`; `browser_vimma_private_swap.js`,
+  `a_reply_held_up_by_a_busy_main_thread_still_counts`).
+- The toolbar's overflow menu was compared after a fixed 300 ms while CustomizableUI was still
+  moving buttons, one layout flush per button. The test now waits for
+  `overflowable.isHandlingOverflow()` to end, as Firefox's own tests do.
+- The harness lists repeating timers once as the run starts, and a repeating timer is out of
+  that list while it fires: ConfigHost's poll firing at that moment was reported as left by the
+  first file (`browser_vimma_a11y.js`). The poll is now a one-shot timer set again at each tick.
+
+A new flake on this job is looked for in the same places first: an event or reply that a busy
+main thread delays, and a fixed wait that a test should replace with the condition it waits for.
+
 When it fails:
 
 - **Vitest:** a test that assumes Linux (a path, `/proc`, a shell tool). Make the test or the

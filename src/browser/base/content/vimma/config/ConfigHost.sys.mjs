@@ -41,8 +41,8 @@ import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
-  clearInterval: "resource://gre/modules/Timer.sys.mjs",
-  setInterval: "resource://gre/modules/Timer.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
 /** A full path overrides the XDG location (tests; `~/` is expanded). */
@@ -390,10 +390,18 @@ async function edit(win) {
   openUrl(win, `view-source:${PathUtils.toFileURI(path)}`, "tab");
 }
 
+/**
+ * A one-shot timer set again at each tick, not an interval: a repeating timer leaves the timer
+ * list while it fires, and the browser-test harness, which lists repeating timers once as a
+ * run starts, then reports it as left behind by whichever test file runs first.
+ */
 function startTimer() {
-  if (timer !== null) lazy.clearInterval(timer);
+  if (timer !== null) lazy.clearTimeout(timer);
   const ms = Math.max(50, Services.prefs.getIntPref(POLL_PREF, DEFAULT_POLL_MS));
-  timer = lazy.setInterval(() => poll(), ms);
+  timer = lazy.setTimeout(() => {
+    startTimer();
+    poll();
+  }, ms);
 }
 
 /**
@@ -436,7 +444,7 @@ function start(win) {
 }
 
 function stop() {
-  if (timer !== null) lazy.clearInterval(timer);
+  if (timer !== null) lazy.clearTimeout(timer);
   timer = null;
   Services.prefs.removeObserver(PATH_PREF, onPref);
   Services.prefs.removeObserver(POLL_PREF, onPref);

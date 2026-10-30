@@ -1406,31 +1406,34 @@ add_task(async function revealing_keeps_the_overflow_menu() {
   for (const id of added) CustomizableUI.addWidgetToArea(id, CustomizableUI.AREA_NAVBAR);
   const width = window.outerWidth;
   window.resizeTo(560, window.outerHeight);
+  await until(() => window.outerWidth === 560, "the window is 560 px wide");
   await until(() => $("nav-bar").hasAttribute("overflowing"), "the nav bar overflows");
   const overflowed = () =>
     [...document.querySelectorAll("[overflowedItem]")]
       .map((c) => c.id)
       .sort()
       .join(",");
-  await new Promise((r) => setTimeout(r, 300));
-  const before = overflowed();
+  // Each look at the overflow menu follows a resize event and waits for the overflow check it
+  // starts to finish (moving items is asynchronous, one layout flush per item), as
+  // CustomizableUITestUtils does: a slow machine is still moving items after a fixed wait.
+  const afterResize = async () => {
+    window.dispatchEvent(new Event("resize"));
+    await window.promiseDocumentFlushed(() => {});
+    await until(() => !$("nav-bar").overflowable.isHandlingOverflow(), "the overflow check ends");
+    return overflowed();
+  };
+  const before = await afterResize();
 
   Assert.ok(before.length, "some buttons are in the overflow menu");
 
   await hide();
-  window.dispatchEvent(new Event("resize"));
-  await new Promise((r) => setTimeout(r, 300));
-  Assert.equal(overflowed(), before, "hidden, after a resize: the same overflowed items");
+  Assert.equal(await afterResize(), before, "hidden, after a resize: the same overflowed items");
   EventUtils.synthesizeKey("I", { shiftKey: true });
   await until(() => gURLBar.focused && minimal(), "minimal");
-  window.dispatchEvent(new Event("resize"));
-  await new Promise((r) => setTimeout(r, 300));
-  Assert.equal(overflowed(), before, "minimal: the same overflowed items");
+  Assert.equal(await afterResize(), before, "minimal: the same overflowed items");
   toolbarOf().hold("test", "full");
   await until(() => revealedFull(), "full");
-  window.dispatchEvent(new Event("resize"));
-  await new Promise((r) => setTimeout(r, 300));
-  Assert.equal(overflowed(), before, "full: the same overflowed items");
+  Assert.equal(await afterResize(), before, "full: the same overflowed items");
   toolbarOf().release("test");
   await escapeUrlbar();
 

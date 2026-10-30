@@ -165,7 +165,13 @@ export const HyprIpc = {
         }
         resolve(new TextDecoder().decode(all));
       };
-      const timer = lazy.setTimeout(() => finish(new Error("no reply")), REPLY_MS);
+      // Late only when Hyprland is: a main thread held past REPLY_MS (a window opening) queues
+      // the reply's socket events behind this timer, so the timeout waits for the queue to
+      // drain (an idle moment, at most another REPLY_MS) before it gives up.
+      const timer = lazy.setTimeout(
+        () => Services.tm.idleDispatchToMainThread(() => finish(new Error("no reply")), REPLY_MS),
+        REPLY_MS,
+      );
       const onReady = () => {
         if (done) return;
         const bytes = readAvailable(input, binary);
