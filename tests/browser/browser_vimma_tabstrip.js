@@ -61,8 +61,8 @@ add_task(async function strip_is_hidden_by_default_and_nav_bar_stays() {
 
   await SimpleTest.promiseFocus(window);
   gBrowser.selectedBrowser.focus();
-  // ctrl+l is Vimma's focus_urlbar on every platform. cmd+l is too on macOS, but it goes to the
-  // page first, and pressed this soon after startup it missed in about 1 of 10 macOS runs.
+  // ctrl+l is Vimma's focus_urlbar on every platform, the page's first. The selected tab's
+  // process may still be starting here; browser_vimma_browser_keys.js covers that case.
   EventUtils.synthesizeKey("l", { ctrlKey: true });
   await TestUtils.waitForCondition(() => gURLBar.focused, "ctrl+l focuses the URL bar");
   EventUtils.synthesizeKey("KEY_Escape");

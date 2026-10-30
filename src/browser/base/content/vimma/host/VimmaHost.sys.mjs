@@ -2312,7 +2312,15 @@ export const VimmaHost = {
       return;
     }
     const pending = state.pageFirst.find((p) => !p.pressed && p.key === key);
-    if (!pending) return;
+    if (!pending) {
+      // A page that cannot take input yet (its process is still starting) is sent no key:
+      // EventStateManager::PostHandleKeyboardEvent dispatches the keypress at the <browser>
+      // again instead, and no reply comes. Settled as a key that stayed in this process,
+      // `_onKeyPressAfter` runs it unless something calls preventDefault.
+      const waiting = state.pageFirst.filter((p) => p.awaiting && p.key === key).at(-1);
+      if (waiting && /** @type {any} */ (e.target)?.isRemoteBrowser) waiting.awaiting = false;
+      return;
+    }
     pending.pressed = true;
     if (/** @type {any} */ (e.target)?.isRemoteBrowser) {
       pending.awaiting = true;

@@ -323,7 +323,11 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   // Under a grant, a same-site follow runs unasked: a subdomain is the same site.
   await keys(c, tab, "f", { kind: "grant", minutes: 5 });
   let r = await keys(c, tab, `f${LABEL.sub}`, null);
-  Assert.equal(r.result.url, SUB, "a follow to a subdomain runs under the grant");
+  Assert.equal(
+    r.result.url,
+    SUB,
+    `a follow to a subdomain runs under the grant (steps: ${JSON.stringify(r.result.steps)})`,
+  );
   await until(
     () => noticeText().startsWith('claude-code followed a link to test1.example.com in "'),
     "its notice names the host it loaded (D14)",

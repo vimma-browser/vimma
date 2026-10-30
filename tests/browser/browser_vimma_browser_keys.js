@@ -319,6 +319,22 @@ add_task(async function zoom_keys_zoom_and_a_page_that_takes_one_keeps_it() {
   BrowserTestUtils.removeTab(tab);
 });
 
+add_task(async function a_page_first_key_runs_in_a_tab_whose_process_is_still_starting() {
+  // Pressed in the same tick as the tab opens, the key meets a page that cannot take input yet:
+  // Firefox sends it no key and dispatches the keypress at the <browser> again, with no reply
+  // to come (EventStateManager::PostHandleKeyboardEvent). A new tab, or a tab whose process
+  // was just started, is in that state until its process says it is ready.
+  await SimpleTest.promiseFocus(window);
+  const tab = BrowserTestUtils.addTab(gBrowser, PLAIN);
+  gBrowser.selectedTab = tab;
+  tab.linkedBrowser.focus();
+  Assert.ok(tab.linkedBrowser.frameLoader?.remoteTab, "sanity: the page is in a content process");
+  EventUtils.synthesizeKey("l", { ctrlKey: true });
+  await TestUtils.waitForCondition(() => gURLBar.focused, "ctrl+l focuses the address bar");
+  EventUtils.synthesizeKey("KEY_Escape");
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function a_blocked_shortcuts_permission_makes_the_key_vimmas_first() {
   const tab = await normalPage();
   const browser = tab.linkedBrowser;

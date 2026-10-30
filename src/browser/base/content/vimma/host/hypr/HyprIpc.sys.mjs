@@ -17,6 +17,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 /** No reply within this long is no Hyprland (decision 3). */
 export const REPLY_MS = 500;
+/** The most one step of that wait counts, however late its timer fires. */
+const TICK_MS = 50;
 /** A reply larger than this is cut off: j/clients with hundreds of windows is far below it. */
 const MAX_REPLY = 4 * 1024 * 1024;
 
@@ -143,6 +145,8 @@ export const HyprIpc = {
       const chunks = [];
       let size = 0;
       let done = false;
+      /** @type {unknown} */
+      let timer = null;
       /** @param {Error | null} error */
       const finish = (error) => {
         if (done) return;
@@ -165,7 +169,19 @@ export const HyprIpc = {
         }
         resolve(new TextDecoder().decode(all));
       };
-      const timer = lazy.setTimeout(() => finish(new Error("no reply")), REPLY_MS);
+      // Late only when Hyprland is: REPLY_MS counts in ticks of at most TICK_MS each, so a main
+      // thread held by a window opening, with the reply's socket events queued behind it, does
+      // not use up the wait. At most REPLY_MS / TICK_MS ticks in all.
+      let waited = 0;
+      let last = Date.now();
+      const tick = () => {
+        const now = Date.now();
+        waited += Math.min(now - last, TICK_MS);
+        last = now;
+        if (waited >= REPLY_MS) finish(new Error("no reply"));
+        else timer = lazy.setTimeout(tick, TICK_MS);
+      };
+      timer = lazy.setTimeout(tick, TICK_MS);
       const onReady = () => {
         if (done) return;
         const bytes = readAvailable(input, binary);
