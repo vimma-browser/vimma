@@ -1833,8 +1833,8 @@ none.
 
 **Choosing the model.** Once a CLI is set up, `Esc`, then `m`, lists one row for each model Vimma
 knows the CLI takes, under the provider's name (`claude · opus`), a row for the CLI's own default
-model (`claude · its default model`), and a row `… · other model…` that asks for any other model on the prompt line, under the
-same rule as setup. The model `config.toml` names is marked `config.toml`, and the open
+model (`claude · its default model`), and a row `… · other model…` that asks for any other model
+on the prompt line, under the same rule as setup. The model `config.toml` names is marked `config.toml`, and the open
 conversation's `in use`. `Enter` uses the model for the open conversation and for new ones until
 Vimma restarts; `D` also keeps it, adding it to `config.toml` as a provider of its own
 (`claude-2`) and making it `[agent] default`. The list is Vimma's own: the CLI is not started to
@@ -1947,6 +1947,116 @@ list finds it again` (the row reads `not available`): the program Vimma stored w
   `claude` in a terminal and `/login`.
 
 Codex follows.
+
+#### Running an agent CLI headless
+
+Each of these tools can also take one prompt on its command line, run it without its terminal
+interface and print the answer, so a shell script, an editor command or a keyboard shortcut can
+start a task in the agent workspace. Headless means no terminal interface, not unattended: every
+step still waits for your answer on Vimma's [question line](#answering-an-agent), so keep Vimma
+where you can answer it (when it is not in front, it marks its window urgent and notifies you).
+
+- **Allow Vimma's tools up front.** A headless run has no terminal to ask you in, so each tool
+  refuses a tool call it would otherwise ask about, before Vimma sees it. The commands below
+  allow only the `vimma` server's tools; Vimma's own question remains the check on each step.
+- **Answer the first question with `a`.** Later steps then run under the grant without asking,
+  until the run ends ([What a grant covers](#what-a-grant-covers)). Each run starts its own
+  `vimma-ctl mcp`, so its grant ends with it and the next run asks again. Sending a form, paying,
+  showing you a page and the downloads that always ask still ask at each step.
+- **A denial or no answer.** The tool call comes back as an error, `The user denied this request
+in Vimma.` or `No answer in Vimma within 50 s; treated as denied.`, and the agent says so in
+  its answer. The run itself does not fail (Claude Code and Copilot CLI exit with status 0), so
+  a script that needs to know reads the answer or the tool results (below), not the exit status.
+- **One-off servers.** Each tool can take the server for one run only, without changing your
+  configuration: put the JSON entry from [Connecting an agent's tool](#connecting-an-agents-tool)
+  in a file (here `vimma.json`); for another profile, its `args` are `["--profile", "DIR", "mcp"]`.
+
+The versions named are those the commands were checked against, on Linux.
+
+**Claude Code** (2.1.303):
+
+```sh
+claude -p "Open https://example.com in Vimma's agent workspace and tell me its heading" \
+  --allowedTools "mcp__vimma" --output-format json | jq -r .result
+```
+
+- `-p` (`--print`) runs the prompt and exits. `--allowedTools "mcp__vimma"` allows every tool of
+  the server named `vimma`; `mcp__vimma__vimma_read_page` would allow that one tool. Without it,
+  the call is refused and the JSON's `permission_denials` lists it.
+- `--mcp-config vimma.json --strict-mcp-config` uses the server in `vimma.json` for this run and
+  leaves out the servers of your other configuration.
+- `--output-format json` prints one object when the run ends: `result` is the answer.
+  `--output-format stream-json --verbose` (it needs `--verbose`) prints a JSON line for each
+  message as the run goes; a tool result is in a `user` message, with `"is_error": true` when
+  Vimma denied it. To print only the steps that were denied or failed:
+
+  ```sh
+  claude -p "Open https://example.com in Vimma's agent workspace and tell me its heading" \
+    --allowedTools "mcp__vimma" --output-format stream-json --verbose |
+    jq -r 'select(.type == "user") | .message.content[]? | select(.type == "tool_result" and .is_error) | .content'
+  ```
+
+**Codex CLI** (0.163.0):
+
+```sh
+codex exec -c 'mcp_servers.vimma.default_tools_approval_mode="approve"' \
+  "Open https://example.com in Vimma's agent workspace and tell me its heading"
+```
+
+- `codex exec` runs the prompt and exits, and never asks for an approval: a Vimma tool that is
+  not marked read-only is refused (`MCP tool call requires approval, but approval policy is
+never`) unless the server's `default_tools_approval_mode` is `"approve"`. `-c` sets it for this
+  run; set under `[mcp_servers.vimma]` in `~/.codex/config.toml`, it applies to every session,
+  and an interactive Codex then stops asking before Vimma does.
+- For a server not in your configuration, add `-c 'mcp_servers.vimma.command="vimma-ctl"'` and
+  `-c 'mcp_servers.vimma.args=["mcp"]'`.
+- Codex gives up on a tool call after 60 s (`tool_timeout_sec`); if you raise `ask_timeout`, add
+  `-c mcp_servers.vimma.tool_timeout_sec=320` ([Timeouts in agent tools](#timeouts-in-agent-tools)).
+- `--json` prints one JSON line for each event. A Vimma call is an `item.completed` event whose
+  `item.type` is `mcp_tool_call`, with `status` (`completed` or `failed`), `result` and `error`.
+  `-o FILE` also writes the final answer to `FILE`. Outside a Git repository, `codex exec` needs
+  `--skip-git-repo-check`.
+
+**GitHub Copilot CLI** (1.0.104):
+
+```sh
+copilot -p "Open https://example.com in Vimma's agent workspace and tell me its heading" \
+  --allow-tool=vimma -s
+```
+
+- `-p` (`--prompt`) runs the prompt and exits. `--allow-tool=vimma` allows every tool of the
+  `vimma` server; `--allow-tool='vimma(vimma_read_page)'` would allow one. Without it, the call
+  is refused. `--allow-all-tools` is not needed for Vimma's tools, and would also let the run use
+  the shell and edit files without asking.
+- `--additional-mcp-config @vimma.json` adds the server in `vimma.json` for this run.
+- `-s` (`--silent`) prints only the answer; `--output-format json` prints one JSON object for
+  each event instead.
+
+**opencode** (2.0.32):
+
+```sh
+opencode run "Open https://example.com in Vimma's agent workspace and tell me its heading"
+```
+
+- `opencode run` runs the prompt and exits. It reads the same `mcp` entry in `opencode.json` as
+  the interactive opencode.
+- opencode allows MCP tools without asking unless a `permission` rule in `opencode.json` says
+  `ask` or `deny`. Its tool names start with the server's name, so this allows Vimma's tools
+  even where a broader rule asks:
+
+  ```json
+  { "permission": { "vimma_*": "allow" } }
+  ```
+
+  `opencode run --auto` approves every request that is not denied, including the shell and file
+  edits, so a rule for `vimma_*` is the narrower choice.
+
+- `--format json` prints opencode's events as JSON instead of formatted text.
+
+**Without a separate program.** [Vimma's own agent](#vimmas-own-agent) takes a task in its chat
+window, with no agent tool to start and no `:mcp on`: sending with `Enter` is the grant, and the
+same checkpoints ask. It can also run Claude Code for you
+([Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window)).
 
 #### When to use Playwright instead
 
