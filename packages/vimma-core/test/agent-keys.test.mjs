@@ -11,6 +11,7 @@ import {
   labelAgentLinks,
   labelsCurrent,
   parseAgentKeys,
+  refusalReason,
   shownKeys,
 } from "../src/agent-keys.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "../src/hints.mjs";
@@ -185,6 +186,22 @@ describe("links (D12)", () => {
       { keys: "j", action: "scroll.down" },
       { keys: "f", action: "hint.follow" },
     ]);
+  });
+
+  // docs/specs/follow-link-switch.md decision 7: an agent's opens never switch.
+  test("hint.follow_new_tab_fg is refused with hint.follow_new_tab's reason", () => {
+    expect(refusalReason("hint.follow_new_tab")).toBe(
+      "it opens a tab; vimma_open does that, asked",
+    );
+    expect(refusalReason("hint.follow_new_tab_fg")).toBe(refusalReason("hint.follow_new_tab"));
+  });
+
+  test("an upper-case character after f is not part of the label", () => {
+    expect(steps("fsG")).toEqual([
+      { keys: "fs", action: "hint.follow", label: "s" },
+      { keys: "G", action: "scroll.bottom" },
+    ]);
+    expect(refusal("fsD")).toContain('key "D"');
   });
 
   test("f without a label anywhere but at the end is refused", () => {

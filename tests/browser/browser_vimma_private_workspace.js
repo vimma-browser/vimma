@@ -725,6 +725,45 @@ add_task(async function about_vimma_and_its_key_log_leave_private_windows_out() 
   );
 });
 
+// docs/specs/follow-link-switch.md behaviour 7: gF's switching open stays in the private window.
+add_task(async function a_switching_follow_in_a_private_window_stays_private() {
+  const { VimmaHost } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+  );
+  // The tasks before leave a private window open, which the next one closes: a tab of its own.
+  const priv = privateWindows()[0] ?? (await openPrivate());
+  await SimpleTest.promiseFocus(priv);
+  const hinted = BrowserTestUtils.addTab(priv.gBrowser, "https://example.com/?vimmaprivatelink");
+  const browser = hinted.linkedBrowser;
+  await BrowserTestUtils.browserLoaded(browser);
+  await BrowserTestUtils.switchTab(priv.gBrowser, hinted);
+  const target = "https://example.com/?vimmaprivatefollowed";
+  await SpecialPowers.spawn(browser, [target], (href) => {
+    const doc = content.document;
+    doc.body.replaceChildren();
+    const a = doc.createElement("a");
+    a.href = href;
+    a.textContent = "followed";
+    doc.body.append(a);
+  });
+  await focusPage(priv);
+  const normalTabs = gBrowser.tabs.length;
+  EventUtils.synthesizeKey("g", {}, priv);
+  EventUtils.synthesizeKey("F", { shiftKey: true }, priv);
+  await until(() => VimmaHost._hints(priv)?.hints.length, "gF labels the link");
+  const { label } = VimmaHost._hints(priv).hints.find((h) => h.target.href === target);
+  const opened = BrowserTestUtils.waitForNewTab(priv.gBrowser, target, true);
+  for (const c of label.slice(0, -1)) EventUtils.synthesizeKey(c, {}, priv);
+  EventUtils.synthesizeKey(label.slice(-1).toUpperCase(), { shiftKey: true }, priv);
+  const tab = await opened;
+  await until(() => priv.gBrowser.selectedTab === tab, "the new tab is selected");
+  Assert.ok(PrivateBrowsingUtils.isBrowserPrivate(tab.linkedBrowser), "a private tab");
+  Assert.equal(gBrowser.tabs.length, normalTabs, "the normal window got no tab");
+  BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(hinted);
+  await SimpleTest.promiseFocus(window);
+});
+
 add_task(async function closing_discards_the_private_data() {
   const [priv] = privateWindows();
   // A private pop-up (an OAuth sign-in, say) holds the private jar too: closing the private

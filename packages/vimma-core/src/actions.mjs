@@ -237,6 +237,7 @@ group("Developer tools", [
 group("Hints", [
   ["follow_link", "hint.follow", "Follow link"],
   ["follow_link_new_tab", "hint.follow_new_tab", "Follow link in new tab"],
+  ["follow_link_new_tab_fg", "hint.follow_new_tab_fg", "Follow link in new tab and switch to it"],
   ["focus_element", "hint.element", "Focus a text block: v selects it, y copies it"],
   ["hint_cancel", "hint.cancel", "Leave hint mode"],
 ]);

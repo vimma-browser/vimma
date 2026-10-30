@@ -14,7 +14,7 @@ What works today, each with the section that explains it:
 
 - **Vim on the page** ([the two layers](#the-two-layers)): `j`/`k`/`h`/`l` scroll, `d`/`u`
   half a page, `gg`/`G` top and bottom, `H`/`L` back and forward; `f` link hints (`gF` in a
-  background tab); `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
+  new tab: in the background, or with an upper-case last key, switching to it); `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
   list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
   with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
@@ -461,7 +461,22 @@ in reading order: targets near the top get the shortest. As you type, labels tha
 disappear. `Backspace` takes back a key and `Esc` leaves hints without doing anything.
 
 `gF` labels links only and opens the one you pick in a new tab in the background, so you stay
-on the page and can pick more. (`F` is [element focus](#copying-a-paragraph-element-focus); a
+on the page and can pick more. To read the link now, type the label's last character in upper
+case (with `Shift`): `sD` instead of `sd` opens the same link in a new tab and switches to it, and
+the page you came from stays open behind it, so `x` on the new tab brings you back. Caps Lock counts
+as `Shift`. While the labels are up, the status bar shows both choices with a label you can type,
+such as `sd background · sD go there`. A label ending in a digit or punctuation (possible with a
+custom `hint_chars`) has no upper case and always opens in the background.
+
+For hints that always switch to the new tab, whatever the case typed, bind the action
+`follow_link_new_tab_fg` (`hint.follow_new_tab_fg`), which has no key by default:
+
+```toml
+[modal.normal]
+"<leader>F" = "hint.follow_new_tab_fg"
+```
+
+Firefox's `browser.tabs.loadInBackground` setting changes neither: the key you type decides. (`F` is [element focus](#copying-a-paragraph-element-focus); a
 `config.toml` that binds `F = "hint.follow_new_tab"` under `[modal.normal]` keeps background-tab
 hints on `F`.)
 
@@ -651,8 +666,9 @@ with `F11` keeps it. From the left:
 
 - the **mode** badge in the mode's colour: `NORMAL` on a page, `INSERT` while a text field has
   focus (or after `i`), `COMMAND` while you type a `:` command or a `/` search, `HELP` while
-  the `ctrl+b ?` overlay or tab search is open, `HINT` while link hints are up,
-  `VISUAL` in copy mode. Each mode keeps a colour of its own: when a theme gives two modes the
+  the `ctrl+b ?` overlay or tab search is open, `HINT` while link hints are up
+  (with `gF`, followed by the choice of tab, `sd background · sD go there`, which follows what you
+  type), `VISUAL` in copy mode. Each mode keeps a colour of its own: when a theme gives two modes the
   same colour or nearly (Catppuccin's bright magenta is its magenta, so `ELEMENT` would look like
   `VISUAL`), the later of the two in the order `NORMAL`, `INSERT`, `VISUAL`, `COMMAND`, `HINT`,
   `ELEMENT`, `HELP`, `PANEL`, `RESIZE`, prefix takes a lighter or darker shade of its colour, and
@@ -894,7 +910,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `gu` / `gU`                                                                             | Normal mode: up one level in the URL / to the site's root, without query and hash; `2gu` goes up two. At the top it says so.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `gf`                                                                                    | Normal mode: the page's source in a new tab, as Firefox's `ctrl+u` does. In insert mode `gi`, `yy`, `p`, `P`, `gu`, `gU` and `gf` are typed into the field.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `I`, `ctrl+l`, `alt+d`                                                                  | Focus the address bar with its text selected (in a split, the focused pane's); closes an open panel first. `I` in normal and copy mode, Firefox's `ctrl+l` and `alt+d` everywhere (`ctrl+l` and `cmd+l` on macOS).                                                                                                                                                                                                                                                                                                                                                                        |
-| `f` / `gF`                                                                              | Normal mode: link hints. Type a label to follow it, or, with `gF`, to open the link in a background tab. `Backspace` undoes a key, `Esc` cancels.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `f` / `gF`                                                                              | Normal mode: link hints. Type a label to follow it, or, with `gF`, to open the link in a background tab; an upper-case last key (`sD`) switches to the new tab. `Backspace` undoes a key, `Esc` cancels.                                                                                                                                                                                                                                                                                                                                                                                  |
 | `F`                                                                                     | Normal mode: element focus ([above](#copying-a-paragraph-element-focus)). Type a label to outline a text block; `y` copies it, `v` selects it in copy mode.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `/` / `?`                                                                               | Normal mode: find in the page (below). `Enter` stays on the match, `Esc` goes back to where you were.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `n` / `N`, `ctrl+g` / `ctrl+shift+g`, `F3` / `shift+F3`                                 | Next / previous match of the last search (`?` reverses them), wrapping around the page; `n` / `N` in normal mode. With Firefox's own find bar open, its search.                                                                                                                                                                                                                                                                                                                                                                                                                           |

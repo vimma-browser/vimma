@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- Link hints: in `gF`'s hints, typing the label's last character in upper case (`sD` instead of `sd`) opens the link in a new tab and switches to it; lower case still opens it in the background. Shift (or Caps Lock) on that last key no longer opens in the background as it did before. While `gF`'s labels are up, the status bar shows both choices with a label you can type, such as `sd background · sD go there`. A new action, `follow_link_new_tab_fg` (`hint.follow_new_tab_fg`), starts hints that always switch; it has no default key and can be bound in `config.toml`. The help overlay and its snapshots list the new action as unbound, and the new e2e baseline `follow-link-switch-hints` shows the status bar in `gF`'s hint mode.
+
 ## [0.1.12](https://github.com/vimma-browser/vimma/compare/v0.1.11...v0.1.12) · Firefox 159.0 (2026-10-30)
 
 

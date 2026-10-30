@@ -16,7 +16,10 @@ import { parseAgentElement, parseAgentForms } from "./agent-element.mjs";
 
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
 /** @typedef {{ rect: Rect }} Target */
-/** @typedef {"hint.follow" | "hint.follow_new_tab" | "hint.element"} HintAction */
+/**
+ * @typedef {"hint.follow" | "hint.follow_new_tab" | "hint.follow_new_tab_fg" | "hint.element"}
+ *   HintAction
+ */
 /**
  * @template {Target} [T=Target]
  * @typedef {{ label: string, target: T }} Hint
@@ -30,7 +33,8 @@ import { parseAgentElement, parseAgentForms } from "./agent-element.mjs";
  * @typedef {{ kind: "cancel" }
  *   | { kind: "ignored" }
  *   | { kind: "narrow", visible: number }
- *   | { kind: "select", action: HintAction, target: T, label: string }} HintResult
+ *   | { kind: "select", action: HintAction, target: T, label: string, switch: boolean }} HintResult
+ *   `switch`: a new tab opened by the select is selected (docs/specs/follow-link-switch.md)
  */
 
 export class HintError extends Error {
@@ -49,7 +53,12 @@ export class HintError extends Error {
 export const DEFAULT_HINT_CHARS = "asdfghjkl";
 
 /** @type {readonly HintAction[]} */
-export const HINT_ACTIONS = Object.freeze(["hint.follow", "hint.follow_new_tab", "hint.element"]);
+export const HINT_ACTIONS = Object.freeze([
+  "hint.follow",
+  "hint.follow_new_tab",
+  "hint.follow_new_tab_fg",
+  "hint.element",
+]);
 
 /** @param {string} chars */
 function checkChars(chars) {
@@ -157,6 +166,44 @@ export function visibleHints(state) {
   return state.hints.filter((h) => h.label.startsWith(state.typed));
 }
 
+/**
+ * `label` with its last character upper-cased, or null when that character has no one-character
+ * upper case (a digit, punctuation, ß), which no Shift on that key types
+ * (docs/specs/follow-link-switch.md, open question 1 answered (a)).
+ * @param {string} label
+ * @returns {string | null}
+ */
+export function upperLast(label) {
+  const chars = [...label];
+  const last = chars.pop();
+  if (last === undefined) return null;
+  const up = last.toUpperCase();
+  return [...up].length === 1 && up !== last && up.toLowerCase() === last
+    ? chars.join("") + up
+    : null;
+}
+
+/**
+ * What the status bar shows of a hint session: its action and the first label still on screen.
+ * @param {HintState<any>} state
+ * @returns {{ action: HintAction, label: string | null }}
+ */
+export function hintStatus(state) {
+  return { action: state.action, label: visibleHints(state)[0]?.label ?? null };
+}
+
+/**
+ * Whether a select opens its new tab in the foreground: always for the switching action; for
+ * `gF`, when the completing key is a letter typed upper case, Caps Lock included (a letter
+ * arrives lower case with shift set, keys.mjs normaliseKey). The keys before it only narrow.
+ * @param {HintAction} action
+ * @param {Chord} chord
+ */
+function switches(action, chord) {
+  if (action === "hint.follow_new_tab_fg") return true;
+  return action === "hint.follow_new_tab" && chord.shift && upperLast(chord.key) !== null;
+}
+
 const IGNORED = Object.freeze({ kind: /** @type {const} */ ("ignored") });
 const CANCEL = Object.freeze({ kind: /** @type {const} */ ("cancel") });
 
@@ -191,6 +238,7 @@ export function hintKey(state, chord) {
         action: state.action,
         target: hit.target,
         label: hit.label,
+        switch: switches(state.action, chord),
       }),
     };
   }

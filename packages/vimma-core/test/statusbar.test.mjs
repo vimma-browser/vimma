@@ -8,12 +8,15 @@ import {
   securityFromState,
   sharingCues,
   truncateUrl,
+  statusAnnouncement,
   statusSegments,
   statusWidth,
   textWidth,
   truncate,
 } from "../src/statusbar.mjs";
 import { THEME_TOKENS } from "../src/theme.mjs";
+import { hintKey, hintStatus, startHints } from "../src/hints.mjs";
+import { parseKey } from "../src/keys.mjs";
 
 /** @import { Segment } from "../src/statusbar.mjs" */
 
@@ -78,6 +81,103 @@ describe("status bar segments", () => {
     const one = statusSegments({ mode: "element", element: { kind: "code", length: 1, seq: 2 } });
     expect(one[1]?.text).toBe("code · 1 char");
     expect(statusSegments({ ...base, mode: "normal" }).some((s) => s.id === "element")).toBe(false);
+  });
+
+  // docs/specs/follow-link-switch.md decision 8: gF's outcomes, shown with a label to type.
+  test("gF's hint mode shows the background and go-there keys", () => {
+    const segs = statusSegments({
+      ...base,
+      mode: "hint",
+      hint: { action: "hint.follow_new_tab", label: "sd" },
+    });
+    expect(segs[0]).toMatchObject({ id: "mode", text: "HINT" });
+    expect(segs[1]).toMatchObject({
+      id: "hint",
+      text: "sd background · sD go there",
+      fg: "--vimma-fg-bright",
+      bg: null,
+      priority: 1,
+    });
+    expect(THEME_TOKENS.some((t) => t.name === segs[1]?.fg)).toBe(true);
+    // A label whose last character has no upper case shows only the background half.
+    const semi = statusSegments({
+      mode: "hint",
+      hint: { action: "hint.follow_new_tab", label: "a;" },
+    });
+    expect(semi[1]).toMatchObject({ id: "hint", text: "a; background" });
+  });
+
+  test("the switching action's hint mode shows only go there", () => {
+    const segs = statusSegments({
+      mode: "hint",
+      hint: { action: "hint.follow_new_tab_fg", label: "sd" },
+    });
+    expect(segs[1]).toMatchObject({ id: "hint", text: "sd go there" });
+  });
+
+  test("f's and F's hint modes, and hint mode before its labels, have no hint segment", () => {
+    for (const action of /** @type {const} */ (["hint.follow", "hint.element"])) {
+      const segs = statusSegments({ mode: "hint", hint: { action, label: "sd" } });
+      expect(segs.some((s) => s.id === "hint")).toBe(false);
+    }
+    const before = statusSegments({
+      mode: "hint",
+      hint: { action: "hint.follow_new_tab", label: null },
+    });
+    expect(before.some((s) => s.id === "hint")).toBe(false);
+    const gone = statusSegments({
+      mode: "normal",
+      hint: { action: "hint.follow_new_tab", label: "a" },
+    });
+    expect(gone.some((s) => s.id === "hint")).toBe(false);
+  });
+
+  test("the hint segment follows the typed prefix", () => {
+    const targets = Array.from({ length: 12 }, (_, i) => ({
+      rect: { x: i * 50, y: 0, width: 40, height: 10 },
+    }));
+    let hs = startHints(targets, { action: "hint.follow_new_tab" });
+    const text = () =>
+      statusSegments({ mode: "hint", hint: hintStatus(hs) }).find((s) => s.id === "hint")?.text;
+    expect(text()).toBe("a background · A go there");
+    hs = hintKey(hs, parseKey("l")).state;
+    expect(text()).toBe("la background · lA go there");
+  });
+
+  test("the hint segment is cut at its end", () => {
+    const input = {
+      mode: /** @type {const} */ ("hint"),
+      hint: { action: /** @type {const} */ ("hint.follow_new_tab"), label: "sd" },
+    };
+    const fitted = fitStatus(statusSegments(input), 20);
+    const hint = fitted.find((s) => s.id === "hint");
+    expect(hint?.text.startsWith("sd backgr")).toBe(true);
+    expect(hint?.text).not.toContain("go there");
+  });
+
+  test("starting gF's hints announces both outcomes once", () => {
+    let last = { mode: /** @type {any} */ ("normal"), notFound: null };
+    const said = [];
+    /** @param {any} input */
+    const speak = (input) => {
+      const r = statusAnnouncement(last, input);
+      if (r.text !== null) said.push(r.text);
+      last = r.last;
+    };
+    speak({ mode: "hint", hint: { action: "hint.follow_new_tab", label: null } });
+    speak({ mode: "hint", hint: { action: "hint.follow_new_tab", label: "a" } });
+    speak({ mode: "hint", hint: { action: "hint.follow_new_tab", label: "la" } });
+    speak({ mode: "normal" });
+    speak({ mode: "hint", hint: { action: "hint.follow_new_tab_fg", label: "a" } });
+    speak({ mode: "normal" });
+    speak({ mode: "hint", hint: { action: "hint.follow", label: "a" } });
+    expect(said).toEqual([
+      "hint mode. new tab: lower case opens in the background, upper case goes there",
+      "normal mode",
+      "hint mode. new tab: goes there",
+      "normal mode",
+      "hint mode",
+    ]);
   });
 
   test("pending keys: prefix colours for a prefix, plain otherwise", () => {

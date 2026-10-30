@@ -1,6 +1,6 @@
 # Spec: follow-link-switch
 
-Status: draft · Area: `packages/vimma-core/src/` (`hints.mjs`, `actions.mjs`, `agent-keys.mjs`,
+Status: implemented · Area: `packages/vimma-core/src/` (`hints.mjs`, `actions.mjs`, `agent-keys.mjs`,
 `statusbar.mjs`); `src/browser/base/content/vimma/` (`host/VimmaHost.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `ui/statusbar.mjs`); generated `docs/bindings.md`,
 `docs/bindings.json`, `packages/vimma-core/defaults.toml` · Upstream patches: none · ADR: none.
@@ -218,6 +218,23 @@ session`, `packages/vimma-core/src/update-notices.mjs:18`): a key, then what it 
 upper case goes there` (for the switching action, `new tab: goes there`), once per hint session,
    because a screen-reader user cannot see the segment change. The segment is text in the bar's
    `role=status` element, so it is read on demand. No colour carries meaning.
+10. **A label whose last character has no upper case opens in the background.** `hint_chars` may
+    hold digits and punctuation (`"1234567890"`, `"asdf;"`), whose Shift types another
+    character. Such a label cannot switch, and the status bar shows only the background half
+    while the first label on screen is one of them, because that keeps every config valid and
+    adds no key, and the bindable `follow_link_new_tab_fg` covers those charsets. Rejected:
+    refusing those characters in `hint_chars`, which would turn valid configs, `f`'s included,
+    into config errors; a toggle key in `gF`'s hint mode, which is one more key to learn; and
+    reading the shifted character from the physical key on a US layout (`keys.mjs:344`), which
+    is wrong on other layouts.
+11. **Caps Lock switches like Shift.** The typed character decides, so with Caps Lock on every
+    `gF` follow switches, because one rule then holds for every key, as Vimma's keymap already
+    reads a Caps Lock letter as its shifted key, and the status bar shows the outcome before the
+    last key. Rejected: only a held Shift, which needs the key event's `shiftKey` carried into
+    hint mode beside the chord.
+12. **`f` gets no Shift variant.** `f` keeps ignoring case, because `f` also labels buttons and
+    fields, which open no tab, and `gF` already covers links. Rejected: Shift on `f`'s last
+    label character opening a new background tab, as Vimium's held Shift does.
 
 ## Security and privacy
 
@@ -290,24 +307,4 @@ e2e baseline. It sets this spec to `implemented` and closes the issue.
 
 ## Open questions
 
-1. **Labels whose last character has no upper case.** `hint_chars` already refuses upper-case
-   characters, but it accepts digits and punctuation (`"1234567890"`, `"asdf;"`), whose Shift
-   types another character. (a) Such a label cannot switch: it opens in the background as today,
-   and the status bar shows only the background half while the example label is one of them; a
-   user of such a charset binds `follow_link_new_tab_fg`. (b) Refuse every character without a
-   one-character upper case in `hint_chars`, which turns valid configs, `f`'s included, into config
-   errors. (c) A toggle key in `gF`'s hint mode (`Enter` or `Tab`) that flips the session between
-   background and switching before the last key, which works with every charset and with Caps
-   Lock, at the cost of one more key to learn. (d) Read the shifted character from the physical
-   key on a US layout (the table in `keys.mjs:344`), which is wrong on other layouts.
-   **Recommendation: (a)**, because it keeps every config valid, adds no key, and the bindable
-   action covers those charsets.
-2. **Caps Lock.** With Caps Lock on, a letter arrives in upper case, as with Shift. (a) The typed
-   character decides: Caps Lock switches every `gF` follow, as Vimma's keymap already reads a Caps
-   Lock letter as its shifted key. (b) Only a held Shift switches, which needs the key event's
-   `shiftKey` carried into hint mode beside the chord. **Recommendation: (a)**, because one rule
-   holds for every key and the status bar shows the outcome before the last key.
-3. **A Shift variant for `f`.** (a) None: `f` keeps ignoring case, as today. (b) Shift on `f`'s
-   last label character opens a link in a new background tab, as Vimium's held Shift does.
-   **Recommendation: (a)**, because `f` also labels buttons and fields, which open no tab, and `gF`
-   already covers links.
+None. The three questions of the draft are decisions 10 to 12.

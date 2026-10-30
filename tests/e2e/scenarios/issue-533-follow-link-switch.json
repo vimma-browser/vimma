@@ -1,0 +1,58 @@
+{
+  "name": "issue-533-follow-link-switch",
+  "issue": 533,
+  "description": "Spec follow-link-switch: gF labels the two links of fixture:article.html, and the status bar names both outcomes beside the HINT badge, 'a background · A go there' (follow-link-switch-hints). Typing the first label's last character in upper case, A, opens the long page in a new tab after the article and selects it. The status bar shows the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "timeoutSeconds": 60,
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:article.html"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "article",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "g F"
+    },
+    {
+      "wait-for-state": {
+        "mode": "hint"
+      }
+    },
+    {
+      "screenshot": "follow-link-switch-hints"
+    },
+    {
+      "keys": "A"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [
+          {},
+          {
+            "title": "article",
+            "selected": false
+          },
+          {
+            "title": "long top navigate",
+            "selected": true
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import { displayLabel } from "./tablabels.mjs";
 import { clusterWidth, graphemes, textWidth } from "./textwidth.mjs";
 import { PRIVATE_COLOR_TOKEN, PRIVATE_GLYPH, PRIVATE_NAME } from "./privatews.mjs";
 import { AGENT_GLYPH } from "./agent.mjs";
+import { upperLast } from "./hints.mjs";
 
 export { textWidth };
 
@@ -69,6 +70,12 @@ export { textWidth };
  * @property {UpdateNotice | null} [update]  a newer Vimma, or an update problem
  *   (docs/specs/m6a-updater.md §5, updateNotice)
  * @property {ElementStatus | null} [element]  the focused text block in ELEMENT mode
+ * @property {HintStatus | null} [hint]  the hint session (hints.mjs hintStatus)
+ */
+/**
+ * A hint session (docs/specs/follow-link-switch.md decision 8): its action, and the first label
+ * still on screen, null until the targets are collected.
+ * @typedef {{ action: import("./hints.mjs").HintAction, label: string | null }} HintStatus
  */
 /**
  * The focused text block (docs/specs/element-focus.md decision 5): its kind, its length in
@@ -341,6 +348,7 @@ export function statusSegments(input) {
     sharing = [],
     update = null,
     element = null,
+    hint = null,
   } = input;
   /** @type {Segment[]} */
   const left = [];
@@ -362,6 +370,20 @@ export function statusSegments(input) {
       seg({
         id: "element",
         text: `${element.kind} · ${chars(element.length)}`,
+        fg: "--vimma-fg-bright",
+        priority: 1,
+        min: 4,
+        cut: "end",
+      }),
+    );
+  }
+  const hintText = mode === "hint" ? hintSegmentText(hint) : null;
+  if (hintText) {
+    // Cut at its end: the background half, gF's behaviour before the switch, goes last.
+    left.push(
+      seg({
+        id: "hint",
+        text: hintText,
         fg: "--vimma-fg-bright",
         priority: 1,
         min: 4,
@@ -593,6 +615,27 @@ export function statusSegments(input) {
 }
 
 /**
+ * The hint segment's text: `gF`'s two outcomes with a label the user can type now, `sd
+ * background · sD go there` (only the first half when the label's last character has no upper
+ * case); the switching action's one; none for `f` and `F`, whose outcome case does not change.
+ * @param {HintStatus | null} hint
+ * @returns {string | null}
+ */
+function hintSegmentText(hint) {
+  if (!hint?.label) return null;
+  if (hint.action === "hint.follow_new_tab_fg") return `${hint.label} go there`;
+  if (hint.action !== "hint.follow_new_tab") return null;
+  const up = upperLast(hint.label);
+  return up ? `${hint.label} background · ${up} go there` : `${hint.label} background`;
+}
+
+/** What a screen reader hears once when a new-tab hint session starts (decision 9). */
+const HINT_OUTCOMES = /** @type {Record<string, string>} */ ({
+  "hint.follow_new_tab": "new tab: lower case opens in the background, upper case goes there",
+  "hint.follow_new_tab_fg": "new tab: goes there",
+});
+
+/**
  * Fits segments into `width` columns: least important first, each is shrunk as far as needed
  * (down to its `min`), else dropped; `mode` (priority 0) is cut, never dropped, and keeps at least
  * one column. Returns the input itself when it fits, and no segments at width 0 or less.
@@ -757,9 +800,10 @@ const SELF_ANNOUNCING = new Set(["help", "command", "panel"]);
 
 /**
  * What the status bar last said: the mode, the failed search (page and query), how many
- * agent questions were waiting, and the focused text block's `seq`.
+ * agent questions were waiting, the focused text block's `seq`, and whether this hint session's
+ * outcomes were said.
  * @typedef {{ mode: Mode | null, notFound: string | null, agentWaiting?: number,
- *   element?: number | null }} Announced
+ *   element?: number | null, hintTold?: boolean }} Announced
  */
 
 /**
@@ -771,14 +815,15 @@ const SELF_ANNOUNCING = new Set(["help", "command", "panel"]);
  * @param {Announced} last
  * An agent question waiting (docs/specs/vimma-mcp.md decision 24) is said when the count rises.
  * A focused text block (docs/specs/element-focus.md decision 16) is said on each focus and
- * move: its kind and length, as "paragraph, 412 characters".
+ * move: its kind and length, as "paragraph, 412 characters". A new-tab hint session
+ * (docs/specs/follow-link-switch.md decision 9) says how to choose its outcome, once.
  * @param {{ mode: Mode, find?: FindStatus | null, url?: string | null, agentWaiting?: number,
- *   element?: ElementStatus | null }} input
+ *   element?: ElementStatus | null, hint?: HintStatus | null }} input
  * @returns {{ text: string | null, last: Announced }}
  */
 export function statusAnnouncement(
   last,
-  { mode, find = null, url = null, agentWaiting = 0, element = null },
+  { mode, find = null, url = null, agentWaiting = 0, element = null, hint = null },
 ) {
   const parts = [];
   let { mode: lastMode, notFound } = last;
@@ -800,6 +845,12 @@ export function statusAnnouncement(
     const n = element.length;
     parts.push(`${element.kind}, ${n} ${n === 1 ? "character" : "characters"}`);
   }
+  let hintTold = mode === "hint" && (last.hintTold ?? false);
+  const outcomes = mode === "hint" && hint ? HINT_OUTCOMES[hint.action] : undefined;
+  if (outcomes && !hintTold) {
+    parts.push(outcomes);
+    hintTold = true;
+  }
   if (agentWaiting > (last.agentWaiting ?? 0)) {
     parts.push(
       agentWaiting === 1
@@ -809,6 +860,6 @@ export function statusAnnouncement(
   }
   return {
     text: parts.length ? parts.join(". ") : null,
-    last: { mode: lastMode, notFound, agentWaiting, element: focused },
+    last: { mode: lastMode, notFound, agentWaiting, element: focused, hintTold },
   };
 }

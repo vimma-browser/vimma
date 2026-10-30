@@ -180,12 +180,13 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Hints
 
-| Action                                        | Config name           | Bindings           |
-| --------------------------------------------- | --------------------- | ------------------ |
-| Follow link                                   | `follow_link`         | `f`                |
-| Follow link in new tab                        | `follow_link_new_tab` | `gF`               |
-| Focus a text block: v selects it, y copies it | `focus_element`       | `F`, `F [element]` |
-| Leave hint mode                               | `hint_cancel`         | `esc [hint]`       |
+| Action                                        | Config name              | Bindings           |
+| --------------------------------------------- | ------------------------ | ------------------ |
+| Follow link                                   | `follow_link`            | `f`                |
+| Follow link in new tab                        | `follow_link_new_tab`    | `gF`               |
+| Follow link in new tab and switch to it       | `follow_link_new_tab_fg` | —                  |
+| Focus a text block: v selects it, y copies it | `focus_element`          | `F`, `F [element]` |
+| Leave hint mode                               | `hint_cancel`            | `esc [hint]`       |
 
 ## Element focus
 

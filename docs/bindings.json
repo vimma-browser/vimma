@@ -1594,6 +1594,11 @@
           ]
         },
         {
+          "name": "follow_link_new_tab_fg",
+          "description": "Follow link in new tab and switch to it",
+          "keys": []
+        },
+        {
           "name": "focus_element",
           "description": "Focus a text block: v selects it, y copies it",
           "keys": [
