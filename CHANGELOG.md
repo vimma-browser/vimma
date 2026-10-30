@@ -4,10 +4,44 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.12](https://github.com/vimma-browser/vimma/compare/v0.1.11...v0.1.12) · Firefox 159.0 (2026-10-30)
+
+
 ### Added
 
 - Vimma's own agent: `ctrl+b i` (or `:agent`) opens a chat window where you write a task, watch every step in a plain-text transcript, add instructions or stop it. It runs a model you pick, a local one (Ollama, LM Studio, the llama.cpp server) or a hosted one (Anthropic, or an OpenAI-compatible endpoint, with its API key kept encrypted in login storage). Models are set up in the window's picker, which also switches a conversation's model, or under `[agent]` and `[[agent.providers]]` in `config.toml`, where `local_only`, `max_running` and `keep_days` also live; a refused `config.toml` is named in the window. The agent works only in the agent workspace, through the same tools, grants and checkpoints as an MCP agent. Sending with `Enter` lets the conversation act without asking at each step, `ctrl+Enter` asks at every step, and sending a form or paying always asks in the window. Several conversations run at once, each on its own tabs, with step and token limits, and they are kept across restarts, encrypted, without the page text they read. The help overlay and its snapshots list the new key, `agent_chat` in the Agents group.
 - Agents (MCP): `vimma_open`, `vimma_activate` and `vimma_fill` take `elements: true` and return the page's element list with the step, so an action and the next look are one call. Screenshots default to at most 1024 px, PNG or JPEG, whichever is smaller; `full: true` gives the full-size image.
+
+* **agent:** a local model prunes older results rarely, a hosted one at 6 ([#632](https://github.com/vimma-browser/vimma/issues/632)) ([cfa6793](https://github.com/vimma-browser/vimma/commit/cfa6793ad2e091478af8bd980881b2cbad189d3e))
+* **agent:** a model loop and provider adapters in vimma-core ([#585](https://github.com/vimma-browser/vimma/issues/585)) ([b013457](https://github.com/vimma-browser/vimma/commit/b013457abc8b50710c7dd6fd3e9359f2fc9ed8da))
+* **agent:** a model test bench on a local fixture shop ([#590](https://github.com/vimma-browser/vimma/issues/590)) ([3bceaaf](https://github.com/vimma-browser/vimma/commit/3bceaafab142c3e7dd970cbe8cd6cb23fc4e1204))
+* **agent:** conversations kept across restarts ([#620](https://github.com/vimma-browser/vimma/issues/620)) ([b8aa1c3](https://github.com/vimma-browser/vimma/commit/b8aa1c33000494f25963a86aaa8dbb5ddff6b6d9))
+* **agent:** older page content leaves the agent's context ([#629](https://github.com/vimma-browser/vimma/issues/629)) ([9646b31](https://github.com/vimma-browser/vimma/commit/9646b3113b7ea5cc7f690b82e2888e8241fb1f26))
+* **agent:** switch the chat window model from its picker ([#644](https://github.com/vimma-browser/vimma/issues/644)) ([b7ca66c](https://github.com/vimma-browser/vimma/commit/b7ca66ca1c7dcaa4d896a888bc15282c29ffe56d))
+* **agent:** the built-in agent's gate connections, providers and key storage ([#595](https://github.com/vimma-browser/vimma/issues/595)) ([b72f466](https://github.com/vimma-browser/vimma/commit/b72f466f9bfb9366e1f3ed9c4a8b188011388b62))
+* **agent:** the chat window ([#608](https://github.com/vimma-browser/vimma/issues/608)) ([140968e](https://github.com/vimma-browser/vimma/commit/140968efeff4b78d08d1acf89542461b120ac736))
+* **ctl:** one-time tickets bind a vimma-ctl connection to a conversation ([#633](https://github.com/vimma-browser/vimma/issues/633)) ([fcc7efb](https://github.com/vimma-browser/vimma/commit/fcc7efbe2f76bd89d40e35126034a77b3ff44c9c))
+* **keys:** a key opens the agent chat window ([adbe2e2](https://github.com/vimma-browser/vimma/commit/adbe2e2796220a354d5176e83c58f4f832e0e854))
+* **mcp:** agents open a site's search results by url ([#616](https://github.com/vimma-browser/vimma/issues/616)) ([5301d81](https://github.com/vimma-browser/vimma/commit/5301d81b3e032c3b2f276ffc73ff67528cd9faca))
+* **mcp:** compact element lists ([#621](https://github.com/vimma-browser/vimma/issues/621)) ([16df595](https://github.com/vimma-browser/vimma/commit/16df595a6bbbc6bbdb2ceb77c7897c3fc4a6d375))
+* **mcp:** steps return the page's element list; smaller screenshots ([#588](https://github.com/vimma-browser/vimma/issues/588)) ([af4dca5](https://github.com/vimma-browser/vimma/commit/af4dca5164bf43efcd886a6134efba5a47274aa0)), closes [#584](https://github.com/vimma-browser/vimma/issues/584)
+
+
+### Fixed
+
+- Agents (MCP): pages that send a `Cross-Origin-Opener-Policy` header open in agent tabs instead of failing with `NS_ERROR_DOM_COOP_FAILED`. Agent tabs keep their pop-up sandbox; such pages lose only `crossOriginIsolated` there ([docs/limits.md](docs/limits.md)).
+- Agents (MCP): a step that lands on Firefox's error page is reported to the agent as an error naming the reason, instead of a success with an empty element list, so an agent no longer opens the same failing page again and again.
+- Workspaces: tab search and the side panel no longer lose a window's tabs after the last window is closed and a new one opened (on macOS, from the Dock), or after a session restore that stops partway; until a restart they listed one tab while the status bar counted them all. The `:bug` report now shows the open tabs beside the workspaces' count and names a restore that never finished.
+
+* **agent:** agent tabs load pages that send an opener policy ([#645](https://github.com/vimma-browser/vimma/issues/645)) ([f6cd389](https://github.com/vimma-browser/vimma/commit/f6cd38943e3cc87fbe6ae70e7d38ce4c2ab7992b)), closes [#640](https://github.com/vimma-browser/vimma/issues/640)
+* **agent:** an open that ends on firefox's error page is an error naming it ([#651](https://github.com/vimma-browser/vimma/issues/651)) ([5f9710b](https://github.com/vimma-browser/vimma/commit/5f9710bfc04acc47c0380e6a0e2bc7ee470c3d1e)), closes [#643](https://github.com/vimma-browser/vimma/issues/643)
+* **agent:** the api key field never reveals the key ([#627](https://github.com/vimma-browser/vimma/issues/627)) ([1ac8c22](https://github.com/vimma-browser/vimma/commit/1ac8c22c54a719bc5726373b603b0549535220b8))
+* **agent:** the chat header says "asks every step" only after ctrl+enter ([#641](https://github.com/vimma-browser/vimma/issues/641)) ([846e2db](https://github.com/vimma-browser/vimma/commit/846e2db2c5e1e4830d50520ba17a528a5a03abd6)), closes [#535](https://github.com/vimma-browser/vimma/issues/535)
+* **agent:** the chat window names a refused config.toml instead of "no model set up" ([#642](https://github.com/vimma-browser/vimma/issues/642)) ([20a341a](https://github.com/vimma-browser/vimma/commit/20a341a1d9b42b06b20315ad4d024f46070fcaab)), closes [#639](https://github.com/vimma-browser/vimma/issues/639)
+* **mcp:** a rate refusal names its limit and when the next call is allowed ([#594](https://github.com/vimma-browser/vimma/issues/594)) ([522071d](https://github.com/vimma-browser/vimma/commit/522071de086f09f84f19e0cf6016ef7c6bf26333)), closes [#592](https://github.com/vimma-browser/vimma/issues/592)
+* **mcp:** element labels last while their page and element do ([#593](https://github.com/vimma-browser/vimma/issues/593)) ([1a5fb29](https://github.com/vimma-browser/vimma/commit/1a5fb29be709fd7810faf86f0f4535f9d07c8fde)), closes [#591](https://github.com/vimma-browser/vimma/issues/591)
+* **workspaces:** the tab list survives a restore that never finishes ([#631](https://github.com/vimma-browser/vimma/issues/631)) ([d6544b3](https://github.com/vimma-browser/vimma/commit/d6544b39c76e23c362c9e44c6d12bd88dcf01b24)), closes [#630](https://github.com/vimma-browser/vimma/issues/630) [#546](https://github.com/vimma-browser/vimma/issues/546)
+
 
 ### Changed
 
@@ -16,11 +50,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Agents (MCP): an agent over a per-minute limit is told which limit it hit, that no question is waiting, and how long to wait, instead of a message saying questions are waiting.
 - Agents (MCP): clicks and fills wait only while the page is busy instead of a fixed second; a fill without a submit returns at once, and a page counts as ready before its slow images finish. Sending a form or paying is caught exactly as before.
 
-### Fixed
-
-- Agents (MCP): pages that send a `Cross-Origin-Opener-Policy` header open in agent tabs instead of failing with `NS_ERROR_DOM_COOP_FAILED`. Agent tabs keep their pop-up sandbox; such pages lose only `crossOriginIsolated` there ([docs/limits.md](docs/limits.md)).
-- Agents (MCP): a step that lands on Firefox's error page is reported to the agent as an error naming the reason, instead of a success with an empty element list, so an agent no longer opens the same failing page again and again.
-- Workspaces: tab search and the side panel no longer lose a window's tabs after the last window is closed and a new one opened (on macOS, from the Dock), or after a session restore that stops partway; until a restart they listed one tab while the status bar counted them all. The `:bug` report now shows the open tabs beside the workspaces' count and names a restore that never finished.
+* **mcp:** agent clicks and fills wait only while the page is busy ([#582](https://github.com/vimma-browser/vimma/issues/582)) ([6f858f1](https://github.com/vimma-browser/vimma/commit/6f858f12a965d30e15b7e805ec46036046351fd0)), closes [#579](https://github.com/vimma-browser/vimma/issues/579)
 
 ## [0.1.11](https://github.com/vimma-browser/vimma/compare/v0.1.10...v0.1.11) · Firefox 159.0 (2026-10-28)
 
