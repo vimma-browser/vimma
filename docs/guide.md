@@ -1780,17 +1780,27 @@ instead: see [Using an agent CLI in the chat window](#using-an-agent-cli-in-the-
 If you already use Claude Code, Vimma's built-in agent window can run it for you: you write
 the task in Vimma, Claude Code does the work on its own login (a Claude plan works, no API
 key), and in the browser it reaches only the agent workspace, through the same questions and
-grants as any agent. This is in progress: turn on `vimma.feature.agentChat` and
-`vimma.feature.agentCli` in `about:config` to try it. Codex follows.
+grants as any agent. This is in progress: turn on `vimma.feature.agentCli` in `about:config` to
+try it. Codex follows.
 
 **Setting it up from the window.** `:agent` opens the window; `Esc`, then `m`, lists the
 providers. Pick `add: agent CLI (Claude Code)`: Vimma looks for `claude` on your `PATH` (only
 now, never in the background) and lists it with its version and full path, for example
-`claude 2.1.303 · /home/you/.local/bin/claude`. `Enter` uses it. That path is kept in the pref
+`claude 2.1.303 · /home/you/.local/bin/claude`. `Enter` picks it, and the prompt line asks
+`agent model:` with `sonnet` filled in: keep it, type another of Claude Code's models (`opus`,
+`haiku` or a full model name), or clear it to leave the choice to Claude Code's own default
+model. A model that starts with `-` is refused there. That path is kept in the pref
 `vimma.agent.cli.claude-code.path`, never in `config.toml`, and is checked before every task:
 it must be a regular executable file of yours or root's that no other user can write, in
-folders no other user can write. The provider is added to `config.toml` for you, and becomes
-`[agent] default` when you had none. Install Claude Code and log in to it in a terminal first.
+folders no other user can write. The provider is added to `config.toml` with its model, and
+becomes `[agent] default` when you had none. Install Claude Code and log in to it in a terminal
+first.
+
+**Changing the model later.** Picking Claude Code again in the window uses the provider
+`config.toml` already lists and does not ask again. To change its model, edit `model` in that
+provider (or remove the line for Claude Code's default); new conversations use it, and an open
+one does once you pick the provider again with `m`. To switch between models, add a second provider with another `name` and `model`
+and pick it in the window (`Esc`, then `m`).
 
 **Or in `config.toml`.** `[agent]` needs `schema = 2` at the top of the file; without it the
 whole section is refused.

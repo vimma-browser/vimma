@@ -11,6 +11,7 @@
 
 "use strict";
 
+/* global focusContent -- from head.js */
 /* global tidyTask -- from head_vimma_control.js */
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
 
@@ -42,6 +43,12 @@ const { claudeArguments } = ChromeUtils.importESModule(
 );
 const { chatHeader, sendNotice: windowNotice } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent-chat.mjs",
+);
+const { ConfigHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
+);
+const { VimmaHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
@@ -227,6 +234,146 @@ addTidyTask(async function test_setup_lists_only_found_clis_and_stores_the_path(
     fake.bin,
     "picking it stores the absolute path in its pref",
   );
+});
+
+const $ = (/** @type {string} */ id) => document.getElementById(id);
+const notice = () => $("vimma-notice")?.textContent ?? "";
+const promptOpen = () => !!$("vimma-rename") && !$("vimma-rename").hidden;
+const promptInput = () => /** @type {HTMLInputElement} */ ($("vimma-rename-input"));
+const chatRows = () => [
+  ...document.querySelectorAll("#vimma-agent-chat-log .vimma-agent-chat-row"),
+];
+
+/**
+ * The window's setup of the fake CLI, as a user does it: `:agent model` from a page, the
+ * `add: agent CLI` row, then the CLI it found, with the fake first on PATH. A config.toml of
+ * the test's own takes what setup saves. Resolves with that file's path.
+ * @param {(path: string) => Promise<void>} task
+ */
+async function inWindowSetup(task) {
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-cli-config");
+  const path = PathUtils.join(dir, "config.toml");
+  await IOUtils.writeUTF8(path, "schema = 2\n");
+  const PATH = Services.env.get("PATH");
+  Services.env.set("PATH", `${fake.dir}:${PATH}`);
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", path]] });
+  try {
+    await ConfigHost.reload();
+    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: null, providers: [] });
+    Services.prefs.clearUserPref(pathPref("claude-code"));
+    const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+    await focusContent(tab.linkedBrowser);
+    await until(() => VimmaHost.status(window).mode === "normal", "the page is in normal mode");
+    await task(path);
+  } finally {
+    VimmaHost._state(window).agentChat.close();
+    Services.env.set("PATH", PATH);
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(dir, { recursive: true });
+  }
+}
+
+/** `:agent model`, then `add: agent CLI` and the CLI it lists first. */
+async function pickFoundCli() {
+  // From the page, so `:` is Vimma's command line and not text in the window's input.
+  VimmaHost._state(window).agentChat.close();
+  await focusContent(gBrowser.selectedBrowser);
+  await until(() => VimmaHost.status(window).mode === "normal", "the page is in normal mode");
+  EventUtils.synthesizeKey(":", { shiftKey: true });
+  EventUtils.sendString("agent model");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(
+    () => chatRows().some((r) => r.textContent.includes("add: agent CLI (Claude Code)")),
+    "the picker offers an agent CLI",
+  );
+  const at = chatRows().findIndex((r) => r.textContent.includes("add: agent CLI"));
+  for (let i = 0; i < chatRows().length; i++) EventUtils.synthesizeKey("k");
+  for (let i = 0; i < at; i++) EventUtils.synthesizeKey("j");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(
+    () => chatRows()[0]?.textContent.includes("claude 2.1.303"),
+    "setup lists the CLI found on PATH",
+  );
+  EventUtils.synthesizeKey("KEY_Enter");
+}
+
+/** Replaces the prompt line's text with `text` and submits it. @param {string} text */
+function answerPrompt(text) {
+  promptInput().select();
+  if (text) EventUtils.sendString(text);
+  else EventUtils.synthesizeKey("KEY_Backspace");
+  EventUtils.synthesizeKey("KEY_Enter");
+}
+
+addTidyTask(async function test_setup_asks_the_clis_model_and_saves_it() {
+  await inWindowSetup(async (path) => {
+    await pickFoundCli();
+    await until(promptOpen, "picking a new CLI asks for its model on the prompt line");
+    Assert.equal($("vimma-rename").textContent.trim().startsWith("agent model:"), true);
+    Assert.equal(promptInput().value, "sonnet", "suggesting Claude Code's model");
+    Assert.equal(
+      promptInput().placeholder,
+      "empty: Claude Code's own default model",
+      "and saying what empty means",
+    );
+    Assert.equal(
+      Services.prefs.getStringPref(pathPref("claude-code"), ""),
+      "",
+      "nothing is stored while the model is asked",
+    );
+    answerPrompt("--bare");
+    await until(
+      () => notice().includes('the model "--bare" is not a model name: it cannot start with "-"'),
+      `an option as a model is refused where it is typed: ${notice()}`,
+    );
+    await until(promptOpen, "and asked again");
+    Assert.equal(promptInput().value, "--bare", "with what was typed, to correct");
+    answerPrompt("opus");
+    await until(
+      () => notice().includes("agent: claude · opus · saved to config.toml as [agent] default"),
+      `the notice names the model and where it went: ${notice()}`,
+    );
+    const id = /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
+    Assert.equal(AgentChat.get(id).provider.model, "opus", "the conversation uses it");
+    Assert.equal(
+      Services.prefs.getStringPref(pathPref("claude-code"), "") !== "",
+      true,
+      "and the CLI's path is stored",
+    );
+    const text = await IOUtils.readUTF8(path);
+    Assert.ok(
+      text.includes(
+        '[[agent.providers]]\nname = "claude"\nkind = "cli"\ncli = "claude-code"\nmodel = "opus"',
+      ),
+      `config.toml lists the provider with its model: ${text}`,
+    );
+    Assert.equal(McpHost.agentConfig?.providers[0]?.model, "opus", "as read back");
+
+    // The CLI listed now: picking it again uses it and asks nothing.
+    await pickFoundCli();
+    await until(
+      () => notice().includes("agent: claude · opus"),
+      `the listed provider is used: ${notice()}`,
+    );
+    Assert.ok(!promptOpen(), "no model is asked for a CLI config.toml lists");
+    Assert.equal(await IOUtils.readUTF8(path), text, "and config.toml is unchanged");
+  });
+});
+
+addTidyTask(async function test_an_empty_model_leaves_it_to_the_cli() {
+  await inWindowSetup(async (path) => {
+    await pickFoundCli();
+    await until(promptOpen, "the model is asked");
+    answerPrompt("");
+    await until(
+      () => notice().includes("agent: claude · Claude Code's own default model · saved"),
+      `the notice says the CLI picks the model: ${notice()}`,
+    );
+    const id = /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
+    Assert.equal(AgentChat.get(id).provider.model, "", "no model of Vimma's");
+    Assert.ok(!(await IOUtils.readUTF8(path)).includes("model ="), "none in config.toml");
+  });
 });
 
 addTidyTask(async function test_path_checks_refuse_a_file_others_can_write() {

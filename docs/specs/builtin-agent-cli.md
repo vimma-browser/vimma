@@ -79,6 +79,19 @@ own configuration allows; Vimma does not confine them, and the window states whi
    A `command`, `path`, `args` or `env` field in a CLI provider is a config error, reported with
    its line, and the provider is not used (C4, C5).
 
+   Picking a CLI that `config.toml` does not list yet asks for its model on the prompt line,
+   `agent model: `, as setup does for a hosted provider, with the CLI's suggested model filled in
+   (`sonnet` for Claude Code, from `CLIS` in `agent-cli.mjs`). The model is the user's choice
+   at setup, and a hand edit of `config.toml` should not be the only way to make it. Empty
+   input leaves the choice to the CLI's own default model, which the notice says
+   (`agent: claude · Claude Code's own default model · saved to config.toml`). A model that
+   starts with `-` or holds control characters is refused there and asked again, by the rule
+   the command line applies (C2), so it never fails at a task's start; `config.toml` reports
+   such a model as an error with its line. The path pref is written only once a model is
+   taken, and the provider goes to `config.toml` with its name, kind, CLI and model. Picking a
+   CLI that `config.toml` already lists uses that provider and asks nothing: its model changes
+   by editing `model` there, or by adding a second provider with another name and model.
+
 3. **Choosing starts nothing.** Picking a CLI provider starts no process but the version call
    of item 1. The CLI runs only when the user sends a task.
 4. **The first task says where data goes and what the CLI may do.** Before the first task of a
@@ -556,8 +569,11 @@ the run`; `an unknown event is ignored and counted`; `a stream that no longer pa
 run naming the version`; `a line over 1 MiB ends the run`; `an own-tool line is cut at 200
 characters`. The recorded streams are fixtures made by runs against a scripted server, as in
   Research.
+- `agent-cli.test.mjs`: `a typed model is checked with the rule the arguments use`;
+  `setup suggests each cli's model, and empty is the cli's own default`.
 - `config-agent.test.mjs`: `a cli provider parses with cli and model`; `command, path, args and
-env in a cli provider are errors with their line`; `local_only refuses a cli provider`;
+env in a cli provider are errors with their line`; `a cli provider's model is refused by the
+rule its run uses`; `local_only refuses a cli provider`;
   `max_minutes parses within its bounds`.
 - `control-v2.test.mjs`: `an agent hello with a ticket validates; a ticket and a token together
 do not`.
@@ -578,7 +594,8 @@ Code's arguments, starts the real `vimma-ctl mcp` its MCP configuration names, a
 Claude Code's stream-json, scripted by the task's text; it also covers
 `test_added_instruction_reaches_the_running_cli` and
 `test_a_later_task_is_a_new_run_given_the_conversation`:
-`test_setup_lists_only_found_clis_and_stores_the_path`; `test_path_checks_refuse_a_file_others_can_write`;
+`test_setup_lists_only_found_clis_and_stores_the_path`;
+`test_setup_asks_the_clis_model_and_saves_it`; `test_an_empty_model_leaves_it_to_the_cli`; `test_path_checks_refuse_a_file_others_can_write`;
 `test_no_process_before_a_task`; `test_task_on_stdin_and_fixed_arguments`;
 `test_runs_in_an_empty_private_directory_removed_after`;
 `test_ticket_connection_acts_as_the_conversation`; `test_ticket_listener_with_mcp_off_takes_only_tickets`;

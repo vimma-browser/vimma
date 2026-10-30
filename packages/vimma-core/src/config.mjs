@@ -25,7 +25,7 @@ import { BOOKMARKS_ROOTS } from "./bookmarks.mjs";
 import { quarantineProblem, resolveDownloadDir } from "./agent-downloads.mjs";
 import { resolveSearch, validateSearch } from "./search.mjs";
 import { checkEndpoint } from "./agent-providers.mjs";
-import { CLI_IDS, DEFAULT_MAX_MINUTES, MAX_MINUTES } from "./agent-cli.mjs";
+import { CLI_IDS, DEFAULT_MAX_MINUTES, MAX_MINUTES, modelProblem } from "./agent-cli.mjs";
 
 /** @import { Keymap } from "./keymap.mjs" */
 /** @import { UserConfig } from "./defaults.mjs" */
@@ -912,8 +912,11 @@ function validateCliProvider(p, at, { fail, typeError, unknownKey, text, localOn
         const ids = CLI_IDS.map((c) => `"${c}"`).join(" or ");
         fail(path, `must be ${ids}`, closest(v, [...CLI_IDS]));
       }
-    } else if (key === "model") text(path, v, MAX_MODEL);
-    else if (key === "max_minutes") {
+    } else if (key === "model") {
+      // The rule the command line applies (C2), so a bad model is reported with its line.
+      const problem = text(path, v, MAX_MODEL) && modelProblem(/** @type {string} */ (v));
+      if (problem) fail(path, problem);
+    } else if (key === "max_minutes") {
       if (typeof v !== "bigint") typeError(path, v, "an integer");
       else if (v < 1n || v > BigInt(MAX_MINUTES)) {
         fail(path, `must be an integer between 1 and ${MAX_MINUTES} (minutes)`);

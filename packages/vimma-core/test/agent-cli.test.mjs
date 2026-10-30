@@ -13,7 +13,10 @@ import {
   cliEnvironment,
   cliNotice,
   exitText,
+  cliModelText,
   mcpConfig,
+  modelProblem,
+  modelPrompt,
   ownToolText,
   ownToolsText,
   pathProblem,
@@ -91,6 +94,34 @@ describe("claude-code's command line (C2)", () => {
 
   test("a model that looks like an option is refused, not passed", () => {
     expect(() => claudeArguments({ mcpConfig: "/m.json", model: "--bare" })).toThrow(/model/);
+  });
+
+  test("a typed model is checked with the rule the arguments use", () => {
+    for (const ok of ["sonnet", "opus", "claude-sonnet-5-5", ""]) {
+      expect(modelProblem(ok)).toBeNull();
+    }
+    expect(modelProblem("--bare")).toBe(
+      'the model "--bare" is not a model name: it cannot start with "-"',
+    );
+    expect(modelProblem("son\u0007net")).toBe(
+      'the model "sonnet" is not a model name: it has control characters',
+    );
+    // The run refuses what setup refuses, with the same words.
+    expect(() => claudeArguments({ mcpConfig: "/m.json", model: "--bare" })).toThrow(
+      modelProblem("--bare") ?? "",
+    );
+  });
+
+  test("setup suggests each cli's model, and empty is the cli's own default", () => {
+    for (const info of Object.values(CLIS)) expect(modelProblem(info.model)).toBeNull();
+    expect(CLIS["claude-code"]?.model).toBe("sonnet");
+    expect(modelPrompt("claude-code")).toEqual({
+      label: "agent model: ",
+      value: "sonnet",
+      placeholder: "empty: Claude Code's own default model",
+    });
+    expect(cliModelText("claude-code", "opus")).toBe("opus");
+    expect(cliModelText("claude-code", "")).toBe("Claude Code's own default model");
   });
 
   test("the mcp configuration names only vimma-ctl, with the ticket in its environment", () => {

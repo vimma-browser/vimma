@@ -1966,7 +1966,8 @@ own process, not a process group.
   owned by the user or root that no other user can write, every folder above it the user's or
   root's and not writable by other users unless sticky. Its arguments **must** come from the
   CLI's fixed builder, with the provider's model the only value in them (a model that starts
-  with `-` is refused), the task and the conversation before it **must** go to its standard
+  with `-` or holds control characters is refused, by one rule where setup's prompt line takes
+  it, where `config.toml` gives it and when the command line is built), the task and the conversation before it **must** go to its standard
   input and never into an argument, and there is no shell. Its environment is Vimma's without
   the `MOZ_`, `VIMMA_`, `XRE_` and `XUL_` variables. It **must** run in a new 0700 folder of
   the user's (in `$XDG_RUNTIME_DIR`, else `~/.cache/vimma-agent-cli`), outside the profile,
@@ -1990,6 +1991,9 @@ own process, not a process group.
   [`claude-code's arguments are the fixture, with the model only from the provider`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`the task is never an argument`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`a model that looks like an option is refused, not passed`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a typed model is checked with the rule the arguments use`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a cli provider's model is refused by the rule its run uses`](../packages/vimma-core/test/config-agent.test.mjs),
+  [`test_setup_asks_the_clis_model_and_saves_it`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`the environment is Vimma's, minus the variables Vimma and Firefox set`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`anything else is refused, with the reason`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M56. The ticket **must** reach the CLI's `vimma-ctl mcp` only through the MCP configuration's

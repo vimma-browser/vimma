@@ -12,13 +12,19 @@
 
 /**
  * A supported CLI: `id` is its name in config.toml and in the window, `bin` the program setup
- * looks for on PATH, `title` how the window's sentences name it.
- * @typedef {{ id: string, bin: string, title: string }} CliInfo
+ * looks for on PATH, `title` how the window's sentences name it, `model` the model setup
+ * suggests on the prompt line (Behaviour 2), one of the CLI's own model aliases.
+ * @typedef {{ id: string, bin: string, title: string, model: string }} CliInfo
  */
 
 /** @type {Readonly<Record<string, Readonly<CliInfo>>>} */
 export const CLIS = Object.freeze({
-  "claude-code": Object.freeze({ id: "claude-code", bin: "claude", title: "Claude Code" }),
+  "claude-code": Object.freeze({
+    id: "claude-code",
+    bin: "claude",
+    title: "Claude Code",
+    model: "sonnet",
+  }),
 });
 /** The CLIs a provider may name, in the order setup lists them (C12). */
 export const CLI_IDS = Object.freeze(Object.keys(CLIS));
@@ -53,6 +59,45 @@ function cut(text, n = LINE_CHARS) {
 }
 
 /**
+ * Why `model` cannot be a CLI's model, or null (C2, Behaviour 2): a model is a word of the
+ * CLI's, never an option (`--bare` as a model would be one), and plain text. Setup's prompt
+ * line, config.toml and the command line all apply this rule, so a bad model is refused where
+ * it is typed rather than when a task starts. Empty is allowed: the CLI's own default.
+ * @param {string} model
+ * @returns {string | null}
+ */
+export function modelProblem(model) {
+  const why = model.startsWith("-")
+    ? 'it cannot start with "-"'
+    : plain(model) !== model
+      ? "it has control characters"
+      : null;
+  return why && `the model "${plain(model)}" is not a model name: ${why}`;
+}
+
+/**
+ * Setup's prompt line for a CLI's model (Behaviour 2): the CLI's suggested model, editable;
+ * cleared, the placeholder says that empty leaves the choice to the CLI.
+ * @param {string} cli  a key of CLIS
+ */
+export function modelPrompt(cli) {
+  const info = CLIS[cli];
+  return {
+    label: "agent model: ",
+    value: info?.model ?? "",
+    placeholder: `empty: ${info?.title ?? cli}'s own default model`,
+  };
+}
+
+/**
+ * A CLI provider's model as a notice names it.
+ * @param {string} cli  a key of CLIS
+ * @param {string} model
+ */
+export const cliModelText = (cli, model) =>
+  model || `${CLIS[cli]?.title ?? cli}'s own default model`;
+
+/**
  * Claude Code's arguments (C2): headless, JSON lines both ways, no session kept, Vimma's MCP
  * server only, which alone gets an allow rule, and no prompt in a run nobody can answer. The
  * CLI's own tools and permission rules stay its settings' (C7). The task goes to stdin.
@@ -60,10 +105,8 @@ function cut(text, n = LINE_CHARS) {
  * @returns {string[]}
  */
 export function claudeArguments({ mcpConfig, model }) {
-  // A model is a word of the CLI's, never an option: `--bare` as a model would be one.
-  if (model && (model.startsWith("-") || plain(model) !== model)) {
-    throw new Error(`the model "${plain(model)}" is not a model name`);
-  }
+  const problem = modelProblem(model);
+  if (problem) throw new Error(problem);
   return [
     "-p",
     "--input-format",

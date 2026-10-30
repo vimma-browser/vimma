@@ -26,7 +26,13 @@ import {
   sendNotice,
   whereDataGoes,
 } from "../core/agent-chat.mjs";
-import { CLIS } from "../core/agent-cli.mjs";
+import {
+  CLIS,
+  DEFAULT_MAX_MINUTES,
+  cliModelText,
+  modelProblem,
+  modelPrompt,
+} from "../core/agent-cli.mjs";
 import { checkEndpoint, isLocalEndpoint } from "../core/agent-providers.mjs";
 import { pickerEntries, unavailableText } from "../core/agent-setup.mjs";
 import { lastUseText } from "../core/agent-store.mjs";
@@ -78,8 +84,9 @@ const SLOT_HINT = "a question waits: answer it here";
  * @property {(id: number) => void} give  `P`, `:agent give`: the selected tab to conversation id
  * @property {(text: string) => void} copy  to the clipboard
  * @property {() => void} rearm  focus came into the window: its slot's question arms again
- * @property {(o: { label: string, value?: string, submit: (text: string) => void }) => void}
- *   prompt  a line of text on the prompt line (a hosted provider's endpoint and model)
+ * @property {(o: { label: string, value?: string, placeholder?: string,
+ *   submit: (text: string) => void }) => void} prompt  a line of text on the prompt line (a
+ *   hosted provider's endpoint and model, an agent CLI's model)
  * @property {() => void} changed  the window opened, closed or switched conversation: the
  *   question may move between the line and the slot, and the status bar redraws
  * @typedef {{ label: string, detail: string, provider?: AgentProviderConfig,
@@ -736,27 +743,21 @@ export class AgentChatWindow {
       return;
     }
     let provider = row.provider;
-    /** An agent CLI setup found that config.toml does not list yet. */
-    let addedCli = false;
     if (row.cliPick) {
       // builtin-agent-cli Behaviour 2, C4: the path picked here is a pref, and the provider
-      // names only which CLI it is.
+      // names only which CLI it is and its model.
       const info = CLIS[row.cliPick.cli];
       if (!info) return;
-      lazy.AgentCli.use(info.id, row.cliPick.path);
       const listed = (lazy.McpHost.agentConfig?.providers ?? []).find(
         (/** @type {AgentProviderConfig} */ p) => p.kind === "cli" && p.cli === info.id,
       );
-      addedCli = !listed;
-      provider = listed ?? {
-        name: freeName(info.bin),
-        kind: "cli",
-        cli: info.id,
-        endpoint: "",
-        model: "",
-        vision: false,
-        maxMinutes: 30,
-      };
+      // A CLI config.toml lists keeps its model; only a new one asks for it.
+      if (!listed) {
+        this.askCliModel(info.id, row.cliPick.path, { makeDefault });
+        return;
+      }
+      lazy.AgentCli.use(info.id, row.cliPick.path);
+      provider = listed;
     }
     if (
       provider &&
@@ -783,10 +784,62 @@ export class AgentChatWindow {
       }
     }
     if (!provider) return;
-    if (!this.useProvider(provider)) return;
+    this.usePicked(provider, { makeDefault });
+  }
+
+  /**
+   * A new agent CLI's model, on the prompt line (builtin-agent-cli Behaviour 2): the CLI's
+   * suggested model, editable, and empty for the CLI's own default. A model the command line
+   * would refuse is refused here and asked again; nothing is stored before a model is taken.
+   * @param {string} cli  a key of CLIS
+   * @param {string} path  the program setup found
+   * @param {{ makeDefault: boolean }} opts
+   * @param {string} [value]  what was typed before, to correct
+   */
+  askCliModel(cli, path, opts, value) {
+    const info = CLIS[cli];
+    if (!info) return;
+    const ask = modelPrompt(cli);
+    this.host.prompt({
+      label: ask.label,
+      value: value ?? ask.value,
+      placeholder: ask.placeholder,
+      submit: (text) => {
+        const model = text.trim();
+        const problem = modelProblem(model);
+        if (problem) {
+          this.host.say(`agent: ${problem}`, true);
+          this.askCliModel(cli, path, opts, text);
+          return;
+        }
+        lazy.AgentCli.use(cli, path);
+        this.usePicked(
+          {
+            name: freeName(info.bin),
+            kind: "cli",
+            cli,
+            endpoint: "",
+            model,
+            vision: false,
+            maxMinutes: DEFAULT_MAX_MINUTES,
+          },
+          { ...opts, addedCli: true },
+        );
+      },
+    });
+  }
+
+  /**
+   * The picked provider goes to the open conversation, and to config.toml as `pick` says.
+   * @param {AgentProviderConfig} picked
+   * @param {{ makeDefault: boolean, addedCli?: boolean }} opts  `addedCli`: an agent CLI setup
+   *   found that config.toml does not list yet
+   */
+  usePicked(picked, { makeDefault, addedCli = false }) {
+    if (!this.useProvider(picked)) return;
     this.insert();
-    const picked = provider;
-    const what = picked.model || picked.cli;
+    const what =
+      picked.kind === "cli" ? cliModelText(picked.cli ?? "", picked.model) : picked.model;
     // config.toml changes only for setup (no provider yet) or when asked with D (B12); an
     // agent CLI setup found is listed there, as a hosted provider added here is, so that it is
     // in the picker after a restart.

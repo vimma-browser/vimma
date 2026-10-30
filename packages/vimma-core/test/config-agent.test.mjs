@@ -244,6 +244,13 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
     });
   });
 
+  test("a cli provider's model is refused by the rule its run uses", () => {
+    expect(errors(v2(...CLI, 'model = "--bare"'))[0]).toMatchObject({
+      path: "agent.providers[0].model",
+      message: 'the model "--bare" is not a model name: it cannot start with "-"',
+    });
+  });
+
   test("local_only refuses a cli provider", () => {
     expect(errors(v2("[agent]", "local_only = true", ...CLI))[0]).toMatchObject({
       path: "agent.providers[0].kind",
