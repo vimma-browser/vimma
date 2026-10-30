@@ -35,6 +35,7 @@ import {
   AGENT_ELEMENTS,
   actRefusal,
   agentElementList,
+  filterAgentElements,
   fillRefusal,
   labelAgentElements,
 } from "../core/agent-act.mjs";
@@ -43,6 +44,7 @@ import { AGENT_WAITS } from "../core/agent-wait.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { cutTo, shown } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
+import { NOT_LOADED, errorPageText, loadErrorOf } from "../core/load-errors.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
@@ -844,15 +846,34 @@ export const AgentAct = {
   },
 
   /**
-   * The elements on screen in `tab`, labelled, as the reply's `elements` and `dropped`, with the
-   * labels for AgentDrive.remember once the caller has checked the tab again; or why nothing is
-   * listed.
-   * @param {any} tab
-   * @returns {Promise<{ elements: string, dropped: number, labels: Map<string, HintTarget> }
-   *   | { refused: string }>}
+   * The LOAD_ERRORS code of the Firefox error page the browser's top document is, or null
+   * (issue #643). The document's URI, not the tab's, which keeps the address that failed.
+   * @param {any} browser
    */
-  async elements(tab) {
+  loadError(browser) {
+    return loadErrorOf(String(browser.documentURI?.spec ?? ""));
+  },
+
+  /**
+   * The elements on screen in `tab`, labelled, as the reply's `elements`, `dropped` and
+   * `repeated`, with the labels for AgentDrive.remember once the caller has checked the tab
+   * again; or why nothing is listed. `query` and `kinds` keep only the matching elements
+   * (builtin-agent B2); `seen` gives the lines of the connection's last list of the page's origin,
+   * which this one leaves out (agent-speed S4). `site` and `lines` are what the caller keeps for
+   * the next list. Labels are counted over the whole page, so a filter or a left-out line never
+   * changes another element's label; only the elements the list gave can be clicked by theirs.
+   * @param {any} tab
+   * @param {{ query?: string, kinds?: string[], seen?: (site: string) => Set<string> | undefined }}
+   *   [options]
+   * @returns {Promise<{ elements: string, dropped: number, repeated: string[], site: string,
+   *   lines: string[], labels: Map<string, HintTarget> } | { refused: string }>}
+   */
+  async elements(tab, { query, kinds, seen } = {}) {
     const browser = tab.linkedBrowser;
+    // Firefox's error page, named as such (issue #643): "not an http page" sent models back to
+    // the same open.
+    const failed = AgentAct.loadError(browser);
+    if (failed) return { refused: `${NOT_LOADED}${errorPageText(failed)}` };
     if (!onTheWeb(browser.contentPrincipal)) {
       return { refused: "elements are listed only on http and https pages" };
     }
@@ -878,14 +899,24 @@ export const AgentAct = {
         hint,
       };
     });
-    const { elements, dropped } = labelAgentElements(items);
-    const list = agentElementList(elements, AGENT_ELEMENTS.bytes);
+    const labelled = labelAgentElements(items);
+    const elements = filterAgentElements(labelled.elements, { query, kinds });
+    // The origin, not the site: a list of another host of the same site may differ entirely.
+    const origin = String(top?.documentPrincipal?.originNoSuffix ?? "");
+    const listedAs = /^https?:\/\//.test(origin) ? origin : "";
+    const list = agentElementList(
+      elements,
+      AGENT_ELEMENTS.bytes,
+      listedAs ? seen?.(listedAs) : undefined,
+    );
     // The reply is one line: elements past its room are left out, and their labels too.
-    const listed = elements.slice(0, elements.length - list.omitted);
     return {
       elements: wrapUntrusted(wf(list.text)),
-      dropped: dropped + list.omitted,
-      labels: new Map(listed.map((l) => [l.label, l.target.hint])),
+      dropped: labelled.dropped + list.omitted,
+      repeated: list.repeated,
+      site: listedAs,
+      lines: list.lines,
+      labels: new Map(list.given.map((l) => [l.label, l.target.hint])),
     };
   },
 };

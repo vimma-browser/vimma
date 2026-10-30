@@ -206,19 +206,26 @@ pub fn run_with_input(
         Ok(Parsed::Run(options)) => options,
         Ok(Parsed::Mcp { profile }) => {
             // The token comes from the discovery file only, read again at each connect so a
-            // restarted Vimma is found (decision 1).
+            // restarted Vimma is found (decision 1). An agent CLI Vimma runs gets a one-time
+            // ticket instead, and then the discovery file is never read, so that process never
+            // holds the token (docs/specs/builtin-agent-cli.md C3).
+            let settings = crate::mcp_serve::Settings {
+                ticket: env.agent.is_some(),
+                ..crate::mcp_serve::Settings::default()
+            };
             let env = env.clone();
-            let find = move || {
-                find_profile(profile.as_deref(), &env)
+            let find = move || match &env.agent {
+                Some(agent) => agent.discovery().map_err(|e| e.0),
+                None => find_profile(profile.as_deref(), &env)
                     .and_then(|profile| read_discovery(&profile))
-                    .map_err(|e| e.0)
+                    .map_err(|e| e.0),
             };
             return crate::mcp_serve::serve(
                 input,
                 out,
                 &find,
                 crate::mcp_serve::parent_name(),
-                &crate::mcp_serve::Settings::default(),
+                &settings,
             );
         }
         Ok(Parsed::Help) => {

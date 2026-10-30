@@ -125,26 +125,74 @@ function elementObject(label, t, form) {
 }
 
 /**
+ * The words of a `query`: NFKC, case-folded, split on white space (builtin-agent B2).
+ * @param {string} s
+ */
+const words = (s) => s.normalize("NFKC").toLowerCase().split(/\s+/).filter(Boolean);
+
+/**
+ * The elements a list's filters keep (builtin-agent B2, agent-speed Behaviour 4): with `kinds`,
+ * those of these kinds; with `query`, those whose label, text, caption or name holds every word
+ * of it, NFKC and case-folded, as the list writes them (cut at AGENT_ELEMENTS.text). A value is
+ * never matched, so a query cannot probe a field's contents, sensitive or not. Labels are those of the whole page: a filter only leaves lines out.
+ * @template {{ label: string, target: { info: AgentElementInfo } }} E
+ * @param {readonly E[]} elements @param {{ query?: string, kinds?: readonly string[] }} filters
+ * @returns {E[]}
+ */
+export function filterAgentElements(elements, { query, kinds }) {
+  const wanted = query === undefined ? [] : words(query);
+  const of = kinds === undefined ? null : new Set(kinds);
+  return elements.filter(({ label, target: { info } }) => {
+    if (of && !of.has(info.kind)) return false;
+    if (!wanted.length) return true;
+    // What the list writes of them, cut and cleaned as `line` does: a query probes nothing the
+    // list does not show.
+    const max = AGENT_ELEMENTS.text;
+    const hay = [label, line(info.text, max), line(info.caption, max), line(info.name, max)]
+      .join("\n")
+      .toLowerCase();
+    return wanted.every((w) => hay.includes(w));
+  });
+}
+
+/**
  * The list's text (F5, security.md M31): the forms its elements name, numbered from 1 in the
  * order first named, then one element a line, each a JSON object. Elements past `maxBytes` of
  * the JSON-encoded reply are left out and counted, and so are forms only they named; at most
  * AGENT_ELEMENTS.forms forms, and an element of a form past them names none. The browser wraps
  * the text in the untrusted-content delimiters.
- * @param {readonly { label: string, target: AgentElementTarget }[]} elements
+ *
+ * An element whose line is in `seen`, the lines of the conversation's last list of this site,
+ * is not written again (agent-speed S4): its label is in `repeated`, in reading order, and it
+ * takes no room of `maxBytes`. The line is compared whole, label, form number and state
+ * included, so a left-out line says of its element exactly what the earlier one did; form lines
+ * are always written, since they say what the numbers mean on this page. `given` are the
+ * elements the list gave, written or repeated, whose labels the caller remembers; `lines` their
+ * lines, the `seen` of the next list of this site.
+ * @template {{ label: string, target: AgentElementTarget }} E
+ * @param {readonly E[]} elements
  * @param {number} maxBytes
- * @returns {{ text: string, omitted: number }}
+ * @param {ReadonlySet<string>} [seen]
+ * @returns {{ text: string, omitted: number, repeated: string[], given: E[], lines: string[] }}
  */
-export function agentElementList(elements, maxBytes) {
+export function agentElementList(elements, maxBytes, seen) {
   const encoder = new TextEncoder();
   /** The cost of one more line in the JSON string, with its \n. @param {string} s */
   const cost = (s) => encoder.encode(JSON.stringify(s)).length - 2 + 2;
   /** @type {Map<string, { n: number, line: string }>} */
   const forms = new Map();
+  /** @type {string[]} the lines written */
+  const shownLines = [];
+  /** @type {string[]} */
+  const repeated = [];
+  /** @type {E[]} */
+  const given = [];
   /** @type {string[]} */
   const lines = [];
   // Each line counts with a \n (2 bytes in JSON); the string's quotes take the first one's place.
   let bytes = 0;
-  for (const { label, target } of elements) {
+  for (const element of elements) {
+    const { label, target } = element;
     const f = target.form;
     let form = f ? forms.get(f.key) : undefined;
     let formLine = null;
@@ -158,14 +206,54 @@ export function agentElementList(elements, maxBytes) {
       form = { n, line: formLine };
     }
     const own = jsonLine(elementObject(label, target, form?.n));
-    const more = cost(own) + (formLine ? cost(formLine) : 0);
+    const again = seen?.has(own) ?? false;
+    const more = (again ? 0 : cost(own)) + (formLine ? cost(formLine) : 0);
     if (bytes + more > maxBytes) break;
     bytes += more;
     if (f && formLine && form) forms.set(f.key, form);
+    if (again) repeated.push(label);
+    else shownLines.push(own);
+    given.push(element);
     lines.push(own);
   }
-  const text = [...[...forms.values()].map((f) => f.line), ...lines].join("\n");
-  return { text, omitted: elements.length - lines.length };
+  const text = [...[...forms.values()].map((f) => f.line), ...shownLines].join("\n");
+  return { text, omitted: elements.length - given.length, repeated, given, lines };
+}
+
+/**
+ * The lines of each conversation's last element list of a site (agent-speed S4), keyed by its
+ * connection and the page's origin, for the most recent `ListedSites.max` sites of each: what
+ * the next list of the site leaves out. A connection's are forgotten when it closes, so a new
+ * conversation, or one resumed after Vimma restarts, gets every list in full.
+ */
+export class ListedSites {
+  static max = 16;
+
+  constructor() {
+    /** @type {Map<string | number, Map<string, Set<string>>>} */
+    this.byConn = new Map();
+  }
+
+  /** @param {string | number} conn @param {string} site */
+  get(conn, site) {
+    return this.byConn.get(conn)?.get(site);
+  }
+
+  /** @param {string | number} conn @param {string} site @param {Iterable<string>} lines */
+  set(conn, site, lines) {
+    let sites = this.byConn.get(conn);
+    if (!sites) this.byConn.set(conn, (sites = new Map()));
+    // Most recent last, so the first is the one to let go.
+    sites.delete(site);
+    sites.set(site, new Set(lines));
+    while (sites.size > ListedSites.max)
+      sites.delete(/** @type {string} */ (sites.keys().next().value));
+  }
+
+  /** @param {string | number} conn */
+  forget(conn) {
+    this.byConn.delete(conn);
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

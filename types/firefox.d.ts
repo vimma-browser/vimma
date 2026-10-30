@@ -259,6 +259,7 @@ interface Selection {
 // engine/dom/interfaces/base/nsIDOMWindowUtils.idl
 interface Window {
   readonly windowUtils: {
+    readonly AGENT_SHEET: number;
     readonly AUTHOR_SHEET: number;
     loadSheetUsingURIString(sheetURI: string, type: number): void;
     removeSheetUsingURIString(sheetURI: string, type: number): void;

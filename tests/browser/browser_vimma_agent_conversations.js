@@ -420,3 +420,21 @@ add_task(async function test_probe_only_on_setup_and_only_loopback() {
     "the probe lists the models of a server on 127.0.0.1",
   );
 });
+
+// agent-speed S4 (security.md M31): clearing a conversation's context forgets its last element
+// lists too, so the next list of a site it listed before comes in full, not as labels of lines
+// the model no longer has.
+addTidyTask(async function test_clear_forgets_the_last_element_lists() {
+  const c = AgentChat.create({ provider: PROVIDER });
+  const open = { call: "vimma_open", args: { url: CLICK, elements: true } };
+  const compact = "as in your last list of this site";
+  await AgentChat.send(c.id, script([open, open, { reply: "twice" }]));
+  const [first, second] = toolTexts(await AgentChat.done(c.id));
+  Assert.ok(!first.includes(compact), "the first list of the site is in full");
+  Assert.ok(second.includes(compact), `the second leaves out what the first gave: ${second}`);
+  Assert.equal(AgentChat.clear(c.id), null, "the context is cleared");
+  await AgentChat.send(c.id, script([open, { reply: "again" }]));
+  const [after] = toolTexts(await AgentChat.done(c.id));
+  Assert.ok(after.includes("<untrusted-web-content>"), "the page is listed");
+  Assert.ok(!after.includes(compact), "after a clear, the list is in full");
+});

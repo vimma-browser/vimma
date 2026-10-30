@@ -20,6 +20,8 @@ use vimma_ctl::json::{Value, parse};
 use vimma_ctl::mcp_serve::{Settings, serve};
 
 const TOKEN: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+/// A one-time ticket an agent CLI's vimma-ctl gets in its environment (builtin-agent-cli C3).
+const TICKET: &str = "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718";
 // Vimma's version in the welcome is older than this vimma-ctl's, so only the version tests at
 // the end see the note for an older client (docs/specs/ship-vimma-ctl.md).
 const WELCOME: &str =
@@ -82,6 +84,7 @@ fn id_of(v: &Value) -> u64 {
 #[derive(Debug, Default, Clone)]
 struct Seen {
     hellos: Vec<Value>,
+    auths: Vec<Value>,
     requests: Vec<Value>,
     closed: usize,
 }
@@ -105,6 +108,16 @@ impl FakeVimma {
 
     /// [`FakeVimma::start`] with its own `welcome` line, which names Vimma's version.
     fn start_as(welcome: &'static str, answer: Answer) -> Self {
+        Self::start_with(welcome, None, answer)
+    }
+
+    /// A Vimma that takes only `TICKET` (docs/specs/builtin-agent-cli.md C3): the hello must
+    /// name it by its id, the proof is made with it, and the auth must carry it, never a token.
+    fn with_ticket(answer: Answer) -> Self {
+        Self::start_with(WELCOME, Some(TICKET), answer)
+    }
+
+    fn start_with(welcome: &'static str, ticket: Option<&'static str>, answer: Answer) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let profile = temp_profile();
@@ -118,7 +131,7 @@ impl FakeVimma {
                 let Ok(stream) = stream else { break };
                 *l.lock().unwrap() = Some(stream.try_clone().unwrap());
                 let (s, answer) = (s.clone(), answer.clone());
-                thread::spawn(move || serve_one(stream, welcome, &s, &answer));
+                thread::spawn(move || serve_one(stream, welcome, ticket, &s, &answer));
             }
         });
         Self {
@@ -172,7 +185,21 @@ impl FakeVimma {
     }
 }
 
-fn serve_one(stream: TcpStream, welcome: &str, seen: &Mutex<Seen>, answer: &Mutex<Answer>) {
+/// A ticket's id, computed here from the HMAC primitive: `HMAC-SHA256(ticket, "vimma-ticket\0")`.
+fn ticket_id(ticket: &str) -> String {
+    vimma_ctl::hmac::hex(&vimma_ctl::hmac::hmac_sha256(
+        ticket.as_bytes(),
+        b"vimma-ticket\0",
+    ))
+}
+
+fn serve_one(
+    stream: TcpStream,
+    welcome: &str,
+    ticket: Option<&str>,
+    seen: &Mutex<Seen>,
+    answer: &Mutex<Answer>,
+) {
     let mut writer = stream.try_clone().unwrap();
     let mut reader = BufReader::new(stream);
     let mut n = 0;
@@ -185,13 +212,28 @@ fn serve_one(stream: TcpStream, welcome: &str, seen: &Mutex<Seen>, answer: &Mute
         let out = match n {
             0 => {
                 seen.lock().unwrap().hellos.push(msg.clone());
-                let proof = vimma_ctl::protocol::challenge_proof(TOKEN, str_of(&msg, "nonce"));
+                if let Some(ticket) = ticket {
+                    if msg.get("ticket") != Some(&Value::String(ticket_id(ticket))) {
+                        let _ = writer.write_all(
+                            b"{\"type\":\"response\",\"id\":null,\"ok\":false,\"error\":{\"code\":\"unauthorized\",\"message\":\"no ticket\"}}\n",
+                        );
+                        break;
+                    }
+                }
+                let key = ticket.unwrap_or(TOKEN);
+                let proof = vimma_ctl::protocol::challenge_proof(key, str_of(&msg, "nonce"));
                 Some(format!(
                     r#"{{"type":"challenge","protocol":2,"proof":"{proof}"}}"#
                 ))
             }
             1 => {
-                assert_eq!(str_of(&msg, "token"), TOKEN);
+                seen.lock().unwrap().auths.push(msg.clone());
+                if let Some(ticket) = ticket {
+                    assert_eq!(str_of(&msg, "ticket"), ticket);
+                    assert!(msg.get("token").is_none(), "a ticket's auth has no token");
+                } else {
+                    assert_eq!(str_of(&msg, "token"), TOKEN);
+                }
                 assert!(
                     msg.get("code").is_none(),
                     "an agent sends no full-control code"
@@ -235,11 +277,19 @@ struct Mcp {
 
 impl Mcp {
     fn start(profile: &Path) -> Self {
+        Self::start_env(profile, &[])
+    }
+
+    /// [`Mcp::start`] with `env` added to its environment.
+    fn start_env(profile: &Path, env: &[(&str, &str)]) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_vimma-ctl"))
             .arg("--profile")
             .arg(profile)
             .arg("mcp")
             .env_remove("VIMMA_PROFILE")
+            .env_remove("VIMMA_AGENT_TICKET")
+            .env_remove("VIMMA_AGENT_PORT")
+            .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -702,6 +752,154 @@ fn the_token_never_leaves_the_handshake() {
     assert!(!r.to_string().contains(TOKEN));
     let (_, stderr) = mcp.finish();
     assert!(!stderr.contains(TOKEN), "{stderr}");
+}
+
+// docs/specs/builtin-agent-cli.md C3: an agent CLI's vimma-ctl gets a one-time ticket and the
+// port in its environment. It connects with the ticket alone, as the agent role, and never reads
+// the discovery file, so it never holds the token.
+#[test]
+fn mcp_connects_with_a_ticket_from_the_environment() {
+    let vimma = FakeVimma::with_ticket(Box::new(|req| {
+        Some(format!(
+            r#"{{"type":"response","id":{},"ok":true,"result":{{"tabs":[]}}}}"#,
+            id_of(req)
+        ))
+    }));
+    // A Vimma with the token, named by the profile's discovery file: never dialled.
+    let other = FakeVimma::answering(r#"{"tabs":[]}"#);
+    let port = vimma.port.to_string();
+    let env = [
+        ("VIMMA_AGENT_TICKET", TICKET),
+        ("VIMMA_AGENT_PORT", port.as_str()),
+    ];
+    let mut mcp = Mcp::start_env(&other.profile, &env);
+    mcp.send(INIT);
+    mcp.next();
+    let r = mcp.call(2, "vimma_tabs", "{}");
+    assert!(!is_error(&r), "{r}");
+    let seen = vimma.seen();
+    assert_eq!(seen.hellos.len(), 1);
+    assert_eq!(str_of(&seen.hellos[0], "role"), "agent");
+    assert_eq!(str_of(&seen.hellos[0], "ticket"), ticket_id(TICKET));
+    assert!(
+        !seen.hellos[0].to_string().contains(TICKET),
+        "the hello names only the id"
+    );
+    assert_eq!(str_of(&seen.auths[0], "ticket"), TICKET);
+    assert_eq!(str_of(&seen.requests[0], "command"), "agent-hello");
+    let session = seen.requests[0].get("args").unwrap().get("session");
+    assert!(
+        session.is_some(),
+        "a reconnect keeps its connection by session id"
+    );
+    assert_eq!(str_of(&seen.requests[1], "command"), "agent-tabs");
+    assert!(
+        other.seen().hellos.is_empty(),
+        "the token's Vimma was never dialled"
+    );
+    let (code, stderr) = mcp.finish();
+    assert_eq!(code, Some(0), "{stderr}");
+}
+
+// The ticket reaches only the auth line of a server that proved it knows it: never stdout,
+// stderr or a tool result, whether the connection works, is refused or the value is malformed.
+#[test]
+fn the_ticket_is_never_printed() {
+    let vimma = FakeVimma::with_ticket(Box::new(|req| {
+        Some(format!(
+            r#"{{"type":"response","id":{},"ok":true,"result":{{"tabs":[]}}}}"#,
+            id_of(req)
+        ))
+    }));
+    let profile = temp_profile();
+    let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+    let closed_port = closed.local_addr().unwrap().port().to_string();
+    drop(closed);
+    let good = vimma.port.to_string();
+    let upper = TICKET.to_uppercase();
+    let cases: [(&str, &str); 4] = [
+        (TICKET, good.as_str()),
+        (TICKET, closed_port.as_str()),
+        (TICKET, "not-a-port"),
+        (upper.as_str(), good.as_str()),
+    ];
+    for (ticket, port) in cases {
+        let env = [("VIMMA_AGENT_TICKET", ticket), ("VIMMA_AGENT_PORT", port)];
+        let mut mcp = Mcp::start_env(&profile, &env);
+        mcp.send(INIT);
+        let init = mcp.next();
+        let r = mcp.call(2, "vimma_tabs", "{}");
+        for text in [init.to_string(), r.to_string()] {
+            assert!(!text.to_lowercase().contains(TICKET), "{port}: {text}");
+        }
+        let (_, stderr) = mcp.finish();
+        assert!(!stderr.to_lowercase().contains(TICKET), "{port}: {stderr}");
+    }
+    // A malformed ticket or port is refused before any connection.
+    assert_eq!(vimma.seen().hellos.len(), 1, "only the good case connected");
+}
+
+// A task Vimma ran has ended (stopped, or finished) when its ticket's port no longer listens:
+// the model is told so, and never to turn MCP on, which would open Vimma to every local process.
+#[test]
+fn a_ticket_whose_task_ended_never_says_to_turn_on_mcp() {
+    let profile = temp_profile();
+    let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = closed.local_addr().unwrap().port().to_string();
+    drop(closed);
+    for (ticket, port) in [(TICKET, port.as_str()), ("not-a-ticket", port.as_str())] {
+        let env = [("VIMMA_AGENT_TICKET", ticket), ("VIMMA_AGENT_PORT", port)];
+        let mut mcp = Mcp::start_env(&profile, &env);
+        mcp.send(INIT);
+        mcp.next();
+        let r = mcp.call(2, "vimma_tabs", "{}");
+        assert!(is_error(&r), "{r}");
+        let text = &content_texts(&r)[0];
+        assert!(!text.contains(":mcp on"), "{text}");
+        assert!(text.contains("this task's connection to Vimma"), "{text}");
+        mcp.finish();
+    }
+}
+
+// S4 with the ticket as the key: a squatter on the port that cannot prove it knows the ticket
+// sees the hello (the nonce and the ticket's id) and nothing more.
+#[test]
+fn a_ticket_handshake_proves_the_server_first() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let after = Arc::new(Mutex::new(Vec::<String>::new()));
+    let sink = after.clone();
+    thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut w = stream.try_clone().unwrap();
+        let mut reader = BufReader::new(stream);
+        let mut hello = String::new();
+        reader.read_line(&mut hello).unwrap();
+        let nonce = str_of(&parse(hello.trim_end()).unwrap(), "nonce").to_string();
+        // The squatter knows the token, not the ticket.
+        let proof = vimma_ctl::protocol::challenge_proof(TOKEN, &nonce);
+        let _ = w.write_all(
+            format!("{{\"type\":\"challenge\",\"protocol\":2,\"proof\":\"{proof}\"}}\n").as_bytes(),
+        );
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
+            sink.lock().unwrap().push(line);
+        }
+    });
+    let profile = temp_profile();
+    let env = [
+        ("VIMMA_AGENT_TICKET", TICKET),
+        ("VIMMA_AGENT_PORT", port.as_str()),
+    ];
+    let mut mcp = Mcp::start_env(&profile, &env);
+    mcp.send(INIT);
+    mcp.next();
+    let r = mcp.call(2, "vimma_tabs", "{}");
+    assert!(is_error(&r), "{r}");
+    assert!(content_texts(&r)[0].contains("did not prove"), "{r}");
+    mcp.finish();
+    let after = after.lock().unwrap();
+    assert!(after.is_empty(), "nothing after the hello: {after:?}");
 }
 
 #[test]

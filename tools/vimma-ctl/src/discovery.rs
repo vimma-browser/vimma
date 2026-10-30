@@ -25,10 +25,68 @@ pub struct Env {
     pub xdg_config_home: Option<PathBuf>,
     /// `VIMMA_PROFILE`: a profile directory, like `--profile`.
     pub profile: Option<PathBuf>,
+    /// `VIMMA_AGENT_TICKET` and `VIMMA_AGENT_PORT`: set by Vimma for an agent CLI it runs.
+    pub agent: Option<AgentTicket>,
+}
+
+/// The one-time ticket and port Vimma gives an agent CLI's `vimma-ctl mcp` in its environment
+/// (docs/specs/builtin-agent-cli.md C3), as they were found: [`AgentTicket::discovery`] checks
+/// them. Never in a command line, which other users can read in `/proc/<pid>/cmdline`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct AgentTicket {
+    ticket: String,
+    port: String,
+}
+
+/// Never the ticket's value, so no debug output or log can carry it.
+impl fmt::Debug for AgentTicket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AgentTicket")
+            .field("ticket", &"(hidden)")
+            .field("port", &self.port)
+            .finish()
+    }
+}
+
+impl AgentTicket {
+    #[must_use]
+    pub fn new(ticket: &str, port: &str) -> Self {
+        Self {
+            ticket: ticket.to_string(),
+            port: port.to_string(),
+        }
+    }
+
+    /// Where to connect, and with what: a ticket of 64 lowercase hex characters and a port of
+    /// 1 to 65535. The error names neither value.
+    ///
+    /// # Errors
+    /// When either is malformed.
+    pub fn discovery(&self) -> Result<Discovery, DiscoveryError> {
+        let hex = self.ticket.len() == 64
+            && self
+                .ticket
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        if !hex {
+            return Err(DiscoveryError(
+                "VIMMA_AGENT_TICKET is not a ticket Vimma made (64 lowercase hex characters)"
+                    .into(),
+            ));
+        }
+        let port = self
+            .port
+            .parse::<u16>()
+            .ok()
+            .filter(|p| *p != 0)
+            .ok_or_else(|| DiscoveryError("VIMMA_AGENT_PORT is not a port (1 to 65535)".into()))?;
+        Ok(Discovery::for_ticket(port, &self.ticket))
+    }
 }
 
 impl Env {
-    /// Read `HOME`, `XDG_CONFIG_HOME` and `VIMMA_PROFILE`; empty values count as unset.
+    /// Read `HOME`, `XDG_CONFIG_HOME`, `VIMMA_PROFILE`, and `VIMMA_AGENT_TICKET` with
+    /// `VIMMA_AGENT_PORT`; empty values count as unset.
     #[must_use]
     pub fn from_process() -> Self {
         let var = |name: &str| {
@@ -36,10 +94,19 @@ impl Env {
                 .filter(|v| !v.is_empty())
                 .map(PathBuf::from)
         };
+        let text = |name: &str| {
+            std::env::var_os(name)
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string_lossy().into_owned())
+        };
         Self {
             home: var("HOME"),
             xdg_config_home: var("XDG_CONFIG_HOME"),
             profile: var("VIMMA_PROFILE"),
+            // A ticket without a port is still a ticket: it must never fall back to the token.
+            agent: text("VIMMA_AGENT_TICKET").map(|ticket| {
+                AgentTicket::new(&ticket, &text("VIMMA_AGENT_PORT").unwrap_or_default())
+            }),
         }
     }
 }
@@ -407,6 +474,7 @@ mod tests {
             home: Some(home.to_path_buf()),
             xdg_config_home: Some(PathBuf::from("/xdg")),
             profile: None,
+            agent: None,
         };
         let root = |env: &Env| profiles_root_for(env, Layout::Xdg);
         assert_eq!(root(&env), Some(PathBuf::from("/xdg/vimma/vimma")));
@@ -427,6 +495,7 @@ mod tests {
             home: Some(home.to_path_buf()),
             xdg_config_home: None,
             profile: None,
+            agent: None,
         };
         let expected = home.join("Library/Application Support/Vimma");
         assert_eq!(
@@ -445,6 +514,7 @@ mod tests {
             home: Some(PathBuf::from("/Users/u")),
             xdg_config_home: Some(PathBuf::from("/Users/u/.config")),
             profile: None,
+            agent: None,
         };
         assert_eq!(
             profiles_root_for(&env, Layout::MacOs),
@@ -458,6 +528,7 @@ mod tests {
             home: Some(PathBuf::from("/h")),
             xdg_config_home: None,
             profile: None,
+            agent: None,
         };
         let expected = if cfg!(target_os = "macos") {
             "/h/Library/Application Support/Vimma"
@@ -474,6 +545,7 @@ mod tests {
             home: Some(home.to_path_buf()),
             xdg_config_home: Some(home.join("xdg")),
             profile: Some(PathBuf::from("/from-env")),
+            agent: None,
         };
         assert_eq!(
             find_profile(Some(Path::new("/explicit")), &env),
@@ -482,6 +554,7 @@ mod tests {
         assert_eq!(find_profile(None, &env), Ok(PathBuf::from("/from-env")));
         let env = Env {
             profile: None,
+            agent: None,
             ..env
         };
         let err = find_profile(None, &env).unwrap_err();

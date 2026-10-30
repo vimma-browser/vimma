@@ -40,9 +40,13 @@ only the agent workspace, and every request asks you first (§12).
 
 - S1. The socket **must** be off by default and start or stop only with the pref
   `vimma.control.enabled` or `vimma.mcp.enabled` (`:mcp on`, `[mcp] enabled`). Either one starts
-  it, and it stops when both are off.
+  it, and it stops when both are off. The one exception is an agent CLI's one-time ticket (M51):
+  while a ticket is live the socket **may** listen with both switches off, and then **must**
+  take only a hello that names a live ticket, write no discovery file, and stop when the last
+  ticket ends.
   [`test_pref_starts_and_stops_the_server`](../tests/browser/browser_vimma_control.js),
-  [`test_agent_role_has_its_own_switch`](../tests/browser/browser_vimma_mcp_agent.js)
+  [`test_agent_role_has_its_own_switch`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js)
 - S2. It **must** listen on 127.0.0.1 only, never on another interface.
   [`test_pref_starts_and_stops_the_server`](../tests/browser/browser_vimma_control.js)
 - S3. The token file **must** be mode 0600 from its first byte, and `vimma-ctl` **must** refuse
@@ -51,14 +55,22 @@ only the agent workspace, and every request asks you first (§12).
   [`refuses_a_file_others_can_read`](../tools/vimma-ctl/src/discovery.rs),
   [`refuses_an_insecure_discovery_file`](../tools/vimma-ctl/tests/cli.rs)
 - S4. No command **must** run before the HMAC handshake; a wrong token is refused and the
-  connection closed; the token is never sent before the server proved it knows it.
+  connection closed; the token is never sent before the server proved it knows it. A ticket's
+  handshake is the same with the ticket as the key: its hello names the ticket only by its id,
+  HMAC-SHA256(ticket, `vimma-ticket` NUL), and the ticket is sent only after the server's proof;
+  an auth carries a token or a ticket, never both.
   [`test_handshake`](../tests/browser/browser_vimma_control.js),
   [`challenge.valid's proof is HMAC-SHA256(token, vimma-server NUL nonce)`](../packages/vimma-core/test/control.test.mjs),
-  [`a_squatter_gets_neither_the_token_nor_a_command`](../tools/vimma-ctl/tests/cli.rs)
+  [`a_squatter_gets_neither_the_token_nor_a_command`](../tools/vimma-ctl/tests/cli.rs),
+  [`an agent hello with a ticket validates; a ticket and a token together do not`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a_ticket_handshake_proves_the_server_first`](../tools/vimma-ctl/tests/mcp.rs)
 - S5. It **must** cap connections (8 open, of which at most 4 agents; 2 waiting for a hello),
-  line length (1 MiB) and handshake and idle time.
+  line length (1 MiB) and handshake and idle time. A ticket's connection counts toward the 8
+  but not the 4 agents, so MCP agents cannot keep out a task Vimma started; a ticket has one
+  connection at a time (M51).
   [`test_limits`](../tests/browser/browser_vimma_control.js),
-  [`test_agents_cannot_take_every_connection`](../tests/browser/browser_vimma_mcp_agent.js)
+  [`test_agents_cannot_take_every_connection`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_mcp_agents_cannot_keep_out_a_ticket`](../tests/browser/browser_vimma_agent_cli.js)
 - S6. A token file left by a crash **must** be removed at start; a symlink or directory in its
   place is never followed. [`test_stale_discovery_file_removed_at_start`](../tests/browser/browser_vimma_control.js)
 - S7. Only the commands of the connection's role **must** run (`full`: the four of protocol 1;
@@ -95,10 +107,12 @@ only the agent workspace, and every request asks you first (§12).
 - S12. The `full` role **must** run only with `vimma.control.enabled`, and the `agent` role only
   with MCP on; a hello for a role that is off is refused (`role-off`) and closed, and turning a
   switch off closes that role's connections. An agent connection **never** reaches `send-keys`,
-  `state` or protocol 1's `open`.
+  `state` or protocol 1's `open`. A ticket's connection is the agent role whatever the
+  switches say, is not closed by a switch, and ends with its ticket (M51-M54).
   [`test_agent_role_has_its_own_switch`](../tests/browser/browser_vimma_mcp_agent.js),
   [`test_each_role_runs_only_its_commands`](../tests/browser/browser_vimma_mcp_agent.js),
-  [`says_the_control_socket_is_off_when_only_mcp_is_on`](../tools/vimma-ctl/tests/cli.rs)
+  [`says_the_control_socket_is_off_when_only_mcp_is_on`](../tools/vimma-ctl/tests/cli.rs),
+  [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js)
 - S13. While MCP is on, a new `full` connection **must** get its welcome only after the user's
   `y` in the agent question line (no grant covers it, one waits at a time, three noes mute the
   question for a minute); a no, a timeout or a closed connection refuses it (`denied`). An agent
@@ -880,8 +894,10 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   browser-scoped DENY, set on each HTTP response and when each document's window global is
   created, so a page a service worker serves is covered). They **must** open no new window or
   tab (`SANDBOXED_AUXILIARY_NAVIGATION` on every agent tab, which is reloaded if it had loaded
-  without it) and launch no other app through an external protocol (Firefox's chooser is
-  wrapped for the agent container). Their downloads follow M11-M13. A tab of another workspace
+  without it; a top-level document it loads over HTTP loses its `Cross-Origin-Opener-Policy`,
+  which Firefox refuses in a sandboxed tab, since an agent tab has no opener and opens no window)
+  and launch no other app through an external protocol (Firefox's chooser is wrapped for the
+  agent container). Their downloads follow M11-M13. A tab of another workspace
   still asks, opens pop-ups and downloads as before.
   [`test_the_agent_container_asks_for_nothing`](../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_another_workspace_still_asks`](../tests/browser/browser_vimma_mcp_agent_pages.js),
@@ -889,7 +905,9 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_site_permissions_are_per_workspace`](../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_a_page_from_a_service_worker_is_denied_too`](../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_a_sweep_reloads_agent_tabs_that_loaded_unsandboxed`](../tests/browser/browser_vimma_mcp_agent_pages.js),
-  [`test_agent_pages_launch_no_app`](../tests/browser/browser_vimma_mcp_agent_pages.js)
+  [`test_agent_pages_launch_no_app`](../tests/browser/browser_vimma_mcp_agent_pages.js),
+  [`test_builtin_agent_opens_coop_pages`](../tests/browser/browser_vimma_agent_coop.js),
+  [`test_mcp_agent_opens_coop_pages`](../tests/browser/browser_vimma_agent_coop.js)
 - M11. A download from the agent workspace (by its container, its tab's container, or being written
   to the quarantine folder) **must** ask in the question line first (its name, size, type and host,
   **never** the URL). It is the `vimma_download` of an agent connection only when it is the very
@@ -1428,15 +1446,61 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   holds for it, and the validator and `vimma-ctl mcp` check it the same way; it is made only
   after the step, of a page that is no longer loading, and only while the tab is still an agent
   tab with the URL it had when the list began (else the result says why, in fixed words, and
-  holds no list); the result's URL and title are read at the last such check, and a tab that
+  holds no list; a page that is one of Firefox's error pages is named by its error code, which
+  the validator and `vimma-ctl mcp` accept only from a fixed list, never as the page's text;
+  `vimma_elements` on such a tab refuses with the same code, and the built-in agent's stop after
+  three identical refusals counts both); the result's URL and title are read at the last such check, and a tab that
   left the agent workspace meanwhile fails the call, noted in `:mcp log`, with nothing of its
   page; its labels become the connection's current ones as a `vimma_elements` list's do. The
   step's question (a checkpoint's included), its `:mcp log` row and its notice under a grant say
   that the list is taken too.
+  A compact list ([agent-speed](specs/agent-speed.md) S3, S4) changes what a list holds, never
+  how it is made or wrapped: every rule above holds for the lines it writes, which are the same
+  lines a full list writes. How to read a list is said once, in the `vimma_elements` tool
+  description; each result keeps its untrusted-content header (the page's URL and title) and its
+  intro saying that the text is the page's. A list of a page whose origin the connection has
+  listed before leaves out the element lines identical, label, form number and state included,
+  to its last list of that origin, and the result names their labels in `repeated`: labels only
+  (1 to 3 hint characters, each once), outside the delimiters, which the validator and
+  `vimma-ctl mcp` refuse otherwise, so no page string reaches the agent by that route. The
+  comparison runs in the parent on the lines made from the checked copies, so it adds no path
+  the page controls; a page can only make a line identical to one it already showed, which says
+  of its element what that line said. Form lines are always written, so the numbers mean this
+  page's forms. A sensitive field's line has no value, so it stays identical whatever the page
+  types into it, and no value is ever compared or returned. Labels are counted over the whole
+  page, so leaving lines out changes no label; the elements a list gave, written or left out,
+  are the ones the connection can click or fill, and a label the newest list did not give is
+  refused. What is kept per connection is the last list's lines for at most 16 origins, dropped when the
+  connection closes and when a built-in conversation's context is cleared, so a new conversation,
+  or one whose model no longer has the earlier lists, gets every list in full. The lines are kept
+  once the list is made, before the client has read the reply: a client that drops a reply (a
+  cancelled call, a context its client compacted) can be handed labels of lines it never saw, and
+  `full: true`, which the tool description names, lists every line again; a label still clicks
+  only an element of the page now. `query` (at most 200 characters of one line, matched NFKC and
+  case-folded against an element's label, text, caption and name as the list writes them, cut at
+  80 characters, never its value) and `kinds` (kinds of the list's own) leave out the elements
+  that do not match, and their labels with them; neither reaches the page.
+  [`test_repeated_list_leaves_out_unchanged_lines`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_compact_list_keeps_delimiters_and_sensitive_rules`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_elements_query_and_kinds`](../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_clear_forgets_the_last_element_lists`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`query matches only what the list writes: text cut at 80 characters, as shown`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`an element list leaves out lines given earlier for the same site and counts them`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a sensitive field is left out only when its line, without a value, is the same`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a sensitive field's value is never matched`](../packages/vimma-core/test/agent-act.test.mjs),
+  [`a list's repeated labels come with it, each a label, at most once`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a_compact_list_names_the_labels_it_left_out`](../tools/vimma-ctl/src/mcp.rs),
+  [`element_lists_take_query_kinds_and_full`](../tools/vimma-ctl/src/mcp.rs),
   [`test_a_steps_list_says_nothing_of_a_tab_that_left`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_steps_return_the_element_list_vimma_elements_would`](../tests/browser/browser_vimma_mcp_elements.js),
   [`a step's list is inside the untrusted delimiters, with its dropped count`](../packages/vimma-core/test/control-v2.test.mjs),
   [`why a step's list is missing: fixed words, never with a list`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a load error: one of Firefox's codes, only with unlisted error`](../packages/vimma-core/test/control-v2.test.mjs),
+  [`a code outside the fixed list is other, never the page's text`](../packages/vimma-core/test/load-errors.test.mjs),
+  [`a_load_that_ended_on_an_error_page_is_an_error_naming_it`](../tools/vimma-ctl/src/mcp.rs),
+  [`a load that ended on Firefox's error page is an error result naming the error`](../packages/vimma-core/test/agent-results.test.mjs),
+  [`an open that ends on Firefox's error page three times ends the task`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`test_builtin_open_names_the_error_page`](../tests/browser/browser_vimma_agent_load_error.js),
   [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../tools/vimma-ctl/src/mcp.rs),
   [`an_open_with_elements_lists_the_page_it_loaded`](../tools/vimma-ctl/src/mcp.rs),
   [`a step that returns the element list says so in the question and the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
@@ -1598,8 +1662,12 @@ control socket has no command that sends a task, and page key events never reach
 steps that cannot be taken back still ask under it.
 
 **The model's endpoint.** Requests carry the system text, the tool definitions, the user's
-messages and every tool result (page text, element lists, console entries, screenshots for a
-model with vision) to the endpoint the user configured, and nowhere else. A hosted provider's
+messages and the tool results (page text, element lists, console entries, screenshots for a
+model with vision) to the endpoint the user configured, and nowhere else. Only the latest results
+are sent whole, in blocks of `[agent] keep_results` (unset: 6 for a hosted provider, 20 for one
+on this machine), so between one and two blocks' worth; older ones are sent
+shortened to their first line and a note (M50), so earlier page text stops reaching the model
+with each request. The conversation kept in memory still holds them whole. A hosted provider's
 own terms decide what it keeps. A server on 127.0.0.1 may itself forward to a hosted model;
 Vimma sees only the address.
 
@@ -1669,14 +1737,19 @@ vision; its key stays in login storage.
 - M39. Model requests **must** go only to the configured endpoint, `https://` unless on a
   loopback address, with `credentials: "omit"` and `redirect: "error"`; `[agent] local_only`
   **must** refuse every endpoint off this machine, in config.toml and at each request. Setup's
-  probe **must** ask only 127.0.0.1 on the local servers' ports, with a timeout of 1 s, and only
-  when setup asks.
+  probe **must** ask only 127.0.0.1 on the local servers' ports and the configured providers'
+  own loopback endpoints, with a timeout of 1 s, and only while the model picker is open. The
+  check before a task that a local model is still listed **must** ask only the conversation's
+  own loopback endpoint, and never an endpoint off this machine.
   [`test_requests_only_to_the_endpoint_without_credentials_or_redirects`](../tests/browser/browser_vimma_agent_conversations.js),
   [`posts to the endpoint without credentials or redirects, and parses the reply`](../packages/vimma-core/test/agent-providers.test.mjs),
   [`a refused endpoint makes no request`](../packages/vimma-core/test/agent-providers.test.mjs),
   [`local_only refuses a remote endpoint`](../packages/vimma-core/test/config-agent.test.mjs),
   [`an endpoint off this machine must be https, and carry no user name`](../packages/vimma-core/test/config-agent.test.mjs),
   [`lists the models of the servers that answer, with no cookies and no redirects`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`the probe also asks the configured local endpoints, once each, never a remote one`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`a provider off this machine, or Anthropic's API, gets no request`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`its server lists it, or no longer does`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`test_probe_only_on_setup_and_only_loopback`](../tests/browser/browser_vimma_agent_conversations.js)
 - M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key and
   the endpoint origin it was entered for, encrypted with OSKeyStore, and **must** be sent only to
@@ -1752,14 +1825,18 @@ for the user.
   hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
   window, the transcript, the status bar or a notice (which may show its last four characters),
   nor kept in a pref or the conversation, and an error storing it **must not** be shown with its
-  text, nor recorded in Vimma's key log or its debug output. Any way out of the field (Esc,
-  closing the window, another view) empties it. A provider that needs a key and has none for
+  text, nor recorded in Vimma's key log or its debug output. The field **must not** reveal the
+  key: it has no reveal button, cancels every reveal a user can ask for (`MozWillToggleReveal`), opens no context
+  menu, and gives up nothing to copy, cut or drag; it never holds a stored key, so changing a
+  key means entering it again. Any way out of the field (Esc, closing the window, another
+  view) empties it. A provider that needs a key and has none for
   its endpoint **must** be asked for it, and `AgentChat.send` **must** refuse it, before any
   request is sent; an endpoint **must not** carry a query or a fragment; `x` in the picker
   deletes a key after a `y`.
   [`test_hosted_openai_compatible_provider_set_up_in_the_window`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_hosted_anthropic_provider_asks_for_its_key_before_the_task`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_an_entered_key_is_never_shown_again_nor_copied_out`](../tests/browser/browser_vimma_agent_chat.js),
   [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
 - M47. A stored conversation **must** hold only the user's messages, each task's final reply and
   Vimma's own task summaries (with its title, provider, model and times), never a tool result,
@@ -1802,6 +1879,63 @@ for the user.
   [`test_setup_creates_a_missing_config_with_the_provider`](../tests/browser/browser_vimma_agent_store.js),
   [`never writes a key, and refuses a file that does not parse`](../packages/vimma-core/test/agent-config.test.mjs),
   [`keeps every other line of the file`](../packages/vimma-core/test/agent-config.test.mjs)
+- M50. Shortening older results (`[agent] keep_results`) **must** only take text out of a
+  request, never add page text or move it out of the untrusted-content delimiters: a shortened
+  result keeps only its first text item's first line and Vimma's note that the rest was left
+  out, and a result that starts with Vimma's `Untrusted web content from …` line keeps that line
+  whole, so a page title that breaks the line never loses the warning after it. A result no
+  longer than its shortened form is sent whole. The user's messages, the model's replies and
+  every error result (`isError`: refused arguments, failures and the user's no, a checkpoint's
+  among them) **must** be sent whole, and a shortened result **must** keep its call's id, so each
+  step stays paired with what it did. The gate's rules do not depend on what the model still
+  sees: a refusal stays enforced after its result is shortened.
+  [`the loop leaves out results older than keep_results in blocks, keeping their first line`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`a page's line keeps its warning even when the page's title breaks the line`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`the user's messages, the replies and refusals, the user's no among them, stay whole`](../packages/vimma-core/test/agent-loop.test.mjs),
+  [`a request's prefix changes only when a block is left out`](../packages/vimma-core/test/agent-loop.test.mjs)
+
+**Agent CLIs** ([builtin-agent-cli](specs/builtin-agent-cli.md), in progress; no process is
+started yet): a conversation will be able to run an agent CLI the user has, such as Claude
+Code, whose `vimma-ctl mcp` acts on the browser as that conversation. What is in force is the
+way in: a one-time ticket that binds one `vimma-ctl mcp` connection to the conversation's gate
+connection. It reaches only what the conversation already reaches, so a process of the user's
+that reads it from the CLI's environment gains nothing the conversation does not have, and
+only until the run ends.
+
+- M51. A ticket **must** be 256 random bits, made only by chrome code for one conversation's
+  connection, good until it is revoked (when its conversation is stopped or deleted; the run
+  that ends **must** revoke it too, once runs exist), for one connection at a time: the first
+  connection's
+  `vimma-ctl mcp` session id is the only way back in after that connection drops. A second
+  connection while one lives, a later one without that session id, and one after a first that
+  sent none **must** be refused, with the notice
+  `a second program used <cli>'s ticket and was refused`. A revoked or unknown ticket's hello
+  **must** be refused before any proof is sent. A request id still in flight on the connection
+  **must not** be taken again, so every waiting question stays reachable by `agent-cancel` and
+  by the connection's end.
+  [`test_second_connection_with_a_ticket_is_refused`](../tests/browser/browser_vimma_agent_cli.js),
+  [`test_a_request_id_in_flight_is_not_reused`](../tests/browser/browser_vimma_agent_cli.js),
+  [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js)
+- M52. A ticket's connection **must** act as its conversation's connection (M35-M37): asked
+  about under the conversation's label, covered by its grant and by no other, on the tabs it
+  owns. Its `agent-hello` **must not** register an MCP agent or change the label, and its
+  closing **must** withdraw only the questions it was waiting on, leaving the conversation, its
+  grant and its tabs.
+  [`test_ticket_connection_acts_as_the_conversation`](../tests/browser/browser_vimma_agent_cli.js)
+- M53. A ticket **must never** be written to a pref, `config.toml`, the discovery file or any
+  file of the profile, a log, a notice or `:mcp log`. `vimma-ctl mcp` **must** take it only
+  from `VIMMA_AGENT_TICKET` (with the port from `VIMMA_AGENT_PORT`), never print it, and with a
+  ticket **must not** read the discovery file, so that process never holds the token. When its
+  ticket's task has ended it **must** tell the model so, and **never** to turn MCP on.
+  [`test_ticket_never_in_prefs_files_notices_or_log`](../tests/browser/browser_vimma_agent_cli.js),
+  [`mcp_connects_with_a_ticket_from_the_environment`](../tools/vimma-ctl/tests/mcp.rs),
+  [`the_ticket_is_never_printed`](../tools/vimma-ctl/tests/mcp.rs),
+  [`a_ticket_whose_task_ended_never_says_to_turn_on_mcp`](../tools/vimma-ctl/tests/mcp.rs)
+- M54. Stopping or deleting a conversation **must** revoke its tickets and close their
+  connections at once, before its grant ends, so no command a CLI sends after the stop reaches
+  the browser; a question the connection waited on is withdrawn, and a step already past its
+  question finishes, as any stopped task's does (Behaviour 16 of builtin-agent).
+  [`test_stop_and_delete_close_the_ticket_connection`](../tests/browser/browser_vimma_agent_cli.js)
 
 ## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
 
@@ -2136,7 +2270,13 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   (`released`, never a pre-release) runs, and `release.yml`'s `macos-tap` job, which runs when the
   macOS files reach the release. Each starts `homebrew.yml` on `main` with the tag only once
   `vimma.rb` is on the published release, so whichever of the publish and the macOS files comes
-  last starts the push. `start` runs the tag's copy of `homebrew.yml`, which anyone with write
+  last starts the push. Each learns that from the release's metadata, read without a token from
+  the API's `releases/tags/<tag>`, which answers 404 for a draft; it also requires `draft` to be
+  false and the file's upload to be complete, never requests the file itself (any request for a
+  release file counts as a download, docs/runbook.md, "Release download counts"), and fails on
+  any answer other than 200 or 404 and on a 200 that is not a release, so a rate limit or an outage never passes for a release
+  without the cask. Starting `homebrew.yml` grants nothing: its `homebrew` job still downloads
+  the cask and checks it as above. `start` runs the tag's copy of `homebrew.yml`, which anyone with write
   access can edit on a tag of their own: an edited copy may ask for any permissions and read the
   repository's and organisation's secrets, but it gets nothing a write-access user cannot already
   get by pushing a branch. It cannot deploy to the `homebrew` environment, so it cannot reach the
@@ -2194,7 +2334,11 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`takes the tap key from the homebrew environment`](../tools/package/test/release-workflow.test.mjs),
   [`the tap key reaches only the push step`](../tools/package/test/release-workflow.test.mjs),
   [`pushes Casks/vimma.rb to the tap over SSH with github.com's pinned host key`](../tools/package/test/release-workflow.test.mjs),
-  [`never replaces a newer cask with an older one`](../tools/package/test/release-workflow.test.mjs)
+  [`never replaces a newer cask with an older one`](../tools/package/test/release-workflow.test.mjs),
+  [`reads the release's metadata and never requests a release file`](../tools/test/release-asset-checks.test.mjs),
+  [`starts nothing, green, when %s`](../tools/test/release-asset-checks.test.mjs),
+  [`fails when the release API answers %i`](../tools/test/release-asset-checks.test.mjs),
+  [`no workflow requests a release file only to see that it exists`](../tools/test/release-asset-checks.test.mjs)
 
 - B12. The Flatpak build, `flatpak.yml` (spec [flatpak](specs/flatpak.md)), publishes nothing,
   holds no secret and no environment, and each job's token only reads the repository. It
@@ -2640,7 +2784,9 @@ _Pages_ and _extensions_ cannot reach it.
   its one file, the `.dmg`, **must** match `SHA256SUMS-macos`, which **must** carry release.yml's
   cosign signature, and is checked against it before the secretless `prepare` job (on a macOS
   runner) mounts it read-only to read its build ID; the signing job refuses a body for another
-  target than the one asked for. Each target has its own concurrency group, so its serials only
+  target than the one asked for. The macOS run starts once the `.dmg` is on the published
+  release, which the starting jobs learn from the release's metadata as in B11; `prepare` then
+  checks again that the release is published and downloads the `.dmg` itself. Each target has its own concurrency group, so its serials only
   grow; a push that the other target's push beat is rebased onto it (another file), never forced.
   **⚠ limit:** without a required reviewer on `update-signing`, anyone with write access can
   start a run on `main` that re-signs a published release or offers nothing (withholding
@@ -2672,7 +2818,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`runs one manifest per target at a time, never cancelling one half done`](../tools/update/test/update-workflow.test.mjs),
   [`refuses a .dmg that does not match SHA256SUMS-macos`](../tools/update/test/manifest.test.mjs),
   [`checkSigned takes the target: a Linux manifest is refused for macOS and back`](../tools/update/test/manifest.test.mjs),
-  [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../tools/package/test/release-workflow.test.mjs)
+  [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../tools/package/test/release-workflow.test.mjs),
+  [`a published release whose .dmg is already there starts the macOS manifest too`](../tools/update/test/update-workflow.test.mjs),
+  [`fails when the release API answers %i`](../tools/test/release-asset-checks.test.mjs)
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
   the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `dnf`,

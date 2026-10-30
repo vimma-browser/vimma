@@ -10,8 +10,15 @@
  */
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./agent.mjs";
-import { AGENT_FILL, AGENT_SCREENSHOT, hasInvisible, isAgentLabel } from "./agent-act.mjs";
+import {
+  AGENT_FILL,
+  AGENT_SCREENSHOT,
+  ELEMENT_KINDS,
+  hasInvisible,
+  isAgentLabel,
+} from "./agent-act.mjs";
 import { isCtlVersion } from "./ctl-version.mjs";
+import { LOAD_ERRORS } from "./load-errors.mjs";
 import { DEFAULT_HINT_CHARS } from "./hints.mjs";
 import { parseKey } from "./keys.mjs";
 import { MODES } from "./modes.mjs";
@@ -65,10 +72,11 @@ export const DIALOG_TYPES = Object.freeze(["alert", "confirm", "prompt"]);
 export const ACTIVATE_CHANGES = Object.freeze(["element", "elements", "text", "dialog"]);
 /**
  * Why an open, a click or a fill asked with `elements` returns no element list (issue #584):
- * the page was still loading, it changed while it was listed, or it could not be listed (not an
- * http or https page, or it did not answer). Words only, never the page's text.
+ * the page was still loading, it changed while it was listed, it could not be listed (not an
+ * http or https page, or it did not answer), or it did not load: Firefox showed its error page,
+ * named in `loadError` (issue #643). Words only, never the page's text.
  */
-export const STEP_UNLISTED = Object.freeze(["loading", "changed", "failed"]);
+export const STEP_UNLISTED = Object.freeze(["loading", "changed", "failed", "error"]);
 /**
  * Why an agent request was `denied` (vimma-mcp decision 4). `in-use`: the user is typing in that
  * tab, or a key sequence or hint mode is under way there (mcp-drive D13).
@@ -128,6 +136,12 @@ const unprintable = (cp) =>
 const KINDS = ["hello", "challenge", "auth", "welcome", "request", "response", "discovery"];
 /** Prefix of the challenge's HMAC message, so the proof is good for nothing else. */
 export const CHALLENGE_CONTEXT = "vimma-server\0";
+/**
+ * A one-time ticket's id is HMAC-SHA256(key: the ticket, message: TICKET_CONTEXT), in lowercase
+ * hex (docs/specs/builtin-agent-cli.md C3). The hello names the ticket by its id, so the server
+ * knows which ticket to prove it knows before the client sends the ticket itself.
+ */
+export const TICKET_CONTEXT = "vimma-ticket\0";
 
 /**
  * @typedef {"hello" | "challenge" | "auth" | "welcome" | "request" | "response" | "discovery"} MessageKind
@@ -178,12 +192,17 @@ function checkHello(m, errors) {
   const roles = hasRoles(m);
   noExtraFields(
     m,
-    roles ? ["type", "protocol", "nonce", "role"] : ["type", "protocol", "nonce"],
+    roles ? ["type", "protocol", "nonce", "role", "ticket"] : ["type", "protocol", "nonce"],
     errors,
   );
   checkProtocol(m, errors);
   if (roles) checkRole(m, errors);
   if (!isToken(m.nonce)) errors.push("nonce must be 64 lowercase hex characters");
+  // An agent CLI's connection (docs/specs/builtin-agent-cli.md C3): its ticket's id.
+  if (roles && "ticket" in m) {
+    if (!isToken(m.ticket)) errors.push("ticket must be 64 lowercase hex characters");
+    if (m.role === "full") errors.push('a ticket is for the "agent" role only');
+  }
 }
 
 /**
@@ -197,7 +216,14 @@ function checkChallenge(m, errors) {
 
 /** @param {Obj} m @param {string[]} errors */
 function checkAuth(m, errors) {
-  noExtraFields(m, ["type", "token", "code"], errors);
+  noExtraFields(m, ["type", "token", "code", "ticket"], errors);
+  // A ticket stands in for the token, never beside it, and no full-control code goes with it.
+  if ("ticket" in m) {
+    if (!isToken(m.ticket)) errors.push("ticket must be 64 lowercase hex characters");
+    if ("token" in m) errors.push("an auth carries a token or a ticket, not both");
+    if ("code" in m) errors.push("a ticket's auth carries no code");
+    return;
+  }
   if (!isToken(m.token)) errors.push("token must be 64 lowercase hex characters");
   // The code a full client printed, shown in Vimma's question (docs/specs/vimma-mcp.md 29 C).
   if ("code" in m && (typeof m.code !== "string" || !AUTH_CODE.test(m.code))) {
@@ -340,7 +366,7 @@ function checkAgentReadArgs(args, errors) {
  * @param {Obj} args @param {string[]} errors
  */
 function checkAgentOpenArgs(args, errors) {
-  noExtraFields(args, ["url", "tab", "elements"], errors, "args.");
+  noExtraFields(args, ["url", "tab", ...STEP_LIST_ARGS], errors, "args.");
   checkElementsFlag(args, errors);
   const { url } = args;
   if (typeof url !== "string") errors.push("url must be a string");
@@ -358,6 +384,49 @@ function checkAgentOpenArgs(args, errors) {
 function checkElementsFlag(args, errors) {
   if ("elements" in args && typeof args.elements !== "boolean") {
     errors.push("elements must be a boolean");
+  }
+  if (("query" in args || "kinds" in args) && args.elements !== true) {
+    errors.push("query and kinds come only with elements: true");
+  }
+  checkListFilters(args, errors);
+}
+
+/** The arguments of a step that returns an element list (issue #584, agent-speed S4). */
+const STEP_LIST_ARGS = ["elements", "query", "kinds"];
+
+/** The longest `query` of an element list, in code points (builtin-agent B2). */
+const MAX_LIST_QUERY = 200;
+
+/**
+ * An element list's filters (builtin-agent B2, agent-speed Behaviour 4): `query`, words of one
+ * line, and `kinds`, distinct kinds of ELEMENT_KINDS.
+ * @param {Obj} args @param {string[]} errors
+ */
+function checkListFilters(args, errors) {
+  const { query, kinds } = args;
+  if (
+    "query" in args &&
+    !(
+      typeof query === "string" &&
+      query.trim() !== "" &&
+      [...query].length <= MAX_LIST_QUERY &&
+      !FILL_CONTROL.test(query) &&
+      !query.includes("\n") &&
+      !hasInvisible(query)
+    )
+  ) {
+    errors.push(`query must be 1 to ${MAX_LIST_QUERY} characters of one line`);
+  }
+  if (
+    "kinds" in args &&
+    !(
+      Array.isArray(kinds) &&
+      kinds.length > 0 &&
+      new Set(kinds).size === kinds.length &&
+      kinds.every((k) => ELEMENT_KINDS.includes(k))
+    )
+  ) {
+    errors.push(`kinds must be distinct kinds of ${ELEMENT_KINDS.join(", ")}`);
   }
 }
 
@@ -381,7 +450,7 @@ function checkAgentKeysArgs(args, errors) {
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentActivateArgs(args, errors) {
-  noExtraFields(args, ["tab", "label", "elements"], errors, "args.");
+  noExtraFields(args, ["tab", "label", ...STEP_LIST_ARGS], errors, "args.");
   checkTabArg(args, errors);
   checkElementsFlag(args, errors);
   if (!isAgentLabel(args.label)) {
@@ -403,7 +472,7 @@ const isFillValue = (v) =>
 
 /** @param {Obj} args @param {string[]} errors */
 function checkAgentFillArgs(args, errors) {
-  noExtraFields(args, ["tab", "fields", "submit", "elements"], errors, "args.");
+  noExtraFields(args, ["tab", "fields", "submit", ...STEP_LIST_ARGS], errors, "args.");
   checkTabArg(args, errors);
   checkElementsFlag(args, errors);
   const { fields } = args;
@@ -474,12 +543,14 @@ function checkRequest(m, errors) {
     if ("since" in args && !isCount(args.since)) {
       errors.push("since must be a non-negative integer (ms since the epoch)");
     }
-  } else if (
-    command === "agent-close" ||
-    command === "agent-show" ||
-    command === "agent-elements"
-  ) {
-    // A show names its tab only, never a workspace (mcp-drive D2); a list takes no selector.
+  } else if (command === "agent-elements") {
+    // A list takes no selector (mcp-forms F2): its filters match the checked copies' words.
+    noExtraFields(args, ["tab", "query", "kinds", "full"], errors, "args.");
+    checkTabArg(args, errors);
+    checkListFilters(args, errors);
+    if ("full" in args && typeof args.full !== "boolean") errors.push("full must be a boolean");
+  } else if (command === "agent-close" || command === "agent-show") {
+    // A show names its tab only, never a workspace (mcp-drive D2).
     noExtraFields(args, ["tab"], errors, "args.");
     checkTabArg(args, errors);
   } else if (command === "agent-cancel") {
@@ -533,12 +604,32 @@ const isCount = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0
  * @param {Obj} result @param {string[]} errors
  */
 function checkElementsResult(result, errors) {
-  noExtraFields(result, ["url", "title", "elements", "dropped"], errors, "result.");
+  noExtraFields(result, ["url", "title", "elements", "dropped", "repeated"], errors, "result.");
+  checkRepeated(result, errors);
   checkFields(result, "result", { strings: ["url", "title"] }, errors);
   if (!insideDelimiters(result.elements)) {
     errors.push("result.elements must be inside the untrusted-content delimiters");
   }
   if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
+}
+
+/**
+ * The labels a compact list left out as given in the conversation's last list of the site
+ * (agent-speed S4): Vimma's own words, labels only, never the page's, and only with a list.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkRepeated(result, errors) {
+  if (!("repeated" in result)) return;
+  const r = result.repeated;
+  if (!("elements" in result)) errors.push("result.repeated comes only with result.elements");
+  else if (!(
+    Array.isArray(r) &&
+    r.length > 0 &&
+    new Set(r).size === r.length &&
+    r.every((l) => isAgentLabel(l))
+  )) {
+    errors.push("result.repeated must be distinct labels, at least one");
+  }
 }
 
 /**
@@ -548,6 +639,7 @@ function checkElementsResult(result, errors) {
  * @param {Obj} result @param {string[]} errors
  */
 function checkStepList(result, errors) {
+  checkRepeated(result, errors);
   const listed = "elements" in result;
   if (listed !== "dropped" in result) {
     errors.push("result.elements and result.dropped come together");
@@ -562,6 +654,14 @@ function checkStepList(result, errors) {
       errors.push(`result.unlisted must be one of ${STEP_UNLISTED.join(", ")}`);
     } else if (listed) errors.push("result.unlisted comes only without result.elements");
   }
+  if ("loadError" in result !== (result.unlisted === "error")) {
+    errors.push("result.loadError comes with result.unlisted error, and only with it");
+  } else if (
+    "loadError" in result &&
+    !(typeof result.loadError === "string" && Object.hasOwn(LOAD_ERRORS, result.loadError))
+  ) {
+    errors.push("result.loadError must be one of Firefox's error codes Vimma names, or other");
+  }
 }
 
 /**
@@ -572,7 +672,7 @@ function checkStepList(result, errors) {
 function checkOpenResult(result, errors) {
   noExtraFields(
     result,
-    ["tab", "url", "title", "elements", "dropped", "unlisted"],
+    ["tab", "url", "title", "elements", "dropped", "repeated", "unlisted", "loadError"],
     errors,
     "result.",
   );
@@ -677,7 +777,9 @@ function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([]
       "changed",
       "elements",
       "dropped",
+      "repeated",
       "unlisted",
+      "loadError",
       ...extra,
     ],
     errors,

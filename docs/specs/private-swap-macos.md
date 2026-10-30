@@ -1,6 +1,7 @@
 # Spec: private-swap-macos
 
-Status: draft (Delivery 1 and 2 built; the hand checks and open question 1 are open) · Area:
+Status: implemented, except the leftovers in
+[#623](https://github.com/vimma-browser/vimma/issues/623) (the hand checks not yet run) · Area:
 `packages/vimma-core/src/` (`hyprswap.mjs`'s pair state machine moved to a backend-neutral
 `privatepair.mjs`, `nativeswap.mjs` new); `host/private-swap.mjs` (a backend switch),
 `host/native-swap.mjs` (new, and its `jar.mn` line), `host/private-ops.mjs`,
@@ -43,7 +44,7 @@ special workspace, Vimma can do on macOS by hiding the normal window.
 1. As a user on macOS, `ctrl+b shift+p` (or `ctrl+shift+p`, `:private`, the picker) shows the
    private workspace exactly where my Vimma window was: the same screen, position and size, and
    zoomed if it was zoomed. My normal window is no longer on screen (whether macOS still lists it
-   in the Window menu is open question 1). Going back (the toggle, `ctrl+^`, `ctrl+b (`,
+   in the Window menu is decision 15). Going back (the toggle, `ctrl+^`, `ctrl+b (`,
    `ctrl+b )`, the picker, `:ws`) shows my normal window in the private window's place and hides
    the private window.
 2. As a user, the windows do not animate: no zoom-in of a new window, no fade-out of the hidden
@@ -356,7 +357,8 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
     `config.mjs`), so that existing configs keep working: `"swap"` means the native swap on
     macOS and Hyprland's swap on Hyprland; `"window"` opts out everywhere. No new key, action or
     binding. macOS gets the swap by default, since the hand checks run before the delivering PR
-    merges and `"window"` stays one line away. Rejected: `"window"` on macOS until the hand
+    merges and `"window"` stays one line away (only the swap itself was checked before 0.1.11;
+    the rest are in [#623](https://github.com/vimma-browser/vimma/issues/623)). Rejected: `"window"` on macOS until the hand
     checks have run on a released build, because that needs a per-platform default, so the same
     `config.toml` would mean different things on Linux and macOS. The comment that
     `defaults.mjs` writes into the generated `config.toml` names macOS next to Hyprland.
@@ -381,6 +383,12 @@ X is shown before Y is hidden, at the same frame, so nothing behind them shows t
     by the compositor, and on X11 the window manager may re-place a re-mapped window, so "exactly
     where it was" cannot be kept there. Rejected: the native mechanism on X11 or on every
     non-Hyprland system, for that reason.
+15. **The hidden window may stay in the Window menu and the Dock menu.** If macOS lists the
+    hidden normal window there, it stays listed, and picking it swaps back (decision 6). Reason:
+    the entry then works as a way back to the normal window, and it costs no patch. Rejected:
+    keeping it out with `NSWindow.excludedFromWindowsMenu`, which chrome JavaScript cannot set,
+    so it needs an upstream patch and an ADR-003 register line. The decision holds whichever way
+    the hand check (#623) finds macOS behaves.
 
 ## Security and privacy
 
@@ -473,16 +481,20 @@ component (the control socket, MCP, the agent gate, content actors) is touched.
 1. **refactor(private): a backend-neutral pair state machine.** Core only: `pairStep` takes
    opaque identifiers, and `nativeswap.mjs` with its Vitest cases. No behaviour change; the
    Hyprland mochitest still passes.
-2. **feat(private): swap in place on macOS.** `native-swap.mjs`, the backend switch in
+2. **feat(private): swap in place on macOS** (built). `native-swap.mjs`, the backend switch in
    `private-swap.mjs`, the `about:vimma` line, the `defaults.mjs` comment and its snapshot, the
    headless mochitest, the guide and limits, and the hand checks recorded in Results. Mergeable
-   alone; it sets the status to `implemented` once the Results record the hand checks and
-   open question 1 is settled.
+   alone. The hand checks not yet run are tracked in
+   [#623](https://github.com/vimma-browser/vimma/issues/623).
 
-## Open questions
+## Results
 
-1. **The hidden window in the Window menu and the Dock menu.** If the hand check shows that macOS
-   still lists the hidden window: (a) leave it listed; picking it swaps back (decision 6). (b) Keep
-   it out with `NSWindow.excludedFromWindowsMenu`, which needs an upstream patch and an ADR-003
-   register line, because chrome JavaScript cannot set it. **Recommendation: (a)**, because the
-   entry then works as a way back to the normal window, and it costs no patch.
+### The swap, by hand on an Apple Silicon Mac (2026-10-28)
+
+On the current macOS release, with a windowed build: entering the private workspace shows the
+private window in the normal window's place and hides the normal window, and leaving it swaps
+back. The window's frame was not compared, and the window was neither zoomed nor in full screen.
+With the AeroSpace tiling window manager running, AeroSpace had trouble with the swapped windows;
+that was not investigated here. The other hand
+checks (Tests, "By hand on a Mac") have not been run yet; they are tracked in
+[#623](https://github.com/vimma-browser/vimma/issues/623).

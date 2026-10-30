@@ -1928,7 +1928,23 @@ focus and hint mode.
   `vimma_elements` makes it, with the same rules for secrets, and counts as one of its 30 calls
   a minute. The step's question ends with `, then vimma_elements`, and its notice under a grant
   with `and listed the buttons and fields after it`. A page still loading, or one that changed
-  while it was listed, is not listed; the agent is told so and lists it itself.
+  while it was listed, is not listed; the agent is told so and lists it itself. A page that did
+  not load (Firefox showed its error page, for a server that was not found or a certificate it
+  does not trust) is an error the agent reads first, with Firefox's error code, so it stops
+  instead of opening the same address again; the built-in agent ends its task after the same
+  failing call three times in a row.
+- **Shorter lists on a site it has listed before.** A shop's header, search field and basket
+  button are the same on every page, so a list of a page on a site the agent has already listed
+  leaves out the lines that are exactly as in its last list of that site and names their labels
+  instead, which still work. How to read a list is in the tool's description, not repeated in
+  every result. A new conversation, a page on another site, or a conversation whose context you
+  cleared gets the whole list, and the agent can ask for it with `full: true`. On the bench's
+  ten-item shopping list this cuts the tokens of the whole task by about a fifth and the largest
+  request by about a quarter ([agent-bench.md](agent-bench.md)).
+- **Only what it is looking for.** `query` lists only the elements whose label, text, caption or
+  name holds every word of it (`"oat drink"`, ignoring case), and `kinds` only buttons, fields,
+  links and the like; both work with `elements` on a step too. A query never matches a field's
+  value.
 
 #### Clicking on a page
 
@@ -2995,7 +3011,12 @@ Refresh for the current state. It is an ordinary page, so `j` / `k` scroll it.
   theme's, or the built-in palette's, e.g. `vimma (built in)`), its appearance (`system`,
   `dark` or `light`, where that comes from and how to change it), and on Omarchy the theme
   directory, its `colors.toml` time and why the last theme file was rejected, if one was.
-- **Workspaces:** how many there are, and this window's with their tab and pane counts.
+- **Workspaces:** how many there are, and this window's with their tab and pane counts; the
+  window's open tabs beside the tabs its workspaces hold (`open tabs 11, in workspaces 11`,
+  marked `out of step` when they differ, which is when tab search and the side panel list fewer
+  tabs than the status bar counts); a session restore into the window still under way and for
+  how long; the last restore that never finished and when the workspaces were rebuilt after it;
+  and the last error from rebuilding them.
 - **Control socket:** on or off, and its port. The token is never shown.
 - **Agents (MCP):** on or off (and whether `config.toml` or `:mcp on` decides), and the
   [agent workspace](#agent-workspace) with its tab count; never its addresses or titles.
@@ -3103,7 +3124,7 @@ accent = "#ff9e64"
   Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[updates] check`
   (`true`, the default, or `false`: no [update check](#updates) at all).
 - **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[firefox]`,
-  `[bookmarks]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`,
+  `[bookmarks]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,
   `hint_chars`, `insert_editing`, `[theme] name` and `appearance`. Every key is in the template
   `:config` writes, with its default commented out (the same as
   [`defaults.toml`](../packages/vimma-core/defaults.toml) in the source).

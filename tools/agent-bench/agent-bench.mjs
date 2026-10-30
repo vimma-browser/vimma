@@ -12,7 +12,7 @@
  *     [--endpoint <url>] [--key-env <VAR>] [--vision] [--num-ctx <tokens>]
  *     [--lists L01,L03] [--runs N] [--max-steps N] [--max-tokens N] [--timeout-minutes N]
  *     [--artifact | --build <path>] [--vimma-ctl <path>] [--out results.json] [--check] [--keep]
- *     [--shots <dir>] [--floor search|product] [--pace-ms N]
+ *     [--shots <dir>] [--floor search|product] [--pace-ms N] [--keep-results N]
  *
  * --provider scripted (the default) needs no model and no network: a script does each list the
  * shortest way a model could, which CI runs with --check (exit 1 unless every run is complete
@@ -20,7 +20,10 @@
  * elements and clicks the listing's basket button; --floor product, the earlier floor, opens each
  * product's page by its URL, for comparison. --pace-ms makes each scripted turn take that long,
  * as a model's does: unpaced, a list of more than nine items is refused by the open rate
- * (3000 keeps every list under it).
+ * (3000 keeps every list under it). --keep-results is `[agent] keep_results`: how many of the
+ * latest tool results a request carries whole (by default the built-in agent's: 20 for a provider
+ * on this machine, the scripted one included, and 6 for a hosted one; 0 sends every result whole,
+ * as before docs/specs/agent-speed.md S5).
  * --provider openai talks to an OpenAI-compatible server (default http://127.0.0.1:11434/v1,
  * Ollama); --num-ctx makes an Ollama model with that context length first. --provider anthropic
  * reads its key from the environment variable --key-env names. Every run is one `vimma-ctl mcp`
@@ -35,6 +38,7 @@ import { join } from "node:path";
 import { cpus, release, totalmem } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { keepResultsFor } from "../../packages/vimma-core/src/agent-loop.mjs";
 import { agentTools, AGENT_INSTRUCTIONS } from "../../packages/vimma-core/src/agent-tools.mjs";
 import { ControlSessions } from "../e2e/control-client.mjs";
 import { findVimmaCtl } from "../e2e/driver.mjs";
@@ -113,7 +117,11 @@ async function main() {
   let provider = SCRIPTED_PROVIDER;
   let key = "";
   /** @type {Record<string, any>} */
-  const meta = { provider: o.provider, hardware: hardware(), commit: commit() };
+  const meta = {
+    provider: o.provider,
+    hardware: hardware(),
+    commit: commit(),
+  };
   if (o.provider === "scripted") Object.assign(meta, { floor: o.floor, paceMs: o.paceMs });
   if (o.provider !== "scripted") {
     let model = /** @type {string} */ (o.model);
@@ -134,6 +142,7 @@ async function main() {
     Object.assign(meta, { model: o.model, endpoint, vision: o.vision });
     if (isOllama) Object.assign(meta, await ollama.describe(endpoint, model));
   }
+  meta.keepResults = keepResultsFor(provider, o.keepResults);
   const tools = agentTools({ vision: provider.vision ?? false });
   const limits = {
     ...(o.maxSteps ? { maxSteps: o.maxSteps } : {}),
@@ -211,6 +220,7 @@ async function main() {
             tools,
             runTool: answer.wrap((name, args, opts) => mcp.callTool(name, args, opts)),
             limits,
+            keepResults: o.keepResults,
             timeoutMs: o.timeoutMinutes * 60_000,
             settleMs: 1000,
           }).finally(() => clearInterval(ticker));
