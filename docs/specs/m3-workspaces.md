@@ -505,7 +505,22 @@ Instead:
   **pending**: tab events are queued, not applied; no visibility changes; no window-value writes
   (tab values set now would be overwritten by `extData`, and our window value may be replaced,
   5930-5944). On every `SSWindowStateReady` it runs the reconcile and leaves pending. Any number
-  of brackets, in any window, at any time, work the same way.
+  of brackets, in any window, at any time, work the same way. (Since changed: SessionStore does
+  not close every bracket. A window opened on macOS after the last one closed gets the closed
+  window's pinned tabs and closed-tab list through `#restoreWindow`, which raises the busy count,
+  and no `SSWindowStateReady` ever follows; a `#restoreTab` that throws between raising and
+  lowering the count leaves it raised the same way. The window then stayed pending for good, with
+  every later tab event dropped, which is how tab search and the side panel came to list one tab
+  of eleven in issue [#546](https://github.com/vimma-browser/vimma/issues/546). Pending now also
+  starts on `SSWindowRestoring`, which every whole-window restore sends even when the count is
+  stuck, and also ends on `sessionstore-single-window-restored` for the window, sent at the end of
+  both whole-window restore paths, and by a timer 5 s after the bracket began. The bound is never
+  checked at a tab event: a whole-window restore opens its tabs before it sets the window and tab
+  values, so a rebuild between two of them would save over the snapshot. Either end runs the
+  reconcile. This is described now in `WindowWorkspaces.sys.mjs` (`STUCK_RESTORE_MS`,
+  `#endStuckRestore`; the test-only pref `vimma.workspaces.stuckRestoreMs` overrides the bound),
+  and the about:vimma report that names the restore that never finished, a restore still
+  pending, and the open tabs beside the model's is in `docs/guide.md`, "about:vimma".)
 - **Tab events outside a bracket** are handled in a microtask, so a path that adds a tab and then
   restores it in the same task (undo close, `duplicateTab`) has set `extData` first; if a bracket
   opened meanwhile, the event waits for its `SSWindowStateReady`.

@@ -277,6 +277,12 @@ support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
 ["browser_vimma_agent_outside_opens.js"]
 
+["browser_vimma_agent_coop.js"]
+support-files = ["file_vimma_agent_coop.sjs", "head_vimma_control.js"]
+
+["browser_vimma_agent_load_error.js"]
+support-files = ["head_vimma_control.js"]
+
 ["browser_vimma_mcp_agent_pages.js"]
 support-files = [
   "file_vimma_agent_page.html",
@@ -333,6 +339,8 @@ support-files = ["file_vimma_insert_scroll.html", "file_vimma_frame.html"]
 
 ["browser_vimma_workspace_restore.js"]
 support-files = ["file_vimma_insert_scroll.html"]
+
+["browser_vimma_workspace_desync.js"]
 
 ["browser_vimma_config.js"]
 
@@ -391,6 +399,9 @@ support-files = ["file_vimma_update_manifest.sjs", "file_vimma_plain.html"]
 
 ["browser_vimma_password_prompt.js"]
 support-files = ["file_vimma_login.html", "file_vimma_plain.html"]
+
+["browser_vimma_agent_cli.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
 ["browser_vimma_agent_conversations.js"]
 support-files = [

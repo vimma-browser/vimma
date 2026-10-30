@@ -10,8 +10,9 @@
 // the browser runs it against its agent commands. Everything that keeps the agent safe (the
 // gate, grants, checkpoints, confinement) is the runner's side; the loop only bounds the task.
 
-import { ProviderError, callModel } from "./agent-providers.mjs";
+import { ProviderError, callModel, isLocalEndpoint } from "./agent-providers.mjs";
 import { isFinalRefusal } from "./agent-results.mjs";
+import { UNTRUSTED_FROM } from "./agent.mjs";
 
 /**
  * @typedef {import("./agent-providers.mjs").ChatMessage} ChatMessage
@@ -56,6 +57,87 @@ export const REPEAT_LIMIT = 3;
  * aborts a turn now and then (Ollama's `token repeat limit reached`) and the next turn may work.
  */
 export const SERVER_ERRORS = 3;
+
+/**
+ * How many of the latest tool results a request to a hosted provider carries whole, when
+ * `[agent] keep_results` is not set (docs/specs/agent-speed.md S5). Older ones keep their first
+ * line. Hosted input tokens cost money, and a block left out costs seconds there.
+ */
+export const KEEP_RESULTS = 6;
+/**
+ * The same for a provider on this machine. Each block left out makes a local server read the
+ * request again from the first changed result, about 120 s on a CPU-bound model
+ * (docs/agent-bench.md), so it prunes rarely: a ten-item list (about 36 results) never reaches
+ * a block, and a longer task's context still stops growing.
+ */
+export const KEEP_RESULTS_LOCAL = 20;
+
+/**
+ * The `keepResults` a task runs with: `[agent] keep_results` when set, else by where the
+ * provider runs.
+ * @param {Provider} provider @param {number | null | undefined} configured
+ */
+export function keepResultsFor(provider, configured) {
+  if (configured != null) return configured;
+  return isLocalEndpoint(provider.endpoint) ? KEEP_RESULTS_LOCAL : KEEP_RESULTS;
+}
+/** What replaces the rest of a left-out result. Vimma's words, never the page's. */
+export const LEFT_OUT =
+  "(Vimma left the rest of this older result out of the conversation to save space. Call the " +
+  "tool again to see the page as it is now.)";
+
+/**
+ * The conversation as a request sends it: the body of every tool result older than the last
+ * `keep` to `2 * keep - 1` results is left out, keeping its first line (for a page, Vimma's line
+ * with its URL and title, outside the untrusted-content delimiters) and LEFT_OUT. Results leave
+ * a whole block of `keep` at a time, so a request repeats the one before it and only adds to it
+ * until the next block leaves, and a provider's prompt cache (Anthropic's `cache_control`,
+ * Ollama's slot) keeps the prefix in between; pruning every turn would make it read the whole
+ * conversation again each turn. Refusals and the user's no (`isError`) stay whole: they are
+ * Vimma's short text, and what the model was refused is what it must not try again. The user's
+ * messages and the agent's replies are never touched, nor a result no longer than its left-out form (one line already, or
+ * a short step's report).
+ * `keep` 0 leaves nothing out.
+ * @param {ChatMessage[]} messages @param {number} keep
+ * @returns {ChatMessage[]}
+ */
+export function pruneResults(messages, keep) {
+  if (!(keep > 0)) return messages;
+  let total = 0;
+  for (const m of messages) if (m.role === "tool") total += m.results.length;
+  const leave = total < keep ? 0 : Math.floor((total - keep) / keep) * keep;
+  if (leave === 0) return messages;
+  let seen = 0;
+  return messages.map((m) => {
+    if (m.role !== "tool" || seen >= leave) {
+      if (m.role === "tool") seen += m.results.length;
+      return m;
+    }
+    const results = m.results.map((r) => (seen++ < leave ? leaveOut(r) : r));
+    return { role: "tool", results };
+  });
+}
+
+/** @param {ToolResult} r @returns {ToolResult} */
+function leaveOut(r) {
+  if (r.isError) return r;
+  const first = r.content.find((c) => c.type === "text");
+  // A page's line is kept whole, even when its title breaks it, so the title never loses the
+  // warning that follows it.
+  const line =
+    first?.type !== "text"
+      ? ""
+      : first.text.startsWith(UNTRUSTED_FROM)
+        ? first.text
+        : first.text.split("\n", 1)[0];
+  const text = line ? `${line}\n${LEFT_OUT}` : LEFT_OUT;
+  const size = r.content.reduce(
+    (n, c) => n + (c.type === "text" ? c.text.length : c.data.length),
+    0,
+  );
+  if (size <= text.length) return r;
+  return { ...r, content: [{ type: "text", text }] };
+}
 
 /** @type {Record<string, (v: unknown) => boolean>} */
 const TYPES = {
@@ -133,7 +215,8 @@ const notRun = (call, text) => ({
  * that has happened cannot be undone (Behaviour 16).
  * @param {{ provider: Provider, fetch: Fetch, key: string, system: string, tools: ToolDef[],
  *   messages: ChatMessage[], runTool: RunTool, budget: Budget, localOnly?: boolean,
- *   onEvent?: (e: TaskEvent) => void }} opts
+ *   keepResults?: number | null, onEvent?: (e: TaskEvent) => void }} opts
+ *   `keepResults`: see pruneResults; keepResultsFor the provider when left out.
  * @returns {{ steer(text: string): void, stop(): void, done: Promise<TaskResult> }}
  */
 export function startTask(opts) {
@@ -196,7 +279,7 @@ async function run(opts, signal, pending) {
         key: opts.key,
         system: opts.system,
         tools,
-        messages,
+        messages: pruneResults(messages, keepResultsFor(provider, opts.keepResults)),
         signal,
         localOnly: opts.localOnly,
       });

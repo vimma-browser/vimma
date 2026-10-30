@@ -1849,6 +1849,8 @@ export const VimmaHost = {
       if (keymap || next.firefox)
         state.firefoxKeys?.set(settings.firefox, boundChords(state.keymap));
       if (rootChanged) state.bookmarks.scheduleReload();
+      // An open agent window names a refused config.toml in place of "no model set up".
+      if (next.configErrors) state.agentChat.render();
       this._emit(state);
     }
   },

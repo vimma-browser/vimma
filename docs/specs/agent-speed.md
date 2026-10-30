@@ -1,6 +1,6 @@
 # Spec: agent-speed
 
-Status: draft (Delivery 1 in #603, 2 in #611, 3 for #598) · Area: `tools/agent-bench/` (the
+Status: draft (Delivery 1 in #603, 2 in #611, 3 for #598, 6 for #600) · Area: `tools/agent-bench/` (the
 scripted floor, the per-step breakdown); `packages/vimma-core/src/` (`agent-loop.mjs`, `agent-providers.mjs`,
 `agent-tools-data.mjs`, `agent-act.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: tool descriptions and
 `INSTRUCTIONS`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
@@ -65,11 +65,13 @@ the page-text rules, the checkpoints or the confinement.
    every time (mcp-forms F15).
 4. An element list carries its explanation once, in the tool description, instead of in every
    result; a list of a page on a site the conversation has already listed leaves out the lines
-   identical to that earlier list and says how many it left out; `vimma_elements`, and the
-   `elements` option of `vimma_open`, `vimma_activate` and `vimma_fill`, take the `query` and
-   `kinds` filters of builtin-agent B2.
+   identical to that earlier list and names the labels it left out, which still work;
+   `vimma_elements` with `full: true` gives every line; `vimma_elements`, and the `elements`
+   option of `vimma_open`, `vimma_activate` and `vimma_fill`, take the `query` and `kinds`
+   filters of builtin-agent B2.
 5. The built-in agent's requests leave out the body of tool results older than the last
-   `[agent] keep_results` results (default 6), keeping each result's first line (the page's
+   `[agent] keep_results` results (unset: 6 for a hosted provider, 20 for a provider on this
+   machine), keeping each result's first line (the page's
    URL and title inside the untrusted-content wording) and a note that the rest was left out.
    Results are left out in blocks of the same size, so that a provider's prompt cache keeps
    the conversation's prefix between blocks.
@@ -229,8 +231,17 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    product lists repeated a line an earlier list had given, label included.
    A list for a tab whose page has the same origin as a list the conversation already got
    leaves out element lines that are identical to that list's, label included, and ends with
-   `(N elements as in your last list of this site)`. Labels stay valid, since a label is still
-   given for every element on the page. The check runs in the parent on the checked copies
+   `(N elements as in your last list of this site: aa, as, …)`, outside the delimiters. Naming
+   the labels costs a few characters an element and tells the model which elements of its last
+   list are still on the page, so it does not click one that is gone. Labels stay valid, since
+   labels are counted over the whole page and an element left out is still one the list gave.
+   Form lines are always written, so form numbers mean this page's forms. The parent keeps the
+   last list's lines for each connection's 16 most recent origins and drops them when the
+   connection closes, so a new conversation gets every list in full; `vimma_elements` with
+   `full: true` gives every line, for a model whose client has dropped the earlier result.
+   `query` matches every word against an element's label, text, caption and name, never its
+   value; `kinds` takes the list's own kinds (`link`, `button`, `field`, `checkbox`, `radio`,
+   `select`, `click`), so a filter names exactly what the lines say. The check runs in the parent on the checked copies
    (`parseAgentElement`), so it adds no page-controlled path. Rejected: a diff that names
    removed elements, because the model acts only on what is on the page now.
 5. **Old page content leaves the context in blocks** (S5), because earlier results are the
@@ -239,7 +250,15 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    request and make a provider read the whole conversation again each turn, which on a local
    model costs more than it saves; pruning in blocks of `keep_results` results changes the
    prefix once per block. Each left-out result keeps its first line, so the model still knows
-   which page it read, and the note says it can read the page again. Less page text in the
+   which page it read, and the note says it can read the page again. The default depends on
+   where the provider runs, and `[agent] keep_results` overrides it: 6 for a hosted provider,
+   whose input tokens cost money and where a block left out costs a cached prefix's seconds;
+   20 for one on this machine (an endpoint on 127.0.0.1, ::1 or localhost: Ollama, LM Studio,
+   llama.cpp, vLLM), because a local server reads the request again from the first changed
+   result, about 120 s a block on a CPU-bound mixture-of-experts model, four to five ordinary
+   turns, so that pruning by 6 made a ten-item list no faster though it cut its tokens by a
+   third ([agent-bench.md](../agent-bench.md)). At 20 a ten-item list (about 36 results)
+   never reaches a block, and a longer task's context still stops growing at 40 results. Less page text in the
    context also leaves less room for an injected instruction to act later. Rejected: a summary
    written by the model, because it would be page text by another route and cost a request
    (builtin-agent B15 rejects the same for stored conversations).
@@ -303,8 +322,9 @@ basket button`; `a paced scripted run is not refused by the rates` (Behaviour 2)
 ### Vitest (`packages/vimma-core`)
 
 - `an element list leaves out lines given earlier for the same site and counts them`;
-  `a list after a navigation to another site is given in full`; `a left-out line's label still
-activates its element` (Behaviour 4, in `agent-act.test.mjs`).
+  `a list after a navigation to another site is given in full`; `query keeps the elements whose
+label, text, caption or name holds all its words`; `a sensitive field's value is never matched`
+  (Behaviour 4, in `agent-act.test.mjs`).
 - `the loop leaves out results older than keep_results in blocks, keeping their first line`;
   `a request's prefix changes only when a block is left out` (Behaviour 5).
 - `a local provider with think = false sends the setting its server takes` (Behaviour 7).
@@ -312,8 +332,9 @@ activates its element` (Behaviour 4, in `agent-act.test.mjs`).
 
 ### Mochitests
 
-- `browser_vimma_mcp_elements.js`: `test_repeated_list_leaves_out_unchanged_lines`,
-  `test_compact_list_keeps_delimiters_and_sensitive_rules` (Behaviour 4, M31).
+- `browser_vimma_mcp_elements.js`: `test_repeated_list_leaves_out_unchanged_lines` (a left-out
+  line's label still activates its element), `test_compact_list_keeps_delimiters_and_sensitive_rules`,
+  `test_elements_query_and_kinds` (Behaviour 4, M31).
 
 ### The bench
 
@@ -368,10 +389,6 @@ Ordered by expected gain for cost. Each PR runs the bench before and after.
    (c) multiplies the rates by up to three and needs a grant that one `Enter` gives to several
    conversations, which B18 does not allow. Recommendation: (a) until S2 to S6 are measured,
    because they remove most of the steps a planner would hand out.
-2. **The default of `keep_results`.** Options: 4, 6 or 10. Fewer saves more tokens but a model
-   that compares products across pages may need an older list again, which costs a step.
-   Recommendation: 6, measured on L06 and L09 (the lists with preferences) before Delivery 5
-   merges.
-3. **Thinking for local models by default.** Options: the model's default, or off for local
+2. **Thinking for local models by default.** Options: the model's default, or off for local
    providers. Recommendation: the model's default until the bench shows that a model with
    thinking off chooses the same products (the "cheapest" and "lactose-free" items).

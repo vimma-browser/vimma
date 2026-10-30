@@ -72,6 +72,19 @@ export function checkEndpoint(endpoint, { localOnly }) {
   return null;
 }
 
+/**
+ * Whether `endpoint` is on this machine (a local server such as Ollama, LM Studio, llama.cpp
+ * or vLLM), by its host alone.
+ * @param {string} endpoint
+ */
+export function isLocalEndpoint(endpoint) {
+  try {
+    return LOOPBACK.has(new URL(endpoint).hostname);
+  } catch {
+    return false;
+  }
+}
+
 /** @param {string} endpoint */
 const base = (endpoint) => endpoint.replace(/\/+$/, "");
 

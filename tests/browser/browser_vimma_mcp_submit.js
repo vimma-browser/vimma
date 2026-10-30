@@ -117,7 +117,8 @@ async function question() {
 
 /** The list's elements by what they say. @param {any} c @param {any} tab */
 async function labels(c, tab) {
-  const id = c.request("agent-elements", { tab: idOf(tab) });
+  // Every line, also those as in the last list of the site (agent-speed S4): the map needs all.
+  const id = c.request("agent-elements", { tab: idOf(tab), full: true });
   // Under a grant the list runs unasked (mcp-grants G1).
   if (!AgentGate.grants().length) AgentGate.answer((await question()).id, { kind: "once" });
   const r = await c.response(id);

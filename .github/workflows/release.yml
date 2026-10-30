@@ -1227,8 +1227,8 @@ jobs:
           gh release upload "$TAG" dist/vimma-*-macos-aarch64.dmg* dist/vimma.rb* dist/SHA256SUMS-macos* --clobber --repo "$GITHUB_REPOSITORY"
 
   # The macOS files usually reach a release after it is published, when homebrew.yml's start job
-  # found no cask. Once vimma.rb is on a published release (releases/download/ serves nothing
-  # for a draft), this starts homebrew.yml on main for the tag; for a draft published after its
+  # found no cask. Once vimma.rb is on a published release (the API's releases/tags/<tag> answers
+  # 404 for a draft), this starts homebrew.yml on main for the tag; for a draft published after its
   # macOS files, publishing starts homebrew.yml, whose start job then finds the cask. Likewise the macOS
   # update manifest (spec macos-homebrew, decision 16): update-publish.yml for target macos,
   # which update-publish.yml itself starts when a draft is published after its .dmg.
@@ -1250,7 +1250,20 @@ jobs:
     steps:
       - name: Start homebrew.yml for a published release
         run: |
-          if curl -fsSL -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma.rb"; then
+          # The release's metadata, never the file: GitHub counts any request for a release file,
+          # a HEAD too, as a download (docs/runbook.md, "Release download counts"). A draft
+          # answers 404 here, as at its download URLs.
+          code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
+          case "$code" in
+            200) jq -e '.assets | type == "array"' "$RUNNER_TEMP/release.json" > /dev/null 2>&1 \
+                 || { echo "::error::the release API's answer for $TAG is not a release"; exit 1; } ;;
+            404) ;;
+            *) echo "::error::the release API answered $code for $TAG"; exit 1 ;;
+          esac
+          if [ "$code" = 200 ] && jq -e --arg f "vimma.rb" \
+            '.draft == false and any(.assets[]; .name == $f and .state == "uploaded")' \
+            "$RUNNER_TEMP/release.json" > /dev/null; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/homebrew.yml/dispatches" \
               -f ref=main -f "inputs[tag]=$TAG"
             echo "Started homebrew.yml for $TAG" >> "$GITHUB_STEP_SUMMARY"
@@ -1261,7 +1274,20 @@ jobs:
       - name: Start update-publish.yml for the macOS manifest
         if: vars.UPDATES_ENABLED == 'true'
         run: |
-          if curl -fsSIL --proto =https -o /dev/null "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/vimma-${TAG#v}-macos-aarch64.dmg"; then
+          # The release's metadata, never the file: GitHub counts any request for a release file,
+          # a HEAD too, as a download (docs/runbook.md, "Release download counts"). A draft
+          # answers 404 here, as at its download URLs.
+          code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
+          case "$code" in
+            200) jq -e '.assets | type == "array"' "$RUNNER_TEMP/release.json" > /dev/null 2>&1 \
+                 || { echo "::error::the release API's answer for $TAG is not a release"; exit 1; } ;;
+            404) ;;
+            *) echo "::error::the release API answered $code for $TAG"; exit 1 ;;
+          esac
+          if [ "$code" = 200 ] && jq -e --arg f "vimma-${TAG#v}-macos-aarch64.dmg" \
+            '.draft == false and any(.assets[]; .name == $f and .state == "uploaded")' \
+            "$RUNNER_TEMP/release.json" > /dev/null; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/update-publish.yml/dispatches" \
               -f ref=main -f "inputs[tag]=$TAG" -f "inputs[target]=macos"
             echo "Started update-publish.yml (macos) for $TAG" >> "$GITHUB_STEP_SUMMARY"

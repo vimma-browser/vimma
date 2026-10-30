@@ -27,8 +27,10 @@ import { timedFetch } from "./breakdown.mjs";
  *   fetch: import("../../packages/vimma-core/src/agent-providers.mjs").Fetch, key: string,
  *   system: string, tools: import("../../packages/vimma-core/src/agent-providers.mjs").ToolDef[],
  *   runTool: RunTool, limits: Partial<import("../../packages/vimma-core/src/agent-budget.mjs").Limits>,
- *   timeoutMs: number, settleMs?: number }} o
- *   `settleMs`: time for the requests a page's script sends after the last click to arrive
+ *   timeoutMs: number, settleMs?: number, keepResults?: number | null }} o
+ *   `settleMs`: time for the requests a page's script sends after the last click to arrive;
+ *   `keepResults`: the loop's, as `[agent] keep_results` (0 sends every result whole; null or
+ *   left out, the provider's default)
  */
 export async function runOne(o) {
   o.shop.reset();
@@ -49,6 +51,7 @@ export async function runOne(o) {
     messages: [{ role: "user", text: taskText(o.list, o.shop.base) }],
     runTool: o.runTool,
     budget,
+    keepResults: o.keepResults,
     onEvent: (e) => {
       if (e.type === "usage") {
         const turn = turns.at(-1);
@@ -208,6 +211,7 @@ export function parseArgs(argv) {
       shots: { type: "string" },
       floor: { type: "string", default: "search" },
       "pace-ms": { type: "string", default: "0" },
+      "keep-results": { type: "string" },
       help: { type: "boolean", default: false },
     },
   });
@@ -222,6 +226,9 @@ export function parseArgs(argv) {
   const paceMs = Number(values["pace-ms"]);
   if (!Number.isInteger(paceMs) || paceMs < 0)
     throw new Error("--pace-ms must be a whole number of milliseconds, 0 or more");
+  const keepResults = values["keep-results"] === undefined ? null : Number(values["keep-results"]);
+  if (keepResults !== null && (!Number.isInteger(keepResults) || keepResults < 0))
+    throw new Error("--keep-results must be a whole number, 0 or more");
   /** @param {string | undefined} v @param {string} name */
   const int = (v, name) => {
     if (v === undefined) return undefined;
@@ -250,6 +257,7 @@ export function parseArgs(argv) {
     shots: values.shots ?? null,
     floor: /** @type {"search" | "product"} */ (floor),
     paceMs,
+    keepResults,
     help: values.help ?? false,
   };
 }

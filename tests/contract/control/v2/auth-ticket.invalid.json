@@ -1,0 +1,9 @@
+{
+  "description": "A ticket and a token together: an auth carries one of them",
+  "kind": "auth",
+  "message": {
+    "type": "auth",
+    "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "ticket": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718"
+  }
+}

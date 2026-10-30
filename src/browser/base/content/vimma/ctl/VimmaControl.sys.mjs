@@ -12,6 +12,12 @@
 // commands only, confined to the agent workspace and confirmed, ctl/agent-commands.mjs). Either
 // starts the server; it stops when both are off. A connection's role is fixed by its hello, and
 // every command is checked against it.
+//
+// A third way in, for an agent CLI the built-in agent runs (docs/specs/builtin-agent-cli.md C1,
+// C3): a one-time ticket bound to one conversation's gate connection (`builtin:<n>`). While a
+// ticket is live the server listens even with both switches off, and then takes nothing but a
+// ticket; no discovery file names it. A ticket's connection acts as the conversation, on its
+// tabs and under its grant, never as an MCP agent of its own.
 
 import {
   AGENT_COMMANDS,
@@ -26,6 +32,7 @@ import {
   tokensEqual,
   validateMessage,
   CHALLENGE_CONTEXT,
+  TICKET_CONTEXT,
 } from "../core/control.mjs";
 import { isCtlVersion } from "../core/ctl-version.mjs";
 import { parseKey } from "../core/keys.mjs";
@@ -98,6 +105,23 @@ function enabledRoles() {
 }
 
 let connectionIds = 0;
+
+/**
+ * A one-time ticket (docs/specs/builtin-agent-cli.md C3): `conn` and `state` are its
+ * conversation's gate connection; `label` names the CLI in a notice; `live` is the connection
+ * using it; `used` is set once one has; `session` is that connection's `vimma-ctl mcp` session
+ * id, which only a reconnect of the same process knows.
+ * @typedef {{ ticket: string, id: string, conn: string,
+ *   state: import("./agent-commands.mjs").AgentConn, label: string,
+ *   live: Connection | null, used: boolean, session: string | null }} Ticket
+ */
+/** Live tickets, by id (HMAC-SHA256(ticket, TICKET_CONTEXT)). @type {Map<string, Ticket>} */
+const tickets = new Map();
+/**
+ * Request ids that a ticket connection's commands run under in its conversation's state:
+ * negative, so they never meet the ids the conversation's own model loop uses (AgentChat).
+ */
+let ticketRids = 0;
 
 /**
  * A failure the client caused (or `failed`): answered with `code`, not logged as a bug.
@@ -433,6 +457,14 @@ class Connection {
      * @type {(() => void) | null}
      */
     this.cancelAsk = null;
+    /** The ticket its hello named: it then acts as that ticket's conversation. @type {Ticket | null} */
+    this.ticket = null;
+    /** A ticket's connection after one before it: its agent-hello must carry their session. */
+    this.reconnect = false;
+    /** A ticket's connection has said its agent-hello. */
+    this.helloed = false;
+    /** A ticket's requests running: the client's id → the id it runs under. @type {Map<number, number>} */
+    this.rids = new Map();
   }
 
   /** The idle limit closes a connection, unless an agent request of it is waiting or running. */
@@ -547,6 +579,24 @@ class Connection {
         this.fail(null, "bad-request", v.errors.join("; "));
         return;
       }
+      // An agent CLI's ticket, named by its id: served whatever the switches say, since only
+      // Vimma handed it out, for one run (builtin-agent-cli C3). The validator allowed it with
+      // protocol 2 and the agent role only.
+      if (typeof m.ticket === "string") {
+        const ticket = tickets.get(m.ticket);
+        if (!ticket) {
+          this.fail(null, "unauthorized", "no such ticket: the task it was made for has ended");
+          return;
+        }
+        this.ticket = ticket;
+        this.role = "agent";
+        this.protocol = 2;
+        this.stage = "auth";
+        // S4 with the ticket as the key: the client sends the ticket only after this proof.
+        const proof = await hmacHex(ticket.ticket, CHALLENGE_CONTEXT + m.nonce);
+        this.write({ type: "challenge", protocol: this.protocol, proof });
+        return;
+      }
       // Protocol 1 is the full role (vimma-mcp decision 2).
       const role = /** @type {Role} */ (m.protocol === 1 ? "full" : m.role);
       if (!this.server.roles.includes(role)) {
@@ -563,6 +613,10 @@ class Connection {
     }
     if (!isObject(m) || m.type !== "auth") {
       this.fail(null, "bad-request", "expected auth after the challenge");
+      return;
+    }
+    if (this.ticket) {
+      this.ticketAuth(m);
       return;
     }
     // Constant time in where the tokens differ; a malformed token simply does not match.
@@ -586,7 +640,9 @@ class Connection {
       srv.refuse(this, "busy", `${srv.connections.size} connections open`);
       return;
     }
-    const agents = [...srv.connections].filter((c) => c.role === "agent").length;
+    // A ticket's connection is not counted: one per running CLI task, so MCP agents cannot
+    // take the place a task Vimma started needs.
+    const agents = [...srv.connections].filter((c) => c.role === "agent" && !c.ticket).length;
     if (this.role === "agent" && agents >= MAX_AGENT_CONNECTIONS) {
       srv.refuse(this, "busy", `${agents} agent connections open`);
       return;
@@ -627,6 +683,102 @@ class Connection {
       version: lazy.AppConstants.MOZ_APP_VERSION_DISPLAY,
       ...(this.protocol >= 2 ? { role: this.role } : {}),
     });
+  }
+
+  /**
+   * The auth of a ticket's connection: the ticket itself, once. A second connection while one
+   * lives, or after one that kept no session id, is refused with a notice; a later one is let
+   * in to prove with its agent-hello that it is the same `vimma-ctl mcp` reconnecting.
+   * @param {Record<string, unknown>} m
+   */
+  ticketAuth(m) {
+    const ticket = /** @type {Ticket} */ (this.ticket);
+    if (typeof m.ticket !== "string" || !tokensEqual(m.ticket, ticket.ticket)) {
+      this.fail(null, "unauthorized", "bad ticket");
+      return;
+    }
+    const v = validateMessage(m, { kind: "auth" });
+    if (!v.valid) {
+      this.fail(null, "bad-request", v.errors.join("; "));
+      return;
+    }
+    // Revoked during the handshake: the task ended.
+    if (tickets.get(ticket.id) !== ticket) {
+      this.fail(null, "unauthorized", "no such ticket: the task it was made for has ended");
+      return;
+    }
+    if ((ticket.live && !ticket.live.closed) || (ticket.used && ticket.session === null)) {
+      this.refuseTicket(null);
+      return;
+    }
+    const { server: srv } = this;
+    srv.waiting.delete(this);
+    if (srv.connections.size >= MAX_CONNECTIONS) {
+      srv.refuse(this, "busy", `${srv.connections.size} connections open`);
+      return;
+    }
+    this.reconnect = ticket.used;
+    ticket.used = true;
+    ticket.live = this;
+    srv.connections.add(this);
+    this.authenticated = true;
+    this.armIdle();
+    this.write({
+      type: "welcome",
+      protocol: this.protocol,
+      app: "Vimma",
+      version: lazy.AppConstants.MOZ_APP_VERSION_DISPLAY,
+      role: "agent",
+    });
+  }
+
+  /**
+   * Another program has the ticket (any process of the user can read the CLI's environment):
+   * refused, and the user told, never with the ticket's value.
+   * @param {unknown} id
+   */
+  refuseTicket(id) {
+    const { label } = /** @type {Ticket} */ (this.ticket);
+    AgentGate.notify(`a second program used ${label}'s ticket and was refused`);
+    this.fail(id, "unauthorized", "this ticket is already in use");
+  }
+
+  /**
+   * A command of a ticket's connection, run as its conversation (builtin-agent-cli C1): on the
+   * conversation's connection and state, so its tabs, grant, rates and budget are the
+   * conversation's. Its agent-hello labels nothing: the conversation keeps its own label.
+   * @param {string} command @param {any} args @param {number} id
+   */
+  async ticketCommand(command, args, id) {
+    const ticket = /** @type {Ticket} */ (this.ticket);
+    if (command === "agent-hello") {
+      if (this.helloed) throw new AgentError("bad-request", "agent-hello was already sent");
+      this.helloed = true;
+      ticket.session ??= typeof args.session === "string" ? args.session : null;
+      const agent = WorkspaceStore.agent;
+      return { workspace: agent?.name ?? WorkspaceStore.agentName ?? "agent", exists: !!agent };
+    }
+    if (!this.helloed) {
+      throw new AgentError("bad-request", "agent-hello must be the connection's first command");
+    }
+    if (command === "agent-cancel") {
+      const rid = this.rids.get(args.id);
+      const cancel = rid === undefined ? undefined : ticket.state.cancels?.get(rid);
+      if (!cancel) return { cancelled: false };
+      ticket.state.cancels?.delete(/** @type {number} */ (rid));
+      cancel();
+      return { cancelled: true };
+    }
+    // One request per id at a time: a second would take the first's entry, leaving its
+    // question beyond agent-cancel and the withdrawal when the connection drops.
+    if (this.rids.has(id)) throw new AgentError("bad-request", `request id ${id} is in flight`);
+    const rid = --ticketRids;
+    this.rids.set(id, rid);
+    try {
+      return await runAgentCommand(ticket.conn, ticket.state, command, args, rid);
+    } finally {
+      this.rids.delete(id);
+    }
   }
 
   /** @param {unknown} m */
@@ -711,6 +863,15 @@ class Connection {
       return;
     }
     const command = /** @type {string} */ (m.command);
+    const args = /** @type {any} */ (m.args);
+    // A ticket's later connection must be the same vimma-ctl process: its session id says so.
+    if (this.ticket && this.reconnect && !this.helloed) {
+      const session = typeof args.session === "string" ? args.session : "";
+      if (command !== "agent-hello" || !tokensEqual(session, this.ticket.session ?? "")) {
+        this.refuseTicket(id);
+        return;
+      }
+    }
     // A withdrawal never waits and must reach a connection whose requests all wait.
     const counted = command !== "agent-cancel";
     if (counted && this.inflight >= MAX_AGENT_INFLIGHT) {
@@ -721,7 +882,9 @@ class Connection {
     if (counted) this.inflight++;
     try {
       const rid = /** @type {number} */ (id);
-      const result = await runAgentCommand(this.id, this.agentState, command, m.args, rid);
+      const result = this.ticket
+        ? await this.ticketCommand(command, args, rid)
+        : await runAgentCommand(this.id, this.agentState, command, args, rid);
       this.respond(id, { result });
     } catch (e) {
       if (e instanceof AgentError) {
@@ -816,8 +979,14 @@ class Connection {
     this.closed = true;
     this.cancelAsk?.();
     this.cancelAsk = null;
-    // Its waiting questions go, and its grants end (vimma-mcp decision 22).
-    if (this.role === "agent") {
+    // A ticket's connection is not its conversation: the questions it waits on go, and the
+    // conversation, its grant and its tabs stay, so the same vimma-ctl can reconnect.
+    if (this.ticket) {
+      for (const rid of this.rids.values()) this.ticket.state.cancels?.get(rid)?.();
+      this.rids.clear();
+      if (this.ticket.live === this) this.ticket.live = null;
+    } else if (this.role === "agent") {
+      // Its waiting questions go, and its grants end (vimma-mcp decision 22).
       AgentGate.disconnect(this.id);
       forgetAgentConnection(this.id);
     }
@@ -893,8 +1062,9 @@ class Server {
    */
   setRoles(roles) {
     this.roles = roles;
+    // A ticket's connection does not depend on a switch: it ends with its ticket.
     for (const c of [...this.connections, ...this.waiting]) {
-      if (c.role && !roles.includes(c.role)) c.stop();
+      if (c.role && !c.ticket && !roles.includes(c.role)) c.stop();
     }
   }
 
@@ -970,28 +1140,55 @@ function discoveryOf(/** @type {Server} */ s) {
   };
 }
 
+/**
+ * Start the server, or bring a running one up to date: it serves the switches' roles, and runs
+ * with none while a ticket is live. The discovery file exists only while a role is served: a
+ * ticket's CLI gets the port from Vimma, and no other process needs to find a listener that
+ * takes nothing but tickets.
+ */
 async function startServer() {
   await windowReady;
   const roles = enabledRoles();
-  if (quitting || !roles.length) return;
+  if (quitting || (!roles.length && !tickets.size)) return;
   if (server) {
     // Running: only the roles changed. The file says so; the token and port stay.
     if (server.roles.join() === roles.join()) return;
     server.setRoles(roles);
-    await writeDiscovery(discoveryOf(server));
+    if (roles.length) await writeDiscovery(discoveryOf(server));
+    else removeDiscoveryFile();
     return;
   }
-  if (!removeDiscoveryFile()) return;
+  // A directory where the file goes keeps the switches' roles off (S6); tickets need no file.
+  if (!removeDiscoveryFile() && roles.length) return;
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   const s = new Server(hex(bytes), roles);
-  try {
-    await writeDiscovery(discoveryOf(s));
-  } catch (e) {
-    s.stop();
-    throw e;
+  if (roles.length) {
+    try {
+      await writeDiscovery(discoveryOf(s));
+    } catch (e) {
+      s.stop();
+      throw e;
+    }
   }
   server = s;
+}
+
+/** The server runs while a switch is on or a ticket is live. */
+const wanted = () => enabledRoles().length > 0 || tickets.size > 0;
+
+/**
+ * The ticket ends: its connection, and any still in its handshake, close at once, and the
+ * listener stops if nothing else needs it.
+ * @param {Ticket} ticket
+ */
+function revoke(ticket) {
+  tickets.delete(ticket.id);
+  for (const c of server ? [...server.connections, ...server.waiting] : []) {
+    if (c.ticket === ticket) c.close();
+  }
+  ticket.live?.close();
+  if (!tickets.size) enqueue(() => (wanted() ? undefined : stopServer()));
 }
 
 /**
@@ -1031,7 +1228,7 @@ function apply() {
   // so do the grants, a dropped link's included (mcp-session-grants S5).
   if (McpHost.state.enabled) AgentGate.on();
   else AgentGate.off();
-  return enqueue(() => (enabledRoles().length ? startServer() : stopServer()));
+  return enqueue(() => (wanted() ? startServer() : stopServer()));
 }
 
 export const VimmaControl = {
@@ -1095,6 +1292,42 @@ export const VimmaControl = {
       watching = false;
     }
     return enqueue(stopServer);
+  },
+
+  /**
+   * A one-time ticket for an agent CLI's run (docs/specs/builtin-agent-cli.md C3): 256 random
+   * bits bound to the conversation's gate connection, good for one connection (and its
+   * reconnects by session id) until `revokeTicket`. Starts the listener if it is off. The
+   * ticket goes only into the CLI's environment: never a pref, a file, a log or a notice.
+   * @param {{ conn: string, state: import("./agent-commands.mjs").AgentConn, label: string }} binding
+   *   the conversation's connection and state, and the CLI's name for a notice
+   * @returns {Promise<{ ticket: string, port: number }>}
+   */
+  async issueTicket({ conn, state, label }) {
+    if (quitting) throw new Error("Vimma is shutting down");
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const ticket = hex(bytes);
+    const id = await hmacHex(ticket, TICKET_CONTEXT);
+    /** @type {Ticket} */
+    const t = { ticket, id, conn, state, label, live: null, used: false, session: null };
+    tickets.set(id, t);
+    await enqueue(startServer);
+    if (!server || tickets.get(id) !== t) {
+      tickets.delete(id);
+      throw new Error("the control socket could not start for the agent CLI");
+    }
+    return { ticket, port: server.port };
+  },
+
+  /** The run ended: its ticket and its connection go at once. @param {string} ticket */
+  revokeTicket(ticket) {
+    for (const t of tickets.values()) if (t.ticket === ticket) revoke(t);
+  },
+
+  /** Every ticket of a conversation's connection goes (a stop, a delete). @param {string} conn */
+  revokeTickets(conn) {
+    for (const t of [...tickets.values()]) if (t.conn === conn) revoke(t);
   },
 
   /** Resolves once pending starts and stops are done (tests). */

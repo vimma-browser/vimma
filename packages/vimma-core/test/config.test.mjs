@@ -416,6 +416,7 @@ describe("mergeWithDefaults", () => {
         maxTokens: 2_000_000,
         maxCost: 2,
         keepDays: null,
+        keepResults: null,
         providers: [],
       },
     });

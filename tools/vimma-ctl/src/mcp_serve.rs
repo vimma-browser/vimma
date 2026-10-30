@@ -21,9 +21,12 @@ use std::net::{Shutdown, TcpStream};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
-/// Timers and limits of the serve loop. Tests shorten them.
+/// Timers and limits of the serve loop, and how it reaches Vimma. Tests shorten the timers.
 #[derive(Debug, Clone)]
 pub struct Settings {
+    /// Run by Vimma for a task, with a one-time ticket (docs/specs/builtin-agent-cli.md C3): a
+    /// connection that fails means the task ended, never that MCP should be turned on.
+    pub ticket: bool,
     /// An `agent-ping` after this long without a request: Vimma closes an agent connection
     /// after 60 s without a line, and its grants with it.
     pub ping_every: Duration,
@@ -40,6 +43,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            ticket: false,
             ping_every: Duration::from_secs(30),
             answer_wait: Duration::from_secs(390),
             connect_timeout: Duration::from_secs(5),
@@ -296,9 +300,14 @@ impl Server<'_> {
 
     /// Open the agent connection: the discovery file's token, the agent role, `agent-hello`.
     fn connect(&mut self) -> Result<(), Failure> {
-        let discovery = (self.find)().map_err(Failure::NotRunning)?;
+        let ticket = self.settings.ticket;
+        let ended = |failure: Failure| match failure {
+            Failure::NotRunning(detail) if ticket => Failure::TaskEnded(detail),
+            other => other,
+        };
+        let discovery = (self.find)().map_err(|e| ended(Failure::NotRunning(e)))?;
         let mut client = Client::connect_as(&discovery, self.settings.connect_timeout, Role::Agent)
-            .map_err(|e| failure_of(e, Duration::ZERO))?;
+            .map_err(|e| ended(failure_of(e, Duration::ZERO)))?;
         let label = self.protocol.client();
         let mut info = BTreeMap::from([(
             "name".to_string(),
@@ -352,10 +361,14 @@ impl Server<'_> {
             next_id,
             last_sent: Instant::now(),
         });
-        log(&format!(
-            "connected to Vimma (pid {}) as the agent role",
-            discovery.pid
-        ));
+        if discovery.ticket {
+            log("connected to Vimma as the agent role, for the task that started this agent");
+        } else {
+            log(&format!(
+                "connected to Vimma (pid {}) as the agent role",
+                discovery.pid
+            ));
+        }
         Ok(())
     }
 

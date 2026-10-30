@@ -17,6 +17,7 @@
 /* global tidyTask -- from head_vimma_control.js */
 /* global requests, held, PORT, PROVIDER, script, openStep -- from head_vimma_agent_model.js */
 /* global add_setup, focusContent -- the harness and head.js */
+/* global InspectorUtils, goDoCommand -- the browser window's globals */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 Services.scriptloader.loadSubScript(
@@ -43,6 +44,9 @@ const { AgentKeys } = ChromeUtils.importESModule(
 );
 const { AGENT_DEFAULTS } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/config.mjs",
+);
+const { ConfigHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
 );
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
@@ -131,6 +135,8 @@ async function tidy() {
   AgentChat.stopAll();
   for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
   for (const c of AgentChat.list()) AgentChat.delete(c.id);
+  // The picker's choice lasts the session; each test starts from [agent] default.
+  AgentChat.choose(null);
   AgentGate.revoke();
   for (const release of held.values()) release();
   held.clear();
@@ -185,13 +191,43 @@ addTidyTask(async function test_header_says_where_it_works() {
   Assert.ok(box().getBoundingClientRect().width >= 400, "about 420 px wide");
   Assert.deepEqual(
     header(),
-    [
-      `scripted · scripted · local endpoint 127.0.0.1:${PORT}`,
-      "works in: agent workspace · asks every step",
-    ],
-    "the provider, where data goes, and where the agent works (Behaviour 6)",
+    [`scripted · scripted · local endpoint 127.0.0.1:${PORT}`, "works in: agent workspace"],
+    "the provider, where data goes, and where the agent works; before a task, no approval " +
+      "is named, since sending with Enter is the grant (Behaviour 6, 24)",
   );
   Assert.equal(box().getAttribute("role"), "region", "a region of Vimma's own chrome");
+});
+
+addTidyTask(async function test_a_refused_config_is_named_instead_of_setup() {
+  // [agent] without `schema = 2`: the file is refused, so no model is set up, and the window
+  // names the error and its line rather than sending the user to setup (Behaviour 6).
+  const name = "vimma-agent-refused.toml";
+  const file = PathUtils.join(PathUtils.tempDir, name);
+  const error = `${name}:1: agent: is new in schema 2: put schema = 2 at the top of the file`;
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: null, providers: [] });
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
+  try {
+    await IOUtils.writeUTF8(file, `[agent]\ndefault = "local"\n`);
+    await ConfigHost.reload();
+    await openPage();
+    runCommand("agent");
+    await until(isOpen, "the window opened");
+    Assert.equal(header()[0], `no model: ${error}`, "the header names the error and its line");
+    Assert.ok(
+      logText().includes(`has errors, so none of it applies, [agent] included.${error}`),
+      `and so does the window, in place of the setup steps: ${logText()}`,
+    );
+    VimmaHost._state(window).agentChat.give();
+    await until(
+      () => ($("vimma-notice")?.textContent ?? "") === `agent: no model: ${error}`,
+      "an action that needs a model names it too",
+    );
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(file);
+    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  }
 });
 
 addTidyTask(async function test_enter_grants_and_the_transcript_shows_each_step() {
@@ -230,6 +266,10 @@ addTidyTask(async function test_shift_enter_adds_a_line_and_ctrl_enter_asks() {
   send(script([openStep(PAGE), { reply: "done" }]), { ask: true });
   await until(slotOpen, "the step asks in the prompt slot (Behaviour 25, 27)");
   Assert.ok(!AgentGate.grants().some((g) => g.conn === AgentChat.get(openId()).conn), "no grant");
+  Assert.ok(
+    header()[1].startsWith("works in: agent workspace · asks every step"),
+    "the header says a ctrl+Enter task asks every step (Behaviour 6, 25)",
+  );
 });
 
 addTidyTask(async function test_question_in_the_prompt_slot_and_never_answered_by_the_input() {
@@ -519,6 +559,59 @@ addTidyTask(async function test_a_key_typed_and_left_is_dropped_and_no_task_goes
     chat.askKey(anthropic);
     Assert.equal(keyField().value, "", "so the next key starts empty");
   } finally {
+    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  }
+});
+
+addTidyTask(async function test_an_entered_key_is_never_shown_again_nor_copied_out() {
+  const anthropic = {
+    name: "mock-anthropic",
+    kind: "anthropic",
+    endpoint: `http://127.0.0.1:${PORT}/anthropic`,
+    model: "claude-mock",
+    vision: true,
+  };
+  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: anthropic.name, providers: [anthropic] });
+  try {
+    await openChat();
+    const chat = VimmaHost._state(window).agentChat;
+    chat.askKey(anthropic);
+    await until(keyOpen, "the key field is open");
+    EventUtils.sendString(SECRET);
+    const field = keyField();
+    // Chrome documents always get the password field's eye button (TextControlElement::
+    // CreateButton); the key field must not draw it.
+    const eye = InspectorUtils.getChildrenForNode(field, true, false).find(
+      (n) => n.localName === "button",
+    );
+    Assert.ok(!eye?.checkVisibility(), "no reveal button");
+    field.revealPassword = true;
+    Assert.ok(!field.revealPassword, "nothing reveals the key, the context menu's item included");
+    let menus = 0;
+    const counted = () => menus++;
+    document.addEventListener("popupshowing", counted);
+    field.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    document.removeEventListener("popupshowing", counted);
+    $("textbox-contextmenu")?.hidePopup();
+    Assert.equal(menus, 0, "no context menu over the field");
+    SpecialPowers.clipboardCopyString("unchanged");
+    field.focus();
+    field.select();
+    goDoCommand("cmd_copy");
+    goDoCommand("cmd_cut");
+    Assert.equal(
+      SpecialPowers.getClipboardData("text/plain"),
+      "unchanged",
+      "neither copy nor cut takes the key out",
+    );
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(async () => await AgentKeys.has(anthropic.name), "the key is stored");
+    chat.askKey(anthropic);
+    await until(keyOpen, "changing it opens the field again");
+    Assert.equal(keyField().value, "", "empty: the stored key is not filled in");
+    chat.cancelKey();
+  } finally {
+    await AgentKeys.delete(anthropic.name);
     McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
   }
 });

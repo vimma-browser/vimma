@@ -1,0 +1,11 @@
+{
+  "description": "A ticket binds an agent connection only, never the full role",
+  "kind": "hello",
+  "message": {
+    "type": "hello",
+    "protocol": 2,
+    "nonce": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    "role": "full",
+    "ticket": "661442cdea65ba354557af505e1c360c637bb5de19c74126fa13b700226f8419"
+  }
+}
