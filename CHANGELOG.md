@@ -4,10 +4,25 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.13](https://github.com/vimma-browser/vimma/compare/v0.1.12...v0.1.13) · Firefox 159.0 (2026-10-30)
+
+
 ### Added
 
 - Vimma's own agent runs Claude Code: in the chat window, `Esc`, `m`, then `add: agent CLI (Claude Code)` finds the `claude` on your `PATH`, and tasks you write in Vimma run on Claude Code's own login and plan, with no API key and no terminal. In the browser it reaches only the agent workspace, through the same tools, grants and checkpoints as any agent; its own shell, file and web tools stay under its own settings, and the window lists them and marks each use. The picker lists Claude Code's models (`sonnet`, `opus`, `haiku`, its default, or another by name) to switch with `Enter` or keep with `D`; the cost Claude Code reports stays on the task's last line as its estimate. Agent CLIs are on by default; `vimma.agent.cli.enabled` in `about:config` turns them off.
 - Link hints: in `gF`'s hints, typing the label's last character in upper case (`sD` instead of `sd`) opens the link in a new tab and switches to it; lower case still opens it in the background. Shift (or Caps Lock) on that last key no longer opens in the background as it did before. While `gF`'s labels are up, the status bar shows both choices with a label you can type, such as `sd background · sD go there`. A new action, `follow_link_new_tab_fg` (`hint.follow_new_tab_fg`), starts hints that always switch; it has no default key and can be bound in `config.toml`. The help overlay and its snapshots list the new action as unbound, and the new e2e baseline `follow-link-switch-hints` shows the status bar in `gF`'s hint mode.
+
+* **agent:** claude code as a provider of the chat window ([#637](https://github.com/vimma-browser/vimma/issues/637)) ([387aee6](https://github.com/vimma-browser/vimma/commit/387aee68562853be10bb983c1ca17b64f6b0168e))
+* **hints:** gF with an upper-case last key opens the link and goes there ([#665](https://github.com/vimma-browser/vimma/issues/665)) ([b708957](https://github.com/vimma-browser/vimma/commit/b708957a144b279231b51ec39b1dc01b25b16e73)), closes [#533](https://github.com/vimma-browser/vimma/issues/533)
+
+
+### Fixed
+
+* **agents:** version the claude plugin by commit so auto-update delivers changes ([#672](https://github.com/vimma-browser/vimma/issues/672)) ([797cb54](https://github.com/vimma-browser/vimma/commit/797cb5403f15c072ac5792f57e0819e1758b3216)), closes [#670](https://github.com/vimma-browser/vimma/issues/670)
+* **ci:** the macos mochitests no longer time out on hidden tabs ([#657](https://github.com/vimma-browser/vimma/issues/657)) ([a0afb39](https://github.com/vimma-browser/vimma/commit/a0afb3923c6ca8dda591a683e5ddac7ef38b33f8))
+* **macos:** keys, hyprland replies and the config poll survive a busy main thread ([#661](https://github.com/vimma-browser/vimma/issues/661)) ([8cbe435](https://github.com/vimma-browser/vimma/commit/8cbe435fc2451c5e87b39843d79f2be4073115d8))
+* **package:** the cask check reads brew's whole command list for brew trust ([#663](https://github.com/vimma-browser/vimma/issues/663)) ([1a34cf4](https://github.com/vimma-browser/vimma/commit/1a34cf42581f3f3b754c70b49661082ee65c848e)), closes [#662](https://github.com/vimma-browser/vimma/issues/662)
+* **package:** the cask check trusts its throwaway tap's cask ([#659](https://github.com/vimma-browser/vimma/issues/659)) ([8921080](https://github.com/vimma-browser/vimma/commit/8921080d809fd2e7ff9bae546d1968d1a7f30129))
 
 ## [0.1.12](https://github.com/vimma-browser/vimma/compare/v0.1.11...v0.1.12) · Firefox 159.0 (2026-10-30)
 
