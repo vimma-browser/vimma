@@ -10,8 +10,9 @@
 
 /**
  * @typedef {{ text: string, dynamic: boolean }} Word
- * @typedef {{ words: Word[], subs: Segment[][], op: string | null }} Segment
- *   a simple command, the commands of its substitutions, and the operator after it
+ * @typedef {{ words: Word[], subs: Segment[][], writes: Word[], op: string | null }} Segment
+ *   a simple command, the commands of its substitutions, the files its output redirections
+ *   write, and the operator after it
  * @typedef {{ name: string, args: Word[] }} Command
  */
 
@@ -44,23 +45,28 @@ class Parser {
     let words = [];
     /** @type {Segment[][]} */
     let subs = [];
+    /** @type {Word[]} */
+    let writes = [];
     /** @type {Word | null} */
     let word = null;
-    let dropNext = false;
+    /** @type {"" | "in" | "out"} the next word is a redirection target, not an argument */
+    let target = "";
     let depth = 0;
     const cur = () => (word ??= { text: "", dynamic: false });
     const endWord = () => {
       if (!word) return;
-      if (dropNext) dropNext = false;
+      if (target === "out") writes.push(word);
+      if (target) target = "";
       else words.push(word);
       word = null;
     };
     /** @param {string | null} op */
     const endSeg = (op) => {
       endWord();
-      if (words.length || subs.length) segs.push({ words, subs, op });
+      if (words.length || subs.length || writes.length) segs.push({ words, subs, writes, op });
       words = [];
       subs = [];
+      writes = [];
     };
 
     while (this.i < s.length) {
@@ -99,7 +105,7 @@ class Parser {
       } else if (c === "&" && s[this.i + 1] === ">") {
         endWord();
         this.i += s[this.i + 2] === ">" ? 3 : 2;
-        dropNext = true;
+        target = "out";
       } else if (c === "&") {
         endSeg("&");
         this.i++;
@@ -129,13 +135,16 @@ class Parser {
           subs.push(this.script(true));
         } else if (s.startsWith("<<<", this.i)) {
           this.i += 3;
-          dropNext = true;
+          target = "in";
         } else if (s.startsWith("<<", this.i)) {
           this.i += 2;
           this.heredocStart();
         } else {
+          const start = this.i;
           while (this.i < s.length && "<>&|".includes(s[this.i] ?? "")) this.i++;
-          dropNext = true;
+          // `>&2` duplicates a descriptor; `>`, `>>`, `>|` and `<>` write a file.
+          const dup = s[this.i - 1] === "&" && /\d/.test(s[this.i] ?? "");
+          target = s.slice(start, this.i).includes(">") && !dup ? "out" : "in";
         }
       } else {
         cur().text += c;

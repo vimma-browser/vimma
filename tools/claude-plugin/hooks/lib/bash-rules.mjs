@@ -7,7 +7,7 @@
 // agent's own shell, a rewritten branch, a dismissed alert, a disabled workflow.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { commandOf, parseShell } from "./shell.mjs";
@@ -18,6 +18,7 @@ import { commandOf, parseShell } from "./shell.mjs";
  * @typedef {import("./shell.mjs").Word} Word
  * @typedef {(message: string, cwd: string) => { ok: boolean, output: string }} Commitlint
  * @typedef {{ reason: string }} Block
+ * @typedef {{ cwd: string | null, commitlint: Commitlint, written: Set<string> }} Context
  */
 
 export const REASONS = {
@@ -55,12 +56,13 @@ export function checkBash(command, opts = {}) {
   return checkScript(parseShell(command ?? ""), {
     cwd: opts.cwd ?? null,
     commitlint: opts.commitlint ?? runCommitlint,
+    written: new Set(),
   });
 }
 
 /**
  * @param {Segment[]} segs
- * @param {{ cwd: string | null, commitlint: Commitlint }} ctx
+ * @param {Context} ctx
  * @returns {Block | null}
  */
 function checkScript(segs, ctx) {
@@ -80,6 +82,9 @@ function checkScript(segs, ctx) {
     }
 
     if (cmd.name === "cd" || cmd.name === "pushd") cwd = changeDir(cwd, cmd.args);
+    for (const w of [...seg.writes, ...fileArgsWritten(cmd)]) {
+      if (cwd !== null || isAbsolute(w.text)) ctx.written.add(resolve(cwd ?? "/", w.text));
+    }
 
     const found =
       checkKill(cmd, seg, segs, i) ??
@@ -97,6 +102,14 @@ function innerScript(cmd) {
   if (!["bash", "sh", "zsh", "dash", "ksh"].includes(cmd.name)) return null;
   const at = cmd.args.findIndex((w) => /^-[a-z]*c[a-z]*$/.test(w.text));
   return at < 0 ? null : (cmd.args[at + 1]?.text ?? null);
+}
+
+/** Files a command writes through its arguments: `tee`'s, and the target of `cp` or `mv`. @param {Command} cmd */
+function fileArgsWritten(cmd) {
+  const operands = cmd.args.filter((w) => !w.text.startsWith("-"));
+  if (cmd.name === "tee") return operands;
+  if (["cp", "mv", "install", "ln"].includes(cmd.name)) return operands.slice(-1);
+  return [];
 }
 
 /** @param {string | null} cwd @param {Word[]} args */
@@ -170,7 +183,7 @@ function checkPush(cmd) {
 
 /**
  * @param {Command} cmd
- * @param {{ cwd: string | null, commitlint: Commitlint }} ctx
+ * @param {Context} ctx
  */
 function checkGh(cmd, ctx) {
   if (cmd.name !== "gh") return null;
@@ -222,7 +235,7 @@ function checkAlertRequest(cmd) {
  * `gh pr merge` runs only with a literal --subject and a --body-file whose message passes
  * commitlint: the guard lints the exact message itself, so no `&&` chain has to hold.
  * @param {Word[]} args the words after `gh pr merge`
- * @param {{ cwd: string | null, commitlint: Commitlint }} ctx
+ * @param {Context} ctx
  * @returns {Block | null}
  */
 function checkMerge(args, ctx) {
@@ -258,10 +271,21 @@ function checkMerge(args, ctx) {
     return { reason: `${REASONS.merge} Give the body file as a literal absolute path.` };
   }
   const file = resolve(ctx.cwd ?? "/", path);
-  if (!existsSync(file) || !statSync(file).isFile()) {
+  // The guard reads the file before the command runs, so a file the same command writes would
+  // be checked in its old state and merged in its new one.
+  if (ctx.written.has(file)) {
+    return {
+      reason:
+        `${REASONS.merge} This command also writes ${file}: write the body file in an earlier ` +
+        "command, so the guard checks the message that will be merged.",
+    };
+  }
+  let body;
+  try {
+    body = readFileSync(file, "utf8");
+  } catch {
     return { reason: `${REASONS.merge} The body file ${file} was not found.` };
   }
-  const body = readFileSync(file, "utf8");
   if (!body.trim()) return { reason: `${REASONS.merge} The body file ${file} is empty.` };
   const lint = ctx.commitlint(`${subject.text}\n\n${body}`, ctx.cwd ?? process.cwd());
   if (!lint.ok) {

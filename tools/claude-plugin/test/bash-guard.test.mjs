@@ -196,6 +196,18 @@ describe("gh pr merge", () => {
     ).toMatch(/not found|empty/);
   });
 
+  it.each([
+    "tail -n +3 m.txt > msg.txt && gh pr merge 1 --squash --subject 'ci: a (#1)' --body-file msg.txt",
+    "printf 'x\\n' >> msg.txt; gh pr merge 1 --squash --subject 'ci: a (#1)' --body-file msg.txt",
+    "tail -n +3 m.txt | tee msg.txt && gh pr merge 1 --squash -t 'ci: a (#1)' -F msg.txt",
+    "cp other.txt msg.txt && gh pr merge 1 --squash -t 'ci: a (#1)' -F msg.txt",
+  ])("blocks a body file written by the same command: %s", (command) => {
+    const dir = withMessage();
+    expect(checkBash(command, { cwd: dir, commitlint: passingLint().lint })?.reason).toMatch(
+      /earlier command/,
+    );
+  });
+
   it("blocks a subject or path it cannot read without running the shell", () => {
     const dir = withMessage();
     const opts = { cwd: dir, commitlint: passingLint().lint };
