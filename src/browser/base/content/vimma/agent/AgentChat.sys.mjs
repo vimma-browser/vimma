@@ -53,7 +53,7 @@ import {
 } from "../ctl/agent-commands.mjs";
 import { AgentGate } from "../ctl/AgentGate.sys.mjs";
 import { AGENT_CONFIG_TOPIC, McpHost } from "../host/mcp-ops.mjs";
-import { AgentCli, CLI_FEATURE_PREF } from "./AgentCli.sys.mjs";
+import { AgentCli, CLI_ENABLED_PREF } from "./AgentCli.sys.mjs";
 import { AgentKeys } from "./AgentKeys.sys.mjs";
 import { AgentStore } from "./AgentStore.sys.mjs";
 
@@ -369,7 +369,7 @@ async function runTool(c, name, args, { signal }) {
  */
 function providerRefusal(provider, localOnly) {
   if (provider.kind !== "cli") return checkEndpoint(provider.endpoint, { localOnly });
-  if (!AgentCli.enabled) return `agent CLIs are unfinished and off (${CLI_FEATURE_PREF})`;
+  if (!AgentCli.enabled) return `agent CLIs are turned off (${CLI_ENABLED_PREF})`;
   if (!Object.hasOwn(CLIS, provider.cli ?? "")) return "this provider names no supported CLI";
   if (localOnly) return "an agent CLI may send page text off this machine ([agent] local_only)";
   return null;
@@ -420,7 +420,12 @@ function startCli(c, text, budget) {
       /** @type {import("../core/agent-providers.mjs").ChatMessage[]} */
       const messages = [...c.messages, { role: "user", text }];
       if (result.reply) messages.push({ role: "assistant", text: result.reply, toolCalls: [] });
-      return { ...result, messages };
+      // Its own estimate, for the end line (Behaviour 15).
+      const cost =
+        cli && typeof budget.reportedCost === "number"
+          ? { cost: { usd: budget.reportedCost, cli: cli.id } }
+          : {};
+      return { ...result, ...cost, messages };
     }),
   };
 }

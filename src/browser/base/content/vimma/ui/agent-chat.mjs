@@ -92,7 +92,9 @@ const SLOT_HINT = "a question waits: answer it here";
  * @typedef {{ label: string, detail: string, provider?: AgentProviderConfig,
  *   add?: "anthropic" | "openai" | "cli", cliPick?: { cli: string, path: string },
  *   local?: { endpoint: string, model: string, server: string }, id?: number,
- *   unavailable?: string, current?: boolean }} Row  `unavailable`: why it cannot be picked
+ *   unavailable?: string, current?: boolean, otherModel?: AgentProviderConfig }} Row
+ *   `unavailable`: why it cannot be picked; `otherModel`: the agent CLI provider whose model
+ *   the row asks for by name
  */
 
 /** @param {Document} doc @param {string} tag @param {string} className @param {string} [text] */
@@ -608,8 +610,22 @@ export class AgentChatWindow {
       /** @type {Row[]} */
       const rows = entries.map((e) => {
         const p = e.provider;
+        if (p && e.otherModel) {
+          // builtin-agent-cli Behaviour 17: a model of the CLI's that the list does not name.
+          const unavailable = unavailableText(p, e.state);
+          return {
+            label: `${p.name} · other model…`,
+            detail: unavailable ? "not available" : "type its name",
+            otherModel: p,
+            ...(unavailable ? { unavailable } : {}),
+          };
+        }
         const what = p
-          ? { label: `${p.name} · ${p.model || p.cli}`, provider: p, endpoint: p.endpoint }
+          ? {
+              label: `${p.name} · ${p.kind === "cli" ? cliModelText(p.cli ?? "", p.model) : p.model}`,
+              provider: p,
+              endpoint: p.endpoint,
+            }
           : {
               label: `${e.local?.server} · ${e.local?.model}`,
               local: e.local,
@@ -617,9 +633,11 @@ export class AgentChatWindow {
             };
         const unavailable = p ? unavailableText(p, e.state) : null;
         // Short, so the label keeps its room; Enter on the row says why in full.
-        const detail = unavailable
-          ? "not available"
-          : ((p && hints.get(what.label)) ?? (p ? providerWhere(p) : whereDataGoes(what.endpoint)));
+        const where =
+          (p && hints.get(what.label)) ?? (p ? providerWhere(p) : whereDataGoes(what.endpoint));
+        // An agent CLI's model config.toml names, among the models its list adds.
+        const listed = p?.kind === "cli" && !e.cliModel ? `config.toml · ${where}` : where;
+        const detail = unavailable ? "not available" : listed;
         return {
           label: what.label,
           detail: e.current ? `in use · ${detail}` : detail,
@@ -738,6 +756,10 @@ export class AgentChatWindow {
       this.addProvider(row.add);
       return;
     }
+    if (row.otherModel && !row.unavailable) {
+      this.askOtherModel(row.otherModel, { makeDefault });
+      return;
+    }
     if (row.unavailable) {
       this.host.say(`agent: ${row.unavailable}; pick another model`, true);
       return;
@@ -825,6 +847,32 @@ export class AgentChatWindow {
           },
           { ...opts, addedCli: true },
         );
+      },
+    });
+  }
+
+  /**
+   * A model of a configured agent CLI that its list does not name (builtin-agent-cli
+   * Behaviour 7), on the prompt line under setup's rule; then used as a picked row is.
+   * @param {AgentProviderConfig} base  the CLI's provider in config.toml
+   * @param {{ makeDefault: boolean }} opts
+   * @param {string} [value]  what was typed before, to correct
+   */
+  askOtherModel(base, opts, value) {
+    const ask = modelPrompt(base.cli ?? "");
+    this.host.prompt({
+      label: ask.label,
+      value: value ?? "",
+      placeholder: ask.placeholder,
+      submit: (text) => {
+        const model = text.trim();
+        const problem = modelProblem(model);
+        if (problem) {
+          this.host.say(`agent: ${problem}`, true);
+          this.askOtherModel(base, opts, text);
+          return;
+        }
+        this.usePicked({ ...base, model }, opts);
       },
     });
   }

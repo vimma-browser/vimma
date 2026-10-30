@@ -42,10 +42,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 /**
- * Unfinished: off until Codex's pull request (builtin-agent-cli, Delivery; CONTRIBUTING.md,
- * "Unfinished features").
+ * On by default (builtin-agent-cli, Delivery): false turns every agent CLI off, so that none can
+ * be set up, listed or started, without a new release.
  */
-export const CLI_FEATURE_PREF = "vimma.feature.agentCli";
+export const CLI_ENABLED_PREF = "vimma.agent.cli.enabled";
 /** The program setup confirmed for a CLI (C4): a pref, never config.toml. @param {string} id */
 export const pathPref = (id) => `vimma.agent.cli.${id}.path`;
 /**
@@ -123,11 +123,12 @@ function folders(path, strict = false) {
 
 /**
  * The program at `path`, checked as C4 says, symlinks resolved: the resolved path, or why it
- * may not run.
- * @param {string} path
+ * may not run. `folders: false` leaves out the folders above it (vimma-ctl beside Vimma's
+ * binary, findVimmaCtl).
+ * @param {string} path @param {{ folders?: boolean }} [opts]
  * @returns {Promise<{ path: string } | { problem: string }>}
  */
-async function inspect(path) {
+async function inspect(path, { folders: judgeFolders = true } = {}) {
   try {
     if (!PathUtils.isAbsolute(path)) {
       return { problem: /** @type {string} */ (pathProblem({ ...SOUND, absolute: false })) };
@@ -143,7 +144,7 @@ async function inspect(path) {
       executable: file.isExecutable(),
       owner: own?.owner ?? "other",
       othersWrite: own?.othersWrite ?? true,
-      ...folders(real),
+      ...(judgeFolders ? folders(real) : { dirOwner: "user", dirOthersWrite: false }),
     });
     return problem ? { problem } : { path: real };
   } catch {
@@ -196,20 +197,32 @@ async function tail(pipe, keep = CLI_STREAM_LIMITS.stderr) {
   return text;
 }
 
-/** `vimma-ctl` beside Vimma's binary, else the pref's; checked as the CLI is (C4). */
-async function findVimmaCtl() {
-  const candidates = [];
+/** The folder of Vimma's running binary (the kernel's record of it on Linux), or null. */
+function binaryDir() {
   try {
-    const dir = PathUtils.parent(Services.dirsvc.get("XREExeF", Ci.nsIFile).path);
-    if (dir) candidates.push(PathUtils.join(dir, "vimma-ctl"));
+    return PathUtils.parent(Services.dirsvc.get("XREExeF", Ci.nsIFile).path);
   } catch {
-    // No binary's folder: only the pref.
+    return null;
   }
+}
+
+/**
+ * `vimma-ctl` in `binDir`, else the pref's; checked as the CLI is (C4), but for the folders
+ * above the one beside the binary: they hold Vimma's own binary, so a user who can swap one of
+ * them can already change Vimma itself, and judging them would refuse every macOS install,
+ * whose /Applications the admin group may write. Its own file is checked in full.
+ * @param {string | null} [binDir]
+ * @returns {Promise<{ path: string } | { problem: string }>}
+ */
+async function findVimmaCtl(binDir = binaryDir()) {
+  /** @type {{ path: string, beside: boolean }[]} */
+  const candidates = [];
+  if (binDir) candidates.push({ path: PathUtils.join(binDir, "vimma-ctl"), beside: true });
   const pref = Services.prefs.getStringPref(VIMMA_CTL_PREF, "");
-  if (pref) candidates.push(pref);
-  for (const path of candidates) {
+  if (pref) candidates.push({ path: pref, beside: false });
+  for (const { path, beside } of candidates) {
     if (!(await IOUtils.exists(path))) continue;
-    const r = await inspect(path);
+    const r = await inspect(path, { folders: !beside });
     if ("path" in r) return r;
     return { problem: `vimma-ctl at ${path} is refused: ${r.problem}` };
   }
@@ -217,8 +230,10 @@ async function findVimmaCtl() {
 }
 
 export const AgentCli = {
+  findVimmaCtl,
+
   get enabled() {
-    return Services.prefs.getBoolPref(CLI_FEATURE_PREF, false);
+    return Services.prefs.getBoolPref(CLI_ENABLED_PREF, false);
   },
 
   /**
@@ -268,7 +283,7 @@ export const AgentCli = {
    * @param {string} cli @param {string} path  as `find` listed it
    */
   use(cli, path) {
-    if (!this.enabled) throw new Error(`agent CLIs are off (${CLI_FEATURE_PREF})`);
+    if (!this.enabled) throw new Error(`agent CLIs are turned off (${CLI_ENABLED_PREF})`);
     if (!Object.hasOwn(CLIS, cli)) throw new Error(`no supported CLI named ${cli}`);
     if (!PathUtils.isAbsolute(path)) throw new Error("the path is not absolute");
     Services.prefs.setStringPref(pathPref(cli), path);
@@ -384,7 +399,7 @@ export const AgentCli = {
       if (!AgentCli.enabled) {
         return {
           outcome: "error",
-          error: `agent CLIs are off (${CLI_FEATURE_PREF})`,
+          error: `agent CLIs are turned off (${CLI_ENABLED_PREF})`,
           messages: [],
         };
       }

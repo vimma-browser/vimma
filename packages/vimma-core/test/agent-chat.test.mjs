@@ -140,6 +140,20 @@ describe("the transcript", () => {
     expect(t.entries.at(-2)?.warn).toBe(true);
   });
 
+  // docs/specs/builtin-agent-cli.md Behaviour 15: the cost an agent CLI reported stays on the
+  // task's end line, named as its own estimate, after the status bar has cleared.
+  test("an agent CLI's reported cost is on the end line, as its estimate", () => {
+    const t = new Transcript();
+    t.end({ outcome: "done", cost: { usd: 0.4123, cli: "claude-code" } });
+    t.end({ outcome: "stopped", cost: { usd: 1.5, cli: "claude-code" } });
+    t.end({ outcome: "done" });
+    expect(texts(t)).toEqual([
+      "end: done · ≈ $0.41 (claude-code estimate)",
+      "end: stopped · ≈ $1.50 (claude-code estimate)",
+      "end: done",
+    ]);
+  });
+
   test("a server error is a notice; usage adds nothing", () => {
     const t = new Transcript();
     t.task({ type: "usage", usage: { input: 1, output: 1, estimated: false } });

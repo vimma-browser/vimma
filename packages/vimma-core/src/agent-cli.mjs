@@ -15,8 +15,11 @@ import { hasControl } from "./strings.mjs";
 /**
  * A supported CLI: `id` is its name in config.toml and in the window, `bin` the program setup
  * looks for on PATH, `title` how the window's sentences name it, `model` the model setup
- * suggests on the prompt line (Behaviour 2), one of the CLI's own model aliases.
- * @typedef {{ id: string, bin: string, title: string, model: string }} CliInfo
+ * suggests on the prompt line (Behaviour 2), one of the CLI's own model aliases, `models` the
+ * models the window's picker lists for it (builtin-agent-cli Behaviour 17), "" for the CLI's own default. The list
+ * is Vimma's own: the CLI is never started to list its models.
+ * @typedef {{ id: string, bin: string, title: string, model: string,
+ *   models: readonly string[] }} CliInfo
  */
 
 /** @type {Readonly<Record<string, Readonly<CliInfo>>>} */
@@ -26,6 +29,8 @@ export const CLIS = Object.freeze({
     bin: "claude",
     title: "Claude Code",
     model: "sonnet",
+    // Claude Code's model aliases, which follow its newest model of each family.
+    models: Object.freeze(["sonnet", "opus", "haiku", ""]),
   }),
 });
 /** The CLIs a provider may name, in the order setup lists them (C12). */

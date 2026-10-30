@@ -10,6 +10,7 @@
 // set, the way Ollama's documentation says to: a new name that shares the original's weights.
 // The caller passes `fetch`, as for the providers.
 
+import { CLIS } from "./agent-cli.mjs";
 import { checkEndpoint } from "./agent-providers.mjs";
 
 /** @typedef {import("./agent-providers.mjs").Fetch} Fetch */
@@ -180,14 +181,18 @@ export function unavailableText(provider, state) {
 /**
  * @typedef {{ provider?: AgentProviderConfig,
  *   local?: { server: string, endpoint: string, model: string },
- *   state: ModelState | null, current: boolean }} PickerEntry  `state` null: not known yet, or
- *   never asked (a hosted provider)
+ *   state: ModelState | null, current: boolean, cliModel?: true, otherModel?: true }} PickerEntry
+ *   `state` null: not known yet, or never asked (a hosted provider); `cliModel`: another model
+ *   of a configured agent CLI, from its list (builtin-agent-cli Behaviour 17); `otherModel`: the
+ *   row that asks for a model of that CLI by name
  */
 
 /**
  * The model picker's entries (Behaviour 7): the conversation's own model first when nothing
  * else lists it (so a model that is gone is seen as gone), then the configured providers, then
- * the models the local servers list that no provider names.
+ * each configured agent CLI's other models and a row to name one (builtin-agent-cli
+ * Behaviour 7), under its first provider's name, then the models the local servers list that no
+ * provider names.
  * @param {{ providers: AgentProviderConfig[], found: LocalServer[] | null,
  *   states: Map<string, ModelState> | null, current: AgentProviderConfig | null }} o
  *   `found`: the probe's servers, null until it answers; `states`: by providerKey
@@ -213,13 +218,42 @@ export function pickerEntries({ providers, found, states, current }) {
     state: states?.get(providerKey(p)) ?? null,
     current: providerKey(p) === currentKey,
   }));
-  const listed = [...configured, ...locals].some((e) => e.current);
+  /** @type {Map<string, AgentProviderConfig>} each CLI's first provider */
+  const bases = new Map();
+  for (const p of providers) {
+    if (p.kind === "cli" && p.cli && Object.hasOwn(CLIS, p.cli) && !bases.has(p.cli)) {
+      bases.set(p.cli, p);
+    }
+  }
+  /** @type {PickerEntry[]} */
+  const cliModels = [...bases].flatMap(([cli, base]) => {
+    const state = states?.get(providerKey(base)) ?? null;
+    const named = new Set(
+      providers.filter((p) => p.kind === "cli" && p.cli === cli).map((p) => p.model),
+    );
+    const info = /** @type {import("./agent-cli.mjs").CliInfo} */ (CLIS[cli]);
+    return [
+      ...info.models
+        .filter((model) => !named.has(model))
+        .map((model) => {
+          const provider = { ...base, model };
+          return {
+            provider,
+            state,
+            current: providerKey(provider) === currentKey,
+            cliModel: /** @type {const} */ (true),
+          };
+        }),
+      { provider: base, state, current: false, otherModel: /** @type {const} */ (true) },
+    ];
+  });
+  const listed = [...configured, ...cliModels, ...locals].some((e) => e.current);
   /** @type {PickerEntry[]} */
   const own =
     current && !listed
       ? [{ provider: current, state: states?.get(providerKey(current)) ?? null, current: true }]
       : [];
-  return [...own, ...configured, ...locals];
+  return [...own, ...configured, ...cliModels, ...locals];
 }
 
 /** `qwen2.5:7b` with 32768 → `qwen2.5:7b-ctx32768` (the bench's names too). */

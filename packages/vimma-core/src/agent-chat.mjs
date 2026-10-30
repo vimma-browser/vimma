@@ -30,8 +30,9 @@ import { formatConfigError } from "./config.mjs";
  * @typedef {{ kind: "asked" | "ran" | "timeout" | "answered", tool: string,
  *   what: Record<string, any>, answer?: string }} ConvGateEvent
  *   one of AgentGate's events about this conversation's connection
- * @typedef {{ outcome: string, after?: ToolCall | null, exceeded?: Exceeded, error?: string }}
- *   TaskEnd
+ * @typedef {{ outcome: string, after?: ToolCall | null, exceeded?: Exceeded, error?: string,
+ *   cost?: { usd: number, cli: string } }} TaskEnd  `cost`: what an agent CLI reported as its
+ *   own estimate of the task's cost
  * @typedef {{ steps: number, maxSteps: number, tokens: number, estimated: boolean,
  *   cost: number | null, cli?: string, tokensReported?: boolean, reportedCost?: number | null,
  *   minutes?: number }} BudgetStatus
@@ -233,20 +234,28 @@ export class Transcript {
     if (running && (running.outcome === "…" || running.outcome === "asking you")) {
       running.outcome = "withdrawn";
     }
+    // docs/specs/builtin-agent-cli.md Behaviour 15: kept on the end line, which stays after the
+    // status bar clears, and named as the CLI's estimate, since it is not a bill.
+    const cost = result.cost
+      ? ` · ≈ $${result.cost.usd.toFixed(2)} (${chatText(result.cost.cli)} estimate)`
+      : "";
     if (result.outcome === "done") {
-      this.push({ kind: "end", text: "done" });
+      this.push({ kind: "end", text: `done${cost}` });
     } else if (result.outcome === "stopped") {
       const last = result.after
         ? [...this.entries].reverse().find((e) => e.kind === "step" || e.kind === "checkpoint")
         : null;
-      this.push({ kind: "end", text: last ? `stopped after "${last.text}"` : "stopped" });
+      this.push({
+        kind: "end",
+        text: `${last ? `stopped after "${last.text}"` : "stopped"}${cost}`,
+      });
     } else if (result.outcome === "budget" && result.exceeded) {
-      this.push({ kind: "end", text: budgetLimitText(result.exceeded), warn: true });
+      this.push({ kind: "end", text: budgetLimitText(result.exceeded) + cost, warn: true });
     } else {
       const error = chatText(result.error ?? "the task failed");
       this.push({
         kind: "end",
-        text: error.startsWith("stopped") ? error : `stopped: ${error}`,
+        text: (error.startsWith("stopped") ? error : `stopped: ${error}`) + cost,
         warn: true,
       });
     }

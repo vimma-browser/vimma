@@ -20,7 +20,7 @@ Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_co
 const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
-const { AgentCli, CLI_FEATURE_PREF, VIMMA_CTL_PREF, pathPref } = ChromeUtils.importESModule(
+const { AgentCli, CLI_ENABLED_PREF, VIMMA_CTL_PREF, pathPref } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
@@ -176,10 +176,7 @@ const addTidyTask = (task) => add_task(tidyTask(task, tidy));
 
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      [CLI_FEATURE_PREF, true],
-      ["vimma.mcp.askTimeoutMs", 20000],
-    ],
+    set: [["vimma.mcp.askTimeoutMs", 20000]],
   });
   OSKeyStoreTestUtils.setup();
   registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());
@@ -361,6 +358,108 @@ addTidyTask(async function test_setup_asks_the_clis_model_and_saves_it() {
   });
 });
 
+/** `:agent model` from the page, with the CLI's rows listed. */
+async function openModels() {
+  VimmaHost._state(window).agentChat.close();
+  await focusContent(gBrowser.selectedBrowser);
+  await until(() => VimmaHost.status(window).mode === "normal", "the page is in normal mode");
+  EventUtils.synthesizeKey(":", { shiftKey: true });
+  EventUtils.sendString("agent model");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(
+    () => chatRows().some((r) => r.textContent.includes("claude · other model…")),
+    "the picker lists the CLI's models",
+  );
+}
+
+/** Moves the picker's selection to the row whose label starts with `label`. */
+function selectRow(/** @type {string} */ label) {
+  const at = chatRows().findIndex((r) => r.textContent.startsWith(label));
+  Assert.greaterOrEqual(at, 0, `a row ${label}: ${chatRows().map((r) => r.textContent)}`);
+  for (let i = 0; i < chatRows().length; i++) EventUtils.synthesizeKey("k");
+  for (let i = 0; i < at; i++) EventUtils.synthesizeKey("j");
+}
+
+// Behaviour 17: a CLI's model is chosen in the window's picker, as another provider's is.
+addTidyTask(async function test_the_picker_lists_the_clis_models_and_uses_one() {
+  await inWindowSetup(async (path) => {
+    await pickFoundCli();
+    await until(promptOpen, "the model is asked");
+    answerPrompt("sonnet");
+    await until(() => notice().includes("saved to config.toml"), `saved: ${notice()}`);
+    const text = await IOUtils.readUTF8(path);
+    await openModels();
+    const labels = chatRows().map((r) => r.textContent);
+    for (const label of [
+      "claude · sonnet",
+      "claude · opus",
+      "claude · haiku",
+      "claude · Claude Code's own default model",
+      "claude · other model…",
+    ]) {
+      Assert.ok(
+        labels.some((l) => l.startsWith(label)),
+        `a row ${label}: ${labels}`,
+      );
+    }
+    const sonnet = chatRows().find((r) => r.textContent.startsWith("claude · sonnet"));
+    Assert.ok(
+      sonnet?.textContent.includes("in use · config.toml"),
+      `the configured model is marked, and in use: ${sonnet?.textContent}`,
+    );
+
+    selectRow("claude · opus");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(
+      () =>
+        notice().includes(
+          "agent: claude · opus until a restart; D in the picker makes it the default",
+        ),
+      `picking a model uses it for this session: ${notice()}`,
+    );
+    const id = /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
+    Assert.equal(AgentChat.get(id).provider.model, "opus", "the conversation uses it");
+    Assert.equal(AgentChat.get(id).provider.cli, "claude-code", "with the same CLI");
+    Assert.equal(await IOUtils.readUTF8(path), text, "and config.toml is unchanged");
+
+    await openModels();
+    const opus = chatRows().find((r) => r.textContent.startsWith("claude · opus"));
+    Assert.ok(opus?.textContent.includes("in use"), `in use: ${opus?.textContent}`);
+
+    selectRow("claude · haiku");
+    EventUtils.synthesizeKey("D", { shiftKey: true });
+    await until(
+      () => notice().includes("agent: claude · haiku · saved to config.toml as [agent] default"),
+      `D keeps it: ${notice()}`,
+    );
+    const saved = await IOUtils.readUTF8(path);
+    Assert.ok(
+      saved.includes('kind = "cli"\ncli = "claude-code"\nmodel = "haiku"'),
+      `config.toml lists it: ${saved}`,
+    );
+    Assert.equal(McpHost.agentConfig?.default, "claude-2", "as [agent] default");
+
+    await openModels();
+    selectRow("claude · other model…");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(promptOpen, "another model is asked by name");
+    Assert.equal($("vimma-rename").textContent.trim().startsWith("agent model:"), true);
+    answerPrompt("--bare");
+    await until(
+      () => notice().includes('the model "--bare" is not a model name: it cannot start with "-"'),
+      `the same rule refuses it: ${notice()}`,
+    );
+    await until(promptOpen, "and asks again");
+    answerPrompt("claude-opus-4-1");
+    await until(
+      () => notice().includes("agent: claude · claude-opus-4-1 until a restart"),
+      `the typed model is used: ${notice()}`,
+    );
+    const now = /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
+    Assert.equal(AgentChat.get(now).provider.model, "claude-opus-4-1");
+  });
+});
+
 addTidyTask(async function test_an_empty_model_leaves_it_to_the_cli() {
   await inWindowSetup(async (path) => {
     await pickFoundCli();
@@ -425,12 +524,26 @@ addTidyTask(async function test_path_checks_refuse_a_file_others_can_write() {
   Assert.equal(await AgentCli.check("/nonexistent/claude"), "it does not exist");
 });
 
-addTidyTask(async function test_feature_off_starts_nothing() {
+add_task(async function test_agent_clis_are_on_with_a_pref_to_turn_them_off() {
+  // builtin-agent-cli, Delivery: Claude Code ships turned on; the pref stays as a way to turn
+  // every agent CLI off, and the unfinished-feature pref is gone.
+  const defaults = Services.prefs.getDefaultBranch("");
+  Assert.equal(CLI_ENABLED_PREF, "vimma.agent.cli.enabled");
+  Assert.equal(defaults.getBoolPref(CLI_ENABLED_PREF, false), true, "on by default");
+  Assert.equal(
+    Services.prefs.getPrefType("vimma.feature.agentCli"),
+    Services.prefs.PREF_INVALID,
+    "no vimma.feature.agentCli",
+  );
+  Assert.ok(AgentCli.enabled, "so the window offers agent CLIs");
+});
+
+addTidyTask(async function test_turned_off_starts_nothing() {
   const c = conversation();
-  await SpecialPowers.pushPrefEnv({ set: [[CLI_FEATURE_PREF, false]] });
+  await SpecialPowers.pushPrefEnv({ set: [[CLI_ENABLED_PREF, false]] });
   try {
     Assert.deepEqual(await AgentChat.send(c.id, "hello"), {
-      refused: "agent CLIs are unfinished and off (vimma.feature.agentCli)",
+      refused: "agent CLIs are turned off (vimma.agent.cli.enabled)",
     });
     const direct = await AgentCli.start({
       provider: CLI,
@@ -685,6 +798,69 @@ addTidyTask(async function test_max_cost_set_is_reported_as_not_applying() {
     1,
     "once per conversation",
   );
+});
+
+addTidyTask(async function test_the_reported_cost_stays_on_the_end_line() {
+  if (!(await needCtl())) return;
+  const c = conversation();
+  const result = await run(c.id, "hello");
+  Assert.equal(result.outcome, "done", `done: ${result.error}`);
+  // Behaviour 15: the status bar clears when the task ends; the end line keeps the estimate.
+  Assert.equal(
+    texts(c.id).at(-1),
+    "end: done · ≈ $0.41 (claude-code estimate)",
+    `the end line names the CLI's own estimate: ${texts(c.id).join(" | ")}`,
+  );
+});
+
+addTidyTask(async function test_vimma_ctl_beside_the_binary_is_judged_as_the_binary_is() {
+  const ctl = await needCtl();
+  if (!ctl) return;
+  // A folder others can write above the binary's: Vimma's own binary is in it too, so whoever
+  // can swap it can change Vimma itself; /Applications on macOS is such a folder.
+  const outer = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-app", 0o700);
+  const binDir = PathUtils.join(outer, "MacOS");
+  await IOUtils.makeDirectory(binDir, { permissions: 0o755 });
+  const beside = PathUtils.join(binDir, "vimma-ctl");
+  await IOUtils.copy(ctl, beside);
+  await IOUtils.setPermissions(beside, 0o755);
+  await IOUtils.setPermissions(outer, 0o775, false);
+  const real = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  real.initWithPath(beside);
+  real.normalize();
+  Services.prefs.clearUserPref(VIMMA_CTL_PREF);
+  try {
+    Assert.deepEqual(
+      await AgentCli.findVimmaCtl(binDir),
+      { path: real.path },
+      "beside the binary, a folder above that others can write does not refuse it",
+    );
+    await IOUtils.setPermissions(beside, 0o775, false);
+    Assert.deepEqual(
+      await AgentCli.findVimmaCtl(binDir),
+      { problem: `vimma-ctl at ${beside} is refused: other users can write it` },
+      "its own file is still checked",
+    );
+    await IOUtils.setPermissions(beside, 0o755);
+    Services.prefs.setStringPref(VIMMA_CTL_PREF, beside);
+    Assert.deepEqual(
+      await AgentCli.findVimmaCtl(PathUtils.join(outer, "elsewhere")),
+      {
+        problem: `vimma-ctl at ${beside} is refused: a folder it is in can be written by other users`,
+      },
+      "the pref's file is judged with every folder above it",
+    );
+    Services.prefs.clearUserPref(VIMMA_CTL_PREF);
+    Assert.deepEqual(
+      await AgentCli.findVimmaCtl(PathUtils.join(outer, "elsewhere")),
+      { problem: "vimma-ctl is not next to Vimma" },
+      "none beside the binary and no pref",
+    );
+  } finally {
+    await IOUtils.setPermissions(outer, 0o700);
+    await IOUtils.remove(outer, { recursive: true });
+    Services.prefs.setStringPref(VIMMA_CTL_PREF, ctl);
+  }
 });
 
 addTidyTask(async function test_local_only_refuses_a_cli() {
