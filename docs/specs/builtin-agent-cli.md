@@ -649,7 +649,8 @@ Claude Code's stream-json, scripted by the task's text; it also covers
   Screenshots with the Omarchy theme: setup's CLI list, the header with the fake CLI's own
   tools listed, an own-tool line, a stopped task. It lands with Delivery 3, because a scenario
   can name neither a program by its path in the checkout nor a `PATH` for setup's search, and
-  the harness gains that with it. Claude Code is turned on before it (Delivery 2) because the
+  the harness's profile, with its `HOME` under the shared `/tmp` and no `$XDG_RUNTIME_DIR`, has
+  no run folder C6 accepts; the harness gains both with it. Claude Code is turned on before it (Delivery 2) because the
   mochitests already run the whole flow with the fake CLI and the real `vimma-ctl mcp`, from
   setup in the window to a stopped task, and Delivery 2's screens were checked in a real build
   with the Omarchy theme; the scenario adds a regression screenshot, not coverage.

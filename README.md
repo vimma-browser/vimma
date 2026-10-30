@@ -103,7 +103,9 @@ with the browser ([where it is](docs/guide.md#installing)); you can also
 later check a signed update file every 12 hours and show a newer release in the status bar. The
 AppImage, from the first release that includes its self-update, then replaces its own file with
 the newer release once its size and SHA-512 match the signed file, and the next start runs it.
-The other packages notify only; installing the update is up to you.
+The other packages notify only; installing the update is up to you. Vimma's chat window runs
+Claude Code from 0.1.13, on its own login
+([quick start](docs/guide.md#using-an-agent-cli-in-the-chat-window)); Codex follows.
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>
 

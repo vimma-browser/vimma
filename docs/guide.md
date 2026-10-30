@@ -1448,6 +1448,9 @@ separate program and no `:mcp on`. It uses the same tools and the same questions
 so it works only in the agent workspace and stops at the same checkpoints, whatever model drives
 it.
 
+**Already using Claude Code?** The window can run it on its own login, with no API key: see the
+quick start in [Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window).
+
 **Opening it.** `ctrl+b i` (or `:agent`) opens the window where the side panel opens, in any
 normal window, with its input focused. It stays open while you switch workspaces, and `q` closes
 it. A private window has no agent. With no model set up, the window says how to add one.
@@ -1797,17 +1800,44 @@ instead: see [Using an agent CLI in the chat window](#using-an-agent-cli-in-the-
 
 #### Using an agent CLI in the chat window
 
-If you already use an agent CLI, Vimma's built-in agent window can run it for you, headless: you
-write the task in Vimma, the CLI does the work on its own login (a plan of its vendor works, no
-API key), and in the browser it reaches only the agent workspace, through the same questions and
-grants as any agent. You need no terminal and no `:mcp on`. The CLIs it runs so far are listed
-under [Supported CLIs](#supported-clis), each with what is particular to it; the rest of this
-section holds for every one.
+If you already use an agent CLI, Vimma's chat window can run it for you, headless: you write the
+task in Vimma, the CLI does the work on its own login (a plan of its vendor works, no API key),
+and in the browser it reaches only the agent workspace, through the same questions and grants as
+any agent. You need no terminal and no `:mcp on`. The CLIs it runs so far, and what is particular
+to each, are under [Supported CLIs](#supported-clis); everything else here holds for every one.
+
+**Quick start.**
+
+1. Install the CLI and log in to it once in a terminal, as its own documentation says (for
+   Claude Code, [its setup page](https://docs.anthropic.com/en/docs/claude-code/setup); then run
+   `claude` and `/login`). Vimma runs the same program with the same login.
+2. Press `ctrl+b i` (or type `:agent`): the chat window opens beside the page.
+3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
+   `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
+   it finds with its version and full path, such as `claude 2.1.303 · /home/you/.local/bin/claude`.
+   Press `Enter` on it.
+4. The prompt line asks `agent model:` with the CLI's suggested model filled in (`sonnet` for
+   Claude Code). Press `Enter` to keep it, type another model the CLI takes, or clear it to leave
+   the choice to the CLI's own default model. The notice confirms it, for example
+   `agent: claude · sonnet · saved to config.toml as [agent] default`.
+5. Write your first task and press `Enter`. Before it is sent, the window says that page text,
+   field values, screenshots and your messages go to the CLI, which sends them to its model, and
+   that the CLI keeps its own tools; press `y` to send.
+6. While it works, the transcript shows the CLI's replies, each step it takes in the browser
+   (from Vimma's own record), and a `◆` line for each use of its own tools; the status bar shows
+   its steps and tokens. Writing in the input while it works adds an instruction to the running
+   task. `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
+   `done · ≈ $0.41 (claude-code estimate)`.
+7. To change the model later, press `Esc`, then `m`: the picker lists the CLI's models
+   (`claude · opus`, `claude · haiku`, …) and `claude · other model…`. `Enter` switches the open
+   conversation and new ones until Vimma restarts; `D` keeps the choice in `config.toml`.
+
+The rest of this section is the reference: what you need before the first task, setup and the
+picker in full, the `config.toml` form, what runs where, budgets and cost, and what the window's
+messages mean.
 
 **Before you start.**
 
-- Install the CLI and log in to it once in a terminal. Vimma runs the same program with the same
-  login.
 - Vimma runs `vimma-ctl` with each task, as the CLI's only way into the browser, and uses the one
   next to Vimma's own binary. Every release puts it there: `/usr/lib/vimma/vimma-ctl` from the
   `.deb` and `.rpm`, `/opt/vimma/vimma-ctl` on Arch Linux, `vimma/vimma-ctl` in the tarball,
