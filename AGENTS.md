@@ -171,10 +171,11 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
    `Part of #N`, and a dependency's licence line when one was added.
 7. Wait for green: `gh pr checks <N> --watch`. Re-run a failed job at most once, only for a known
    flake, and say so. A real failure: fix it, or stop and report.
-8. Squash-merge with a checked message in one unbroken `&&` chain, so that any failure blocks the
-   merge (a `;` once merged a pull request with an empty message):
-   `test -s msg.txt && npx commitlint < msg.txt && gh pr merge <N> --squash --subject
-"<type(scope): subject> (#N)" --body "$(tail -n +3 msg.txt)"`.
+8. Squash-merge with a checked message. Write the subject and body to `msg.txt` and the body
+   alone to a file (`tail -n +3 msg.txt > body.txt`), then merge in one unbroken `&&` chain, so
+   that any failure blocks the merge (a `;` once merged a pull request with an empty message):
+   `npx commitlint < msg.txt && gh pr merge <N> --squash --subject
+"<type(scope): subject> (#N)" --body-file body.txt`.
 9. Clean up: `npm run lane:teardown`, `git worktree remove`, delete the local branch.
 
 Merge rights are the maintainer's, and agents working for them merge only within these limits:
@@ -212,6 +213,8 @@ security fixes) within one to three days.
 ## Tool notes
 
 - **Claude Code** reads `CLAUDE.md`, which imports this file and adds what only Claude Code uses.
+  The `vimma-guardrails` plugin (`tools/claude-plugin/`, `CONTRIBUTING.md`, "Claude Code plugin")
+  turns several of these rules into hooks that block the command, and ships the `vimma-pr` agent.
 - **Codex, Cursor, Copilot** (VS Code and the coding agent) and **Zed** read this file directly.
   Copilot code review reads `.github/copilot-instructions.md`, which points here.
 - **Gemini CLI** reads this file through `.gemini/settings.json` (`context.fileName`).

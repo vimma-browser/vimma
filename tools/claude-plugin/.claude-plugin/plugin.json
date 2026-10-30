@@ -1,0 +1,8 @@
+{
+  "name": "vimma-guardrails",
+  "version": "0.1.0",
+  "description": "Hooks that enforce Vimma's rules for coding agents (checked squash merges, no pattern kills, no force pushes, no dismissed alerts or disabled workflows, subagents stay in their worktree), and the vimma-pr agent.",
+  "author": { "name": "Vimma" },
+  "license": "MPL-2.0",
+  "repository": "https://github.com/vimma-browser/vimma"
+}
