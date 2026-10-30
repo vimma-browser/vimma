@@ -304,8 +304,6 @@ support-files = [
 ["browser_vimma_workspace_buffer_keys.js"]
 
 ["browser_vimma_private_workspace.js"]
-# macOS: keys sent at once after a workspace switch are lost (#388)
-skip-if = ["os == 'mac'"]
 support-files = [
   "file_vimma_private_form.html",
   "file_vimma_private_download.txt",

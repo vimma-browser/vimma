@@ -33,6 +33,9 @@ const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
 const { SessionStore } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
 );
+const { TabStateFlusher } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
+);
 const { SessionSaver } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sessionstore/SessionSaver.sys.mjs",
 );
@@ -395,6 +398,9 @@ add_task(async function tab_search_keeps_private_and_normal_apart_both_ways() {
       content.document.title = t;
     });
     await until(() => tab.label === title, `titled ${title}`);
+    // Session history comes from the tab's own process, a background one here: without its
+    // last update, SessionStore keeps no closed tab for it (issue #605, seen on macOS).
+    await TabStateFlusher.flush(tab.linkedBrowser);
     return tab;
   };
   // A private tab closed in the private window; a normal tab open and one closed.

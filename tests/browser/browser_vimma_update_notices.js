@@ -318,12 +318,12 @@ add_task(async function the_question_waits_while_the_user_types() {
     await pause(2500);
     Assert.ok(!lineShown(), "no question while in insert mode");
     EventUtils.sendString("abc");
-    const typed = await SpecialPowers.spawn(
-      browser,
-      [],
-      () => content.document.querySelector("input").value,
-    );
-    Assert.equal(typed, "abc", "the keys went to the field");
+    // The keys reach the page's process after sendString returns, and the last one can still be
+    // on its way there (issue #605): wait until three characters arrived, then compare them.
+    const value = () =>
+      SpecialPowers.spawn(browser, [], () => content.document.querySelector("input").value);
+    await until(async () => (await value()).length >= 3, "three keys reached the page");
+    Assert.equal(await value(), "abc", "the keys went to the field");
     await SpecialPowers.spawn(browser, [], () => content.document.activeElement.blur());
     await until(() => VimmaHostMode() === "normal", "normal mode");
     await until(lineShown, "asked once the user left insert mode");

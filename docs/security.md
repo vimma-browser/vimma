@@ -870,8 +870,12 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_a_count_and_a_grant_minutes_shown_in_the_status_bar`](../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_agent_role_has_its_own_switch`](../tests/browser/browser_vimma_mcp_agent.js)
 - M6. `agent-open` **must** load only http and https, in the agent container, never routed and
-  never in the foreground: your window keeps its workspace, selected tab and focus.
+  never in the foreground: your window keeps its workspace, selected tab and focus. While a
+  command works on an agent tab, its content process runs at foreground priority
+  (`nsIRemoteTab.priorityHint`), which schedules the process and neither shows nor renders the
+  tab.
   [`test_agent_open_is_background_and_checked`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_a_command_runs_its_tab_at_foreground_priority`](../tests/browser/browser_vimma_mcp_agent.js),
   [`agent-open: only http and https, at most 65536 characters, an optional tab`](../packages/vimma-core/test/control-v2.test.mjs)
 - M7. Page text and the page's selection **must** be capped (`[mcp] max_read_chars`, and the
   1 MiB line), well-formed Unicode, and returned inside the untrusted-content delimiters, which
