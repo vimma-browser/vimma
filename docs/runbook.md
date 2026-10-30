@@ -721,7 +721,8 @@ Mac (`macos-15`), as sub-PR 1 of [macos-build](specs/macos-build.md) describes. 
 ci`; the whole Vitest suite (`npm test`); GNU tar and `gpgv` from Homebrew when the image lacks
 them; `tools/upstream/firefox-source.sh`; `npm run import`;
 `node tools/artifact-build/artifact-build.mjs`, which fetches Mozilla's `macosx64-aarch64-opt`
-build of the same release; and `npm run mochitest -- --artifact tests/browser/`, headless. `df
+build of the same release; and `npm run mochitest -- --artifact tests/browser/`, headless, with
+one pref set (below). `df
 -k .` records the free disk before the download, after the unpack and after the tests, because
 GitHub documents only 14 GB for hosted Macs. On a failure the run uploads `mochitest-macos-logs`
 (the mochitests' TBPL log and the objdir's `config.log`, kept 7 days).
@@ -738,9 +739,31 @@ on macOS`). The e2e scenarios on macOS are follow-up work
 repository, so a flaky macOS run would otherwise block every pull request (spec macos-build,
 decision 34). It fails visibly, with no `continue-on-error`, and the ruleset "main" must not list
 it among the required checks ("Merging and branch protection" above). It becomes a candidate for
-a required check once it has been green and not flaky for about two weeks, as the Linux job was;
-that needs its timeouts in unrelated tests fixed first
-([#605](https://github.com/vimma-browser/vimma/issues/605)).
+a required check once it has been green and not flaky for about two weeks, as the Linux job was.
+The timeouts that kept it red on every run are explained below.
+
+**Background tabs and QoS** ([#605](https://github.com/vimma-browser/vimma/issues/605)). Firefox
+lowers a content process to background priority when none of its tabs is shown, and on macOS
+(`threads.lower_mainthread_priority_in_background`, on by default there and off on Linux
+releases) it also moves that process's main thread to the background QoS class. A real Mac runs
+those threads on its efficiency cores. The hosted runner is a virtual machine with three
+identical cores, where they starve: the job failed on every pull request, each time in a few of
+the files that load or read hidden tabs (the agent workspace's, the MCP tools', live grep's
+window scope), as fixed waits of 5 s, the 20 s page load of an agent read or the 45 s file limit
+ran out. An A/B run of the same commit had 15 failures with the default and 1 with the pref off.
+Two changes follow from it:
+
+- Agent commands raise the content process of the tab they work on to foreground priority while
+  they run (`raisePriority` in `agent-commands.mjs`, through `nsIRemoteTab.priorityHint`, as the
+  tab switcher does for a tab about to be shown), so an agent on a real Mac is not slowed by
+  this either. `browser_vimma_mcp_agent.js` checks it on every platform.
+- The job runs the mochitests with
+  `--setpref=threads.lower_mainthread_priority_in_background.enabled=false`, because a test's own
+  loads and page scripts in hidden tabs measure the runner's scheduler rather than Vimma.
+
+A failure in a hidden-tab test on this job is therefore a real one again. A test that reads
+what a background tab's process sends the parent (session history, a title, typed keys) waits
+for it, as `TabStateFlusher.flush` or a polled value does, instead of reading it once.
 
 When it fails:
 
