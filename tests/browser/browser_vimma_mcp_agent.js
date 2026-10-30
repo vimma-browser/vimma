@@ -561,6 +561,50 @@ add_task(async function test_agent_read_loads_a_lazy_tab_in_the_background() {
   await setSwitches({});
 });
 
+// Issue #605: a hidden tab's content process runs at background priority, which on macOS puts
+// its main thread at the lowest QoS class (threads.lower_mainthread_priority_in_background). An
+// agent works on hidden tabs only, so each command raises its tab's process for as long as it
+// runs, as the tab switcher does for a tab it is about to show (nsIRemoteTab.priorityHint).
+add_task(async function test_a_command_runs_its_tab_at_foreground_priority() {
+  await setSwitches({ mcp: true });
+  const tab = await openAgentTab();
+  const hint = () => !!tab.linkedBrowser.frameLoader?.remoteTab?.priorityHint;
+  Assert.ok(!hint(), "sanity: a hidden agent tab's process is in the background");
+  const c = await agentClient();
+  const id = c.request("agent-read", { tab: idOf(tab) });
+  await question();
+  Assert.ok(hint(), "while a command on the tab runs, its process is in the foreground");
+  await answer({ kind: "once" });
+  Assert.ok((await c.response(id)).ok, "the read answers");
+  Assert.ok(!hint(), "and in the background again once the command is done");
+  Assert.ok(tab.hidden && !tab.selected, "the tab stays hidden throughout");
+
+  // A lazy tab gets its browser, and its process, during the command: that one is raised too.
+  Assert.ok(gBrowser.discardBrowser(tab, true), "sanity: the tab could be unloaded");
+  let listed = c.request("agent-tabs");
+  await answer({ kind: "once" });
+  await c.response(listed);
+  /** @type {boolean[]} */
+  const atLoad = [];
+  const listener = {
+    onStateChange(/** @type {any} */ b, /** @type {any} */ wp, _r, /** @type {number} */ flags) {
+      const stop = Ci.nsIWebProgressListener.STATE_STOP | Ci.nsIWebProgressListener.STATE_IS_WINDOW;
+      if (b === tab.linkedBrowser && wp.isTopLevel && (flags & stop) === stop) atLoad.push(hint());
+    },
+  };
+  gBrowser.addTabsProgressListener(listener);
+  const read = c.request("agent-read", { tab: idOf(tab) });
+  await answer({ kind: "once" });
+  const r = await c.response(read);
+  gBrowser.removeTabsProgressListener(listener);
+  Assert.ok(r.ok, `the lazy tab is read: ${JSON.stringify(r.error)}`);
+  Assert.ok(atLoad.length > 0 && atLoad.every(Boolean), `it loaded in the foreground: ${atLoad}`);
+  Assert.ok(!hint(), "and went back to the background");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await setSwitches({});
+});
+
 // ---- limits and tab checks on agent commands ------------------------------------------------
 
 /** Run `fn` in the tab's page. @param {any} tab @param {any[]} args @param {Function} fn */
