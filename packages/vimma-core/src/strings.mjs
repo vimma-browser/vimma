@@ -48,3 +48,11 @@ export function deleteWordBackward(s) {
   while (end > 0 && !isSpace(/** @type {string} */ (s[end - 1]))) end--;
   return s.slice(0, end);
 }
+
+/**
+ * Whether `s` holds a C0 control character (tab and line feed included) or DEL: the rule for
+ * text that `config.toml` gives and for an agent CLI's model wherever it is taken.
+ * @param {string} s
+ */
+export const hasControl = (s) =>
+  [...s].some((ch) => /** @type {number} */ (ch.codePointAt(0)) < 0x20 || ch === "\x7f");

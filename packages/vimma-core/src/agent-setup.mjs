@@ -10,6 +10,7 @@
 // set, the way Ollama's documentation says to: a new name that shares the original's weights.
 // The caller passes `fetch`, as for the providers.
 
+import { CLIS } from "./agent-cli.mjs";
 import { checkEndpoint } from "./agent-providers.mjs";
 
 /** @typedef {import("./agent-providers.mjs").Fetch} Fetch */
@@ -117,7 +118,7 @@ export function modelChoices(found) {
 
 /** The same kind, endpoint and model: one model, whatever its provider is named. */
 export const providerKey = (/** @type {AgentProviderConfig} */ p) =>
-  `${p.kind}\n${p.endpoint.replace(/\/+$/, "")}\n${p.model}`;
+  `${p.kind}\n${p.endpoint.replace(/\/+$/, "")}\n${p.model}${p.kind === "cli" ? `\n${p.cli}` : ""}`;
 
 /**
  * Whether `provider`'s local server still lists its model (Behaviour 7): one `GET /v1/models` to
@@ -164,6 +165,13 @@ export async function localModelState(
  * @param {AgentProviderConfig} provider @param {ModelState | null} state
  */
 export function unavailableText(provider, state) {
+  if (provider.kind === "cli") {
+    // Its program's path pref is unset, or the file is gone or fails C4's checks.
+    return state === "gone"
+      ? `${provider.cli} is not available: its program is not set up, gone or refused; ` +
+          "add: agent CLI in this list finds it again"
+      : null;
+  }
   const host = URL.canParse(provider.endpoint) ? new URL(provider.endpoint).host : "";
   if (state === "gone") return `${provider.model} is no longer available: ${host} does not list it`;
   if (state === "down") return `${provider.model} is not available: nothing answers at ${host}`;
@@ -173,20 +181,26 @@ export function unavailableText(provider, state) {
 /**
  * @typedef {{ provider?: AgentProviderConfig,
  *   local?: { server: string, endpoint: string, model: string },
- *   state: ModelState | null, current: boolean }} PickerEntry  `state` null: not known yet, or
- *   never asked (a hosted provider)
+ *   state: ModelState | null, current: boolean, cliModel?: true, otherModel?: true }} PickerEntry
+ *   `state` null: not known yet, or never asked (a hosted provider); `cliModel`: another model
+ *   of a configured agent CLI, from its list (builtin-agent-cli Behaviour 17); `otherModel`: the
+ *   row that asks for a model of that CLI by name
  */
 
 /**
  * The model picker's entries (Behaviour 7): the conversation's own model first when nothing
  * else lists it (so a model that is gone is seen as gone), then the configured providers, then
- * the models the local servers list that no provider names.
+ * each configured agent CLI's other models and a row to name one (builtin-agent-cli
+ * Behaviour 7), under its first provider's name, then the models the local servers list that no
+ * provider names.
  * @param {{ providers: AgentProviderConfig[], found: LocalServer[] | null,
- *   states: Map<string, ModelState> | null, current: AgentProviderConfig | null }} o
- *   `found`: the probe's servers, null until it answers; `states`: by providerKey
+ *   states: Map<string, ModelState> | null, current: AgentProviderConfig | null,
+ *   clis?: Readonly<Record<string, { models: readonly string[] }>> }} o
+ *   `found`: the probe's servers, null until it answers; `states`: by providerKey; `clis`:
+ *   the supported CLIs' entries, CLIS unless a test names its own
  * @returns {PickerEntry[]}
  */
-export function pickerEntries({ providers, found, states, current }) {
+export function pickerEntries({ providers, found, states, current, clis = CLIS }) {
   const currentKey = current ? providerKey(current) : null;
   const known = new Set(providers.map(providerKey));
   /** @type {PickerEntry[]} */
@@ -206,13 +220,41 @@ export function pickerEntries({ providers, found, states, current }) {
     state: states?.get(providerKey(p)) ?? null,
     current: providerKey(p) === currentKey,
   }));
-  const listed = [...configured, ...locals].some((e) => e.current);
+  /** @type {Map<string, AgentProviderConfig>} each CLI's first provider */
+  const bases = new Map();
+  for (const p of providers) {
+    if (p.kind === "cli" && p.cli && Object.hasOwn(clis, p.cli) && !bases.has(p.cli)) {
+      bases.set(p.cli, p);
+    }
+  }
+  /** @type {PickerEntry[]} */
+  const cliModels = [...bases].flatMap(([cli, base]) => {
+    const state = states?.get(providerKey(base)) ?? null;
+    const named = new Set(
+      providers.filter((p) => p.kind === "cli" && p.cli === cli).map((p) => p.model),
+    );
+    return [
+      ...(clis[cli]?.models ?? [])
+        .filter((model) => !named.has(model))
+        .map((model) => {
+          const provider = { ...base, model };
+          return {
+            provider,
+            state,
+            current: providerKey(provider) === currentKey,
+            cliModel: /** @type {const} */ (true),
+          };
+        }),
+      { provider: base, state, current: false, otherModel: /** @type {const} */ (true) },
+    ];
+  });
+  const listed = [...configured, ...cliModels, ...locals].some((e) => e.current);
   /** @type {PickerEntry[]} */
   const own =
     current && !listed
       ? [{ provider: current, state: states?.get(providerKey(current)) ?? null, current: true }]
       : [];
-  return [...own, ...configured, ...locals];
+  return [...own, ...configured, ...cliModels, ...locals];
 }
 
 /** `qwen2.5:7b` with 32768 → `qwen2.5:7b-ctx32768` (the bench's names too). */

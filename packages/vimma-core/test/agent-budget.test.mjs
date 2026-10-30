@@ -93,3 +93,60 @@ describe("Budget", () => {
     );
   });
 });
+
+// docs/specs/builtin-agent-cli.md C10, C13, Behaviour 14-16: an agent CLI's task. Steps are the
+// gate's count; tokens and cost are the CLI's own report; wall-clock time is Vimma's.
+describe("an agent CLI's budget", () => {
+  const MIN = 60_000;
+  const cli = (/** @type {Partial<import("../src/agent-budget.mjs").Limits>} */ limits = {}) =>
+    new Budget(limits, {}, { cli: "claude-code", maxMinutes: 30, start: 0 });
+
+  test("a cli task stops at max_minutes", () => {
+    const b = cli();
+    expect(b.exceeded(29 * MIN)).toBe(null);
+    expect(b.exceeded(30 * MIN)).toEqual({ limit: "minutes", used: 30, max: 30 });
+    expect(budgetLimitText({ limit: "minutes", used: 30, max: 30 })).toBe(
+      "stopped: 30 minutes, the limit of max_minutes",
+    );
+    // A model provider's task has no time limit.
+    expect(new Budget().exceeded(10_000 * MIN)).toBe(null);
+  });
+
+  test("reported cost is shown and max_cost does not stop a cli task", () => {
+    const b = cli({ maxCost: 0.5 });
+    b.reportCost(3.25);
+    expect(b.exceeded(MIN)).toBe(null);
+    expect(b.status(MIN)).toMatchObject({ cost: null, reportedCost: 3.25, cli: "claude-code" });
+    // Each result reports the run's total so far: the last one counts, not their sum.
+    b.reportCost(3.5);
+    expect(b.status(MIN).reportedCost).toBe(3.5);
+  });
+
+  test("reported tokens count toward max_tokens", () => {
+    const b = cli({ maxTokens: 1000 });
+    b.addUsage({ input: 900, output: 99, estimated: false });
+    expect(b.exceeded(MIN)).toBe(null);
+    b.addUsage({ input: 1, output: 0, estimated: false });
+    expect(b.exceeded(MIN)).toEqual({ limit: "tokens", used: 1000, max: 1000 });
+    expect(b.status(MIN)).toMatchObject({ tokens: 1000, tokensReported: true });
+  });
+
+  test("steps are the gate's, counted as any provider's", () => {
+    const b = cli({ maxSteps: 2 });
+    b.step();
+    b.step();
+    expect(b.exceeded(MIN)).toEqual({ limit: "steps", used: 2, max: 2 });
+  });
+
+  test("no report shows steps and time only", () => {
+    const b = cli();
+    b.step();
+    expect(b.status(6 * MIN + 1000)).toMatchObject({
+      steps: 1,
+      tokens: 0,
+      tokensReported: false,
+      reportedCost: null,
+      minutes: 6,
+    });
+  });
+});

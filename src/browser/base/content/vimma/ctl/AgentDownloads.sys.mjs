@@ -523,12 +523,13 @@ function findClam() {
 const LSTAT = { aarch64: "lstat", x86_64: "lstat$INODE64" };
 
 /**
- * A socket's type and owner, or null. Neither IOUtils nor nsIFile gives a file's owner, and the
+ * A file's type (a socket or not), owner and permission bits, or null. Neither IOUtils nor
+ * nsIFile gives a file's owner, and the
  * no-op chmod of `ownedByAnother` proves only "not the user's", not "root or clamav". Linux
  * uses statx(2), macOS lstat(2); any other system gives null, so clamd is not used there. A
  * symlink is not followed, so it never counts as a socket.
  * @param {string} path
- * @returns {{ isSocket: boolean, uid: number } | null}
+ * @returns {{ isSocket: boolean, uid: number, mode: number } | null}
  */
 function socketOwner(path) {
   const os = Services.appinfo.OS;
@@ -542,7 +543,7 @@ function socketOwner(path) {
  * architecture (linux/include/uapi/linux/stat.h), where struct stat differs between x86_64 and
  * aarch64.
  * @param {string} path
- * @returns {{ isSocket: boolean, uid: number } | null}
+ * @returns {{ isSocket: boolean, uid: number, mode: number } | null}
  */
 function statxOwner(path) {
   const ctypes = lazy.ctypes;
@@ -572,13 +573,15 @@ function statxOwner(path) {
     );
     const AT_FDCWD = -100;
     const AT_SYMLINK_NOFOLLOW = 0x100;
-    const STATX_TYPE_UID = 0x1 | 0x8;
+    // STATX_TYPE | STATX_MODE | STATX_UID: the type, the permission bits and the owner.
+    const STATX_TYPE_UID = 0x1 | 0x2 | 0x8;
     const st = new Statx();
     if (statx(AT_FDCWD, path, AT_SYMLINK_NOFOLLOW, STATX_TYPE_UID, st.address()) !== 0) {
       return null;
     }
     if ((st.stx_mask & STATX_TYPE_UID) !== STATX_TYPE_UID) return null;
-    return { isSocket: (st.stx_mode & 0o170000) === 0o140000, uid: st.stx_uid };
+    const mode = st.stx_mode;
+    return { isSocket: (mode & 0o170000) === 0o140000, uid: st.stx_uid, mode: mode & 0o7777 };
   } catch (e) {
     console.error("vimma: statx failed", e);
     return null;
@@ -594,7 +597,7 @@ function statxOwner(path) {
  * st_gid (uint32), then fields this does not read. An architecture not in LSTAT, or a struct
  * of another size, gives null.
  * @param {string} path
- * @returns {{ isSocket: boolean, uid: number } | null}
+ * @returns {{ isSocket: boolean, uid: number, mode: number } | null}
  */
 function lstatOwner(path) {
   const ctypes = lazy.ctypes;
@@ -621,7 +624,8 @@ function lstatOwner(path) {
     const lstat = libc.declare(symbol, ctypes.default_abi, ctypes.int, ctypes.char.ptr, Stat.ptr);
     const st = new Stat();
     if (lstat(path, st.address()) !== 0) return null;
-    return { isSocket: (st.st_mode & 0o170000) === 0o140000, uid: st.st_uid };
+    const mode = st.st_mode;
+    return { isSocket: (mode & 0o170000) === 0o140000, uid: st.st_uid, mode: mode & 0o7777 };
   } catch (e) {
     console.error("vimma: lstat failed", e);
     return null;
@@ -959,7 +963,21 @@ export const AgentDownloads = {
 
   /** Test-only: `socketOwner`. @param {string} path */
   _socketOwnerForTests(path) {
-    return socketOwner(path);
+    const s = socketOwner(path);
+    return s && { isSocket: s.isSocket, uid: s.uid };
+  },
+
+  /**
+   * A file's owner's uid and its permission bits (with the sticky bit, which IOUtils.stat drops),
+   * symlinks not followed, or null when they cannot be read: an agent CLI's program and every
+   * folder above it must be the user's or root's (docs/specs/builtin-agent-cli.md C4), and this
+   * is the one place Vimma reads an owner (security.md C2).
+   * @param {string} path
+   * @returns {{ uid: number, mode: number } | null}
+   */
+  ownerAndMode(path) {
+    const s = socketOwner(path);
+    return s ? { uid: s.uid, mode: s.mode } : null;
   },
 
   /** Once per app (AgentPages.init): the hooks stay for the session. */

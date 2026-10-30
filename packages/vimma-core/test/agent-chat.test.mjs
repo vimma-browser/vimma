@@ -11,10 +11,14 @@ import {
   entryView,
   externalNotice,
   isLocalEndpoint,
+  needsKey,
   noModelLines,
   noModelNotice,
   noModelReason,
+  noticeTarget,
   parseAgentCommand,
+  providerWhere,
+  sendNotice,
 } from "../src/agent-chat.mjs";
 import { reloadConfig } from "../src/config.mjs";
 
@@ -136,6 +140,22 @@ describe("the transcript", () => {
     expect(t.entries.at(-2)?.warn).toBe(true);
   });
 
+  // docs/specs/builtin-agent-cli.md Behaviour 15: the cost an agent CLI reported stays on the
+  // task's end line, named as its own estimate, after the status bar has cleared.
+  test("an agent CLI's reported cost is on the end line, as its estimate", () => {
+    const t = new Transcript();
+    t.end({ outcome: "done", cost: { usd: 0.4123, cli: "claude-code" } });
+    t.end({ outcome: "stopped", cost: { usd: 1.5, cli: "claude-code" } });
+    t.end({ outcome: "done" });
+    t.end({ outcome: "done", cost: { usd: 0.02, cli: "made-up" } });
+    expect(texts(t)).toEqual([
+      "end: done · ≈ $0.41 (claude-code estimate)",
+      "end: stopped · ≈ $1.50 (claude-code estimate)",
+      "end: done",
+      "end: done · ≈ $0.02 (made-up estimate)",
+    ]);
+  });
+
   test("a server error is a notice; usage adds nothing", () => {
     const t = new Transcript();
     t.task({ type: "usage", usage: { input: 1, output: 1, estimated: false } });
@@ -156,6 +176,58 @@ describe("the transcript", () => {
     const v = t.version;
     t.user("x");
     expect(t.version).toBeGreaterThan(v);
+  });
+});
+
+// docs/specs/builtin-agent-cli.md Behaviour 9: an agent CLI's own tool, marked and muted.
+describe("an agent CLI's own tools in the transcript", () => {
+  test("an own-tool line is marked, muted, and says when the cli's settings refused it", () => {
+    const t = new Transcript();
+    t.ownTool("t1", 'claude-code ran its own tool: Bash "ls ~/Downloads"');
+    t.ownTool("t2", 'claude-code ran its own tool: Read "/etc/hosts"‮');
+    t.ownToolRefused("t1");
+    t.ownToolRefused("nope");
+    expect(t.entries.map(entryView)).toEqual([
+      {
+        label: null,
+        lines: ['◆ claude-code ran its own tool: Bash "ls ~/Downloads" — refused by its settings'],
+        indent: false,
+        tone: "dim",
+      },
+      {
+        label: null,
+        lines: ['◆ claude-code ran its own tool: Read "/etc/hosts"'],
+        indent: false,
+        tone: "dim",
+      },
+    ]);
+  });
+});
+
+// docs/specs/builtin-agent-cli.md C8: an agent CLI's steps in the browser are the gate's own
+// record, since the CLI's stream is only its account of them.
+describe("an agent CLI's steps from the gate", () => {
+  test("each gate event of the conversation is a step, asked or run under the grant", () => {
+    const t = new Transcript();
+    t.cliGate({ kind: "ran", tool: "vimma_tabs", what: {} });
+    t.cliGate({ kind: "asked", tool: "vimma_open", what: { url: "https://shop.example/" } });
+    t.cliGate({
+      kind: "answered",
+      tool: "vimma_open",
+      what: { url: "https://shop.example/" },
+      answer: "once",
+    });
+    t.cliGate({ kind: "asked", tool: "vimma_activate", what: { label: "Pay", pay: true } });
+    expect(t.entries.map((e) => [e.kind, e.outcome])).toEqual([
+      ["step", "ran under grant"],
+      ["step", "asked → yes"],
+      ["checkpoint", "waiting for you"],
+    ]);
+    t.end({ outcome: "stopped" });
+    expect(t.entries[2]?.outcome).toBe("waiting for you");
+    // A step that ran is not the running step: a later answer changes nothing of it.
+    t.cliGate({ kind: "answered", tool: "vimma_tabs", what: {}, answer: "deny" });
+    expect(t.entries[0]?.outcome).toBe("ran under grant");
   });
 });
 
@@ -245,6 +317,39 @@ describe("the header (Behaviour 6)", () => {
     expect(chatHeader({ provider: null, granted: false })[0]).toBe("no model set up");
   });
 
+  // docs/specs/builtin-agent-cli.md Behaviour 5, C7.
+  const claude = { name: "claude", kind: "cli", cli: "claude-code", endpoint: "", model: "" };
+  test("an agent CLI: its name, the model it reported, and that it decides where data goes", () => {
+    expect(chatHeader({ provider: claude, granted: false })).toEqual([
+      "claude-code · sent where Claude Code sends it",
+      "works in: agent workspace · its own tools: as its configuration allows",
+    ]);
+    // A task sent with ctrl+Enter asks every step, and the header says so.
+    expect(chatHeader({ provider: claude, granted: false, asking: true })[1]).toBe(
+      "works in: agent workspace · asks every step · its own tools: as its configuration allows",
+    );
+    expect(
+      chatHeader({
+        provider: { ...claude, model: "sonnet" },
+        granted: true,
+        cli: {
+          model: "claude-sonnet-4-5",
+          tools: ["Bash", "Read", "Write", "WebFetch", "A", "B", "C"],
+        },
+      }),
+    ).toEqual([
+      "claude-code · claude-sonnet-4-5 · sent where Claude Code sends it",
+      "works in: agent workspace · granted · its own tools: Bash, Read, Write, WebFetch +3",
+    ]);
+    // Before its first run, the model the provider names.
+    expect(chatHeader({ provider: { ...claude, model: "opus" }, granted: false })[0]).toBe(
+      "claude-code · opus · sent where Claude Code sends it",
+    );
+    expect(chatHeader({ provider: claude, granted: true, cli: { model: "m", tools: [] } })[1]).toBe(
+      "works in: agent workspace · granted · its own tools: none",
+    );
+  });
+
   test("a refused config.toml is named, with its line, instead of the setup hint", () => {
     const toml = '[agent]\ndefault = "local"\n\n[[agent.providers]]\nname = "local"\n';
     const { errors } = reloadConfig(null, toml);
@@ -318,6 +423,26 @@ describe("what leaves the machine (Behaviour 5)", () => {
   });
 });
 
+// docs/specs/builtin-agent-cli.md Behaviour 4: an agent CLI needs no key and is never local.
+describe("what leaves the machine with an agent CLI", () => {
+  const claude = { name: "claude", kind: "cli", cli: "claude-code", endpoint: "", model: "" };
+  test("a cli takes no key, always asks first, and names the cli as where data goes", () => {
+    expect(needsKey(claude)).toBe(false);
+    expect(noticeTarget(claude)).toBe("cli:claude-code");
+    expect(noticeTarget({ ...claude, kind: "openai", endpoint: "https://x.example/v1" })).toBe(
+      "https://x.example/v1",
+    );
+    expect(sendNotice(claude)).toContain("Vimma does not confine them");
+    expect(sendNotice({ kind: "anthropic", endpoint: "https://api.anthropic.com" })).toContain(
+      "api.anthropic.com (Anthropic)",
+    );
+    expect(providerWhere(claude)).toBe("sent where Claude Code sends it");
+    expect(providerWhere({ ...claude, kind: "openai", endpoint: "https://x.example/v1" })).toBe(
+      "page text sent to x.example",
+    );
+  });
+});
+
 describe("the status bar (Behaviour 35)", () => {
   const s = (/** @type {any} */ o) => ({
     steps: 14,
@@ -336,6 +461,20 @@ describe("the status bar (Behaviour 35)", () => {
     );
     expect(builtinStatus([s({ tokens: 950 })])).toBe("◇ built-in 14/60 · 950 tok");
     expect(builtinStatus([s({}), s({})])).toBe("◇ 2 agents");
+  });
+
+  // docs/specs/builtin-agent-cli.md Behaviour 15, C13.
+  test("an agent CLI: its reported cost as its estimate, or steps and time only", () => {
+    expect(
+      builtinStatus([
+        s({ cli: "claude-code", tokensReported: true, reportedCost: 0.414, minutes: 6 }),
+      ]),
+    ).toBe("◇ built-in 14/60 · 212k tok · ≈ $0.41 (claude-code)");
+    expect(
+      builtinStatus([
+        s({ cli: "codex", tokens: 0, tokensReported: false, reportedCost: null, minutes: 6 }),
+      ]),
+    ).toBe("◇ built-in 14/60 · 6 min");
   });
 });
 

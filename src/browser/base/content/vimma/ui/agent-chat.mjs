@@ -17,13 +17,22 @@ import {
   chatHeader,
   chatKey,
   entryView,
-  externalNotice,
   needsKey,
   noModelLines,
   noModelNotice,
   noModelReason,
+  noticeTarget,
+  providerWhere,
+  sendNotice,
   whereDataGoes,
 } from "../core/agent-chat.mjs";
+import {
+  CLIS,
+  DEFAULT_MAX_MINUTES,
+  cliModelText,
+  modelProblem,
+  modelPrompt,
+} from "../core/agent-cli.mjs";
 import { checkEndpoint, isLocalEndpoint } from "../core/agent-providers.mjs";
 import { pickerEntries, unavailableText } from "../core/agent-setup.mjs";
 import { lastUseText } from "../core/agent-store.mjs";
@@ -35,6 +44,7 @@ const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   // Lazily: AgentChat reaches VimmaHost through the agent commands, and VimmaHost builds this.
   AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
+  AgentCli: "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
   AgentKeys: "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
   ConfigHost: "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
   McpHost: "chrome://browser/content/vimma/host/mcp-ops.mjs",
@@ -74,14 +84,17 @@ const SLOT_HINT = "a question waits: answer it here";
  * @property {(id: number) => void} give  `P`, `:agent give`: the selected tab to conversation id
  * @property {(text: string) => void} copy  to the clipboard
  * @property {() => void} rearm  focus came into the window: its slot's question arms again
- * @property {(o: { label: string, value?: string, submit: (text: string) => void }) => void}
- *   prompt  a line of text on the prompt line (a hosted provider's endpoint and model)
+ * @property {(o: { label: string, value?: string, placeholder?: string,
+ *   submit: (text: string) => void }) => void} prompt  a line of text on the prompt line (a
+ *   hosted provider's endpoint and model, an agent CLI's model)
  * @property {() => void} changed  the window opened, closed or switched conversation: the
  *   question may move between the line and the slot, and the status bar redraws
  * @typedef {{ label: string, detail: string, provider?: AgentProviderConfig,
- *   add?: "anthropic" | "openai",
+ *   add?: "anthropic" | "openai" | "cli", cliPick?: { cli: string, path: string },
  *   local?: { endpoint: string, model: string, server: string }, id?: number,
- *   unavailable?: string, current?: boolean }} Row  `unavailable`: why it cannot be picked
+ *   unavailable?: string, current?: boolean, otherModel?: AgentProviderConfig }} Row
+ *   `unavailable`: why it cannot be picked; `otherModel`: the agent CLI provider whose model
+ *   the row asks for by name
  */
 
 /** @param {Document} doc @param {string} tag @param {string} className @param {string} [text] */
@@ -528,8 +541,8 @@ export class AgentChatWindow {
   afterKey(id, go) {
     if (lazy.AgentChat.needsNotice(id)) {
       const provider = lazy.AgentChat.get(id).provider;
-      this.host.ask(externalNotice(provider), () => {
-        lazy.AgentChat.confirm(id, provider.endpoint);
+      this.host.ask(sendNotice(provider), () => {
+        lazy.AgentChat.confirm(id, noticeTarget(provider));
         go();
       });
       return;
@@ -581,7 +594,10 @@ export class AgentChatWindow {
    */
   loadModels() {
     const config = lazy.McpHost.agentConfig;
-    const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []);
+    // An agent CLI only while that feature is on (builtin-agent-cli, Delivery).
+    const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []).filter(
+      (p) => p.kind !== "cli" || lazy.AgentCli.enabled,
+    );
     const current =
       this.conversation === null ? null : lazy.AgentChat.get(this.conversation).provider;
     /** @type {Map<string, string>} key hints, which arrive one by one */
@@ -594,8 +610,23 @@ export class AgentChatWindow {
       /** @type {Row[]} */
       const rows = entries.map((e) => {
         const p = e.provider;
+        if (p && e.otherModel) {
+          // builtin-agent-cli Behaviour 17: a model of the CLI's that the list does not name.
+          const unavailable = unavailableText(p, e.state);
+          return {
+            label: `${p.name} · other model…`,
+            detail: unavailable ? "not available" : "type its name",
+            otherModel: p,
+            ...(unavailable ? { unavailable } : {}),
+          };
+        }
         const what = p
-          ? { label: `${p.name} · ${p.model}`, provider: p, endpoint: p.endpoint }
+          ? {
+              // A CLI's own default, short: the row's detail needs its room.
+              label: `${p.name} · ${p.kind === "cli" ? p.model || "its default model" : p.model}`,
+              provider: p,
+              endpoint: p.endpoint,
+            }
           : {
               label: `${e.local?.server} · ${e.local?.model}`,
               local: e.local,
@@ -603,9 +634,12 @@ export class AgentChatWindow {
             };
         const unavailable = p ? unavailableText(p, e.state) : null;
         // Short, so the label keeps its room; Enter on the row says why in full.
-        const detail = unavailable
-          ? "not available"
-          : ((p && hints.get(what.label)) ?? whereDataGoes(what.endpoint));
+        const where =
+          (p && hints.get(what.label)) ?? (p ? providerWhere(p) : whereDataGoes(what.endpoint));
+        // An agent CLI's rows say only which model config.toml names, so that their labels
+        // keep their room; the header says where its data goes.
+        const listed = p?.kind === "cli" ? (e.cliModel ? "agent CLI" : "config.toml") : where;
+        const detail = unavailable ? "not available" : listed;
         return {
           label: what.label,
           detail: e.current ? `in use · ${detail}` : detail,
@@ -622,6 +656,17 @@ export class AgentChatWindow {
         0,
         { label: "add: Anthropic (Messages API)", detail: "api key", add: "anthropic" },
         { label: "add: OpenAI-compatible endpoint", detail: "https:// and api key", add: "openai" },
+        ...(lazy.AgentCli.enabled
+          ? [
+              {
+                label: `add: agent CLI (${Object.values(CLIS)
+                  .map((c) => c.title)
+                  .join(", ")})`,
+                detail: "its own login",
+                add: /** @type {const} */ ("cli"),
+              },
+            ]
+          : []),
       );
       this.rows = rows;
       const keep = first ? -1 : rows.findIndex((r) => r.label === selected);
@@ -652,14 +697,15 @@ export class AgentChatWindow {
     }
     // Asked only now, while the picker is open, and only on this machine (Behaviour 2, 7, B12):
     // the usual ports, and the configured providers' own endpoints.
-    const locals = [...providers, ...(current ? [current] : [])].filter(
-      (p) => p.kind === "openai" && isLocalEndpoint(p.endpoint),
-    );
+    const asked = [...providers, ...(current ? [current] : [])];
+    const locals = asked.filter((p) => p.kind === "openai" && isLocalEndpoint(p.endpoint));
+    // An agent CLI's program: its path pref set and its file still passing C4's checks.
+    const clis = asked.filter((p) => p.kind === "cli" && lazy.AgentCli.enabled);
     Promise.all([
       lazy.AgentChat.probe({
         extra: locals.map((p) => ({ server: p.name, endpoint: p.endpoint })),
       }),
-      lazy.AgentChat.modelStates(locals),
+      lazy.AgentChat.modelStates([...locals, ...clis]),
     ]).then(
       ([found, states]) => {
         if (!this.opened || this.view !== "models") return;
@@ -682,7 +728,7 @@ export class AgentChatWindow {
       .sort((/** @type {any} */ a, /** @type {any} */ b) => b.used - a.used || b.id - a.id)
       .map((/** @type {any} */ c) => ({
         label: `${c.running ? "▶ " : ""}${c.title || "New conversation"}`,
-        detail: `${c.provider.name} · ${c.provider.model} · ${lastUseText(c.used, now)}`,
+        detail: `${c.provider.name} · ${c.provider.model || c.provider.cli} · ${lastUseText(c.used, now)}`,
         id: c.id,
       }));
     this.row = Math.max(
@@ -704,8 +750,16 @@ export class AgentChatWindow {
       this.open({ conversation: row.id });
       return;
     }
+    if (row.add === "cli") {
+      this.findClis();
+      return;
+    }
     if (row.add) {
       this.addProvider(row.add);
+      return;
+    }
+    if (row.otherModel && !row.unavailable) {
+      this.askOtherModel(row.otherModel, { makeDefault });
       return;
     }
     if (row.unavailable) {
@@ -713,6 +767,22 @@ export class AgentChatWindow {
       return;
     }
     let provider = row.provider;
+    if (row.cliPick) {
+      // builtin-agent-cli Behaviour 2, C4: the path picked here is a pref, and the provider
+      // names only which CLI it is and its model.
+      const info = CLIS[row.cliPick.cli];
+      if (!info) return;
+      const listed = (lazy.McpHost.agentConfig?.providers ?? []).find(
+        (/** @type {AgentProviderConfig} */ p) => p.kind === "cli" && p.cli === info.id,
+      );
+      // A CLI config.toml lists keeps its model; only a new one asks for it.
+      if (!listed) {
+        this.askCliModel(info.id, row.cliPick.path, { makeDefault });
+        return;
+      }
+      lazy.AgentCli.use(info.id, row.cliPick.path);
+      provider = listed;
+    }
     if (
       provider &&
       needsKey(provider) &&
@@ -738,21 +808,141 @@ export class AgentChatWindow {
       }
     }
     if (!provider) return;
-    if (!this.useProvider(provider)) return;
+    this.usePicked(provider, { makeDefault });
+  }
+
+  /**
+   * A new agent CLI's model, on the prompt line (builtin-agent-cli Behaviour 2): the CLI's
+   * suggested model, editable, and empty for the CLI's own default. A model the command line
+   * would refuse is refused here and asked again; nothing is stored before a model is taken.
+   * @param {string} cli  a key of CLIS
+   * @param {string} path  the program setup found
+   * @param {{ makeDefault: boolean }} opts
+   * @param {string} [value]  what was typed before, to correct
+   */
+  askCliModel(cli, path, opts, value) {
+    const info = CLIS[cli];
+    if (!info) return;
+    const ask = modelPrompt(cli);
+    this.host.prompt({
+      label: ask.label,
+      value: value ?? ask.value,
+      placeholder: ask.placeholder,
+      submit: (text) => {
+        const model = text.trim();
+        const problem = modelProblem(model);
+        if (problem) {
+          this.host.say(`agent: ${problem}`, true);
+          this.askCliModel(cli, path, opts, text);
+          return;
+        }
+        lazy.AgentCli.use(cli, path);
+        this.usePicked(
+          {
+            name: freeName(info.bin),
+            kind: "cli",
+            cli,
+            endpoint: "",
+            model,
+            vision: false,
+            maxMinutes: DEFAULT_MAX_MINUTES,
+          },
+          { ...opts, addedCli: true },
+        );
+      },
+    });
+  }
+
+  /**
+   * A model of a configured agent CLI that its list does not name (builtin-agent-cli
+   * Behaviour 7), on the prompt line under setup's rule; then used as a picked row is.
+   * @param {AgentProviderConfig} base  the CLI's provider in config.toml
+   * @param {{ makeDefault: boolean }} opts
+   * @param {string} [value]  what was typed before, to correct
+   */
+  askOtherModel(base, opts, value) {
+    const ask = modelPrompt(base.cli ?? "");
+    this.host.prompt({
+      label: ask.label,
+      value: value ?? "",
+      placeholder: ask.placeholder,
+      submit: (text) => {
+        const model = text.trim();
+        const problem = modelProblem(model);
+        if (problem) {
+          this.host.say(`agent: ${problem}`, true);
+          this.askOtherModel(base, opts, text);
+          return;
+        }
+        this.usePicked({ ...base, model }, opts);
+      },
+    });
+  }
+
+  /**
+   * The picked provider goes to the open conversation, and to config.toml as `pick` says.
+   * @param {AgentProviderConfig} picked
+   * @param {{ makeDefault: boolean, addedCli?: boolean }} opts  `addedCli`: an agent CLI setup
+   *   found that config.toml does not list yet
+   */
+  usePicked(picked, { makeDefault, addedCli = false }) {
+    if (!this.useProvider(picked)) return;
     this.insert();
-    const picked = provider;
-    // config.toml changes only for setup (no provider yet) or when asked with D (B12).
+    const what =
+      picked.kind === "cli" ? cliModelText(picked.cli ?? "", picked.model) : picked.model;
+    // config.toml changes only for setup (no provider yet) or when asked with D (B12); an
+    // agent CLI setup found is listed there, as a hosted provider added here is, so that it is
+    // in the picker after a restart.
     const setup = !(lazy.McpHost.agentConfig?.providers ?? []).length;
     if (!makeDefault && !setup) {
+      if (addedCli) {
+        this.remember(picked).then((note) => {
+          this.host.say(`agent: ${picked.name} · ${what}${note}`, note.startsWith(";"));
+        });
+        return;
+      }
       this.host.say(
-        `agent: ${picked.name} · ${picked.model} until a restart; D in the picker makes it the default`,
+        `agent: ${picked.name} · ${what} until a restart; D in the picker makes it the default`,
       );
       return;
     }
     this.remember(picked, { makeDefault: true }).then((note) => {
-      if (note)
-        this.host.say(`agent: ${picked.name} · ${picked.model}${note}`, note.startsWith(";"));
+      if (note) this.host.say(`agent: ${picked.name} · ${what}${note}`, note.startsWith(";"));
     });
+  }
+
+  /**
+   * Setup's agent CLIs (builtin-agent-cli Behaviour 1): a search of PATH and each one's
+   * `--version`, only while setup is open on this row, each listed with its path to pick.
+   */
+  findClis() {
+    this.rows = [];
+    this.row = 0;
+    this.render();
+    lazy.AgentCli.find().then(
+      (
+        /** @type {{ cli: string, path: string, label: string, problem: string | null }[]} */ found,
+      ) => {
+        if (!this.opened || this.view !== "models") return;
+        if (!found.length) {
+          this.host.say(`agent: ${lazy.AgentCli.noneFound()}`, true);
+          this.loadModels();
+          return;
+        }
+        this.rows = found.map((f) => ({
+          label: f.label,
+          detail: f.problem ? "not available" : "agent CLI · Enter uses it",
+          ...(f.problem
+            ? { unavailable: `${f.path} is refused: ${f.problem}` }
+            : { cliPick: { cli: f.cli, path: f.path } }),
+        }));
+        this.render();
+        // A row cuts a long path; the notice line shows the first one whole before it is used.
+        const first = found[0];
+        if (first) this.host.say(`agent: found ${first.label}`, !!first.problem);
+      },
+      (/** @type {any} */ e) => console.error("vimma agent: looking for agent CLIs failed", e),
+    );
   }
 
   /**
@@ -768,7 +958,10 @@ export class AgentChatWindow {
     const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []);
     const listed = providers.find(
       (p) =>
-        p.kind === provider.kind && p.endpoint === provider.endpoint && p.model === provider.model,
+        p.kind === provider.kind &&
+        p.endpoint === provider.endpoint &&
+        p.model === provider.model &&
+        p.cli === provider.cli,
     );
     const asDefault = makeDefault || providers.length === 0;
     if (listed && (!asDefault || config?.default === listed.name)) {
@@ -958,6 +1151,7 @@ export class AgentChatWindow {
       localOnly: !!config?.localOnly,
       budget: c?.running ? c.budget : null,
       refused: c ? null : refused(),
+      cli: c?.cli ?? null,
     });
     this.head.forEach((h, i) => (h.textContent = lines[i] ?? ""));
     const log = /** @type {HTMLElement} */ (this.log);

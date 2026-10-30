@@ -134,4 +134,43 @@ describe("addAgentProviderText", () => {
     expect(agent.default).toBe("ollama");
     expect(agent.providers.map((/** @type {any} */ p) => p.name)).toEqual(["lm", "ollama"]);
   });
+
+  // docs/specs/builtin-agent-cli.md Behaviour 2, C4: an agent CLI setup picked goes in by name,
+  // kind and cli only; its path is a pref, never in the file.
+  test("an agent cli is written by name, kind, cli and model, never its path", () => {
+    const claude = {
+      name: "claude",
+      kind: "cli",
+      cli: "claude-code",
+      endpoint: "",
+      model: "",
+      vision: false,
+      maxMinutes: 30,
+      path: "/home/u/.local/bin/claude",
+    };
+    const r = addAgentProviderText(null, claude, { makeDefault: true });
+    if (!("text" in r)) throw new Error(r.error);
+    expect(r.text).not.toContain("/home/u");
+    expect(r.text).not.toContain("endpoint");
+    expect(r.text.split("[[agent.providers]]")[1]).toBe(
+      '\nname = "claude"\nkind = "cli"\ncli = "claude-code"\n',
+    );
+    const agent = agentOf(r.text);
+    expect(agent.default).toBe("claude");
+    expect(agent.providers).toEqual([
+      {
+        name: "claude",
+        kind: "cli",
+        cli: "claude-code",
+        endpoint: "",
+        model: "",
+        vision: false,
+        maxMinutes: 30,
+      },
+    ]);
+    // The same CLI again is not added twice.
+    const again = addAgentProviderText(r.text, claude, { makeDefault: false });
+    if (!("text" in again)) throw new Error(again.error);
+    expect(again.text).toBe(r.text);
+  });
 });

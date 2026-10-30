@@ -1,6 +1,7 @@
 # ADR-023: The built-in agent is a model client in the browser, through the agent commands
 
-- Status: Accepted
+- Status: Accepted; amended by [builtin-agent-cli](../specs/builtin-agent-cli.md) (an agent CLI
+  as the model client)
 - Date: 2026-10-29
 
 ## Context
@@ -60,3 +61,20 @@ calls reach the gate, where its requests may go, and where an API key is kept.
 - `:mcp off` does not stop the built-in agent; `ctrl+b shift+a`, `:mcp revoke` and `:mcp log`
   cover it.
 - No upstream patch and no new dependency.
+
+## An agent CLI as the model client (amendment, spec builtin-agent-cli)
+
+The model client inside the browser may also be an external agent CLI the user already has,
+Claude Code first ([builtin-agent-cli](../specs/builtin-agent-cli.md) C1, C2). Vimma starts it
+for one task, with no shell and fixed arguments, and gives it one MCP server, `vimma-ctl mcp`,
+which connects to the control socket with a one-time ticket bound to the conversation's gate
+connection instead of the token. Its calls therefore run through `runAgentCommand` on the
+conversation's connection, as decision 1 says for the model loop: the same gate, grant, tabs,
+rates and `:mcp log`, with no `:mcp on`. What changes is where the model's requests go: the
+CLI sends them to the model it is set up for, under its own login, so decision 2's endpoint
+checks do not apply and `local_only` refuses every CLI. The CLI also keeps its own shell, file
+and web tools, outside the gate; the window says so before the first task and lists them in its
+header. Rejected for this: the ordinary agent role with the token and `:mcp on`, for the reason
+decision 1's alternatives give; an MCP server over HTTP served by Vimma, because it adds a
+listener that pages could reach by URL. Its rules are M51-M61 of
+[docs/security.md](../security.md) §12, and C2's third exception.

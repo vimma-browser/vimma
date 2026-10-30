@@ -34,9 +34,10 @@ and workspaces, and your hands never leave the keyboard.
   form and paying are checkpoints, asked every time under any grant: the question shows what the
   form sends, or the button, the site and the total the page states.
 - **An agent of its own:** `ctrl+b i` opens a chat window where you write a task and watch every
-  step, with a local model (Ollama, LM Studio, llama.cpp) or a hosted one by API key. It works
-  only in the agent workspace, through the same tools and checkpoints as an MCP agent; several
-  conversations can run at once, and they are kept, encrypted, without the page text they read.
+  step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one by API key, or the
+  Claude Code you already have, on its own login and plan. It works only in the agent
+  workspace, through the same tools and checkpoints as an MCP agent; several conversations can
+  run at once, and they are kept, encrypted, without the page text they read.
 
 ## Install
 
@@ -102,7 +103,9 @@ with the browser ([where it is](docs/guide.md#installing)); you can also
 later check a signed update file every 12 hours and show a newer release in the status bar. The
 AppImage, from the first release that includes its self-update, then replaces its own file with
 the newer release once its size and SHA-512 match the signed file, and the next start runs it.
-The other packages notify only; installing the update is up to you.
+The other packages notify only; installing the update is up to you. Vimma's chat window runs
+Claude Code from 0.1.13, on its own login
+([quick start](docs/guide.md#using-an-agent-cli-in-the-chat-window)); Codex follows.
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>
 

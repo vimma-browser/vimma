@@ -13,6 +13,7 @@
 import { closest } from "./actions.mjs";
 import { AGENT_GLYPH } from "./agent.mjs";
 import { budgetLimitText } from "./agent-budget.mjs";
+import { CLIS, cliNotice, cliWhere, ownToolsText } from "./agent-cli.mjs";
 import { checkpointText, isCheckpoint, stepText } from "./agent-prompt.mjs";
 import { LOCAL_SERVERS } from "./agent-setup.mjs";
 import { formatConfigError } from "./config.mjs";
@@ -21,22 +22,30 @@ import { formatConfigError } from "./config.mjs";
  * @typedef {import("./agent-loop.mjs").TaskEvent} TaskEvent
  * @typedef {import("./agent-budget.mjs").Exceeded} Exceeded
  * @typedef {import("./agent-providers.mjs").ToolCall} ToolCall
- * @typedef {{ kind: "user" | "agent" | "step" | "checkpoint" | "notice" | "end", text: string,
- *   outcome?: string, warn?: boolean }} Entry
- *   `outcome`: a step's or a checkpoint's, as it changes; `warn`: an end the user should read
+ * @typedef {{ kind: "user" | "agent" | "step" | "checkpoint" | "notice" | "end" | "own",
+ *   text: string, outcome?: string, warn?: boolean, id?: string }} Entry
+ *   `outcome`: a step's or a checkpoint's, as it changes; `warn`: an end the user should read;
+ *   `own`: a step an agent CLI took with a tool of its own, never in the browser, `id` its
+ *   call's id in the CLI's stream
  * @typedef {{ kind: "asked" | "ran" | "timeout" | "answered", tool: string,
  *   what: Record<string, any>, answer?: string }} ConvGateEvent
  *   one of AgentGate's events about this conversation's connection
- * @typedef {{ outcome: string, after?: ToolCall | null, exceeded?: Exceeded, error?: string }}
- *   TaskEnd
+ * @typedef {{ outcome: string, after?: ToolCall | null, exceeded?: Exceeded, error?: string,
+ *   cost?: { usd: number, cli: string } }} TaskEnd  `cost`: what an agent CLI reported as its
+ *   own estimate of the task's cost
  * @typedef {{ steps: number, maxSteps: number, tokens: number, estimated: boolean,
- *   cost: number | null }} BudgetStatus
- * @typedef {{ name: string, kind: string, endpoint: string, model: string }} HeaderProvider
+ *   cost: number | null, cli?: string, tokensReported?: boolean, reportedCost?: number | null,
+ *   minutes?: number }} BudgetStatus
+ *   `cli` and after: an agent CLI's task (agent-budget.mjs)
+ * @typedef {{ name: string, kind: string, endpoint: string, model: string, cli?: string }}
+ *   HeaderProvider
  */
 
 /** The label above the agent's replies (B19): a reply never starts at the window's edge. */
 export const AGENT_LABEL = "agent";
 export const USER_LABEL = "you";
+/** Marks an agent CLI's own tool step, which a step in the browser (`·`) never has. */
+export const OWN_TOOL_GLYPH = "◆";
 
 /**
  * C0 and C1 controls but tab and line feed, and the bidi controls, which could make a line of
@@ -107,6 +116,24 @@ export class Transcript {
   /** A notice of Vimma's: a grant made or ended, a page given (Behaviour 12, 17). @param {string} text */
   notice(text) {
     this.push({ kind: "notice", text: chatText(text) });
+  }
+
+  /**
+   * A step an agent CLI took with a tool of its own, as its stream reported it
+   * (docs/specs/builtin-agent-cli.md Behaviour 9): Vimma shows it and neither approves nor
+   * refuses it.
+   * @param {string} id @param {string} text  agent-cli.mjs's ownToolText
+   */
+  ownTool(id, text) {
+    this.push({ kind: "own", id, text: chatText(text).replace(/\s+/g, " ") });
+  }
+
+  /** The CLI's own settings refused that step. @param {string} id */
+  ownToolRefused(id) {
+    const entry = [...this.entries].reverse().find((e) => e.kind === "own" && e.id === id);
+    if (!entry) return;
+    entry.outcome = "refused by its settings";
+    this.version++;
   }
 
   /**
@@ -183,6 +210,21 @@ export class Transcript {
   }
 
   /**
+   * One of the gate's events for an agent CLI's conversation (docs/specs/builtin-agent-cli.md
+   * C8): there is no loop's call to hang it on, so a question or a step run under the grant
+   * starts a step of its own, and an answer or a timeout ends the one asked.
+   * @param {ConvGateEvent} e
+   */
+  cliGate(e) {
+    if (e.kind === "asked" || e.kind === "ran") {
+      this.step = this.push({ kind: "step", text: toolName(e.tool), outcome: "…" });
+    }
+    if (!this.step) return;
+    this.gate(e);
+    if (e.kind !== "asked") this.step = null;
+  }
+
+  /**
    * The task ended (Behaviour 16, 34).
    * @param {TaskEnd} result
    */
@@ -192,20 +234,28 @@ export class Transcript {
     if (running && (running.outcome === "…" || running.outcome === "asking you")) {
       running.outcome = "withdrawn";
     }
+    // docs/specs/builtin-agent-cli.md Behaviour 15: kept on the end line, which stays after the
+    // status bar clears, and named as the CLI's estimate, since it is not a bill.
+    const cost = result.cost
+      ? ` · ≈ $${result.cost.usd.toFixed(2)} (${chatText(result.cost.cli)} estimate)`
+      : "";
     if (result.outcome === "done") {
-      this.push({ kind: "end", text: "done" });
+      this.push({ kind: "end", text: `done${cost}` });
     } else if (result.outcome === "stopped") {
       const last = result.after
         ? [...this.entries].reverse().find((e) => e.kind === "step" || e.kind === "checkpoint")
         : null;
-      this.push({ kind: "end", text: last ? `stopped after "${last.text}"` : "stopped" });
+      this.push({
+        kind: "end",
+        text: `${last ? `stopped after "${last.text}"` : "stopped"}${cost}`,
+      });
     } else if (result.outcome === "budget" && result.exceeded) {
-      this.push({ kind: "end", text: budgetLimitText(result.exceeded), warn: true });
+      this.push({ kind: "end", text: budgetLimitText(result.exceeded) + cost, warn: true });
     } else {
       const error = chatText(result.error ?? "the task failed");
       this.push({
         kind: "end",
-        text: error.startsWith("stopped") ? error : `stopped: ${error}`,
+        text: (error.startsWith("stopped") ? error : `stopped: ${error}`) + cost,
         warn: true,
       });
     }
@@ -245,6 +295,14 @@ export function entryView(entry) {
       tone: "dim",
     };
   }
+  if (entry.kind === "own") {
+    return {
+      label: null,
+      lines: [`${OWN_TOOL_GLYPH} ${entry.text}${entry.outcome ? ` — ${entry.outcome}` : ""}`],
+      indent: false,
+      tone: "dim",
+    };
+  }
   return { label: null, lines: [entry.text], indent: false, tone: entry.warn ? "warn" : "dim" };
 }
 
@@ -273,9 +331,39 @@ export function isLocalEndpoint(endpoint) {
 /**
  * Whether a provider's requests need an API key: Anthropic's always, an OpenAI-compatible
  * endpoint off this machine (a local server takes none).
+ * An agent CLI keeps its own login (docs/specs/builtin-agent-cli.md Summary).
  * @param {{ kind: string, endpoint: string }} p
  */
-export const needsKey = (p) => p.kind === "anthropic" || !isLocalEndpoint(p.endpoint);
+export const needsKey = (p) =>
+  p.kind !== "cli" && (p.kind === "anthropic" || !isLocalEndpoint(p.endpoint));
+
+/** @param {{ kind: string, cli?: string }} p */
+const cliOf = (p) => (p.kind === "cli" ? (CLIS[p.cli ?? ""] ?? null) : null);
+
+/**
+ * What a y to the notice before the first task covers: the endpoint, or for an agent CLI the
+ * CLI itself, which decides where its requests go.
+ * @param {{ kind: string, endpoint: string, cli?: string }} p
+ */
+export const noticeTarget = (p) => (p.kind === "cli" ? `cli:${p.cli ?? ""}` : p.endpoint);
+
+/**
+ * The notice before a conversation's first task (Behaviour 5; builtin-agent-cli Behaviour 4).
+ * @param {{ kind: string, endpoint: string, cli?: string }} p
+ */
+export function sendNotice(p) {
+  const cli = cliOf(p);
+  return cli ? cliNotice(cli) : externalNotice(p);
+}
+
+/**
+ * Where a provider's data goes, as the header and the picker say it.
+ * @param {{ kind: string, endpoint: string, cli?: string }} p
+ */
+export function providerWhere(p) {
+  const cli = cliOf(p);
+  return cli ? cliWhere(cli) : whereDataGoes(p.endpoint);
+}
 
 /** Who runs an API, for the hosts Vimma knows; another host is named by its address only. */
 const VENDORS = Object.freeze({ "api.anthropic.com": "Anthropic" });
@@ -368,8 +456,10 @@ export function noModelLines(refused, file) {
  * was sent with ctrl+Enter. Without a grant or such a task the approval is left unsaid, because
  * the next task sent with Enter is itself the grant (Behaviour 24).
  * @param {{ provider: HeaderProvider | null, granted: boolean, asking?: boolean,
- *   localOnly?: boolean, budget?: BudgetStatus | null, refused?: string | null }} o
- *   `refused`: noModelReason's text, shown in place of the setup hint
+ *   localOnly?: boolean, budget?: BudgetStatus | null, refused?: string | null,
+ *   cli?: { model: string, tools: string[] | null } | null }} o
+ *   `refused`: noModelReason's text, shown in place of the setup hint; `cli`: what an agent
+ *   CLI reported when its last run started
  * @returns {[string, string]}
  */
 export function chatHeader({
@@ -379,7 +469,24 @@ export function chatHeader({
   localOnly = false,
   budget = null,
   refused = null,
+  cli = null,
 }) {
+  const approval = granted ? ["granted"] : asking ? ["asks every step"] : [];
+  const info = provider?.kind === "cli" ? (CLIS[provider.cli ?? ""] ?? null) : null;
+  if (provider && info) {
+    // docs/specs/builtin-agent-cli.md Behaviour 5: the CLI, the model it reported (else the
+    // one the provider names), and that the CLI decides where data goes; then its own tools.
+    const model = chatText(cli?.model || provider.model);
+    return [
+      [info.id, ...(model ? [model] : []), cliWhere(info)].join(" · "),
+      [
+        "works in: agent workspace",
+        ...approval,
+        ...(budget ? [`${budget.steps}/${budget.maxSteps} steps`] : []),
+        `its own tools: ${ownToolsText(cli ? cli.tools : null)}`,
+      ].join(" · "),
+    ];
+  }
   const first = provider
     ? `${chatText(provider.name)} · ${chatText(provider.model)} · ${whereDataGoes(provider.endpoint)}`
     : refused
@@ -387,7 +494,7 @@ export function chatHeader({
       : "no model set up";
   const second = [
     "works in: agent workspace",
-    ...(granted ? ["granted"] : asking ? ["asks every step"] : []),
+    ...approval,
     ...(budget ? [`${budget.steps}/${budget.maxSteps} steps`] : []),
   ].join(" · ");
   return [localOnly ? `${first} · local only` : first, second];
@@ -409,6 +516,17 @@ export function builtinStatus(running) {
   if (!running.length) return null;
   if (running.length > 1) return `${AGENT_GLYPH} ${running.length} agents`;
   const b = /** @type {BudgetStatus} */ (running[0]);
+  if (b.cli) {
+    // docs/specs/builtin-agent-cli.md Behaviour 15, C13: the CLI's own estimate, named as such;
+    // with no report, steps and time.
+    if (!b.tokensReported)
+      return `${AGENT_GLYPH} built-in ${b.steps}/${b.maxSteps} · ${b.minutes} min`;
+    const estimate =
+      typeof b.reportedCost === "number"
+        ? ` · ≈ $${b.reportedCost.toFixed(2)} (${chatText(b.cli)})`
+        : "";
+    return `${AGENT_GLYPH} built-in ${b.steps}/${b.maxSteps} · ${tokens(b.tokens)} tok${estimate}`;
+  }
   const cost = b.cost === null ? "" : ` · ${b.cost.toFixed(2)}`;
   return `${AGENT_GLYPH} built-in ${b.steps}/${b.maxSteps} · ${b.estimated ? "~" : ""}${tokens(
     b.tokens,

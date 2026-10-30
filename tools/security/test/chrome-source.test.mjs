@@ -9,6 +9,8 @@ import { describe, expect, test } from "vitest";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CHROME = join(ROOT, "src/browser/base/content/vimma");
+/** The agent CLI runner, C2's third exception. */
+const CLI = "src/browser/base/content/vimma/agent/AgentCli.sys.mjs";
 
 /** Our chrome sources; core/ is a copy of packages/vimma-core/src (npm run sync-core). */
 function sources() {
@@ -62,13 +64,16 @@ describe("chrome code", () => {
   // agent download is scanned with the system's clamscan, or clamdscan when clamd can be used.
   // One file, one call, fixed program lists, arguments only from the three fixed builders with
   // the path after `--`, no shell, no PATH search, and no other way to reach Subprocess.
-  test("never starts a process, but ClamAV on an agent download and an AppImage's restart", () => {
+  test("never starts a process, but ClamAV, an AppImage's restart and an agent CLI", () => {
     const CLAM = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
     const RESTART = "src/browser/base/content/vimma/host/restart.mjs";
     const all = hits(/Subprocess|nsIProcess|@mozilla\.org\/process\/|\.launch\(\)|\.reveal\(\)/);
-    expect(all.filter((h) => !h.startsWith(`${CLAM}:`) && !h.startsWith(`${RESTART}:`))).toEqual(
-      [],
-    );
+    expect(
+      all.filter(
+        (h) =>
+          !h.startsWith(`${CLAM}:`) && !h.startsWith(`${RESTART}:`) && !h.startsWith(`${CLI}:`),
+      ),
+    ).toEqual([]);
     const text = readFileSync(join(ROOT, CLAM), "utf8");
     // Every mention: the lazy getter's name and module, and one call.
     expect(text.match(/Subprocess\b/g)).toHaveLength(3);
@@ -113,6 +118,45 @@ describe("chrome code", () => {
     );
   });
 
+  // C2's third exception (docs/specs/builtin-agent-cli.md C2, C4): an agent CLI the user picked
+  // in setup, from its confirmed path only, with arguments from the fixed builders, the task on
+  // stdin, and no shell. Two calls: the run and `--version`; the PATH search only in `find`.
+  test("starts an agent CLI only from its checked path, with fixed arguments and no shell", () => {
+    const text = readFileSync(join(ROOT, CLI), "utf8");
+    expect(text.match(/Subprocess\.call\(/g)).toHaveLength(2);
+    expect(text).toMatch(
+      /lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(\{ mcpConfig: file, model: o\.provider\.model \}\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
+    );
+    expect(text).toMatch(
+      /lazy\.Subprocess\.call\(\{\s*command: r\.path,\s*arguments: \[\.\.\.cli\.versionArgs\],\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: await runBase\(\),\s*stderr: "pipe",\s*\}\)/,
+    );
+    // `version` runs only a path `inspect` passed, checked inside it whoever calls it, and only
+    // while agent CLIs are on; the run only `checked`, inspect's result.
+    expect(text).toMatch(
+      /async version\(path, id = CLI_IDS\[0\] \?\? ""\) \{\s*const cli = CLIS\[id\];\s*if \(!this\.enabled \|\| !cli\) return null;\s*const r = await inspect\(path\);\s*if \("problem" in r\) return null;/,
+    );
+    expect(text).toContain("const checked = await inspect(path);");
+    expect(text).toContain("const version = await this.version(r.path, cli.id);");
+    // The CLI is a CLIS entry, never a value of config.toml's (C2): its arguments, input and
+    // version arguments come from that entry's fixed builders.
+    expect(text).toContain('const cli = CLIS[o.provider.cli ?? ""];');
+    expect(text.match(/pathSearch\(/g)).toEqual(["pathSearch("]);
+    expect(text).toContain("found = await lazy.Subprocess.pathSearch(cli.bin);");
+    // No aliasing, no bracket access, no shell, and the task never an argument.
+    expect(text).not.toMatch(/Subprocess\s*\[|=\s*(lazy\.)?Subprocess\b|\}\s*=\s*lazy\b/);
+    expect(text).not.toMatch(/lazy\s*\[|nsIProcess|\/bin\/sh|"sh"|"-c"/);
+    expect(text).toContain("await proc.stdin.write(cli.input(taskPrompt(o.messages, o.text)));");
+    const core = readFileSync(join(ROOT, "packages/vimma-core/src/agent-cli.mjs"), "utf8");
+    expect(core).toContain('versionArgs: Object.freeze(["--version"]),');
+    expect(core).toContain(
+      "args: (/** @type {{ mcpConfig: string, model: string }} */ o) => claudeArguments(o),",
+    );
+    expect(core).toContain("input: (/** @type {string} */ text) => userLine(text),");
+    expect(core).toMatch(
+      /"--permission-mode",\s*"dontAsk",\s*\.\.\.\(model \? \["--model", model\] : \[\]\),/,
+    );
+  });
+
   // C2's second exception (docs/specs/m6a-updater.md §5; security.md C2, UP10): an AppImage's
   // `:restart` starts /bin/sh with one fixed script that waits for Vimma to exit and then runs
   // `$APPIMAGE`. One call site, the program and arguments only from relaunchCommand, the pid and
@@ -154,11 +198,12 @@ describe("chrome code", () => {
     expect(script).toContain(`'exec "$2"'`);
   });
 
-  // js-ctypes reaches any native function. Its one use is the owner of clamd's socket, read with
-  // statx(2) on Linux and lstat(2) on macOS (security.md C2, M13): nothing else may load a
+  // js-ctypes reaches any native function. Its one use is a file's owner and mode (clamd's
+  // socket, M13, and an agent CLI's path checks, M55), read with statx(2) on Linux and
+  // lstat(2) on macOS (security.md C2): nothing else may load a
   // library or declare a function. lstat's symbol is named in one table, by architecture, and
   // libSystem by its absolute path, since dyld searches the working directory for a bare name.
-  test("never calls native code, but statx or lstat on clamd's socket", () => {
+  test("never calls native code, but statx or lstat for a file's owner and mode", () => {
     const CLAM = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
     const all = hits(/ctypes/);
     expect(all.filter((h) => !h.startsWith(`${CLAM}:`))).toEqual([]);

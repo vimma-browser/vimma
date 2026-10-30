@@ -25,6 +25,14 @@ import { BOOKMARKS_ROOTS } from "./bookmarks.mjs";
 import { quarantineProblem, resolveDownloadDir } from "./agent-downloads.mjs";
 import { resolveSearch, validateSearch } from "./search.mjs";
 import { checkEndpoint } from "./agent-providers.mjs";
+import {
+  CLI_IDS,
+  DEFAULT_MAX_MINUTES,
+  MAX_MINUTES,
+  MAX_MODEL,
+  modelProblem,
+} from "./agent-cli.mjs";
+import { hasControl } from "./strings.mjs";
 
 /** @import { Keymap } from "./keymap.mjs" */
 /** @import { UserConfig } from "./defaults.mjs" */
@@ -84,8 +92,12 @@ import { checkEndpoint } from "./agent-providers.mjs";
 
 /**
  * A model provider of `[[agent.providers]]`: where requests go and which model, never a key (B8).
- * @typedef {{ name: string, kind: "openai" | "anthropic", endpoint: string, model: string,
- *   vision: boolean, priceIn?: number, priceOut?: number }} AgentProviderConfig
+ * An agent CLI's (docs/specs/builtin-agent-cli.md C4) names which supported CLI it is, its
+ * model (empty: the CLI's own default) and its time limit; its endpoint is empty, since the
+ * CLI decides where its requests go, and its program's path is a pref setup writes.
+ * @typedef {{ name: string, kind: "openai" | "anthropic" | "cli", endpoint: string,
+ *   model: string, vision: boolean, priceIn?: number, priceOut?: number, cli?: string,
+ *   maxMinutes?: number }} AgentProviderConfig
  */
 /**
  * `[agent]` (docs/specs/builtin-agent.md Behaviour 8). `default` is a provider's name, or null.
@@ -301,12 +313,21 @@ const AGENT_PROVIDER_KEYS = [
   "price_in",
   "price_out",
 ];
+/** An agent CLI provider's keys (docs/specs/builtin-agent-cli.md, Behaviour 2). */
+const AGENT_CLI_KEYS = ["name", "kind", "cli", "model", "max_minutes"];
+/**
+ * Keys that would make config.toml name a program, its arguments or its environment: a file
+ * users copy from others must never run a command (security.md F3; builtin-agent-cli C4).
+ */
+const PROGRAM_KEYS = new Set(["command", "path", "args", "env"]);
+const PROGRAM_IN_CONFIG =
+  "a CLI provider names no program, arguments or environment: setup confirms the program's path";
+const PROVIDER_KINDS = ["openai", "anthropic", "cli"];
 /** Fields that would hold a key or a password: config.toml is shared and kept in dotfiles (B8). */
 const SECRET_KEYS = new Set(["key", "api_key", "apikey", "token", "password", "secret"]);
 const SECRET_IN_CONFIG =
   "an API key must not be in config.toml: Vimma keeps it in login storage, set in the agent's setup";
 const MAX_PROVIDER_NAME = 32;
-const MAX_MODEL = 200;
 const MAX_PRICE = 1_000_000;
 
 /** The private workspace's name (privatews.mjs): never the agent workspace's. */
@@ -323,10 +344,6 @@ export const MAX_WORKSPACE_NAME = 32;
 const MAX_FONT = 200;
 const FONT_FORBIDDEN = /["';{}\\<>]/;
 const HOME = /^(?:https?:\/\/|about:)\S+$/;
-
-/** @param {string} s */
-const hasControl = (s) =>
-  [...s].some((ch) => /** @type {number} */ (ch.codePointAt(0)) < 0x20 || ch === "\x7f");
 
 /** @param {unknown} v */
 function typeName(v) {
@@ -823,6 +840,10 @@ function validateAgent(agent, { fail, typeError, unknownKey }) {
       typeError(at, p, "a table");
       return;
     }
+    if (p.kind === "cli") {
+      validateCliProvider(p, at, { fail, typeError, unknownKey, text, localOnly, names });
+      return;
+    }
     if (!("kind" in p && "endpoint" in p && "model" in p)) {
       fail(at, 'a provider needs "kind", "endpoint" and "model"');
     }
@@ -836,8 +857,8 @@ function validateAgent(agent, { fail, typeError, unknownKey }) {
         names.add(/** @type {string} */ (v));
       } else if (key === "kind") {
         if (typeof v !== "string") typeError(path, v, "a string");
-        else if (v !== "openai" && v !== "anthropic") {
-          fail(path, 'must be "openai" or "anthropic"', closest(v, ["openai", "anthropic"]));
+        else if (!PROVIDER_KINDS.includes(v)) {
+          fail(path, 'must be "openai", "anthropic" or "cli"', closest(v, PROVIDER_KINDS));
         }
       } else if (key === "endpoint") {
         if (typeof v !== "string") typeError(path, v, "a string");
@@ -862,6 +883,53 @@ function validateAgent(agent, { fail, typeError, unknownKey }) {
 }
 
 /**
+ * An agent CLI provider (docs/specs/builtin-agent-cli.md Behaviour 2, 6, C4, C10, C11): which
+ * supported CLI, its model and its time limit only. A program, its arguments or its
+ * environment is an error, and so is `local_only`, since Vimma cannot see where a CLI sends
+ * what it reads.
+ * @param {Record<string, unknown>} p @param {Path} at
+ * @param {{ fail: (path: Path, message: string, suggestion?: string) => void,
+ *   typeError: (path: Path, v: unknown, expected: string) => void,
+ *   unknownKey: (path: Path, key: string, known: readonly string[]) => void,
+ *   text: (path: Path, v: unknown, max: number) => boolean, localOnly: boolean,
+ *   names: Set<string> }} o
+ */
+function validateCliProvider(p, at, { fail, typeError, unknownKey, text, localOnly, names }) {
+  if (!("cli" in p)) fail(at, 'a CLI provider needs "cli"');
+  for (const [key, v] of Object.entries(p)) {
+    const path = [...at, key];
+    if (SECRET_KEYS.has(key.toLowerCase())) fail(path, SECRET_IN_CONFIG);
+    else if (PROGRAM_KEYS.has(key)) fail(path, PROGRAM_IN_CONFIG);
+    else if (key === "kind") {
+      if (localOnly) {
+        fail(path, "an agent CLI may send page text off this machine ([agent] local_only)");
+      }
+    } else if (key === "name") {
+      if (!text(path, v, MAX_PROVIDER_NAME)) continue;
+      if (names.has(/** @type {string} */ (v))) fail(path, `a second provider named "${v}"`);
+      names.add(/** @type {string} */ (v));
+    } else if (key === "cli") {
+      if (typeof v !== "string") typeError(path, v, "a string");
+      else if (!CLI_IDS.includes(v)) {
+        const ids = CLI_IDS.map((c) => `"${c}"`).join(" or ");
+        fail(path, `must be ${ids}`, closest(v, [...CLI_IDS]));
+      }
+    } else if (key === "model") {
+      // The rule the command line applies (C2), so a bad model is reported with its line.
+      const problem = text(path, v, MAX_MODEL) && modelProblem(/** @type {string} */ (v));
+      if (problem) fail(path, problem);
+    } else if (key === "max_minutes") {
+      if (typeof v !== "bigint") typeError(path, v, "an integer");
+      else if (v < 1n || v > BigInt(MAX_MINUTES)) {
+        fail(path, `must be an integer between 1 and ${MAX_MINUTES} (minutes)`);
+      }
+    } else if (key === "endpoint") {
+      fail(path, "a CLI provider has no endpoint: the CLI decides where it sends requests");
+    } else unknownKey(path, key, AGENT_CLI_KEYS);
+  }
+}
+
+/**
  * `[agent]` with the defaults filled in (camelCase, as ResolvedConfig keeps it).
  * @param {any} agent  valid
  * @returns {AgentConfig}
@@ -880,17 +948,41 @@ function resolveAgent(agent) {
     maxCost: /** @type {number} */ (num(agent?.max_cost, AGENT_DEFAULTS.maxCost)),
     keepDays: num(agent?.keep_days, null),
     keepResults: num(agent?.keep_results, null),
-    providers: providers.map((p) => ({
-      name: p.name,
-      kind: p.kind,
-      endpoint: p.endpoint,
-      model: p.model,
-      // B7: a model that sees images is the rule for Anthropic's, the exception for local ones.
-      vision: p.vision ?? p.kind === "anthropic",
-      ...(p.price_in === undefined
-        ? {}
-        : { priceIn: Number(p.price_in), priceOut: Number(p.price_out) }),
-    })),
+    providers: providers.map((p) =>
+      p.kind === "cli" ? resolveCliProvider(p) : resolveProvider(p),
+    ),
+  };
+}
+
+/** A model provider, resolved. @param {any} p  valid @returns {AgentProviderConfig} */
+function resolveProvider(p) {
+  return {
+    name: p.name,
+    kind: p.kind,
+    endpoint: p.endpoint,
+    model: p.model,
+    // B7: a model that sees images is the rule for Anthropic's, the exception for local ones.
+    vision: p.vision ?? p.kind === "anthropic",
+    ...(p.price_in === undefined
+      ? {}
+      : { priceIn: Number(p.price_in), priceOut: Number(p.price_out) }),
+  };
+}
+
+/**
+ * An agent CLI provider, resolved: no endpoint (the CLI decides), no vision of Vimma's (its
+ * screenshots go through vimma-ctl), and its time limit.
+ * @param {any} p  valid @returns {AgentProviderConfig}
+ */
+function resolveCliProvider(p) {
+  return {
+    name: p.name,
+    kind: "cli",
+    cli: p.cli,
+    endpoint: "",
+    model: p.model ?? "",
+    vision: false,
+    maxMinutes: Number(p.max_minutes ?? DEFAULT_MAX_MINUTES),
   };
 }
 
@@ -1203,7 +1295,7 @@ const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
  * Refused, with nothing to write, when the file does not parse now or would not with the edit.
  * @param {string | null} text  config.toml, null when it does not exist (the template is used)
  * @param {{ name: string, kind: string, endpoint: string, model: string, vision?: boolean,
- *   priceIn?: number, priceOut?: number }} provider
+ *   priceIn?: number, priceOut?: number, cli?: string }} provider
  * @param {{ makeDefault: boolean, mac?: boolean }} opts
  * @returns {{ text: string, name: string } | { error: string }}
  */
@@ -1216,7 +1308,10 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
   const providers = before.config.agent.providers;
   const known = providers.find(
     (p) =>
-      p.kind === provider.kind && p.endpoint === provider.endpoint && p.model === provider.model,
+      p.kind === provider.kind &&
+      p.endpoint === provider.endpoint &&
+      p.model === provider.model &&
+      p.cli === provider.cli,
   );
   let name = known?.name ?? provider.name;
   if (!known) {
@@ -1237,17 +1332,27 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
     }
   }
   if (!known) {
-    const block = [
-      "[[agent.providers]]",
-      `name = ${tomlLiteral(name)}`,
-      `kind = ${tomlLiteral(provider.kind)}`,
-      `endpoint = ${tomlLiteral(provider.endpoint)}`,
-      `model = ${tomlLiteral(provider.model)}`,
-      `vision = ${provider.vision === true}`,
-      ...(typeof provider.priceIn === "number" && typeof provider.priceOut === "number"
-        ? [`price_in = ${provider.priceIn}`, `price_out = ${provider.priceOut}`]
-        : []),
-    ];
+    // An agent CLI by name, kind, cli and model only: its program's path is a pref (C4).
+    const block =
+      provider.kind === "cli"
+        ? [
+            "[[agent.providers]]",
+            `name = ${tomlLiteral(name)}`,
+            `kind = "cli"`,
+            `cli = ${tomlLiteral(provider.cli ?? "")}`,
+            ...(provider.model ? [`model = ${tomlLiteral(provider.model)}`] : []),
+          ]
+        : [
+            "[[agent.providers]]",
+            `name = ${tomlLiteral(name)}`,
+            `kind = ${tomlLiteral(provider.kind)}`,
+            `endpoint = ${tomlLiteral(provider.endpoint)}`,
+            `model = ${tomlLiteral(provider.model)}`,
+            `vision = ${provider.vision === true}`,
+            ...(typeof provider.priceIn === "number" && typeof provider.priceOut === "number"
+              ? [`price_in = ${provider.priceIn}`, `price_out = ${provider.priceOut}`]
+              : []),
+          ];
     const glue = out === "" ? "" : out.endsWith("\n") ? "\n" : "\n\n";
     out = `${out}${glue}${block.join("\n")}\n`;
   }

@@ -68,6 +68,33 @@ describe("storedRecord", () => {
     expect(record.provider).toEqual({ ...provider, priceIn: 3, priceOut: 15 });
     expect(JSON.stringify(record)).not.toContain("sk-secret");
   });
+
+  // docs/specs/builtin-agent-cli.md C4: a CLI provider is stored by its name, the CLI it is and
+  // its model; never a path, an argument or an environment.
+  test("an agent CLI provider is stored by name, cli and model only", () => {
+    const cli = {
+      name: "claude",
+      kind: "cli",
+      cli: "claude-code",
+      endpoint: "",
+      model: "",
+      vision: false,
+      maxMinutes: 30,
+      path: "/home/u/.local/bin/claude",
+      env: { LD_PRELOAD: "x" },
+    };
+    const record = storedRecord({ ...conversation, provider: cli });
+    expect(record.provider).toEqual({
+      name: "claude",
+      kind: "cli",
+      cli: "claude-code",
+      endpoint: "",
+      model: "",
+      vision: false,
+    });
+    expect(readRecord(JSON.parse(JSON.stringify(record)))?.provider).toEqual(record.provider);
+    expect(() => storedRecord({ ...conversation, provider: { ...cli, cli: "evil" } })).toThrow();
+  });
 });
 
 describe("storedRecord's size", () => {

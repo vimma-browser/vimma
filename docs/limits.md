@@ -153,6 +153,23 @@ the [user guide](guide.md); planned work is on the
   passwords are: by a primary password if one is set, otherwise readable by anything that can
   read the profile.
 - The window does not open in a private window.
+- Claude Code is the one agent CLI the window runs so far (checked with Claude Code 2.1.303); Codex
+  follows.
+- An agent CLI keeps the shell, file and web tools its own settings allow. They are outside
+  Vimma's gate: Vimma shows each use but does not approve, refuse or confine it.
+- Vimma cannot see where an agent CLI sends the page text it reads, so `local_only` refuses
+  every agent CLI.
+- The cost an agent CLI reports is its own estimate, at list prices even on a plan, and
+  `max_cost` does not apply to it.
+- A shell command an agent CLI started may outlive a stop, since Vimma stops the CLI's own
+  process and not the commands it started.
+- An agent CLI runs in a folder in `$XDG_RUNTIME_DIR`, a small in-memory file system, so a CLI
+  that writes large files there can fill it. Where Vimma falls back to
+  `~/.cache/vimma-agent-cli`, the instruction files in your home folder apply to every run, as they do to the CLI in a terminal.
+- The models the picker lists for an agent CLI are Vimma's own list, not the CLI's: a model the
+  CLI no longer takes fails when a task starts, with the CLI's own error.
+- An agent CLI needs the `vimma-ctl` beside Vimma's binary, which every release has; a build
+  from source names its own in `vimma.agent.cli.vimmaCtl`.
 
 ## Compatibility and versions
 

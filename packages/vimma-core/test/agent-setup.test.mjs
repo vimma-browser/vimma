@@ -203,6 +203,26 @@ describe("whether a local model is still there", () => {
     expect(unavailableText(local("qwen3:14b"), "unknown")).toBeNull();
   });
 
+  // docs/specs/builtin-agent-cli.md C4: an agent CLI whose program is not set up, gone or refused.
+  test("an agent CLI whose program is gone is not available, and says how to find it again", () => {
+    const claude = {
+      name: "claude",
+      kind: /** @type {const} */ ("cli"),
+      cli: "claude-code",
+      endpoint: "",
+      model: "sonnet",
+      vision: false,
+    };
+    expect(unavailableText(claude, "gone")).toBe(
+      "claude-code is not available: its program is not set up, gone or refused; " +
+        "add: agent CLI in this list finds it again",
+    );
+    expect(unavailableText(claude, "available")).toBeNull();
+    expect(unavailableText(claude, null)).toBeNull();
+    // Each CLI is its own entry, whatever the model.
+    expect(providerKey(claude)).not.toBe(providerKey({ ...claude, cli: "codex" }));
+  });
+
   test("the probe also asks the configured local endpoints, once each, never a remote one", async () => {
     const { fetch, calls } = fake({
       "http://127.0.0.1:8000/v1/models": { data: [{ id: "a" }] },
@@ -297,5 +317,99 @@ describe("the picker's entries", () => {
       { provider: local, state: null, current: true },
     ]);
     expect(entries).toHaveLength(2);
+  });
+
+  // docs/specs/builtin-agent-cli.md Behaviour 17: a CLI's models are chosen in the picker, from
+  // Vimma's own list of the models the CLI takes; nothing is asked of the CLI to list them.
+  describe("an agent CLI's models", () => {
+    const claude = {
+      name: "claude",
+      kind: /** @type {const} */ ("cli"),
+      cli: "claude-code",
+      endpoint: "",
+      model: "sonnet",
+      vision: false,
+    };
+    const as = (/** @type {string} */ model) => ({ ...claude, model });
+
+    test("each model the CLI takes is a row after the configured one, then another model", () => {
+      const states = new Map([[providerKey(claude), /** @type {const} */ ("available")]]);
+      const entries = pickerEntries({ providers: [claude], found: [], states, current: null });
+      expect(entries).toEqual([
+        { provider: claude, state: "available", current: false },
+        { provider: as("opus"), state: "available", current: false, cliModel: true },
+        { provider: as("haiku"), state: "available", current: false, cliModel: true },
+        { provider: as(""), state: "available", current: false, cliModel: true },
+        { provider: claude, state: "available", current: false, otherModel: true },
+      ]);
+    });
+
+    test("the conversation's model is marked in use on its row, and listed once", () => {
+      const entries = pickerEntries({
+        providers: [claude],
+        found: null,
+        states: null,
+        current: as("opus"),
+      });
+      expect(entries.filter((e) => e.current)).toEqual([
+        { provider: as("opus"), state: null, current: true, cliModel: true },
+      ]);
+      expect(entries).toHaveLength(5);
+    });
+
+    test("a model another provider of the CLI names is that provider's row only", () => {
+      const opus = { ...as("opus"), name: "claude-2" };
+      const entries = pickerEntries({
+        providers: [claude, opus],
+        found: null,
+        states: null,
+        current: null,
+      });
+      expect(entries.map((e) => [e.provider?.name, e.provider?.model, !!e.otherModel])).toEqual([
+        ["claude", "sonnet", false],
+        ["claude-2", "opus", false],
+        ["claude", "haiku", false],
+        ["claude", "", false],
+        ["claude", "sonnet", true],
+      ]);
+    });
+
+    test("another CLI's rows come from its CLIS entry alone", () => {
+      /** @type {any} */
+      const clis = {
+        "made-up": {
+          id: "made-up",
+          bin: "mu",
+          title: "Made Up",
+          model: "small",
+          models: ["small", "large", ""],
+        },
+      };
+      const mu = { ...claude, name: "mu", cli: "made-up", model: "small" };
+      const entries = pickerEntries({
+        providers: [mu],
+        found: null,
+        states: null,
+        current: null,
+        clis,
+      });
+      expect(entries.map((e) => [e.provider?.model, !!e.cliModel, !!e.otherModel])).toEqual([
+        ["small", false, false],
+        ["large", true, false],
+        ["", true, false],
+        ["small", false, true],
+      ]);
+    });
+
+    test("a model typed earlier, in use and in no list, is listed as the conversation's", () => {
+      const typed = as("claude-opus-4-1");
+      const entries = pickerEntries({
+        providers: [claude],
+        found: null,
+        states: null,
+        current: typed,
+      });
+      expect(entries[0]).toEqual({ provider: typed, state: null, current: true });
+    });
   });
 });

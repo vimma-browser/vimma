@@ -122,15 +122,18 @@ declare const Cr: Record<string, number>;
 // engine/dom/chrome-webidl/PathUtils.webidl
 declare const PathUtils: {
   readonly profileDir: string;
+  readonly tempDir: string;
   join(...components: string[]): string;
   parent(path: string, depth?: number): string | null;
   filename(path: string): string;
   toFileURI(path: string): string;
+  isAbsolute(path: string): boolean;
 };
 
 // engine/dom/chrome-webidl/IOUtils.webidl
 declare const IOUtils: {
   createUniqueFile(parent: string, prefix: string, permissions?: number): Promise<string>;
+  createUniqueDirectory(parent: string, prefix: string, permissions?: number): Promise<string>;
   writeUTF8(
     path: string,
     data: string,

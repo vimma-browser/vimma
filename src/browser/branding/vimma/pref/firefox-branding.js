@@ -129,6 +129,10 @@ pref("vimma.update.enabled", true);
 // prettier-ignore
 pref("vimma.update.url", "https://updates.vimma.dev/updates/browser/%BUILD_TARGET%/%CHANNEL%/update.xml");
 
+// Agent CLIs as the built-in agent's providers (spec builtin-agent-cli): on; false turns every
+// agent CLI off (none is set up, listed or started).
+pref("vimma.agent.cli.enabled", true);
+
 // Control socket (spec m0-control-server, ADR-007): off in every build. When on, Vimma listens on
 // 127.0.0.1 and writes <profile>/vimma-control.json (0600) for vimma-ctl; live on change.
 pref("vimma.control.enabled", false);
