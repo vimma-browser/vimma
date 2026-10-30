@@ -337,7 +337,8 @@ export const VimmaActors = {
    * reported and clipped to them. Replies are from content processes and checked like any
    * other message: a malformed one drops that frame.
    * @param {any} browser XULBrowserElement
-   * @param {string} action "hint.follow", "hint.follow_new_tab" (links only) or "hint.element"
+   * @param {string} action "hint.follow", "hint.follow_new_tab" or "hint.follow_new_tab_fg"
+   *   (links only) or "hint.element"
    *   (text blocks, docs/specs/element-focus.md)
    * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an agent's `f` in its
    *   tab (docs/specs/mcp-drive.md D12): links only, each with its text, live per tab, not per
@@ -359,7 +360,10 @@ export const VimmaActors = {
     };
     /** Each frame at most once, whatever its embedder reports. */
     const visited = new Set();
-    const linksOnly = (agent && !elements) || action === "hint.follow_new_tab";
+    const linksOnly =
+      (agent && !elements) ||
+      action === "hint.follow_new_tab" ||
+      action === "hint.follow_new_tab_fg";
     const blocks = !agent && action === "hint.element";
     const texts = agent && !elements;
     /** @type {HintTarget[]} */
@@ -1002,14 +1006,18 @@ export const VimmaActors = {
   },
 
   /**
-   * Opens a link target in a new background tab next to the browser's, in its container, as
-   * the page itself would load it: the page's principal triggers the load, so a page cannot
-   * open what it could not link to.
+   * Opens a link target in a new tab next to the browser's, in its container, as the page
+   * itself would load it: the page's principal triggers the load, so a page cannot open what it
+   * could not link to. `background` is passed to openLinkIn either way, so
+   * browser.tabs.loadInBackground never decides (docs/specs/follow-link-switch.md decision 5). A
+   * foreground tab is opened selected rather than selected afterwards: its TabOpen and TabSelect
+   * in one task make it take the focused pane in a split (decision 4).
    * @param {any} browser XULBrowserElement
    * @param {HintTarget} target
+   * @param {{ background: boolean }} options
    * @returns {boolean} whether a tab was opened
    */
-  openInBackground(browser, target) {
+  openInNewTab(browser, target, { background }) {
     const wg = target.bc.currentWindowGlobal;
     if (target.kind !== "link" || !target.href || wg !== target.wg) return false;
     const url = URL.parse(target.href);
@@ -1027,7 +1035,7 @@ export const VimmaActors = {
     const win = browser.ownerDocument.defaultView;
     const tab = win.gBrowser.getTabForBrowser(browser);
     win.openLinkIn(url.href, "tab", {
-      inBackground: true,
+      inBackground: background,
       relatedToCurrent: true,
       userContextId: tab?.userContextId ?? 0,
       triggeringPrincipal: principal,

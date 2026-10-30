@@ -105,7 +105,10 @@ const REASONS = /** @type {const} */ ([
     ["page.yank_url", "page.open_clipboard", "page.open_clipboard_new_tab"],
     "the clipboard is the user's",
   ],
-  [["hint.follow_new_tab", "page.view_source"], "it opens a tab; vimma_open does that, asked"],
+  [
+    ["hint.follow_new_tab", "hint.follow_new_tab_fg", "page.view_source"],
+    "it opens a tab; vimma_open does that, asked",
+  ],
   [["page.reload"], "a reload can send a form again"],
   [
     ["workspace.", "window.", "tab.", "pane.", "panel.", "goto.", "sidebar.", "grep."],
@@ -124,8 +127,11 @@ const USER_GROUPS = new Set([
   "Agents",
 ]);
 
-/** @param {string} id */
-function reasonFor(id) {
+/**
+ * Why `vimma_keys` refuses the action `id`.
+ * @param {string} id
+ */
+export function refusalReason(id) {
   for (const [names, why] of REASONS) {
     if (names.some((n) => (n.endsWith(".") ? id.startsWith(n) : id === n))) return why;
   }
@@ -228,7 +234,8 @@ export function parseAgentKeys(text) {
   const take = (action) => {
     const keys = typed;
     typed = "";
-    if (!AGENT_KEY_ACTIONS.has(action.id)) return refusal(keys, reasonFor(action.id), action.id);
+    if (!AGENT_KEY_ACTIONS.has(action.id))
+      return refusal(keys, refusalReason(action.id), action.id);
     if (action.id === "hint.follow" && action.count !== undefined) {
       return refusal(keys, "a count does not apply to f");
     }

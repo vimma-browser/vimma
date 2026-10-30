@@ -19,7 +19,8 @@ takes back a key and `Esc` leaves hint mode. The page cannot tell that hints wer
 - `actors/hint-collect.mjs`: target collection in one frame (content process).
 - `actors/VimmaChild.sys.mjs`: `Vimma:CollectHints` and `Vimma:ActivateHint`.
 - `actors/VimmaActors.sys.mjs`: `collectHints` (merges frames), `activateHint`,
-  `openInBackground`, `cancelHints`.
+  `openInBackground`, `cancelHints`. (Since changed: `openInBackground` is
+  `openInNewTab`, which also opens in the foreground; docs/specs/follow-link-switch.md.)
 - `packages/vimma-core/src/hints.mjs`: `parseHintReply` and `HINT_REPLY_MAX_*`, the strict
   check of a collection reply (unit tests in `test/hints.test.mjs`).
 - `ui/hint-overlay.mjs`, `themes/shared/vimma/hints.css`: labels drawn in chrome.

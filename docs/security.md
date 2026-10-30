@@ -249,7 +249,7 @@ link targets for hints, which chrome must treat as untrusted.
   [`a well-formed reply → a fresh copy with only the known fields`](../packages/vimma-core/test/hints.test.mjs)
   A text block target ([element-focus](specs/element-focus.md)) **must** carry a kind from the
   closed list and a finite, bounded, non-empty box, and no link. A reply **must** hold only the
-  kind of target its collection asked for: a block in an `f` or `gF` reply, or a link or control in
+  kind of target its collection asked for: a block in an `f`, `gF` or `hint.follow_new_tab_fg` reply, or a link or control in
   an element-focus reply, refuses the whole reply, so a block is never followed.
   [`a block target needs a kind from the closed list and a finite box`](../packages/vimma-core/test/hints.test.mjs),
   [`only a block target carries a blockKind or a box`](../packages/vimma-core/test/hints.test.mjs),
@@ -880,8 +880,13 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_a_count_and_a_grant_minutes_shown_in_the_status_bar`](../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_agent_role_has_its_own_switch`](../tests/browser/browser_vimma_mcp_agent.js)
 - M6. `agent-open` **must** load only http and https, in the agent container, never routed and
-  never in the foreground: your window keeps its workspace, selected tab and focus.
+  never in the foreground: your window keeps its workspace, selected tab and focus. From an
+  agent's request naming an agent tab until its reply, including while Vimma waits for your
+  answer, that tab's content process runs at foreground priority (`nsIRemoteTab.priorityHint`).
+  This schedules the whole process, which holds only tabs of the agent container, and neither
+  shows nor renders anything.
   [`test_agent_open_is_background_and_checked`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_a_command_runs_its_tab_at_foreground_priority`](../tests/browser/browser_vimma_mcp_agent.js),
   [`agent-open: only http and https, at most 65536 characters, an optional tab`](../packages/vimma-core/test/control-v2.test.mjs)
 - M7. Page text and the page's selection **must** be capped (`[mcp] max_read_chars`, and the
   1 MiB line), well-formed Unicode, and returned inside the untrusted-content delimiters, which
@@ -2378,7 +2383,9 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   pins the `.dmg`'s SHA-256, and zaps only Vimma's own paths under `~/Library`, never
   `~/.config/vimma`. `macos-smoke` runs `brew style`, an offline `brew audit --cask --strict`, and
   installs the `.dmg` through the cask before anything is signed; `pkgbuild.yml` does the same with
-  a stub `.dmg` on every pull request that changes `tools/package/`. `homebrew.yml`'s `homebrew`
+  a stub `.dmg` on every pull request that changes `tools/package/`. Both load the cask from a
+  throwaway local tap and trust only that one cask (`brew trust --cask`) for the check, so
+  Homebrew's tap trust stays on for every other tap on the runner. `homebrew.yml`'s `homebrew`
   job, which pushes, runs only by `workflow_dispatch` from `main`, and only while
   `MACOS_RELEASE_ENABLED` is `true`; it holds no GitHub token, runs no repository code, and takes `vimma.rb` only from the release's public
   download URLs, which answer 404 for a draft. It checks the cask against `SHA256SUMS-macos` and

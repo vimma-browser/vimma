@@ -8,6 +8,8 @@ import {
   startHints,
   hintKey,
   visibleHints,
+  hintStatus,
+  upperLast,
   HintError,
   parseHintReply,
   HINT_REPLY_MAX_TEXT,
@@ -220,7 +222,12 @@ function feed(state, keys) {
 describe("hint mode", () => {
   test("HINT_ACTIONS are action ids in actions.mjs", () => {
     const ids = new Set(ACTIONS.map((a) => a.id));
-    expect(HINT_ACTIONS).toEqual(["hint.follow", "hint.follow_new_tab", "hint.element"]);
+    expect(HINT_ACTIONS).toEqual([
+      "hint.follow",
+      "hint.follow_new_tab",
+      "hint.follow_new_tab_fg",
+      "hint.element",
+    ]);
     for (const id of HINT_ACTIONS) expect(ids.has(id)).toBe(true);
   });
 
@@ -242,6 +249,7 @@ describe("hint mode", () => {
       action: "hint.follow",
       target: twelve[9],
       label: "ls",
+      switch: false,
     });
     expect(state.typed).toBe("ls");
   });
@@ -252,6 +260,82 @@ describe("hint mode", () => {
       kind: "select",
       action: "hint.follow_new_tab",
       target: twelve[0],
+    });
+  });
+
+  // docs/specs/follow-link-switch.md decisions 1 and 3: the case of gF's last key decides.
+  test("an upper-case last key in gF's hints selects with switch", () => {
+    const s = startHints(twelve, { action: "hint.follow_new_tab" });
+    expect(hintKey(s, key("A")).result).toEqual({
+      kind: "select",
+      action: "hint.follow_new_tab",
+      target: twelve[0],
+      label: "a",
+      switch: true,
+    });
+    expect(feed(s, "l S").results[1]).toMatchObject({ label: "ls", switch: true });
+  });
+
+  test("a lower-case last key in gF's hints selects without switch", () => {
+    const s = startHints(twelve, { action: "hint.follow_new_tab" });
+    expect(hintKey(s, key("a")).result).toMatchObject({ label: "a", switch: false });
+    expect(feed(s, "l s").results[1]).toMatchObject({ label: "ls", switch: false });
+  });
+
+  test("only the last key's case counts", () => {
+    const s = startHints(twelve, { action: "hint.follow_new_tab" });
+    expect(feed(s, "L s").results[1]).toMatchObject({ label: "ls", switch: false });
+    expect(feed(s, "l S").results[1]).toMatchObject({ label: "ls", switch: true });
+    expect(feed(s, "L S").results[1]).toMatchObject({ label: "ls", switch: true });
+  });
+
+  test("the switching action's hints switch in either case", () => {
+    const s = startHints(twelve, { action: "hint.follow_new_tab_fg" });
+    expect(hintKey(s, key("a")).result).toMatchObject({
+      kind: "select",
+      action: "hint.follow_new_tab_fg",
+      target: twelve[0],
+      switch: true,
+    });
+    expect(hintKey(s, key("A")).result).toMatchObject({ switch: true });
+  });
+
+  test("f's and F's hints ignore case and never switch", () => {
+    for (const action of ["hint.follow", "hint.element"]) {
+      const s = startHints(twelve, { action });
+      expect(hintKey(s, key("A")).result, action).toMatchObject({
+        kind: "select",
+        target: twelve[0],
+        switch: false,
+      });
+      expect(hintKey(s, key("a")).result, action).toMatchObject({ switch: false });
+    }
+  });
+
+  test("a last key without upper case does not switch", () => {
+    const s = startHints(twelve.slice(0, 5), { action: "hint.follow_new_tab", chars: "asdf;" });
+    expect(s.hints.map((h) => h.label)).toContain(";");
+    // Shift on `;` types `:`, which no label holds; `;` itself carries no shift.
+    expect(hintKey(s, key(":")).result).toEqual({ kind: "ignored" });
+    expect(hintKey(s, key(";")).result).toMatchObject({ label: ";", switch: false });
+  });
+
+  test("upperLast upper-cases a label's last character, or null without a one-character one", () => {
+    expect(upperLast("sd")).toBe("sD");
+    expect(upperLast("a")).toBe("A");
+    expect(upperLast("a;")).toBe(null);
+    expect(upperLast("a1")).toBe(null);
+    // ß upper-cases to SS, two characters: no key types it.
+    expect(upperLast("aß")).toBe(null);
+  });
+
+  test("hintStatus names the action and the first label still on screen", () => {
+    const s = startHints(twelve, { action: "hint.follow_new_tab" });
+    expect(hintStatus(s)).toEqual({ action: "hint.follow_new_tab", label: "a" });
+    expect(hintStatus(feed(s, "l").state)).toEqual({ action: "hint.follow_new_tab", label: "la" });
+    expect(hintStatus(feed(s, "l s").state)).toEqual({
+      action: "hint.follow_new_tab",
+      label: "ls",
     });
   });
 

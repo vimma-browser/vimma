@@ -151,6 +151,7 @@ Developer tools
 Hints
   follow_link               f                                                 Follow link
   follow_link_new_tab       gF                                                Follow link in new tab
+  follow_link_new_tab_fg    (unbound)                                         Follow link in new tab and switch to it
   focus_element             F, F [element]                                    Focus a text block: v selects it, y copies it
   hint_cancel               esc [hint]                                        Leave hint mode
 
@@ -419,6 +420,7 @@ Developer tools
 Hints
   follow_link               f                                                 Follow link
   follow_link_new_tab       gF                                                Follow link in new tab
+  follow_link_new_tab_fg    (unbound)                                         Follow link in new tab and switch to it
   focus_element             F, F [element]                                    Focus a text block: v selects it, y copies it
   hint_cancel               esc [hint]                                        Leave hint mode
 

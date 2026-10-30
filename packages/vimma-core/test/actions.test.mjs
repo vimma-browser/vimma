@@ -227,6 +227,17 @@ describe("toolbar toggle", () => {
     expect(compileKeymap().bindingsFor("follow_link_new_tab")).toEqual(["gF"]);
   });
 
+  // docs/specs/follow-link-switch.md decision 2.
+  test("follow_link_new_tab_fg is hint.follow_new_tab_fg, in Hints, unbound", () => {
+    expect(getAction("follow_link_new_tab_fg")).toMatchObject({
+      id: "hint.follow_new_tab_fg",
+      group: "Hints",
+      description: "Follow link in new tab and switch to it",
+    });
+    expect(resolveActionName("hint.follow_new_tab_fg")?.name).toBe("follow_link_new_tab_fg");
+    expect(compileKeymap().bindingsFor("follow_link_new_tab_fg")).toEqual([]);
+  });
+
   test("the ELEMENT mode's actions are grouped, and bound only in [modal.element]", () => {
     const km = compileKeymap();
     for (const [name, id, key] of [

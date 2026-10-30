@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/m1-hints.md
+// Spec: docs/specs/m1-hints.md; docs/specs/follow-link-switch.md (gF's upper-case last key)
 
 /* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
 
@@ -22,6 +22,9 @@ const DIR = getRootDirectory(gTestPath).replace(
 const PAGE = DIR + "file_vimma_hints.html";
 const MANY = DIR + "file_vimma_hints_many.html";
 const MENU = DIR + "file_vimma_hints_menu.html";
+const { compileKeymap } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/keymap.mjs",
+);
 const { HintOverlay } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/hint-overlay.mjs",
 );
@@ -294,6 +297,116 @@ add_task(async function gF_opens_the_link_in_a_background_tab() {
     Assert.equal(tab.userContextId, selected.userContextId, "in the same container");
     Assert.ok(browser.currentURI.spec.endsWith("file_vimma_hints.html"), "this tab stayed");
     BrowserTestUtils.removeTab(tab);
+  });
+});
+
+/**
+ * `label` typed with its last character upper case (with Shift), as a user types `sD`.
+ * @param {string} label
+ */
+function typeUpperLast(label) {
+  type(label.slice(0, -1));
+  EventUtils.synthesizeKey(label.slice(-1).toUpperCase(), { shiftKey: true });
+}
+
+/**
+ * Opens l3 from `gF`'s labels (or `key`'s), typed by `typeLabel`; returns the new tab.
+ * @param {XULBrowserElement} browser
+ * @param {(label: string) => void} typeLabel
+ * @param {string} [key]
+ */
+async function openL3(browser, typeLabel, key = "gF") {
+  const label = await labelFor(browser, "l3", key);
+  const opened = BrowserTestUtils.waitForNewTab(gBrowser, (u) => u.endsWith("?to=3"), true);
+  typeLabel(label);
+  return opened;
+}
+
+add_task(async function gF_with_an_upper_case_last_key_opens_and_selects_the_tab() {
+  await withPage(PAGE, async (browser) => {
+    const hinted = gBrowser.selectedTab;
+    const tab = await openL3(browser, typeUpperLast);
+    await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "the new tab is selected");
+    Assert.equal(tab.userContextId, hinted.userContextId, "in the hinted tab's container");
+    Assert.equal(tab.owner, hinted, "the hinted tab owns it");
+    const at = (/** @type {any} */ t) => gBrowser.tabs.indexOf(t);
+    Assert.greater(at(tab), at(hinted), "after the hinted tab in the strip");
+    Assert.ok(browser.currentURI.spec.endsWith("file_vimma_hints.html"), "the hinted tab stayed");
+    await focusContent(tab.linkedBrowser);
+    await waitForMode(tab.linkedBrowser, "normal");
+    const closed = BrowserTestUtils.waitForTabClosing(tab);
+    EventUtils.synthesizeKey("x");
+    await closed;
+    await TestUtils.waitForCondition(() => gBrowser.selectedTab === hinted, "x returns to it");
+  });
+});
+
+add_task(async function gF_ignores_loadInBackground() {
+  await SpecialPowers.pushPrefEnv({ set: [["browser.tabs.loadInBackground", false]] });
+  await withPage(PAGE, async (browser) => {
+    const hinted = gBrowser.selectedTab;
+    const tab = await openL3(browser, type);
+    Assert.equal(gBrowser.selectedTab, hinted, "lower case: still in the background");
+    BrowserTestUtils.removeTab(tab);
+  });
+  await SpecialPowers.pushPrefEnv({ set: [["browser.tabs.loadInBackground", true]] });
+  await withPage(PAGE, async (browser) => {
+    const tab = await openL3(browser, typeUpperLast);
+    await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "upper case: switched");
+    BrowserTestUtils.removeTab(tab);
+  });
+  await SpecialPowers.popPrefEnv();
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function the_switching_action_selects_the_tab_in_either_case() {
+  const mac = Services.appinfo.OS === "Darwin";
+  VimmaHost.configure({
+    keymap: compileKeymap({ modal: { normal: { gl: "hint.follow_new_tab_fg" } } }, { mac }),
+  });
+  try {
+    for (const typeLabel of [type, typeUpperLast]) {
+      await withPage(PAGE, async (browser) => {
+        const hints = await startHints("gl");
+        Assert.equal(hints.action, "hint.follow_new_tab_fg", "the switching action's hints");
+        Assert.equal(hints.hints.length, LINKS.length, "it labels links only");
+        EventUtils.synthesizeKey("KEY_Escape");
+        await TestUtils.waitForCondition(() => !VimmaHost._hints(window), "cancelled");
+        const tab = await openL3(browser, typeLabel, "gl");
+        await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "switched");
+        BrowserTestUtils.removeTab(tab);
+      });
+    }
+  } finally {
+    VimmaHost.configure({ keymap: compileKeymap({}, { mac }) });
+  }
+});
+
+add_task(async function the_status_bar_shows_both_outcomes_in_gF() {
+  const segment = () =>
+    document.querySelector('#vimma-statusbar [data-segment="hint"]')?.textContent ?? null;
+  await withPage(PAGE, async () => {
+    const hints = await startHints("gF");
+    const first = hints.hints[0].label;
+    const upper = first.slice(0, -1) + first.slice(-1).toUpperCase();
+    await TestUtils.waitForCondition(
+      () => segment() === `${first} background · ${upper} go there`,
+      "the bar names both outcomes",
+    );
+    const long = hints.hints.find((/** @type {any} */ h) => h.label.length > 1);
+    if (long) {
+      const prefix = long.label[0];
+      type(prefix);
+      const next = hints.hints.find((/** @type {any} */ h) => h.label.startsWith(prefix)).label;
+      await TestUtils.waitForCondition(
+        () => segment()?.startsWith(`${next} background`),
+        "it follows the typed prefix",
+      );
+    }
+    EventUtils.synthesizeKey("KEY_Escape");
+    await TestUtils.waitForCondition(() => segment() === null, "gone when hint mode ends");
+    await startHints("f");
+    Assert.equal(segment(), null, "f has no hint segment");
   });
 });
 

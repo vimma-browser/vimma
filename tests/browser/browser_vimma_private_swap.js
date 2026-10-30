@@ -22,7 +22,7 @@ const { NAME_MS, PrivateSwap } = ChromeUtils.importESModule(
 const { PARK, encodeBatch, parseClients, planShow, isAllowedRequest } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/hyprswap.mjs",
 );
-const { REPLY_MS } = ChromeUtils.importESModule(
+const { HyprIpc, REPLY_MS } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/hypr/HyprIpc.sys.mjs",
 );
 const { AboutVimma } = ChromeUtils.importESModule(
@@ -1001,6 +1001,28 @@ add_task(async function a_window_named_late_by_openwindow_is_still_found() {
   const priv = await enter();
   Assert.ok(inSlot(priv) && parked(window), "the swap ran with addresses from late events");
   Assert.ok(f.batches.length >= 1);
+});
+
+// Opening a window can hold the main thread past REPLY_MS. Hyprland's reply is then already on
+// its way, queued behind the timeout: it still counts, as a request is only late when Hyprland
+// is. A naming's j/clients lost this way gave up on a window Hyprland had named.
+add_task(async function a_reply_held_up_by_a_busy_main_thread_still_counts() {
+  await start();
+  const reply = HyprIpc.request("j/version");
+  const busyUntil = Date.now() + REPLY_MS + 300;
+  while (Date.now() < busyUntil) {
+    // The main thread does nothing else meanwhile, as during a window's first layout.
+  }
+  Assert.equal(JSON.parse(await reply).tag, "v0.56.2", "the reply is read");
+});
+
+// The timeout still applies when Hyprland itself is late.
+add_task(async function a_reply_hyprland_never_sends_still_times_out() {
+  const f = await start({ mode: "silent" });
+  const asked = Date.now();
+  await Assert.rejects(HyprIpc.request("j/version"), /no reply/, "no reply");
+  Assert.greaterOrEqual(Date.now() - asked, REPLY_MS, "after REPLY_MS");
+  Assert.equal(f.received.length, 1, "the request was sent");
 });
 
 // socket2 does not replay events to a listener that connects late: a lost event is found in

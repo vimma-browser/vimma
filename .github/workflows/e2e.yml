@@ -389,9 +389,16 @@ jobs:
       # Headless. browser_vimma_control.js skips here: this job builds no vimma-ctl.
       # Tests that cannot pass on macOS carry skip-if = ["os == 'mac'"] with an issue in
       # tests/browser/browser.toml.
+      # Issue #605: Firefox on macOS runs the main thread of a background content process (every
+      # hidden tab's) at the background QoS class. A real Mac runs such threads on its efficiency
+      # cores; the hosted runner is a virtual machine without them, where they starved, and the
+      # tests that load and read hidden tabs timed out on every run (15 failures against 1 with
+      # the pref off, docs/runbook.md "macOS mochitests"). Agent commands raise their own tab
+      # (agent-commands.mjs, raisePriority), which browser_vimma_mcp_agent.js checks either way.
       - name: Mochitests (npm run mochitest -- --artifact tests/browser/)
         run: |
-          npm run mochitest -- --artifact "--log-tbpl=$RUNNER_TEMP/mochitest.tbpl.log" tests/browser/
+          npm run mochitest -- --artifact "--log-tbpl=$RUNNER_TEMP/mochitest.tbpl.log" \
+            --setpref=threads.lower_mainthread_priority_in_background.enabled=false tests/browser/
           df -k .
 
       - name: Upload logs (TBPL log, configure log)
