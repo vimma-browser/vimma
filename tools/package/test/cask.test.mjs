@@ -235,7 +235,9 @@ describe("cask-check.sh", () => {
 
   // A global switch would turn tap trust off for every tap on the machine, not this one cask.
   it("never turns tap trust off globally", () => {
-    expect(script).not.toMatch(/HOMEBREW_NO_REQUIRE_TAP_TRUST|brew trust "\$TAP"\s*$/m);
+    expect(script).not.toContain("HOMEBREW_NO_REQUIRE_TAP_TRUST");
+    const trusts = script.split("\n").filter((line) => line.trim().startsWith("brew trust"));
+    expect(trusts.map((line) => line.trim())).toEqual(['brew trust --cask "$TAP/vimma"']);
   });
 });
 
