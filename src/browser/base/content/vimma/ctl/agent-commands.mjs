@@ -573,6 +573,73 @@ async function stepList(conn, tool, what, agent, win, tab, ready, filters) {
   return { .../** @type {{ url: string, title: string }} */ (after ?? before), ...listed };
 }
 
+/** The agent tabs' browsers that commands are running on, and how many commands each. */
+const raised = new Map();
+
+/**
+ * Runs the content process of `browser` at foreground priority until the returned release is
+ * called. An agent works on hidden tabs, whose processes Firefox keeps at background priority,
+ * and on macOS that also puts their main thread at the lowest QoS class
+ * (threads.lower_mainthread_priority_in_background): a page then loads and answers many times
+ * slower than a shown one (issue #605). The tab switcher raises a tab it is about to show the
+ * same way, through nsIRemoteTab.priorityHint, which neither renders nor shows anything. A lazy
+ * tab gets its process during the command, and a load can move the page to another process:
+ * each new frame loader is raised too. Overlapping commands on one tab share the raise.
+ * @param {any} browser XULBrowserElement
+ * @returns {() => void} release
+ */
+function raisePriority(browser) {
+  let entry = raised.get(browser);
+  if (!entry) {
+    /** @type {{ count: number, ours: Set<any>, apply: () => void }} */
+    const e = {
+      count: 0,
+      ours: new Set(),
+      apply() {
+        const remote = browser.frameLoader?.remoteTab;
+        // A hint that is already set belongs to the tab switcher: it stays as it is.
+        if (!remote || remote.priorityHint) return;
+        remote.priorityHint = true;
+        e.ours.add(remote);
+      },
+    };
+    entry = e;
+    raised.set(browser, e);
+    browser.addEventListener("XULFrameLoaderCreated", e.apply);
+    e.apply();
+  }
+  entry.count++;
+  const e = entry;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--e.count > 0) return;
+    raised.delete(browser);
+    browser.removeEventListener("XULFrameLoaderCreated", e.apply);
+    // A tab the user shows meanwhile is the tab switcher's to keep raised.
+    if (browser.docShellIsActive) return;
+    const remote = browser.frameLoader?.remoteTab;
+    if (remote && e.ours.has(remote)) remote.priorityHint = false;
+  };
+}
+
+/**
+ * The release of a raise of the agent tab an agent names by `id`, or null when it names none
+ * that `conn` may see: a command that refuses it then runs as it would.
+ * @param {ConnId} conn @param {unknown} id
+ */
+function raiseNamedTab(conn, id) {
+  if (typeof id !== "string") return null;
+  let found;
+  try {
+    found = agentTabs(agentWorkspace(), conn).find(({ tab }) => tabId(tab) === id);
+  } catch {
+    return null;
+  }
+  return found ? raisePriority(found.tab.linkedBrowser) : null;
+}
+
 /**
  * A tab's page, ready (AgentAct.ready: loaded, or past its DOMContentLoaded and quiet a moment;
  * issue #579): a lazy tab (restored, or unloaded under memory pressure) gets its browser and
@@ -844,7 +911,10 @@ const COMMANDS = {
     // Not for a conversation deleted while the open ran: its tab would belong to no one alive.
     if (isBuiltinConn(conn) && AgentGate.isConnected(conn)) own(tab, conn);
     AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
-    return opened(win, tab, 0);
+    if (!elements) return opened(win, tab, 0);
+    // The page it waits for loads at foreground priority, as on a tab the command names.
+    const release = raisePriority(tab.linkedBrowser);
+    return opened(win, tab, 0).finally(release);
   },
 
   /**
@@ -1676,5 +1746,17 @@ export function runAgentCommand(conn, state, command, args, rid) {
     COMMANDS
   )[command];
   if (!run) throw new AgentError("unknown-command", `unknown command ${command}`);
-  return run(conn, state, args, rid);
+  // The tab the command names runs at foreground priority from the request until its reply,
+  // the wait for the user's answer included (issue #605).
+  const release = command === "agent-hello" ? null : raiseNamedTab(conn, args?.tab);
+  if (!release) return run(conn, state, args, rid);
+  // Started at once, as any other command: questions keep the order their requests came in.
+  let result;
+  try {
+    result = run(conn, state, args, rid);
+  } catch (e) {
+    release();
+    throw e;
+  }
+  return Promise.resolve(result).finally(release);
 }
