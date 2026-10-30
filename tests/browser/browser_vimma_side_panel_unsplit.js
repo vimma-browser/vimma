@@ -12,6 +12,10 @@
 
 /* global focusContent -- from head.js */
 
+const { VimmaHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+
 const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
@@ -495,4 +499,38 @@ add_task(async function another_workspace_in_the_panel_shows_its_own_split() {
     "the first workspace lists two tabs, both panes (the start tab and x)",
   );
   await BrowserTestUtils.closeWindow(win);
+});
+
+// docs/specs/follow-link-switch.md behaviour 5: gF's switching open takes the focused pane, as
+// every new foreground tab does in a split (decision 22), and the hinted tab stays open.
+add_task(async function a_switching_follow_in_a_split_takes_the_focused_pane() {
+  await reset();
+  await split(["a", "b"], "a");
+  const target = `${PAGE}?followed`;
+  await SpecialPowers.spawn(tab("a").linkedBrowser, [target], (href) => {
+    const a = content.document.createElement("a");
+    a.href = href;
+    a.textContent = "followed";
+    a.style.cssText = "position: fixed; top: 10px; left: 10px; z-index: 9";
+    content.document.body.append(a);
+  });
+  await focusContent(tab("a").linkedBrowser);
+  EventUtils.synthesizeKey("g", {});
+  EventUtils.synthesizeKey("F", { shiftKey: true });
+  await until(() => VimmaHost._hints(window)?.hints.length, "gF labels the links");
+  const { label } = VimmaHost._hints(window).hints.find((h) => h.target.href === target);
+  const opened = BrowserTestUtils.waitForNewTab(gBrowser, target, true);
+  for (const c of label.slice(0, -1)) EventUtils.synthesizeKey(c, {});
+  EventUtils.synthesizeKey(label.slice(-1).toUpperCase(), { shiftKey: true });
+  const followed = await opened;
+  byName.set("followed", followed);
+  await until(() => gBrowser.selectedTab === followed, "the new tab is selected");
+  await until(
+    () => shape() === "x[followed,b]" || shape() === "y[followed,b]",
+    "it takes a's pane",
+  );
+  Assert.equal(focusedName(), "followed", "and its focus");
+  Assert.ok(tab("a").parentNode && !tab("a").closing, "the hinted tab stays open");
+  await reset();
+  gBrowser.removeTab(followed);
 });

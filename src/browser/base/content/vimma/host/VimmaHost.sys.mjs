@@ -17,7 +17,7 @@ import {
   isEditable,
   matchSiteRule,
 } from "../core/editable.mjs";
-import { HintError, hintKey, startHints } from "../core/hints.mjs";
+import { HintError, hintKey, hintStatus, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { compileKeymap } from "../core/keymap.mjs";
 import { KEY_KEEPING_MODES } from "../core/modes.mjs";
@@ -1112,6 +1112,7 @@ export const CONTENT_RUNNERS = Object.freeze({
   },
   "hint.follow": (b, a) => VimmaHost._startHints(b, a),
   "hint.follow_new_tab": (b, a) => VimmaHost._startHints(b, a),
+  "hint.follow_new_tab_fg": (b, a) => VimmaHost._startHints(b, a),
   "hint.element": (b, a) => VimmaHost._startHints(b, a),
   // The ELEMENT mode's keys (docs/specs/element-focus.md decision 7).
   "element.visual": (b) => elementOf(b)?.visual(false),
@@ -1735,7 +1736,8 @@ export const VimmaHost = {
    *   workspace?: { name: string, index: number, color?: string, private?: boolean } | null,
    *   agent?: { waiting: number, minutes: number | null, ran: boolean } | null,
    *   update?: import("../core/updates.mjs").UpdateNotice | null,
-   *   element?: import("../core/statusbar.mjs").ElementStatus | null }}
+   *   element?: import("../core/statusbar.mjs").ElementStatus | null,
+   *   hint?: import("../core/statusbar.mjs").HintStatus | null }}
    */
   status(win) {
     const state = states.get(win);
@@ -1758,6 +1760,12 @@ export const VimmaHost = {
       update: VimmaUpdates.notice(),
       // docs/specs/element-focus.md decision 5: `paragraph · 412 chars`.
       element: state.element.status(),
+      // docs/specs/follow-link-switch.md decision 8: `sd background · sD go there`.
+      hint: state.hint
+        ? state.hint.hs
+          ? hintStatus(state.hint.hs)
+          : { action: state.hint.action, label: null }
+        : null,
     };
   },
 
@@ -2556,6 +2564,7 @@ export const VimmaHost = {
           return;
         }
         state.hintOverlay.show(browser, session.hs.hints);
+        this._emit(state); // the status bar's hint segment names a label now
         for (const chord of session.buffered.splice(0)) {
           if (state.hint !== session) break;
           this._hintKey(state, chord);
@@ -2588,6 +2597,7 @@ export const VimmaHost = {
         return;
       case "narrow":
         state.hintOverlay.filter(next.typed);
+        this._emit(state); // the hint segment names the first label left
         return;
       case "select":
         this._cancelHints(state);
@@ -2597,8 +2607,9 @@ export const VimmaHost = {
           if (result.target.kind === "block") state.element.start(session.browser, result.target);
           return;
         }
-        if (result.action === "hint.follow_new_tab") {
-          VimmaActors.openInBackground(session.browser, result.target);
+        if (result.action === "hint.follow_new_tab" || result.action === "hint.follow_new_tab_fg") {
+          // docs/specs/follow-link-switch.md: an upper-case last key, or the switching action.
+          VimmaActors.openInNewTab(session.browser, result.target, { background: !result.switch });
         } else {
           VimmaActors.activateHint(result.target);
         }
