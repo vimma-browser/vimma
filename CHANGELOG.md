@@ -2,10 +2,15 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.12](https://github.com/vimma-browser/vimma/compare/v0.1.11...v0.1.12) (2026-10-30)
+## [Unreleased]
+
+## [0.1.12](https://github.com/vimma-browser/vimma/compare/v0.1.11...v0.1.12) · Firefox 159.0 (2026-10-30)
 
 
 ### Added
+
+- Vimma's own agent: `ctrl+b i` (or `:agent`) opens a chat window where you write a task, watch every step in a plain-text transcript, add instructions or stop it. It runs a model you pick, a local one (Ollama, LM Studio, the llama.cpp server) or a hosted one (Anthropic, or an OpenAI-compatible endpoint, with its API key kept encrypted in login storage). Models are set up in the window's picker, which also switches a conversation's model, or under `[agent]` and `[[agent.providers]]` in `config.toml`, where `local_only`, `max_running` and `keep_days` also live; a refused `config.toml` is named in the window. The agent works only in the agent workspace, through the same tools, grants and checkpoints as an MCP agent. Sending with `Enter` lets the conversation act without asking at each step, `ctrl+Enter` asks at every step, and sending a form or paying always asks in the window. Several conversations run at once, each on its own tabs, with step and token limits, and they are kept across restarts, encrypted, without the page text they read. The help overlay and its snapshots list the new key, `agent_chat` in the Agents group.
+- Agents (MCP): `vimma_open`, `vimma_activate` and `vimma_fill` take `elements: true` and return the page's element list with the step, so an action and the next look are one call. Screenshots default to at most 1024 px, PNG or JPEG, whichever is smaller; `full: true` gives the full-size image.
 
 * **agent:** a local model prunes older results rarely, a hosted one at 6 ([#632](https://github.com/vimma-browser/vimma/issues/632)) ([cfa6793](https://github.com/vimma-browser/vimma/commit/cfa6793ad2e091478af8bd980881b2cbad189d3e))
 * **agent:** a model loop and provider adapters in vimma-core ([#585](https://github.com/vimma-browser/vimma/issues/585)) ([b013457](https://github.com/vimma-browser/vimma/commit/b013457abc8b50710c7dd6fd3e9359f2fc9ed8da))
@@ -24,6 +29,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Fixed
 
+- Agents (MCP): pages that send a `Cross-Origin-Opener-Policy` header open in agent tabs instead of failing with `NS_ERROR_DOM_COOP_FAILED`. Agent tabs keep their pop-up sandbox; such pages lose only `crossOriginIsolated` there ([docs/limits.md](docs/limits.md)).
+- Agents (MCP): a step that lands on Firefox's error page is reported to the agent as an error naming the reason, instead of a success with an empty element list, so an agent no longer opens the same failing page again and again.
+- Workspaces: tab search and the side panel no longer lose a window's tabs after the last window is closed and a new one opened (on macOS, from the Dock), or after a session restore that stops partway; until a restart they listed one tab while the status bar counted them all. The `:bug` report now shows the open tabs beside the workspaces' count and names a restore that never finished.
+
 * **agent:** agent tabs load pages that send an opener policy ([#645](https://github.com/vimma-browser/vimma/issues/645)) ([f6cd389](https://github.com/vimma-browser/vimma/commit/f6cd38943e3cc87fbe6ae70e7d38ce4c2ab7992b)), closes [#640](https://github.com/vimma-browser/vimma/issues/640)
 * **agent:** an open that ends on firefox's error page is an error naming it ([#651](https://github.com/vimma-browser/vimma/issues/651)) ([5f9710b](https://github.com/vimma-browser/vimma/commit/5f9710bfc04acc47c0380e6a0e2bc7ee470c3d1e)), closes [#643](https://github.com/vimma-browser/vimma/issues/643)
 * **agent:** the api key field never reveals the key ([#627](https://github.com/vimma-browser/vimma/issues/627)) ([1ac8c22](https://github.com/vimma-browser/vimma/commit/1ac8c22c54a719bc5726373b603b0549535220b8))
@@ -36,27 +45,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
-* **mcp:** agent clicks and fills wait only while the page is busy ([#582](https://github.com/vimma-browser/vimma/issues/582)) ([6f858f1](https://github.com/vimma-browser/vimma/commit/6f858f12a965d30e15b7e805ec46036046351fd0)), closes [#579](https://github.com/vimma-browser/vimma/issues/579)
-
-## [Unreleased]
-
-### Added
-
-- Vimma's own agent: `ctrl+b i` (or `:agent`) opens a chat window where you write a task, watch every step in a plain-text transcript, add instructions or stop it. It runs a model you pick, a local one (Ollama, LM Studio, the llama.cpp server) or a hosted one (Anthropic, or an OpenAI-compatible endpoint, with its API key kept encrypted in login storage). Models are set up in the window's picker, which also switches a conversation's model, or under `[agent]` and `[[agent.providers]]` in `config.toml`, where `local_only`, `max_running` and `keep_days` also live; a refused `config.toml` is named in the window. The agent works only in the agent workspace, through the same tools, grants and checkpoints as an MCP agent. Sending with `Enter` lets the conversation act without asking at each step, `ctrl+Enter` asks at every step, and sending a form or paying always asks in the window. Several conversations run at once, each on its own tabs, with step and token limits, and they are kept across restarts, encrypted, without the page text they read. The help overlay and its snapshots list the new key, `agent_chat` in the Agents group.
-- Agents (MCP): `vimma_open`, `vimma_activate` and `vimma_fill` take `elements: true` and return the page's element list with the step, so an action and the next look are one call. Screenshots default to at most 1024 px, PNG or JPEG, whichever is smaller; `full: true` gives the full-size image.
-
-### Changed
-
 - Agents (MCP): a label from `vimma_elements` stays valid for as long as its page and element do, instead of expiring after 120 seconds, so a slow model's clicks and fills are no longer refused; labels drawn on a screenshot still expire after 120 seconds.
 - Agents (MCP): element lists are shorter. The explanation that every list repeated is in the `vimma_elements` description, sent once, and a list of a page on a site already listed leaves out the elements identical to the earlier list and names their labels, which still work (`full: true` lists every element). `vimma_elements`, and `elements: true` on `vimma_open`, `vimma_activate` and `vimma_fill`, take `query` and `kinds` filters.
 - Agents (MCP): an agent over a per-minute limit is told which limit it hit, that no question is waiting, and how long to wait, instead of a message saying questions are waiting.
 - Agents (MCP): clicks and fills wait only while the page is busy instead of a fixed second; a fill without a submit returns at once, and a page counts as ready before its slow images finish. Sending a form or paying is caught exactly as before.
 
-### Fixed
-
-- Agents (MCP): pages that send a `Cross-Origin-Opener-Policy` header open in agent tabs instead of failing with `NS_ERROR_DOM_COOP_FAILED`. Agent tabs keep their pop-up sandbox; such pages lose only `crossOriginIsolated` there ([docs/limits.md](docs/limits.md)).
-- Agents (MCP): a step that lands on Firefox's error page is reported to the agent as an error naming the reason, instead of a success with an empty element list, so an agent no longer opens the same failing page again and again.
-- Workspaces: tab search and the side panel no longer lose a window's tabs after the last window is closed and a new one opened (on macOS, from the Dock), or after a session restore that stops partway; until a restart they listed one tab while the status bar counted them all. The `:bug` report now shows the open tabs beside the workspaces' count and names a restore that never finished.
+* **mcp:** agent clicks and fills wait only while the page is busy ([#582](https://github.com/vimma-browser/vimma/issues/582)) ([6f858f1](https://github.com/vimma-browser/vimma/commit/6f858f12a965d30e15b7e805ec46036046351fd0)), closes [#579](https://github.com/vimma-browser/vimma/issues/579)
 
 ## [0.1.11](https://github.com/vimma-browser/vimma/compare/v0.1.10...v0.1.11) · Firefox 159.0 (2026-10-28)
 
