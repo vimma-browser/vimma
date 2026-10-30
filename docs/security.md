@@ -2263,7 +2263,9 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   pins the `.dmg`'s SHA-256, and zaps only Vimma's own paths under `~/Library`, never
   `~/.config/vimma`. `macos-smoke` runs `brew style`, an offline `brew audit --cask --strict`, and
   installs the `.dmg` through the cask before anything is signed; `pkgbuild.yml` does the same with
-  a stub `.dmg` on every pull request that changes `tools/package/`. `homebrew.yml`'s `homebrew`
+  a stub `.dmg` on every pull request that changes `tools/package/`. Both load the cask from a
+  throwaway local tap and trust only that one cask (`brew trust --cask`) for the check, so
+  Homebrew's tap trust stays on for every other tap on the runner. `homebrew.yml`'s `homebrew`
   job, which pushes, runs only by `workflow_dispatch` from `main`, and only while
   `MACOS_RELEASE_ENABLED` is `true`; it holds no GitHub token, runs no repository code, and takes `vimma.rb` only from the release's public
   download URLs, which answer 404 for a draft. It checks the cask against `SHA256SUMS-macos` and

@@ -38,8 +38,19 @@ if [ "${1:-}" = "--stub" ] || [ $# = 2 ]; then
   }
 fi
 
+# Homebrew 6.0 and later refuse to load a cask from a third-party tap that is not trusted, and
+# brew audit loads it. Only the one cask in the throwaway tap is trusted, and the trust goes with
+# the tap; tap trust stays on for everything else. An older Homebrew has no `brew trust` and no
+# such check.
+has_trust() {
+  brew commands --quiet 2> /dev/null | grep -qx trust
+}
+
 work=$(mktemp -d)
 cleanup() {
+  if has_trust; then
+    brew untrust --cask "$TAP/vimma" > /dev/null 2>&1 || true
+  fi
   brew untap --force "$TAP" > /dev/null 2>&1 || true
   rm -rf "$work"
 }
@@ -79,6 +90,9 @@ brew untap --force "$TAP" > /dev/null 2>&1 || true
 brew tap-new --no-git "$TAP" > /dev/null
 mkdir -p "$(brew --repo "$TAP")/Casks"
 cp "$cask" "$(brew --repo "$TAP")/Casks/vimma.rb"
+if has_trust; then
+  brew trust --cask "$TAP/vimma"
+fi
 
 brew style "$TAP/vimma"
 brew audit --cask --strict "$TAP/vimma"

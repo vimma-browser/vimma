@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
@@ -164,6 +164,80 @@ describe("cask-check.sh", () => {
     });
     expect(result.status).toBe(2);
     expect(result.stderr).toMatch(/GitHub Actions/);
+  });
+
+  // Homebrew 6 and later refuse to load a cask from an untrusted third-party tap, brew audit
+  // included. The script trusts only the cask in the throwaway tap it made, and only on a
+  // Homebrew that has `brew trust`; a stub brew on the PATH records what the script asks of it.
+  /**
+   * @param {boolean} hasTrust whether the stub brew knows `brew trust` and `brew untrust`
+   * @returns {{ status: number | null, stderr: string, calls: string[] }}
+   */
+  function runWithStubBrew(hasTrust) {
+    const dir = tempDir("vimma-cask-check-brew-");
+    const bin = join(dir, "bin");
+    const tapRepo = join(dir, "tap");
+    mkdirSync(bin);
+    mkdirSync(tapRepo);
+    const log = join(dir, "brew.log");
+    const commands = hasTrust
+      ? "audit\\ninstall\\nstyle\\ntrust\\nuntrust"
+      : "audit\\ninstall\\nstyle";
+    writeFileSync(
+      join(bin, "brew"),
+      [
+        "#!/bin/bash",
+        `echo "$*" >> '${log}'`,
+        'case "$1" in',
+        `  commands) printf '${commands}\\n' ;;`,
+        `  --repo) echo '${tapRepo}' ;;`,
+        "  --version) echo 'Homebrew 0.0.0' ;;",
+        hasTrust ? "" : '  trust|untrust) echo "Error: Unknown command: brew $1" >&2; exit 1 ;;',
+        "esac",
+        "",
+      ].join("\n"),
+    );
+    chmodSync(join(bin, "brew"), 0o755);
+    const rb = join(dir, "vimma.rb");
+    writeFileSync(rb, cask(input));
+    const result = spawnSync("bash", [path, rb], {
+      encoding: "utf8",
+      env: { PATH: `${bin}:${process.env.PATH ?? ""}`, HOME: dir },
+    });
+    const calls = readFileSync(log, "utf8").trim().split("\n");
+    return { status: result.status, stderr: result.stderr, calls };
+  }
+
+  it("trusts only the throwaway tap's cask before brew loads it, and untrusts it after", () => {
+    const { status, stderr, calls } = runWithStubBrew(true);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    const trust = calls.indexOf("trust --cask vimma-check/local/vimma");
+    expect(trust).toBeGreaterThan(calls.indexOf("tap-new --no-git vimma-check/local"));
+    expect(trust).toBeLessThan(calls.indexOf("style vimma-check/local/vimma"));
+    expect(trust).toBeLessThan(calls.indexOf("audit --cask --strict vimma-check/local/vimma"));
+    expect(calls.filter((call) => /^(un)?trust /.test(call))).toEqual([
+      "trust --cask vimma-check/local/vimma",
+      "untrust --cask vimma-check/local/vimma",
+    ]);
+    expect(calls.indexOf("untrust --cask vimma-check/local/vimma")).toBeLessThan(
+      calls.lastIndexOf("untap --force vimma-check/local"),
+    );
+  });
+
+  it("runs on a Homebrew without brew trust", () => {
+    const { status, stderr, calls } = runWithStubBrew(false);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    expect(calls.filter((call) => /^(un)?trust/.test(call))).toEqual([]);
+    expect(calls).toContain("audit --cask --strict vimma-check/local/vimma");
+  });
+
+  // A global switch would turn tap trust off for every tap on the machine, not this one cask.
+  it("never turns tap trust off globally", () => {
+    expect(script).not.toContain("HOMEBREW_NO_REQUIRE_TAP_TRUST");
+    const trusts = script.split("\n").filter((line) => line.trim().startsWith("brew trust"));
+    expect(trusts.map((line) => line.trim())).toEqual(['brew trust --cask "$TAP/vimma"']);
   });
 });
 
