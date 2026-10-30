@@ -1746,7 +1746,8 @@ export function runAgentCommand(conn, state, command, args, rid) {
     COMMANDS
   )[command];
   if (!run) throw new AgentError("unknown-command", `unknown command ${command}`);
-  // The tab the command names runs at foreground priority while the command runs (issue #605).
+  // The tab the command names runs at foreground priority from the request until its reply,
+  // the wait for the user's answer included (issue #605).
   const release = command === "agent-hello" ? null : raiseNamedTab(conn, args?.tab);
   if (!release) return run(conn, state, args, rid);
   // Started at once, as any other command: questions keep the order their requests came in.

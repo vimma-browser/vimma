@@ -579,6 +579,17 @@ add_task(async function test_a_command_runs_its_tab_at_foreground_priority() {
   Assert.ok(!hint(), "and in the background again once the command is done");
   Assert.ok(tab.hidden && !tab.selected, "the tab stays hidden throughout");
 
+  // Two commands on one tab share the raise: it ends with the last of them.
+  const first = c.request("agent-read", { tab: idOf(tab) });
+  const second = c.request("agent-read", { tab: idOf(tab) });
+  await until(() => AgentGate.waiting.length === 2, "both reads wait");
+  AgentGate.answer(AgentGate.waiting[0].id, { kind: "once" });
+  Assert.ok((await c.response(first)).ok, "the first read answers");
+  Assert.ok(hint(), "while the second still runs, the tab stays raised");
+  await answer({ kind: "once" });
+  Assert.ok((await c.response(second)).ok, "the second read answers");
+  Assert.ok(!hint(), "and the raise ends with it");
+
   // A lazy tab gets its browser, and its process, during the command: that one is raised too.
   Assert.ok(gBrowser.discardBrowser(tab, true), "sanity: the tab could be unloaded");
   let listed = c.request("agent-tabs");
