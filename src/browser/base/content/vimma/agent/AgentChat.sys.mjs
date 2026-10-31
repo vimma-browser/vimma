@@ -30,7 +30,7 @@ import {
   storedRecord,
   taskSummary,
 } from "../core/agent-store.mjs";
-import { failureResult, toolCommand, toolResult } from "../core/agent-results.mjs";
+import { failureResult, rateWaitMs, toolCommand, toolResult } from "../core/agent-results.mjs";
 import {
   localModelState,
   modelChoices,
@@ -61,6 +61,7 @@ const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setInterval: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   // Lazily: the control socket imports the host, which loads this module on demand.
   VimmaControl: "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 });
@@ -342,6 +343,35 @@ async function runTool(c, name, args, { signal }) {
     const message = check.errors.map((e) => e.replace(/^args\./, "")).join("; ");
     return failureResult({ kind: "refused", code: "invalid-args", message });
   }
+  let failure = await runOnce(c, name, args, mapped, rid, signal);
+  if ("content" in failure) return failure;
+  // A used-up rate is waited out once and the call run again (agent-speed S7): the model cannot
+  // wait, and one told to ends its task. Stopping the task ends the wait.
+  const wait = rateWaitMs(failure);
+  if (wait !== null && !signal.aborted) {
+    c.transcript.rateWait(wait);
+    changed();
+    await new Promise((resolve) => {
+      const timer = lazy.setTimeout(resolve, wait);
+      signal.addEventListener("abort", () => {
+        lazy.clearTimeout(timer);
+        resolve(undefined);
+      });
+    });
+    if (!signal.aborted) failure = await runOnce(c, name, args, mapped, nextRid++, signal);
+    if ("content" in failure) return failure;
+  }
+  return failureResult(failure);
+}
+
+/**
+ * One run of a tool call: its result, or the failure that refused it.
+ * @param {Conversation} c @param {string} name @param {Record<string, any>} args
+ * @param {{ command: string, args: any }} mapped @param {number} rid @param {AbortSignal} signal
+ * @returns {Promise<import("../core/agent-results.mjs").CallToolResult
+ *   | import("../core/agent-results.mjs").Failure>}
+ */
+async function runOnce(c, name, args, mapped, rid, signal) {
   const withdraw = () => c.state.cancels?.get(rid)?.();
   signal.addEventListener("abort", withdraw);
   const asked = Date.now();
@@ -350,11 +380,15 @@ async function runTool(c, name, args, { signal }) {
     return toolResult(name, args, result);
   } catch (e) {
     if (!(e instanceof AgentError)) throw e;
-    return failureResult(
-      e.code === "denied"
-        ? { kind: "denied", reason: e.reason ?? "user", waitedS: (Date.now() - asked) / 1000 }
-        : { kind: "refused", code: e.code, message: e.message },
-    );
+    return e.code === "denied"
+      ? {
+          kind: "denied",
+          reason: e.reason ?? "user",
+          waitedS: (Date.now() - asked) / 1000,
+          message: e.message,
+          ...(e.retryAfter ? { retryAfterMs: e.retryAfter } : {}),
+        }
+      : { kind: "refused", code: e.code, message: e.message };
   } finally {
     signal.removeEventListener("abort", withdraw);
   }

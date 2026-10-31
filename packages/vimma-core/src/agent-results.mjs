@@ -10,12 +10,14 @@
 // fails when a sentence here is not in mcp.rs.
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN, untrustedHeader } from "./agent.mjs";
+import { MAX_RETRY_AFTER } from "./control.mjs";
 import { LOAD_ERRORS, NOT_LOADED, errorPageText } from "./load-errors.mjs";
 
 /**
  * @typedef {import("./agent-providers.mjs").ToolContent} ToolContent
  * @typedef {{ content: ToolContent[], isError?: boolean }} CallToolResult
- * @typedef {{ kind: "denied", reason: string, waitedS?: number }
+ * @typedef {{ kind: "denied", reason: string, waitedS?: number, message?: string,
+ *   retryAfterMs?: number }
  *   | { kind: "refused", code: string, message: string }} Failure
  */
 
@@ -651,8 +653,30 @@ export function failureResult(failure) {
   return toolError(failureText(failure));
 }
 
+/**
+ * How long the built-in agent waits before running a call again that a used-up rate refused
+ * (agent-speed S7), or null for any other refusal. The model has no way to wait, and one told
+ * to wait ends its turn, which ends the task; the rate still bounds the calls, only paced.
+ * @param {Failure} failure
+ * @returns {number | null}
+ */
+export function rateWaitMs(failure) {
+  if (failure.kind !== "denied" || failure.reason !== "busy") return null;
+  const ms = failure.retryAfterMs;
+  return typeof ms === "number" && Number.isInteger(ms) && ms > 0 && ms <= MAX_RETRY_AFTER
+    ? ms
+    : null;
+}
+
 /** @param {Failure} failure */
 export function failureText(failure) {
+  if (failure.kind === "denied" && failure.reason === "busy" && failure.retryAfterMs) {
+    // mcp.rs, `Failure::RateLimited` (issue #592): a used-up rate, not questions waiting.
+    return (
+      `Vimma's rate limit for this agent: ${failure.message}. No question is waiting for the ` +
+      `user. The next call is allowed in ${Math.ceil(failure.retryAfterMs / 1000)} s.`
+    );
+  }
   if (failure.kind === "denied") {
     switch (failure.reason) {
       case "user":

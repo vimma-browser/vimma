@@ -628,3 +628,38 @@ addTidyTask(async function test_opened_from_another_workspace_reads_none_of_its_
   Assert.ok(!listed.includes("Agent fixture"), "the main workspace's page is not listed");
   Assert.ok(gBrowser.selectedTab.userContextId !== WorkspaceStore.agent.userContextId);
 });
+
+// agent-speed S7 (issue #601): a used-up rate is waited out for the built-in agent, which
+// cannot wait itself and, told that questions wait for the user, ended its task. The step says
+// so while it waits, and stopping the task ends the wait.
+addTidyTask(async function test_a_used_up_rate_is_waited_out_not_reported_as_questions() {
+  await openChat();
+  const opens = Array.from({ length: 11 }, () => openStep(PAGE));
+  send(script([...opens, { reply: "all opened" }]));
+  const entries = () => AgentChat.transcript(openId()).entries;
+  await until(
+    () => entries().some((e) => /^waiting \d+ s \(rate limit\)$/.test(e.outcome ?? "")),
+    "the eleventh open waits out the open rate",
+  );
+  Assert.ok(AgentChat.get(openId()).running, "the task goes on while it waits");
+  Assert.equal(
+    entries().filter((e) => e.outcome === "ran under grant").length,
+    10,
+    "ten opens ran",
+  );
+  AgentChat.stop(openId());
+  const result = await finished();
+  const refusals = result.messages
+    .filter((/** @type {any} */ m) => m.role === "tool")
+    .flatMap((/** @type {any} */ m) => m.results)
+    .map((/** @type {any} */ r) => r.content.map((/** @type {any} */ c) => c.text).join(""));
+  Assert.ok(
+    !refusals.some((t) => t.includes("waiting in Vimma")),
+    "no result says that questions wait for the user",
+  );
+  Assert.equal(result.outcome, "stopped", "the stop ended the wait");
+  Assert.ok(
+    !entries().some((e) => /\(rate limit\)$/.test(e.outcome ?? "")),
+    "no step still says it waits",
+  );
+});

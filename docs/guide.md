@@ -2198,7 +2198,8 @@ with the rest of your computer.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
   `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots, 30 console reads and 6 `vimma_show` calls a minute, and a minute of silence after three noes
   in a row. A call over one of these rates is refused with the limit it hit and the seconds
-  until the next call is allowed, so the agent waits for the rate, not for you. Its pages get no permission prompts, pop-ups or other
+  until the next call is allowed, so the agent waits for the rate, not for you; Vimma's own
+  agent waits it out by itself, and its step says `waiting 40 s (rate limit)`. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
 

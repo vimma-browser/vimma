@@ -128,13 +128,14 @@ const currentCtl = new Set();
 
 /**
  * The `busy` denial of a used-up rate (issue #592): it names the limit and, to a current
- * vimma-ctl, says when the next call is allowed, so an agent does not wait for a question that
+ * vimma-ctl or a built-in conversation, says when the next call is allowed, so an agent does not wait for a question that
  * is not there.
  * @param {CallRate} rate @param {ConnId} conn @param {string} calls  e.g. "vimma_keys calls"
  */
 function rateDenied(rate, conn, calls) {
   const { message, retryAfter } = rate.refusal(conn, Date.now(), calls);
-  const wait = currentCtl.has(conn) ? retryAfter : undefined;
+  // A built-in conversation reads the result in this process, so it is always current.
+  const wait = currentCtl.has(conn) || isBuiltinConn(conn) ? retryAfter : undefined;
   return new AgentError("denied", message, "busy", wait);
 }
 
