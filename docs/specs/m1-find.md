@@ -39,7 +39,11 @@ What Vimma adds (`host/find.mjs`, class `Find`, one per window, created by `Vimm
   scrolling): remember the page's scroll position (`Vimma:ScrollPosition`), anchor the search
   (below), `gBrowser.getFindBar(tab)`, then `findbar.open()` and focus its field, empty. Not
   `startFind()`: its prefill with the page's selection arrives asynchronously and takes focus
-  back into the bar after `Enter` (it did, in pdf.js).
+  back into the bar after `Enter` (it did, in pdf.js). (Since changed: `/` or `?` while the
+  tab's search is still open but the focus has left its field, after a click on the page, used
+  to do nothing; it now focuses the field again with its text selected, keeping where the search
+  started and taking the key's direction; `Find.start` in `host/find.mjs` and `docs/guide.md`,
+  "Find".)
 - **Keys typed while Firefox creates the bar** (one animation frame on first use per tab) are
   buffered and put into the field, then an `input` event runs the bar's own search; `Enter` and
   `Esc` in that window are queued or cancel. So `/word<Enter>` typed at full speed works and no
