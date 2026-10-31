@@ -56,6 +56,7 @@ browser.jar:
         content/browser/vimma/actors/grep-matcher.mjs     (actors/grep-matcher.mjs)
         content/browser/vimma/services/MozillaServices.sys.mjs (services/MozillaServices.sys.mjs)
         content/browser/vimma/services/WakeLock.sys.mjs (services/WakeLock.sys.mjs)
+        content/browser/vimma/services/ViewedDownloads.sys.mjs (services/ViewedDownloads.sys.mjs)
         content/browser/vimma/workspaces/WorkspaceStore.sys.mjs (workspaces/WorkspaceStore.sys.mjs)
         content/browser/vimma/workspaces/WindowWorkspaces.sys.mjs (workspaces/WindowWorkspaces.sys.mjs)
         content/browser/vimma/workspaces/WorkspaceRouter.sys.mjs (workspaces/WorkspaceRouter.sys.mjs)

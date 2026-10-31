@@ -388,8 +388,11 @@ blocked`, and so on, and the end of each download is announced once (m7-a11y: no
    colour or glyph alone). A private window's segment counts its private downloads only.
 10. **Firefox's panel stops opening for ordinary downloads.** Vimma sets
     `browser.download.alwaysOpenPanel` to `false` and `browser.download.panel.shown` to `true` in
-    `firefox-branding.js`, because with the toolbar hidden the panel brings the whole toolbar over
-    the page for every first download of a burst, and the status-bar segment now carries that news;
+    `firefox-branding.js` (the second already since
+    [#677](https://github.com/vimma-browser/vimma/issues/677), with no panel for a download Firefox
+    opens in a tab of its own, because that panel took focus from the PDF it opened), because with
+    the toolbar hidden the panel brings the whole toolbar over the page for every first download
+    of a burst, and the status-bar segment now carries that news;
     both are needed, since a profile whose panel never showed opens it on its first download
     whatever `alwaysOpenPanel` says (Research). A blocked download (an `error` event, or a spam
     block with no other download running) still opens the panel, because that panel is Firefox's
@@ -581,10 +584,11 @@ Each sub-PR is mergeable and tested on its own; only sub-PR 3 changes the keymap
    states, rows, the key table, the segment. No user-visible change, so no guide or changelog line.
 2. **`feat(statusbar): show downloads in the status bar`.** The status-bar segment for downloads in
    progress and paused, with its view in `host/download-ops.mjs`; `browser.download.alwaysOpenPanel`
-   off and `browser.download.panel.shown` on; mochitests for the segment and the three panel cases;
-   guide "Status bar", "Hiding the toolbar" and "Firefox behaviour Vimma changes". The end states
-   (`done`, `failed`, `blocked`) and their announcements wait for sub-PR 3, because two of them
-   clear only when the picker opens.
+   off (`browser.download.panel.shown` is already on, since
+   [#677](https://github.com/vimma-browser/vimma/issues/677)); mochitests for the segment and the
+   three panel cases; guide "Status bar", "Hiding the toolbar" and "Firefox behaviour Vimma
+   changes". The end states (`done`, `failed`, `blocked`) and their announcements wait for
+   sub-PR 3, because two of them clear only when the picker opens.
 3. **`feat(downloads): ctrl+b d opens a downloads picker`.** The action, `:downloads`, the picker
    kind with listing, live updates, filter, `o`, `shift+o`, `s`, `y`, `shift+y`, `u`, `shift+l`,
    and `Enter` as open; the segment's end states and announcements; the agent and private tests; C2 widened and the new docs/security.md section with D1, D2, D4 and
