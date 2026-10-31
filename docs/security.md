@@ -1107,10 +1107,15 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   when asked and before the question, are `busy`, so a refused show cannot be retried in a loop.
   A `busy` denial for a used-up rate (M20's keys and shows, M3's opens and M32's lists, clicks,
   fills, screenshots and console reads) names the limit and, to a vimma-ctl at least as new as
-  Vimma, carries `retryAfter`, the milliseconds from 1 to 60000 until the next call is allowed,
-  so an agent waits for the rate rather than for a question that is not there (issue #592); the
-  validators take `retryAfter` on a `busy` denial only. It is learnt from the connection's own
-  calls alone, and the refusal still comes before anything else is learnt.
+  Vimma or a built-in conversation, carries `retryAfter`, the milliseconds from 1 to 60000 until
+  the next call is allowed, so an agent waits for the rate rather than for a question that is
+  not there (issue #592); the validators take `retryAfter` on a `busy` denial only. It is learnt
+  from the connection's own calls alone, and the refusal still comes before anything else is
+  learnt. The built-in agent's runner waits out such a refusal once (at most 60 s, ended by
+  stopping the task) and runs the call again, through every check and the rate again, so the
+  rate paces the agent and bounds it as before (agent-speed S7, issue #601). `vimma-ctl mcp`
+  sends at most 4 requests of a connection at once, as many as Vimma takes in flight; the rest
+  of its 16 wait in vimma-ctl, so a model's parallel calls are not refused as `busy`.
   [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
   [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),
@@ -1119,6 +1124,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`retryAfter: 1 to 60000 whole milliseconds, on a busy denial only`](../packages/vimma-core/test/control-v2.test.mjs),
   [`a_rate_limit_names_the_limit_and_the_wait`](../tools/vimma-ctl/src/mcp.rs),
   [`a_busy_denial_with_retry_after_is_a_rate_limit`](../tools/vimma-ctl/src/mcp_serve.rs),
+  [`a used-up rate`](../packages/vimma-core/test/agent-results.test.mjs),
+  [`test_a_used_up_rate_is_waited_out_not_reported_as_questions`](../tests/browser/browser_vimma_agent_chat.js),
+  [`calls_past_vimmas_four_in_flight_wait_here_and_all_run`](../tools/vimma-ctl/tests/mcp.rs),
   [`test_loads_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_follows_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_follow.js),
   [`a label is lowercase hint characters, at most the longest label of 200 links`](../packages/vimma-core/test/agent-keys.test.mjs),

@@ -137,6 +137,16 @@ export class Transcript {
   }
 
   /**
+   * The running step waits out a used-up rate before it runs again (agent-speed S7).
+   * @param {number} ms
+   */
+  rateWait(ms) {
+    if (!this.step) return;
+    this.step.outcome = `waiting ${Math.ceil(ms / 1000)} s (rate limit)`;
+    this.version++;
+  }
+
+  /**
    * One of the loop's events.
    * @param {TaskEvent} e
    */
@@ -161,7 +171,11 @@ export class Transcript {
         if (!step) return;
         // The gate's outcome stays; a step it never asked about either ran or was refused by
         // the agent commands (a tab that is not the conversation's, arguments out of range).
-        if (step.outcome === "…" || step.outcome === "asking you") {
+        if (
+          step.outcome === "…" ||
+          step.outcome === "asking you" ||
+          step.outcome?.endsWith("(rate limit)")
+        ) {
           step.outcome = e.result.isError ? "refused" : "done";
         }
         this.version++;
@@ -231,7 +245,12 @@ export class Transcript {
   end(result) {
     const running = this.step;
     this.step = null;
-    if (running && (running.outcome === "…" || running.outcome === "asking you")) {
+    if (
+      running &&
+      (running.outcome === "…" ||
+        running.outcome === "asking you" ||
+        running.outcome?.endsWith("(rate limit)"))
+    ) {
       running.outcome = "withdrawn";
     }
     // docs/specs/builtin-agent-cli.md Behaviour 15: kept on the end line, which stays after the

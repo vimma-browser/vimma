@@ -273,7 +273,9 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    at least a minute of loads, which fits the goal. A refusal that names the rate and when the
    next call is allowed lets a model wait instead of retrying, as
    [agent-bench.md](../agent-bench.md) found; that change is
-   [#594](https://github.com/vimma-browser/vimma/pull/594), outside this spec.
+   [#594](https://github.com/vimma-browser/vimma/pull/594), outside this spec. The built-in
+   agent gets the same refusal and its runner waits it out once and runs the call again,
+   because a model has no way to wait and one told to ends its task (issue #601).
 8. **Local models: GPU, the right model, thinking off for steps** (S8). The bench machine's
    GPU is unused because Ollama leaves out integrated GPUs by default (Research); the runbook
    and the guide give the setting, and the bench records where each model ran (`ollama ps`).
