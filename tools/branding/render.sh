@@ -7,7 +7,9 @@
 #   -crop 470x367+284+228 +repage -background none -gravity center -extent 512x512
 # then laid over a solid dark window, so the icon reads on light desktops too (the key leaves the
 # panes see-through): roundrectangle 30,81 481,419 20,20 in rgb(8,12,16), its lower pane
-# (y >= 283) rgb(14,18,26); the corners outside the frame stay transparent.
+# (y >= 283) rgb(14,18,26); the corners outside the frame stay transparent. The mark, like the
+# other logo images in docs/assets/ and vimma/start/vimma-logo.png, was then turned from mint to
+# aqua with `magick IN -modulate 100,100,111.1 OUT` (a 20 degree hue turn).
 # Needs ImageMagick (magick). Re-run after replacing the mark or document-pdf.svg, and commit
 # the outputs.
 set -euo pipefail
@@ -58,7 +60,7 @@ cp document-pdf.svg content/document_pdf.svg
 png 192 content/about-logo-private.png
 png 384 content/about-logo-private@2x.png
 png 200 "$tmp/about-logo.png"
-magick -size 300x236 xc:'#1a1b26' "$tmp/about-logo.png" -gravity center -composite content/about.png
+magick -size 300x236 xc:'#071011' "$tmp/about-logo.png" -gravity center -composite content/about.png
 
 # Strip timestamps so re-running does not churn the committed PNGs.
 for f in logo*.png content/*.png; do magick "$f" -strip -define png:exclude-chunks=date,time "$f"; done

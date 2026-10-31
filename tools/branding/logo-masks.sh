@@ -5,12 +5,12 @@
 # a light one). Source: the transparent logo, src/browser/base/content/vimma/start/vimma-logo.png.
 #
 # Each output is white with only an alpha channel that matters (CSS mask-image reads alpha):
-#   coverage = source alpha * brightness, where brightness = max(R,G,B) normalised to the mint's
+#   coverage = source alpha * brightness, where brightness = max(R,G,B) normalised to the aqua's
 #   0.95. The logo was keyed off a near-black background, so its dark streaks and edges are
 #   partly transparent already and partly dark colour; folding brightness into coverage keeps the
 #   brush texture on any background, and drops the near-black translucent pane fill, which is not
 #   a theme colour.
-#   part = HSV saturation: below 0.15 is the white wordmark, above 0.30 the mint mark, a ramp
+#   part = HSV saturation: below 0.15 is the white wordmark, above 0.30 the aqua mark, a ramp
 #   between, so the anti-aliased edges are split smoothly (the two parts never touch).
 # Both are cropped to the artwork's box (349x287 at +83+114, with a 2 px margin) so CSS can
 # size them without padding. Needs ImageMagick (magick). Re-run after replacing the logo, and

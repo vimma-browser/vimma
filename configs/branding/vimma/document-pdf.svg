@@ -3,8 +3,8 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!-- vimma-placeholder: generic PDF document icon (spec m0-branding). -->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <path d="M48 16h112l48 48v176H48z" fill="#c0caf5"/>
-  <path d="M160 16v48h48z" fill="#7aa2f7"/>
-  <rect x="64" y="148" width="128" height="56" rx="8" fill="#1a1b26"/>
-  <path d="M84 192v-32h14a8 8 0 0 1 0 16H84M118 160v32h10a16 16 0 0 0 0-32zM160 192v-32h20M160 176h14" fill="none" stroke="#7aa2f7" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M48 16h112l48 48v176H48z" fill="#c3efe6"/>
+  <path d="M160 16v48h48z" fill="#2cf5d2"/>
+  <rect x="64" y="148" width="128" height="56" rx="8" fill="#071011"/>
+  <path d="M84 192v-32h14a8 8 0 0 1 0 16H84M118 160v32h10a16 16 0 0 0 0-32zM160 192v-32h20M160 176h14" fill="none" stroke="#2cf5d2" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

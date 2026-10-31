@@ -350,6 +350,10 @@ green), and the latest-release badge in the mint accent, `color=1bf587`, as the 
 looks for first. The CI badge keeps shields.io's status colours, which carry meaning. The AUR
 badge takes the same palette.)
 
+(Since changed: the brand moved from mint to the aqua palette, so the badges follow it:
+`labelColor=071011` (the teal-black background), `color=123532` (the selection), and the
+latest-release badge in the aqua accent, `color=2cf5d2`.)
+
 1. **The release badges wait for the first release.** Before a release both would read "0" or
    "no releases", which tells a reader nothing, so they are added with the first published
    release and not earlier.
