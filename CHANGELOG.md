@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.14](https://github.com/vimma-browser/vimma/compare/v0.1.13...v0.1.14) (2026-10-31)
+## [Unreleased]
+
+## [0.1.14](https://github.com/vimma-browser/vimma/compare/v0.1.13...v0.1.14) · Firefox 159.0 (2026-10-31)
 
 
 ### Added
@@ -16,8 +18,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **agent:** a used-up rate is waited out, not read as questions waiting ([#694](https://github.com/vimma-browser/vimma/issues/694)) ([ec98fd0](https://github.com/vimma-browser/vimma/commit/ec98fd015d38e0f4940740edd50d1026bc592280))
 * **agent:** run an agent cli through the link setup found, so version manager shims work ([#675](https://github.com/vimma-browser/vimma/issues/675)) ([f9c86d8](https://github.com/vimma-browser/vimma/commit/f9c86d8a0158071f6db8733ec7ddb2b948a3d37a)), closes [#674](https://github.com/vimma-browser/vimma/issues/674)
 * **downloads:** a pdf served as a download takes vimma's keys at once ([#679](https://github.com/vimma-browser/vimma/issues/679)) ([dea8221](https://github.com/vimma-browser/vimma/commit/dea8221998fc9112c0681a1f9b708f6e775cd30f)), closes [#677](https://github.com/vimma-browser/vimma/issues/677)
-
-## [Unreleased]
 
 ## [0.1.13](https://github.com/vimma-browser/vimma/compare/v0.1.12...v0.1.13) · Firefox 159.0 (2026-10-30)
 
