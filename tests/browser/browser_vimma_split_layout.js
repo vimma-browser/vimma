@@ -162,7 +162,7 @@ add_task(async function split_right_then_down_puts_three_live_panes_at_core_rect
   const light = window.matchMedia("(prefers-color-scheme: light)").matches;
   Assert.equal(
     getComputedStyle(tabpanels()).backgroundColor,
-    light ? "rgb(163, 176, 169)" : "rgb(42, 61, 54)",
+    light ? "rgb(160, 179, 175)" : "rgb(35, 64, 64)",
     "the pane border is the theme's muted colour",
   );
   assertRects(expected(state, tabs), "L shape");

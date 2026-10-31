@@ -6,8 +6,8 @@
    values as fallbacks (core/theme.mjs), as on the start page. Nothing animates. */
 
 :root {
-  background: var(--vimma-bg, #0a0f12);
-  color: var(--vimma-fg, #c4cec8);
+  background: var(--vimma-bg, #071011);
+  color: var(--vimma-fg, #c2d6d3);
   font-family: var(--vimma-font, monospace);
   font-size: 14px;
 }
@@ -40,7 +40,7 @@ h1 {
 h2 {
   margin: 1.75rem 0 0.5rem;
   font-size: 1rem;
-  color: var(--vimma-text-accent, #1bf587);
+  color: var(--vimma-text-accent, #2cf5d2);
 }
 
 .hint,
@@ -58,11 +58,11 @@ button {
 }
 
 button:focus-visible {
-  outline: 2px solid var(--vimma-focus, #1bf587);
+  outline: 2px solid var(--vimma-focus, #2cf5d2);
 }
 
 #status {
-  color: var(--vimma-text-accent, #1bf587);
+  color: var(--vimma-text-accent, #2cf5d2);
 }
 
 dl {
@@ -104,7 +104,7 @@ tr.overridden td {
 
 tr.overridden td:first-child::before {
   content: "* ";
-  color: var(--vimma-text-accent, #1bf587);
+  color: var(--vimma-text-accent, #2cf5d2);
 }
 
 .error {
@@ -136,5 +136,5 @@ pre.command {
 }
 
 a {
-  color: var(--vimma-text-accent, #1bf587);
+  color: var(--vimma-text-accent, #2cf5d2);
 }

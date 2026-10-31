@@ -98,11 +98,11 @@ add_task(async function bar_uses_theme_tokens() {
   const style = getComputedStyle(document.documentElement);
   Assert.equal(
     style.getPropertyValue("--vimma-statusbar-bg").trim(),
-    "#070b0d",
+    "#050c0d",
     "the built-in vimma tokens are defined on the window root",
   );
   const b = getComputedStyle(bar());
-  Assert.equal(b.backgroundColor, "rgb(7, 11, 13)", "the bar's background is the token");
+  Assert.equal(b.backgroundColor, "rgb(5, 12, 13)", "the bar's background is the token");
   await SpecialPowers.popPrefEnv();
 });
 

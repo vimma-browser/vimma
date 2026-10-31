@@ -121,73 +121,76 @@ const READ_KEYS = Object.freeze([
 ]);
 
 /**
- * Vimma's own palette, dark: vimma.dev's colours (assets/css/site.css in vimma-browser/vimma-site).
- * Mint is the accent (the normal-mode badge, focus) and the link hints; body text stays the
- * site's grey-green. Keys marked "derived" have no colour on the site: each is picked to sit with
- * the site's yellow, red and greens at about their lightness and saturation.
+ * Vimma's own palette, dark: vimma.dev's "Aqua Split" colours (assets/css/site.css in
+ * vimma-browser/vimma-site). The aqua is the accent (the normal-mode badge, focus); the magenta,
+ * the palette's second neon, is the link hints; body text stays the site's grey-aqua. Keys marked
+ * "derived" have no colour on the site: each is picked to sit with the site's yellow, red and
+ * neons at about their lightness and saturation. The site's --green is a shade of the aqua, so
+ * green here is a true green: it is the insert badge, and must not read as normal's aqua.
  * @type {Readonly<Palette>}
  */
 export const VIMMA_DARK = Object.freeze({
   mode: "dark",
-  accent: "#1bf587", // --accent, the mint
-  selection: "#163327", // --selection
-  muted: "#2a3d36", // --border
-  background: "#0a0f12", // --bg
-  dark_background: "#070b0d", // --bg-dark
-  darker_background: "#040708", // --bg-darker
-  lighter_background: "#111a1b", // --bg-light
-  foreground: "#c4cec8", // --fg, the grey-green body text
-  dark_foreground: "#849690", // --fg-muted
-  light_foreground: "#e0e4df", // derived: halfway from --fg to --fg-bright
-  bright_foreground: "#fcfbf7", // --fg-bright, the wordmark
+  accent: "#2cf5d2", // --accent, the aqua
+  selection: "#123532", // --selection
+  muted: "#234040", // --border
+  background: "#071011", // --bg, the logo's tile
+  dark_background: "#050c0d", // --bg-dark
+  darker_background: "#030708", // --bg-darker
+  lighter_background: "#0e1b1c", // --bg-light
+  foreground: "#c2d6d3", // --fg, the grey-aqua body text
+  dark_foreground: "#7f9a96", // --fg-muted
+  light_foreground: "#dbeae8", // derived: halfway from --fg to --fg-bright
+  bright_foreground: "#f5fffd", // --fg-bright, the wordmark
   red: "#ff6b6b", // --red
   yellow: "#f2c94c", // --yellow
   orange: "#f59e5b", // derived: between --yellow and --red
-  green: "#8eeeb8", // --green
-  cyan: "#5fd7c9", // derived: a sea-green teal next to the mint
-  blue: "#6cb4ee", // derived: a soft sky blue
-  magenta: "#c79bf0", // derived: a soft violet
+  green: "#9be37a", // derived: a leaf green, well apart from the aqua
+  cyan: "#5cc8f0", // derived: a sky cyan, bluer than the aqua
+  blue: "#7b9cf5", // derived: a soft periwinkle, apart from the cyan
+  magenta: "#ff4fb8", // --neon, the magenta: the link hints
   brown: "#a67c52", // derived: a warm tan, for the resize badge
   bright_red: "#ff8f8f", // derived: --red, lighter
   bright_yellow: "#ffdd7a", // derived: --yellow, lighter
-  bright_green: "#1bf587", // --mint: the link hints
-  bright_cyan: "#8af0e2", // derived: cyan, lighter
-  bright_blue: "#9ccdff", // derived: blue, lighter
-  bright_magenta: "#dcb8ff", // derived: magenta, lighter
+  bright_green: "#c0f29e", // derived: green, lighter
+  bright_cyan: "#9af2e2", // --green on the site: the aqua, paler
+  bright_blue: "#a9c0ff", // derived: blue, lighter
+  bright_magenta: "#c79bf0", // derived: a violet beside the magenta, for the element badge
 });
 
 /**
- * Vimma's own palette, light: vimma.dev under prefers-color-scheme: light. The accent is the
- * site's deep green; the hints keep the mint, with dark text on it.
+ * Vimma's own palette, light: vimma.dev under prefers-color-scheme: light. The aqua is too pale
+ * for text on an off-white, so the accent is the site's deep teal of the same hue and the hints
+ * its deep berry magenta, with light text on it.
  * @type {Readonly<Palette>}
  */
 export const VIMMA_LIGHT = Object.freeze({
   mode: "light",
-  accent: "#056a39", // --accent
-  selection: "#c6efd8", // --selection
-  muted: "#a3b0a9", // --border
-  background: "#f5f4ef", // --bg
-  dark_background: "#eae9e2", // --bg-dark
-  darker_background: "#e1e0d8", // --bg-darker
-  lighter_background: "#fcfbf7", // --bg-light
-  foreground: "#1d2924", // --fg
-  dark_foreground: "#4b5a53", // --fg-muted
-  light_foreground: "#34413b", // derived: halfway from --fg to --fg-muted
-  bright_foreground: "#0a0f12", // --fg-bright
+  accent: "#006b5e", // --accent, the deep teal
+  selection: "#c3efe6", // --selection
+  muted: "#a0b3af", // --border
+  background: "#f3f6f4", // --bg
+  dark_background: "#e7ecea", // --bg-dark
+  darker_background: "#dde3e1", // --bg-darker
+  lighter_background: "#fbfdfc", // --bg-light
+  foreground: "#1b2a28", // --fg
+  dark_foreground: "#4a5b58", // --fg-muted
+  light_foreground: "#324240", // derived: halfway from --fg to --fg-muted
+  bright_foreground: "#071011", // --fg-bright
   red: "#a1232d", // --red
   yellow: "#7a5200", // --yellow
   orange: "#9a4500", // derived: between --yellow and --red
-  green: "#2a5a40", // --green
-  cyan: "#0b5c4e", // --accent-2, the site's teal
-  blue: "#1f5f99", // derived: a deep blue at --green's depth
-  magenta: "#7b3f99", // derived: a deep violet
+  green: "#3a6b1a", // derived: a deep leaf green, apart from the teal
+  cyan: "#00708a", // derived: a deep sky cyan, bluer than the teal
+  blue: "#2b4fa8", // derived: a deep blue, apart from the cyan
+  magenta: "#b0226f", // --neon, the deep berry: the link hints
   brown: "#6b4a2b", // derived: a dark tan
   bright_red: "#c2303b", // derived: --red, brighter
   bright_yellow: "#946400", // derived: --yellow, brighter
-  bright_green: "#1bf587", // --mint: the link hints
-  bright_cyan: "#0e7666", // derived: cyan, brighter
-  bright_blue: "#2b70b5", // derived: blue, brighter
-  bright_magenta: "#9150b3", // derived: magenta, brighter
+  bright_green: "#4a8a22", // derived: green, brighter
+  bright_cyan: "#0a87a3", // derived: cyan, brighter
+  bright_blue: "#3a63c4", // derived: blue, brighter
+  bright_magenta: "#7b3f99", // derived: a deep violet beside the magenta, for the element badge
 });
 
 /** Omarchy's stock tokyo-night colors.toml, built in as `[theme] name = "tokyo-night"` (dark). */
@@ -247,11 +250,12 @@ export const APPEARANCES = Object.freeze(/** @type {Appearance[]} */ (["system",
 
 /**
  * Tokens a built-in takes from another palette key than THEME_TOKENS says: vimma's link hints
- * are the mint (bright_green), as on vimma.dev, where an Omarchy theme's are its yellow.
+ * are its magenta, the second neon of vimma.dev's palette, where an Omarchy theme's are its
+ * yellow.
  * @type {Readonly<Record<string, Readonly<Record<string, string>>>>}
  */
 const BUILTIN_ROLES = Object.freeze({
-  vimma: Object.freeze({ "--vimma-hint-bg": "bright_green" }),
+  vimma: Object.freeze({ "--vimma-hint-bg": "magenta" }),
 });
 
 /**

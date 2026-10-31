@@ -780,8 +780,10 @@ everywhere inside the prompt.
 The status bar, the command line, the `ctrl+b ?` overlay, the pickers and prompts, link hints,
 notices, pane borders and the start page share one theme, and so do Firefox's toolbar, its
 address bar and suggestions, and the prompts and panels that hang from it. Out of the box it is Vimma's own,
-the palette of [vimma.dev](https://vimma.dev): near-black surfaces, grey-green text, and mint
-for the accent, the normal-mode badge and link hints. It has a dark and a light variant, and by
+the "Aqua Split" palette of [vimma.dev](https://vimma.dev): near-black surfaces, grey-aqua text,
+aqua for the accent and the normal-mode badge, and magenta for link hints, so the labels stand
+apart from the accent you see everywhere else. It has a dark and a light variant (the light one
+takes a deep teal and a deep berry in their place, which read on its off-white), and by
 default it follows your system's or Firefox's light or dark setting (`prefers-color-scheme`),
 switching the moment that changes, without a reload. Firefox's own focus rings follow the theme
 too: the address bar's focus ring and the 3 px border of the focused pane in a split are the

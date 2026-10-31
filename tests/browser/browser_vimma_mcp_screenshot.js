@@ -282,7 +282,7 @@ add_task(async function test_screenshot_is_smaller_unless_asked_full() {
   Assert.ok(r.result.labels > 0, "labels are drawn");
   const labelled = await decode(r.result);
   const style = getComputedStyle(document.documentElement);
-  const hint = rgb(style.getPropertyValue("--vimma-hint-bg").trim() || "#1bf587");
+  const hint = rgb(style.getPropertyValue("--vimma-hint-bg").trim() || "#ff4fb8");
   // In the label's left padding, halfway down: its colour, clear of the letters and corners.
   const at = labelled.at(go.x * scale + 1, go.y * scale + 7 * scale);
   Assert.ok(near(at, hint, 24), `the button's label at its scaled corner: ${at} vs ${hint}`);
@@ -339,7 +339,7 @@ add_task(async function test_screenshot_draws_labels() {
   const labelled = await decode(r.result);
   const scale = r.result.width / tab.linkedBrowser.getBoundingClientRect().width;
   const style = getComputedStyle(document.documentElement);
-  const hint = rgb(style.getPropertyValue("--vimma-hint-bg").trim() || "#1bf587");
+  const hint = rgb(style.getPropertyValue("--vimma-hint-bg").trim() || "#ff4fb8");
   const corner = [go.x * scale + 2, go.y * scale + 2];
   Assert.ok(
     near(labelled.at(...corner), hint),
