@@ -9,8 +9,8 @@
 :root {
   height: 100%;
   overflow: hidden;
-  background: var(--vimma-bg, #0a0f12);
-  color: var(--vimma-fg, #c4cec8);
+  background: var(--vimma-bg, #071011);
+  color: var(--vimma-fg, #c2d6d3);
   color-scheme: var(--vimma-color-scheme, dark);
   font-family: var(--vimma-font, monospace);
 }
@@ -44,7 +44,7 @@ main {
 /* the keys themselves in the text colour, a step brighter than the hint around them */
 kbd {
   font: inherit;
-  color: var(--vimma-fg, #c4cec8);
+  color: var(--vimma-fg, #c2d6d3);
 }
 
 /* Vimma's version and the Firefox it is built on: a quiet line at the bottom, out of the flow so

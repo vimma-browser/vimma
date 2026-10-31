@@ -9,8 +9,8 @@
 
 :root {
   min-height: 100%;
-  background: var(--vimma-bg, #0a0f12);
-  color: var(--vimma-fg, #c4cec8);
+  background: var(--vimma-bg, #071011);
+  color: var(--vimma-fg, #c2d6d3);
   color-scheme: var(--vimma-color-scheme, dark);
   font-family: var(--vimma-font, monospace);
   font-size: 15px;
@@ -59,25 +59,25 @@ button {
   border-radius: 6px;
   border: 1px solid var(--vimma-muted, #3b4252);
   background: transparent;
-  color: var(--vimma-fg, #c4cec8);
+  color: var(--vimma-fg, #c2d6d3);
   cursor: pointer;
 }
 
 button:focus-visible,
 button:focus {
   outline: none;
-  border-color: var(--vimma-text-accent, #1bf587);
-  background: var(--vimma-mode-normal, #1bf587);
-  color: var(--vimma-mode-normal-fg, #0a0f12);
+  border-color: var(--vimma-text-accent, #2cf5d2);
+  background: var(--vimma-mode-normal, #2cf5d2);
+  color: var(--vimma-mode-normal-fg, #071011);
 }
 
 button:focus kbd {
-  color: var(--vimma-mode-normal-fg, #0a0f12);
+  color: var(--vimma-mode-normal-fg, #071011);
 }
 
 kbd {
   font: inherit;
-  color: var(--vimma-text-accent, #1bf587);
+  color: var(--vimma-text-accent, #2cf5d2);
 }
 
 button kbd {
@@ -95,7 +95,7 @@ button kbd {
 
 .progress {
   margin: 0;
-  color: var(--vimma-text-accent, #1bf587);
+  color: var(--vimma-text-accent, #2cf5d2);
   font-size: 0.8rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -134,7 +134,7 @@ h1 {
 }
 
 .search:focus-within {
-  border-color: var(--vimma-text-accent, #1bf587);
+  border-color: var(--vimma-text-accent, #2cf5d2);
 }
 
 .search input {
@@ -169,11 +169,11 @@ h1 {
 
 .list li[aria-current] {
   background: var(--vimma-selection, #1c2a2f);
-  border-inline-start-color: var(--vimma-text-accent, #1bf587);
+  border-inline-start-color: var(--vimma-text-accent, #2cf5d2);
 }
 
 .list .mark {
-  color: var(--vimma-text-accent, #1bf587);
+  color: var(--vimma-text-accent, #2cf5d2);
 }
 
 .list li.disabled .mark {

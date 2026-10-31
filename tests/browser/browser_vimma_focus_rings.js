@@ -77,12 +77,12 @@ async function focusedOn(el, what) {
  * `node`'s ring: a solid 2px --vimma-focus outline, never the UA's `auto` (painted in the system
  * accent, not in outline-color).
  */
-function expectMintRing(node, what) {
+function expectAquaRing(node, what) {
   const style = getComputedStyle(node);
   Assert.notEqual(style.outlineStyle, "auto", `${what}: not the UA's native (blue) focus ring`);
   Assert.equal(style.outlineStyle, "solid", `${what}: a solid ring`);
   Assert.equal(style.outlineWidth, "2px", `${what}: 2px wide`);
-  Assert.equal(style.outlineColor, rgb(VIMMA_DARK.accent), `${what}: in --vimma-focus (mint)`);
+  Assert.equal(style.outlineColor, rgb(VIMMA_DARK.accent), `${what}: in --vimma-focus (aqua)`);
 }
 
 /**
@@ -105,7 +105,7 @@ function expectNoRingAndAPrompt(input, row, what) {
 add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({ set: [["ui.systemUsesDarkTheme", 1]] });
   await until(() => token("--vimma-color-scheme") === "dark", "vimma dark");
-  Assert.equal(token("--vimma-focus"), VIMMA_DARK.accent, "--vimma-focus is vimma dark's mint");
+  Assert.equal(token("--vimma-focus"), VIMMA_DARK.accent, "--vimma-focus is vimma dark's aqua");
   registerCleanupFunction(async () => {
     for (const id of [
       "vimma-help",
@@ -128,20 +128,20 @@ add_task(async function setup() {
   });
 });
 
-add_task(async function side_panel_list_has_a_mint_ring() {
+add_task(async function side_panel_list_has_a_aqua_ring() {
   const tab = await openPage();
   prefix("b");
   const list = await focusedOn(
     () => document.querySelector("#vimma-panel:not([hidden]) [role=listbox]"),
     "the side panel's list",
   );
-  expectMintRing(list, "side panel list");
+  expectAquaRing(list, "side panel list");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => document.activeElement === tab.linkedBrowser, "the panel closes");
   gBrowser.removeTab(tab);
 });
 
-add_task(async function bookmarks_tree_and_filter_have_mint_rings() {
+add_task(async function bookmarks_tree_and_filter_have_aqua_rings() {
   const model = WindowWorkspaces.get(window).model;
   const active = model.workspaces.find((w) => w.id === model.active).name;
   const [folder] = await PlacesUtils.bookmarks.insertTree({
@@ -162,13 +162,13 @@ add_task(async function bookmarks_tree_and_filter_have_mint_rings() {
     "the bookmarks tree",
   );
   await until(() => tree.querySelector("[role=treeitem]"), "the tree has loaded");
-  expectMintRing(tree, "bookmarks tree");
+  expectAquaRing(tree, "bookmarks tree");
   EventUtils.synthesizeKey("/");
   const filter = await focusedOn(
     () => document.getElementById("vimma-bookmarks-filter"),
     "the bookmarks filter",
   );
-  expectMintRing(filter, "bookmarks filter");
+  expectAquaRing(filter, "bookmarks filter");
   const box = /** @type {Element} */ (document.getElementById("vimma-bookmarks"));
   while (!box.hidden) {
     EventUtils.synthesizeKey("KEY_Escape");
@@ -186,38 +186,38 @@ async function expectPickerRing(key, id, what) {
     const d = /** @type {HTMLDialogElement | null} */ (document.getElementById(id));
     return d?.open ? d.querySelector("[role=listbox]") : null;
   }, `the ${what}'s list`);
-  expectMintRing(list, what);
+  expectAquaRing(list, what);
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => document.activeElement === tab.linkedBrowser, `the ${what} closes`);
   gBrowser.removeTab(tab);
 }
 
-add_task(async function goto_picker_list_has_a_mint_ring() {
+add_task(async function goto_picker_list_has_a_aqua_ring() {
   await expectPickerRing("g", "vimma-picker", "goto picker");
 });
 
-add_task(async function workspace_picker_list_has_a_mint_ring() {
+add_task(async function workspace_picker_list_has_a_aqua_ring() {
   await expectPickerRing("w", "vimma-workspace-picker", "workspace picker");
 });
 
-add_task(async function addon_picker_list_has_a_mint_ring() {
+add_task(async function addon_picker_list_has_a_aqua_ring() {
   await expectPickerRing("e", "vimma-addon-picker", "add-on picker");
 });
 
-add_task(async function help_overlay_and_its_filter_have_mint_rings() {
+add_task(async function help_overlay_and_its_filter_have_aqua_rings() {
   const tab = await openPage();
   prefix("?", { shiftKey: true });
   const dialog = await focusedOn(() => {
     const d = /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-help"));
     return d?.open ? d : null;
   }, "the help overlay");
-  expectMintRing(dialog, "help overlay");
+  expectAquaRing(dialog, "help overlay");
   EventUtils.synthesizeKey("/");
   const input = await focusedOn(
     () => document.querySelector("#vimma-help input"),
     "the help overlay's filter",
   );
-  expectMintRing(input, "help filter");
+  expectAquaRing(input, "help filter");
   EventUtils.synthesizeKey("KEY_Escape");
   if (document.getElementById("vimma-help")?.open) EventUtils.synthesizeKey("KEY_Escape");
   await until(() => document.activeElement === tab.linkedBrowser, "the overlay closes");

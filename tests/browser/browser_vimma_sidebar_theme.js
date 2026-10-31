@@ -10,8 +10,8 @@ const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subpro
 
 const POLL_MS = 100;
 /** The built-in vimma palette's dark_background, dark and light (browser_vimma_theme.js). */
-const VIMMA_DARK_BG = "#070b0d";
-const VIMMA_LIGHT_BG = "#eae9e2";
+const VIMMA_DARK_BG = "#050c0d";
+const VIMMA_LIGHT_BG = "#e7ecea";
 
 /**
  * A colors.toml in Omarchy 4's format (the theme test's fixture, trimmed to what the tokens

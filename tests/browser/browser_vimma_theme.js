@@ -17,8 +17,8 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const START = "chrome://browser/content/vimma/start/start.html";
 const POLL_MS = 100;
 /** The built-in vimma palette's dark_background: its status bar colour, dark and light. */
-const VIMMA_STATUSBAR = "#070b0d";
-const VIMMA_LIGHT_STATUSBAR = "#eae9e2";
+const VIMMA_STATUSBAR = "#050c0d";
+const VIMMA_LIGHT_STATUSBAR = "#e7ecea";
 
 /**
  * A colors.toml in Omarchy 4's format (as in tests/contract/theme/), written by hand: keys in
@@ -381,16 +381,16 @@ add_task(async function builtin_vimma_follows_the_colour_scheme_live() {
       () => content.getComputedStyle(content.document.documentElement).backgroundColor,
     );
   await TestUtils.waitForCondition(
-    async () => (await pageBg()) === rgb("#0a0f12"),
+    async () => (await pageBg()) === rgb("#071011"),
     "the start page is vimma dark",
   );
 
   await SpecialPowers.pushPrefEnv({ set: [["ui.systemUsesDarkTheme", 0]] });
   await waitForBar(VIMMA_LIGHT_STATUSBAR, "a light desktop: vimma light, without a reload");
   Assert.equal(token("--vimma-color-scheme"), "light", "light tokens");
-  Assert.equal(token("--vimma-hint-bg"), "#1bf587", "the hints stay mint");
+  Assert.equal(token("--vimma-hint-bg"), "#b0226f", "the hints are the light magenta");
   await TestUtils.waitForCondition(
-    async () => (await pageBg()) === rgb("#f5f4ef"),
+    async () => (await pageBg()) === rgb("#f3f6f4"),
     "the open start page turns light too",
   );
   await assertSurfacesFollowTheTheme("vimma light");

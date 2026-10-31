@@ -25,14 +25,14 @@
 /* the window+V and the brushstroke V: the accent, in every theme */
 .vimma-logo-mark {
   mask-image: url("chrome://browser/content/vimma/start/vimma-logo-mark.png");
-  background-color: var(--vimma-accent, #1bf587);
+  background-color: var(--vimma-accent, #2cf5d2);
 }
 
 /* "imma": white on a dark theme, as the artwork has it; the text colour on a light one, where
    white would not read */
 .vimma-logo-wordmark {
   mask-image: url("chrome://browser/content/vimma/start/vimma-logo-wordmark.png");
-  background-color: light-dark(var(--vimma-fg, #1d2924), #fff);
+  background-color: light-dark(var(--vimma-fg, #1b2a28), #fff);
 }
 
 /* High contrast: the system's text colour for both parts, which reads on its Canvas. Without

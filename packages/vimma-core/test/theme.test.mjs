@@ -233,9 +233,9 @@ describe("resolveTheme", () => {
     expect(r.errors).toEqual([]);
     expect(r.warnings).toEqual([]);
     expect(r.mode).toBe("dark");
-    expect(r.tokens["--vimma-bg"]).toBe("#0a0f12");
-    expect(r.tokens["--vimma-fg"]).toBe("#c4cec8");
-    expect(r.tokens["--vimma-accent"]).toBe("#1bf587");
+    expect(r.tokens["--vimma-bg"]).toBe("#071011");
+    expect(r.tokens["--vimma-fg"]).toBe("#c2d6d3");
+    expect(r.tokens["--vimma-accent"]).toBe("#2cf5d2");
     expect(r.tokens["--vimma-color-scheme"]).toBe("dark");
     expect(r.tokens["--vimma-font"]).toBe("monospace");
   });
@@ -255,7 +255,7 @@ describe("resolveTheme", () => {
     expect(r.tokens["--vimma-bg"]).toBe("#1a1b26");
     const v = resolveTheme({ theme: themeCfg({ source: "file" }), omarchy: light });
     expect(v.warnings).toEqual([]);
-    expect(v.tokens["--vimma-bg"]).toBe("#0a0f12");
+    expect(v.tokens["--vimma-bg"]).toBe("#071011");
   });
 
   test("an Omarchy theme wins over the built-in name: Omarchy users see no change", () => {
@@ -274,13 +274,13 @@ describe("resolveTheme", () => {
     expect(r.mode).toBe("light");
     expect(r.tokens).toMatchObject({
       "--vimma-color-scheme": "light",
-      "--vimma-bg": "#f5f4ef",
-      "--vimma-fg": "#1d2924",
-      "--vimma-accent": "#056a39",
-      "--vimma-selection": "#c6efd8",
+      "--vimma-bg": "#f3f6f4",
+      "--vimma-fg": "#1b2a28",
+      "--vimma-accent": "#006b5e",
+      "--vimma-selection": "#c3efe6",
     });
     const dark = resolveTheme({ theme: themeCfg({ source: "file" }), scheme: "dark" });
-    expect(dark.tokens["--vimma-bg"]).toBe("#0a0f12");
+    expect(dark.tokens["--vimma-bg"]).toBe("#071011");
   });
 
   test("Tokyo Night is dark-only: a light scheme changes nothing", () => {
@@ -290,13 +290,17 @@ describe("resolveTheme", () => {
     expect(light.mode).toBe("dark");
   });
 
-  test("vimma's link hints are mint in both variants, and so is the dark normal badge", () => {
-    for (const scheme of /** @type {const} */ (["dark", "light"])) {
-      const r = resolveTheme({ theme: themeCfg({ source: "file" }), scheme });
-      expect(r.tokens["--vimma-hint-bg"], scheme).toBe("#1bf587");
-    }
+  test("vimma's link hints are the magenta, the aqua is the normal badge", () => {
+    // The two neons of the Aqua Split palette: hints in the magenta, with the variant's own
+    // background as text (dark on the neon, light on the deep berry), the mode in the aqua.
     const dark = resolveTheme({ theme: themeCfg({ source: "file" }) });
-    expect(dark.tokens["--vimma-mode-normal"]).toBe("#1bf587");
+    expect(dark.tokens["--vimma-hint-bg"]).toBe("#ff4fb8");
+    expect(dark.tokens["--vimma-hint-fg"]).toBe("#071011");
+    expect(dark.tokens["--vimma-mode-normal"]).toBe("#2cf5d2");
+    const light = resolveTheme({ theme: themeCfg({ source: "file" }), scheme: "light" });
+    expect(light.tokens["--vimma-hint-bg"]).toBe("#b0226f");
+    expect(light.tokens["--vimma-hint-fg"]).toBe("#f3f6f4");
+    expect(light.tokens["--vimma-mode-normal"]).toBe("#006b5e");
     // Tokyo Night keeps its yellow hints
     expect(resolveTheme({ theme: tokyoCfg() }).tokens["--vimma-hint-bg"]).toBe("#e0af68");
   });
@@ -307,18 +311,18 @@ describe("resolveTheme", () => {
       scheme: "dark",
     });
     expect(r.mode).toBe("light");
-    expect(r.tokens["--vimma-bg"]).toBe("#f5f4ef");
+    expect(r.tokens["--vimma-bg"]).toBe("#f3f6f4");
     const d = resolveTheme({
       theme: themeCfg({ source: "file", colors: { mode: "dark" } }),
       scheme: "light",
     });
-    expect(d.tokens["--vimma-bg"]).toBe("#0a0f12");
+    expect(d.tokens["--vimma-bg"]).toBe("#071011");
   });
 
   // docs/specs/theme-appearance.md, B.
   describe("[theme] appearance", () => {
-    const VIMMA_DARK_BG = "#0a0f12";
-    const VIMMA_LIGHT_BG = "#f5f4ef";
+    const VIMMA_DARK_BG = "#071011";
+    const VIMMA_LIGHT_BG = "#f3f6f4";
     test.each([
       ["dark", "light", VIMMA_DARK_BG, "dark"],
       ["light", "dark", VIMMA_LIGHT_BG, "light"],
@@ -428,7 +432,7 @@ describe("resolveTheme", () => {
   test("an invalid Omarchy file gives errors and the named built-in's tokens", () => {
     const r = resolveTheme({ theme: themeCfg(), omarchy: fixture("invalid.colors.toml") });
     expect(r.errors.map((e) => e.path)).toEqual(["accent", "foreground"]);
-    expect(r.tokens["--vimma-bg"]).toBe("#0a0f12");
+    expect(r.tokens["--vimma-bg"]).toBe("#071011");
     const t = resolveTheme({ theme: tokyoCfg(), omarchy: fixture("invalid.colors.toml") });
     expect(t.tokens["--vimma-bg"]).toBe("#1a1b26");
   });
@@ -500,7 +504,7 @@ describe("untrusted input cannot inject CSS", () => {
         message: expect.stringMatching(/hex/),
       }),
     ]);
-    expect(r.tokens["--vimma-accent"]).toBe("#1bf587");
+    expect(r.tokens["--vimma-accent"]).toBe("#2cf5d2");
     expect(tokensToCss(r.tokens)).not.toContain("evil");
   });
 
@@ -683,6 +687,22 @@ describe("tokens", () => {
     expect(t["--vimma-mode-prefix"]).toBe(VIMMA_DARK.red);
   });
 
+  // The normal badge is the aqua: insert's green and help's cyan must stay apart from it, and from
+  // each other, without badgeColors having to move them.
+  test.each([
+    ["dark", VIMMA_DARK],
+    ["light", VIMMA_LIGHT],
+  ])("vimma %s keeps insert and help apart from the aqua normal badge", (appearance, palette) => {
+    const t = resolveTheme({ theme: themeCfg({ name: "vimma", appearance }) }).tokens;
+    expect(t["--vimma-mode-normal"]).toBe(palette.accent);
+    expect(t["--vimma-mode-insert"]).toBe(palette.green);
+    expect(t["--vimma-mode-help"]).toBe(palette.cyan);
+    const apart = 2 * MIN_BADGE_DISTANCE;
+    expect(colorDistance(palette.accent, palette.green)).toBeGreaterThanOrEqual(apart);
+    expect(colorDistance(palette.accent, palette.cyan)).toBeGreaterThanOrEqual(apart);
+    expect(colorDistance(palette.green, palette.cyan)).toBeGreaterThanOrEqual(apart);
+  });
+
   test("colorDistance is CIE76 delta E: 0 for one colour, 100 from black to white", () => {
     expect(colorDistance("#cba6f7", "#CBA6F7")).toBe(0);
     expect(colorDistance("#000000", "#ffffff")).toBeCloseTo(100, 1);
@@ -703,7 +723,7 @@ describe("tokens", () => {
     const r = resolveTheme({ theme: themeCfg({ source: "file" }) });
     const css = tokensToCss(r.tokens);
     expect(css.startsWith(":root {\n")).toBe(true);
-    expect(css).toContain("  --vimma-bg: #0a0f12;\n");
+    expect(css).toContain("  --vimma-bg: #071011;\n");
     expect(css.match(/--vimma-[a-z-]+:/g)).toHaveLength(THEME_TOKENS.length);
     expect(tokensToCss({ "--vimma-bg": "#000000" }, "#vimma-root")).toBe(
       "#vimma-root {\n  --vimma-bg: #000000;\n}\n",
@@ -732,24 +752,25 @@ describe("built-in palettes", () => {
     }
   });
 
-  // vimma.dev's assets/css/site.css (vimma-browser/vimma-site): the colours the site has.
+  // vimma.dev's assets/css/site.css (vimma-browser/vimma-site): the colours the site has. The
+  // site's --green is a shade of the aqua there; Vimma's green is the insert badge, which must not
+  // read as the normal badge's aqua, so it stays a green and is not matched.
   test.each([
     [
       "dark",
       VIMMA_DARK,
       {
-        background: "#0a0f12",
-        dark_background: "#070b0d",
-        darker_background: "#040708",
-        lighter_background: "#111a1b",
-        selection: "#163327",
-        muted: "#2a3d36",
-        foreground: "#c4cec8",
-        dark_foreground: "#849690",
-        bright_foreground: "#fcfbf7",
-        accent: "#1bf587",
-        green: "#8eeeb8",
-        bright_green: "#1bf587",
+        background: "#071011",
+        dark_background: "#050c0d",
+        darker_background: "#030708",
+        lighter_background: "#0e1b1c",
+        selection: "#123532",
+        muted: "#234040",
+        foreground: "#c2d6d3",
+        dark_foreground: "#7f9a96",
+        bright_foreground: "#f5fffd",
+        accent: "#2cf5d2",
+        magenta: "#ff4fb8",
         yellow: "#f2c94c",
         red: "#ff6b6b",
       },
@@ -758,18 +779,17 @@ describe("built-in palettes", () => {
       "light",
       VIMMA_LIGHT,
       {
-        background: "#f5f4ef",
-        dark_background: "#eae9e2",
-        darker_background: "#e1e0d8",
-        lighter_background: "#fcfbf7",
-        selection: "#c6efd8",
-        muted: "#a3b0a9",
-        foreground: "#1d2924",
-        dark_foreground: "#4b5a53",
-        bright_foreground: "#0a0f12",
-        accent: "#056a39",
-        green: "#2a5a40",
-        bright_green: "#1bf587",
+        background: "#f3f6f4",
+        dark_background: "#e7ecea",
+        darker_background: "#dde3e1",
+        lighter_background: "#fbfdfc",
+        selection: "#c3efe6",
+        muted: "#a0b3af",
+        foreground: "#1b2a28",
+        dark_foreground: "#4a5b58",
+        bright_foreground: "#071011",
+        accent: "#006b5e",
+        magenta: "#b0226f",
         yellow: "#7a5200",
         red: "#a1232d",
       },

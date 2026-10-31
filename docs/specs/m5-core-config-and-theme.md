@@ -137,6 +137,13 @@ Picking badge text by contrast is what makes one rule work for light and dark th
 that colour a shade lighter or darker; `badgeColors` in `theme.mjs` and the guide's Status bar
 section describe it now.)
 
+(Since changed: `VIMMA_DARK` and `VIMMA_LIGHT` follow vimma.dev's "Aqua Split" palette: an aqua
+accent (`#2cf5d2`; a deep teal, `#006b5e`, in light) and link hints in its magenta (`#ff4fb8`; a
+deep berry, `#b0226f`, in light), where the built-in vimma's hints were its mint `bright_green`.
+Magenta hints stand apart from the accent that marks the normal badge and focus. The site's
+`--green` is a shade of the aqua, so the palette's `green`, the insert badge, stays a true green
+that does not read as the normal badge's aqua.)
+
 - `TOKYO_NIGHT`: identical to Omarchy's stock tokyo-night `colors.toml`; the built-in palette
   until `VIMMA_DARK` / `VIMMA_LIGHT` (vimma.dev's colours) replaced it as the default.
   `BUILTIN_THEMES` maps `[theme] name` to `{ dark, light? }`.
