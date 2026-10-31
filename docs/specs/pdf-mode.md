@@ -1,13 +1,14 @@
 # Spec: pdf-mode
 
-Status: draft · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
-`modes.mjs` (`index` mode), `actions.mjs`, `defaults.mjs`, `config.mjs` (`[pdf]`),
-`statusbar.mjs`, `pdf.mjs` (new: state parser, page and zoom arithmetic, marks, recolor table));
-`actors/pdf-view.mjs` (new: the one module that touches pdf.js), `actors/VimmaChild.sys.mjs`,
-`actors/VimmaActors.sys.mjs`, `host/VimmaHost.sys.mjs`, `host/find.mjs`, `host/pdf-ops.mjs` (new);
-`src/browser/branding/vimma/pref/firefox-branding.js`; `docs/guide.md`, `docs/limits.md`,
-`docs/security.md` · Upstream patches: none (decision 2) · ADR: ADR-023, keymap contexts (new,
-written with delivery PR 1, decision 4)
+Status: accepted · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
+`modes.mjs` (`index` mode), `actions.mjs`, `defaults.mjs`, `statusbar.mjs`, `pdf.mjs` (new: state
+parser, page and zoom arithmetic, marks), `pdfoutline.mjs` (new: outline parser and the outline
+panel's state)); `actors/pdf-view.mjs` (new: the one module that touches pdf.js),
+`actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, `host/VimmaHost.sys.mjs`,
+`host/find.mjs`, `host/pdf-ops.mjs` (new); `ui/pdf-outline.mjs` and its style sheet (new: the
+outline panel); `src/browser/branding/vimma/pref/firefox-branding.js`; `docs/guide.md`,
+`docs/limits.md`, `docs/security.md` · Upstream patches: none (decision 2) · ADR: ADR-023, keymap
+contexts (new, written with delivery PR 1, decision 4)
 
 Issue: [#487](https://github.com/vimma-browser/vimma/issues/487)
 
@@ -26,10 +27,12 @@ PDFs open in Firefox's own viewer, pdf.js, and today Vimma's keys treat it as an
 `j`/`k` scroll, `/` finds, the rest is pdf.js's toolbar. This spec adds a PDF layer on top of
 that viewer so that it behaves as closely as practical to zathura, the keyboard-driven document
 viewer: page jumps with counts (`12G`), zoom and fit (`+`, `-`, `a`, `s`), dual page, rotation,
-the outline on `Tab`, recolouring in the Vimma theme (`ctrl+r`), marks, presentation mode on `F5`,
-and a page and match count in the status bar. Vimma builds no PDF renderer of its own: pdf.js
-keeps rendering, forms, signatures, accessibility, printing and its security sandbox, and Vimma
-only drives it.
+the outline on `Tab` in a Vimma panel with zathura's index keys and a fuzzy filter, marks,
+presentation mode on `F5`, and a page and match count in the status bar. Vimma builds no PDF
+renderer of its own: pdf.js keeps rendering, forms, signatures, accessibility, printing and its
+security sandbox, and Vimma only drives it. Vimma's own surfaces in the viewer (the outline panel,
+the status bar's page and match count, notices) follow the Vimma or Omarchy theme; the pages
+themselves are shown exactly as the document draws them.
 
 ## Problem
 
@@ -40,9 +43,6 @@ only drives it.
   pdf.js's toolbar and secondary menu. With the toolbar hidden (`ctrl+b u`) they are out of reach.
 - `/` finds in a PDF, but the status bar shows no match count, which `docs/limits.md` lists as a
   limit ("In the PDF viewer, `/`, `n` and `N` work, but the status bar shows no match count").
-- A white page in a dark Vimma theme is the brightest thing on screen. pdf.js can force page
-  colours (`pdfjs.forcePageColors`), but only from about:config, for every PDF at once, after a
-  reload, and in grey steps (Research).
 - zathura users, the audience Vimma's Vim and tmux keys are written for, expect the same keys in
   a PDF in the browser as in their viewer.
 
@@ -67,19 +67,19 @@ changes.
 4. As a user, `d` toggles two pages side by side, with the first page alone as in a printed
    book; `D` toggles whether the first page stands alone. `w` toggles showing one page at a time.
    `r` rotates the pages 90° clockwise, with a count.
-5. As a user, `Tab` opens the document's outline (table of contents) in pdf.js's sidebar and puts
-   the tab in `INDEX` mode, with the entry for the current page selected. `j` / `k` (and the
-   arrow keys) move, `l` / `zo` expand and `h` / `zc` collapse, `zO` / `zC` expand / collapse the
-   entry's whole subtree, `L` / `zR` and `H` / `zM` expand / collapse all, `gg` / `G` go to the
-   first / last entry, `ctrl+d` / `ctrl+u` move half a sidebar; `Enter`, `space` or `ctrl+j` goes
-   to the entry and closes the outline; `Tab`, `Esc`, `ctrl+[`, `ctrl+c` or `q` closes it without
-   moving. A PDF without an outline says
-   `no outline in this PDF`.
-6. As a user, `ctrl+r` recolours the pages: white becomes the theme's background and black its
-   text colour, with the shades between, as zathura's recolour does. Find highlights and the
-   selection keep their own colours. `ctrl+r` again shows the original colours. It applies to
-   every PDF tab, follows `:theme` and Omarchy theme changes at once, and `[pdf] recolor = true`
-   in `config.toml` turns it on at startup.
+5. As a user, `Tab` opens the document's outline (table of contents) in Vimma's outline panel on
+   the left of the window, drawn in the theme like the side panel, and puts the tab in `INDEX`
+   mode, with the entry for the current page selected. `j` / `k` (and the arrow keys) move, `l` /
+   `zo` expand and `h` / `zc` collapse, `zO` / `zC` expand / collapse the entry's whole subtree,
+   `L` / `zR` and `H` / `zM` expand / collapse all, `gg` / `G` go to the first / last entry,
+   `ctrl+d` / `ctrl+u` move half a panel; `Enter`, `space` or `ctrl+j` goes to the entry and
+   closes the outline; `Tab`, `Esc`, `ctrl+[`, `ctrl+c` or `q` closes it without moving. `/`
+   filters the outline: typed text narrows it to the entries that match fuzzily, best match
+   first, each shown with the titles of the entries above it; `ctrl+n` / `ctrl+p` and the arrow
+   keys move, `Enter` goes to the entry, and `Esc` returns to the whole outline. A PDF without an
+   outline says `no outline in this PDF`.
+6. As a user, PDF pages look exactly as the document draws them: Vimma does not recolour them,
+   and `ctrl+r` reloads as on any page.
 7. As a user, `m` and a letter or digit sets a mark at the current position (page, place on it,
    zoom); `'` and the same character goes back there. Marks belong to the document (its URL
    without the fragment), last until Vimma quits, and are never written to disk. A missing mark
@@ -97,7 +97,7 @@ changes.
 12. As a user, `F5` starts pdf.js's presentation mode (full screen, one page at a time, fit to
     page); there `j`, `J`, `space` and the arrow keys go forward a page, `k`, `K` and `shift+space`
     back, and `F5` or `Esc` leaves it. `F11` is Vimma's full screen as everywhere.
-13. As a user, `R` reloads the PDF (Vimma's `r`, `F5` and `ctrl+r` have their PDF meanings here);
+13. As a user, `R` and `ctrl+r` reload the PDF (Vimma's `r` and `F5` have their PDF meanings here);
     `ctrl+p` prints, `ctrl+s` saves, `yy` and `Y` copy the URL and `:pdf_info` shows pdf.js's
     document properties.
 14. As a user, every binding in this list can be changed in `config.toml` under `[modal.pdf]`
@@ -105,47 +105,49 @@ changes.
     `ctrl+b ?` lists them under their own headings, `[pdf]` and `[index]`.
 15. As a user, form fields in a PDF behave as text fields anywhere: focusing one is insert mode,
     `Esc` leaves it.
+16. As a user, no promotion bar ("PDFs just got easier") covers a document in the viewer;
+    `about:pdf` and its menu entries stay as Firefox ships them.
 
 ### zathura's defaults and what Vimma does
 
-| zathura (default key, behaviour)                                                           | Vimma in the PDF viewer                                                                                                                     |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `h j k l`, arrows: scroll by `scroll-step` 40 px (config.c:336-349)                        | Same keys, Vimma's scroll step (as on pages)                                                                                                |
-| `ctrl+d` / `ctrl+u`: half screen (config.c:359-360)                                        | Same                                                                                                                                        |
-| `ctrl+f` / `ctrl+b`, `space` / `shift+space`: full screen (config.c:363-367)               | `ctrl+f`, `space`, `shift+space`. **Not matched:** `ctrl+b`, which is Vimma's prefix in every mode                                          |
-| `t` / `y`, `ctrl+t` / `ctrl+y`: full or half screen left / right (config.c:350-365)        | **Not matched:** `t` stays new tab, `ctrl+t` new tab, `ctrl+y` scroll up; `h` / `l` scroll sideways                                         |
-| `alt+j` / `alt+k`: partial scroll (config.c:352-357)                                       | **Not matched** (no default); `j` / `k` are already small steps                                                                             |
-| `H` / `L`: top / bottom of the page (config.c:346-347)                                     | Same (shadows Vimma's history `H` / `L`; `ctrl+o` / `ctrl+i` remain)                                                                        |
-| `J` / `K`, `PgDn` / `PgUp`: next / previous page, count (config.c:315-326)                 | `J` / `K` with a count; `PgDn` / `PgUp` stay pdf.js's own (a screen, or a page at page fit, viewer.mjs:19613-19618)                         |
-| `gg` / `G`, `{n}G`: first / last page, page n (config.c:305-310)                           | Same, with counts; `:{n}` too                                                                                                               |
-| `Home` / `End`: first / last page (config.c:306, 309)                                      | Same: Vimma leaves them to pdf.js, which goes to the first / last page (viewer.mjs:19635-19648)                                             |
-| `alt+Right` / `alt+Left`: next / previous page (config.c:317-320)                          | **Not matched:** they stay Vimma's history forward / back (Firefox's keys), which walk jumps inside the PDF                                 |
-| `P`: snap to the current page (config.c:379)                                               | Same (shadows `P`, open the clipboard in a new tab)                                                                                         |
-| `ctrl+o` / `ctrl+i`: jump list, 2000 entries, saved per file (config.c:370-371, 528)       | pdf.js's history entries, kept in session history (decision 9). **Not matched:** not saved across sessions                                  |
-| `ctrl+j` / `ctrl+k`: bisect between jumps (config.c:373-374)                               | **Not matched** (out of scope)                                                                                                              |
-| `+ - =`, `zi zI zo zO z0 zz zZ`, `{n}=`: zoom by `zoom-step` 10 % (config.c:387-398)       | Same keys and step; limits 10 % to 2500 % (pdf.js), not zathura's 10 % to 1000 %                                                            |
-| `a` / `s`: best fit / fit width, kept on resize (config.c:290-291)                         | Same, through pdf.js's `page-fit` and `page-width`                                                                                          |
-| `d`: dual page; `D`: first page column (config.c:384-385)                                  | Same, through pdf.js's spread modes (shadows `d`, half page down; `ctrl+d` remains)                                                         |
-| `r`: rotate 90° clockwise, count (config.c:334)                                            | Same (shadows `r`, reload; `R` reloads)                                                                                                     |
-| `w`: single page mode (2026.x only, config.c:644)                                          | Same, through pdf.js's page scroll mode                                                                                                     |
-| `Tab`: index, replacing the view, with its own keys (config.c:381, 660-690)                | `Tab`: pdf.js's outline sidebar beside the page, `INDEX` mode with zathura's keys. **Not matched:** the outline does not replace the page   |
-| Index: `j k`, arrows, `l h`, `zo zc`, `zO zC`, `L H`, `zR zM`, `ctrl+d ctrl+u` (661-680)   | Same keys in `index` mode                                                                                                                   |
-| Index: `space`, `Return`, `ctrl+j` follow; `gg G`; `Tab Esc ctrl+[ ctrl+c` close (681-690) | Same keys in `index` mode                                                                                                                   |
-| `q`: quit, in every mode (config.c:633-638)                                                | **Not matched:** `q` does not close the tab (`x`, `:q` do); in `index` mode `q` closes the outline, as it closes Vimma's overlays           |
-| `ctrl+r`: recolour, `recolor-darkcolor` / `-lightcolor` (config.c:330, 529-530)            | `ctrl+r`, colours from the Vimma theme. **Not matched:** `recolor-keephue`, `recolor-reverse-video`, `recolor-adjust-lightness`             |
-| `m{X}` / `'{X}`: marks with page, position, zoom, saved per file (marks.c:21-203)          | Same keys and contents, kept in memory only (decision 11)                                                                                   |
-| `/`, `?`, `n`, `N`, `[Search x/y]` in the status bar (2026.x, utils.c:734-736)             | Vimma's find, smart case, with `[x/y]` in the status bar                                                                                    |
-| `f` / `F` / `c`: numbered link hints typed in the input bar, Enter (shortcuts.c:39-57)     | Vimma's letter hints, no Enter needed. **Not matched:** numbers                                                                             |
-| `F5`: presentation (config.c:642); `F11`: full screen (config.c:643)                       | Same keys (shadows `F5`, reload)                                                                                                            |
-| `ctrl+n` / `ctrl+m`: toggle status bar / input bar (config.c:382-383)                      | **Not matched:** the status bar is always shown, `ctrl+n` is a new window                                                                   |
-| `R`: reload, keeping the position (config.c:332)                                           | `R` reloads; pdf.js restores the position from its view history (**unverified**, Tests)                                                     |
-| `o` / `O` / `alt+o`: open a file (config.c:300-301, 400)                                   | **Not matched:** `:open` takes a URL; a `file://` URL opens a local PDF                                                                     |
-| `Y`: copy the file path (config.c:368)                                                     | `Y` copies the PDF's URL, as `yy` does, since the URL is where the browser has the file                                                     |
-| `:print`, `:write`, `:info`, `:close`, `:quit` (config.c:753-785)                          | `ctrl+p` / `:print_page`, `ctrl+s` / `:save_page`, `:pdf_info`, `x` / `:q`                                                                  |
-| `:exec`, `:offset`, `:bmark`, `:jumplist`, `:set`, `:map`, `:dump`                         | **Not matched:** no programs run (Security); bookmarks are Vimma's (`ctrl+b a`), which keep pdf.js's `#page=` fragment; settings are config |
-| Status bar: file, `[x/y]`, `[label (x/y)]`, optional percent (zathura.c:1595-1640)         | `page x/y`, `page label (x/y)`; the title and host as on any page                                                                           |
-| Selection copies to the primary selection on mouse release (callbacks.c:612-645)           | Firefox's selection; `v` copy mode with `y` copies to the clipboard                                                                         |
-| SyncTeX: `--synctex-forward`, ctrl+click backward search over D-Bus (synctex.c, xml)       | **Not matched** in this spec (decision 14)                                                                                                  |
+| zathura (default key, behaviour)                                                           | Vimma in the PDF viewer                                                                                                                                           |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `h j k l`, arrows: scroll by `scroll-step` 40 px (config.c:336-349)                        | Same keys, Vimma's scroll step (as on pages)                                                                                                                      |
+| `ctrl+d` / `ctrl+u`: half screen (config.c:359-360)                                        | Same                                                                                                                                                              |
+| `ctrl+f` / `ctrl+b`, `space` / `shift+space`: full screen (config.c:363-367)               | `ctrl+f`, `space`, `shift+space`. **Not matched:** `ctrl+b`, which is Vimma's prefix in every mode                                                                |
+| `t` / `y`, `ctrl+t` / `ctrl+y`: full or half screen left / right (config.c:350-365)        | **Not matched:** `t` stays new tab, `ctrl+t` new tab, `ctrl+y` scroll up; `h` / `l` scroll sideways                                                               |
+| `alt+j` / `alt+k`: partial scroll (config.c:352-357)                                       | **Not matched** (no default); `j` / `k` are already small steps                                                                                                   |
+| `H` / `L`: top / bottom of the page (config.c:346-347)                                     | Same (shadows Vimma's history `H` / `L`; `ctrl+o` / `ctrl+i` remain)                                                                                              |
+| `J` / `K`, `PgDn` / `PgUp`: next / previous page, count (config.c:315-326)                 | `J` / `K` with a count; `PgDn` / `PgUp` stay pdf.js's own (a screen, or a page at page fit, viewer.mjs:19613-19618)                                               |
+| `gg` / `G`, `{n}G`: first / last page, page n (config.c:305-310)                           | Same, with counts; `:{n}` too                                                                                                                                     |
+| `Home` / `End`: first / last page (config.c:306, 309)                                      | Same: Vimma leaves them to pdf.js, which goes to the first / last page (viewer.mjs:19635-19648)                                                                   |
+| `alt+Right` / `alt+Left`: next / previous page (config.c:317-320)                          | **Not matched:** they stay Vimma's history forward / back (Firefox's keys), which walk jumps inside the PDF                                                       |
+| `P`: snap to the current page (config.c:379)                                               | Same (shadows `P`, open the clipboard in a new tab)                                                                                                               |
+| `ctrl+o` / `ctrl+i`: jump list, 2000 entries, saved per file (config.c:370-371, 528)       | pdf.js's history entries, kept in session history (decision 9). **Not matched:** not saved across sessions                                                        |
+| `ctrl+j` / `ctrl+k`: bisect between jumps (config.c:373-374)                               | **Not matched** (out of scope)                                                                                                                                    |
+| `+ - =`, `zi zI zo zO z0 zz zZ`, `{n}=`: zoom by `zoom-step` 10 % (config.c:387-398)       | Same keys and step; limits 10 % to 2500 % (pdf.js), not zathura's 10 % to 1000 %                                                                                  |
+| `a` / `s`: best fit / fit width, kept on resize (config.c:290-291)                         | Same, through pdf.js's `page-fit` and `page-width`                                                                                                                |
+| `d`: dual page; `D`: first page column (config.c:384-385)                                  | Same, through pdf.js's spread modes (shadows `d`, half page down; `ctrl+d` remains)                                                                               |
+| `r`: rotate 90° clockwise, count (config.c:334)                                            | Same (shadows `r`, reload; `R` reloads)                                                                                                                           |
+| `w`: single page mode (2026.x only, config.c:644)                                          | Same, through pdf.js's page scroll mode                                                                                                                           |
+| `Tab`: index, replacing the view, with its own keys (config.c:381, 660-690)                | `Tab`: Vimma's outline panel beside the page, `INDEX` mode with zathura's keys, and a fuzzy filter on `/`. **Not matched:** the outline does not replace the page |
+| Index: `j k`, arrows, `l h`, `zo zc`, `zO zC`, `L H`, `zR zM`, `ctrl+d ctrl+u` (661-680)   | Same keys in `index` mode                                                                                                                                         |
+| Index: `space`, `Return`, `ctrl+j` follow; `gg G`; `Tab Esc ctrl+[ ctrl+c` close (681-690) | Same keys in `index` mode                                                                                                                                         |
+| `q`: quit, in every mode (config.c:633-638)                                                | **Not matched:** `q` does not close the tab (`x`, `:q` do); in `index` mode `q` closes the outline, as it closes Vimma's overlays                                 |
+| `ctrl+r`: recolour, `recolor-darkcolor` / `-lightcolor` (config.c:330, 529-530)            | **Not matched:** pages keep the document's colours (decision 12); `ctrl+r` reloads as on every page                                                               |
+| `m{X}` / `'{X}`: marks with page, position, zoom, saved per file (marks.c:21-203)          | Same keys and contents, kept in memory only (decision 11)                                                                                                         |
+| `/`, `?`, `n`, `N`, `[Search x/y]` in the status bar (2026.x, utils.c:734-736)             | Vimma's find, smart case, with `[x/y]` in the status bar                                                                                                          |
+| `f` / `F` / `c`: numbered link hints typed in the input bar, Enter (shortcuts.c:39-57)     | Vimma's letter hints, no Enter needed. **Not matched:** numbers                                                                                                   |
+| `F5`: presentation (config.c:642); `F11`: full screen (config.c:643)                       | Same keys (shadows `F5`, reload)                                                                                                                                  |
+| `ctrl+n` / `ctrl+m`: toggle status bar / input bar (config.c:382-383)                      | **Not matched:** the status bar is always shown, `ctrl+n` is a new window                                                                                         |
+| `R`: reload, keeping the position (config.c:332)                                           | `R` reloads; pdf.js restores the position from its view history (**unverified**, Tests)                                                                           |
+| `o` / `O` / `alt+o`: open a file (config.c:300-301, 400)                                   | **Not matched:** `:open` takes a URL; a `file://` URL opens a local PDF                                                                                           |
+| `Y`: copy the file path (config.c:368)                                                     | `Y` copies the PDF's URL, as `yy` does, since the URL is where the browser has the file                                                                           |
+| `:print`, `:write`, `:info`, `:close`, `:quit` (config.c:753-785)                          | `ctrl+p` / `:print_page`, `ctrl+s` / `:save_page`, `:pdf_info`, `x` / `:q`                                                                                        |
+| `:exec`, `:offset`, `:bmark`, `:jumplist`, `:set`, `:map`, `:dump`                         | **Not matched:** no programs run (Security); bookmarks are Vimma's (`ctrl+b a`), which keep pdf.js's `#page=` fragment; settings are config                       |
+| Status bar: file, `[x/y]`, `[label (x/y)]`, optional percent (zathura.c:1595-1640)         | `page x/y`, `page label (x/y)`; the title and host as on any page                                                                                                 |
+| Selection copies to the primary selection on mouse release (callbacks.c:612-645)           | Firefox's selection; `v` copy mode with `y` copies to the clipboard                                                                                               |
+| SyncTeX: `--synctex-forward`, ctrl+click backward search over D-Bus (synctex.c, xml)       | **Not matched** in this spec (decision 14)                                                                                                                        |
 
 ## Research
 
@@ -196,10 +198,18 @@ changes.
     `WRAPPED`, `PAGE`, 14692) and `spreadMode` (`NONE`, `ODD`, `EVEN`, 14735), with the enums at
     viewer.mjs:56-68. `EVEN` puts page 1 alone, as zathura's default `first-page-column` "1:2"
     does in dual page; `ODD` pairs 1 and 2;
-  - the outline: `viewsManager.switchView(SidebarView.OUTLINE, true)`, `open`, `close` and
-    `toggle` (17153, 17257-17370), drawn by `PDFOutlineViewer` (7060) as `.treeItem` elements
-    with `.treeItemToggler` and links, which `BaseTreeViewer` expands and collapses
-    (4748-4840); the current item event `currentoutlineitem` (7069);
+  - the outline: `pdfDocument.getOutline()` returns a promise of the outline tree
+    (`pdfjs/build/pdf.mjs:14667`), whose items carry `title`, `items`, `count` (negative when
+    the entry starts collapsed, which pdf.js honours, viewer.mjs:7170-7194) and one target: a
+    destination `dest` (a name, or an array whose first element is a page reference or index), a
+    `url`, a named `action`, an `attachment` or a `setOCGState`. pdf.js's own outline view
+    follows them with `pdfLinkService.goToDestination`, `executeNamedAction` and
+    `executeSetOCGState` (viewer.mjs:964, 1197, 1228, 7104-7158), and finds the current entry by
+    resolving each destination to a page with `pdfDocument.getDestination` and
+    `cachedPageNumber` (viewer.mjs:7249-7322; pdf.mjs:14637, 14702), keeping the deepest entry
+    per page. The sidebar (`viewsManager`, `switchView`, `open`, `close`, `toggle`, 17153,
+    17257-17370) also holds the thumbnails, attachments and layers views (`SidebarView`,
+    viewer.mjs:43-49), and `F4` toggles it (viewer.mjs:19663);
   - presentation: `requestPresentationMode()` (18880) and `pdfViewer.isInPresentationMode`
     (14546). The pdf.js principal may always request full screen, without user activation
     (`dom/base/Element.cpp:5151-5154`), so a call from Vimma's actor works although the key never
@@ -293,7 +303,8 @@ changes.
   `panel` table's comments).
 - Keys the PDF layer shadows in normal mode: `d` half page down (`defaults.mjs:186`), `H` / `L`
   history (194-195), `r` reload (204), `F` element focus (208), `P` open the clipboard in a new
-  tab (233); `[keys]` `reload` on `f5` and `ctrl+r` (121), `find_forward` on `ctrl+f` (155).
+  tab (233); `[keys]` `reload` on `f5` (121; its `ctrl+r` stays), `find_forward` on `ctrl+f`
+  (155).
   `J`, `K`, `w`, `a`, `s`, `D`, `c`, `R`, `m`, `'`, `+`, `-`, `=`, `z…` and `Tab` are unbound.
 - The status bar's find text already formats a count, `/query [3/41]`
   (`packages/vimma-core/src/find.mjs:32-38`); it needs only `current` and `total`.
@@ -308,17 +319,21 @@ changes.
   pdf.js test (`schemeIs("resource")` and `originNoSuffix === "resource://pdf.js"`, so that it
   holds in every container). It exposes a small fixed set of operations (go to a page, zoom by steps or
   to a value or a fit, spread, scroll mode, rotate, outline open, close, move and follow, mark
-  read and restore, presentation, recolour on and off, properties) and a state record
+  read and restore, outline read and follow an entry, presentation, properties) and a state record
   (`{ page, pages, label, scale, scaleValue, rotation, spread, scroll, presentation, outline,
 find: { current, total } }`), sent to the parent on the viewer's events.
 - **Core** (`packages/vimma-core/src/pdf.mjs`, pure): parses and bounds the state record,
   computes page targets from counts, zoom targets (`10 %` per step, `{n}=`), the next spread and
-  scroll mode, mark records, and the recolour transfer table from two theme colours.
+  scroll mode and mark records; `pdfoutline.mjs` parses and bounds the outline and runs the
+  outline panel's keys and filter.
 - **The host** (`host/pdf-ops.mjs`): decides whether a tab is the PDF viewer from the parent's own
   view of its top document (`browser.browsingContext.currentWindowGlobal.documentPrincipal`, with
   the same test), never from a report of the child; runs the `pdf.*` actions by sending one
   operation to that top document's actor; accepts state only from that actor; feeds the status bar
-  and find; and keeps marks and the recolour switch.
+  and find; keeps marks; and opens the outline panel.
+- **The outline panel** (`ui/pdf-outline.mjs`): a chrome panel in the side panel's slot, drawn
+  from the parsed outline with `textContent` only and styled with the theme's tokens like the
+  side panel and the pickers.
 - **The keymap**: a `pdf` context over normal mode, and an `index` mode (decision 4).
 
 ### Decisions
@@ -371,11 +386,16 @@ find: { current, total } }`), sent to the parent on the viewer's events.
    `ctrl+b ?` could not show which meaning applies where.
 5. **zathura's meaning wins on the keys it shares, in the PDF viewer only.** Where zathura and
    Vimma's normal mode bind the same key differently (`d`, `H`, `L`, `r`, `P`, `F`, `ctrl+f`,
-   `ctrl+r`, `F5`), the `pdf` context takes zathura's, so that the viewer behaves as zathura, and
-   each displaced action keeps a key there (`ctrl+d`, `ctrl+o` / `ctrl+i`, `R`, `p`, `/`). `Tab`,
-   unbound on pages, opens the outline; `shift+Tab` still moves focus through pdf.js's toolbar.
-   The prefix layer and `ctrl+b` are never shadowed, because they must work in every mode. Keys free
-   in both are given zathura's meaning. Open question 1 asks whether to keep this default.
+   `F5`), the `pdf` context takes zathura's, because a zathura user expects them in a PDF and
+   each displaced action keeps a key there (`ctrl+d`, `ctrl+o` / `ctrl+i`, `R` and `ctrl+r`,
+   `p`, `/`). `ctrl+r`, zathura's recolour, keeps Vimma's meaning, reload, because Vimma does not
+   recolour pages (decision 12). `Tab`, unbound on pages, opens the outline; `shift+Tab` still
+   moves focus through pdf.js's toolbar. The prefix layer and `ctrl+b` are never shadowed,
+   because they must work in every mode. Keys free in both are given zathura's meaning, and any
+   key is one `[modal.pdf]` line away. Rejected: Vimma's meaning on the shared keys, with dual
+   page and rotation on other keys, because the viewer would then behave as zathura only in
+   part; a `[pdf] keys = "zathura" | "vimma"` switch, because `[modal.pdf]` already lets a user
+   change any key and a switch doubles the bindings to document and test.
 6. **Counts are physical page numbers.** `{n}G`, `{n}gg` and `:{n}` go to the nth page, counting
    from 1, because zathura's do (Research, zathura table) and because a count is typed without
    knowing the labels. The status bar shows the label when it differs, so the number to type is
@@ -398,37 +418,78 @@ find: { current, total } }`), sent to the parent on the viewer's events.
    records is in the list. Reason: one history for the tab, which `H`, `L` and the back button
    already use on every other page. Rejected: a jump list of Vimma's own, because it would
    disagree with the back button.
-10. **The outline is pdf.js's sidebar, driven by `index` mode.** `Tab` opens the sidebar on the
-    outline view and marks the current entry with a Vimma attribute that Vimma's style sheet for
-    the viewer, `chrome://browser/content/vimma/pdf/pdf.css` (loaded with a `<link>` element, which
-    the CSP and `contentaccessible` allow, Research), draws in the theme's selection colours; `index` mode moves the
-    mark over visible `.treeItem` rows, expands and collapses through their togglers, and follows
-    an entry by activating its link, which pdf.js turns into a history entry and a jump. Reason:
-    no outline text (which the PDF controls) leaves the content process, and pdf.js's outline
-    stays accessible to screen readers. zathura's index replaces the page; pdf.js's sidebar sits
-    beside it, which is the closest pdf.js offers. Open question 5 asks about a picker instead.
+10. **The outline is a Vimma panel, driven by `index` mode.** `Tab` asks the adapter for the
+    outline and opens it in Vimma's outline panel, in the side panel's slot on the left of the
+    window (one panel at a time there, as with the bookmarks panel), styled with the theme's
+    tokens as the side panel and the pickers are; the tab enters `index` mode, whose default keys
+    (`[modal.index]`) are zathura's index keys. `/` switches the panel to a filter that works as
+    the pickers' search mode (`core/picker.mjs`): typed characters go to the query, matching is
+    the pickers' fuzzy matching with highlight ranges, and `Esc` returns to the tree. Reason: the
+    PDF viewer follows Vimma's design, so its outline looks and is keyed like Vimma's other panels
+    and follows the Vimma or Omarchy theme, and a filter finds a section of a long outline faster
+    than walking the tree, which zathura's index cannot. Rejected: pdf.js's sidebar driven by
+    `index` mode, because it keeps pdf.js's look, has no filter, and marking its current entry
+    needs a Vimma style sheet inside the viewer; a picker over the page, because zathura's index
+    stays in view while it is used, and a panel beside the page is the closest Vimma has.
+    - **Reading.** On the first `Tab` in a document the adapter calls `pdfDocument.getOutline()`,
+      only after the principal check of decision 2, and walks the tree in the content process. It
+      keeps each entry's target in the child and sends the parent, in document order, only
+      `{ title, level, page, kind, collapsed }` per entry, plus `url` for a URL entry. `page` is
+      the 1-based page the destination resolves to, resolved as pdf.js resolves its current entry
+      (Research), or 0 when it does not resolve; `kind` is `dest`, `url`, `action`, `attachment`
+      or `ocg`; `collapsed` is the entry's negative `count`. Destinations themselves (names and
+      page references) never leave the content process, because the parent needs only a page
+      number to select the current entry, and following an entry by its index keeps the parent's
+      messages to operation names and numbers (V7).
+    - **Bounds.** The child stops at 5000 entries, the hint reply's target limit
+      (`HINT_REPLY_MAX_TARGETS`, `core/hints.mjs:255`), and at a nesting depth of 32, and marks
+      the message truncated. Core's `parsePdfOutline` drops the whole message when any bound
+      fails: more entries than the limit, a title over 512 characters (`HINT_REPLY_MAX_TEXT`), a
+      URL over 8192 characters (`HINT_REPLY_MAX_HREF`), a page outside 0 to the page count, an
+      unknown kind, or a level over 32 or more than one deeper than its predecessor's. It strips control and
+      format characters (Unicode categories Cc and Cf) from titles, as from page labels (V6), and
+      collapses runs of white space. A truncated outline ends with the row
+      `outline truncated at 5000 entries`. Reason: an outline is text the PDF's author controls
+      that now reaches chrome, so it is bounded as hint text is; real outlines stay well under
+      these limits.
+    - **Following.** `Enter` sends the entry's index, and the adapter follows it as pdf.js's own
+      outline does: `goToDestination` for a destination, which records a history entry
+      (decision 9), `executeNamedAction` for a named action, and `executeSetOCGState` for a layer
+      change. The parent opens a URL entry under §4, as it opens a link chosen with `f`. An
+      attachment entry shows the notice `open attachments from pdf.js's sidebar (F4)`, because
+      opening an attachment goes through pdf.js's download path, which Vimma does not drive.
+    - **Current entry and expansion.** On opening, the panel selects the deepest of the last
+      entries whose page is at or before the current page, as pdf.js does, and expands the path to
+      it; other entries start expanded or collapsed as the document's `count` says.
+    - **Lifetime.** The parsed outline is kept in the parent, in memory, for the tab's current
+      document, so that a second `Tab` opens at once; it is dropped when the tab navigates or
+      closes, and never written. The panel closes when its tab stops being the selected tab of
+      the focused pane, because the outline belongs to one document.
+    - **pdf.js's sidebar stays.** Vimma neither hides nor changes pdf.js's sidebar, which keeps
+      the thumbnails, attachments and layers views and pdf.js's own outline view for the mouse,
+      reached with `F4` (which Vimma does not bind, so it reaches pdf.js) or the toolbar. Reason:
+      Vimma has no thumbnails, attachments or layers views of its own, and hiding only the outline
+      view would need a style sheet inside the viewer, which nothing else in this spec needs; with
+      none, Vimma adds nothing to the viewer's document.
 11. **Marks in memory, per document.** A mark stores `{ page, left, top, scale }` from pdf.js's
     current location, keyed by the document's URL without its fragment, in the host, for the
     session; `'x` restores it with `scrollPageIntoView` and an `XYZ` destination after a history
     entry. Reason: marks are reading positions, and Vimma keeps what it learns about a page in
     memory, as live grep keeps page text (`docs/security.md` §15). In the private workspace marks
-    live with its windows and go when it closes. zathura saves marks per file in its database; that is not matched (open question 4).
-12. **Recolour is a filter Vimma adds, coloured by the theme.** `ctrl+r` adds an SVG filter to the
-    viewer document, built with DOM calls (a luminance matrix, then a transfer table from the
-    theme's `foreground` for black to its `background` for white), and sets
-    `data-vimma-recolor` on the root element; a rule in `pdf.css` (decision 10),
-    `:root[data-vimma-recolor] .canvasWrapper { filter: url(#vimma-recolor) }`, applies it, so
-    that pages pdf.js renders later or rebuilds on zoom are recoloured too, which a style set on
-    each existing `.canvasWrapper` would miss. Only the canvas is filtered, so that the text
-    layer's find highlights and selection keep pdf.js's colours. The parent sends only
-    the two colours as six integers, which core computes from the resolved theme
-    (`resolveTheme`, `theme.mjs:816`), and sends them again on every theme change. The switch is
-    one per Vimma session for every PDF tab (open question 3), `[pdf] recolor` (default `false`,
-    as zathura's `recolor`) sets it at startup, and it does nothing while the system's forced
-    colours are on, since pdf.js recolours then. Images are recoloured with the page, as
-    zathura's default does. Rejected: `pdfjs.forcePageColors`, because it is read once per viewer
-    (a reload to toggle), applies to every PDF, and posterizes pages to six grey steps
-    (Research); a CSS `invert()` filter, because it cannot use the theme's colours.
+    live with its windows and go when it closes. zathura saves marks and its jump list per file;
+    Vimma does not, because saving them would keep a list of the PDFs read in the profile, a
+    history Vimma keeps nowhere else, and Firefox's session restore already reopens a PDF at its
+    page. Rejected: marks saved per PDF URL in the profile, for that reason.
+12. **Pages are shown as the document draws them.** Vimma does not recolour PDF pages: it adds no
+    filter or style to the viewer and sets no `pdfjs.*` colour pref, and `ctrl+r` keeps its
+    meaning, reload (decision 5). Reason: a document's colours are its content (figures,
+    highlights, colour-coded charts), and Vimma's theming applies to Vimma's own surfaces around
+    it: the outline panel, the status bar and notices. pdf.js's forced page colours stay as
+    Firefox ships them, so they still apply under the system's forced-colours (high contrast)
+    mode (Research), an accessibility setting of the system rather than a theme. Rejected:
+    zathura's recolour on `ctrl+r` in the theme's colours, for the reason above;
+    `pdfjs.forcePageColors`, for the same reason, and because it is read once per viewer and
+    posterizes pages to six grey steps (Research).
 13. **Status bar and find.** The adapter reports the page, page count, label and match count on
     pdf.js's `pagechanging`, `updatefindmatchescount` and `updatefindcontrolstate` events; the
     status bar shows `page x/y` (or `page label (x/y)`) beside `tab` and `pane`, in Vimma's
@@ -456,15 +517,24 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     copy it as text. An internal link's target is shown as `page 12` from the destination pdf.js
     resolves. **Unverified:** that the collector labels pdf.js's internal links, whose `href` is
     a fragment with a click handler. Check: the links mochitest in Tests.
-17. **about:pdf follows open question 2.** Until it is answered, Vimma changes nothing there,
-    because every option except (a) changes Firefox behaviour that the PDF keys do not depend on.
+17. **about:pdf stays; the viewer's promotion is off.** `firefox-branding.js` sets
+    `pdfjs.featuresNotificationImpressionLimit` to 0, so that the "PDFs just got easier" bar never
+    covers a document; `about:pdf` and its menu entries stay as Firefox ships them, and the guide
+    names pdf.js as Mozilla's viewer that Vimma drives. Reason: the notification is the only part
+    that interrupts reading, the page's wording ("Vimma PDF tools") is true because Vimma ships
+    those tools, and a pref costs no patch. The impression budget is shared, so the notification
+    on `about:pdf` itself goes too (Research). Rejected: rewording `aboutPDF.ftl`, or hiding
+    `about:pdf` and its entry points, because each needs an upstream patch rebased with every
+    release for wording that is already accurate.
 
 ## Security and privacy
 
 New surface: Vimma's content actor now reads from and calls into the pdf.js viewer through an Xray
-waiver, and the viewer parses untrusted files. The design keeps the same trust model as for any
-page: the child runs in the sandboxed content process, holds no chrome privilege beyond its own,
-and the parent believes nothing the child says without a check. A compromised viewer (Research,
+waiver, and the viewer parses untrusted files. The outline panel brings text the PDF's author
+controls (outline titles and URLs) into chrome, as page titles and hint text already are. The
+design keeps the same trust model as for any page: the child runs in the sandboxed content
+process, holds no chrome privilege beyond its own, and the parent believes nothing the child says
+without a check. A compromised viewer (Research,
 CVE-2024-4367) is treated as a hostile page that also controls every pdf.js function and event
 the adapter touches.
 
@@ -494,8 +564,10 @@ the adapter touches.
 >   `the_adapter_passes_only_cloned_options`
 > - V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only
 >   the fields they need; the child **must** keep only values whose `typeof` is `number`,
->   `boolean` or `string` before `sendAsyncMessage`, and **must not** await or call `then` on any
->   value returned by pdf.js. `a_hostile_viewer_gets_only_primitives_through`
+>   `boolean` or `string` before `sendAsyncMessage`, and **must not** `await` a value returned by
+>   pdf.js. An asynchronous result (the outline, a named destination's page) **must** come back
+>   only through a `Cu.exportFunction` callback passed to that promise's `then` through Xrays,
+>   read by the same rules as an event callback. `a_hostile_viewer_gets_only_primitives_through`
 > - V5. Bursts of pdf.js callbacks and of chrome-only events (`pagesloaded` and the others, which
 >   the viewer itself can fire through `FirefoxCom.request("dispatchGlobalEvent")`) **must** be
 >   coalesced to at most one state message per 100 ms per tab.
@@ -506,23 +578,32 @@ the adapter touches.
 >   status bar **must** draw it as text. `pdf state outside its bounds is dropped`,
 >   `a page label cannot carry bidi or zero-width characters`
 > - V7. The parent **must** send the child only operation names and numbers; no script, CSS text
->   or markup **may** go into the viewer, and the recolour filter is built from six integers.
->   `recolor_sends_only_numbers`
-> - V8. Outline titles **must not** leave the content process. A link target from `F` or `c`
->   **must** be shown and copied as text and opened only under §4.
->   `index_mode_sends_no_outline_text`
+>   or markup **may** go into the viewer; an outline entry is followed by its index, and its
+>   destination stays in the child. `the_parent_sends_only_operations_and_numbers`
+> - V8. The adapter **must** read the outline only on the user's `Tab` in the PDF viewer, and send
+>   only each entry's title, level, page number, kind, collapsed flag and, for a URL entry, its
+>   URL, never a destination. The parent **must** parse the message with `parsePdfOutline`, which
+>   drops it when it holds more than 5000 entries, a level deeper than 32 or more than one step
+>   below the previous entry's, a title over 512 characters, a URL over 8192, a page outside the
+>   document or an unknown kind, and strips control and format characters (Cc, Cf) from titles.
+>   The outline panel **must** set titles with `textContent` (§6, C1), and a URL entry, like a
+>   link target from `F` or `c`, **must** be shown and copied as text and opened only under §4.
+>   `the_outline_is_read_only_on_the_users_key`, `an_outline_outside_its_bounds_is_dropped`,
+>   `outline_titles_with_html_stay_text`, `an_outline_url_opens_only_under_section_4`
 > - V9. Presentation mode **may** go full screen without user activation, as Firefox allows the
 >   pdf.js principal (`dom/base/Element.cpp:5151-5154`); Vimma **must** request it only for the
 >   user's own key in the PDF viewer, so it adds no spoofing surface: a page cannot reach it, and
 >   Firefox's full-screen warning still shows. `presentation_only_on_the_users_key`
 > - V10. Vimma **must not** write any `pdfjs.*` pref other than
->   `pdfjs.featuresNotificationImpressionLimit` (if open question 2 chooses it), and never one
+>   `pdfjs.featuresNotificationImpressionLimit`, which it sets to 0, and never one
 >   that changes scripting, fetching or sandboxing (`pdfjs.enableScripting`, `pdfjs.disabled`).
 >   `pdf_mode_writes_no_pdfjs_prefs`
-> - V11. Marks and the recolour switch **must** stay in memory. `pdf_marks_are_not_written`
+> - V11. Marks and the parsed outline **must** stay in memory, and the outline **must** be dropped
+>   when its tab navigates or closes. `pdf_marks_and_outlines_are_not_written`
 
-Section 13's page-mode rules apply unchanged. The PR that adds the adapter gets a review by a
-fresh agent before it merges, as every content-actor change does. No new disk writes, and
+Section 13's page-mode rules apply unchanged. The PR that adds the adapter and the PR that adds
+the outline panel each get a review by a fresh agent before they merge, as every content-actor
+change does. No new disk writes, and
 `vimma-ctl state` does not report the page or its label unless a later spec adds them.
 
 ## Tests
@@ -539,8 +620,16 @@ fresh agent before it merges, as every content-actor change does. No new disk wr
     strips control and format characters from a label, such as U+202E and U+200B (`a page label
 cannot carry bidi or zero-width characters`); page targets for
     `G`, `12G`, `12gg`, `99G` on 12 pages, `3J` near the end; zoom steps with counts and the
-    clamps, `150=`; spread toggles `d` and `D` from each mode; the recolour table for the
-    built-in themes and an Omarchy theme; mark records keyed without the fragment.
+    clamps, `150=`; spread toggles `d` and `D` from each mode; mark records keyed without the
+    fragment.
+  - `pdfoutline.test.mjs`: `parsePdfOutline` accepts a full outline and drops one with 5001
+    entries, a level of 33 or a skipped level, a 513-character title, an 8193-character URL, a
+    page past the count or an unknown kind (`an outline outside its bounds is dropped`); it strips
+    U+202E and U+200B from titles and collapses white space; the panel's keys: `j`, `k`, `l`, `h`,
+    `zo`, `zc`, `zO`, `zC`, `L`, `H`, `zR`, `zM`, `gg`, `G`, `ctrl+d`, `ctrl+u`, `Enter`, `Esc`;
+    the current entry for a page (the deepest of the last entries at or before it) with its path
+    expanded; negative `count` starts collapsed; `/` filters fuzzily, best match first with
+    ancestor titles, `Esc` returns to the tree; a truncated outline's last row.
   - `statusbar.test.mjs`: `page 3/12`, `page iv (4/120)`, nothing outside a PDF; the find
     segment with a PDF's count.
   - `help.test.mjs` and the help snapshot: `[pdf]` and `[index]` headings.
@@ -564,18 +653,24 @@ cannot carry bidi or zero-width characters`); page targets for
   - `zoom_and_fit`: `+`, `-`, `zI`, `zO`, `zZ`, `2+`, `=`, `150=`, `a`, `s`, and the fit kept after
     a pane resize.
   - `layout`: `d`, `D`, `w`, `r`, `2r`.
-  - `index_mode`: `Tab` opens the outline with the current entry marked; `j`, `k`, arrows, `l`,
-    `h`, `zo`, `zc`, `zO`, `zC`, `L`, `H`, `zR`, `zM`, `gg`, `G`, `ctrl+d`, `ctrl+u`; `Enter`,
-    `space` and `ctrl+j` jump and close; `Tab`, `Esc`, `ctrl+[`, `ctrl+c` and `q` close without
-    moving; a PDF without an outline
-    says so; `index_mode_sends_no_outline_text`.
+  - `index_mode`: `Tab` opens the outline panel on the left with the current entry selected, in
+    the side panel's slot (an open side panel or bookmarks panel gives way); `j`, `k`, arrows,
+    `l`, `h`, `zo`, `zc`, `zO`, `zC`, `L`, `H`, `zR`, `zM`, `gg`, `G`, `ctrl+d`, `ctrl+u`;
+    `Enter`, `space` and `ctrl+j` jump and close, and `ctrl+o` returns; `Tab`, `Esc`, `ctrl+[`,
+    `ctrl+c` and `q` close without moving; `/` and a word filters and `Enter` jumps; a named
+    destination, a named action and a URL entry are each followed; an attachment entry shows its
+    notice; a PDF without an outline says so; switching tabs closes the panel;
+    `the_outline_is_read_only_on_the_users_key` (no outline message before `Tab`);
+    `outline_titles_with_html_stay_text` (a title `<img src=x onerror=…>` is text);
+    `an_outline_url_opens_only_under_section_4` (a `javascript:` URL entry does not run);
+    `the_parent_sends_only_operations_and_numbers`.
+  - `outline_follows_the_theme`: the panel's colours are the theme's tokens with a built-in theme
+    and with an Omarchy theme (screenshots of both in the PR).
   - `jumps`: `ctrl+o` after `2G`, after a link, after `n`, after `'a`, then leaving the PDF.
   - `marks`: `ma`, move, `'a`; `'b` unset; marks shared by two tabs of one PDF;
-    `pdf_marks_are_not_written` (no new file in the profile).
-  - `recolor`: `ctrl+r` sets the root attribute and the filter applies to every page's canvas,
-    including a page rendered after scrolling and a page rebuilt by a zoom, and not to the text
-    layer; `ctrl+r` removes it, a theme change updates it in every PDF tab, `[pdf] recolor = true` at
-    startup; `recolor_sends_only_numbers`; nothing under forced colours.
+    `pdf_marks_and_outlines_are_not_written` (no new file in the profile).
+  - `pages_keep_their_colours`: `ctrl+r` in the PDF viewer reloads, and after a theme change
+    Vimma has added no element, attribute or style sheet to the viewer's document.
   - `find_count`: `/` in a PDF shows `[current/total]` and `n` updates it.
   - `links`: `f` labels an external and an internal link (decision 16's check), `F` shows the
     target, `c` copies it.
@@ -588,10 +683,11 @@ cannot carry bidi or zero-width characters`); page targets for
   - `reload_keeps_the_position`: `R` reloads and pdf.js restores the page (the **unverified**
     row of the zathura table).
   - `form_fields_are_insert_mode`.
-  - `pdf_mode_writes_no_pdfjs_prefs`.
+  - `pdf_mode_writes_no_pdfjs_prefs`, and the features notification is not shown in the viewer
+    (`pdfjs.featuresNotificationImpressionLimit` is 0).
   - `keys_on_web_pages_are_unchanged`: `d`, `H`, `r`, `F5` keep their normal meanings on a page.
-- **e2e:** one scenario that opens a PDF, sends `12G`, `ctrl+r` and `Tab` through the control
-  socket and checks the state and a screenshot baseline, with its changelog line.
+- **e2e:** one scenario that opens a PDF, sends `12G` and `Tab` through the control socket and
+  checks the state and a screenshot baseline of the outline panel, with its changelog line.
 
 ## Docs and changelog
 
@@ -599,10 +695,11 @@ cannot carry bidi or zero-width characters`); page targets for
   the zathura table's "not matched" rows in prose, and a line that pdf.js is Mozilla's viewer
   that Vimma drives; "Find" loses nothing and gains the PDF count; "Status bar" names the page
   segment; "Link hints" mentions PDF links; "Features at a glance" gets one line; the
-  `config.toml` section documents `[pdf] recolor`, `[modal.pdf]` and `[modal.index]`.
+  `config.toml` section documents `[modal.pdf]` and `[modal.index]`; a line says that pages are
+  shown in the document's own colours.
 - `docs/limits.md`: the Find line about the PDF count goes; new lines for the zathura features
   not matched that a user would look for (SyncTeX, saved marks and jumps, `ctrl+b` full-page
-  up), and for PDFs from `blob:` and `data:` URLs.
+  up, recolouring), and for PDFs from `blob:` and `data:` URLs.
 - `docs/bindings.md`, `docs/bindings.json`, `defaults.toml`: regenerated by each keymap PR.
 - `docs/security.md`: section 18 (Security and privacy).
 - `docs/adr/023-keymap-contexts.md`: new, with delivery PR 1.
@@ -612,7 +709,7 @@ cannot carry bidi or zero-width characters`); page targets for
 ## Delivery
 
 Keymap changes go one pull request at a time, each regenerating the bindings docs and the help
-snapshot with a screenshot of the `ctrl+b ?` overlay (`plan.md` §6, item 8), so PRs 3 to 6 merge
+snapshot with a screenshot of the `ctrl+b ?` overlay (`plan.md` §6, item 8), so PRs 3 to 5 merge
 in order and none runs beside another keymap PR.
 
 1. **feat(keymap): keymap contexts.** Core only: `trie(mode, context)`, the dispatcher's context
@@ -626,45 +723,16 @@ in order and none runs beside another keymap PR.
    counts, `:{n}`, `H`, `L`, `P`, `ctrl+f`, `+`, `-`, `=`, `zi`, `zI`, `zo`, `zO`, `z0`, `zz`,
    `zZ`, `{n}=`, `a`, `s`, `d`, `D`, `w`, `r`, `R`, `Y`, `F5`, presentation, history entries
    before search jumps, the guide section.
-4. **feat(keys): the outline on `Tab` (`index` mode).**
-5. **feat(pdf): recolour in the theme's colours on `ctrl+r`.** With `[pdf] recolor`.
-6. **feat(keys): marks and link keys in the PDF viewer.** `m`, `'`, `F`, `c`.
-7. **chore(branding): about:pdf** as open question 2 decides, if it decides on a change.
+4. **feat(keys): the outline panel on `Tab` (`index` mode).** The adapter's outline read and
+   follow, `parsePdfOutline`, the panel with its filter, screenshots in a built-in and an Omarchy
+   theme, and V8 in `docs/security.md` section 18. Needs the fresh-agent review.
+5. **feat(keys): marks and link keys in the PDF viewer.** `m`, `'`, `F`, `c`.
+6. **chore(branding): turn off the PDF viewer's features notification.**
+   `pdfjs.featuresNotificationImpressionLimit = 0` (decision 17). Independent of the others.
 
-The spec becomes `implemented` with the last of these that open question answers keep.
+The spec becomes `implemented` with the last of these.
 
 ## Open questions
 
-1. **Shared keys: zathura's or Vimma's?** (a) zathura's meaning on the nine shared keys in the
-   PDF viewer (decision 5): the viewer is zathura, but `d`, `H`, `L`, `r`, `P`, `F`, `ctrl+f`,
-   `ctrl+r` and `F5` mean something else there than on a page. (b) Vimma's meaning everywhere;
-   only keys free in normal mode get zathura's meaning (`J`, `K`, counts on `G`, zoom, `a`, `s`,
-   `w`, `D`, `Tab`, marks), and dual page, rotation and recolour move to other keys. (c) (a) behind
-   a `[pdf] keys = "zathura" | "vimma"` switch. **Recommendation: (a)**, because a zathura user
-   expects those keys in a PDF and each displaced action keeps another key there; any key is one
-   `[modal.pdf]` line away.
-2. **about:pdf and its promotion.** The page and the viewer's notification describe pdf.js's tools
-   as "Vimma PDF" tools, and the page offers to make Vimma the default PDF app. (a) Keep both as
-   Firefox ships them. (b) Keep `about:pdf`, which works and is accurate (Vimma ships these tools),
-   and turn the viewer's notification off with `pdfjs.featuresNotificationImpressionLimit = 0` in
-   Vimma's branding prefs, so that no promotion bar covers a document. The impression budget is
-   shared (Research), so a limit of 0 also hides the notification on `about:pdf` itself; the page
-   stays reachable from its menu entries; the guide names pdf.js as
-   the viewer. (c) Reword the page to name pdf.js, which needs an upstream patch to
-   `aboutPDF.ftl` with an ADR-003 register line, rebased every release. (d) Hide `about:pdf` and
-   its entry points, which needs a patch to `nsAboutRedirector.cpp` and the menus. **Recommendation:
-   (b)**, because it removes the only part that interrupts reading, costs no patch, and the
-   page's wording stays true of Vimma.
-3. **Recolour per tab or for all PDFs?** (a) One switch for every PDF tab (decision 12), as
-   zathura's `recolor` is a setting. (b) Per tab, so a diagram-heavy PDF can stay in colour beside
-   a recoloured paper. **Recommendation: (a)**, because recolour follows the reading environment
-   (the theme), and `ctrl+r` on the one PDF that needs colour is one key.
-4. **Saved marks and positions.** (a) In memory only (decision 11). (b) Saved per PDF URL in the
-   profile, as zathura saves marks and its jump list: marks survive a restart, but Vimma would
-   keep a list of PDFs read, which is history it does not keep elsewhere. **Recommendation: (a)**;
-   Firefox's session restore already brings a PDF back at its page.
-5. **The outline: pdf.js's sidebar or a Vimma picker?** (a) pdf.js's sidebar in `index` mode
-   (decision 10). (b) A Vimma picker over the page, like `ctrl+b g`, with fuzzy filtering, closer
-   to zathura's full-view index; outline titles would then reach chrome, as untrusted text drawn
-   as text, and the picker would need its own security rule. **Recommendation: (a)** for this
-   spec, and (b) as a later spec if filtering the outline is wanted.
+None. The answers are decisions in Design: 5 (shared keys), 10 (the outline panel), 11 (marks in
+memory), 12 (no recolouring) and 17 (about:pdf).
