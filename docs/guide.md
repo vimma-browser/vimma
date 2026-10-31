@@ -1854,8 +1854,8 @@ for each one's program on your `PATH` (only now, never in the background) and li
 finds with its version and full path, for example
 `claude 2.1.303 · /home/you/.local/bin/claude`. When `PATH` holds a version manager's shim (mise,
 asdf, volta, aqua and the like: a link named `claude` to a program that picks the tool by the
-name it is started as), the row says so,
-`claude 2.1.314 · /home/you/.local/share/mise/shims/claude · a mise shim (runs /usr/bin/mise as claude)`,
+name it is started as), the row says `agent CLI (mise shim)` and the notice line the whole of
+it, `claude 2.1.314 · /home/you/.local/share/mise/shims/claude · a mise shim (runs /usr/bin/mise as claude)`,
 and a copy of the CLI itself further along `PATH` is listed instead when there is one. A shim
 works: Vimma runs the path as `PATH` holds it, link included, so the shim sees the name `claude`,
 and an upgrade behind the link needs no new setup. `Enter` picks one, and the prompt line asks

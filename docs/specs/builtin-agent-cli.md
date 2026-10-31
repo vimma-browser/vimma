@@ -64,7 +64,8 @@ own configuration allows; Vimma does not confine them, and the window states whi
    the background. When none is found, setup says which names it looked for and that the CLI
    has to be installed and logged in first. The path listed is the one `PATH` holds, links
    included. When it is a version manager's shim, a link named as the CLI to a program that
-   picks the tool by the name it is started as (C4), the row says so,
+   picks the tool by the name it is started as (C4), the row's detail says so
+   (`agent CLI (mise shim)`, since a narrow window cuts the label's path) and its label reads
    `claude 2.1.314 · /home/u/.local/share/mise/shims/claude · a mise shim (runs /usr/bin/mise as claude)`,
    and a `PATH` entry that is not a shim is listed instead when there is one, because it runs
    the CLI without one more program in between. A shim stays listed when it is all `PATH` has,

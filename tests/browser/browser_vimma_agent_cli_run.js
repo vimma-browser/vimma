@@ -556,6 +556,7 @@ addTidyTask(async function test_a_shim_runs_as_the_cli_it_is_named_after() {
     let found = await AgentCli.find();
     Assert.equal(found.length, 1, "one row per CLI");
     Assert.equal(found[0].path, fake.bin, "a CLI that is no shim comes first");
+    Assert.equal(found[0].shim, null, "and is no shim");
     Services.env.set("PATH", [shim.shims, ...rest].join(":"));
     found = await AgentCli.find();
     Assert.equal(found[0].path, shim.link, "the shim is listed as PATH holds it");
@@ -564,6 +565,7 @@ addTidyTask(async function test_a_shim_runs_as_the_cli_it_is_named_after() {
       `claude 2.1.303 · ${shim.link} · a fakemise shim (runs ${shim.program} as claude)`,
       "and its row says which program it runs, and as what",
     );
+    Assert.equal(found[0].shim, "fakemise", "named apart, for the row's detail");
     Assert.equal(found[0].problem, null, "and it may run");
   } finally {
     Services.env.set("PATH", path);

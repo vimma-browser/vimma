@@ -332,11 +332,14 @@ export const AgentCli = {
 
   /**
    * Setup's list (Behaviour 1): each supported CLI that a search of PATH finds, with its path
-   * and the version it prints, or why its file may not run. Only while setup asks.
-   * @returns {Promise<{ cli: string, path: string, label: string, problem: string | null }[]>}
+   * and the version it prints, or why its file may not run; `shim`, the dispatcher's name when
+   * the path is a version manager's shim. Only while setup asks.
+   * @returns {Promise<{ cli: string, path: string, label: string, shim: string | null,
+   *   problem: string | null }[]>}
    */
   async find() {
-    /** @type {{ cli: string, path: string, label: string, problem: string | null }[]} */
+    /** @type {{ cli: string, path: string, label: string, shim: string | null,
+     *   problem: string | null }[]} */
     const out = [];
     if (!this.enabled) return out;
     for (const cli of Object.values(CLIS)) {
@@ -356,7 +359,13 @@ export const AgentCli = {
       if (!pick) continue;
       const { path, r } = pick;
       if ("problem" in r) {
-        out.push({ cli: cli.id, path, label: `${cli.bin} · ${path}`, problem: r.problem });
+        out.push({
+          cli: cli.id,
+          path,
+          label: `${cli.bin} · ${path}`,
+          shim: null,
+          problem: r.problem,
+        });
         continue;
       }
       const version = await this.version(path, cli.id);
@@ -365,6 +374,7 @@ export const AgentCli = {
         cli: cli.id,
         path,
         label: versionText(cli, version ?? "", path, shim),
+        shim: r.dispatcher,
         problem: null,
       });
     }

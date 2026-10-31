@@ -921,7 +921,8 @@ export class AgentChatWindow {
     this.render();
     lazy.AgentCli.find().then(
       (
-        /** @type {{ cli: string, path: string, label: string, problem: string | null }[]} */ found,
+        /** @type {{ cli: string, path: string, label: string, shim: string | null,
+         *   problem: string | null }[]} */ found,
       ) => {
         if (!this.opened || this.view !== "models") return;
         if (!found.length) {
@@ -931,7 +932,10 @@ export class AgentChatWindow {
         }
         this.rows = found.map((f) => ({
           label: f.label,
-          detail: f.problem ? "not available" : "agent CLI · Enter uses it",
+          // The label's path is cut in a narrow window, so the shim is named here too.
+          detail: f.problem
+            ? "not available"
+            : `agent CLI${f.shim ? ` (${f.shim} shim)` : ""} · Enter uses it`,
           ...(f.problem
             ? { unavailable: `${f.path} is refused: ${f.problem}` }
             : { cliPick: { cli: f.cli, path: f.path } }),
