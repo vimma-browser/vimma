@@ -229,7 +229,7 @@ async function inspect(path, { folders: judgeFolders = true, cli } = {}) {
  * @returns {Promise<string[]>}
  */
 async function onPath(bin) {
-  const PATH = lazy.Subprocess.getEnvironment().PATH ?? "";
+  const PATH = Services.env.get("PATH");
   /** @type {string[]} */
   const out = [];
   for (const dir of PATH.split(":")) {
@@ -573,7 +573,7 @@ export const AgentCli = {
         tick = lazy.setInterval(() => o.onEvent({ type: "tick" }), TICK_MS);
         if (stopped) end();
         else {
-          await proc.stdin.write(cli.input(taskPrompt(o.messages, o.text)));
+          await proc.stdin.write(cli.input(taskPrompt(o.messages, o.text, cli.note)));
           // Lines added meanwhile, in order, before a later one may go straight to the input.
           while (pending.length) await proc.stdin.write(/** @type {string} */ (pending.shift()));
           live = true;

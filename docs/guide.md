@@ -1852,7 +1852,13 @@ messages mean.
 lists the providers. Pick `add: agent CLI (…)`, which names the CLIs Vimma supports: Vimma looks
 for each one's program on your `PATH` (only now, never in the background) and lists what it
 finds with its version and full path, for example
-`claude 2.1.303 · /home/you/.local/bin/claude`. `Enter` picks one, and the prompt line asks
+`claude 2.1.303 · /home/you/.local/bin/claude`. When `PATH` holds a version manager's shim (mise,
+asdf, volta, aqua and the like: a link named `claude` to a program that picks the tool by the
+name it is started as), the row says so,
+`claude 2.1.314 · /home/you/.local/share/mise/shims/claude · a mise shim (runs /usr/bin/mise as claude)`,
+and a copy of the CLI itself further along `PATH` is listed instead when there is one. A shim
+works: Vimma runs the path as `PATH` holds it, link included, so the shim sees the name `claude`,
+and an upgrade behind the link needs no new setup. `Enter` picks one, and the prompt line asks
 `agent model:` with the CLI's suggested model filled in: keep it, type another model the CLI
 takes, or clear it to leave the choice to the CLI's own default model. A model that starts with
 `-`, holds a tab or a line break, or is longer than 200 characters is refused there. The path is
@@ -1913,6 +1919,26 @@ provider is refused, because Vimma cannot see where a CLI sends what it reads.
   `ctrl+b shift+a`) stops it: its access to the browser ends first, then the CLI gets 3 s to exit
   before it is killed. A shell command it started may outlive the stop.
 
+**The CLI's own tools: web search and others.** Vimma runs the CLI without its terminal, in a
+mode where any tool of its own that was not allowed in advance is refused, since nobody is there
+to answer its question (for Claude Code, `--permission-mode dontAsk` with only Vimma's tools,
+`mcp__vimma`, allowed). A task that wants the CLI's own web search or page fetch then meets a
+refusal, unless the CLI's settings allow that tool.
+
+- **Search and read through Vimma.** Each task tells the CLI that web searches and reading pages
+  go through Vimma's tools in the agent workspace: it opens a search engine's results page with
+  `vimma_open` and reads it with `vimma_read_page`. That way the steps stay under Vimma's questions
+  and grants, show in the transcript, and use the agent workspace's cookies, never yours. Ask for
+  it in the task when it does not ("search the web in Vimma for …").
+- **Or allow the CLI's own tool, in the CLI's settings.** Vimma passes no setting of its own for
+  it; the CLI reads its usual settings, and the form for each is under
+  [Supported CLIs](#supported-clis). Such a setting applies to every session of that CLI, in a
+  terminal too.
+- **What that allows.** The CLI's own tools are outside Vimma's gate. A web search tool returns
+  search results to the model; a fetch tool, a shell or file tools act with your rights and can
+  send what you can read to the model's provider. A page that steers the model can make it use
+  any tool you allowed, so allow them only as you would in a terminal.
+
 **Budgets and cost.** `[agent] max_steps` counts the steps that reach the browser and
 `max_tokens` the tokens the CLI reports; `max_minutes` stops a task that runs too long. The cost
 runs on your own login or plan. A cost the CLI reports is its own estimate, at list prices even on
@@ -1942,19 +1968,34 @@ list finds it again` (the row reads `not available`): the program Vimma stored w
   given; check that the file runs (`vimma-ctl --version`).
 - **Its program is refused.** `<cli> at <path> is refused: <why>`, or
   `vimma-ctl at <path> is refused: <why>`, means the file fails one of the checks Vimma makes
-  before running it, because a file another user can replace would run their code as you:
-  - `its path is not absolute`, `it does not exist`, `it is not a regular file`,
-    `it is not executable`: the stored path no longer leads to the program.
+  before running it, because a file another user can replace would run their code as you. A
+  path that is a link is followed to its file, and every link on the way and every folder it
+  passes through is checked as the file's folders are:
+  - `it does not exist; add: agent CLI finds it again`: the stored path no longer leads to the
+    program, often because an upgrade removed the version it named. Pick `add: agent CLI (…)`
+    again.
+  - `it is mise, which runs claude only through a link named claude; add: agent CLI finds it
+again` (with your version manager's program and your CLI's name): Vimma 0.1.13 stored the
+    program a shim leads to, which cannot tell which tool to run when started under its own
+    name. Pick `add: agent CLI (…)` again; Vimma then keeps the shim itself.
+  - `its path is not absolute`, `it is not a regular file`, `it is not executable`: the stored
+    path no longer leads to the program.
   - `it is owned by another user` (only yours or root's are run), `other users can write it`
     (group or others have write permission: `chmod go-w <path>`).
   - `a folder it is in is owned by another user`,
     `a folder it is in can be written by other users`: a folder above the file, up to `/`, is
     another user's, or writable by others without being sticky as `/tmp` is. Install the CLI
-    under your home folder (`~/.local/bin`) or a system folder instead. The folders above the
+    under your home folder (`~/.local/bin`) or a system folder instead.
+  - `a link on its path is owned by another user`: a link on the way to the file is another
+    user's, who could point it elsewhere. The folders above the
     `vimma-ctl` next to Vimma's binary are not checked, since they hold Vimma itself; its own file
     is.
 - `stopped: <cli> exited (<code>): <its last error line>`: the CLI stopped with that error, for
   example when it is not logged in (see its entry under Supported CLIs).
+- `stopped: <cli> at <path> exited (<code>): <its last error line>`: the program exited before
+  it printed anything, so it most likely did not start as the CLI at all; the line names the
+  program that ran. Check that `<path>` is the CLI (`<path> --version`), or pick
+  `add: agent CLI (…)` again.
 - `an agent CLI may send page text off this machine ([agent] local_only)`: `[agent] local_only`
   is on; pick a local model or turn it off.
 - `agent: the model "…" is not a model name: it cannot start with "-"` (or
@@ -1971,7 +2012,17 @@ list finds it again` (the row reads `not available`): the program Vimma stored w
 - Models: setup suggests `sonnet`; the picker lists `sonnet`, `opus`, `haiku` (Claude Code's
   aliases for its newest model of each family) and Claude Code's own default model, and
   `other model…` takes a full model name such as `claude-opus-4-1`.
-- Its own tools follow `~/.claude/settings.json` and its permission rules.
+- Its own tools follow `~/.claude/settings.json` and its permission rules. To let it use its own
+  web search in Vimma's runs, add an allow rule to `~/.claude/settings.json`
+  (`$CLAUDE_CONFIG_DIR/settings.json` when that is set), which applies to all its sessions:
+
+  ```json
+  { "permissions": { "allow": ["WebSearch"] } }
+  ```
+
+  `WebFetch` (or `WebFetch(domain:example.com)` for one site) allows its page fetch the same way;
+  see "The CLI's own tools" above before you do.
+
 - It reports tokens and a cost, and a message sent during a task reaches it within that task.
 - Not logged in: `stopped: claude-code exited (1): Invalid API key · Please run /login`; run
   `claude` in a terminal and `/login`.
@@ -2015,6 +2066,9 @@ claude -p "Open https://example.com in Vimma's agent workspace and tell me its h
   the call is refused and the JSON's `permission_denials` lists it.
 - `--mcp-config vimma.json --strict-mcp-config` uses the server in `vimma.json` for this run and
   leaves out the servers of your other configuration.
+- Its own web search is refused in a headless run unless allowed: add `WebSearch` to
+  `--allowedTools` (`--allowedTools "mcp__vimma WebSearch"`) for one run, or to
+  `permissions.allow` in `~/.claude/settings.json` for all. Or ask it to search through Vimma.
 - `--output-format json` prints one object when the run ends: `result` is the answer.
   `--output-format stream-json --verbose` (it needs `--verbose`) prints a JSON line for each
   message as the run goes; a tool result is in a `user` message, with `"is_error": true` when
@@ -2038,6 +2092,9 @@ codex exec -c 'mcp_servers.vimma.default_tools_approval_mode="approve"' \
 never`) unless the server's `default_tools_approval_mode` is `"approve"`. `-c` sets it for this
   run; set under `[mcp_servers.vimma]` in `~/.codex/config.toml`, it applies to every session,
   and an interactive Codex then stops asking before Vimma does.
+- Its own web search needs no approval and is on by default (`web_search = "cached"`, results
+  from OpenAI's index); `-c web_search="live"` searches the live web, and
+  `-c web_search="disabled"` removes it.
 - For a server not in your configuration, add `-c 'mcp_servers.vimma.command="vimma-ctl"'` and
   `-c 'mcp_servers.vimma.args=["mcp"]'`.
 - Codex gives up on a tool call after 60 s (`tool_timeout_sec`); if you raise `ask_timeout`, add
@@ -2059,6 +2116,8 @@ copilot -p "Open https://example.com in Vimma's agent workspace and tell me its 
   is refused. `--allow-all-tools` is not needed for Vimma's tools, and would also let the run use
   the shell and edit files without asking.
 - `--additional-mcp-config @vimma.json` adds the server in `vimma.json` for this run.
+- Its own page fetch asks for each address, so in `-p` it is refused unless allowed:
+  `--allow-url=example.com` allows one site, `--allow-all-urls` every one (checked with 1.0.105).
 - `-s` (`--silent`) prints only the answer; `--output-format json` prints one JSON object for
   each event instead.
 
@@ -2080,6 +2139,9 @@ opencode run "Open https://example.com in Vimma's agent workspace and tell me it
 
   `opencode run --auto` approves every request that is not denied, including the shell and file
   edits, so a rule for `vimma_*` is the narrower choice.
+
+- Its own `webfetch` and `websearch` tools run without asking, as most of its tools do, unless a
+  `permission` rule names them (`{ "permission": { "websearch": "deny" } }`).
 
 - `--format json` prints opencode's events as JSON instead of formatted text.
 

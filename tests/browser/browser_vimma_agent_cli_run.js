@@ -38,7 +38,7 @@ const { AGENT_DEFAULTS } = ChromeUtils.importESModule(
 const { providerKey } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent-setup.mjs",
 );
-const { claudeArguments } = ChromeUtils.importESModule(
+const { CLIS, claudeArguments } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent-cli.mjs",
 );
 const { chatHeader, sendNotice: windowNotice } = ChromeUtils.importESModule(
@@ -699,7 +699,11 @@ addTidyTask(async function test_task_on_stdin_and_fixed_arguments() {
     "the fixed arguments, with the provider's model",
   );
   Assert.ok(!report.args.join(" ").includes("rm -rf"), "the task is not an argument");
-  Assert.equal(report.lines[0].message.content, task, "it is the first line on stdin");
+  Assert.equal(
+    report.lines[0].message.content,
+    `${CLIS["claude-code"].note}\n\n${task}`,
+    "it is the first line on stdin, after the CLI's note on Vimma's tools",
+  );
   Assert.deepEqual(report.mcp_servers, ["vimma"], "one MCP server");
   Assert.ok(
     !report.env.some((/** @type {string} */ k) => /^(MOZ_|VIMMA_)/.test(k)),
@@ -1107,8 +1111,8 @@ addTidyTask(async function test_added_instruction_reaches_the_running_cli() {
   const report = await readReport(fake.report);
   Assert.deepEqual(
     report.lines.map((/** @type {any} */ l) => l.message.content),
-    ["[[sleep 2]]", "also this"],
-    "written to the CLI's input",
+    [`${CLIS["claude-code"].note}\n\n[[sleep 2]]`, "also this"],
+    "written to the CLI's input, the added one as it was typed",
   );
   Assert.ok(report.stdin_closed, "whose input closed with the result");
   Assert.ok(texts(c.id).includes("user: also this (added during the task)"));

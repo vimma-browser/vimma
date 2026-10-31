@@ -327,7 +327,9 @@ text that pages, add-ons and bookmarks choose.
   clamd's socket (M13) and for the agent CLI's checks (M55: the program, `vimma-ctl`, the run
   folder and every folder above each), read with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
   `/usr/lib/libSystem.B.dylib` on macOS (`lstat` on arm64, `lstat$INODE64` on x86_64, the same
-  144-byte `struct stat`), neither following a symlink. libSystem is opened by its absolute path,
+  144-byte `struct stat`), neither following a symlink, and one link's target for those
+  checks, read with `readlink(2)` from the same library, because nsIFile follows a chain of links
+  to its end and hides the links between. libSystem is opened by its absolute path,
   which dyld resolves from its shared cache, because for a bare name dyld also searches the
   working directory of a process without the hardened runtime, so a library planted where Vimma
   starts would be loaded. Any other system or architecture, a failed call or a struct of
@@ -337,7 +339,7 @@ text that pages, add-ons and bookmarks choose.
   [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
   [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../packages/vimma-core/test/restart.test.mjs),
   [`starts the AppImage only once the old process has exited, with no arguments`](../packages/vimma-core/test/restart.test.mjs),
-  [`never calls native code, but statx or lstat for a file's owner and mode`](../tools/security/test/chrome-source.test.mjs)
+  [`never calls native code, but statx, lstat or readlink for a file's owner, mode or link`](../tools/security/test/chrome-source.test.mjs)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
   - The status bar **must** always show the selected page's real address with its registrable
@@ -1966,10 +1968,16 @@ own process, not a process group.
   question finishes, as any stopped task's does (Behaviour 16 of builtin-agent).
   [`test_stop_and_delete_close_the_ticket_connection`](../tests/browser/browser_vimma_agent_cli.js)
 - M55. An agent CLI **must** be started only when the user sends a task in the chat window, and
-  only as the program at the path picked in setup (a pref, never `config.toml`),
-  checked before each run: an absolute path, symlinks resolved, to a regular executable file
-  owned by the user or root that no other user can write, every folder above it the user's or
-  root's and not writable by other users unless sticky. Its arguments **must** come from the
+  only as the program at the path picked in setup (a pref, never `config.toml`), kept as `PATH`
+  held it, links included, and run by that path, so a version manager's shim sees the CLI's
+  name, checked before each run: an absolute path, resolved one entry at a time as the kernel
+  does, to a regular executable file owned by the user or root that no other user can write;
+  every link on the way owned by the user or root; and every folder the resolution looks an entry
+  up in (above the file, above each link and each hop of a chain) the user's or root's and not
+  writable by other users unless sticky, so that only the user or root can repoint a link or
+  replace the file. A stored path that names a version manager's dispatcher itself, other than
+  through a link named as the CLI, **must** be refused, since started as itself it runs the
+  wrong program. Its arguments **must** come from the
   CLI's fixed builder, with the provider's model the only value in them (a model that starts
   with `-`, holds any control character (a tab or a line break included) or is longer than 200
   characters is refused, by one rule where setup's prompt line takes
@@ -1990,6 +1998,9 @@ own process, not a process group.
   ticket, when the CLI's work is done even if a child of it keeps its output open.
   [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_a_shim_runs_as_the_cli_it_is_named_after`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`a link on the way to it is judged by its owner`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a program that runs a tool by the name it is started as is a dispatcher`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`test_no_process_before_a_task`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_task_on_stdin_and_fixed_arguments`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_runs_in_an_empty_private_directory_removed_after`](../tests/browser/browser_vimma_agent_cli_run.js),

@@ -28,13 +28,25 @@ import { hasControl } from "./strings.mjs";
  * its command line from the MCP configuration's path and the model, refusing a model
  * `modelProblem` refuses (C2); `mcpConfig` is the configuration file it reads, with the ticket
  * in `vimma-ctl mcp`'s environment (C3); `input` is one message on its stdin; `stream` reads its
- * output, with its usage, cost and own tools (C7, C8, C13).
+ * output, with its usage, cost and own tools (C7, C8, C13). `note` opens every task's text
+ * (Behaviour 12): `TOOLS_NOTE`, unless a CLI needs its own words.
  * @typedef {{ id: string, bin: string, title: string, model: string,
- *   models: readonly string[], versionArgs: readonly string[],
+ *   models: readonly string[], versionArgs: readonly string[], note: string,
  *   args: (o: { mcpConfig: string, model: string }) => string[],
  *   mcpConfig: (o: { vimmaCtl: string, ticket: string, port: number }) => object,
  *   input: (text: string) => string, stream: () => CliStream }} CliInfo
  */
+
+/**
+ * The sentence a CLI's task starts with (Behaviour 12). A CLI runs headless with only Vimma's
+ * tools allowed in advance (C2, C7), so its own web search or fetch is refused, and a model
+ * that meets the refusal tends to stop; told first, it searches and reads through the agent
+ * workspace, under the gate's questions and grants.
+ */
+export const TOOLS_NOTE =
+  "Vimma's note: search the web and read pages with Vimma's tools in the agent workspace " +
+  "(for example, open a search engine's results page with vimma_open and read it with " +
+  "vimma_read_page); tools of your own that this run was not allowed in advance are refused.";
 
 /** @type {Readonly<Record<string, Readonly<CliInfo>>>} */
 export const CLIS = Object.freeze({
@@ -46,6 +58,7 @@ export const CLIS = Object.freeze({
     // Claude Code's model aliases, which follow its newest model of each family.
     models: Object.freeze(["sonnet", "opus", "haiku", ""]),
     versionArgs: Object.freeze(["--version"]),
+    note: TOOLS_NOTE,
     args: (/** @type {{ mcpConfig: string, model: string }} */ o) => claudeArguments(o),
     mcpConfig: (/** @type {{ vimmaCtl: string, ticket: string, port: number }} */ o) =>
       mcpConfig(o),
@@ -209,20 +222,22 @@ export function userLine(text) {
 }
 
 /**
- * The task a run is given (C5, Behaviour 12): the conversation's stored messages, replies and
- * summaries before the new message, since the CLI keeps no session between tasks.
+ * The task a run is given (C5, Behaviour 12): the CLI's `note`, then the conversation's stored
+ * messages, replies and summaries before the new message, since the CLI keeps no session
+ * between tasks.
  * @param {{ role: string, text?: string }[]} messages  the stored conversation, as sent to a model
  * @param {string} text  the new message
+ * @param {string} [note]  the CLI's `note`
  */
-export function taskPrompt(messages, text) {
+export function taskPrompt(messages, text, note = "") {
   const earlier = messages
     .filter((m) => (m.role === "user" || m.role === "assistant") && m.text)
     .map((m) => `${m.role === "user" ? "User" : "You"}: ${m.text}`);
-  if (!earlier.length) return text;
-  return (
-    "Earlier in this conversation (from Vimma's stored copy):\n\n" +
-    `${earlier.join("\n\n")}\n\nThe user's new message:\n\n${text}`
-  );
+  const body = earlier.length
+    ? "Earlier in this conversation (from Vimma's stored copy):\n\n" +
+      `${earlier.join("\n\n")}\n\nThe user's new message:\n\n${text}`
+    : text;
+  return note ? `${note}\n\n${body}` : body;
 }
 
 /**

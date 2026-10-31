@@ -255,6 +255,19 @@ describe("the conversation as one task (C5, Behaviour 12)", () => {
     expect(prompt.endsWith("Add three items.")).toBe(true);
     expect(taskPrompt([], "Only this.")).toBe("Only this.");
   });
+
+  test("a CLI's note on Vimma's tools goes first, so a denied tool of its own is not the end", () => {
+    const cli = CLIS["claude-code"];
+    expect(cli.note).toBe(
+      "Vimma's note: search the web and read pages with Vimma's tools in the agent workspace " +
+        "(for example, open a search engine's results page with vimma_open and read it with " +
+        "vimma_read_page); tools of your own that this run was not allowed in advance are refused.",
+    );
+    expect(taskPrompt([], "Only this.", cli.note)).toBe(`${cli.note}\n\nOnly this.`);
+    const later = taskPrompt([{ role: "user", text: "Find it." }], "Next.", cli.note);
+    expect(later.startsWith(`${cli.note}\n\nEarlier in this conversation`)).toBe(true);
+    expect(later.endsWith("Next.")).toBe(true);
+  });
 });
 
 describe("claude-code's stream (C7, C8)", () => {
@@ -657,6 +670,7 @@ describe("every CLIS entry supplies the whole interface", () => {
       expect(cli.models).toContain("");
       for (const m of cli.models) expect(modelProblem(m)).toBeNull();
       expect(Array.isArray(cli.versionArgs)).toBe(true);
+      expect(cli.note).toMatch(/vimma_open/);
       const args = cli.args({ mcpConfig: "/run/x/mcp.json", model: "m-1" });
       expect(args).toContain("m-1");
       expect(args).toContain("/run/x/mcp.json");
