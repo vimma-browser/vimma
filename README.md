@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/vimma-logo-wide.jpg" alt="Vimma: Vim and Tmux inspired" width="640">
+  <img src="docs/assets/vimma-social.png" alt="Vimma, Vim and Tmux inspired: a keyboard-first browser for people who live in the terminal. vimma.dev, for Linux and macOS." width="800">
 </p>
 
 <p align="center">
