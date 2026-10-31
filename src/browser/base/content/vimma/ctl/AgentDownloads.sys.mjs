@@ -529,7 +529,7 @@ const LSTAT = { aarch64: "lstat", x86_64: "lstat$INODE64" };
  * uses statx(2), macOS lstat(2); any other system gives null, so clamd is not used there. A
  * symlink is not followed, so it never counts as a socket.
  * @param {string} path
- * @returns {{ isSocket: boolean, uid: number, mode: number } | null}
+ * @returns {{ isSocket: boolean, isLink: boolean, uid: number, mode: number } | null}
  */
 function socketOwner(path) {
   const os = Services.appinfo.OS;
@@ -543,7 +543,7 @@ function socketOwner(path) {
  * architecture (linux/include/uapi/linux/stat.h), where struct stat differs between x86_64 and
  * aarch64.
  * @param {string} path
- * @returns {{ isSocket: boolean, uid: number, mode: number } | null}
+ * @returns {{ isSocket: boolean, isLink: boolean, uid: number, mode: number } | null}
  */
 function statxOwner(path) {
   const ctypes = lazy.ctypes;
@@ -581,7 +581,12 @@ function statxOwner(path) {
     }
     if ((st.stx_mask & STATX_TYPE_UID) !== STATX_TYPE_UID) return null;
     const mode = st.stx_mode;
-    return { isSocket: (mode & 0o170000) === 0o140000, uid: st.stx_uid, mode: mode & 0o7777 };
+    return {
+      isSocket: (mode & 0o170000) === 0o140000,
+      isLink: (mode & 0o170000) === 0o120000,
+      uid: st.stx_uid,
+      mode: mode & 0o7777,
+    };
   } catch (e) {
     console.error("vimma: statx failed", e);
     return null;
@@ -597,7 +602,7 @@ function statxOwner(path) {
  * st_gid (uint32), then fields this does not read. An architecture not in LSTAT, or a struct
  * of another size, gives null.
  * @param {string} path
- * @returns {{ isSocket: boolean, uid: number, mode: number } | null}
+ * @returns {{ isSocket: boolean, isLink: boolean, uid: number, mode: number } | null}
  */
 function lstatOwner(path) {
   const ctypes = lazy.ctypes;
@@ -625,9 +630,57 @@ function lstatOwner(path) {
     const st = new Stat();
     if (lstat(path, st.address()) !== 0) return null;
     const mode = st.st_mode;
-    return { isSocket: (mode & 0o170000) === 0o140000, uid: st.st_uid, mode: mode & 0o7777 };
+    return {
+      isSocket: (mode & 0o170000) === 0o140000,
+      isLink: (mode & 0o170000) === 0o120000,
+      uid: st.st_uid,
+      mode: mode & 0o7777,
+    };
   } catch (e) {
     console.error("vimma: lstat failed", e);
+    return null;
+  } finally {
+    libc?.close();
+  }
+}
+
+/**
+ * What one symbolic link holds, as readlink(2) gives it (relative or absolute), or null when
+ * `path` is not a link or cannot be read. nsIFile's `target` follows every link of a chain to its
+ * end, which hides the links between, and an agent CLI's checks judge each link on the way
+ * (docs/specs/builtin-agent-cli.md C4). Linux and macOS only, as `socketOwner` is.
+ * @param {string} path
+ * @returns {string | null}
+ */
+function readLink(path) {
+  const os = Services.appinfo.OS;
+  if (os !== "Linux" && os !== "Darwin") return null;
+  const ctypes = lazy.ctypes;
+  /** @type {any} */
+  let libc;
+  try {
+    // An absolute path on macOS, as in lstatOwner: dyld searches the working directory too.
+    libc = ctypes.open(os === "Linux" ? "libc.so.6" : "/usr/lib/libSystem.B.dylib");
+    const readlink = libc.declare(
+      "readlink",
+      ctypes.default_abi,
+      ctypes.ssize_t,
+      ctypes.char.ptr,
+      ctypes.char.ptr,
+      ctypes.size_t,
+    );
+    // PATH_MAX on Linux; a longer target is refused as unreadable.
+    const size = 4096;
+    const buf = ctypes.char.array(size)();
+    // ssize_t comes back as a ctypes Int64, which converts through its string.
+    const n = parseInt(String(readlink(path, buf, size)), 10);
+    if (n < 0 || n >= size) return null;
+    const bytes = new Uint8Array(n);
+    const view = ctypes.cast(buf, ctypes.uint8_t.array(size));
+    for (let i = 0; i < n; i++) bytes[i] = view[i];
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (e) {
+    console.error("vimma: readlink failed", e);
     return null;
   } finally {
     libc?.close();
@@ -973,12 +1026,14 @@ export const AgentDownloads = {
    * folder above it must be the user's or root's (docs/specs/builtin-agent-cli.md C4), and this
    * is the one place Vimma reads an owner (security.md C2).
    * @param {string} path
-   * @returns {{ uid: number, mode: number } | null}
+   * @returns {{ uid: number, mode: number, isLink: boolean } | null}
    */
   ownerAndMode(path) {
     const s = socketOwner(path);
-    return s ? { uid: s.uid, mode: s.mode } : null;
+    return s ? { uid: s.uid, mode: s.mode, isLink: s.isLink } : null;
   },
+
+  readLink,
 
   /** Once per app (AgentPages.init): the hooks stay for the session. */
   init() {

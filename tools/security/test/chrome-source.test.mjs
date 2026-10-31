@@ -133,19 +133,25 @@ describe("chrome code", () => {
     // `version` runs only a path `inspect` passed, checked inside it whoever calls it, and only
     // while agent CLIs are on; the run only `checked`, inspect's result.
     expect(text).toMatch(
-      /async version\(path, id = CLI_IDS\[0\] \?\? ""\) \{\s*const cli = CLIS\[id\];\s*if \(!this\.enabled \|\| !cli\) return null;\s*const r = await inspect\(path\);\s*if \("problem" in r\) return null;/,
+      /async version\(path, id = CLI_IDS\[0\] \?\? ""\) \{\s*const cli = CLIS\[id\];\s*if \(!this\.enabled \|\| !cli\) return null;\s*const r = await inspect\(path, \{ cli \}\);\s*if \("problem" in r\) return null;/,
     );
-    expect(text).toContain("const checked = await inspect(path);");
-    expect(text).toContain("const version = await this.version(r.path, cli.id);");
+    expect(text).toContain("const checked = await inspect(path, { cli });");
+    // inspect gives back the path it was given, link kept, once that path and its target pass.
+    expect(text).toContain("return { path, real, dispatcher };");
+    expect(text).toContain("const version = await this.version(path, cli.id);");
     // The CLI is a CLIS entry, never a value of config.toml's (C2): its arguments, input and
     // version arguments come from that entry's fixed builders.
     expect(text).toContain('const cli = CLIS[o.provider.cli ?? ""];');
-    expect(text.match(/pathSearch\(/g)).toEqual(["pathSearch("]);
-    expect(text).toContain("found = await lazy.Subprocess.pathSearch(cli.bin);");
+    // The PATH search is `onPath`'s, called by `find` alone; it lists files and runs nothing.
+    expect(text).not.toMatch(/pathSearch\(/);
+    expect(text.match(/onPath\(/g)).toEqual(["onPath(", "onPath("]);
+    expect(text).toContain("for (const path of await onPath(cli.bin)) {");
     // No aliasing, no bracket access, no shell, and the task never an argument.
     expect(text).not.toMatch(/Subprocess\s*\[|=\s*(lazy\.)?Subprocess\b|\}\s*=\s*lazy\b/);
     expect(text).not.toMatch(/lazy\s*\[|nsIProcess|\/bin\/sh|"sh"|"-c"/);
-    expect(text).toContain("await proc.stdin.write(cli.input(taskPrompt(o.messages, o.text)));");
+    expect(text).toContain(
+      "await proc.stdin.write(cli.input(taskPrompt(o.messages, o.text, cli.note)));",
+    );
     const core = readFileSync(join(ROOT, "packages/vimma-core/src/agent-cli.mjs"), "utf8");
     expect(core).toContain('versionArgs: Object.freeze(["--version"]),');
     expect(core).toContain(
@@ -200,10 +206,10 @@ describe("chrome code", () => {
 
   // js-ctypes reaches any native function. Its one use is a file's owner and mode (clamd's
   // socket, M13, and an agent CLI's path checks, M55), read with statx(2) on Linux and
-  // lstat(2) on macOS (security.md C2): nothing else may load a
-  // library or declare a function. lstat's symbol is named in one table, by architecture, and
+  // lstat(2) on macOS, and one link's target, read with readlink(2) for those checks
+  // (security.md C2): nothing else may load a library or declare a function. lstat's symbol is named in one table, by architecture, and
   // libSystem by its absolute path, since dyld searches the working directory for a bare name.
-  test("never calls native code, but statx or lstat for a file's owner and mode", () => {
+  test("never calls native code, but statx, lstat or readlink for a file's owner, mode or link", () => {
     const CLAM = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
     const all = hits(/ctypes/);
     expect(all.filter((h) => !h.startsWith(`${CLAM}:`))).toEqual([]);
@@ -211,10 +217,12 @@ describe("chrome code", () => {
     expect(text.match(/ctypes\.open\([^)]*\)/g)).toEqual([
       'ctypes.open("libc.so.6")',
       'ctypes.open("/usr/lib/libSystem.B.dylib")',
+      'ctypes.open(os === "Linux" ? "libc.so.6" : "/usr/lib/libSystem.B.dylib")',
     ]);
     expect(text.match(/\.declare\(\s*"?[\w$]*/g)).toEqual([
       '.declare(\n      "statx',
       ".declare(symbol",
+      '.declare(\n      "readlink',
     ]);
     expect(text).toContain('const LSTAT = { aarch64: "lstat", x86_64: "lstat$INODE64" };');
     expect(text.match(/const symbol = [^;]*;/g)).toEqual([

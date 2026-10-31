@@ -13,6 +13,8 @@ import {
   claudeArguments,
   cliEnvironment,
   cliNotice,
+  dispatcherOf,
+  dispatcherProblem,
   exitText,
   cliModelText,
   mcpConfig,
@@ -21,7 +23,9 @@ import {
   ownToolText,
   ownToolsText,
   pathProblem,
+  refusedText,
   runStartedText,
+  shimText,
   taskPrompt,
   userLine,
   versionText,
@@ -223,6 +227,17 @@ describe("claude-code's command line (C2)", () => {
       "claude [31mweird · /usr/bin/claude",
     );
   });
+
+  test("a shim's line says which program it runs, and as what", () => {
+    const cli = CLIS["claude-code"];
+    const shim = shimText(cli, "mise", "/usr/bin/mise");
+    expect(shim).toBe("a mise shim (runs /usr/bin/mise as claude)");
+    expect(
+      versionText(cli, "2.1.314 (Claude Code)\n", "/home/u/.local/share/mise/shims/claude", shim),
+    ).toBe(
+      "claude 2.1.314 · /home/u/.local/share/mise/shims/claude · a mise shim (runs /usr/bin/mise as claude)",
+    );
+  });
 });
 
 describe("the conversation as one task (C5, Behaviour 12)", () => {
@@ -239,6 +254,19 @@ describe("the conversation as one task (C5, Behaviour 12)", () => {
     expect(prompt).toContain("It is at https://shop.example.");
     expect(prompt.endsWith("Add three items.")).toBe(true);
     expect(taskPrompt([], "Only this.")).toBe("Only this.");
+  });
+
+  test("a CLI's note on Vimma's tools goes first, so a denied tool of its own is not the end", () => {
+    const cli = CLIS["claude-code"];
+    expect(cli.note).toBe(
+      "Vimma's note: search the web and read pages with Vimma's tools in the agent workspace " +
+        "(for example, open a search engine's results page with vimma_open and read it with " +
+        "vimma_read_page); tools of your own that this run was not allowed in advance are refused.",
+    );
+    expect(taskPrompt([], "Only this.", cli.note)).toBe(`${cli.note}\n\nOnly this.`);
+    const later = taskPrompt([{ role: "user", text: "Find it." }], "Next.", cli.note);
+    expect(later.startsWith(`${cli.note}\n\nEarlier in this conversation`)).toBe(true);
+    expect(later.endsWith("Next.")).toBe(true);
   });
 });
 
@@ -547,6 +575,21 @@ describe("the window's words (Behaviour 4, 9, 13)", () => {
       "claude-code exited (1): Invalid API key · Fix external API key",
     );
   });
+
+  test("an exit with nothing on stdout names the program that ran", () => {
+    expect(
+      exitText(
+        CLIS["claude-code"],
+        2,
+        "For more information, try '--help'.\n",
+        "",
+        "/usr/bin/mise",
+      ),
+    ).toBe("claude-code at /usr/bin/mise exited (2): For more information, try '--help'.");
+    expect(exitText(CLIS["claude-code"], 2, "", "", "/usr/bin/mise")).toBe(
+      "claude-code at /usr/bin/mise exited (2)",
+    );
+  });
 });
 
 describe("the program's path (C4)", () => {
@@ -576,6 +619,40 @@ describe("the program's path (C4)", () => {
       "a folder it is in can be written by other users",
     );
   });
+  test("a link on the way to it is judged by its owner", () => {
+    expect(pathProblem({ ...good, linkOwner: "root" })).toBe(null);
+    expect(pathProblem({ ...good, linkOwner: "other" })).toBe(
+      "a link on its path is owned by another user",
+    );
+  });
+  test("a program that runs a tool by the name it is started as is a dispatcher", () => {
+    const cli = CLIS["claude-code"];
+    expect(dispatcherOf(cli, "mise")).toBe("mise");
+    expect(dispatcherOf(cli, "volta-shim")).toBe("volta-shim");
+    // The CLI itself, Claude Code's native installer (a file per version), npm's script.
+    expect(dispatcherOf(cli, "claude")).toBe(null);
+    expect(dispatcherOf(cli, "2.1.250")).toBe(null);
+    expect(dispatcherOf(cli, "cli.js")).toBe(null);
+    expect(dispatcherProblem(cli, "mise")).toBe(
+      "it is mise, which runs claude only through a link named claude",
+    );
+  });
+  test("a refusal setup can repair says how", () => {
+    const cli = CLIS["claude-code"];
+    expect(refusedText(cli, "/usr/bin/mise", dispatcherProblem(cli, "mise"))).toBe(
+      "claude-code at /usr/bin/mise is refused: it is mise, which runs claude only through a " +
+        "link named claude; add: agent CLI finds it again",
+    );
+    expect(refusedText(cli, "/x/2.1.250", "it does not exist")).toBe(
+      "claude-code at /x/2.1.250 is refused: it does not exist; add: agent CLI finds it again",
+    );
+    expect(refusedText(cli, "/x/claude", "other users can write it")).toBe(
+      "claude-code at /x/claude is refused: other users can write it",
+    );
+    expect(refusedText(cli, "/x/claude", "it is not executable")).toBe(
+      "claude-code at /x/claude is refused: it is not executable",
+    );
+  });
 });
 
 // docs/specs/builtin-agent-cli.md, "Adding a CLI": every per-CLI fact is in its CLIS entry, so a
@@ -593,6 +670,7 @@ describe("every CLIS entry supplies the whole interface", () => {
       expect(cli.models).toContain("");
       for (const m of cli.models) expect(modelProblem(m)).toBeNull();
       expect(Array.isArray(cli.versionArgs)).toBe(true);
+      expect(cli.note).toMatch(/vimma_open/);
       const args = cli.args({ mcpConfig: "/run/x/mcp.json", model: "m-1" });
       expect(args).toContain("m-1");
       expect(args).toContain("/run/x/mcp.json");

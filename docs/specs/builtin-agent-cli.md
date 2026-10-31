@@ -62,9 +62,16 @@ own configuration allows; Vimma does not confine them, and the window states whi
    (`claude 2.1.303 · /home/u/.local/bin/claude`), and the user picks one with `Enter`. The
    search and the version call run only while setup is open with this choice picked, never in
    the background. When none is found, setup says which names it looked for and that the CLI
-   has to be installed and logged in first.
-2. **The path is confirmed, not configured.** Picking a CLI stores its absolute path in the pref
-   `vimma.agent.cli.<name>.path` (C4). `config.toml` may list a CLI provider by name and model
+   has to be installed and logged in first. The path listed is the one `PATH` holds, links
+   included. When it is a version manager's shim, a link named as the CLI to a program that
+   picks the tool by the name it is started as (C4), the row's detail says so
+   (`agent CLI (mise shim)`, since a narrow window cuts the label's path) and its label reads
+   `claude 2.1.314 · /home/u/.local/share/mise/shims/claude · a mise shim (runs /usr/bin/mise as claude)`,
+   and a `PATH` entry that is not a shim is listed instead when there is one, because it runs
+   the CLI without one more program in between. A shim stays listed when it is all `PATH` has,
+   because running its link works.
+2. **The path is confirmed, not configured.** Picking a CLI stores its absolute path, as setup
+   listed it, in the pref `vimma.agent.cli.<name>.path` (C4). `config.toml` may list a CLI provider by name and model
    only:
 
    ```toml
@@ -141,11 +148,21 @@ own configuration allows; Vimma does not confine them, and the window states whi
 12. **A later task starts a new run with the stored conversation.** Each task is a new process
     given the conversation's stored messages, replies and summaries (builtin-agent
     Behaviour 20-21) before the new message, so a CLI keeps no session of its own between tasks
-    (C5).
+    (C5). The task's text starts with the CLI's `note` from `CLIS` (one sentence for every CLI
+    so far): web searches and reading pages go through Vimma's tools in the agent workspace,
+    for example a search engine's results page opened with `vimma_open`, and tools of its own
+    not allowed in advance are refused. The run allows only Vimma's tools (C2, C7), so the CLI's
+    own web search is refused unless its settings allow it, and a model that meets that refusal
+    tends to stop the task; told first, it searches through the agent workspace, under the
+    gate's questions and grants. A CLI that needs other words gets its own `note`.
 13. **Errors.** A CLI that is missing, not executable, not logged in, or exits before its result
     ends the task with a transcript line naming the CLI, its exit code and the last line of its
     error output, cut at 200 characters:
-    `claude-code exited (1): Invalid API key · Please run /login`.
+    `claude-code exited (1): Invalid API key · Please run /login`. When the CLI printed nothing
+    on its output, the line also names the program that ran
+    (`claude-code at /usr/bin/mise exited (2): For more information, try '--help'.`), because
+    the program then most likely never started as the CLI, and its path is the first thing to
+    check.
 
 ### Budgets and cost
 
@@ -363,8 +380,35 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    it), because a file another local user can replace, or a folder above it they can swap,
    would let that user run code as this user when a task is sent. Neither IOUtils nor nsIFile
    gives a file's owner, and IOUtils drops the sticky bit, so both are read with the
-   `statx`/`lstat` call security.md C2 already allows for clamd's socket; no new native call is
-   added. `vimma-ctl`, which the CLI runs with the ticket, is the one next to Vimma's
+   `statx`/`lstat` call security.md C2 already allows for clamd's socket.
+
+   The pref keeps the path as `PATH` held it, links included, and that path is what runs; the
+   checks resolve it at each run. Resolving it once in setup and keeping the file broke two
+   kinds of install: a version manager's shim (mise, asdf, rtx, volta, proto, aqua) is a link
+   named as the tool to one program that picks the tool by the name it is started as, so the
+   resolved `/usr/bin/mise`, started as `mise` with Claude Code's arguments, exited 2; and a
+   versioned file (`.../mise/installs/claude/2.1.303/claude`, Claude Code's own
+   `~/.local/share/claude/versions/2.1.303`) is gone after an upgrade, which a stable link
+   follows. Running the link keeps the guarantee above because the link is judged as the file
+   is: the path is resolved one entry at a time, as the kernel does, so every link on the way,
+   each hop of a chain of links included, must be owned by the user or root, and every folder
+   an entry is looked up in (above the file, above each link) must be the user's or root's and
+   not writable by others unless sticky. Only the user or root can then repoint a link or
+   replace the file, and since all of it is checked again before every run, a link repointed
+   since setup is judged by where it leads now. A link's own mode is not judged, since it
+   means nothing on Linux or macOS. nsIFile follows a chain of links to its end and hides the
+   links between, so one link's target is read with `readlink(2)`, from the library the
+   `statx`/`lstat` call already opens: the one native call this adds.
+
+   A program a link named as the CLI leads to is a dispatcher when its own name differs from
+   the CLI's, unless that name is a version (Claude Code's native installer keeps each version
+   as a file named by it) or has an extension (npm's `cli.js`, a script its interpreter is
+   given by path); only the name is read, since the rule decides only setup's wording and the
+   refusal below. A stored path that names a dispatcher itself, not through a link named as the
+   CLI, is refused at the run and in the picker,
+   `claude-code at /usr/bin/mise is refused: it is mise, which runs claude only through a link named claude; add: agent CLI finds it again`,
+   because that is what an earlier release stored and it cannot run; picking the CLI in setup
+   again stores the shim. A path that is gone gets the same `add: agent CLI finds it again`. `vimma-ctl`, which the CLI runs with the ticket, is the one next to Vimma's
    binary (where every release puts it), else the pref `vimma.agent.cli.vimmaCtl` (a build from
    source, tests). The pref's file is checked the same way; the one beside the binary has its
    own file checked, but not the folders above it, because they hold Vimma's binary, so a user
@@ -373,6 +417,7 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    `config.toml`, because it breaks F3; root-owned files only, as for ClamAV (C2 of
    security.md), because user installs (`~/.local/bin`, version managers) are where these CLIs
    live.
+
 5. **The CLI keeps no session; Vimma's stored conversation is the memory** (C5, Behaviour 12).
    Each task is a new process given the stored conversation, and Vimma asks the CLI not to save
    its session (`--no-session-persistence`, `--ephemeral`), because a CLI's session files hold
@@ -624,6 +669,8 @@ Claude Code's stream-json, scripted by the task's text; it also covers
 `test_added_instruction_reaches_the_running_cli` and
 `test_a_later_task_is_a_new_run_given_the_conversation`:
 `test_setup_lists_only_found_clis_and_stores_the_path`;
+`test_a_shim_runs_as_the_cli_it_is_named_after` (a link named `claude` to
+`fake_vimma_agent_dispatcher.py`, which picks the tool by the name it is started as);
 `test_setup_asks_the_clis_model_and_saves_it`; `test_an_empty_model_leaves_it_to_the_cli`; `test_path_checks_refuse_a_file_others_can_write`;
 `test_no_process_before_a_task`; `test_task_on_stdin_and_fixed_arguments`;
 `test_runs_in_an_empty_private_directory_removed_after`;
