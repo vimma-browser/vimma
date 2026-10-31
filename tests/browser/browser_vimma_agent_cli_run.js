@@ -560,9 +560,13 @@ addTidyTask(async function test_a_shim_runs_as_the_cli_it_is_named_after() {
     Services.env.set("PATH", [shim.shims, ...rest].join(":"));
     found = await AgentCli.find();
     Assert.equal(found[0].path, shim.link, "the shim is listed as PATH holds it");
+    // The program as it resolves (on macOS /var is a link to /private/var).
+    const real = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    real.initWithPath(shim.program);
+    real.normalize();
     Assert.equal(
       found[0].label,
-      `claude 2.1.303 · ${shim.link} · a fakemise shim (runs ${shim.program} as claude)`,
+      `claude 2.1.303 · ${shim.link} · a fakemise shim (runs ${real.path} as claude)`,
       "and its row says which program it runs, and as what",
     );
     Assert.equal(found[0].shim, "fakemise", "named apart, for the row's detail");
