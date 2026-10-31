@@ -230,6 +230,7 @@ async function reset(win = window) {
   while (view(win).panes) view(win).close();
   for (const tab of opened.splice(0)) if (!tab.closing && tab.parentNode) gBrowser.removeTab(tab);
   view(win).mode = "dwindle";
+  view(win).max = Panes.PANES_MAX_DEFAULT;
   win.document.getElementById(NOTICE_ID)?.hidePopover?.();
   await nextFrame(win);
 }
@@ -262,6 +263,7 @@ async function newPane() {
 
 add_task(async function ctrl_b_enter_splits_along_the_longer_side_up_to_the_max() {
   await setWindowSize();
+  view().max = 4;
   assertSpiralArea();
   const a = await page("a");
   opened.push(a);

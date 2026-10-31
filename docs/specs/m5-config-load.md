@@ -67,7 +67,7 @@ window after `VimmaHost` and `PaneViews`:
   file clears it.
 - With a 10-minute poll, `:source` loads the file.
 - `schema = 2`, `[panes] max = 2`: the third split is refused (`at most 2 panes`), no tab opened;
-  without the file the maximum is 4 again.
+  without the file the maximum is 4 again. (Since changed: 8 again, the new default (#691).)
 - With an Omarchy fixture followed, `[theme] source = "file"` switches the status bar to the
   built-in Vimma palette (Tokyo Night with `name = "tokyo-night"`),
   `[theme.colors] dark_background` overrides it, and removing the file brings Omarchy back.

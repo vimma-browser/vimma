@@ -359,7 +359,8 @@ custom properties; replaces `spike-layout.mjs`), `browser/themes/shared/vimma/sp
   `split("vertical" | "horizontal", { tab? })`, `close()` and `zoom()`, each returning
   `{ ok: true }` or `{ ok: false, reason }` (core's `splitRefusal` message, e.g. "at most 4
   panes"); `panes` (the tree, `null` for one pane), `max` (config `[panes] max`, default 4) and
-  `reconcile()`. `PaneViews.init` runs from `vimma.js`; no change to `VimmaHost`.
+  `reconcile()`. `PaneViews.init` runs from `vimma.js`; no change to `VimmaHost`. (Since
+  changed: `max` defaults to 8 (#691); `docs/guide.md`, "config.toml".)
 - **Reconcile** applies `planSplit` in its documented order: select the focus tab first when it
   is already a member, membership (a rebuild on any leave, `addTabs` or `addTabSplitView` on a
   join), `moveBefore` into reading order, select, show/hide visually, activate/deactivate (never
