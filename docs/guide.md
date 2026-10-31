@@ -543,6 +543,8 @@ is on screen), as Vim's starts at the cursor.
   that found nothing goes back to where you were, and the status bar says `not found`.
 - **`Esc`** cancels: the bar closes, nothing stays selected and the page scrolls back to where
   it was when you pressed `/`.
+- **Back into the search:** if you click the page while the bar is open, `/` (or `?`) puts you
+  back in the bar with its text selected, so you can type a new search or press `Enter` or `Esc`.
 - **`n` / `N`** jump to the next / previous match without opening the bar, wrapping at the ends.
   After a search that found nothing they do nothing.
 - **`?`** searches backward: it shows matches as you type, as `/` does, and `Enter` lands on the
