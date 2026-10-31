@@ -22,6 +22,10 @@ local or CI build picks this brand without anyone remembering a flag.
   ImageMagick. Replace when real artwork exists. **Since replaced** by the window+V mark
   (`docs/assets/vimma-mark.png`, keyed transparent from the square logo);
   `render.sh` now renders every icon from it, and `logo.svg`/`about-logo.svg` embed it as a PNG.
+  (Since changed: the mark moved from mint to the aqua palette, its hue turned 20 degrees, and
+  the brand colours left over from Tokyo Night went with it: `surfer.json`'s `backgroundColor`,
+  the About dialog's `about.png` tile, the macOS icon's fill and the wordmark's fallback stroke
+  are teal-black, `#071011`, and the PDF document icon takes the aqua `#2cf5d2`.)
 - **Brand config** in `surfer.json`: `brands.vimma` with short/shorter/full name "Vimma",
   background colour and `release.displayVersion` (`0.1.0`, plan §7: `0.x` until M6).
 - **Brand selection by default**: `npm run import` runs `surfer config brand vimma` before

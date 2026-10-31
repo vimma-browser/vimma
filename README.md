@@ -3,12 +3,12 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MPL--2.0-163327?labelColor=0a0f12" alt="MPL-2.0 licence" /></a>
-  <a href="https://github.com/vimma-browser/vimma/stargazers"><img src="https://img.shields.io/github/stars/vimma-browser/vimma?labelColor=0a0f12&color=163327&logo=github" alt="GitHub stars" /></a>
-  <a href="https://github.com/vimma-browser/vimma/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/vimma-browser/vimma/ci.yml?branch=main&label=ci&labelColor=0a0f12&color=163327" alt="CI status on main" /></a>
-  <a href="surfer.json"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fvimma-browser%2Fvimma%2Fmain%2Fsurfer.json&query=%24.version.version&label=firefox&labelColor=0a0f12&color=163327&logo=firefoxbrowser" alt="Firefox version Vimma is built on" /></a>
-  <a href="https://github.com/vimma-browser/vimma/releases/latest"><img src="https://img.shields.io/github/v/release/vimma-browser/vimma?label=release&labelColor=0a0f12&color=1bf587" alt="Latest release" /></a>
-  <a href="https://github.com/vimma-browser/vimma/releases"><img src="https://img.shields.io/github/downloads/vimma-browser/vimma/total?labelColor=0a0f12&color=163327" alt="Total downloads" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MPL--2.0-123532?labelColor=071011" alt="MPL-2.0 licence" /></a>
+  <a href="https://github.com/vimma-browser/vimma/stargazers"><img src="https://img.shields.io/github/stars/vimma-browser/vimma?labelColor=071011&color=123532&logo=github" alt="GitHub stars" /></a>
+  <a href="https://github.com/vimma-browser/vimma/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/vimma-browser/vimma/ci.yml?branch=main&label=ci&labelColor=071011&color=123532" alt="CI status on main" /></a>
+  <a href="surfer.json"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fvimma-browser%2Fvimma%2Fmain%2Fsurfer.json&query=%24.version.version&label=firefox&labelColor=071011&color=123532&logo=firefoxbrowser" alt="Firefox version Vimma is built on" /></a>
+  <a href="https://github.com/vimma-browser/vimma/releases/latest"><img src="https://img.shields.io/github/v/release/vimma-browser/vimma?label=release&labelColor=071011&color=2cf5d2" alt="Latest release" /></a>
+  <a href="https://github.com/vimma-browser/vimma/releases"><img src="https://img.shields.io/github/downloads/vimma-browser/vimma/total?labelColor=071011&color=123532" alt="Total downloads" /></a>
 </p>
 
 # Vimma

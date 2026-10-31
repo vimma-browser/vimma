@@ -31,8 +31,8 @@ const MARK = join(repo, "configs/branding/vimma/logo-mac.png");
 const ICON_SOURCE = join(repo, "configs/macos/AppIcon.icon");
 const BRANDING = join(repo, "configs/branding/vimma");
 export const FILES = ["Assets.car", "firefox.icns", "document.icns", "disk.icns", "background.png"];
-// The green of the mark in logo.png.
-const MARK_GREEN = "#1afa80";
+// The aqua of the mark in logo.png.
+const MARK_AQUA = "#1afaca";
 /**
  * The mounted dmg's Finder window, in points: its size, which background.png fills at 144 dpi,
  * and where the app and the Applications link (named " ") sit, by the centre of their icons.
@@ -64,14 +64,14 @@ const run = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", stdio: "p
 export function pageSvg(background) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <path d="M232 64H632L824 256V912Q824 960 776 960H248Q200 960 200 912V96Q200 64 232 64Z"
-    fill="${background}" stroke="#3b4261" stroke-width="12" stroke-linejoin="round"/>
-  <path d="M632 64V216Q632 256 672 256H824Z" fill="#3b4261"/>
+    fill="${background}" stroke="#234040" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M632 64V216Q632 256 672 256H824Z" fill="#234040"/>
 </svg>`;
 }
 
 /**
  * The dmg window's background at twice DMG_LAYOUT's size, as an SVG: the brand background and an
- * arrow from the app to the Applications link, in the mark's green.
+ * arrow from the app to the Applications link, in the mark's aqua.
  * @param {string} background the brand background, #rrggbb
  * @param {string} accent the arrow, #rrggbb
  */
@@ -168,7 +168,7 @@ async function generate(out, work) {
  */
 export async function dmgBackground(sharp, file) {
   const surfer = JSON.parse(readFileSync(join(repo, "surfer.json"), "utf8"));
-  await sharp(Buffer.from(dmgBackgroundSvg(surfer.brands.vimma.backgroundColor, MARK_GREEN)))
+  await sharp(Buffer.from(dmgBackgroundSvg(surfer.brands.vimma.backgroundColor, MARK_AQUA)))
     .withMetadata({ density: 144 })
     .png()
     .toFile(file);
