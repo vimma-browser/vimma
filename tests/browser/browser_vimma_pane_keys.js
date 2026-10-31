@@ -16,7 +16,9 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
-const { leaves } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs");
+const { leaves, PANES_MAX_DEFAULT } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/panes.mjs",
+);
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
@@ -138,6 +140,7 @@ async function assertFocused(tab, what) {
 async function reset() {
   while (view().panes) view().close();
   while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  view().max = PANES_MAX_DEFAULT;
   notice()?.hidePopover?.();
   await nextFrame();
 }
@@ -270,6 +273,7 @@ add_task(async function colon_q_closes_the_focused_pane() {
 });
 
 add_task(async function a_fifth_split_is_refused_with_a_notice() {
+  view().max = 4;
   const a = await openPage("a");
   for (let i = 0; i < 3; i++) await split("v");
   Assert.equal(paneCount(), 4, "four panes");

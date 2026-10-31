@@ -135,6 +135,7 @@ async function lShape() {
 async function reset() {
   while (view().panes) view().close();
   for (const tab of opened.splice(0)) if (!tab.closing && tab.parentNode) gBrowser.removeTab(tab);
+  view().max = Panes.PANES_MAX_DEFAULT;
   await nextFrame();
 }
 
@@ -243,7 +244,8 @@ add_task(async function a_window_resize_lays_the_panes_out_again() {
 
 add_task(async function a_fifth_split_is_refused_at_max_four_with_a_reason() {
   await setWindowSize();
-  Assert.equal(view().max, 4, "panes.max defaults to 4");
+  Assert.equal(view().max, 8, "panes.max defaults to 8");
+  view().max = 4;
   const tabs = await openTabs("m1", "m2", "m3", "m4", "m5");
   await BrowserTestUtils.switchTab(gBrowser, tabs[0]);
   for (const tab of tabs.slice(1, 4)) view().split("vertical", { tab });

@@ -333,7 +333,7 @@ font = "monospace"
 
 # The most panes (live pages) one workspace shows at once, 1 to 16.
 [panes]
-max = 4
+max = 8
 # Where ctrl+b enter puts a new pane: "dwindle" splits the focused pane along its longer side,
 # "manual" splits right as ctrl+b v. ctrl+b v and ctrl+b - always keep their direction.
 layout = "dwindle"

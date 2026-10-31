@@ -20,7 +20,9 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
-const { leaves } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs");
+const { leaves, PANES_MAX_DEFAULT } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/panes.mjs",
+);
 const { RENDER_CAP } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/bookmarks.mjs",
 );
@@ -162,6 +164,7 @@ registerCleanupFunction(async () => {
   setRoot("workspace"); // the default
   await closePanel();
   while (PaneViews.get(window).panes) PaneViews.get(window).close();
+  PaneViews.get(window).max = PANES_MAX_DEFAULT;
   while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesUtils.history.clear();
@@ -404,6 +407,7 @@ add_task(async function javascript_and_data_bookmarks_refuse_with_a_notice() {
 });
 
 add_task(async function s_and_S_open_in_splits_up_to_the_pane_max() {
+  PaneViews.get(window).max = 4;
   const tab = await openPage("split");
   await openPanel();
   await highlight("Jira");
@@ -429,6 +433,7 @@ add_task(async function s_and_S_open_in_splits_up_to_the_pane_max() {
   Assert.equal(gBrowser.tabs.length, tabs, "no tab opened");
   await closePanel();
   while (PaneViews.get(window).panes) PaneViews.get(window).close();
+  PaneViews.get(window).max = PANES_MAX_DEFAULT;
   while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
 });
 

@@ -43,8 +43,11 @@
 /** Smallest share of a split a pane can have: splits and resizes never go below it. */
 export const MIN_RATIO = 0.1;
 
-/** Default of config `[panes] max`: Zen's `MAX_TABS`, Firefox's split view tested up to it. */
-export const PANES_MAX_DEFAULT = 4;
+/**
+ * Default of config `[panes] max`. Eight, because four (Zen's `MAX_TABS`) leaves a large screen
+ * half used; a small screen lowers it in config.toml.
+ */
+export const PANES_MAX_DEFAULT = 8;
 /** Largest `[panes] max` the config accepts. */
 export const PANES_MAX_LIMIT = 16;
 

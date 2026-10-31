@@ -67,6 +67,8 @@ refusal and registers no tab, so the host checks `splitRefusal` before it create
 | `[sites."<host>"] insert` | string  | `"auto"`      | `auto`, `never` or `always` (suggestion)                                                                                                                                                                                              |
 | `[theme] name`            | string  | `"vimma"`     | `"vimma"` or `"tokyo-night"` (suggestion): the built-in palette (added later, as `[bookmarks]` was)                                                                                                                                   |
 
+(Since changed: `[panes] max` defaults to 8 (#691).)
+
 Resolved config gains `panes: { max }`, `hintChars` and `sites: [{ match, insert }]` in file
 order (`match` as written; `matchSiteRule` normalises). `modal` stays as written, so it may hold
 `hint_chars`, which `compileKeymap` skips.
@@ -171,7 +173,7 @@ refusal, reading `[panes]`/`[sites]`/`hint_chars` in the host, `workspacedefs.mj
 - **Explicit ids are validated, minted ids unchanged**; `w<n>` explicit ids bump `next`.
 - **Snapshot stays schema 1**: the id field was already a free string.
 - **`max` lives in core's `splitRefusal`** (m4 open question), unbounded by default, 4 in config
-  (Zen's `MAX_TABS`, the size ADR-013's spike tested), 16 at most.
+  (Zen's `MAX_TABS`, the size ADR-013's spike tested), 16 at most. (Since changed: the default is 8, because four panes leave a large screen half used (#691); `docs/guide.md`, "config.toml".)
 - **Config schema 2, not additive v1**, with schema-2 keys gated on `schema = 2`, and the m1
   keys in the same bump.
 - **`planSplit` takes the workspace**, not the bare tree: decision 14 needs its tab list.

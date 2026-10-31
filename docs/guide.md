@@ -19,7 +19,7 @@ What works today, each with the section that explains it:
   with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
-  found and renamed with [tab search](#tab-search-and-tab-rename)); up to 4 split panes (`v`, `-`,
+  found and renamed with [tab search](#tab-search-and-tab-rename)); up to 8 split panes (`v`, `-`,
   `h/j/k/l`, `z` zoom, swap, resize); tiling [layouts](#layouts) (`enter` dwindle, `space`
   cycles tmux's presets); `ctrl+b ?` lists every binding, searchable.
 - **[Workspaces](#workspaces):** each one a container with its own logins and cookies, kept
@@ -933,7 +933,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b a`                                                                              | Bookmarks the page; type folders before its title: `work/docs/title` ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b shift+b`                                                                        | Opens or closes the bookmarks panel ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b e`                                                                              | Opens the add-on picker: popups, options, enable/disable, remove, updates ([below](#add-ons)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `ctrl+b v` / `ctrl+b -`                                                                 | Splits the pane right / down. The new pane opens a new tab (the start page, address bar focused). At most 4 panes (`[panes] max`); a refused split says why.                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `ctrl+b v` / `ctrl+b -`                                                                 | Splits the pane right / down. The new pane opens a new tab (the start page, address bar focused). At most 8 panes by default (`[panes] max`); a refused split says why.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b h j k l`                                                                        | Focuses the pane left / below / above / right; when several touch, the one used last. `ctrl+w h j k l` in normal mode. The page of that pane gets focus, and the pane a 3 px border in the theme's focus colour.                                                                                                                                                                                                                                                                                                                                                                          |
 | `ctrl+b z`, `ctrl+w o`                                                                  | Zooms the pane to the whole window, or back. The other panes' pages pause. A pane focus key unzooms when it moves.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `ctrl+b x`                                                                              | Closes the pane; its tab stays open. With one pane it closes the tab, as `ctrl+b shift+x`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -2857,7 +2857,7 @@ preview at once: `ctrl+b b`, `space` on each of the three (`j` / `k` between the
 - **What changes.** Tabs that were in the old split and are not marked leave it and stay open as
   ordinary tabs. No page reloads: each keeps its scroll, what you typed and its history.
 - **Limits.** Without a split, one mark is just `Enter` on that row. With more marks than
-  `[panes] max` (4 by default), the panel says `Show together: at most 4 panes` and changes nothing; the panel stays open with your
+  `[panes] max` (8 by default), the panel says `Show together: at most 8 panes` and changes nothing; the panel stays open with your
   marks so you can drop some. A pinned row cannot be marked.
 - **Keys.** Rebind them under `[modal.panel]` with the actions `panel_mark` and
   `panel_visual`, e.g. `m = "panel_mark"`. If you give the leader (`space`) a binding, `space`
@@ -3157,7 +3157,7 @@ unless you press `d`.
 | `h`                     | Close the folder; inside one, go to its folder and close that.                            |
 | `Enter`                 | Open the bookmark in this tab and close the panel; on a folder, open or close it.         |
 | `t`                     | Open the bookmark in a new tab behind this one; the panel stays open for more.            |
-| `s` / `S`               | Open it in a new pane right / below (as `ctrl+b v` / `-`, at most 4 panes).               |
+| `s` / `S`               | Open it in a new pane right / below (as `ctrl+b v` / `-`, at most 8 panes).               |
 | `a`                     | Add this page in the highlighted folder, as a path. As in neo-tree, `a/b/` makes folders. |
 | `A`                     | Add a folder there.                                                                       |
 | `r`                     | Rename.                                                                                   |
@@ -3475,7 +3475,7 @@ accent = "#ff9e64"
   `3 errors: …`). The Browser Console (`ctrl+shift+j`) lists them all. Fix the file and the
   message goes away at the next check.
 - **What applies live:** `[keys]`, `[modal]` (leader, `timeout_ms`, per-mode keys, `hint_chars`)
-  and `[unbind]`; `[panes] max` (most panes in a workspace, 1 to 16, default 4; it limits new
+  and `[unbind]`; `[panes] max` (most panes in a workspace, 1 to 16, default 8; it limits new
   splits), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
   `[panes] main_size` (the main-\* presets' main pane, 20 to 80%, default 60); `[sites."<host>"] insert` (`auto`, `never` or `always`: whether a text field on that
   site and its subdomains takes insert mode); `[theme]` `source` (`omarchy` or `file`, the
