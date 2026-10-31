@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.14](https://github.com/vimma-browser/vimma/compare/v0.1.13...v0.1.14) · Firefox 159.0 (2026-10-31)
+
+
+### Added
+
+* **branding:** move the app icon, logos and readme from mint to the aqua split palette ([#688](https://github.com/vimma-browser/vimma/issues/688)) ([fea8513](https://github.com/vimma-browser/vimma/commit/fea85132b1a3f8fe219169923dffde775e107c74))
+* **panes:** default [panes] max to 8 panes per workspace ([#692](https://github.com/vimma-browser/vimma/issues/692)) ([ea66302](https://github.com/vimma-browser/vimma/commit/ea6630279a39ca70f53e904bb070be1e7f5c89a3)), closes [#691](https://github.com/vimma-browser/vimma/issues/691)
+
+
+### Fixed
+
+* **agent:** a used-up rate is waited out, not read as questions waiting ([#694](https://github.com/vimma-browser/vimma/issues/694)) ([ec98fd0](https://github.com/vimma-browser/vimma/commit/ec98fd015d38e0f4940740edd50d1026bc592280))
+* **agent:** run an agent cli through the link setup found, so version manager shims work ([#675](https://github.com/vimma-browser/vimma/issues/675)) ([f9c86d8](https://github.com/vimma-browser/vimma/commit/f9c86d8a0158071f6db8733ec7ddb2b948a3d37a)), closes [#674](https://github.com/vimma-browser/vimma/issues/674)
+* **downloads:** a pdf served as a download takes vimma's keys at once ([#679](https://github.com/vimma-browser/vimma/issues/679)) ([dea8221](https://github.com/vimma-browser/vimma/commit/dea8221998fc9112c0681a1f9b708f6e775cd30f)), closes [#677](https://github.com/vimma-browser/vimma/issues/677)
+
 ## [0.1.13](https://github.com/vimma-browser/vimma/compare/v0.1.12...v0.1.13) · Firefox 159.0 (2026-10-30)
 
 
