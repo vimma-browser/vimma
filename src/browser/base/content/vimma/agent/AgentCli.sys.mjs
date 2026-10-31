@@ -19,8 +19,12 @@ import {
   CLI_STREAM_LIMITS,
   KILL_GRACE_MS,
   cliEnvironment,
+  dispatcherOf,
+  dispatcherProblem,
   exitText,
   pathProblem,
+  refusedText,
+  shimText,
   taskPrompt,
   versionText,
 } from "../core/agent-cli.mjs";
@@ -78,6 +82,12 @@ const SOUND = Object.freeze({
   dirOthersWrite: false,
 });
 
+/** @param {number} uid @returns {"user" | "root" | "other"} */
+function whose(uid) {
+  const me = lazy.AgentDownloads.ownerAndMode(PathUtils.profileDir)?.uid;
+  return me !== undefined && uid === me ? "user" : uid === 0 ? "root" : "other";
+}
+
 /**
  * Whose a file is and who may write it, from its owner's uid and its mode (statx or lstat,
  * which keep the sticky bit IOUtils.stat drops): the user's (the profile's owner), root's or
@@ -90,26 +100,25 @@ function ownership(path) {
   const s = lazy.AgentDownloads.ownerAndMode(path);
   if (!s || me === undefined) return null;
   return {
-    owner: s.uid === me ? "user" : s.uid === 0 ? "root" : "other",
+    owner: whose(s.uid),
     othersWrite: (s.mode & 0o022) !== 0,
     sticky: (s.mode & 0o1000) !== 0,
   };
 }
 
 /**
- * Every folder from `path`'s up to `/`, judged together (C4): one that another user owns, or
- * that others may write and that is not sticky, could have the file swapped under it. A sticky
- * folder (as /tmp is) lets nobody but its entry's owner replace that entry, whose owner is
- * judged one level down. With `strict` a sticky folder counts too, since another user may add
- * a file of their own to it.
- * @param {string} path @param {boolean} [strict]
+ * Folders judged together (C4): one that another user owns, or that others may write and that
+ * is not sticky, could have an entry swapped under it. A sticky folder (as /tmp is) lets nobody
+ * but its entry's owner replace that entry, whose owner is judged on its own. With `strict` a
+ * sticky folder counts too, since another user may add a file of their own to it.
+ * @param {Iterable<string>} dirs @param {boolean} [strict]
  * @returns {{ dirOwner: "user" | "root" | "other", dirOthersWrite: boolean }}
  */
-function folders(path, strict = false) {
+function judgeDirs(dirs, strict = false) {
   /** @type {"user" | "root" | "other"} */
   let dirOwner = "user";
   let dirOthersWrite = false;
-  for (let dir = PathUtils.parent(path); dir; dir = PathUtils.parent(dir)) {
+  for (const dir of dirs) {
     const o = ownership(dir);
     if (!o || o.owner === "other") dirOwner = "other";
     else if (o.othersWrite && (strict || !o.sticky)) dirOthersWrite = true;
@@ -118,21 +127,80 @@ function folders(path, strict = false) {
 }
 
 /**
- * The program at `path`, checked as C4 says, symlinks resolved: the resolved path, or why it
- * may not run. `folders: false` leaves out the folders above it (vimma-ctl beside Vimma's
- * binary, findVimmaCtl).
- * @param {string} path @param {{ folders?: boolean }} [opts]
- * @returns {Promise<{ path: string } | { problem: string }>}
+ * Every folder from `path`'s up to `/` (`judgeDirs`).
+ * @param {string} path @param {boolean} [strict]
  */
-async function inspect(path, { folders: judgeFolders = true } = {}) {
+function folders(path, strict = false) {
+  const dirs = [];
+  for (let dir = PathUtils.parent(path); dir; dir = PathUtils.parent(dir)) dirs.push(dir);
+  return judgeDirs(dirs, strict);
+}
+
+/** The most links one path may pass through, as the kernel's ELOOP limit is. */
+const MAX_LINKS = 40;
+
+/**
+ * `path` resolved one entry at a time, as the kernel resolves it (C4): the file it ends at, every
+ * real folder an entry was looked up in, and whether a link on the way is another user's. A
+ * link's own mode means nothing; who may repoint it is its folder's matter and its owner's, so
+ * the folders of every link, of every hop of a chain of links and of the file itself are judged
+ * alike. Null when an entry is missing or cannot be read.
+ * @param {string} path  absolute
+ * @returns {{ real: string, dirs: Set<string>, linkOwner: "user" | "root" | "other" } | null}
+ */
+function resolve(path) {
+  const todo = path.split("/").filter(Boolean);
+  let cur = "/";
+  const dirs = new Set();
+  /** @type {"user" | "root" | "other"} */
+  let linkOwner = "user";
+  let hops = 0;
+  while (todo.length) {
+    const name = /** @type {string} */ (todo.shift());
+    if (name === ".") continue;
+    if (name === "..") {
+      cur = PathUtils.parent(cur) ?? "/";
+      continue;
+    }
+    const next = PathUtils.join(cur, name);
+    dirs.add(cur);
+    const s = lazy.AgentDownloads.ownerAndMode(next);
+    if (!s) return null;
+    if (!s.isLink) {
+      cur = next;
+      continue;
+    }
+    if (++hops > MAX_LINKS) return null;
+    if (whose(s.uid) === "other") linkOwner = "other";
+    const target = lazy.AgentDownloads.readLink(next);
+    if (target === null) return null;
+    if (target.startsWith("/")) cur = "/";
+    todo.unshift(...target.split("/").filter(Boolean));
+  }
+  return { real: cur, dirs, linkOwner };
+}
+
+/**
+ * The program at `path`, checked as C4 says: the file the path resolves to, every link on the
+ * way and every folder the path passes through. Resolves to `path` itself, which is what runs,
+ * so a version manager's shim sees the name it dispatches on and an upgrade behind a link is
+ * followed; `real` is the file, and `dispatcher` its name when it runs a tool by the name it is
+ * started as (`dispatcherOf`). With `cli`, a dispatcher reached other than through a link named
+ * as the CLI is refused: started as itself, it cannot tell which tool to run. `folders: false`
+ * judges the file alone (vimma-ctl beside Vimma's binary, findVimmaCtl).
+ * @param {string} path @param {{ folders?: boolean, cli?: import("../core/agent-cli.mjs").CliInfo }} [opts]
+ * @returns {Promise<{ path: string, real: string, dispatcher: string | null } | { problem: string }>}
+ */
+async function inspect(path, { folders: judgeFolders = true, cli } = {}) {
   try {
     if (!PathUtils.isAbsolute(path)) {
       return { problem: /** @type {string} */ (pathProblem({ ...SOUND, absolute: false })) };
     }
-    const file = new lazy.FileUtils.File(path);
-    file.normalize();
-    const real = file.path;
+    const walked = resolve(path);
+    if (!walked) return { problem: "it does not exist" };
+    const { real } = walked;
     const stat = await IOUtils.stat(real);
+    const file = new lazy.FileUtils.File(real);
     const own = ownership(real);
     const problem = pathProblem({
       absolute: true,
@@ -140,12 +208,42 @@ async function inspect(path, { folders: judgeFolders = true } = {}) {
       executable: file.isExecutable(),
       owner: own?.owner ?? "other",
       othersWrite: own?.othersWrite ?? true,
-      ...(judgeFolders ? folders(real) : { dirOwner: "user", dirOthersWrite: false }),
+      ...(judgeFolders
+        ? { ...judgeDirs(walked.dirs), linkOwner: walked.linkOwner }
+        : { dirOwner: "user", dirOthersWrite: false }),
     });
-    return problem ? { problem } : { path: real };
+    if (problem) return { problem };
+    const dispatcher = cli ? dispatcherOf(cli, PathUtils.filename(real)) : null;
+    if (cli && dispatcher && PathUtils.filename(path) !== cli.bin) {
+      return { problem: dispatcherProblem(cli, dispatcher) };
+    }
+    return { path, real, dispatcher };
   } catch {
     return { problem: "it does not exist" };
   }
+}
+
+/**
+ * Every `bin` on PATH, in PATH's order, once each: setup lists one of them (Behaviour 1).
+ * @param {string} bin
+ * @returns {Promise<string[]>}
+ */
+async function onPath(bin) {
+  const PATH = lazy.Subprocess.getEnvironment().PATH ?? "";
+  /** @type {string[]} */
+  const out = [];
+  for (const dir of PATH.split(":")) {
+    if (!PathUtils.isAbsolute(dir)) continue;
+    const path = PathUtils.join(dir, bin);
+    if (out.includes(path)) continue;
+    try {
+      const file = new lazy.FileUtils.File(path);
+      if (file.exists() && file.isFile() && file.isExecutable()) out.push(path);
+    } catch {
+      // Not a file it can run: the next.
+    }
+  }
+  return out;
 }
 
 /**
@@ -219,7 +317,7 @@ async function findVimmaCtl(binDir = binaryDir()) {
   for (const { path, beside } of candidates) {
     if (!(await IOUtils.exists(path))) continue;
     const r = await inspect(path, { folders: !beside });
-    if ("path" in r) return r;
+    if ("path" in r) return { path: r.path };
     return { problem: `vimma-ctl at ${path} is refused: ${r.problem}` };
   }
   return { problem: "vimma-ctl is not next to Vimma" };
@@ -242,22 +340,31 @@ export const AgentCli = {
     const out = [];
     if (!this.enabled) return out;
     for (const cli of Object.values(CLIS)) {
-      let found;
-      try {
-        found = await lazy.Subprocess.pathSearch(cli.bin);
-      } catch {
-        continue;
+      // A copy of the CLI itself before a shim of it, PATH's order otherwise: a shim runs
+      // correctly, but through one more program.
+      /** @type {{ path: string, r: Awaited<ReturnType<typeof inspect>> }[]} */
+      const seen = [];
+      for (const path of await onPath(cli.bin)) {
+        const r = await inspect(path, { cli });
+        seen.push({ path, r });
+        if ("path" in r && !r.dispatcher) break;
       }
-      const r = await inspect(found);
+      const pick =
+        seen.find((s) => "path" in s.r && !s.r.dispatcher) ??
+        seen.find((s) => "path" in s.r) ??
+        seen[0];
+      if (!pick) continue;
+      const { path, r } = pick;
       if ("problem" in r) {
-        out.push({ cli: cli.id, path: found, label: `${cli.bin} · ${found}`, problem: r.problem });
+        out.push({ cli: cli.id, path, label: `${cli.bin} · ${path}`, problem: r.problem });
         continue;
       }
-      const version = await this.version(r.path, cli.id);
+      const version = await this.version(path, cli.id);
+      const shim = r.dispatcher ? shimText(cli, r.dispatcher, r.real) : "";
       out.push({
         cli: cli.id,
-        path: r.path,
-        label: versionText(cli, version ?? "", r.path),
+        path,
+        label: versionText(cli, version ?? "", path, shim),
         problem: null,
       });
     }
@@ -274,8 +381,8 @@ export const AgentCli = {
   },
 
   /**
-   * Setup's pick (Behaviour 2, C4): the path picked there is the program a task of this
-   * CLI runs, kept in a pref and checked again at each run.
+   * Setup's pick (Behaviour 2, C4): the path picked there, as PATH holds it with any link
+   * kept, is the program a task of this CLI runs, kept in a pref and checked again at each run.
    * @param {string} cli @param {string} path  as `find` listed it
    */
   use(cli, path) {
@@ -294,7 +401,7 @@ export const AgentCli = {
   async version(path, id = CLI_IDS[0] ?? "") {
     const cli = CLIS[id];
     if (!this.enabled || !cli) return null;
-    const r = await inspect(path);
+    const r = await inspect(path, { cli });
     if ("problem" in r) return null;
     /** @type {any} */
     let proc;
@@ -337,15 +444,15 @@ export const AgentCli = {
     if (!this.enabled) return "gone";
     const path = Services.prefs.getStringPref(pathPref(provider.cli ?? ""), "");
     if (!path || !Object.hasOwn(CLIS, provider.cli ?? "")) return "gone";
-    return (await this.check(path)) === null ? "available" : "gone";
+    return (await this.check(path, provider.cli)) === null ? "available" : "gone";
   },
 
   /**
    * Why the program at `path` may not run now, or null (C4).
-   * @param {string} path
+   * @param {string} path @param {string} [id]  its CLI, a key of CLIS: the first unless named
    */
-  async check(path) {
-    const r = await inspect(path);
+  async check(path, id = CLI_IDS[0] ?? "") {
+    const r = await inspect(path, { cli: CLIS[id] });
     return "problem" in r ? r.problem : null;
   },
 
@@ -410,13 +517,9 @@ export const AgentCli = {
           messages: [],
         };
       }
-      const checked = await inspect(path);
+      const checked = await inspect(path, { cli });
       if ("problem" in checked) {
-        return {
-          outcome: "error",
-          error: `${cli.id} at ${path} is refused: ${checked.problem}`,
-          messages: [],
-        };
+        return { outcome: "error", error: refusedText(cli, path, checked.problem), messages: [] };
       }
       const ctl = await findVimmaCtl();
       if ("problem" in ctl) return { outcome: "error", error: ctl.problem, messages: [] };
@@ -480,6 +583,8 @@ export const AgentCli = {
         /** @type {Extract<CliEvent, { type: "result" }> | null} */
         let result = null;
         let reply = "";
+        /** Whether the CLI wrote anything on its output: without, it never started as the CLI. */
+        let printed = false;
         /** @type {() => void} */
         let markFinished = () => {};
         /** A result left nothing queued: the CLI's work is done. */
@@ -519,6 +624,7 @@ export const AgentCli = {
         };
         const reading = (async () => {
           for (let s; (s = await proc.stdout.readString());) {
+            printed = true;
             for (const e of stream.push(s)) handle(e);
           }
         })().catch(() => {});
@@ -549,7 +655,7 @@ export const AgentCli = {
         }
         return {
           outcome: "error",
-          error: exitText(cli, exitCode, errText, r?.error ?? ""),
+          error: exitText(cli, exitCode, errText, r?.error ?? "", printed ? "" : checked.path),
           messages: [],
         };
       } finally {

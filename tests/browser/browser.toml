@@ -404,6 +404,7 @@ support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 ["browser_vimma_agent_cli_run.js"]
 support-files = [
   "fake_vimma_agent_cli.py",
+  "fake_vimma_agent_dispatcher.py",
   "file_vimma_agent_page.html",
   "head_vimma_control.js",
 ]

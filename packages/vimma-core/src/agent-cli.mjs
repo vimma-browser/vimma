@@ -226,13 +226,66 @@ export function taskPrompt(messages, text) {
 }
 
 /**
- * Setup's line for a CLI it found (Behaviour 1): `claude 2.1.303 · /home/u/.local/bin/claude`.
+ * Setup's line for a CLI it found (Behaviour 1): `claude 2.1.303 · /home/u/.local/bin/claude`,
+ * then what a shim runs (`shimText`) when it is one.
  * @param {CliInfo} cli @param {string} stdout  of `--version` @param {string} path
+ * @param {string} [shim]
  */
-export function versionText(cli, stdout, path) {
+export function versionText(cli, stdout, path, shim = "") {
   const first = plain(stdout.split("\n")[0]).trim();
   const version = first.replace(/\s*\(.*\)\s*$/, "") || "unknown version";
-  return `${cli.bin} ${cut(version, 40)} · ${path}`;
+  return `${cli.bin} ${cut(version, 40)} · ${path}${shim ? ` · ${shim}` : ""}`;
+}
+
+/**
+ * The program a link named like the CLI resolves to, when that program picks the tool to run by
+ * the name it is started as (C4): a version manager's dispatcher, such as mise, asdf's, volta's
+ * or aqua's, whose shims are links named like each tool. Null when the file is the CLI itself:
+ * named as the CLI is, named by a version (Claude Code's native installer keeps each version as
+ * a file named by it), or named with an extension (npm's `cli.js`, a script its interpreter is
+ * given by path). Only the name is read: a dispatcher runs correctly through its link, so the
+ * rule only words setup's row and refuses a dispatcher stored without its link.
+ * @param {CliInfo} cli @param {string} name  the resolved file's name
+ * @returns {string | null}
+ */
+export function dispatcherOf(cli, name) {
+  if (
+    name === cli.bin ||
+    /^v?\d+(\.\d+)*([-+][\w.]+)?$/.test(name) ||
+    /\.[A-Za-z]\w*$/.test(name)
+  ) {
+    return null;
+  }
+  return name;
+}
+
+/**
+ * What setup's row says of a shim (Behaviour 1): `a mise shim (runs /usr/bin/mise as claude)`.
+ * @param {CliInfo} cli @param {string} name  of the dispatcher @param {string} real  its path
+ */
+export const shimText = (cli, name, real) =>
+  `a ${cut(plain(name), 40)} shim (runs ${plain(real)} as ${cli.bin})`;
+
+/**
+ * Why a dispatcher stored without its link may not run (C4): started under its own name, it
+ * cannot tell which tool to run, and fails on the CLI's arguments.
+ * @param {CliInfo} cli @param {string} name  of the dispatcher
+ */
+export const dispatcherProblem = (cli, name) =>
+  `it is ${plain(name)}, which runs ${cli.bin} only through a link named ${cli.bin}`;
+
+/** Setup's row that finds a CLI again, as a refusal it can repair names it. */
+export const FINDS_AGAIN = "add: agent CLI finds it again";
+
+/**
+ * A run refused before it started (C4), with the way to repair it when setup can: a program that
+ * is gone (an upgrade removed the version a path named) or a dispatcher stored without its link.
+ * @param {CliInfo} cli @param {string} path @param {string} problem  from the checks
+ */
+export function refusedText(cli, path, problem) {
+  const repairable =
+    problem === "it does not exist" || problem.endsWith(`only through a link named ${cli.bin}`);
+  return `${cli.id} at ${path} is refused: ${problem}${repairable ? `; ${FINDS_AGAIN}` : ""}`;
 }
 
 /**
@@ -319,15 +372,18 @@ export const cliWhere = (cli) => `sent where ${cli.title} sends it`;
 
 /**
  * A run that ended without its result (Behaviour 13): the CLI, its exit code and the last line
- * of its error output, or of its result's error, cut at 200 characters.
+ * of its error output, or of its result's error, cut at 200 characters. `ran`, the program
+ * started, is named when the CLI printed nothing on its output: it did not start as the CLI,
+ * and the program is the first thing to look at.
  * @param {CliInfo} cli @param {number | null} code @param {string} stderr  its last 4 KB
  * @param {string} [error]  the result's error, when the CLI reported one
+ * @param {string} [ran]
  */
-export function exitText(cli, code, stderr, error = "") {
+export function exitText(cli, code, stderr, error = "", ran = "") {
   const lines = [error, ...stderr.split("\n").reverse()]
     .map((l) => plain(l).trim())
     .filter(Boolean);
-  const head = `${cli.id} exited (${code ?? "?"})`;
+  const head = `${cli.id}${ran ? ` at ${plain(ran)}` : ""} exited (${code ?? "?"})`;
   return cut(lines.length ? `${head}: ${lines[0]}` : head);
 }
 
@@ -336,7 +392,10 @@ export function exitText(cli, code, stderr, error = "") {
  * a file another local user can replace would run that user's code as this user.
  * @param {{ absolute: boolean, regular: boolean, executable: boolean,
  *   owner: "user" | "root" | "other", othersWrite: boolean, dirOwner: "user" | "root" | "other",
- *   dirOthersWrite: boolean }} f  `othersWrite`: group or others may write it
+ *   dirOthersWrite: boolean, linkOwner?: "user" | "root" | "other" }} f  `othersWrite`: group
+ *   or others may write it; `dirOwner` and `dirOthersWrite`: every folder the path passes
+ *   through, the links' folders included; `linkOwner`: any link on the way, "other" if one is
+ *   another user's (a link's own mode means nothing; its folder and owner decide who repoints it)
  * @returns {string | null}
  */
 export function pathProblem(f) {
@@ -347,6 +406,7 @@ export function pathProblem(f) {
   if (f.othersWrite) return "other users can write it";
   if (f.dirOwner === "other") return "a folder it is in is owned by another user";
   if (f.dirOthersWrite) return "a folder it is in can be written by other users";
+  if (f.linkOwner === "other") return "a link on its path is owned by another user";
   return null;
 }
 

@@ -60,6 +60,8 @@ const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/OSKeyStoreTestUtils.sys.mjs",
 );
 
+const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
   "https://example.com",
@@ -208,11 +210,8 @@ addTidyTask(async function test_setup_lists_only_found_clis_and_stores_the_path(
       ["claude-code"],
       "the one supported CLI on PATH is listed",
     );
-    // The path as it resolves (on macOS /var is a link to /private/var).
-    const real = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-    real.initWithPath(fake.bin);
-    real.normalize();
-    Assert.equal(found[0].label, `claude 2.1.303 · ${real.path}`, "with its version and path");
+    // The path PATH holds, links kept (C4).
+    Assert.equal(found[0].label, `claude 2.1.303 · ${fake.bin}`, "with its version and path");
     Assert.equal(found[0].problem, null, "and nothing wrong with its file");
     Services.env.set("PATH", "/nonexistent-vimma-test");
     Assert.deepEqual(await AgentCli.find(), [], "none found, none listed");
@@ -522,6 +521,97 @@ addTidyTask(async function test_path_checks_refuse_a_file_others_can_write() {
   }
   Assert.equal(await AgentCli.check("claude"), "its path is not absolute");
   Assert.equal(await AgentCli.check("/nonexistent/claude"), "it does not exist");
+});
+
+/**
+ * A version manager's layout, as mise's: its program, `fakemise`, which runs a tool by the name
+ * it is started as, and `shims/claude`, a relative link to it. The fake CLI sits beside it.
+ */
+async function installShim() {
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-fake-mise", 0o700);
+  const program = PathUtils.join(dir, "fakemise");
+  await IOUtils.copy(repoFile("tests", "browser", "fake_vimma_agent_dispatcher.py"), program);
+  await IOUtils.copy(fake.bin, PathUtils.join(dir, "fake_vimma_agent_cli.py"));
+  await IOUtils.setPermissions(program, 0o700);
+  const shims = PathUtils.join(dir, "shims");
+  await IOUtils.makeDirectory(shims, { permissions: 0o700 });
+  const link = PathUtils.join(shims, "claude");
+  const ln = await Subprocess.call({ command: "/bin/ln", arguments: ["-s", "../fakemise", link] });
+  Assert.equal((await ln.wait()).exitCode, 0, "the shim is made");
+  return { dir, program, shims, link };
+}
+
+addTidyTask(async function test_a_shim_runs_as_the_cli_it_is_named_after() {
+  const shim = await installShim();
+  const path = Services.env.get("PATH");
+  // PATH's other folders keep python3, which runs the fakes, but no claude of the machine's.
+  /** @type {string[]} */
+  const rest = [];
+  for (const dir of path.split(":")) {
+    if (dir && !(await IOUtils.exists(PathUtils.join(dir, "claude")))) rest.push(dir);
+  }
+  try {
+    // Setup keeps the link PATH holds and says what it runs; PATH's own copy of the CLI wins.
+    Services.env.set("PATH", [shim.shims, fake.dir, ...rest].join(":"));
+    let found = await AgentCli.find();
+    Assert.equal(found.length, 1, "one row per CLI");
+    Assert.equal(found[0].path, fake.bin, "a CLI that is no shim comes first");
+    Services.env.set("PATH", [shim.shims, ...rest].join(":"));
+    found = await AgentCli.find();
+    Assert.equal(found[0].path, shim.link, "the shim is listed as PATH holds it");
+    Assert.equal(
+      found[0].label,
+      `claude 2.1.303 · ${shim.link} · a fakemise shim (runs ${shim.program} as claude)`,
+      "and its row says which program it runs, and as what",
+    );
+    Assert.equal(found[0].problem, null, "and it may run");
+  } finally {
+    Services.env.set("PATH", path);
+  }
+  AgentCli.use("claude-code", shim.link);
+  Assert.equal(
+    Services.prefs.getStringPref(pathPref("claude-code"), ""),
+    shim.link,
+    "picking it keeps the link, not the program it resolves to",
+  );
+  Assert.equal(await AgentCli.check(shim.link), null, "the link and its program are sound");
+  await IOUtils.setPermissions(shim.shims, 0o777, false);
+  try {
+    Assert.equal(
+      await AgentCli.check(shim.link),
+      "a folder it is in can be written by other users",
+      "the folder holding the link is judged as the program's is",
+    );
+  } finally {
+    await IOUtils.setPermissions(shim.shims, 0o700);
+  }
+  try {
+    if (await needCtl()) {
+      const c = conversation();
+      const result = await run(c.id, "hello");
+      Assert.equal(result.outcome, "done", `the shim ran the CLI: ${result.error}`);
+      Assert.ok((await readReport(fake.report)).args.includes("-p"), "with its arguments");
+      await IOUtils.remove(fake.report);
+    }
+    // 0.1.13 kept the program a link resolved to: the dispatcher itself, which fails.
+    Services.prefs.setStringPref(pathPref("claude-code"), shim.program);
+    Assert.equal(
+      await AgentCli.availability(CLI),
+      "gone",
+      "the picker does not offer the dispatcher",
+    );
+    const c = conversation();
+    const refused = await run(c.id, "hello");
+    Assert.equal(
+      refused.error,
+      `claude-code at ${shim.program} is refused: it is fakemise, which runs claude only ` +
+        "through a link named claude; add: agent CLI finds it again",
+      "a stored dispatcher is refused, with the way to repair it",
+    );
+    Assert.ok(!(await IOUtils.exists(fake.report)), "and it never ran");
+  } finally {
+    await IOUtils.remove(shim.dir, { recursive: true });
+  }
 });
 
 add_task(async function test_agent_clis_are_on_with_a_pref_to_turn_them_off() {
@@ -989,17 +1079,20 @@ addTidyTask(async function test_missing_or_failing_cli_reports_its_error() {
   const c = conversation();
   const result = await run(c.id, "[[fail 1 Invalid API key · Please run /login]]");
   Assert.equal(result.outcome, "error");
-  Assert.equal(result.error, "claude-code exited (1): Invalid API key · Please run /login");
-  Assert.equal(
-    texts(c.id).at(-1),
-    "end: stopped: claude-code exited (1): Invalid API key · Please run /login",
-  );
+  // It printed nothing before it failed: the line names the program that ran.
+  const failed = `claude-code at ${fake.bin} exited (1): Invalid API key · Please run /login`;
+  Assert.equal(result.error, failed);
+  Assert.equal(texts(c.id).at(-1), `end: stopped: ${failed}`);
   Services.prefs.clearUserPref(pathPref("claude-code"));
   const missing = await run(c.id, "again");
   Assert.equal(missing.error, "claude-code is not set up: m in the window finds it");
   Services.prefs.setStringPref(pathPref("claude-code"), "/nonexistent/claude");
   const gone = await run(c.id, "again");
-  Assert.equal(gone.error, "claude-code at /nonexistent/claude is refused: it does not exist");
+  Assert.equal(
+    gone.error,
+    "claude-code at /nonexistent/claude is refused: it does not exist; " +
+      "add: agent CLI finds it again",
+  );
 });
 
 addTidyTask(async function test_added_instruction_reaches_the_running_cli() {
