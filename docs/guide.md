@@ -407,7 +407,8 @@ text editors' frames) also enters insert.
 
 Each tab keeps its own mode. Settings (`about:preferences`) and the PDF viewer work the same
 way, but Settings focuses its search box when it opens, so it starts in insert: press `Esc`
-before `j`/`k`. Pages Vimma does not reach (extension pages, `data:` and `view-source:` pages)
+before `j`/`k`. A PDF takes your keys as soon as it opens, also when a site serves it as a
+download. Pages Vimma does not reach (extension pages, `data:` and `view-source:` pages)
 stay in insert, so their keys are untouched. With focus in the address bar or the find bar, keys
 belong to that field; only `ctrl+b` sequences are Vimma's there (and, in a `/` search,
 `Enter` and `Esc`).
@@ -3787,6 +3788,11 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   back (`browser.startup.page` = `3`; Firefox's default `1` opens the home page).
 - **Firefox Sync leaves two settings alone**: `browser.startup.page` and
   `privacy.userContext.enabled` (turning containers off deletes every workspace's data).
+- **A file Firefox opens in a tab of its own opens no downloads panel.** A PDF that a site
+  serves as a download opens in the PDF viewer ready for your keys, with focus in its tab rather
+  than in the downloads panel; the downloads button still shows the download. Other downloads open
+  the panel as in Firefox, and a profile's first download behaves as every later one
+  (`browser.download.panel.shown` = `true`).
 
 ## Accessibility
 

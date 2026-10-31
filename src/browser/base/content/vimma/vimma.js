@@ -16,6 +16,13 @@
   );
   WakeLock.init();
 
+  // A download shown in a tab of its own (a PDF served as an attachment) opens no downloads
+  // panel, which would take focus from that tab; once per process.
+  const { ViewedDownloads } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/services/ViewedDownloads.sys.mjs",
+  );
+  ViewedDownloads.init();
+
   // The start page as the new-tab page, before this window opens its first tab (start-page).
   const { StartPage } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/start/StartPage.sys.mjs",

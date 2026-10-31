@@ -121,6 +121,13 @@ pref("vimma.ui.tabstrip.hidden", true);
 // config.toml's [ui] toolbar set it for every window, live.
 pref("vimma.ui.toolbar.hidden", false);
 
+// Downloads (issue #677): a profile's first download opens Firefox's downloads panel when it
+// ends, whatever the download asked for (DownloadsCommon.sys.mjs, _notifyDownloadEvent), so a PDF
+// a site serves as a download lost its tab's focus to the panel. Marked as shown, the first
+// download behaves as every later one: the start of a burst still opens the panel, unless the
+// download opens in a tab of its own (vimma/services/ViewedDownloads.sys.mjs).
+pref("browser.download.panel.shown", true);
+
 // Vimma's update check (spec m6a-updater): on by default; false, or [updates] check = false in
 // config.toml, stops every request. The URL may use only %BUILD_TARGET% and %CHANNEL%, so a
 // check names nothing but the platform and the update channel.
