@@ -1014,6 +1014,29 @@ addTidyTask(async function test_a_link_beside_the_binary_is_judged_where_it_lead
       { path: link },
       "a link to a file in the binary's own folder is judged as that file is",
     );
+    // A chain that comes back to the binary's folder through a hop elsewhere: whoever can
+    // write that hop's folder could repoint it before the kernel follows it at the run.
+    await IOUtils.setPermissions(outer, 0o700);
+    const hop = PathUtils.join(shared, "hop");
+    const ln = await Subprocess.call({
+      command: "/bin/ln",
+      arguments: ["-s", "../MacOS/vimma-ctl-real", hop],
+    });
+    Assert.equal((await ln.wait()).exitCode, 0, "the hop is made");
+    await linkTo("../shared/hop");
+    Assert.deepEqual(
+      await AgentCli.findVimmaCtl(binDir),
+      { path: link },
+      "a hop through sound folders back to the binary's folder is followed",
+    );
+    await IOUtils.setPermissions(shared, 0o775, false);
+    Assert.deepEqual(
+      await AgentCli.findVimmaCtl(binDir),
+      {
+        problem: `vimma-ctl at ${link} is refused: a folder it is in can be written by other users`,
+      },
+      "a hop in a group-writable folder is refused, though the chain ends beside the binary",
+    );
   } finally {
     await IOUtils.setPermissions(outer, 0o700);
     await IOUtils.setPermissions(shared, 0o700);

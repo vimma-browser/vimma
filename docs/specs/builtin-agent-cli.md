@@ -415,8 +415,10 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    own file checked, but not the folders above it, because they hold Vimma's binary, so a user
    who can swap one of them can already change Vimma, and because on macOS `/Applications` is
    writable by the admin group, which would refuse every install there; a link there to a file
-   outside the binary's folder has that file's folders judged in full, because the reason covers
-   only the binary's own folders. Rejected: a `command` key in
+   outside the binary's folder has that file's folders judged in full, and a chain of links
+   through any other folder has that folder and its links judged even when it ends beside the
+   binary, because the reason covers only the folders on the way to the binary and the kernel
+   follows the chain again at each run. Rejected: a `command` key in
    `config.toml`, because it breaks F3; root-owned files only, as for ClamAV (C2 of
    security.md), because user installs (`~/.local/bin`, version managers) are where these CLIs
    live.
@@ -653,6 +655,7 @@ env in a cli provider are errors with their line`; `a cli provider's model is re
 rule its run uses`; `local_only refuses a cli provider`;
   `max_minutes parses within its bounds`.
 - `agent-config.test.mjs`: `an agent cli keeps its max_minutes when it is not the default`.
+- `agent-cli.test.mjs`: `a link through a hop in another folder has that folder and link judged`.
 - `control-v2.test.mjs`: `an agent hello with a ticket validates; a ticket and a token together
 do not`.
 - `agent-budget.test.mjs`: `a cli task stops at max_minutes`; `reported cost is shown and

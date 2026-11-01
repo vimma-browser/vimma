@@ -426,6 +426,31 @@ export function pathProblem(f) {
 }
 
 /**
+ * The folders and links to judge for vimma-ctl beside Vimma's binary (M56). The folders on the
+ * way to the binary, and the links in them, are skipped: whoever can swap one can already change
+ * Vimma itself, and macOS's /Applications is writable by the admin group. That holds only for a
+ * file in the binary's own folder, and only for those folders: a link through any other folder
+ * is followed again by the kernel at each run, so that folder and that link are judged even when
+ * the chain ends beside the binary. Without `trusted`, or for a file elsewhere, all are judged.
+ * @param {{ realDir: string | null, dirs: Iterable<string>,
+ *   links: Iterable<{ dir: string, owner: "user" | "root" | "other" }> }} walk  the path as it
+ *   resolved: the folder of the file it ends at, every folder an entry was looked up in, and
+ *   every link with its folder and owner
+ * @param {{ binDir: string, dirs: Iterable<string> } | null} trusted  the binary's real folder,
+ *   and every folder looked up on the way to it
+ * @returns {{ dirs: string[], linkOwner: "user" | "other" }}
+ */
+export function besideBinary(walk, trusted) {
+  const skip =
+    trusted && walk.realDir === trusted.binDir
+      ? new Set([...trusted.dirs, trusted.binDir])
+      : new Set();
+  const dirs = [...walk.dirs].filter((d) => !skip.has(d));
+  const links = [...walk.links].filter((l) => !skip.has(l.dir));
+  return { dirs, linkOwner: links.some((l) => l.owner === "other") ? "other" : "user" };
+}
+
+/**
  * @typedef {{ type: "init", model: string, version: string, tools: string[] }
  *   | { type: "reply", text: string }
  *   | { type: "own-tool", id: string, text: string }
