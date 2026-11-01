@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.14](https://github.com/vimma-browser/vimma/compare/v0.1.13...v0.1.14) (2026-11-01)
+## [Unreleased]
+
+## [0.1.14](https://github.com/vimma-browser/vimma/compare/v0.1.13...v0.1.14) · Firefox 159.0 (2026-11-01)
 
 
 ### Added
@@ -30,8 +32,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **downloads:** a pdf served as a download takes vimma's keys at once ([#679](https://github.com/vimma-browser/vimma/issues/679)) ([dea8221](https://github.com/vimma-browser/vimma/commit/dea8221998fc9112c0681a1f9b708f6e775cd30f)), closes [#677](https://github.com/vimma-browser/vimma/issues/677)
 * **find:** / and ? go back into a search left open by a click on the page ([#686](https://github.com/vimma-browser/vimma/issues/686)) ([ce1bb26](https://github.com/vimma-browser/vimma/commit/ce1bb26bad0dd301ed1dcdc20994ff4885e1b1a9))
 * **keys:** pair a page's key reply with its own press ([#709](https://github.com/vimma-browser/vimma/issues/709)) ([3976167](https://github.com/vimma-browser/vimma/commit/3976167c8631d520d20aacea257088e09740abb9)), closes [#576](https://github.com/vimma-browser/vimma/issues/576)
-
-## [Unreleased]
 
 ## [0.1.13](https://github.com/vimma-browser/vimma/compare/v0.1.12...v0.1.13) · Firefox 159.0 (2026-10-30)
 
