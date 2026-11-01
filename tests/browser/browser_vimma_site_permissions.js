@@ -113,7 +113,7 @@ add_task(async function test_lists_every_permission_with_its_real_state() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
   SitePermissions.setForPrincipal(principalOf(PAGE, tab), "geo", SitePermissions.BLOCK);
   await openPicker();
-  Assert.ok(heading().includes("example.com"), "the heading names the site");
+  Assert.equal(heading(), "Site permissions · example.com", "the heading names the site");
   Assert.deepEqual(ids(), pageInfoList(), "every permission Page Info lists, in its order");
   Assert.equal(detail("geo"), label("geo", SitePermissions.BLOCK), "a set permission: its state");
   Assert.equal(
