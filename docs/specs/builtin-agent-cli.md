@@ -193,8 +193,9 @@ own configuration allows; Vimma does not confine them, and the window states whi
     row `claude · other model…` that asks for a model on the prompt line under Behaviour 2's
     rule. The model `config.toml` names is marked `config.toml`, the conversation's
     `in use`. `Enter` uses a row's model for the open conversation and this session's new ones
-    until a restart, and `D` adds it to `config.toml` as a provider of its own and makes it
-    `[agent] default`, as for any model in the picker (builtin-agent B12). A running task keeps
+    until a restart, and `D` adds it to `config.toml` as a provider of its own, with the CLI
+    provider's `max_minutes` when that is not the default, and makes it `[agent] default`, as
+    for any model in the picker (builtin-agent B12). A running task keeps
     its model. The list is Vimma's own and starts no process: the CLI is not asked for its
     models (Behaviour 3). Choosing the model belongs in the window, as every other provider's
     does, because a hand edit of `config.toml` should not be the only way to change it after
@@ -413,7 +414,9 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    source, tests). The pref's file is checked the same way; the one beside the binary has its
    own file checked, but not the folders above it, because they hold Vimma's binary, so a user
    who can swap one of them can already change Vimma, and because on macOS `/Applications` is
-   writable by the admin group, which would refuse every install there. Rejected: a `command` key in
+   writable by the admin group, which would refuse every install there; a link there to a file
+   outside the binary's folder has that file's folders judged in full, because the reason covers
+   only the binary's own folders. Rejected: a `command` key in
    `config.toml`, because it breaks F3; root-owned files only, as for ClamAV (C2 of
    security.md), because user installs (`~/.local/bin`, version managers) are where these CLIs
    live.
@@ -649,6 +652,7 @@ characters`. The recorded streams are fixtures made by runs against a scripted s
 env in a cli provider are errors with their line`; `a cli provider's model is refused by the
 rule its run uses`; `local_only refuses a cli provider`;
   `max_minutes parses within its bounds`.
+- `agent-config.test.mjs`: `an agent cli keeps its max_minutes when it is not the default`.
 - `control-v2.test.mjs`: `an agent hello with a ticket validates; a ticket and a token together
 do not`.
 - `agent-budget.test.mjs`: `a cli task stops at max_minutes`; `reported cost is shown and
@@ -687,6 +691,7 @@ Claude Code's stream-json, scripted by the task's text; it also covers
 `test_max_steps_counted_by_the_gate`; `test_max_minutes_stops_the_task`;
 `test_missing_or_failing_cli_reports_its_error`; `test_the_picker_lists_the_clis_models_and_uses_one`;
 `test_the_reported_cost_stays_on_the_end_line`; `test_vimma_ctl_beside_the_binary_is_judged_as_the_binary_is`;
+`test_a_link_beside_the_binary_is_judged_where_it_leads`;
 `test_agent_clis_are_on_with_a_pref_to_turn_them_off`.
 
 ### e2e (`tools/e2e`, under Xvfb)

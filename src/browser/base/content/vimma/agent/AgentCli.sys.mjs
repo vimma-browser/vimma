@@ -186,12 +186,15 @@ function resolve(path) {
  * so a version manager's shim sees the name it dispatches on and an upgrade behind a link is
  * followed; `real` is the file, and `dispatcher` its name when it runs a tool by the name it is
  * started as (`dispatcherOf`). With `cli`, a dispatcher reached other than through a link named
- * as the CLI is refused: started as itself, it cannot tell which tool to run. `folders: false`
- * judges the file alone (vimma-ctl beside Vimma's binary, findVimmaCtl).
- * @param {string} path @param {{ folders?: boolean, cli?: import("../core/agent-cli.mjs").CliInfo }} [opts]
+ * as the CLI is refused: started as itself, it cannot tell which tool to run. With `trustedDir`
+ * (a real folder), a file that resolves into that very folder is judged alone (vimma-ctl beside
+ * Vimma's binary, findVimmaCtl); one anywhere else, through a link, has every folder judged.
+ * @param {string} path
+ * @param {{ trustedDir?: string | null,
+ *   cli?: import("../core/agent-cli.mjs").CliInfo | null }} [opts]
  * @returns {Promise<{ path: string, real: string, dispatcher: string | null } | { problem: string }>}
  */
-async function inspect(path, { folders: judgeFolders = true, cli } = {}) {
+async function inspect(path, { trustedDir = null, cli } = {}) {
   try {
     if (!PathUtils.isAbsolute(path)) {
       return { problem: /** @type {string} */ (pathProblem({ ...SOUND, absolute: false })) };
@@ -199,6 +202,7 @@ async function inspect(path, { folders: judgeFolders = true, cli } = {}) {
     const walked = resolve(path);
     if (!walked) return { problem: "it does not exist" };
     const { real } = walked;
+    const judgeFolders = !trustedDir || PathUtils.parent(real) !== trustedDir;
     const stat = await IOUtils.stat(real);
     const file = new lazy.FileUtils.File(real);
     const own = ownership(real);
@@ -304,7 +308,8 @@ function binaryDir() {
  * `vimma-ctl` in `binDir`, else the pref's; checked as the CLI is (C4), but for the folders
  * above the one beside the binary: they hold Vimma's own binary, so a user who can swap one of
  * them can already change Vimma itself, and judging them would refuse every macOS install,
- * whose /Applications the admin group may write. Its own file is checked in full.
+ * whose /Applications the admin group may write. Its own file is checked in full, and so are
+ * the folders of a file a link there leads to outside the binary's own folder.
  * @param {string | null} [binDir]
  * @returns {Promise<{ path: string } | { problem: string }>}
  */
@@ -316,7 +321,7 @@ async function findVimmaCtl(binDir = binaryDir()) {
   if (pref) candidates.push({ path: pref, beside: false });
   for (const { path, beside } of candidates) {
     if (!(await IOUtils.exists(path))) continue;
-    const r = await inspect(path, { folders: !beside });
+    const r = await inspect(path, { trustedDir: beside && binDir ? resolve(binDir)?.real : null });
     if ("path" in r) return { path: r.path };
     return { problem: `vimma-ctl at ${path} is refused: ${r.problem}` };
   }
@@ -409,7 +414,7 @@ export const AgentCli = {
    * @param {string} path @param {string} [id]  its CLI, a key of CLIS: the first unless named
    */
   async version(path, id = CLI_IDS[0] ?? "") {
-    const cli = CLIS[id];
+    const cli = Object.hasOwn(CLIS, id) ? CLIS[id] : null;
     if (!this.enabled || !cli) return null;
     const r = await inspect(path, { cli });
     if ("problem" in r) return null;
@@ -462,7 +467,8 @@ export const AgentCli = {
    * @param {string} path @param {string} [id]  its CLI, a key of CLIS: the first unless named
    */
   async check(path, id = CLI_IDS[0] ?? "") {
-    const r = await inspect(path, { cli: CLIS[id] });
+    const cli = Object.hasOwn(CLIS, id) ? CLIS[id] : null;
+    const r = await inspect(path, { cli });
     return "problem" in r ? r.problem : null;
   },
 
@@ -477,7 +483,8 @@ export const AgentCli = {
    * @returns {{ stop(): void, steer(text: string): void, done: Promise<TaskResult> }}
    */
   start(o) {
-    const cli = CLIS[o.provider.cli ?? ""];
+    const id = o.provider.cli ?? "";
+    const cli = Object.hasOwn(CLIS, id) ? CLIS[id] : null;
     /** @type {any} */
     let proc = null;
     let ticket = "";

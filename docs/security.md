@@ -2032,9 +2032,12 @@ own process, not a process group.
   `vimma.agent.cli.vimmaCtl` names, never one found on `PATH`. The pref's file is checked as
   the CLI is (M55). The one beside the binary has its own file checked in full, but not the
   folders above it: they hold Vimma's binary, so a user who can swap one can already change
-  Vimma itself, and on macOS `/Applications` is writable by the admin group.
+  Vimma itself, and on macOS `/Applications` is writable by the admin group. That exception
+  covers only a file in the binary's own folder: a link there to a file elsewhere has every
+  folder on its way and above that file judged in full, since those folders need not hold Vimma.
   [`test_ticket_never_in_cmdline_prefs_or_log`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_vimma_ctl_beside_the_binary_is_judged_as_the_binary_is`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_a_link_beside_the_binary_is_judged_where_it_leads`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_only_vimmas_mcp_server_is_given`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`the mcp configuration names only vimma-ctl, with the ticket in its environment`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
