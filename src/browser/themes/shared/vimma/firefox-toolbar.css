@@ -159,6 +159,14 @@
   color: var(--vimma-fg-dim, GrayText);
 }
 
+/* The same line in the pop-up blocked bar, beside its button: the bar's button container is an
+   inline flex row with its own gap (infobar.css). */
+.notification-button-container > .vimma-prompt-keys {
+  margin: 0;
+  align-self: center;
+  white-space: nowrap;
+}
+
 /* Until the prompt is armed the line is invisible but keeps its place: a panel that changed size
    would restart Firefox's own delay for the prompt (host/prompt-keys.mjs). */
 .vimma-prompt-keys:not([armed]) {

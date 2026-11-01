@@ -3368,12 +3368,14 @@ answer a [permission prompt](#answering-a-permission-prompt):
 | `n`   | Blocks pop-ups for this site (Firefox's settings list it as Block) and closes the bar.                     |
 | `Esc` | Closes the bar and changes nothing; pop-ups stay blocked as before, and the bar stays closed on that page. |
 
-The status bar says `pop-up blocked · y allow · n block · Esc close` once the keys count. As with
-a permission prompt, they count only once the bar has been up for half a second with no key
-pressed in between, and any key you press meanwhile starts the wait again, so typing meant for the
-page never answers the bar. While you type in a page field, the address bar, a picker, the
+The bar names its keys beside its Options button, `y allow · n block · Esc close`, as a
+permission prompt does, and the status bar says `pop-up blocked · y allow · n block · Esc close`;
+both show once the keys count. As with a permission prompt, they count only once the bar has been
+up for half a second with no key pressed in between, and any key you press meanwhile starts the
+wait again, so typing meant for the page never answers the bar. While you type in a page field, the address bar, a picker, the
 command line or a search, and in link hints, copy mode and element mode, the keys are theirs and
-the status bar says `Esc, then y allow · n block`. Vimma never moves focus onto the bar.
+the bar and the status bar say `Esc, then y allow · n block`. Vimma never moves focus onto the
+bar.
 
 ### Undoing a block, and the bar's other options
 

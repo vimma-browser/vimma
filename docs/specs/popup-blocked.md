@@ -38,7 +38,13 @@ window, a payment provider's window) needs the mouse.
    `pop-up blocked · y allow · n block · Esc close` once the keys count, `pop-up blocked ·
 Esc, then y allow · n block` from a field or mode that keeps the keys, and `pop-up blocked`
    while the keys wait. Switching tabs, or panes in a split, shows the cue for the newly selected
-   page; closing the bar removes it.
+   page; closing the bar removes it. (Since changed: the bar names its keys too, in the
+   permission prompt's keys line (`PromptKeys`, class `vimma-prompt-keys`) placed beside its
+   Options button, with the cue's text without `pop-up blocked`: shown once the keys count and
+   hidden, keeping its place, while they wait; hidden from accessibility, since the bar's button
+   and message stay its labels; left out in the agent workspace. Because a reminder only in the
+   status bar is easy to miss, and the permission prompts already name their keys where the user
+   is looking; [#718](https://github.com/vimma-browser/vimma/issues/718).)
 5. Without the bar, on a site whose pop-ups were blocked with `n` (or the picker's block row), the
    status bar says `pop-ups blocked · :popups to allow`.
 6. `:popups` (`popup_picker`, id `popups.picker`, no default key) opens a picker with these rows:
@@ -202,7 +208,9 @@ it for the private session only. See `docs/security.md`, prompt keys.
   `about:preferences`; a row chosen after the page navigated to another site grants nothing; with
   the pref locked `y` and `n` change nothing, the host's block writes nothing, and `Esc` closes
   the bar; in the agent workspace no key answers the bar, the picker refuses and a block stays as
-  it was.
+  it was. (Since changed: the bar's keys line waits, shows armed with each
+  variant of the cue's text, sits beside the bar's button, is hidden from accessibility, and is
+  left out in the agent workspace.)
 
 ## Docs and changelog
 

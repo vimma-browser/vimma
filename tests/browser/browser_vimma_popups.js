@@ -10,8 +10,11 @@
 // through Firefox's PopupAndRedirectBlockerObserver. Nothing blocked: a notice. In the agent
 // workspace no key answers the bar and the picker refuses: nothing is granted (docs/security.md
 // M10). A mistaken n is undone from :popups, without the bar: allow the site, or reset it.
+// The bar names its keys too, in a line beside its button, as the permission prompts do.
 
 "use strict";
+
+/* global PopupNotifications -- the browser window's doorhanger prompts (browser.js) */
 
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
@@ -46,6 +49,16 @@ const cue = () =>
   document.querySelector('#vimma-statusbar [data-segment="popups"]')?.textContent ?? null;
 const bar = (browser = gBrowser.selectedBrowser) =>
   gBrowser.readNotificationBox(browser)?.getNotificationWithValue("popup-blocked") ?? null;
+/** The keys line inside the bar, the permission prompt's (host/prompt-keys.mjs). */
+const line = () => bar()?.querySelector(".vimma-prompt-keys") ?? null;
+/** The line says `text` and shows: armed, and visible. @param {string} text */
+const lineShows = (text) =>
+  line()?.textContent === text &&
+  line().hasAttribute("armed") &&
+  getComputedStyle(line()).visibility === "visible";
+/** The line is there, keeping its place, but hidden while the keys wait. */
+const lineWaits = () =>
+  !!line() && !line().hasAttribute("armed") && getComputedStyle(line()).visibility === "hidden";
 
 /** @param {() => boolean} cond @param {string} msg */
 function until(cond, msg, tries = 100) {
@@ -224,15 +237,21 @@ add_task(async function hide_turns_the_bar_off_and_settings_opens_preferences() 
 add_task(async function y_answers_only_once_the_bar_is_armed_and_allows_the_site() {
   const tab = await blockingTab();
   await until(() => cue() === UNARMED, "no keys named before the bar is armed");
+  Assert.ok(lineWaits(), "the bar's keys line waits too");
+  Assert.equal(line().getAttribute("aria-hidden"), "true", "the buttons stay the labels");
+  Assert.equal(line().parentNode, bar().buttonContainer, "the line sits beside the bar's button");
   EventUtils.synthesizeKey("y");
   await wait(DELAY / 4);
   Assert.ok(bar() && !allowed(tab), "y before the bar is armed answers nothing");
   await until(() => cue() === CUE, "the keys are named once it is armed");
+  await until(() => lineShows("y allow · n block · Esc close"), "and in the bar");
   EventUtils.synthesizeKey("j");
   EventUtils.synthesizeKey("y");
   await wait(DELAY / 4);
   Assert.ok(bar() && !allowed(tab), "a key typed on through the bar starts the wait again");
+  Assert.ok(lineWaits(), "the bar's line hides again while the keys wait");
   await until(() => cue() === CUE, "armed again");
+  await until(() => lineShows("y allow · n block · Esc close"), "the line shows again");
 
   const a = popupTab("a");
   const b = popupTab("b");
@@ -243,6 +262,34 @@ add_task(async function y_answers_only_once_the_bar_is_armed_and_allows_the_site
   await select(tab);
   await until(() => !bar() && cue() === null, "Firefox opened them and closed the bar");
   forget(tab);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function a_permission_prompt_over_the_bar_hides_its_keys_line() {
+  const { ExtensionsUI } = ChromeUtils.importESModule("resource:///modules/ExtensionsUI.sys.mjs");
+  const tab = await blockingTab();
+  await until(() => lineShows("y allow · n block · Esc close"), "the bar names its keys");
+  // The add-on install prompt takes y and n first (host/prompt-keys.mjs), so the bar must not
+  // offer them while it is open.
+  const panel = PopupNotifications.panel;
+  const shown = BrowserTestUtils.waitForEvent(panel, "popupshown");
+  const strings = ExtensionsUI._buildStrings({
+    addon: { name: "Vimma Test Add-on" },
+    permissions: { permissions: ["tabs"], origins: [] },
+  });
+  const answer = ExtensionsUI.showPermissionsPrompt(tab.linkedBrowser, strings, null);
+  await shown;
+  await until(() => lineWaits(), "the bar's line hides while the prompt is open");
+  Assert.equal(cue(), UNARMED, "as the status bar's cue names no key");
+  // Firefox's buttons refuse a click until the prompt's own delay has passed.
+  const prompt = /** @type {any} */ (panel.firstElementChild);
+  await until(() => !!prompt.querySelector(".vimma-prompt-keys[armed]"), "the prompt is armed");
+  const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
+  prompt.secondaryButton.click();
+  await hidden;
+  Assert.equal(await answer, false, "the prompt is cancelled");
+  await until(() => lineShows("y allow · n block · Esc close"), "and the bar's keys again");
+  Assert.ok(bar() && !allowed(tab), "nothing decided for the bar");
   BrowserTestUtils.removeTab(tab);
 });
 
@@ -273,6 +320,7 @@ add_task(async function keys_typed_in_a_field_or_the_command_line_are_theirs() {
     input.focus();
   });
   await until(() => cue() === FIELD_CUE, "from a field the keys line starts with the way out");
+  await until(() => lineShows("Esc, then y allow · n block"), "the bar's line says so too");
   EventUtils.synthesizeKey("y");
   EventUtils.synthesizeKey("n");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -377,6 +425,7 @@ add_task(async function a_locked_popup_pref_leaves_the_site_permission_alone() {
   try {
     const tab = await blockingTab();
     await until(() => cue() === LOCKED_CUE, "only Esc is named");
+    await until(() => lineShows("Esc close"), "in the bar as well");
     for (const key of ["y", "n"]) {
       EventUtils.synthesizeKey(key);
       await wait(DELAY + 100);
@@ -421,6 +470,7 @@ add_task(async function the_agent_workspace_refuses_and_grants_nothing() {
     await wait(DELAY + 100);
   }
   Assert.ok(bar(), "no key answers the bar");
+  Assert.equal(line(), null, "and the bar names none");
   Assert.equal(permission(tab), DENY, "y and n decide nothing");
   openPicker();
   await until(
