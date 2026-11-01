@@ -263,6 +263,10 @@ describe("chrome code", () => {
       "SitePermissions.setForPrincipal",
       "SitePermissions.removeFromPrincipal",
     ]);
+    // The one write past SitePermissions: a pop-up block, which it would drop as the default.
+    expect(text.match(/\w+\.addFromPrincipal\([^)]*\)/g)).toEqual([
+      'services.perms.addFromPrincipal(page.principal, "popup", services.perms.DENY_ACTION)',
+    ]);
     const reach = sources().filter(
       ({ path, text: t }) => /\/vimma\/(ctl|agent)\//.test(path) && t.includes("permission-ops"),
     );

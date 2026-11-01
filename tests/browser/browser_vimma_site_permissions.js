@@ -20,6 +20,10 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
 
+const { AGENT_DENIED_PERMISSIONS } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentPages.sys.mjs",
+);
+
 const PAGE = "https://example.com/";
 const OTHER = "https://example.org/";
 const PICKER_ID = "vimma-permission-picker";
@@ -154,6 +158,56 @@ add_task(async function test_keys_change_it_through_firefox_and_the_row_follows(
   BrowserTestUtils.removeTab(tab);
 });
 
+// Pop-ups: Firefox's default is Block, and SitePermissions drops a block as the default rather
+// than storing it, so `b` must still leave the site a block of its own that `r` takes back (the
+// second way to undo a mistaken `n` on the pop-up blocked bar, docs/specs/popup-blocked.md).
+add_task(async function test_popups_can_be_allowed_blocked_and_reset() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  const exact = () =>
+    Services.perms.testExactPermissionFromPrincipal(principalOf(PAGE, tab), "popup");
+  await openPicker();
+  Assert.ok(ids().includes("popup"), "the pop-up permission is listed");
+  Assert.equal(
+    detail("popup"),
+    `${label("popup", SitePermissions.BLOCK)} · default`,
+    "unset: Firefox's default, Block",
+  );
+  selectRow("popup");
+
+  EventUtils.synthesizeKey("a");
+  await until(() => exact() === Services.perms.ALLOW_ACTION, "a allows pop-ups");
+  await until(() => detail("popup") === label("popup", SitePermissions.ALLOW), "row: Allow");
+
+  EventUtils.synthesizeKey("b");
+  await until(() => exact() === Services.perms.DENY_ACTION, "b stores a block for the site");
+  await until(() => detail("popup") === label("popup", SitePermissions.BLOCK), "row: Block, set");
+
+  EventUtils.synthesizeKey("r");
+  await until(() => exact() === Services.perms.UNKNOWN_ACTION, "r removes the site's block");
+  await until(
+    () => detail("popup") === `${label("popup", SitePermissions.BLOCK)} · default`,
+    "row: the default",
+  );
+
+  // From the default, b still stores a block, and Enter steps from it to Allow and back.
+  EventUtils.synthesizeKey("b");
+  await until(() => exact() === Services.perms.DENY_ACTION, "b on the default stores a block");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => exact() === Services.perms.ALLOW_ACTION, "Enter: Block to Allow");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => exact() === Services.perms.DENY_ACTION, "Enter: Allow to a stored Block");
+
+  Assert.equal(
+    Services.perms.testExactPermissionFromPrincipal(principalOf(OTHER, tab), "popup"),
+    Services.perms.UNKNOWN_ACTION,
+    "no other site changed",
+  );
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "closed");
+  clearSites();
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function test_a_state_firefox_does_not_offer_is_refused() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
   await openPicker();
@@ -214,9 +268,31 @@ add_task(async function test_a_page_without_site_permissions_says_so() {
 add_task(async function test_the_agent_workspace_refuses_and_grants_nothing() {
   const agent = /** @type {any} */ (WorkspaceStore.agent);
   Assert.ok(agent?.userContextId > 0, "the agent workspace has its container");
+  // Every permission the agent's page has, but the WebRTC denies Vimma itself sets on each agent
+  // tab (AgentPages, AGENT_DENIED_PERMISSIONS).
+  const agentPerms = (tab) =>
+    Services.perms
+      .getAllForPrincipal(tab.linkedBrowser.contentPrincipal)
+      .filter(
+        (p) =>
+          !(
+            AGENT_DENIED_PERMISSIONS.includes(p.type) && p.capability === Services.perms.DENY_ACTION
+          ),
+      )
+      .map((p) => `${p.type}=${p.capability}`);
+
+  // A picker open on the user's tab closes when the agent's tab is selected, and grants nothing
+  // there.
+  const mine = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  await openPicker();
+  selectRow("popup");
   const tab = BrowserTestUtils.addTab(gBrowser, PAGE, { userContextId: agent.userContextId });
-  gBrowser.selectedTab = tab;
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  gBrowser.selectedTab = tab;
+  await until(() => !isOpen(), "selecting the agent's tab closes the picker");
+  Assert.deepEqual(agentPerms(tab), [], "nothing granted to the agent's page");
+
+  // :site there opens nothing.
   command("site");
   await until(
     () => noticeText().includes("site permissions are not changed in the agent workspace"),
@@ -229,5 +305,12 @@ add_task(async function test_the_agent_workspace_refuses_and_grants_nothing() {
     SitePermissions.UNKNOWN,
     "nothing granted",
   );
+  Assert.equal(
+    Services.perms.testExactPermissionFromPrincipal(principal, "popup"),
+    Services.perms.UNKNOWN_ACTION,
+    "no pop-up permission",
+  );
+  Assert.deepEqual(agentPerms(tab), [], "no permission of any kind for the agent's page");
   BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(mine);
 });
