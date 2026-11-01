@@ -249,4 +249,23 @@ describe("chrome code", () => {
       "installAddonFromAOM",
     ]);
   });
+
+  // security.md SP4, SP5: a site permission changes only through Firefox's SitePermissions, from
+  // the picker's ops, and no control, MCP or agent code can reach those ops.
+  test("changes a site permission only from the site permissions picker", () => {
+    const OPS = "src/browser/base/content/vimma/host/permission-ops.mjs";
+    const writes = hits(
+      /setForPrincipal|removeFromPrincipal\(|addFromPrincipal\(|perms\.add\(|perms\.remove\w*\(|SitePermissions\.setDefault/,
+    );
+    expect(writes.filter((h) => !h.startsWith(`${OPS}:`))).toEqual([]);
+    const text = readFileSync(join(ROOT, OPS), "utf8");
+    expect(text.match(/SitePermissions\.(setForPrincipal|removeFromPrincipal)/g)).toEqual([
+      "SitePermissions.setForPrincipal",
+      "SitePermissions.removeFromPrincipal",
+    ]);
+    const reach = sources().filter(
+      ({ path, text: t }) => /\/vimma\/(ctl|agent)\//.test(path) && t.includes("permission-ops"),
+    );
+    expect(reach.map((s) => s.path)).toEqual([]);
+  });
 });
