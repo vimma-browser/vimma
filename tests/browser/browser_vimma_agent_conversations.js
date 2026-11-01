@@ -203,7 +203,7 @@ addTidyTask(async function test_checkpoint_and_show_ask_under_the_conversation_g
       { call: "vimma_open", args: { url: CLICK, elements: true } },
       { call: "vimma_activate", args: { tab: "$tab", label: "$label:Search" } },
       { call: "vimma_show", args: { tab: "$tab" } },
-      { reply: "asked twice" },
+      { hold: true, reply: "asked twice" },
     ]),
   );
   let q = await question();
@@ -215,6 +215,13 @@ addTidyTask(async function test_checkpoint_and_show_ask_under_the_conversation_g
     "vimma_show asks too",
   );
   AgentGate.answer(q.id, { kind: "once" });
+  await until(() => held.size === 1, "the model's next turn");
+  Assert.ok(
+    AgentGate.grants().some((g) => g.conn === c.conn && g.until === Infinity),
+    "the grant stands after the checkpoint",
+  );
+  for (const release of held.values()) release();
+  held.clear();
   const result = await AgentChat.done(c.id);
   Assert.equal(result.outcome, "done", "the task went on after the answers");
   const texts = toolTexts(result);
@@ -224,10 +231,7 @@ addTidyTask(async function test_checkpoint_and_show_ask_under_the_conversation_g
     "the model read the no in vimma-ctl's words",
   );
   Assert.ok(texts[2].startsWith("The user now sees tab "), "and the yes to the show");
-  Assert.ok(
-    AgentGate.grants().some((g) => g.conn === c.conn && g.until === Infinity),
-    "the grant stands after the checkpoint",
-  );
+  Assert.ok(!AgentGate.grants().some((g) => g.conn === c.conn), "and ends with the task");
 });
 
 addTidyTask(async function test_two_conversations_see_only_their_tabs() {
