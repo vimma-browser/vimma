@@ -652,14 +652,14 @@ add_task(async function the_pdf_viewers_count_shows_in_the_bar_too() {
   }
 });
 
-add_task(async function ctrl_f_keeps_firefoxs_own_find_bar() {
+add_task(async function firefoxs_find_in_page_keeps_its_own_find_bar() {
   await withPage(async (browser) => {
     type("/word");
     const findbar = await openFindBar();
     EventUtils.synthesizeKey("KEY_Escape");
     await assertBackInNormal(browser, "Esc");
 
-    // As Firefox's ctrl+f opens it, after `/` used the same bar.
+    // As Firefox's Find in Page (the Edit menu) opens it, after `/` used the same bar.
     const page = browser.getBoundingClientRect();
     findbar.setAttribute("noanim", "true");
     findbar.open();

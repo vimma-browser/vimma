@@ -9,6 +9,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
+import { openPrompt, watchFindBars } from "./find-bar.mjs";
 
 /** @import { FindStatus } from "../core/find.mjs" */
 
@@ -95,11 +96,13 @@ export class Find {
       this.#onFindEvent(/** @type {CustomEvent} */ (e));
     win.addEventListener("find", this.onFindEvent, true);
     win.addEventListener("findagain", this.onFindEvent, true);
+    this.stopFindBars = watchFindBars(win);
   }
 
   destroy() {
     this.win.removeEventListener("find", this.onFindEvent, true);
     this.win.removeEventListener("findagain", this.onFindEvent, true);
+    this.stopFindBars();
     for (const b of /** @type {Browser[]} */ (this.#gBrowser().browsers ?? [])) {
       const l = this.listeners.get(b);
       if (l) b.finder.removeResultListener(l);
@@ -178,9 +181,10 @@ export class Find {
       }
       session.findbar = findbar;
       findbar.addEventListener("findbarclose", session.onClose);
-      // open(), not startFind(): Vim's `/` starts empty, and startFind's prefill with the page's
-      // selection arrives later and takes focus back into the bar (after Enter, in pdf.js).
-      findbar.open(findbar.FIND_NORMAL);
+      // open() (openPrompt), not startFind(): Vim's `/` starts empty, and startFind's prefill
+      // with the page's selection arrives later and takes focus back into the bar (after Enter,
+      // in pdf.js).
+      openPrompt(findbar);
       const field = findbar._findField;
       field.focus();
       // Keys typed while the bar was created come first.

@@ -11,10 +11,95 @@
  * !important: Firefox sets several of these for a Firefox theme (the built-in dark one too)
  * inline on the root (LightweightThemeConsumer) and on more specific selectors. */
 
+/* The find bar `/` and `?` open as a floating prompt in the pickers' style (picker.css;
+ * host/find-bar.mjs; docs/specs/m1-find.md, "Since changed"): over the foot of the page instead
+ * of a row under it, so opening it never reflows the page, framed and rounded like a picker,
+ * with only the field and its [2/5] count. Smartcase replaces the case checkbox, n and N the
+ * arrows, Esc the close button. A bar Firefox opens itself (Find in Page) is Firefox's, with all of them. The layout holds in
+ * every colour mode; the colours are below. */
+.browserContainer > findbar[vimma-prompt] {
+  /* The page's own grid area (content-area.css), at its foot. */
+  grid-area: browserstack !important;
+  align-self: end;
+  justify-self: center;
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: min(36rem, calc(100% - 2rem));
+  min-height: 0 !important;
+  margin: 0 0 0.75rem !important;
+  /* At least 6px above the field: the theme test samples the surface 4px under the top. */
+  padding: 6px 8px !important;
+  /* No colour here: it would outrank the theme's below. */
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+  font: message-box;
+  font-size: 13px;
+  /* Firefox slides a closed bar below the page (findbar.css), which here would be over the
+   * status bar: a closed prompt is simply gone, and with its margin fixed nothing slides. */
+  &[hidden] {
+    display: none !important;
+  }
+
+  .findbar-container {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+  }
+
+  .findbar-find-previous,
+  .findbar-find-next,
+  .findbar-closebutton,
+  .findbar-container > checkbox {
+    display: none !important;
+  }
+
+  [anonid="findbar-textbox-wrapper"] {
+    flex: 1;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .findbar-textbox {
+    flex: 1;
+    width: auto !important;
+    font-family: var(--vimma-font, monospace);
+  }
+
+  .vimma-find-count {
+    display: block;
+    margin: 0;
+    font-family: var(--vimma-font, monospace);
+    white-space: nowrap;
+
+    &:empty {
+      display: none;
+    }
+  }
+
+  /* Firefox's "2 of 5 matches", for screen readers only: the [2/5] count shows it. */
+  .found-matches {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0 !important;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* Firefox's own bar (Find in Page) has its "2 of 5 matches". */
+.vimma-find-count {
+  display: none;
+}
+
 @media not ((prefers-contrast) or (forced-colors)) {
-  /* The find bar is a toolbar under the page (findbar.css): the status bar's surface, its field
-   * the URL field's (firefox-toolbar.css). Without Nova it paints -moz-dialog and its text is
-   * -moz-dialogtext, so the surface and the text are set as well as the tokens. */
+  /* The find bar: a picker's surface, its field the URL field's (firefox-toolbar.css). Without
+   * Nova it paints -moz-dialog and its text is -moz-dialogtext, so the surface and the text are
+   * set as well as the tokens. */
   findbar {
     --toolbar-background-color: var(--vimma-bg-dark) !important;
     --toolbar-text-color: var(--vimma-fg) !important;
@@ -28,7 +113,7 @@
     --input-border-color: var(--vimma-muted) !important;
     --chrome-content-separator-color: var(--vimma-muted) !important;
     background-color: var(--vimma-bg-dark) !important;
-    border-top-color: var(--vimma-muted) !important;
+    border-color: var(--vimma-muted) !important;
     color: var(--vimma-fg) !important;
     color-scheme: var(--vimma-color-scheme) !important;
     accent-color: var(--vimma-mode-normal) !important;
@@ -37,6 +122,19 @@
   .findbar-textbox {
     background-color: var(--vimma-bg) !important;
     color: var(--vimma-fg) !important;
+
+    /* Not found: the status bar's error colour, not Firefox's pink fill. */
+    &[status="notfound"] {
+      color: var(--vimma-text-error, #c01c28) !important;
+    }
+  }
+
+  findbar .vimma-find-count {
+    color: var(--vimma-fg-dim);
+  }
+
+  findbar .findbar-find-status[status="notfound"] {
+    color: var(--vimma-text-error, #c01c28);
   }
 
   /* The menu bar (F10, Alt): one surface with the toolbar under it. On Linux the open menu is

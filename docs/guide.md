@@ -531,10 +531,11 @@ the table are `[modal.element]`'s, and can be rebound there.
 
 ### Find
 
-Find works as it does in Vim. `/` opens Firefox's find bar at the foot of the page, empty, and
-searches as you type, in frames
-from other sites, inside web components and in the PDF viewer too. Matches are highlighted and
-counted as in Firefox. The search starts at the top of what you see (or at the selection, if it
+Find works as it does in Vim. `/` opens a search prompt that floats over the foot of the page,
+in the style of Vimma's pickers and your theme, empty, and searches as you type, in frames
+from other sites, inside web components and in the PDF viewer too. Opening it does not move the
+page. Matches are highlighted as in Firefox, and the prompt counts them as `[2/5]`, as the status
+bar does. The search starts at the top of what you see (or at the selection, if it
 is on screen), as Vim's starts at the cursor.
 
 - **Case:** smart case. An all lower-case search ignores case (`word` finds `Word`); one capital
@@ -552,7 +553,9 @@ is on screen), as Vim's starts at the cursor.
   next match. `i`, a click, or the page itself focusing the field puts you in it, in insert
   mode.
 
-`ctrl+f` still opens Firefox's own find bar, where `Enter` goes to the next match.
+`ctrl+f` is a second key for `/`. Firefox's own find bar, under the page with its buttons and
+its Highlight All, Match Case, Match Diacritics and Whole Words options, still opens from the
+Edit menu's Find in Page, and there `Enter` goes to the next match.
 
 ### Live grep
 

@@ -101,7 +101,16 @@ limit, notFound }`; `VimmaHost.status(win).find` returns it for the selected tab
 ## Settled (2026-10-09)
 
 - **Find bar, not our own input** (above). It stays visible at the foot of the page with its
-  match count and "Phrase not found"; restyling it is M5's theme work.
+  match count and "Phrase not found"; restyling it is M5's theme work. (Since changed: #685
+  restyles the bar `/` and `?` open as a floating prompt in the pickers' style, still Firefox's
+  bar and finder underneath. `host/find-bar.mjs` marks it `vimma-prompt` and
+  `firefox-chrome.css` places it in the page's grid area at its foot, so it no longer reflows
+  the page, framed like a picker, with Firefox's buttons and checkboxes hidden and the count as
+  `[2/5]` (core `findCountText`), mirrored from Firefox's count label, which stays for screen
+  readers and also carries pdf.js's count. A bar Firefox opens itself (the Edit menu's Find in
+  Page) stays Firefox's, because it is how the Highlight All, Match Diacritics and Whole Words
+  options remain reachable. What a
+  click outside the prompt does and whether it moves to the top are open in #685.)
 - **Smartcase** for `/`, `?`, `n`, `N` and `ctrl+f` alike: `accessibility.typeaheadfind.casesensitive`
   defaults to 2, the bar's "auto" mode (`str != str.toLowerCase()`, the same test as core's
   `isCaseSensitive`), in `firefox-branding.js`; a user value in `about:config` wins. The bar
