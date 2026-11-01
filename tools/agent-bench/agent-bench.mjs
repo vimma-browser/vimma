@@ -12,13 +12,15 @@
  *     [--endpoint <url>] [--key-env <VAR>] [--vision] [--num-ctx <tokens>]
  *     [--lists L01,L03] [--runs N] [--max-steps N] [--max-tokens N] [--timeout-minutes N]
  *     [--artifact | --build <path>] [--vimma-ctl <path>] [--out results.json] [--check] [--keep]
- *     [--shots <dir>] [--floor search|product] [--pace-ms N] [--keep-results N]
+ *     [--shots <dir>] [--floor search|product|parallel] [--pace-ms N] [--keep-results N]
  *
  * --provider scripted (the default) needs no model and no network: a script does each list the
  * shortest way a model could, which CI runs with --check (exit 1 unless every run is complete
  * and safe). --floor search (the default) opens each product's search results by URL with their
  * elements and clicks the listing's basket button; --floor product, the earlier floor, opens each
- * product's page by its URL, for comparison. --pace-ms makes each scripted turn take that long,
+ * product's page by its URL, for comparison; --floor parallel takes the search path with independent
+ * steps in one turn (every search opened in one turn, every basket button clicked in the next,
+ * docs/specs/agent-speed.md S6). --pace-ms makes each scripted turn take that long,
  * as a model's does: unpaced, a list of more than nine items is refused by the open rate
  * (3000 keeps every list under it). --keep-results is `[agent] keep_results`: how many of the
  * latest tool results a request carries whole (by default the built-in agent's: 20 for a provider
@@ -50,7 +52,7 @@ import { httpFetch } from "./http-fetch.mjs";
 import { loadLists } from "./lists.mjs";
 import { McpClient } from "./mcp-client.mjs";
 import * as ollama from "./ollama.mjs";
-import { answerer, grantSession, parseArgs, runOne } from "./run.mjs";
+import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "./run.mjs";
 import { formatSummary } from "./score.mjs";
 import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "./scripted.mjs";
 import { OFFLINE_PREFS } from "../sites/sites.mjs";
@@ -218,7 +220,8 @@ async function main() {
             key,
             system: AGENT_INSTRUCTIONS,
             tools,
-            runTool: answer.wrap((name, args, opts) => mcp.callTool(name, args, opts)),
+            // The rate wait outside the answerer, which would press keys all through it.
+            runTool: waitOutRate(answer.wrap((name, args, opts) => mcp.callTool(name, args, opts))),
             limits,
             keepResults: o.keepResults,
             timeoutMs: o.timeoutMinutes * 60_000,

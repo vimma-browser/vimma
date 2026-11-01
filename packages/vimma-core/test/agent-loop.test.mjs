@@ -539,6 +539,84 @@ describe("the loop", () => {
   });
 });
 
+// docs/specs/agent-speed.md S6, Behaviour 6: a turn may carry several independent steps, and
+// they still reach the gate one at a time, so a step whose checkpoint waits for the user holds
+// back every later step of the turn until it is answered.
+describe("several calls in one turn", () => {
+  test("a later call starts only once an earlier call's answer is in", async () => {
+    const s = server([
+      {
+        content: "",
+        tool_calls: [
+          call("vimma_open", { url: "https://shop.example/search?q=milk" }, "a"),
+          call("vimma_open", { url: "https://shop.example/search?q=oats" }, "b"),
+          call("vimma_tabs", {}, "c"),
+        ],
+      },
+      { content: "Done." },
+    ]);
+    const answer = deferred();
+    /** @type {string[]} */
+    const seen = [];
+    const r = runner({
+      vimma_open: async (args) => {
+        seen.push(`start ${args.url}`);
+        if (args.url.endsWith("milk")) {
+          await answer.promise;
+          seen.push("answered");
+          return { isError: true, content: [{ type: "text", text: "The user denied this." }] };
+        }
+        return { content: [{ type: "text", text: "opened" }] };
+      },
+    });
+    const task = start({ fetch: s.fetch, runTool: r.runTool });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(seen).toEqual(["start https://shop.example/search?q=milk"]);
+    expect(r.calls).toHaveLength(1);
+    answer.resolve();
+    const res = await task.done;
+    expect(seen).toEqual([
+      "start https://shop.example/search?q=milk",
+      "answered",
+      "start https://shop.example/search?q=oats",
+    ]);
+    expect(r.calls.map((c) => c.name)).toEqual(["vimma_open", "vimma_open", "vimma_tabs"]);
+    expect(res.outcome).toBe("done");
+    // One result a call, in the order the model gave them, in one message for the next turn.
+    expect(s.bodies[1].messages.filter((/** @type {any} */ m) => m.role === "tool")).toEqual([
+      { role: "tool", tool_call_id: "a", content: "Error: The user denied this." },
+      { role: "tool", tool_call_id: "b", content: "opened" },
+      { role: "tool", tool_call_id: "c", content: "vimma_tabs ok" },
+    ]);
+  });
+
+  test("stopping the task while a call waits runs none of the turn's later calls", async () => {
+    const s = server([
+      {
+        content: "",
+        tool_calls: [
+          call("vimma_open", { url: "https://a.example/" }, "a"),
+          call("vimma_tabs", {}, "b"),
+        ],
+      },
+    ]);
+    const answer = deferred();
+    const r = runner({
+      vimma_open: async () => {
+        await answer.promise;
+        return { content: [{ type: "text", text: "opened" }] };
+      },
+    });
+    const task = start({ fetch: s.fetch, runTool: r.runTool });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    task.stop();
+    answer.resolve();
+    const res = await task.done;
+    expect(r.calls.map((c) => c.name)).toEqual(["vimma_open"]);
+    expect(res.outcome).toBe("stopped");
+  });
+});
+
 describe("malformed tool calls", () => {
   test("broken JSON, an unknown tool and a wrong argument never reach the runner", async () => {
     const s = server([
