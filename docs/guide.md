@@ -1937,9 +1937,10 @@ refusal, unless the CLI's settings allow that tool.
   [Supported CLIs](#supported-clis). Such a setting applies to every session of that CLI, in a
   terminal too.
 - **What that allows.** The CLI's own tools are outside Vimma's gate. A web search tool returns
-  search results to the model; a fetch tool, a shell or file tools act with your rights and can
-  send what you can read to the model's provider. A page that steers the model can make it use
-  any tool you allowed, so allow them only as you would in a terminal.
+  search results to the model; a fetch tool or a shell acts with your rights and can send what
+  you can read to any website or to the model's provider, and file tools can pass it to the
+  model's provider. A page that steers the model can make it use any tool you allowed, so allow
+  them only as you would in a terminal.
 
 **Budgets and cost.** `[agent] max_steps` counts the steps that reach the browser and
 `max_tokens` the tokens the CLI reports; `max_minutes` stops a task that runs too long. The cost
@@ -2095,8 +2096,8 @@ never`) unless the server's `default_tools_approval_mode` is `"approve"`. `-c` s
   run; set under `[mcp_servers.vimma]` in `~/.codex/config.toml`, it applies to every session,
   and an interactive Codex then stops asking before Vimma does.
 - Its own web search needs no approval and is on by default (`web_search = "cached"`, results
-  from OpenAI's index); `-c web_search="live"` searches the live web, and
-  `-c web_search="disabled"` removes it.
+  from OpenAI's index; `"live"` when the sandbox is off, as with `--yolo`); `-c web_search="live"`
+  searches the live web, and `-c web_search="disabled"` removes it (checked with 0.163.0).
 - For a server not in your configuration, add `-c 'mcp_servers.vimma.command="vimma-ctl"'` and
   `-c 'mcp_servers.vimma.args=["mcp"]'`.
 - Codex gives up on a tool call after 60 s (`tool_timeout_sec`); if you raise `ask_timeout`, add
@@ -2143,7 +2144,9 @@ opencode run "Open https://example.com in Vimma's agent workspace and tell me it
   edits, so a rule for `vimma_*` is the narrower choice.
 
 - Its own `webfetch` and `websearch` tools run without asking, as most of its tools do, unless a
-  `permission` rule names them (`{ "permission": { "websearch": "deny" } }`).
+  `permission` rule names them (`{ "permission": { "websearch": "deny" } }`). The first web
+  search asks once which search service to use, which `opencode run` cannot answer: the run
+  ends with an error until you pick one in an interactive opencode (checked with 2.0.32).
 
 - `--format json` prints opencode's events as JSON instead of formatted text.
 
