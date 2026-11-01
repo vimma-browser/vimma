@@ -3187,13 +3187,20 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
 Runbook: "Release download counts". Once a day a hosted runner reads every published release
 asset's `download_count` and appends it to `downloads.csv` on the `stats` branch, an orphan
 branch outside `main`'s history. It is the only workflow whose own job token pushes commits, so
-these rules keep that token away from `main` and from code. Who can reach it: whoever can change
-the workflow or `tools/stats` on `main`, that is a merged pull request; the data it reads (asset
-names and counts of our own releases) comes from GitHub's API. It runs on `schedule` and
-`workflow_dispatch` only, never on a pull request or a push. A manual run can name any branch
-and would then run that branch's workflow and script, so both jobs **refuse** to run unless the
-run is in this repository and on `main`: a branch pushed by anyone with write access never gets
-the write token.
+these rules keep that token away from `main` and from code. Who can reach it: anyone with write
+access, who can change the workflow or `tools/stats` on a branch of their own; the data it reads
+(asset names and counts of our own releases) comes from GitHub's API. It runs on `schedule` and
+`workflow_dispatch` only, never on a pull request or a push. A manual run can name any branch,
+so both jobs **refuse** to run unless the run is in this repository and on `main`: a manual run
+from another branch whose copy of the workflow is unchanged refuses, so that branch's
+`tools/stats` never runs with the write token. The guard lives in each branch's own copy of the
+file, so it binds only an unchanged copy. **⚠ limit:**
+anyone with write access can run a changed workflow from their own ref (`gh workflow run
+--ref`, or a workflow of their own `on: push`) and get a `contents: write` job token. That token
+can write any branch but `main`, which its ruleset refuses, and create, move or delete any tag.
+This is the same reach as pushing a branch (B11, B15, UP7), and nothing in this file can narrow
+it: the mitigations sit outside it, as rulesets for tags and for `stats`, or a GitHub App or
+deploy key that may write `stats` alone in place of the job token.
 [`runs once a day and by hand, never on a pull request or a push`](../tools/test/downloads-workflow.test.mjs),
 [`both jobs run only in this repository from main; record only after collect succeeded`](../tools/test/downloads-workflow.test.mjs)
 
@@ -3208,9 +3215,10 @@ the write token.
 - DC2. `contents: write` is **only** in the `record` job, which checks out the `stats` branch,
   runs no repository code (no `node`, no `npm`), and pushes **only** the fixed refspec
   `HEAD:stats`: the workflow has one `git push`. The token itself could write any branch and
-  create, move or delete any tag, so those limits rest on the job's code, which runs only from
-  `main`. `main` also rests on its ruleset: it requires a pull request and has no bypass actor,
-  so a push by the job token is refused. Tags and the `stats` branch have no ruleset unless the
+  create, move or delete any tag, so in this workflow those limits rest on the job's code, and
+  on a changed copy of the workflow they do not hold at all (the limit above). `main` rests on
+  its ruleset: it requires a pull request and has no bypass actor, so a push by the job token is
+  refused. Tags and the `stats` branch have no ruleset unless the
   maintainer adds one (runbook, "Where it can push").
   [`record runs no repository code and pushes only to the stats branch`](../tools/test/downloads-workflow.test.mjs)
 - DC3. The history is **append-only**: `record` refuses a new `downloads.csv` that does not begin

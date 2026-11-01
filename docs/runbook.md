@@ -1880,11 +1880,14 @@ jump and whether the jumps line up with workflow runs.
 
 - **Where it can push:** the `record` job's token has `contents: write` on the whole
   repository: it could write any branch and create, move or delete any tag, so the limits are
-  elsewhere. Both jobs run only in this repository and from `main` (a manual run can name any
-  branch, whose own workflow and script would then hold the token), the job pushes only the
-  fixed refspec `HEAD:stats` from a checkout of `stats`, and it runs no repository code that
-  could change that. A push to `main` is refused anyway: the `main` ruleset requires a pull
-  request and has no bypass actor, so the job token cannot update it. Tags have no ruleset. The
+  elsewhere. Both jobs refuse a run off `main` or outside this repository, so a manual run from
+  a branch with an unchanged workflow never runs that branch's `tools/stats` with the token; the job pushes only the fixed
+  refspec `HEAD:stats` from a checkout of `stats`, and it runs no repository code that could
+  change that. These hold for `main`'s copy of the file only: anyone with write access can run a
+  changed copy from their own ref (or a workflow of their own) and get a `contents: write`
+  token, as with any branch they push (docs/security.md, section 18). A push to `main` is
+  refused anyway: the `main` ruleset requires a pull request and has no bypass actor, so the job
+  token cannot update it. Tags have no ruleset. The
   `stats` branch itself is not protected; to keep its
   history from being deleted or rewritten by anyone with write access, add a ruleset for it
   with the deletion and non-fast-forward rules (the job only ever fast-forwards):

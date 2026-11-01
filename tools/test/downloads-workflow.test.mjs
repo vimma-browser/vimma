@@ -79,8 +79,9 @@ describe("release downloads workflow", () => {
 
   it("record only appends: the new file must begin with the recorded history", () => {
     expect(job("record")).toMatch(/cmp -s -n "\$size" downloads\.csv "\$new"/);
-    expect(job("record")).toMatch(
-      /^ {4}if: \$\{\{ .* && !cancelled\(\) && needs\.collect\.result == 'success' \}\}$/m,
+    expect(/^ {4}if: (.+)$/m.exec(job("record"))?.[1]).toBe(
+      "${{ github.repository == 'vimma-browser/vimma' && github.ref == 'refs/heads/main'" +
+        " && !cancelled() && needs.collect.result == 'success' }}",
     );
   });
 
