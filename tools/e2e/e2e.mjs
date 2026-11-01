@@ -2,13 +2,17 @@
 /**
  * End-to-end scenarios on a real Vimma build (spec m0-e2e-harness, plan §5). Each scenario in
  * tests/e2e/scenarios/ gets a fresh temp profile and browser (under Xvfb when DISPLAY is unset),
- * driven through vimma-ctl; screenshots are compared with tests/e2e/baselines/.
+ * driven through vimma-ctl; screenshots are compared with tests/e2e/baselines/. On macOS (or
+ * with --headless) the browser runs with MOZ_HEADLESS=1 instead, and screenshot steps are
+ * skipped: there is no framebuffer to capture, so no baseline is checked.
  *
  *   npm run e2e                                  # every scenario, the default build
  *   npm run e2e -- --filter m0-happy-path        # names containing the text
  *   npm run e2e -- --artifact                    # engine/obj-artifact (ADR-010)
  *   npm run e2e -- --build path/to/vimma | --tarball vimma-*.tar.xz
  *   npm run e2e -- --xvfb --keep                 # own Xvfb even with a display; keep profiles
+ *   npm run e2e -- --headless                    # MOZ_HEADLESS, no screenshots (macOS default)
+ *   npm run e2e -- --build /Volumes/Vimma/Vimma.app --vimma-ctl path/to/vimma-ctl
  *   npm run e2e -- --update-baselines            # rewrite baselines: needs a changelog line
  *   npm run e2e -- --run-pending                 # also run scenarios marked pending
  *   npm run e2e -- --report-json out.json        # also write the results as JSON (Beta canary)
@@ -37,6 +41,7 @@ import { Ctl, findVimmaCtl } from "./driver.mjs";
 import {
   DISCOVERY_FILE,
   crashBrowser,
+  displayMode,
   findBuild,
   launch,
   quitBrowser,
@@ -58,6 +63,7 @@ const OPTIONS = /** @type {const} */ ({
   "vimma-ctl": { type: "string" },
   keep: { type: "boolean", default: false },
   xvfb: { type: "boolean", default: false },
+  headless: { type: "boolean", default: false },
   "update-baselines": { type: "boolean", default: false },
   "run-pending": { type: "boolean", default: false },
   budget: { type: "string", default: "300" },
@@ -96,6 +102,13 @@ async function main() {
     return usage("--budget and --discovery-timeout are seconds > 0");
   if ([values.build, values.artifact || undefined, values.tarball].filter(Boolean).length > 1) {
     return usage("pass at most one of --build, --artifact, --tarball");
+  }
+  /** @type {"xvfb" | "display" | "headless"} */
+  let mode;
+  try {
+    mode = displayMode({ xvfb: values.xvfb, headless: values.headless });
+  } catch (e) {
+    return usage(/** @type {Error} */ (e).message);
   }
 
   const scenarios = loadScenarios(values.scenarios, { filter: values.filter });
@@ -136,7 +149,7 @@ async function main() {
       pages = await startPageServer(join(REPO, "tests/e2e/fixtures"));
       console.log(`build: ${build.binary}\nvimma-ctl: ${ctlBin}`);
     }
-    const xvfb = values.xvfb || !process.env.DISPLAY;
+    if (runnable.length && mode === "headless") console.log("headless: screenshots are skipped");
 
     /** @type {string[]} */
     const rewritten = [];
@@ -154,7 +167,8 @@ async function main() {
       };
       const session = await launch({
         build: /** @type {import("./launcher.mjs").Build} */ (build),
-        xvfb,
+        xvfb: mode === "xvfb",
+        headless: mode === "headless",
         keep: values.keep,
         prefs: scenario.prefs,
         discoveryTimeoutMs,
@@ -196,6 +210,10 @@ async function main() {
       };
       /** @param {string} name */
       const screenshot = async (name) => {
+        if (mode === "headless") {
+          console.log(`        screenshot ${name}: skipped: headless, nothing to capture`);
+          return;
+        }
         if (!session.display) {
           throw new Error(
             "screenshots need the harness's own Xvfb: run with --xvfb (or without DISPLAY)",

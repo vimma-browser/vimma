@@ -1,6 +1,6 @@
 // Starts a real Vimma build for an e2e scenario (spec m0-e2e-harness): finds the build, writes a
 // throwaway profile with the control socket on, starts Xvfb when there is no display (or when
-// asked), spawns the browser in its own process group, waits for <profile>/vimma-control.json,
+// asked) or runs it headless (macOS), spawns the browser in its own process group, waits for <profile>/vimma-control.json,
 // and tears it all down again: the whole process tree, Xvfb, the profile unless kept.
 import { execFileSync, spawn } from "node:child_process";
 import {
@@ -169,8 +169,12 @@ export function findBuild({
   /** @param {string} p */
   const explicit = (p) => {
     if (exists(join(p, "vimma"))) return { binary: join(p, "vimma"), env: {} }; // dist/bin
+    const app = join(p, "Contents/MacOS/vimma");
+    if (exists(app)) return { binary: app, env: {} }; // Vimma.app
     if (exists(p)) return { binary: p, env: {} };
-    throw new Error(`no Vimma binary at ${p} (pass the binary or its dist/bin directory)`);
+    throw new Error(
+      `no Vimma binary at ${p} (pass the binary, its dist/bin directory or Vimma.app)`,
+    );
   };
   if (build) return explicit(build);
   if (artifact) {
@@ -243,14 +247,16 @@ const DISPLAY_PASSTHROUGH = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "X
  * settings under HOME) cannot change what the screenshots show. HOME and TMPDIR live inside the
  * profile, so the user's ~/.config is not read and temp files go away with the profile. Under
  * our Xvfb the browser is forced onto X11.
+ * Headless (macOS), it gets MOZ_HEADLESS=1 and no display at all.
  * @param {Record<string, string | undefined>} base
- * @param {{ display?: string, home?: string, tmp?: string, extra?: Record<string, string> }} o
+ * @param {{ display?: string, headless?: boolean, home?: string, tmp?: string,
+ *   extra?: Record<string, string> }} o
  * @returns {Record<string, string>}
  */
-export function browserEnv(base, { display, home, tmp, extra = {} }) {
+export function browserEnv(base, { display, headless = false, home, tmp, extra = {} }) {
   /** @type {Record<string, string>} */
   const env = {};
-  const keep = display ? ENV_PASSTHROUGH : [...ENV_PASSTHROUGH, ...DISPLAY_PASSTHROUGH];
+  const keep = display || headless ? ENV_PASSTHROUGH : [...ENV_PASSTHROUGH, ...DISPLAY_PASSTHROUGH];
   for (const k of keep) {
     const v = base[k];
     if (v !== undefined) env[k] = v;
@@ -261,6 +267,7 @@ export function browserEnv(base, { display, home, tmp, extra = {} }) {
   env.TZ = "UTC";
   env.GTK_THEME = "Adwaita";
   env.MOZ_CRASHREPORTER_DISABLE = "1";
+  if (headless) env.MOZ_HEADLESS = "1";
   if (display) {
     env.DISPLAY = display;
     env.GDK_BACKEND = "x11";
@@ -270,6 +277,26 @@ export function browserEnv(base, { display, home, tmp, extra = {} }) {
 }
 
 /** @param {string} [pathEnv] @returns {string | null} the Xvfb binary on PATH */
+/**
+ * Where the browser draws: our own Xvfb ("xvfb"), the caller's display ("display"), or nowhere
+ * ("headless", MOZ_HEADLESS=1). macOS defaults to headless, even with a DISPLAY (XQuartz sets
+ * one): the macOS build draws with Cocoa, not X11, so Xvfb has nothing to show.
+ * @param {{ platform?: string, xvfb?: boolean, headless?: boolean,
+ *   env?: Record<string, string | undefined> }} options
+ * @returns {"xvfb" | "display" | "headless"}
+ */
+export function displayMode({
+  platform = process.platform,
+  xvfb = false,
+  headless = false,
+  env = process.env,
+}) {
+  if (xvfb && headless) throw new Error("pass either --xvfb or --headless, not both");
+  if (xvfb) return "xvfb";
+  if (headless || platform === "darwin") return "headless";
+  return env.DISPLAY ? "display" : "xvfb";
+}
+
 export function findXvfb(pathEnv = process.env.PATH ?? "") {
   for (const dir of pathEnv.split(delimiter)) {
     if (dir && existsSync(join(dir, "Xvfb"))) return join(dir, "Xvfb");
@@ -643,9 +670,11 @@ export async function quitBrowser({ ctl, child, timeoutMs = 10_000, pollMs = 50 
  * `relaunch` starts the browser again on the same profile and display once it has exited (a
  * restart: the caller quits it first and checks the discovery file is gone, or after
  * crashBrowser passes the killed pid as `stalePid`, whose discovery file stays); `child` and
- * `discovery` then describe the new one.
+ * `discovery` then describe the new one. `headless` runs the browser with MOZ_HEADLESS=1 and
+ * no display (macOS, displayMode); `display` is then null.
  * @param {{
  *   build: Build,
+ *   headless?: boolean,
  *   xvfb?: boolean,
  *   xvfbBin?: string | null,
  *   xvfbEnv?: Record<string, string | undefined>,
@@ -666,7 +695,8 @@ export async function quitBrowser({ ctl, child, timeoutMs = 10_000, pollMs = 50 
  */
 export async function launch({
   build,
-  xvfb = !process.env.DISPLAY,
+  headless = false,
+  xvfb = !headless && !process.env.DISPLAY,
   xvfbBin = findXvfb(),
   xvfbEnv = process.env,
   window = WINDOW,
@@ -717,7 +747,13 @@ export async function launch({
 
   /** Spawn the browser on the profile (with `url` on the command line) and wait for its socket. */
   const start = async (/** @type {string | null} */ url, stalePid = null) => {
-    const env = browserEnv(baseEnv, { display: display?.display, home, tmp, extra: build.env });
+    const env = browserEnv(baseEnv, {
+      display: display?.display,
+      headless,
+      home,
+      tmp,
+      extra: build.env,
+    });
     const spawned = spawn(build.binary, browserArgs(profile, window, { url, extra: args }), {
       env,
       detached: true,

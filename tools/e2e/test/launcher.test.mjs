@@ -21,6 +21,7 @@ import {
   browserEnv,
   createProfile,
   crashBrowser,
+  displayMode,
   findBuild,
   launch,
   quitBrowser,
@@ -129,6 +130,13 @@ describe("findBuild", () => {
       binary: art,
       env: { XUL_APP_FILE: artIni },
     });
+  });
+
+  it("runs the vimma inside a macOS .app bundle", () => {
+    const bin = "/Volumes/Vimma/Vimma.app/Contents/MacOS/vimma";
+    expect(findBuild({ build: "/Volumes/Vimma/Vimma.app", engine, exists: exists([bin]) })).toEqual(
+      { binary: bin, env: {} },
+    );
   });
 
   it("names every path it tried when there is no build", () => {
@@ -319,6 +327,13 @@ describe("browser command line and environment", () => {
     expect(env.GDK_SCALE).toBeUndefined();
   });
 
+  it("headless, sets MOZ_HEADLESS and passes no display through", () => {
+    const env = browserEnv(desktop, { headless: true, home: "/h", tmp: "/t" });
+    expect(env.MOZ_HEADLESS).toBe("1");
+    for (const k of ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XAUTHORITY", "GDK_BACKEND"])
+      expect(env[k]).toBeUndefined();
+  });
+
   it("pins one device pixel per CSS pixel and a light theme in the profile", () => {
     const prefs = Object.fromEntries(PROFILE_PREFS);
     expect(prefs["layout.css.devPixelsPerPx"]).toBe("1.0");
@@ -332,6 +347,26 @@ describe("browser command line and environment", () => {
     expect(args.join(" ")).toContain("-dpi 96");
     expect(args.join(" ")).toContain("-fbdir /fb");
     expect(args.join(" ")).toContain("-displayfd 3");
+  });
+});
+
+describe("displayMode", () => {
+  it("on Linux, Xvfb without a display or with --xvfb, else the caller's display", () => {
+    expect(displayMode({ platform: "linux", env: {} })).toBe("xvfb");
+    expect(displayMode({ platform: "linux", env: { DISPLAY: ":0" } })).toBe("display");
+    expect(displayMode({ platform: "linux", xvfb: true, env: { DISPLAY: ":0" } })).toBe("xvfb");
+    expect(displayMode({ platform: "linux", headless: true, env: {} })).toBe("headless");
+  });
+
+  it("on macOS, headless by default, even with XQuartz's DISPLAY", () => {
+    expect(displayMode({ platform: "darwin", env: {} })).toBe("headless");
+    expect(displayMode({ platform: "darwin", env: { DISPLAY: ":0" } })).toBe("headless");
+  });
+
+  it("refuses --xvfb with --headless", () => {
+    expect(() => displayMode({ platform: "linux", xvfb: true, headless: true, env: {} })).toThrow(
+      /--xvfb[^]*--headless/,
+    );
   });
 });
 
@@ -450,6 +485,23 @@ describe("launch and teardown (fake browser)", () => {
     expect(seen.env.MOZ_ENABLE_WAYLAND).toBeUndefined();
     expect(seen.home).toBe(join(session.profile, ".e2e-home"));
     expect(seen.tmp).toBe(join(session.profile, ".e2e-tmp"));
+  });
+
+  it("headless, starts no Xvfb and the browser sees MOZ_HEADLESS=1", async () => {
+    const session = await launch({
+      build: { binary: FAKE_BROWSER, env: {} },
+      headless: true,
+      xvfbBin: "/no/such/Xvfb",
+      baseEnv: { PATH: process.env.PATH },
+      tmpRoot: tempDir(),
+      discoveryTimeoutMs: 5000,
+      graceMs: 500,
+    });
+    cleanups.push(() => session.teardown());
+    expect(session.display).toBeNull();
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.MOZ_HEADLESS).toBe("1");
+    expect(seen.env.DISPLAY).toBeUndefined();
   });
 
   it("kills the whole process tree and removes the profile on teardown", async () => {

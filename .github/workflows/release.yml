@@ -1128,6 +1128,16 @@ jobs:
           # Vimma's icon and bundle identifier (spec macos-homebrew), as the weekly smoke checks
           tools/package/macos-app-check.sh "$APP"
 
+      # Spec macos-build, sub-PR 4: the app's own vimma-ctl drives it through the e2e smoke
+      # scenarios, under MOZ_HEADLESS=1 with no screenshot baselines, as the weekly smoke does.
+      - name: The e2e smoke scenarios
+        timeout-minutes: 10
+        run: |
+          for scenario in m0-happy-path m0-content-actor; do
+            node tools/e2e/e2e.mjs --headless --build "$APP" \
+              --vimma-ctl "$APP/Contents/MacOS/vimma-ctl" --filter "$scenario"
+          done
+
       # codesign -dvv, spctl --assess and stapler validate (spec macos-build, decision 23).
       - name: Developer ID, notarisation and Gatekeeper
         if: vars.MACOS_SIGNING == 'developer-id'

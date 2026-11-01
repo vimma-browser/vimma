@@ -364,6 +364,26 @@ describe("macos.yml", () => {
     expect(run).toContain("--screenshot");
   });
 
+  // Sub-PR 4 (#612): the e2e smoke scenarios drive the app through vimma-ctl, headless. The
+  // weekly dmg ships no vimma-ctl (macos-dmg.sh), so the job builds one with the pinned Rust.
+  it("drives the app through vimma-ctl: the e2e smoke scenarios, headless", () => {
+    const ctl = step(smoke, "Build vimma-ctl");
+    expect(ctl["working-directory"]).toBe("tools/vimma-ctl");
+    expect(ctl.run).toContain("rustup toolchain install");
+    expect(ctl.run).toContain("cargo build --release --locked");
+    const e2e = step(smoke, "The e2e smoke scenarios");
+    expect(e2e["timeout-minutes"]).toBeLessThanOrEqual(10);
+    const run = e2e.run ?? "";
+    expect(run).toContain("for scenario in m0-happy-path m0-content-actor; do");
+    expect(run).toContain('node tools/e2e/e2e.mjs --headless --build "$APP"');
+    expect(run).toContain("--vimma-ctl tools/vimma-ctl/target/release/vimma-ctl");
+    expect(run).toContain('--filter "$scenario"');
+    expect(index(smoke, "Build vimma-ctl")).toBeLessThan(index(smoke, "The e2e smoke scenarios"));
+    expect(index(smoke, "actions/setup-node@")).toBeLessThan(
+      index(smoke, "The e2e smoke scenarios"),
+    );
+  });
+
   // Spec macos-homebrew, decision 13, and the bundle id (its decision 15): the built app
   // carries Vimma's asset catalog, not Firefox's, under Vimma's own identifier.
   it("checks the built app's icon catalog and bundle identifier", () => {
