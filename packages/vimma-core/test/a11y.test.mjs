@@ -222,10 +222,10 @@ describe("contrast (WCAG 2.x AA, 4.5:1)", () => {
       const t = /** @type {any} */ (THEMES)[name].tokens;
       expect(t["--vimma-focus"], name).toBe(t["--vimma-accent"]);
     }
-    // vimma light's #056a39 is 2.99:1 on its pane gap (#a3b0a9): one 5% step toward black.
+    // vimma light's #006b5e is 2.93:1 on its pane gap (#a0b3af): one 5% step toward black.
     const light = THEMES["vimma light (built in)"].tokens;
-    expect(light["--vimma-accent"]).toBe("#056a39");
-    expect(light["--vimma-focus"]).toBe("#056536");
+    expect(light["--vimma-accent"]).toBe("#006b5e");
+    expect(light["--vimma-focus"]).toBe("#006659");
   });
 
   test("every status bar segment without a badge draws in a checked text token", () => {

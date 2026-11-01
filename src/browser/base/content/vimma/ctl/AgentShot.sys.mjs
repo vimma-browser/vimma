@@ -57,8 +57,8 @@ const onTheWeb = (principal) =>
   !!principal?.isContentPrincipal && (principal.schemeIs("http") || principal.schemeIs("https"));
 
 /** The built-in vimma hint colours (hints.css), for a theme that sets none. */
-const HINT_BG = "#1bf587";
-const HINT_FG = "#0a0f12";
+const HINT_BG = "#ff4fb8";
+const HINT_FG = "#071011";
 
 /**
  * `promise`, or `fallback` after `ms`.

@@ -35,8 +35,11 @@ const { AgentGate } = ChromeUtils.importESModule(
 const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
-const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
+const { MCP_ENABLED_PREF, McpHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
+);
+const { AGENT_DEFAULTS } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/config.mjs",
 );
 const { AgentUi } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/agent-ui.mjs");
 const { WorkspaceStore } = ChromeUtils.importESModule(
@@ -494,4 +497,31 @@ addTidyTask(async function test_clear_forgets_the_last_element_lists() {
   const [after] = toolTexts(await AgentChat.done(c.id));
   Assert.ok(after.includes("<untrusted-web-content>"), "the page is listed");
   Assert.ok(!after.includes(compact), "after a clear, the list is in full");
+});
+
+addTidyTask(async function test_leaving_out_older_results_forgets_the_last_element_lists() {
+  // agent-speed S4 and S5 (#693): a compact list names lines by a list the model no longer has
+  // once that list is left out of its requests, so the next list of every site comes in full.
+  const saved = McpHost.agentConfig;
+  McpHost.configureAgent({
+    ...AGENT_DEFAULTS,
+    default: "scripted",
+    providers: [PROVIDER],
+    keepResults: 2,
+  });
+  try {
+    const c = AgentChat.create({ provider: PROVIDER });
+    const open = { call: "vimma_open", args: { url: CLICK, elements: true } };
+    const compact = "as in your last list of this site";
+    // With 2 kept, the request after the fourth result is the first to leave any out (two).
+    await AgentChat.send(c.id, script([open, open, open, open, open, { reply: "five times" }]));
+    const texts = toolTexts(await AgentChat.done(c.id));
+    Assert.ok(!texts[0].includes(compact), "the first list of the site is in full");
+    for (const i of [1, 2, 3]) {
+      Assert.ok(texts[i].includes(compact), `list ${i + 1} is compact while the lists are sent`);
+    }
+    Assert.ok(!texts[4].includes(compact), "once the first two are left out, the list is in full");
+  } finally {
+    McpHost.configureAgent(saved);
+  }
 });

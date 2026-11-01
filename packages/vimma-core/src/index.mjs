@@ -19,6 +19,7 @@ export * from "./hints.mjs";
 export * from "./blocks.mjs";
 export * from "./cmdline.mjs";
 export * from "./escape.mjs";
+export * from "./page-first.mjs";
 export * from "./panes.mjs";
 export * from "./workspaces.mjs";
 export * from "./snapshot.mjs";
