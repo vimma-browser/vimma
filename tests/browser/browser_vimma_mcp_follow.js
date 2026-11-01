@@ -323,12 +323,24 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   // Under a grant, a same-site follow runs unasked: a subdomain is the same site.
   const listed = await keys(c, tab, "f", { kind: "grant", minutes: 5 });
   let r = await keys(c, tab, `f${LABEL.sub}`, null);
-  // On the macOS runner this f has sometimes listed no `h` (#605): the message names what it saw.
+  // On the macOS runner this f has sometimes listed no link at all (#605): the message names
+  // what it saw and the page's viewport against the browser's box.
+  const sizes =
+    r.result.url === SUB
+      ? ""
+      : `; viewport: ${JSON.stringify(
+          await SpecialPowers.spawn(tab.linkedBrowser, [], () => [
+            content.innerWidth,
+            content.innerHeight,
+            content.document.documentElement.clientWidth,
+            content.document.documentElement.clientHeight,
+          ]),
+        )}, browser: ${JSON.stringify(tab.linkedBrowser.getBoundingClientRect())}`;
   Assert.equal(
     r.result.url,
     SUB,
     `a follow to a subdomain runs under the grant (steps: ${JSON.stringify(r.result.steps)}; ` +
-      `f listed: ${JSON.stringify(lines(listed.result?.links ?? ""))})`,
+      `f listed: ${JSON.stringify(lines(listed.result?.links ?? ""))}${sizes})`,
   );
   await until(
     () => noticeText().startsWith('claude-code followed a link to test1.example.com in "'),
