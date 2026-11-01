@@ -216,7 +216,8 @@ security fixes) within one to three days.
   The `vimma-guardrails` plugin (`tools/claude-plugin/`, `CONTRIBUTING.md`, "Claude Code plugin")
   turns several of these rules into hooks that block the command, and ships the `vimma-pr` agent.
 - **Codex, Cursor, Copilot** (VS Code and the coding agent) and **Zed** read this file directly.
-  Copilot code review reads `.github/copilot-instructions.md`, which points here.
+  Copilot code review reads `.github/copilot-instructions.md`, which points here. Copilot CLI
+  installs the `vimma-guardrails` plugin too (`CONTRIBUTING.md`, "Claude Code plugin").
 - **Gemini CLI** reads this file through `.gemini/settings.json` (`context.fileName`).
 - Other tools: load this file as the project instructions (for Aider, `--read AGENTS.md`).
 - Machine-local notes, when present, live in git-ignored files (such as `CURRENT-STATE.md` and
