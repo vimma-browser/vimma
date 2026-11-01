@@ -373,9 +373,6 @@ support-files = ["file_vimma_addon_updates.json"]
 ["browser_vimma_popups.js"]
 support-files = ["file_vimma_popups.html"]
 
-["browser_vimma_popups_shots.js"]
-support-files = ["file_vimma_popups.html"]
-
 ["browser_vimma_security_invariants.js"]
 support-files = ["head_vimma_control.js"]
 

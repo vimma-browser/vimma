@@ -590,7 +590,7 @@ export class AddonPicker extends GotoPicker {
 }
 
 /**
- * `prefix+shift+o` / `:popups` (docs/specs/popup-blocked.md): the selected page's blocked
+ * `:popups` (docs/specs/popup-blocked.md): the selected page's blocked
  * pop-ups and the bar's options, read asynchronously from Firefox's pop-up blocker.
  */
 export class PopupPicker extends AddonPicker {

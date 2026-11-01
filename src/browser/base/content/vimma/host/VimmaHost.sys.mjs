@@ -928,7 +928,7 @@ export const RUNNERS = Object.freeze({
     s.notice.hide();
     s.addonPicker.open();
   },
-  // docs/specs/popup-blocked.md: prefix+shift+o / :popups, the pop-up blocked bar's options.
+  // docs/specs/popup-blocked.md: :popups (no default key), the pop-up blocked bar's options.
   "popups.picker": (/** @type {WindowState} */ s) => {
     s.notice.hide();
     s.popups.open();

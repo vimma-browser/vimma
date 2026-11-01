@@ -241,18 +241,9 @@ jobs:
         run: |
           log=()
           if [ "$BETA" = true ]; then log=("--log-tbpl=$RUNNER_TEMP/mochitest.tbpl.log"); fi
-          mkdir -p "$RUNNER_TEMP/popup-shots"
-          npm run mochitest -- --artifact --setenv=VIMMA_REQUIRE_CTL=1 \
-            "--setenv=MOZ_UPLOAD_DIR=$RUNNER_TEMP/popup-shots" "${log[@]}" tests/browser/
+          npm run mochitest -- --artifact --setenv=VIMMA_REQUIRE_CTL=1 "${log[@]}" tests/browser/
           df -h . | tail -1
           du -sh engine engine/obj-artifact ~/.mozbuild 2>/dev/null || true
-
-      - name: Upload popup-shots (temporary, PR #705)
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: popup-shots
-          path: ${{ runner.temp }}/popup-shots/
 
       # Spec m0-e2e-harness. The scenarios run here on the artifact build under Xvfb, with
       # screenshots compared at 0.5 %; pending ones are a ::notice::, never a pass. CI is set, so
