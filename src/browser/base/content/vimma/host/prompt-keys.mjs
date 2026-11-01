@@ -23,7 +23,8 @@
 // Firefox's pop-up blocked bar takes the same keys with the same guards while no prompt is open
 // (docs/specs/popup-blocked.md), with Esc to close it. Firefox gives the bar no delay of its own,
 // so its clock is ours: from when the selected page's bar was first seen, or the last key since.
-// The status bar names its keys (popupHint) and VimmaHost redraws it when they come to count.
+// The status bar names its keys (popupHint) and VimmaHost redraws it when they come to count; the
+// bar names them too, in the prompt's keys line beside its button, hidden while the keys wait.
 
 import { doorhangerHint, doorhangerKey, popupBarHint, popupBarKey } from "../core/prompt-keys.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
@@ -133,6 +134,8 @@ export class PromptKeys {
     if (/** @type {Element} */ (e.target).id !== PANEL_ID) return;
     if (e.type === "popuphidden") {
       this.win.clearTimeout(this.armTimer);
+      // The pop-up blocked bar's keys line and cue follow whether a prompt is open.
+      this.host.changed();
       return;
     }
     if (e.type === "popupshowing") {
@@ -146,6 +149,7 @@ export class PromptKeys {
     // popupshown, and popuppositioned: Firefox has just restarted its delay.
     const n = this.notification;
     if (n) this.arm(n);
+    if (e.type === "popupshown") this.host.changed();
   }
 
   /**
@@ -275,22 +279,60 @@ export class PromptKeys {
 
   /**
    * The bar's keys line for the status bar once its keys count, else null (no bar, a prompt
-   * open, or still waiting: the status bar is redrawn when the wait ends).
+   * open, or still waiting: the status bar is redrawn when the wait ends). The line in the bar
+   * follows: armed with the same text, hidden while the keys wait, and gone in the agent
+   * workspace, where no key answers the bar.
    * @returns {string | null}
    */
   popupHint() {
-    if (!this.bar() || inAgentTab(this.win)) return null;
+    const bar = this.bar();
+    if (!bar) {
+      // An open permission prompt takes y and n first: the bar's line must not offer them.
+      popupBar(this.win)?.querySelector(`.${HINT_CLASS}`)?.removeAttribute(ARMED_ATTR);
+      return null;
+    }
+    if (inAgentTab(this.win)) {
+      bar.querySelector(`.${HINT_CLASS}`)?.remove();
+      return null;
+    }
+    // Hint, copy and element mode, a picker and the command line keep y and n as well.
+    const text = popupBarHint({
+      inField: this.host.inField() || this.host.modeKeys() || this.host.otherOpen(),
+      locked: popupLocked(),
+    });
+    const hint = this.barHintFor(bar, text);
     const left = this.barArmedAt() - ChromeUtils.now();
     if (left > 0) {
+      hint?.removeAttribute(ARMED_ATTR);
       this.win.clearTimeout(this.barTimer);
       this.barTimer = this.win.setTimeout(() => this.host.changed(), Math.ceil(left));
       return null;
     }
-    // Hint, copy and element mode, a picker and the command line keep y and n as well.
-    return popupBarHint({
-      inField: this.host.inField() || this.host.modeKeys() || this.host.otherOpen(),
-      locked: popupLocked(),
-    });
+    hint?.setAttribute(ARMED_ATTR, "");
+    return text;
+  }
+
+  /**
+   * The keys line in the pop-up blocked bar, made beside its button if need be. The bar's
+   * buttons live in its light DOM, in the `actions` slot's container (notificationbox.js,
+   * NotificationMessage.connectedCallback); null until the bar has made it.
+   * @param {any} bar
+   * @param {string} text
+   * @returns {HTMLElement | null}
+   */
+  barHintFor(bar, text) {
+    const box = bar.buttonContainer;
+    if (!box) return null;
+    let hint = box.querySelector(`.${HINT_CLASS}`);
+    if (!hint) {
+      hint = this.win.document.createElementNS(HTML_NS, "span");
+      hint.className = HINT_CLASS;
+      // The bar's button and message say what they do; the line is a reminder of the keys.
+      hint.setAttribute("aria-hidden", "true");
+      box.prepend(hint);
+    }
+    if (hint.textContent !== text) hint.textContent = text;
+    return hint;
   }
 
   /**
