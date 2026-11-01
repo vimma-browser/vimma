@@ -281,6 +281,34 @@ the model's default, on the CPU), at most 100 steps and 40 minutes:
 - One run a list is a small sample: the two L04 runs differ by five steps of the model's own
   choosing, which alone is about 150 s.
 
+### Independent steps in one turn
+
+The scripted floor with independent steps in one turn ([agent-speed](specs/agent-speed.md) S6,
+`--floor parallel`): every item's search opened by URL with `elements: true` in one turn, every
+listing's basket button clicked in the next, then the checkout's open and its pay button. The
+calls of a turn still run one after another, each asked and rated on its own. One run each,
+paced at 3 seconds a turn, on GitHub's Linux runner (AMD EPYC 9V74, 4 threads, 16 GiB RAM) with
+an artifact build of Firefox 159.0, at `16a0248c` (this change):
+
+| Floor       | List | Completed | Checkpoint asked | Steps | Model turns | Tokens | Input/turn (max) | Model time | Tool time | Time |
+| ----------- | ---- | --------- | ---------------- | ----- | ----------- | ------ | ---------------- | ---------- | --------- | ---- |
+| Search path | L04  | 1/1       | 1                | 11    | 12          | 77k    | 8,334            | 36 s       | 4 s       | 40 s |
+| Parallel    | L04  | 1/1       | 1                | 11    | 5           | 35k    | 8,172            | 15 s       | 4 s       | 19 s |
+| Search path | L10  | 1/1       | 1                | 23    | 24          | 196k   | 12,040           | 72 s       | 6 s       | 78 s |
+| Parallel    | L10  | 1/1       | 1                | 23    | 5           | 47k    | 11,574           | 15 s       | 62 s      | 77 s |
+
+- **The same steps in a fifth to a half of the turns.** A ten-item list takes 5 model turns
+  instead of 24 and a quarter of the tokens (47,000 against 196,000), since the conversation is
+  sent once a turn rather than once a step; the four-item list takes 5 turns instead of 12 and
+  under half the tokens. On a model that takes 30 seconds
+  a turn, that is about 2.5 minutes instead of 12.
+- **The open rate sets the ten-item list's time.** Ten loads in one turn use up the open rate of
+  ten a minute, and a click checks it too, because a click may load a page; the first click of
+  the next turn was refused with the rate's wait, and the runner waited it out once (most of the
+  62 s of tool time) and ran it again, as the built-in agent's runner does
+  ([#694](https://github.com/vimma-browser/vimma/pull/694)). Nothing else was refused, and no
+  run paid, sent a form or loaded the second host.
+
 ## What the results show
 
 - **None of these models does the task on this machine.** qwen2.5 at 1.5B and 7B completed no
