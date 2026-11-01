@@ -531,10 +531,12 @@ the table are `[modal.element]`'s, and can be rebound there.
 
 ### Find
 
-Find works as it does in Vim. `/` opens Firefox's find bar at the foot of the page, empty, and
-searches as you type, in frames
-from other sites, inside web components and in the PDF viewer too. Matches are highlighted and
-counted as in Firefox. The search starts at the top of what you see (or at the selection, if it
+Find works as it does in Vim. `/` opens a search prompt that floats at the bottom centre of the
+page, above the status bar, because that is where Vim types a search and where the status bar
+shows it. It takes the style of Vimma's pickers and your theme, opens empty, and searches as you
+type, in frames from other sites, inside web components and in the PDF viewer too. Opening it
+does not move the page. Matches are highlighted as in Firefox, and the prompt counts them as `[2/5]`, as the status
+bar does. The search starts at the top of what you see (or at the selection, if it
 is on screen), as Vim's starts at the cursor.
 
 - **Case:** smart case. An all lower-case search ignores case (`word` finds `Word`); one capital
@@ -543,8 +545,10 @@ is on screen), as Vim's starts at the cursor.
   that found nothing goes back to where you were, and the status bar says `not found`.
 - **`Esc`** cancels: the bar closes, nothing stays selected and the page scrolls back to where
   it was when you pressed `/`.
-- **Back into the search:** if you click the page while the bar is open, `/` (or `?`) puts you
-  back in the bar with its text selected, so you can type a new search or press `Enter` or `Esc`.
+- **Back into the search:** a click on the page leaves the prompt open; only `Enter` and `Esc`
+  close it, because a search ends when you choose, as in Vim, not when a click happens to land
+  outside it. `/` (or `?`) then puts you back in the prompt with its text selected, so you can
+  type a new search or press `Enter` or `Esc`.
 - **`n` / `N`** jump to the next / previous match without opening the bar, wrapping at the ends.
   After a search that found nothing they do nothing.
 - **`?`** searches backward: it shows matches as you type, as `/` does, and `Enter` lands on the
@@ -554,7 +558,9 @@ is on screen), as Vim's starts at the cursor.
   next match. `i`, a click, or the page itself focusing the field puts you in it, in insert
   mode.
 
-`ctrl+f` still opens Firefox's own find bar, where `Enter` goes to the next match.
+`ctrl+f` is a second key for `/`. Firefox's own find bar, under the page with its buttons and
+its Highlight All, Match Case, Match Diacritics and Whole Words options, still opens from the
+Edit menu's Find in Page, and there `Enter` goes to the next match.
 
 ### Live grep
 

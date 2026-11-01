@@ -36,7 +36,8 @@ Their accent was Firefox's violet, not the theme's.
 ## Behaviour
 
 1. The find bar is on `--vimma-bg-dark` with `--vimma-fg` text, its field on `--vimma-bg`, its
-   border `--vimma-muted`, in the theme's colour scheme.
+   border `--vimma-muted`, in the theme's colour scheme. (Since changed: the bar `/` opens is a
+   floating prompt framed in `--vimma-muted` on every side, [m1-find](m1-find.md).)
 2. Every `menupopup` (context menus, the menu bar's menus, the toolbar's drop-downs) is on
    `--vimma-bg-dark` with `--vimma-fg` text and a `--vimma-muted` border and separators; the
    active item is `--vimma-selection` with `--vimma-fg-bright` text; disabled items are
