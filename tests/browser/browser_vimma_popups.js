@@ -48,6 +48,13 @@ function prefix(key, mods = {}) {
 
 const openPicker = () => prefix("O", { shiftKey: true });
 
+/**
+ * The open picker's rows. The dialog keeps its last rows after it closes, so a count alone can
+ * pass before the rows load and the picker opens.
+ * @param {number} n
+ */
+const pickerShows = (n) => until(() => isOpen() && rows().length === n, `${n} rows`);
+
 /** A foreground tab on the fixture, once Firefox shows its bar. */
 async function blockingTab(options = {}) {
   const tab = BrowserTestUtils.addTab(gBrowser, BLOCKING, options);
@@ -116,7 +123,7 @@ add_task(async function the_picker_lists_the_bar_options_and_opens_one_popup() {
   const tab = await blockingTab();
   openPicker();
   await until(isOpen, "ctrl+b shift+o opens the picker");
-  await until(() => rows().length === 5, "five rows");
+  await pickerShows(5);
   Assert.deepEqual(ids(), ["allow", "popup:0", "popup:1", "hide", "settings"]);
   Assert.equal(title(rows()[0]), "Allow pop-ups for example.com");
   Assert.equal(title(rows()[1]), `Open ${BLOCKING}?a`);
@@ -144,7 +151,7 @@ add_task(async function the_picker_lists_the_bar_options_and_opens_one_popup() {
 add_task(async function allow_grants_the_site_and_opens_the_blocked_popups() {
   const tab = await blockingTab();
   openPicker();
-  await until(() => rows().length === 5, "the picker's rows");
+  await pickerShows(5);
   const a = popupTab("a");
   const b = popupTab("b");
   EventUtils.synthesizeKey("KEY_Enter");
@@ -160,7 +167,7 @@ add_task(async function allow_grants_the_site_and_opens_the_blocked_popups() {
 add_task(async function hide_turns_the_bar_off_and_settings_opens_preferences() {
   const tab = await blockingTab();
   openPicker();
-  await until(() => rows().length === 5, "the picker's rows");
+  await pickerShows(5);
   for (let i = 0; i < 3; i++) EventUtils.synthesizeKey("j");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(
@@ -170,7 +177,7 @@ add_task(async function hide_turns_the_bar_off_and_settings_opens_preferences() 
   await until(() => !bar() && cue() === null, "the bar and the cue are gone");
 
   openPicker();
-  await until(() => rows().length === 4, "no row to turn the bar off again");
+  await pickerShows(4);
   Assert.deepEqual(ids(), ["allow", "popup:0", "popup:1", "settings"]);
   const prefs = BrowserTestUtils.waitForNewTab(gBrowser, (url) =>
     url.startsWith("about:preferences"),
