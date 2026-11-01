@@ -3190,8 +3190,12 @@ branch outside `main`'s history. It is the only workflow whose own job token pus
 these rules keep that token away from `main` and from code. Who can reach it: whoever can change
 the workflow or `tools/stats` on `main`, that is a merged pull request; the data it reads (asset
 names and counts of our own releases) comes from GitHub's API. It runs on `schedule` and
-`workflow_dispatch` only, never on a pull request or a push.
-[`runs once a day and by hand, never on a pull request or a push`](../tools/test/downloads-workflow.test.mjs)
+`workflow_dispatch` only, never on a pull request or a push. A manual run can name any branch
+and would then run that branch's workflow and script, so both jobs **refuse** to run unless the
+run is in this repository and on `main`: a branch pushed by anyone with write access never gets
+the write token.
+[`runs once a day and by hand, never on a pull request or a push`](../tools/test/downloads-workflow.test.mjs),
+[`both jobs run only in this repository from main; record only after collect succeeded`](../tools/test/downloads-workflow.test.mjs)
 
 - DC1. The workflow holds **no** secret: only the job token, with nothing granted at the top
   level. The `collect` job, which runs repository code, holds **only** `contents: read` and does
@@ -3203,9 +3207,10 @@ names and counts of our own releases) comes from GitHub's API. It runs on `sched
   [`stays tiny: no npm install, short timeouts, no secret, runs in order`](../tools/test/downloads-workflow.test.mjs)
 - DC2. `contents: write` is **only** in the `record` job, which checks out the `stats` branch,
   runs no repository code (no `node`, no `npm`), and pushes **only** the fixed refspec
-  `HEAD:stats`: the workflow has one `git push`. The token itself could write any branch, so
-  `main` rests on its ruleset as well: it requires a pull request and has no bypass actor, so a
-  push by the job token is refused. The `stats` branch has no ruleset of its own unless the
+  `HEAD:stats`: the workflow has one `git push`. The token itself could write any branch and
+  create, move or delete any tag, so those limits rest on the job's code, which runs only from
+  `main`. `main` also rests on its ruleset: it requires a pull request and has no bypass actor,
+  so a push by the job token is refused. Tags and the `stats` branch have no ruleset unless the
   maintainer adds one (runbook, "Where it can push").
   [`record runs no repository code and pushes only to the stats branch`](../tools/test/downloads-workflow.test.mjs)
 - DC3. The history is **append-only**: `record` refuses a new `downloads.csv` that does not begin

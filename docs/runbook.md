@@ -1879,10 +1879,13 @@ jump and whether the jumps line up with workflow runs.
   day's runs: `gh run list --created <date> --limit 100`.
 
 - **Where it can push:** the `record` job's token has `contents: write` on the whole
-  repository, so the limits are elsewhere. The job pushes only the fixed refspec `HEAD:stats`
-  from a checkout of `stats`, and runs no repository code that could change that. A push to
-  `main` is refused anyway: the `main` ruleset requires a pull request and has no bypass actor,
-  so the job token cannot update it. The `stats` branch itself is not protected; to keep its
+  repository: it could write any branch and create, move or delete any tag, so the limits are
+  elsewhere. Both jobs run only in this repository and from `main` (a manual run can name any
+  branch, whose own workflow and script would then hold the token), the job pushes only the
+  fixed refspec `HEAD:stats` from a checkout of `stats`, and it runs no repository code that
+  could change that. A push to `main` is refused anyway: the `main` ruleset requires a pull
+  request and has no bypass actor, so the job token cannot update it. Tags have no ruleset. The
+  `stats` branch itself is not protected; to keep its
   history from being deleted or rewritten by anyone with write access, add a ruleset for it
   with the deletion and non-fast-forward rules (the job only ever fast-forwards):
 

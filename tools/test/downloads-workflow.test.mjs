@@ -45,6 +45,17 @@ describe("release downloads workflow", () => {
     expect(hour).toBeLessThanOrEqual(12);
   });
 
+  // workflow_dispatch takes any ref, and a run from another branch would run that branch's
+  // workflow and script with the write token.
+  it("both jobs run only in this repository from main; record only after collect succeeded", () => {
+    const guard = "github.repository == 'vimma-browser/vimma' && github.ref == 'refs/heads/main'";
+    expect(job("collect")).toMatch(/^ {4}if: (.+)$/m);
+    expect(/^ {4}if: (.+)$/m.exec(job("collect"))?.[1]).toBe(guard);
+    expect(/^ {4}if: (.+)$/m.exec(job("record"))?.[1]).toBe(
+      `\${{ ${guard} && !cancelled() && needs.collect.result == 'success' }}`,
+    );
+  });
+
   it("grants nothing by default; reads in collect, writes contents only in record", () => {
     expect(text).toMatch(/^permissions: \{\}$/m);
     expect(permissions(job("collect"))).toEqual(["contents: read"]);
@@ -69,7 +80,7 @@ describe("release downloads workflow", () => {
   it("record only appends: the new file must begin with the recorded history", () => {
     expect(job("record")).toMatch(/cmp -s -n "\$size" downloads\.csv "\$new"/);
     expect(job("record")).toMatch(
-      /if: \$\{\{ !cancelled\(\) && needs\.collect\.result == 'success' \}\}/,
+      /^ {4}if: \$\{\{ .* && !cancelled\(\) && needs\.collect\.result == 'success' \}\}$/m,
     );
   });
 

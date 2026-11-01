@@ -27,7 +27,9 @@ concurrency:
 jobs:
   collect:
     name: Snapshot the download counts
-    if: github.repository == 'vimma-browser/vimma'
+    # workflow_dispatch takes any ref; a run from another branch would run that branch's workflow
+    # and script, so both jobs run only from main.
+    if: github.repository == 'vimma-browser/vimma' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -61,7 +63,7 @@ jobs:
   record:
     name: Commit the snapshot to the stats branch
     needs: collect
-    if: ${{ !cancelled() && needs.collect.result == 'success' }}
+    if: ${{ github.repository == 'vimma-browser/vimma' && github.ref == 'refs/heads/main' && !cancelled() && needs.collect.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
