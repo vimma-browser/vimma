@@ -1494,9 +1494,11 @@ decide whether it sends anything on.
 | `shift+Enter` | Starts a new line.                                                                        |
 | `Esc`         | Normal mode in the window.                                                                |
 
-Sending with `Enter` is your grant: the window asks no separate question. The grant lasts until
-you stop the task (`s`, `:agent stop` or `ctrl+b shift+a`), `:mcp revoke`, the conversation is
-deleted or Vimma restarts. Sending a form, paying, showing you a page and the downloads that
+Sending with `Enter` is your grant: the window asks no separate question. The grant covers that
+one task and ends with it, whether it finishes, you stop it (`s`, `:agent stop` or
+`ctrl+b shift+a`), or it reaches its budget or an error; `:mcp revoke`, deleting the conversation
+and restarting Vimma end it too. The next task you send with `Enter` grants again, so
+`◇ agent granted` shows only while an agent works with your permission. Sending a form, paying, showing you a page and the downloads that
 always ask still ask every time, in a bordered slot above the input that takes only `y` and `n`;
 nothing you type in the input and nothing the model writes answers it. A message sent while a
 task runs reaches the model at its next turn.
@@ -1913,7 +1915,7 @@ provider is refused, because Vimma cannot see where a CLI sends what it reads.
   `~/.cache/vimma-agent-cli`), removed when the task ends, with no shell around it. Each task is
   a new run given the conversation so far; the CLI keeps no session of its own.
 - In the browser it has only Vimma's tools, on the conversation's own agent tabs. Sending with
-  `Enter` grants the conversation, so steps run without asking; sending a form, paying and
+  `Enter` grants the conversation for that task, so steps run without asking; sending a form, paying and
   `vimma_show` still ask. Each step is a line in the transcript, from Vimma's own record.
 - **Its own tools are outside Vimma's gate.** The CLI keeps the shell, file and web tools its own
   settings allow. Vimma does not approve, refuse or confine them: they act with your rights. The

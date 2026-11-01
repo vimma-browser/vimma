@@ -1682,7 +1682,8 @@ conversation's grant can do what any grant allows (above), within its own tabs a
 
 **The conversation grant.** A task the user sends from Vimma's own chat window is known to come
 from the user, so sending it with `Enter` grants that conversation's connection, with no
-question and no expiry, until it is stopped (B18). Nothing but Vimma's chrome calls it: the
+question and no timer, until that task ends, however it ends (B18). Between tasks a
+conversation holds no grant, so the status bar's `◇ agent granted` means an agent is working. Nothing but Vimma's chrome calls it: the
 control socket has no command that sends a task, and page key events never reach chrome. The
 steps that cannot be taken back still ask under it.
 
@@ -1741,13 +1742,14 @@ vision; its key stays in login storage.
   [`a tab belongs to the conversation that opened it`](../packages/vimma-core/test/agent-owners.test.mjs),
   [`a tab a page opened belongs to its opener's conversation`](../packages/vimma-core/test/agent-owners.test.mjs)
 - M37. A conversation's grant **must** be made only by the user sending a task without asking
-  every step (`Enter`) or by an answer to its question; it **must** have no expiry, **must** end
-  on a send that asks every step (`ctrl+Enter`), on stopping the conversation, on
+  every step (`Enter`) or by an answer to its question; it **must** have no timer, **must** end
+  when the task it was made for ends (done, stopped, at its budget or on an error), on a send
+  that asks every step (`ctrl+Enter`), on stopping the conversation, on
   `ctrl+b shift+a`, on `:mcp revoke` and when the conversation is deleted, and **must never**
   cover another conversation. Form submissions, payment steps, `vimma_show` and the downloads
   that always ask **must** ask under it (M19, M28, M33).
   [`test_ctrl_enter_asks_every_step_and_ends_the_grant`](../tests/browser/browser_vimma_agent_conversations.js),
-  [`test_grant_covers_later_tasks_until_stopped`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_grant_ends_with_its_task_and_enter_grants_again`](../tests/browser/browser_vimma_agent_conversations.js),
   [`test_checkpoint_and_show_ask_under_the_conversation_grant`](../tests/browser/browser_vimma_agent_conversations.js),
   [`a conversation grant has no expiry and ends on stop`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a conversation grant leaves checkpoints asking`](../packages/vimma-core/test/agent-gate.test.mjs),
