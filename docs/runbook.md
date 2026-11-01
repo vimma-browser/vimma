@@ -390,6 +390,12 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   to measure the loop without pruning. A turn after a block was left out reads the request
   again from the first changed result, which on a local model shows as a turn several times
   slower than the others.
+- `--floor` picks the scripted provider's path: `search` (the default), `product` (each
+  product's page by URL, the earlier floor) or `parallel` (the search path with independent
+  steps in one turn: every search in one turn, every basket button in the next). Like the
+  built-in agent's runner, the bench waits out a rate refusal once and runs the call again, which
+  the parallel path needs on a ten-item list: ten loads in one turn use up the open rate, which
+  a click checks too.
 - The browser reaches only `127.0.0.1` and `localhost` (the site suite's offline prefs), so a
   URL a model makes up loads nothing off the machine; only the model's own requests leave it,
   and only for a hosted provider.

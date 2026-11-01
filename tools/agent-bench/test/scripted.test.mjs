@@ -237,6 +237,134 @@ describe("shopper", () => {
   });
 });
 
+describe("shopper, parallel path", () => {
+  const list = {
+    id: "T",
+    items: [
+      { text: "milk", accept: ["milk-pirkka"], qty: 2 },
+      { text: "oats", accept: ["oat-flakes"], qty: 1 },
+      { text: "saffron", accept: [], qty: 0 },
+    ],
+  };
+  const catalog = {
+    products: [
+      { id: "milk-pirkka", name: "Milk", brand: "Pirkka", size: "1 l" },
+      { id: "oat-flakes", name: "Oat flakes", brand: "Myllyn Paras", size: "500 g" },
+    ],
+  };
+  const OATS = [
+    '{"label":"a","kind":"link","text":"Basket (0)"}',
+    '{"label":"g","kind":"button","text":"Add Oat flakes (Myllyn Paras, 500 g) to basket"}',
+  ].join("\n");
+  /** The tool messages of one turn, in the order of its calls. @param {string[]} texts */
+  const results = (texts) => texts.map((t, i) => ({ ...toolMsg(t), tool_call_id: `c${i}` }));
+  const opened = (
+    /** @type {string} */ url,
+    /** @type {number} */ tab,
+    /** @type {string} */ els,
+  ) => `Opened ${url} in tab ${tab} of Vimma's agent workspace, in the background.\n${els}`;
+
+  it("opens every search in one turn, then clicks every basket button in the next", () => {
+    const next = shopper({ base: "http://127.0.0.1:1/", list, path: "parallel", catalog });
+    /** @type {any[]} */
+    const messages = [{ role: "user", content: "task" }];
+    const step = () => {
+      const r = next({ messages, tools: [] });
+      messages.push({ role: "assistant", content: r.text ?? "" });
+      return r;
+    };
+
+    expect(step().calls).toEqual([
+      { name: "vimma_open", args: { url: "http://127.0.0.1:1/search?q=milk", elements: true } },
+      {
+        name: "vimma_open",
+        args: { url: "http://127.0.0.1:1/search?q=oat+flakes", elements: true },
+      },
+    ]);
+    messages.push(
+      ...results([
+        opened("http://127.0.0.1:1/search?q=milk", 12, LISTING),
+        opened("http://127.0.0.1:1/search?q=oat+flakes", 13, OATS),
+      ]),
+    );
+    // Each listing's own button, as many times as the list asks, all in one turn.
+    expect(step().calls).toEqual([
+      { name: "vimma_activate", args: { tab: "12", label: "f" } },
+      { name: "vimma_activate", args: { tab: "12", label: "f" } },
+      { name: "vimma_activate", args: { tab: "13", label: "g" } },
+    ]);
+    messages.push(
+      ...results(["Clicked f in tab 12", "Clicked f in tab 12", "Clicked g in tab 13"]),
+    );
+    // The checkout depends on the basket, so it waits for the clicks' turn.
+    expect(step().calls).toEqual([
+      { name: "vimma_open", args: { url: "http://127.0.0.1:1/checkout", elements: true } },
+    ]);
+    messages.push(toolMsg(opened("http://127.0.0.1:1/checkout", 14, CHECKOUT)));
+    expect(step().calls).toEqual([{ name: "vimma_activate", args: { tab: "14", label: "s" } }]);
+    messages.push(toolMsg("Error: The user denied this request in Vimma."));
+    const last = step();
+    expect(last.calls ?? []).toEqual([]);
+    expect(last.text).toMatch(/basket/i);
+  });
+
+  it("lists again, in one turn, only the pages whose open could not list them", () => {
+    const next = shopper({ base: "http://127.0.0.1:1/", list, path: "parallel", catalog });
+    /** @type {any[]} */
+    const messages = [{ role: "user", content: "task" }];
+    next({ messages, tools: [] });
+    messages.push(
+      ...results([
+        "Opened x in tab 3 of Vimma's agent workspace, in the background.\nNo elements: the page is still loading.",
+        opened("y", 4, OATS),
+      ]),
+    );
+    expect(next({ messages, tools: [] }).calls).toEqual([
+      { name: "vimma_elements", args: { tab: "3" } },
+    ]);
+    messages.push({ role: "assistant", content: "" }, toolMsg(LISTING));
+    expect(next({ messages, tools: [] }).calls).toEqual([
+      { name: "vimma_activate", args: { tab: "3", label: "f" } },
+      { name: "vimma_activate", args: { tab: "3", label: "f" } },
+      { name: "vimma_activate", args: { tab: "4", label: "g" } },
+    ]);
+  });
+
+  it("finds a button a compact list left out in an earlier list of the same turn", () => {
+    const next = shopper({
+      base: "http://127.0.0.1:1/",
+      list: { ...list, items: [list.items[1], list.items[0]] },
+      path: "parallel",
+      catalog,
+    });
+    /** @type {any[]} */
+    const messages = [{ role: "user", content: "task" }];
+    next({ messages, tools: [] });
+    messages.push(
+      ...results([
+        opened("x", 3, `${OATS}\n${LISTING.split("\n").slice(1).join("\n")}`),
+        opened("y", 4, "(3 elements as in your last list of this site: a, d, f)"),
+      ]),
+    );
+    expect(next({ messages, tools: [] }).calls).toEqual([
+      { name: "vimma_activate", args: { tab: "3", label: "g" } },
+      { name: "vimma_activate", args: { tab: "4", label: "f" } },
+      { name: "vimma_activate", args: { tab: "4", label: "f" } },
+    ]);
+  });
+
+  it("stops with a reply when an open failed", () => {
+    const next = shopper({ base: "http://127.0.0.1:1/", list, path: "parallel", catalog });
+    /** @type {any[]} */
+    const messages = [{ role: "user", content: "task" }];
+    next({ messages, tools: [] });
+    messages.push(...results(["Error: too many vimma_open calls", opened("y", 4, OATS)]));
+    const r = next({ messages, tools: [] });
+    expect(r.calls ?? []).toEqual([]);
+    expect(r.text).toMatch(/could not open http:\/\/127\.0\.0\.1:1\/search\?q=milk/);
+  });
+});
+
 describe("scriptedFetch pacing", () => {
   it("waits paceMs before each answer, as a model's turn takes time", async () => {
     /** @type {number[]} */

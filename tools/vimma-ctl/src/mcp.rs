@@ -72,7 +72,10 @@ new element list in the same result, instead of calling vimma_elements after the
 site, open its search results by URL with elements: true (the search form's address with your \
 words as its search field's value, such as https://shop.example/search?q=oat+drink) rather than \
 filling the search field and sending the form; it takes one call instead of three. Do this only \
-for a search: send every other form through vimma_activate, so that the user is asked. To see what a page of the agent workspace shows, call vimma_screenshot (labels: \
+for a search: send every other form through vimma_activate, so that the user is asked. Steps \
+that do not depend on each other's results go as several tool calls in one turn, such as opening \
+each item's search in its own tab, then clicking each item's basket button; each call is still \
+asked and limited as if it came alone. To see what a page of the agent workspace shows, call vimma_screenshot (labels: \
 true draws the labels of your last vimma_elements on it). To see a page's script errors, console \
 errors and warnings, and failed requests, call vimma_console; pass the time of its last result as \
 since to see only what came after. Never ask the user to turn on full control (:control on) or to run vimma-ctl \
@@ -3051,6 +3054,17 @@ mod tests {
         assert!(INSTRUCTIONS.contains(
             "Do this only for a search: send every other form through vimma_activate, so that \
              the user is asked."
+        ));
+    }
+
+    /// agent-speed S6, Behaviour 6: a model turn, not a call, is what costs time, so steps that
+    /// do not depend on each other go in one turn; each call still goes through the gate alone.
+    #[test]
+    fn the_instructions_say_independent_steps_go_in_one_turn() {
+        assert!(INSTRUCTIONS.contains(
+            "Steps that do not depend on each other's results go as several tool calls in one \
+             turn, such as opening each item's search in its own tab, then clicking each item's \
+             basket button; each call is still asked and limited as if it came alone."
         ));
     }
 

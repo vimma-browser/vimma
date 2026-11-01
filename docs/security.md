@@ -794,6 +794,14 @@ is under the same rules as every other open (M6, the open rate of M3, the notice
 agent puts in the URL, the same risk as any open (mcp-grants, above). A form sent through the
 page, a search included, is still a form submission and asked every time (M28).
 
+Under [agent-speed](specs/agent-speed.md) S6, the same instructions tell an agent that steps that
+do not depend on each other's results go as several tool calls in one turn, and that each call is
+still asked and limited as if it came alone. This changes no rule of the gate: the built-in
+agent's loop runs a turn's calls one after another, each checked, rated and logged on its own, so
+a checkpoint in the middle of a turn holds back every later call of it until the user answers;
+an MCP client that sends a turn's calls at once has them queued, asked and rated one by one as
+any other calls (M3's queue and rates).
+
 [mcp-session-grants](specs/mcp-session-grants.md) makes a bare `a` last the agent's whole
 session by default (`[mcp] grant_minutes = 0`): the grant has no time limit and ends when the
 agent's connection closes, on `ctrl+b shift+a`, `:mcp revoke` or `:mcp off`, or when Vimma quits.
