@@ -45,7 +45,8 @@ What works today, each with the section that explains it:
   release is in place it asks once per session to restart, and `:restart` restarts into it.
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
-  uploads; Safe Browsing on.
+  uploads; Safe Browsing on; a site's permissions shown and changed from the keyboard with
+  [`:site`](#site-permissions).
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl), shipped and updated with Vimma): a
   token-protected control socket; local AI agents reach one [agent workspace](#agent-workspace)
   through MCP, where they can read, open, scroll and search pages, follow their links, list and
@@ -3322,6 +3323,39 @@ Bitwarden), and `Tab` completes the name. To put an add-on on a key:
 - **Sidebar add-ons** (a `sidebar_action`) open in Firefox's own sidebar, through the add-on's
   button or the View menu, not in Vimma's side panel.
 
+## Site permissions
+
+See and change what the site in the selected tab may do (camera, microphone, location,
+notifications, pop-ups, autoplay and the rest) without the mouse. `:site` (or `:permissions`)
+opens a picker with every permission Firefox's Page Info lists, each with the state Firefox has
+for this site: `default` when the site has no setting of its own, `temporary` or
+`this session` when the setting lasts only that long, `set by policy` or `locked` when it cannot
+be changed here. A `●` marks the permissions the site has its own setting for. Like tab search,
+it takes every key while open.
+
+| Key            | What it does                                                     |
+| -------------- | ---------------------------------------------------------------- |
+| `j` / `k`, `/` | Move; filter by name (`Esc` back to the list).                   |
+| `a`            | Allows the permission for this site.                             |
+| `b`            | Blocks it.                                                       |
+| `r`            | Resets it to Firefox's default.                                  |
+| `Enter`        | Steps to its next state, in the order Firefox's own panels show. |
+| `Esc` / `q`    | Closes the picker.                                               |
+
+The picker stays open after a change and shows the new state. Changes are made through
+Firefox, as Page Info's Permissions tab makes them, and show in the site information panel
+(the padlock) too. A permission Firefox does not offer a state for (screen sharing cannot be
+allowed for good) says so, and a permission set by an enterprise policy or a locked pref is
+read only.
+
+A change applies to this site in this workspace only, since
+[site permissions are per workspace](#workspaces); in the
+[private workspace](#private-workspace) it lasts until the private workspace closes. If the tab
+goes to another page while the picker is open, the next key closes it: run `:site` again for
+the new page. `:site` does nothing in the [agent workspace](#agent-workspace), so a permission
+is never given to a page an agent drives. It has no default key: bind `site_permissions` in
+[config.toml](#configtoml), as every key, the prefix and the leader can be remapped.
+
 ## The command line
 
 `:` in normal mode opens a Vim-style command line just above the status bar, for everything
@@ -3380,6 +3414,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                 |
 | `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                            |
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
+| `:site`, `:permissions`               | Opens the [site permissions](#site-permissions) picker for the selected tab.                                                                   |
 | `:bug`                                | Opens `about:vimma` and copies its redacted report to the clipboard, for a bug report.                                                         |
 | `:update`                             | Checks for a newer Vimma now; when there is one, opens `about:vimma`'s Updates section with the exact commands ([Updates](#updates)).          |
 | `:restart`                            | Restarts Vimma; tabs come back, and an installed update applies. Asks first while private tabs are open ([Updates](#updates)).                 |

@@ -186,8 +186,9 @@ export function sitePermissionKey(win, op, id) {
   if (plan.type === "refuse") return { notice: plan.text, close: false };
   if (plan.type === "set") {
     // Page Info's call: Firefox stores it for the site (for the session in a private window)
-    // and removes the entry when the state is the default.
-    lazy.SitePermissions.setForPrincipal(page.principal, id, plan.state);
+    // and removes the entry when the state is the default, with the browser a temporary one too.
+    const persistent = lazy.SitePermissions.SCOPE_PERSISTENT;
+    lazy.SitePermissions.setForPrincipal(page.principal, id, plan.state, persistent, page.browser);
   } else {
     // With the browser, Firefox also drops a temporary setting for this tab.
     lazy.SitePermissions.removeFromPrincipal(page.principal, id, page.browser);

@@ -82,6 +82,8 @@ function pageInfoList() {
 /** Every permission of the test sites, in any container. */
 function clearSites() {
   for (const perm of Services.perms.all) {
+    // Only http(s) principals have a host: nsIPrincipal.host throws for the others.
+    if (!perm.principal.schemeIs("https")) continue;
     if (["example.com", "example.org"].includes(perm.principal.host)) {
       Services.perms.removeFromPrincipal(perm.principal, perm.type);
     }
