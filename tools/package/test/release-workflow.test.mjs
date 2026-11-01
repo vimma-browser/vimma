@@ -351,6 +351,21 @@ esac
       expect(block).toContain('tools/package/macos-app-check.sh "$APP"');
     });
 
+    // Spec macos-build, sub-PR 4 (#612): the release's own vimma-ctl drives the app headless
+    // through the e2e smoke scenarios before anything is signed or published.
+    it("macos-smoke runs the e2e smoke scenarios through the app's vimma-ctl", () => {
+      const block = all.get("macos-smoke") ?? "";
+      expect(block).toMatch(/- name: The e2e smoke scenarios\n {8}timeout-minutes: 10\n/);
+      const run = runOf(block, "The e2e smoke scenarios");
+      expect(run).toContain("for scenario in m0-happy-path m0-content-actor; do");
+      expect(run).toContain('node tools/e2e/e2e.mjs --headless --build "$APP"');
+      expect(run).toContain('--vimma-ctl "$APP/Contents/MacOS/vimma-ctl"');
+      expect(run).toContain('--filter "$scenario"');
+      expect(block.indexOf("- name: The e2e smoke scenarios")).toBeGreaterThan(
+        block.indexOf("- name: Smoke check"),
+      );
+    });
+
     // Spec macos-homebrew, decision 14: the repacked dmg keeps Vimma's window art and icon.
     it("macos-smoke checks the mounted dmg's window art and volume icon", () => {
       const mount = runOf(all.get("macos-smoke") ?? "", "Mount the dmg and copy the app out");

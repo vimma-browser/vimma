@@ -227,7 +227,17 @@ npm run e2e -- --build path/to/dist/bin | --tarball vimma-0.1.0-linux-x86_64.tar
 npm run e2e -- --xvfb --keep                     # own Xvfb on a desktop; keep the profiles
 npm run e2e -- --run-pending --filter m0         # run a pending scenario anyway (to watch it fail)
 MOZ_HEADLESS=1 npm run e2e -- --artifact --filter m3   # no Xvfb at hand: headless, no screenshots
+npm run e2e -- --headless --filter m0-happy-path       # MOZ_HEADLESS=1; screenshot steps skipped
+npm run e2e -- --build /Volumes/Vimma/Vimma.app --vimma-ctl /Volumes/Vimma/Vimma.app/Contents/MacOS/vimma-ctl
 ```
+
+**On macOS** the harness runs headless by default (`--headless`): the browser gets
+`MOZ_HEADLESS=1` and no display, because the macOS build draws with Cocoa and Xvfb has nothing to
+show. A `screenshot` step is reported as skipped (`screenshot <name>: skipped`) and no baseline is
+read or written, so the scenarios check behaviour, not pixels. `--build` takes a `Vimma.app` and
+runs its `Contents/MacOS/vimma`; a release's app carries its own `vimma-ctl` beside it. Both macOS
+smoke jobs run `m0-happy-path` and `m0-content-actor` this way (`macos.yml`, and `macos-smoke` in
+`release.yml`).
 
 A `restart` step (`m3-restart-restore`) quits with `ctrl+q` and starts the build again on the
 same profile; a scenario's `prefs` override the harness's `user.js` (`null`: the build's
@@ -732,8 +742,8 @@ Linux job, and on a manual run without a `firefox-version`. It does not run when
 `upstream-beta.yml` call `e2e.yml` with a version, because a macOS failure must never block a
 Linux release (spec macos-build, decision 13). It does not build `vimma-ctl`, so
 `browser_vimma_control.js` skips there; vimma-ctl's own macOS tests run in `ci.yml` (`vimma-ctl
-on macOS`). The e2e scenarios on macOS are follow-up work
-([#612](https://github.com/vimma-browser/vimma/issues/612)).
+on macOS`). The e2e smoke scenarios run on macOS in the smoke jobs of `macos.yml` and
+`release.yml` instead ("macOS build" below), against the built `.dmg`.
 
 **Informational, not required.** The job is new and its runner type has no history in this
 repository, so a flaky macOS run would otherwise block every pull request (spec macos-build,
@@ -1174,7 +1184,9 @@ disk-image tools from Mozilla. After `./mach package`, `tools/package/macos-dmg.
 SHA-256) and packs it again. The run's artifact is
 `vimma-<vimma>-firefox-<firefox>-macos-aarch64`, kept 90 days. The `smoke` job mounts it on a
 Mac, runs `codesign --verify --deep --strict`, checks the binary is arm64 and the version line,
-and renders a page headless; `tools/package/macos-app-check.sh` checks its `Assets.car` has
+and renders a page headless; it then builds `vimma-ctl` (the weekly `.dmg` ships none) and runs
+the e2e smoke scenarios `m0-happy-path` and `m0-content-actor` headless through it
+(`npm run e2e -- --headless`, "End-to-end tests" above); `tools/package/macos-app-check.sh` checks its `Assets.car` has
 Vimma's `AppIcon` and none of Firefox's, and that its bundle identifier is `surfer.json`'s
 `appId`. `tools/package/macos-dmg-check.sh` checks the mounted volume's `.DS_Store`,
 `.background/background.png` and `.VolumeIcon.icns` are the committed `dsstore`, `background.png`
@@ -1238,8 +1250,8 @@ build used 44 GB of the runner's disk, the 16 GB swap file included, and left 42
 [ship-vimma-ctl](specs/ship-vimma-ctl.md)); `macos-build` builds as `macos.yml` does, from the release tag's commit and with the Safe
 Browsing key, and renders the Homebrew cask `vimma.rb` for the `.dmg`
 (`tools/package/cask.mjs`), with that `vimma-ctl` signed into `Vimma.app/Contents/MacOS`;
-`macos-smoke` checks the `.dmg` on a hosted Mac against the tag, and
-installs it through the cask (`tools/package/cask-check.sh`); `macos-sign` signs both and
+`macos-smoke` checks the `.dmg` on a hosted Mac against the tag, runs the e2e smoke scenarios
+through the app's own `vimma-ctl`, and installs it through the cask (`tools/package/cask-check.sh`); `macos-sign` signs both and
 `SHA256SUMS-macos` with cosign while `SIGNING_ENABLED` is `true`; `macos-publish` uploads them
 to the tag's release; `macos-tap` starts `homebrew.yml` on `main` for the tag once the release
 is published. Publishing a release whose macOS files are already on it starts `homebrew.yml`

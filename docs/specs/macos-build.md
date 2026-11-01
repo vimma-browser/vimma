@@ -1,7 +1,6 @@
 # Spec: macos-build
 
-Status: implemented, except the leftovers in
-[#612](https://github.com/vimma-browser/vimma/issues/612) (sub-PR 4's e2e smoke scenarios) and
+Status: implemented, except the leftover in
 [#613](https://github.com/vimma-browser/vimma/issues/613) (sub-PR 5's native menu bar check) ·
 Area: `configs/macos/mozconfig`,
 `configs/macos/entitlements/` (new), `tools/package/macos-dmg.sh` (new),
@@ -17,7 +16,8 @@ Area: `configs/macos/mozconfig`,
 
 Issues: [#238](https://github.com/vimma-browser/vimma/issues/238),
 [#385](https://github.com/vimma-browser/vimma/issues/385),
-[#386](https://github.com/vimma-browser/vimma/issues/386)
+[#386](https://github.com/vimma-browser/vimma/issues/386),
+[#612](https://github.com/vimma-browser/vimma/issues/612)
 
 Engine paths are relative to `engine/` and were checked against Firefox 158.0. Surfer paths
 (`S/`) are relative to `node_modules/@zen-browser/surfer`, version 1.14.9. Zen Browser
@@ -857,7 +857,12 @@ full build.
    scenarios through `vimma-ctl`, launched with `MOZ_HEADLESS=1`. The e2e launcher learns
    `MOZ_HEADLESS` instead of Xvfb on macOS, the `.app` binary path and "no screenshots". The smoke
    jobs built with sub-PRs 3, 6 and 7 check the mount, the signature, the version lines and a page
-   rendered headless, but do not drive the browser through `vimma-ctl`.
+   rendered headless, but do not drive the browser through `vimma-ctl`. (Since changed: built
+   with [#612](https://github.com/vimma-browser/vimma/issues/612). `npm run e2e -- --headless`,
+   the default on macOS, sets `MOZ_HEADLESS=1`, starts no Xvfb and reports a `screenshot` step as
+   skipped; `--build` takes a `Vimma.app`. `release.yml`'s `macos-smoke` drives the app with its own
+   `vimma-ctl`; `macos.yml`'s smoke builds one with the pinned toolchain, because the weekly
+   `.dmg` ships none.)
 5. **`docs(macos): keys inventory`** (built, except the menu bar check). The macOS firefox-keys
    inventory, `FIREFOX_SHORTCUTS_MACOS` (decision 22, built with #384), and the macOS default keys
    (decisions 29 and 30, #385 and #386); the Option/alt behaviour in `docs/guide.md` ("On macOS the

@@ -153,13 +153,17 @@ jobs:
   smoke:
     needs: build
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -210,6 +214,22 @@ jobs:
         run: |
           tools/package/macos-app-check.sh "$APP"
           swift tools/package/render-icon.swift "$APP" "$RUNNER_TEMP/vimma-icon.png"
+
+      # The weekly dmg ships no vimma-ctl (only release.yml sets macos-dmg.sh's VIMMA_CTL), so
+      # the smoke builds one. The runner image ships rustup; it installs the pinned toolchain.
+      - name: Build vimma-ctl
+        working-directory: tools/vimma-ctl
+        run: rustup toolchain install && cargo build --release --locked
+
+      # Spec macos-build, sub-PR 4: the e2e smoke scenarios drive the app through vimma-ctl,
+      # under MOZ_HEADLESS=1 with no screenshot baselines. Each scenario has its own deadline.
+      - name: The e2e smoke scenarios
+        timeout-minutes: 10
+        run: |
+          for scenario in m0-happy-path m0-content-actor; do
+            node tools/e2e/e2e.mjs --headless --build "$APP" \
+              --vimma-ctl tools/vimma-ctl/target/release/vimma-ctl --filter "$scenario"
+          done
 
       - name: Upload the rendered icon and the screenshot
         if: always()

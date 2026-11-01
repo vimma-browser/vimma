@@ -1,7 +1,7 @@
 // The CLI's guard: baselines change only in a reviewed commit, never from a CI run.
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
@@ -77,4 +77,54 @@ describe("npm run e2e -- --report-json", () => {
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(/--report-json/);
   });
+});
+
+// Spec macos-build, sub-PR 4: macOS runs the scenarios headless, where there is no framebuffer
+// to capture, so a screenshot step is reported as skipped and no baseline is read or written.
+describe("npm run e2e -- --headless", () => {
+  it("skips a screenshot step and passes, with no baseline or output written", () => {
+    const dir = tempDir("e2e-headless-");
+    const scenarios = join(dir, "scenarios");
+    mkdirSync(scenarios);
+    writeFileSync(
+      join(scenarios, "m0-headless-shot.json"),
+      JSON.stringify({
+        name: "m0-headless-shot",
+        description: "x",
+        timeoutSeconds: 20,
+        steps: [{ screenshot: "m0-headless-shot" }],
+      }),
+    );
+    // Answers state, and quits the fake browser on send-keys as ctrl+q does: the quit
+    // observers remove the discovery file, then the browser exits.
+    const ctl = join(dir, "vimma-ctl");
+    writeFileSync(
+      ctl,
+      [
+        "#!/bin/sh",
+        'case "$5" in',
+        '  state) echo \'{"mode":"normal"}\' ;;',
+        '  send-keys) f="$2/vimma-control.json"',
+        '    pid=$(sed -n \'s/.*"pid":\\([0-9]*\\).*/\\1/p\' "$f"); rm -f "$f"; kill "$pid" ;;',
+        "esac",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    const fakeBrowser = fileURLToPath(new URL("./fixtures/fake-browser.mjs", import.meta.url));
+    const shots = join(dir, "shots");
+    const out = join(dir, "o");
+    const r = spawnSync(
+      process.execPath,
+      [
+        CLI,
+        ...["--scenarios", scenarios, "--baselines", shots, "--out", out, "--headless"],
+        ...["--build", fakeBrowser, "--vimma-ctl", ctl, "--discovery-timeout", "10"],
+      ],
+      { encoding: "utf8", env: { ...process.env, CI: "true" }, timeout: 60_000 },
+    );
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toMatch(/screenshot m0-headless-shot: skipped/);
+    expect(existsSync(shots) || existsSync(out)).toBe(false);
+  }, 70_000);
 });

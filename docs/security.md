@@ -2149,7 +2149,9 @@ mirrors and Flathub (`dl.flathub.org`). Dependabot pull requests run and auto-me
 The macOS build, `macos.yml` ([ADR-018](adr/018-macos-cross-build.md)), also runs on pull
 requests that touch it. It holds no secret and only a read-only token, builds on hosted runners
 under B1, B2 and B5 like the release build, and adds one download, rcodesign, pinned by SHA-256.
-Its ad hoc signature proves nothing about who built the app.
+Its ad hoc signature proves nothing about who built the app. Its `smoke` job builds `vimma-ctl`
+with the toolchain of `rust-toolchain.toml` and the crates of `Cargo.lock` (`--locked`), as
+`ci.yml` does, to drive the app through the e2e smoke scenarios; that binary is never packaged.
 `release.yml`'s macOS jobs, which run only while the variable `MACOS_RELEASE_ENABLED` is `true`,
 hold every rule below that the Linux jobs hold: the same tag checks, the `build` environment for
 the key, cosign under the same identity, and the same refusal to replace a published release's
@@ -2339,7 +2341,9 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   update manifest read, never changes when they are added; `macos-sign` signs all three with the
   same identity, after a hosted Mac has checked the checksum, the signature, the version line,
   Vimma's icon catalog, the bundle identifier and the mounted volume's window art and icon
-  against the committed files, and has installed the `.dmg` through the cask.
+  against the committed files, has driven the app headless through the e2e smoke scenarios with
+  its own `vimma-ctl` (a job with a read-only token and no secret, before anything is signed),
+  and has installed the `.dmg` through the cask.
   The macOS icon files in `configs/branding/vimma/` are binaries in the tree;
   `macos.yml` regenerates them from their sources and fails if they differ. `firefox.icns`,
   `document.icns`, `disk.icns`, `background.png` and the layer image inside `Assets.car` are
@@ -2358,6 +2362,7 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`regenerates the icon files on a Mac with a pinned Xcode and fails on drift`](../tools/package/test/macos.test.mjs),
   [`fails an app that still carries Firefox's unofficial icon`](../tools/package/test/macos.test.mjs),
   [`macos-smoke checks the mounted dmg's window art and volume icon`](../tools/package/test/release-workflow.test.mjs),
+  [`macos-smoke runs the e2e smoke scenarios through the app's vimma-ctl`](../tools/package/test/release-workflow.test.mjs),
   [`fails a volume with other art, such as Firefox's`](../tools/package/test/macos.test.mjs),
   [`names no home directory or Firefox volume`](../tools/package/test/macos.test.mjs),
   [`builds and installs the release PKGBUILD on Arch Linux before anything is signed`](../tools/package/test/release-workflow.test.mjs),
