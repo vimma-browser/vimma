@@ -268,7 +268,7 @@ Add-ons
   addon_popup               (unbound)                                         Open an add-on's popup by name (:addon name)
 
 Pop-ups
-  popup_picker              ctrl+b shift+o                                    Blocked pop-ups: open one, allow the site, settings
+  popup_picker              (unbound)                                         Blocked pop-ups: open one, allow the site, settings
 "
 `;
 
@@ -540,6 +540,6 @@ Add-ons
   addon_popup               (unbound)                                         Open an add-on's popup by name (:addon name)
 
 Pop-ups
-  popup_picker              ctrl+b shift+o                                    Blocked pop-ups: open one, allow the site, settings
+  popup_picker              (unbound)                                         Blocked pop-ups: open one, allow the site, settings
 "
 `;

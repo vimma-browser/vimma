@@ -230,7 +230,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * @property {WorkspacePicker} wsPicker  the prefix+w overlay (m3-workspaces 5)
  * @property {GotoPicker} mcpLog  `:mcp log`, the agents' last calls (docs/specs/mcp-drive.md D14)
  * @property {AddonPicker} addonPicker  the prefix+e overlay (docs/specs/addon-manager.md)
- * @property {PopupPicker} popups  the prefix+shift+o overlay (docs/specs/popup-blocked.md)
+ * @property {PopupPicker} popups  the `:popups` overlay (docs/specs/popup-blocked.md)
  * @property {GrepSession} grep  prefix+f g, `:grep`, `]q`/`[q` (docs/specs/live-grep.md)
  * @property {RenamePrompt} rename  the prefix+shift+t prompt (m2-picker-rename)
  * @property {AgentPrompt} agentPrompt  the agent question line (docs/specs/vimma-mcp.md)
@@ -1448,7 +1448,10 @@ export const VimmaHost = {
         load: () => popupPickerItems(win),
         refuse: (rows) => popupRefusal(win, /** @type {any} */ (rows)),
         notice: (text) => state.notice.show(text),
-        select: (id) => runPopupRow(win, id),
+        select: (id) => {
+          runPopupRow(win, id);
+          this._emit(state);
+        },
       }),
       grep: new GrepSession(win, {
         notice: (text) => state.notice.show(text),
@@ -1643,6 +1646,7 @@ export const VimmaHost = {
         otherOpen: () => keysHeld(state) || state.agentPrompt.isOpen || UpdateUi.isOpen(win),
         pending: () => state.dispatcher.pending().length > 0,
         modeKeys: () => KEY_KEEPING_MODES.has(this._mode(state)),
+        changed: () => this._emit(state),
       });
       promptKeys.init();
       state.promptKeys = promptKeys;
@@ -1772,8 +1776,8 @@ export const VimmaHost = {
           ? hintStatus(state.hint.hs)
           : { action: state.hint.action, label: null }
         : null,
-      // docs/specs/popup-blocked.md: `pop-up blocked · ctrl+b shift+o`.
-      popups: popupStatus(win, state.help.keymap),
+      // docs/specs/popup-blocked.md: `pop-up blocked · y allow · n block · Esc close`.
+      popups: popupStatus(win, state.promptKeys?.popupHint() ?? null),
     };
   },
 

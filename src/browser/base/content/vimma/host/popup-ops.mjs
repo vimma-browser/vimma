@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The pop-up picker's operations and its status bar cue (docs/specs/popup-blocked.md), over the
-// selected browser's pop-up blocker (toolkit/actors/PopupAndRedirectBlockingParent.sys.mjs) and
-// the bar's own options (browser/modules/PopupAndRedirectBlockerObserver.sys.mjs), so Firefox's
-// logic decides what allowing or opening does. Chrome-only: VimmaHost runs these from keys and
-// the command line; no control command or MCP tool reaches them.
+// The pop-up blocked bar's answers (y, n, Esc), the pop-up picker's operations and the bar's
+// status bar cue (docs/specs/popup-blocked.md), over the selected browser's pop-up blocker
+// (toolkit/actors/PopupAndRedirectBlockingParent.sys.mjs) and the bar's own options
+// (browser/modules/PopupAndRedirectBlockerObserver.sys.mjs), so Firefox's logic decides what
+// allowing or opening does. Chrome-only: VimmaHost runs these from keys and the command line; no
+// control command or MCP tool reaches them.
 
 import {
   AGENT_REFUSED,
@@ -18,11 +19,11 @@ import {
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
 /** @import { PopupItem } from "../core/popups.mjs" */
-/** @import { Keymap } from "../core/keymap.mjs" */
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   PopupAndRedirectBlockerObserver: "resource:///modules/PopupAndRedirectBlockerObserver.sys.mjs",
+  SitePermissions: "resource:///modules/SitePermissions.sys.mjs",
 });
 
 /** The bar's value (PopupAndRedirectBlockerObserver.showBrowserMessage). */
@@ -37,6 +38,9 @@ const SHOW_PREF = "privacy.popups.showBrowserMessage";
  */
 const listed = new WeakMap();
 
+/** The permission manager, which types/firefox.d.ts does not describe. */
+const perms = () => /** @type {any} */ (Services).perms;
+
 /** @param {Window} win */
 const gBrowserOf = (win) => /** @type {any} */ (win).gBrowser;
 
@@ -45,8 +49,55 @@ const gBrowserOf = (win) => /** @type {any} */ (win).gBrowser;
  * (docs/security.md M10).
  * @param {Window} win
  */
-function inAgentTab(win) {
+export function inAgentTab(win) {
   return WorkspaceStore.isAgentContainer(gBrowserOf(win)?.selectedTab?.userContextId);
+}
+
+/**
+ * The site's own pop-up permission, if it has one. Read exactly: SitePermissions reports a site
+ * without one as blocked, Firefox's default for pop-ups.
+ * @param {any} browser
+ * @returns {"allow" | "block" | null}
+ */
+function sitePermission(browser) {
+  const principal = browser?.contentPrincipal;
+  if (!principal?.isContentPrincipal) return null;
+  const action = perms().testExactPermissionFromPrincipal(principal, "popup");
+  if (action === perms().ALLOW_ACTION) return "allow";
+  return action === perms().DENY_ACTION ? "block" : null;
+}
+
+/**
+ * Records a block in the site's pop-up permission. SitePermissions cannot: it treats a block as
+ * the pop-up default and removes the site's permission instead (SitePermissions.setForPrincipal),
+ * which would leave a mistaken `n` nothing to show or undo. So this writes the permission
+ * manager as Firefox's own "Allow pop-ups for <site>" does (toggleAllowPopupsForSite), with
+ * Firefox's block action; SitePermissions and Page Info read it as Block.
+ * @param {any} browser
+ */
+function blockSite(browser) {
+  perms().addFromPrincipal(browser.contentPrincipal, "popup", perms().DENY_ACTION);
+}
+
+/**
+ * Allows the site's pop-ups without the bar, as the bar's allow does: the permission, then what
+ * was blocked opens. The bar's own path (toggleAllowPopupsForSite) needs the bar to remove.
+ * @param {any} browser
+ */
+function allowSite(browser) {
+  const { SitePermissions } = lazy;
+  SitePermissions.setForPrincipal(
+    browser.contentPrincipal,
+    "popup",
+    SitePermissions.ALLOW,
+    SitePermissions.SCOPE_PERSISTENT,
+    browser,
+  );
+  const blocker = browser.popupAndRedirectBlocker;
+  blocker
+    ?.unblockAllPopups()
+    .then(() => blocker.unblockFirstRedirect())
+    .catch((/** @type {unknown} */ e) => console.error("vimma: pop-ups", e));
 }
 
 /**
@@ -86,6 +137,7 @@ export async function popupPickerItems(win) {
     redirect: redirect?.redirectURISpec ?? null,
     allowLocked: Services.prefs.prefIsLocked(LOCK_PREF),
     showMessage: Services.prefs.getBoolPref(SHOW_PREF, true),
+    permission: sitePermission(browser),
   });
 }
 
@@ -119,9 +171,18 @@ export function runPopupRow(win, id) {
   const blocker = snapshot.browser.popupAndRedirectBlocker;
   switch (op.op) {
     case "allow":
-      observer
-        .toggleAllowPopupsForSite(event)
-        .catch((/** @type {unknown} */ e) => console.error("vimma: pop-ups", e));
+      if (popupBar(win)) answerPopupBar(win, "allow");
+      else allowSite(snapshot.browser);
+      break;
+    case "block":
+      blockSite(snapshot.browser);
+      break;
+    case "reset":
+      lazy.SitePermissions.removeFromPrincipal(
+        snapshot.browser.contentPrincipal,
+        "popup",
+        snapshot.browser,
+      );
       break;
     case "popup": {
       const p = snapshot.popups[op.index];
@@ -143,15 +204,50 @@ export function runPopupRow(win, id) {
 }
 
 /**
- * The status bar's cue while the selected browser has the bar (each split pane has its own
- * notification box; the focused pane's browser is the selected one), else null.
+ * The selected browser's pop-up blocked bar, or null (each split pane has its own notification
+ * box; the focused pane's browser is the selected one).
  * @param {Window} win
- * @param {Keymap | null | undefined} keymap
- * @returns {string | null}
+ * @returns {any}
  */
-export function popupStatus(win, keymap) {
+export function popupBar(win) {
   const gBrowser = gBrowserOf(win);
   const box = gBrowser?.readNotificationBox?.(gBrowser.selectedBrowser);
-  if (!box?.getNotificationWithValue(BAR)) return null;
-  return popupCue(keymap?.keysFor("popup_picker") ?? [], { agent: inAgentTab(win) });
+  return box?.getNotificationWithValue(BAR) ?? null;
+}
+
+/**
+ * Answers the selected page's bar as its own controls do. `allow` is the options menu's "Allow
+ * pop-ups for <site>", which also opens what was blocked and closes the bar. `block` records the
+ * block in the site's permission, then closes the bar. `close` is the bar's close button: no permission changes, and Firefox does not
+ * show the bar again for this page. `block` is recorded as the picker's block row records it
+ * (blockSite), so `:popups` can undo it.
+ * @param {Window} win
+ * @param {"allow" | "block" | "close"} kind
+ */
+export function answerPopupBar(win, kind) {
+  const bar = popupBar(win);
+  if (!bar || inAgentTab(win)) return;
+  if (kind === "allow") {
+    lazy.PopupAndRedirectBlockerObserver.toggleAllowPopupsForSite({
+      originalTarget: { documentGlobal: win },
+    }).catch((/** @type {unknown} */ e) => console.error("vimma: pop-ups", e));
+    return;
+  }
+  if (kind === "block") blockSite(gBrowserOf(win).selectedBrowser);
+  bar.dismiss();
+}
+
+/**
+ * The status bar's cue for the selected page: the bar's, or the way to undo a block.
+ * @param {Window} win
+ * @param {string | null} hint  the bar's keys line once armed (PromptKeys.popupHint)
+ * @returns {string | null}
+ */
+export function popupStatus(win, hint) {
+  return popupCue({
+    bar: !!popupBar(win),
+    hint,
+    siteBlocked: sitePermission(gBrowserOf(win)?.selectedBrowser) === "block",
+    agent: inAgentTab(win),
+  });
 }

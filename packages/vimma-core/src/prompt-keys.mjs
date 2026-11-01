@@ -70,3 +70,39 @@ export function doorhangerHint({ main, secondary, inField = false }) {
   parts.push("Tab buttons");
   return parts.join(" · ");
 }
+
+/**
+ * @typedef {object} PopupBarState
+ * @property {boolean} open  the selected page shows Firefox's pop-up blocked bar
+ * @property {boolean} armed  it has shown for the arming delay with no key in between
+ * @property {boolean} inField  focus is in an editable field (insert mode)
+ * @property {boolean} pending  a key sequence is under way (after ctrl+b)
+ * @property {boolean} [repeat]  the key is held down
+ * @property {boolean} [agent]  the page is in the agent workspace, whose pages get no permissions
+ */
+
+/**
+ * What `key` does while the pop-up blocked bar may show (docs/specs/popup-blocked.md): the
+ * permission prompt's keys and guards, with Esc to close the bar, since the bar has no Esc of its
+ * own. Tab never moves focus onto the bar, whose own controls stay the mouse's. An Esc before the
+ * bar is armed stays the page's: a page can raise the bar just as Esc is pressed.
+ * @param {string} key
+ * @param {PopupBarState} s
+ * @returns {{ kind: "pass" | "wait" | "allow" | "block" | "close" }}
+ */
+export function popupBarKey(key, s) {
+  if (!s.open || s.pending || s.inField || s.agent) return { kind: "pass" };
+  if (key === "esc") return s.armed && !s.repeat ? { kind: "close" } : { kind: "pass" };
+  if (key !== "y" && key !== "n") return { kind: "pass" };
+  if (!s.armed || s.repeat) return { kind: "wait" };
+  return { kind: key === "y" ? "allow" : "block" };
+}
+
+/**
+ * The pop-up blocked bar's keys line, the permission prompt's (doorhangerHint) with Esc to close.
+ * From a field, or in hint, copy and element mode, it starts with the way out.
+ * @param {{ inField?: boolean }} s
+ */
+export function popupBarHint({ inField = false }) {
+  return inField ? "Esc, then y allow · n block" : "y allow · n block · Esc close";
+}

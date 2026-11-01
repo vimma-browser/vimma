@@ -19,9 +19,15 @@
 // window is activated. A key armed on a clock of our own could reach a button Firefox still
 // refuses, and the key would be lost. For the same reason the keys line keeps its place in the
 // panel while hidden: showing it must not resize the panel and so restart Firefox's delay.
+//
+// Firefox's pop-up blocked bar takes the same keys with the same guards while no prompt is open
+// (docs/specs/popup-blocked.md), with Esc to close it. Firefox gives the bar no delay of its own,
+// so its clock is ours: from when the selected page's bar was first seen, or the last key since.
+// The status bar names its keys (popupHint) and VimmaHost redraws it when they come to count.
 
-import { doorhangerHint, doorhangerKey } from "../core/prompt-keys.mjs";
+import { doorhangerHint, doorhangerKey, popupBarHint, popupBarKey } from "../core/prompt-keys.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
+import { answerPopupBar, inAgentTab, popupBar } from "./popup-ops.mjs";
 
 const DELAY_PREF = "security.notification_enable_delay";
 const DEFAULT_DELAY_MS = 500;
@@ -40,6 +46,7 @@ const EVENTS = ["popupshowing", "popupshown", "popuppositioned", "popuphidden", 
  * @property {() => boolean} pending  a key sequence is under way (after ctrl+b)
  * @property {() => boolean} modeKeys  the mode types its own letters (hint, copy, element mode);
  *   `otherOpen` covers it too, this only words the keys line
+ * @property {() => void} changed  the pop-up blocked bar's keys line changed: redraw the status bar
  */
 
 /** @param {any} node  an element, possibly in a shadow root */
@@ -61,6 +68,11 @@ export class PromptKeys {
     /** the last key while it was open, on ChromeUtils.now()'s clock as `timeShown` is */
     this.lastKeyAt = 0;
     this.armTimer = 0;
+    /** @type {{ bar: any, at: number } | null} the bar last seen, and when it was first seen */
+    this.barSeen = null;
+    /** the last key in the window, on ChromeUtils.now()'s clock */
+    this.barKeyAt = 0;
+    this.barTimer = 0;
     this.onPopup = (/** @type {Event} */ e) => this.popup(e);
   }
 
@@ -71,6 +83,7 @@ export class PromptKeys {
   uninit() {
     for (const type of EVENTS) this.win.removeEventListener(type, this.onPopup, true);
     this.win.clearTimeout(this.armTimer);
+    this.win.clearTimeout(this.barTimer);
   }
 
   get delay() {
@@ -219,15 +232,85 @@ export class PromptKeys {
   }
 
   /**
+   * The selected page's pop-up blocked bar, stamped with when it was first seen; null while a
+   * permission prompt is open, whose keys come first.
+   * @returns {any}
+   */
+  bar() {
+    const bar = this.notification ? null : popupBar(this.win);
+    if (this.barSeen?.bar !== bar) this.barSeen = bar ? { bar, at: ChromeUtils.now() } : null;
+    return bar;
+  }
+
+  /** When the bar's keys count, on ChromeUtils.now()'s clock. */
+  barArmedAt() {
+    return Math.max(this.barSeen?.at ?? Infinity, this.barKeyAt) + this.delay;
+  }
+
+  /**
+   * The bar's keys line for the status bar once its keys count, else null (no bar, a prompt
+   * open, or still waiting: the status bar is redrawn when the wait ends).
+   * @returns {string | null}
+   */
+  popupHint() {
+    if (!this.bar() || inAgentTab(this.win)) return null;
+    const left = this.barArmedAt() - ChromeUtils.now();
+    if (left > 0) {
+      this.win.clearTimeout(this.barTimer);
+      this.barTimer = this.win.setTimeout(() => this.host.changed(), Math.ceil(left));
+      return null;
+    }
+    // Hint, copy and element mode, a picker and the command line keep y and n as well.
+    return popupBarHint({
+      inField: this.host.inField() || this.host.modeKeys() || this.host.otherOpen(),
+    });
+  }
+
+  /**
+   * A keydown while no prompt is open: the bar's y, n or Esc.
+   * @param {KeyboardEvent} e
+   * @param {any} chord
+   * @returns {boolean} whether it was the bar's key (consumed)
+   */
+  onBarKey(e, chord) {
+    const now = ChromeUtils.now();
+    const bar = this.bar();
+    const armed = !!bar && now >= this.barArmedAt();
+    // Every key counts, with or without a bar: a key that switches to a tab with a bar starts
+    // that bar's wait too.
+    this.barKeyAt = now;
+    if (!bar) return false;
+    if (armed) this.host.changed();
+    if (this.host.otherOpen()) return false;
+    const result = popupBarKey(formatKey(chord), {
+      open: true,
+      armed,
+      inField: this.host.inField(),
+      pending: this.host.pending(),
+      repeat: e.repeat,
+      agent: inAgentTab(this.win),
+    });
+    if (result.kind === "pass") return false;
+    e.preventDefault();
+    e.stopPropagation();
+    if (result.kind !== "wait") {
+      answerPopupBar(this.win, result.kind);
+      // Closing the bar fires no event the status bar hears.
+      this.host.changed();
+    }
+    return true;
+  }
+
+  /**
    * A keydown in the window, before any binding.
    * @param {KeyboardEvent} e
-   * @returns {boolean} whether it was the prompt's key (consumed)
+   * @returns {boolean} whether it was the prompt's or the bar's key (consumed)
    */
   onKey(e) {
-    const n = this.notification;
-    if (!n) return false;
     const chord = chordFromEvent(e);
     if (!chord) return false; // a bare modifier
+    const n = this.notification;
+    if (!n) return this.onBarKey(e, chord);
     const now = ChromeUtils.now();
     const armed = now >= this.armedAt(n);
     this.lastKeyAt = now;

@@ -691,8 +691,9 @@ with `F11` keeps it. From the left:
   without asking (`◇ agent 14m` for a grant of minutes with 14 left), and `◇ agent ·` for a
   moment after a request ran; `◇ built-in 14/100 · 212k tok` while a task of
   [Vimma's own agent](#vimmas-own-agent) runs (steps and tokens), `◇ 2 agents` while several do;
-- `pop-up blocked · ctrl+b shift+o` (yellow) while the page has Firefox's pop-up blocked bar,
-  naming the key that opens [its options](#blocked-pop-ups);
+- `pop-up blocked · y allow · n block · Esc close` (yellow) while the page has Firefox's pop-up
+  blocked bar and [its keys](#blocked-pop-ups) count, and `pop-ups blocked · :popups to allow`
+  on a site whose pop-ups you blocked with `n`;
 - `loading` while the page loads, then its **URL** without `https://`;
 - with the [toolbar hidden](#hiding-the-toolbar), `not secure` in red for a page Firefox's
   address bar would warn about (an `http:` page keeps its `http://`), `using camera, mic` (or
@@ -773,6 +774,8 @@ yank), and the line starts with `Esc, then`: `Esc` leaves the mode, and then `y`
 the prompt. Vimma never moves focus onto the prompt. The same keys answer Firefox's
 other prompts in that panel, such as "Save password?" (`y` saves, `n` is Not now), and the "Add
 <name>?" prompt for installing an add-on, which Firefox opens with focus on the prompt itself.
+Firefox's pop-up blocked bar takes `y`, `n` and `Esc` with the same rules
+([Blocked pop-ups](#blocked-pop-ups)).
 
 A site whose login keeps you on the same page leaves focus in its password field, so the "Save
 password?" prompt opens with the `Esc, then` line. In the prompt's own username and password
@@ -939,7 +942,6 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b a`                                                                              | Bookmarks the page; type folders before its title: `work/docs/title` ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b shift+b`                                                                        | Opens or closes the bookmarks panel ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b e`                                                                              | Opens the add-on picker: popups, options, enable/disable, remove, updates ([below](#add-ons)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `ctrl+b shift+o`                                                                        | Opens the blocked pop-ups picker while Firefox's pop-up blocked bar is up ([below](#blocked-pop-ups)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `ctrl+b v` / `ctrl+b -`                                                                 | Splits the pane right / down. The new pane opens a new tab (the start page, address bar focused). At most 8 panes by default (`[panes] max`); a refused split says why.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b h j k l`                                                                        | Focuses the pane left / below / above / right; when several touch, the one used last. `ctrl+w h j k l` in normal mode. The page of that pane gets focus, and the pane a 3 px border in the theme's focus colour.                                                                                                                                                                                                                                                                                                                                                                          |
 | `ctrl+b z`, `ctrl+w o`                                                                  | Zooms the pane to the whole window, or back. The other panes' pages pause. A pane focus key unzooms when it moves.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -3328,31 +3330,49 @@ Bitwarden), and `Tab` completes the name. To put an add-on on a key:
 ## Blocked pop-ups
 
 When a page opens a pop-up on its own, Firefox blocks it and shows a bar over the page: "Vimma
-prevented this site from opening a pop-up window", with an Options menu. Vimma lets you answer
-that bar from the keyboard. While it is up, the status bar says `pop-up blocked · ctrl+b shift+o`,
-and `ctrl+b shift+o` (or `:popups`) opens a picker over the bar's own options:
+prevented this site from opening a pop-up window". You answer that bar from the keyboard as you
+answer a [permission prompt](#answering-a-permission-prompt):
 
-| Row                                              | What it does                                                                                   |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| Allow pop-ups for _site_                         | Allows pop-ups for this site from now on and opens the ones it tried to open.                  |
-| Go to _address_                                  | Follows the redirect the page was stopped from making, when there is one.                      |
-| Open _address_                                   | Opens that one pop-up, once. There is a row for each pop-up the page tried to open.            |
-| Don't show this message when pop-ups are blocked | Turns the bar off for every site. Pop-ups stay blocked, and `ctrl+b shift+o` still lists them. |
-| Pop-up settings                                  | Opens Firefox's settings at its pop-up exceptions.                                             |
+| Key   | What it does                                                                                               |
+| ----- | ---------------------------------------------------------------------------------------------------------- |
+| `y`   | Allows pop-ups for this site from now on, opens the ones it tried to open and closes the bar.              |
+| `n`   | Blocks pop-ups for this site (Firefox's settings list it as Block) and closes the bar.                     |
+| `Esc` | Closes the bar and changes nothing; pop-ups stay blocked as before, and the bar stays closed on that page. |
 
-`j` / `k` move, `/` filters, `Enter` runs the row and `Esc` closes the picker. Each row does
-exactly what the same item in the bar's Options menu does, because Vimma runs Firefox's own code
-for it. The picker and the cue follow the selected tab, and in a split the focused pane.
+The status bar says `pop-up blocked · y allow · n block · Esc close` once the keys count. As with
+a permission prompt, they count only once the bar has been up for half a second with no key
+pressed in between, and any key you press meanwhile starts the wait again, so typing meant for the
+page never answers the bar. While you type in a page field, the address bar, a picker, the
+command line or a search, and in link hints, copy mode and element mode, the keys are theirs and
+the status bar says `Esc, then y allow · n block`. Vimma never moves focus onto the bar.
 
-With nothing blocked on the page, `ctrl+b shift+o` says `no pop-ups blocked on this page`. When
-an administrator has locked pop-up blocking on, the Allow row is left out, as Firefox leaves it out
-of its menu. In the [agent workspace](#agent-workspace), pages get no permissions, so the picker
-does not open there: it says `pop-ups stay blocked in the agent workspace`.
+### Undoing a block, and the bar's other options
 
-The bar is not answered with `y` and `n` the way a [permission prompt](#answering-a-permission-prompt)
-is, because Firefox gives its prompts a short delay before a key counts and gives this bar none:
-a page can raise it at any moment, and a key meant for the page could answer it. As every
-binding, `ctrl+b shift+o` can be remapped in `config.toml` (`[keys] popup_picker`).
+Pressed `n` by mistake? The status bar says `pop-ups blocked · :popups to allow` on that site, and
+`:popups` opens a picker over the site's pop-up permission and the bar's own options, with or
+without the bar:
+
+| Row                                              | What it does                                                                            |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Allow pop-ups for _site_                         | Allows pop-ups for this site from now on and opens the ones it tried to open.           |
+| Reset pop-ups for _site_ to default              | On a blocked site: removes your choice, so the site follows Firefox's setting again.    |
+| Block pop-ups for _site_                         | On an allowed site: blocks its pop-ups again.                                           |
+| Go to _address_                                  | Follows the redirect the page was stopped from making, when there is one.               |
+| Open _address_                                   | Opens that one pop-up, once. There is a row for each pop-up the page tried to open.     |
+| Don't show this message when pop-ups are blocked | Turns the bar off for every site. Pop-ups stay blocked, and `:popups` still lists them. |
+| Pop-up settings                                  | Opens Firefox's settings at its pop-up exceptions.                                      |
+
+`j` / `k` move, `/` filters, `Enter` runs the row and `Esc` closes the picker. Vimma runs
+Firefox's own code for the bar's options and Firefox's site permissions for the rest. The keys,
+the picker and the status bar follow the selected tab, and in a split the focused pane. A site
+permission picker (`:site`) will cover pop-ups too when it lands.
+
+With nothing blocked on the page and no choice made for the site, `:popups` says `no pop-ups
+blocked on this page`. When an administrator has locked pop-up blocking on, the Allow, Block and
+Reset rows are left out, as Firefox leaves them out. In the [agent workspace](#agent-workspace),
+pages get no permissions: no key answers the bar there, and `:popups` says `pop-ups stay blocked
+in the agent workspace`. `:popups` has no default key; bind one in `config.toml`
+(`[keys] popup_picker`).
 
 ## The command line
 
@@ -3412,7 +3432,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                 |
 | `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                            |
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
-| `:popups`                             | Opens the [blocked pop-ups picker](#blocked-pop-ups), as `ctrl+b shift+o`.                                                                     |
+| `:popups`                             | Opens the [blocked pop-ups picker](#blocked-pop-ups): allow, reset or block the site, open one.                                                |
 | `:bug`                                | Opens `about:vimma` and copies its redacted report to the clipboard, for a bug report.                                                         |
 | `:update`                             | Checks for a newer Vimma now; when there is one, opens `about:vimma`'s Updates section with the exact commands ([Updates](#updates)).          |
 | `:restart`                            | Restarts Vimma; tabs come back, and an installed update applies. Asks first while private tabs are open ([Updates](#updates)).                 |

@@ -106,7 +106,6 @@ agent_prompt = ["prefix+shift+a"]
 agent_chat = ["prefix+i"]
 copy_mode = ["prefix+["]
 addon_picker = ["prefix+e"]
-popup_picker = ["prefix+shift+o"]
 # On macOS these default to Firefox's macOS keys instead, since Option types characters:
 # select_tab_1 = ["prefix+1", "meta+1"]
 # select_tab_2 = ["prefix+2", "meta+2"]

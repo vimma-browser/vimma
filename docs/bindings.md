@@ -329,9 +329,9 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Pop-ups
 
-| Action                                              | Config name    | Bindings         |
-| --------------------------------------------------- | -------------- | ---------------- |
-| Blocked pop-ups: open one, allow the site, settings | `popup_picker` | `ctrl+b shift+o` |
+| Action                                              | Config name    | Bindings |
+| --------------------------------------------------- | -------------- | -------- |
+| Blocked pop-ups: open one, allow the site, settings | `popup_picker` | —        |
 
 ## On macOS
 
