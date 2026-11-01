@@ -157,7 +157,12 @@ class FakeHypr {
     /** Called on each j/clients request before it is answered. @type {(() => void) | null} */
     this.onClients = null;
     this.events = /** @type {any[]} */ ([]);
-    this.held = /** @type {any[]} */ ([]);
+    /**
+     * Each request's connection, streams included: a socket transport closes once nothing holds
+     * its streams, so a collection would end a request the fake has not answered yet (#695).
+     * @type {{ t: any, input?: any, out?: any }[]}
+     */
+    this.conns = [];
     const req = this.dir.clone();
     req.append(".socket.sock");
     const ev = this.dir.clone();
@@ -183,14 +188,15 @@ class FakeHypr {
   /** @param {any} t */
   accept(t) {
     this.reqAccepts++;
-    this.held.push(t);
     if (this.mode === "hangup") {
+      this.conns.push({ t });
       t.close(Cr.NS_OK);
       return;
     }
     const flags = Ci.nsITransport.OPEN_UNBUFFERED;
     const input = t.openInputStream(flags, 0, 0).QueryInterface(Ci.nsIAsyncInputStream);
     const out = t.openOutputStream(flags, 0, 0);
+    this.conns.push({ t, input, out });
     input.asyncWait(
       {
         onInputStreamReady: (stream) => {
@@ -475,7 +481,7 @@ class FakeHypr {
     this.reqServer.close();
     this.evServer.close();
     for (const e of this.events) e.t.close(Cr.NS_OK);
-    for (const t of this.held) t.close(Cr.NS_OK);
+    for (const c of this.conns) c.t.close(Cr.NS_OK);
     try {
       this.dir.remove(true);
     } catch {
@@ -1020,7 +1026,14 @@ add_task(async function a_reply_held_up_by_a_busy_main_thread_still_counts() {
 add_task(async function a_reply_hyprland_never_sends_still_times_out() {
   const f = await start({ mode: "silent" });
   const asked = Date.now();
-  await Assert.rejects(HyprIpc.request("j/version"), /no reply/, "no reply");
+  const reply = HyprIpc.request("j/version");
+  // A collection while Hyprland holds the request open must not end it: a socket's end closes
+  // once nothing holds its streams, and a collection there read as "refused" (#695).
+  await until(() => f.received.length === 1, "Hyprland has the request");
+  Cu.forceGC();
+  Cu.forceCC();
+  Cu.forceGC();
+  await Assert.rejects(reply, /no reply/, "no reply");
   Assert.greaterOrEqual(Date.now() - asked, REPLY_MS, "after REPLY_MS");
   Assert.equal(f.received.length, 1, "the request was sent");
 });
