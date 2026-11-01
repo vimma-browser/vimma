@@ -173,4 +173,21 @@ describe("addAgentProviderText", () => {
     if (!("text" in again)) throw new Error(again.error);
     expect(again.text).toBe(r.text);
   });
+
+  // builtin-agent-cli Behaviour 16, C10: D on a CLI model row writes a provider from the
+  // configured one, which keeps its time limit after a restart.
+  test("an agent cli keeps its max_minutes when it is not the default", () => {
+    const text =
+      'schema = 2\n\n[[agent.providers]]\nname = "claude"\nkind = "cli"\ncli = "claude-code"\n' +
+      "max_minutes = 5\n";
+    const base = agentOf(text).providers[0];
+    expect(base.maxMinutes).toBe(5);
+    const r = addAgentProviderText(text, { ...base, model: "opus" }, { makeDefault: true });
+    if (!("text" in r)) throw new Error(r.error);
+    expect(r.text.split("[[agent.providers]]")[2]).toBe(
+      '\nname = "claude-2"\nkind = "cli"\ncli = "claude-code"\nmodel = "opus"\nmax_minutes = 5\n',
+    );
+    const added = agentOf(r.text).providers.find((/** @type {any} */ p) => p.name === "claude-2");
+    expect(added.maxMinutes).toBe(5);
+  });
 });

@@ -24,6 +24,7 @@ import {
   ownToolsText,
   pathProblem,
   refusedText,
+  besideBinary,
   runStartedText,
   shimText,
   taskPrompt,
@@ -624,6 +625,49 @@ describe("the program's path (C4)", () => {
     expect(pathProblem({ ...good, linkOwner: "other" })).toBe(
       "a link on its path is owned by another user",
     );
+  });
+  // M56: vimma-ctl beside the binary skips the folders on the way to Vimma's binary, and only
+  // when the file it resolves to is in the binary's own folder.
+  describe("vimma-ctl beside the binary", () => {
+    const trusted = { binDir: "/Apps/V/MacOS", dirs: ["/", "/Apps", "/Apps/V", "/Apps/V/MacOS"] };
+    test("a file in the binary's folder skips only the binary's own folders and links", () => {
+      const walk = {
+        realDir: "/Apps/V/MacOS",
+        dirs: ["/", "/Apps", "/Apps/V", "/Apps/V/MacOS"],
+        links: [{ dir: "/Apps/V/MacOS", owner: /** @type {const} */ ("other") }],
+      };
+      expect(besideBinary(walk, trusted)).toEqual({ dirs: [], linkOwner: "user" });
+    });
+    test("a link through a hop in another folder has that folder and link judged", () => {
+      const walk = {
+        realDir: "/Apps/V/MacOS",
+        dirs: ["/", "/Apps", "/Apps/V", "/Apps/V/MacOS", "/shared", "/shared/dir"],
+        links: [
+          { dir: "/Apps/V/MacOS", owner: /** @type {const} */ ("user") },
+          { dir: "/shared/dir", owner: /** @type {const} */ ("other") },
+        ],
+      };
+      expect(besideBinary(walk, trusted)).toEqual({
+        dirs: ["/shared", "/shared/dir"],
+        linkOwner: "other",
+      });
+    });
+    test("a file outside the binary's folder has every folder and link judged", () => {
+      const walk = {
+        realDir: "/Apps/shared",
+        dirs: ["/", "/Apps", "/Apps/V", "/Apps/V/MacOS", "/Apps/shared"],
+        links: [{ dir: "/Apps/V/MacOS", owner: /** @type {const} */ ("other") }],
+      };
+      expect(besideBinary(walk, trusted)).toEqual({ dirs: walk.dirs, linkOwner: "other" });
+    });
+    test("without the binary's folder, everything is judged", () => {
+      const walk = {
+        realDir: "/Apps/V/MacOS",
+        dirs: ["/", "/Apps/V/MacOS"],
+        links: [{ dir: "/Apps/V/MacOS", owner: /** @type {const} */ ("root") }],
+      };
+      expect(besideBinary(walk, null)).toEqual({ dirs: walk.dirs, linkOwner: "user" });
+    });
   });
   test("a program that runs a tool by the name it is started as is a dispatcher", () => {
     const cli = CLIS["claude-code"];
