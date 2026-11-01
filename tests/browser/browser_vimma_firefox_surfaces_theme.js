@@ -148,6 +148,15 @@ async function assertFindBar(label, tab) {
   Assert.equal(backdrop(findbar), surface, `${label}: the find bar is on --vimma-bg-dark`);
   Assert.equal(style(findbar).color, tokenColour("--vimma-fg"), `${label}: its text is --vimma-fg`);
   Assert.equal(style(findbar).colorScheme, token("--vimma-color-scheme"), `${label}: its scheme`);
+  // A floating prompt with a picker's frame (picker.css): bordered on every side.
+  for (const side of ["Top", "Right", "Bottom", "Left"]) {
+    Assert.equal(
+      style(findbar)[`border${side}Color`],
+      tokenColour("--vimma-muted"),
+      `${label}: its ${side.toLowerCase()} border is --vimma-muted`,
+    );
+    Assert.equal(style(findbar)[`border${side}Width`], "1px", `${label}: 1px on the ${side}`);
+  }
   const field = /** @type {Element} */ (findbar._findField);
   Assert.equal(
     style(field).backgroundColor,
