@@ -248,7 +248,7 @@ add_task(async function n_blocks_the_site_and_esc_only_closes_the_bar() {
   let tab = await blockingTab();
   await until(() => cue() === CUE, "armed");
   EventUtils.synthesizeKey("n");
-  await until(() => !bar() && cue() === null, "n closes the bar");
+  await until(() => !bar() && cue() === UNDO_CUE, "n closes the bar and names the undo");
   Assert.equal(permission(tab), Services.perms.DENY_ACTION, "and blocks pop-ups for the site");
   forget(tab);
   BrowserTestUtils.removeTab(tab);
@@ -374,7 +374,10 @@ add_task(async function the_agent_workspace_refuses_and_grants_nothing() {
   Assert.equal(permission(tab), DENY, "the permission is as it was");
   bar().dismiss();
   await until(() => !bar(), "the bar closed");
-  Assert.equal(cue(), null, "no way to allow is named in the agent workspace");
+  // The bar leaves its box after its closing animation; the status bar redraws then.
+  await until(() => cue() === null, "no way to allow is named in the agent workspace");
+  await wait(DELAY);
+  Assert.equal(cue(), null, "and none appears later");
   openPicker();
   await wait(DELAY);
   Assert.ok(!isOpen(), "still no picker without the bar");

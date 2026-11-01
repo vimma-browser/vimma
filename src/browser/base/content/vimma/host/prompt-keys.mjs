@@ -73,6 +73,8 @@ export class PromptKeys {
     /** the last key in the window, on ChromeUtils.now()'s clock */
     this.barKeyAt = 0;
     this.barTimer = 0;
+    /** @type {MutationObserver | null} watches the seen bar's box for its removal */
+    this.barGone = null;
     this.onPopup = (/** @type {Event} */ e) => this.popup(e);
   }
 
@@ -84,6 +86,7 @@ export class PromptKeys {
     for (const type of EVENTS) this.win.removeEventListener(type, this.onPopup, true);
     this.win.clearTimeout(this.armTimer);
     this.win.clearTimeout(this.barTimer);
+    this.barGone?.disconnect();
   }
 
   get delay() {
@@ -238,8 +241,31 @@ export class PromptKeys {
    */
   bar() {
     const bar = this.notification ? null : popupBar(this.win);
-    if (this.barSeen?.bar !== bar) this.barSeen = bar ? { bar, at: ChromeUtils.now() } : null;
+    if (this.barSeen?.bar !== bar) {
+      this.barSeen = bar ? { bar, at: ChromeUtils.now() } : null;
+      this.watchBar(bar);
+    }
     return bar;
+  }
+
+  /**
+   * Redraws the status bar when the bar leaves its box. Its close button, the options menu and
+   * a navigation remove it without an event Vimma hears: Firefox's own eventCallback is the only
+   * hook (notificationbox.js, _removeNotificationElement).
+   * @param {any} bar
+   */
+  watchBar(bar) {
+    this.barGone?.disconnect();
+    this.barGone = null;
+    if (!bar?.parentNode) return;
+    const observer = new /** @type {any} */ (this.win).MutationObserver(() => {
+      if (bar.isConnected) return;
+      observer.disconnect();
+      if (this.barGone === observer) this.barGone = null;
+      this.host.changed();
+    });
+    observer.observe(bar.parentNode, { childList: true });
+    this.barGone = observer;
   }
 
   /** When the bar's keys count, on ChromeUtils.now()'s clock. */
