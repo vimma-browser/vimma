@@ -13,6 +13,9 @@
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
+const { WindowWorkspaces } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
+);
 
 const ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -100,6 +103,10 @@ add_task(async function setup() {
     for (const perm of Services.perms.all) {
       if (perm.type === "popup") Services.perms.removePermission(perm);
     }
+    // Selecting the agent's tab moved the window into the agent workspace; the next test file
+    // expects the user's.
+    const main = WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
+    if (main) WindowWorkspaces.get(window).switchTo({ id: main.id });
     while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
   });
 });
