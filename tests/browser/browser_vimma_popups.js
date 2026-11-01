@@ -89,6 +89,11 @@ add_task(async function setup() {
     set: [
       ["dom.disable_open_during_load", true],
       ["privacy.popups.showBrowserMessage", true],
+      // Pop-ups open in background tabs, so the blocking page stays selected. Selecting it again
+      // would bring its bar back: Firefox keeps the blocked list after "allow", and a switch
+      // between pages with different counts re-raises the bar (Tabbrowser.sys.mjs,
+      // updateCurrentBrowser).
+      ["browser.tabs.loadDivertedInBackground", true],
     ],
   });
   registerCleanupFunction(() => {
