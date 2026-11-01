@@ -68,8 +68,10 @@
     font-family: var(--vimma-font, monospace);
   }
 
+  /* align-self, because the wrapper's align="stretch" (findbar.js) still stretched the count. */
   .vimma-find-count {
     display: block;
+    align-self: center;
     margin: 0;
     font-family: var(--vimma-font, monospace);
     white-space: nowrap;
