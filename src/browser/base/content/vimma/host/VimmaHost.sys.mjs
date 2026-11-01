@@ -42,7 +42,7 @@ import { Toolbar } from "../ui/toolbar.mjs";
 import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
 import { bookmarksToolbarNotice } from "../core/bookmarks-toolbar.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
-import { AddonPicker, GotoPicker, MCP_LOG, WorkspacePicker } from "../ui/picker.mjs";
+import { AddonPicker, GotoPicker, MCP_LOG, PopupPicker, WorkspacePicker } from "../ui/picker.mjs";
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
 import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
@@ -141,6 +141,7 @@ import {
   toggleAddon,
   togglePrivateAccess,
 } from "./addon-ops.mjs";
+import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -239,6 +240,7 @@ const PAGE_FIRST_MAX = 16;
  * @property {WorkspacePicker} wsPicker  the prefix+w overlay (m3-workspaces 5)
  * @property {GotoPicker} mcpLog  `:mcp log`, the agents' last calls (docs/specs/mcp-drive.md D14)
  * @property {AddonPicker} addonPicker  the prefix+e overlay (docs/specs/addon-manager.md)
+ * @property {PopupPicker} popups  the prefix+shift+o overlay (docs/specs/popup-blocked.md)
  * @property {GrepSession} grep  prefix+f g, `:grep`, `]q`/`[q` (docs/specs/live-grep.md)
  * @property {RenamePrompt} rename  the prefix+shift+t prompt (m2-picker-rename)
  * @property {AgentPrompt} agentPrompt  the agent question line (docs/specs/vimma-mcp.md)
@@ -287,6 +289,7 @@ function vimmaSurfaceOpen(s) {
     s.picker.isOpen ||
     s.wsPicker.isOpen ||
     s.addonPicker.isOpen ||
+    s.popups.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
     s.cmdline.isOpen ||
@@ -935,6 +938,11 @@ export const RUNNERS = Object.freeze({
     s.notice.hide();
     s.addonPicker.open();
   },
+  // docs/specs/popup-blocked.md: prefix+shift+o / :popups, the pop-up blocked bar's options.
+  "popups.picker": (/** @type {WindowState} */ s) => {
+    s.notice.hide();
+    s.popups.open();
+  },
   "addons.popup": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
     if (!text) s.cmdline.open("addon ");
     else sayAddon(s, openAddonByName(s.win, text));
@@ -1336,6 +1344,7 @@ export const VimmaHost = {
         state.picker.close({ tabChanged: true });
         state.wsPicker.close({ tabChanged: true });
         state.addonPicker.close({ tabChanged: true });
+        state.popups.close({ tabChanged: true });
         state.mcpLog.close({ tabChanged: true });
         state.grep.close({ tabChanged: true });
         state.rename.close({ tabChanged: true });
@@ -1444,6 +1453,12 @@ export const VimmaHost = {
         load: addonPickerItems,
         select: (id) => void sayAddon(state, openAddonById(win, id)),
         addon: (op, id) => addonOp(state, op, id),
+      }),
+      popups: new PopupPicker(win, {
+        load: () => popupPickerItems(win),
+        refuse: (rows) => popupRefusal(win, /** @type {any} */ (rows)),
+        notice: (text) => state.notice.show(text),
+        select: (id) => runPopupRow(win, id),
       }),
       grep: new GrepSession(win, {
         notice: (text) => state.notice.show(text),
@@ -1706,6 +1721,7 @@ export const VimmaHost = {
     state.picker.destroy();
     state.wsPicker.destroy();
     state.addonPicker.destroy();
+    state.popups.destroy();
     state.mcpLog.destroy();
     state.grep.destroy();
     state.rename.destroy();
@@ -1737,7 +1753,7 @@ export const VimmaHost = {
    *   agent?: { waiting: number, minutes: number | null, ran: boolean } | null,
    *   update?: import("../core/updates.mjs").UpdateNotice | null,
    *   element?: import("../core/statusbar.mjs").ElementStatus | null,
-   *   hint?: import("../core/statusbar.mjs").HintStatus | null }}
+   *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null }}
    */
   status(win) {
     const state = states.get(win);
@@ -1766,6 +1782,8 @@ export const VimmaHost = {
           ? hintStatus(state.hint.hs)
           : { action: state.hint.action, label: null }
         : null,
+      // docs/specs/popup-blocked.md: `pop-up blocked · ctrl+b shift+o`.
+      popups: popupStatus(win, state.help.keymap),
     };
   },
 
@@ -2000,6 +2018,7 @@ export const VimmaHost = {
   _mode(state) {
     if (state.help.isOpen || state.picker.isOpen || state.wsPicker.isOpen) return "help";
     if (state.addonPicker.isOpen || state.mcpLog.isOpen || state.grep.isOpen) return "help";
+    if (state.popups.isOpen) return "help";
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
@@ -2116,9 +2135,14 @@ export const VimmaHost = {
     }
     // A picker takes every key, bare ones too, before any binding: nothing reaches the page or
     // Firefox underneath (ctrl+w would close a tab), and its j / q are not keymap keys.
-    const picker = [state.picker, state.wsPicker, state.addonPicker, state.mcpLog, state.grep].find(
-      (p) => p.isOpen,
-    );
+    const picker = [
+      state.picker,
+      state.wsPicker,
+      state.addonPicker,
+      state.popups,
+      state.mcpLog,
+      state.grep,
+    ].find((p) => p.isOpen);
     if (picker) {
       consume(e);
       picker.key(key);

@@ -62,6 +62,7 @@ browser.jar:
         content/browser/vimma/workspaces/WorkspaceRouter.sys.mjs (workspaces/WorkspaceRouter.sys.mjs)
         content/browser/vimma/host/route-ops.mjs          (host/route-ops.mjs)
         content/browser/vimma/host/addon-ops.mjs          (host/addon-ops.mjs)
+        content/browser/vimma/host/popup-ops.mjs          (host/popup-ops.mjs)
         content/browser/vimma/core                        (core/**/*.mjs)
         content/browser/vimma/omarchy/OmarchyHook.sys.mjs (omarchy/OmarchyHook.sys.mjs)
         content/browser/vimma/omarchy/vimma-theme-reload.sh (omarchy/vimma-theme-reload.sh)

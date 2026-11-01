@@ -2669,6 +2669,21 @@
           "keys": []
         }
       ]
+    },
+    {
+      "name": "Pop-ups",
+      "actions": [
+        {
+          "name": "popup_picker",
+          "description": "Blocked pop-ups: open one, allow the site, settings",
+          "keys": [
+            {
+              "keys": "ctrl+b shift+o",
+              "chords": ["ctrl+b", "shift+o"]
+            }
+          ]
+        }
+      ]
     }
   ]
 }

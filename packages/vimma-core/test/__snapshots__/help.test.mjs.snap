@@ -266,6 +266,9 @@ Agents
 Add-ons
   addon_picker              ctrl+b e                                          Add-on picker: popup, options, on/off, remove, update
   addon_popup               (unbound)                                         Open an add-on's popup by name (:addon name)
+
+Pop-ups
+  popup_picker              ctrl+b shift+o                                    Blocked pop-ups: open one, allow the site, settings
 "
 `;
 
@@ -535,5 +538,8 @@ Agents
 Add-ons
   addon_picker              ctrl+b e                                          Add-on picker: popup, options, on/off, remove, update
   addon_popup               (unbound)                                         Open an add-on's popup by name (:addon name)
+
+Pop-ups
+  popup_picker              ctrl+b shift+o                                    Blocked pop-ups: open one, allow the site, settings
 "
 `;

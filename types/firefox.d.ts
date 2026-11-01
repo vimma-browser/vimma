@@ -10,6 +10,7 @@ declare const Services: {
     setIntPref(name: string, value: number): void;
     setStringPref(name: string, value: string): void;
     prefHasUserValue(name: string): boolean;
+    prefIsLocked(name: string): boolean;
     clearUserPref(name: string): void;
     savePrefFile(file: null): void;
     getDefaultBranch(root: string): {
