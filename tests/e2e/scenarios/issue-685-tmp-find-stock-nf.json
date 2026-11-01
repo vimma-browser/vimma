@@ -1,0 +1,40 @@
+{
+  "name": "issue-685-tmp-find-stock-nf",
+  "issue": 685,
+  "description": "Temporary: screenshots of the / prompt (stock theme) to look at; removed before merge.",
+  "timeoutSeconds": 60,
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:article.html"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [
+          {},
+          {
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "sleep": 2.5
+    },
+    {
+      "keys": "/ x q"
+    },
+    {
+      "sleep": 1.5
+    },
+    {
+      "screenshot": "issue-685-tmp-stock-notfound"
+    }
+  ]
+}
