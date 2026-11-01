@@ -113,8 +113,11 @@ limit, notFound }`; `VimmaHost.status(win).find` returns it for the selected tab
   `[2/5]` (core `findCountText`), mirrored from Firefox's count label, which stays for screen
   readers and also carries pdf.js's count. A bar Firefox opens itself (the Edit menu's Find in
   Page) stays Firefox's, because it is how the Highlight All, Match Diacritics and Whole Words
-  options remain reachable. What a
-  click outside the prompt does and whether it moves to the top are open in #685.)
+  options remain reachable. A click outside the prompt leaves it open, and only `Enter` and
+  `Esc` close it, because a search ends on purpose, as in Vim, and `/` takes the focus back
+  into the open prompt. The prompt sits at the bottom centre, above the status bar, because
+  that is where the bar was and where the status bar shows the search; this placement is
+  provisional and may be revisited.)
 - **Smartcase** for `/`, `?`, `n`, `N` and `ctrl+f` alike: `accessibility.typeaheadfind.casesensitive`
   defaults to 2, the bar's "auto" mode (`str != str.toLowerCase()`, the same test as core's
   `isCaseSensitive`), in `firefox-branding.js`; a user value in `about:config` wins. The bar

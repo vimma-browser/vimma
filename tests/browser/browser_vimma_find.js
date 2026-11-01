@@ -251,6 +251,10 @@ add_task(async function slash_after_a_click_on_the_page_goes_back_into_the_open_
       "the click focuses the page",
     );
     Assert.ok(!findBarHidden(), "the find bar is still open");
+    Assert.ok(
+      findbar.hasAttribute("vimma-prompt"),
+      "a click outside leaves the prompt open (#685)",
+    );
     Assert.equal(VimmaHost.status(window).mode, "normal", "the page has the keys: normal mode");
 
     EventUtils.synthesizeKey("/");
