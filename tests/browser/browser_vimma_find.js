@@ -609,6 +609,14 @@ add_task(async function the_find_bar_floats_over_the_page_in_the_pickers_style()
     await assertCount(findbar, "[1/4]", "the bar shows the count as [1/4]");
     const count = findbar.querySelector(".vimma-find-count");
     Assert.equal(count.getAttribute("aria-hidden"), "true", "screen readers skip [1/4]");
+    const field = findbar._findField.getBoundingClientRect();
+    const countBox = count.getBoundingClientRect();
+    Assert.lessOrEqual(
+      Math.abs(countBox.top + countBox.height / 2 - (field.top + field.height / 2)),
+      1,
+      "the count is centred on the field",
+    );
+    Assert.less(countBox.height, field.height, "the count is not stretched to the field");
     // Firefox's own "1 of 4 matches" stays for screen readers, out of sight.
     const label = findbar.querySelector(".found-matches");
     Assert.ok(!label.hidden, "Firefox's count label is kept");
