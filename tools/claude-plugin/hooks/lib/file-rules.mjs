@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Subagents work in linked git worktrees; the primary checkout is where a developer's dev build
-// runs from, and an agent's half-finished edit there breaks that build. Claude Code sets
-// `agent_id` in the hook input only inside a subagent, so the main session is never blocked.
+// runs from, and an agent's half-finished edit there breaks that build. Claude Code and Copilot
+// CLI set `agent_id` in the hook input only inside a subagent, so the main session is never
+// blocked.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
@@ -30,7 +31,9 @@ function git(dir, args) {
  */
 export function checkFileChange(input, env) {
   if (!input.agent_id || env.VIMMA_GUARD_ALLOW_MAIN_CHECKOUT === "1") return null;
-  const target = input.tool_input?.file_path ?? input.tool_input?.notebook_path;
+  // Copilot CLI's edit and create tools name the file `path` instead of Claude Code's `file_path`.
+  const target =
+    input.tool_input?.file_path ?? input.tool_input?.notebook_path ?? input.tool_input?.path;
   if (typeof target !== "string" || !target) return null;
 
   const file = resolve(input.cwd ?? process.cwd(), target);

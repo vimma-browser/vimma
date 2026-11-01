@@ -297,6 +297,30 @@ is read in place, not copied to the cache, so `/reload-plugins` applies edits at
 `claude plugin validate tools/claude-plugin` checks the manifests, and `npm test` runs the hooks'
 tests (`tools/claude-plugin/test/`).
 
+GitHub Copilot CLI installs the same plugin from the same marketplace: it reads
+`.claude-plugin/marketplace.json` and `plugin.json`, runs Claude-format `PreToolUse` hooks with
+Claude's tool names, and offers the agent as `vimma-guardrails:vimma-pr`. Install it with
+`copilot plugin marketplace add vimma-browser/vimma` and
+`copilot plugin install vimma-guardrails@vimma`, then turn on auto-update in
+`~/.copilot/settings.json`. Copilot CLI honours `autoUpdate` only from user settings, not from a
+repository's, and applies it at the start of each session in a trusted folder:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "vimma": {
+      "source": { "source": "github", "repo": "vimma-browser/vimma" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": { "vimma-guardrails@vimma": true }
+}
+```
+
+Copilot CLI records an install by a hash of its files, so here too every change on `main` is an
+update without a version bump. `copilot plugin update vimma-guardrails@vimma` pulls one at once,
+and `copilot --plugin-dir tools/claude-plugin` loads a local checkout's copy for one session.
+
 What the hooks block, on every Bash command (including those inside `bash -c`, `eval`, `$(...)`
 and pipelines, but not text that only mentions them, such as a commit message or a heredoc):
 

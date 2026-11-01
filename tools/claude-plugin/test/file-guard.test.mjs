@@ -60,6 +60,16 @@ describe("subagents and the primary checkout", () => {
     expect(result?.reason).toMatch(/worktree/);
   });
 
+  // Copilot CLI runs the same hooks but names the file `path` in its edit and create tools.
+  it("blocks a Copilot CLI subagent's edit by its path", () => {
+    const { main } = repoWithWorktree();
+    const result = checkFileChange(
+      input("Edit", { path: join(main, "README.md"), old_str: "a", new_str: "b" }),
+      {},
+    );
+    expect(result?.reason).toMatch(/worktree/);
+  });
+
   it("allows the main session to edit the primary checkout", () => {
     const { main } = repoWithWorktree();
     expect(
