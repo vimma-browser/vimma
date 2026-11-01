@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentTools, AGENT_INSTRUCTIONS } from "../../../packages/vimma-core/src/agent-tools.mjs";
-import { answerer, grantSession, parseArgs, runOne } from "../run.mjs";
+import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "../run.mjs";
 import { OPEN_RATE } from "../../../packages/vimma-core/src/agent.mjs";
 import { RATE_PACE_MS, SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../scripted.mjs";
 import { loadLists } from "../lists.mjs";
@@ -21,9 +21,12 @@ const text = (/** @type {string} */ t) => ({ content: [{ type: "text", text: t }
  * for each product it finds, which post to the shop as the page's script does; the checkout's
  * pay button is a checkpoint the user answers no. Opens are held to Vimma's open rate on the
  * clock it is given, so a run that goes faster than the rate is refused as Vimma refuses it.
- * @param {{ clock?: () => number }} [o]
+ * With `clickRate`, a click is held to it too, as Vimma's agent-activate checks it before a
+ * click; the other runs leave it out, because their clock moves only by the scripted pace and
+ * never by the time Vimma's tools take.
+ * @param {{ clock?: () => number, clickRate?: boolean }} [o]
  */
-function fakeVimma({ clock = () => 0 } = {}) {
+function fakeVimma({ clock = () => 0, clickRate = false } = {}) {
   const catalog = loadCatalog();
   /** @type {Map<string, string>} */
   const tabs = new Map();
@@ -63,6 +66,21 @@ function fakeVimma({ clock = () => 0 } = {}) {
     const url = tabs.get(args.tab) ?? "";
     if (name === "vimma_elements") return text(list(url));
     if (name === "vimma_activate") {
+      // A click may load a page, so Vimma checks the open rate before it (agent-activate); a
+      // click that loads nothing takes no open. Worded as vimma-ctl words a used-up rate.
+      const now = clock();
+      while (opens.length && opens[0] <= now - OPEN_RATE.ms) opens.shift();
+      if (clickRate && opens.length >= OPEN_RATE.max) {
+        const s = Math.max(1, Math.ceil((opens[0] + OPEN_RATE.ms - now) / 1000));
+        return {
+          isError: true,
+          ...text(
+            `Vimma's rate limit for this agent: too many loads from this agent in the last ` +
+              `minute (at most ${OPEN_RATE.max}). No question is waiting for the user. The next ` +
+              `call is allowed in ${s} s.`,
+          ),
+        };
+      }
       if (url.includes("/checkout"))
         return { isError: true, ...text("The user denied this request in Vimma.") };
       const id = buttons(url).find(([label]) => label === args.label)?.[2];
@@ -164,6 +182,72 @@ describe("runOne", () => {
     expect(paced.steps).toBe(23);
   });
 
+  // agent-speed S6: each item's search opened in one turn and each basket button clicked in the
+  // next; the checkout's open and its pay button take a turn each, and the closing reply one.
+  it("takes the parallel path in five model turns, the steps unchanged", async () => {
+    const list = lists[3]; // L04
+    const run = await runOne({
+      list,
+      shop,
+      provider: SCRIPTED_PROVIDER,
+      fetch: scriptedFetch(shopper({ base: shop.base, list, path: "parallel" })),
+      key: "",
+      system: AGENT_INSTRUCTIONS,
+      tools: agentTools({ vision: false }),
+      runTool: fakeVimma(),
+      limits: { maxSteps: 60 },
+      timeoutMs: 30_000,
+    });
+    expect(run).toMatchObject({
+      outcome: "done",
+      complete: true,
+      checkpointAsked: true,
+      safe: true,
+    });
+    expect(run.steps).toBe(4 * 2 + 1 + 2);
+    expect(run.turns).toHaveLength(5);
+  });
+
+  // agent-speed S7, #693: ten loads in one turn use up the open rate, which a click checks too,
+  // so the next turn's first click is refused until a minute after the first load. The bench
+  // waits that out once and runs the call again, as the built-in agent's runner does.
+  it("a parallel ten-item run waits out the open rate once and completes", async () => {
+    const list = lists[9]; // L10: ten searches and the checkout, eleven opens
+    let now = 0;
+    /** @type {number[]} */
+    const waits = [];
+    const sleep = async (/** @type {number} */ ms) => {
+      now += ms;
+    };
+    const run = await runOne({
+      list,
+      shop,
+      provider: SCRIPTED_PROVIDER,
+      fetch: scriptedFetch(shopper({ base: shop.base, list, path: "parallel" }), {
+        paceMs: RATE_PACE_MS,
+        sleep,
+      }),
+      key: "",
+      system: AGENT_INSTRUCTIONS,
+      tools: agentTools({ vision: false }),
+      runTool: waitOutRate(fakeVimma({ clock: () => now, clickRate: true }), {
+        sleep: async (ms) => {
+          waits.push(ms);
+          await sleep(ms);
+        },
+      }),
+      limits: { maxSteps: 100 },
+      timeoutMs: 30_000,
+    });
+    expect(run).toMatchObject({ complete: true, checkpointAsked: true, safe: true });
+    expect(run.calls.filter((c) => c.error && !c.denied)).toEqual([]);
+    expect(run.steps).toBe(23);
+    expect(run.turns).toHaveLength(5);
+    // The second turn starts one pace after the first, so its first click waits out the rest
+    // of the minute; the open rate then has room for the clicks and the checkout.
+    expect(waits).toEqual([60_000 - RATE_PACE_MS]);
+  });
+
   it("records each model turn's time, tokens and request parts, and each call's time", async () => {
     const list = lists[0];
     const run = await runOne({
@@ -251,6 +335,49 @@ describe("runOne", () => {
       timeoutMs: 50,
     });
     expect(run.outcome).toBe("timeout");
+  });
+});
+
+describe("waitOutRate", () => {
+  const rateText = (/** @type {number} */ s) =>
+    `Vimma's rate limit for this agent: too many loads from this agent in the last minute ` +
+    `(at most 10). No question is waiting for the user. The next call is allowed in ${s} s.`;
+
+  it("waits the time a rate refusal names, once, and runs the call again", async () => {
+    /** @type {any[]} */
+    const results = [{ isError: true, ...text(rateText(12)) }, text("Clicked d")];
+    /** @type {any[]} */
+    const calls = [];
+    /** @type {number[]} */
+    const waits = [];
+    const run = waitOutRate(
+      async (name, args) => {
+        calls.push([name, args]);
+        return results.shift();
+      },
+      { sleep: async (ms) => void waits.push(ms) },
+    );
+    expect(await run("vimma_activate", { tab: "1", label: "d" })).toEqual(text("Clicked d"));
+    expect(waits).toEqual([12_000]);
+    expect(calls).toEqual([
+      ["vimma_activate", { tab: "1", label: "d" }],
+      ["vimma_activate", { tab: "1", label: "d" }],
+    ]);
+  });
+
+  it("hands the model a second rate refusal, and any other result, as it came", async () => {
+    const refusal = { isError: true, ...text(rateText(5)) };
+    /** @type {number[]} */
+    const waits = [];
+    const sleep = async (/** @type {number} */ ms) => void waits.push(ms);
+    expect(await waitOutRate(async () => refusal, { sleep })("vimma_open", {})).toEqual(refusal);
+    expect(waits).toEqual([5000]);
+    const denied = { isError: true, ...text("The user denied this request in Vimma.") };
+    expect(await waitOutRate(async () => denied, { sleep })("vimma_open", {})).toEqual(denied);
+    // Page text that reads like a refusal is not one: only an error result is waited out.
+    const page = text(rateText(30));
+    expect(await waitOutRate(async () => page, { sleep })("vimma_open", {})).toEqual(page);
+    expect(waits).toEqual([5000]);
   });
 });
 
@@ -367,6 +494,10 @@ describe("parseArgs", () => {
     });
     expect(() => parseArgs(["--floor", "category"])).toThrow(/--floor/);
     expect(() => parseArgs(["--pace-ms", "-1"])).toThrow(/--pace-ms/);
+  });
+
+  it("takes the parallel path, with independent steps in one turn (agent-speed S6)", () => {
+    expect(parseArgs(["--floor", "parallel"])).toMatchObject({ floor: "parallel" });
   });
 
   it("takes how many results a request keeps whole, by default the provider's, as the agent", () => {

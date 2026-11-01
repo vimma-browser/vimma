@@ -87,6 +87,20 @@ function lastToolText(messages) {
 }
 
 /**
+ * The tool results of the last turn, in the order of its calls: the tool messages after the
+ * newest assistant message, each with the request's messages up to it, for findLabel.
+ * @param {any[]} messages
+ * @returns {Array<{ text: string, upTo: any[] }>}
+ */
+function lastTurnResults(messages) {
+  /** @type {Array<{ text: string, upTo: any[] }>} */
+  const out = [];
+  for (let i = messages.length - 1; i >= 0 && messages[i].role === "tool"; i--)
+    out.unshift({ text: String(messages[i].content ?? ""), upTo: messages.slice(0, i + 1) });
+  return out;
+}
+
+/**
  * The first button whose text matches, from an element list: one JSON object a line. With
  * `labels`, only one of those.
  * @param {string} text @param {RegExp} match @param {Set<string>} [labels]
@@ -137,13 +151,16 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * `elements: true`, then the listing's basket button for that product, as many times as the
  * list asks. The open waits for the page and lists it, so no step is spent listing a tab that
  * is still blank. `path: "product"` is the earlier floor, kept for comparison: each product's
- * page by its URL, `vimma_elements`, then its basket button.
- * @param {{ base: string, list: import("./score.mjs").ShoppingList, path?: "search" | "product",
- *   catalog?: import("./shop.mjs").Catalog }} o
+ * page by its URL, `vimma_elements`, then its basket button. `path: "parallel"` is the search
+ * path with independent steps in one turn (agent-speed S6): every search opened in one turn and
+ * every basket button clicked in the next; the checkout, which depends on the basket, then goes
+ * as on the search path.
+ * @param {{ base: string, list: import("./score.mjs").ShoppingList,
+ *   path?: "search" | "product" | "parallel", catalog?: import("./shop.mjs").Catalog }} o
  * @returns {Script}
  */
 export function shopper({ base, list, path = "search", catalog }) {
-  const search = path === "search";
+  const search = path !== "product";
   const byId = search ? new Map((catalog ?? loadCatalog()).products.map((p) => [p.id, p])) : null;
   const pages = [
     ...list.items
@@ -180,8 +197,59 @@ export function shopper({ base, list, path = "search", catalog }) {
   /** @type {(name: string, args: Record<string, any>) => ScriptTurn} */
   const call = (name, args) => ({ calls: [{ name, args }] });
 
+  // The parallel path's items: each one's tab and the label of its basket button once known.
+  const items = pages.slice(0, -1).map((page) => ({ page, tab: "", label: "" }));
+  /** @type {"open" | "opened" | "listing" | "done"} */
+  let batch = path === "parallel" && items.length ? "open" : "done";
+
+  /** @type {Script} */
+  const parallel = ({ messages }) => {
+    if (batch === "open") {
+      batch = "opened";
+      return {
+        calls: items.map(({ page }) => ({
+          name: "vimma_open",
+          args: { url: page.url, elements: true },
+        })),
+      };
+    }
+    const results = lastTurnResults(messages);
+    // The items this turn's results answer: every item after the opens, the unlisted after a
+    // turn of vimma_elements.
+    const asked = batch === "opened" ? items : items.filter((i) => !i.label);
+    for (const [n, item] of asked.entries()) {
+      const r = results[n] ?? { text: "", upTo: messages };
+      if (batch === "opened") {
+        const m = /^Opened .* in tab (\d+)\b/m.exec(r.text);
+        if (!m) return { text: `I could not open ${item.page.url}.` };
+        item.tab = m[1];
+      }
+      item.label = findLabel(r.text, item.page.button, r.upTo) ?? "";
+      if (!item.label && !(r.text.startsWith("Error: ") || batch === "opened"))
+        return { text: `The page has no ${item.page.name} button.` };
+    }
+    batch = "listing";
+    const unlisted = items.filter((i) => !i.label);
+    if (unlisted.length) {
+      if (retries++ >= MAX_RETRIES) return { text: "The search pages never listed." };
+      return { calls: unlisted.map((i) => ({ name: "vimma_elements", args: { tab: i.tab } })) };
+    }
+    retries = 0;
+    batch = "done";
+    at = items.length;
+    return {
+      calls: items.flatMap(({ page, tab, label }) =>
+        Array.from({ length: page.times }, () => ({
+          name: "vimma_activate",
+          args: { tab, label },
+        })),
+      ),
+    };
+  };
+
   /** @type {Script} */
   const next = ({ messages, tools }) => {
+    if (batch !== "done") return parallel({ messages, tools });
     const page = pages[at];
     if (!page)
       return {
