@@ -38,6 +38,7 @@ browser.jar:
         content/browser/vimma/host/prompt-keys.mjs        (host/prompt-keys.mjs)
         content/browser/vimma/host/hypr/HyprIpc.sys.mjs   (host/hypr/HyprIpc.sys.mjs)
         content/browser/vimma/host/find.mjs               (host/find.mjs)
+        content/browser/vimma/host/find-bar.mjs           (host/find-bar.mjs)
         content/browser/vimma/host/copy-mode.mjs          (host/copy-mode.mjs)
         content/browser/vimma/host/element-focus.mjs      (host/element-focus.mjs)
         content/browser/vimma/host/page-ops.mjs           (host/page-ops.mjs)

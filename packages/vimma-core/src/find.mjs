@@ -32,7 +32,17 @@ export function isCaseSensitive(query) {
 export function findStatusText({ query, backward = false, current = 0, total, limit, notFound }) {
   const head = `${backward ? "?" : "/"}${query}`;
   if (notFound) return `${head} not found`;
-  if (total === -1 && limit) return `${head} [>${limit}]`;
-  if (!total) return head;
-  return `${head} [${current}/${total}]`;
+  const count = findCountText({ current, total, limit });
+  return count ? `${head} ${count}` : head;
+}
+
+/**
+ * The match count as the find bar and the status bar show it: `[2/5]`, `[>1000]` over the
+ * finder's limit, "" while unknown.
+ * @param {{ current?: number, total?: number, limit?: number }} count
+ */
+export function findCountText({ current = 0, total, limit }) {
+  if (total === -1) return limit ? `[>${limit}]` : "";
+  if (!total) return "";
+  return `[${current}/${total}]`;
 }
