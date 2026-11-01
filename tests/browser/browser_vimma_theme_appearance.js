@@ -26,8 +26,8 @@ const START = "chrome://browser/content/vimma/start/start.html";
 const OMARCHY_BAR = "#302010";
 const APPEARANCE_PREF = "vimma.theme.appearance";
 /** The built-in vimma palette's dark_background (the status bar), dark and light. */
-const VIMMA_DARK_BAR = "#070b0d";
-const VIMMA_LIGHT_BAR = "#eae9e2";
+const VIMMA_DARK_BAR = "#050c0d";
+const VIMMA_LIGHT_BAR = "#e7ecea";
 const DEFAULT_THEME = { source: "omarchy", name: "vimma", font: "monospace", colors: {} };
 
 const root = PathUtils.join(PathUtils.tempDir, `vimma-appearance-${Date.now()}`);
