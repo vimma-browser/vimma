@@ -27,7 +27,7 @@
 
 import { doorhangerHint, doorhangerKey, popupBarHint, popupBarKey } from "../core/prompt-keys.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
-import { answerPopupBar, inAgentTab, popupBar } from "./popup-ops.mjs";
+import { answerPopupBar, inAgentTab, popupBar, popupLocked } from "./popup-ops.mjs";
 
 const DELAY_PREF = "security.notification_enable_delay";
 const DEFAULT_DELAY_MS = 500;
@@ -289,6 +289,7 @@ export class PromptKeys {
     // Hint, copy and element mode, a picker and the command line keep y and n as well.
     return popupBarHint({
       inField: this.host.inField() || this.host.modeKeys() || this.host.otherOpen(),
+      locked: popupLocked(),
     });
   }
 
@@ -315,6 +316,7 @@ export class PromptKeys {
       pending: this.host.pending(),
       repeat: e.repeat,
       agent: inAgentTab(this.win),
+      locked: popupLocked(),
     });
     if (result.kind === "pass") return false;
     e.preventDefault();

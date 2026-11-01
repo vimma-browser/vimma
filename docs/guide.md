@@ -3375,7 +3375,10 @@ permission picker (`:site`) will cover pop-ups too when it lands.
 
 With nothing blocked on the page and no choice made for the site, `:popups` says `no pop-ups
 blocked on this page`. When an administrator has locked pop-up blocking on, the Allow, Block and
-Reset rows are left out, as Firefox leaves them out. In the [agent workspace](#agent-workspace),
+Reset rows are left out, as Firefox leaves them out, and `y` and `n` do nothing: the status bar
+says `pop-up blocked · Esc close`, and `Esc` still closes the bar. A row you choose runs only on
+the page you opened `:popups` on: if the tab has gone to another site meanwhile, it does nothing.
+In the [agent workspace](#agent-workspace),
 pages get no permissions: no key answers the bar there, and `:popups` says `pop-ups stay blocked
 in the agent workspace`. `:popups` has no default key; bind one in `config.toml`
 (`[keys] popup_picker`).

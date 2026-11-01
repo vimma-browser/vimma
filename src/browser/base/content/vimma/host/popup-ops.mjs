@@ -32,14 +32,22 @@ const LOCK_PREF = "dom.disable_open_during_load";
 const SHOW_PREF = "privacy.popups.showBrowserMessage";
 
 /**
- * What the picker last listed, per window: the browser it read and Firefox's own records, which
- * a row's id indexes. The picker closes when the tab changes, so these are the selected page's.
- * @type {WeakMap<Window, { browser: any, popups: any[], redirect: any }>}
+ * What the picker last listed, per window: the browser it read, its page's principal and
+ * Firefox's own records, which a row's id indexes. The picker closes when the tab changes but not
+ * when the page navigates, so a row runs only while the principal is the one listed.
+ * @type {WeakMap<Window, { browser: any, principal: any, popups: any[], redirect: any }>}
  */
 const listed = new WeakMap();
 
 /** The permission manager, which types/firefox.d.ts does not describe. */
 const perms = () => /** @type {any} */ (Services).perms;
+
+/**
+ * Whether `dom.disable_open_during_load` is locked (enterprise policy): Firefox's options menu
+ * then hides "Allow pop-ups for <site>" and toggleAllowPopupsForSite does nothing, so no Vimma
+ * path changes the site's pop-up permission either.
+ */
+export const popupLocked = () => Services.prefs.prefIsLocked(LOCK_PREF);
 
 /** @param {Window} win */
 const gBrowserOf = (win) => /** @type {any} */ (win).gBrowser;
@@ -76,6 +84,7 @@ function sitePermission(browser) {
  * @param {any} browser
  */
 function blockSite(browser) {
+  if (popupLocked()) return;
   perms().addFromPrincipal(browser.contentPrincipal, "popup", perms().DENY_ACTION);
 }
 
@@ -85,6 +94,7 @@ function blockSite(browser) {
  * @param {any} browser
  */
 function allowSite(browser) {
+  if (popupLocked()) return;
   const { SitePermissions } = lazy;
   SitePermissions.setForPrincipal(
     browser.contentPrincipal,
@@ -126,16 +136,19 @@ export async function popupPickerItems(win) {
   const browser = gBrowserOf(win)?.selectedBrowser;
   const blocker = browser?.popupAndRedirectBlocker;
   if (!blocker) return [];
+  const principal = browser.contentPrincipal;
   const [popups, redirect] = await Promise.all([
     blocker.getBlockedPopups(),
     blocker.getBlockedRedirect(),
   ]);
-  listed.set(win, { browser, popups, redirect });
+  // The page navigated while Firefox answered: these records are no longer its own.
+  if (!browser.contentPrincipal?.equals(principal)) return [];
+  listed.set(win, { browser, principal, popups, redirect });
   return popupItems({
     site: siteOf(browser),
     popups: popups.map((/** @type {any} */ p) => p.popupWindowURISpec),
     redirect: redirect?.redirectURISpec ?? null,
-    allowLocked: Services.prefs.prefIsLocked(LOCK_PREF),
+    allowLocked: popupLocked(),
     showMessage: Services.prefs.getBoolPref(SHOW_PREF, true),
     permission: sitePermission(browser),
   });
@@ -153,8 +166,10 @@ export function popupRefusal(win, items) {
 }
 
 /**
- * Runs the row's bar action on the page it was listed for. The observer's methods read only the
- * event's window, so a stand-in event runs them exactly as the bar's menu does.
+ * Runs the row's bar action on the page it was listed for, and nothing once the tab or its page's
+ * principal changed (a navigation under the open picker must not land Allow on another site) or
+ * in the agent workspace. The observer's methods read only the event's window, so a stand-in
+ * event runs them exactly as the bar's menu does.
  * @param {Window} win
  * @param {string} id
  */
@@ -163,7 +178,13 @@ export function runPopupRow(win, id) {
   const snapshot = listed.get(win);
   listed.delete(win);
   const gBrowser = gBrowserOf(win);
-  if (!op || !snapshot || snapshot.browser !== gBrowser?.selectedBrowser || inAgentTab(win)) {
+  if (
+    !op ||
+    !snapshot ||
+    snapshot.browser !== gBrowser?.selectedBrowser ||
+    !snapshot.browser.contentPrincipal?.equals(snapshot.principal) ||
+    inAgentTab(win)
+  ) {
     return;
   }
   const observer = lazy.PopupAndRedirectBlockerObserver;
@@ -178,6 +199,7 @@ export function runPopupRow(win, id) {
       blockSite(snapshot.browser);
       break;
     case "reset":
+      if (popupLocked()) break;
       lazy.SitePermissions.removeFromPrincipal(
         snapshot.browser.contentPrincipal,
         "popup",

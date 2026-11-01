@@ -57,7 +57,10 @@ Esc, then y allow · n block` from a field or mode that keeps the keys, and `pop
    runs the row and closes the picker, `Esc` / `q` close it.
 8. With nothing blocked on the selected page and no `popup` permission for its site, the picker
    does not open and the notice says `no pop-ups blocked on this page`.
-9. With `dom.disable_open_during_load` locked, the allow, block and reset rows are left out.
+9. With `dom.disable_open_during_load` locked, the allow, block and reset rows are left out,
+   `y` and `n` stay the page's, `Esc` still closes the bar, and the cue names only `Esc close`,
+   because Firefox's own options menu hides "Allow pop-ups for <site>" then and a policy-locked
+   setting is not the user's to override per site.
 10. In a tab of the agent workspace no key answers the bar, the picker does not open and the
     notice says `pop-ups stay blocked in the agent workspace`; nothing is granted or reset. The
     cue there says `pop-up blocked` without keys, and nothing after a block.
@@ -169,11 +172,20 @@ keypress into an answer. They are chrome-only: no control command or MCP tool re
 in the agent workspace no key answers the bar and the picker refuses (M10). They read no page
 content; the addresses the picker lists are the ones Firefox's menu lists.
 
+A picker row runs only on the page it was listed for: the picker keeps the page's principal when
+it opens and refuses a row once the tab's principal differs, because the picker stays open
+across a navigation and an allow chosen for one site must not land on the next. A locked
+`dom.disable_open_during_load` stops every Vimma path that changes the permission, the keys'
+and the rows', down to the host's own `blockSite` and `allowSite`. A block is written with
+Firefox's own `Services.perms.addFromPrincipal`; in a private window the permission manager keeps
+it for the private session only. See `docs/security.md`, prompt keys.
+
 ## Tests
 
 - Vitest, `packages/vimma-core/test/prompt-keys.test.mjs`: `popupBarKey` allows, blocks and
   closes only once armed and not on a held key; keys from a field, during a sequence, with no
-  bar or in the agent workspace pass; `Tab` passes; `popupBarHint` with and without a field.
+  bar or in the agent workspace pass; `Tab` passes; a locked pref leaves `y` and `n` alone;
+  `popupBarHint` with and without a field, and locked.
 - Vitest, `packages/vimma-core/test/popups.test.mjs`: the rows in Firefox's order; the redirect
   row; the allow row left out when locked; no `hide` row with the bar off; no rows when nothing is
   blocked and the site has no permission; allow and reset for a blocked site, block for an
@@ -187,8 +199,10 @@ content; the addresses the picker lists are the ones Firefox's menu lists.
   bar, allows the site again, blocks it and resets it; nothing blocked gives the notice; the cue
   follows the selected tab and Firefox's close button; the picker lists the bar's options and
   opens one pop-up without granting anything; the hide row turns the bar off, and settings opens
-  `about:preferences`; in the agent workspace no key answers the bar, the picker refuses and a
-  block stays as it was.
+  `about:preferences`; a row chosen after the page navigated to another site grants nothing; with
+  the pref locked `y` and `n` change nothing, the host's block writes nothing, and `Esc` closes
+  the bar; in the agent workspace no key answers the bar, the picker refuses and a block stays as
+  it was.
 
 ## Docs and changelog
 

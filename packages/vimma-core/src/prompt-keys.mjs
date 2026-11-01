@@ -79,6 +79,8 @@ export function doorhangerHint({ main, secondary, inField = false }) {
  * @property {boolean} pending  a key sequence is under way (after ctrl+b)
  * @property {boolean} [repeat]  the key is held down
  * @property {boolean} [agent]  the page is in the agent workspace, whose pages get no permissions
+ * @property {boolean} [locked]  `dom.disable_open_during_load` is locked: the site's permission
+ *   is not the user's to change, as Firefox's options menu has it, so only Esc answers
  */
 
 /**
@@ -93,16 +95,18 @@ export function doorhangerHint({ main, secondary, inField = false }) {
 export function popupBarKey(key, s) {
   if (!s.open || s.pending || s.inField || s.agent) return { kind: "pass" };
   if (key === "esc") return s.armed && !s.repeat ? { kind: "close" } : { kind: "pass" };
-  if (key !== "y" && key !== "n") return { kind: "pass" };
+  if ((key !== "y" && key !== "n") || s.locked) return { kind: "pass" };
   if (!s.armed || s.repeat) return { kind: "wait" };
   return { kind: key === "y" ? "allow" : "block" };
 }
 
 /**
  * The pop-up blocked bar's keys line, the permission prompt's (doorhangerHint) with Esc to close.
- * From a field, or in hint, copy and element mode, it starts with the way out.
- * @param {{ inField?: boolean }} s
+ * From a field, or in hint, copy and element mode, it starts with the way out. With the pop-up
+ * pref locked only Esc answers (popupBarKey).
+ * @param {{ inField?: boolean, locked?: boolean }} s
  */
-export function popupBarHint({ inField = false }) {
+export function popupBarHint({ inField = false, locked = false }) {
+  if (locked) return inField ? "Esc, then Esc close" : "Esc close";
   return inField ? "Esc, then y allow · n block" : "y allow · n block · Esc close";
 }
