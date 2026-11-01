@@ -390,6 +390,12 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   to measure the loop without pruning. A turn after a block was left out reads the request
   again from the first changed result, which on a local model shows as a turn several times
   slower than the others.
+- `--floor` picks the scripted provider's path: `search` (the default), `product` (each
+  product's page by URL, the earlier floor) or `parallel` (the search path with independent
+  steps in one turn: every search in one turn, every basket button in the next). Like the
+  built-in agent's runner, the bench waits out a rate refusal once and runs the call again, which
+  the parallel path needs on a ten-item list: ten loads in one turn use up the open rate, which
+  a click checks too.
 - **Where the model ran.** For an Ollama model, `--out` records `ollama ps` at the end of the
   run (`meta.loaded`: each loaded model's `size`, `sizeVram` and `contextLength`); a row in
   `agent-bench.md` says GPU, CPU or the split. Ollama leaves out an integrated GPU unless
