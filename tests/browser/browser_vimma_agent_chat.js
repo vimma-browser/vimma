@@ -611,6 +611,10 @@ addTidyTask(async function test_an_entered_key_is_never_shown_again_nor_copied_o
     );
     EventUtils.synthesizeKey("KEY_Enter");
     await until(async () => await AgentKeys.has(anthropic.name), "the key is stored");
+    // has() is true before Enter's work ends: the hint's decrypt and setting the conversation's
+    // provider come after, and on macOS the keychain decrypt can outlast this test, so tidy()
+    // deleted the conversation first and the next test failed ("no agent conversation").
+    await until(() => !chat.storing, "the store has finished");
     chat.askKey(anthropic);
     await until(keyOpen, "changing it opens the field again");
     Assert.equal(keyField().value, "", "empty: the stored key is not filled in");
