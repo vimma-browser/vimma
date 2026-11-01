@@ -147,8 +147,6 @@ support-files = [
   "file_vimma_test.pdf",
 ]
 
-["browser_vimma_tmp_find_shots.js"]
-
 ["browser_vimma_picker.js"]
 
 ["browser_vimma_tab_search.js"]

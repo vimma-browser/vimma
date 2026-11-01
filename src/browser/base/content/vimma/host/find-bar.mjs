@@ -5,8 +5,8 @@
 // Firefox's find bar as Vimma's `/` prompt (docs/specs/m1-find.md, "Since changed"): the bar
 // `/` and `?` open carries `vimma-prompt`, which firefox-chrome.css floats over the page in the
 // pickers' style. A bar Firefox opens itself (the Edit menu's Find in Page) loses it and is
-// Firefox's, with its buttons and checkboxes. The attribute stays while the bar closes, so a closed prompt goes at
-// once instead of sliding out as Firefox's bar.
+// Firefox's, with its buttons and checkboxes. The attribute stays while the bar closes, so a
+// closed prompt goes at once instead of sliding out as Firefox's bar.
 //
 // The prompt shows the match count as `[2/5]`, the status bar's form. Firefox's own label
 // ("2 of 5 matches") stays for screen readers, out of sight; the count mirrors it. It follows
