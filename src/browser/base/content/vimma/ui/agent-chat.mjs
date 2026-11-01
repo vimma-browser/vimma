@@ -34,7 +34,7 @@ import {
   modelPrompt,
 } from "../core/agent-cli.mjs";
 import { checkEndpoint, isLocalEndpoint } from "../core/agent-providers.mjs";
-import { pickerEntries, unavailableText } from "../core/agent-setup.mjs";
+import { pickerEntries, placementText, unavailableText } from "../core/agent-setup.mjs";
 import { lastUseText } from "../core/agent-store.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
@@ -809,6 +809,15 @@ export class AgentChatWindow {
     }
     if (!provider) return;
     this.usePicked(provider, { makeDefault });
+    if (row.local) {
+      const { endpoint, model } = provider;
+      // After the pick, since loading a large model takes a minute.
+      lazy.AgentChat.placeLocal(endpoint, model).then(
+        (/** @type {import("../core/agent-setup.mjs").Placement | null} */ placement) => {
+          if (placement) this.host.say(`agent: ${placementText(model, placement)}`);
+        },
+      );
+    }
   }
 
   /**

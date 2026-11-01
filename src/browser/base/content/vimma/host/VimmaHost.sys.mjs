@@ -19,6 +19,7 @@ import {
 } from "../core/editable.mjs";
 import { HintError, hintKey, hintStatus, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
+import { PageFirstQueue } from "../core/page-first.mjs";
 import { compileKeymap } from "../core/keymap.mjs";
 import { KEY_KEEPING_MODES } from "../core/modes.mjs";
 import { describeAction, notImplementedText } from "../core/actions.mjs";
@@ -42,7 +43,7 @@ import { Toolbar } from "../ui/toolbar.mjs";
 import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
 import { bookmarksToolbarNotice } from "../core/bookmarks-toolbar.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
-import { AddonPicker, GotoPicker, MCP_LOG, WorkspacePicker } from "../ui/picker.mjs";
+import { AddonPicker, GotoPicker, MCP_LOG, PopupPicker, WorkspacePicker } from "../ui/picker.mjs";
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
 import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
@@ -141,6 +142,7 @@ import {
   toggleAddon,
   togglePrivateAccess,
 } from "./addon-ops.mjs";
+import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -196,17 +198,6 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  */
 
 /**
- * A binding on a chord Firefox let the page override (docs/specs/firefox-keys.md decision 6):
- * its keydown went to the page, and it runs on the keypress after the page had it, unless the
- * page called preventDefault. `awaiting`: its keypress went to a remote page, whose reply runs it.
- * @typedef {{ key: string, result: DispatchResult, pressed: boolean, awaiting: boolean,
- *   mode: Mode }} PageFirst
- */
-
-/** The most page-first keys kept waiting (a page that never replies cannot grow the queue). */
-const PAGE_FIRST_MAX = 16;
-
-/**
  * @typedef {object} WindowState
  * @property {Window} win
  * @property {Keymap} keymap
@@ -216,8 +207,8 @@ const PAGE_FIRST_MAX = 16;
  *   the page: asks a remote page for its reply, or takes the reply (firefox-keys decision 6)
  * @property {(e: KeyboardEvent) => void} onKeyPressAfter  the same keypress after a
  *   parent-process page or a chrome field had it
- * @property {PageFirst[]} pageFirst  bindings waiting for the page to leave their key alone,
- *   oldest first: keys typed fast (or held down) each wait for their own reply
+ * @property {PageFirstQueue<DispatchResult>} pageFirst  bindings waiting for the page to leave
+ *   their key alone (core page-first.mjs)
  * @property {FirefoxKeys | null} firefoxKeys  Firefox's own shortcuts off (key-handling-batch)
  * @property {() => void} onTabSelect
  * @property {ReturnType<typeof createDispatcher>} dispatcher
@@ -239,6 +230,7 @@ const PAGE_FIRST_MAX = 16;
  * @property {WorkspacePicker} wsPicker  the prefix+w overlay (m3-workspaces 5)
  * @property {GotoPicker} mcpLog  `:mcp log`, the agents' last calls (docs/specs/mcp-drive.md D14)
  * @property {AddonPicker} addonPicker  the prefix+e overlay (docs/specs/addon-manager.md)
+ * @property {PopupPicker} popups  the `:popups` overlay (docs/specs/popup-blocked.md)
  * @property {GrepSession} grep  prefix+f g, `:grep`, `]q`/`[q` (docs/specs/live-grep.md)
  * @property {RenamePrompt} rename  the prefix+shift+t prompt (m2-picker-rename)
  * @property {AgentPrompt} agentPrompt  the agent question line (docs/specs/vimma-mcp.md)
@@ -287,6 +279,7 @@ function vimmaSurfaceOpen(s) {
     s.picker.isOpen ||
     s.wsPicker.isOpen ||
     s.addonPicker.isOpen ||
+    s.popups.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
     s.cmdline.isOpen ||
@@ -935,6 +928,11 @@ export const RUNNERS = Object.freeze({
     s.notice.hide();
     s.addonPicker.open();
   },
+  // docs/specs/popup-blocked.md: :popups (no default key), the pop-up blocked bar's options.
+  "popups.picker": (/** @type {WindowState} */ s) => {
+    s.notice.hide();
+    s.popups.open();
+  },
   "addons.popup": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
     if (!text) s.cmdline.open("addon ");
     else sayAddon(s, openAddonByName(s.win, text));
@@ -1322,7 +1320,7 @@ export const VimmaHost = {
       onKeyDownAfter: (e) => this._onKeyDownAfter(state, e),
       onKeyPress: (e) => this._onKeyPress(state, e),
       onKeyPressAfter: (e) => this._onKeyPressAfter(state, e),
-      pageFirst: [],
+      pageFirst: new PageFirstQueue(),
       firefoxKeys: null,
       private: isPrivateBrowsing(win),
       // The overlay is modal, but tabs can still change underneath it (a script closes the
@@ -1336,6 +1334,7 @@ export const VimmaHost = {
         state.picker.close({ tabChanged: true });
         state.wsPicker.close({ tabChanged: true });
         state.addonPicker.close({ tabChanged: true });
+        state.popups.close({ tabChanged: true });
         state.mcpLog.close({ tabChanged: true });
         state.grep.close({ tabChanged: true });
         state.rename.close({ tabChanged: true });
@@ -1444,6 +1443,15 @@ export const VimmaHost = {
         load: addonPickerItems,
         select: (id) => void sayAddon(state, openAddonById(win, id)),
         addon: (op, id) => addonOp(state, op, id),
+      }),
+      popups: new PopupPicker(win, {
+        load: () => popupPickerItems(win),
+        refuse: (rows) => popupRefusal(win, /** @type {any} */ (rows)),
+        notice: (text) => state.notice.show(text),
+        select: (id) => {
+          runPopupRow(win, id);
+          this._emit(state);
+        },
       }),
       grep: new GrepSession(win, {
         notice: (text) => state.notice.show(text),
@@ -1638,6 +1646,7 @@ export const VimmaHost = {
         otherOpen: () => keysHeld(state) || state.agentPrompt.isOpen || UpdateUi.isOpen(win),
         pending: () => state.dispatcher.pending().length > 0,
         modeKeys: () => KEY_KEEPING_MODES.has(this._mode(state)),
+        changed: () => this._emit(state),
       });
       promptKeys.init();
       state.promptKeys = promptKeys;
@@ -1706,6 +1715,7 @@ export const VimmaHost = {
     state.picker.destroy();
     state.wsPicker.destroy();
     state.addonPicker.destroy();
+    state.popups.destroy();
     state.mcpLog.destroy();
     state.grep.destroy();
     state.rename.destroy();
@@ -1737,7 +1747,7 @@ export const VimmaHost = {
    *   agent?: { waiting: number, minutes: number | null, ran: boolean } | null,
    *   update?: import("../core/updates.mjs").UpdateNotice | null,
    *   element?: import("../core/statusbar.mjs").ElementStatus | null,
-   *   hint?: import("../core/statusbar.mjs").HintStatus | null }}
+   *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null }}
    */
   status(win) {
     const state = states.get(win);
@@ -1766,6 +1776,8 @@ export const VimmaHost = {
           ? hintStatus(state.hint.hs)
           : { action: state.hint.action, label: null }
         : null,
+      // docs/specs/popup-blocked.md: `pop-up blocked · y allow · n block · Esc close`.
+      popups: popupStatus(win, state.promptKeys?.popupHint() ?? null),
     };
   },
 
@@ -2000,6 +2012,7 @@ export const VimmaHost = {
   _mode(state) {
     if (state.help.isOpen || state.picker.isOpen || state.wsPicker.isOpen) return "help";
     if (state.addonPicker.isOpen || state.mcpLog.isOpen || state.grep.isOpen) return "help";
+    if (state.popups.isOpen) return "help";
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
@@ -2084,9 +2097,7 @@ export const VimmaHost = {
     const chord = chordFromEvent(e);
     if (!chord) return; // a bare modifier
     const key = formatKey(chord);
-    // A page-first binding whose keypress never came (the page took the keydown) is dropped.
-    // One whose keypress stayed in this process was settled during that keypress.
-    state.pageFirst = state.pageFirst.filter((p) => p.awaiting);
+    state.pageFirst.keydown();
     // Focus left the page the hints are on (URL bar, another pane): they no longer apply.
     if (state.hint && state.hint.browser !== this._focusedBrowser(win)) this._cancelHints(state);
     if (state.element.browser && state.element.browser !== this._focusedBrowser(win)) {
@@ -2116,9 +2127,14 @@ export const VimmaHost = {
     }
     // A picker takes every key, bare ones too, before any binding: nothing reaches the page or
     // Firefox underneath (ctrl+w would close a tab), and its j / q are not keymap keys.
-    const picker = [state.picker, state.wsPicker, state.addonPicker, state.mcpLog, state.grep].find(
-      (p) => p.isOpen,
-    );
+    const picker = [
+      state.picker,
+      state.wsPicker,
+      state.addonPicker,
+      state.popups,
+      state.mcpLog,
+      state.grep,
+    ].find((p) => p.isOpen);
     if (picker) {
       consume(e);
       picker.key(key);
@@ -2223,14 +2239,7 @@ export const VimmaHost = {
         // Firefox let the page have this chord first: so does Vimma (firefox-keys decision 6).
         // The keydown goes on; the keypress after the page runs the action (_onKeyPress).
         if (first && !modal && this._pageFirst(state, chord, mode)) {
-          state.pageFirst.push({
-            key: formatKey(chord),
-            result,
-            pressed: false,
-            awaiting: false,
-            mode,
-          });
-          if (state.pageFirst.length > PAGE_FIRST_MAX) state.pageFirst.shift();
+          state.pageFirst.defer(formatKey(chord), result, mode);
           return;
         }
         consume(e);
@@ -2300,7 +2309,7 @@ export const VimmaHost = {
    * @param {KeyboardEvent} e
    */
   _onKeyPress(state, e) {
-    if (!state.pageFirst.length) return;
+    if (!state.pageFirst.size) return;
     const chord = chordFromEvent(e);
     const key = chord && formatKey(chord);
     const ev = /** @type {ChromeKeyEvent} */ (e);
@@ -2309,29 +2318,21 @@ export const VimmaHost = {
       // ShortcutKeyDefinitions.cpp) never reaches `_onKeyPress` before the page:
       // GlobalKeyListener::HandleEventOnCaptureInSystemEventGroup stops it and waits for this
       // reply itself, so its entry is still unpressed here.
-      let at = state.pageFirst.findIndex((p) => p.awaiting && p.key === key);
-      if (at === -1) at = state.pageFirst.findIndex((p) => !p.pressed && p.key === key);
-      if (at === -1) return;
-      const [pending] = state.pageFirst.splice(at, 1);
+      const pending = key && state.pageFirst.reply(key, e.timeStamp);
       if (!pending || this._pageTookKey(e, pending)) return;
       consume(e);
       this._run(state, pending.result);
       this._emit(state);
       return;
     }
-    const pending = state.pageFirst.find((p) => !p.pressed && p.key === key);
-    if (!pending) {
-      // A page that cannot take input yet (its process is still starting) is sent no key:
-      // EventStateManager::PostHandleKeyboardEvent dispatches the keypress at the <browser>
-      // again instead, and no reply comes. Settled as a key that stayed in this process,
-      // `_onKeyPressAfter` runs it unless something calls preventDefault.
-      const waiting = state.pageFirst.filter((p) => p.awaiting && p.key === key).at(-1);
-      if (waiting && /** @type {any} */ (e.target)?.isRemoteBrowser) waiting.awaiting = false;
-      return;
-    }
-    pending.pressed = true;
-    if (/** @type {any} */ (e.target)?.isRemoteBrowser) {
-      pending.awaiting = true;
+    // A page that cannot take input yet (its process is still starting) is sent no key:
+    // EventStateManager::PostHandleKeyboardEvent dispatches the keypress at the <browser> again
+    // instead, and no reply comes. `press` settles it as a key that stayed in this process:
+    // `_onKeyPressAfter` runs it unless something calls preventDefault.
+    if (!key) return;
+    if (
+      state.pageFirst.press(key, e.timeStamp, !!(/** @type {any} */ (e.target)?.isRemoteBrowser))
+    ) {
       e.stopPropagation();
       ev.requestReplyFromRemoteContent();
     }
@@ -2345,7 +2346,7 @@ export const VimmaHost = {
    * PreventDefault before it looks for a controller, so ctrl+shift+z (cmd_redo) comes back
    * prevented by chrome on every plain page.
    * @param {KeyboardEvent} e
-   * @param {PageFirst} pending
+   * @param {{ mode: Mode }} pending
    */
   _pageTookKey(e, pending) {
     if (!e.defaultPrevented) return false;
@@ -2366,9 +2367,7 @@ export const VimmaHost = {
     const chord = chordFromEvent(e);
     const key = chord && formatKey(chord);
     // The one `_onKeyPress` just marked: a local keypress settles in its own dispatch.
-    const at = state.pageFirst.findIndex((p) => p.pressed && !p.awaiting && p.key === key);
-    if (at === -1) return;
-    const [pending] = state.pageFirst.splice(at, 1);
+    const pending = key && state.pageFirst.settle(key);
     if (e.defaultPrevented || !pending) return;
     e.preventDefault();
     this._run(state, pending.result);

@@ -1,6 +1,6 @@
 # Spec: agent-speed
 
-Status: draft (Delivery 1 in #603, 2 in #611, 3 for #598, 6 for #600) · Area: `tools/agent-bench/` (the
+Status: draft (Delivery 1 in #603, 2 in #611, 3 for #598, 4 in part for #602, 6 for #600, 7 for #601) · Area: `tools/agent-bench/` (the
 scripted floor, the per-step breakdown); `packages/vimma-core/src/` (`agent-loop.mjs`, `agent-providers.mjs`,
 `agent-tools-data.mjs`, `agent-act.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: tool descriptions and
 `INSTRUCTIONS`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
@@ -132,7 +132,12 @@ where noted.
 
 (1) Incomplete: the eleventh page load within a minute was refused as `busy` by the open rate,
 and the run spent its remaining steps retrying. (2) Incomplete: after ten loads in one turn,
-every click of the next turn was refused as `busy`; which rate refused them was not found.
+every click of the next turn was refused as `busy`. The open rate refused them: a click may
+load a page, so `agent-activate` checks the open rate before it, and ten loads had used it up.
+The built-in agent's connection then got the refusal without its `retryAfter`, in the words of
+a full queue, so the model ended its task; it now gets the rate's own words and its runner waits
+the rate out once ([#694](https://github.com/vimma-browser/vimma/pull/694)), as the bench's
+runner does.
 
 - The search path is the shortest a model can take that does not know a product's URL, and it
   takes two steps an item plus two for the checkout: 23 steps for ten items, against 52.
@@ -334,6 +339,9 @@ label, text, caption or name holds all its words`; `a sensitive field's value is
 - `the loop leaves out results older than keep_results in blocks, keeping their first line`;
   `a request's prefix changes only when a block is left out` (Behaviour 5).
 - `a local provider with think = false sends the setting its server takes` (Behaviour 7).
+- `loads the model with no prompt, then reads its GPU share and context from ps`,
+  `asks only Ollama on this machine` and `the line setup shows` (Behaviour 7, in
+  `agent-setup.test.mjs`).
 - `agent-tools-data matches the MCP fixture` (existing) catches drift of the new descriptions.
 
 ### Mochitests

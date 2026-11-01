@@ -531,10 +531,12 @@ the table are `[modal.element]`'s, and can be rebound there.
 
 ### Find
 
-Find works as it does in Vim. `/` opens Firefox's find bar at the foot of the page, empty, and
-searches as you type, in frames
-from other sites, inside web components and in the PDF viewer too. Matches are highlighted and
-counted as in Firefox. The search starts at the top of what you see (or at the selection, if it
+Find works as it does in Vim. `/` opens a search prompt that floats at the bottom centre of the
+page, above the status bar, because that is where Vim types a search and where the status bar
+shows it. It takes the style of Vimma's pickers and your theme, opens empty, and searches as you
+type, in frames from other sites, inside web components and in the PDF viewer too. Opening it
+does not move the page. Matches are highlighted as in Firefox, and the prompt counts them as `[2/5]`, as the status
+bar does. The search starts at the top of what you see (or at the selection, if it
 is on screen), as Vim's starts at the cursor.
 
 - **Case:** smart case. An all lower-case search ignores case (`word` finds `Word`); one capital
@@ -543,8 +545,10 @@ is on screen), as Vim's starts at the cursor.
   that found nothing goes back to where you were, and the status bar says `not found`.
 - **`Esc`** cancels: the bar closes, nothing stays selected and the page scrolls back to where
   it was when you pressed `/`.
-- **Back into the search:** if you click the page while the bar is open, `/` (or `?`) puts you
-  back in the bar with its text selected, so you can type a new search or press `Enter` or `Esc`.
+- **Back into the search:** a click on the page leaves the prompt open; only `Enter` and `Esc`
+  close it, because a search ends when you choose, as in Vim, not when a click happens to land
+  outside it. `/` (or `?`) then puts you back in the prompt with its text selected, so you can
+  type a new search or press `Enter` or `Esc`.
 - **`n` / `N`** jump to the next / previous match without opening the bar, wrapping at the ends.
   After a search that found nothing they do nothing.
 - **`?`** searches backward: it shows matches as you type, as `/` does, and `Enter` lands on the
@@ -554,7 +558,9 @@ is on screen), as Vim's starts at the cursor.
   next match. `i`, a click, or the page itself focusing the field puts you in it, in insert
   mode.
 
-`ctrl+f` still opens Firefox's own find bar, where `Enter` goes to the next match.
+`ctrl+f` is a second key for `/`. Firefox's own find bar, under the page with its buttons and
+its Highlight All, Match Case, Match Diacritics and Whole Words options, still opens from the
+Edit menu's Find in Page, and there `Enter` goes to the next match.
 
 ### Live grep
 
@@ -691,6 +697,9 @@ with `F11` keeps it. From the left:
   without asking (`◇ agent 14m` for a grant of minutes with 14 left), and `◇ agent ·` for a
   moment after a request ran; `◇ built-in 14/100 · 212k tok` while a task of
   [Vimma's own agent](#vimmas-own-agent) runs (steps and tokens), `◇ 2 agents` while several do;
+- `pop-up blocked · y allow · n block · Esc close` (yellow) while the page has Firefox's pop-up
+  blocked bar and [its keys](#blocked-pop-ups) count, and `pop-ups blocked · :popups to allow`
+  on a site whose pop-ups you blocked with `n`;
 - `loading` while the page loads, then its **URL** without `https://`;
 - with the [toolbar hidden](#hiding-the-toolbar), `not secure` in red for a page Firefox's
   address bar would warn about (an `http:` page keeps its `http://`), `using camera, mic` (or
@@ -771,6 +780,8 @@ yank), and the line starts with `Esc, then`: `Esc` leaves the mode, and then `y`
 the prompt. Vimma never moves focus onto the prompt. The same keys answer Firefox's
 other prompts in that panel, such as "Save password?" (`y` saves, `n` is Not now), and the "Add
 <name>?" prompt for installing an add-on, which Firefox opens with focus on the prompt itself.
+Firefox's pop-up blocked bar takes `y`, `n` and `Esc` with the same rules
+([Blocked pop-ups](#blocked-pop-ups)).
 
 A site whose login keeps you on the same page leaves focus in its password field, so the "Save
 password?" prompt opens with the `Esc, then` line. In the prompt's own username and password
@@ -1471,15 +1482,17 @@ it. A private window has no agent. With no model set up, the window says how to 
 - the models of local servers: only while the picker is open, Vimma asks `127.0.0.1` on the
   ports of Ollama (11434), LM Studio (1234) and the llama.cpp server (8080) which models they
   have. An Ollama model with less than 32,768 tokens of context gets a copy with that context,
-  which shares its weights, since a ten-item task needs about 19,000;
+  which shares its weights, since a ten-item task needs about 19,000. Once you pick an Ollama
+  model, Vimma loads it (with no prompt, so no text reaches it) and says where it runs and with
+  what context, such as `qwen3:14b-ctx32768 runs on the GPU, with 32,768 tokens of context`;
 - `add: agent CLI (Claude Code)`, and once one is set up, its models: Vimma runs the agent CLI
   you have, on its own login
   ([Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window)).
 
 A model you pick that `config.toml` does not list is added there (without its key), and the
-first one becomes `[agent] default`, which new conversations use. Choosing a model sends nothing. Each conversation keeps its own model, so one can run locally
-and another on a hosted model. `[agent] local_only = true` refuses every model that is not on
-this machine.
+first one becomes `[agent] default`, which new conversations use. Choosing a model sends none
+of your text or pages. Each conversation keeps its own model, so one can run locally and another
+on a hosted model. `[agent] local_only = true` refuses every model that is not on this machine.
 
 **Where your data goes.** The window's first line names the model and where the data goes:
 `stays on this machine` for a local server's model you picked, or `page text sent to
@@ -1625,11 +1638,26 @@ endpoint = "http://127.0.0.1:8000/v1"
 model = "Qwen/Qwen3-14B"
 ```
 
-- **The GPU.** Whether a model runs on your GPU is the server's setting, not Vimma's. `ollama ps`
-  shows where a loaded model runs (`100% GPU`, or `100% CPU`). Some hardware needs a switch:
-  Ollama uses an integrated GPU only with `OLLAMA_IGPU_ENABLE=1` in the server's environment. For
-  drivers and offloading, see each server's own documentation: Ollama's GPU page, LM Studio's GPU
-  offload setting, llama.cpp's build options and `-ngl`, and vLLM's installation guide.
+- **The GPU.** Whether a model runs on your GPU is the server's setting, not Vimma's. A model on
+  the GPU reads and writes several times faster than on the CPU. `ollama ps` shows where a
+  loaded model runs (`100% GPU`, `100% CPU`, or a split), and the picker says the same when you
+  pick an Ollama model. Some hardware needs a switch: Ollama uses an integrated GPU (such as
+  AMD's Radeon 860M, through Vulkan) only with `OLLAMA_IGPU_ENABLE=1` in the server's
+  environment. With Ollama as a systemd service:
+
+  ```sh
+  sudo systemctl edit ollama    # add: [Service] and Environment="OLLAMA_IGPU_ENABLE=1"
+  sudo systemctl restart ollama
+  journalctl -u ollama -b --no-pager | grep -E 'inference compute|integrated GPU'
+  ```
+
+  The log then names the GPU (`library=Vulkan`) rather than `id=cpu`. An integrated GPU shares
+  the system's memory; when `ollama ps` shows only part of a model on it, a larger UMA frame
+  buffer in the firmware setup gives it more. For drivers and offloading, see each server's own
+  documentation: Ollama's GPU page, LM Studio's GPU offload setting, llama.cpp's build options
+  and `-ngl` (`llama-server -m <model.gguf> -ngl 99 --jinja -c 32768`), and vLLM's installation
+  guide.
+
 - **Images.** Set `vision = true` on a provider whose model reads images, so that the agent gets
   screenshots. For `kind = "openai"` it is off unless set.
 - **`[agent] local_only = true`** refuses every endpoint that is not on this machine
@@ -1650,8 +1678,11 @@ model = "Qwen/Qwen3-14B"
   `--jinja`, vLLM without `--enable-auto-tool-choice`), gets nothing done.
 - **Context.** A ten-item shopping list needs about 19,000 tokens on the shortest path the
   tools allow, so give a local model at least 32,768.
-- **Speed.** That shortest path takes 23 tool calls for ten items, and a model takes more. Each
-  call is a model turn that reads the whole conversation.
+- **Speed.** That shortest path takes 23 tool calls for ten items, and a model takes more. A
+  model turn reads the whole conversation, so Vimma's instructions tell the model to put steps
+  that do not depend on each other in one turn: every item's search, then every basket button.
+  The calls of a turn still run one at a time, each asked and limited on its own, and a question
+  in the middle of a turn holds back the calls after it until you answer.
 
 The [model bench](agent-bench.md) is what Vimma knows about models, measured on one laptop CPU
 without a GPU. There, qwen2.5 at 1.5B and 7B completed no list, a 27B model reached the time
@@ -2380,6 +2411,9 @@ button inside an embedded frame that updates the page around it reads as no chan
   grant like any other open and shows its notice and `:mcp log` row; a search the agent sends
   through the form asks as a form submission. The instructions limit this to searches; any
   other form still asks.
+- **Several steps at once are still asked one by one.** The instructions also tell an agent to
+  send steps that do not depend on each other in one turn, such as each item's search in its own
+  tab. Each of those calls is asked, limited and logged as if it came alone.
 - **A click that may pay asks every time** too: on a page that shows a payment card field, or
   on a button that says it pays (`Pay now`, `Place order`, `Vahvista tilaus` and the like),
   even when the button sends no form.
@@ -3322,6 +3356,56 @@ Bitwarden), and `Tab` completes the name. To put an add-on on a key:
 - **Sidebar add-ons** (a `sidebar_action`) open in Firefox's own sidebar, through the add-on's
   button or the View menu, not in Vimma's side panel.
 
+## Blocked pop-ups
+
+When a page opens a pop-up on its own, Firefox blocks it and shows a bar over the page: "Vimma
+prevented this site from opening a pop-up window". You answer that bar from the keyboard as you
+answer a [permission prompt](#answering-a-permission-prompt):
+
+| Key   | What it does                                                                                               |
+| ----- | ---------------------------------------------------------------------------------------------------------- |
+| `y`   | Allows pop-ups for this site from now on, opens the ones it tried to open and closes the bar.              |
+| `n`   | Blocks pop-ups for this site (Firefox's settings list it as Block) and closes the bar.                     |
+| `Esc` | Closes the bar and changes nothing; pop-ups stay blocked as before, and the bar stays closed on that page. |
+
+The status bar says `pop-up blocked · y allow · n block · Esc close` once the keys count. As with
+a permission prompt, they count only once the bar has been up for half a second with no key
+pressed in between, and any key you press meanwhile starts the wait again, so typing meant for the
+page never answers the bar. While you type in a page field, the address bar, a picker, the
+command line or a search, and in link hints, copy mode and element mode, the keys are theirs and
+the status bar says `Esc, then y allow · n block`. Vimma never moves focus onto the bar.
+
+### Undoing a block, and the bar's other options
+
+Pressed `n` by mistake? The status bar says `pop-ups blocked · :popups to allow` on that site, and
+`:popups` opens a picker over the site's pop-up permission and the bar's own options, with or
+without the bar:
+
+| Row                                              | What it does                                                                            |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Allow pop-ups for _site_                         | Allows pop-ups for this site from now on and opens the ones it tried to open.           |
+| Reset pop-ups for _site_ to default              | On a blocked site: removes your choice, so the site follows Firefox's setting again.    |
+| Block pop-ups for _site_                         | On an allowed site: blocks its pop-ups again.                                           |
+| Go to _address_                                  | Follows the redirect the page was stopped from making, when there is one.               |
+| Open _address_                                   | Opens that one pop-up, once. There is a row for each pop-up the page tried to open.     |
+| Don't show this message when pop-ups are blocked | Turns the bar off for every site. Pop-ups stay blocked, and `:popups` still lists them. |
+| Pop-up settings                                  | Opens Firefox's settings at its pop-up exceptions.                                      |
+
+`j` / `k` move, `/` filters, `Enter` runs the row and `Esc` closes the picker. Vimma runs
+Firefox's own code for the bar's options and Firefox's site permissions for the rest. The keys,
+the picker and the status bar follow the selected tab, and in a split the focused pane. A site
+permission picker (`:site`) will cover pop-ups too when it lands.
+
+With nothing blocked on the page and no choice made for the site, `:popups` says `no pop-ups
+blocked on this page`. When an administrator has locked pop-up blocking on, the Allow, Block and
+Reset rows are left out, as Firefox leaves them out, and `y` and `n` do nothing: the status bar
+says `pop-up blocked · Esc close`, and `Esc` still closes the bar. A row you choose runs only on
+the page you opened `:popups` on: if the tab has gone to another site meanwhile, it does nothing.
+In the [agent workspace](#agent-workspace),
+pages get no permissions: no key answers the bar there, and `:popups` says `pop-ups stay blocked
+in the agent workspace`. `:popups` has no default key; bind one in `config.toml`
+(`[keys] popup_picker`).
+
 ## The command line
 
 `:` in normal mode opens a Vim-style command line just above the status bar, for everything
@@ -3380,6 +3464,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                 |
 | `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                            |
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
+| `:popups`                             | Opens the [blocked pop-ups picker](#blocked-pop-ups): allow, reset or block the site, open one.                                                |
 | `:bug`                                | Opens `about:vimma` and copies its redacted report to the clipboard, for a bug report.                                                         |
 | `:update`                             | Checks for a newer Vimma now; when there is one, opens `about:vimma`'s Updates section with the exact commands ([Updates](#updates)).          |
 | `:restart`                            | Restarts Vimma; tabs come back, and an installed update applies. Asks first while private tabs are open ([Updates](#updates)).                 |

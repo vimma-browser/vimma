@@ -2,7 +2,7 @@
 // keyboard. `y` runs the prompt's main action and `n` its secondary one, only once the prompt is
 // armed; `Tab` moves focus into the prompt; nothing typed in a field ever answers it.
 import { describe, test, expect } from "vitest";
-import { doorhangerHint, doorhangerKey } from "../src/prompt-keys.mjs";
+import { doorhangerHint, doorhangerKey, popupBarHint, popupBarKey } from "../src/prompt-keys.mjs";
 
 /** An open, armed prompt, focus in the page (normal mode), no key sequence under way. */
 const base = { open: true, armed: true, inField: false, inPrompt: false, pending: false };
@@ -97,5 +97,72 @@ describe("doorhangerHint", () => {
     expect(hint.startsWith("y allow this site")).toBe(true);
     expect(hint).toContain("…");
     expect(hint.split(" · ")[0].length).toBeLessThanOrEqual(26);
+  });
+});
+
+// docs/specs/popup-blocked.md: Firefox's pop-up blocked bar takes the same keys, with the same
+// guards: `y` allows the site, `n` blocks it, `Esc` closes the bar; never from a field.
+describe("popupBarKey", () => {
+  const bar = { open: true, armed: true, inField: false, pending: false };
+
+  test("y allows, n blocks and Esc closes an armed bar", () => {
+    expect(popupBarKey("y", bar)).toEqual({ kind: "allow" });
+    expect(popupBarKey("n", bar)).toEqual({ kind: "block" });
+    expect(popupBarKey("esc", bar)).toEqual({ kind: "close" });
+  });
+
+  test("before the bar is armed, y and n are swallowed and Esc stays the page's", () => {
+    expect(popupBarKey("y", { ...bar, armed: false })).toEqual({ kind: "wait" });
+    expect(popupBarKey("n", { ...bar, armed: false })).toEqual({ kind: "wait" });
+    expect(popupBarKey("esc", { ...bar, armed: false })).toEqual({ kind: "pass" });
+  });
+
+  test("a held key never answers", () => {
+    expect(popupBarKey("y", { ...bar, repeat: true })).toEqual({ kind: "wait" });
+    expect(popupBarKey("esc", { ...bar, repeat: true })).toEqual({ kind: "pass" });
+  });
+
+  test("keys typed in a field, during a key sequence or with no bar are not the bar's", () => {
+    for (const s of [
+      { ...bar, inField: true },
+      { ...bar, pending: true },
+      { ...bar, open: false },
+    ]) {
+      for (const key of ["y", "n", "esc"]) expect(popupBarKey(key, s)).toEqual({ kind: "pass" });
+    }
+  });
+
+  test("Tab never moves focus onto the bar, and other keys pass", () => {
+    for (const key of ["tab", "Y", "shift+y", "ctrl+n", "enter", "j"]) {
+      expect(popupBarKey(key, bar)).toEqual({ kind: "pass" });
+    }
+  });
+
+  test("a locked dom.disable_open_during_load leaves y and n alone; Esc still closes", () => {
+    const locked = { ...bar, locked: true };
+    expect(popupBarKey("y", locked)).toEqual({ kind: "pass" });
+    expect(popupBarKey("n", locked)).toEqual({ kind: "pass" });
+    expect(popupBarKey("esc", locked)).toEqual({ kind: "close" });
+  });
+
+  test("in the agent workspace nothing answers the bar", () => {
+    for (const key of ["y", "n", "esc"]) {
+      expect(popupBarKey(key, { ...bar, agent: true })).toEqual({ kind: "pass" });
+    }
+  });
+});
+
+describe("popupBarHint", () => {
+  test("the permission prompt's line, with Esc to close", () => {
+    expect(popupBarHint({})).toBe("y allow · n block · Esc close");
+  });
+
+  test("from a field (or hint, copy and element mode) it starts with the way out", () => {
+    expect(popupBarHint({ inField: true })).toBe("Esc, then y allow · n block");
+  });
+
+  test("with the pop-up pref locked, only the way to close is named", () => {
+    expect(popupBarHint({ locked: true })).toBe("Esc close");
+    expect(popupBarHint({ inField: true, locked: true })).toBe("Esc, then Esc close");
   });
 });

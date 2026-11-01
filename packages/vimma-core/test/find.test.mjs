@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { findStatusText, isCaseSensitive } from "../src/find.mjs";
+import { findCountText, findStatusText, isCaseSensitive } from "../src/find.mjs";
 import { statusSegments } from "../src/statusbar.mjs";
 
 describe("smartcase", () => {
@@ -46,6 +46,22 @@ describe("find status text", () => {
     expect(findStatusText({ query: "zzz", backward: false, notFound: true })).toBe(
       "/zzz not found",
     );
+  });
+});
+
+describe("find bar count", () => {
+  test("position and count in brackets, as the status bar shows them", () => {
+    expect(findCountText({ current: 2, total: 5 })).toBe("[2/5]");
+  });
+
+  test("over the finder's limit", () => {
+    expect(findCountText({ current: 0, total: -1, limit: 1000 })).toBe("[>1000]");
+  });
+
+  test("nothing while the count is unknown or zero", () => {
+    expect(findCountText({})).toBe("");
+    expect(findCountText({ current: 0, total: 0 })).toBe("");
+    expect(findCountText({ total: -1 })).toBe("");
   });
 });
 

@@ -71,6 +71,8 @@ export { textWidth };
  *   (docs/specs/m6a-updater.md §5, updateNotice)
  * @property {ElementStatus | null} [element]  the focused text block in ELEMENT mode
  * @property {HintStatus | null} [hint]  the hint session (hints.mjs hintStatus)
+ * @property {string | null} [popups]  the selected page has Firefox's pop-up blocked bar: the cue
+ *   (popups.mjs popupCue, docs/specs/popup-blocked.md)
  */
 /**
  * A hint session (docs/specs/follow-link-switch.md decision 8): its action, and the first label
@@ -349,6 +351,7 @@ export function statusSegments(input) {
     update = null,
     element = null,
     hint = null,
+    popups = null,
   } = input;
   /** @type {Segment[]} */
   const left = [];
@@ -538,6 +541,20 @@ export function statusSegments(input) {
         // A security update outlasts the title (5); the rest give way before it.
         priority: update.tone === "urgent" ? 3 : 6.5,
         min: 8,
+        cut: "end",
+      }),
+    );
+  }
+  if (popups) {
+    right.push(
+      seg({
+        id: "popups",
+        text: popups,
+        fg: "--vimma-text-yellow",
+        side: "right",
+        // Outlasts the title (5): the cue is where its key is learned; the tab position (4) stays.
+        priority: 4.5,
+        min: 14,
         cut: "end",
       }),
     );
