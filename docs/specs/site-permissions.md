@@ -10,9 +10,9 @@ Issue: [#684](https://github.com/vimma-browser/vimma/issues/684)
 
 `:site` (or `:permissions`) opens a picker over the selected tab's site permissions: every
 permission Firefox's Page Info lists, with the state Firefox has for this site. `a`, `b` and `r`
-allow, block or reset the selected one, and `Enter` steps to its next state, all through
-Firefox's own `SitePermissions` module. Checking or changing what a site may do no longer needs
-the mouse.
+allow, block or reset the selected one, and `Enter` steps to its next state, through Firefox's
+own `SitePermissions` module (a pop-up block through its permission manager, which keeps it).
+Checking or changing what a site may do no longer needs the mouse.
 
 ## Problem
 
@@ -37,14 +37,18 @@ the camera, or take back a location permission, without leaving the keyboard.
    state. `/` searches by label; `Esc` or `q` closes.
 5. A state Firefox does not offer for a permission is refused with a notice (`Share the screen
 cannot be set to allow`), and so is `r` on a row that has no site setting.
-6. A row set by policy or locked by a pref is read only: every key is refused with a notice.
-7. The picker acts only on the page it was opened for: when the tab goes to another page while
+6. Pop-ups are one of the rows, with `Block · default` until the site has a setting of its own.
+   `a` allows the site's pop-ups, `b` stores a block for the site (the row then shows `Block`
+   with a `●`), and `r` removes the site's setting, back to Firefox's default. This undoes a
+   mistaken answer on the pop-up blocked bar (docs/specs/popup-blocked.md) either way.
+7. A row set by policy or locked by a pref is read only: every key is refused with a notice.
+8. The picker acts only on the page it was opened for: when the tab goes to another page while
    it is open, a key closes it with `the page changed: run :site again`, and selecting another
    tab closes it.
-8. On a page without site permissions (`about:blank` and other `about:` pages), `:site` says
+9. On a page without site permissions (`about:blank` and other `about:` pages), `:site` says
    `this page has no site permissions` and opens nothing.
-9. In the agent workspace, `:site` says
-   `site permissions are not changed in the agent workspace` and opens nothing.
+10. In the agent workspace, `:site` says
+    `site permissions are not changed in the agent workspace` and opens nothing.
 
 ## Research
 
@@ -71,6 +75,13 @@ Checked against Firefox 159.0 (`FIREFOX_159_0_RELEASE`):
 - `setForPrincipal` stores a persistent permission (a session one in a private window, by the
   permission manager), and removes the site's entry when the state is the default.
   `removeFromPrincipal` with the tab's browser also drops a temporary permission for that tab.
+- The `popup` permission's default is `BLOCK` (`getDefault`; `ALLOW` only when
+  `dom.disable_open_during_load` is false), so `setForPrincipal(principal, "popup", BLOCK)`
+  removes the site's permission instead of storing a block, and `getForPrincipal` reads a site
+  with no permission as `BLOCK`. Page Info's "Block" for pop-ups therefore only removes an allow.
+  Firefox's pop-up blocked bar writes the permission manager directly
+  (`toggleAllowPopupsForSite`), and a stored `DENY_ACTION` reads as Block in `SitePermissions`
+  and Page Info.
 - Vimma sets `permissions.isolateBy.userContext` (`src/browser/branding/vimma/pref/`
   `firefox-branding.js`), so a permission is kept per container, and so per workspace: the
   principal of the selected tab carries its workspace's container.
@@ -94,7 +105,15 @@ records the page the picker was opened for, reads the records, and applies a pla
 3. **Firefox's code paths only.** A change is one call, `SitePermissions.setForPrincipal` (allow,
    block, next) or `SitePermissions.removeFromPrincipal` (reset), the calls Page Info makes, so
    that Firefox stores, scopes, notifies and removes the permission as it does for its own UI.
-   Vimma writes no permission directly through `Services.perms`.
+   The one exception is a pop-up block: SitePermissions would drop it as the default, which
+   leaves a site nothing to show and `r` nothing to take back, so the picker removes the site's
+   pop-up setting (and the tab's temporary one) through `removeFromPrincipal` and then stores
+   `DENY_ACTION` with `Services.perms.addFromPrincipal`, as Firefox's pop-up bar and the pop-up
+   blocked bar's `n` (docs/specs/popup-blocked.md) do. The permission manager keeps it for the
+   session only in a private window, as it does for SitePermissions. A row's `●` for pop-ups
+   comes from the site's own entry (`testExactPermissionFromPrincipal`), because a stored block
+   and the default read the same. Rejected: Page Info's behaviour (block only removes an
+   allow), because a stored block is what tells the site's choice from the default.
 4. **Firefox's states and labels.** `a` and `b` are offered only when Firefox offers allow or
    block for that permission, and `Enter` steps through `getAvailableStates` in Firefox's order,
    because a state Firefox does not offer (allow for screen sharing) is one its prompts would
@@ -136,9 +155,10 @@ nothing of its own.
   `changes a site permission only from the site permissions picker`.
 - Mochitest (`tests/browser/browser_vimma_site_permissions.js`): every Page Info permission
   with its real state; keys change it through Firefox and the row follows; a state Firefox
-  does not offer is refused; a locked default is read only; it acts only on the page it was
-  opened for; a page without site permissions says so; the agent workspace refuses and grants
-  nothing.
+  does not offer is refused; pop-ups can be allowed, blocked (stored for the site) and reset; a
+  locked default is read only; it acts only on the page it was opened for; a page without site
+  permissions says so; the agent workspace refuses, a picker open on another tab closes when
+  the agent's tab is selected, and the agent's page is given no permission.
 
 ## Docs and changelog
 

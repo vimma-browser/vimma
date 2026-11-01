@@ -3354,6 +3354,11 @@ Firefox, as Page Info's Permissions tab makes them, and show in the site informa
 allowed for good) says so, and a permission set by an enterprise policy or a locked pref is
 read only.
 
+Pop-ups are one of the rows. Firefox blocks them by default, so the row reads `Block · default`
+until you choose: `a` allows the site's pop-ups, `b` keeps a block for the site even though it is
+the default, and `r` takes the site's choice back. This also undoes a mistaken answer on the
+pop-up blocked bar.
+
 A change applies to this site in this workspace only, since
 [site permissions are per workspace](#workspaces); in the
 [private workspace](#private-workspace) it lasts until the private workspace closes. If the tab

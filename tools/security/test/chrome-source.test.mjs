@@ -264,7 +264,7 @@ describe("chrome code", () => {
       "SitePermissions.removeFromPrincipal",
     ]);
     // The one write past SitePermissions: a pop-up block, which it would drop as the default.
-    expect(text.match(/\w+\.addFromPrincipal\([^)]*\)/g)).toEqual([
+    expect(text.match(/[\w.]+\.addFromPrincipal\([^)]*\)/g)).toEqual([
       'services.perms.addFromPrincipal(page.principal, "popup", services.perms.DENY_ACTION)',
     ]);
     const reach = sources().filter(

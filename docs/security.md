@@ -3261,7 +3261,8 @@ which Firefox's site information panel shows already, and stores nothing of its 
 
 - SP1. It **must** refuse in the agent workspace: `:site`, and every key while it is open,
   check the selected tab's container and its page's principal, and refuse when either is the
-  agent workspace's, so a permission is never given to a page an agent drives.
+  agent workspace's, so a permission is never given to a page an agent drives. A picker open
+  on another tab closes when an agent's tab is selected.
   [`test_the_agent_workspace_refuses_and_grants_nothing`](../tests/browser/browser_vimma_site_permissions.js)
 - SP2. It **must** act only on the page it was opened for: every key checks that the selected
   tab is the one it opened in and that its principal is the one it listed, and closes the picker
@@ -3278,9 +3279,13 @@ which Firefox's site information panel shows already, and stores nothing of its 
 - SP4. A change **must** go through Firefox's own code paths: one
   `SitePermissions.setForPrincipal` or `SitePermissions.removeFromPrincipal` call, the calls
   Page Info makes, and only in `host/permission-ops.mjs`; no other Vimma code changes a site
-  permission. Only a state Firefox offers for the permission is set, and a permission set by
-  policy or decided by a locked pref is read only.
+  permission. The one direct permission-manager write is a pop-up block for the page's own
+  principal (`Services.perms.addFromPrincipal(…, "popup", DENY_ACTION)`, as Firefox's pop-up
+  bar writes it), because SitePermissions drops a block that equals the pop-up default; it can
+  only take pop-ups away. Only a state Firefox offers for the permission is set, and a
+  permission set by policy or decided by a locked pref is read only.
   [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.mjs),
+  [`test_popups_can_be_allowed_blocked_and_reset`](../tests/browser/browser_vimma_site_permissions.js),
   [`a state Firefox does not offer for the permission is refused`](../packages/vimma-core/test/sitepermissions.test.mjs),
   [`a locked row changes nothing`](../packages/vimma-core/test/sitepermissions.test.mjs),
   [`test_a_state_firefox_does_not_offer_is_refused`](../tests/browser/browser_vimma_site_permissions.js),

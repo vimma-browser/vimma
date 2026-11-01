@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The site permissions picker (`:site`, docs/specs/site-permissions.md; docs/security.md §19).
-// It reads and changes the selected tab's site permissions only through Firefox's
-// SitePermissions, the module behind Page Info's Permissions tab and the identity panel, with
-// Page Info's list and Page Info's rules for what is locked. It is the only Vimma code that
-// changes a site permission (tools/security chrome-source test), and refuses in the agent
-// workspace.
+// It reads and changes the selected tab's site permissions through Firefox's SitePermissions,
+// the module behind Page Info's Permissions tab and the identity panel, with Page Info's list and
+// Page Info's rules for what is locked; only a pop-up block, which SitePermissions cannot store,
+// goes to the permission manager (sitePermissionKey). It is the only Vimma code that changes a
+// site permission (tools/security chrome-source test), and refuses in the agent workspace.
 
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { permissionItems, permissionPlan, permissionTitle } from "../core/sitepermissions.mjs";
@@ -124,6 +124,10 @@ function readRecords(browser, principal) {
         if (!set) label = "Firefox's cookie settings";
         else state = own;
       }
+      if (id === "popup" && !set) {
+        // A stored block reads as the default, Block; only the site's own entry tells them apart.
+        set = services.perms.testExactPermissionFromPrincipal(principal, "popup") !== SP.UNKNOWN;
+      }
       const s = scopes[scope] ?? "persistent";
       return {
         id,
@@ -184,7 +188,14 @@ export function sitePermissionKey(win, op, id) {
   if (!record) return { notice: null, close: false };
   const plan = permissionPlan(record, op);
   if (plan.type === "refuse") return { notice: plan.text, close: false };
-  if (plan.type === "set") {
+  // Firefox's pop-up default is Block (SitePermissions.getDefault) and setForPrincipal drops a
+  // state equal to the default instead of storing it, so a pop-up block would leave the site
+  // nothing to show or for `r` to take back. It is stored in the permission manager instead, as
+  // Firefox's own pop-up bar does (toggleAllowPopupsForSite; docs/specs/popup-blocked.md), with
+  // the same expiry rules: a private window keeps it for the session.
+  const popupBlock =
+    plan.type === "set" && id === "popup" && plan.state === lazy.SitePermissions.BLOCK;
+  if (plan.type === "set" && !popupBlock) {
     // Page Info's call: Firefox stores it for the site (for the session in a private window)
     // and removes the entry when the state is the default, with the browser a temporary one too.
     const persistent = lazy.SitePermissions.SCOPE_PERSISTENT;
@@ -192,6 +203,9 @@ export function sitePermissionKey(win, op, id) {
   } else {
     // With the browser, Firefox also drops a temporary setting for this tab.
     lazy.SitePermissions.removeFromPrincipal(page.principal, id, page.browser);
+    if (popupBlock) {
+      services.perms.addFromPrincipal(page.principal, "popup", services.perms.DENY_ACTION);
+    }
   }
   return { notice: null, close: false };
 }
