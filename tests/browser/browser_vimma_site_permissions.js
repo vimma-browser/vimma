@@ -60,10 +60,14 @@ function selectRow(id) {
   Assert.equal(selectedId(), id, `${id} is selected`);
 }
 
-const principalOf = (url, attrs = {}) =>
-  Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(url), attrs);
-const stateOf = (url, id, browser = null) =>
-  SitePermissions.getForPrincipal(principalOf(url), id, browser).state;
+// Vimma isolates permissions by container (permissions.isolateBy.userContext), and a
+// workspace's tab is in that workspace's container: the site's principal is the tab's.
+const principalOf = (url, tab) =>
+  Services.scriptSecurityManager.createContentPrincipal(
+    Services.io.newURI(url),
+    tab.linkedBrowser.contentPrincipal.originAttributes,
+  );
+const stateOf = (url, id, tab) => SitePermissions.getForPrincipal(principalOf(url, tab), id).state;
 const label = (id, state) => SitePermissions.getMultichoiceStateLabel(id, state);
 
 /** Page Info's list (pageinfo/permissions.js): labelled, not open-protocol-handler, by label. */
@@ -75,10 +79,11 @@ function pageInfoList() {
     );
 }
 
+/** Every permission of the test sites, in any container. */
 function clearSites() {
-  for (const url of [PAGE, OTHER]) {
-    for (const id of SitePermissions.listPermissions()) {
-      SitePermissions.removeFromPrincipal(principalOf(url), id);
+  for (const perm of Services.perms.all) {
+    if (["example.com", "example.org"].includes(perm.principal.host)) {
+      Services.perms.removeFromPrincipal(perm.principal, perm.type);
     }
   }
 }
@@ -99,8 +104,8 @@ add_task(async function setup() {
 });
 
 add_task(async function test_lists_every_permission_with_its_real_state() {
-  SitePermissions.setForPrincipal(principalOf(PAGE), "geo", SitePermissions.BLOCK);
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  SitePermissions.setForPrincipal(principalOf(PAGE, tab), "geo", SitePermissions.BLOCK);
   await openPicker();
   Assert.ok(heading().includes("example.com"), "the heading names the site");
   Assert.deepEqual(ids(), pageInfoList(), "every permission Page Info lists, in its order");
@@ -122,25 +127,25 @@ add_task(async function test_keys_change_it_through_firefox_and_the_row_follows(
   selectRow("camera");
 
   EventUtils.synthesizeKey("a");
-  await until(() => stateOf(PAGE, "camera") === SitePermissions.ALLOW, "a allows");
+  await until(() => stateOf(PAGE, "camera", tab) === SitePermissions.ALLOW, "a allows");
   await until(() => detail("camera") === label("camera", SitePermissions.ALLOW), "row: Allow");
   Assert.ok(isOpen(), "the picker stays open");
 
   EventUtils.synthesizeKey("b");
-  await until(() => stateOf(PAGE, "camera") === SitePermissions.BLOCK, "b blocks");
+  await until(() => stateOf(PAGE, "camera", tab) === SitePermissions.BLOCK, "b blocks");
   await until(() => detail("camera") === label("camera", SitePermissions.BLOCK), "row: Block");
 
   EventUtils.synthesizeKey("r");
-  await until(() => stateOf(PAGE, "camera") === SitePermissions.UNKNOWN, "r resets");
+  await until(() => stateOf(PAGE, "camera", tab) === SitePermissions.UNKNOWN, "r resets");
   await until(() => detail("camera").endsWith(" · default"), "row: the default");
 
   // Enter: the next of Firefox's states for it, after the default (Always Ask) comes Allow.
   const states = SitePermissions.getAvailableStates("camera");
   EventUtils.synthesizeKey("KEY_Enter");
-  await until(() => stateOf(PAGE, "camera") === states[1], "Enter steps to the next state");
+  await until(() => stateOf(PAGE, "camera", tab) === states[1], "Enter steps to the next state");
   Assert.ok(isOpen(), "Enter keeps the picker open");
 
-  Assert.equal(stateOf(OTHER, "camera"), SitePermissions.UNKNOWN, "no other site changed");
+  Assert.equal(stateOf(OTHER, "camera", tab), SitePermissions.UNKNOWN, "no other site changed");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "closed");
   clearSites();
@@ -153,7 +158,7 @@ add_task(async function test_a_state_firefox_does_not_offer_is_refused() {
   selectRow("screen");
   EventUtils.synthesizeKey("a");
   await until(() => noticeText().includes("cannot be set to allow"), "the refusal");
-  Assert.equal(stateOf(PAGE, "screen"), SitePermissions.UNKNOWN, "screen is not allowed");
+  Assert.equal(stateOf(PAGE, "screen", tab), SitePermissions.UNKNOWN, "screen is not allowed");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "closed");
   BrowserTestUtils.removeTab(tab);
@@ -167,7 +172,7 @@ add_task(async function test_a_locked_default_makes_the_row_read_only() {
   selectRow("camera");
   EventUtils.synthesizeKey("a");
   await until(() => noticeText().includes("is locked"), "the refusal");
-  Assert.equal(stateOf(PAGE, "camera"), SitePermissions.UNKNOWN, "nothing allowed");
+  Assert.equal(stateOf(PAGE, "camera", tab), SitePermissions.UNKNOWN, "nothing allowed");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "closed");
   Services.prefs.unlockPref("permissions.default.camera");
@@ -185,8 +190,8 @@ add_task(async function test_acts_only_on_the_page_it_was_opened_for() {
   EventUtils.synthesizeKey("a");
   await until(() => noticeText().includes("the page changed"), "the refusal");
   await until(() => !isOpen(), "the picker closes");
-  Assert.equal(stateOf(PAGE, "camera"), SitePermissions.UNKNOWN, "the old site got nothing");
-  Assert.equal(stateOf(OTHER, "camera"), SitePermissions.UNKNOWN, "the new site got nothing");
+  Assert.equal(stateOf(PAGE, "camera", tab), SitePermissions.UNKNOWN, "the old site got nothing");
+  Assert.equal(stateOf(OTHER, "camera", tab), SitePermissions.UNKNOWN, "the new site got nothing");
 
   // Another tab selected: the picker closes.
   await openPicker();
