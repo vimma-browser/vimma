@@ -235,6 +235,59 @@ add_task(async function esc_cancels_and_returns_to_where_it_was() {
   });
 });
 
+add_task(async function slash_after_a_click_on_the_page_goes_back_into_the_open_search() {
+  await withPage(async (browser) => {
+    type("/delta");
+    // Firefox creates the find bar on the first `/`.
+    await TestUtils.waitForCondition(
+      () => document.activeElement === gBrowser.getCachedFindBar()?._findField,
+      "/ focuses the find field",
+    );
+    const findbar = gBrowser.getCachedFindBar();
+    // A click on the page takes the focus out of the find field; the find bar stays open.
+    EventUtils.synthesizeMouseAtCenter(browser, {});
+    await TestUtils.waitForCondition(
+      () => document.activeElement === browser,
+      "the click focuses the page",
+    );
+    Assert.ok(!findBarHidden(), "the find bar is still open");
+    Assert.equal(VimmaHost.status(window).mode, "normal", "the page has the keys: normal mode");
+
+    EventUtils.synthesizeKey("/");
+    await TestUtils.waitForCondition(
+      () => document.activeElement === findbar._findField,
+      "/ again focuses the find field",
+    );
+    const field = findbar._findField;
+    Assert.equal(field.value, "delta", "the query is kept");
+    Assert.deepEqual(
+      [field.selectionStart, field.selectionEnd],
+      [0, "delta".length],
+      "and selected, so typing replaces it",
+    );
+    Assert.equal(VimmaHost.status(window).mode, "command", "typing a search again: command mode");
+
+    // Back in the search, Enter and Esc work as before; ? turns it backward.
+    EventUtils.synthesizeMouseAtCenter(browser, {});
+    await TestUtils.waitForCondition(() => document.activeElement === browser, "page again");
+    EventUtils.synthesizeKey("?");
+    await TestUtils.waitForCondition(
+      () => document.activeElement === field,
+      "? focuses the find field too",
+    );
+    Assert.ok(findStatus()?.backward, "? makes the open search a backward one");
+    type("word");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await assertBackInNormal(browser, "Enter after going back into the search");
+    Assert.equal(findStatus()?.query, "word", "the retyped query is the search");
+    Assert.deepEqual(
+      await pageKeysThenUnbound(browser),
+      [UNBOUND],
+      "neither / nor ? reached the page",
+    );
+  });
+});
+
 add_task(async function matches_in_same_and_cross_origin_frames() {
   await withPage(async (browser) => {
     type("/mango");
