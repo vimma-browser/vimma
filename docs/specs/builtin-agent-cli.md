@@ -395,10 +395,14 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    an entry is looked up in (above the file, above each link) must be the user's or root's and
    not writable by others unless sticky. Only the user or root can then repoint a link or
    replace the file, and since all of it is checked again before every run, a link repointed
-   since setup is judged by where it leads now. A link's own mode is not judged, since it
-   means nothing on Linux or macOS. nsIFile follows a chain of links to its end and hides the
-   links between, so one link's target is read with `readlink(2)`, from the library the
-   `statx`/`lstat` call already opens: the one native call this adds.
+   since setup is judged by where it leads now. The checks cover the file the path names: a
+   version manager's shim (mise, asdf, volta) then runs the real tool from the manager's own
+   install folder and configuration, which Vimma does not check (a group-writable
+   `MISE_DATA_DIR`, for example), as a script's `#!` interpreter is found on the user's `PATH`
+   (security.md M55). A link's own mode is not judged, since it means nothing on Linux or
+   macOS. nsIFile follows a chain of links to its end and hides the links between, so one
+   link's target is read with `readlink(2)`, from the library the `statx`/`lstat` call already
+   opens: the one native call this adds.
 
    A program a link named as the CLI leads to is a dispatcher when its own name differs from
    the CLI's, unless that name is a version (Claude Code's native installer keeps each version

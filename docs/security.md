@@ -2002,8 +2002,10 @@ own process, not a process group.
   before it is used. The checks cover the file the
   path names: when that file is a script, its `#!` interpreter (such as `node` through
   `/usr/bin/env`) is found on the user's `PATH` as it is in a terminal, so a `PATH` entry
-  other users can write lets them choose it, there as here. A run **must** end, and revoke its
-  ticket, when the CLI's work is done even if a child of it keeps its output open.
+  other users can write lets them choose it, there as here; and a version manager's shim (mise,
+  asdf, volta) runs the real tool from the manager's own install folder and configuration, which
+  Vimma does not check (a group-writable `MISE_DATA_DIR`, for example). A run **must** end, and
+  revoke its ticket, when the CLI's work is done even if a child of it keeps its output open.
   [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_shim_runs_as_the_cli_it_is_named_after`](../tests/browser/browser_vimma_agent_cli_run.js),
