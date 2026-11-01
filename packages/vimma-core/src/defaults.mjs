@@ -171,7 +171,6 @@ const keys = {
   agent_chat: ["prefix+i"],
   copy_mode: ["prefix+["],
   addon_picker: ["prefix+e"],
-  popup_picker: ["prefix+shift+o"],
 };
 
 /**

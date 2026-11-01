@@ -9,7 +9,7 @@
 // a picker over the bar's other options (open one pop-up, stop showing the bar, settings), run
 // through Firefox's PopupAndRedirectBlockerObserver. Nothing blocked: a notice. In the agent
 // workspace no key answers the bar and the picker refuses: nothing is granted (docs/security.md
-// M10).
+// M10). A mistaken n is undone from :popups, without the bar: allow the site, or reset it.
 
 "use strict";
 
@@ -32,6 +32,7 @@ const DELAY = 400;
 const UNARMED = "pop-up blocked";
 const CUE = "pop-up blocked · y allow · n block · Esc close";
 const FIELD_CUE = "pop-up blocked · Esc, then y allow · n block";
+const UNDO_CUE = "pop-ups blocked · :popups to allow";
 
 const picker = () => document.getElementById(PICKER_ID);
 const isOpen = () => !!picker()?.open;
@@ -306,6 +307,46 @@ add_task(async function keys_typed_in_a_field_or_the_command_line_are_theirs() {
   BrowserTestUtils.removeTab(tab);
 });
 
+add_task(async function popups_undoes_n_without_the_bar() {
+  const blocking = await blockingTab();
+  await until(() => cue() === CUE, "armed");
+  EventUtils.synthesizeKey("n");
+  await until(() => !bar(), "n closes the bar");
+  await until(() => cue() === UNDO_CUE, "the status bar says how to undo it");
+  BrowserTestUtils.removeTab(blocking);
+
+  // The same site, nothing blocked and no bar: :popups opens for the site's permission.
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  await until(() => cue() === UNDO_CUE, "the site's block shows on its other pages");
+  openPicker();
+  await pickerShows(3);
+  Assert.deepEqual(ids(), ["allow", "reset", "settings"]);
+  Assert.equal(title(rows()[0]), "Allow pop-ups for example.com");
+  Assert.equal(title(rows()[1]), "Reset pop-ups for example.com to default");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => allowed(tab), "allowed again");
+  await until(() => cue() === null, "no cue for an allowed site");
+
+  openPicker();
+  await pickerShows(2);
+  Assert.deepEqual(ids(), ["block", "settings"]);
+  Assert.equal(title(rows()[0]), "Block pop-ups for example.com");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => permission(tab) === Services.perms.DENY_ACTION, "blocked again");
+  await until(() => cue() === UNDO_CUE, "and the way to undo it");
+
+  openPicker();
+  await pickerShows(3);
+  EventUtils.synthesizeKey("j");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(
+    () => permission(tab) === Services.perms.UNKNOWN_ACTION,
+    "reset removes the site's permission",
+  );
+  await until(() => cue() === null, "back to the default: no cue");
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function the_agent_workspace_refuses_and_grants_nothing() {
   const agent = /** @type {any} */ (WorkspaceStore.agent);
   Assert.ok(agent?.userContextId > 0, "the agent workspace has its container");
@@ -313,6 +354,9 @@ add_task(async function the_agent_workspace_refuses_and_grants_nothing() {
   gBrowser.selectedTab = tab;
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   await until(() => !!bar(), "Firefox shows the bar");
+  // A block on the agent's site: nothing here may turn it into an allow, or reset it.
+  const DENY = Services.perms.DENY_ACTION;
+  Services.perms.addFromPrincipal(tab.linkedBrowser.contentPrincipal, "popup", DENY);
   await until(() => cue() === UNARMED, "the cue names no key");
   await wait(DELAY + 100);
   for (const key of ["y", "KEY_Escape", "n", "KEY_Escape"]) {
@@ -320,13 +364,20 @@ add_task(async function the_agent_workspace_refuses_and_grants_nothing() {
     await wait(DELAY + 100);
   }
   Assert.ok(bar(), "no key answers the bar");
-  Assert.equal(permission(tab), Services.perms.UNKNOWN_ACTION, "y and n decide nothing");
+  Assert.equal(permission(tab), DENY, "y and n decide nothing");
   openPicker();
   await until(
     () => noticeText().includes("pop-ups stay blocked in the agent workspace"),
     "the refusal",
   );
-  Assert.ok(!isOpen(), "no picker");
-  Assert.equal(permission(tab), Services.perms.UNKNOWN_ACTION, "no permission");
+  Assert.ok(!isOpen(), "no picker, so no row to allow or reset the site");
+  Assert.equal(permission(tab), DENY, "the permission is as it was");
+  bar().dismiss();
+  await until(() => !bar(), "the bar closed");
+  Assert.equal(cue(), null, "no way to allow is named in the agent workspace");
+  openPicker();
+  await wait(DELAY);
+  Assert.ok(!isOpen(), "still no picker without the bar");
+  Assert.equal(permission(tab), DENY, "nothing granted");
   BrowserTestUtils.removeTab(tab);
 });

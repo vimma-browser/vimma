@@ -18,6 +18,7 @@ const blocked = (over = {}) => ({
   redirect: null,
   allowLocked: false,
   showMessage: true,
+  permission: null,
   ...over,
 });
 
@@ -54,6 +55,32 @@ describe("popupItems", () => {
     expect(popupItems(blocked({ popups: [], redirect: null }))).toEqual([]);
   });
 
+  test("a site blocked with n: allow it again, or reset it, with nothing blocked or a bar", () => {
+    const items = popupItems(blocked({ popups: [], permission: "block" }));
+    expect(items.map((i) => [i.popupId, i.display])).toEqual([
+      ["allow", "Allow pop-ups for example.com"],
+      ["reset", "Reset pop-ups for example.com to default"],
+      ["settings", "Pop-up settings"],
+    ]);
+    const ids = popupItems(blocked({ permission: "block" })).map((i) => i.popupId);
+    expect(ids).toEqual(["allow", "reset", "popup:0", "popup:1", "hide", "settings"]);
+  });
+
+  test("a site whose pop-ups are allowed: block them", () => {
+    const items = popupItems(blocked({ popups: [], permission: "allow" }));
+    expect(items.map((i) => [i.popupId, i.display])).toEqual([
+      ["block", "Block pop-ups for example.com"],
+      ["settings", "Pop-up settings"],
+    ]);
+  });
+
+  test("a locked dom.disable_open_during_load leaves the site's permission alone", () => {
+    for (const permission of /** @type {const} */ (["block", "allow"])) {
+      const ids = popupItems(blocked({ popups: [], permission, allowLocked: true }));
+      expect(ids.map((i) => i.popupId)).toEqual(["settings"]);
+    }
+  });
+
   test("rows are picker items: selected by popupId, matched by their text", () => {
     const items = popupItems(blocked());
     expect(items.map(itemId)).toEqual(["allow", "popup:0", "popup:1", "hide", "settings"]);
@@ -71,6 +98,8 @@ describe("parsePopupId", () => {
     expect(parsePopupId("redirect")).toEqual({ op: "redirect" });
     expect(parsePopupId("hide")).toEqual({ op: "hide" });
     expect(parsePopupId("settings")).toEqual({ op: "settings" });
+    expect(parsePopupId("block")).toEqual({ op: "block" });
+    expect(parsePopupId("reset")).toEqual({ op: "reset" });
   });
 
   test("anything else is no action", () => {
@@ -82,23 +111,34 @@ describe("parsePopupId", () => {
 
 describe("status bar cue", () => {
   test("names the bar's keys once they count, and none before", () => {
-    expect(popupCue({ hint: "y allow · n block · Esc close" })).toBe(
+    expect(popupCue({ bar: true, hint: "y allow · n block · Esc close" })).toBe(
       "pop-up blocked · y allow · n block · Esc close",
     );
-    expect(popupCue({ hint: null })).toBe("pop-up blocked");
+    expect(popupCue({ bar: true, hint: null })).toBe("pop-up blocked");
   });
 
   test("in the agent workspace it names no way to allow anything", () => {
-    expect(popupCue({ hint: "y allow · n block · Esc close", agent: true })).toBe("pop-up blocked");
+    expect(popupCue({ bar: true, hint: "y allow · n block · Esc close", agent: true })).toBe(
+      "pop-up blocked",
+    );
+    expect(popupCue({ bar: false, hint: null, siteBlocked: true, agent: true })).toBeNull();
+  });
+
+  test("after n, the way to undo it; nothing for a site left at the default", () => {
+    expect(popupCue({ bar: false, hint: null, siteBlocked: true })).toBe(
+      "pop-ups blocked · :popups to allow",
+    );
+    expect(popupCue({ bar: false, hint: null, siteBlocked: false })).toBeNull();
   });
 
   test("a right-hand segment while the selected page has the bar, none otherwise", () => {
     const base = { mode: /** @type {const} */ ("normal") };
-    const cue = statusSegments({ ...base, popups: "pop-up blocked · ctrl+b shift+o" }).find(
-      (s) => s.id === "popups",
-    );
+    const cue = statusSegments({
+      ...base,
+      popups: "pop-up blocked · y allow · n block · Esc close",
+    }).find((s) => s.id === "popups");
     expect(cue).toMatchObject({
-      text: "pop-up blocked · ctrl+b shift+o",
+      text: "pop-up blocked · y allow · n block · Esc close",
       side: "right",
       fg: "--vimma-text-yellow",
     });
