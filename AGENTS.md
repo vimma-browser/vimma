@@ -135,6 +135,12 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   problem, and when switching area. Before stopping mid-task, commit (or push a draft) and write
   the state of the work into the pull request description.
 - Reviews, security reviews above all, run in a fresh session that did not write the change.
+- **Owner labels.** Agents on more than one machine work on the same repository, so each item
+  says which machine works on it: `owner:linux` or `owner:mac`. Before starting on an issue or
+  a pull request, check its labels (`gh issue view N --json labels`, `gh pr view N --json
+labels`). An item with the other machine's label is not yours: do not push to it, review it,
+  merge it or open a pull request for it. An item without an owner label is free: add your
+  machine's label before starting (`gh issue edit N --add-label owner:linux`, or `gh pr edit`).
 
 ## Specs and issues
 
