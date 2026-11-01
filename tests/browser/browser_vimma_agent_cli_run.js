@@ -851,6 +851,10 @@ addTidyTask(async function test_header_lists_the_clis_own_tools_from_its_init() 
     "before its first run",
   );
   await run(c.id, "hello");
+  Assert.ok(
+    !AgentGate.grants().some((g) => g.conn === c.conn),
+    "an agent CLI's task that finished leaves no grant (B18)",
+  );
   const after = AgentChat.get(c.id);
   Assert.deepEqual(after.cli, {
     model: "fake-model-1",
@@ -997,6 +1001,10 @@ addTidyTask(async function test_max_steps_counted_by_the_gate() {
   Assert.deepEqual(result.exceeded, { limit: "steps", used: 2, max: 2 });
   const steps = entries(c.id).filter((e) => e.kind === "step");
   Assert.equal(steps.length, 2, "two steps reached the gate");
+  Assert.ok(
+    !AgentGate.grants().some((g) => g.conn === c.conn),
+    "a task stopped at its budget leaves no grant (B18)",
+  );
 });
 
 addTidyTask(async function test_max_tokens_stops_a_turn_before_it_ends() {
