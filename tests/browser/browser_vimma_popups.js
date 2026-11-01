@@ -33,6 +33,8 @@ const UNARMED = "pop-up blocked";
 const CUE = "pop-up blocked · y allow · n block · Esc close";
 const FIELD_CUE = "pop-up blocked · Esc, then y allow · n block";
 const UNDO_CUE = "pop-ups blocked · :popups to allow";
+const LOCKED_CUE = "pop-up blocked · Esc close";
+const LOCK_PREF = "dom.disable_open_during_load";
 
 const picker = () => document.getElementById(PICKER_ID);
 const isOpen = () => !!picker()?.open;
@@ -345,6 +347,61 @@ add_task(async function popups_undoes_n_without_the_bar() {
   );
   await until(() => cue() === null, "back to the default: no cue");
   BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function a_row_never_lands_on_a_site_the_page_navigated_to() {
+  const tab = await blockingTab();
+  const listedFor = tab.linkedBrowser.contentPrincipal;
+  openPicker();
+  await pickerShows(5);
+  Assert.equal(ids()[0], "allow", "the allow row is selected");
+  // Another site, which blocks pop-ups and raises its own bar, loads under the open picker.
+  const other = BLOCKING.replace("https://example.com", "https://example.org");
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, other);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, other);
+  await until(() => !!bar(), "the other site's bar");
+  const otherPrincipal = tab.linkedBrowser.contentPrincipal;
+  Assert.ok(isOpen(), "the picker is still open");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => !isOpen(), "Enter closes the picker");
+  await wait(DELAY);
+  const action = (/** @type {any} */ p) => Services.perms.testPermissionFromPrincipal(p, "popup");
+  Assert.equal(action(otherPrincipal), Services.perms.UNKNOWN_ACTION, "the new site gets nothing");
+  Assert.equal(action(listedFor), Services.perms.UNKNOWN_ACTION, "nor the listed one");
+  Assert.ok(bar(), "and the new site's bar stays");
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function a_locked_popup_pref_leaves_the_site_permission_alone() {
+  Services.prefs.lockPref(LOCK_PREF);
+  try {
+    const tab = await blockingTab();
+    await until(() => cue() === LOCKED_CUE, "only Esc is named");
+    for (const key of ["y", "n"]) {
+      EventUtils.synthesizeKey(key);
+      await wait(DELAY + 100);
+    }
+    Assert.ok(bar(), "y and n do not answer the bar");
+    Assert.equal(permission(tab), Services.perms.UNKNOWN_ACTION, "nor change the permission");
+
+    // The host's own guard, below the keys: block writes nothing either.
+    const { answerPopupBar } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/host/popup-ops.mjs",
+    );
+    answerPopupBar(window, "block");
+    await until(() => !bar(), "block still closes the bar");
+    Assert.equal(permission(tab), Services.perms.UNKNOWN_ACTION, "but records no block");
+    BrowserTestUtils.removeTab(tab);
+
+    const again = await blockingTab();
+    await until(() => cue() === LOCKED_CUE, "armed");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await until(() => !bar(), "Esc closes the bar");
+    Assert.equal(permission(again), Services.perms.UNKNOWN_ACTION, "with no permission");
+    BrowserTestUtils.removeTab(again);
+  } finally {
+    Services.prefs.unlockPref(LOCK_PREF);
+  }
 });
 
 add_task(async function the_agent_workspace_refuses_and_grants_nothing() {

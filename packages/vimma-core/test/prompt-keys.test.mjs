@@ -138,6 +138,13 @@ describe("popupBarKey", () => {
     }
   });
 
+  test("a locked dom.disable_open_during_load leaves y and n alone; Esc still closes", () => {
+    const locked = { ...bar, locked: true };
+    expect(popupBarKey("y", locked)).toEqual({ kind: "pass" });
+    expect(popupBarKey("n", locked)).toEqual({ kind: "pass" });
+    expect(popupBarKey("esc", locked)).toEqual({ kind: "close" });
+  });
+
   test("in the agent workspace nothing answers the bar", () => {
     for (const key of ["y", "n", "esc"]) {
       expect(popupBarKey(key, { ...bar, agent: true })).toEqual({ kind: "pass" });
@@ -152,5 +159,10 @@ describe("popupBarHint", () => {
 
   test("from a field (or hint, copy and element mode) it starts with the way out", () => {
     expect(popupBarHint({ inField: true })).toBe("Esc, then y allow · n block");
+  });
+
+  test("with the pop-up pref locked, only the way to close is named", () => {
+    expect(popupBarHint({ locked: true })).toBe("Esc close");
+    expect(popupBarHint({ inField: true, locked: true })).toBe("Esc, then Esc close");
   });
 });
