@@ -19,7 +19,7 @@ What works today, each with the section that explains it:
   with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
-  found and renamed with [tab search](#tab-search-and-tab-rename)); up to 4 split panes (`v`, `-`,
+  found and renamed with [tab search](#tab-search-and-tab-rename)); up to 8 split panes (`v`, `-`,
   `h/j/k/l`, `z` zoom, swap, resize); tiling [layouts](#layouts) (`enter` dwindle, `space`
   cycles tmux's presets); `ctrl+b ?` lists every binding, searchable.
 - **[Workspaces](#workspaces):** each one a container with its own logins and cookies, kept
@@ -543,6 +543,8 @@ is on screen), as Vim's starts at the cursor.
   that found nothing goes back to where you were, and the status bar says `not found`.
 - **`Esc`** cancels: the bar closes, nothing stays selected and the page scrolls back to where
   it was when you pressed `/`.
+- **Back into the search:** if you click the page while the bar is open, `/` (or `?`) puts you
+  back in the bar with its text selected, so you can type a new search or press `Enter` or `Esc`.
 - **`n` / `N`** jump to the next / previous match without opening the bar, wrapping at the ends.
   After a search that found nothing they do nothing.
 - **`?`** searches backward: it shows matches as you type, as `/` does, and `Enter` lands on the
@@ -808,7 +810,8 @@ The Vimma logo on the start page and on `about:vimma` follows the theme too: the
 brushstroke V are the theme's accent colour, and the "imma" lettering is white with a dark theme
 and the theme's text colour with a light one. It changes with the rest of the theme, and with
 your system's high-contrast setting on it is drawn in the high-contrast text colour. The app
-icon and Firefox's About dialog keep the logo's own colours.
+icon and Firefox's About dialog keep the logo's own colours: the aqua mark and white lettering on
+teal-black.
 
 **Dark, light or the system's: `:theme`.** The start page says it too:
 
@@ -934,7 +937,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b a`                                                                              | Bookmarks the page; type folders before its title: `work/docs/title` ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b shift+b`                                                                        | Opens or closes the bookmarks panel ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b e`                                                                              | Opens the add-on picker: popups, options, enable/disable, remove, updates ([below](#add-ons)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `ctrl+b v` / `ctrl+b -`                                                                 | Splits the pane right / down. The new pane opens a new tab (the start page, address bar focused). At most 4 panes (`[panes] max`); a refused split says why.                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `ctrl+b v` / `ctrl+b -`                                                                 | Splits the pane right / down. The new pane opens a new tab (the start page, address bar focused). At most 8 panes by default (`[panes] max`); a refused split says why.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b h j k l`                                                                        | Focuses the pane left / below / above / right; when several touch, the one used last. `ctrl+w h j k l` in normal mode. The page of that pane gets focus, and the pane a 3 px border in the theme's focus colour.                                                                                                                                                                                                                                                                                                                                                                          |
 | `ctrl+b z`, `ctrl+w o`                                                                  | Zooms the pane to the whole window, or back. The other panes' pages pause. A pane focus key unzooms when it moves.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `ctrl+b x`                                                                              | Closes the pane; its tab stays open. With one pane it closes the tab, as `ctrl+b shift+x`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -1495,9 +1498,11 @@ decide whether it sends anything on.
 | `shift+Enter` | Starts a new line.                                                                        |
 | `Esc`         | Normal mode in the window.                                                                |
 
-Sending with `Enter` is your grant: the window asks no separate question. The grant lasts until
-you stop the task (`s`, `:agent stop` or `ctrl+b shift+a`), `:mcp revoke`, the conversation is
-deleted or Vimma restarts. Sending a form, paying, showing you a page and the downloads that
+Sending with `Enter` is your grant: the window asks no separate question. The grant covers that
+one task and ends with it, whether it finishes, you stop it (`s`, `:agent stop` or
+`ctrl+b shift+a`), or it reaches its budget or an error; `:mcp revoke`, deleting the conversation
+and restarting Vimma end it too. The next task you send with `Enter` grants again, so
+`◇ agent granted` shows only while an agent works with your permission. Sending a form, paying, showing you a page and the downloads that
 always ask still ask every time, in a bordered slot above the input that takes only `y` and `n`;
 nothing you type in the input and nothing the model writes answers it. A message sent while a
 task runs reaches the model at its next turn.
@@ -1760,12 +1765,16 @@ and output, connects to Vimma as an agent (never with full control), and offers 
      { "mcpServers": { "vimma": { "command": "vimma-ctl", "args": ["mcp"] } } }
      ```
 
-   - **opencode** (1.19.0). `opencode mcp add` asks its questions interactively; or add this to
-     `opencode.json` in your project (or `~/.config/opencode/opencode.json` for every project):
+   - **opencode** (2.0.32). `opencode mcp add vimma -- vimma-ctl mcp` adds it to `opencode.json`
+     in your project (`--global` for every project); or add this to `opencode.json` yourself
+     (or `~/.config/opencode/opencode.json`):
 
      ```json
      { "mcp": { "vimma": { "type": "local", "command": ["vimma-ctl", "mcp"], "enabled": true } } }
      ```
+
+     Leave out its `timeout` setting: set, it also limits each tool call
+     ([Timeouts in agent tools](#timeouts-in-agent-tools)).
 
    For a profile other than your default one, the command is `vimma-ctl --profile DIR mcp`.
    `vimma-ctl mcp` takes no other option: it refuses `--timeout` and `--json`, since each call
@@ -1910,7 +1919,7 @@ provider is refused, because Vimma cannot see where a CLI sends what it reads.
   `~/.cache/vimma-agent-cli`), removed when the task ends, with no shell around it. Each task is
   a new run given the conversation so far; the CLI keeps no session of its own.
 - In the browser it has only Vimma's tools, on the conversation's own agent tabs. Sending with
-  `Enter` grants the conversation, so steps run without asking; sending a form, paying and
+  `Enter` grants the conversation for that task, so steps run without asking; sending a form, paying and
   `vimma_show` still ask. Each step is a line in the transcript, from Vimma's own record.
 - **Its own tools are outside Vimma's gate.** The CLI keeps the shell, file and web tools its own
   settings allow. Vimma does not approve, refuse or confine them: they act with your rights. The
@@ -1937,10 +1946,12 @@ refusal, unless the CLI's settings allow that tool.
   it; the CLI reads its usual settings, and the form for each is under
   [Supported CLIs](#supported-clis). Such a setting applies to every session of that CLI, in a
   terminal too.
-- **What that allows.** The CLI's own tools are outside Vimma's gate. A web search tool returns
-  search results to the model; a fetch tool, a shell or file tools act with your rights and can
-  send what you can read to the model's provider. A page that steers the model can make it use
-  any tool you allowed, so allow them only as you would in a terminal.
+- **What that allows.** The CLI's own tools are outside Vimma's gate. A web search tool sends its
+  queries to a search service and, in live mode, can open a page the model names, so it can
+  carry what the model saw to any website. A fetch tool or a shell acts with your rights and can
+  send what you can read to any website or to the model's provider, and file tools can pass it
+  to the model's provider. A page that steers the model can make it use any tool you allowed, so
+  allow them only as you would in a terminal.
 
 **Budgets and cost.** `[agent] max_steps` counts the steps that reach the browser and
 `max_tokens` the tokens the CLI reports; `max_minutes` stops a task that runs too long. The cost
@@ -2096,8 +2107,9 @@ never`) unless the server's `default_tools_approval_mode` is `"approve"`. `-c` s
   run; set under `[mcp_servers.vimma]` in `~/.codex/config.toml`, it applies to every session,
   and an interactive Codex then stops asking before Vimma does.
 - Its own web search needs no approval and is on by default (`web_search = "cached"`, results
-  from OpenAI's index); `-c web_search="live"` searches the live web, and
-  `-c web_search="disabled"` removes it.
+  from OpenAI's index); `-c web_search="live"` searches the live web and can open the pages the
+  model names, and `-c web_search="disabled"` removes it. A run with the sandbox off, as with
+  `--yolo`, searches live even when `"cached"` is set (checked with 0.163.0).
 - For a server not in your configuration, add `-c 'mcp_servers.vimma.command="vimma-ctl"'` and
   `-c 'mcp_servers.vimma.args=["mcp"]'`.
 - Codex gives up on a tool call after 60 s (`tool_timeout_sec`); if you raise `ask_timeout`, add
@@ -2131,7 +2143,8 @@ opencode run "Open https://example.com in Vimma's agent workspace and tell me it
 ```
 
 - `opencode run` runs the prompt and exits. It reads the same `mcp` entry in `opencode.json` as
-  the interactive opencode.
+  the interactive opencode, and waits for your answer in Vimma as long as that entry sets no
+  `timeout`.
 - opencode allows MCP tools without asking unless a `permission` rule in `opencode.json` says
   `ask` or `deny`. Its tool names start with the server's name, so this allows Vimma's tools
   even where a broader rule asks:
@@ -2144,7 +2157,9 @@ opencode run "Open https://example.com in Vimma's agent workspace and tell me it
   edits, so a rule for `vimma_*` is the narrower choice.
 
 - Its own `webfetch` and `websearch` tools run without asking, as most of its tools do, unless a
-  `permission` rule names them (`{ "permission": { "websearch": "deny" } }`).
+  `permission` rule names them (`{ "permission": { "websearch": "deny" } }`). The first web
+  search asks once which search service to use, which `opencode run` cannot answer: the run
+  ends with an error until you pick one in an interactive opencode (checked with 2.0.32).
 
 - `--format json` prints opencode's events as JSON instead of formatted text.
 
@@ -2171,7 +2186,7 @@ A call waits for your answer up to `[mcp] ask_timeout` (50 s by default, 10 to 3
 | Claude Code | `MCP_TOOL_TIMEOUT` (about 28 hours unless set), or a server's `timeout` in `.mcp.json` (milliseconds); a stdio server that sends nothing for 30 minutes is cut off. A call still running after two minutes moves to a background task. | Nothing: Vimma answers first.                                                                                                |
 | Codex CLI   | `tool_timeout_sec`, 60 s by default.                                                                                                                                                                                                   | If you raise `ask_timeout` past about 55 s, set `tool_timeout_sec` under `[mcp_servers.vimma]` above it (for example `320`). |
 | Copilot CLI | `copilot mcp add` takes `--timeout MS`.                                                                                                                                                                                                | If calls end before you can answer, add the server again with `--timeout` above `ask_timeout` (in milliseconds).             |
-| opencode    | Its `timeout` setting (5000 ms) covers listing the tools, not tool calls.                                                                                                                                                              | Nothing.                                                                                                                     |
+| opencode    | 12 hours unless the server's `timeout` in `opencode.json` is set (milliseconds); set, it limits tool calls too. Starting the server and listing its tools have their own 30 s limit (checked with 2.0.32).                             | Nothing, unless you set `timeout`: then set it above `ask_timeout` (for example `320000`).                                   |
 
 When the agent tool gives up first, Vimma's question may still be on the line; answering it then
 does nothing the agent sees.
@@ -2199,7 +2214,8 @@ with the rest of your computer.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
   `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots, 30 console reads and 6 `vimma_show` calls a minute, and a minute of silence after three noes
   in a row. A call over one of these rates is refused with the limit it hit and the seconds
-  until the next call is allowed, so the agent waits for the rate, not for you. Its pages get no permission prompts, pop-ups or other
+  until the next call is allowed, so the agent waits for the rate, not for you; Vimma's own
+  agent waits it out by itself, and its step says `waiting 40 s (rate limit)`. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
 
@@ -2858,7 +2874,7 @@ preview at once: `ctrl+b b`, `space` on each of the three (`j` / `k` between the
 - **What changes.** Tabs that were in the old split and are not marked leave it and stay open as
   ordinary tabs. No page reloads: each keeps its scroll, what you typed and its history.
 - **Limits.** Without a split, one mark is just `Enter` on that row. With more marks than
-  `[panes] max` (4 by default), the panel says `Show together: at most 4 panes` and changes nothing; the panel stays open with your
+  `[panes] max` (8 by default), the panel says `Show together: at most 8 panes` and changes nothing; the panel stays open with your
   marks so you can drop some. A pinned row cannot be marked.
 - **Keys.** Rebind them under `[modal.panel]` with the actions `panel_mark` and
   `panel_visual`, e.g. `m = "panel_mark"`. If you give the leader (`space`) a binding, `space`
@@ -3158,7 +3174,7 @@ unless you press `d`.
 | `h`                     | Close the folder; inside one, go to its folder and close that.                            |
 | `Enter`                 | Open the bookmark in this tab and close the panel; on a folder, open or close it.         |
 | `t`                     | Open the bookmark in a new tab behind this one; the panel stays open for more.            |
-| `s` / `S`               | Open it in a new pane right / below (as `ctrl+b v` / `-`, at most 4 panes).               |
+| `s` / `S`               | Open it in a new pane right / below (as `ctrl+b v` / `-`, at most 8 panes).               |
 | `a`                     | Add this page in the highlighted folder, as a path. As in neo-tree, `a/b/` makes folders. |
 | `A`                     | Add a folder there.                                                                       |
 | `r`                     | Rename.                                                                                   |
@@ -3476,7 +3492,7 @@ accent = "#ff9e64"
   `3 errors: …`). The Browser Console (`ctrl+shift+j`) lists them all. Fix the file and the
   message goes away at the next check.
 - **What applies live:** `[keys]`, `[modal]` (leader, `timeout_ms`, per-mode keys, `hint_chars`)
-  and `[unbind]`; `[panes] max` (most panes in a workspace, 1 to 16, default 4; it limits new
+  and `[unbind]`; `[panes] max` (most panes in a workspace, 1 to 16, default 8; it limits new
   splits), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
   `[panes] main_size` (the main-\* presets' main pane, 20 to 80%, default 60); `[sites."<host>"] insert` (`auto`, `never` or `always`: whether a text field on that
   site and its subdomains takes insert mode); `[theme]` `source` (`omarchy` or `file`, the

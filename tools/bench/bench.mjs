@@ -19,8 +19,9 @@
  *     sample, and keeps each case's median; the two sides of a case are measured within a few
  *     milliseconds of each other, so a change in the runner's load moves both;
  *   - per case: µs is the minimum of the round medians (noise only adds time), checked against
- *     the 50 µs budget; the ratio is the median of the round medians, gated against the baseline
- *     commit's;
+ *     the 50 µs budget; the ratio is the median of the round medians; the change against the
+ *     baseline commit is paired: per sweep, the working tree's ratio over the baseline's, the
+ *     median of those per round and the median of the rounds (sides, issue #667);
  *   - PROCESSES fresh processes, each with its own fixed V8 hash seed (childArgs), combined by
  *     compare.mjs: the lowest µs, and the median of the processes' own changes against the baseline
  *     per load order, and the mean of the two orders (combinePaired), which cancels the load
@@ -37,7 +38,14 @@ import { cpus, tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { combinePaired, compare, formatTable, median, minOfMedians } from "./compare.mjs";
+import {
+  combinePaired,
+  compare,
+  formatTable,
+  median,
+  minOfMedians,
+  pairedChange,
+} from "./compare.mjs";
 
 const WARMUP_MS = 200;
 const SAMPLE_NS = 100_000;
@@ -98,12 +106,19 @@ export function machineKey() {
 }
 
 /**
+ * @typedef {import("./compare.mjs").CaseResult & { samples: number[][] }} Measured a case's
+ *   result and, per round, its ratio in each sweep
+ */
+/** @typedef {() => bigint} Clock ns, monotonic; tests pass a fake one to script the machine's noise */
+
+/**
  * A timing loop of its own per case: one shared loop would see every case's `run` at the same
  * call site, go megamorphic, and make each case's number depend on which cases ran before it.
  * @param {() => unknown} run
+ * @param {Clock} clock
  * @returns {(n: number) => number} ns for n runs
  */
-function timer(run) {
+function timer(run, clock) {
   const loop = new Function(
     "run",
     "hrtime",
@@ -117,15 +132,18 @@ function timer(run) {
       return Number(t1 - t0);
     };`,
   );
-  return loop(run, process.hrtime.bigint, (/** @type {unknown} */ v) => {
+  return loop(run, clock, (/** @type {unknown} */ v) => {
     sink = v;
   });
 }
 
-/** @param {(n: number) => number} time */
-function calibrate(time) {
-  const until = performance.now() + WARMUP_MS;
-  while (performance.now() < until) time(100);
+/**
+ * @param {(n: number) => number} time
+ * @param {Clock} clock
+ */
+function calibrate(time, clock) {
+  const until = clock() + BigInt(WARMUP_MS * 1e6);
+  while (clock() < until) time(100);
   let batch = 1;
   while (time(batch) < SAMPLE_NS) batch *= 2;
   return batch;
@@ -141,13 +159,14 @@ function calibrate(time) {
  * sibling hyperthread slows an allocating case more than the reference (issue #342).
  * @param {{ name: string, run: () => unknown }[]} cases
  * @param {() => unknown} ref
- * @returns {{ referenceUs: number, cases: Map<string, import("./compare.mjs").CaseResult> }}
+ * @param {{ clock?: Clock }} [opts]
+ * @returns {{ referenceUs: number, cases: Map<string, Measured> }}
  */
-export function measure(cases, ref) {
-  const refTime = timer(ref);
-  const refBatch = calibrate(refTime);
-  const timers = cases.map((c) => timer(c.run));
-  const batches = timers.map(calibrate);
+export function measure(cases, ref, { clock = process.hrtime.bigint } = {}) {
+  const refTime = timer(ref, clock);
+  const refBatch = calibrate(refTime, clock);
+  const timers = cases.map((c) => timer(c.run, clock));
+  const batches = timers.map((t) => calibrate(t, clock));
   const n = cases.length;
   /** @type {number[][][]} */
   const us = cases.map(() => []);
@@ -190,6 +209,8 @@ export function measure(cases, ref) {
           us: minOfMedians(us[i] ?? []),
           // the regression gate: the typical round, since noise can move a ratio either way
           ratio: median((ratios[i] ?? []).map(median)),
+          // per round, the ratio of each sweep, to pair with another case's (sides)
+          samples: ratios[i] ?? [],
         },
       ]),
     ),
@@ -202,26 +223,55 @@ const BASE = "base|";
 /** @typedef {typeof import("../../packages/vimma-core/bench/cases.mjs")} CasesModule */
 
 /**
+ * Two variants of the cases from one measurement, tagged `headTag` and `baseTag` in it, as the
+ * gate reads them: the head's own ratios, and the base's as the head's over the paired change
+ * (pairedChange), so compare() gates the change of each sweep, not of each side's own median.
+ * The base's µs is its own (budget only).
+ * @param {ReturnType<typeof measure>} m
+ * @param {string} headTag
+ * @param {string} baseTag
+ * @param {string} [machine]
+ * @returns {{ head: import("./compare.mjs").Result, base: import("./compare.mjs").Result }}
+ */
+export function sides(m, headTag, baseTag, machine = machineKey()) {
+  /** @param {string} tag */
+  const of = (tag) =>
+    new Map(
+      [...m.cases]
+        .filter(([name]) => name.startsWith(tag))
+        .map(([n, c]) => [n.slice(tag.length), c]),
+    );
+  const heads = of(headTag);
+  /** @type {Record<string, import("./compare.mjs").CaseResult>} */
+  const base = {};
+  for (const [name, b] of of(baseTag)) {
+    const h = heads.get(name);
+    base[name] = { us: b.us, ratio: h ? h.ratio / pairedChange(h.samples, b.samples) : b.ratio };
+  }
+  return {
+    head: {
+      machine,
+      referenceUs: m.referenceUs,
+      cases: Object.fromEntries([...heads].map(([n, { us, ratio }]) => [n, { us, ratio }])),
+    },
+    base: { machine, referenceUs: m.referenceUs, cases: base },
+  };
+}
+
+/**
  * One child's measurement: the working tree's cases and the baseline commit's, interleaved.
  * @param {CasesModule} head
  * @param {CasesModule} base
  * @param {boolean} headFirst which side comes first in the list of cases
+ * @param {{ clock?: Clock }} [opts]
  * @returns {{ head: import("./compare.mjs").Result, base: import("./compare.mjs").Result }}
  */
-export function run(head, base, headFirst) {
+export function run(head, base, headFirst, opts) {
   const tagged = (/** @type {string} */ tag, /** @type {CasesModule} */ m) =>
     m.CASES.map((c) => ({ name: tag + c.name, run: c.run }));
-  const sides = [tagged(HEAD, head), tagged(BASE, base)];
-  if (!headFirst) sides.reverse();
-  const { referenceUs, cases } = measure(sides.flat(), head.reference);
-  const side = (/** @type {string} */ tag) => ({
-    machine: machineKey(),
-    referenceUs,
-    cases: Object.fromEntries(
-      [...cases].filter(([name]) => name.startsWith(tag)).map(([n, c]) => [n.slice(tag.length), c]),
-    ),
-  });
-  return { head: side(HEAD), base: side(BASE) };
+  const both = [tagged(HEAD, head), tagged(BASE, base)];
+  if (!headFirst) both.reverse();
+  return sides(measure(both.flat(), head.reference, opts), HEAD, BASE);
 }
 
 /**

@@ -133,7 +133,7 @@ describe("chrome code", () => {
     // `version` runs only a path `inspect` passed, checked inside it whoever calls it, and only
     // while agent CLIs are on; the run only `checked`, inspect's result.
     expect(text).toMatch(
-      /async version\(path, id = CLI_IDS\[0\] \?\? ""\) \{\s*const cli = CLIS\[id\];\s*if \(!this\.enabled \|\| !cli\) return null;\s*const r = await inspect\(path, \{ cli \}\);\s*if \("problem" in r\) return null;/,
+      /async version\(path, id = CLI_IDS\[0\] \?\? ""\) \{\s*const cli = Object\.hasOwn\(CLIS, id\) \? CLIS\[id\] : null;\s*if \(!this\.enabled \|\| !cli\) return null;\s*const r = await inspect\(path, \{ cli \}\);\s*if \("problem" in r\) return null;/,
     );
     expect(text).toContain("const checked = await inspect(path, { cli });");
     // inspect gives back the path it was given, link kept, once that path and its target pass.
@@ -141,7 +141,13 @@ describe("chrome code", () => {
     expect(text).toContain("const version = await this.version(path, cli.id);");
     // The CLI is a CLIS entry, never a value of config.toml's (C2): its arguments, input and
     // version arguments come from that entry's fixed builders.
-    expect(text).toContain('const cli = CLIS[o.provider.cli ?? ""];');
+    expect(text).toMatch(
+      /const id = o\.provider\.cli \?\? "";\s*const cli = Object\.hasOwn\(CLIS, id\) \? CLIS\[id\] : null;/,
+    );
+    // Every CLIS lookup is of its own keys: a plain bracket gives a value for `__proto__`,
+    // `constructor` or `toString`.
+    expect(text.match(/CLIS\[/g)).toHaveLength(3);
+    expect(text.match(/Object\.hasOwn\(CLIS, id\) \? CLIS\[id\] : null;/g)).toHaveLength(3);
     // The PATH search is `onPath`'s, called by `find` alone; it lists files and runs nothing.
     expect(text).not.toMatch(/pathSearch\(/);
     expect(text.match(/onPath\(/g)).toEqual(["onPath(", "onPath("]);

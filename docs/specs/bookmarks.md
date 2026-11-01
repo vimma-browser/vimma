@@ -55,7 +55,8 @@ As a Vimma user I open my bookmarks the way I open the side panel, with a keybin
    private window's load is private (no history). `Enter` / `l` open in this tab and close the
    panel; `t` opens a background tab and keeps the panel open, so several can be opened;
    `s` / `S` split through `PaneView.split` (refused at `[panes] max`, 4 by default) and load the
-   bookmark in the new pane, closing the panel.
+   bookmark in the new pane, closing the panel. (Since changed: `[panes] max` defaults to 8
+   (#691).)
 7. **Quick add.** Only a page whose URL is openable can be bookmarked (not the start page).
    Already bookmarked (Places' most recently changed bookmark for the URL): the notice says
    `already bookmarked: <path>` and the prompt becomes `move/rename:` prefilled with that path;

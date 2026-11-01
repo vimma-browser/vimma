@@ -53,6 +53,9 @@ Two rows of plan §5 and issue #17:
   batches of ≥ 100 µs each followed by a batch of a fixed reference workload, and takes per case
   the median ratio (51 samples a round, median over 5 rounds) and the minimum µs; then the lowest
   of each over 15 fresh processes. The old `core.bench.mjs` (mean latency, no baseline) is gone.
+  (Since changed: issue [#667](https://github.com/vimma-browser/vimma/issues/667) gates the
+  change paired sweep by sweep, the median of each sweep's head-over-baseline ratio, instead of
+  each side's own median ratio; see docs/runbook.md, "Bench baseline".)
 - **The 10 % gate is on the suite.** Measured on a laptop pinned to 2 CPUs, 8 whole runs: single
   cases spread up to 14 % (max−min), the geometric mean of all cases 6 %. One process alone spread
   20–30 % (JIT modes), hence the 15 processes. So: fail when the geometric mean of the cases'

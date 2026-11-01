@@ -386,7 +386,10 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
       Retina display: the brand background (`surfer.json`'s `backgroundColor`) and an arrow from
       the app to the link in the mark's green, `#1afa80`. Rejected: Firefox's own artwork,
       because it is Mozilla's, and new illustrated art, because the logo and the brand colours
-      already identify Vimma.
+      already identify Vimma. (Since changed: with the move from mint to the aqua palette the
+      arrow is the mark's aqua, `#1afaca`, on the teal-black background `#071011`, and the
+      document icon's page edge is the palette's border, `#234040`, instead of Tokyo Night's
+      `#3b4261`.)
     - **The volume icon is the mark,** the same file as `firefox.icns`, so that the mounted
       volume in Finder's sidebar and title bar shows the logo the app shows. Rejected: a drive
       with the logo on it, as Firefox's is, because it needs artwork Vimma does not have.

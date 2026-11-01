@@ -44,6 +44,10 @@ quieter still.
   fixed colours, and so does Firefox's About dialog: it is a window of its own that the theme
   host does not reach, its logo a background image in `aboutDialog.css`; masking it would need
   the theme host to theme that window first.
+  (Since changed: the brand moved from mint to aqua, `#2cf5d2`. `vimma-logo.png` is the same
+  artwork with its hue turned 20 degrees (`magick … -modulate 100,100,111.1`), which keeps each
+  pixel's brightness and HSV saturation, so `logo-masks.sh` derives byte-identical masks and the
+  page itself does not change; the app icons and the About dialog show the aqua logo.)
 - **The page:** `chrome://browser/content/vimma/start/start.html`, registered in our `jar.mn`.
   Mechanism chosen after grepping the engine: Firefox's own blank new tab and blank home page are
   the chrome page `chrome://browser/content/blanktab.html` (`AboutNewTabRedirector`,

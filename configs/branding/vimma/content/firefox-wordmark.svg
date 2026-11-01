@@ -2,7 +2,7 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!-- vimma-placeholder: "VIMMA" in plain strokes until real artwork exists (spec m0-branding). -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 372 99" fill="none" stroke="context-fill #1a1b26" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 372 99" fill="none" stroke="context-fill #071011" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
   <path d="M14 16l30 68 30-68"/>
   <path d="M104 16v68"/>
   <path d="M134 84V16l32 44 32-44v68"/>

@@ -239,6 +239,10 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    last list's lines for each connection's 16 most recent origins and drops them when the
    connection closes, so a new conversation gets every list in full; `vimma_elements` with
    `full: true` gives every line, for a model whose client has dropped the earlier result.
+   (Since changed: a built-in conversation also forgets every site's last list whenever its
+   loop leaves out a block of older results (S5), because the list a compact one points at may
+   be among them, and a model shown only labels then loses the product names; see #693. A
+   fuller list once per block costs less than tracking which block each list was in.)
    `query` matches every word against an element's label, text, caption and name, never its
    value; `kinds` takes the list's own kinds (`link`, `button`, `field`, `checkbox`, `radio`,
    `select`, `click`), so a filter names exactly what the lines say. The check runs in the parent on the checked copies
@@ -273,7 +277,9 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    at least a minute of loads, which fits the goal. A refusal that names the rate and when the
    next call is allowed lets a model wait instead of retrying, as
    [agent-bench.md](../agent-bench.md) found; that change is
-   [#594](https://github.com/vimma-browser/vimma/pull/594), outside this spec.
+   [#594](https://github.com/vimma-browser/vimma/pull/594), outside this spec. The built-in
+   agent gets the same refusal and its runner waits it out once and runs the call again,
+   because a model has no way to wait and one told to ends its task (issue #601).
 8. **Local models: GPU, the right model, thinking off for steps** (S8). The bench machine's
    GPU is unused because Ollama leaves out integrated GPUs by default (Research); the runbook
    and the guide give the setting, and the bench records where each model ran (`ollama ps`).

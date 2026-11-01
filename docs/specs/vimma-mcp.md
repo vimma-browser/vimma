@@ -831,7 +831,10 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     once on a fresh one. (Since changed: `agent-hello` carries the process's session id, and a
     reconnect within 2 minutes keeps the grant; [mcp-session-grants](mcp-session-grants.md) S3, S4.) Each call has its own deadline of 310 s (the longest `ask_timeout` plus
     10 s); past it the call fails and its question is withdrawn with `agent-cancel`. At most 16
-    calls wait here at once. stdin EOF closes the socket and exits 0. `vimma-ctl mcp` takes no
+    calls wait here at once. (Since changed: at most 4 of them are sent to Vimma at once, as
+    many as it takes in flight per connection, and the rest wait here, oldest first, because a
+    fifth was refused as `busy`, which a model read as questions waiting for the user;
+    issue #601.) stdin EOF closes the socket and exits 0. `vimma-ctl mcp` takes no
     `--timeout` or `--json`: each call waits for the user. Logs (connect, disconnect, protocol
     errors) go to stderr, never the token.
 41. **`agent-cancel` withdraws one question.** Decision 17 says a cancelled call leaves the

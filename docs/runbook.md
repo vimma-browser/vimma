@@ -974,6 +974,15 @@ Why it does not flake (plan §5: no retries; flaky means quarantine):
   hyperthread slows an allocating case more than the reference) moved one side against the
   other: in the gate's own test (below), unchanged code read from −21 % to +40 % on one case under
   the coverage pool; sample by sample, from −14 % to +12 %.
+- **Paired sweep by sweep (issue #667).** The gate does not divide one side's median ratio by the
+  other's. When the runner's load comes and goes in phases of a few milliseconds, each side's
+  samples fall into a busy and a quiet mode, and a median lands on whichever mode got one more
+  sample: unchanged code read +25.0 % on one case on a hosted macOS runner. Instead, each sweep
+  divides the working tree's ratio by the baseline's, both taken a few milliseconds apart in the
+  same phase, and the gate takes the median of those per round and the median of the rounds.
+  `tools/bench/test/bench.test.mjs` scripts such a machine on a fake clock: on 20 seeds,
+  separate medians read identical code up to +50 %, the paired change reads it within the gate
+  and still fails a case made 20 % slower.
 - **Load order alternates.** Two copies of identical code in one process differ by several per
   cent on the sub-microsecond cases, one way or the other, from process to process. Loading the
   working tree first in every process leaned that one way (+6 % to +8 % on the suite for
@@ -994,8 +1003,8 @@ Why it does not flake (plan §5: no retries; flaky means quarantine):
 - **The same hash seeds on every run.** The cases do use string keys (the dispatcher's trie), so
   each of the 15 processes runs with its own fixed `--hash-seed` (1 to 15): every run measures the
   same set of table layouts, not 15 new random ones.
-- **Robust statistics.** Warm-up, batches of ≥ 100 µs, the median of 51 samples per round, the
-  median over 5 rounds, per process. Over the 15 processes: the **lowest µs** for the budget
+- **Robust statistics.** Warm-up, batches of ≥ 100 µs, the median of 51 paired samples per
+  round, the median over 5 rounds, per process. Over the 15 processes: the **lowest µs** for the budget
   (noise only adds time) and the **median change** for the gate. Not the lowest ratio: noise in
   the reference's time lowers a ratio, so the lowest ratio picked whichever process had the
   slowest reference (issue #125, PR #121).
@@ -1857,7 +1866,10 @@ jump and whether the jumps line up with workflow runs.
   and the `main` ruleset does not cover it, so the ruleset stays as it is. Each run adds one
   commit there: one row per asset, `date,tag,asset,downloads` (the date is the UTC day of the
   run). Drafts are left out.
-- **How it runs:** at 23:37 UTC and by hand (`gh workflow run downloads.yml`). The `collect` job
+- **How it runs:** at 06:17 UTC and by hand (`gh workflow run downloads.yml`). A row is dated by
+  the UTC day the run starts, and scheduled runs here start about three hours late, so the
+  schedule sits early in the day: a late-evening one lands on the next day on most nights but
+  not all, recording one day twice (the second run is skipped) and the next not at all. The `collect` job
   has `contents: read` only: it fetches the history from the public branch, takes the snapshot
   with `tools/stats/downloads.mjs` and appends it unless that day is already recorded. The
   `record` job has `contents: write`, checks out only the `stats` branch, runs no repository
@@ -1875,12 +1887,38 @@ jump and whether the jumps line up with workflow runs.
   the run's job summary shows the same table. To match a jump against our automation, list that
   day's runs: `gh run list --created <date> --limit 100`.
 
+- **Where it can push:** the `record` job's token has `contents: write` on the whole
+  repository: it could write any branch and create, move or delete any tag, so the limits are
+  elsewhere. Both jobs refuse a run off `main` or outside this repository, so a manual run from
+  a branch with an unchanged workflow never runs that branch's `tools/stats` with the token;
+  the job pushes only the fixed refspec `HEAD:stats` from a checkout of `stats`, and it runs no
+  repository code that could change that. These hold for an unchanged copy of the file only:
+  anyone with write access can run a changed copy from their own ref (or a workflow of their
+  own) and get a `contents: write` token, as with any branch they push (docs/security.md,
+  section 18). A push to `main` is refused anyway: the `main` ruleset requires a pull request
+  and has no bypass actor, so the job token cannot update it. Tags have no ruleset. The `stats`
+  branch itself is not protected; to keep its history from being deleted or rewritten by
+  anyone with write access, add a ruleset for it
+  with the deletion and non-fast-forward rules (the job only ever fast-forwards):
+
+  ```sh
+  gh api -X POST repos/vimma-browser/vimma/rulesets --input - <<'JSON'
+  {"name": "stats", "target": "branch", "enforcement": "active",
+   "conditions": {"ref_name": {"include": ["refs/heads/stats"], "exclude": []}},
+   "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]}
+  JSON
+  ```
+
+  Do not add a pull request or status check rule there: the job pushes directly.
+
 - **Recreating the branch** (only if it is ever deleted): an orphan branch whose `downloads.csv`
   is the header line `date,tag,asset,downloads`. Until it exists, the run fails at the fetch
   rather than starting a history that could replace the old one.
 - **Traffic (views, clones, referrers) is not recorded.** GitHub keeps those for 14 days only,
-  but its traffic API needs the Administration (read) repository permission, which the job
-  token cannot be given. Recording them needs a fine-grained token or a GitHub App with that
+  but its traffic API (`/traffic/views`, `/traffic/clones`, `/traffic/popular/referrers`)
+  needs the Administration (read) repository permission (GitHub's "Permissions required for
+  fine-grained personal access tokens"), and `permissions:` has no `administration` key, so the
+  job token cannot be given it. Recording them needs a fine-grained token or a GitHub App with that
   permission, stored as a secret: a decision for the maintainer, since it would be the
   workflow's first secret.
 

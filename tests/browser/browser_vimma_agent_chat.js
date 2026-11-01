@@ -252,7 +252,12 @@ addTidyTask(async function test_enter_grants_and_the_transcript_shows_each_step(
   );
   Assert.equal(reply.querySelector(".vimma-agent-chat-label")?.textContent, "agent", "labelled");
   Assert.equal(input().value, "", "the input is empty again");
-  await until(() => statusText("agent") === "◇ agent granted", "no task runs; the grant stands");
+  await until(
+    () => header()[1] === "works in: agent workspace",
+    "the task ended, and its grant with it (B18)",
+  );
+  Assert.notEqual(statusText("agent"), "◇ agent granted", "the status bar shows no grant");
+  Assert.ok(logText().includes("grant ended"), "the transcript says the grant ended");
 });
 
 addTidyTask(async function test_shift_enter_adds_a_line_and_ctrl_enter_asks() {
@@ -606,6 +611,10 @@ addTidyTask(async function test_an_entered_key_is_never_shown_again_nor_copied_o
     );
     EventUtils.synthesizeKey("KEY_Enter");
     await until(async () => await AgentKeys.has(anthropic.name), "the key is stored");
+    // has() is true before Enter's work ends: the hint's decrypt and setting the conversation's
+    // provider come after, and on macOS the keychain decrypt can outlast this test, so tidy()
+    // deleted the conversation first and the next test failed ("no agent conversation").
+    await until(() => !chat.storing, "the store has finished");
     chat.askKey(anthropic);
     await until(keyOpen, "changing it opens the field again");
     Assert.equal(keyField().value, "", "empty: the stored key is not filled in");
@@ -627,4 +636,39 @@ addTidyTask(async function test_opened_from_another_workspace_reads_none_of_its_
     .join("");
   Assert.ok(!listed.includes("Agent fixture"), "the main workspace's page is not listed");
   Assert.ok(gBrowser.selectedTab.userContextId !== WorkspaceStore.agent.userContextId);
+});
+
+// agent-speed S7 (issue #601): a used-up rate is waited out for the built-in agent, which
+// cannot wait itself and, told that questions wait for the user, ended its task. The step says
+// so while it waits, and stopping the task ends the wait.
+addTidyTask(async function test_a_used_up_rate_is_waited_out_not_reported_as_questions() {
+  await openChat();
+  const opens = Array.from({ length: 11 }, () => openStep(PAGE));
+  send(script([...opens, { reply: "all opened" }]));
+  const entries = () => AgentChat.transcript(openId()).entries;
+  await until(
+    () => entries().some((e) => /^waiting \d+ s \(rate limit\)$/.test(e.outcome ?? "")),
+    "the eleventh open waits out the open rate",
+  );
+  Assert.ok(AgentChat.get(openId()).running, "the task goes on while it waits");
+  Assert.equal(
+    entries().filter((e) => e.outcome === "ran under grant").length,
+    10,
+    "ten opens ran",
+  );
+  AgentChat.stop(openId());
+  const result = await finished();
+  const refusals = result.messages
+    .filter((/** @type {any} */ m) => m.role === "tool")
+    .flatMap((/** @type {any} */ m) => m.results)
+    .map((/** @type {any} */ r) => r.content.map((/** @type {any} */ c) => c.text).join(""));
+  Assert.ok(
+    !refusals.some((t) => t.includes("waiting in Vimma")),
+    "no result says that questions wait for the user",
+  );
+  Assert.equal(result.outcome, "stopped", "the stop ended the wait");
+  Assert.ok(
+    !entries().some((e) => /\(rate limit\)$/.test(e.outcome ?? "")),
+    "no step still says it waits",
+  );
 });

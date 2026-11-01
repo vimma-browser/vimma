@@ -7,6 +7,7 @@ import {
   failureResult,
   failureText,
   isFinalRefusal,
+  rateWaitMs,
   toolCommand,
   toolResult,
 } from "../src/agent-results.mjs";
@@ -358,6 +359,40 @@ const MCP_RS = readFileSync(new URL("../../../tools/vimma-ctl/src/mcp.rs", impor
   .replace(/\\\n\s*/g, "")
   .replace(/\\"/g, '"');
 
+// A used-up rate is told apart from questions waiting, as vimma-ctl does (issue #592): a
+// built-in agent that reads "waiting for the user" ends its task instead of waiting.
+describe("a used-up rate", () => {
+  const rate = {
+    kind: "denied",
+    reason: "busy",
+    message: "too many loads from this agent in the last minute (at most 10)",
+    retryAfterMs: 11_200,
+  };
+
+  test("names the limit, says no question waits, and when the next call is allowed", () => {
+    expect(failureText(rate)).toBe(
+      "Vimma's rate limit for this agent: too many loads from this agent in the last minute " +
+        "(at most 10). No question is waiting for the user. The next call is allowed in 12 s.",
+    );
+  });
+
+  test("a busy denial without a time is still the queue's", () => {
+    expect(failureText({ kind: "denied", reason: "busy" })).toBe(
+      "Too many agent requests are waiting in Vimma; wait for the user to answer them, then " +
+        "try again.",
+    );
+  });
+
+  test("is waited out by the built-in agent; nothing else is", () => {
+    expect(rateWaitMs(rate)).toBe(11_200);
+    expect(rateWaitMs({ kind: "denied", reason: "busy" })).toBeNull();
+    expect(rateWaitMs({ kind: "denied", reason: "user" })).toBeNull();
+    expect(rateWaitMs({ ...rate, retryAfterMs: 0 })).toBeNull();
+    expect(rateWaitMs({ ...rate, retryAfterMs: 61_000 })).toBeNull();
+    expect(rateWaitMs({ kind: "refused", code: "failed", message: "x" })).toBeNull();
+  });
+});
+
 describe("the same words as vimma-ctl", () => {
   test.each([
     "Vimma's agent workspace has no tabs. Open one with vimma_open.",
@@ -393,6 +428,8 @@ describe("the same words as vimma-ctl", () => {
     "The user denied this request in Vimma.",
     " s; treated as denied. Ask the user before trying again.",
     "Too many agent requests are waiting in Vimma; wait for the user to answer them, then try again.",
+    "Vimma's rate limit for this agent: ",
+    ". No question is waiting for the user. The next call is allowed in ",
     "Vimma has muted this agent after repeated denials (for a minute, or until it reconnects). Stop, and ask the user what they want.",
     "The tab changed after the user was asked (it navigated, closed or moved), so nothing was done. List the tabs again with vimma_tabs.",
     "The user is using this tab in Vimma (typing in it, or in hint mode or a key sequence), so nothing was done. Try again later, or work in another agent tab.",

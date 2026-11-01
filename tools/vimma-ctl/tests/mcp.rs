@@ -1193,3 +1193,53 @@ fn the_instructions_name_an_older_client_when_the_discovery_file_does() {
         format!("{} {}", vimma_ctl::mcp::INSTRUCTIONS, older_note())
     );
 }
+
+// Decision 40: calls past the 4 that Vimma takes in flight per connection wait here, and go out
+// as answers come back, instead of reaching Vimma to be refused as `busy` (a model reads that as
+// questions waiting for the user, and stops).
+#[test]
+fn calls_past_vimmas_four_in_flight_wait_here_and_all_run() {
+    let vimma = FakeVimma::start(Box::new(|_| None));
+    let (tx, out) = serve_in_thread(
+        &vimma.profile,
+        short(Duration::from_secs(30), Duration::from_secs(60)),
+    );
+    tx.send(format!("{INIT}\n").into_bytes()).unwrap();
+    for id in 2..8 {
+        tx.send(
+            format!(
+                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":\"vimma_tabs\"}}}}\n"
+            )
+            .into_bytes(),
+        )
+        .unwrap();
+    }
+    let calls = |s: &Seen| -> Vec<u64> {
+        s.requests
+            .iter()
+            .filter(|r| str_of(r, "command") == "agent-tabs")
+            .map(id_of)
+            .collect()
+    };
+    let seen = vimma.wait_for("four calls", |s| calls(s).len() >= 4);
+    thread::sleep(Duration::from_millis(200));
+    assert_eq!(calls(&vimma.seen()).len(), 4, "only 4 in flight: {seen:?}");
+    // Answered one at a time, oldest first: each answer lets the next waiting call out.
+    for i in 0..6 {
+        let sent = vimma.wait_for("the next call", |s| calls(s).len() > i);
+        let id = calls(&sent)[i];
+        vimma.push(&format!(
+            r#"{{"type":"response","id":{id},"ok":true,"result":{{"tabs":[]}}}}"#
+        ));
+        out.wait_lines(2 + i);
+        assert!(calls(&vimma.seen()).len() <= i + 5, "at most 4 in flight");
+    }
+    let results: Vec<Value> = out
+        .lines()
+        .into_iter()
+        .filter(|l| l.get("result").is_some() && id_of(l) >= 2)
+        .collect();
+    assert_eq!(results.len(), 6, "{results:?}");
+    assert!(results.iter().all(|r| !is_error(r)), "{results:?}");
+    drop(tx);
+}

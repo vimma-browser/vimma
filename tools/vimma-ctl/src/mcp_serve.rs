@@ -15,7 +15,7 @@ use crate::json::Value;
 use crate::mcp::{self, Action, Call, Failure, MAX_INPUT_LINE, Protocol, tool_result};
 use crate::protocol::{self, Discovery, ErrorBody, Response, Role};
 use crate::version;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -36,8 +36,11 @@ pub struct Settings {
     pub answer_wait: Duration,
     /// Connecting and the handshake, and each write to the socket.
     pub connect_timeout: Duration,
-    /// Calls waiting at once; Vimma takes 4 per connection, so more only wait here.
+    /// Calls waiting at once, sent and held here together (decision 40).
     pub max_pending: usize,
+    /// Calls sent to Vimma at once: it takes 4 requests in flight per connection and refuses
+    /// more as `busy`, which reads as questions waiting for the user, so the rest wait here.
+    pub max_in_flight: usize,
 }
 
 impl Default for Settings {
@@ -48,6 +51,7 @@ impl Default for Settings {
             answer_wait: Duration::from_secs(390),
             connect_timeout: Duration::from_secs(5),
             max_pending: 16,
+            max_in_flight: 4,
         }
     }
 }
@@ -73,6 +77,12 @@ struct Link {
     writer: TcpStream,
     next_id: u32,
     last_sent: Instant,
+}
+
+/// A tool call held here until Vimma takes another request ([`Settings::max_in_flight`]).
+struct Held {
+    call: Call,
+    deadline: Instant,
 }
 
 /// A tool call Vimma has not answered yet.
@@ -111,6 +121,7 @@ pub fn serve(
         link: None,
         generations: 0,
         pending: BTreeMap::new(),
+        held: VecDeque::new(),
         note: None,
         noted: None,
         session: client::random_nonce().ok(),
@@ -222,6 +233,8 @@ struct Server<'a> {
     generations: u64,
     /// By control-protocol request id.
     pending: BTreeMap<u32, Pending>,
+    /// Calls not sent yet, oldest first, while Vimma has as many as it takes.
+    held: VecDeque<Held>,
     /// That this client is older than the Vimma it connected to, for the next tool result.
     note: Option<String>,
     /// The Vimma version a note was given for: once per version, not per connection.
@@ -259,9 +272,33 @@ impl Server<'_> {
     }
 
     fn start(&mut self, call: Call) -> io::Result<()> {
-        if self.pending.len() >= self.settings.max_pending {
+        if self.pending.len() + self.held.len() >= self.settings.max_pending {
             return self.write(&tool_result(&call, Err(&Failure::TooMany)));
         }
+        let now = Instant::now();
+        let deadline = now
+            .checked_add(self.settings.answer_wait)
+            .unwrap_or(now + Duration::from_secs(390));
+        if self.pending.len() >= self.settings.max_in_flight || !self.held.is_empty() {
+            self.held.push_back(Held { call, deadline });
+            return Ok(());
+        }
+        self.dispatch(call, deadline)
+    }
+
+    /// Held calls go out, oldest first, as long as Vimma takes more.
+    fn release(&mut self) -> io::Result<()> {
+        while self.pending.len() < self.settings.max_in_flight {
+            let Some(held) = self.held.pop_front() else {
+                break;
+            };
+            self.dispatch(held.call, held.deadline)?;
+        }
+        Ok(())
+    }
+
+    /// Send `call` to Vimma; its answer is due by `deadline`.
+    fn dispatch(&mut self, call: Call, deadline: Instant) -> io::Result<()> {
         let (command, args) = call.tool.command();
         // A connection that died since the last call is noticed here at the latest: one retry
         // on a fresh connection.
@@ -283,15 +320,11 @@ impl Server<'_> {
         let Some(id) = sent else {
             return self.write(&tool_result(&call, Err(&Failure::Dropped)));
         };
-        let now = Instant::now();
-        let deadline = now
-            .checked_add(self.settings.answer_wait)
-            .unwrap_or(now + Duration::from_secs(390));
         self.pending.insert(
             id,
             Pending {
                 call,
-                sent: now,
+                sent: Instant::now(),
                 deadline,
             },
         );
@@ -459,6 +492,8 @@ impl Server<'_> {
 
     /// `notifications/cancelled`: no response for the call, and its question is withdrawn.
     fn cancel(&mut self, mcp_id: &Value) {
+        // A held call never reached Vimma: it only leaves the line here.
+        self.held.retain(|h| &h.call.id != mcp_id);
         let Some(id) = self
             .pending
             .iter()
@@ -497,6 +532,15 @@ impl Server<'_> {
                 self.withdraw(id);
             }
         }
+        while let Some(index) = self.held.iter().position(|h| h.deadline <= now) {
+            if let Some(held) = self.held.remove(index) {
+                let failure = Failure::NoAnswer(self.settings.answer_wait);
+                self.write(&tool_result(&held.call, Err(&failure)))?;
+            }
+        }
+        // Every answer, withdrawal and dropped link passes here: a freed place goes to the
+        // oldest held call.
+        self.release()?;
         let due = self
             .link
             .as_ref()
@@ -520,6 +564,9 @@ impl Server<'_> {
         }
         for pending in self.pending.values() {
             wake = wake.min(pending.deadline.saturating_duration_since(now));
+        }
+        for held in &self.held {
+            wake = wake.min(held.deadline.saturating_duration_since(now));
         }
         wake.max(Duration::from_millis(5))
     }

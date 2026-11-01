@@ -329,7 +329,7 @@ add_task(async function panes_max_refuses_a_third_split() {
   while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
   document.getElementById(NOTICE_ID)?.hidePopover?.();
   await resetConfig();
-  Assert.equal(PaneViews.get(window).max, 4, "the default comes back without the file");
+  Assert.equal(PaneViews.get(window).max, 8, "the default comes back without the file");
 });
 
 add_task(async function theme_source_and_colors_feed_the_theme() {

@@ -191,7 +191,7 @@ const startSize = [window.outerWidth, window.outerHeight];
 async function reset() {
   for (let i = 0; i < 3 && isOpen(); i++) EventUtils.synthesizeKey("KEY_Escape", {});
   while (view().panes) view().close();
-  view().max = 4;
+  view().max = Panes.PANES_MAX_DEFAULT;
   view().mode = "dwindle";
   document.getElementById(NOTICE_ID)?.hidePopover?.();
   await nextFrame();
@@ -317,6 +317,7 @@ add_task(async function marking_a_tab_adds_it_and_the_set_is_arranged_afresh() {
 });
 
 add_task(async function past_max_is_refused_and_nothing_changes() {
+  view().max = 4;
   const was = shape();
   await openPanel();
   await toggle("e");

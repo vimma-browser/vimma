@@ -146,7 +146,10 @@ export class Find {
   start(browser, backward) {
     // A tab closed mid-find takes its find bar without a findbarclose event.
     if (this.session && !this.session.browser.isConnected) this.#closedElsewhere(this.session);
-    if (this.session) return;
+    if (this.session) {
+      this.#resume(this.session, browser, backward);
+      return;
+    }
     const gBrowser = this.#gBrowser();
     const tab = gBrowser.getTabForBrowser(browser);
     if (!tab) return;
@@ -189,6 +192,24 @@ export class Find {
       if (session.queued === "accept") this.accept();
       this.onChange();
     });
+  }
+
+  /**
+   * `/` or `?` while this tab's search is open and the focus has left its field (a click on the
+   * page): back into the field, its text selected, so the next keys replace it. The search keeps
+   * where it started, for Esc; it takes the direction of the key, as Vim's `?` starts a backward
+   * search.
+   * @param {Session} s
+   * @param {Browser} browser
+   * @param {boolean} backward
+   */
+  #resume(s, browser, backward) {
+    if (s.browser !== browser || !s.findbar || s.accepting !== null) return;
+    s.backward = backward;
+    const field = s.findbar._findField;
+    field.focus();
+    field.select();
+    this.onChange();
   }
 
   /**

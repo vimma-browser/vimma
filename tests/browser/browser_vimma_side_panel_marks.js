@@ -191,7 +191,7 @@ async function reset() {
     for (let i = 0; i < 3 && isOpen(); i++) EventUtils.synthesizeKey("KEY_Escape", {});
   }
   while (view().panes) view().close();
-  view().max = 4;
+  view().max = Panes.PANES_MAX_DEFAULT;
   view().mode = "dwindle";
   document.getElementById(NOTICE_ID)?.hidePopover?.();
   await nextFrame();
@@ -345,6 +345,7 @@ add_task(async function four_marks_make_the_dwindle_spiral() {
 });
 
 add_task(async function five_marks_past_the_max_are_refused_and_nothing_changes() {
+  view().max = 4;
   const was = shape();
   const selectedTab = gBrowser.selectedTab;
   await openPanel();

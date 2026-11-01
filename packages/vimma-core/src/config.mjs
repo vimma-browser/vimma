@@ -1295,7 +1295,7 @@ const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
  * Refused, with nothing to write, when the file does not parse now or would not with the edit.
  * @param {string | null} text  config.toml, null when it does not exist (the template is used)
  * @param {{ name: string, kind: string, endpoint: string, model: string, vision?: boolean,
- *   priceIn?: number, priceOut?: number, cli?: string }} provider
+ *   priceIn?: number, priceOut?: number, cli?: string, maxMinutes?: number }} provider
  * @param {{ makeDefault: boolean, mac?: boolean }} opts
  * @returns {{ text: string, name: string } | { error: string }}
  */
@@ -1332,7 +1332,10 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
     }
   }
   if (!known) {
-    // An agent CLI by name, kind, cli and model only: its program's path is a pref (C4).
+    // An agent CLI by name, kind, cli, model and time limit only: its program's path is a pref
+    // (C4). A limit other than the default is kept, so that `D` on a model of a provider with
+    // its own `max_minutes` does not lose it after a restart.
+    const minutes = provider.maxMinutes;
     const block =
       provider.kind === "cli"
         ? [
@@ -1341,6 +1344,9 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
             `kind = "cli"`,
             `cli = ${tomlLiteral(provider.cli ?? "")}`,
             ...(provider.model ? [`model = ${tomlLiteral(provider.model)}`] : []),
+            ...(Number.isInteger(minutes) && minutes !== DEFAULT_MAX_MINUTES
+              ? [`max_minutes = ${minutes}`]
+              : []),
           ]
         : [
             "[[agent.providers]]",

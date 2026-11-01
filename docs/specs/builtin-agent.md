@@ -1,6 +1,6 @@
 # Spec: builtin-agent
 
-Status: accepted (Delivery 1-6 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
+Status: implemented · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
 `agent-providers.mjs`, `agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`,
 `agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs`, `agent-store.mjs`;
 `agent.mjs` and
@@ -250,6 +250,9 @@ first, so that what the guide says a model can do is what the bench measured.
     conversation until it is stopped. It ends with `s` or `:agent stop`, with `ctrl+b shift+a`,
     `:mcp revoke`, the conversation's deletion, or a restart, which ends every connection; the
     next message sent with `Enter` grants it again. The header shows it (`granted`).
+    (Since changed: the grant ends when the task it was made for ends, however it ends (done,
+    stopped, at its budget or on an error), for model providers and agent CLIs alike, and the
+    next `Enter` grants again; see decision 18.)
 25. **`ctrl+Enter` sends the task asking at every step.** It ends the conversation's grant, if
     one stands, so each step asks, as an MCP agent's steps do without a grant, until a later
     message is sent with `Enter`; a grant the user gives in answer to one of those questions
@@ -633,6 +636,11 @@ agent to a part of the profile, or publishes which steps always ask.
     shown in the same places. Rejected: a separate approval question at the start, for the
     reflex above; a timed task grant (`task_grant_minutes`), for the interruption above and
     because MCP agents no longer have one.
+    (Since changed: the grant ends when its task ends, however it ends, because a grant kept
+    between tasks gave the model nothing it needed while the status bar showed
+    `agent: granted` with no agent working, which taught the user to read that state as
+    harmless; ending it with the task makes the grant shown exactly when an agent acts with the
+    user's permission, and costs nothing, since the next task sent with `Enter` grants again.)
 19. **Questions in the window are Vimma's, never the model's** (B19, Behaviour 27-28). Showing
     a conversation's questions in its window keeps the user in one place while they watch the
     task. A model-written line can never look like or answer one, because the prompt slot is a
@@ -750,7 +758,8 @@ that sends a task. It lasts the conversation's connection, as an MCP agent's gra
 connection (#578), and covers later tasks sent with `Enter` in the same conversation; it is
 shown in the header and ends with `s`, `:agent stop`, `ctrl+b shift+a`, `:mcp revoke`, the
 conversation's deletion or a restart. Between tasks the model gets no turn, so a standing grant
-is used only by a task the user sent. What it allows is what any grant allows (above);
+is used only by a task the user sent. (Since changed: the grant also ends when its task ends,
+however it ends, so no grant stands between tasks; decision 18.) What it allows is what any grant allows (above);
 `ctrl+Enter` sends a task without one and ends a standing one.
 
 ### Several agents at once

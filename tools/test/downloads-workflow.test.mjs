@@ -36,6 +36,26 @@ describe("release downloads workflow", () => {
     expect(text).not.toMatch(/^ {2}(pull_request\w*|push):/m);
   });
 
+  // A row is dated by the UTC day the run starts, and scheduled runs start hours late (about
+  // three in this repository). A late-evening schedule lands on the next day on most nights
+  // but not all, so one day is recorded twice and the next not at all.
+  it("is scheduled early enough that a late start stays on the UTC day it is dated", () => {
+    const hour = Number(/^ {4}- cron: "\d+ (\d+) \* \* \*"/m.exec(text)?.[1]);
+    expect(hour).toBeGreaterThanOrEqual(0);
+    expect(hour).toBeLessThanOrEqual(12);
+  });
+
+  // workflow_dispatch takes any ref, and a run from another branch would run that branch's
+  // workflow and script with the write token.
+  it("both jobs run only in this repository from main; record only after collect succeeded", () => {
+    const guard = "github.repository == 'vimma-browser/vimma' && github.ref == 'refs/heads/main'";
+    expect(job("collect")).toMatch(/^ {4}if: (.+)$/m);
+    expect(/^ {4}if: (.+)$/m.exec(job("collect"))?.[1]).toBe(guard);
+    expect(/^ {4}if: (.+)$/m.exec(job("record"))?.[1]).toBe(
+      `\${{ ${guard} && !cancelled() && needs.collect.result == 'success' }}`,
+    );
+  });
+
   it("grants nothing by default; reads in collect, writes contents only in record", () => {
     expect(text).toMatch(/^permissions: \{\}$/m);
     expect(permissions(job("collect"))).toEqual(["contents: read"]);
@@ -59,8 +79,9 @@ describe("release downloads workflow", () => {
 
   it("record only appends: the new file must begin with the recorded history", () => {
     expect(job("record")).toMatch(/cmp -s -n "\$size" downloads\.csv "\$new"/);
-    expect(job("record")).toMatch(
-      /if: \$\{\{ !cancelled\(\) && needs\.collect\.result == 'success' \}\}/,
+    expect(/^ {4}if: (.+)$/m.exec(job("record"))?.[1]).toBe(
+      "${{ github.repository == 'vimma-browser/vimma' && github.ref == 'refs/heads/main'" +
+        " && !cancelled() && needs.collect.result == 'success' }}",
     );
   });
 

@@ -87,7 +87,7 @@ the [user guide](guide.md); planned work is on the
   dropped onto a pane.
 - A pinned tab cannot be shown in a pane; Vimma unpins a tab before it joins a split.
 - Every visible pane's page stays live and uses memory and CPU, up to `[panes] max` panes
-  (default 4) in a workspace.
+  (default 8; lower it on a small screen) in a workspace.
 
 ## Privacy, security and services
 

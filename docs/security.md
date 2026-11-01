@@ -1107,10 +1107,15 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   when asked and before the question, are `busy`, so a refused show cannot be retried in a loop.
   A `busy` denial for a used-up rate (M20's keys and shows, M3's opens and M32's lists, clicks,
   fills, screenshots and console reads) names the limit and, to a vimma-ctl at least as new as
-  Vimma, carries `retryAfter`, the milliseconds from 1 to 60000 until the next call is allowed,
-  so an agent waits for the rate rather than for a question that is not there (issue #592); the
-  validators take `retryAfter` on a `busy` denial only. It is learnt from the connection's own
-  calls alone, and the refusal still comes before anything else is learnt.
+  Vimma or a built-in conversation, carries `retryAfter`, the milliseconds from 1 to 60000 until
+  the next call is allowed, so an agent waits for the rate rather than for a question that is
+  not there (issue #592); the validators take `retryAfter` on a `busy` denial only. It is learnt
+  from the connection's own calls alone, and the refusal still comes before anything else is
+  learnt. The built-in agent's runner waits out such a refusal once (at most 60 s, ended by
+  stopping the task) and runs the call again, through every check and the rate again, so the
+  rate paces the agent and bounds it as before (agent-speed S7, issue #601). `vimma-ctl mcp`
+  sends at most 4 requests of a connection at once, as many as Vimma takes in flight; the rest
+  of its 16 wait in vimma-ctl, so a model's parallel calls are not refused as `busy`.
   [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
   [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),
@@ -1119,6 +1124,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`retryAfter: 1 to 60000 whole milliseconds, on a busy denial only`](../packages/vimma-core/test/control-v2.test.mjs),
   [`a_rate_limit_names_the_limit_and_the_wait`](../tools/vimma-ctl/src/mcp.rs),
   [`a_busy_denial_with_retry_after_is_a_rate_limit`](../tools/vimma-ctl/src/mcp_serve.rs),
+  [`a used-up rate`](../packages/vimma-core/test/agent-results.test.mjs),
+  [`test_a_used_up_rate_is_waited_out_not_reported_as_questions`](../tests/browser/browser_vimma_agent_chat.js),
+  [`calls_past_vimmas_four_in_flight_wait_here_and_all_run`](../tools/vimma-ctl/tests/mcp.rs),
   [`test_loads_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_follows_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_follow.js),
   [`a label is lowercase hint characters, at most the longest label of 200 links`](../packages/vimma-core/test/agent-keys.test.mjs),
@@ -1674,7 +1682,8 @@ conversation's grant can do what any grant allows (above), within its own tabs a
 
 **The conversation grant.** A task the user sends from Vimma's own chat window is known to come
 from the user, so sending it with `Enter` grants that conversation's connection, with no
-question and no expiry, until it is stopped (B18). Nothing but Vimma's chrome calls it: the
+question and no timer, until that task ends, however it ends (B18). Between tasks a
+conversation holds no grant, so the status bar's `◇ agent granted` means an agent is working. Nothing but Vimma's chrome calls it: the
 control socket has no command that sends a task, and page key events never reach chrome. The
 steps that cannot be taken back still ask under it.
 
@@ -1733,13 +1742,14 @@ vision; its key stays in login storage.
   [`a tab belongs to the conversation that opened it`](../packages/vimma-core/test/agent-owners.test.mjs),
   [`a tab a page opened belongs to its opener's conversation`](../packages/vimma-core/test/agent-owners.test.mjs)
 - M37. A conversation's grant **must** be made only by the user sending a task without asking
-  every step (`Enter`) or by an answer to its question; it **must** have no expiry, **must** end
-  on a send that asks every step (`ctrl+Enter`), on stopping the conversation, on
+  every step (`Enter`) or by an answer to its question; it **must** have no timer, **must** end
+  when the task it was made for ends (done, stopped, at its budget or on an error), on a send
+  that asks every step (`ctrl+Enter`), on stopping the conversation, on
   `ctrl+b shift+a`, on `:mcp revoke` and when the conversation is deleted, and **must never**
   cover another conversation. Form submissions, payment steps, `vimma_show` and the downloads
   that always ask **must** ask under it (M19, M28, M33).
   [`test_ctrl_enter_asks_every_step_and_ends_the_grant`](../tests/browser/browser_vimma_agent_conversations.js),
-  [`test_grant_covers_later_tasks_until_stopped`](../tests/browser/browser_vimma_agent_conversations.js),
+  [`test_grant_ends_with_its_task_and_enter_grants_again`](../tests/browser/browser_vimma_agent_conversations.js),
   [`test_checkpoint_and_show_ask_under_the_conversation_grant`](../tests/browser/browser_vimma_agent_conversations.js),
   [`a conversation grant has no expiry and ends on stop`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a conversation grant leaves checkpoints asking`](../packages/vimma-core/test/agent-gate.test.mjs),
@@ -1994,8 +2004,10 @@ own process, not a process group.
   before it is used. The checks cover the file the
   path names: when that file is a script, its `#!` interpreter (such as `node` through
   `/usr/bin/env`) is found on the user's `PATH` as it is in a terminal, so a `PATH` entry
-  other users can write lets them choose it, there as here. A run **must** end, and revoke its
-  ticket, when the CLI's work is done even if a child of it keeps its output open.
+  other users can write lets them choose it, there as here; and a version manager's shim (mise,
+  asdf, volta) runs the real tool from the manager's own install folder and configuration, which
+  Vimma does not check (a group-writable `MISE_DATA_DIR`, for example). A run **must** end, and
+  revoke its ticket, when the CLI's work is done even if a child of it keeps its output open.
   [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_shim_runs_as_the_cli_it_is_named_after`](../tests/browser/browser_vimma_agent_cli_run.js),
@@ -2024,9 +2036,15 @@ own process, not a process group.
   `vimma.agent.cli.vimmaCtl` names, never one found on `PATH`. The pref's file is checked as
   the CLI is (M55). The one beside the binary has its own file checked in full, but not the
   folders above it: they hold Vimma's binary, so a user who can swap one can already change
-  Vimma itself, and on macOS `/Applications` is writable by the admin group.
+  Vimma itself, and on macOS `/Applications` is writable by the admin group. That exception
+  covers only a file in the binary's own folder, and only the folders on the way to the binary
+  and the links in them: a link there to a file elsewhere has every folder judged in full, and a
+  chain of links that passes through another folder has that folder and its links judged even
+  when it ends beside the binary, since the kernel follows the chain again at each run.
   [`test_ticket_never_in_cmdline_prefs_or_log`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_vimma_ctl_beside_the_binary_is_judged_as_the_binary_is`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_a_link_beside_the_binary_is_judged_where_it_leads`](../tests/browser/browser_vimma_agent_cli_run.js),
+  [`a link through a hop in another folder has that folder and link judged`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`test_only_vimmas_mcp_server_is_given`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`the mcp configuration names only vimma-ctl, with the ticket in its environment`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
@@ -3173,3 +3191,49 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
   [`reads CSS escapes and comments before looking for loads`](../tools/sites/test/snapshot.test.mjs),
   [`each have a manifest entry with a licence that allows redistribution`](../tools/sites/test/snapshot.test.mjs),
   [`runs the suite only offline, after the e2e scenarios, on the artifact build`](../tools/test/sites-workflow.test.mjs)
+
+## 18. Release download counts workflow (`downloads.yml`, `tools/stats`)
+
+Runbook: "Release download counts". Once a day a hosted runner reads every published release
+asset's `download_count` and appends it to `downloads.csv` on the `stats` branch, an orphan
+branch outside `main`'s history. It is the only workflow whose own job token pushes commits, so
+these rules keep that token away from `main` and from code. Who can reach it: anyone with write
+access, who can change the workflow or `tools/stats` on a branch of their own; the data it reads
+(asset names and counts of our own releases) comes from GitHub's API. It runs on `schedule` and
+`workflow_dispatch` only, never on a pull request or a push. A manual run can name any branch,
+so both jobs **refuse** to run unless the run is in this repository and on `main`: a manual run
+from another branch whose copy of the workflow is unchanged refuses, so that branch's
+`tools/stats` never runs with the write token. The guard lives in each branch's own copy of the
+file, so it binds only an unchanged copy. **⚠ limit:**
+anyone with write access can run a changed workflow from their own ref (`gh workflow run
+--ref`, or a workflow of their own `on: push`) and get a `contents: write` job token. That token
+can write any branch but `main`, which its ruleset refuses, and create, move or delete any tag.
+This is the same reach as pushing a branch (B11, B15, UP7), and nothing in this file can narrow
+it: the mitigations sit outside it, as rulesets for tags and for `stats`, or a GitHub App or
+deploy key that may write `stats` alone in place of the job token.
+[`runs once a day and by hand, never on a pull request or a push`](../tools/test/downloads-workflow.test.mjs),
+[`both jobs run only in this repository from main; record only after collect succeeded`](../tools/test/downloads-workflow.test.mjs)
+
+- DC1. The workflow holds **no** secret: only the job token, with nothing granted at the top
+  level. The `collect` job, which runs repository code, holds **only** `contents: read` and does
+  not keep its checkout's credentials. Traffic (views, clones, referrers) is therefore not
+  recorded: its API needs the Administration permission, which a job token cannot be given, and
+  recording it would mean the workflow's first stored secret.
+  [`grants nothing by default; reads in collect, writes contents only in record`](../tools/test/downloads-workflow.test.mjs),
+  [`collect runs the script without a stored credential`](../tools/test/downloads-workflow.test.mjs),
+  [`stays tiny: no npm install, short timeouts, no secret, runs in order`](../tools/test/downloads-workflow.test.mjs)
+- DC2. `contents: write` is **only** in the `record` job, which checks out the `stats` branch,
+  runs no repository code (no `node`, no `npm`), and pushes **only** the fixed refspec
+  `HEAD:stats`: the workflow has one `git push`. The token itself could write any branch and
+  create, move or delete any tag, so in this workflow those limits rest on the job's code, and
+  on a changed copy of the workflow they do not hold at all (the limit above). `main` rests on
+  its ruleset: it requires a pull request and has no bypass actor, so a push by the job token is
+  refused. Tags and the `stats` branch have no ruleset unless the
+  maintainer adds one (runbook, "Where it can push").
+  [`record runs no repository code and pushes only to the stats branch`](../tools/test/downloads-workflow.test.mjs)
+- DC3. The history is **append-only**: `record` refuses a new `downloads.csv` that does not begin
+  byte for byte with the one on `stats`, and runs only after `collect` succeeded, from that run's
+  own artifact. A failed fetch of the history fails the run rather than starting a new one.
+  [`record only appends: the new file must begin with the recorded history`](../tools/test/downloads-workflow.test.mjs)
+- DC4. Every action is pinned by a full commit SHA.
+  [`every action it uses is pinned by a full commit SHA`](../tools/test/downloads-workflow.test.mjs)

@@ -109,6 +109,16 @@ describe("the transcript", () => {
     expect(t.entries[0]).toMatchObject({ kind: "step", text: "vimma_new_tool", outcome: "done" });
   });
 
+  // agent-speed S7: Vimma waits out a used-up rate for the built-in agent, and says so.
+  test("a step waiting out a rate says how long, then ends as any step does", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_open") });
+    t.rateWait(11_200);
+    expect(t.entries[0]).toMatchObject({ outcome: "waiting 12 s (rate limit)" });
+    t.task({ type: "result", call: call("vimma_open"), result: ok });
+    expect(t.entries[0]).toMatchObject({ outcome: "done" });
+  });
+
   test("a message sent during a task is marked, and a reply is the agent's", () => {
     const t = new Transcript();
     t.user("first");

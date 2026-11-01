@@ -128,13 +128,14 @@ const currentCtl = new Set();
 
 /**
  * The `busy` denial of a used-up rate (issue #592): it names the limit and, to a current
- * vimma-ctl, says when the next call is allowed, so an agent does not wait for a question that
+ * vimma-ctl or a built-in conversation, says when the next call is allowed, so an agent does not wait for a question that
  * is not there.
  * @param {CallRate} rate @param {ConnId} conn @param {string} calls  e.g. "vimma_keys calls"
  */
 function rateDenied(rate, conn, calls) {
   const { message, retryAfter } = rate.refusal(conn, Date.now(), calls);
-  const wait = currentCtl.has(conn) ? retryAfter : undefined;
+  // A built-in conversation reads the result in this process, so it is always current.
+  const wait = currentCtl.has(conn) || isBuiltinConn(conn) ? retryAfter : undefined;
   return new AgentError("denied", message, "busy", wait);
 }
 
@@ -1664,9 +1665,9 @@ const COMMANDS = {
 };
 
 /**
- * A built-in conversation's context was cleared (builtin-agent B22): its next element list of
- * any site comes in full, since the model no longer has the lines a compact list would leave
- * out (agent-speed S4).
+ * A built-in conversation's context was cleared (builtin-agent B22), or its loop left out a block
+ * of older results (agent-speed S5): its next element list of any site comes in full, since the
+ * model may no longer have the lines a compact list would leave out (agent-speed S4).
  * @param {ConnId} conn
  */
 export function forgetListedSites(conn) {

@@ -7,9 +7,9 @@
 // tool calls run through runAgentCommand, as an MCP agent's do through the control socket, so
 // the gate, the grants, the checkpoints, the rates, `:mcp log` and the checks after a yes are the
 // same code; and it needs no `:mcp on`, which opens the socket to every local process. Sending
-// a task with `Enter` grants the conversation's connection, with no question, for its lifetime;
-// `ask` (`ctrl+Enter`) ends that grant so every step asks. The model loop is vimma-core's, the
-// one the bench measures. Each conversation keeps its transcript (core agent-chat.mjs), built
+// a task with `Enter` grants the conversation's connection, with no question, until that task
+// ends; `ask` (`ctrl+Enter`) ends that grant so every step asks. The model loop is vimma-core's,
+// the one the bench measures. Each conversation keeps its transcript (core agent-chat.mjs), built
 // from the loop's events and the gate's events for its connection, which the chat window
 // (ui/agent-chat.mjs) draws. Each conversation is also kept across restarts (B15, Behaviour
 // 19-23): its messages, the agent's replies and Vimma's own task summaries, never page text or
@@ -30,7 +30,7 @@ import {
   storedRecord,
   taskSummary,
 } from "../core/agent-store.mjs";
-import { failureResult, toolCommand, toolResult } from "../core/agent-results.mjs";
+import { failureResult, rateWaitMs, toolCommand, toolResult } from "../core/agent-results.mjs";
 import {
   localModelState,
   modelChoices,
@@ -61,6 +61,7 @@ const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setInterval: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   // Lazily: the control socket imports the host, which loads this module on demand.
   VimmaControl: "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 });
@@ -123,7 +124,7 @@ function changed() {
       c.granted = granted;
       c.transcript.notice(
         granted
-          ? "granted: this conversation may use the agent workspace until it is stopped; " +
+          ? "granted: this conversation may use the agent workspace until this task ends; " +
               "sending a form or paying still asks"
           : "grant ended: each step asks until you send with Enter",
       );
@@ -342,6 +343,39 @@ async function runTool(c, name, args, { signal }) {
     const message = check.errors.map((e) => e.replace(/^args\./, "")).join("; ");
     return failureResult({ kind: "refused", code: "invalid-args", message });
   }
+  let failure = await runOnce(c, name, args, mapped, rid, signal);
+  if ("content" in failure) return failure;
+  // A used-up rate is waited out once and the call run again (agent-speed S7): the model cannot
+  // wait, and one told to ends its task. Stopping the task ends the wait.
+  const wait = rateWaitMs(failure);
+  if (wait !== null && !signal.aborted) {
+    c.transcript.rateWait(wait);
+    changed();
+    await new Promise((resolve) => {
+      const abort = () => {
+        lazy.clearTimeout(timer);
+        resolve(undefined);
+      };
+      const timer = lazy.setTimeout(() => {
+        signal.removeEventListener("abort", abort);
+        resolve(undefined);
+      }, wait);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+    if (!signal.aborted) failure = await runOnce(c, name, args, mapped, nextRid++, signal);
+    if ("content" in failure) return failure;
+  }
+  return failureResult(failure);
+}
+
+/**
+ * One run of a tool call: its result, or the failure that refused it.
+ * @param {Conversation} c @param {string} name @param {Record<string, any>} args
+ * @param {{ command: string, args: any }} mapped @param {number} rid @param {AbortSignal} signal
+ * @returns {Promise<import("../core/agent-results.mjs").CallToolResult
+ *   | import("../core/agent-results.mjs").Failure>}
+ */
+async function runOnce(c, name, args, mapped, rid, signal) {
   const withdraw = () => c.state.cancels?.get(rid)?.();
   signal.addEventListener("abort", withdraw);
   const asked = Date.now();
@@ -350,11 +384,15 @@ async function runTool(c, name, args, { signal }) {
     return toolResult(name, args, result);
   } catch (e) {
     if (!(e instanceof AgentError)) throw e;
-    return failureResult(
-      e.code === "denied"
-        ? { kind: "denied", reason: e.reason ?? "user", waitedS: (Date.now() - asked) / 1000 }
-        : { kind: "refused", code: e.code, message: e.message },
-    );
+    return e.code === "denied"
+      ? {
+          kind: "denied",
+          reason: e.reason ?? "user",
+          waitedS: (Date.now() - asked) / 1000,
+          message: e.message,
+          ...(e.retryAfter ? { retryAfterMs: e.retryAfter } : {}),
+        }
+      : { kind: "refused", code: e.code, message: e.message };
   } finally {
     signal.removeEventListener("abort", withdraw);
   }
@@ -586,6 +624,8 @@ export const AgentChat = {
           budget,
           localOnly,
           keepResults: config()?.keepResults ?? null,
+          // The lists a compact list would point at have left the model's context.
+          onLeftOut: () => forgetListedSites(c.conn),
           onEvent: (e) => {
             c.transcript.task(e);
             changed();
@@ -595,10 +635,17 @@ export const AgentChat = {
     c.stopped = false;
     c.task = handle;
     c.budget = budget;
+    // However the task ends, its grant ends with it (B18), so a grant shows only while an agent
+    // works with the user's permission; the next Enter grants again.
+    const ended = () => {
+      if (c.task !== handle) return;
+      c.task = null;
+      AgentGate.endGrant(c.conn);
+    };
     c.done = handle.done.then(
       (result) => {
         c.messages = result.messages;
-        if (c.task === handle) c.task = null;
+        ended();
         c.last = { outcome: result.outcome, ...(result.error ? { error: result.error } : {}) };
         // Only the task's final reply is kept, not the text that came with its tool calls,
         // which most often restates the page it was reading.
@@ -609,7 +656,7 @@ export const AgentChat = {
         return result;
       },
       (e) => {
-        if (c.task === handle) c.task = null;
+        ended();
         c.last = { outcome: "error", error: String(e?.message ?? e) };
         summarize(c, "error");
         c.transcript.end(c.last);
