@@ -1656,8 +1656,11 @@ model = "Qwen/Qwen3-14B"
   `--jinja`, vLLM without `--enable-auto-tool-choice`), gets nothing done.
 - **Context.** A ten-item shopping list needs about 19,000 tokens on the shortest path the
   tools allow, so give a local model at least 32,768.
-- **Speed.** That shortest path takes 23 tool calls for ten items, and a model takes more. Each
-  call is a model turn that reads the whole conversation.
+- **Speed.** That shortest path takes 23 tool calls for ten items, and a model takes more. A
+  model turn reads the whole conversation, so Vimma's instructions tell the model to put steps
+  that do not depend on each other in one turn: every item's search, then every basket button.
+  The calls of a turn still run one at a time, each asked and limited on its own, and a question
+  in the middle of a turn holds back the calls after it until you answer.
 
 The [model bench](agent-bench.md) is what Vimma knows about models, measured on one laptop CPU
 without a GPU. There, qwen2.5 at 1.5B and 7B completed no list, a 27B model reached the time
@@ -2386,6 +2389,9 @@ button inside an embedded frame that updates the page around it reads as no chan
   grant like any other open and shows its notice and `:mcp log` row; a search the agent sends
   through the form asks as a form submission. The instructions limit this to searches; any
   other form still asks.
+- **Several steps at once are still asked one by one.** The instructions also tell an agent to
+  send steps that do not depend on each other in one turn, such as each item's search in its own
+  tab. Each of those calls is asked, limited and logged as if it came alone.
 - **A click that may pay asks every time** too: on a page that shows a payment card field, or
   on a button that says it pays (`Pay now`, `Place order`, `Vahvista tilaus` and the like),
   even when the button sends no form.

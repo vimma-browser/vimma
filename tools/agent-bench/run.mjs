@@ -101,6 +101,33 @@ export async function runOne(o) {
   return { ...score, calls, turns, reply: result.reply ?? "", error: result.error ?? null };
 }
 
+/** vimma-ctl's wording for a used-up rate (mcp.rs, `Failure::RateLimited`). */
+const RATE_LIMITED =
+  /^Vimma's rate limit for this agent: .* No question is waiting for the user\. The next call is allowed in (\d+) s\.$/;
+
+/**
+ * The runner a rate refusal is waited out by once, the call then run again, as the built-in
+ * agent's runner does (agent-speed S7, AgentChat.sys.mjs): the bench measures that agent, whose
+ * model cannot wait, and a model told to wait ends its task. A second refusal goes to the model.
+ * @param {RunTool} runTool
+ * @param {{ sleep?: (ms: number) => Promise<unknown> }} [o]
+ * @returns {RunTool}
+ */
+export function waitOutRate(
+  runTool,
+  { sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {},
+) {
+  return async (name, args, opts) => {
+    const first = await runTool(name, args, opts);
+    const text = first?.isError && first.content?.length === 1 ? first.content[0] : null;
+    const m = text?.type === "text" ? RATE_LIMITED.exec(text.text) : null;
+    if (!m || opts?.signal?.aborted) return first;
+    await sleep(Number(m[1]) * 1000);
+    if (opts?.signal?.aborted) return first;
+    return runTool(name, args, opts);
+  };
+}
+
 /**
  * Presses `key` while a tool call has waited longer than a question takes to arm, again every
  * `everyMs`, until the call returns. A key with no question waiting lands on the main
@@ -221,8 +248,8 @@ export function parseArgs(argv) {
   if (provider !== "scripted" && !values.model)
     throw new Error(`--provider ${provider} needs --model`);
   const floor = /** @type {string} */ (values.floor);
-  if (floor !== "search" && floor !== "product")
-    throw new Error(`--floor must be search or product, not ${floor}`);
+  if (floor !== "search" && floor !== "product" && floor !== "parallel")
+    throw new Error(`--floor must be search, product or parallel, not ${floor}`);
   const paceMs = Number(values["pace-ms"]);
   if (!Number.isInteger(paceMs) || paceMs < 0)
     throw new Error("--pace-ms must be a whole number of milliseconds, 0 or more");
@@ -255,7 +282,7 @@ export function parseArgs(argv) {
     check: values.check ?? false,
     keep: values.keep ?? false,
     shots: values.shots ?? null,
-    floor: /** @type {"search" | "product"} */ (floor),
+    floor: /** @type {"search" | "product" | "parallel"} */ (floor),
     paceMs,
     keepResults,
     help: values.help ?? false,
