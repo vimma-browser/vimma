@@ -161,6 +161,9 @@ export const COMMANDS = Object.freeze([
   // docs/specs/addon-manager.md. Without a name, :addon asks on the command line.
   cmd("addons", "none", "addons.picker", "Add-on picker"),
   cmd("addon", "optional", "addons.popup", "Open an add-on's popup (Tab completes names)"),
+  cmd("site", "none", "site.permissions", "Site permissions of this page: allow, block, reset", {
+    aliases: ["permissions"],
+  }),
   // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget);
   // log: docs/specs/mcp-drive.md D14.
   cmd(

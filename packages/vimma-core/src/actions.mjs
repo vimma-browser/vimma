@@ -395,6 +395,11 @@ group("Add-ons", [
   ["addon_popup", "addons.popup", "Open an add-on's popup by name (:addon name)"],
 ]);
 
+// docs/specs/site-permissions.md: no default key, only `:site`.
+group("Site", [
+  ["site_permissions", "site.permissions", "Site permissions picker: allow, block, reset (:site)"],
+]);
+
 /** @type {readonly ActionDef[]} */
 export const ACTIONS = Object.freeze(defs);
 

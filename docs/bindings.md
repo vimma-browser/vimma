@@ -327,6 +327,12 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Add-on picker: popup, options, on/off, remove, update | `addon_picker` | `ctrl+b e` |
 | Open an add-on's popup by name (:addon name)          | `addon_popup`  | —          |
 
+## Site
+
+| Action                                               | Config name        | Bindings |
+| ---------------------------------------------------- | ------------------ | -------- |
+| Site permissions picker: allow, block, reset (:site) | `site_permissions` | —        |
+
 ## On macOS
 
 Option types characters on a Mac, so the defaults that are `alt` chords on Linux are Firefox's

@@ -2669,6 +2669,16 @@
           "keys": []
         }
       ]
+    },
+    {
+      "name": "Site",
+      "actions": [
+        {
+          "name": "site_permissions",
+          "description": "Site permissions picker: allow, block, reset (:site)",
+          "keys": []
+        }
+      ]
     }
   ]
 }

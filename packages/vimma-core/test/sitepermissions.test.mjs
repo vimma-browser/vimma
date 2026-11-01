@@ -51,8 +51,8 @@ describe("permissionItems", () => {
     ]);
     expect(items.map((i) => [i.permissionId, i.display, i.detail])).toEqual([
       ["geo", "Access your location", "Block"],
-      ["camera", "Use the camera", "Always Ask · default"],
       ["popup", "Open pop-up windows", "Block · default"],
+      ["camera", "Use the camera", "Always Ask · default"],
     ]);
     expect(items.every((i) => i.kind === "permission" && i.active === false)).toBe(true);
     expect(items.map((i) => i.set)).toEqual([true, false, false]);
