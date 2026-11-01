@@ -1759,12 +1759,16 @@ and output, connects to Vimma as an agent (never with full control), and offers 
      { "mcpServers": { "vimma": { "command": "vimma-ctl", "args": ["mcp"] } } }
      ```
 
-   - **opencode** (1.19.0). `opencode mcp add` asks its questions interactively; or add this to
-     `opencode.json` in your project (or `~/.config/opencode/opencode.json` for every project):
+   - **opencode** (2.0.32). `opencode mcp add vimma -- vimma-ctl mcp` adds it to `opencode.json`
+     in your project (`--global` for every project); or add this to `opencode.json` yourself
+     (or `~/.config/opencode/opencode.json`):
 
      ```json
      { "mcp": { "vimma": { "type": "local", "command": ["vimma-ctl", "mcp"], "enabled": true } } }
      ```
+
+     Leave out its `timeout` setting: set, it also limits each tool call
+     ([Timeouts in agent tools](#timeouts-in-agent-tools)).
 
    For a profile other than your default one, the command is `vimma-ctl --profile DIR mcp`.
    `vimma-ctl mcp` takes no other option: it refuses `--timeout` and `--json`, since each call
@@ -2133,7 +2137,8 @@ opencode run "Open https://example.com in Vimma's agent workspace and tell me it
 ```
 
 - `opencode run` runs the prompt and exits. It reads the same `mcp` entry in `opencode.json` as
-  the interactive opencode.
+  the interactive opencode, and waits for your answer in Vimma as long as that entry sets no
+  `timeout`.
 - opencode allows MCP tools without asking unless a `permission` rule in `opencode.json` says
   `ask` or `deny`. Its tool names start with the server's name, so this allows Vimma's tools
   even where a broader rule asks:
@@ -2175,7 +2180,7 @@ A call waits for your answer up to `[mcp] ask_timeout` (50 s by default, 10 to 3
 | Claude Code | `MCP_TOOL_TIMEOUT` (about 28 hours unless set), or a server's `timeout` in `.mcp.json` (milliseconds); a stdio server that sends nothing for 30 minutes is cut off. A call still running after two minutes moves to a background task. | Nothing: Vimma answers first.                                                                                                |
 | Codex CLI   | `tool_timeout_sec`, 60 s by default.                                                                                                                                                                                                   | If you raise `ask_timeout` past about 55 s, set `tool_timeout_sec` under `[mcp_servers.vimma]` above it (for example `320`). |
 | Copilot CLI | `copilot mcp add` takes `--timeout MS`.                                                                                                                                                                                                | If calls end before you can answer, add the server again with `--timeout` above `ask_timeout` (in milliseconds).             |
-| opencode    | Its `timeout` setting (5000 ms) covers listing the tools, not tool calls.                                                                                                                                                              | Nothing.                                                                                                                     |
+| opencode    | 12 hours unless the server's `timeout` in `opencode.json` is set (milliseconds); set, it limits tool calls too. Starting the server and listing its tools have their own 30 s limit (checked with 2.0.32).                             | Nothing, unless you set `timeout`: then set it above `ask_timeout` (for example `320000`).                                   |
 
 When the agent tool gives up first, Vimma's question may still be on the line; answering it then
 does nothing the agent sees.
