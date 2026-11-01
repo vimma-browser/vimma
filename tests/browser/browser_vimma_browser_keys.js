@@ -203,6 +203,48 @@ add_task(async function on_macos_cmd_left_in_a_field_moves_to_the_line_start_and
   BrowserTestUtils.removeTab(tab);
 });
 
+add_task(async function a_reply_answers_its_own_press_not_one_the_page_took_earlier() {
+  if (!MAC) {
+    Assert.ok(true, "macOS only: Linux's alt+left goes back from a field, as in Firefox");
+    return;
+  }
+  // A page that takes a keydown gets no keypress, and Firefox sends no reply for it
+  // (BrowserChild::RecvRealKeyEvent). The next reply on that key must not settle the press the
+  // page took: it carries the mode of its own press, here insert, where a field's cmd+left stays.
+  const tab = await normalPage();
+  const browser = tab.linkedBrowser;
+  const second = PLAIN + "?taken";
+  BrowserTestUtils.startLoadingURIString(browser, second);
+  await BrowserTestUtils.browserLoaded(browser, false, second);
+  await recordPageKeys(browser);
+  await focusContent(browser);
+  await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "normal", "normal");
+  await SpecialPowers.spawn(browser, [], () => {
+    content.addEventListener("keydown", (e) => e.preventDefault(), { capture: true, once: true });
+  });
+  EventUtils.synthesizeKey("KEY_ArrowLeft", NAV);
+  Assert.ok(await waitForPageKey(browser, ["ArrowLeft"]), "the page took cmd+left");
+  await new Promise((r) => setTimeout(r, 300));
+  Assert.equal(urlOf(browser), second, "the page took cmd+left: no back");
+
+  await SpecialPowers.spawn(browser, [], () => {
+    const doc = content.document;
+    const field = doc.createElement("input");
+    field.value = "hello world";
+    doc.body.append(field);
+    field.focus();
+    field.setSelectionRange(11, 11);
+  });
+  await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "insert");
+  EventUtils.synthesizeKey("KEY_ArrowLeft", NAV);
+  const caret = () =>
+    SpecialPowers.spawn(browser, [], () => content.document.querySelector("input").selectionStart);
+  await TestUtils.waitForCondition(async () => (await caret()) === 0, "the field: line start");
+  await new Promise((r) => setTimeout(r, 300));
+  Assert.equal(urlOf(browser), second, "cmd+left in the field did not go back");
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function the_address_bar_keys_focus_it() {
   // Firefox's second address bar key: alt+d on Linux, cmd+l on macOS (no alt+d there).
   for (const [key, mods, name] of [

@@ -19,6 +19,7 @@ import {
 } from "../core/editable.mjs";
 import { HintError, hintKey, hintStatus, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
+import { PageFirstQueue } from "../core/page-first.mjs";
 import { compileKeymap } from "../core/keymap.mjs";
 import { KEY_KEEPING_MODES } from "../core/modes.mjs";
 import { describeAction, notImplementedText } from "../core/actions.mjs";
@@ -208,17 +209,6 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  */
 
 /**
- * A binding on a chord Firefox let the page override (docs/specs/firefox-keys.md decision 6):
- * its keydown went to the page, and it runs on the keypress after the page had it, unless the
- * page called preventDefault. `awaiting`: its keypress went to a remote page, whose reply runs it.
- * @typedef {{ key: string, result: DispatchResult, pressed: boolean, awaiting: boolean,
- *   mode: Mode }} PageFirst
- */
-
-/** The most page-first keys kept waiting (a page that never replies cannot grow the queue). */
-const PAGE_FIRST_MAX = 16;
-
-/**
  * @typedef {object} WindowState
  * @property {Window} win
  * @property {Keymap} keymap
@@ -228,8 +218,8 @@ const PAGE_FIRST_MAX = 16;
  *   the page: asks a remote page for its reply, or takes the reply (firefox-keys decision 6)
  * @property {(e: KeyboardEvent) => void} onKeyPressAfter  the same keypress after a
  *   parent-process page or a chrome field had it
- * @property {PageFirst[]} pageFirst  bindings waiting for the page to leave their key alone,
- *   oldest first: keys typed fast (or held down) each wait for their own reply
+ * @property {PageFirstQueue<DispatchResult>} pageFirst  bindings waiting for the page to leave
+ *   their key alone (core page-first.mjs)
  * @property {FirefoxKeys | null} firefoxKeys  Firefox's own shortcuts off (key-handling-batch)
  * @property {() => void} onTabSelect
  * @property {ReturnType<typeof createDispatcher>} dispatcher
@@ -1343,7 +1333,7 @@ export const VimmaHost = {
       onKeyDownAfter: (e) => this._onKeyDownAfter(state, e),
       onKeyPress: (e) => this._onKeyPress(state, e),
       onKeyPressAfter: (e) => this._onKeyPressAfter(state, e),
-      pageFirst: [],
+      pageFirst: new PageFirstQueue(),
       firefoxKeys: null,
       private: isPrivateBrowsing(win),
       // The overlay is modal, but tabs can still change underneath it (a script closes the
@@ -2120,9 +2110,7 @@ export const VimmaHost = {
     const chord = chordFromEvent(e);
     if (!chord) return; // a bare modifier
     const key = formatKey(chord);
-    // A page-first binding whose keypress never came (the page took the keydown) is dropped.
-    // One whose keypress stayed in this process was settled during that keypress.
-    state.pageFirst = state.pageFirst.filter((p) => p.awaiting);
+    state.pageFirst.keydown();
     // Focus left the page the hints are on (URL bar, another pane): they no longer apply.
     if (state.hint && state.hint.browser !== this._focusedBrowser(win)) this._cancelHints(state);
     if (state.element.browser && state.element.browser !== this._focusedBrowser(win)) {
@@ -2264,14 +2252,7 @@ export const VimmaHost = {
         // Firefox let the page have this chord first: so does Vimma (firefox-keys decision 6).
         // The keydown goes on; the keypress after the page runs the action (_onKeyPress).
         if (first && !modal && this._pageFirst(state, chord, mode)) {
-          state.pageFirst.push({
-            key: formatKey(chord),
-            result,
-            pressed: false,
-            awaiting: false,
-            mode,
-          });
-          if (state.pageFirst.length > PAGE_FIRST_MAX) state.pageFirst.shift();
+          state.pageFirst.defer(formatKey(chord), result, mode);
           return;
         }
         consume(e);
@@ -2341,7 +2322,7 @@ export const VimmaHost = {
    * @param {KeyboardEvent} e
    */
   _onKeyPress(state, e) {
-    if (!state.pageFirst.length) return;
+    if (!state.pageFirst.size) return;
     const chord = chordFromEvent(e);
     const key = chord && formatKey(chord);
     const ev = /** @type {ChromeKeyEvent} */ (e);
@@ -2350,29 +2331,21 @@ export const VimmaHost = {
       // ShortcutKeyDefinitions.cpp) never reaches `_onKeyPress` before the page:
       // GlobalKeyListener::HandleEventOnCaptureInSystemEventGroup stops it and waits for this
       // reply itself, so its entry is still unpressed here.
-      let at = state.pageFirst.findIndex((p) => p.awaiting && p.key === key);
-      if (at === -1) at = state.pageFirst.findIndex((p) => !p.pressed && p.key === key);
-      if (at === -1) return;
-      const [pending] = state.pageFirst.splice(at, 1);
+      const pending = key && state.pageFirst.reply(key, e.timeStamp);
       if (!pending || this._pageTookKey(e, pending)) return;
       consume(e);
       this._run(state, pending.result);
       this._emit(state);
       return;
     }
-    const pending = state.pageFirst.find((p) => !p.pressed && p.key === key);
-    if (!pending) {
-      // A page that cannot take input yet (its process is still starting) is sent no key:
-      // EventStateManager::PostHandleKeyboardEvent dispatches the keypress at the <browser>
-      // again instead, and no reply comes. Settled as a key that stayed in this process,
-      // `_onKeyPressAfter` runs it unless something calls preventDefault.
-      const waiting = state.pageFirst.filter((p) => p.awaiting && p.key === key).at(-1);
-      if (waiting && /** @type {any} */ (e.target)?.isRemoteBrowser) waiting.awaiting = false;
-      return;
-    }
-    pending.pressed = true;
-    if (/** @type {any} */ (e.target)?.isRemoteBrowser) {
-      pending.awaiting = true;
+    // A page that cannot take input yet (its process is still starting) is sent no key:
+    // EventStateManager::PostHandleKeyboardEvent dispatches the keypress at the <browser> again
+    // instead, and no reply comes. `press` settles it as a key that stayed in this process:
+    // `_onKeyPressAfter` runs it unless something calls preventDefault.
+    if (!key) return;
+    if (
+      state.pageFirst.press(key, e.timeStamp, !!(/** @type {any} */ (e.target)?.isRemoteBrowser))
+    ) {
       e.stopPropagation();
       ev.requestReplyFromRemoteContent();
     }
@@ -2386,7 +2359,7 @@ export const VimmaHost = {
    * PreventDefault before it looks for a controller, so ctrl+shift+z (cmd_redo) comes back
    * prevented by chrome on every plain page.
    * @param {KeyboardEvent} e
-   * @param {PageFirst} pending
+   * @param {{ mode: Mode }} pending
    */
   _pageTookKey(e, pending) {
     if (!e.defaultPrevented) return false;
@@ -2407,9 +2380,7 @@ export const VimmaHost = {
     const chord = chordFromEvent(e);
     const key = chord && formatKey(chord);
     // The one `_onKeyPress` just marked: a local keypress settles in its own dispatch.
-    const at = state.pageFirst.findIndex((p) => p.pressed && !p.awaiting && p.key === key);
-    if (at === -1) return;
-    const [pending] = state.pageFirst.splice(at, 1);
+    const pending = key && state.pageFirst.settle(key);
     if (e.defaultPrevented || !pending) return;
     e.preventDefault();
     this._run(state, pending.result);
