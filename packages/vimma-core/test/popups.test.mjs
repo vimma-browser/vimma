@@ -81,13 +81,15 @@ describe("parsePopupId", () => {
 });
 
 describe("status bar cue", () => {
-  test("names the picker's key, or :popups when it has none", () => {
-    expect(popupCue(["ctrl+b shift+o"])).toBe("pop-up blocked · ctrl+b shift+o");
-    expect(popupCue([])).toBe("pop-up blocked · :popups");
+  test("names the bar's keys once they count, and none before", () => {
+    expect(popupCue({ hint: "y allow · n block · Esc close" })).toBe(
+      "pop-up blocked · y allow · n block · Esc close",
+    );
+    expect(popupCue({ hint: null })).toBe("pop-up blocked");
   });
 
   test("in the agent workspace it names no way to allow anything", () => {
-    expect(popupCue(["ctrl+b shift+o"], { agent: true })).toBe("pop-up blocked");
+    expect(popupCue({ hint: "y allow · n block · Esc close", agent: true })).toBe("pop-up blocked");
   });
 
   test("a right-hand segment while the selected page has the bar, none otherwise", () => {
@@ -106,9 +108,9 @@ describe("status bar cue", () => {
 });
 
 describe("keys and commands", () => {
-  test("prefix+shift+o and :popups open the picker", () => {
+  test(":popups opens the picker; it has no default key, y and n answer the bar", () => {
     expect(getAction("popup_picker")?.id).toBe("popups.picker");
-    expect(DEFAULT_CONFIG.keys?.popup_picker).toEqual(["prefix+shift+o"]);
+    expect(DEFAULT_CONFIG.keys?.popup_picker).toBeUndefined();
     expect(parseCommandLine(":popups")).toMatchObject({ action: { id: "popups.picker" } });
   });
 });

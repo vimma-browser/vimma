@@ -2,11 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/popup-blocked.md. While the selected page has Firefox's "pop-up blocked" bar,
-// the status bar says `pop-up blocked · ctrl+b shift+o`; ctrl+b shift+o and :popups open a picker
-// over the bar's own options (allow the site, open one pop-up, stop showing the bar, settings),
-// run through Firefox's PopupAndRedirectBlockerObserver. Nothing blocked: a notice. In the agent
-// workspace the picker refuses and grants nothing (docs/security.md M10).
+// Spec: docs/specs/popup-blocked.md. Firefox's "pop-up blocked" bar is answered as Vimma's other
+// browser questions are: `y` allows the site, `n` blocks it, Esc closes the bar, with the
+// permission prompt's guards (armed after security.notification_enable_delay with no key in
+// between, never from a field or the command line). The status bar names the keys. :popups opens
+// a picker over the bar's other options (open one pop-up, stop showing the bar, settings), run
+// through Firefox's PopupAndRedirectBlockerObserver. Nothing blocked: a notice. In the agent
+// workspace no key answers the bar and the picker refuses: nothing is granted (docs/security.md
+// M10).
 
 "use strict";
 
@@ -25,7 +28,10 @@ const BLOCKING = ROOT + "file_vimma_popups.html";
 const PAGE = "https://example.com/";
 const PICKER_ID = "vimma-popup-picker";
 const NOTICE_ID = "vimma-notice";
-const CUE = "pop-up blocked · ctrl+b shift+o";
+const DELAY = 400;
+const UNARMED = "pop-up blocked";
+const CUE = "pop-up blocked · y allow · n block · Esc close";
+const FIELD_CUE = "pop-up blocked · Esc, then y allow · n block";
 
 const picker = () => document.getElementById(PICKER_ID);
 const isOpen = () => !!picker()?.open;
@@ -43,13 +49,19 @@ function until(cond, msg, tries = 100) {
   return TestUtils.waitForCondition(cond, msg, 50, tries);
 }
 
-/** ctrl+b, then `key`. */
-function prefix(key, mods = {}) {
-  EventUtils.synthesizeKey("b", { ctrlKey: true });
-  EventUtils.synthesizeKey(key, mods);
-}
+/** @param {number} ms */
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const openPicker = () => prefix("O", { shiftKey: true });
+const openPicker = () => {
+  EventUtils.synthesizeKey(":", { shiftKey: true });
+  EventUtils.sendString("popups");
+  EventUtils.synthesizeKey("KEY_Enter");
+};
+
+const cmdlineOpen = () => {
+  const el = document.getElementById("vimma-cmdline");
+  return !!el && !el.hidden;
+};
 
 /**
  * The open picker's rows. The dialog keeps its last rows after it closes, so a count alone can
@@ -83,9 +95,11 @@ async function select(tab) {
   if (gBrowser.selectedTab !== tab) await BrowserTestUtils.switchTab(gBrowser, tab);
 }
 
-const allowed = (tab) =>
-  Services.perms.testPermissionFromPrincipal(tab.linkedBrowser.contentPrincipal, "popup") ===
-  Services.perms.ALLOW_ACTION;
+const permission = (tab) =>
+  Services.perms.testPermissionFromPrincipal(tab.linkedBrowser.contentPrincipal, "popup");
+const allowed = (tab) => permission(tab) === Services.perms.ALLOW_ACTION;
+const forget = (tab) =>
+  Services.perms.removeFromPrincipal(tab.linkedBrowser.contentPrincipal, "popup");
 
 add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
@@ -97,6 +111,8 @@ add_task(async function setup() {
       // between pages with different counts re-raises the bar (Tabbrowser.sys.mjs,
       // updateCurrentBrowser).
       ["browser.tabs.loadDivertedInBackground", true],
+      // The test profile turns the delay off; the keys' wait is under test.
+      ["security.notification_enable_delay", DELAY],
     ],
   });
   registerCleanupFunction(() => {
@@ -122,7 +138,7 @@ add_task(async function nothing_blocked_says_so_and_opens_no_picker() {
 
 add_task(async function the_cue_follows_the_selected_tab() {
   const blocking = await blockingTab();
-  await until(() => cue() === CUE, "the status bar names the key");
+  await until(() => cue() === CUE, "the status bar names the keys");
   const plain = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
   await until(() => cue() === null, "another tab: no cue");
   await BrowserTestUtils.switchTab(gBrowser, blocking);
@@ -138,7 +154,7 @@ add_task(async function the_cue_follows_the_selected_tab() {
 add_task(async function the_picker_lists_the_bar_options_and_opens_one_popup() {
   const tab = await blockingTab();
   openPicker();
-  await until(isOpen, "ctrl+b shift+o opens the picker");
+  await until(isOpen, ":popups opens the picker");
   await pickerShows(5);
   Assert.deepEqual(ids(), ["allow", "popup:0", "popup:1", "hide", "settings"]);
   Assert.equal(title(rows()[0]), "Allow pop-ups for example.com");
@@ -153,12 +169,9 @@ add_task(async function the_picker_lists_the_bar_options_and_opens_one_popup() {
   Assert.ok(!allowed(tab), "opening one pop-up grants nothing");
   BrowserTestUtils.removeTab(a);
 
-  // :popups opens the same picker.
   await select(tab);
-  EventUtils.synthesizeKey(":", { shiftKey: true });
-  EventUtils.sendString("popups");
-  EventUtils.synthesizeKey("KEY_Enter");
-  await until(isOpen, ":popups opens the picker");
+  openPicker();
+  await until(isOpen, "it opens again");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "Esc closes it");
   BrowserTestUtils.removeTab(tab);
@@ -176,7 +189,7 @@ add_task(async function allow_grants_the_site_and_opens_the_blocked_popups() {
   BrowserTestUtils.removeTab(await b);
   await select(tab);
   await until(() => !bar() && cue() === null, "the bar and the cue are gone");
-  Services.perms.removeFromPrincipal(tab.linkedBrowser.contentPrincipal, "popup");
+  forget(tab);
   BrowserTestUtils.removeTab(tab);
 });
 
@@ -205,18 +218,115 @@ add_task(async function hide_turns_the_bar_off_and_settings_opens_preferences() 
   BrowserTestUtils.removeTab(tab);
 });
 
+add_task(async function y_answers_only_once_the_bar_is_armed_and_allows_the_site() {
+  const tab = await blockingTab();
+  await until(() => cue() === UNARMED, "no keys named before the bar is armed");
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 4);
+  Assert.ok(bar() && !allowed(tab), "y before the bar is armed answers nothing");
+  await until(() => cue() === CUE, "the keys are named once it is armed");
+  EventUtils.synthesizeKey("j");
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 4);
+  Assert.ok(bar() && !allowed(tab), "a key typed on through the bar starts the wait again");
+  await until(() => cue() === CUE, "armed again");
+
+  const a = popupTab("a");
+  const b = popupTab("b");
+  EventUtils.synthesizeKey("y");
+  await until(() => allowed(tab), "y allows pop-ups for the site");
+  BrowserTestUtils.removeTab(await a);
+  BrowserTestUtils.removeTab(await b);
+  await select(tab);
+  await until(() => !bar() && cue() === null, "Firefox opened them and closed the bar");
+  forget(tab);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function n_blocks_the_site_and_esc_only_closes_the_bar() {
+  let tab = await blockingTab();
+  await until(() => cue() === CUE, "armed");
+  EventUtils.synthesizeKey("n");
+  await until(() => !bar() && cue() === null, "n closes the bar");
+  Assert.equal(permission(tab), Services.perms.DENY_ACTION, "and blocks pop-ups for the site");
+  forget(tab);
+  BrowserTestUtils.removeTab(tab);
+
+  tab = await blockingTab();
+  await until(() => cue() === CUE, "armed");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !bar() && cue() === null, "Esc closes the bar");
+  Assert.equal(permission(tab), Services.perms.UNKNOWN_ACTION, "and changes no permission");
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function keys_typed_in_a_field_or_the_command_line_are_theirs() {
+  const tab = await blockingTab();
+  const browser = tab.linkedBrowser;
+  await SpecialPowers.spawn(browser, [], () => {
+    const input = content.document.createElement("input");
+    input.id = "vimma-popups-field";
+    content.document.body.append(input);
+    input.focus();
+  });
+  await until(() => cue() === FIELD_CUE, "from a field the keys line starts with the way out");
+  EventUtils.synthesizeKey("y");
+  EventUtils.synthesizeKey("n");
+  EventUtils.synthesizeKey("KEY_Escape");
+  const typed = await SpecialPowers.spawn(
+    browser,
+    [],
+    () => content.document.getElementById("vimma-popups-field").value,
+  );
+  Assert.equal(typed, "yn", "y and n were typed in the field");
+  Assert.ok(bar(), "and Esc left the field, not the bar");
+  Assert.equal(permission(tab), Services.perms.UNKNOWN_ACTION, "nothing decided");
+
+  // The command line, once the bar is armed: its keys are its own.
+  await until(() => cue() === CUE, "armed outside the field");
+  EventUtils.synthesizeKey(":", { shiftKey: true });
+  await until(cmdlineOpen, "the command line opens");
+  EventUtils.sendString("yn");
+  await wait(DELAY + 100);
+  Assert.equal(document.getElementById("vimma-cmdline-input").value, "yn", "typed there");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !cmdlineOpen(), "Esc closes the command line");
+  Assert.ok(bar(), "and not the bar");
+  Assert.equal(permission(tab), Services.perms.UNKNOWN_ACTION, "nothing decided");
+
+  await until(() => cue() === CUE, "armed again");
+  const a = popupTab("a");
+  const b = popupTab("b");
+  EventUtils.synthesizeKey("y");
+  await until(() => allowed(tab), "y in normal mode allows the site");
+  BrowserTestUtils.removeTab(await a);
+  BrowserTestUtils.removeTab(await b);
+  forget(tab);
+  await select(tab);
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function the_agent_workspace_refuses_and_grants_nothing() {
   const agent = /** @type {any} */ (WorkspaceStore.agent);
   Assert.ok(agent?.userContextId > 0, "the agent workspace has its container");
   const tab = BrowserTestUtils.addTab(gBrowser, BLOCKING, { userContextId: agent.userContextId });
   gBrowser.selectedTab = tab;
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await until(() => !!bar(), "Firefox shows the bar");
+  await until(() => cue() === UNARMED, "the cue names no key");
+  await wait(DELAY + 100);
+  for (const key of ["y", "KEY_Escape", "n", "KEY_Escape"]) {
+    EventUtils.synthesizeKey(key);
+    await wait(DELAY + 100);
+  }
+  Assert.ok(bar(), "no key answers the bar");
+  Assert.equal(permission(tab), Services.perms.UNKNOWN_ACTION, "y and n decide nothing");
   openPicker();
   await until(
     () => noticeText().includes("pop-ups stay blocked in the agent workspace"),
     "the refusal",
   );
   Assert.ok(!isOpen(), "no picker");
-  Assert.ok(!allowed(tab), "no permission");
+  Assert.equal(permission(tab), Services.perms.UNKNOWN_ACTION, "no permission");
   BrowserTestUtils.removeTab(tab);
 });
