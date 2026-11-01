@@ -321,12 +321,14 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   const tab = await openAgentTab();
   const c = await agentClient("claude-code");
   // Under a grant, a same-site follow runs unasked: a subdomain is the same site.
-  await keys(c, tab, "f", { kind: "grant", minutes: 5 });
+  const listed = await keys(c, tab, "f", { kind: "grant", minutes: 5 });
   let r = await keys(c, tab, `f${LABEL.sub}`, null);
+  // On the macOS runner this f has sometimes listed no `h` (#605): the message names what it saw.
   Assert.equal(
     r.result.url,
     SUB,
-    `a follow to a subdomain runs under the grant (steps: ${JSON.stringify(r.result.steps)})`,
+    `a follow to a subdomain runs under the grant (steps: ${JSON.stringify(r.result.steps)}; ` +
+      `f listed: ${JSON.stringify(lines(listed.result?.links ?? ""))})`,
   );
   await until(
     () => noticeText().startsWith('claude-code followed a link to test1.example.com in "'),
