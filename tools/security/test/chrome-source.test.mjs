@@ -254,10 +254,22 @@ describe("chrome code", () => {
   // the picker's ops, and no control, MCP or agent code can reach those ops.
   test("changes a site permission only from the site permissions picker", () => {
     const OPS = "src/browser/base/content/vimma/host/permission-ops.mjs";
+    // Every Services.perms writer, including the ...ForBrowser, ...Since and ...ByType forms.
     const writes = hits(
-      /setForPrincipal|removeFromPrincipal\(|addFromPrincipal\(|perms\.add\(|perms\.remove\w*\(|SitePermissions\.setDefault/,
+      /setForPrincipal|removeFromPrincipal\w*\(|addFromPrincipal\w*\(|addDefaultFromPrincipal\w*\(|perms\.(add|remove|set)\w*\(|removePermission\(|removeAll(Since|ExceptTypes)\w*\(|removeBy\w*\(|SitePermissions\.(setDefault|remove|clear)\w*/,
     );
-    expect(writes.filter((h) => !h.startsWith(`${OPS}:`))).toEqual([]);
+    // The one exception: agent tabs get browser-scoped WebRTC denies (security.md M10), never an
+    // allow, and only through this one call.
+    const AGENT_PAGES = "src/browser/base/content/vimma/ctl/AgentPages.sys.mjs";
+    expect(writes.filter((h) => !h.startsWith(`${OPS}:`))).toEqual([
+      `${AGENT_PAGES}:190: services.perms.addFromPrincipalForBrowser(`,
+    ]);
+    const agentPages = readFileSync(join(ROOT, AGENT_PAGES), "utf8");
+    expect(
+      agentPages.match(/perms\.addFromPrincipalForBrowser\(\s*principal,\s*type,\s*[\w.]+,/g),
+    ).toEqual([
+      "perms.addFromPrincipalForBrowser(\n      principal,\n      type,\n      services.perms.DENY_ACTION,",
+    ]);
     const text = readFileSync(join(ROOT, OPS), "utf8");
     expect(text.match(/SitePermissions\.(setForPrincipal|removeFromPrincipal)/g)).toEqual([
       "SitePermissions.setForPrincipal",

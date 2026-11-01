@@ -3309,7 +3309,10 @@ which Firefox's site information panel shows already, and stores nothing of its 
 - SP4. A change **must** go through Firefox's own code paths: one
   `SitePermissions.setForPrincipal` or `SitePermissions.removeFromPrincipal` call, the calls
   Page Info makes, and only in `host/permission-ops.mjs`; no other Vimma code changes a site
-  permission. The one direct permission-manager write is a pop-up block for the page's own
+  permission, except `ctl/AgentPages.sys.mjs`'s browser-scoped DENY for camera, microphone,
+  screen and speaker on each agent tab (M10): one `Services.perms.addFromPrincipalForBrowser`
+  call that only denies and never allows. The test pins every permission-manager writer,
+  including the `…ForBrowser`, `…Since` and `…ByType` forms. The one direct permission-manager write is a pop-up block for the page's own
   principal (`Services.perms.addFromPrincipal(…, "popup", DENY_ACTION)`, as Firefox's pop-up
   bar writes it), because SitePermissions drops a block that equals the pop-up default; it can
   only take pop-ups away. Only a state Firefox offers for the permission is set, and a
