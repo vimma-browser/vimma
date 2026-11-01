@@ -74,8 +74,8 @@ words as its search field's value, such as https://shop.example/search?q=oat+dri
 filling the search field and sending the form; it takes one call instead of three. Do this only \
 for a search: send every other form through vimma_activate, so that the user is asked. Steps \
 that do not depend on each other's results go as several tool calls in one turn, such as opening \
-each item's search in its own tab, then clicking each item's basket button: the calls run one \
-after another, and each is asked and limited as if it came alone. To see what a page of the agent workspace shows, call vimma_screenshot (labels: \
+each item's search in its own tab, then clicking each item's basket button; each call is still \
+asked and limited as if it came alone. To see what a page of the agent workspace shows, call vimma_screenshot (labels: \
 true draws the labels of your last vimma_elements on it). To see a page's script errors, console \
 errors and warnings, and failed requests, call vimma_console; pass the time of its last result as \
 since to see only what came after. Never ask the user to turn on full control (:control on) or to run vimma-ctl \
@@ -3064,8 +3064,7 @@ mod tests {
         assert!(INSTRUCTIONS.contains(
             "Steps that do not depend on each other's results go as several tool calls in one \
              turn, such as opening each item's search in its own tab, then clicking each item's \
-             basket button: the calls run one after another, and each is asked and limited as if \
-             it came alone."
+             basket button; each call is still asked and limited as if it came alone."
         ));
     }
 
