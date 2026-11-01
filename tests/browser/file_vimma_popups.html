@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_popups.js: opens two pop-ups while it loads, without a user
+   - gesture, so Firefox's pop-up blocker blocks both and shows its bar. The pop-ups are this
+   - page with ?a and ?b, which open nothing. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma pop-ups page</title>
+  </head>
+  <body>
+    <p>Opens two pop-ups.</p>
+    <script>
+      if (!location.search) {
+        window.open("file_vimma_popups.html?a", "a");
+        window.open("file_vimma_popups.html?b", "b");
+      }
+    </script>
+  </body>
+</html>

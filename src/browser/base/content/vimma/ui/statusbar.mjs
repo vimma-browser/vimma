@@ -41,6 +41,11 @@ const TAB_EVENTS = [
   "TabShow",
   "SSTabRestoring",
 ];
+// docs/specs/popup-blocked.md: the pop-up blocked bar comes and goes. A shown notification fires
+// AlertActive; a removed one fires nothing, so its close click and the end of its closing
+// transition stand in, and the blocker's own updates cover Firefox removing it.
+const NOTIFICATION_EVENTS = ["AlertActive", "click", "transitionend"];
+const BLOCKER_EVENTS = ["DOMUpdateBlockedPopups", "DOMUpdateBlockedRedirect"];
 /** @type {WeakSet<Window>} windows our sheets are loaded into (loading one twice throws) */
 const styled = new WeakSet();
 
@@ -70,7 +75,7 @@ const styled = new WeakSet();
  *     builtin?: string | null } | null,
  *   update?: import("../core/updates.mjs").UpdateNotice | null,
  *   element?: import("../core/statusbar.mjs").ElementStatus | null,
- *   hint?: import("../core/statusbar.mjs").HintStatus | null }} status
+ *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null }} status
  * @property {(fn: () => void) => () => void} subscribe  host state changes; returns unsubscribe
  * @property {(tab: Element) => string | null} [labelFor]  a user's tab rename (tab rename spec)
  */
@@ -108,6 +113,12 @@ export class StatusBar {
     /** @type {(() => void) | null} */
     this.unsubscribe = null;
     this.update = () => this.schedule();
+    /** @param {Event} e */
+    this.onNotification = (e) => {
+      if (/** @type {Element | null} */ (e.target)?.localName === "notification-message") {
+        this.schedule();
+      }
+    };
     this.start = () => this.build();
     // The identity box (not secure, toolbar-toggle 12) follows the security state.
     this.progress = {
@@ -138,6 +149,10 @@ export class StatusBar {
     this.identity = null;
     if (this.bar) {
       for (const type of TAB_EVENTS) win.removeEventListener(type, this.update, true);
+      for (const type of BLOCKER_EVENTS) win.removeEventListener(type, this.update, true);
+      for (const type of NOTIFICATION_EVENTS) {
+        win.removeEventListener(type, this.onNotification, true);
+      }
       win.removeEventListener("focus", this.update, true);
       win.gBrowser?.removeProgressListener(this.progress);
     }
@@ -218,6 +233,8 @@ export class StatusBar {
     this.resize.observe(this.probe);
 
     for (const type of TAB_EVENTS) win.addEventListener(type, this.update, true);
+    for (const type of BLOCKER_EVENTS) win.addEventListener(type, this.update, true);
+    for (const type of NOTIFICATION_EVENTS) win.addEventListener(type, this.onNotification, true);
     // Focus moving into or out of a field changes the mode once the host detects it.
     win.addEventListener("focus", this.update, true);
     win.gBrowser.addProgressListener(this.progress);
@@ -266,6 +283,7 @@ export class StatusBar {
       update: status.update ?? null,
       element: status.element ?? null,
       hint: status.hint ?? null,
+      popups: status.popups ?? null,
     };
     // docs/specs/toolbar-toggle.md decision 12: the hidden toolbar's cues; shown, none.
     const root = this.win.document.documentElement;
