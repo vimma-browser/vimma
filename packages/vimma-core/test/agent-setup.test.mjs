@@ -10,7 +10,9 @@ import {
   localModelState,
   modelChoices,
   ollamaContext,
+  ollamaPlacement,
   pickerEntries,
+  placementText,
   prepareLocalModel,
   probeLocal,
   providerKey,
@@ -158,6 +160,73 @@ describe("the context length of a local Ollama model", () => {
       context: null,
       made: false,
     });
+  });
+});
+
+// docs/specs/agent-speed.md Behaviour 7, S8: setup says where a local model runs, since Ollama
+// leaves out an integrated GPU unless told to and a model on the CPU is several times slower.
+describe("where a local Ollama model runs", () => {
+  const GENERATE = "http://127.0.0.1:11434/api/generate";
+  const PS = "http://127.0.0.1:11434/api/ps";
+  const ps = (/** @type {any[]} */ models) => ({ models });
+
+  test("loads the model with no prompt, then reads its GPU share and context from ps", async () => {
+    const { fetch, calls } = fake({
+      [GENERATE]: { model: "qwen3:14b-ctx32768", response: "", done: true },
+      [PS]: ps([
+        { name: "other:7b", size: 100, size_vram: 0 },
+        { name: "qwen3:14b-ctx32768", size: 1000, size_vram: 1000, context_length: 32768 },
+      ]),
+    });
+    expect(await ollamaPlacement(fetch, "http://127.0.0.1:11434/v1", "qwen3:14b-ctx32768")).toEqual(
+      { gpu: 1, context: 32768 },
+    );
+    expect(calls.map((c) => c.url)).toEqual([GENERATE, PS]);
+    expect(JSON.parse(calls[0].init.body)).toEqual({ model: "qwen3:14b-ctx32768", stream: false });
+    for (const { init } of calls) {
+      expect(init.credentials).toBe("omit");
+      expect(init.redirect).toBe("error");
+    }
+  });
+
+  test("a split model, and a model ps names with Ollama's :latest tag", async () => {
+    const { fetch } = fake({
+      [GENERATE]: { done: true },
+      [PS]: ps([{ name: "llama3:latest", size: 1000, size_vram: 520 }]),
+    });
+    expect(await ollamaPlacement(fetch, "http://127.0.0.1:11434/v1", "llama3")).toEqual({
+      gpu: 0.52,
+      context: null,
+    });
+  });
+
+  test("says nothing when the server cannot tell", async () => {
+    const down = fake({});
+    expect(await ollamaPlacement(down.fetch, "http://127.0.0.1:11434/v1", "m")).toBeNull();
+    const absent = fake({ [GENERATE]: { done: true }, [PS]: ps([{ name: "x", size: 1 }]) });
+    expect(await ollamaPlacement(absent.fetch, "http://127.0.0.1:11434/v1", "m")).toBeNull();
+    const odd = fake({ [GENERATE]: { done: true }, [PS]: ps([{ name: "m", size: 0 }]) });
+    expect(await ollamaPlacement(odd.fetch, "http://127.0.0.1:11434/v1", "m")).toBeNull();
+  });
+
+  test("asks only Ollama on this machine", async () => {
+    const { fetch, calls } = fake({});
+    expect(await ollamaPlacement(fetch, "https://llm.example/v1", "m")).toBeNull();
+    expect(await ollamaPlacement(fetch, "http://127.0.0.1:8080/v1", "m")).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  test("the line setup shows", () => {
+    expect(placementText("q", { gpu: 1, context: 32768 })).toBe(
+      "q runs on the GPU, with 32,768 tokens of context",
+    );
+    expect(placementText("q", { gpu: 0.52, context: null })).toBe(
+      "q runs 48% on the CPU and 52% on the GPU",
+    );
+    expect(placementText("q", { gpu: 0, context: 65536 })).toBe(
+      "q runs on the CPU, with 65,536 tokens of context: an integrated GPU needs " +
+        "OLLAMA_IGPU_ENABLE=1 in Ollama's environment (guide: The GPU)",
+    );
   });
 });
 

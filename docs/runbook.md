@@ -396,6 +396,17 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   built-in agent's runner, the bench waits out a rate refusal once and runs the call again, which
   the parallel path needs on a ten-item list: ten loads in one turn use up the open rate, which
   a click checks too.
+- **Where the model ran.** For an Ollama model, `--out` records `ollama ps` at the end of the
+  run (`meta.loaded`: each loaded model's `size`, `sizeVram` and `contextLength`); a row in
+  `agent-bench.md` says GPU, CPU or the split. Ollama leaves out an integrated GPU unless
+  `OLLAMA_IGPU_ENABLE=1` is in its environment (its log reads `dropping integrated GPU`). To
+  run on one (Vulkan, such as the Radeon 860M): `sudo systemctl edit ollama`, add `[Service]`
+  and `Environment="OLLAMA_IGPU_ENABLE=1"`, `sudo systemctl restart ollama`, then check that
+  `journalctl -u ollama -b --no-pager | grep -E 'inference compute|integrated GPU'` names
+  `library=Vulkan` rather than `id=cpu`, and that `ollama ps` reads `GPU` or a CPU/GPU split
+  after `ollama run <model> hi`. The alternative is llama.cpp built with Vulkan:
+  `llama-server -m <model.gguf> -ngl 99 --jinja -c 32768 --port 8080`, and the bench with
+  `--endpoint http://127.0.0.1:8080/v1`.
 - The browser reaches only `127.0.0.1` and `localhost` (the site suite's offline prefs), so a
   URL a model makes up loads nothing off the machine; only the model's own requests leave it,
   and only for a hosted provider.

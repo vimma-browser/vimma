@@ -269,6 +269,9 @@ Add-ons
 
 Site
   site_permissions          (unbound)                                         Site permissions picker: allow, block, reset (:site)
+
+Pop-ups
+  popup_picker              (unbound)                                         Blocked pop-ups: open one, allow the site, settings
 "
 `;
 
@@ -541,5 +544,8 @@ Add-ons
 
 Site
   site_permissions          (unbound)                                         Site permissions picker: allow, block, reset (:site)
+
+Pop-ups
+  popup_picker              (unbound)                                         Blocked pop-ups: open one, allow the site, settings
 "
 `;

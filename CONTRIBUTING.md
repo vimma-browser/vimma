@@ -5,8 +5,9 @@ How to build, run and test Vimma, and how changes get in. For why Vimma exists, 
 
 ## Requirements
 
-- Linux x86_64 (the only platform with a full build so far; macOS on Apple Silicon runs the
-  front-end tests on an artifact build, see "Building on macOS").
+- Linux x86_64 for a full build. Releases ship for Linux x86_64 and for macOS on Apple Silicon;
+  the macOS build is cross-compiled on Linux, and a Mac runs the front-end tests on an artifact
+  build (see "Building on macOS").
 - About 35 GB of free disk space, as measured on one machine: `engine/` 27 GB (source and the
   full build), the sccache compiler cache 6.8 GB, toolchains in `~/.mozbuild` 3.1 GB and the
   Firefox source download in `.surfer/` 0.8 GB.
@@ -156,9 +157,11 @@ mochitest run on a full build.
 
 ### Building on macOS
 
-macOS support is in progress ([spec macos-build](docs/specs/macos-build.md)). On a Mac, Vimma's
-front end runs on an artifact build only, and only on Apple Silicon: the tool fetches Mozilla's
-macOS arm64 build of the release in `surfer.json`. A full build on a Mac is not supported.
+Vimma ships for macOS 15 or later on Apple Silicon
+([spec macos-build](docs/specs/macos-build.md)). The release build is cross-compiled on Linux
+(see "Known build and CI limits"), so on a Mac Vimma's front end runs on an artifact build only:
+the tool fetches Mozilla's macOS arm64 build of the release in `surfer.json`. A full build on a
+Mac is not supported.
 
 - **Tools.** Xcode's command line tools (`xcode-select --install`), Python 3 and
   `brew install gnu-tar gnupg`: Surfer unpacks the Firefox source with GNU tar (`gtar`) on macOS,
@@ -196,10 +199,9 @@ Pull requests run the same steps on a hosted Mac (`mochitest (artifact build, ma
 
 ## How Vimma is built
 
-Vimma is built with AI coding agents. Features start as written specs, are built test-first by
-the agents, reviewed, and checked by CI and by the security model in
-[docs/security.md](docs/security.md). The author tries each change in daily use before it goes
-into a release.
+Features start as written specs, are built test-first, reviewed, and checked by CI and by the
+security model in [docs/security.md](docs/security.md). The author tries each change in daily
+use before it goes into a release.
 
 ## Workflow
 

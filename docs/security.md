@@ -405,6 +405,32 @@ text that pages, add-ons and bookmarks choose.
     [`prompt_keys_leave_hint_copy_and_element_mode_their_keys`](../tests/browser/browser_vimma_toolbar.js),
     [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
+  - Firefox's pop-up blocked bar takes the same keys (`y` allows the site, `n` blocks it, `Esc`
+    closes the bar; docs/specs/popup-blocked.md) under the same rules. They count only from the
+    later of the moment Vimma first sees the bar and the last key pressed in the window, plus
+    `security.notification_enable_delay` (0.5 s by default), so any key restarts the wait, and a
+    held (repeated) key never answers. They **never** answer from a text field, while a picker,
+    the command line or a search holds the keyboard, or in hint, copy or element mode, and
+    **never** while a permission prompt is open, whose keys come first; Vimma never moves focus
+    onto the bar. In the agent workspace no key answers the bar and `:popups` refuses, and
+    `runPopupRow` checks again when a row runs, so neither the keys nor any row (allow, block,
+    reset, open, redirect, hide, settings) does anything there (M10). A row runs only on the
+    page it was listed for: the picker keeps the page's principal when it opens and refuses a row
+    once the tab's principal differs, so a navigation under the open picker cannot land Allow on
+    another site. With `dom.disable_open_during_load` locked, `y` and `n` stay the page's and no
+    Vimma path writes the site's permission (the keys, the rows and the host's `blockSite` and
+    `allowSite`), as Firefox's own menu hides its allow. Allow goes through Firefox's own
+    `toggleAllowPopupsForSite` or `SitePermissions`; Block is stored with Firefox's own
+    `Services.perms.addFromPrincipal` (SitePermissions removes a block instead of recording it),
+    which keeps it for the private session only in a private window (PermissionManager forces
+    `EXPIRE_SESSION` for private principals).
+    [`popupBarKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
+    [`y_answers_only_once_the_bar_is_armed_and_allows_the_site`](../tests/browser/browser_vimma_popups.js),
+    [`n_blocks_the_site_and_esc_only_closes_the_bar`](../tests/browser/browser_vimma_popups.js),
+    [`keys_typed_in_a_field_or_the_command_line_are_theirs`](../tests/browser/browser_vimma_popups.js),
+    [`a_row_never_lands_on_a_site_the_page_navigated_to`](../tests/browser/browser_vimma_popups.js),
+    [`a_locked_popup_pref_leaves_the_site_permission_alone`](../tests/browser/browser_vimma_popups.js),
+    [`the_agent_workspace_refuses_and_grants_nothing`](../tests/browser/browser_vimma_popups.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.
@@ -1775,7 +1801,9 @@ vision; its key stays in login storage.
   probe **must** ask only 127.0.0.1 on the local servers' ports and the configured providers'
   own loopback endpoints, with a timeout of 1 s, and only while the model picker is open. The
   check before a task that a local model is still listed **must** ask only the conversation's
-  own loopback endpoint, and never an endpoint off this machine.
+  own loopback endpoint, and never an endpoint off this machine. Setup's look at where a picked
+  local model runs **must** ask only Ollama's port on this machine, once, after the pick, with a
+  generate request that names the model and carries no prompt, then `/api/ps`.
   [`test_requests_only_to_the_endpoint_without_credentials_or_redirects`](../tests/browser/browser_vimma_agent_conversations.js),
   [`posts to the endpoint without credentials or redirects, and parses the reply`](../packages/vimma-core/test/agent-providers.test.mjs),
   [`a refused endpoint makes no request`](../packages/vimma-core/test/agent-providers.test.mjs),
@@ -1785,6 +1813,8 @@ vision; its key stays in login storage.
   [`the probe also asks the configured local endpoints, once each, never a remote one`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`a provider off this machine, or Anthropic's API, gets no request`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`its server lists it, or no longer does`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`loads the model with no prompt, then reads its GPU share and context from ps`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`asks only Ollama on this machine`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`test_probe_only_on_setup_and_only_loopback`](../tests/browser/browser_vimma_agent_conversations.js)
 - M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key and
   the endpoint origin it was entered for, encrypted with OSKeyStore, and **must** be sent only to

@@ -62,7 +62,8 @@ import { graphemes } from "./textwidth.mjs";
  */
 /** @import { AddonItem } from "./addons.mjs" */
 /** @import { PermissionItem, PermissionOp } from "./sitepermissions.mjs" */
-/** @typedef {PickerItem | WorkspaceItem | AddonItem | LogItem | PermissionItem} AnyItem */
+/** @import { PopupItem } from "./popups.mjs" */
+/** @typedef {PickerItem | WorkspaceItem | AddonItem | LogItem | PermissionItem | PopupItem} AnyItem */
 /** @typedef {"display" | "title" | "url" | "workspace" | "markers"} Field */
 /** @typedef {[start: number, end: number]} Range */
 /** @typedef {{ tier: number, score: number, ranges: Range[] }} FieldMatch */
@@ -369,13 +370,15 @@ function mergeRanges(a, b) {
 }
 
 /**
- * The id an item is selected by: a tab's, a workspace's, an add-on's or a permission's.
+ * The id an item is selected by: a tab's, a workspace's, an add-on's, a permission's or a pop-up
+ * bar row's.
  * @param {AnyItem} item
  */
 export function itemId(item) {
   if (!("kind" in item)) return item.tabId;
   if (item.kind === "log") return item.logId;
   if (item.kind === "permission") return item.permissionId;
+  if (item.kind === "popup") return item.popupId;
   return item.kind === "addon" ? item.addonId : item.workspaceId;
 }
 

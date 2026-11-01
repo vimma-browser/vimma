@@ -251,6 +251,10 @@ add_task(async function slash_after_a_click_on_the_page_goes_back_into_the_open_
       "the click focuses the page",
     );
     Assert.ok(!findBarHidden(), "the find bar is still open");
+    Assert.ok(
+      findbar.hasAttribute("vimma-prompt"),
+      "a click outside leaves the prompt open (#685)",
+    );
     Assert.equal(VimmaHost.status(window).mode, "normal", "the page has the keys: normal mode");
 
     EventUtils.synthesizeKey("/");
@@ -596,5 +600,147 @@ add_task(async function a_tab_closed_while_finding_leaves_no_find_behind() {
   await withPage(async () => {
     EventUtils.synthesizeKey("/");
     await TestUtils.waitForCondition(() => !findBarHidden(), "/ opens the next tab's find bar");
+  });
+});
+
+/** @param {Element} el */
+function shown(el) {
+  return el.checkVisibility();
+}
+
+/** The open find bar of the selected tab, once it has laid out. */
+async function openFindBar() {
+  /** @type {any} */
+  let findbar = null;
+  await TestUtils.waitForCondition(() => {
+    findbar = gBrowser.getCachedFindBar();
+    return findbar && !findbar.hidden && findbar.getBoundingClientRect().height > 0;
+  }, "the find bar is open");
+  return findbar;
+}
+
+/**
+ * @param {any} findbar
+ * @param {string} expected
+ * @param {string} msg
+ */
+async function assertCount(findbar, expected, msg) {
+  const count = () => findbar.querySelector(".vimma-find-count");
+  await TestUtils.waitForCondition(() => count()?.textContent === expected, msg).catch(() => {});
+  Assert.equal(count()?.textContent, expected, msg);
+}
+
+add_task(async function the_find_bar_floats_over_the_page_in_the_pickers_style() {
+  await withPage(async (browser) => {
+    const page = browser.getBoundingClientRect();
+    type("/word");
+    const findbar = await openFindBar();
+
+    const bar = findbar.getBoundingClientRect();
+    const after = browser.getBoundingClientRect();
+    Assert.equal(after.height, page.height, "the page keeps its height: the bar floats over it");
+    Assert.ok(
+      bar.top >= after.top && bar.bottom <= after.bottom,
+      `the bar sits on the page (${bar.top}-${bar.bottom} in ${after.top}-${after.bottom})`,
+    );
+    Assert.ok(bar.width < after.width, "the bar is narrower than the page");
+    Assert.lessOrEqual(
+      Math.abs(bar.left - after.left - (after.right - bar.right)),
+      1,
+      "and centred over it",
+    );
+
+    for (const sel of [
+      ".findbar-find-previous",
+      ".findbar-find-next",
+      ".findbar-closebutton",
+      ".findbar-highlight",
+      ".findbar-case-sensitive",
+      ".findbar-match-diacritics",
+      ".findbar-entire-word",
+    ]) {
+      Assert.ok(!shown(findbar.querySelector(sel)), `${sel} is not shown`);
+    }
+    Assert.ok(shown(findbar._findField), "the field is shown");
+
+    await assertCount(findbar, "[1/4]", "the bar shows the count as [1/4]");
+    const count = findbar.querySelector(".vimma-find-count");
+    Assert.equal(count.getAttribute("aria-hidden"), "true", "screen readers skip [1/4]");
+    const field = findbar._findField.getBoundingClientRect();
+    const countBox = count.getBoundingClientRect();
+    Assert.lessOrEqual(
+      Math.abs(countBox.top + countBox.height / 2 - (field.top + field.height / 2)),
+      1,
+      "the count is centred on the field",
+    );
+    Assert.less(countBox.height, field.height, "the count is not stretched to the field");
+    // Firefox's own "1 of 4 matches" stays for screen readers, out of sight.
+    const label = findbar.querySelector(".found-matches");
+    Assert.ok(!label.hidden, "Firefox's count label is kept");
+    Assert.lessOrEqual(label.getBoundingClientRect().width, 1, "but not shown");
+
+    EventUtils.synthesizeKey("KEY_Enter");
+    await assertBackInNormal(browser, "Enter");
+    Assert.ok(!shown(findbar), "a closed bar is not shown at all (no slide below the page)");
+
+    type("/zzzqqq");
+    await openFindBar();
+    await TestUtils.waitForCondition(
+      () => findbar._findField.getAttribute("status") === "notfound",
+      "the bar knows it is not found",
+    );
+    await assertCount(findbar, "", "no count for a search that found nothing");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await assertBackInNormal(browser, "Esc");
+    Assert.ok(!shown(findbar), "Esc leaves no bar shown");
+  });
+});
+
+add_task(async function the_pdf_viewers_count_shows_in_the_bar_too() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+  const browser = tab.linkedBrowser;
+  try {
+    await loadPdf(browser, ROOT + "file_vimma_test.pdf");
+    await focusContent(browser);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._browserMode(browser) === "normal",
+      "the PDF viewer is in normal mode",
+    );
+    // "Vimma help overlay test": three e's. pdf.js counts for the find bar only.
+    type("/e");
+    await assertCount(await openFindBar(), "[1/3]", "pdf.js's count shows as [1/3]");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await assertBackInNormal(browser, "Esc in a PDF");
+  } finally {
+    gBrowser.getCachedFindBar(tab)?.close(true);
+    BrowserTestUtils.removeTab(tab);
+  }
+});
+
+add_task(async function firefoxs_find_in_page_keeps_its_own_find_bar() {
+  await withPage(async (browser) => {
+    type("/word");
+    const findbar = await openFindBar();
+    EventUtils.synthesizeKey("KEY_Escape");
+    await assertBackInNormal(browser, "Esc");
+
+    // As Firefox's Find in Page (the Edit menu) opens it, after `/` used the same bar.
+    const page = browser.getBoundingClientRect();
+    findbar.setAttribute("noanim", "true");
+    findbar.open();
+    try {
+      await openFindBar();
+      await TestUtils.waitForCondition(
+        () => browser.getBoundingClientRect().height < page.height,
+        "Firefox's bar is a row under the page",
+      );
+      for (const sel of [".findbar-find-next", ".findbar-closebutton", ".findbar-highlight"]) {
+        Assert.ok(shown(findbar.querySelector(sel)), `${sel} is shown`);
+      }
+      Assert.ok(!shown(findbar.querySelector(".vimma-find-count")), "with Firefox's own count");
+    } finally {
+      findbar.close(true);
+      findbar.removeAttribute("noanim");
+    }
   });
 });

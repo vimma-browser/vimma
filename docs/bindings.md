@@ -333,6 +333,12 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | ---------------------------------------------------- | ------------------ | -------- |
 | Site permissions picker: allow, block, reset (:site) | `site_permissions` | —        |
 
+## Pop-ups
+
+| Action                                              | Config name    | Bindings |
+| --------------------------------------------------- | -------------- | -------- |
+| Blocked pop-ups: open one, allow the site, settings | `popup_picker` | —        |
+
 ## On macOS
 
 Option types characters on a Mac, so the defaults that are `alt` chords on Linux are Firefox's

@@ -17,12 +17,14 @@ import { accessibleName, countText, rowRange, sectionHeading } from "../core/tab
 /** @import { AddonItem } from "../core/addons.mjs" */
 /** @import { LogItem } from "../core/picker.mjs" */
 /** @import { PermissionItem, PermissionOp } from "../core/sitepermissions.mjs" */
+/** @import { PopupItem } from "../core/popups.mjs" */
 
 export const PICKER_ID = "vimma-picker";
 export const WORKSPACE_PICKER_ID = "vimma-workspace-picker";
 export const ADDON_PICKER_ID = "vimma-addon-picker";
 export const MCP_LOG_ID = "vimma-mcp-log";
 export const PERMISSION_PICKER_ID = "vimma-permission-picker";
+export const POPUP_PICKER_ID = "vimma-popup-picker";
 const STYLESHEET = "chrome://browser/skin/vimma/picker.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<Window>} windows our stylesheet is loaded into */
@@ -139,6 +141,15 @@ export const MCP_LOG = {
   hint: "j/k move · / search · Esc close",
   cells: (/** @type {LogItem} */ item) => [item.time, item.outcome],
   empty: "No agent calls since :mcp on.",
+};
+
+/** @type {PickerLook} docs/specs/popup-blocked.md: the pop-up blocked bar's options. */
+const POPUPS = {
+  id: POPUP_PICKER_ID,
+  title: "Blocked pop-ups",
+  listLabel: "Blocked pop-ups on this page",
+  hint: "j/k move · / search · Enter run · Esc close",
+  cells: (/** @type {PopupItem} */ item) => ["", item.detail],
 };
 
 /**
@@ -535,13 +546,18 @@ export class WorkspacePicker extends GotoPicker {
 export class AddonPicker extends GotoPicker {
   /**
    * @param {Window} win  a browser window
-   * @param {Omit<PickerHost, "items" | "activeId"> & { load: () => Promise<AnyItem[]> }} host
+   * @param {Omit<PickerHost, "items" | "activeId"> & { load: () => Promise<AnyItem[]>,
+   *   refuse?: (rows: AnyItem[]) => string | null, notice?: (text: string) => void }} host
+   *   refuse: why the loaded rows do not open the picker, said through `notice` instead
+   * @param {PickerLook} [look]
    */
-  constructor(win, host) {
+  constructor(win, host, look = ADDONS) {
     /** @type {AnyItem[]} */
     let rows = [];
-    super(win, { ...host, items: () => rows, activeId: () => null }, ADDONS);
+    super(win, { ...host, items: () => rows, activeId: () => null }, look);
     this.load = host.load;
+    this.refuse = host.refuse ?? (() => null);
+    this.notice = host.notice ?? (() => {});
     /** @param {AnyItem[]} next */
     this.setRows = (next) => {
       rows = next;
@@ -558,6 +574,11 @@ export class AddonPicker extends GotoPicker {
     if (this.isOpen) return Promise.resolve();
     this.opening ??= this.load()
       .then((rows) => {
+        const refused = this.refuse(rows);
+        if (refused) {
+          this.notice(refused);
+          return;
+        }
         this.setRows(rows);
         super.open();
       })
@@ -601,5 +622,19 @@ export class PermissionPicker extends GotoPicker {
     const h1 = this.dialog?.querySelector("h1");
     if (h1) h1.textContent = title;
     this.dialog?.setAttribute("aria-label", title);
+  }
+}
+
+/**
+ * `:popups` (docs/specs/popup-blocked.md): the selected page's blocked
+ * pop-ups and the bar's options, read asynchronously from Firefox's pop-up blocker.
+ */
+export class PopupPicker extends AddonPicker {
+  /**
+   * @param {Window} win  a browser window
+   * @param {ConstructorParameters<typeof AddonPicker>[1]} host
+   */
+  constructor(win, host) {
+    super(win, host, POPUPS);
   }
 }

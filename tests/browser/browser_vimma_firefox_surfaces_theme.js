@@ -12,6 +12,10 @@
 
 /* global setToolbarVisibility -- browser window global (browser.js) */
 
+const { openPrompt } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/find-bar.mjs",
+);
+
 const APPEARANCE_PREF = "vimma.theme.appearance";
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -160,6 +164,26 @@ async function assertFindBar(label, tab) {
     await pixel(window.browsingContext.currentWindowGlobal, box.right - 120, box.top + 4),
     surface,
     `${label}: the find bar paints --vimma-bg-dark`,
+  );
+  findbar.close(true);
+
+  // The same bar as `/` opens it: a floating prompt framed like a picker (picker.css).
+  openPrompt(findbar);
+  await until(() => !findbar.hidden && findbar.getBoundingClientRect().height > 20, "prompt");
+  for (const side of ["Top", "Right", "Bottom", "Left"]) {
+    Assert.equal(
+      style(findbar)[`border${side}Color`],
+      tokenColour("--vimma-muted"),
+      `${label}: the prompt's ${side.toLowerCase()} border is --vimma-muted`,
+    );
+    Assert.equal(style(findbar)[`border${side}Width`], "1px", `${label}: 1px on the ${side}`);
+  }
+  Assert.equal(backdrop(findbar), surface, `${label}: the prompt is on --vimma-bg-dark`);
+  const prompt = findbar.getBoundingClientRect();
+  nearly(
+    await pixel(window.browsingContext.currentWindowGlobal, prompt.right - 120, prompt.top + 4),
+    surface,
+    `${label}: the prompt paints --vimma-bg-dark`,
   );
   findbar.close(true);
   findbar.removeAttribute("noanim");

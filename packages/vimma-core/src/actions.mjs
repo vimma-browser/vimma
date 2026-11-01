@@ -400,6 +400,11 @@ group("Site", [
   ["site_permissions", "site.permissions", "Site permissions picker: allow, block, reset (:site)"],
 ]);
 
+// docs/specs/popup-blocked.md: the pop-up blocked bar's options, from the keyboard.
+group("Pop-ups", [
+  ["popup_picker", "popups.picker", "Blocked pop-ups: open one, allow the site, settings"],
+]);
+
 /** @type {readonly ActionDef[]} */
 export const ACTIONS = Object.freeze(defs);
 

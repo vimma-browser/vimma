@@ -164,6 +164,8 @@ export const COMMANDS = Object.freeze([
   cmd("site", "none", "site.permissions", "Site permissions of this page: allow, block, reset", {
     aliases: ["permissions"],
   }),
+  // docs/specs/popup-blocked.md
+  cmd("popups", "none", "popups.picker", "Blocked pop-ups picker"),
   // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget);
   // log: docs/specs/mcp-drive.md D14.
   cmd(
