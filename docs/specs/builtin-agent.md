@@ -1,6 +1,6 @@
 # Spec: builtin-agent
 
-Status: accepted (Delivery 1-6 built) · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
+Status: implemented · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
 `agent-providers.mjs`, `agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`,
 `agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs`, `agent-store.mjs`;
 `agent.mjs` and
