@@ -651,3 +651,31 @@ add_task(async function the_pdf_viewers_count_shows_in_the_bar_too() {
     BrowserTestUtils.removeTab(tab);
   }
 });
+
+add_task(async function ctrl_f_keeps_firefoxs_own_find_bar() {
+  await withPage(async (browser) => {
+    type("/word");
+    const findbar = await openFindBar();
+    EventUtils.synthesizeKey("KEY_Escape");
+    await assertBackInNormal(browser, "Esc");
+
+    // As Firefox's ctrl+f opens it, after `/` used the same bar.
+    const page = browser.getBoundingClientRect();
+    findbar.setAttribute("noanim", "true");
+    findbar.open();
+    try {
+      await openFindBar();
+      await TestUtils.waitForCondition(
+        () => browser.getBoundingClientRect().height < page.height,
+        "Firefox's bar is a row under the page",
+      );
+      for (const sel of [".findbar-find-next", ".findbar-closebutton", ".findbar-highlight"]) {
+        Assert.ok(shown(findbar.querySelector(sel)), `${sel} is shown`);
+      }
+      Assert.ok(!shown(findbar.querySelector(".vimma-find-count")), "with Firefox's own count");
+    } finally {
+      findbar.close(true);
+      findbar.removeAttribute("noanim");
+    }
+  });
+});
