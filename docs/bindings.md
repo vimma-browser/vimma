@@ -327,6 +327,12 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Add-on picker: popup, options, on/off, remove, update | `addon_picker` | `ctrl+b e` |
 | Open an add-on's popup by name (:addon name)          | `addon_popup`  | —          |
 
+## Site
+
+| Action                                               | Config name        | Bindings |
+| ---------------------------------------------------- | ------------------ | -------- |
+| Site permissions picker: allow, block, reset (:site) | `site_permissions` | —        |
+
 ## Pop-ups
 
 | Action                                              | Config name    | Bindings |

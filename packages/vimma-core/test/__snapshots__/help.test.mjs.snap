@@ -267,6 +267,9 @@ Add-ons
   addon_picker              ctrl+b e                                          Add-on picker: popup, options, on/off, remove, update
   addon_popup               (unbound)                                         Open an add-on's popup by name (:addon name)
 
+Site
+  site_permissions          (unbound)                                         Site permissions picker: allow, block, reset (:site)
+
 Pop-ups
   popup_picker              (unbound)                                         Blocked pop-ups: open one, allow the site, settings
 "
@@ -538,6 +541,9 @@ Agents
 Add-ons
   addon_picker              ctrl+b e                                          Add-on picker: popup, options, on/off, remove, update
   addon_popup               (unbound)                                         Open an add-on's popup by name (:addon name)
+
+Site
+  site_permissions          (unbound)                                         Site permissions picker: allow, block, reset (:site)
 
 Pop-ups
   popup_picker              (unbound)                                         Blocked pop-ups: open one, allow the site, settings

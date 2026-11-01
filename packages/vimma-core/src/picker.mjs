@@ -61,8 +61,9 @@ import { graphemes } from "./textwidth.mjs";
  * @property {boolean} active  never
  */
 /** @import { AddonItem } from "./addons.mjs" */
+/** @import { PermissionItem, PermissionOp } from "./sitepermissions.mjs" */
 /** @import { PopupItem } from "./popups.mjs" */
-/** @typedef {PickerItem | WorkspaceItem | AddonItem | LogItem | PopupItem} AnyItem */
+/** @typedef {PickerItem | WorkspaceItem | AddonItem | LogItem | PermissionItem | PopupItem} AnyItem */
 /** @typedef {"display" | "title" | "url" | "workspace" | "markers"} Field */
 /** @typedef {[start: number, end: number]} Range */
 /** @typedef {{ tier: number, score: number, ranges: Range[] }} FieldMatch */
@@ -84,9 +85,11 @@ import { graphemes } from "./textwidth.mjs";
 /**
  * `select`: Enter on an item (a tab, workspace or add-on id); `move`: `m` on a workspace, the
  * current tab to go there; `addon`: one of an add-on's keys (docs/specs/addon-manager.md);
- * `reopen`: Enter on a recently closed tab or window in tab search (docs/specs/tab-search.md).
+ * `reopen`: Enter on a recently closed tab or window in tab search (docs/specs/tab-search.md);
+ * `permission`: a key on a site permission row (docs/specs/site-permissions.md).
  * @typedef {null | { type: "select" | "move" | "reopen", id: string } | { type: "close" }
- *   | { type: "addon", op: AddonOp, id: string }} PickerEffect
+ *   | { type: "addon", op: AddonOp, id: string }
+ *   | { type: "permission", op: PermissionOp, id: string }} PickerEffect
  */
 /** @typedef {"options" | "toggle" | "remove" | "update" | "private"} AddonOp */
 
@@ -101,6 +104,12 @@ const ADDON_KEYS = Object.freeze({
   u: "update",
   "shift+p": "private",
 });
+
+/**
+ * The site permissions picker's own keys in browse mode; Enter steps to the next state.
+ * @type {Readonly<Record<string, PermissionOp>>}
+ */
+const PERMISSION_KEYS = Object.freeze({ a: "allow", b: "block", r: "reset" });
 
 /**
  * Match tiers; each owns a score band [tier·1000, tier·1000 + 999]. `folded` (diacritics
@@ -361,12 +370,14 @@ function mergeRanges(a, b) {
 }
 
 /**
- * The id an item is selected by: a tab's, a workspace's, an add-on's or a pop-up bar row's.
+ * The id an item is selected by: a tab's, a workspace's, an add-on's, a permission's or a pop-up
+ * bar row's.
  * @param {AnyItem} item
  */
 export function itemId(item) {
   if (!("kind" in item)) return item.tabId;
   if (item.kind === "log") return item.logId;
+  if (item.kind === "permission") return item.permissionId;
   if (item.kind === "popup") return item.popupId;
   return item.kind === "addon" ? item.addonId : item.workspaceId;
 }
@@ -680,6 +691,9 @@ export function pickerKey(state, key) {
       if (m && "closed" in m.item && m.item.closed) {
         return done(state, { type: "reopen", id: m.item.tabId });
       }
+      if (m && "kind" in m.item && m.item.kind === "permission") {
+        return done(state, { type: "permission", op: "next", id: m.item.permissionId });
+      }
       return done(state, m ? { type: "select", id: itemId(m.item) } : null);
     }
     case "tab":
@@ -710,6 +724,10 @@ export function pickerKey(state, key) {
         const op = Object.hasOwn(ADDON_KEYS, key) ? ADDON_KEYS[key] : undefined;
         if (op && m && "kind" in m.item && m.item.kind === "addon") {
           return done(state, { type: "addon", op, id: m.item.addonId });
+        }
+        const pop = Object.hasOwn(PERMISSION_KEYS, key) ? PERMISSION_KEYS[key] : undefined;
+        if (pop && m && "kind" in m.item && m.item.kind === "permission") {
+          return done(state, { type: "permission", op: pop, id: m.item.permissionId });
         }
         return done(state);
       }

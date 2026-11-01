@@ -249,4 +249,49 @@ describe("chrome code", () => {
       "installAddonFromAOM",
     ]);
   });
+
+  // security.md SP4, SP5: a site permission changes only through Firefox's SitePermissions, from
+  // the picker's ops, and no control, MCP or agent code can reach those ops.
+  test("changes a site permission only from the site permissions picker", () => {
+    const OPS = "src/browser/base/content/vimma/host/permission-ops.mjs";
+    // Every Services.perms writer, including the ...ForBrowser, ...Since and ...ByType forms.
+    const writes = hits(
+      /setForPrincipal|removeFromPrincipal\w*\(|addFromPrincipal\w*\(|addDefaultFromPrincipal\w*\(|perms\.(add|remove|set)\w*\(|removePermission\(|removeAll(Since|ExceptTypes)\w*\(|removeBy\w*\(|SitePermissions\.(setDefault|remove|clear)\w*/,
+    );
+    // The one exception: agent tabs get browser-scoped WebRTC denies (security.md M10), never an
+    // allow, and only through this one call.
+    const AGENT_PAGES = "src/browser/base/content/vimma/ctl/AgentPages.sys.mjs";
+    expect(writes.filter((h) => !h.startsWith(`${OPS}:`))).toEqual([
+      `${AGENT_PAGES}:190: services.perms.addFromPrincipalForBrowser(`,
+    ]);
+    const agentPages = readFileSync(join(ROOT, AGENT_PAGES), "utf8");
+    expect(
+      agentPages.match(/perms\.addFromPrincipalForBrowser\(\s*principal,\s*type,\s*[\w.]+,/g),
+    ).toEqual([
+      "perms.addFromPrincipalForBrowser(\n      principal,\n      type,\n      services.perms.DENY_ACTION,",
+    ]);
+    const text = readFileSync(join(ROOT, OPS), "utf8");
+    expect(text.match(/SitePermissions\.(setForPrincipal|removeFromPrincipal)/g)).toEqual([
+      "SitePermissions.setForPrincipal",
+      "SitePermissions.removeFromPrincipal",
+    ]);
+    // The one write past SitePermissions: a pop-up block, which it would drop as the default.
+    expect(text.match(/[\w.]+\.addFromPrincipal\([^)]*\)/g)).toEqual([
+      'services.perms.addFromPrincipal(principal, "popup", services.perms.DENY_ACTION)',
+    ]);
+    // The pop-up blocked bar and `:popups` (docs/specs/popup-blocked.md) change the same pop-up
+    // permission through the picker's own writer, so a block from either is the same block.
+    const popupOps = readFileSync(
+      join(ROOT, "src/browser/base/content/vimma/host/popup-ops.mjs"),
+      "utf8",
+    );
+    expect(popupOps).toMatch(
+      /import \{[^}]*\bsetSitePopups\b[^}]*\} from "\.\/permission-ops\.mjs"/,
+    );
+    const reach = sources().filter(
+      ({ path, text: t }) =>
+        /\/vimma\/(ctl|agent)\//.test(path) && /permission-ops|popup-ops/.test(t),
+    );
+    expect(reach.map((s) => s.path)).toEqual([]);
+  });
 });

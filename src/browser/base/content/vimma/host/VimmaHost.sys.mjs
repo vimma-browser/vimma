@@ -43,7 +43,14 @@ import { Toolbar } from "../ui/toolbar.mjs";
 import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
 import { bookmarksToolbarNotice } from "../core/bookmarks-toolbar.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
-import { AddonPicker, GotoPicker, MCP_LOG, PopupPicker, WorkspacePicker } from "../ui/picker.mjs";
+import {
+  AddonPicker,
+  GotoPicker,
+  MCP_LOG,
+  PermissionPicker,
+  PopupPicker,
+  WorkspacePicker,
+} from "../ui/picker.mjs";
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
 import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
@@ -142,6 +149,12 @@ import {
   toggleAddon,
   togglePrivateAccess,
 } from "./addon-ops.mjs";
+import {
+  forgetSitePermissions,
+  openSitePermissions,
+  sitePermissionItems,
+  sitePermissionKey,
+} from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
 
 const lazy = /** @type {any} */ ({});
@@ -230,6 +243,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * @property {WorkspacePicker} wsPicker  the prefix+w overlay (m3-workspaces 5)
  * @property {GotoPicker} mcpLog  `:mcp log`, the agents' last calls (docs/specs/mcp-drive.md D14)
  * @property {AddonPicker} addonPicker  the prefix+e overlay (docs/specs/addon-manager.md)
+ * @property {PermissionPicker} permissionPicker  `:site` (docs/specs/site-permissions.md)
  * @property {PopupPicker} popups  the `:popups` overlay (docs/specs/popup-blocked.md)
  * @property {GrepSession} grep  prefix+f g, `:grep`, `]q`/`[q` (docs/specs/live-grep.md)
  * @property {RenamePrompt} rename  the prefix+shift+t prompt (m2-picker-rename)
@@ -279,6 +293,7 @@ function vimmaSurfaceOpen(s) {
     s.picker.isOpen ||
     s.wsPicker.isOpen ||
     s.addonPicker.isOpen ||
+    s.permissionPicker.isOpen ||
     s.popups.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
@@ -928,6 +943,13 @@ export const RUNNERS = Object.freeze({
     s.notice.hide();
     s.addonPicker.open();
   },
+  // docs/specs/site-permissions.md: `:site`, the selected page's permissions (security.md §19).
+  "site.permissions": (/** @type {WindowState} */ s) => {
+    s.notice.hide();
+    const opened = openSitePermissions(s.win);
+    if ("refused" in opened) s.notice.show(opened.refused, { error: true });
+    else s.permissionPicker.openWithTitle(opened.title);
+  },
   // docs/specs/popup-blocked.md: :popups (no default key), the pop-up blocked bar's options.
   "popups.picker": (/** @type {WindowState} */ s) => {
     s.notice.hide();
@@ -1334,6 +1356,7 @@ export const VimmaHost = {
         state.picker.close({ tabChanged: true });
         state.wsPicker.close({ tabChanged: true });
         state.addonPicker.close({ tabChanged: true });
+        state.permissionPicker.close({ tabChanged: true });
         state.popups.close({ tabChanged: true });
         state.mcpLog.close({ tabChanged: true });
         state.grep.close({ tabChanged: true });
@@ -1443,6 +1466,17 @@ export const VimmaHost = {
         load: addonPickerItems,
         select: (id) => void sayAddon(state, openAddonById(win, id)),
         addon: (op, id) => addonOp(state, op, id),
+      }),
+      permissionPicker: new PermissionPicker(win, {
+        items: () => sitePermissionItems(win),
+        activeId: () => null,
+        select: () => {},
+        permission: (op, id) => {
+          const { notice, close } = sitePermissionKey(win, op, id);
+          if (close) state.permissionPicker.close();
+          else state.permissionPicker.setItems(sitePermissionItems(win));
+          if (notice) state.notice.show(notice, { error: true });
+        },
       }),
       popups: new PopupPicker(win, {
         load: () => popupPickerItems(win),
@@ -1715,6 +1749,8 @@ export const VimmaHost = {
     state.picker.destroy();
     state.wsPicker.destroy();
     state.addonPicker.destroy();
+    state.permissionPicker.destroy();
+    forgetSitePermissions(win);
     state.popups.destroy();
     state.mcpLog.destroy();
     state.grep.destroy();
@@ -2012,6 +2048,7 @@ export const VimmaHost = {
   _mode(state) {
     if (state.help.isOpen || state.picker.isOpen || state.wsPicker.isOpen) return "help";
     if (state.addonPicker.isOpen || state.mcpLog.isOpen || state.grep.isOpen) return "help";
+    if (state.permissionPicker.isOpen) return "help";
     if (state.popups.isOpen) return "help";
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
@@ -2131,6 +2168,7 @@ export const VimmaHost = {
       state.picker,
       state.wsPicker,
       state.addonPicker,
+      state.permissionPicker,
       state.popups,
       state.mcpLog,
       state.grep,

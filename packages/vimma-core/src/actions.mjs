@@ -395,6 +395,11 @@ group("Add-ons", [
   ["addon_popup", "addons.popup", "Open an add-on's popup by name (:addon name)"],
 ]);
 
+// docs/specs/site-permissions.md: no default key, only `:site`.
+group("Site", [
+  ["site_permissions", "site.permissions", "Site permissions picker: allow, block, reset (:site)"],
+]);
+
 // docs/specs/popup-blocked.md: the pop-up blocked bar's options, from the keyboard.
 group("Pop-ups", [
   ["popup_picker", "popups.picker", "Blocked pop-ups: open one, allow the site, settings"],

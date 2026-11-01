@@ -45,7 +45,8 @@ What works today, each with the section that explains it:
   release is in place it asks once per session to restart, and `:restart` restarts into it.
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
-  uploads; Safe Browsing on.
+  uploads; Safe Browsing on; a site's permissions shown and changed from the keyboard with
+  [`:site`](#site-permissions).
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl), shipped and updated with Vimma): a
   token-protected control socket; local AI agents reach one [agent workspace](#agent-workspace)
   through MCP, where they can read, open, scroll and search pages, follow their links, list and
@@ -3356,6 +3357,44 @@ Bitwarden), and `Tab` completes the name. To put an add-on on a key:
 - **Sidebar add-ons** (a `sidebar_action`) open in Firefox's own sidebar, through the add-on's
   button or the View menu, not in Vimma's side panel.
 
+## Site permissions
+
+See and change what the site in the selected tab may do (camera, microphone, location,
+notifications, pop-ups, autoplay and the rest) without the mouse. `:site` (or `:permissions`)
+opens a picker with every permission Firefox's Page Info lists, each with the state Firefox has
+for this site: `default` when the site has no setting of its own, `temporary` or
+`this session` when the setting lasts only that long, `set by policy` or `locked` when it cannot
+be changed here. A `●` marks the permissions the site has its own setting for. Like tab search,
+it takes every key while open.
+
+| Key            | What it does                                                     |
+| -------------- | ---------------------------------------------------------------- |
+| `j` / `k`, `/` | Move; filter by name (`Esc` back to the list).                   |
+| `a`            | Allows the permission for this site.                             |
+| `b`            | Blocks it.                                                       |
+| `r`            | Resets it to Firefox's default.                                  |
+| `Enter`        | Steps to its next state, in the order Firefox's own panels show. |
+| `Esc` / `q`    | Closes the picker.                                               |
+
+The picker stays open after a change and shows the new state. Changes are made through
+Firefox, as Page Info's Permissions tab makes them, and show in the site information panel
+(the padlock) too. A permission Firefox does not offer a state for (screen sharing cannot be
+allowed for good) says so, and a permission set by an enterprise policy or a locked pref is
+read only.
+
+Pop-ups are one of the rows. Firefox blocks them by default, so the row reads `Block · default`
+until you choose: `a` allows the site's pop-ups, `b` keeps a block for the site even though it is
+the default, and `r` takes the site's choice back. This also undoes a mistaken answer on the
+pop-up blocked bar.
+
+A change applies to this site in this workspace only, since
+[site permissions are per workspace](#workspaces); in the
+[private workspace](#private-workspace) it lasts until the private workspace closes. If the tab
+goes to another page while the picker is open, the next key closes it: run `:site` again for
+the new page. `:site` does nothing in the [agent workspace](#agent-workspace), so a permission
+is never given to a page an agent drives. It has no default key: bind `site_permissions` in
+[config.toml](#configtoml), as every key, the prefix and the leader can be remapped.
+
 ## Blocked pop-ups
 
 When a page opens a pop-up on its own, Firefox blocks it and shows a bar over the page: "Vimma
@@ -3395,8 +3434,9 @@ without the bar:
 
 `j` / `k` move, `/` filters, `Enter` runs the row and `Esc` closes the picker. Vimma runs
 Firefox's own code for the bar's options and Firefox's site permissions for the rest. The keys,
-the picker and the status bar follow the selected tab, and in a split the focused pane. A site
-permission picker (`:site`) will cover pop-ups too when it lands.
+the picker and the status bar follow the selected tab, and in a split the focused pane. The
+[site permissions](#site-permissions) picker (`:site`) lists pop-ups too, and changes the same
+setting: a block from `n`, `:popups` or `:site` can be undone from either picker.
 
 With nothing blocked on the page and no choice made for the site, `:popups` says `no pop-ups
 blocked on this page`. When an administrator has locked pop-up blocking on, the Allow, Block and
@@ -3466,6 +3506,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                 |
 | `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                            |
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
+| `:site`, `:permissions`               | Opens the [site permissions](#site-permissions) picker for the selected tab.                                                                   |
 | `:popups`                             | Opens the [blocked pop-ups picker](#blocked-pop-ups): allow, reset or block the site, open one.                                                |
 | `:bug`                                | Opens `about:vimma` and copies its redacted report to the clipboard, for a bug report.                                                         |
 | `:update`                             | Checks for a newer Vimma now; when there is one, opens `about:vimma`'s Updates section with the exact commands ([Updates](#updates)).          |

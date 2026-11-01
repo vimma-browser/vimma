@@ -16,12 +16,14 @@ import { accessibleName, countText, rowRange, sectionHeading } from "../core/tab
 /** @import { AnyItem, AddonOp, PickerItem, PickerState, WorkspaceItem } from "../core/picker.mjs" */
 /** @import { AddonItem } from "../core/addons.mjs" */
 /** @import { LogItem } from "../core/picker.mjs" */
+/** @import { PermissionItem, PermissionOp } from "../core/sitepermissions.mjs" */
 /** @import { PopupItem } from "../core/popups.mjs" */
 
 export const PICKER_ID = "vimma-picker";
 export const WORKSPACE_PICKER_ID = "vimma-workspace-picker";
 export const ADDON_PICKER_ID = "vimma-addon-picker";
 export const MCP_LOG_ID = "vimma-mcp-log";
+export const PERMISSION_PICKER_ID = "vimma-permission-picker";
 export const POPUP_PICKER_ID = "vimma-popup-picker";
 const STYLESHEET = "chrome://browser/skin/vimma/picker.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
@@ -36,6 +38,8 @@ const styled = new WeakSet();
  * @property {(id: string) => void} [reopen]  Enter on a recently closed row; closed already
  * @property {(id: string) => void} [move]  `m` on a workspace row; the picker has closed already
  * @property {(op: AddonOp, id: string) => void} [addon]  an add-on key; the picker stays open
+ * @property {(op: PermissionOp, id: string) => void} [permission]  a site permission key; the
+ *   picker stays open
  */
 
 /**
@@ -118,6 +122,15 @@ const ADDONS = {
   hint: "Enter popup · o options · x on/off · d remove · u update · P private · / search",
   cells: (/** @type {AddonItem} */ item) => [item.enabled ? "●" : "○", addonRowText(item)],
   empty: "No add-ons installed. Get them at addons.mozilla.org.",
+};
+
+/** @type {PickerLook} docs/specs/site-permissions.md */
+const PERMISSIONS = {
+  id: PERMISSION_PICKER_ID,
+  title: "Site permissions",
+  listLabel: "Site permissions",
+  hint: "a allow · b block · r reset · Enter next · / search · Esc close",
+  cells: (/** @type {PermissionItem} */ item) => [item.set ? "●" : "", item.detail],
 };
 
 /** @type {PickerLook} `:mcp log` (docs/specs/mcp-drive.md D14): newest first, read only. */
@@ -226,6 +239,7 @@ export class GotoPicker {
       moving(effect.id);
     }
     if (effect?.type === "addon") this.host.addon?.(effect.op, effect.id);
+    if (effect?.type === "permission") this.host.permission?.(effect.op, effect.id);
   }
 
   /**
@@ -586,6 +600,28 @@ export class AddonPicker extends GotoPicker {
     const rows = await this.load();
     this.setRows(rows);
     if (this.isOpen) this.setItems(rows);
+  }
+}
+
+/**
+ * `:site` (docs/specs/site-permissions.md): the selected tab's site permissions. The heading
+ * names the site, so it is set on each open.
+ */
+export class PermissionPicker extends GotoPicker {
+  /**
+   * @param {Window} win  a browser window
+   * @param {PickerHost} host
+   */
+  constructor(win, host) {
+    super(win, host, PERMISSIONS);
+  }
+
+  /** @param {string} title */
+  openWithTitle(title) {
+    this.open();
+    const h1 = this.dialog?.querySelector("h1");
+    if (h1) h1.textContent = title;
+    this.dialog?.setAttribute("aria-label", title);
   }
 }
 
