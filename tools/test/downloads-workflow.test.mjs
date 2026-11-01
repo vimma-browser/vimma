@@ -36,6 +36,15 @@ describe("release downloads workflow", () => {
     expect(text).not.toMatch(/^ {2}(pull_request\w*|push):/m);
   });
 
+  // A row is dated by the UTC day the run starts, and scheduled runs start hours late (about
+  // three in this repository). A late-evening schedule lands on the next day on most nights
+  // but not all, so one day is recorded twice and the next not at all.
+  it("is scheduled early enough that a late start stays on the UTC day it is dated", () => {
+    const hour = Number(/^ {4}- cron: "\d+ (\d+) \* \* \*"/m.exec(text)?.[1]);
+    expect(hour).toBeGreaterThanOrEqual(0);
+    expect(hour).toBeLessThanOrEqual(12);
+  });
+
   it("grants nothing by default; reads in collect, writes contents only in record", () => {
     expect(text).toMatch(/^permissions: \{\}$/m);
     expect(permissions(job("collect"))).toEqual(["contents: read"]);

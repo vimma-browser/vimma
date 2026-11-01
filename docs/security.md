@@ -3181,3 +3181,36 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
   [`reads CSS escapes and comments before looking for loads`](../tools/sites/test/snapshot.test.mjs),
   [`each have a manifest entry with a licence that allows redistribution`](../tools/sites/test/snapshot.test.mjs),
   [`runs the suite only offline, after the e2e scenarios, on the artifact build`](../tools/test/sites-workflow.test.mjs)
+
+## 18. Release download counts workflow (`downloads.yml`, `tools/stats`)
+
+Runbook: "Release download counts". Once a day a hosted runner reads every published release
+asset's `download_count` and appends it to `downloads.csv` on the `stats` branch, an orphan
+branch outside `main`'s history. It is the only workflow whose own job token pushes commits, so
+these rules keep that token away from `main` and from code. Who can reach it: whoever can change
+the workflow or `tools/stats` on `main`, that is a merged pull request; the data it reads (asset
+names and counts of our own releases) comes from GitHub's API. It runs on `schedule` and
+`workflow_dispatch` only, never on a pull request or a push.
+[`runs once a day and by hand, never on a pull request or a push`](../tools/test/downloads-workflow.test.mjs)
+
+- DC1. The workflow holds **no** secret: only the job token, with nothing granted at the top
+  level. The `collect` job, which runs repository code, holds **only** `contents: read` and does
+  not keep its checkout's credentials. Traffic (views, clones, referrers) is therefore not
+  recorded: its API needs the Administration permission, which a job token cannot be given, and
+  recording it would mean the workflow's first stored secret.
+  [`grants nothing by default; reads in collect, writes contents only in record`](../tools/test/downloads-workflow.test.mjs),
+  [`collect runs the script without a stored credential`](../tools/test/downloads-workflow.test.mjs),
+  [`stays tiny: no npm install, short timeouts, no secret, runs in order`](../tools/test/downloads-workflow.test.mjs)
+- DC2. `contents: write` is **only** in the `record` job, which checks out the `stats` branch,
+  runs no repository code (no `node`, no `npm`), and pushes **only** the fixed refspec
+  `HEAD:stats`: the workflow has one `git push`. The token itself could write any branch, so
+  `main` rests on its ruleset as well: it requires a pull request and has no bypass actor, so a
+  push by the job token is refused. The `stats` branch has no ruleset of its own unless the
+  maintainer adds one (runbook, "Where it can push").
+  [`record runs no repository code and pushes only to the stats branch`](../tools/test/downloads-workflow.test.mjs)
+- DC3. The history is **append-only**: `record` refuses a new `downloads.csv` that does not begin
+  byte for byte with the one on `stats`, and runs only after `collect` succeeded, from that run's
+  own artifact. A failed fetch of the history fails the run rather than starting a new one.
+  [`record only appends: the new file must begin with the recorded history`](../tools/test/downloads-workflow.test.mjs)
+- DC4. Every action is pinned by a full commit SHA.
+  [`every action it uses is pinned by a full commit SHA`](../tools/test/downloads-workflow.test.mjs)

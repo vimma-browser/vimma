@@ -1857,7 +1857,10 @@ jump and whether the jumps line up with workflow runs.
   and the `main` ruleset does not cover it, so the ruleset stays as it is. Each run adds one
   commit there: one row per asset, `date,tag,asset,downloads` (the date is the UTC day of the
   run). Drafts are left out.
-- **How it runs:** at 23:37 UTC and by hand (`gh workflow run downloads.yml`). The `collect` job
+- **How it runs:** at 06:17 UTC and by hand (`gh workflow run downloads.yml`). A row is dated by
+  the UTC day the run starts, and scheduled runs here start about three hours late, so the
+  schedule sits early in the day: a late-evening one lands on the next day on most nights but
+  not all, recording one day twice (the second run is skipped) and the next not at all. The `collect` job
   has `contents: read` only: it fetches the history from the public branch, takes the snapshot
   with `tools/stats/downloads.mjs` and appends it unless that day is already recorded. The
   `record` job has `contents: write`, checks out only the `stats` branch, runs no repository
@@ -1875,12 +1878,32 @@ jump and whether the jumps line up with workflow runs.
   the run's job summary shows the same table. To match a jump against our automation, list that
   day's runs: `gh run list --created <date> --limit 100`.
 
+- **Where it can push:** the `record` job's token has `contents: write` on the whole
+  repository, so the limits are elsewhere. The job pushes only the fixed refspec `HEAD:stats`
+  from a checkout of `stats`, and runs no repository code that could change that. A push to
+  `main` is refused anyway: the `main` ruleset requires a pull request and has no bypass actor,
+  so the job token cannot update it. The `stats` branch itself is not protected; to keep its
+  history from being deleted or rewritten by anyone with write access, add a ruleset for it
+  with the deletion and non-fast-forward rules (the job only ever fast-forwards):
+
+  ```sh
+  gh api -X POST repos/vimma-browser/vimma/rulesets --input - <<'JSON'
+  {"name": "stats", "target": "branch", "enforcement": "active",
+   "conditions": {"ref_name": {"include": ["refs/heads/stats"], "exclude": []}},
+   "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]}
+  JSON
+  ```
+
+  Do not add a pull request or status check rule there: the job pushes directly.
+
 - **Recreating the branch** (only if it is ever deleted): an orphan branch whose `downloads.csv`
   is the header line `date,tag,asset,downloads`. Until it exists, the run fails at the fetch
   rather than starting a history that could replace the old one.
 - **Traffic (views, clones, referrers) is not recorded.** GitHub keeps those for 14 days only,
-  but its traffic API needs the Administration (read) repository permission, which the job
-  token cannot be given. Recording them needs a fine-grained token or a GitHub App with that
+  but its traffic API (`/traffic/views`, `/traffic/clones`, `/traffic/popular/referrers`)
+  needs the Administration (read) repository permission (GitHub's "Permissions required for
+  fine-grained personal access tokens"), and `permissions:` has no `administration` key, so the
+  job token cannot be given it. Recording them needs a fine-grained token or a GitHub App with that
   permission, stored as a secret: a decision for the maintainer, since it would be the
   workflow's first secret.
 

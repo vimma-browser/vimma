@@ -12,7 +12,9 @@ name: downloads
 
 on:
   schedule:
-    - cron: "37 23 * * *" # 23:37 UTC daily, near the end of the UTC day the row is dated
+    # A row is dated by the UTC day the run starts, and scheduled runs start hours late (about
+    # three here), so the run is set early in the day: a late start stays on the day it is dated.
+    - cron: "17 6 * * *"
   workflow_dispatch:
 
 permissions: {}
