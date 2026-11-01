@@ -64,9 +64,13 @@ async function blockingTab(options = {}) {
   return tab;
 }
 
-/** @param {string} query */
+/**
+ * The pop-up's tab. waitForAnyTab, because without it a waiter takes the first tab that opens,
+ * and the two pop-ups open together.
+ * @param {string} query
+ */
 const popupTab = (query) =>
-  BrowserTestUtils.waitForNewTab(gBrowser, (url) => url === `${BLOCKING}?${query}`, true);
+  BrowserTestUtils.waitForNewTab(gBrowser, (url) => url === `${BLOCKING}?${query}`, true, true);
 
 /**
  * Selects `tab`. Closing a pop-up's tab gives the selection back to its opener, and switchTab to
