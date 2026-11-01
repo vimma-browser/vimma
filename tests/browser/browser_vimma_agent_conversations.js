@@ -195,6 +195,42 @@ addTidyTask(async function test_grant_ends_with_its_task_and_enter_grants_again(
   held.clear();
 });
 
+addTidyTask(async function test_grant_ends_when_its_task_fails() {
+  const { Budget } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/agent-budget.mjs",
+  );
+  /** @param {{ id: number, conn: string }} c */
+  const check = (c, how) => {
+    Assert.ok(!AgentGate.grants().some((g) => g.conn === c.conn), `${how}: no grant is left`);
+    Assert.ok(
+      AgentChat.transcript(c.id).entries.some(
+        (e) => e.kind === "notice" && e.text.startsWith("grant ended"),
+      ),
+      `${how}: the transcript says the grant ended`,
+    );
+  };
+  // An error result: a redirect fails the model request (B11).
+  const moved = AgentChat.create({
+    provider: { ...PROVIDER, endpoint: `http://127.0.0.1:${PORT}/moved/v1` },
+  });
+  await AgentChat.send(moved.id, script([{ reply: "never" }]));
+  Assert.equal((await AgentChat.done(moved.id)).outcome, "error", "the task ended in an error");
+  check(moved, "an error result");
+  // A thrown error: the loop itself fails, so its result never comes.
+  const exceeded = Budget.prototype.exceeded;
+  Budget.prototype.exceeded = () => {
+    throw new Error("the loop failed");
+  };
+  try {
+    const c = AgentChat.create({ provider: PROVIDER });
+    await AgentChat.send(c.id, script([{ reply: "never" }]));
+    await Assert.rejects(AgentChat.done(c.id), /the loop failed/, "the task's end threw");
+    check(c, "a thrown error");
+  } finally {
+    Budget.prototype.exceeded = exceeded;
+  }
+});
+
 addTidyTask(async function test_checkpoint_and_show_ask_under_the_conversation_grant() {
   const c = AgentChat.create({ provider: PROVIDER });
   await AgentChat.send(
