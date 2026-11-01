@@ -48,6 +48,24 @@ export function minOfMedians(rounds) {
 }
 
 /**
+ * One case's change against another's measured in the same sweeps: per sample, the quotient of
+ * the two ratios that sweep took a few milliseconds apart; the median of those per round, and the
+ * median of the rounds. Not the quotient of each side's own median: when the runner's load comes
+ * and goes in phases of a few milliseconds, each side's samples fall into two modes, and its
+ * median lands on whichever mode got one more sample. Two sides of identical code then read up to
+ * +50 % apart (issue #667). A sweep measures both sides in the same phase, so their quotient
+ * cancels it unless a phase changes between them.
+ * @param {number[][]} a per round, the case's ratio in each sweep
+ * @param {number[][]} b the same for the case it is compared with, from the same measurement
+ */
+export function pairedChange(a, b) {
+  if (a.length !== b.length || a.some((round, r) => round.length !== b[r]?.length)) {
+    throw new Error("pairedChange: both cases must come from the same sweeps");
+  }
+  return median(a.map((round, r) => median(round.map((x, s) => x / Number(b[r]?.[s])))));
+}
+
+/**
  * One result from several bench processes (each with its own fixed hash seed, bench.mjs).
  *   - µs, for the budget: the lowest over the processes, since noise only adds time.
  *   - ratio, for the regression gate: the median over the processes. Not the lowest: noise in
