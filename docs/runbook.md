@@ -974,6 +974,15 @@ Why it does not flake (plan §5: no retries; flaky means quarantine):
   hyperthread slows an allocating case more than the reference) moved one side against the
   other: in the gate's own test (below), unchanged code read from −21 % to +40 % on one case under
   the coverage pool; sample by sample, from −14 % to +12 %.
+- **Paired sweep by sweep (issue #667).** The gate does not divide one side's median ratio by the
+  other's. When the runner's load comes and goes in phases of a few milliseconds, each side's
+  samples fall into a busy and a quiet mode, and a median lands on whichever mode got one more
+  sample: unchanged code read +25.0 % on one case on a hosted macOS runner. Instead, each sweep
+  divides the working tree's ratio by the baseline's, both taken a few milliseconds apart in the
+  same phase, and the gate takes the median of those per round and the median of the rounds.
+  `tools/bench/test/bench.test.mjs` scripts such a machine on a fake clock: on 20 seeds,
+  separate medians read identical code up to +50 %, the paired change reads it within the gate
+  and still fails a case made 20 % slower.
 - **Load order alternates.** Two copies of identical code in one process differ by several per
   cent on the sub-microsecond cases, one way or the other, from process to process. Loading the
   working tree first in every process leaned that one way (+6 % to +8 % on the suite for
@@ -994,8 +1003,8 @@ Why it does not flake (plan §5: no retries; flaky means quarantine):
 - **The same hash seeds on every run.** The cases do use string keys (the dispatcher's trie), so
   each of the 15 processes runs with its own fixed `--hash-seed` (1 to 15): every run measures the
   same set of table layouts, not 15 new random ones.
-- **Robust statistics.** Warm-up, batches of ≥ 100 µs, the median of 51 samples per round, the
-  median over 5 rounds, per process. Over the 15 processes: the **lowest µs** for the budget
+- **Robust statistics.** Warm-up, batches of ≥ 100 µs, the median of 51 paired samples per
+  round, the median over 5 rounds, per process. Over the 15 processes: the **lowest µs** for the budget
   (noise only adds time) and the **median change** for the gate. Not the lowest ratio: noise in
   the reference's time lowers a ratio, so the lowest ratio picked whichever process had the
   slowest reference (issue #125, PR #121).
