@@ -1665,9 +1665,9 @@ const COMMANDS = {
 };
 
 /**
- * A built-in conversation's context was cleared (builtin-agent B22): its next element list of
- * any site comes in full, since the model no longer has the lines a compact list would leave
- * out (agent-speed S4).
+ * A built-in conversation's context was cleared (builtin-agent B22), or its loop left out a block
+ * of older results (agent-speed S5): its next element list of any site comes in full, since the
+ * model may no longer have the lines a compact list would leave out (agent-speed S4).
  * @param {ConnId} conn
  */
 export function forgetListedSites(conn) {
