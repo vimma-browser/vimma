@@ -6,8 +6,10 @@
 // It reads and changes the selected tab's site permissions through Firefox's SitePermissions,
 // the module behind Page Info's Permissions tab and the identity panel, with Page Info's list and
 // Page Info's rules for what is locked; only a pop-up block, which SitePermissions cannot store,
-// goes to the permission manager (sitePermissionKey). It is the only Vimma code that changes a
-// site permission (tools/security chrome-source test), and refuses in the agent workspace.
+// goes to the permission manager (writePermission). It is the only Vimma code that changes a
+// site permission (tools/security chrome-source test): the pop-up blocked bar and `:popups`
+// (host/popup-ops.mjs) change the pop-up permission through setSitePopups here, so a block from
+// either is the block `:site` shows. Both refuse in the agent workspace.
 
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { permissionItems, permissionPlan, permissionTitle } from "../core/sitepermissions.mjs";
@@ -43,11 +45,15 @@ function inAgentWorkspace(win) {
   const g = gBrowserOf(win);
   const tab = g.selectedTab;
   const principal = g.selectedBrowser?.contentPrincipal;
-  return (
-    WorkspaceStore.isAgentContainer(tab?.userContextId) ||
-    WorkspaceStore.isAgentContainer(principal?.originAttributes?.userContextId)
-  );
+  return WorkspaceStore.isAgentContainer(tab?.userContextId) || agentPrincipal(principal);
 }
+
+/**
+ * Whether a principal is in the agent workspace's container.
+ * @param {any} principal
+ */
+const agentPrincipal = (principal) =>
+  WorkspaceStore.isAgentContainer(principal?.originAttributes?.userContextId);
 
 /**
  * The pref whose lock makes a permission read only, as Page Info (pageinfo/permissions.js).
@@ -188,26 +194,56 @@ export function sitePermissionKey(win, op, id) {
   if (!record) return { notice: null, close: false };
   const plan = permissionPlan(record, op);
   if (plan.type === "refuse") return { notice: plan.text, close: false };
-  // Firefox's pop-up default is Block (SitePermissions.getDefault) and setForPrincipal drops a
+  writePermission(page.principal, page.browser, id, plan.type === "set" ? plan.state : null);
+  return { notice: null, close: false };
+}
+
+/**
+ * Sets (`state`) or resets (null) one permission for a page, as Page Info does: Firefox stores it
+ * for the site (for the session in a private window) and removes the entry when the state is the
+ * default; with the browser, a temporary setting for the tab goes too.
+ * @param {any} principal
+ * @param {any} browser
+ * @param {string} id
+ * @param {number | null} state
+ */
+function writePermission(principal, browser, id, state) {
+  const SP = lazy.SitePermissions;
+  // Firefox's pop-up default is Block (SitePermissions.getDefault) and SitePermissions drops a
   // state equal to the default instead of storing it, so a pop-up block would leave the site
   // nothing to show or for `r` to take back. It is stored in the permission manager instead, as
-  // Firefox's own pop-up bar does (toggleAllowPopupsForSite; docs/specs/popup-blocked.md), with
-  // the same expiry rules: a private window keeps it for the session.
-  const popupBlock =
-    plan.type === "set" && id === "popup" && plan.state === lazy.SitePermissions.BLOCK;
-  if (plan.type === "set" && !popupBlock) {
-    // Page Info's call: Firefox stores it for the site (for the session in a private window)
-    // and removes the entry when the state is the default, with the browser a temporary one too.
-    const persistent = lazy.SitePermissions.SCOPE_PERSISTENT;
-    lazy.SitePermissions.setForPrincipal(page.principal, id, plan.state, persistent, page.browser);
-  } else {
-    // With the browser, Firefox also drops a temporary setting for this tab.
-    lazy.SitePermissions.removeFromPrincipal(page.principal, id, page.browser);
-    if (popupBlock) {
-      services.perms.addFromPrincipal(page.principal, "popup", services.perms.DENY_ACTION);
-    }
+  // Firefox's own pop-up bar stores its choice (toggleAllowPopupsForSite), which keeps a private
+  // principal's for the session only (PermissionManager forces EXPIRE_SESSION).
+  const popupBlock = id === "popup" && state === SP.BLOCK;
+  if (state !== null && !popupBlock) {
+    lazy.SitePermissions.setForPrincipal(principal, id, state, SP.SCOPE_PERSISTENT, browser);
+    return;
   }
-  return { notice: null, close: false };
+  lazy.SitePermissions.removeFromPrincipal(principal, id, browser);
+  if (popupBlock) services.perms.addFromPrincipal(principal, "popup", services.perms.DENY_ACTION);
+}
+
+/**
+ * The pop-up blocked bar's and `:popups`' change to a page's pop-up permission
+ * (docs/specs/popup-blocked.md), written as `:site` writes it. Nothing changes for a page
+ * without site permissions, an agent workspace page, or while a locked
+ * `dom.disable_open_during_load` makes the permission read only, as in Page Info.
+ * @param {any} browser
+ * @param {"allow" | "block" | "reset"} kind
+ * @returns {boolean} whether it changed the permission
+ */
+export function setSitePopups(browser, kind) {
+  const principal = browser?.contentPrincipal;
+  if (!principal || !lazy.SitePermissions.isSupportedPrincipal(principal)) return false;
+  if (agentPrincipal(principal) || lockedByPref("popup")) return false;
+  const SP = lazy.SitePermissions;
+  writePermission(
+    principal,
+    browser,
+    "popup",
+    { allow: SP.ALLOW, block: SP.BLOCK, reset: null }[kind],
+  );
+  return true;
 }
 
 /** @param {Window} win */

@@ -147,7 +147,10 @@ browser's blocker and permission, answers the bar, and runs a row. `ui/picker.mj
    allow uses, since Firefox's own allow needs the bar; reset is
    `SitePermissions.removeFromPrincipal`. A site permission picker (`:site`,
    [#684](https://github.com/vimma-browser/vimma/issues/684)) will also cover this permission
-   once it lands.
+   once it lands. (Since changed: `:site` landed with a pop-up row, and the bar's `n` and this
+   picker's allow, block and reset now write through its `setSitePopups`
+   (`host/permission-ops.mjs`, docs/specs/site-permissions.md), because a second writer could
+   drift from the first; a block from either picker is the block the other shows and undoes.)
 5. **Firefox's own code runs the bar's options.** `y` and the allow row with the bar call the
    observer's `toggleAllowPopupsForSite` with a stand-in event
    `{ originalTarget: { documentGlobal: window } }`; the open, redirect, hide and settings rows

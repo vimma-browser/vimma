@@ -3394,6 +3394,7 @@ goes to another page while the picker is open, the next key closes it: run `:sit
 the new page. `:site` does nothing in the [agent workspace](#agent-workspace), so a permission
 is never given to a page an agent drives. It has no default key: bind `site_permissions` in
 [config.toml](#configtoml), as every key, the prefix and the leader can be remapped.
+
 ## Blocked pop-ups
 
 When a page opens a pop-up on its own, Firefox blocks it and shows a bar over the page: "Vimma
@@ -3433,8 +3434,9 @@ without the bar:
 
 `j` / `k` move, `/` filters, `Enter` runs the row and `Esc` closes the picker. Vimma runs
 Firefox's own code for the bar's options and Firefox's site permissions for the rest. The keys,
-the picker and the status bar follow the selected tab, and in a split the focused pane. A site
-permission picker (`:site`) will cover pop-ups too when it lands.
+the picker and the status bar follow the selected tab, and in a split the focused pane. The
+[site permissions](#site-permissions) picker (`:site`) lists pop-ups too, and changes the same
+setting: a block from `n`, `:popups` or `:site` can be undone from either picker.
 
 With nothing blocked on the page and no choice made for the site, `:popups` says `no pop-ups
 blocked on this page`. When an administrator has locked pop-up blocking on, the Allow, Block and

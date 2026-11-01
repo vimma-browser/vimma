@@ -113,7 +113,11 @@ records the page the picker was opened for, reads the records, and applies a pla
    session only in a private window, as it does for SitePermissions. A row's `●` for pop-ups
    comes from the site's own entry (`testExactPermissionFromPrincipal`), because a stored block
    and the default read the same. Rejected: Page Info's behaviour (block only removes an
-   allow), because a stored block is what tells the site's choice from the default.
+   allow), because a stored block is what tells the site's choice from the default. The pop-up
+   blocked bar's `n` and `:popups`' allow, block and reset write through the same function
+   (`setSitePopups`), because two writers of one permission could drift apart: a block from any
+   of them is the block the others show and take back, with the same refusals (agent workspace,
+   locked pref).
 4. **Firefox's states and labels.** `a` and `b` are offered only when Firefox offers allow or
    block for that permission, and `Enter` steps through `getAvailableStates` in Firefox's order,
    because a state Firefox does not offer (allow for screen sharing) is one its prompts would

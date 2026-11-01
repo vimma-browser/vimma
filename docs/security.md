@@ -418,8 +418,8 @@ text that pages, add-ons and bookmarks choose.
     page it was listed for: the picker keeps the page's principal when it opens and refuses a row
     once the tab's principal differs, so a navigation under the open picker cannot land Allow on
     another site. With `dom.disable_open_during_load` locked, `y` and `n` stay the page's and no
-    Vimma path writes the site's permission (the keys, the rows and the host's `blockSite` and
-    `allowSite`), as Firefox's own menu hides its allow. Allow goes through Firefox's own
+    Vimma path writes the site's permission (the keys, the rows and `setSitePopups`, the site
+    permissions picker's writer, §19), as Firefox's own menu hides its allow. Allow goes through Firefox's own
     `toggleAllowPopupsForSite` or `SitePermissions`; Block is stored with Firefox's own
     `Services.perms.addFromPrincipal` (SitePermissions removes a block instead of recording it),
     which keeps it for the private session only in a private window (PermissionManager forces
@@ -3313,9 +3313,14 @@ which Firefox's site information panel shows already, and stores nothing of its 
   principal (`Services.perms.addFromPrincipal(…, "popup", DENY_ACTION)`, as Firefox's pop-up
   bar writes it), because SitePermissions drops a block that equals the pop-up default; it can
   only take pop-ups away. Only a state Firefox offers for the permission is set, and a
-  permission set by policy or decided by a locked pref is read only.
+  permission set by policy or decided by a locked pref is read only. The pop-up blocked bar's
+  `n` and `:popups`' allow, block and reset rows (`host/popup-ops.mjs`) write only through this
+  file's `setSitePopups`, which refuses an agent workspace page and a locked pop-up pref, so a
+  block from any of them is the same stored block.
   [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.mjs),
   [`test_popups_can_be_allowed_blocked_and_reset`](../tests/browser/browser_vimma_site_permissions.js),
+  [`test_site_and_popups_share_one_popup_permission`](../tests/browser/browser_vimma_site_permissions.js),
+  [`test_a_private_window_keeps_a_popup_block_for_its_session`](../tests/browser/browser_vimma_site_permissions.js),
   [`a state Firefox does not offer for the permission is refused`](../packages/vimma-core/test/sitepermissions.test.mjs),
   [`a locked row changes nothing`](../packages/vimma-core/test/sitepermissions.test.mjs),
   [`test_a_state_firefox_does_not_offer_is_refused`](../tests/browser/browser_vimma_site_permissions.js),

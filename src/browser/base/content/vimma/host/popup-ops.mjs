@@ -17,13 +17,13 @@ import {
   popupItems,
 } from "../core/popups.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
+import { setSitePopups } from "./permission-ops.mjs";
 
 /** @import { PopupItem } from "../core/popups.mjs" */
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   PopupAndRedirectBlockerObserver: "resource:///modules/PopupAndRedirectBlockerObserver.sys.mjs",
-  SitePermissions: "resource:///modules/SitePermissions.sys.mjs",
 });
 
 /** The bar's value (PopupAndRedirectBlockerObserver.showBrowserMessage). */
@@ -76,33 +76,12 @@ function sitePermission(browser) {
 }
 
 /**
- * Records a block in the site's pop-up permission. SitePermissions cannot: it treats a block as
- * the pop-up default and removes the site's permission instead (SitePermissions.setForPrincipal),
- * which would leave a mistaken `n` nothing to show or undo. So this writes the permission
- * manager as Firefox's own "Allow pop-ups for <site>" does (toggleAllowPopupsForSite), with
- * Firefox's block action; SitePermissions and Page Info read it as Block.
- * @param {any} browser
- */
-function blockSite(browser) {
-  if (popupLocked()) return;
-  perms().addFromPrincipal(browser.contentPrincipal, "popup", perms().DENY_ACTION);
-}
-
-/**
  * Allows the site's pop-ups without the bar, as the bar's allow does: the permission, then what
  * was blocked opens. The bar's own path (toggleAllowPopupsForSite) needs the bar to remove.
  * @param {any} browser
  */
 function allowSite(browser) {
-  if (popupLocked()) return;
-  const { SitePermissions } = lazy;
-  SitePermissions.setForPrincipal(
-    browser.contentPrincipal,
-    "popup",
-    SitePermissions.ALLOW,
-    SitePermissions.SCOPE_PERSISTENT,
-    browser,
-  );
+  if (!setSitePopups(browser, "allow")) return;
   const blocker = browser.popupAndRedirectBlocker;
   blocker
     ?.unblockAllPopups()
@@ -196,15 +175,9 @@ export function runPopupRow(win, id) {
       else allowSite(snapshot.browser);
       break;
     case "block":
-      blockSite(snapshot.browser);
-      break;
     case "reset":
-      if (popupLocked()) break;
-      lazy.SitePermissions.removeFromPrincipal(
-        snapshot.browser.contentPrincipal,
-        "popup",
-        snapshot.browser,
-      );
+      // The site permissions picker's writer (`:site`), so both pickers store the same block.
+      setSitePopups(snapshot.browser, op.op);
       break;
     case "popup": {
       const p = snapshot.popups[op.index];
@@ -240,9 +213,9 @@ export function popupBar(win) {
 /**
  * Answers the selected page's bar as its own controls do. `allow` is the options menu's "Allow
  * pop-ups for <site>", which also opens what was blocked and closes the bar. `block` records the
- * block in the site's permission, then closes the bar. `close` is the bar's close button: no permission changes, and Firefox does not
- * show the bar again for this page. `block` is recorded as the picker's block row records it
- * (blockSite), so `:popups` can undo it.
+ * block in the site's permission, then closes the bar; it is written as the pickers' block rows
+ * write it (setSitePopups), so `:popups` and `:site` can undo it. `close` is the bar's close
+ * button: no permission changes, and Firefox does not show the bar again for this page.
  * @param {Window} win
  * @param {"allow" | "block" | "close"} kind
  */
@@ -255,7 +228,7 @@ export function answerPopupBar(win, kind) {
     }).catch((/** @type {unknown} */ e) => console.error("vimma: pop-ups", e));
     return;
   }
-  if (kind === "block") blockSite(gBrowserOf(win).selectedBrowser);
+  if (kind === "block") setSitePopups(gBrowserOf(win).selectedBrowser, "block");
   bar.dismiss();
 }
 
