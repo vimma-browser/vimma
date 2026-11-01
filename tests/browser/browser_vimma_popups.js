@@ -61,6 +61,14 @@ async function blockingTab(options = {}) {
 const popupTab = (query) =>
   BrowserTestUtils.waitForNewTab(gBrowser, (url) => url === `${BLOCKING}?${query}`, true);
 
+/**
+ * Selects `tab`. Closing a pop-up's tab gives the selection back to its opener, and switchTab to
+ * the selected tab waits for a TabSwitchDone that never comes.
+ */
+async function select(tab) {
+  if (gBrowser.selectedTab !== tab) await BrowserTestUtils.switchTab(gBrowser, tab);
+}
+
 const allowed = (tab) =>
   Services.perms.testPermissionFromPrincipal(tab.linkedBrowser.contentPrincipal, "popup") ===
   Services.perms.ALLOW_ACTION;
@@ -123,7 +131,7 @@ add_task(async function the_picker_lists_the_bar_options_and_opens_one_popup() {
   BrowserTestUtils.removeTab(a);
 
   // :popups opens the same picker.
-  await BrowserTestUtils.switchTab(gBrowser, tab);
+  await select(tab);
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("popups");
   EventUtils.synthesizeKey("KEY_Enter");
@@ -143,7 +151,7 @@ add_task(async function allow_grants_the_site_and_opens_the_blocked_popups() {
   await until(() => allowed(tab), "pop-ups are allowed for the site");
   BrowserTestUtils.removeTab(await a);
   BrowserTestUtils.removeTab(await b);
-  await BrowserTestUtils.switchTab(gBrowser, tab);
+  await select(tab);
   await until(() => !bar() && cue() === null, "the bar and the cue are gone");
   Services.perms.removeFromPrincipal(tab.linkedBrowser.contentPrincipal, "popup");
   BrowserTestUtils.removeTab(tab);
