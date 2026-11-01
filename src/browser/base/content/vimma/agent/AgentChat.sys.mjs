@@ -352,11 +352,15 @@ async function runTool(c, name, args, { signal }) {
     c.transcript.rateWait(wait);
     changed();
     await new Promise((resolve) => {
-      const timer = lazy.setTimeout(resolve, wait);
-      signal.addEventListener("abort", () => {
+      const abort = () => {
         lazy.clearTimeout(timer);
         resolve(undefined);
-      });
+      };
+      const timer = lazy.setTimeout(() => {
+        signal.removeEventListener("abort", abort);
+        resolve(undefined);
+      }, wait);
+      signal.addEventListener("abort", abort, { once: true });
     });
     if (!signal.aborted) failure = await runOnce(c, name, args, mapped, nextRid++, signal);
     if ("content" in failure) return failure;
@@ -620,6 +624,8 @@ export const AgentChat = {
           budget,
           localOnly,
           keepResults: config()?.keepResults ?? null,
+          // The lists a compact list would point at have left the model's context.
+          onLeftOut: () => forgetListedSites(c.conn),
           onEvent: (e) => {
             c.transcript.task(e);
             changed();
