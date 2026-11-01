@@ -79,7 +79,9 @@ first, so that what the guide says a model can do is what the bench measured.
    option picked, never in the background. For an Ollama model whose context is below
    32,768 tokens (Ollama's default is 4,096), confirming setup makes a copy of the model with
    `num_ctx` set to 32,768 (`qwen3:14b-ctx32768`), which shares its weights, and uses that
-   (B12).
+   (B12). (Since changed: after the pick, setup loads an Ollama model with a generate request
+   without a prompt and says where it runs and with what context, from `/api/ps`, because
+   Ollama leaves out an integrated GPU by default; agent-speed Behaviour 7.)
 3. **External provider.** The user picks Anthropic (the Messages API) or an OpenAI-compatible
    endpoint (an `https://` address), a model name, and pastes the API key into a masked field.
    The key goes straight into Firefox's login storage (B8) and is never shown again: the field

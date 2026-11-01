@@ -34,6 +34,7 @@ import { failureResult, rateWaitMs, toolCommand, toolResult } from "../core/agen
 import {
   localModelState,
   modelChoices,
+  ollamaPlacement,
   prepareLocalModel,
   probeLocal,
   providerKey,
@@ -975,6 +976,14 @@ export const AgentChat = {
    */
   prepareLocal(endpoint, model) {
     return prepareLocalModel(parentFetch, endpoint, model, { timeout });
+  },
+
+  /**
+   * Where a local model setup picked runs, loaded once to ask (agent-speed Behaviour 7).
+   * @param {string} endpoint @param {string} model
+   */
+  placeLocal(endpoint, model) {
+    return ollamaPlacement(parentFetch, endpoint, model, { timeout });
   },
 
   /** @param {() => void} listener */

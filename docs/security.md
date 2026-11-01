@@ -1767,7 +1767,9 @@ vision; its key stays in login storage.
   probe **must** ask only 127.0.0.1 on the local servers' ports and the configured providers'
   own loopback endpoints, with a timeout of 1 s, and only while the model picker is open. The
   check before a task that a local model is still listed **must** ask only the conversation's
-  own loopback endpoint, and never an endpoint off this machine.
+  own loopback endpoint, and never an endpoint off this machine. Setup's look at where a picked
+  local model runs **must** ask only Ollama's port on this machine, once, after the pick, with a
+  generate request that names the model and carries no prompt, then `/api/ps`.
   [`test_requests_only_to_the_endpoint_without_credentials_or_redirects`](../tests/browser/browser_vimma_agent_conversations.js),
   [`posts to the endpoint without credentials or redirects, and parses the reply`](../packages/vimma-core/test/agent-providers.test.mjs),
   [`a refused endpoint makes no request`](../packages/vimma-core/test/agent-providers.test.mjs),
@@ -1777,6 +1779,8 @@ vision; its key stays in login storage.
   [`the probe also asks the configured local endpoints, once each, never a remote one`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`a provider off this machine, or Anthropic's API, gets no request`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`its server lists it, or no longer does`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`loads the model with no prompt, then reads its GPU share and context from ps`](../packages/vimma-core/test/agent-setup.test.mjs),
+  [`asks only Ollama on this machine`](../packages/vimma-core/test/agent-setup.test.mjs),
   [`test_probe_only_on_setup_and_only_loopback`](../tests/browser/browser_vimma_agent_conversations.js)
 - M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key and
   the endpoint origin it was entered for, encrypted with OSKeyStore, and **must** be sent only to
