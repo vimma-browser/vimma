@@ -1,6 +1,6 @@
 # Spec: agent-speed
 
-Status: draft (Delivery 1 in #603, 2 in #611, 3 for #598, 6 for #600, 7 for #601) · Area: `tools/agent-bench/` (the
+Status: draft (Delivery 1 in #603, 2 in #611, 3 for #598, 4 in part for #602, 6 for #600, 7 for #601) · Area: `tools/agent-bench/` (the
 scripted floor, the per-step breakdown); `packages/vimma-core/src/` (`agent-loop.mjs`, `agent-providers.mjs`,
 `agent-tools-data.mjs`, `agent-act.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: tool descriptions and
 `INSTRUCTIONS`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
@@ -339,6 +339,9 @@ label, text, caption or name holds all its words`; `a sensitive field's value is
 - `the loop leaves out results older than keep_results in blocks, keeping their first line`;
   `a request's prefix changes only when a block is left out` (Behaviour 5).
 - `a local provider with think = false sends the setting its server takes` (Behaviour 7).
+- `loads the model with no prompt, then reads its GPU share and context from ps`,
+  `asks only Ollama on this machine` and `the line setup shows` (Behaviour 7, in
+  `agent-setup.test.mjs`).
 - `agent-tools-data matches the MCP fixture` (existing) catches drift of the new descriptions.
 
 ### Mochitests

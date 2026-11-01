@@ -304,3 +304,63 @@ export async function prepareLocalModel(fetch, endpoint, model, { timeout = defa
   if (out?.status !== "success") throw new Error(`Ollama could not make ${name}`);
   return { model: name, context: MIN_CONTEXT, made: true };
 }
+
+/** How long a model may take to load into memory: a large one on a slow disk takes a minute. */
+export const LOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * @typedef {{ gpu: number, context: number | null }} Placement  `gpu`: the share of the loaded
+ *   model in GPU memory, 0 to 1 (`ollama ps`'s PROCESSOR column); `context`: the context length
+ *   it was loaded with
+ */
+
+/**
+ * Where a local Ollama model runs (docs/specs/agent-speed.md Behaviour 7, S8): Ollama tells
+ * only for a loaded model, so this loads it the way Ollama's API documents (a generate request
+ * with no prompt, which sends no text to the model) and reads `/api/ps`. Null when the server is
+ * not Ollama on this machine or cannot tell; other servers decide their GPU use where they start.
+ * @param {Fetch} fetch @param {string} endpoint @param {string} model
+ * @param {{ timeout?: Timeout }} [opts]
+ * @returns {Promise<Placement | null>}
+ */
+export async function ollamaPlacement(fetch, endpoint, model, { timeout = defaultTimeout } = {}) {
+  if (checkEndpoint(endpoint, { localOnly: true })) return null;
+  if (new URL(endpoint).port !== String(OLLAMA_PORT)) return null;
+  const root = ollamaRoot(endpoint);
+  try {
+    await request(fetch, `${root}/api/generate`, timeout(LOAD_TIMEOUT_MS), {
+      model,
+      stream: false,
+    });
+    const ps = await request(fetch, `${root}/api/ps`, timeout(10 * PROBE_TIMEOUT_MS));
+    const names = model.includes(":") ? [model] : [model, `${model}:latest`];
+    const loaded = (Array.isArray(ps?.models) ? ps.models : []).find(
+      (/** @type {any} */ m) => names.includes(m?.name) || names.includes(m?.model),
+    );
+    const size = Number(loaded?.size);
+    if (!(size > 0)) return null;
+    const vram = Number(loaded.size_vram) || 0;
+    const context = Number(loaded.context_length);
+    return {
+      gpu: Math.min(1, Math.max(0, vram / size)),
+      context: Number.isInteger(context) && context > 0 ? context : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The line setup shows for a placement, worded as `ollama ps` splits it.
+ * @param {string} model @param {Placement} placement
+ */
+export function placementText(model, { gpu, context }) {
+  const onGpu = Math.round(gpu * 100);
+  const ctx = context ? `, with ${context.toLocaleString("en-US")} tokens of context` : "";
+  if (onGpu >= 100) return `${model} runs on the GPU${ctx}`;
+  if (onGpu > 0) return `${model} runs ${100 - onGpu}% on the CPU and ${onGpu}% on the GPU${ctx}`;
+  return (
+    `${model} runs on the CPU${ctx}: an integrated GPU needs OLLAMA_IGPU_ENABLE=1 in ` +
+    "Ollama's environment (guide: The GPU)"
+  );
+}

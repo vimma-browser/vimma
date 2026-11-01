@@ -1477,15 +1477,17 @@ it. A private window has no agent. With no model set up, the window says how to 
 - the models of local servers: only while the picker is open, Vimma asks `127.0.0.1` on the
   ports of Ollama (11434), LM Studio (1234) and the llama.cpp server (8080) which models they
   have. An Ollama model with less than 32,768 tokens of context gets a copy with that context,
-  which shares its weights, since a ten-item task needs about 19,000;
+  which shares its weights, since a ten-item task needs about 19,000. Once you pick an Ollama
+  model, Vimma loads it (with no prompt, so no text reaches it) and says where it runs and with
+  what context, such as `qwen3:14b-ctx32768 runs on the GPU, with 32,768 tokens of context`;
 - `add: agent CLI (Claude Code)`, and once one is set up, its models: Vimma runs the agent CLI
   you have, on its own login
   ([Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window)).
 
 A model you pick that `config.toml` does not list is added there (without its key), and the
-first one becomes `[agent] default`, which new conversations use. Choosing a model sends nothing. Each conversation keeps its own model, so one can run locally
-and another on a hosted model. `[agent] local_only = true` refuses every model that is not on
-this machine.
+first one becomes `[agent] default`, which new conversations use. Choosing a model sends none
+of your text or pages. Each conversation keeps its own model, so one can run locally and another
+on a hosted model. `[agent] local_only = true` refuses every model that is not on this machine.
 
 **Where your data goes.** The window's first line names the model and where the data goes:
 `stays on this machine` for a local server's model you picked, or `page text sent to
@@ -1631,11 +1633,26 @@ endpoint = "http://127.0.0.1:8000/v1"
 model = "Qwen/Qwen3-14B"
 ```
 
-- **The GPU.** Whether a model runs on your GPU is the server's setting, not Vimma's. `ollama ps`
-  shows where a loaded model runs (`100% GPU`, or `100% CPU`). Some hardware needs a switch:
-  Ollama uses an integrated GPU only with `OLLAMA_IGPU_ENABLE=1` in the server's environment. For
-  drivers and offloading, see each server's own documentation: Ollama's GPU page, LM Studio's GPU
-  offload setting, llama.cpp's build options and `-ngl`, and vLLM's installation guide.
+- **The GPU.** Whether a model runs on your GPU is the server's setting, not Vimma's. A model on
+  the GPU reads and writes several times faster than on the CPU. `ollama ps` shows where a
+  loaded model runs (`100% GPU`, `100% CPU`, or a split), and the picker says the same when you
+  pick an Ollama model. Some hardware needs a switch: Ollama uses an integrated GPU (such as
+  AMD's Radeon 860M, through Vulkan) only with `OLLAMA_IGPU_ENABLE=1` in the server's
+  environment. With Ollama as a systemd service:
+
+  ```sh
+  sudo systemctl edit ollama    # add: [Service] and Environment="OLLAMA_IGPU_ENABLE=1"
+  sudo systemctl restart ollama
+  journalctl -u ollama -b --no-pager | grep -E 'inference compute|integrated GPU'
+  ```
+
+  The log then names the GPU (`library=Vulkan`) rather than `id=cpu`. An integrated GPU shares
+  the system's memory; when `ollama ps` shows only part of a model on it, a larger UMA frame
+  buffer in the firmware setup gives it more. For drivers and offloading, see each server's own
+  documentation: Ollama's GPU page, LM Studio's GPU offload setting, llama.cpp's build options
+  and `-ngl` (`llama-server -m <model.gguf> -ngl 99 --jinja -c 32768`), and vLLM's installation
+  guide.
+
 - **Images.** Set `vision = true` on a provider whose model reads images, so that the agent gets
   screenshots. For `kind = "openai"` it is off unless set.
 - **`[agent] local_only = true`** refuses every endpoint that is not on this machine
