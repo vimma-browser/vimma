@@ -607,7 +607,13 @@ Each is its own keymap PR, in this order, one open at a time:
   `ctrl+]`) is page-first in normal mode only (`pageFirst(chord, { mode })`); `Esc` leaving
   insert or copy mode stays Vimma's first (the copy-mode, find and insert mochitests caught it).
 - **Page-first keys queue** (`state.pageFirst`, oldest first, at most 16): keys typed fast or
-  held down each wait for their own reply.
+  held down each wait for their own reply. (Since changed: the queue is
+  `packages/vimma-core/src/page-first.mjs`, and a reply settles the press whose keypress has its
+  `timeStamp`, which the reply keeps, rather than the oldest press waiting on the key, because a
+  page that takes the keydown gets no keypress and Firefox sends no reply for it
+  (`BrowserChild::RecvRealKeyEvent`): the next reply on that key then ran with the mode of the
+  press the page took, so `cmd+left` in a field went back,
+  [#576](https://github.com/vimma-browser/vimma/issues/576).)
 - **Off the page:** `history.back` / `forward`, `page.reload`, `find.next` / `previous` run on the
   selected tab's page when no page of ours has focus (`alt+left`, `F5`, `ctrl+g` from the address
   bar, as Firefox's did).

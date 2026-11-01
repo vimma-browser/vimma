@@ -102,10 +102,7 @@ export const LEFT_OUT =
  * @returns {ChatMessage[]}
  */
 export function pruneResults(messages, keep) {
-  if (!(keep > 0)) return messages;
-  let total = 0;
-  for (const m of messages) if (m.role === "tool") total += m.results.length;
-  const leave = total < keep ? 0 : Math.floor((total - keep) / keep) * keep;
+  const leave = leftOutCount(messages, keep);
   if (leave === 0) return messages;
   let seen = 0;
   return messages.map((m) => {
@@ -116,6 +113,18 @@ export function pruneResults(messages, keep) {
     const results = m.results.map((r) => (seen++ < leave ? leaveOut(r) : r));
     return { role: "tool", results };
   });
+}
+
+/**
+ * How many of the oldest tool results pruneResults leaves out (some of them may be short enough
+ * to stay as they are).
+ * @param {ChatMessage[]} messages @param {number} keep
+ */
+function leftOutCount(messages, keep) {
+  if (!(keep > 0)) return 0;
+  let total = 0;
+  for (const m of messages) if (m.role === "tool") total += m.results.length;
+  return total < keep ? 0 : Math.floor((total - keep) / keep) * keep;
 }
 
 /** @param {ToolResult} r @returns {ToolResult} */
@@ -215,8 +224,10 @@ const notRun = (call, text) => ({
  * that has happened cannot be undone (Behaviour 16).
  * @param {{ provider: Provider, fetch: Fetch, key: string, system: string, tools: ToolDef[],
  *   messages: ChatMessage[], runTool: RunTool, budget: Budget, localOnly?: boolean,
- *   keepResults?: number | null, onEvent?: (e: TaskEvent) => void }} opts
+ *   keepResults?: number | null, onEvent?: (e: TaskEvent) => void, onLeftOut?: () => void }} opts
  *   `keepResults`: see pruneResults; keepResultsFor the provider when left out.
+ *   `onLeftOut`: called before a request that leaves out a block of results the conversation's
+ *   requests so far had whole, so the runner can stop pointing at them (agent-speed S4).
  * @returns {{ steer(text: string): void, stop(): void, done: Promise<TaskResult> }}
  */
 export function startTask(opts) {
@@ -241,6 +252,9 @@ async function run(opts, signal, pending) {
   const { provider, budget, tools, runTool } = opts;
   const emit = opts.onEvent ?? (() => {});
   const messages = [...opts.messages];
+  const keep = keepResultsFor(provider, opts.keepResults);
+  // An earlier task of the conversation sent these left out already.
+  let leftOut = leftOutCount(messages, keep);
   /** @type {ToolCall | null} */
   let after = null;
   const stopped = () => ({ outcome: /** @type {const} */ ("stopped"), messages, after });
@@ -272,6 +286,12 @@ async function run(opts, signal, pending) {
     if (over) return { outcome: "budget", messages, exceeded: over };
     takePending();
 
+    const leaving = leftOutCount(messages, keep);
+    if (leaving > leftOut) {
+      leftOut = leaving;
+      opts.onLeftOut?.();
+    }
+
     let reply;
     try {
       reply = await callModel(provider, {
@@ -279,7 +299,7 @@ async function run(opts, signal, pending) {
         key: opts.key,
         system: opts.system,
         tools,
-        messages: pruneResults(messages, keepResultsFor(provider, opts.keepResults)),
+        messages: pruneResults(messages, keep),
         signal,
         localOnly: opts.localOnly,
       });

@@ -126,7 +126,7 @@ add_task(async function setup() {
   });
 });
 
-add_task(async function vimma_dark_rings_are_the_mint_accent() {
+add_task(async function vimma_dark_rings_are_the_aqua_accent() {
   await writeConfig(`[theme]\nsource = "file"`);
   Assert.equal(token("--vimma-accent"), VIMMA_DARK.accent, "vimma dark");
   await assertFocusColour("vimma dark", VIMMA_DARK.accent);
@@ -135,9 +135,9 @@ add_task(async function vimma_dark_rings_are_the_mint_accent() {
 add_task(async function vimma_light_rings_are_its_accent_at_three_to_one() {
   await SpecialPowers.pushPrefEnv({ set: [["ui.systemUsesDarkTheme", 0]] });
   await until(() => token("--vimma-color-scheme") === "light", "vimma light");
-  // #056a39 is 2.99:1 on the light pane gap; one 5% step toward black reaches 3.2:1.
-  Assert.equal(token("--vimma-accent"), "#056a39", "vimma light's accent");
-  await assertFocusColour("vimma light", "#056536");
+  // #006b5e is 2.93:1 on the light pane gap; one 5% step toward black reaches 3:1.
+  Assert.equal(token("--vimma-accent"), "#006b5e", "vimma light's accent");
+  await assertFocusColour("vimma light", "#006659");
   await SpecialPowers.popPrefEnv();
   await until(() => token("--vimma-color-scheme") === "dark", "dark again");
 });

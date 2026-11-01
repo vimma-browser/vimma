@@ -252,7 +252,12 @@ addTidyTask(async function test_enter_grants_and_the_transcript_shows_each_step(
   );
   Assert.equal(reply.querySelector(".vimma-agent-chat-label")?.textContent, "agent", "labelled");
   Assert.equal(input().value, "", "the input is empty again");
-  await until(() => statusText("agent") === "◇ agent granted", "no task runs; the grant stands");
+  await until(
+    () => header()[1] === "works in: agent workspace",
+    "the task ended, and its grant with it (B18)",
+  );
+  Assert.notEqual(statusText("agent"), "◇ agent granted", "the status bar shows no grant");
+  Assert.ok(logText().includes("grant ended"), "the transcript says the grant ended");
 });
 
 addTidyTask(async function test_shift_enter_adds_a_line_and_ctrl_enter_asks() {
@@ -606,6 +611,10 @@ addTidyTask(async function test_an_entered_key_is_never_shown_again_nor_copied_o
     );
     EventUtils.synthesizeKey("KEY_Enter");
     await until(async () => await AgentKeys.has(anthropic.name), "the key is stored");
+    // has() is true before Enter's work ends: the hint's decrypt and setting the conversation's
+    // provider come after, and on macOS the keychain decrypt can outlast this test, so tidy()
+    // deleted the conversation first and the next test failed ("no agent conversation").
+    await until(() => !chat.storing, "the store has finished");
     chat.askKey(anthropic);
     await until(keyOpen, "changing it opens the field again");
     Assert.equal(keyField().value, "", "empty: the stored key is not filled in");

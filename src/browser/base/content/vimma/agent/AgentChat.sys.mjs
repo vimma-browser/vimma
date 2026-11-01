@@ -7,9 +7,9 @@
 // tool calls run through runAgentCommand, as an MCP agent's do through the control socket, so
 // the gate, the grants, the checkpoints, the rates, `:mcp log` and the checks after a yes are the
 // same code; and it needs no `:mcp on`, which opens the socket to every local process. Sending
-// a task with `Enter` grants the conversation's connection, with no question, for its lifetime;
-// `ask` (`ctrl+Enter`) ends that grant so every step asks. The model loop is vimma-core's, the
-// one the bench measures. Each conversation keeps its transcript (core agent-chat.mjs), built
+// a task with `Enter` grants the conversation's connection, with no question, until that task
+// ends; `ask` (`ctrl+Enter`) ends that grant so every step asks. The model loop is vimma-core's,
+// the one the bench measures. Each conversation keeps its transcript (core agent-chat.mjs), built
 // from the loop's events and the gate's events for its connection, which the chat window
 // (ui/agent-chat.mjs) draws. Each conversation is also kept across restarts (B15, Behaviour
 // 19-23): its messages, the agent's replies and Vimma's own task summaries, never page text or
@@ -124,7 +124,7 @@ function changed() {
       c.granted = granted;
       c.transcript.notice(
         granted
-          ? "granted: this conversation may use the agent workspace until it is stopped; " +
+          ? "granted: this conversation may use the agent workspace until this task ends; " +
               "sending a form or paying still asks"
           : "grant ended: each step asks until you send with Enter",
       );
@@ -352,11 +352,15 @@ async function runTool(c, name, args, { signal }) {
     c.transcript.rateWait(wait);
     changed();
     await new Promise((resolve) => {
-      const timer = lazy.setTimeout(resolve, wait);
-      signal.addEventListener("abort", () => {
+      const abort = () => {
         lazy.clearTimeout(timer);
         resolve(undefined);
-      });
+      };
+      const timer = lazy.setTimeout(() => {
+        signal.removeEventListener("abort", abort);
+        resolve(undefined);
+      }, wait);
+      signal.addEventListener("abort", abort, { once: true });
     });
     if (!signal.aborted) failure = await runOnce(c, name, args, mapped, nextRid++, signal);
     if ("content" in failure) return failure;
@@ -620,6 +624,8 @@ export const AgentChat = {
           budget,
           localOnly,
           keepResults: config()?.keepResults ?? null,
+          // The lists a compact list would point at have left the model's context.
+          onLeftOut: () => forgetListedSites(c.conn),
           onEvent: (e) => {
             c.transcript.task(e);
             changed();
@@ -629,10 +635,17 @@ export const AgentChat = {
     c.stopped = false;
     c.task = handle;
     c.budget = budget;
+    // However the task ends, its grant ends with it (B18), so a grant shows only while an agent
+    // works with the user's permission; the next Enter grants again.
+    const ended = () => {
+      if (c.task !== handle) return;
+      c.task = null;
+      AgentGate.endGrant(c.conn);
+    };
     c.done = handle.done.then(
       (result) => {
         c.messages = result.messages;
-        if (c.task === handle) c.task = null;
+        ended();
         c.last = { outcome: result.outcome, ...(result.error ? { error: result.error } : {}) };
         // Only the task's final reply is kept, not the text that came with its tool calls,
         // which most often restates the page it was reading.
@@ -643,7 +656,7 @@ export const AgentChat = {
         return result;
       },
       (e) => {
-        if (c.task === handle) c.task = null;
+        ended();
         c.last = { outcome: "error", error: String(e?.message ?? e) };
         summarize(c, "error");
         c.transcript.end(c.last);

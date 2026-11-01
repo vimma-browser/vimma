@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* Link-hint labels (ui/hint-overlay.mjs), in chrome over the page's <browser>. Colours are the
- * theme tokens of m5-core-config-and-theme; the fallbacks are the built-in vimma mint. */
+ * theme tokens of m5-core-config-and-theme; the fallbacks are the built-in vimma dark. */
 
 #vimma-hints {
   position: relative;
@@ -17,8 +17,8 @@
     position: absolute;
     padding: 0 3px;
     border-radius: 3px;
-    background: var(--vimma-hint-bg, #1bf587);
-    color: var(--vimma-hint-fg, #0a0f12);
+    background: var(--vimma-hint-bg, #ff4fb8);
+    color: var(--vimma-hint-fg, #071011);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
     font: bold 11px/1.4 monospace;
     text-transform: uppercase;
@@ -51,11 +51,11 @@
   & .vimma-element-ring {
     position: absolute;
     box-sizing: border-box;
-    border: 2px solid var(--vimma-element-outline, var(--vimma-accent, #1bf587));
+    border: 2px solid var(--vimma-element-outline, var(--vimma-accent, #2cf5d2));
     border-radius: 3px;
     box-shadow:
-      0 0 0 1px var(--vimma-bg, #0a0f12),
-      inset 0 0 0 1px var(--vimma-bg, #0a0f12);
+      0 0 0 1px var(--vimma-bg, #071011),
+      inset 0 0 0 1px var(--vimma-bg, #071011);
 
     &[hidden] {
       display: none;

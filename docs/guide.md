@@ -543,6 +543,8 @@ is on screen), as Vim's starts at the cursor.
   that found nothing goes back to where you were, and the status bar says `not found`.
 - **`Esc`** cancels: the bar closes, nothing stays selected and the page scrolls back to where
   it was when you pressed `/`.
+- **Back into the search:** if you click the page while the bar is open, `/` (or `?`) puts you
+  back in the bar with its text selected, so you can type a new search or press `Enter` or `Esc`.
 - **`n` / `N`** jump to the next / previous match without opening the bar, wrapping at the ends.
   After a search that found nothing they do nothing.
 - **`?`** searches backward: it shows matches as you type, as `/` does, and `Enter` lands on the
@@ -782,8 +784,10 @@ everywhere inside the prompt.
 The status bar, the command line, the `ctrl+b ?` overlay, the pickers and prompts, link hints,
 notices, pane borders and the start page share one theme, and so do Firefox's toolbar, its
 address bar and suggestions, and the prompts and panels that hang from it. Out of the box it is Vimma's own,
-the palette of [vimma.dev](https://vimma.dev): near-black surfaces, grey-green text, and mint
-for the accent, the normal-mode badge and link hints. It has a dark and a light variant, and by
+the "Aqua Split" palette of [vimma.dev](https://vimma.dev): near-black surfaces, grey-aqua text,
+aqua for the accent and the normal-mode badge, and magenta for link hints, so the labels stand
+apart from the accent you see everywhere else. It has a dark and a light variant (the light one
+takes a deep teal and a deep berry in their place, which read on its off-white), and by
 default it follows your system's or Firefox's light or dark setting (`prefers-color-scheme`),
 switching the moment that changes, without a reload. Firefox's own focus rings follow the theme
 too: the address bar's focus ring and the 3 px border of the focused pane in a split are the
@@ -1497,9 +1501,11 @@ decide whether it sends anything on.
 | `shift+Enter` | Starts a new line.                                                                        |
 | `Esc`         | Normal mode in the window.                                                                |
 
-Sending with `Enter` is your grant: the window asks no separate question. The grant lasts until
-you stop the task (`s`, `:agent stop` or `ctrl+b shift+a`), `:mcp revoke`, the conversation is
-deleted or Vimma restarts. Sending a form, paying, showing you a page and the downloads that
+Sending with `Enter` is your grant: the window asks no separate question. The grant covers that
+one task and ends with it, whether it finishes, you stop it (`s`, `:agent stop` or
+`ctrl+b shift+a`), or it reaches its budget or an error; `:mcp revoke`, deleting the conversation
+and restarting Vimma end it too. The next task you send with `Enter` grants again, so
+`◇ agent granted` shows only while an agent works with your permission. Sending a form, paying, showing you a page and the downloads that
 always ask still ask every time, in a bordered slot above the input that takes only `y` and `n`;
 nothing you type in the input and nothing the model writes answers it. A message sent while a
 task runs reaches the model at its next turn.
@@ -1916,7 +1922,7 @@ provider is refused, because Vimma cannot see where a CLI sends what it reads.
   `~/.cache/vimma-agent-cli`), removed when the task ends, with no shell around it. Each task is
   a new run given the conversation so far; the CLI keeps no session of its own.
 - In the browser it has only Vimma's tools, on the conversation's own agent tabs. Sending with
-  `Enter` grants the conversation, so steps run without asking; sending a form, paying and
+  `Enter` grants the conversation for that task, so steps run without asking; sending a form, paying and
   `vimma_show` still ask. Each step is a line in the transcript, from Vimma's own record.
 - **Its own tools are outside Vimma's gate.** The CLI keeps the shell, file and web tools its own
   settings allow. Vimma does not approve, refuse or confine them: they act with your rights. The

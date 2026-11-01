@@ -5,7 +5,8 @@
 // Spec: docs/specs/builtin-agent.md, delivery 3 (B4, B5, B11, B17, B18). The built-in agent's
 // conversations run in the browser's process through the agent commands and AgentGate, each on
 // a connection of its own (`builtin:<n>`), with MCP off. Sending a task with `Enter` is the
-// conversation's grant, with no question and no expiry; `ctrl+Enter` (`ask`) asks every step;
+// conversation's grant, with no question and no timer, until that task ends; `ctrl+Enter`
+// (`ask`) asks every step;
 // checkpoints and vimma_show ask under the grant. A conversation sees and acts only on its own
 // tabs and is refused another's as a tab outside the agent workspace; an MCP agent sees only the
 // tabs no conversation owns; a client that calls itself built-in over MCP is shown with (mcp).
@@ -34,8 +35,11 @@ const { AgentGate } = ChromeUtils.importESModule(
 const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
-const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
+const { MCP_ENABLED_PREF, McpHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
+);
+const { AGENT_DEFAULTS } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/config.mjs",
 );
 const { AgentUi } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/agent-ui.mjs");
 const { WorkspaceStore } = ChromeUtils.importESModule(
@@ -114,15 +118,21 @@ addTidyTask(async function test_works_with_mcp_off_and_enter_grants_without_a_qu
     if (e?.kind === "asked") asked++;
   };
   AgentGate.addListener(onGate);
-  const sent = await AgentChat.send(c.id, script([openStep(PAGE), { reply: "Opened it." }]));
+  const sent = await AgentChat.send(
+    c.id,
+    script([openStep(PAGE), { hold: true, reply: "Opened it." }]),
+  );
   Assert.deepEqual(sent, { started: true }, "the task starts");
+  await until(() => held.size === 1, "the model is thinking");
+  const grant = AgentGate.grants().find((g) => g.conn === c.conn);
+  Assert.equal(grant?.until, Infinity, "the conversation's grant has no timer (B18)");
+  for (const release of held.values()) release();
+  held.clear();
   const result = await AgentChat.done(c.id);
   AgentGate.removeListener(onGate);
   Assert.equal(result.outcome, "done", "the task ran to its reply");
   Assert.equal(result.reply, "Opened it.", "the model's reply");
   Assert.equal(asked, 0, "sending with Enter asked nothing");
-  const grant = AgentGate.grants().find((g) => g.conn === c.conn);
-  Assert.equal(grant?.until, Infinity, "the conversation's grant has no expiry (B18)");
   Assert.equal(agentTabs().length, 1, "the page opened in the agent workspace");
   const row = AgentGate.log[0];
   Assert.equal(row.client, `built-in · ${AgentChat.get(c.id).title}`, ":mcp log names it");
@@ -132,19 +142,24 @@ addTidyTask(async function test_works_with_mcp_off_and_enter_grants_without_a_qu
 
 addTidyTask(async function test_ctrl_enter_asks_every_step_and_ends_the_grant() {
   const c = AgentChat.create({ provider: PROVIDER });
-  await AgentChat.send(c.id, script([{ reply: "hi" }]));
-  await AgentChat.done(c.id);
+  await AgentChat.send(c.id, script([{ hold: true, reply: "hi" }]));
+  await until(() => held.size === 1, "the model is thinking");
   Assert.ok(
     AgentGate.grants().some((g) => g.conn === c.conn),
     "Enter granted the conversation",
   );
+  await AgentChat.send(c.id, "watch each step", { ask: true });
+  Assert.ok(
+    !AgentGate.grants().some((g) => g.conn === c.conn),
+    "ctrl+Enter during the task ended its grant (Behaviour 25)",
+  );
+  for (const release of held.values()) release();
+  held.clear();
+  await AgentChat.done(c.id);
   await AgentChat.send(c.id, script([openStep(PAGE), openStep(`${PAGE}?2`), { reply: "two" }]), {
     ask: true,
   });
-  Assert.ok(
-    !AgentGate.grants().some((g) => g.conn === c.conn),
-    "ctrl+Enter ended the standing grant (Behaviour 25)",
-  );
+  Assert.ok(!AgentGate.grants().some((g) => g.conn === c.conn), "ctrl+Enter makes no grant");
   let q = await question();
   Assert.equal(q.conn, c.conn, "the step asks");
   Assert.equal(
@@ -160,14 +175,19 @@ addTidyTask(async function test_ctrl_enter_asks_every_step_and_ends_the_grant() 
   Assert.equal(result.outcome, "done", "both steps ran on yes");
 });
 
-addTidyTask(async function test_grant_covers_later_tasks_until_stopped() {
+addTidyTask(async function test_grant_ends_with_its_task_and_enter_grants_again() {
   const c = AgentChat.create({ provider: PROVIDER });
+  const granted = () => AgentGate.grants().some((g) => g.conn === c.conn);
   await AgentChat.send(c.id, script([openStep(PAGE), { reply: "one" }]));
-  await AgentChat.done(c.id);
+  const first = await AgentChat.done(c.id);
+  Assert.equal(first.outcome, "done", "the first task ran");
+  Assert.ok(!granted(), "a task that finished on its own left no grant (B18)");
   await AgentChat.send(c.id, script([openStep(`${PAGE}?again`), { reply: "two" }]));
+  Assert.ok(granted(), "the next Enter granted the conversation again");
   const second = await AgentChat.done(c.id);
-  Assert.equal(second.outcome, "done", "a later task ran under the same grant");
+  Assert.equal(second.outcome, "done", "a later task ran under its own grant");
   Assert.equal(AgentGate.waiting.length, 0, "with no question");
+  Assert.ok(!granted(), "and its grant ended with it");
   await AgentChat.send(c.id, script([{ hold: true }]));
   await until(() => held.size === 1, "the model is thinking");
   AgentChat.stop(c.id);
@@ -178,6 +198,42 @@ addTidyTask(async function test_grant_covers_later_tasks_until_stopped() {
   held.clear();
 });
 
+addTidyTask(async function test_grant_ends_when_its_task_fails() {
+  const { Budget } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/agent-budget.mjs",
+  );
+  /** @param {{ id: number, conn: string }} c */
+  const check = (c, how) => {
+    Assert.ok(!AgentGate.grants().some((g) => g.conn === c.conn), `${how}: no grant is left`);
+    Assert.ok(
+      AgentChat.transcript(c.id).entries.some(
+        (e) => e.kind === "notice" && e.text.startsWith("grant ended"),
+      ),
+      `${how}: the transcript says the grant ended`,
+    );
+  };
+  // An error result: a redirect fails the model request (B11).
+  const moved = AgentChat.create({
+    provider: { ...PROVIDER, endpoint: `http://127.0.0.1:${PORT}/moved/v1` },
+  });
+  await AgentChat.send(moved.id, script([{ reply: "never" }]));
+  Assert.equal((await AgentChat.done(moved.id)).outcome, "error", "the task ended in an error");
+  check(moved, "an error result");
+  // A thrown error: the loop itself fails, so its result never comes.
+  const exceeded = Budget.prototype.exceeded;
+  Budget.prototype.exceeded = () => {
+    throw new Error("the loop failed");
+  };
+  try {
+    const c = AgentChat.create({ provider: PROVIDER });
+    await AgentChat.send(c.id, script([{ reply: "never" }]));
+    await Assert.rejects(AgentChat.done(c.id), /the loop failed/, "the task's end threw");
+    check(c, "a thrown error");
+  } finally {
+    Budget.prototype.exceeded = exceeded;
+  }
+});
+
 addTidyTask(async function test_checkpoint_and_show_ask_under_the_conversation_grant() {
   const c = AgentChat.create({ provider: PROVIDER });
   await AgentChat.send(
@@ -186,7 +242,7 @@ addTidyTask(async function test_checkpoint_and_show_ask_under_the_conversation_g
       { call: "vimma_open", args: { url: CLICK, elements: true } },
       { call: "vimma_activate", args: { tab: "$tab", label: "$label:Search" } },
       { call: "vimma_show", args: { tab: "$tab" } },
-      { reply: "asked twice" },
+      { hold: true, reply: "asked twice" },
     ]),
   );
   let q = await question();
@@ -198,6 +254,13 @@ addTidyTask(async function test_checkpoint_and_show_ask_under_the_conversation_g
     "vimma_show asks too",
   );
   AgentGate.answer(q.id, { kind: "once" });
+  await until(() => held.size === 1, "the model's next turn");
+  Assert.ok(
+    AgentGate.grants().some((g) => g.conn === c.conn && g.until === Infinity),
+    "the grant stands after the checkpoint",
+  );
+  for (const release of held.values()) release();
+  held.clear();
   const result = await AgentChat.done(c.id);
   Assert.equal(result.outcome, "done", "the task went on after the answers");
   const texts = toolTexts(result);
@@ -207,10 +270,7 @@ addTidyTask(async function test_checkpoint_and_show_ask_under_the_conversation_g
     "the model read the no in vimma-ctl's words",
   );
   Assert.ok(texts[2].startsWith("The user now sees tab "), "and the yes to the show");
-  Assert.ok(
-    AgentGate.grants().some((g) => g.conn === c.conn && g.until === Infinity),
-    "the grant stands after the checkpoint",
-  );
+  Assert.ok(!AgentGate.grants().some((g) => g.conn === c.conn), "and ends with the task");
 });
 
 addTidyTask(async function test_two_conversations_see_only_their_tabs() {
@@ -437,4 +497,31 @@ addTidyTask(async function test_clear_forgets_the_last_element_lists() {
   const [after] = toolTexts(await AgentChat.done(c.id));
   Assert.ok(after.includes("<untrusted-web-content>"), "the page is listed");
   Assert.ok(!after.includes(compact), "after a clear, the list is in full");
+});
+
+addTidyTask(async function test_leaving_out_older_results_forgets_the_last_element_lists() {
+  // agent-speed S4 and S5 (#693): a compact list names lines by a list the model no longer has
+  // once that list is left out of its requests, so the next list of every site comes in full.
+  const saved = McpHost.agentConfig;
+  McpHost.configureAgent({
+    ...AGENT_DEFAULTS,
+    default: "scripted",
+    providers: [PROVIDER],
+    keepResults: 2,
+  });
+  try {
+    const c = AgentChat.create({ provider: PROVIDER });
+    const open = { call: "vimma_open", args: { url: CLICK, elements: true } };
+    const compact = "as in your last list of this site";
+    // With 2 kept, the request after the fourth result is the first to leave any out (two).
+    await AgentChat.send(c.id, script([open, open, open, open, open, { reply: "five times" }]));
+    const texts = toolTexts(await AgentChat.done(c.id));
+    Assert.ok(!texts[0].includes(compact), "the first list of the site is in full");
+    for (const i of [1, 2, 3]) {
+      Assert.ok(texts[i].includes(compact), `list ${i + 1} is compact while the lists are sent`);
+    }
+    Assert.ok(!texts[4].includes(compact), "once the first two are left out, the list is in full");
+  } finally {
+    McpHost.configureAgent(saved);
+  }
 });

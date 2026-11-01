@@ -394,7 +394,7 @@ export const AgentGate = {
   },
 
   /**
-   * End one connection's grant (`ctrl+Enter`, a stopped conversation: builtin-agent B18).
+   * End one connection's grant (`ctrl+Enter`, a task's end: builtin-agent B18).
    * @param {ConnId} conn
    * @returns {boolean} whether it had one
    */

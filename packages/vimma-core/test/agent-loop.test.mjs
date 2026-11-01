@@ -938,4 +938,70 @@ describe("older results leave the context in blocks", () => {
     const last = s.bodies.at(-1).messages.filter((/** @type {any} */ m) => m.role === "tool");
     expect(last.filter((/** @type {any} */ m) => m.content.endsWith(LEFT_OUT))).toHaveLength(6);
   });
+
+  // agent-speed S4 and S5 together (#693): a compact element list names lines by the site's
+  // last list, so once that list is left out, the next list of every site must come in full.
+  test("onLeftOut is called before each request that leaves out a new block", async () => {
+    const script = [];
+    for (let i = 0; i < 10; i++)
+      script.push({ content: "", tool_calls: [call("vimma_tabs", {}, `c${i}`)] });
+    script.push({ content: "Done." });
+    const s = server(script);
+    const r = runner({
+      vimma_tabs: () => ({ content: [{ type: "text", text: `1 tab\n${"- tab 1\n".repeat(9)}` }] }),
+    });
+    /** @type {number[]} */
+    const before = [];
+    const res = await start({
+      fetch: s.fetch,
+      runTool: r.runTool,
+      keepResults: 3,
+      onLeftOut: () => before.push(s.bodies.length),
+    }).done;
+    expect(res.outcome).toBe("done");
+    expect(before).toEqual([6, 9]);
+  });
+
+  test("onLeftOut is not called for a block an earlier task already left out", async () => {
+    const s = server([
+      { content: "", tool_calls: [call("vimma_tabs", {}, "c1")] },
+      { content: "", tool_calls: [call("vimma_tabs", {}, "c2")] },
+      { content: "Done." },
+    ]);
+    const r = runner({
+      vimma_tabs: () => ({ content: [{ type: "text", text: `1 tab\n${"- tab 1\n".repeat(9)}` }] }),
+    });
+    /** @type {any[]} */
+    const messages = [{ role: "user", text: "Buy milk" }];
+    for (let i = 0; i < 7; i++) {
+      messages.push({
+        role: "assistant",
+        text: "",
+        toolCalls: [{ id: `o${i}`, name: "vimma_tabs", args: {} }],
+      });
+      messages.push({
+        role: "tool",
+        results: [
+          {
+            id: `o${i}`,
+            name: "vimma_tabs",
+            isError: false,
+            content: [{ type: "text", text: `1 tab\n${"- tab 1\n".repeat(9)}` }],
+          },
+        ],
+      });
+    }
+    messages.push({ role: "user", text: "And bread" });
+    /** @type {number[]} */
+    const before = [];
+    await start({
+      fetch: s.fetch,
+      runTool: r.runTool,
+      messages,
+      keepResults: 3,
+      onLeftOut: () => before.push(s.bodies.length),
+    }).done;
+    // 7 results leave 3 out from the start; the task's second result makes 9, which leaves 6.
+    expect(before).toEqual([2]);
+  });
 });
