@@ -265,10 +265,20 @@ describe("chrome code", () => {
     ]);
     // The one write past SitePermissions: a pop-up block, which it would drop as the default.
     expect(text.match(/[\w.]+\.addFromPrincipal\([^)]*\)/g)).toEqual([
-      'services.perms.addFromPrincipal(page.principal, "popup", services.perms.DENY_ACTION)',
+      'services.perms.addFromPrincipal(principal, "popup", services.perms.DENY_ACTION)',
     ]);
+    // The pop-up blocked bar and `:popups` (docs/specs/popup-blocked.md) change the same pop-up
+    // permission through the picker's own writer, so a block from either is the same block.
+    const popupOps = readFileSync(
+      join(ROOT, "src/browser/base/content/vimma/host/popup-ops.mjs"),
+      "utf8",
+    );
+    expect(popupOps).toMatch(
+      /import \{[^}]*\bsetSitePopups\b[^}]*\} from "\.\/permission-ops\.mjs"/,
+    );
     const reach = sources().filter(
-      ({ path, text: t }) => /\/vimma\/(ctl|agent)\//.test(path) && t.includes("permission-ops"),
+      ({ path, text: t }) =>
+        /\/vimma\/(ctl|agent)\//.test(path) && /permission-ops|popup-ops/.test(t),
     );
     expect(reach.map((s) => s.path)).toEqual([]);
   });

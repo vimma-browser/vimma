@@ -46,11 +46,14 @@ function until(cond, msg, tries = 100) {
   return TestUtils.waitForCondition(cond, msg, 50, tries);
 }
 
-/** @param {string} text  a command line, without the colon */
-function command(text) {
-  EventUtils.synthesizeKey(":", { shiftKey: true });
-  EventUtils.sendString(text);
-  EventUtils.synthesizeKey("KEY_Enter");
+/**
+ * @param {string} text  a command line, without the colon
+ * @param {Window} [win]
+ */
+function command(text, win = window) {
+  EventUtils.synthesizeKey(":", { shiftKey: true }, win);
+  EventUtils.sendString(text, win);
+  EventUtils.synthesizeKey("KEY_Enter", {}, win);
 }
 
 async function openPicker() {
@@ -206,6 +209,119 @@ add_task(async function test_popups_can_be_allowed_blocked_and_reset() {
   await until(() => !isOpen(), "closed");
   clearSites();
   BrowserTestUtils.removeTab(tab);
+});
+
+// `:site` and `:popups` (docs/specs/popup-blocked.md) change one and the same pop-up permission:
+// a block from either is the stored block the other shows and takes back, and the status bar's
+// undo cue follows a change made in `:site`.
+const POPUP_PICKER_ID = "vimma-popup-picker";
+const UNDO_CUE = "pop-ups blocked · :popups to allow";
+const popupCue = (win = window) =>
+  win.document.querySelector('#vimma-statusbar [data-segment="popups"]')?.textContent ?? null;
+const popupRows = (win = window) => [
+  ...(win.document.getElementById(POPUP_PICKER_ID)?.querySelectorAll("[role=option]") ?? []),
+];
+const popupPickerOpen = (win = window) => !!win.document.getElementById(POPUP_PICKER_ID)?.open;
+
+/** Runs the `:popups` row `id`. */
+async function runPopupRow(id, win = window) {
+  command("popups", win);
+  await until(
+    () => popupPickerOpen(win) && popupRows(win).some((r) => r.dataset.id === id),
+    `:popups lists ${id}`,
+  );
+  const at = popupRows(win).findIndex((r) => r.dataset.id === id);
+  for (let i = 0; i < at; i++) EventUtils.synthesizeKey("j", {}, win);
+  EventUtils.synthesizeKey("KEY_Enter", {}, win);
+  await until(() => !popupPickerOpen(win), ":popups closes after the row");
+}
+
+add_task(async function test_site_and_popups_share_one_popup_permission() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  const exact = () =>
+    Services.perms.testExactPermissionFromPrincipal(principalOf(PAGE, tab), "popup");
+
+  // A block from :site is the block :popups offers to undo.
+  await openPicker();
+  selectRow("popup");
+  EventUtils.synthesizeKey("b");
+  await until(() => exact() === Services.perms.DENY_ACTION, ":site b stores the block");
+  await until(() => popupCue() === UNDO_CUE, "the status bar names the undo while :site is open");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "closed");
+  await runPopupRow("reset");
+  await until(() => exact() === Services.perms.UNKNOWN_ACTION, ":popups reset takes it back");
+  await until(() => popupCue() === null, "no cue on the default");
+  await openPicker();
+  Assert.equal(
+    detail("popup"),
+    `${label("popup", SitePermissions.BLOCK)} · default`,
+    ":site shows the default again",
+  );
+  // A block from :popups (from an allowed site) is the block :site shows and resets.
+  selectRow("popup");
+  EventUtils.synthesizeKey("a");
+  await until(() => exact() === Services.perms.ALLOW_ACTION, ":site a allows");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "closed");
+  await runPopupRow("block");
+  await until(() => exact() === Services.perms.DENY_ACTION, ":popups block stores the block");
+  await openPicker();
+  Assert.equal(
+    detail("popup"),
+    label("popup", SitePermissions.BLOCK),
+    ":site shows the stored block",
+  );
+  selectRow("popup");
+  EventUtils.synthesizeKey("r");
+  await until(() => exact() === Services.perms.UNKNOWN_ACTION, ":site r takes it back");
+  await until(() => popupCue() === null, "and the status bar's cue goes");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "closed");
+  clearSites();
+  BrowserTestUtils.removeTab(tab);
+});
+
+// In a private window either way of blocking lasts for the private session only, as Firefox's
+// permission manager keeps every private-browsing permission.
+add_task(async function test_a_private_window_keeps_a_popup_block_for_its_session() {
+  const win = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const browser = win.gBrowser.selectedBrowser;
+  BrowserTestUtils.startLoadingURIString(browser, PAGE);
+  await BrowserTestUtils.browserLoaded(browser, false, PAGE);
+  await SimpleTest.promiseFocus(win);
+  await SimpleTest.promiseFocus(browser);
+  const principal = browser.contentPrincipal;
+  Assert.greater(principal.privateBrowsingId, 0, "a private page");
+  const entry = () => Services.perms.getPermissionObject(principal, "popup", true);
+  const doc = win.document;
+  const privRows = () => [
+    ...(doc.getElementById(PICKER_ID)?.querySelectorAll("[role=option]") ?? []),
+  ];
+
+  command("site", win);
+  await until(() => !!doc.getElementById(PICKER_ID)?.open && privRows().length > 0, ":site opens");
+  Assert.equal(
+    doc.getElementById(PICKER_ID).querySelector("h1").textContent,
+    "Site permissions · example.com · private: until the private workspace closes",
+    "the heading says how long a change lasts",
+  );
+  const at = privRows().findIndex((r) => r.dataset.id === "popup");
+  for (let i = 0; i < at; i++) EventUtils.synthesizeKey("j", {}, win);
+  EventUtils.synthesizeKey("b", {}, win);
+  await until(() => entry()?.capability === Services.perms.DENY_ACTION, ":site b blocks");
+  Assert.equal(entry().expireType, Services.perms.EXPIRE_SESSION, "for the session only");
+  EventUtils.synthesizeKey("KEY_Escape", {}, win);
+  await until(() => !doc.getElementById(PICKER_ID)?.open, "closed");
+
+  await runPopupRow("allow", win);
+  await until(() => entry()?.capability === Services.perms.ALLOW_ACTION, ":popups allows");
+  Assert.equal(entry().expireType, Services.perms.EXPIRE_SESSION, "for the session only");
+  await runPopupRow("block", win);
+  await until(() => entry()?.capability === Services.perms.DENY_ACTION, ":popups blocks");
+  Assert.equal(entry().expireType, Services.perms.EXPIRE_SESSION, "for the session only");
+  Services.perms.removeFromPrincipal(principal, "popup");
+  await BrowserTestUtils.closeWindow(win);
 });
 
 add_task(async function test_a_state_firefox_does_not_offer_is_refused() {
