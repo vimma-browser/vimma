@@ -196,6 +196,17 @@ the [user guide](guide.md); planned work is on the
   window in full screen is never hidden, so from full screen the private workspace is a
   fullscreen Space of its own and switching moves between Spaces.
 - The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
+- The Flatpak (`dev.vimma.browser`) is not on Flathub yet (issue #465). Once it is:
+  - Links from other apps are not routed by app: its desktop entry runs `vimma` without
+    `vimma-open`, whose look-up of the app that asked ends at Flatpak's own processes inside the
+    sandbox. `domain` and `url` routing rules still apply.
+  - The Omarchy hook is not installed (the sandbox cannot reach `~/.config/omarchy/hooks`), so
+    a new theme reaches Vimma within 2 seconds, when it next reads the theme (read-only), not
+    as soon as `omarchy-theme-set` finishes.
+  - Its profile and `config.toml` are under `~/.var/app/dev.vimma.browser/`, apart from any
+    other install's `~/.config/vimma`.
+  - It shows the update notice with `flatpak update dev.vimma.browser` even when a software
+    centre updates it on its own, and Flathub builds a release some hours after it is out.
 - The `.rpm` has no OpenPGP signature and there is no dnf or zypper repository for it: zypper
   installs it only with `--allow-unsigned-rpm`, `SHA256SUMS` and its cosign signature are what
   vouch for it, and `dnf upgrade` or `zypper update` never update it.

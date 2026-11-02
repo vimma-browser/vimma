@@ -2332,15 +2332,28 @@ Vimma is not on Flathub yet (issue #465).
 **Submitting to Flathub** (issue #465; only once its other items are done, and only when the
 maintainer decides to list Vimma):
 
+Flathub's [Generative AI policy](https://docs.flathub.org/docs/for-app-authors/requirements#generative-ai-policy)
+bars a manifest with AI-generated or AI-assisted
+content, even disclosed, and bars AI tools from opening the submission pull request or writing
+its description, commit messages, comments or replies. Other AI-generated material in the app
+or its packaging must be disclosed in the pull request, naming the parts and the extent. Since
+`tools/package/flatpak.mjs` was written with AI help, its generated manifest cannot be submitted
+as it is: a person writes the submitted manifest by hand (the generated one and step 2's lint
+can serve as research), and does steps 3 and 4 by hand.
+
 1. Generate the files for the release to submit, with the tarball's SHA-256 from its
    `SHA256SUMS` and the release's date:
    `node tools/package/flatpak.mjs --out flathub --version X.Y.Z --date YYYY-MM-DD --sha256 <hex>`.
 2. Build and lint them as Flathub does, on a machine with Flatpak:
    `flatpak install flathub org.flatpak.Builder`, then
-   `flatpak run org.flatpak.Builder --force-clean --sandbox --user --install --install-deps-from=flathub --ccache --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir flathub/dev.vimma.browser.json`,
+   `flatpak run --command=flathub-build org.flatpak.Builder --install flathub/dev.vimma.browser.json`
+   (Flathub's build options, including the screenshot mirror; in a container without FUSE, add
+   `--disable-rofiles-fuse` before the manifest),
    `flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flathub/dev.vimma.browser.json`
    and `flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo`. Fix every
-   error in `flatpak.mjs`, not in the generated files.
+   error in `flatpak.mjs`, not in the generated files. Expect one warning,
+   `runtime-update-available-to-org.freedesktop.Platform-26.08`, while Mozilla's Flatpak stays
+   on 25.08; and `metainfo-missing-screenshots` until the metainfo has screenshots.
 3. Fork `flathub/flathub`, branch from its `new-pr` branch, add the generated files at the top
    level, and open a pull request against `new-pr` titled `Add dev.vimma.browser`. The
    description explains the D-Bus names outside the app id (`org.mozilla.vimma.*` for Firefox's
