@@ -397,6 +397,10 @@ download against that SHA-512 before installing it (docs/security.md UP8);
 | Source / dev build     | not built                      | `configs/common/mozconfig`: `--enable-updater` only when `VIMMA_UPDATES=1` (release and nightly jobs set it); else as today | nothing; about:vimma says "updates: not built in (source build)"               |
 | Artifact build (CI)    | Mozilla's prebuilt             | ADR-010 gap, unchanged                                                                                                      | the verifier hook is Vimma's, so it refuses aus5's unsigned XML; never shipped |
 
+(Since changed: the Flatpak's marker, `vimma-package=flatpak`, gives the install type
+`flatpak`, whose hint is `flatpak update dev.vimma.browser`; spec [flatpak](flatpak.md),
+decision 10.)
+
 Firefox only tests that the file exists; the `vimma-package=` line is for Vimma's hint text.
 Detection order in `VimmaUpdates.sys.mjs`: no `omni.ja` in the GRE directory (a build run from
 its objdir) → source build (decision 28; once sub-PR 2 builds the updater in, `AppConstants.MOZ_UPDATER`

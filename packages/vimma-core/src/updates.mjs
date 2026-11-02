@@ -51,10 +51,11 @@ export const HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/vimma";
 
 /**
  * How Vimma was installed (spec §3): `source` is a build run from its objdir, `packaged` an
- * `is-packaged-app` marker this version does not know; on macOS, `homebrew` is the cask and `dmg`
- * any other copy of the app (spec macos-homebrew, decision 19).
+ * `is-packaged-app` marker this version does not know, `flatpak` the Flatpak (spec flatpak,
+ * decision 10); on macOS, `homebrew` is the cask and `dmg` any other copy of the app (spec
+ * macos-homebrew, decision 19).
  * @typedef {"source" | "tarball" | "appimage" | "deb" | "rpm" | "aur" | "pkgbuild-release"
- *   | "packaged" | "homebrew" | "dmg"} InstallType
+ *   | "flatpak" | "packaged" | "homebrew" | "dmg"} InstallType
  */
 /** @typedef {{ id: string, slot: "primary" | "secondary", spki: string }} PinnedKey */
 /**
@@ -596,7 +597,8 @@ export function installTypeFrom({ packaged, marker, appImage, platform, appPath,
     name === "rpm" ||
     name === "aur" ||
     name === "pkgbuild-release" ||
-    name === "appimage"
+    name === "appimage" ||
+    name === "flatpak"
   ) {
     return name;
   }
@@ -706,6 +708,16 @@ export function updateSteps(type, offer, where) {
         link,
       };
     }
+    case "flatpak":
+      // Flathub builds the app from the release once its pull request merges, so the release
+      // can reach Flathub some hours after this notice (spec flatpak, decision 10).
+      return {
+        text:
+          "Update the Flatpak from Flathub, or with your software centre. Flathub builds each " +
+          "release after it is published, so if nothing is found yet, try again later:",
+        commands: ["flatpak update dev.vimma.browser"],
+        link,
+      };
     case "homebrew":
       return {
         text: "Upgrade the Homebrew cask:",

@@ -2949,6 +2949,14 @@ _Pages_ and _extensions_ cannot reach it.
   [`dmg: the release page and the drag, with no command (macos-homebrew decision 19)`](../packages/vimma-core/test/updates.test.mjs),
   [`a Caskroom and an /Applications path change nothing on Linux`](../packages/vimma-core/test/updates.test.mjs),
   [`macos_installs_get_their_own_steps`](../tests/browser/browser_vimma_update_check.js)
+  The Flatpak ([flatpak](specs/flatpak.md) decision 10; marker `vimma-package=flatpak`) gets
+  only `flatpak update dev.vimma.browser`, a fixed string with no part taken from the manifest:
+  its `/app` is read-only and Flathub's build, not the release's files, is what it runs. The
+  marker outranks `$APPIMAGE`, which a Flatpak started from an AppImage's process inherits, so a
+  Flatpak is never handed the AppImage's replacement (UP10).
+  [`flatpak: flatpak update, with no download (spec flatpak, decision 10)`](../packages/vimma-core/test/updates.test.mjs),
+  [`is flatpak, whose update hint is flatpak update, never the tarball's unpack`](../tools/package/test/flatpak.test.mjs),
+  [`flatpak_gets_flatpak_update`](../tests/browser/browser_vimma_update_check.js)
 
 - UP7. A manifest is **only** signed by `update-publish.yml` run from `main`, and **only** for a
   release that is published (not a draft or a pre-release) and whose tag is on `main`, or as an
