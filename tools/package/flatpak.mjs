@@ -32,6 +32,23 @@ if (!/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*){2,}$/.test(APP_ID)) {
  */
 export const RUNTIME_VERSION = "25.08";
 
+/**
+ * The commit whose `docs/assets/screenshots/` the metainfo's screenshots come from. Flathub asks
+ * for screenshot URLs that never change, and raw GitHub URLs pinned to a commit cannot; the
+ * images are versioned with the code, and Flathub mirrors them when it builds. To replace one,
+ * commit the new file and move this to that commit (docs/assets/screenshots/README.md).
+ */
+export const SCREENSHOTS_COMMIT = "0e1b3056af4b3ea8fe085045f5bbd84a87f9c6ff";
+
+/** The metainfo's screenshots, the default first (Vimma 0.1.14, built-in theme, 1280x800). */
+export const SCREENSHOTS = Object.freeze([
+  { file: "hints.png", caption: "Link hints: type the letters to follow a link" },
+  { file: "split.png", caption: "Two pages side by side in split panes" },
+  { file: "panel.png", caption: "The side panel lists the tabs of the workspace" },
+  { file: "grep.png", caption: "Live grep searches the text of every open tab" },
+  { file: "help.png", caption: "Every key binding, in an overlay you can filter" },
+]);
+
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -234,6 +251,14 @@ export function metainfo({ version, date }) {
     <control>keyboard</control>
     <control>pointing</control>
   </supports>
+  <screenshots>
+${SCREENSHOTS.map(
+  ({ file, caption }, i) => `    <screenshot${i === 0 ? ' type="default"' : ""}>
+      <caption>${caption}</caption>
+      <image>https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_COMMIT}/docs/assets/screenshots/${file}</image>
+    </screenshot>`,
+).join("\n")}
+  </screenshots>
   <content_rating type="oars-1.1" />
   <releases>
     <release version="${version}" date="${date}">
