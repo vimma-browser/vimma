@@ -1512,7 +1512,7 @@ it. A private window has no agent. With no model set up, the window says how to 
   which shares its weights, since a ten-item task needs about 19,000. Once you pick an Ollama
   model, Vimma loads it (with no prompt, so no text reaches it) and says where it runs and with
   what context, such as `qwen3:14b-ctx32768 runs on the GPU, with 32,768 tokens of context`;
-- `add: agent CLI (Claude Code)`, and once one is set up, its models: Vimma runs the agent CLI
+- `add: agent CLI (Claude Code, Codex)`, and once one is set up, its models: Vimma runs the agent CLI
   you have, on its own login
   ([Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window)).
 
@@ -1880,7 +1880,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 
 1. Install the CLI and log in to it once in a terminal, as its own documentation says (for
    Claude Code, [its setup page](https://docs.anthropic.com/en/docs/claude-code/setup); then run
-   `claude` and `/login`). Vimma runs the same program with the same login.
+   `claude` and `/login`; for Codex, `codex login`). Vimma runs the same program with the same login.
 2. Press `ctrl+b i` (or type `:agent`): the chat window opens beside the page.
 3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
    `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
@@ -1896,7 +1896,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 6. While it works, the transcript shows the CLI's replies, each step it takes in the browser
    (from Vimma's own record), and a `◆` line for each use of its own tools; the status bar shows
    its steps and tokens. Writing in the input while it works adds an instruction to the running
-   task. `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
+   task (Codex takes it as the next task, once this one is done). `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
    `done · ≈ $0.41 (claude-code estimate)`.
 7. To change the model later, press `Esc`, then `m`: the picker lists the CLI's models
    (`claude · opus`, `claude · haiku`, …) and `claude · other model…`. `Enter` switches the open
@@ -1985,7 +1985,12 @@ provider is refused, because Vimma cannot see where a CLI sends what it reads.
   and each use is a line marked `◆` (`◆ claude-code ran its own tool: Bash "ls ~/Downloads"`),
   with `refused by its settings` when its settings said no. A page that steers the model can make
   it use them, so allow only what you would allow it in a terminal.
-- A message you send while it works is added to the running task. `s` (or `:agent stop`,
+- A message you send while it works is added to the running task, marked
+  `(added during the task)`. A CLI that cannot take one mid-task (Codex) gets it as the next task
+  once this one is done, marked `(sent after the running task)`; several such messages go as one
+  task. When the running task is stopped, fails or meets a limit instead, they are not sent, and
+  the transcript says so (`the message sent after the running task not sent: the task was
+stopped`): send it again if it still applies. `s` (or `:agent stop`,
   `ctrl+b shift+a`) stops it: its access to the browser ends first, then the CLI gets 3 s to exit
   before it is killed. A shell command it started may outlive the stop.
 
@@ -2074,6 +2079,8 @@ again` (with your version manager's program and your CLI's name): Vimma 0.1.13 s
   `it has control characters`, `it is longer than 200 characters`): type a model name as the CLI
   takes it; the prompt line keeps what you typed to correct.
 - `agent CLIs are turned off (vimma.agent.cli.enabled)`: the pref is `false`; set it to `true`.
+- `stopped: <cli> did not list its MCP servers: …`, or `stopped: codex's configuration has an
+MCP server named vimma_chat, Vimma's own`: see Codex under Supported CLIs.
 
 ##### Supported CLIs
 
@@ -2099,7 +2106,33 @@ again` (with your version manager's program and your CLI's name): Vimma 0.1.13 s
 - Not logged in: `stopped: claude-code exited (1): Invalid API key · Please run /login`; run
   `claude` in a terminal and `/login`.
 
-Codex follows.
+**Codex** (`cli = "codex"`, from version 0.163.0):
+
+- Program: `codex` on your `PATH`. Log in with `codex login`; a ChatGPT plan or an OpenAI API key
+  both work.
+- Models: setup leaves the model empty, for Codex's own default; the picker lists
+  `gpt-6-astra`, `gpt-6.1-sol` and `gpt-6-luna` (Codex 0.163.0's presets), and `other model…`
+  takes any model your Codex takes.
+- Its own tools follow `~/.codex/config.toml`: its sandbox (`sandbox_mode`, read-only by default
+  for `codex exec`), approvals and shell environment. Vimma passes none of those, so the header
+  says `its own tools: as its configuration allows`; Codex does not report which sandbox a run
+  has. Its commands get `VIMMA_AGENT_TICKET` and `VIMMA_AGENT_PORT` set empty, and the rest of
+  your `shell_environment_policy` stays as it is.
+- Vimma gives it one MCP server of its own, `vimma_chat`, and turns off by name each server of
+  your configuration (it runs `codex mcp list --json` first, from the same program, for their
+  names), and Codex's apps, plugins and installs of a skill's MCP server. So the `vimma` server you may have added for a terminal
+  (Using Vimma from an agent) stays in `config.toml` but is off in these runs. A server named
+  `vimma_chat` stops each task with `codex's configuration has an MCP server named vimma_chat,
+Vimma's own`; rename it. A call to any server other than Vimma's ends the task.
+- Each shell command and each file change is a `◆` line
+  (`◆ codex ran its own tool: shell "/usr/bin/bash -lc 'ls ~/Downloads'"`,
+  `◆ codex ran its own tool: apply_patch "add /run/user/1000/vimma-agent-cli/…/notes.txt"`). Codex reports no refusal of
+  its own tools, so a command its sandbox stopped still shows as run.
+- It reports tokens and no cost. It cannot take a message during a task: a message you send
+  then waits for the next task (see "What happens when you send a task"). `--ephemeral` keeps no
+  session file, but Codex still updates its own state in `~/.codex`.
+- Not logged in, or a key its provider refused: `stopped:` with Codex's own error, such as
+  `unexpected status 401 Unauthorized`; run `codex login` in a terminal.
 
 #### Running an agent CLI headless
 

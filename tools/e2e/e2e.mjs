@@ -19,7 +19,9 @@
  *
  * A scenario's `restart` step quits with ctrl+q ("quit") or SIGKILLs the browser once its
  * session is saved ("kill", a crash), and relaunches on the same profile; its
- * `prefs` override the profile's (null: the build's default).
+ * `prefs` override the profile's (null: the build's default; `checkout:<path>`: that path in the
+ * checkout). Its `programs` are files in the checkout the browser finds on its PATH by name, and
+ * the profile names the vimma-ctl found here for the built-in agent's CLI mode.
  *
  * Exit 0 when nothing failed (pending scenarios are reported, not passed), 1 on failures,
  * 2 on usage errors.
@@ -33,7 +35,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { ControlSessions } from "./control-client.mjs";
@@ -48,9 +50,9 @@ import {
   unpackTarball,
   waitForSessionSaved,
 } from "./launcher.mjs";
-import { fixtureUrl, startPageServer } from "./pages.mjs";
+import { fixtureText, fixtureUrl, startPageServer } from "./pages.mjs";
 import { exitCode, formatReport, githubAnnotations, reportJson, runScenarios } from "./runner.mjs";
-import { loadScenarios } from "./scenario.mjs";
+import { loadScenarios, scenarioLaunch } from "./scenario.mjs";
 import { capture, checkBaseline } from "./screenshot.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
@@ -165,12 +167,17 @@ async function main() {
         if (i >= 0) cleanups.splice(i, 1);
         await registered();
       };
+      const { programs, prefs } = scenarioLaunch(scenario, {
+        root: REPO,
+        vimmaCtl: ctlBin ? resolve(ctlBin) : null,
+      });
       const session = await launch({
         build: /** @type {import("./launcher.mjs").Build} */ (build),
         xvfb: mode === "xvfb",
         headless: mode === "headless",
         keep: values.keep,
-        prefs: scenario.prefs,
+        prefs,
+        programs,
         discoveryTimeoutMs,
         signal,
         // registered before the browser starts, so SIGINT during the launch cleans it up
@@ -309,6 +316,7 @@ async function main() {
         restart,
         control,
         profile: session.profile,
+        text: (/** @type {string} */ t) => fixtureText(t, pages?.base ?? null),
         teardown: teardownAll,
       };
     };

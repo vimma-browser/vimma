@@ -322,7 +322,9 @@ text that pages, add-ons and bookmarks choose.
   picked in setup, checked before each run, with arguments from one fixed builder
   per CLI, the task on its standard input, no shell, and only when the user sends a task in the
   chat window; its `--version` is the only other call, with that fixed argument, while setup
-  lists what a search of `PATH` found. Chrome code **never** calls
+  lists what a search of `PATH` found, and, for a CLI that has no flag to leave out its other
+  MCP servers (Codex), one fixed listing of them (`codex mcp list --json`) right before the
+  run, from the same checked path, with no shell and no standard input. Chrome code **never** calls
   native code, with one exception: the owner and mode of a file, read through js-ctypes for
   clamd's socket (M13) and for the agent CLI's checks (M55: the program, `vimma-ctl`, the run
   folder and every folder above each), read with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
@@ -1961,11 +1963,15 @@ for the user.
 
 **Agent CLIs** ([builtin-agent-cli](specs/builtin-agent-cli.md), on by default;
 `vimma.agent.cli.enabled = false` turns them off): a conversation can run an agent CLI the user has, Claude Code
-for now, whose `vimma-ctl mcp` acts on the browser as that conversation. The way in is a
+or Codex, whose `vimma-ctl mcp` acts on the browser as that conversation. The way in is a
 one-time ticket that binds one `vimma-ctl mcp` connection to the conversation's gate
 connection. It reaches only what the conversation already reaches, so a process of the user's
 that reads it from the CLI's environment gains nothing the conversation does not have, and
-only until the run ends.
+only until the run ends. Codex has no MCP configuration file Vimma can give it, so its ticket
+is in the Codex process's own environment, which its server table passes on by name; its own
+shell commands get both variables set empty, but the programs its own configuration runs
+outside its shell (`notify`, `hooks`) and a process of the user's that reads
+`/proc/<pid>/environ` of the Codex process still reach the ticket, with the reach above.
 
 **Reach of the CLI itself:** everything the user can do. The CLI keeps the shell, file and web
 tools its own settings allow, and Vimma does not approve, refuse, count or confine them: they
@@ -1993,6 +1999,12 @@ own process, not a process group.
   [`test_a_request_id_in_flight_is_not_reused`](../tests/browser/browser_vimma_agent_cli.js),
   [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../tests/browser/browser_vimma_agent_cli.js),
   [`test_cli_that_ignores_sigterm_is_killed_and_takes_no_step`](../tests/browser/browser_vimma_agent_cli_run.js)
+  A message sent during a task of a CLI with no live input (Codex) **must** be held, never
+  written to that run, and **must** start a run only after a task that ended done; after a
+  stop, a budget or a failure it is dropped with a notice, so a stop is never followed by a
+  run the user did not send again.
+  [`test_a_message_during_the_task_is_held_for_the_next_run`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`test_a_held_message_is_not_sent_after_a_stop`](../tests/browser/browser_vimma_agent_cli_codex.js)
 - M52. A ticket's connection **must** act as its conversation's connection (M35-M37): asked
   about under the conversation's label, covered by its grant and by no other, on the tabs it
   owns. Its `agent-hello` **must not** register an MCP agent or change the label, and its
@@ -2060,6 +2072,11 @@ own process, not a process group.
   [`test_a_child_holding_the_output_does_not_keep_the_run`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`claude-code's arguments are the fixture, with the model only from the provider`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`the task is never an argument`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`codex's arguments are the fixture`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`vimma-ctl's path is a TOML string whatever it holds`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`the task is never an argument, and goes to stdin, which then closes`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`test_task_on_stdin_which_closes_and_fixed_arguments`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`test_setup_finds_codex_with_its_version`](../tests/browser/browser_vimma_agent_cli_codex.js),
   [`a model that looks like an option is refused, not passed`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`a typed model is checked with the rule the arguments use`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`a cli provider's model is refused by the rule its run uses`](../packages/vimma-core/test/config-agent.test.mjs),
@@ -2067,9 +2084,17 @@ own process, not a process group.
   [`the environment is Vimma's, minus the variables Vimma and Firefox set`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`anything else is refused, with the reason`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M56. The ticket **must** reach the CLI's `vimma-ctl mcp` only through the MCP configuration's
-  `env`, in a file that is 0600 in that 0700 folder and removed with it, and **never** through a
-  command line. The CLI **must** be given no MCP server but Vimma's (`--strict-mcp-config`), so
-  that it reaches pages only through the gate. That `vimma-ctl` **must** be the one in the
+  `env`, in a file that is 0600 in that 0700 folder and removed with it, or, for a CLI whose
+  servers are arguments (Codex), through the CLI's own environment, passed to the server by
+  name (`env_vars`) and set empty for the CLI's own shell commands
+  (`shell_environment_policy.set`, which keeps the user's policy); **never** through a
+  command line. The CLI **must** be given no MCP server but Vimma's, so that it reaches pages
+  only through the gate: `--strict-mcp-config`, or for Codex each server its own list names
+  turned off by name, its apps, plugins and a skill's MCP server installs off with
+  `--disable` (which fails on a feature name the version does not know), its server named apart from any the user may
+  have (`vimma_chat`, whose name in the list refuses the run, as does a name that is not
+  letters, digits, `_` or `-`, or a list Vimma does not read), and a call it reports to any
+  other server ending the run. That `vimma-ctl` **must** be the one in the
   folder of Vimma's running binary (Linux reads it from `/proc/self/exe`), else the one the pref
   `vimma.agent.cli.vimmaCtl` names, never one found on `PATH`. The pref's file is checked as
   the CLI is (M55). The one beside the binary has its own file checked in full, but not the
@@ -2084,7 +2109,18 @@ own process, not a process group.
   [`test_a_link_beside_the_binary_is_judged_where_it_leads`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`a link through a hop in another folder has that folder and link judged`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`test_only_vimmas_mcp_server_is_given`](../tests/browser/browser_vimma_agent_cli_run.js),
-  [`the mcp configuration names only vimma-ctl, with the ticket in its environment`](../packages/vimma-core/test/agent-cli.test.mjs)
+  [`the mcp configuration names only vimma-ctl, with the ticket in its environment`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`the ticket reaches vimma-ctl through codex's environment, never its arguments`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`codex's own commands get the ticket's variables empty, the user's policy kept`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`every other mcp server of codex's configuration is off for the run`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`codex's features that add mcp servers are off, and fail the run once renamed`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a server name that is not a plain word, or is vimma's own, refuses the run`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`codex's own mcp servers are read from its list`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a call to any other mcp server ends the run`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`test_ticket_by_name_in_codexs_environment_never_an_argument`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`test_every_other_server_of_codexs_configuration_is_off`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`test_a_server_named_as_vimmas_refuses_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
   own (the `Enter` grant covers them, checkpoints and `vimma_show` still ask), and shown from the
   gate's record, never from the CLI's account of them. A CLI's output **must** be rendered as
@@ -2096,18 +2132,23 @@ own process, not a process group.
   [`mcp__vimma tool calls in the stream are not transcript steps`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`text is passed as written, and the window renders it as text`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`each gate event of the conversation is a step, asked or run under the grant`](../packages/vimma-core/test/agent-chat.test.mjs),
-  [`an own-tool line is marked, muted, and says when the cli's settings refused it`](../packages/vimma-core/test/agent-chat.test.mjs)
+  [`an own-tool line is marked, muted, and says when the cli's settings refused it`](../packages/vimma-core/test/agent-chat.test.mjs),
+  [`mcp tool calls of vimma's server are not transcript steps`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`test_codexs_own_commands_and_files_are_its_own_lines`](../tests/browser/browser_vimma_agent_cli_codex.js)
 - M58. A CLI's own shell, file and web tools are **outside** Vimma's gate (above). Before a
   conversation's first task with a CLI (and after a provider change), the window **must** say
   where page text goes and that those tools are not confined, and send nothing without a `y`;
   `AgentChat.send` **must** refuse a task the notice was not answered for. The header **must**
   list the tools the CLI reported as enabled for its run: every tool but Vimma's own, those of
-  any other MCP server included, and each use of those is a `◆` line.
+  any other MCP server included, and each use of those is a `◆` line; for a CLI that reports
+  no tool list (Codex), it **must** say `as its configuration allows`, never a list.
   [`test_first_task_notice_says_the_clis_own_tools_are_not_confined`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_header_lists_the_clis_own_tools_from_its_init`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`an agent CLI: its name, the model it reported, and that it decides where data goes`](../packages/vimma-core/test/agent-chat.test.mjs),
   [`test_another_mcp_servers_tools_are_listed_as_its_own`](../tests/browser/browser_vimma_agent_cli_run.js),
-  [`tools of another mcp server are the cli's own, listed and marked, not hidden`](../packages/vimma-core/test/agent-cli.test.mjs)
+  [`tools of another mcp server are the cli's own, listed and marked, not hidden`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a run with no reported tool list says its configuration decides`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`test_header_and_start_line_name_codexs_configuration`](../tests/browser/browser_vimma_agent_cli_codex.js)
 - M59. A CLI task's steps **must** be counted where they reach the gate, and the next one
   refused at `max_steps`, so a CLI cannot under-report them; `max_minutes` (default 30)
   **must** stop it; tokens the CLI reports (cached input included, as for a hosted provider)

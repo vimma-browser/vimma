@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- Vimma's own agent runs Codex too: in the chat window, `Esc`, `m`, then `add: agent CLI (Claude Code, Codex)` finds the `codex` on your `PATH`, and tasks run on Codex's own login and plan. In the browser it reaches only the agent workspace, through the same tools, grants and checkpoints as any agent; Vimma turns off every other MCP server of Codex's configuration, and its apps and plugins, for each run. Its own shell commands and file changes keep the sandbox and approvals of `~/.codex/config.toml`, and each is a `◆` line in the transcript. Codex cannot take a message during a task, so one sent then is marked `(sent after the running task)` and becomes the next task once this one is done; after a stop it is not sent. The new e2e scenario `m0-agent-cli` and its baselines `m0-agent-cli-setup-list`, `m0-agent-cli-question` and `m0-agent-cli-stopped` show setup's list, a payment question in the window's prompt slot, and a stopped task.
+
 ## [0.1.14](https://github.com/vimma-browser/vimma/compare/v0.1.13...v0.1.14) · Firefox 159.0 (2026-11-01)
 
 

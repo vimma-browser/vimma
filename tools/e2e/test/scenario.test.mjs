@@ -3,7 +3,13 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodePng } from "../png.mjs";
-import { loadScenarios, matchState, runSteps, validateScenario } from "../scenario.mjs";
+import {
+  loadScenarios,
+  matchState,
+  runSteps,
+  scenarioLaunch,
+  validateScenario,
+} from "../scenario.mjs";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 const SCENARIOS = fileURLToPath(new URL("../../../tests/e2e/scenarios/", import.meta.url));
@@ -138,8 +144,76 @@ describe("validateScenario", () => {
     expect(validateScenario(scenario({ steps }), undefined).join("\n")).toMatch(message);
   });
 
+  // docs/specs/builtin-agent-cli.md, "e2e": a CLI found on PATH, a theme folder in the checkout,
+  // and a task typed into the chat window's input.
+  it("accepts programs, checkout: pref values and the type step", () => {
+    expect(
+      validateScenario(
+        scenario({
+          programs: { claude: "tests/browser/fake_vimma_agent_cli.py" },
+          prefs: { "vimma.theme.omarchyPath": "checkout:tests/e2e/fixtures/omarchy-theme" },
+          steps: [{ type: "[[open fixture:shop.html]] [[own Bash ls ~/Downloads]]" }],
+        }),
+        undefined,
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [{ programs: [] }, /programs must be an object/],
+    [{ programs: { "a/b": "x.py" } }, /programs: "a\/b"/],
+    [{ programs: { "..": "x.py" } }, /programs: "\.\."/],
+    [{ programs: { claude: "/usr/bin/true" } }, /programs: "claude"/],
+    [{ programs: { claude: "../outside.py" } }, /programs: "claude"/],
+    [{ programs: { claude: "tests/../../x.py" } }, /programs: "claude"/],
+    [{ programs: { claude: "" } }, /programs: "claude"/],
+    [{ programs: { claude: 3 } }, /programs: "claude"/],
+    [{ prefs: { a: "checkout:/etc" } }, /prefs: "a": checkout:/],
+    [{ prefs: { a: "checkout:../x" } }, /prefs: "a": checkout:/],
+    [{ prefs: { a: "checkout:" } }, /prefs: "a": checkout:/],
+    [{ steps: [{ type: "" }] }, /step 1: type/],
+    [{ steps: [{ type: 3 }] }, /step 1: type/],
+    [{ steps: [{ type: "a\nb" }] }, /step 1: type/],
+    [{ steps: [{ type: "a\tb" }] }, /step 1: type/],
+  ])("rejects %o", (over, message) => {
+    expect(validateScenario(scenario(over), undefined).join("\n")).toMatch(message);
+  });
+
   it("wants the file named after the scenario", () => {
     expect(validateScenario(scenario({}), "m0-other.json").join("\n")).toMatch(/file name/);
+  });
+});
+
+describe("scenarioLaunch", () => {
+  it("resolves programs and checkout: prefs against the checkout, and names vimma-ctl", () => {
+    expect(
+      scenarioLaunch(
+        scenario({
+          programs: { claude: "tests/browser/fake.py" },
+          prefs: { "vimma.theme.omarchyPath": "checkout:tests/e2e/fixtures/t", "a.b": "x" },
+        }),
+        { root: "/repo", vimmaCtl: "/repo/vimma-ctl" },
+      ),
+    ).toEqual({
+      programs: { claude: "/repo/tests/browser/fake.py" },
+      prefs: {
+        "vimma.agent.cli.vimmaCtl": "/repo/vimma-ctl",
+        "vimma.theme.omarchyPath": "/repo/tests/e2e/fixtures/t",
+        "a.b": "x",
+      },
+    });
+  });
+
+  it("lets a scenario's own pref name another vimma-ctl, or none", () => {
+    const { prefs } = scenarioLaunch(scenario({ prefs: { "vimma.agent.cli.vimmaCtl": null } }), {
+      root: "/repo",
+      vimmaCtl: "/repo/vimma-ctl",
+    });
+    expect(prefs).toEqual({ "vimma.agent.cli.vimmaCtl": null });
+    expect(scenarioLaunch(scenario({}), { root: "/repo", vimmaCtl: null })).toEqual({
+      programs: {},
+      prefs: {},
+    });
   });
 });
 
@@ -393,6 +467,18 @@ describe("runSteps", () => {
         { ctl, control: fake.control, screenshot: async () => {} },
       ),
     ).rejects.toThrow(/step 2 \(agent-result\): open1\.ok: expected false, got true/);
+  });
+
+  it("type sends the text one chord per character, spaces as space, after the session's text()", async () => {
+    const { ctl, calls } = fakeCtl([{ mode: "normal" }]);
+    await runSteps(scenario({ steps: [{ type: "[[open fixture:a.html]] ~/D+<" }] }), {
+      ctl,
+      screenshot: async () => {},
+      text: (t) => t.replace("fixture:a.html", "http://h:9/a.html"),
+    });
+    expect(calls).toEqual([
+      "keys [ [ o p e n space h t t p : / / h : 9 / a . h t m l ] ] space ~ / D + <",
+    ]);
   });
 
   it("sleep waits", async () => {

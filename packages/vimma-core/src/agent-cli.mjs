@@ -11,6 +11,7 @@
 // (C1, C3), so the steps it takes in the browser come from the gate, not from this stream.
 
 import { hasControl } from "./strings.mjs";
+import { tomlLiteral } from "./toml.mjs";
 
 /**
  * @typedef {{ push(chunk: string): CliEvent[], end(): CliEvent[] }} CliStream  a CLI's stdout
@@ -25,16 +26,29 @@ import { hasControl } from "./strings.mjs";
  * suggests on the prompt line (Behaviour 2), `models` the models the window's picker lists for
  * it (Behaviour 17), "" for the CLI's own default; that list is Vimma's own, and the CLI is
  * never started to list its models. `versionArgs` asks its version (Behaviour 1); `args` builds
- * its command line from the MCP configuration's path and the model, refusing a model
- * `modelProblem` refuses (C2); `mcpConfig` is the configuration file it reads, with the ticket
- * in `vimma-ctl mcp`'s environment (C3); `input` is one message on its stdin; `stream` reads its
- * output, with its usage, cost and own tools (C7, C8, C13). `note` opens every task's text
- * (Behaviour 12): `TOOLS_NOTE`, unless a CLI needs its own words.
+ * its command line from the run (`RunArgs`) and the model, refusing a model `modelProblem`
+ * refuses (C2); `mcpConfig` is the configuration file it reads, with the ticket in
+ * `vimma-ctl mcp`'s environment, or null for a CLI that takes its server in its arguments (C3);
+ * `env` is what the CLI's own process adds to its environment for the ticket to reach
+ * `vimma-ctl mcp`, empty when the file carries it; `servers`, for a CLI that cannot leave the
+ * MCP servers of its own configuration out with one flag, is the command that lists them and
+ * the parser of its output, so that `args` turns each off (C7); `input` is one message on its
+ * stdin; `live` says whether the input stays open for messages added during the task, or
+ * closes after the task, so that such a message waits for a run of its own (Behaviour 10);
+ * `stream` reads its output, with its usage, cost and own tools (C7, C8, C13). `note` opens
+ * every task's text (Behaviour 12): `TOOLS_NOTE`, unless a CLI needs its own words.
+ * @typedef {{ mcpConfig: string, vimmaCtl: string, dir: string, model: string,
+ *   others: string[] }} RunArgs  `mcpConfig`: the configuration file's path, when the CLI has
+ *   one; `dir`: the run's folder; `others`: the MCP servers `servers` listed
  * @typedef {{ id: string, bin: string, title: string, model: string,
  *   models: readonly string[], versionArgs: readonly string[], note: string,
- *   args: (o: { mcpConfig: string, model: string }) => string[],
- *   mcpConfig: (o: { vimmaCtl: string, ticket: string, port: number }) => object,
- *   input: (text: string) => string, stream: () => CliStream }} CliInfo
+ *   args: (o: RunArgs) => string[],
+ *   mcpConfig: (o: { vimmaCtl: string, ticket: string, port: number }) => object | null,
+ *   env: (o: { ticket: string, port: number }) => Record<string, string>,
+ *   servers: { args: readonly string[], parse: (stdout: string) => string[] | { problem: string } }
+ *     | null,
+ *   input: (text: string) => string, live: boolean,
+ *   stream: (o?: { model?: string }) => CliStream }} CliInfo
  */
 
 /**
@@ -59,18 +73,62 @@ export const CLIS = Object.freeze({
     models: Object.freeze(["sonnet", "opus", "haiku", ""]),
     versionArgs: Object.freeze(["--version"]),
     note: TOOLS_NOTE,
-    args: (/** @type {{ mcpConfig: string, model: string }} */ o) => claudeArguments(o),
+    args: (/** @type {RunArgs} */ o) => claudeArguments(o),
     mcpConfig: (/** @type {{ vimmaCtl: string, ticket: string, port: number }} */ o) =>
       mcpConfig(o),
+    // The ticket is in the configuration file, for vimma-ctl only.
+    env: () => ({}),
+    // --strict-mcp-config leaves every other server out.
+    servers: null,
     input: (/** @type {string} */ text) => userLine(text),
+    live: true,
     // Called only once the module has run, after the class is defined.
     stream: () => new ClaudeStream(),
+  }),
+  codex: Object.freeze({
+    id: "codex",
+    bin: "codex",
+    title: "Codex",
+    // Codex's own default: its models change with its releases, faster than Vimma's.
+    model: "",
+    // Codex 0.163.0's presets.
+    models: Object.freeze(["", "gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"]),
+    versionArgs: Object.freeze(["--version"]),
+    note: TOOLS_NOTE,
+    args: (/** @type {RunArgs} */ o) => codexArguments(o),
+    // Its server is a `-c` table of its arguments.
+    mcpConfig: () => null,
+    // Forwarded to vimma-ctl by name (`env_vars`), so no value is in an argument (C3).
+    env: (/** @type {{ ticket: string, port: number }} */ { ticket, port }) => ({
+      VIMMA_AGENT_TICKET: ticket,
+      VIMMA_AGENT_PORT: String(port),
+    }),
+    servers: Object.freeze({
+      args: Object.freeze(["mcp", "list", "--json"]),
+      parse: (/** @type {string} */ stdout) => codexServers(stdout),
+    }),
+    // `codex exec` reads its prompt from stdin to its end.
+    input: (/** @type {string} */ text) => `${text}\n`,
+    live: false,
+    stream: (/** @type {{ model?: string }} */ o = {}) => new CodexStream(o),
   }),
 });
 /** The CLIs a provider may name, in the order setup lists them (C12). */
 export const CLI_IDS = Object.freeze(Object.keys(CLIS));
 /** The one MCP server a CLI is given: `vimma-ctl mcp` (C7). */
 export const MCP_SERVER = "vimma";
+/**
+ * Vimma's server in a Codex run, named apart from the `vimma` that the guide has a user add to
+ * `~/.codex/config.toml` for MCP: Codex merges a `-c` table into one of the same name, so that
+ * server's own keys (`enabled_tools`, `env`) would reach Vimma's, and it is turned off instead.
+ */
+export const CODEX_SERVER = "vimma_chat";
+/** Codex's features that add MCP servers outside its list, off for each run (C7). */
+const CODEX_FEATURES_OFF = Object.freeze(["apps", "plugins", "skill_mcp_dependency_install"]);
+/** A server name Codex's list may hold that goes into a `-c` key unquoted. */
+const SERVER_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+/** The most servers a Codex configuration may list for a run to start. */
+const MAX_SERVERS = 200;
 /** A model's longest name, in characters: a provider's `model` in config.toml, any kind. */
 export const MAX_MODEL = 200;
 /** A CLI task's wall-clock limit, in minutes, unless its provider sets `max_minutes` (C10). */
@@ -177,6 +235,87 @@ export function claudeArguments({ mcpConfig, model }) {
   ];
 }
 
+/** The variables that carry the ticket to vimma-ctl when a CLI's server takes no file (C3). */
+const TICKET_VARIABLES = Object.freeze(["VIMMA_AGENT_TICKET", "VIMMA_AGENT_PORT"]);
+
+/**
+ * Codex's arguments (C2, C3, C7): `exec`, JSON lines out, no session kept, the run's folder as
+ * its working directory, Vimma's MCP server as a `-c` table, every other server of its
+ * configuration turned off, its apps and plugins (which bring servers of their own) off, and
+ * the task on stdin (`-`). Codex has no flag that leaves the servers of its configuration out,
+ * so each one `codex mcp list` named is turned off by name. The ticket and the port are in
+ * Codex's own environment, which `env_vars` forwards to vimma-ctl alone; Codex's tools need no
+ * approval for Vimma's server (`default_tools_approval_mode`), since a run nobody answers would
+ * refuse every call, and the run fails if vimma-ctl does not start (`required`). Its sandbox and
+ * approvals stay its configuration's (C7).
+ * @param {RunArgs} o
+ * @returns {string[]}
+ */
+export function codexArguments({ vimmaCtl, dir, model, others }) {
+  const problem = modelProblem(model);
+  if (problem) throw new Error(problem);
+  for (const name of others) {
+    if (name === CODEX_SERVER) {
+      throw new Error(`codex's configuration has an MCP server named ${CODEX_SERVER}, Vimma's own`);
+    }
+    if (!SERVER_NAME.test(name)) {
+      throw new Error("codex's configuration has an MCP server whose name Vimma cannot turn off");
+    }
+  }
+  const server = [
+    `command=${tomlLiteral(vimmaCtl)}`,
+    'args=["mcp"]',
+    `env_vars=[${TICKET_VARIABLES.map((v) => `"${v}"`).join(",")}]`,
+    'default_tools_approval_mode="approve"',
+    "required=true",
+    "enabled=true",
+  ];
+  return [
+    "exec",
+    "--json",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "-C",
+    dir,
+    "-c",
+    `mcp_servers.${CODEX_SERVER}={${server.join(",")}}`,
+    // Codex gives its own commands its environment: the ticket's variables are set empty for
+    // them (C3). A `set` key merges into the user's table; an `exclude` list would replace it.
+    ...TICKET_VARIABLES.flatMap((name) => ["-c", `shell_environment_policy.set.${name}=""`]),
+    ...others.flatMap((name) => ["-c", `mcp_servers.${name}.enabled=false`]),
+    // Its apps and plugins bring MCP servers of their own, and a skill's MCP dependency is
+    // installed during a run (C7). As a -c key a feature Codex does not know is ignored; as
+    // --disable it ends the run, so a version that renames one fails instead of keeping it.
+    ...CODEX_FEATURES_OFF.flatMap((name) => ["--disable", name]),
+    ...(model ? ["-m", model] : []),
+    "-",
+  ];
+}
+
+/**
+ * The names of the MCP servers `codex mcp list --json` printed, enabled or not, or why the
+ * run may not start: a server Vimma cannot read is one it cannot turn off.
+ * @param {string} stdout
+ * @returns {string[] | { problem: string }}
+ */
+export function codexServers(stdout) {
+  const problem = { problem: "codex listed its MCP servers in a form Vimma does not read" };
+  let list;
+  try {
+    list = JSON.parse(stdout);
+  } catch {
+    return problem;
+  }
+  if (
+    !Array.isArray(list) ||
+    list.length > MAX_SERVERS ||
+    !list.every((s) => isObject(s) && typeof s.name === "string")
+  ) {
+    return problem;
+  }
+  return list.map((s) => s.name);
+}
+
 /**
  * The MCP configuration Claude Code reads (C3): `vimma-ctl mcp`, with the run's ticket and the
  * socket's port in its own environment, never in a command line.
@@ -248,7 +387,9 @@ export function taskPrompt(messages, text, note = "") {
  */
 export function versionText(cli, stdout, path, shim = "") {
   const first = plain(stdout.split("\n")[0]).trim();
-  const version = first.replace(/\s*\(.*\)\s*$/, "") || "unknown version";
+  // Codex prints `codex-cli 0.163.0`; the line names the program already.
+  const named = first.startsWith(`${cli.bin}-cli `) ? first.slice(cli.bin.length + 5) : first;
+  const version = named.replace(/\s*\(.*\)\s*$/, "") || "unknown version";
   return `${cli.bin} ${cut(version, 40)} · ${path}${shim ? ` · ${shim}` : ""}`;
 }
 
@@ -320,18 +461,23 @@ const RUN_TOOLS = 60;
 
 /**
  * The transcript's line when a run starts (Behaviour 5): the CLI's version, its model and every
- * tool of its own it reported, each cut, so a CLI's init can never make a line without bound.
- * @param {CliInfo} cli @param {string} version @param {string} model @param {string[]} tools
+ * tool of its own it reported, each cut, so a CLI's init can never make a line without bound;
+ * a CLI that reports none (`null`, Codex) has its configuration named instead.
+ * @param {CliInfo} cli @param {string} version @param {string} model
+ * @param {string[] | null} tools
  */
 export function runStartedText(cli, version, model, tools) {
-  const names = tools.slice(0, RUN_TOOLS).map((t) => cut(plain(t).replace(/\s+/g, " "), 24));
-  const more = tools.length > RUN_TOOLS ? ` +${tools.length - RUN_TOOLS}` : "";
   const head = [`${cli.id}${version ? ` ${cut(plain(version), 40)}` : ""}`];
   head.push(model ? cut(plain(model), 80) : "its default model");
-  return (
-    `run started: ${head.join(" · ")} · its own tools: ` +
-    `${names.length ? names.join(", ") : "none"}${more}`
-  );
+  return `run started: ${head.join(" · ")} · its own tools: ${runTools(tools)}`;
+}
+
+/** @param {string[] | null} tools */
+function runTools(tools) {
+  if (!tools) return ownToolsText(null);
+  const names = tools.slice(0, RUN_TOOLS).map((t) => cut(plain(t).replace(/\s+/g, " "), 24));
+  const more = tools.length > RUN_TOOLS ? ` +${tools.length - RUN_TOOLS}` : "";
+  return `${names.length ? names.join(", ") : "none"}${more}`;
 }
 
 /** The input field that says what an own tool did, by tool: the rest show their input. */
@@ -346,6 +492,9 @@ const SUBJECT = Object.freeze({
   WebSearch: "query",
   Glob: "pattern",
   Grep: "pattern",
+  // Codex's items, named by the tools that make them.
+  shell: "command",
+  apply_patch: "files",
 });
 
 /**
@@ -451,7 +600,7 @@ export function besideBinary(walk, trusted) {
 }
 
 /**
- * @typedef {{ type: "init", model: string, version: string, tools: string[] }
+ * @typedef {{ type: "init", model: string, version: string, tools: string[] | null }
  *   | { type: "reply", text: string }
  *   | { type: "own-tool", id: string, text: string }
  *   | { type: "own-tool-refused", id: string }
@@ -464,7 +613,8 @@ export function besideBinary(walk, trusted) {
  *   settings refused that step. `usage`: one model call's tokens, as soon as it is made, so
  *   `max_tokens` can stop a turn before it ends (M59). `rest`: what the turn's `usage` (its
  *   total) adds to the calls already reported. `queued`: turns the CLI still has to run for
- *   lines written during this one. `fail` ends the run.
+ *   lines written during this one. `fail` ends the run. `tools` is null for a CLI that does not
+ *   report its own (C7).
  */
 
 const CLAUDE = /** @type {CliInfo} */ (CLIS["claude-code"]);
@@ -486,22 +636,18 @@ const inputTokens = (u) => {
 };
 
 /**
- * Claude Code's `stream-json` output read as the transcript's entries (C8): `push` takes the
- * stdout as it comes, `end` once it closed. A `fail` event ends the run, after which nothing
- * more is read. A line or an event it does not know is ignored and counted.
+ * A CLI's stdout read as JSON lines (C8): `push` takes it as it comes, `end` once it closed. A
+ * `fail` event ends the run, after which nothing more is read. A line that is not a JSON object
+ * is ignored and counted; each CLI's class reads the objects (`event`).
  */
-export class ClaudeStream {
-  constructor() {
+class JsonLines {
+  /** @param {CliInfo} cli */
+  constructor(cli) {
+    this.cli = cli;
     this.buffer = "";
     this.total = 0;
     this.ignored = 0;
     this.failed = false;
-    /** @type {string | null} the version from the init, for a stream that stops parsing */
-    this.version = null;
-    /** Model calls whose usage was reported, by message id: each repeats it per block. */
-    this.calls = new Set();
-    /** What this turn's calls reported so far. */
-    this.turn = { input: 0, output: 0 };
   }
 
   /** @param {string} chunk @returns {CliEvent[]} */
@@ -509,7 +655,7 @@ export class ClaudeStream {
     if (this.failed) return [];
     this.total += chunk.length;
     if (this.total > CLI_STREAM_LIMITS.total) {
-      return this.fail(`${CLAUDE.id} wrote over 64 MiB`);
+      return this.fail(`${this.cli.id} wrote over 64 MiB`);
     }
     this.buffer += chunk;
     /** @type {CliEvent[]} */
@@ -536,20 +682,26 @@ export class ClaudeStream {
 
   /** @private */
   tooLong() {
-    return `${CLAUDE.id} wrote a line over 1 MiB`;
+    return `${this.cli.id} wrote a line over 1 MiB`;
   }
 
-  /** @private @param {string} error @returns {CliEvent[]} */
+  /** @protected @param {string} error @returns {CliEvent[]} */
   fail(error) {
     this.failed = true;
     this.buffer = "";
     return [{ type: "fail", error }];
   }
 
-  /** @private */
-  unreadable() {
-    const v = this.version ? ` ${this.version}` : "";
-    return this.fail(`${CLAUDE.id}${v} speaks a stream Vimma does not read`);
+  /** @protected @param {string} [version] */
+  unreadable(version) {
+    const v = version ? ` ${version}` : "";
+    return this.fail(`${this.cli.id}${v} speaks a stream Vimma does not read`);
+  }
+
+  /** @protected */
+  skip() {
+    this.ignored++;
+    return [];
   }
 
   /** @private @param {string} line @returns {CliEvent[]} */
@@ -559,13 +711,37 @@ export class ClaudeStream {
     try {
       m = JSON.parse(line);
     } catch {
-      this.ignored++;
-      return [];
+      return this.skip();
     }
-    if (!isObject(m)) {
-      this.ignored++;
-      return [];
-    }
+    return isObject(m) ? this.event(m) : this.skip();
+  }
+
+  /**
+   * One JSON object of the stream, read by each CLI's class.
+   * @protected @abstract @param {Record<string, any>} m @returns {CliEvent[]}
+   */
+  event(m) {
+    throw new Error(`${this.cli.id}: no reader for ${typeof m}`);
+  }
+}
+
+/**
+ * Claude Code's `stream-json` output read as the transcript's entries (C8). An event it does
+ * not know is ignored and counted.
+ */
+export class ClaudeStream extends JsonLines {
+  constructor() {
+    super(CLAUDE);
+    /** @type {string | null} the version from the init, for a stream that stops parsing */
+    this.version = null;
+    /** Model calls whose usage was reported, by message id: each repeats it per block. */
+    this.calls = new Set();
+    /** What this turn's calls reported so far. */
+    this.turn = { input: 0, output: 0 };
+  }
+
+  /** @protected @param {Record<string, any>} m @returns {CliEvent[]} */
+  event(m) {
     if (m.type === "system" && m.subtype === "init") return this.init(m);
     if (m.type === "system" && m.subtype === "permission_denied") {
       if (
@@ -594,11 +770,11 @@ export class ClaudeStream {
       !tools.every((t) => typeof t === "string") ||
       !Array.isArray(servers)
     ) {
-      return this.unreadable();
+      return this.unreadable(this.version ?? "");
     }
     const vimma = servers.find((s) => isObject(s) && s.name === MCP_SERVER);
     if (!vimma || vimma.status !== "connected") {
-      return this.fail(`${CLAUDE.id} could not start vimma-ctl`);
+      return this.fail(`${this.cli.id} could not start vimma-ctl`);
     }
     return [
       {
@@ -653,7 +829,7 @@ export class ClaudeStream {
   result(m) {
     const usage = m.usage;
     if (typeof m.is_error !== "boolean" || (usage !== undefined && !isObject(usage))) {
-      return this.unreadable();
+      return this.unreadable(this.version ?? "");
     }
     const input = inputTokens(usage);
     const output = count(usage?.output_tokens);
@@ -680,4 +856,111 @@ export class ClaudeStream {
       },
     ];
   }
+}
+
+const CODEX = /** @type {CliInfo} */ (CLIS.codex);
+
+/** A Codex usage block's tokens: its input counts the cached part already. */
+const codexUsage = (/** @type {Record<string, any>} */ u) => ({
+  input: count(u.input_tokens) ?? 0,
+  output: count(u.output_tokens) ?? 0,
+});
+
+/**
+ * Codex's `exec --json` output read as the transcript's entries (C8). Its run is one turn:
+ * `thread.started` starts it, with no model, version or tool list, so the init has the
+ * provider's model and no tools (the header then says its configuration decides, C7);
+ * `turn.completed` and `turn.failed` are its result. Its `error` events are retries and
+ * warnings, of which the last is the run's error when it ends without a result. A call to an
+ * MCP server that is not Vimma's ends the run: the arguments turned every other server off, so
+ * one that still answers came from somewhere Vimma did not see (C7).
+ */
+export class CodexStream extends JsonLines {
+  /** @param {{ model?: string }} [o]  the provider's model, "" for Codex's own default */
+  constructor({ model = "" } = {}) {
+    super(CODEX);
+    this.model = model;
+    /** Own-tool items already shown, by id: an item is started, then completed. */
+    this.shown = new Set();
+    this.resulted = false;
+    /** @type {string | null} */
+    this.lastError = null;
+  }
+
+  /** @protected @param {Record<string, any>} m @returns {CliEvent[]} */
+  event(m) {
+    if (m.type === "thread.started") {
+      return [{ type: "init", model: plain(this.model), version: "", tools: null }];
+    }
+    if (m.type === "item.started" || m.type === "item.completed") return this.item(m);
+    if (m.type === "turn.completed") {
+      if (m.usage !== undefined && !isObject(m.usage)) return this.unreadable();
+      const usage = isObject(m.usage) ? codexUsage(m.usage) : null;
+      return this.result({ ok: true, error: null, usage });
+    }
+    if (m.type === "turn.failed") {
+      const message = isObject(m.error) ? m.error.message : null;
+      const error = plain(typeof message === "string" && message ? message : "the turn failed");
+      return this.result({ ok: false, error, usage: null });
+    }
+    if (m.type === "error" && typeof m.message === "string") this.lastError = plain(m.message);
+    // turn.started, item.updated, retries, unknown events.
+    return this.skip();
+  }
+
+  /** @returns {CliEvent[]} */
+  end() {
+    const out = super.end();
+    if (this.failed || this.resulted || !this.lastError) return out;
+    return [...out, ...this.result({ ok: false, error: this.lastError, usage: null })];
+  }
+
+  /**
+   * @private
+   * @param {{ ok: boolean, error: string | null, usage: { input: number, output: number } | null }} r
+   * @returns {CliEvent[]}
+   */
+  result({ ok, error, usage }) {
+    this.resulted = true;
+    // No call reports its usage before the turn's end, so the turn's is all of it.
+    return [{ type: "result", ok, error, usage, rest: usage, cost: null, queued: 0 }];
+  }
+
+  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  item(m) {
+    const item = m.item;
+    if (!isObject(item)) return this.skip();
+    const id = typeof item.id === "string" ? item.id : "";
+    if (item.type === "mcp_tool_call") {
+      // A step in the browser is the gate's to show, not the CLI's account of it (C8).
+      if (item.server === CODEX_SERVER) return this.skip();
+      return this.fail(
+        `${CODEX.id} called an MCP server that is not Vimma's: ${cut(plain(item.server), 40)}`,
+      );
+    }
+    if (item.type === "agent_message") {
+      if (m.type !== "item.completed" || typeof item.text !== "string" || !item.text.trim()) {
+        return this.skip();
+      }
+      return [{ type: "reply", text: item.text }];
+    }
+    const own =
+      item.type === "command_execution"
+        ? ownToolText(CODEX, "shell", { command: item.command })
+        : item.type === "file_change" && Array.isArray(item.changes)
+          ? ownToolText(CODEX, "apply_patch", { files: changedFiles(item.changes) })
+          : null;
+    // Reasoning, todo lists, warnings (an `error` item), unknown kinds.
+    if (own === null || (id && this.shown.has(id))) return this.skip();
+    if (id) this.shown.add(id);
+    return [{ type: "own-tool", id, text: own }];
+  }
+}
+
+/** A file change's files as its line names them: `add notes.txt, update a.md`. @param {unknown[]} changes */
+function changedFiles(changes) {
+  return changes
+    .filter(isObject)
+    .map((c) => `${plain(c.kind)} ${plain(c.path)}`.trim())
+    .join(", ");
 }

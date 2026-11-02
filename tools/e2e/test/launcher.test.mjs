@@ -7,13 +7,14 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { execFileSync, spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PROFILE_PREFS,
@@ -47,6 +48,7 @@ afterEach(async () => {
   for (const c of cleanups.splice(0)) await c();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
+const PATH_ENV = process.env.PATH ?? "";
 const tempDir = () => {
   const d = mkdtempSync(join(tmpdir(), "vimma-e2e-test-"));
   dirs.push(d);
@@ -445,6 +447,7 @@ describe("launch and teardown (fake browser)", () => {
       build: { binary: FAKE_BROWSER, env },
       xvfb: false,
       tmpRoot: tempDir(),
+      runtimeRoot: tempDir(),
       discoveryTimeoutMs: 5000,
       graceMs: 500,
       ...opts,
@@ -485,6 +488,51 @@ describe("launch and teardown (fake browser)", () => {
     expect(seen.env.MOZ_ENABLE_WAYLAND).toBeUndefined();
     expect(seen.home).toBe(join(session.profile, ".e2e-home"));
     expect(seen.tmp).toBe(join(session.profile, ".e2e-tmp"));
+  });
+
+  // docs/specs/builtin-agent-cli.md, "e2e": setup finds the scenario's CLI on PATH; the file and
+  // its folder are 0700, as C4 asks of a CLI it runs.
+  // Only the system folders follow it, so a CLI the caller has installed is not listed too.
+  it("installs a scenario's programs in a 0700 folder, then the system folders, as PATH", async () => {
+    const src = join(tempDir(), "fake.py");
+    writeFileSync(src, "#!/bin/sh\n", { mode: 0o644 });
+    const node = dirname(process.execPath);
+    const session = await start(
+      {},
+      { programs: { claude: src }, programPath: [node], baseEnv: { PATH: `/home/me/bin:${node}` } },
+    );
+    cleanups.push(() => session.teardown());
+    const bin = join(session.profile, ".e2e-bin");
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.PATH).toBe(`${bin}:${node}`);
+    expect(statSync(bin).mode & 0o777).toBe(0o700);
+    expect(statSync(join(bin, "claude")).mode & 0o777).toBe(0o700);
+    expect(readFileSync(join(bin, "claude"), "utf8")).toBe("#!/bin/sh\n");
+  });
+
+  // C6 refuses a run folder with an ancestor others can write: the profile under /tmp will not
+  // do, and under Xvfb the caller's XDG_RUNTIME_DIR is not passed through.
+  it("gives a browser without the caller's XDG_RUNTIME_DIR a private 0700 one, gone on teardown", async () => {
+    const root = tempDir();
+    const session = await start({}, { runtimeRoot: root, baseEnv: { PATH: PATH_ENV } });
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    const run = seen.env.XDG_RUNTIME_DIR;
+    expect(run.startsWith(`${root}/vimma-e2e-run-`)).toBe(true);
+    expect(statSync(run).mode & 0o777).toBe(0o700);
+    await session.teardown();
+    expect(existsSync(run)).toBe(false);
+  });
+
+  it("keeps the caller's XDG_RUNTIME_DIR on the caller's display", async () => {
+    const root = tempDir();
+    const session = await start(
+      {},
+      { runtimeRoot: root, baseEnv: { PATH: PATH_ENV, DISPLAY: ":5", XDG_RUNTIME_DIR: "/run/u" } },
+    );
+    cleanups.push(() => session.teardown());
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.XDG_RUNTIME_DIR).toBe("/run/u");
+    expect(readdirSync(root)).toEqual([]);
   });
 
   it("headless, starts no Xvfb and the browser sees MOZ_HEADLESS=1", async () => {

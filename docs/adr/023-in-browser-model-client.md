@@ -65,7 +65,7 @@ calls reach the gate, where its requests may go, and where an API key is kept.
 ## An agent CLI as the model client (amendment, spec builtin-agent-cli)
 
 The model client inside the browser may also be an external agent CLI the user already has,
-Claude Code first ([builtin-agent-cli](../specs/builtin-agent-cli.md) C1, C2). Vimma starts it
+Claude Code first, then Codex ([builtin-agent-cli](../specs/builtin-agent-cli.md) C1, C2, C12). Vimma starts it
 for one task, with no shell and fixed arguments, and gives it one MCP server, `vimma-ctl mcp`,
 which connects to the control socket with a one-time ticket bound to the conversation's gate
 connection instead of the token. Its calls therefore run through `runAgentCommand` on the
