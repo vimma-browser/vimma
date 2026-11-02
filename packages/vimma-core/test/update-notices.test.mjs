@@ -125,6 +125,17 @@ describe("announcement (the one-time message per new version)", () => {
     );
   });
 
+  // Spec flatpak, decision 10: the command is fixed and short, so the message names it.
+  test("a Flatpak names flatpak update, for an ordinary and a security release", () => {
+    const flatpak = { ...base, installType: /** @type {const} */ ("flatpak") };
+    expect(announcement(flatpak)).toBe(
+      "Vimma 0.1.3 is available · run flatpak update dev.vimma.browser",
+    );
+    expect(announcement({ ...flatpak, offer: offer({ urgent: true }) })).toBe(
+      "Vimma 0.1.3 fixes security issues · run flatpak update dev.vimma.browser",
+    );
+  });
+
   test("no offer, checks off or a source build: nothing", () => {
     expect(announcement({ ...base, offer: null })).toBeNull();
     expect(announcement({ ...base, enabled: false })).toBeNull();

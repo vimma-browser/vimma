@@ -3792,7 +3792,8 @@ Except for the AppImage, it installs nothing; it tells you.
   start.
 - **The first time a version is offered**, a message above the status bar says
   `Vimma 0.3.1 is available · :update shows the command` (or `fixes security issues` for a
-  security release) for a few seconds. It takes no focus and no keys, and is not shown again for
+  security release) for a few seconds; in the Flatpak it names the command itself:
+  `Vimma 0.3.1 is available · run flatpak update dev.vimma.browser`. It takes no focus and no keys, and is not shown again for
   that version, even after a restart.
 - **A security release also asks**, once per session:
   `Vimma 0.3.1 fixes security issues. Show the update command? (y/N)`. `y` shows the update steps,
@@ -3843,6 +3844,7 @@ Except for the AppImage, it installs nothing; it tells you.
   | `.rpm`                   | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
   | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                               |
   | AppImage                 | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
+  | Flatpak (Flathub)        | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice        |
   | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |
   | `.dmg` (macOS)           | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
   | A build from source      | nothing: source builds never check (pull and rebuild)                                                                                                            |

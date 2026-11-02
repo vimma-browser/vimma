@@ -433,6 +433,32 @@ add_task(async function macos_installs_get_their_own_steps() {
   }
 });
 
+// Spec flatpak, decision 10: Flathub ships the update, so the Flatpak is told to run flatpak
+// update, never to download a package.
+add_task(async function flatpak_gets_flatpak_update() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.update.installType", "flatpak"]] });
+  VimmaUpdates._reset();
+  await serve(await manifest({}));
+  await BrowserTestUtils.withNewTab("https://example.com/", async () => {
+    const opened = BrowserTestUtils.waitForNewTab(gBrowser, "about:vimma#updates", true);
+    runCommand("update");
+    const tab = await opened;
+    const browser = tab.linkedBrowser;
+    await until(
+      () => browser.contentDocument?.documentElement?.dataset.ready === "true",
+      "rendered",
+    );
+    const text = browser.contentDocument.getElementById("updates").textContent;
+    Assert.ok(text.includes("Vimma 9.9.9 · Firefox 999.0"), "the version line");
+    Assert.ok(text.includes("Flatpak (Flathub)"), "the install type");
+    Assert.ok(text.includes("flatpak update dev.vimma.browser"), "its command");
+    Assert.ok(!text.includes("curl "), "no download command");
+    BrowserTestUtils.removeTab(tab);
+  });
+  await SpecialPowers.popPrefEnv();
+  VimmaUpdates._reset();
+});
+
 add_task(async function update_command_says_up_to_date() {
   await serve(await manifest({ update: null }));
   await BrowserTestUtils.withNewTab("https://example.com/", async () => {
