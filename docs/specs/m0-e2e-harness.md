@@ -136,10 +136,26 @@ One JSON file per scenario in `tests/e2e/scenarios/`, file name = `name`:
   writes into its profile exists, with `timeoutSeconds` like `wait-for-state`. It waits for a
   browser service that `state` does not report: `m3-private-workspace` waits for
   `search.json.mozlz4`, which Firefox's SearchSettings writes once SearchService has
-  initialized, so the private window's URL bar names the default engine (#236).)
+  initialized, so the private window's URL bar names the default engine (#236).) (Since
+  changed: `type` types a text into the focused input, one `send-keys` chord per character, a
+  space as `space`, at most 256 chords per call; a `fixture:<name>` in it, ending at a space or
+  `]`, becomes the fixture server's URL first. The agent CLI's e2e scenario
+  (`m0-agent-cli`, docs/specs/builtin-agent-cli.md) types its task with it, because a task names
+  the fixture page at an address that is known only once the server runs.)
 - **Prefs**: an optional `"prefs": { "name": value }` overrides the profile's `user.js`;
   `null` leaves the pref out so the build's default applies (`m3-restart-restore` drops
-  `browser.startup.page = 0` to run on Vimma's 3, resume the session).
+  `browser.startup.page = 0` to run on Vimma's 3, resume the session). (Since changed: a
+  string value `checkout:<relative path>` is that path in the checkout, made absolute, so a
+  scenario can name a fixture folder, as `m0-agent-cli` names the Omarchy theme in
+  `tests/e2e/fixtures/omarchy-theme`, without knowing where the checkout is. The harness also
+  sets `vimma.agent.cli.vimmaCtl` to the vimma-ctl it found, because a build in a checkout has
+  none beside its binary for the agent CLI to start; a scenario's own value wins.)
+- **Programs** (since changed): an optional `"programs": { "claude": "tests/browser/fake.py" }`
+  copies each file in the checkout into a 0700 folder in the profile under its name, 0700 too,
+  and the browser's `PATH` becomes that folder, then `/usr/bin` and `/bin` only. The agent CLI's
+  setup lists the CLIs it finds on `PATH`, so a CLI the caller has installed would show up too
+  and change the screenshot; it also runs only a CLI that other users cannot write (C4). The
+  name is one file name; the path is relative, without `..`.
 - **Fixtures**: `open "fixture:<name>#<fragment>"` keeps the fragment for the page to read
   (`cookie.html#work` sets the cookie `ws=work`); the server never sees it.
 - **Matching** is a subset match: every key in the expected object must match (recursively);
@@ -301,7 +317,12 @@ Supersedes the sections above where they differ.
   `GDK_SCALE` (a 2× crop on the dev box), `GDK_DPI_SCALE`, `QT_*` and the rest never reach it.
   The profile pins `layout.css.devPixelsPerPx="1.0"`, `ui.systemUsesDarkTheme=0` and a light
   content colour scheme; Xvfb runs at `-dpi 96` with `-nocursor`. A fake browser's own variables
-  now go through `build.env`, as an artifact build's `XUL_APP_FILE` does.
+  now go through `build.env`, as an artifact build's `XUL_APP_FILE` does. (Since changed: a
+  browser that does not get the caller's `XDG_RUNTIME_DIR`, under our Xvfb or headless, gets a
+  private 0700 folder as one, made under the caller's `XDG_RUNTIME_DIR`, else `~/.cache`, and
+  removed with the profile. The agent CLI's run folder (docs/specs/builtin-agent-cli.md, C6)
+  lies in `XDG_RUNTIME_DIR`, else `~/.cache` under `HOME`, and refuses one with a folder above
+  it that other users can write: the profile's `HOME` lies in the shared `/tmp`.)
 - **`ready()` and a server still starting.** The first server build answers
   `failed: no browser window` until its first window exists (≈ 70 % of runs failed at 0.7 s).
   `ready()` retries that one message, within its deadline; any other `failed` and every

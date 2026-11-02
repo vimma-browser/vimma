@@ -153,8 +153,22 @@ the [user guide](guide.md); planned work is on the
   passwords are: by a primary password if one is set, otherwise readable by anything that can
   read the profile.
 - The window does not open in a private window.
-- Claude Code is the one agent CLI the window runs so far (checked with Claude Code 2.1.303); Codex
-  follows.
+- The window runs Claude Code and Codex (checked with Claude Code 2.1.303 and Codex 0.163.0);
+  Gemini CLI and opencode are not offered yet.
+- Codex reports neither its tools nor its sandbox, so the window says only that its tools are
+  `as its configuration allows`, and it reports no refusal of its own commands, so a command its
+  sandbox stopped still shows as run. It reports no cost.
+- Codex cannot take a message during a task: one sent then starts the next task once this one is
+  done, and is dropped, with a notice, if the task is stopped, fails or meets a limit.
+- Vimma turns off each MCP server Codex's configuration lists, its apps and plugins (its
+  browser and computer-use tools among them), and its install of a skill's MCP server, for each
+  run. A Codex version that adds another
+  way in would keep it until Vimma knows of it; a call it reports to another server ends the
+  run.
+- Codex's ticket is in its own process's environment: its commands get it set empty, but the
+  `notify` and `hooks` programs of its configuration, and another process of yours reading
+  `/proc`, could read it while the task runs. It reaches only what
+  the conversation does.
 - An agent CLI keeps the shell, file and web tools its own settings allow. They are outside
   Vimma's gate: Vimma shows each use but does not approve, refuse or confine it.
 - Vimma cannot see where an agent CLI sends the page text it reads, so `local_only` refuses

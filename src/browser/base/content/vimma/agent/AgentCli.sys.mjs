@@ -56,6 +56,9 @@ export const pathPref = (id) => `vimma.agent.cli.${id}.path`;
 export const VIMMA_CTL_PREF = "vimma.agent.cli.vimmaCtl";
 /** `--version` gets this long before it is killed (Behaviour 1). */
 const VERSION_MS = 5000;
+/** How long a CLI may take to list its MCP servers before a run, and how much of it is read. */
+const SERVERS_MS = 15_000;
+const SERVERS_LIST_CHARS = 256 * 1024;
 /** How often the status bar's minutes move while a run lasts. */
 const TICK_MS = 30_000;
 /** How long a CLI has to exit after its work is done, and its output to drain after that. */
@@ -296,6 +299,48 @@ async function tail(pipe, keep = CLI_STREAM_LIMITS.stderr) {
   return text;
 }
 
+/**
+ * A short run of a CLI's program with fixed arguments from its CLIS entry (its version, its
+ * MCP servers): no shell, no stdin, in `workdir`, the last `keep` characters of its output
+ * kept, killed after `ms`. Null when it could not start or took longer. Its callers pass only
+ * a path `inspect` passed.
+ * @param {string} path @param {readonly string[]} args
+ * @param {{ workdir: string, keep: number, ms?: number }} o
+ * @returns {Promise<{ stdout: string, stderr: string, exitCode: number } | null>}
+ */
+async function runFixed(path, args, { workdir, keep, ms = VERSION_MS }) {
+  /** @type {any} */
+  let proc;
+  /** @type {any} */
+  let timer;
+  try {
+    proc = await lazy.Subprocess.call({
+      command: path,
+      arguments: [...args],
+      environment: cliEnvironment(lazy.Subprocess.getEnvironment()),
+      workdir,
+      stderr: "pipe",
+    });
+    proc.stdin.close().catch(() => {});
+    const err = tail(proc.stderr);
+    const out = tail(proc.stdout, keep);
+    const late = new Promise((resolve) => {
+      timer = lazy.setTimeout(() => resolve(null), ms);
+    });
+    const done = await Promise.race([Promise.all([out, err, proc.wait()]), late]);
+    if (!done) {
+      proc.kill();
+      return null;
+    }
+    const [stdout, stderr, { exitCode }] = /** @type {[string, string, any]} */ (done);
+    return { stdout, stderr, exitCode };
+  } catch {
+    return null;
+  } finally {
+    lazy.clearTimeout(timer);
+  }
+}
+
 /** The folder of Vimma's running binary (the kernel's record of it on Linux), or null. */
 function binaryDir() {
   try {
@@ -420,35 +465,8 @@ export const AgentCli = {
     if (!this.enabled || !cli) return null;
     const r = await inspect(path, { cli });
     if ("problem" in r) return null;
-    /** @type {any} */
-    let proc;
-    /** @type {any} */
-    let timer;
-    try {
-      proc = await lazy.Subprocess.call({
-        command: r.path,
-        arguments: [...cli.versionArgs],
-        environment: cliEnvironment(lazy.Subprocess.getEnvironment()),
-        workdir: await runBase(),
-        stderr: "pipe",
-      });
-      proc.stdin.close().catch(() => {});
-      const err = tail(proc.stderr);
-      const out = tail(proc.stdout, 400);
-      const late = new Promise((resolve) => {
-        timer = lazy.setTimeout(() => resolve(null), VERSION_MS);
-      });
-      const done = await Promise.race([Promise.all([out, err, proc.wait()]), late]);
-      if (!done) {
-        proc.kill();
-        return null;
-      }
-      return /** @type {[string, string, any]} */ (done)[0];
-    } catch {
-      return null;
-    } finally {
-      lazy.clearTimeout(timer);
-    }
+    const ran = await runFixed(r.path, cli.versionArgs, { workdir: await runBase(), keep: 400 });
+    return ran?.stdout ?? null;
   },
 
   /**
@@ -550,6 +568,30 @@ export const AgentCli = {
       let limit = null;
       try {
         await IOUtils.setPermissions(dir, 0o700);
+        // The servers of the CLI's own configuration, each then turned off by name (C7), asked
+        // before any ticket exists.
+        /** @type {string[]} */
+        let others = [];
+        if (cli.servers) {
+          const listed = await runFixed(checked.path, cli.servers.args, {
+            workdir: dir,
+            keep: SERVERS_LIST_CHARS,
+            ms: SERVERS_MS,
+          });
+          const parsed =
+            listed?.exitCode === 0
+              ? cli.servers.parse(listed.stdout)
+              : { problem: exitText(cli, listed?.exitCode ?? null, listed?.stderr ?? "") };
+          if (!Array.isArray(parsed)) {
+            return {
+              outcome: "error",
+              error: `${cli.id} did not list its MCP servers: ${parsed.problem}`,
+              messages: [],
+            };
+          }
+          others = parsed;
+        }
+        if (stopped) return { outcome: "stopped", messages: [] };
         const issued = await lazy.VimmaControl.issueTicket({
           conn: o.conn,
           state: o.state,
@@ -566,20 +608,27 @@ export const AgentCli = {
         });
         ticket = issued.ticket;
         if (stopped) return { outcome: "stopped", messages: [] };
-        // 0600 before the ticket is written into it; the folder is 0700 already.
-        const file = PathUtils.join(dir, "mcp.json");
-        await IOUtils.writeUTF8(file, "", { mode: "create" });
-        await IOUtils.setPermissions(file, 0o600);
         const config = cli.mcpConfig({
           vimmaCtl: ctl.path,
           ticket: issued.ticket,
           port: issued.port,
         });
-        await IOUtils.writeUTF8(file, JSON.stringify(config), { mode: "overwrite" });
+        const file = config ? PathUtils.join(dir, "mcp.json") : "";
+        if (config) {
+          // 0600 before the ticket is written into it; the folder is 0700 already.
+          await IOUtils.writeUTF8(file, "", { mode: "create" });
+          await IOUtils.setPermissions(file, 0o600);
+          await IOUtils.writeUTF8(file, JSON.stringify(config), { mode: "overwrite" });
+        }
+        const run = { mcpConfig: file, vimmaCtl: ctl.path, dir, model: o.provider.model, others };
         proc = await lazy.Subprocess.call({
           command: checked.path,
-          arguments: cli.args({ mcpConfig: file, model: o.provider.model }),
-          environment: cliEnvironment(lazy.Subprocess.getEnvironment()),
+          arguments: cli.args(run),
+          // A CLI whose server takes no file has the ticket in its own environment (C3).
+          environment: {
+            ...cliEnvironment(lazy.Subprocess.getEnvironment()),
+            ...cli.env({ ticket: issued.ticket, port: issued.port }),
+          },
           workdir: dir,
           stderr: "pipe",
         });
@@ -593,12 +642,18 @@ export const AgentCli = {
         if (stopped) end();
         else {
           await proc.stdin.write(cli.input(taskPrompt(o.messages, o.text, cli.note)));
-          // Lines added meanwhile, in order, before a later one may go straight to the input.
-          while (pending.length) await proc.stdin.write(/** @type {string} */ (pending.shift()));
-          live = true;
+          if (cli.live) {
+            // Lines added meanwhile, in order, before a later one may go straight to the input.
+            while (pending.length) await proc.stdin.write(/** @type {string} */ (pending.shift()));
+            live = true;
+          } else {
+            // It reads its task to the input's end; a message added meanwhile waits for a run
+            // of its own (Behaviour 10).
+            closeInput();
+          }
         }
         const stderr = tail(proc.stderr);
-        const stream = cli.stream();
+        const stream = cli.stream({ model: o.provider.model });
         /** @type {Extract<CliEvent, { type: "result" }> | null} */
         let result = null;
         let reply = "";
@@ -705,8 +760,10 @@ export const AgentCli = {
       },
       /** @param {string} text */
       steer(text) {
-        // Written at once once the run has its input; before that, queued for it.
-        const line = cli ? cli.input(text) : "";
+        // Written at once once the run has its input; before that, queued for it. A CLI
+        // without a live input takes none: the conversation holds the message for its next run.
+        if (!cli?.live) return;
+        const line = cli.input(text);
         if (!inputOpen) return;
         if (live) proc.stdin.write(line).catch(() => {});
         else pending.push(line);

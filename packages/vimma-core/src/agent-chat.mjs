@@ -106,11 +106,18 @@ export class Transcript {
   }
 
   /**
-   * A message the user sent; `during`: while a task ran (Behaviour 15).
-   * @param {string} text @param {{ during?: boolean }} [opts]
+   * A message the user sent; `during`: while a task ran (Behaviour 15); `after`: while an
+   * agent CLI without a live input ran, so it waits for a run of its own (builtin-agent-cli
+   * Behaviour 10).
+   * @param {string} text @param {{ during?: boolean, after?: boolean }} [opts]
    */
-  user(text, { during = false } = {}) {
-    this.push({ kind: "user", text: chatText(text) + (during ? " (added during the task)" : "") });
+  user(text, { during = false, after = false } = {}) {
+    const mark = after
+      ? " (sent after the running task)"
+      : during
+        ? " (added during the task)"
+        : "";
+    this.push({ kind: "user", text: chatText(text) + mark });
   }
 
   /** A notice of Vimma's: a grant made or ended, a page given (Behaviour 12, 17). @param {string} text */

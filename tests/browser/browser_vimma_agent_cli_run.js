@@ -202,8 +202,8 @@ add_setup(async () => {
 addTidyTask(async function test_setup_lists_only_found_clis_and_stores_the_path() {
   const path = Services.env.get("PATH");
   try {
-    // The fake's own folder first; the rest keeps python3, which runs it.
-    Services.env.set("PATH", `${fake.dir}:${path}`);
+    // The fake's own folder, and the system's for python3: no real CLI of the machine's.
+    Services.env.set("PATH", `${fake.dir}:/usr/bin:/bin`);
     const found = await AgentCli.find();
     Assert.deepEqual(
       found.map((f) => f.cli),
@@ -217,7 +217,7 @@ addTidyTask(async function test_setup_lists_only_found_clis_and_stores_the_path(
     Assert.deepEqual(await AgentCli.find(), [], "none found, none listed");
     Assert.equal(
       AgentCli.noneFound(),
-      "no agent CLI found on PATH (looked for claude); install one and log in to it first",
+      "no agent CLI found on PATH (looked for claude, codex); install one and log in to it first",
       "and setup says which names it looked for",
     );
   } finally {
@@ -280,7 +280,7 @@ async function pickFoundCli() {
   EventUtils.sendString("agent model");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(
-    () => chatRows().some((r) => r.textContent.includes("add: agent CLI (Claude Code)")),
+    () => chatRows().some((r) => r.textContent.includes("add: agent CLI (Claude Code, Codex)")),
     "the picker offers an agent CLI",
   );
   const at = chatRows().findIndex((r) => r.textContent.includes("add: agent CLI"));
@@ -544,11 +544,15 @@ async function installShim() {
 addTidyTask(async function test_a_shim_runs_as_the_cli_it_is_named_after() {
   const shim = await installShim();
   const path = Services.env.get("PATH");
-  // PATH's other folders keep python3, which runs the fakes, but no claude of the machine's.
+  // PATH's other folders keep python3, which runs the fakes, but no agent CLI of the machine's.
   /** @type {string[]} */
   const rest = [];
   for (const dir of path.split(":")) {
-    if (dir && !(await IOUtils.exists(PathUtils.join(dir, "claude")))) rest.push(dir);
+    let cli = false;
+    for (const { bin } of Object.values(CLIS)) {
+      if (await IOUtils.exists(PathUtils.join(dir, bin))) cli = true;
+    }
+    if (dir && !cli) rest.push(dir);
   }
   try {
     // Setup keeps the link PATH holds and says what it runs; PATH's own copy of the CLI wins.

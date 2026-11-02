@@ -12,6 +12,7 @@ import { runSteps } from "./scenario.mjs";
  *   restart?: (how: "quit" | "kill") => Promise<void>,
  *   control?: import("./scenario.mjs").Control,
  *   profile?: string,
+ *   text?: (text: string) => string,
  *   teardown: () => Promise<void>,
  * }} Session
  */
@@ -124,6 +125,7 @@ async function runOne(scenario, { startSession, timeoutMs, pollMs, settleMs }) {
       restart: s.restart,
       control: s.control,
       profile: s.profile,
+      text: s.text,
       pollMs,
       signal: controller.signal,
     });

@@ -218,6 +218,16 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
     expect(ok(v2(...CLI)).agent.providers[0]?.model).toBe("");
   });
 
+  test("a codex provider parses as claude-code's does", () => {
+    const codex = ["[[agent.providers]]", 'name = "codex"', 'kind = "cli"', 'cli = "codex"'];
+    expect(ok(v2(...codex)).agent.providers[0]).toMatchObject({
+      name: "codex",
+      kind: "cli",
+      cli: "codex",
+      model: "",
+    });
+  });
+
   test("command, path, args and env in a cli provider are errors with their line", () => {
     for (const [key, value] of [
       ["command", '"/bin/sh"'],
@@ -239,7 +249,7 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
     expect(errors(v2(...CLI.slice(0, 3)))[0]?.message).toBe('a CLI provider needs "cli"');
     expect(errors(v2(...CLI.slice(0, 3), 'cli = "claude-cod"'))[0]).toMatchObject({
       path: "agent.providers[0].cli",
-      message: 'must be "claude-code"',
+      message: 'must be "claude-code" or "codex"',
       suggestion: "claude-code",
     });
   });

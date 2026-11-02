@@ -4,7 +4,9 @@
 // and tears it all down again: the whole process tree, Xvfb, the profile unless kept.
 import { execFileSync, spawn } from "node:child_process";
 import {
+  chmodSync,
   closeSync,
+  copyFileSync,
   existsSync,
   fstatSync,
   mkdirSync,
@@ -15,8 +17,8 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { delimiter, isAbsolute, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { validateMessage } from "../../packages/vimma-core/src/control.mjs";
@@ -672,6 +674,15 @@ export async function quitBrowser({ ctl, child, timeoutMs = 10_000, pollMs = 50 
  * crashBrowser passes the killed pid as `stalePid`, whose discovery file stays); `child` and
  * `discovery` then describe the new one. `headless` runs the browser with MOZ_HEADLESS=1 and
  * no display (macOS, displayMode); `display` is then null.
+ * `programs` (name to file) are copied into a 0700 folder in the profile, each 0700 under its
+ * name, and the browser's PATH is that folder then `programPath` (the system folders, where a
+ * fake CLI finds python3): the agent CLI's setup lists what it finds on PATH, which must not
+ * include a CLI the caller installed, and C4 of docs/specs/builtin-agent-cli.md runs only a CLI
+ * others cannot write. A browser that does not
+ * get the caller's XDG_RUNTIME_DIR (our Xvfb, headless) gets a private 0700 one made under
+ * `runtimeRoot` (the caller's XDG_RUNTIME_DIR, else ~/.cache), removed on teardown: the agent
+ * CLI's run folder (C6) refuses one with an ancestor others can write, such as the profile's
+ * /tmp.
  * @param {{
  *   build: Build,
  *   headless?: boolean,
@@ -680,6 +691,9 @@ export async function quitBrowser({ ctl, child, timeoutMs = 10_000, pollMs = 50 
  *   xvfbEnv?: Record<string, string | undefined>,
  *   window?: { width: number, height: number },
  *   tmpRoot?: string,
+ *   programs?: Record<string, string>,
+ *   programPath?: readonly string[],
+ *   runtimeRoot?: string,
  *   prefs?: Record<string, boolean | number | string | null>,
  *   keep?: boolean,
  *   args?: readonly string[],
@@ -701,6 +715,9 @@ export async function launch({
   xvfbEnv = process.env,
   window = WINDOW,
   tmpRoot = tmpdir(),
+  programs = {},
+  programPath = ["/usr/bin", "/bin"],
+  runtimeRoot,
   prefs = {},
   keep = false,
   args = [],
@@ -724,6 +741,17 @@ export async function launch({
   const tmp = join(profile, ".e2e-tmp");
   mkdirSync(home);
   mkdirSync(tmp);
+  const bin = Object.keys(programs).length ? join(profile, ".e2e-bin") : null;
+  if (bin) {
+    mkdirSync(bin);
+    chmodSync(bin, 0o700);
+    for (const [name, file] of Object.entries(programs)) {
+      copyFileSync(file, join(bin, name));
+      chmodSync(join(bin, name), 0o700);
+    }
+  }
+  /** @type {string | null} */
+  let runDir = null;
   let stderr = "";
   /** @type {string | null} */
   let loadFailure = null;
@@ -737,8 +765,11 @@ export async function launch({
       // stop whatever it started. startXvfb removes its fbdir itself when it fails.
       const started = await displayStarting?.catch(() => null);
       if (started) await started.stop();
-      if (keep) log(`kept profile ${profile}`);
-      else rmSync(profile, { recursive: true, force: true });
+      if (keep) log(`kept profile ${profile}${runDir ? ` and run folder ${runDir}` : ""}`);
+      else {
+        rmSync(profile, { recursive: true, force: true });
+        if (runDir) rmSync(runDir, { recursive: true, force: true });
+      }
     })());
   onTeardown(teardown);
   const cancelled = () =>
@@ -754,6 +785,18 @@ export async function launch({
       tmp,
       extra: build.env,
     });
+    if (bin) env.PATH = [bin, ...programPath].join(delimiter);
+    if (!env.XDG_RUNTIME_DIR) {
+      if (!runDir) {
+        const callers = baseEnv.XDG_RUNTIME_DIR;
+        const root =
+          runtimeRoot ?? (callers && isAbsolute(callers) ? callers : join(homedir(), ".cache"));
+        mkdirSync(root, { recursive: true, mode: 0o700 });
+        runDir = mkdtempSync(join(root, "vimma-e2e-run-"));
+        chmodSync(runDir, 0o700);
+      }
+      env.XDG_RUNTIME_DIR = runDir;
+    }
     const spawned = spawn(build.binary, browserArgs(profile, window, { url, extra: args }), {
       env,
       detached: true,

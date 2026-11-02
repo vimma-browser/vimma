@@ -33,6 +33,17 @@ export function fixtureUrl(url, base) {
 }
 
 /**
+ * A typed text with each `fixture:<name>[#fragment]` in it mapped onto the server; a name ends
+ * at a space or `]`, so a fake agent CLI's `[[open fixture:shop.html]]` works.
+ * @param {string} text
+ * @param {string | null} base
+ * @returns {string}
+ */
+export function fixtureText(text, base) {
+  return text.replace(/fixture:[^\s\]]*/g, (url) => fixtureUrl(url, base));
+}
+
+/**
  * Serve the plain files of `dir` (no subdirectories) on 127.0.0.1 at an ephemeral port.
  * @param {string} dir
  * @returns {Promise<{ base: string, close: () => Promise<void> }>}
