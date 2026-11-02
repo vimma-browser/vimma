@@ -142,8 +142,7 @@ app/org.mozilla.firefox.BaseApp/x86_64/25.08`, commit `7d5a63c8…`).
    nothing in the smoke test needs them. Rejected: `org.flatpak.Builder` from Flathub, which
    also brings `flatpak-builder-lint`, because it adds the 26.08 SDK and its own BaseApp, about
    a gigabyte more on every run; Flathub runs the linter on the submission (sub-PR 2).
-10. **Install type `flatpak`, whose hint is `flatpak update dev.vimma.browser`** (the
-    maintainer's decision on #465). The marker `vimma-package=flatpak` gives its own install type
+10. **Install type `flatpak`, whose hint is `flatpak update dev.vimma.browser`.** The marker `vimma-package=flatpak` gives its own install type
     (`installTypeFrom`). The status bar keeps the notice every install gets; the one-time message
     names the command (`Vimma 0.1.3 is available · run flatpak update dev.vimma.browser`), and
     `:update` and the security question's `y` show it, with a sentence that a software centre
