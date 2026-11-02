@@ -7,6 +7,8 @@
 // security update, and the restart question once one is installed (m6a-updater Behaviour 6). Pure rules; the host (updates/VimmaUpdates.sys.mjs, host/update-ui.mjs)
 // brings the clock, the prefs and the windows.
 
+import { FLATPAK_UPDATE_COMMAND } from "./updates.mjs";
+
 /** @import { InstallType, Offer } from "./updates.mjs" */
 
 /** A failed attempt (host unreachable) is tried again after this, not at every start. */
@@ -47,7 +49,8 @@ export function checkDue({ enabled, installType, okAt, triedAt, now, intervalSec
  */
 
 /**
- * The one-time message for an offer whose version was not announced before, or null. An
+ * The one-time message for an offer whose version was not announced before, or null. It
+ * names `:update`, or for a Flatpak the command itself. An
  * AppImage that is replacing its file waits until it is done, then says to restart.
  * @param {{ enabled: boolean, installType: InstallType, offer: Offer | null,
  *   announced: string, stage?: Stage }} input  `announced`: the last version announced (pref),
@@ -61,6 +64,10 @@ export function announcement({ enabled, installType, offer, announced, stage = "
   if (stage === "staged") {
     const done = offer.urgent ? what : "is installed";
     return `Vimma ${offer.displayVersion} ${done} · restart Vimma to use it`;
+  }
+  // The Flatpak's command is fixed and short, so the message names it (spec flatpak, decision 10).
+  if (installType === "flatpak") {
+    return `Vimma ${offer.displayVersion} ${what} · run ${FLATPAK_UPDATE_COMMAND}`;
   }
   return `Vimma ${offer.displayVersion} ${what} · :update shows the command`;
 }

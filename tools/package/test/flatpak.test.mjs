@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORE_SCHEMA, load } from "js-yaml";
-import { installTypeFrom } from "../../../packages/vimma-core/src/updates.mjs";
+import { installTypeFrom, updateSteps } from "../../../packages/vimma-core/src/updates.mjs";
 import { tempDir } from "../../test/temp-dir.mjs";
 import {
   APP_ID,
@@ -255,13 +255,24 @@ describe("writeFlatpak", () => {
 });
 
 describe("install type of the Flatpak", () => {
-  it("is a package the update check knows only by its tool, never the tarball's unpack", () => {
+  it("is flatpak, whose update hint is flatpak update, never the tarball's unpack", () => {
     const type = installTypeFrom({
       packaged: true,
       marker: "vimma-package=flatpak\n",
       appImage: null,
     });
-    expect(type).toBe("packaged");
+    expect(type).toBe("flatpak");
+    const offer = {
+      appVersion: "159.0",
+      buildId: "20261102000000",
+      displayVersion: "0.1.14",
+      detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v0.1.14",
+      urgent: false,
+      advisories: [],
+      assets: {},
+    };
+    const steps = updateSteps(type, offer, { installDir: "/app/lib/vimma", appImage: null });
+    expect(steps.commands).toEqual([`flatpak update ${APP_ID}`]);
   });
 });
 

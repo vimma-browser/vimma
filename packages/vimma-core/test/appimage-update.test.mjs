@@ -58,7 +58,14 @@ describe("appImagePlan (decision 19: replace $APPIMAGE after a verified offer)",
   });
 
   test("not an AppImage install: nothing to replace", () => {
-    for (const installType of /** @type {const} */ (["tarball", "deb", "aur", "source"])) {
+    // The Flatpak never downloads or applies an update itself (spec flatpak, decision 10).
+    for (const installType of /** @type {const} */ ([
+      "tarball",
+      "deb",
+      "aur",
+      "source",
+      "flatpak",
+    ])) {
       expect(appImagePlan({ ...base, installType })).toMatchObject({ ok: false });
     }
   });
