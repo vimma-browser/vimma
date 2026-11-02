@@ -226,6 +226,8 @@ addTidyTask(async function test_every_other_server_of_codexs_configuration_is_of
 });
 
 addTidyTask(async function test_a_server_named_as_vimmas_refuses_the_run() {
+  // The run finds vimma-ctl before it asks codex for its servers.
+  if (!(await needCtl())) return;
   Services.env.set("FAKE_CODEX_SERVERS", "vimma_chat");
   const c = conversation();
   const result = await run(c.id, "hello");
@@ -302,6 +304,7 @@ addTidyTask(async function test_a_call_to_a_server_not_vimmas_ends_the_run() {
 });
 
 addTidyTask(async function test_a_rejected_key_is_the_runs_error() {
+  if (!(await needCtl())) return;
   const c = conversation();
   const result = await run(c.id, "[[bad-key]]");
   Assert.equal(result.outcome, "error");

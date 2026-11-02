@@ -22,7 +22,6 @@ import re
 import subprocess
 import sys
 import time
-import tomllib
 
 REPORT = os.environ.get("FAKE_CLI_REPORT")
 args = sys.argv[1:]
@@ -76,6 +75,10 @@ def merge(into, value):
 
 
 assert args[0] == "exec" and args[-1] == "-", args
+# Only `codex exec` reads TOML (Python 3.11+); `--version` and `mcp list` above stay on the
+# system's own python3, which is 3.9 on macOS.
+import tomllib  # noqa: E402
+
 i = 1
 while i < len(args) - 1:
     if args[i] == "-c":
