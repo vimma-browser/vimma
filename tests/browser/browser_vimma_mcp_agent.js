@@ -715,6 +715,30 @@ add_task(async function test_grants_cannot_flood() {
   await setSwitches({});
 });
 
+// Issue #693: without a grant every open asks; once the open rate is used up the next one is
+// refused before the user is asked, as clicks and fills are, so a yes never ends in busy.
+add_task(async function test_a_used_up_open_rate_refuses_before_asking() {
+  await setSwitches({ mcp: true });
+  // An open that asked anyway ends at this timeout instead of hanging the test.
+  Services.prefs.setIntPref(ASK_TIMEOUT, 2000);
+  const c = await agentClient();
+  for (let i = 0; i < 10; i++) {
+    const id = c.request("agent-open", { url: `${PAGE}?a${i}` });
+    await answer({ kind: "once" });
+    Assert.ok((await c.response(id)).ok, `open ${i + 1} runs after its yes`);
+  }
+  const asked = AgentGate.log.length;
+  const r = await c.call("agent-open", { url: `${PAGE}?a10` });
+  Assert.equal(r.error?.reason, "busy", "the 11th open in a minute is refused as busy");
+  Assert.ok(r.error?.retryAfter > 0, "with the wait for the next one");
+  Assert.equal(AgentGate.waiting.length, 0, "and no question waits");
+  Assert.equal(AgentGate.log.length, asked, "nor was the user asked");
+  c.close();
+  Services.prefs.clearUserPref(ASK_TIMEOUT);
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  await setSwitches({});
+});
+
 add_task(async function test_the_read_checks_last() {
   await setSwitches({ mcp: true });
   const tab = await openAgentTab();

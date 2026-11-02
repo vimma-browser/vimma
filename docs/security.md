@@ -857,8 +857,11 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
 - M3. No answer within `[mcp] ask_timeout`, a full queue (4 per connection, 16 in all), more
   than 4 requests of one connection waiting or running at once (grants included), more than 10
   opens of one connection in a minute (grants included) and a muted connection (three noes in a
-  row, for 60 s; `x`, until it reconnects) **must** deny.
+  row, for 60 s; `x`, until it reconnects) **must** deny. A `vimma_open` is refused for the open
+  rate before its question as well as after it, so the user is never asked for an open that the
+  rate then refuses (issue #693).
   [`test_denials_timeouts_queue_and_mute`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_a_used_up_open_rate_refuses_before_asking`](../tests/browser/browser_vimma_mcp_agent.js),
   [`two connections sending 5 each: 4 of each wait in order, the 5th of each is busy`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`three denials in a row mute a connection for 60 s, without asking`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`no sequence of events breaks the queue's limits or resolves a request twice`](../packages/vimma-core/test/fuzz/agent.fuzz.test.mjs),
@@ -1148,8 +1151,20 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   learnt. The built-in agent's runner waits out such a refusal once (at most 60 s, ended by
   stopping the task) and runs the call again, through every check and the rate again, so the
   rate paces the agent and bounds it as before (agent-speed S7, issue #601). `vimma-ctl mcp`
-  sends at most 4 requests of a connection at once, as many as Vimma takes in flight; the rest
-  of its 16 wait in vimma-ctl, so a model's parallel calls are not refused as `busy`.
+  keeps at most 4 requests of a connection unanswered at once, as many as Vimma takes in flight;
+  the rest of its 16 wait in vimma-ctl, so a model's parallel calls are not refused as `busy`.
+  It counts what Vimma counts: a call withdrawn or past its deadline stays counted until Vimma
+  answers it, an `agent-ping` is counted until its answer and is not sent while 4 are
+  unanswered (Vimma's idle limit does not close a connection with a request in flight), and
+  `agent-cancel` is not counted (issue #693). Its 16 is a bound on the calls the client waits
+  for; a withdrawn call Vimma never answers holds its place in flight, and the held calls then
+  end at their own deadlines.
+  [`a_withdrawn_call_counts_in_flight_until_vimma_answers_it`](../tools/vimma-ctl/tests/mcp.rs),
+  [`an_expired_call_counts_in_flight_until_vimma_answers_it`](../tools/vimma-ctl/tests/mcp.rs),
+  [`an_unanswered_ping_counts_in_flight`](../tools/vimma-ctl/tests/mcp.rs),
+  [`a_cancelled_held_call_never_reaches_vimma`](../tools/vimma-ctl/tests/mcp.rs),
+  [`a_held_call_ends_at_its_deadline`](../tools/vimma-ctl/tests/mcp.rs),
+  [`sixteen_calls_wait_at_most_sent_and_held_together`](../tools/vimma-ctl/tests/mcp.rs),
   [`a count of 100, 33 actions, 513 characters and a 257-character query are refused`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a tab and 1 to 512 characters of keys, no control characters`](../packages/vimma-core/test/control-v2.test.mjs),
   [`at most 30 agent-keys per connection a minute, in OpenRate's class`](../packages/vimma-core/test/agent-gate.test.mjs),

@@ -834,7 +834,9 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     calls wait here at once. (Since changed: at most 4 of them are sent to Vimma at once, as
     many as it takes in flight per connection, and the rest wait here, oldest first, because a
     fifth was refused as `busy`, which a model read as questions waiting for the user;
-    issue #601.) stdin EOF closes the socket and exits 0. `vimma-ctl mcp` takes no
+    issue #601. Since changed again: the 4 count every request Vimma has not answered, as
+    Vimma counts them, so a call withdrawn or past its deadline and an `agent-ping` keep their
+    place until Vimma answers, and no ping is sent while 4 are unanswered; issue #693.) stdin EOF closes the socket and exits 0. `vimma-ctl mcp` takes no
     `--timeout` or `--json`: each call waits for the user. Logs (connect, disconnect, protocol
     errors) go to stderr, never the token.
 41. **`agent-cancel` withdraws one question.** Decision 17 says a cancelled call leaves the

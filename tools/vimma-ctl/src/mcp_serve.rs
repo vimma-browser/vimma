@@ -15,7 +15,7 @@ use crate::json::Value;
 use crate::mcp::{self, Action, Call, Failure, MAX_INPUT_LINE, Protocol, tool_result};
 use crate::protocol::{self, Discovery, ErrorBody, Response, Role};
 use crate::version;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -38,8 +38,10 @@ pub struct Settings {
     pub connect_timeout: Duration,
     /// Calls waiting at once, sent and held here together (decision 40).
     pub max_pending: usize,
-    /// Calls sent to Vimma at once: it takes 4 requests in flight per connection and refuses
+    /// Requests Vimma has not answered yet: it takes 4 in flight per connection and refuses
     /// more as `busy`, which reads as questions waiting for the user, so the rest wait here.
+    /// Vimma counts every request but `agent-cancel` until it answers it: a withdrawn or
+    /// expired call, and an `agent-ping`, too.
     pub max_in_flight: usize,
 }
 
@@ -121,6 +123,7 @@ pub fn serve(
         link: None,
         generations: 0,
         pending: BTreeMap::new(),
+        unanswered: BTreeSet::new(),
         held: VecDeque::new(),
         note: None,
         noted: None,
@@ -233,6 +236,9 @@ struct Server<'a> {
     generations: u64,
     /// By control-protocol request id.
     pending: BTreeMap<u32, Pending>,
+    /// The ids of the requests on this connection that Vimma counts in flight and has not
+    /// answered: the pending calls, calls withdrawn or past their deadline here, and pings.
+    unanswered: BTreeSet<u32>,
     /// Calls not sent yet, oldest first, while Vimma has as many as it takes.
     held: VecDeque<Held>,
     /// That this client is older than the Vimma it connected to, for the next tool result.
@@ -279,16 +285,21 @@ impl Server<'_> {
         let deadline = now
             .checked_add(self.settings.answer_wait)
             .unwrap_or(now + Duration::from_secs(390));
-        if self.pending.len() >= self.settings.max_in_flight || !self.held.is_empty() {
+        if self.full() || !self.held.is_empty() {
             self.held.push_back(Held { call, deadline });
             return Ok(());
         }
         self.dispatch(call, deadline)
     }
 
+    /// Vimma has as many requests of this connection in flight as it takes.
+    fn full(&self) -> bool {
+        self.unanswered.len() >= self.settings.max_in_flight
+    }
+
     /// Held calls go out, oldest first, as long as Vimma takes more.
     fn release(&mut self) -> io::Result<()> {
-        while self.pending.len() < self.settings.max_in_flight {
+        while !self.full() {
             let Some(held) = self.held.pop_front() else {
                 break;
             };
@@ -320,6 +331,7 @@ impl Server<'_> {
         let Some(id) = sent else {
             return self.write(&tool_result(&call, Err(&Failure::Dropped)));
         };
+        self.unanswered.insert(id);
         self.pending.insert(
             id,
             Pending {
@@ -431,6 +443,8 @@ impl Server<'_> {
     }
 
     fn close_link(&mut self) {
+        // Vimma's count of the requests in flight belongs to the connection.
+        self.unanswered.clear();
         if let Some(link) = self.link.take() {
             let _ = link.writer.shutdown(Shutdown::Both);
         }
@@ -466,11 +480,12 @@ impl Server<'_> {
             Response::Ok { id, result } => (id, Ok(result)),
             Response::Err { id, error } => (id, Err(error)),
         };
+        let id = id.and_then(|id| u32::try_from(id).ok());
+        if let Some(id) = id {
+            self.unanswered.remove(&id);
+        }
         // A ping's, a withdrawal's or a cancelled call's answer: nothing waits for it.
-        let Some(pending) = id
-            .and_then(|id| u32::try_from(id).ok())
-            .and_then(|id| self.pending.remove(&id))
-        else {
+        let Some(pending) = id.and_then(|id| self.pending.remove(&id)) else {
             if let (None, Err(error)) = (id, &outcome) {
                 log(&format!("Vimma: {}: {}", error.code, error.message));
             }
@@ -541,24 +556,31 @@ impl Server<'_> {
         // Every answer, withdrawal and dropped link passes here: a freed place goes to the
         // oldest held call.
         self.release()?;
-        let due = self
-            .link
-            .as_ref()
-            .is_some_and(|l| now.duration_since(l.last_sent) >= self.settings.ping_every);
-        if due
-            && self
-                .send("agent-ping", Value::Object(BTreeMap::new()))
-                .is_err()
-        {
-            self.drop_link("a keep-alive failed")?;
+        if self.ping_due(now) {
+            match self.send("agent-ping", Value::Object(BTreeMap::new())) {
+                Ok(id) => {
+                    self.unanswered.insert(id);
+                }
+                Err(()) => self.drop_link("a keep-alive failed")?,
+            }
         }
         Ok(())
+    }
+
+    /// A keep-alive is due, and has room: into a full connection Vimma would refuse it as
+    /// `busy`, and its idle limit does not close a connection with a request in flight.
+    fn ping_due(&self, now: Instant) -> bool {
+        !self.full()
+            && self
+                .link
+                .as_ref()
+                .is_some_and(|l| now.duration_since(l.last_sent) >= self.settings.ping_every)
     }
 
     /// How long the loop may sleep: until the next ping or deadline, at most a second.
     fn next_wake(&self, now: Instant) -> Duration {
         let mut wake = Duration::from_secs(1);
-        if let Some(link) = &self.link {
+        if let Some(link) = self.link.as_ref().filter(|_| !self.full()) {
             let ping = (link.last_sent + self.settings.ping_every).saturating_duration_since(now);
             wake = wake.min(ping);
         }
