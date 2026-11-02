@@ -157,6 +157,31 @@ There is no Vimma repository for dnf or zypper, so `dnf upgrade` and `zypper upd
 update it: install the newer `.rpm` the same way, or run the command `:update` shows. To remove
 it, `sudo dnf remove vimma` or `sudo zypper remove vimma`.
 
+#### Flatpak (Flathub)
+
+Vimma is being submitted to Flathub as `dev.vimma.browser` (issue
+[#465](https://github.com/vimma-browser/vimma/issues/465)); until it is listed on
+[flathub.org](https://flathub.org), use one of the files above. Once it is listed:
+
+```sh
+flatpak install flathub dev.vimma.browser   # install
+flatpak run dev.vimma.browser               # or start it from your application menu
+flatpak update dev.vimma.browser            # update
+flatpak uninstall dev.vimma.browser         # remove; add --delete-data to remove its profile too
+```
+
+The Flatpak is built from the release's tarball, so it is the same Vimma, but it runs in
+Flatpak's sandbox and keeps its own files apart from any other install of Vimma:
+
+| What                       | Where                                                   |
+| -------------------------- | ------------------------------------------------------- |
+| [config.toml](#configtoml) | `~/.var/app/dev.vimma.browser/config/vimma/config.toml` |
+| profiles                   | `~/.var/app/dev.vimma.browser/config/vimma/vimma/`      |
+| downloads                  | `~/Downloads`, as in the other installs                 |
+
+Vimma reads the Omarchy theme but never installs the Omarchy hook, and routing rules by app do not
+apply; [limits.md](limits.md#platforms-and-packaging) lists what differs.
+
 #### macOS
 
 A release may also carry, for Macs with Apple Silicon (M1 or later), `vimma-X.Y.Z-macos-aarch64.dmg`
