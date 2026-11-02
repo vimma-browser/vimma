@@ -304,6 +304,37 @@ add_task(async function y_shows_the_update_steps_and_esc_dismisses() {
   freshSession();
 });
 
+// Spec flatpak, decision 10: the Flatpak's message names flatpak update, y shows the same
+// command, and Vimma itself downloads and replaces nothing.
+add_task(async function a_flatpak_is_told_to_run_flatpak_update() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.update.installType", "flatpak"]] });
+  freshSession();
+  await BrowserTestUtils.withNewTab(PLAIN, async (browser) => {
+    browser.focus();
+    await serve(await manifest({ urgent: true }));
+    Assert.equal((await VimmaUpdates.check()).outcome, "offer");
+    await until(noticeShown, "the message shows");
+    Assert.equal(
+      notice().textContent,
+      "Vimma 9.9.9 fixes security issues · run flatpak update dev.vimma.browser",
+    );
+    Assert.equal(VimmaUpdates.status().stage, "none", "nothing downloaded or replaced");
+    await until(lineShown, "the question shows");
+    await until(armed, "armed");
+    const opened = BrowserTestUtils.waitForNewTab(gBrowser, "about:vimma#updates", true);
+    EventUtils.synthesizeKey("y");
+    const tab = await opened;
+    const steps = tab.linkedBrowser;
+    await until(() => steps.contentDocument?.documentElement?.dataset.ready === "true", "drawn");
+    const text = steps.contentDocument.getElementById("updates").textContent;
+    Assert.ok(text.includes("flatpak update dev.vimma.browser"), "the steps name the command");
+    Assert.ok(!text.includes("curl "), "and no download");
+    BrowserTestUtils.removeTab(tab);
+  });
+  freshSession();
+  await SpecialPowers.popPrefEnv();
+});
+
 add_task(async function the_question_waits_while_the_user_types() {
   freshSession();
   await BrowserTestUtils.withNewTab(PLAIN, async (browser) => {

@@ -35,7 +35,10 @@ update segment (spec [m6a-updater](m6a-updater.md) §5) stays the lasting remind
    window shows `Vimma 0.1.3 is available · :update shows the command` for 6 seconds in the
    notice area above the status bar; for a security release
    `Vimma 0.1.3 fixes security issues · :update shows the command`. It never takes focus. It is shown once per version, across
-   restarts (the pref `vimma.update.announced`); a newer version is announced again. With no
+   restarts (the pref `vimma.update.announced`); a newer version is announced again. (Since
+   changed: a Flatpak's message names its command instead of `:update`,
+   `Vimma 0.1.3 is available · run flatpak update dev.vimma.browser`; spec
+   [flatpak](flatpak.md), decision 10.) With no
    browser window focused, or a page in DOM full screen, it waits.
 3. **Security question.** An offer with `vimmaUrgency="security"` asks, once per session and
    version, `Vimma 0.1.3 fixes security issues. Show the update command? (y/N)` on a line at

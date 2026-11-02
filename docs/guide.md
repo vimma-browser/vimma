@@ -3792,7 +3792,8 @@ Except for the AppImage, it installs nothing; it tells you.
   start.
 - **The first time a version is offered**, a message above the status bar says
   `Vimma 0.3.1 is available · :update shows the command` (or `fixes security issues` for a
-  security release) for a few seconds. It takes no focus and no keys, and is not shown again for
+  security release) for a few seconds; in the Flatpak it names the command itself:
+  `Vimma 0.3.1 is available · run flatpak update dev.vimma.browser`. It takes no focus and no keys, and is not shown again for
   that version, even after a restart.
 - **A security release also asks**, once per session:
   `Vimma 0.3.1 fixes security issues. Show the update command? (y/N)`. `y` shows the update steps,

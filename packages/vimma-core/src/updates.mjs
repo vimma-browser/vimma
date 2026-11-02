@@ -41,6 +41,8 @@ export const RELEASES_URL = "https://github.com/vimma-browser/vimma/releases";
  * the user may delete.
  */
 export const PKGBUILD_INSTALL_COMMAND = `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO ${RELEASES_URL}/latest/download/PKGBUILD && makepkg -si`;
+/** What updates the Flatpak from Flathub (spec flatpak, decision 10): a fixed command. */
+export const FLATPAK_UPDATE_COMMAND = "flatpak update dev.vimma.browser";
 
 /**
  * Where the Homebrew cask installs Vimma, and the Caskroom folder it keeps beside it (spec
@@ -715,7 +717,7 @@ export function updateSteps(type, offer, where) {
         text:
           "Update the Flatpak from Flathub, or with your software centre. Flathub builds each " +
           "release after it is published, so if nothing is found yet, try again later:",
-        commands: ["flatpak update dev.vimma.browser"],
+        commands: [FLATPAK_UPDATE_COMMAND],
         link,
       };
     case "homebrew":
