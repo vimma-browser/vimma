@@ -2336,9 +2336,10 @@ Flathub's [Generative AI policy](https://docs.flathub.org/docs/for-app-authors/r
 bars a manifest with AI-generated or AI-assisted
 content, even disclosed, and bars AI tools from opening the submission pull request or writing
 its description, commit messages, comments or replies. Other AI-generated material in the app
-or its packaging must be disclosed in the pull request, naming the parts and the extent. So a
-person writes or reviews and owns the manifest, and does steps 3 and 4 by hand; an agent may
-help only with research and debugging (step 2's build and lint).
+or its packaging must be disclosed in the pull request, naming the parts and the extent. Since
+`tools/package/flatpak.mjs` was written with AI help, its generated manifest cannot be submitted
+as it is: a person writes the submitted manifest by hand (the generated one and step 2's lint
+can serve as research), and does steps 3 and 4 by hand.
 
 1. Generate the files for the release to submit, with the tarball's SHA-256 from its
    `SHA256SUMS` and the release's date:
