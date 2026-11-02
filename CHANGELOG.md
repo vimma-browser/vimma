@@ -4,6 +4,35 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.14](https://github.com/vimma-browser/vimma/compare/v0.1.13...v0.1.14) · Firefox 159.0 (2026-11-01)
+
+
+### Added
+
+* **agent:** a conversation's grant ends when its task ends ([#703](https://github.com/vimma-browser/vimma/issues/703)) ([e4fa08d](https://github.com/vimma-browser/vimma/commit/e4fa08daffe98fb3c2d69bd4bbe3a52f96a0f8ce)), closes [#678](https://github.com/vimma-browser/vimma/issues/678)
+* **agent:** independent steps in one model turn ([#712](https://github.com/vimma-browser/vimma/issues/712)) ([9b58081](https://github.com/vimma-browser/vimma/commit/9b58081995cd39981bb52f11cbd09f73d0190aa6)), closes [#601](https://github.com/vimma-browser/vimma/issues/601)
+* **agent:** setup says where a local ollama model runs ([#713](https://github.com/vimma-browser/vimma/issues/713)) ([e3c40b1](https://github.com/vimma-browser/vimma/commit/e3c40b17375a2bb541ba568e588ba37d180fc63a))
+* **branding:** move the app icon, logos and readme from mint to the aqua split palette ([#688](https://github.com/vimma-browser/vimma/issues/688)) ([fea8513](https://github.com/vimma-browser/vimma/commit/fea85132b1a3f8fe219169923dffde775e107c74))
+* **find:** the find bar floats in the pickers' style ([#708](https://github.com/vimma-browser/vimma/issues/708)) ([93cdfca](https://github.com/vimma-browser/vimma/commit/93cdfcacfb651a16c1a957eb14699ebeb8721aac))
+* **panes:** default [panes] max to 8 panes per workspace ([#692](https://github.com/vimma-browser/vimma/issues/692)) ([ea66302](https://github.com/vimma-browser/vimma/commit/ea6630279a39ca70f53e904bb070be1e7f5c89a3)), closes [#691](https://github.com/vimma-browser/vimma/issues/691)
+* **permissions:** site permissions picker (:site) ([#711](https://github.com/vimma-browser/vimma/issues/711)) ([dbb8170](https://github.com/vimma-browser/vimma/commit/dbb8170ccec05d0431be0b66e413fc77d112620f)), closes [#684](https://github.com/vimma-browser/vimma/issues/684)
+* **popups:** keyboard access to the pop-up blocked bar ([#705](https://github.com/vimma-browser/vimma/issues/705)) ([33c6b04](https://github.com/vimma-browser/vimma/commit/33c6b04a5d03d25525689bdd8bf9944fc066b6f5)), closes [#683](https://github.com/vimma-browser/vimma/issues/683)
+* **popups:** name the pop-up blocked bar's keys inside the bar ([#719](https://github.com/vimma-browser/vimma/issues/719)) ([1ad361b](https://github.com/vimma-browser/vimma/commit/1ad361b9d4d9d136a65df2f4be1df4a18cf6d13e)), closes [#718](https://github.com/vimma-browser/vimma/issues/718)
+* **theme:** the built-in vimma theme takes vimma.dev's aqua split palette ([#687](https://github.com/vimma-browser/vimma/issues/687)) ([d558bdf](https://github.com/vimma-browser/vimma/commit/d558bdfd625e24a990b88abaee80658bc6844994))
+
+
+### Fixed
+
+* **agent:** a list after older results are left out comes in full ([#706](https://github.com/vimma-browser/vimma/issues/706)) ([0e764dd](https://github.com/vimma-browser/vimma/commit/0e764dd3bd2020aba360fa651ee58a8828f7c81b))
+* **agent:** a used-up rate is waited out, not read as questions waiting ([#694](https://github.com/vimma-browser/vimma/issues/694)) ([ec98fd0](https://github.com/vimma-browser/vimma/commit/ec98fd015d38e0f4940740edd50d1026bc592280))
+* **agent:** judge a linked vimma-ctl's folders and keep a cli's max_minutes ([#699](https://github.com/vimma-browser/vimma/issues/699)) ([365afde](https://github.com/vimma-browser/vimma/commit/365afde8c165ca85fe4cf6b985ff43a7354dc7d8)), closes [#673](https://github.com/vimma-browser/vimma/issues/673)
+* **agent:** run an agent cli through the link setup found, so version manager shims work ([#675](https://github.com/vimma-browser/vimma/issues/675)) ([f9c86d8](https://github.com/vimma-browser/vimma/commit/f9c86d8a0158071f6db8733ec7ddb2b948a3d37a)), closes [#674](https://github.com/vimma-browser/vimma/issues/674)
+* **agents:** the guardrails plugin's file guard also covers copilot cli ([#696](https://github.com/vimma-browser/vimma/issues/696)) ([8e5f737](https://github.com/vimma-browser/vimma/commit/8e5f737516f8e66e3d4f419208edc38a6aee2028))
+* **bench:** gate the change paired sweep by sweep, not each side's own median ([#700](https://github.com/vimma-browser/vimma/issues/700)) ([abcb27c](https://github.com/vimma-browser/vimma/commit/abcb27c0bd49228efd4c93e05576adc3fe19bd3c)), closes [#667](https://github.com/vimma-browser/vimma/issues/667)
+* **downloads:** a pdf served as a download takes vimma's keys at once ([#679](https://github.com/vimma-browser/vimma/issues/679)) ([dea8221](https://github.com/vimma-browser/vimma/commit/dea8221998fc9112c0681a1f9b708f6e775cd30f)), closes [#677](https://github.com/vimma-browser/vimma/issues/677)
+* **find:** / and ? go back into a search left open by a click on the page ([#686](https://github.com/vimma-browser/vimma/issues/686)) ([ce1bb26](https://github.com/vimma-browser/vimma/commit/ce1bb26bad0dd301ed1dcdc20994ff4885e1b1a9))
+* **keys:** pair a page's key reply with its own press ([#709](https://github.com/vimma-browser/vimma/issues/709)) ([3976167](https://github.com/vimma-browser/vimma/commit/3976167c8631d520d20aacea257088e09740abb9)), closes [#576](https://github.com/vimma-browser/vimma/issues/576)
+
 ## [0.1.13](https://github.com/vimma-browser/vimma/compare/v0.1.12...v0.1.13) · Firefox 159.0 (2026-10-30)
 
 
