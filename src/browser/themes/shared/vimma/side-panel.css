@@ -184,6 +184,22 @@
     color: var(--vimma-text-accent, AccentColor);
   }
 
+  /* `[panel] numbers = "relative"` (docs/specs/side-panel-counts.md decision 7): the distance
+     in a column at the leading edge, as the tabs panel's numbers; the depth indents the
+     twisty instead of the row, so the numbers stay in line. */
+  & .vimma-bookmarks-numbered {
+    grid-template-columns: 2ch calc(1.5ch + var(--vimma-depth, 0) * 1.25ch) minmax(0, 1fr);
+    padding-inline-start: 0.75rem;
+
+    & .vimma-bookmarks-twisty {
+      text-align: end;
+    }
+
+    & .vimma-panel-host {
+      grid-column: 3;
+    }
+  }
+
   & .vimma-bookmarks-folder .vimma-panel-title {
     font-weight: bold;
   }

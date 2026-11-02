@@ -8,6 +8,7 @@
  * (PlacesUtils.promiseBookmarksTree). The host renders it (ui/bookmarks-panel.mjs).
  */
 import { scoreField } from "./picker.mjs";
+import { panelMove } from "./sidepanel.mjs";
 
 /** Places' root folder guids (toolkit/components/places/Bookmarks.sys.mjs). */
 export const PLACES_ROOTS = Object.freeze({
@@ -610,7 +611,7 @@ function countItems(node) {
  * One panel action: `panel.*` (j, k, Enter, Esc) and `bookmarks.*` (defaults.mjs
  * `[modal.panel]`).
  * @param {BookmarksState} state
- * @param {{ id: string, arg?: number }} action
+ * @param {{ id: string, arg?: number, count?: number, page?: number }} action
  * @returns {{ state: BookmarksState, effect: BookmarksEffect | null }}
  */
 export function bookmarksKey(state, action) {
@@ -625,12 +626,20 @@ export function bookmarksKey(state, action) {
   const row = state.rows[state.selected];
   /** @param {number} selected */
   const move = (selected) => ({ state: Object.freeze({ ...state, selected }), effect: null });
-  const last = state.rows.length - 1;
+  // docs/specs/side-panel-counts.md: counts, gg, G and ctrl+d / ctrl+u over the rows shown.
+  const to = panelMove(action, state.selected, state.rows.length, { nthLast: false });
+  if (to !== null) return move(to);
+  // `3h`: up three folder levels, closing each (decision 5). A count on any other key acts once.
+  if (action.id === "bookmarks.collapse" && (action.count ?? 1) > 1) {
+    let next = state;
+    for (let i = 0; i < /** @type {number} */ (action.count); i++) {
+      const r = bookmarksKey(next, { id: "bookmarks.collapse" });
+      if (r.state === next) break;
+      next = r.state;
+    }
+    return { state: next, effect: null };
+  }
   switch (action.id) {
-    case "panel.down":
-      return move(Math.max(0, Math.min(last, state.selected + 1)));
-    case "panel.up":
-      return move(Math.max(0, state.selected - 1));
     case "bookmarks.add":
     case "bookmarks.add_folder": {
       const folder = !row ? state.tree.guid : row.kind === "folder" ? row.guid : row.parent;

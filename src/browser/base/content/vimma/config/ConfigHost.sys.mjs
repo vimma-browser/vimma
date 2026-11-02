@@ -33,6 +33,7 @@ import { PaneViews } from "../split/PaneView.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
+import { PanelNumbers } from "../ui/side-panel.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
@@ -142,6 +143,7 @@ function apply(next, text) {
   for (const win of windows) applyToWindow(win, config);
   ThemeHost.setConfig(config.theme);
   PrivateSwap.configure(config.private.placement);
+  PanelNumbers.set(config.panel.numbers);
   WorkspaceRouter.setRoutes(config.routes);
   McpHost.configure(config.mcp);
   McpHost.configureAgent(config.agent);

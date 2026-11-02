@@ -29,6 +29,9 @@ const { RENDER_CAP } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
+const { PanelNumbers } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ui/side-panel.mjs",
+);
 
 const PAGE = "https://example.com/";
 const { menuGuid, toolbarGuid, unfiledGuid } = PlacesUtils.bookmarks;
@@ -162,6 +165,7 @@ async function seed() {
 
 registerCleanupFunction(async () => {
   setRoot("workspace"); // the default
+  PanelNumbers.set("absolute");
   await closePanel();
   while (PaneViews.get(window).panes) PaneViews.get(window).close();
   PaneViews.get(window).max = PANES_MAX_DEFAULT;
@@ -364,6 +368,54 @@ add_task(async function h_l_enter_fold_and_open_in_this_tab() {
   Assert.equal(tab.userContextId, main().userContextId, "in the workspace's container");
   await openPanel();
   Assert.ok(titles().includes("Jira"), "expanded folders stay expanded");
+  await closePanel();
+  BrowserTestUtils.removeTab(tab);
+});
+
+// docs/specs/side-panel-counts.md: counts, gg and G over the rows shown, 2h up two levels, and
+// relative numbers as an option.
+add_task(async function counts_gg_G_and_relative_numbers_in_the_tree() {
+  const tab = await openPage("counts");
+  await openPanel();
+  const at = () => rows().indexOf(selected());
+  const number = (row) => row.querySelector(".vimma-panel-number")?.textContent ?? null;
+  Assert.equal(number(rows()[0]), null, "no numbers by default");
+  await highlight("work");
+  EventUtils.synthesizeKey("l");
+  EventUtils.synthesizeKey("l");
+  EventUtils.synthesizeKey("l");
+  await until(() => titles().includes("MDN"), "work and docs are open");
+  await highlight("MDN");
+  EventUtils.synthesizeKey("2");
+  EventUtils.synthesizeKey("h");
+  await until(() => title(selected()) === "work", "2h goes up two folder levels");
+  Assert.ok(!titles().includes("docs"), "closing each");
+  EventUtils.synthesizeKey("G", { shiftKey: true });
+  Assert.equal(at(), rows().length - 1, "G goes to the last row");
+  EventUtils.synthesizeKey("g");
+  EventUtils.synthesizeKey("g");
+  Assert.equal(at(), 0, "gg goes to the first row");
+  EventUtils.synthesizeKey("3");
+  EventUtils.synthesizeKey("j");
+  Assert.equal(at(), 3, "3j moves down three rows");
+  EventUtils.synthesizeKey("2");
+  EventUtils.synthesizeKey("k");
+  Assert.equal(at(), 1, "2k moves up two");
+  await closePanel();
+  PanelNumbers.set("relative");
+  await openPanel();
+  await highlight("Bookmarklet");
+  Assert.deepEqual(
+    rows().slice(0, 3).map(number),
+    ["1", "0", "1"],
+    "relative: each row's distance from the highlight",
+  );
+  EventUtils.synthesizeKey("j");
+  await until(() => number(rows()[0]) === "2", "the numbers follow the highlight");
+  PanelNumbers.set("absolute");
+  await highlight("work");
+  EventUtils.synthesizeKey("l");
+  await until(() => titles().includes("Jira"), "work is open again for the tasks after this");
   await closePanel();
   BrowserTestUtils.removeTab(tab);
 });

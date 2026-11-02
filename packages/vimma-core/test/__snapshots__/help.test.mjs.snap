@@ -217,23 +217,27 @@ Copy mode
   yank_lines                Y [visual]                                        Copy the selection's whole lines and leave
 
 Side panel
-  panel_select_1            1 [panel]                                         Select row 1
-  panel_select_2            2 [panel]                                         Select row 2
-  panel_select_3            3 [panel]                                         Select row 3
-  panel_select_4            4 [panel]                                         Select row 4
-  panel_select_5            5 [panel]                                         Select row 5
-  panel_select_6            6 [panel]                                         Select row 6
-  panel_select_7            7 [panel]                                         Select row 7
-  panel_select_8            8 [panel]                                         Select row 8
-  panel_select_9            9 [panel]                                         Select row 9
-  panel_down                j [panel]                                         Next row
-  panel_up                  k [panel]                                         Previous row
-  panel_open                enter [panel]                                     Apply the marks (the marked tabs become the panes), then go to the selected row
+  panel_down                j [panel]                                         Next row (4j: four rows)
+  panel_up                  k [panel]                                         Previous row (3k: three rows)
+  panel_first               gg [panel]                                        First row
+  panel_last                G [panel]                                         Last row; with a count, that row (12G)
+  panel_half_down           ctrl+d [panel]                                    Down half the rows shown
+  panel_half_up             ctrl+u [panel]                                    Up half the rows shown
+  panel_open                enter [panel]                                     Apply the marks (the marked tabs become the panes), then go to the selected row (4 Enter: row 4)
   panel_close               esc [panel]                                       End the range, clear or restore the marks, or close the side panel
   panel_close_tab           x [panel]                                         Close the selected tab; the panel stays open
   panel_mark                space [panel]                                     Mark or unmark the selected tab
   panel_visual              V [panel]                                         Start a range of rows to mark, or mark it
   panel_move_tab            m [panel]                                         Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder
+  panel_select_1            (unbound)                                         Select row 1
+  panel_select_2            (unbound)                                         Select row 2
+  panel_select_3            (unbound)                                         Select row 3
+  panel_select_4            (unbound)                                         Select row 4
+  panel_select_5            (unbound)                                         Select row 5
+  panel_select_6            (unbound)                                         Select row 6
+  panel_select_7            (unbound)                                         Select row 7
+  panel_select_8            (unbound)                                         Select row 8
+  panel_select_9            (unbound)                                         Select row 9
 
 Bookmarks
   toggle_bookmarks          ctrl+b shift+b                                    Open / close the bookmarks panel
@@ -492,23 +496,27 @@ Copy mode
   yank_lines                Y [visual]                                        Copy the selection's whole lines and leave
 
 Side panel
-  panel_select_1            1 [panel]                                         Select row 1
-  panel_select_2            2 [panel]                                         Select row 2
-  panel_select_3            3 [panel]                                         Select row 3
-  panel_select_4            4 [panel]                                         Select row 4
-  panel_select_5            5 [panel]                                         Select row 5
-  panel_select_6            6 [panel]                                         Select row 6
-  panel_select_7            7 [panel]                                         Select row 7
-  panel_select_8            8 [panel]                                         Select row 8
-  panel_select_9            9 [panel]                                         Select row 9
-  panel_down                j [panel]                                         Next row
-  panel_up                  k [panel]                                         Previous row
-  panel_open                enter [panel]                                     Apply the marks (the marked tabs become the panes), then go to the selected row
+  panel_down                j [panel]                                         Next row (4j: four rows)
+  panel_up                  k [panel]                                         Previous row (3k: three rows)
+  panel_first               gg [panel]                                        First row
+  panel_last                G [panel]                                         Last row; with a count, that row (12G)
+  panel_half_down           ctrl+d [panel]                                    Down half the rows shown
+  panel_half_up             ctrl+u [panel]                                    Up half the rows shown
+  panel_open                enter [panel]                                     Apply the marks (the marked tabs become the panes), then go to the selected row (4 Enter: row 4)
   panel_close               esc [panel]                                       End the range, clear or restore the marks, or close the side panel
   panel_close_tab           x [panel]                                         Close the selected tab; the panel stays open
   panel_mark                space [panel]                                     Mark or unmark the selected tab
   panel_visual              V [panel]                                         Start a range of rows to mark, or mark it
   panel_move_tab            m [panel]                                         Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder
+  panel_select_1            (unbound)                                         Select row 1
+  panel_select_2            (unbound)                                         Select row 2
+  panel_select_3            (unbound)                                         Select row 3
+  panel_select_4            (unbound)                                         Select row 4
+  panel_select_5            (unbound)                                         Select row 5
+  panel_select_6            (unbound)                                         Select row 6
+  panel_select_7            (unbound)                                         Select row 7
+  panel_select_8            (unbound)                                         Select row 8
+  panel_select_9            (unbound)                                         Select row 9
 
 Bookmarks
   toggle_bookmarks          ctrl+b shift+b                                    Open / close the bookmarks panel

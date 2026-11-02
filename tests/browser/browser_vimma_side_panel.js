@@ -4,8 +4,8 @@
 
 // Spec: docs/specs/m3-workspaces.md, sub-spec 6 (m3-side-panel): `prefix+b` /
 // `:sidebar` open a panel on the left headed by the current workspace and its ctrl+b ( / ctrl+b )
-// neighbours, listing its tabs as numbered rows. In `panel` mode j/k move, Enter or a digit
-// selects a tab and closes, Esc / `prefix+b` close; ctrl+b ) re-renders it.
+// neighbours, listing its tabs as numbered rows. In `panel` mode j/k move (with a count), Enter or
+// a count and Enter select a tab and close, Esc / `prefix+b` close; ctrl+b ) re-renders it.
 
 "use strict";
 
@@ -19,6 +19,9 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 );
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+const { PanelNumbers } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ui/side-panel.mjs",
 );
 const { TabStateFlusher } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
@@ -45,6 +48,7 @@ const header = () => panel().querySelector(".vimma-panel-header");
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
 registerCleanupFunction(async () => {
+  PanelNumbers.set("absolute");
   if (isOpen()) EventUtils.synthesizeKey("KEY_Escape");
   ww().switchTo({ id: def("main").id });
   for (const w of WorkspaceStore.definitions.workspaces.filter(
@@ -188,15 +192,81 @@ add_task(async function j_k_and_enter_select_a_tab_and_close() {
   Assert.deepEqual(ww().model.workspaces[0].tabs, main, "no tab moved or closed");
 });
 
-add_task(async function a_digit_selects_that_row_and_a_missing_one_says_so() {
+// docs/specs/side-panel-counts.md decision 1: a digit is a count, so `{N} Enter` goes to row N.
+add_task(async function a_count_and_enter_select_that_row_and_a_missing_one_says_so() {
   await openPanel();
   EventUtils.synthesizeKey("9");
+  Assert.ok(isOpen(), "a lone digit waits for its key");
+  Assert.deepEqual(VimmaHost.status(window).pending, ["9"], "the status bar shows the count");
+  EventUtils.synthesizeKey("KEY_Enter");
   await until(() => noticeText() === "no tab 9 in main", "a row that is not there is refused");
   Assert.ok(isOpen(), "and the panel stays open");
   EventUtils.synthesizeKey(String(rows().length));
-  await until(() => !isOpen(), "a digit closes the panel");
-  Assert.equal(gBrowser.selectedTab.label, "main-three", "and selects that row's tab");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => !isOpen(), "a count and Enter close the panel");
+  Assert.equal(gBrowser.selectedTab.label, "main-three", "and select that row's tab");
   document.getElementById(NOTICE_ID)?.hidePopover();
+});
+
+// docs/specs/side-panel-counts.md: 4j, 3k, gg, G, {N}G past row 9, ctrl+d / ctrl+u.
+add_task(async function counts_gg_and_G_move_the_highlight_past_row_nine() {
+  const added = [];
+  for (let i = 0; i < 9; i++) added.push(BrowserTestUtils.addTab(gBrowser, "about:blank"));
+  await until(() => tabsIn("main").length >= 12, "main has twelve tabs");
+  await openPanel();
+  const n = rows().length;
+  const at = () => rows().indexOf(selected());
+  EventUtils.synthesizeKey("g");
+  EventUtils.synthesizeKey("g");
+  Assert.equal(at(), 0, "gg goes to the first row");
+  EventUtils.synthesizeKey("4");
+  EventUtils.synthesizeKey("j");
+  Assert.equal(at(), 4, "4j moves down four rows");
+  EventUtils.synthesizeKey("3");
+  EventUtils.synthesizeKey("k");
+  Assert.equal(at(), 1, "3k moves up three");
+  EventUtils.synthesizeKey("G", { shiftKey: true });
+  Assert.equal(at(), n - 1, "G goes to the last row");
+  EventUtils.synthesizeKey("1");
+  EventUtils.synthesizeKey("1");
+  EventUtils.synthesizeKey("G", { shiftKey: true });
+  Assert.equal(at(), 10, "11G goes to row 11");
+  Assert.equal(text(selected(), "number"), "11", "whose number is 11");
+  EventUtils.synthesizeKey("u", { ctrlKey: true });
+  Assert.less(at(), 10, "ctrl+u moves up");
+  Assert.greater(at(), 0, "by half the rows shown, not to the top");
+  EventUtils.synthesizeKey("d", { ctrlKey: true });
+  Assert.equal(at(), 10, "ctrl+d moves back down as far");
+  Assert.ok(isOpen(), "moves keep the panel open");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "Esc closes the panel");
+  for (const tab of added) BrowserTestUtils.removeTab(tab);
+});
+
+// docs/specs/side-panel-counts.md decision 6: `[panel] numbers`.
+add_task(async function relative_and_hybrid_numbers_count_from_the_highlight() {
+  const numbers = () => rows().map((r) => text(r, "number"));
+  PanelNumbers.set("relative");
+  await openPanel();
+  EventUtils.synthesizeKey("g");
+  EventUtils.synthesizeKey("g");
+  EventUtils.synthesizeKey("j");
+  Assert.deepEqual(numbers().slice(0, 3), ["1", "0", "1"], "relative: the distance, 0 on it");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "Esc closes the panel");
+  PanelNumbers.set("hybrid");
+  await openPanel();
+  EventUtils.synthesizeKey("g");
+  EventUtils.synthesizeKey("g");
+  EventUtils.synthesizeKey("j");
+  Assert.deepEqual(numbers().slice(0, 3), ["1", "2", "1"], "hybrid: its own number on it");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "Esc closes the panel");
+  PanelNumbers.set("absolute");
+  await openPanel();
+  Assert.deepEqual(numbers().slice(0, 3), ["1", "2", "3"], "absolute: the tab numbers");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "Esc closes the panel");
 });
 
 add_task(async function esc_and_prefix_b_close_and_keys_never_reach_the_page() {
