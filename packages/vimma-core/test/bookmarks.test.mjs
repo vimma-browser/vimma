@@ -404,6 +404,55 @@ describe("bookmarksKey", () => {
   });
 });
 
+// docs/specs/side-panel-counts.md: the bookmarks panel's counts and jumps.
+describe("bookmarksKey counts and jumps", () => {
+  // toolbar, unfiled, work, docs, MDN (highlighted), Jira, Workshop, lua, Bookmarklet
+  const s = at("mdn", { expanded: ["work", "docs"] });
+  const guid = (/** @type {BookmarksState} */ st) => sel(st)?.guid;
+
+  test("3 j and 3 k move three rows over the rows shown, clamped at the ends", () => {
+    expect(guid(press(s, [{ id: "panel.down", count: 3 }]).state)).toBe("lua");
+    expect(guid(press(s, [{ id: "panel.down", count: 9 }]).state)).toBe("js");
+    expect(guid(press(s, [{ id: "panel.up", count: 3 }]).state)).toBe(PLACES_ROOTS.unfiled);
+    expect(guid(press(s, [{ id: "panel.up", count: 9 }]).state)).toBe(PLACES_ROOTS.toolbar);
+  });
+
+  test("gg goes to the first row, G to the last; a count on G or Enter is ignored", () => {
+    expect(press(s, [{ id: "panel.first" }]).state.selected).toBe(0);
+    expect(guid(press(s, [{ id: "panel.last" }]).state)).toBe("js");
+    expect(guid(press(s, [{ id: "panel.last", count: 2 }]).state)).toBe("js");
+    expect(press(s, [{ id: "panel.open", count: 2 }]).effect).toMatchObject({
+      type: "open",
+      url: "https://developer.mozilla.org/",
+    });
+  });
+
+  test("ctrl+d / ctrl+u move half the rows shown", () => {
+    expect(guid(press(s, [{ id: "panel.half_down", page: 4 }]).state)).toBe("Work2");
+    expect(guid(press(s, [{ id: "panel.half_up", page: 4 }]).state)).toBe("work");
+    expect(guid(press(s, [{ id: "panel.half_up", count: 1 }]).state)).toBe("docs");
+  });
+
+  test("2 h goes up two folder levels, closing each; more stops at the top", () => {
+    const two = press(s, [{ id: "bookmarks.collapse", count: 2 }]).state;
+    expect(guid(two)).toBe("work");
+    expect(two.expanded).not.toContain("docs");
+    expect(two.expanded).not.toContain("work");
+    expect(guid(press(s, [{ id: "bookmarks.collapse", count: 9 }]).state)).toBe("work");
+  });
+
+  test("a count before d, y, l or t acts on one bookmark", () => {
+    for (const id of [
+      "bookmarks.delete",
+      "bookmarks.yank",
+      "bookmarks.expand",
+      "bookmarks.open_tab",
+    ]) {
+      expect(press(s, [{ id, count: 3 }])).toEqual(press(s, [{ id }]));
+    }
+  });
+});
+
 describe("refreshBookmarks", () => {
   test("keeps the highlight on its item, expanded folders and the filter", () => {
     const s = at("jira", { expanded: ["work"] });

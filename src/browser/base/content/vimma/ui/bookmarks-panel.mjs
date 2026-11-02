@@ -16,12 +16,15 @@ import {
   setBookmarksQuery,
 } from "../core/bookmarks.mjs";
 import {
+  PanelNumbers,
   buildPanelBox,
   emptyRow,
   giveFocusBack,
   panelElement,
   rememberFocus,
+  rowsShown,
 } from "./side-panel.mjs";
+import { rowNumber } from "../core/sidepanel.mjs";
 
 /** @import { BookmarksEffect, BookmarksState, Folder, Row } from "../core/bookmarks.mjs" */
 
@@ -136,6 +139,8 @@ export class BookmarksPanel {
     this.start = 0;
     /** @type {readonly Row[] | null} */
     this.rendered = null;
+    /** Whether the rendered rows carry numbers (`[panel] numbers`). */
+    this.numbered = false;
     /** @type {(() => void) | null} */
     this.unobserve = null;
     /** @type {number | null} */
@@ -222,8 +227,8 @@ export class BookmarksPanel {
   }
 
   /**
-   * One `[modal.panel]` action: `panel.*` and `bookmarks.*`.
-   * @param {{ id: string, arg?: number }} action
+   * One `[modal.panel]` action: `panel.*` and `bookmarks.*`, with its count.
+   * @param {{ id: string, arg?: number, count?: number }} action
    */
   action(action) {
     // Still loading: only Esc means something.
@@ -231,7 +236,8 @@ export class BookmarksPanel {
       if (action.id === "panel.close") this.close();
       return;
     }
-    const { state, effect } = bookmarksKey(this.state, action);
+    const page = rowsShown(this.list);
+    const { state, effect } = bookmarksKey(this.state, { ...action, page });
     if (state !== this.state) {
       this.state = state;
       if (!state.query) this.endFilter();
@@ -356,7 +362,10 @@ export class BookmarksPanel {
           : "Bookmarks";
     if (this.name && this.name.textContent !== name) this.name.textContent = name;
     const start = renderStart(rows.length, selected, this.start);
-    if (rows === this.rendered && start === this.start) {
+    // The tree has no stable numbers: distances only, with "relative" or "hybrid"
+    // (docs/specs/side-panel-counts.md decision 7).
+    const numbered = PanelNumbers.mode !== "absolute";
+    if (rows === this.rendered && start === this.start && numbered === this.numbered) {
       // Only the highlight moved, within the rendered window.
       for (const li of list.querySelectorAll("[role=treeitem][aria-selected=true]")) {
         li.setAttribute("aria-selected", "false");
@@ -364,6 +373,7 @@ export class BookmarksPanel {
     } else {
       this.start = start;
       this.rendered = rows;
+      this.numbered = numbered;
       const end = Math.min(rows.length, start + RENDER_CAP);
       const items = [];
       /** A "… n more" line: not a row of the tree. @param {string} text */
@@ -394,6 +404,12 @@ export class BookmarksPanel {
           r.kind === "folder" ? (r.open ? "▾" : "▸") : "",
         );
         twisty.setAttribute("aria-hidden", "true"); // aria-expanded says it
+        if (numbered) {
+          row.classList.add("vimma-bookmarks-numbered");
+          const number = panelElement(doc, "span", "vimma-panel-number");
+          number.setAttribute("aria-hidden", "true"); // a distance, for 4j: nothing to read
+          row.append(number);
+        }
         row.append(twisty, panelElement(doc, "span", "vimma-panel-title", r.title));
         const sub = subtitle(r, filtering);
         if (sub) row.append(panelElement(doc, "span", "vimma-panel-host", sub));
@@ -406,6 +422,13 @@ export class BookmarksPanel {
         items.push(emptyRow(doc, list, `${BOOKMARKS_ID}-empty`, text));
       }
       list.replaceChildren(...items);
+    }
+    if (numbered) {
+      for (const li of list.querySelectorAll("[role=treeitem]")) {
+        const i = Number(/** @type {HTMLElement} */ (li).id.slice(BOOKMARKS_ID.length + 1));
+        const number = li.querySelector(".vimma-panel-number");
+        if (number) number.textContent = String(rowNumber("relative", i, selected));
+      }
     }
     const current = doc.getElementById(`${BOOKMARKS_ID}-${selected}`);
     if (current && rows.length) {
@@ -425,7 +448,7 @@ export class BookmarksPanel {
     const { box, header, list } = buildPanelBox(this.win, {
       id: BOOKMARKS_ID,
       label: "Bookmarks",
-      hint: "j/k move · h/l fold · Enter t s S open · a A r m d y edit · / filter · Esc close",
+      hint: "j/k move, 4j · gg G jump · h/l fold · Enter t s S open · a A r m d y edit · / filter · Esc close",
     });
     const doc = this.win.document;
     // Folders open and close: a tree of treeitems with levels, not a flat listbox (m7-a11y).
