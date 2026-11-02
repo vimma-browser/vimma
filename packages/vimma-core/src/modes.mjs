@@ -23,9 +23,12 @@ export const MODES = Object.freeze([
   "resize",
 ]);
 
-/** Modes in which leading digits are a count (`3gt`). */
+/**
+ * Modes in which leading digits are a count (`3gt`); in the side panel `4j` and `12G`
+ * (docs/specs/side-panel-counts.md decision 1).
+ */
 /** @type {ReadonlySet<Mode>} */
-export const COUNT_MODES = new Set(["normal", "visual", "element", "resize"]);
+export const COUNT_MODES = new Set(["normal", "visual", "element", "resize", "panel"]);
 
 /**
  * Modes whose own keys a question never takes: a hint label is typed from any `[modal]

@@ -8,6 +8,7 @@ import {
   openPanel,
   panelKey,
   refreshPanel,
+  rowNumber,
 } from "../src/sidepanel.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
 import { createDispatcher } from "../src/dispatcher.mjs";
@@ -327,20 +328,142 @@ describe("panel keys in the keymap", () => {
     expect(feed("panel", "ctrl+b b").at(-1)).toMatchObject({ action: { id: "sidebar.toggle" } });
   });
 
-  test("x closes the tab and ctrl+shift+t reopens one in panel mode; 3 still selects row 3", () => {
+  test("x closes the tab and ctrl+shift+t reopens one in panel mode", () => {
     expect(feed("panel", "x")[0]).toEqual({ kind: "action", action: { id: "panel.close_tab" } });
     expect(feed("panel", "ctrl+shift+t")[0]).toEqual({
       kind: "action",
       action: { id: "tab.restore" },
     });
-    expect(feed("panel", "3 x")).toEqual([
-      { kind: "action", action: { id: "panel.select", arg: 3 } },
-      { kind: "action", action: { id: "panel.close_tab" } },
+  });
+
+  // docs/specs/side-panel-counts.md decision 1: a digit is a count, as in normal mode.
+  test("a digit is a count: 4 j, 3 k, 1 2 G, 3 Enter", () => {
+    expect(feed("panel", "4 j")).toEqual([
+      { kind: "pending" },
+      { kind: "action", action: { id: "panel.down", count: 4 } },
     ]);
+    expect(feed("panel", "3 k").at(-1)).toEqual({
+      kind: "action",
+      action: { id: "panel.up", count: 3 },
+    });
+    expect(feed("panel", "1 2 shift+g").at(-1)).toEqual({
+      kind: "action",
+      action: { id: "panel.last", count: 12 },
+    });
+    expect(feed("panel", "3 enter").at(-1)).toEqual({
+      kind: "action",
+      action: { id: "panel.open", count: 3 },
+    });
+  });
+
+  test("g g, G, ctrl+d and ctrl+u in panel mode", () => {
+    expect(feed("panel", "g g").at(-1)).toEqual({ kind: "action", action: { id: "panel.first" } });
+    expect(feed("panel", "shift+g")[0]).toEqual({ kind: "action", action: { id: "panel.last" } });
+    expect(feed("panel", "ctrl+d")[0]).toEqual({
+      kind: "action",
+      action: { id: "panel.half_down" },
+    });
+    expect(feed("panel", "ctrl+u")[0]).toEqual({
+      kind: "action",
+      action: { id: "panel.half_up" },
+    });
+  });
+
+  test("a count before x is dropped by the panel: x closes one tab", () => {
+    expect(feed("panel", "3 x").at(-1)).toEqual({
+      kind: "action",
+      action: { id: "panel.close_tab", count: 3 },
+    });
+    const s = openPanel(model, info);
+    expect(panelKey(s, { id: "panel.close_tab", count: 3 }).effect).toEqual({
+      type: "closeTab",
+      id: "t3",
+    });
   });
 
   test("leader bindings still do not fire in insert mode", () => {
     expect(feed("insert", "space")[0]).toEqual({ kind: "pass" });
+  });
+});
+
+// docs/specs/side-panel-counts.md: counts, gg, G, {N}G, ctrl+d / ctrl+u and row numbers.
+describe("counts and jumps", () => {
+  const ids = Array.from({ length: 12 }, (_, i) => `n${i + 1}`);
+  const long = {
+    ...model,
+    workspaces: model.workspaces.map((w) =>
+      w.id === "w2" ? { ...w, tabs: ids, activeTab: "n1" } : w,
+    ),
+  };
+  const s = openPanel(long, (id) => ({ title: id }));
+  const at = (/** @type {PanelState} */ st) => st.selected;
+
+  test("4 j moves down four rows and 3 k up three, clamped at the ends", () => {
+    expect(at(press(s, [{ id: "panel.down", count: 4 }]).state)).toBe(4);
+    expect(
+      at(
+        press(s, [
+          { id: "panel.down", count: 4 },
+          { id: "panel.up", count: 3 },
+        ]).state,
+      ),
+    ).toBe(1);
+    expect(at(press(s, [{ id: "panel.down", count: 40 }]).state)).toBe(11);
+    expect(at(press(s, [{ id: "panel.up", count: 5 }]).state)).toBe(0);
+  });
+
+  test("gg goes to the first row, G to the last", () => {
+    expect(at(press(s, [{ id: "panel.last" }]).state)).toBe(11);
+    expect(at(press(s, [{ id: "panel.last" }, { id: "panel.first" }]).state)).toBe(0);
+  });
+
+  test("{N}G goes to row N, past 9 too, and past the end to the last row", () => {
+    expect(at(press(s, [{ id: "panel.last", count: 10 }]).state)).toBe(9);
+    expect(at(press(s, [{ id: "panel.last", count: 99 }]).state)).toBe(11);
+    expect(press(s, [{ id: "panel.last", count: 10 }]).effect).toBeNull();
+  });
+
+  test("{N} Enter goes to tab N; past the last row it says so", () => {
+    expect(press(s, [{ id: "panel.open", count: 11 }]).effect).toEqual({
+      type: "select",
+      id: "n11",
+    });
+    expect(press(s, [{ id: "panel.open", count: 13 }]).effect).toEqual({
+      type: "refuse",
+      text: "no tab 13 in admin",
+    });
+  });
+
+  test("ctrl+d / ctrl+u move half the rows shown; a count moves that many rows", () => {
+    expect(at(press(s, [{ id: "panel.half_down", page: 8 }]).state)).toBe(4);
+    expect(
+      at(
+        press(s, [
+          { id: "panel.half_down", page: 8 },
+          { id: "panel.half_up", page: 8 },
+        ]).state,
+      ),
+    ).toBe(0);
+    expect(at(press(s, [{ id: "panel.half_down", page: 1 }]).state)).toBe(1);
+    expect(at(press(s, [{ id: "panel.half_down" }]).state)).toBe(1);
+    expect(at(press(s, [{ id: "panel.half_down", page: 8, count: 3 }]).state)).toBe(3);
+  });
+
+  test("a count does not change what space, V and m act on", () => {
+    const r = press(s, [{ id: "panel.mark", count: 3 }]);
+    expect(r.state.marked).toEqual(["n1"]);
+  });
+});
+
+describe("rowNumber", () => {
+  test("absolute: the tab's number", () => {
+    expect([0, 1, 2].map((i) => rowNumber("absolute", i, 1))).toEqual([1, 2, 3]);
+  });
+  test("relative: the distance from the highlight, 0 on it", () => {
+    expect([0, 1, 2, 3].map((i) => rowNumber("relative", i, 1))).toEqual([1, 0, 1, 2]);
+  });
+  test("hybrid: the highlighted row its own number, the others their distance", () => {
+    expect([0, 1, 2, 3].map((i) => rowNumber("hybrid", i, 1))).toEqual([1, 2, 1, 2]);
   });
 });
 

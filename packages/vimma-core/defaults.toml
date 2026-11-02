@@ -255,17 +255,12 @@ insert_editing = true
 "q" = "help.close"
 
 [modal.panel]
-"1" = "panel_select_1"
-"2" = "panel_select_2"
-"3" = "panel_select_3"
-"4" = "panel_select_4"
-"5" = "panel_select_5"
-"6" = "panel_select_6"
-"7" = "panel_select_7"
-"8" = "panel_select_8"
-"9" = "panel_select_9"
 "j" = "panel.down"
 "k" = "panel.up"
+"gg" = "panel.first"
+"G" = "panel.last"
+"<C-d>" = "panel.half_down"
+"<C-u>" = "panel.half_up"
 "<CR>" = "panel.open"
 "<Esc>" = "panel.close"
 "x" = "panel.close_tab"
@@ -344,6 +339,13 @@ main_size = 60
 # folder in the Bookmarks Toolbar; "toolbar" the whole toolbar; "all" every bookmark.
 [bookmarks]
 root = "workspace"
+
+# Row numbers in the side panel (ctrl+b b): "absolute" is the tab number (alt+N, {N}gt);
+# "relative" the distance from the highlighted row, for 4j and 3k; "hybrid" both: the
+# highlighted row its own number, the others their distance. The bookmarks panel shows
+# distances with "relative" and "hybrid", and no numbers with "absolute".
+[panel]
+numbers = "absolute"
 
 # The private workspace (ctrl+b shift+p): "swap" shows it in place of the Vimma window on
 # Hyprland and macOS, which hide the other one until you switch back; "window" opens it as

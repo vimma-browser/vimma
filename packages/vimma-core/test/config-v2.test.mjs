@@ -440,6 +440,36 @@ describe("[bookmarks] root", () => {
   });
 });
 
+// docs/specs/side-panel-counts.md, decision 6.
+describe("[panel] numbers", () => {
+  test('defaults to "absolute"', () => {
+    expect(ok(v2()).panel).toEqual({ numbers: "absolute" });
+    expect(DEFAULT_CONFIG.panel).toEqual({ numbers: "absolute" });
+    expect(formatDefaultsToml()).toMatch(/^\[panel\]\n(#.*\n)*numbers = "absolute"$/m);
+  });
+
+  test.each([["absolute"], ["relative"], ["hybrid"]])('numbers = "%s" is accepted', (n) => {
+    expect(ok(v2("[panel]", `numbers = "${n}"`)).panel.numbers).toBe(n);
+  });
+
+  test("an unknown value is an error, with the nearest name when one is close", () => {
+    expect(errors(v2("[panel]", 'numbers = "relativ"'))).toEqual([
+      {
+        line: 3,
+        path: "panel.numbers",
+        message: 'must be "absolute", "relative" or "hybrid"',
+        suggestion: "relative",
+      },
+    ]);
+    expect(errors(v2("[panel]", "numbers = 1"))).toEqual([
+      { line: 3, path: "panel.numbers", message: "expected a string, got an integer" },
+    ]);
+    expect(errors(v2("[panel]", 'number = "hybrid"'))).toEqual([
+      { line: 3, path: "panel.number", message: 'unknown key "number"', suggestion: "numbers" },
+    ]);
+  });
+});
+
 // The built-in palette by name: vimma (vimma.dev's colours) by default, Tokyo Night on request.
 describe("[theme] name", () => {
   test('defaults to "vimma"', () => {

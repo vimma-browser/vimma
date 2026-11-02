@@ -27,6 +27,8 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  *   Firefox's own shortcuts that are off (docs/specs/key-handling-batch.md)
  * @property {{ root?: "workspace" | "toolbar" | "all" }} [bookmarks]  the bookmarks panel's root
  *   (docs/specs/bookmarks.md)
+ * @property {{ numbers?: "absolute" | "relative" | "hybrid" }} [panel]  the side panel's and
+ *   bookmarks panel's row numbers (docs/specs/side-panel-counts.md)
  * @property {{ placement?: "swap" | "window" }} [private]  where the private workspace is shown
  *   (docs/specs/private-swap.md)
  * @property {{ check?: boolean }} [updates]  update checks (docs/specs/m6a-updater.md)
@@ -338,11 +340,13 @@ const modal = {
   },
   help: { "<Esc>": "help.close", "/": "help.filter", q: "help.close" },
   panel: {
-    ...Object.fromEntries(
-      Array.from({ length: 9 }, (_, i) => [`${i + 1}`, `panel_select_${i + 1}`]),
-    ),
+    // A digit is a count (docs/specs/side-panel-counts.md decision 1): `4j`, `12G`, `4 Enter`.
     j: "panel.down",
     k: "panel.up",
+    gg: "panel.first",
+    G: "panel.last",
+    "<C-d>": "panel.half_down",
+    "<C-u>": "panel.half_up",
     "<CR>": "panel.open",
     "<Esc>": "panel.close",
     // The selected tab; the panel stays open on the next row (key-handling-batch). The bookmarks
@@ -418,6 +422,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   sites: {},
   firefox: { disable: /** @type {"all"} */ ("all"), enable: [] },
   bookmarks: { root: /** @type {const} */ ("workspace") },
+  panel: { numbers: /** @type {const} */ ("absolute") },
   private: { placement: /** @type {const} */ ("swap") },
   ui: { toolbar: /** @type {const} */ ("shown") },
   updates: { check: true },
@@ -525,6 +530,13 @@ export function formatDefaultsToml() {
     '# folder in the Bookmarks Toolbar; "toolbar" the whole toolbar; "all" every bookmark.',
     "[bookmarks]",
     `root = ${tomlString(DEFAULT_CONFIG.bookmarks?.root ?? "workspace")}`,
+    "",
+    '# Row numbers in the side panel (ctrl+b b): "absolute" is the tab number (alt+N, {N}gt);',
+    '# "relative" the distance from the highlighted row, for 4j and 3k; "hybrid" both: the',
+    "# highlighted row its own number, the others their distance. The bookmarks panel shows",
+    '# distances with "relative" and "hybrid", and no numbers with "absolute".',
+    "[panel]",
+    `numbers = ${tomlString(DEFAULT_CONFIG.panel?.numbers ?? "absolute")}`,
     "",
     '# The private workspace (ctrl+b shift+p): "swap" shows it in place of the Vimma window on',
     '# Hyprland and macOS, which hide the other one until you switch back; "window" opens it as',
