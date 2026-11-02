@@ -159,9 +159,9 @@ it, `sudo dnf remove vimma` or `sudo zypper remove vimma`.
 
 #### Flatpak (Flathub)
 
-Vimma is being submitted to Flathub as `dev.vimma.browser` (issue
-[#465](https://github.com/vimma-browser/vimma/issues/465)); until it is listed on
-[flathub.org](https://flathub.org), use one of the files above. Once it is listed:
+Vimma is not on Flathub yet: the Flatpak, `dev.vimma.browser`, is built and tested in CI, and
+listing it is issue [#465](https://github.com/vimma-browser/vimma/issues/465). Until it is listed
+on [flathub.org](https://flathub.org), use one of the files above. Once it is listed:
 
 ```sh
 flatpak install flathub dev.vimma.browser   # install
