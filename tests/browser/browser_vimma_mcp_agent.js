@@ -716,7 +716,7 @@ add_task(async function test_grants_cannot_flood() {
 });
 
 // Issue #693: without a grant every open asks; once the open rate is used up the next one is
-// refused before the user is asked, as clicks and fills are, so a yes never ends in busy.
+// refused before the user is asked, as clicks and fills are.
 add_task(async function test_a_used_up_open_rate_refuses_before_asking() {
   await setSwitches({ mcp: true });
   // An open that asked anyway ends at this timeout instead of hanging the test.

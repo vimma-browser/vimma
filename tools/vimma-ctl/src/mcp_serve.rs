@@ -270,10 +270,7 @@ impl Server<'_> {
             Action::None => Ok(()),
             Action::Reply(reply) => self.write(&reply),
             Action::Call(call) => self.start(call),
-            Action::Cancel(id) => {
-                self.cancel(&id);
-                Ok(())
-            }
+            Action::Cancel(id) => self.cancel(&id),
         }
     }
 
@@ -506,7 +503,7 @@ impl Server<'_> {
     }
 
     /// `notifications/cancelled`: no response for the call, and its question is withdrawn.
-    fn cancel(&mut self, mcp_id: &Value) {
+    fn cancel(&mut self, mcp_id: &Value) -> io::Result<()> {
         // A held call never reached Vimma: it only leaves the line here.
         self.held.retain(|h| &h.call.id != mcp_id);
         let Some(id) = self
@@ -515,21 +512,24 @@ impl Server<'_> {
             .find(|(_, p)| &p.call.id == mcp_id)
             .map(|(id, _)| *id)
         else {
-            return;
+            return Ok(());
         };
         self.pending.remove(&id);
-        self.withdraw(id);
+        self.withdraw(id)
     }
 
     /// `agent-cancel`: Vimma takes the question off the line if it still waits (decision 17).
-    fn withdraw(&mut self, id: u32) {
+    /// A connection that cannot take it is gone: its other calls fail as on any dropped link,
+    /// rather than wait on ids a new connection numbers again.
+    fn withdraw(&mut self, id: u32) -> io::Result<()> {
         let args = Value::Object(BTreeMap::from([(
             "id".to_string(),
             Value::Number(f64::from(id)),
         )]));
         if self.send("agent-cancel", args).is_err() {
-            self.close_link();
+            return self.drop_link("a withdrawal failed");
         }
+        Ok(())
     }
 
     /// Deadlines and the keep-alive.
@@ -544,7 +544,7 @@ impl Server<'_> {
             if let Some(pending) = self.pending.remove(&id) {
                 let failure = Failure::NoAnswer(self.settings.answer_wait);
                 self.write(&tool_result(&pending.call, Err(&failure)))?;
-                self.withdraw(id);
+                self.withdraw(id)?;
             }
         }
         while let Some(index) = self.held.iter().position(|h| h.deadline <= now) {

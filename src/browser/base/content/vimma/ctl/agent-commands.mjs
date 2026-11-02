@@ -837,7 +837,7 @@ const COMMANDS = {
       ...(elements ? { elements: true } : {}),
     };
     // Checked before the question too, as clicks and fills are: without a grant every open
-    // asks, and a yes must not end in "too many opens". The take after it still counts.
+    // asks, and an open over the rate must not be asked. Only the take after it counts.
     if (!opens.can(conn, Date.now())) {
       throw rateDenied(opens, conn, "opens");
     }
