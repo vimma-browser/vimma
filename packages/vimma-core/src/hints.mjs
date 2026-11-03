@@ -297,6 +297,25 @@ function parseRect(value) {
 }
 
 /**
+ * Why a collection of one frame gave the result it did. An empty list from `collectHints` has
+ * four quick causes that look alike from outside; this names which one fired, so a test that
+ * fails only on a slow runner can say it (#605). Pure: chrome records it, nothing reads it to
+ * decide.
+ * @param {{ queried: boolean, raw: unknown, reply: HintReply | null, live: boolean }} state
+ *   `queried`: the frame had an actor to ask; `raw`: what came back (null when the frame did
+ *   not answer in time); `reply`: `parseHintReply` of it; `live`: no newer collection
+ *   replaced this one
+ * @returns {"no-actor" | "no-reply" | "bad-reply" | "superseded" | "no-targets" | "ok"}
+ */
+export function hintCollectReason({ queried, raw, reply, live }) {
+  if (!queried) return "no-actor";
+  if (raw === null || raw === undefined) return "no-reply";
+  if (!reply) return "bad-reply";
+  if (!live) return "superseded";
+  return reply.targets.length ? "ok" : "no-targets";
+}
+
+/**
  * A `Vimma:CollectHints` reply from a content process, which may be compromised: a fresh copy
  * with only the known fields, each of its exact type and within the caps, or null if anything
  * is wrong. Never throws. The hint counterpart of `parseDescriptor` (editable.mjs). A

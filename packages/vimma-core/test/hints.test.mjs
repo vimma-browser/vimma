@@ -12,6 +12,7 @@ import {
   upperLast,
   HintError,
   parseHintReply,
+  hintCollectReason,
   HINT_REPLY_MAX_TEXT,
   parseBlockReply,
   BLOCK_REPLY_MAX_TEXT,
@@ -668,5 +669,32 @@ describe("parseBlockReply: untrusted Vimma:Block replies from a content process"
       },
     };
     expect(parseBlockReply(hostile, "next")).toBeNull();
+  });
+});
+
+describe("hintCollectReason: which exit of a collection gave its result", () => {
+  const reply = (targets) => ({ targets, frames: [], ms: 0 });
+  const t0 = { id: 0, rect: { x: 0, y: 0, width: 1, height: 1 }, kind: "click" };
+  test("each way to an empty result has its own reason", () => {
+    expect(hintCollectReason({ queried: false, raw: undefined, reply: null, live: true })).toBe(
+      "no-actor",
+    );
+    expect(hintCollectReason({ queried: true, raw: null, reply: null, live: true })).toBe(
+      "no-reply",
+    );
+    expect(hintCollectReason({ queried: true, raw: { junk: 1 }, reply: null, live: true })).toBe(
+      "bad-reply",
+    );
+    expect(
+      hintCollectReason({ queried: true, raw: reply([]), reply: reply([]), live: false }),
+    ).toBe("superseded");
+    expect(hintCollectReason({ queried: true, raw: reply([]), reply: reply([]), live: true })).toBe(
+      "no-targets",
+    );
+  });
+  test("a reply with targets is ok", () => {
+    expect(
+      hintCollectReason({ queried: true, raw: reply([t0]), reply: reply([t0]), live: true }),
+    ).toBe("ok");
   });
 });
