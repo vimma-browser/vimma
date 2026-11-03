@@ -5,7 +5,12 @@
 // Registers the Vimma JSWindowActor pair and sends it commands (spec:
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
-import { HINT_REPLY_MAX_TARGETS, parseBlockReply, parseHintReply } from "../core/hints.mjs";
+import {
+  HINT_REPLY_MAX_TARGETS,
+  hintCollectReason,
+  parseBlockReply,
+  parseHintReply,
+} from "../core/hints.mjs";
 import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
 import { parsePayInfo, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { ACTIVATE_CHANGES } from "../core/control.mjs";
@@ -61,6 +66,13 @@ const blurGens = new WeakMap();
  * @type {WeakMap<object, number>}
  */
 const liveGen = new WeakMap();
+
+/**
+ * Per browser, how its last collection's top frame ended (hintCollectReason), or "threw" when
+ * its query rejected. Only read by tests, to say why a collection was empty (#605).
+ * @type {WeakMap<object, string>}
+ */
+const lastReasons = new WeakMap();
 
 /** How long a subframe may take to answer (ms) before its targets are left out. */
 const FRAME_TIMEOUT_PREF = "vimma.hints.frameTimeoutMs";
@@ -331,6 +343,15 @@ export const VimmaActors = {
   _lastCollectMs: 0,
 
   /**
+   * Test-only: why the last collectHints of this browser's top frame returned what it did.
+   * @param {any} browser XULBrowserElement
+   * @returns {string}
+   */
+  lastCollectReason(browser) {
+    return lastReasons.get(browser) ?? "never-collected";
+  },
+
+  /**
    * The hint targets on screen in the browser's page and its frames (m1-hints), in the top
    * frame's CSS pixels. Each frame's child collects its own; frames from other origins are
    * other processes, so the parent merges them, offset by the frame rects their embedder
@@ -383,12 +404,14 @@ export const VimmaActors = {
       let raw;
       /** @type {number | undefined} */
       let timer;
+      const actor = actorFor(bc);
+      const queried = !!actor;
       try {
         // A busy or hung frame (its process spinning) must not hold up the others' labels.
         const late = new Promise((resolve) => {
           timer = setTimeout(resolve, timeoutAt(depth), null);
         });
-        const query = actorFor(bc)?.sendQuery("Vimma:CollectHints", {
+        const query = actor?.sendQuery("Vimma:CollectHints", {
           gen,
           linksOnly,
           blocks,
@@ -397,12 +420,16 @@ export const VimmaActors = {
         });
         raw = await Promise.race([query, late]);
       } catch {
+        if (depth === 0) lastReasons.set(browser, "threw");
         return; // the frame navigated or its process went away
       } finally {
         clearTimeout(timer);
       }
       // From a content process, which may be compromised: a fresh, checked copy or nothing.
       const reply = parseHintReply(raw, { blocks, texts, elements: agent && elements });
+      if (depth === 0) {
+        lastReasons.set(browser, hintCollectReason({ queried, raw, reply, live: live() }));
+      }
       if (!reply || !live()) return;
       ms += reply.ms;
       for (const t of reply.targets) {
