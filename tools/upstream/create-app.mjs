@@ -67,6 +67,16 @@ export function formPage(m, state, org) {
 }
 
 /**
+ * Deployment policies besides the branch main: any of them would let another ref read the key.
+ * @param {{ name: string, type: string }[]} list
+ */
+export function otherPolicies(list) {
+  return list
+    .filter((p) => !(p.name === "main" && p.type === "branch"))
+    .map((p) => `${p.type} ${p.name}`);
+}
+
+/**
  * @param {string[]} args
  * @param {string} [input]
  */
@@ -111,6 +121,10 @@ function ensureEnvironment(nwo, env) {
       "type=branch",
     ]);
   }
+  const others = otherPolicies(list);
+  if (others.length) {
+    throw new Error(`${env} also deploys from ${others.join(", ")}: remove them, then rerun`);
+  }
 }
 
 async function main() {
@@ -126,6 +140,8 @@ async function main() {
   const nwo = `${org}/${values.repo}`;
   const env = /** @type {string} */ (values.env);
   const state = randomBytes(16).toString("hex");
+  // Before the App exists, so a refused environment leaves nothing to clean up.
+  ensureEnvironment(nwo, env);
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -149,7 +165,6 @@ async function main() {
       // The code is single-use and expires in an hour; the answer holds the private key.
       const app = JSON.parse(gh(["api", "-X", "POST", `app-manifests/${code}/conversions`]));
       if (app.owner?.login !== org) throw new Error(`the App belongs to ${app.owner?.login}`);
-      ensureEnvironment(nwo, env);
       gh(["secret", "set", "UPSTREAM_APP_KEY", "-R", nwo, "--env", env], app.pem);
       gh(["variable", "set", "UPSTREAM_APP_ID", "-R", nwo, "-b", app.client_id]);
       const install = `https://github.com/apps/${app.slug}/installations/new`;

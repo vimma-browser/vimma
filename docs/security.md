@@ -739,6 +739,7 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`mints the App token for this repository alone, before the checkout`](../tools/test/upstream-workflow.test.mjs),
   [`publish pushes and opens the PR with the App token, else GITHUB_TOKEN`](../tools/test/upstream-workflow.test.mjs),
   [`asks for contents, pull requests and issues, and nothing else`](../tools/upstream/test/create-app.test.mjs),
+  [`names every deployment policy other than the branch main`](../tools/upstream/test/create-app.test.mjs),
   [`grants nothing by default and each job only what it needs`](../tools/test/upstream-workflow.test.mjs)
 - G15. The `patch-issue` job (patches that do not apply) **must** use only `GITHUB_TOKEN` with
   `contents: read` and `issues: write`, check out without persisted credentials, and pass the

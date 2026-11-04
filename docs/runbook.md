@@ -1584,10 +1584,10 @@ One-time setup:
    on vimma only. The variable `UPSTREAM_APP_ID` holds its client ID and the secret
    `UPSTREAM_APP_KEY`, of the `upstream-autopilot` environment (deployable only from `main`), its
    private key; each run mints a one-hour token, so nothing expires (docs/security.md, G14).
-   `node tools/upstream/create-app.mjs` creates the App from a manifest, the environment, the
-   variable and the secret: open the local address it prints, confirm on GitHub, then install
-   the App on **Only select repositories → vimma** from the link it prints (GitHub has no API for
-   that step). To rotate the key, generate a new one on the App's page,
+   `node tools/upstream/create-app.mjs` creates the environment (and stops if it already allows
+   another ref), then the App from a manifest, the variable and the secret: open the local
+   address it prints, confirm on GitHub, then install the App on **Only select repositories →
+   vimma** from the link it prints (GitHub has no API for that step). To rotate the key, generate a new one on the App's page,
    `gh secret set UPSTREAM_APP_KEY --env upstream-autopilot -R vimma-browser/vimma < new-key.pem`,
    then delete the old key there. Because `publish` deploys to that environment, it runs only
    from `main`.

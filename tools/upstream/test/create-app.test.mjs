@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
-import { formPage, manifest } from "../create-app.mjs";
+import { formPage, manifest, otherPolicies } from "../create-app.mjs";
 
 // docs/security.md, G14: the upstream App can write contents, pull requests and issues, nothing
 // else; it has no webhook and is private to the organisation.
@@ -41,5 +41,18 @@ describe("the upstream App's manifest", () => {
       .replaceAll("&gt;", ">")
       .replaceAll("&amp;", "&");
     expect(JSON.parse(decoded).name).toBe(`a"<b>&'`);
+  });
+});
+
+describe("the upstream-autopilot environment", () => {
+  it("names every deployment policy other than the branch main", () => {
+    expect(otherPolicies([{ name: "main", type: "branch" }])).toEqual([]);
+    expect(
+      otherPolicies([
+        { name: "main", type: "branch" },
+        { name: "*", type: "branch" },
+        { name: "main", type: "tag" },
+      ]),
+    ).toEqual(["branch *", "tag main"]);
   });
 });
