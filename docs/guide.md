@@ -3955,8 +3955,11 @@ Except for the AppImage, it installs nothing; it tells you.
 - **Off:** `[updates] check = false` in [config.toml](#configtoml), or `vimma.update.enabled` =
   `false` in `about:config`, stops every request, the message and the question. The status bar
   then shows a dim `updates: off` for a few seconds after startup, once per session, and hides
-  it; `about:vimma` says checks are off at any time. A `config.toml` with errors never turns checks back on: its `check = false` still holds, and
-  while Vimma runs on its defaults because of the errors, it does not check at all.
+  it; `about:vimma` says checks are off at any time. A `config.toml` with errors keeps
+  updates working: its `check` setting still applies, so a value only a newer Vimma knows never
+  stops you from updating to that version. Only when the file cannot be read at all (it is not
+  valid TOML) and Vimma runs on its defaults, update checks wait until it is fixed, in case it
+  says `check = false`; `:update` still checks when you ask.
 
 ## Privacy defaults
 

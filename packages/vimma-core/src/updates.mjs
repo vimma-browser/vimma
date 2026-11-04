@@ -758,25 +758,33 @@ export function updateVersionLine(offer) {
 
 /**
  * `[updates] check` after a read of config.toml (decision 31). A file with errors never turns
- * checks on: a `check = false` still readable in it holds; otherwise the config in force before
- * keeps its value, and when only the defaults stand in for the broken file checks are held off
- * until it is fixed.
- * @param {{ errors: number, inForce: boolean, raw: boolean | null, hadConfig: boolean }} read
+ * checks off that it does not state: when its TOML parses, its `check` (true when missing)
+ * applies as in a valid file, so a value from a newer build never keeps the user from the
+ * release that accepts it. Only when `check` cannot be read, since the file may then say
+ * `check = false`, does the config in force before keep its value, and when only the defaults
+ * stand in for the file (at startup) checks are held until it is fixed.
+ * @param {{ errors: number, inForce: boolean, raw: boolean | "missing" | null,
+ *   hadConfig: boolean }} read
  *   `inForce`: `updates.check` of the config in force after the read; `raw`: rawUpdatesCheck;
  *   `hadConfig`: a config (not the fallback) was in force before the read
  * @returns {{ check: boolean, held: boolean }}
  */
 export function updatesCheckAfterRead({ errors, inForce, raw, hadConfig }) {
   if (!errors) return { check: inForce, held: false };
-  if (raw === false) return { check: false, held: false };
+  if (raw === "missing") return { check: true, held: false };
+  if (raw !== null) return { check: raw, held: false };
   if (!hadConfig) return { check: false, held: true };
   return { check: inForce, held: false };
 }
 
 /**
- * Checks run unless the pref `vimma.update.enabled` or `[updates] check` turns them off.
- * @param {{ pref: boolean, config: { check: boolean } | null }} input
+ * Checks run unless the pref `vimma.update.enabled` or `[updates] check` turns them off. Checks
+ * held for an unreadable config.toml run only when the user asks (`:update`), because a request
+ * typed in person outweighs an opt-out the file might hold; the pref still applies.
+ * @param {{ pref: boolean, config: { check: boolean } | null, held?: boolean, asked?: boolean }}
+ *   input  `config`: null before config.toml is read; while held it is not the user's
  */
-export function updatesEnabled({ pref, config }) {
+export function updatesEnabled({ pref, config, held = false, asked = false }) {
+  if (held) return asked && pref;
   return pref && config?.check !== false;
 }

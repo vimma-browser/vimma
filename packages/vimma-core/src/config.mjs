@@ -1251,17 +1251,21 @@ export function reloadConfig(active, text, { mac = false } = {}) {
 
 /**
  * `[updates] check` as the file says it, even when the file as a whole has errors elsewhere
- * (docs/specs/m6a-updater.md decision 31): a boolean, or null when the TOML does not parse or
- * the key is missing or not a boolean.
+ * (docs/specs/m6a-updater.md decision 31): a boolean; "missing" when the TOML parses and says
+ * nothing about it; null when it cannot be read (the TOML does not parse, `updates` is not a
+ * table, `check` is not a boolean, or `[updates]` has other keys but no `check`, such as a
+ * misspelt `chekc = false`), since the file may then mean `check = false`.
  * @param {string} text
- * @returns {boolean | null}
+ * @returns {boolean | "missing" | null}
  */
 export function rawUpdatesCheck(text) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return null;
   const updates = parsed.value.updates;
-  const check = isTable(updates) ? updates.check : undefined;
-  return typeof check === "boolean" ? check : null;
+  if (updates === undefined) return "missing";
+  if (!isTable(updates)) return null;
+  if (updates.check === undefined) return Object.keys(updates).length ? null : "missing";
+  return typeof updates.check === "boolean" ? updates.check : null;
 }
 
 /**

@@ -1094,6 +1094,9 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
     expect(rawUpdatesCheck(broken)).toBe(false);
     expect(rawUpdatesCheck("schema = 2\n[updates\n")).toBeNull();
     expect(rawUpdatesCheck("schema = 2\n[updates]\ncheck = 'no'\n")).toBeNull();
+    expect(rawUpdatesCheck("schema = 2\nupdates = 1\n")).toBeNull();
+    // A misspelt opt-out may mean check = false.
+    expect(rawUpdatesCheck("schema = 2\n[updates]\nchekc = false\n")).toBeNull();
     expect(
       updatesCheckAfterRead({ errors: 0, inForce: true, raw: null, hadConfig: false }),
     ).toEqual({
@@ -1106,7 +1109,7 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
       check: false,
       held: false,
     });
-    // Defaults stand in for a broken file at startup: no check until it is fixed.
+    // Defaults stand in for a file that does not parse at startup: no check until it is fixed.
     expect(
       updatesCheckAfterRead({ errors: 1, inForce: true, raw: null, hadConfig: false }),
     ).toEqual({
@@ -1120,6 +1123,45 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
         held: false,
       },
     );
+  });
+
+  test("a file that parses but has errors checks as a valid file would (#741)", () => {
+    // A value from a newer build (an unknown provider cli) must not lock the user out of the
+    // release that accepts it.
+    const newer = 'schema = 2\n[[agent.providers]]\nname = "x"\nkind = "cli"\ncli = "future"\n';
+    expect(parseConfig(newer).errors).toHaveLength(1);
+    expect(rawUpdatesCheck(newer)).toBe("missing");
+    expect(rawUpdatesCheck("schema = 2\n[updates]\n")).toBe("missing");
+    expect(rawUpdatesCheck("schema = 2\n[updates]\ncheck = true\n[keys]\nnope = 1\n")).toBe(true);
+    for (const hadConfig of [false, true]) {
+      for (const inForce of [false, true]) {
+        expect(updatesCheckAfterRead({ errors: 1, inForce, raw: "missing", hadConfig })).toEqual({
+          check: true,
+          held: false,
+        });
+        expect(updatesCheckAfterRead({ errors: 1, inForce, raw: true, hadConfig })).toEqual({
+          check: true,
+          held: false,
+        });
+        expect(updatesCheckAfterRead({ errors: 1, inForce, raw: false, hadConfig })).toEqual({
+          check: false,
+          held: false,
+        });
+      }
+    }
+  });
+
+  test(":update runs while checks are held, never past a stated opt-out", () => {
+    expect(updatesEnabled({ pref: true, config: { check: false }, held: true })).toBe(false);
+    expect(updatesEnabled({ pref: true, config: { check: false }, held: true, asked: true })).toBe(
+      true,
+    );
+    expect(updatesEnabled({ pref: false, config: { check: false }, held: true, asked: true })).toBe(
+      false,
+    );
+    expect(updatesEnabled({ pref: true, config: { check: false }, asked: true })).toBe(false);
+    expect(updatesEnabled({ pref: false, config: null, asked: true })).toBe(false);
+    expect(updatesEnabled({ pref: true, config: { check: true }, asked: true })).toBe(true);
   });
 
   test("either the file or the pref turns checks off", () => {

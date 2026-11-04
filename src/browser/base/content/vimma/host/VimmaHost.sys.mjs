@@ -625,7 +625,7 @@ async function restartAsking(s) {
  */
 async function checkUpdates(s) {
   s.notice.show("checking for updates…");
-  const r = await VimmaUpdates.check();
+  const r = await VimmaUpdates.check({ asked: true });
   switch (r.outcome) {
     case "offer": {
       const offer = /** @type {NonNullable<typeof r.offer>} */ (r.offer);
