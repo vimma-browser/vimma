@@ -110,3 +110,42 @@ export function popupBarHint({ inField = false, locked = false }) {
   if (locked) return inField ? "Esc, then Esc close" : "Esc close";
   return inField ? "Esc, then y allow · n block" : "y allow · n block · Esc close";
 }
+
+/**
+ * @typedef {object} DialogState
+ * @property {boolean} armed  it has shown for the arming delay with no key in between
+ * @property {boolean} inField  focus is in one of the dialog's text fields
+ * @property {boolean} pending  a key sequence is under way (after ctrl+b)
+ * @property {boolean} accept  the dialog shows its main button
+ * @property {boolean} cancel  the dialog shows its cancel button, the one Esc runs
+ * @property {boolean} [repeat]  the key is held down
+ */
+
+/**
+ * What `key` does in one of Firefox's dialogs over a tab or the window (docs/specs/
+ * firefox-dialogs.md): the permission prompt's keys and guards. `y` runs the main button and `n`
+ * the cancel button, the one Esc already runs and the safe choice ("Stay on page", "Cancel").
+ * Esc, Enter and Tab stay Firefox's. A dialog's text field types the letters.
+ * @param {string} key
+ * @param {DialogState} s
+ * @returns {{ kind: "pass" | "wait" | "accept" | "cancel" }}
+ */
+export function dialogKey(key, s) {
+  if (s.pending || s.inField) return { kind: "pass" };
+  if (!(key === "y" && s.accept) && !(key === "n" && s.cancel)) return { kind: "pass" };
+  if (!s.armed || s.repeat) return { kind: "wait" };
+  return { kind: key === "y" ? "accept" : "cancel" };
+}
+
+/**
+ * The keys line inside a dialog, named after its own buttons. With a text field (a page's
+ * prompt(), a sign-in) the letters type, and the line names Enter and Esc, which Firefox gives
+ * the dialog.
+ * @param {{ accept: string, cancel: string, field?: boolean }} labels
+ */
+export function dialogHint({ accept, cancel, field = false }) {
+  const [yes, no] = field ? ["Enter", "Esc"] : ["y", "n"];
+  const parts = [`${yes} ${hintLabel(accept)}`];
+  if (cancel.trim()) parts.push(`${no} ${hintLabel(cancel)}`);
+  return parts.join(" · ");
+}

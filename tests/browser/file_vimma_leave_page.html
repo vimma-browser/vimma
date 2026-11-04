@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_dialog_keys.js: a page with unsaved changes, whose beforeunload
+   - handler makes Firefox ask "Leave page?" before the tab closes. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma leave page</title>
+  </head>
+  <body>
+    <p>Unsaved changes.</p>
+    <script>
+      window.addEventListener("beforeunload", (e) => e.preventDefault());
+    </script>
+  </body>
+</html>
