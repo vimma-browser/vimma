@@ -104,7 +104,8 @@ hands it a key typed in one of the window's dialogs. No upstream file changes.
 6. **Questions that are not `commonDialog.xhtml` are left as Firefox has them, because each is
    built differently and needs its own change.** The external protocol question and the download
    question keep `Enter`, `Esc` and `Tab`. (Since changed: the external protocol questions now
-   follow the scheme; the download question still keeps Firefox's keys.)
+   follow the scheme, and so does the download question; see the two "Since changed" sections
+   below.)
 
 ### Audit of questions
 
@@ -119,7 +120,7 @@ hands it a key typed in one of the window's dialogs. No upstream file changes.
 | Vimma's `y/N` questions (restart, update, close a workspace)    | `y`; any other key, `Esc` included, no  | yes, `(y/N)` in the question           |
 | Site permissions picker (`:site`)                               | picker keys (`j`, `k`, `Enter`, `Esc`)  | yes, picker hint                       |
 | External protocol question and its application list             | `y`, `n` (this spec), `Esc`, `Tab`      | yes, `y open link · n cancel`          |
-| Download question                                               | `Enter`, `Esc`, `Tab` (Firefox's)       | no (Design 6)                          |
+| Download question (open with or save)                           | `y`, `n` (this spec), `Esc`, `Tab`      | yes, `y ok · n cancel`                 |
 
 The agent question keeps `a` (always for this site) and `x` (mute), because they answer
 questions a yes or a no cannot; Vimma's `y/N` questions keep their Vim-style `(y/N)` suffix,
@@ -159,6 +160,31 @@ the same answer, with the same risk, as `y` in a permission prompt:
 
 Tests: `browser_vimma_dialog_keys.js`, `protocol_permission_n_cancels_y_opens` and
 `protocol_app_chooser`.
+
+### Since changed: the download question
+
+The download question (`unknownContentType.xhtml`, "What should Firefox do with this file?")
+follows the scheme too, because `y` saving a file or opening it with an application is the same
+kind of answer as opening a link with one: `y` presses OK (open with or save, as picked), `n`
+presses Cancel and cancels the download.
+
+- It is a window of its own (`HelperAppDlg.sys.mjs`, `reallyShow`), not a `SubDialog` frame, so
+  its keys never pass through `VimmaHost`. `DialogKeys` watches for new windows
+  (`Services.ww.registerNotification`) and takes one whose opener is its browser window and
+  whose document is the download question; the window watcher sets that opener by the window's
+  `load`, not at `domwindowopened`. Its keys are taken by a capture listener in that window, and
+  a key sequence under way in the browser window does not apply there.
+- The line goes in at `load`, before `HelperAppDlg` fills the dialog in, so the window sizes
+  itself to it (`postShowCallback`); its labels follow the buttons as in the other dialogs.
+- The wait starts at the window's `load`, which is when it is shown. `y` also waits for Firefox's
+  OK button, which `EnableDelayHelper` keeps disabled until the window has had focus for
+  `security.dialog_enable_delay`.
+- The window takes none of Vimma's theme (`theme-host.mjs` themes only `commonDialog.xhtml`
+  among windows of their own), so the line has the fallbacks, `monospace` and `GrayText`, and
+  matches the window's own look. Theming the window is a change to `firefox-surfaces-theme`.
+
+Tests: `browser_vimma_dialog_keys.js`, `download_n_cancels_y_saves`, with a launcher that only
+records what the dialog asks of it.
 
 ## Security and privacy
 

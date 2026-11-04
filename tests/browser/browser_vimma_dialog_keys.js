@@ -272,3 +272,83 @@ add_task(async function protocol_app_chooser() {
   Assert.ok(true, "y opens the link with the chosen application");
   BrowserTestUtils.removeTab(tab);
 });
+
+// The download question (unknownContentType.xhtml, "What should Firefox do with this file?") is a
+// window of its own, opened over the browser window, and takes the same keys: `y` presses OK
+// (open or save, as picked), `n` cancels the download.
+const DOWNLOAD_DIALOG = "chrome://mozapps/content/downloads/unknownContentType.xhtml";
+
+/**
+ * A download launcher that only records what the question asks of it, so that no file is saved
+ * and no application started (the shape uriloader/exthandler's tests mock).
+ */
+function mockLauncher() {
+  const mime = Cc["@mozilla.org/mime;1"]
+    .getService(Ci.nsIMIMEService)
+    .getFromTypeAndExtension("text/x-vimma-test", null);
+  mime.alwaysAskBeforeHandling = true;
+  mime.preferredAction = Ci.nsIHandlerInfo.saveToDisk;
+  mime.appendExtension("vimmatest");
+  registerCleanupFunction(() => {
+    const handlers = Cc["@mozilla.org/uriloader/handler-service;1"].getService(
+      Ci.nsIHandlerService,
+    );
+    if (handlers.exists(mime)) handlers.remove(mime);
+  });
+  const calls = [];
+  const launcher = {
+    MIMEInfo: mime,
+    source: Services.io.newURI("https://example.com/report.vimmatest"),
+    suggestedFileName: "report.vimmatest",
+    targetFileIsExecutable: false,
+    contentLength: 42,
+    targetFile: null,
+    timeDownloadStarted: Date.now() * 1000,
+    cancel: () => calls.push("cancel"),
+    promptForSaveDestination: () => calls.push("save"),
+    setDownloadToLaunch: () => calls.push("open"),
+    launchLocalFile: () => calls.push("open"),
+    setWebProgressListener() {},
+    saveDestinationAvailable() {},
+    QueryInterface: ChromeUtils.generateQI(["nsICancelable", "nsIHelperAppLauncher"]),
+  };
+  return { launcher, calls };
+}
+
+/** Shows the download question for `launcher` over this window; resolves with its window. */
+async function downloadDialog(launcher) {
+  const opened = BrowserTestUtils.domWindowOpenedAndLoaded(
+    null,
+    (w) => w.document.documentURI === DOWNLOAD_DIALOG,
+  );
+  Cc["@mozilla.org/helperapplauncherdialog;1"]
+    .createInstance(Ci.nsIHelperAppLauncherDialog)
+    .show(launcher, window, null);
+  const w = await opened;
+  await SimpleTest.promiseFocus(w);
+  return w;
+}
+
+add_task(async function download_n_cancels_y_saves() {
+  let { launcher, calls } = mockLauncher();
+  let w = await downloadDialog(launcher);
+  Assert.ok(lineWaits(w), "the keys line waits while the question is not armed");
+  await until(() => lineShows(w, "y ok · n cancel"), "the line names the keys");
+  let closed = BrowserTestUtils.windowClosed(w);
+  press("n", w);
+  await closed;
+  Assert.deepEqual(calls, ["cancel"], "n cancels the download");
+
+  ({ launcher, calls } = mockLauncher());
+  w = await downloadDialog(launcher);
+  press("y", w);
+  await wait(50);
+  Assert.ok(!w.closed && calls.length === 0, "y before the question is armed waits");
+  await until(() => lineShows(w, "y ok · n cancel") && acceptEnabled(w), "armed");
+  w.document.getElementById("mode").selectedItem = w.document.getElementById("save");
+  closed = BrowserTestUtils.windowClosed(w);
+  press("y", w);
+  await closed;
+  await until(() => calls.includes("save"), "the save runs on its own timer");
+  Assert.ok(!calls.includes("cancel"), "y saves the file");
+});

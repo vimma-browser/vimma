@@ -10,6 +10,10 @@
 // window's capture listeners: SubDialog listens there itself (SubDialog.sys.mjs,
 // _addDialogEventListeners). PromptKeys hands those keys here.
 //
+// The download question (unknownContentType.xhtml) is a window of its own, opened over the
+// browser window (HelperAppDlg.sys.mjs, reallyShow): it is found through the window watcher and
+// its keys are taken in its own window, which VimmaHost never sees.
+//
 // `y` clicks the main button and `n` the cancel button, the one Firefox's Esc runs, with the
 // permission prompt's guards: a key counts once the dialog has shown for
 // security.notification_enable_delay with no key in between, and never in the dialog's own text
@@ -17,6 +21,7 @@
 // on a disabled button does nothing. A line in the dialog names the keys once they count.
 
 import { dialogHint, dialogKey } from "../core/prompt-keys.mjs";
+import { chordFromEvent, formatKey } from "../core/keys.mjs";
 
 /**
  * @typedef {object} Kind  how one of Firefox's dialog documents is built
@@ -24,6 +29,7 @@ import { dialogHint, dialogKey } from "../core/prompt-keys.mjs";
  * @property {string} parent  the selector of the element the line closes
  * @property {string} [indent]  the element whose inline margin the line takes
  * @property {string[]} [fields]  the containers of its text fields, hidden when unused
+ * @property {boolean} [window]  a window of its own, not a SubDialog frame
  */
 
 /** @type {Record<string, Kind>} */
@@ -44,6 +50,13 @@ const KINDS = {
   "chrome://mozapps/content/handling/appChooser.xhtml": {
     dialog: "dialog",
     parent: "#rememberContainer",
+  },
+  // HelperAppDlg.sys.mjs: "What should Firefox do with this file?", open with or save.
+  "chrome://mozapps/content/downloads/unknownContentType.xhtml": {
+    dialog: "#unknownContentType",
+    parent: "#container",
+    indent: "#intro",
+    window: true,
   },
 };
 
@@ -78,6 +91,8 @@ export class DialogKeys {
     this.dialogs = new WeakMap();
     this.onFrame = (/** @type {Event} */ e) => this.frameLoaded(e);
     this.onOpen = (/** @type {Event} */ e) => this.dialogShown(e);
+    this.onWindow = (/** @type {any} */ subject, /** @type {string} */ topic) =>
+      topic === "domwindowopened" && this.windowOpened(subject);
   }
 
   init() {
@@ -86,11 +101,43 @@ export class DialogKeys {
     // has labelled its buttons, and before SubDialog measures the frame on load.
     this.win.addEventListener("DOMFrameContentLoaded", this.onFrame, true);
     this.win.addEventListener("dialogopen", this.onOpen, true);
+    /** @type {any} */ (Services).ww.registerNotification(this.onWindow);
   }
 
   uninit() {
     this.win.removeEventListener("DOMFrameContentLoaded", this.onFrame, true);
     this.win.removeEventListener("dialogopen", this.onOpen, true);
+    /** @type {any} */ (Services).ww.unregisterNotification(this.onWindow);
+  }
+
+  /**
+   * A new window: one of ours when it is a dialog window opened over this browser window. Its
+   * load listener is added during openWindow, before HelperAppDlg adds its own (initDialog), so
+   * the line is in place before the dialog sizes itself to its content (postShowCallback).
+   * @param {Window} w
+   */
+  windowOpened(w) {
+    w.addEventListener(
+      "load",
+      () => {
+        // Only a window opened over this one: the window watcher sets its opener after
+        // domwindowopened, by load.
+        if (/** @type {any} */ (w).opener !== this.win) return;
+        const doc = w.document;
+        const kind = KINDS[doc.documentURI];
+        if (!kind?.window || !this.attach(doc, kind)) return;
+        w.addEventListener(
+          "keydown",
+          (e) => {
+            const chord = chordFromEvent(e);
+            // A key sequence under way in the browser window does not reach this window.
+            if (chord) this.onKey(e, doc, formatKey(chord), false);
+          },
+          true,
+        );
+      },
+      { once: true },
+    );
   }
 
   /**
@@ -119,10 +166,21 @@ export class DialogKeys {
     if (!frame?.classList?.contains("dialogFrame")) return;
     const doc = frame.contentDocument;
     const kind = KINDS[doc?.documentURI];
-    if (!kind || this.dialogs.has(doc)) return;
-    const dialog = doc.querySelector(kind.dialog);
+    if (kind && !kind.window) this.attach(doc, kind);
+  }
+
+  /**
+   * Adds the keys line to a dialog document and starts its wait.
+   * @param {Document} doc
+   * @param {Kind} kind
+   * @returns {boolean} whether the dialog is now one of ours
+   */
+  attach(doc, kind) {
+    const view = /** @type {any} */ (doc.defaultView);
+    if (!view || this.dialogs.has(doc)) return false;
+    const dialog = /** @type {any} */ (doc.querySelector(kind.dialog));
     const parent = doc.querySelector(kind.parent);
-    if (!dialog || !parent) return;
+    if (!dialog || !parent) return false;
     const line = doc.createElementNS(HTML_NS, "div");
     line.className = HINT_CLASS;
     // The buttons say what they do; the line is a reminder of the keys, not a second label.
@@ -140,21 +198,20 @@ export class DialogKeys {
     parent.append(line);
     // In line with the message, whose XUL <description> has a margin of its own.
     const body = kind.indent && doc.querySelector(kind.indent);
-    if (body)
-      line.style.marginInlineStart = doc.defaultView.getComputedStyle(body).marginInlineStart;
+    if (body) line.style.marginInlineStart = view.getComputedStyle(body).marginInlineStart;
     const now = ChromeUtils.now();
     /** @type {Shown} */
     const state = { at: now, keyAt: now, timer: 0, line, dialog, kind };
     this.label(doc, state);
     // The protocol questions label their buttons through Fluent, after the frame has loaded
     // and after document.l10n.ready: follow the buttons' labels rather than reading them once.
-    const relabel = new doc.defaultView.MutationObserver(() => this.label(doc, state));
+    const relabel = new view.MutationObserver(() => this.label(doc, state));
     for (const type of ["accept", "cancel"]) {
       const button = dialog.getButton(type);
       if (button) relabel.observe(button, { attributeFilter: ["label", "hidden"] });
     }
     this.dialogs.set(doc, state);
-    doc.defaultView.addEventListener(
+    view.addEventListener(
       "unload",
       () => {
         relabel.disconnect();
@@ -164,6 +221,7 @@ export class DialogKeys {
       { once: true },
     );
     this.arm(state);
+    return true;
   }
 
   /**
@@ -225,9 +283,10 @@ export class DialogKeys {
    * @param {KeyboardEvent} e
    * @param {Document} doc
    * @param {string} key  formatKey's notation
+   * @param {boolean} [pending]  a key sequence is under way in the browser window
    * @returns {boolean} whether it was the dialog's key (consumed)
    */
-  onKey(e, doc, key) {
+  onKey(e, doc, key, pending = this.host.pending()) {
     const state = /** @type {Shown} */ (this.dialogs.get(doc));
     const now = ChromeUtils.now();
     const armed = now >= this.armedAt(state);
@@ -246,7 +305,7 @@ export class DialogKeys {
         !!focused?.mozIsTextField?.(false) ||
         focused?.localName === "textarea" ||
         !!focused?.isContentEditable,
-      pending: this.host.pending(),
+      pending,
       accept: shown(accept),
       cancel: shown(cancel),
       repeat: e.repeat,

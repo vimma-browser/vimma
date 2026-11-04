@@ -842,6 +842,10 @@ the same keys: `y` opens the link (Open Link, Choose Application) and `n` cancel
 outside the browser starts. `y` also waits until Firefox enables its Open Link button, which it
 keeps greyed out for a moment after the question appears.
 
+The download question, "What should Vimma do with this file?" for a file type set to always ask,
+takes them too: `y` presses OK, which opens or saves the file as picked in the question, and `n`
+cancels the download. `y` waits until the OK button is enabled.
+
 ### Colours and themes
 
 The status bar, the command line, the `ctrl+b ?` overlay, the pickers and prompts, link hints,
