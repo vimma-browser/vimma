@@ -3489,5 +3489,10 @@ bindings, so it is accepted here.
   [`pdf state outside its bounds is dropped`](../packages/vimma-core/test/pdf.test.mjs),
   [`a page label cannot carry bidi or zero-width characters`](../packages/vimma-core/test/pdf.test.mjs)
 
+- V10. Vimma **must not** write any `pdfjs.*` pref other than the default
+  `pdfjs.featuresNotificationImpressionLimit = 0` (`firefox-branding.js`), and never one that
+  changes scripting, fetching or sandboxing (`pdfjs.enableScripting`, `pdfjs.disabled`).
+  [`pdf_mode_writes_no_pdfjs_prefs`](../tests/browser/browser_vimma_pdf_status.js)
+
 The parent sends the viewer nothing yet; the rules for operations, the outline, presentation
-mode, pdf.js prefs and marks come with the pull requests that add them (pdf-mode, Delivery).
+mode and marks come with the pull requests that add them (pdf-mode, Delivery).
