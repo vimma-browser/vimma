@@ -13,7 +13,7 @@ import { DEFAULT_CONFIG, WORKSPACE_DEFAULTS, formatConfigTemplate } from "./defa
 import { INSERT_SITE_MODES } from "./editable.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "./hints.mjs";
 import { KeymapError, compileKeymap } from "./keymap.mjs";
-import { MODES, isMode } from "./modes.mjs";
+import { MODES, isKeymapTable } from "./modes.mjs";
 import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "./panes.mjs";
 import { MAIN_SIZE_DEFAULT } from "./layouts.mjs";
 import { APPEARANCES, BUILTIN_THEMES, PALETTE_KEYS, isHexColor, normalizeHex } from "./theme.mjs";
@@ -484,10 +484,10 @@ function validate(raw, declared, warnings = []) {
       } else if (key === "insert_editing") {
         if (gated(path)) continue;
         if (typeof v !== "boolean") typeError(path, v, "a boolean");
-      } else if (isMode(key)) {
+      } else if (isKeymapTable(key)) {
         table(path, v);
       } else {
-        unknownKey(path, key, [...MODES, ...MODAL_KEYS]);
+        unknownKey(path, key, [...MODES, "pdf", ...MODAL_KEYS]);
       }
     }
   }
@@ -532,8 +532,9 @@ function validate(raw, declared, warnings = []) {
 
   if (isTable(raw.unbind)) {
     for (const [mode, v] of Object.entries(raw.unbind)) {
-      if (!isMode(mode)) fail(["unbind", mode], `unknown mode "${mode}"`, closest(mode, MODES));
-      else if (!Array.isArray(v)) typeError(["unbind", mode], v, "a list of key strings");
+      if (!isKeymapTable(mode)) {
+        fail(["unbind", mode], `unknown mode "${mode}"`, closest(mode, [...MODES, "pdf"]));
+      } else if (!Array.isArray(v)) typeError(["unbind", mode], v, "a list of key strings");
     }
   }
 

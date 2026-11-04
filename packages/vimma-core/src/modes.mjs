@@ -24,6 +24,35 @@ export const MODES = Object.freeze([
 ]);
 
 /**
+ * Keymap contexts (docs/specs/pdf-mode.md decision 4, docs/adr/024-keymap-contexts.md): which
+ * bindings normal mode has, by the document the selected tab shows. `pdf` is Firefox's PDF viewer,
+ * whose trie is normal's with `[modal.pdf]` merged over it; `page` is every other document. Every
+ * other mode has one trie whatever the context.
+ * @typedef {"page" | "pdf"} Context
+ */
+
+/** @type {readonly Context[]} */
+export const CONTEXTS = Object.freeze(["page", "pdf"]);
+
+/**
+ * @param {string} context
+ * @returns {context is Context}
+ */
+export function isContext(context) {
+  return /** @type {readonly string[]} */ (CONTEXTS).includes(context);
+}
+
+/**
+ * The names a `[modal.<name>]` table and an `[unbind] <name>` list take: a mode, or a context
+ * other than `page` (whose bindings are normal mode's).
+ * @param {string} name
+ * @returns {name is Mode | "pdf"}
+ */
+export function isKeymapTable(name) {
+  return isMode(name) || (name !== "page" && isContext(name));
+}
+
+/**
  * Modes in which leading digits are a count (`3gt`); in the side panel `4j` and `12G`
  * (docs/specs/side-panel-counts.md decision 1).
  */
