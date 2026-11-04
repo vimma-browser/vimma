@@ -351,6 +351,8 @@ add_task(async function deleting_a_workspace_asks_what_becomes_of_its_bookmarks(
     async () => (await placeOf(`${PAGE}?mover`))?.join("/") === "toolbar/main",
     "its bookmark moved to main",
   );
+  // The move lands before the emptied folder's removal: the notice comes once both are done.
+  await until(() => noticeText().includes('moved its 1 bookmark to "main"'), "and says so");
   Assert.equal(await PlacesUtils.bookmarks.fetch(moveGuid), null, "its folder is gone");
 
   // d: the folder and its bookmarks are deleted, as asked.
