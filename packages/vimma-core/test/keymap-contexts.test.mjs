@@ -1,10 +1,11 @@
 import { describe, test, expect } from "vitest";
 import { parseConfig } from "../src/config.mjs";
+import { DEFAULT_CONFIG } from "../src/defaults.mjs";
 import { createDispatcher } from "../src/dispatcher.mjs";
 import { boundChords } from "../src/firefox-keys.mjs";
 import { KeymapError, compileKeymap } from "../src/keymap.mjs";
 import { CONTEXTS } from "../src/modes.mjs";
-import { formatKey, parseKey } from "../src/keys.mjs";
+import { formatKey, parseBinding, parseKey } from "../src/keys.mjs";
 
 // Keymap contexts (docs/specs/pdf-mode.md decision 4, docs/adr/024-keymap-contexts.md): the `pdf`
 // trie of normal mode is normal's bindings with [modal.pdf] merged over them.
@@ -25,11 +26,52 @@ describe("keymap contexts", () => {
     expect(CONTEXTS).toEqual(["page", "pdf"]);
   });
 
-  test("with no [modal.pdf], the pdf trie of normal mode binds what the page trie binds", () => {
+  test("the pdf trie of normal mode is the page trie with the default [modal.pdf] over it", () => {
     const km = compileKeymap();
-    expect(km.sequences("normal", "pdf")).toEqual(km.sequences("normal", "page"));
+    const pdfDefaults = new Set(
+      Object.keys(DEFAULT_CONFIG.modal.pdf).map((t) => parseBinding(t).map(formatKey).join(" ")),
+    );
+    const pdf = new Map(km.sequences("normal", "pdf").map((e) => [e.seq, e.name]));
+    for (const e of km.sequences("normal", "page")) {
+      if (!pdfDefaults.has(e.seq)) expect(pdf.get(e.seq), e.seq).toBe(e.name);
+    }
     expect(km.sequences("normal")).toEqual(km.sequences("normal", "page"));
-    expect(lookup(km.trie("normal", "pdf"), "d")).toBe(lookup(km.trie("normal"), "d"));
+  });
+
+  // docs/specs/pdf-mode.md Behaviour 2 to 4 and decision 5: zathura's keys in the PDF viewer.
+  test.each([
+    ["J", "pdf_next_page", "J"],
+    ["K", "pdf_previous_page", undefined],
+    ["gg", "pdf_first_page", "scroll_top"],
+    ["G", "pdf_last_page", "scroll_bottom"],
+    ["H", "pdf_page_top", "history_back"],
+    ["L", "pdf_page_bottom", "history_forward"],
+    ["P", "pdf_page_top", "open_clipboard_tab"],
+    ["ctrl+f", "pdf_screen_down", "find_forward"],
+    ["+", "pdf_zoom_in", undefined],
+    ["z i", "pdf_zoom_in", undefined],
+    ["z shift+i", "pdf_zoom_in", undefined],
+    ["-", "pdf_zoom_out", undefined],
+    ["z o", "pdf_zoom_out", undefined],
+    ["z shift+o", "pdf_zoom_out", undefined],
+    ["=", "pdf_zoom_set", undefined],
+    ["z z", "pdf_zoom_set", undefined],
+    ["z shift+z", "pdf_zoom_set", undefined],
+    ["z 0", "pdf_zoom_set", undefined],
+    ["a", "pdf_fit_page", undefined],
+    ["s", "pdf_fit_width", undefined],
+    ["d", "pdf_dual_page", "scroll_half_down"],
+    ["D", "pdf_first_page_alone", undefined],
+    ["w", "pdf_single_page", undefined],
+    ["r", "pdf_rotate", "reload"],
+    ["R", "reload", undefined],
+    ["Y", "yank_url", undefined],
+    ["f5", "pdf_presentation", "reload"],
+  ])("%s is %s in the pdf context, %s on pages", (key, pdf, page) => {
+    const km = compileKeymap();
+    const seq = key.replace(/^(g)(g)$/, "$1 $2");
+    expect(lookup(km.trie("normal", "pdf"), seq)).toBe(pdf);
+    expect(lookup(km.trie("normal", "page"), seq)).toBe(page === "J" ? undefined : page);
   });
 
   test("[modal.pdf] shadows normal's binding only in the pdf context", () => {

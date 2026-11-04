@@ -10,6 +10,7 @@
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
 import { openPrompt, watchFindBars } from "./find-bar.mjs";
+import { PdfOps } from "./pdf-ops.mjs";
 
 /** @import { FindStatus } from "../core/find.mjs" */
 
@@ -262,6 +263,8 @@ export class Find {
     if (isPdf(s.browser)) {
       // pdf.js debounces a typed search and closing the bar drops it: search now, as the bar's
       // own Enter does (a "findagain" event, which pdf.js runs at once for a new query).
+      // A search hit is a jump: ctrl+o comes back to where it started (pdf-mode decision 9).
+      PdfOps.run(s.browser, "jump");
       s.findbar.onFindAgainCommand(s.backward);
       // The finder never reports for pdf.js: the search stays in the status bar as on a page,
       // with pdf.js's own count when the PDF mode reports it (docs/specs/pdf-mode.md 13).
@@ -432,6 +435,7 @@ export class Find {
       // that Esc can clear pdf.js's highlights. n and N keep it closed, as on a web page: close
       // it again, which gives the focus back to the page (findbar.close, Finder.focusContent).
       const hidden = findbar.hidden;
+      PdfOps.run(browser, "jump");
       findbar.onFindAgainCommand(backward);
       if (hidden && !findbar.hidden) findbar.close(true);
       return;

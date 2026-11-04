@@ -6,7 +6,7 @@
 // section 20): which tabs are the viewer, decided from the parent's own view of the top document
 // (V2), and the state their adapter reports, parsed before anything shows it (V6).
 
-import { parsePdfState } from "../core/pdf.mjs";
+import { parsePdfOp, parsePdfState } from "../core/pdf.mjs";
 import { PDF_FEATURE_PREF, isPdfJsPrincipal } from "../actors/pdf-view.mjs";
 
 /** @import { PdfState } from "../core/pdf.mjs" */
@@ -100,6 +100,27 @@ export const PdfOps = {
   },
 
   /**
+   * Sends the viewer in `browser` one operation (V7): a name and a number, to the actor of the
+   * top document only when the parent itself sees the pdf.js viewer there (V2).
+   * @param {any} browser
+   * @param {string} op  one of PDF_OPS
+   * @param {number} [n]
+   * @returns {boolean} false when `browser` does not show the PDF viewer
+   */
+  run(browser, op, n = 0) {
+    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const msg = parsePdfOp({ op, n });
+    if (!wg || !msg) return false;
+    try {
+      wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfOp", msg);
+      return true;
+    } catch {
+      // the document is going away
+      return false;
+    }
+  },
+
+  /**
    * @param {(browser: any) => void} fn  called after a tab's PDF state changes
    * @returns {() => void} unsubscribe
    */
@@ -123,4 +144,54 @@ export function pdfFindStatus(find, pdf) {
   return limit > 0 && total > limit
     ? { ...find, notFound: false, current: 0, total: -1, limit }
     : { ...find, notFound: false, current, total, limit };
+}
+
+/** What a PDF key says outside the PDF viewer (`:12` on a web page). */
+export const NOT_PDF = "only in the PDF viewer";
+
+/**
+ * The PDF viewer's actions (docs/specs/pdf-mode.md delivery PR 3): each sends one operation
+ * with the key's count, which the adapter applies to pdf.js's live values.
+ * @type {Readonly<Record<string, [op: string, sign?: number]>>}
+ */
+const PDF_ACTIONS = Object.freeze({
+  "pdf.next_page": ["next"],
+  "pdf.previous_page": ["prev"],
+  "pdf.first_page": ["first"],
+  "pdf.last_page": ["last"],
+  "pdf.page_top": ["page_top"],
+  "pdf.page_bottom": ["page_bottom"],
+  "pdf.screen_down": ["screen"],
+  "pdf.zoom_in": ["zoom"],
+  "pdf.zoom_out": ["zoom", -1],
+  "pdf.zoom_set": ["scale"],
+  "pdf.fit_page": ["fit_page"],
+  "pdf.fit_width": ["fit_width"],
+  "pdf.dual_page": ["dual"],
+  "pdf.first_page_alone": ["first_alone"],
+  "pdf.single_page": ["single"],
+  "pdf.rotate": ["rotate"],
+  "pdf.presentation": ["presentation"],
+});
+
+/** The action ids that exist only while the PDF mode is on (the command line hides the rest). */
+export const PDF_ACTION_IDS = Object.freeze(Object.keys(PDF_ACTIONS));
+
+/**
+ * The host's runners for the PDF viewer's actions.
+ * @param {(browser: any, text: string) => void} notice
+ * @returns {Record<string, (browser: any, action: { count?: number }) => void>}
+ */
+export function pdfRunners(notice) {
+  return Object.fromEntries(
+    Object.entries(PDF_ACTIONS).map(([id, [op, sign = 1]]) => [
+      id,
+      (browser, action) => {
+        // Zoom steps carry their direction; every other count is a count (0 for none).
+        const count = action.count ?? 0;
+        const n = op === "zoom" ? sign * (count || 1) : count;
+        if (!PdfOps.run(browser, op, n)) notice(browser, NOT_PDF);
+      },
+    ]),
+  );
 }

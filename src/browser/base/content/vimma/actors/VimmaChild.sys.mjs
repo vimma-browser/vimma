@@ -543,7 +543,14 @@ export class VimmaChild extends JSWindowActorChild {
   receiveMessage(msg) {
     switch (msg.name) {
       case "Vimma:Scroll":
+        // pdf.js's presentation mode shows one page at a time: the scroll keys turn pages.
+        if (this.#pdf?.turnPage(msg.data.kind, msg.data.count)) return true;
         return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+      case "Vimma:PdfOp":
+        // An operation name and a number (docs/security.md section 20, V7), checked again by
+        // the adapter; only the top-level viewer has one.
+        this.#pdf?.run(msg.data);
+        return undefined;
       case "Vimma:ScrollFraction": {
         // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16): the element `j`
         // scrolls, as a fraction of how far it can go.

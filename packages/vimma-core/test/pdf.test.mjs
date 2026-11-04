@@ -1,5 +1,18 @@
 import { describe, test, expect } from "vitest";
-import { parsePdfState, pdfPageText, stripInvisible } from "../src/pdf.mjs";
+import {
+  PDF_SCROLL,
+  PDF_SPREAD,
+  parsePdfOp,
+  parsePdfState,
+  pdfPageText,
+  pdfPageTarget,
+  pdfRotation,
+  pdfScrollMode,
+  pdfSpread,
+  pdfZoomPercent,
+  pdfZoomStep,
+  stripInvisible,
+} from "../src/pdf.mjs";
 
 // docs/specs/pdf-mode.md, docs/security.md section 18 (V6).
 const good = { page: 3, pages: 12, label: "", find: { current: 0, total: 0 } };
@@ -48,5 +61,87 @@ describe("pdfPageText", () => {
     expect(pdfPageText(good)).toBe("page 3/12");
     expect(pdfPageText({ ...good, label: "3" })).toBe("page 3/12");
     expect(pdfPageText({ ...good, page: 4, pages: 120, label: "iv" })).toBe("page iv (4/120)");
+  });
+});
+
+// Delivery PR 3: zathura's page, zoom and layout keys (decisions 6 to 8; security.md V7).
+describe("pdfPageTarget", () => {
+  const at = (op, count, page = 3, pages = 12) => pdfPageTarget(op, count, page, pages);
+  test("G and gg go to the last and first page, with a count to that page", () => {
+    expect(at("last", 0)).toBe(12);
+    expect(at("first", 0)).toBe(1);
+    expect(at("last", 5)).toBe(5);
+    expect(at("first", 5)).toBe(5);
+  });
+  test("a count past the last page goes to the last page", () => {
+    expect(at("last", 99)).toBe(12);
+    expect(at("first", 99)).toBe(12);
+  });
+  test("J and K step by the count, stopping at the ends", () => {
+    expect(at("next", 0)).toBe(4);
+    expect(at("next", 3, 11)).toBe(12);
+    expect(at("prev", 2)).toBe(1);
+    expect(at("prev", 0, 1)).toBe(1);
+  });
+});
+
+describe("pdf zoom", () => {
+  test("steps by pdf.js's 10 % with its rounding, a count of steps at once", () => {
+    expect(pdfZoomStep(1, 1)).toBe(1.1);
+    expect(pdfZoomStep(1, -1)).toBe(0.9);
+    expect(pdfZoomStep(1, 2)).toBe(1.3);
+  });
+  test("clamps to pdf.js's 10 % to 2500 %", () => {
+    expect(pdfZoomStep(24, 5)).toBe(25);
+    expect(pdfZoomStep(0.1, -3)).toBe(0.1);
+  });
+  test("= sets 100 %, 150= sets 150 %, clamped", () => {
+    expect(pdfZoomPercent(0)).toBe(1);
+    expect(pdfZoomPercent(150)).toBe(1.5);
+    expect(pdfZoomPercent(9999)).toBe(25);
+  });
+});
+
+describe("pdf layout", () => {
+  const { NONE, ODD, EVEN } = PDF_SPREAD;
+  test("d toggles one page and the last spread, the first page alone the first time", () => {
+    expect(pdfSpread("dual", NONE, EVEN)).toEqual({ mode: EVEN, last: EVEN });
+    expect(pdfSpread("dual", EVEN, EVEN)).toEqual({ mode: NONE, last: EVEN });
+    expect(pdfSpread("dual", ODD, EVEN)).toEqual({ mode: NONE, last: ODD });
+    expect(pdfSpread("dual", NONE, ODD)).toEqual({ mode: ODD, last: ODD });
+  });
+  test("D toggles whether the first page stands alone, showing two pages", () => {
+    expect(pdfSpread("first_alone", EVEN, EVEN)).toEqual({ mode: ODD, last: ODD });
+    expect(pdfSpread("first_alone", ODD, ODD)).toEqual({ mode: EVEN, last: EVEN });
+    expect(pdfSpread("first_alone", NONE, EVEN)).toEqual({ mode: ODD, last: ODD });
+  });
+  test("w toggles one page at a time and the previous scroll mode", () => {
+    const { VERTICAL, WRAPPED, PAGE } = PDF_SCROLL;
+    expect(pdfScrollMode(VERTICAL, VERTICAL)).toEqual({ mode: PAGE, previous: VERTICAL });
+    expect(pdfScrollMode(PAGE, WRAPPED)).toEqual({ mode: WRAPPED, previous: PAGE });
+    expect(pdfScrollMode(PAGE, PAGE)).toEqual({ mode: VERTICAL, previous: PAGE });
+  });
+  test("r rotates 90 degrees clockwise per count", () => {
+    expect(pdfRotation(0, 0)).toBe(90);
+    expect(pdfRotation(270, 1)).toBe(0);
+    expect(pdfRotation(0, 6)).toBe(180);
+  });
+});
+
+describe("the parent sends only operations and numbers", () => {
+  test("a known operation with a bounded integer passes", () => {
+    expect(parsePdfOp({ op: "next", n: 3 })).toEqual({ op: "next", n: 3 });
+    expect(parsePdfOp({ op: "zoom", n: -2 })).toEqual({ op: "zoom", n: -2 });
+  });
+  test.each([
+    ["no message", null],
+    ["an unknown operation", { op: "eval", n: 0 }],
+    ["a prototype name", { op: "constructor", n: 0 }],
+    ["text for a number", { op: "next", n: "3" }],
+    ["a fraction", { op: "next", n: 1.5 }],
+    ["a huge number", { op: "next", n: 1e9 }],
+    ["an extra field", { op: "next", n: 1, css: "x" }],
+  ])("%s is dropped", (_, raw) => {
+    expect(parsePdfOp(raw)).toBeNull();
   });
 });

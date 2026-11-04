@@ -140,12 +140,14 @@ describe("bindingsJson (docs/bindings.json, mirrored by vimma.dev)", () => {
       expect(shown, a.name).toEqual(table.find((r) => r.name === a.name)?.bindings);
       for (const k of a.keys) {
         expect(k.chords).toEqual(k.keys.split(" "));
-        if (k.mode) expect(MODES).toContain(k.mode);
+        if (k.mode) expect([...MODES, "pdf"]).toContain(k.mode);
       }
     }
     const keysOf = (name) =>
       data.groups.flatMap((g) => g.actions).find((a) => a.name === name)?.keys;
     expect(keysOf("help_close")).toContainEqual({ keys: "esc", chords: ["esc"], mode: "help" });
+    // The PDF viewer's bindings carry their context like a mode (docs/specs/pdf-mode.md).
+    expect(keysOf("pdf_next_page")).toEqual([{ keys: "J", chords: ["J"], mode: "pdf" }]);
     expect(keysOf("rename_tab")).toEqual([
       { keys: "ctrl+b shift+t", chords: ["ctrl+b", "shift+t"] },
     ]);
@@ -155,7 +157,7 @@ describe("bindingsJson (docs/bindings.json, mirrored by vimma.dev)", () => {
     const data = bindingsJson(compileKeymap({ keys: { prefix: "ctrl+a" } }));
     expect(data.prefix).toBe("ctrl+a");
     expect(data.legend).toMatch(/^prefix = ctrl\+a\b/);
-    expect(data.modes).toEqual([...MODES]);
+    expect(data.modes).toEqual([...MODES, "pdf"]);
     const all = data.groups.flatMap((g) => g.actions).flatMap((a) => a.keys);
     expect(all.map((k) => k.keys)).toContain("ctrl+a ?");
   });

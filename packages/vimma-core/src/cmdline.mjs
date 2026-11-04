@@ -309,6 +309,9 @@ const runResult = (command, action, text) =>
     ...(text ? { text } : {}),
   });
 
+/** The action `:{n}` runs, with n as its count. */
+const PAGE_ACTION = "pdf.first_page";
+
 /** Every word a user can type, for suggestions. */
 const ALL_WORDS = [...byWord.keys(), ...ACTION_NAMES];
 /**
@@ -343,6 +346,12 @@ export function parseCommandLine(line, { hidden = [] } = {}) {
   const raw = /** @type {string} */ (m[2]).trim();
   const text = unwrap(raw);
 
+  // `:12` goes to page 12 of the PDF (docs/specs/pdf-mode.md Behaviour 2), as Vim's `:12` goes
+  // to a line; the host says so outside the PDF viewer.
+  if (/^[1-9]\d{0,5}$/.test(word) && !hidden.includes(PAGE_ACTION)) {
+    if (raw) return unexpected(word);
+    return runResult(word, { id: PAGE_ACTION, count: Number(word) });
+  }
   let command = isHidden(word, hidden) ? undefined : byWord.get(word);
   if (!command) {
     const found = resolveActionName(word);

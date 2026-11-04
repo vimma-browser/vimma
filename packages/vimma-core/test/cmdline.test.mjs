@@ -550,3 +550,23 @@ describe(":agent (docs/specs/builtin-agent.md Behaviour 14)", () => {
     expect(completeCommandLine(":agen").candidates.map((c) => c.value)).toContain("agent");
   });
 });
+
+describe(":{n} (docs/specs/pdf-mode.md Behaviour 2)", () => {
+  test("a number goes to that page of the PDF", () => {
+    expect(parseCommandLine(":12")).toEqual({
+      kind: "run",
+      command: "12",
+      action: { id: "pdf.first_page", count: 12 },
+    });
+    expect(parseCommandLine("3")).toMatchObject({ action: { id: "pdf.first_page", count: 3 } });
+  });
+
+  test("zero, text after it or the PDF mode hidden is not a page", () => {
+    expect(parseCommandLine(":0")).toMatchObject({ kind: "error" });
+    expect(parseCommandLine(":12 x")).toMatchObject({ kind: "error" });
+    expect(parseCommandLine(":12", { hidden: ["pdf.first_page"] })).toMatchObject({
+      kind: "error",
+      error: { code: "unknown-command" },
+    });
+  });
+});

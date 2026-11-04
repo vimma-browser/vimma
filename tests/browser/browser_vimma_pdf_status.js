@@ -13,7 +13,7 @@ const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
 const { PdfOps } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/pdf-ops.mjs");
-const { PDFJS_CONTRACT } = ChromeUtils.importESModule(
+const { PDFJS_CONTRACT, PDFJS_DOM } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/pdf-view.mjs",
 );
 
@@ -88,6 +88,12 @@ add_task(async function the_adapter_matches_the_shipped_pdfjs() {
         `PDFViewerApplication.${path} is ${type} (got ${found[path]})`,
       );
     }
+    // The elements the adapter measures for H, L, P and ctrl+f.
+    const dom = await SpecialPowers.spawn(browser, [PDFJS_DOM], (sel) => ({
+      container: content.document.querySelector(sel.container)?.scrollHeight > 0,
+      page: !!content.document.querySelector(sel.page.replace("{n}", "1")),
+    }));
+    Assert.deepEqual(dom, { container: true, page: true }, "the viewer's container and pages");
   });
 });
 
