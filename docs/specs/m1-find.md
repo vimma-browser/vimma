@@ -43,7 +43,8 @@ What Vimma adds (`host/find.mjs`, class `Find`, one per window, created by `Vimm
   tab's search is still open but the focus has left its field, after a click on the page, used
   to do nothing; it now focuses the field again with its text selected, keeping where the search
   started and taking the key's direction; `Find.start` in `host/find.mjs` and `docs/guide.md`,
-  "Find".)
+  "Find". Since changed again: a click outside the prompt now closes the search (#685, under
+  "Settled"), so this applies when the focus leaves the field without a click.)
 - **Keys typed while Firefox creates the bar** (one animation frame on first use per tab) are
   buffered and put into the field, then an `input` event runs the bar's own search; `Enter` and
   `Esc` in that window are queued or cancel. So `/word<Enter>` typed at full speed works and no
@@ -117,7 +118,14 @@ limit, notFound }`; `VimmaHost.status(win).find` returns it for the selected tab
   `Esc` close it, because a search ends on purpose, as in Vim, and `/` takes the focus back
   into the open prompt. The prompt sits at the bottom centre, above the status bar, because
   that is where the bar was and where the status bar shows the search; this placement is
-  provisional and may be revisited.)
+  provisional and may be revisited.) (Since changed: #685 settles both. A click outside the
+  prompt (on the page or on Firefox's chrome) closes it as `Esc` does, with no match selected
+  and nothing left in the status bar, because the pickers close that way and a click usually
+  means the user has moved on. Unlike `Esc` the page is not scrolled back, because the click
+  acts on what is on screen, and the click's own focus (a field, the address bar) wins over the
+  page's; a click inside the prompt keeps it open (`Find#onMouseDown` in `host/find.mjs`). The
+  prompt stays at the bottom centre over the page, above the status bar, because it keeps the
+  top of the page, where a match usually lands and the user reads, uncovered.)
 - **Smartcase** for `/`, `?`, `n`, `N` and `ctrl+f` alike: `accessibility.typeaheadfind.casesensitive`
   defaults to 2, the bar's "auto" mode (`str != str.toLowerCase()`, the same test as core's
   `isCaseSensitive`), in `firefox-branding.js`; a user value in `about:config` wins. The bar
