@@ -4,9 +4,26 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.15](https://github.com/vimma-browser/vimma/compare/v0.1.14...v0.1.15) · Firefox 159.0.1 (2026-11-04)
+
+
 ### Added
 
 - Vimma's own agent runs Codex too: in the chat window, `Esc`, `m`, then `add: agent CLI (Claude Code, Codex)` finds the `codex` on your `PATH`, and tasks run on Codex's own login and plan. In the browser it reaches only the agent workspace, through the same tools, grants and checkpoints as any agent; Vimma turns off every other MCP server of Codex's configuration, and its apps and plugins, for each run. Its own shell commands and file changes keep the sandbox and approvals of `~/.codex/config.toml`, and each is a `◆` line in the transcript. Codex cannot take a message during a task, so one sent then is marked `(sent after the running task)` and becomes the next task once this one is done; after a stop it is not sent. The new e2e scenario `m0-agent-cli` and its baselines `m0-agent-cli-setup-list`, `m0-agent-cli-question` and `m0-agent-cli-stopped` show setup's list, a payment question in the window's prompt slot, and a stopped task.
+
+* **agent:** codex as a provider of the chat window ([#728](https://github.com/vimma-browser/vimma/issues/728)) ([38e5268](https://github.com/vimma-browser/vimma/commit/38e52682778098e3d3128610feea8fff557cec9d)), closes [#609](https://github.com/vimma-browser/vimma/issues/609)
+* **panel:** counts, gg/G and {N}G in the side and bookmarks panels ([#724](https://github.com/vimma-browser/vimma/issues/724)) ([e9f475d](https://github.com/vimma-browser/vimma/commit/e9f475d197c8b896a13a6760ede54816d49648ec)), closes [#721](https://github.com/vimma-browser/vimma/issues/721)
+* **updates:** show flatpak update as the flatpak's update command ([#725](https://github.com/vimma-browser/vimma/issues/725)) ([b6ec810](https://github.com/vimma-browser/vimma/commit/b6ec81010e41b8d5517e6cf5c4faf845f53bb9aa))
+
+
+### Fixed
+
+* **bench:** refuse an unknown base name without fetching it from origin ([#737](https://github.com/vimma-browser/vimma/issues/737)) ([1a525ab](https://github.com/vimma-browser/vimma/commit/1a525abd8ec74a59d3232e5b4d6ab895d664430b))
+
+
+### Changed
+
+* Firefox 159.0.1 ([MFSA 2026-123](https://www.mozilla.org/en-US/security/advisories/mfsa2026-123/)) ([#736](https://github.com/vimma-browser/vimma/issues/736)) ([9555577](https://github.com/vimma-browser/vimma/commit/955557799ed8b02a707c34d6973705837fe77e7b))
 
 ## [0.1.14](https://github.com/vimma-browser/vimma/compare/v0.1.13...v0.1.14) · Firefox 159.0 (2026-11-01)
 
