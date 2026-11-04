@@ -852,3 +852,18 @@ describe("the security cues outrank the kept URL", () => {
     );
   });
 });
+
+describe("the PDF viewer's page (docs/specs/pdf-mode.md)", () => {
+  const pdf = { page: 4, pages: 120, label: "iv", find: { current: 0, total: 0 } };
+  test("page 3/12 and page iv (4/120) beside the tab, nothing outside a PDF", () => {
+    expect(
+      texts(statusSegments({ ...base, pdf: { ...pdf, page: 3, pages: 12, label: "" } })).page,
+    ).toBe("page 3/12");
+    const segs = statusSegments({ ...base, pdf });
+    expect(texts(segs).page).toBe("page iv (4/120)");
+    const ids = segs.map((s) => s.id);
+    expect(ids.indexOf("page")).toBe(ids.indexOf("tab") + 1);
+    expect(texts(statusSegments(base)).page).toBeUndefined();
+    expect(texts(statusSegments({ ...base, pdf: null })).page).toBeUndefined();
+  });
+});

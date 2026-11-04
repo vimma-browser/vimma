@@ -156,6 +156,7 @@ import {
   sitePermissionKey,
 } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
+import { PdfOps, pdfFindStatus } from "./pdf-ops.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -260,6 +261,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * @property {() => void} onAgentChat  the built-in agent's conversations changed: the status
  *   bar redraws
  * @property {Find} find  `/`, `?`, `n`, `N` over Firefox's find bar (m1-find)
+ * @property {() => void} stopPdf  ends the PDF state subscription (pdf-ops.mjs)
  * @property {boolean} private  a private window: its keys are not logged (private-workspace)
  * @property {boolean} resize  in resize mode (`prefix+r`, m4-split-panes sub-spec 5, ADR-014)
  */
@@ -1503,6 +1505,10 @@ export const VimmaHost = {
         changed: () => this._emit(state),
       }),
       find: new Find(win, () => this._emit(state)),
+      // The PDF viewer's page and match count (docs/specs/pdf-mode.md decision 13).
+      stopPdf: PdfOps.subscribe((browser) => {
+        if (browser?.ownerDocument?.defaultView === win) this._emit(state);
+      }),
       agentPrompt: new AgentPrompt(win),
       updatePrompt: new AgentPrompt(win, {
         id: "vimma-update-prompt",
@@ -1769,6 +1775,7 @@ export const VimmaHost = {
     WindowWorkspaces.uninit(win);
     state.statusBar?.uninit();
     state.find.destroy();
+    state.stopPdf();
     state.listeners.clear();
     states.delete(win);
     windows.delete(win);
@@ -1787,7 +1794,8 @@ export const VimmaHost = {
    *   agent?: { waiting: number, minutes: number | null, ran: boolean } | null,
    *   update?: import("../core/updates.mjs").UpdateNotice | null,
    *   element?: import("../core/statusbar.mjs").ElementStatus | null,
-   *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null }}
+   *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null,
+   *   pdf?: import("../core/pdf.mjs").PdfState | null }}
    */
   status(win) {
     const state = states.get(win);
@@ -1797,7 +1805,9 @@ export const VimmaHost = {
       // The chat window's transcript has focus: its normal mode (docs/specs/builtin-agent.md 14).
       mode: state.find.typing ? "command" : state.agentChat.inNormal ? "normal" : this._mode(state),
       pending: state.dispatcher.pending(),
-      find: browser ? state.find.status(browser) : null,
+      find: browser ? pdfFindStatus(state.find.status(browser), PdfOps.state(browser)) : null,
+      // docs/specs/pdf-mode.md decision 13: `page 3/12` while the selected tab shows a PDF.
+      pdf: browser ? PdfOps.state(browser) : null,
       pane: paneStatus(win),
       workspace: privateStatus(win) ?? WindowWorkspaces.get(win)?.status() ?? null,
       configErrors: settings.configErrors,
@@ -2213,7 +2223,9 @@ export const VimmaHost = {
   _dispatch(win, state, e, mode, chord) {
     const first = state.dispatcher.pending().length === 0;
     this._clearTimer(win, state);
-    const result = state.dispatcher.dispatch(mode, chord);
+    // The PDF viewer's bindings while its tab is selected (ADR-024): the parent's own view.
+    const context = PdfOps.context(/** @type {any} */ (win).gBrowser?.selectedBrowser);
+    const result = state.dispatcher.dispatch(mode, chord, context);
     // about:vimma's last keys; never a private window's (private-workspace decision 8b).
     if (!("replay" in result) && !state.private) KeyLog.record(mode, chord, result);
     // The overlay is modal: in help mode every key is ours, handled or not, so nothing reaches

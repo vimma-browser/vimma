@@ -6,6 +6,7 @@
  * The always-visible status bar as plain data (spec m2-core-logic): segments with text and theme
  * token names, fitted to a character budget. The host renders them; no HTML here.
  */
+import { pdfPageText } from "./pdf.mjs";
 import { formatConfigError } from "./config.mjs";
 import { findStatusText } from "./find.mjs";
 import { displayLabel } from "./tablabels.mjs";
@@ -71,6 +72,8 @@ export { textWidth };
  *   (docs/specs/m6a-updater.md §5, updateNotice)
  * @property {ElementStatus | null} [element]  the focused text block in ELEMENT mode
  * @property {HintStatus | null} [hint]  the hint session (hints.mjs hintStatus)
+ * @property {import("./pdf.mjs").PdfState | null} [pdf]  the PDF viewer's state, when the
+ *   selected tab shows it (docs/specs/pdf-mode.md decision 13)
  * @property {string | null} [popups]  the selected page has Firefox's pop-up blocked bar: the cue
  *   (popups.mjs popupCue, docs/specs/popup-blocked.md)
  */
@@ -352,6 +355,7 @@ export function statusSegments(input) {
     element = null,
     hint = null,
     popups = null,
+    pdf = null,
   } = input;
   /** @type {Segment[]} */
   const left = [];
@@ -441,6 +445,10 @@ export function statusSegments(input) {
         priority: 4,
       }),
     );
+  }
+  if (pdf) {
+    // Beside the tab's place, in the same words (pdf-mode decision 13); drawn as text.
+    left.push(seg({ id: "page", text: pdfPageText(pdf), fg: "--vimma-statusbar-fg", priority: 4 }));
   }
   if (pane && pane.count > 1) {
     left.push(
