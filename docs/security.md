@@ -3441,3 +3441,53 @@ which Firefox's site information panel shows already, and stores nothing of its 
   the picker's ops, and the agent's keys are the spec's fixed list.
   [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.mjs),
   [`the whitelist is the spec's table`](../packages/vimma-core/test/agent-keys.test.mjs)
+
+## 20. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`)
+
+Vimma drives Firefox's pdf.js viewer through its content actor: it reads the page, page count,
+page label and find count to show them in the status bar, and chooses the PDF viewer's key
+bindings. It sits behind `vimma.feature.pdf_mode` while it is built. Spec:
+[pdf-mode](specs/pdf-mode.md).
+
+**Reach:** the PDF being viewed, through pdf.js, which a malformed PDF may compromise (pdf.js
+parses untrusted files, and CVE-2024-4367 let a PDF run script in the viewer); web pages, which
+can define `PDFViewerApplication` or frame a PDF. A compromised viewer is treated as a hostile
+page that also controls every pdf.js function and event the adapter touches. A compromised
+content process can claim pdf.js's principal for its top document, as it can claim any
+principal; that gives it no more than in-bounds status text and the user's own `[modal.pdf]`
+bindings, so it is accepted here.
+
+- V1. The adapter **must** waive Xrays only in a top-level document whose principal passes
+  `schemeIs("resource")` and `originNoSuffix === "resource://pdf.js"`, Firefox's own test
+  (`nsContentUtils::IsPDFJS`), so that it holds in every container; never on the content type,
+  the URL or the presence of `window.PDFViewerApplication`.
+  [`a_page_that_defines_PDFViewerApplication_gets_no_pdf_keys`](../tests/browser/browser_vimma_pdf_status.js),
+  [`pdf_keys_work_in_a_workspace_container`](../tests/browser/browser_vimma_pdf_status.js)
+- V2. The parent **must** decide the `pdf` keymap context from the top `WindowGlobalParent`'s
+  `documentPrincipal` with the same test, and **must** accept state only from the actor of that
+  window global; a pdf.js document in a frame or `<embed>` **must not** set the context or
+  report state. A document that only inherits pdf.js's principal (an `about:blank`, `blob:` or
+  `data:` page the viewer opens) is not the viewer: the parent also requires an `http`, `https`
+  or `file` document URI, which the viewer keeps from the PDF it shows.
+  [`a_pdf_in_a_frame_gets_no_pdf_context`](../tests/browser/browser_vimma_pdf_status.js)
+- V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction` (and, where
+  a later operation needs one, objects made with `Cu.cloneInto` into the viewer's window, as
+  `PdfJsChild` does); no chrome object **may** be passed in.
+  [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js)
+- V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
+  fields they need; the child **must** keep only values whose `typeof` is `number`, `boolean` or
+  `string` before `sendAsyncMessage`, and **must not** `await` a value returned by pdf.js.
+  [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js)
+- V5. Bursts of pdf.js callbacks and of chrome-only events (`pagesloaded`, which the viewer can
+  fire at will through `FirefoxCom.request("dispatchGlobalEvent")`) **must** be coalesced to at
+  most one state message per 100 ms per document.
+  [`a_flood_of_pagesloaded_is_coalesced`](../tests/browser/browser_vimma_pdf_status.js)
+- V6. The parent **must** parse every state record with `parsePdfState`, which bounds every
+  number, drops a page label over 32 characters and strips control and Unicode format characters
+  (categories Cc and Cf: bidirectional overrides and isolates, zero-width characters), and the
+  status bar **must** draw it as text.
+  [`pdf state outside its bounds is dropped`](../packages/vimma-core/test/pdf.test.mjs),
+  [`a page label cannot carry bidi or zero-width characters`](../packages/vimma-core/test/pdf.test.mjs)
+
+The parent sends the viewer nothing yet; the rules for operations, the outline, presentation
+mode, pdf.js prefs and marks come with the pull requests that add them (pdf-mode, Delivery).

@@ -263,6 +263,10 @@ export class Find {
       // pdf.js debounces a typed search and closing the bar drops it: search now, as the bar's
       // own Enter does (a "findagain" event, which pdf.js runs at once for a new query).
       s.findbar.onFindAgainCommand(s.backward);
+      // The finder never reports for pdf.js: the search stays in the status bar as on a page,
+      // with pdf.js's own count when the PDF mode reports it (docs/specs/pdf-mode.md 13).
+      const uri = s.browser.currentURI?.spec ?? "";
+      this.entries.set(s.browser, { query, backward: s.backward, notFound: false, uri });
       this.#finish(s, query, false);
       return;
     }

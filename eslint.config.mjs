@@ -128,6 +128,12 @@ export default [
     languageOptions: { globals: { Cu: "readonly" } },
   },
   {
+    // The PDF viewer's adapter waives Xrays on pdf.js's application object after its principal
+    // check and hands it exported callbacks (docs/security.md section 20, V1 and V3).
+    files: ["src/**/vimma/actors/pdf-view.mjs"],
+    languageOptions: { globals: { Cu: "readonly" } },
+  },
+  {
     // Agent pages launch no app: the component registrar wraps the external-protocol chooser
     // (docs/security.md M10).
     files: ["src/**/vimma/ctl/AgentPages.sys.mjs"],

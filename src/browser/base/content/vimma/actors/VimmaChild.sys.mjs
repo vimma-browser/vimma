@@ -38,6 +38,7 @@ import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
 import { textOfDocument } from "./text-model.mjs";
 import { GrepMatcher } from "./grep-matcher.mjs";
+import { PdfView } from "./pdf-view.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -237,6 +238,8 @@ export class VimmaChild extends JSWindowActorChild {
   #caret = new Caret();
   /** Element focus in this document (docs/specs/element-focus.md). */
   #block = new BlockFocus();
+  /** @type {PdfView | null} the pdf.js viewer's adapter, in its top document only */
+  #pdf = null;
   /**
    * Live grep (docs/specs/live-grep.md decision 14): this document's text model while the
    * picker is open, marked stale by any change to the document until the next query rebuilds it.
@@ -294,6 +297,8 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   didDestroy() {
+    this.#pdf?.destroy();
+    this.#pdf = null;
     this.#grepEnd();
     this.#block.destroy();
     try {
@@ -302,6 +307,18 @@ export class VimmaChild extends JSWindowActorChild {
       // the document is gone with its selection
     }
     this.#watched = null;
+  }
+
+  /**
+   * The adapter's state message; its timer can fire while the document goes away.
+   * @param {object} state
+   */
+  #sendPdf(state) {
+    try {
+      this.sendAsyncMessage("Vimma:PdfState", state);
+    } catch {
+      // the actor is being destroyed: the next document reports for itself
+    }
   }
 
   /** Listens to this document's selection (again, if the PresShell replaced it). */
@@ -373,6 +390,12 @@ export class VimmaChild extends JSWindowActorChild {
       }
       case "dragstart":
         this.#dragging = true;
+        return;
+      case "pagesloaded":
+        // Only pdf.js's own event (chrome-only, trusted); PdfView.attach checks the principal.
+        if (!event.isTrusted) return;
+        if (this.#pdf) this.#pdf.schedule();
+        else this.#pdf = PdfView.attach(this, (state) => this.#sendPdf(state));
     }
   }
 
