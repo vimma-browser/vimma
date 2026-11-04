@@ -168,7 +168,8 @@ add_task(async function a_page_that_defines_PDFViewerApplication_gets_no_pdf_key
           page: 3, pagesCount: 9,
           pdfViewer: { currentPageLabel: "x" },
           eventBus: { on() {}, off() {} },
-        };`);
+        };
+        window.dispatchEvent(new CustomEvent("pagesloaded", { bubbles: true }));`);
         content.dispatchEvent(new content.CustomEvent("pagesloaded", { bubbles: true }));
       });
       await new Promise((r) => setTimeout(r, 300));
@@ -180,39 +181,6 @@ add_task(async function a_page_that_defines_PDFViewerApplication_gets_no_pdf_key
     }
   } finally {
     BrowserTestUtils.removeTab(tab);
-  }
-});
-
-add_task(async function a_pdf_in_a_frame_gets_no_pdf_context() {
-  for (const tag of ["iframe", "embed"]) {
-    const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "https://example.com/");
-    const browser = tab.linkedBrowser;
-    try {
-      await SpecialPowers.spawn(browser, [PDF, tag], (url, t) => {
-        const el = content.document.createElement(t);
-        el.src = url;
-        el.style.cssText = "width:600px;height:600px";
-        content.document.body.append(el);
-      });
-      // The framed viewer exists and has a principal the parent recognises.
-      const frame = await TestUtils.waitForCondition(() =>
-        browser.browsingContext.children.find((bc) =>
-          bc.currentWindowGlobal?.documentPrincipal?.originNoSuffix?.startsWith("resource://pdf"),
-        ),
-      );
-      Assert.equal(PdfOps.context(browser), "page", `a PDF in an ${tag} keeps the page context`);
-      // A state message from the frame's actor is dropped.
-      const actor = frame.currentWindowGlobal.getActor("Vimma");
-      actor.receiveMessage({
-        name: "Vimma:PdfState",
-        data: { page: 1, pages: 2, label: "", find: { current: 0, total: 0 } },
-      });
-      await new Promise((r) => setTimeout(r, 300));
-      Assert.equal(PdfOps.state(browser), null, `no state from an ${tag}`);
-      Assert.equal(segment("page"), "", "no page segment");
-    } finally {
-      BrowserTestUtils.removeTab(tab);
-    }
   }
 });
 
@@ -235,6 +203,56 @@ async function recordingState(fn) {
   }
 }
 
+add_task(async function a_pdf_in_a_frame_gets_no_pdf_context() {
+  for (const tag of ["iframe", "embed"]) {
+    const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "https://example.com/");
+    const browser = tab.linkedBrowser;
+    try {
+      // The framed viewer's own actor sends nothing (pdf-view.mjs checks for a top document).
+      // The framed viewer's own actor sends nothing (pdf-view.mjs checks for a top document).
+      /** @type {any} */
+      let frame = null;
+      let fromFrame = 0;
+      await recordingState(async (seen) => {
+        await SpecialPowers.spawn(browser, [PDF, tag], (url, t) => {
+          const el = content.document.createElement(t);
+          el.src = url;
+          el.style.cssText = "width:600px;height:600px";
+          content.document.body.append(el);
+        });
+        // The framed viewer exists and has a principal the parent recognises.
+        frame = await TestUtils.waitForCondition(() =>
+          browser.browsingContext.children.find((bc) =>
+            bc.currentWindowGlobal?.documentPrincipal?.originNoSuffix?.startsWith("resource://pdf"),
+          ),
+        );
+        // pdf.js lays out its pages in the frame; a top viewer would have reported by now.
+        await SpecialPowers.spawn(frame, [], () =>
+          ContentTaskUtils.waitForCondition(
+            () => content.wrappedJSObject.PDFViewerApplication?.pagesCount > 0,
+            "the framed viewer has its pages",
+          ),
+        );
+        await new Promise((r) => setTimeout(r, 300));
+        fromFrame = seen.length;
+      });
+      Assert.equal(fromFrame, 0, `no state message from the ${tag}'s viewer`);
+      Assert.equal(PdfOps.context(browser), "page", `a PDF in an ${tag} keeps the page context`);
+      // A state message from the frame's actor is dropped.
+      const actor = frame.currentWindowGlobal.getActor("Vimma");
+      actor.receiveMessage({
+        name: "Vimma:PdfState",
+        data: { page: 1, pages: 2, label: "", find: { current: 0, total: 0 } },
+      });
+      await new Promise((r) => setTimeout(r, 300));
+      Assert.equal(PdfOps.state(browser), null, `no state from an ${tag}`);
+      Assert.equal(segment("page"), "", "no page segment");
+    } finally {
+      BrowserTestUtils.removeTab(tab);
+    }
+  }
+});
+
 add_task(async function a_hostile_viewer_gets_only_primitives_through() {
   await withPdf(async (browser) => {
     await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
@@ -251,7 +269,7 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
         });
         Object.defineProperty(app.pdfViewer, "currentPageLabel", {
           configurable: true,
-          get: fn(() => obj({ toString: () => "evil" })),
+          get: fn(() => "x".repeat(1e6)),
         });
         // A count whose fields are a getter and an object.
         const count = new w.Object();
@@ -274,7 +292,7 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
           }
         }
         Assert.ok(Number.isNaN(data.pages), "the thenable page count reached the parent as NaN");
-        Assert.equal(data.label, "", "the object label reached the parent as nothing");
+        Assert.lessOrEqual(data.label.length, 33, "a huge label is cut in the child");
         Assert.deepEqual(data.find, { current: 0, total: 0 }, "a count of objects is not taken");
       }
       await TestUtils.waitForCondition(() => segment("page") === "", "and the page segment");

@@ -3431,7 +3431,10 @@ bindings. It sits behind `vimma.feature.pdf_mode` while it is built. Spec:
 **Reach:** the PDF being viewed, through pdf.js, which a malformed PDF may compromise (pdf.js
 parses untrusted files, and CVE-2024-4367 let a PDF run script in the viewer); web pages, which
 can define `PDFViewerApplication` or frame a PDF. A compromised viewer is treated as a hostile
-page that also controls every pdf.js function and event the adapter touches.
+page that also controls every pdf.js function and event the adapter touches. A compromised
+content process can claim pdf.js's principal for its top document, as it can claim any
+principal; that gives it no more than in-bounds status text and the user's own `[modal.pdf]`
+bindings, so it is accepted here.
 
 - V1. The adapter **must** waive Xrays only in a top-level document whose principal passes
   `schemeIs("resource")` and `originNoSuffix === "resource://pdf.js"`, Firefox's own test
@@ -3442,7 +3445,9 @@ page that also controls every pdf.js function and event the adapter touches.
 - V2. The parent **must** decide the `pdf` keymap context from the top `WindowGlobalParent`'s
   `documentPrincipal` with the same test, and **must** accept state only from the actor of that
   window global; a pdf.js document in a frame or `<embed>` **must not** set the context or
-  report state.
+  report state. A document that only inherits pdf.js's principal (an `about:blank`, `blob:` or
+  `data:` page the viewer opens) is not the viewer: the parent also requires an `http`, `https`
+  or `file` document URI, which the viewer keeps from the PDF it shows.
   [`a_pdf_in_a_frame_gets_no_pdf_context`](../tests/browser/browser_vimma_pdf_status.js)
 - V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction` (and, where
   a later operation needs one, objects made with `Cu.cloneInto` into the viewer's window, as

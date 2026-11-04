@@ -8,6 +8,8 @@
 // it (V4) and sends at most one state message per 100 ms (V5). Every pdf.js member it uses is in
 // PDFJS_CONTRACT, which a mochitest holds to the pdf.js this build ships.
 
+import { PDF_MAX_LABEL } from "../core/pdf.mjs";
+
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -156,14 +158,16 @@ export class PdfView {
     return {
       page: num(() => app.page),
       pages: num(() => app.pagesCount),
-      label: str(() => app.pdfViewer.currentPageLabel),
+      // Bounded here too, so that a hostile viewer cannot push a huge string over IPC (V4).
+      label: str(() => app.pdfViewer.currentPageLabel).slice(0, PDF_MAX_LABEL + 1),
       find: { current: this.#find.current, total: this.#find.total },
     };
   }
 
   /** Sends the state once the burst it is part of is over (V5). */
   schedule() {
-    if (this.#timer) return;
+    // The pref turned off after attaching: send nothing (the parent drops it anyway).
+    if (this.#timer || !Services.prefs.getBoolPref(PDF_FEATURE_PREF, false)) return;
     this.#timer = lazy.setTimeout(() => {
       this.#timer = null;
       this.#send(this.read());

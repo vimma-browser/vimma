@@ -25,8 +25,21 @@ const listeners = new Set();
  */
 function viewerGlobal(browser) {
   const wg = browser?.browsingContext?.currentWindowGlobal;
-  return wg && isPdfJsPrincipal(wg.documentPrincipal) ? wg : null;
+  if (!wg || wg.isInitialDocument || !isPdfJsPrincipal(wg.documentPrincipal)) return null;
+  // The viewer keeps the PDF's own URL (PdfStreamConverter sets channel.originalURI). A document
+  // that only inherits pdf.js's principal (an about:blank, blob: or data: page the viewer opens)
+  // is not the viewer.
+  const scheme = wg.documentURI?.scheme ?? "";
+  return ["http", "https", "file"].includes(scheme) ? wg : null;
 }
+
+/** @param {PdfState} a @param {PdfState} b */
+const sameState = (a, b) =>
+  a.page === b.page &&
+  a.pages === b.pages &&
+  a.label === b.label &&
+  a.find.current === b.find.current &&
+  a.find.total === b.find.total;
 
 export const PdfOps = {
   /** Whether the PDF mode is on (CONTRIBUTING.md, "Unfinished features"). */
@@ -71,6 +84,10 @@ export const PdfOps = {
     const wg = viewerGlobal(browser);
     if (!wg || wg !== actor.manager) return;
     const state = parsePdfState(data);
+    const old = states.get(browser);
+    // Nothing changed: no redraw, so a flood of equal messages costs the parent little.
+    if (state && old && old.windowId === wg.innerWindowId && sameState(old.state, state)) return;
+    if (!state && !old) return;
     if (state) states.set(browser, { windowId: wg.innerWindowId, state });
     else states.delete(browser);
     for (const fn of listeners) {

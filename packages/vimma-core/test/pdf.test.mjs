@@ -36,9 +36,10 @@ describe("parsePdfState", () => {
   });
 
   test("a page label cannot carry bidi or zero-width characters", () => {
-    const s = parsePdfState({ ...good, label: "i‮v​\u0007" });
+    const s = parsePdfState({ ...good, label: "i\u202Ev\u200B\u0007" });
     expect(s?.label).toBe("iv");
-    expect(stripInvisible("a⁦b⁩c﻿")).toBe("abc");
+    expect(stripInvisible("a\u2066b\u2069c\uFEFF")).toBe("abc");
+    expect(stripInvisible("i v\u2028x\u2029\u3000")).toBe("i vx");
   });
 });
 

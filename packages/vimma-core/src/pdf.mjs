@@ -23,8 +23,12 @@ const MAX_MATCHES = 10_000_000;
  * @property {{ current: number, total: number }} find  the find controller's count, 0/0 for none
  */
 
-/** Control (Cc) and format (Cf) characters: bidi overrides and isolates, zero-width marks. */
-const INVISIBLE = /[\p{Cc}\p{Cf}]/gu;
+/**
+ * Control (Cc) and format (Cf) characters: bidi overrides and isolates, zero-width marks; and
+ * separators other than a plain space (line and paragraph separators, wide spaces), which
+ * could break or stretch the status bar.
+ */
+const INVISIBLE = /[\p{Cc}\p{Cf}]|(?! )\p{Z}/gu;
 
 /**
  * Text from a PDF made safe to show: no control or format characters (V6, V8).
