@@ -1068,7 +1068,8 @@ export function pageFirst(
 /**
  * The chords Vimma binds, as the first key of a binding in any mode: Firefox's keys on them are
  * off (docs/specs/firefox-keys.md decision 2, "bound means off").
- * @param {{ sequences: (mode: import("./modes.mjs").Mode) => { seq: string }[] }} keymap
+ * @param {{ sequences: (mode: import("./modes.mjs").Mode, context?: import("./modes.mjs").Context) =>
+ *   { seq: string }[] }} keymap
  * @returns {Set<string>}
  */
 export function boundChords(keymap) {
@@ -1078,6 +1079,10 @@ export function boundChords(keymap) {
     for (const { seq } of keymap.sequences(mode))
       out.add(/** @type {string} */ (seq.split(" ")[0]));
   }
+  // A chord bound only in the PDF viewer is Vimma's there; Firefox's key stays off everywhere,
+  // since which keys are off cannot follow the selected tab.
+  for (const { seq } of keymap.sequences("normal", "pdf"))
+    out.add(/** @type {string} */ (seq.split(" ")[0]));
   return out;
 }
 
