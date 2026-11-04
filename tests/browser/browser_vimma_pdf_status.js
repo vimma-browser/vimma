@@ -332,3 +332,27 @@ add_task(async function the_feature_pref_off_shows_nothing() {
     await SpecialPowers.popPrefEnv();
   }
 });
+
+add_task(async function pdf_mode_writes_no_pdfjs_prefs() {
+  // docs/specs/pdf-mode.md decision 17: the "PDFs just got easier" bar never covers a document.
+  Assert.equal(
+    Services.prefs.getIntPref("pdfjs.featuresNotificationImpressionLimit"),
+    0,
+    "the features notification has no impressions to show",
+  );
+  const before = Services.prefs
+    .getChildList("pdfjs.")
+    .filter((name) => Services.prefs.prefHasUserValue(name));
+  await withPdf(async (browser) => {
+    await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
+    const box = gBrowser.getNotificationBox(browser);
+    Assert.ok(
+      !box.allNotifications.some((n) => /pdf/i.test(String(n.getAttribute("value") ?? ""))),
+      "no PDF features notification on the viewer",
+    );
+  });
+  const after = Services.prefs
+    .getChildList("pdfjs.")
+    .filter((name) => Services.prefs.prefHasUserValue(name));
+  Assert.deepEqual(after, before, "opening a PDF in the PDF mode writes no pdfjs.* pref");
+});
