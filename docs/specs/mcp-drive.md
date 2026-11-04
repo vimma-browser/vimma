@@ -163,8 +163,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
   and scrolling, element rects and viewport checks work in it. vimma-mcp's Research (Firefox,
   "Hidden tabs can be read") found the same for reading. (Since changed: a new tab gets that
   size only once the parent has laid out its `<browser>`, which on a busy chrome can come after
-  the page loaded, so an agent's `f` in a tab without a size yet waits up to 1.5 s for it before
-  it collects; #605.)
+  the page loaded, so every hint collection of a top frame without a size yet (an agent's `f`
+  and `vimma_elements`, the user's hints on a fresh tab) waits up to 1.5 s for it before it
+  collects; #605.)
 - **Find without the find bar.** Each `<browser>` has a `finder` (`FinderParent`) with
   `fastFind(searchString, linksOnly, drawOutline)` (`toolkit/modules/FinderParent.sys.mjs:408`),
   `findAgain(searchString, findBackwards, linksOnly, drawOutline)` (`:417`) and

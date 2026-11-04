@@ -750,9 +750,9 @@ export class VimmaChild extends JSWindowActorChild {
     const texts = data.texts === true && !elements;
     if (!this.browsingContext?.parent && !hasSize(win)) {
       if (!(await this.#sized(win))) return null;
-      // Collections that wait can end out of order. Generations only grow, so a newer one of
-      // the same kind has answered meanwhile, and the elements it stored are the ones the parent
-      // will act on: they stay.
+      // Collections that wait can end out of order. Generations only grow, so a stored newer
+      // generation means a newer collection of the same kind answered meanwhile; the elements it
+      // stored are the ones the parent acts on, and they stay.
       const stored = elements ? this.#agentEls : texts ? null : this.#hints;
       if (stored && stored.gen > gen) return null;
     }
