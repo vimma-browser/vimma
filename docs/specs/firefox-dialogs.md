@@ -145,6 +145,12 @@ the same answer, with the same risk, as `y` in a permission prompt:
   wait, because it opens something outside the browser; `n` and the line wait only for Vimma's,
   because cancelling is always safe and a list with nothing picked still has a key that answers
   it. This also applies to `commonDialog.xhtml`, whose `enableDelay` used to hold back `n` too.
+- The wait starts again when `SubDialog` shows the frame (`dialogopen`, after it has waited
+  for Fluent and sized the frame), for every dialog kind, because the frame loads hidden and the
+  wait must count only time the dialog was on screen. Only `SubDialog` frames (`.dialogFrame`)
+  are taken. The application list has Firefox's own button delay only when the permission
+  question was skipped (`ContentDispatchChooser.sys.mjs`, `enableButtonDelay`); after an
+  accepted permission question its `y` has Vimma's wait alone.
 - Text fields are the dialog's text inputs (`mozIsTextField`), not every `<input>`: the "Always
   allow" checkbox is no text field, and the keys answer from it.
 - The application list finds an entry by the letters typed in it (`richlistbox`); `y` and `n`

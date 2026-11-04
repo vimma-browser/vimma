@@ -77,6 +77,7 @@ export class DialogKeys {
     /** @type {WeakMap<Document, Shown>} */
     this.dialogs = new WeakMap();
     this.onFrame = (/** @type {Event} */ e) => this.frameLoaded(e);
+    this.onOpen = (/** @type {Event} */ e) => this.dialogShown(e);
   }
 
   init() {
@@ -84,10 +85,26 @@ export class DialogKeys {
     // (SubDialog.sys.mjs, _addDialogEventListeners); after the dialog's own DOMContentLoaded
     // has labelled its buttons, and before SubDialog measures the frame on load.
     this.win.addEventListener("DOMFrameContentLoaded", this.onFrame, true);
+    this.win.addEventListener("dialogopen", this.onOpen, true);
   }
 
   uninit() {
     this.win.removeEventListener("DOMFrameContentLoaded", this.onFrame, true);
+    this.win.removeEventListener("dialogopen", this.onOpen, true);
+  }
+
+  /**
+   * SubDialog has sized the frame and made it visible (SubDialog.sys.mjs, _onLoad, after
+   * document.l10n.ready): the wait starts again here, so that it counts only time the dialog
+   * was on screen.
+   * @param {Event} e
+   */
+  dialogShown(e) {
+    const doc = /** @type {any} */ (e).detail?.dialog?._frame?.contentDocument;
+    const state = doc && this.dialogs.get(doc);
+    if (!state) return;
+    state.at = ChromeUtils.now();
+    this.arm(state);
   }
 
   get delay() {
@@ -96,7 +113,11 @@ export class DialogKeys {
 
   /** @param {Event} e */
   frameLoaded(e) {
-    const doc = /** @type {any} */ (e.target)?.contentDocument;
+    const frame = /** @type {any} */ (e.target);
+    // Only SubDialog's frames (TabDialogBox, gDialogBox), never another frame of the window
+    // that happens to load one of these documents.
+    if (!frame?.classList?.contains("dialogFrame")) return;
+    const doc = frame.contentDocument;
     const kind = KINDS[doc?.documentURI];
     if (!kind || this.dialogs.has(doc)) return;
     const dialog = doc.querySelector(kind.dialog);
@@ -221,7 +242,10 @@ export class DialogKeys {
       // (appChooser.js): `y` waits for it too, `n` does not need to.
       armed: armed && (key !== "y" || !accept?.disabled),
       // Text fields only: a checkbox ("Always allow") is the dialog's, not typing.
-      inField: !!focused?.mozIsTextField?.(false) || !!focused?.isContentEditable,
+      inField:
+        !!focused?.mozIsTextField?.(false) ||
+        focused?.localName === "textarea" ||
+        !!focused?.isContentEditable,
       pending: this.host.pending(),
       accept: shown(accept),
       cancel: shown(cancel),

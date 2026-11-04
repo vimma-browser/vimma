@@ -447,10 +447,13 @@ text that pages, add-ons and bookmarks choose.
   - The external protocol questions over a tab (`permissionDialog.xhtml`, "Allow this site to
     open the link with ...?", and `appChooser.xhtml`, the application list) take the same keys
     under the same wait: `y` opens another application, so a page that follows a link under a
-    typing hand must not get that typing as an answer. `y` **also** waits for Firefox's own
-    guard, the main button it keeps disabled until the dialog's window has had focus for
+    typing hand must not get that typing as an answer. The wait for every one of these dialogs
+    starts again when `SubDialog` shows the frame (`dialogopen`), so it counts only time on
+    screen. `y` **also** waits for Firefox's own guard where Firefox applies it (the permission
+    question always; the application list when the permission question was skipped), the main
+    button it keeps disabled until the dialog's window has had focus for
     `security.dialog_enable_delay` (`EnableDelayHelper`): it is swallowed, never queued, while the
-    button is disabled. `n` (Cancel) opens nothing. A checkbox ("Always allow") is not a text
+    button is disabled. Only `SubDialog` frames (`.dialogFrame`) are taken. `n` (Cancel) opens nothing. A checkbox ("Always allow") is not a text
     field, so the keys answer from it, and the box's state is the user's, never changed by them.
     [`protocol_permission_n_cancels_y_opens`](../tests/browser/browser_vimma_dialog_keys.js),
     [`protocol_app_chooser`](../tests/browser/browser_vimma_dialog_keys.js)
