@@ -72,7 +72,6 @@ import {
   closeTabById,
   newTab,
   openTyped,
-  openUrl,
   restoreTab,
   selectTab,
 } from "./tab-ops.mjs";
@@ -159,7 +158,6 @@ import {
 } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
 import { NOT_PDF, PDF_ACTION_IDS, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
-import { outlineUrlAllowed } from "../core/pdfoutline.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -261,7 +259,8 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  *   and `panel` mode (docs/specs/bookmarks.md)
  * @property {OutlinePanel} outline  the PDF viewer's outline on Tab, in the side panel's slot and
  *   `index` mode (docs/specs/pdf-mode.md decision 10)
- * @property {any} outlineFor  the <browser> whose outline Tab asked for, until it comes
+ * @property {{ browser: any, timer: number } | null} outlineFor  the outline Tab asked for,
+ *   until it comes, another key is pressed, the tab changes or OUTLINE_WAIT_MS pass
  * @property {() => void} stopOutline  ends the PDF outline subscription (pdf-ops.mjs)
  * @property {AgentChatWindow} agentChat  `:agent`, the built-in agent's window in the side
  *   panel's slot; its keys are its own while focus is in it (docs/specs/builtin-agent.md)
@@ -483,6 +482,22 @@ function outlineAction(s, a) {
   s.outline.action(a);
 }
 
+/**
+ * How long Tab waits for the viewer's outline. A reply after it, or after another key, opens
+ * nothing: a slow or hostile viewer cannot open the panel under keys meant for something else.
+ */
+const OUTLINE_WAIT_MS = 2000;
+
+/**
+ * Forgets the outline Tab asked for.
+ * @param {WindowState} s
+ */
+function dropOutlineAsk(s) {
+  if (!s.outlineFor) return;
+  s.win.clearTimeout(s.outlineFor.timer);
+  s.outlineFor = null;
+}
+
 /** What Tab says in a PDF without an outline (docs/specs/pdf-mode.md Behaviour 5). */
 export const NO_OUTLINE = "no outline in this PDF";
 /** What following an attachment entry says (decision 10). */
@@ -505,11 +520,12 @@ function openOutline(s) {
     showOutline(s, browser, outline);
     return;
   }
+  dropOutlineAsk(s);
   if (!PdfOps.askOutline(browser)) {
     s.notice.show(NOT_PDF);
     return;
   }
-  s.outlineFor = browser;
+  s.outlineFor = { browser, timer: s.win.setTimeout(() => dropOutlineAsk(s), OUTLINE_WAIT_MS) };
 }
 
 /**
@@ -518,7 +534,7 @@ function openOutline(s) {
  * @param {import("../core/pdfoutline.mjs").PdfOutline | null} outline  null: malformed
  */
 function showOutline(s, browser, outline) {
-  s.outlineFor = null;
+  dropOutlineAsk(s);
   if (!outline?.entries.length) {
     s.notice.show(NO_OUTLINE);
     return;
@@ -541,10 +557,7 @@ function followOutline(s, browser, index) {
   const entry = PdfOps.outline(browser)?.entries[index];
   if (!entry) return;
   if (entry.kind === "url") {
-    const url = entry.url ?? "";
-    if (!outlineUrlAllowed(url) || !openUrl(s.win, url, "current")) {
-      s.notice.show(BLOCKED_URL_TEXT, { error: true });
-    }
+    if (!PdfOps.openUrl(browser, entry.url ?? "")) s.notice.show(BLOCKED_URL_TEXT, { error: true });
   } else if (entry.kind === "attachment") s.notice.show(OUTLINE_ATTACHMENT);
   else if (entry.kind !== "none") PdfOps.run(browser, "follow", index);
 }
@@ -1620,11 +1633,15 @@ export const VimmaHost = {
       // The outline Tab asked for: shown if its tab is still the selected one.
       outlineFor: null,
       stopOutline: PdfOps.subscribeOutline((browser, outline) => {
-        if (browser !== state.outlineFor) return;
-        if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
+        if (browser !== state.outlineFor?.browser) return;
+        dropOutlineAsk(state);
+        // Only into the state Tab was pressed in: its tab selected, in normal mode or with a panel
+        // in the slot, which the outline replaces; never under a picker, prompt or the help.
+        const selected = browser === /** @type {any} */ (win).gBrowser?.selectedBrowser;
+        const mode = this._mode(state);
+        if (selected && (mode === "normal" || mode === "panel")) {
           showOutline(state, browser, outline);
         }
-        state.outlineFor = null;
         this._emit(state);
       }),
       agentPrompt: new AgentPrompt(win),
@@ -1686,6 +1703,7 @@ export const VimmaHost = {
         effect: (browser, effect) => {
           if (effect.type === "follow") followOutline(state, browser, effect.index);
         },
+        left: (browser) => PdfOps.forget(browser),
       }),
       bookmarks: new BookmarksPanel(win, {
         load: () => loadTree(win),
@@ -2273,6 +2291,8 @@ export const VimmaHost = {
     }
     const chord = chordFromEvent(e);
     if (!chord) return; // a bare modifier
+    // Another key after Tab: an outline still on its way opens nothing.
+    dropOutlineAsk(state);
     const key = formatKey(chord);
     state.pageFirst.keydown();
     // Focus left the page the hints are on (URL bar, another pane): they no longer apply.

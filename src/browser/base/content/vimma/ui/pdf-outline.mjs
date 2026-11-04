@@ -34,6 +34,7 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 /**
  * @typedef {object} OutlinePanelHost
  * @property {(browser: any, effect: OutlineEffect) => void} effect  a follow, for the host
+ * @property {(browser: any) => void} left  the tab left the document the outline was read from
  */
 
 export class OutlinePanel {
@@ -57,10 +58,21 @@ export class OutlinePanel {
     /** @type {import("./side-panel.mjs").Opener | null} */
     this.opener = null;
     this.start = 0;
+    this.listening = false;
     // The outline belongs to one document: it closes when its tab stops being the selected one.
     this.onTabSelect = () => {
       const selected = /** @type {any} */ (this.win).gBrowser?.selectedBrowser;
       if (selected !== this.browser) this.close();
+    };
+    // And when its tab loads another document (V11); a jump inside the PDF stays.
+    this.progress = {
+      /** @param {any} browser @param {any} _p @param {any} _r @param {any} _l @param {number} flags */
+      onLocationChange: (browser, _p, _r, _l, flags) => {
+        if (browser !== this.browser) return;
+        if (flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) return;
+        this.host.left(browser);
+        this.close();
+      },
     };
   }
 
@@ -88,10 +100,12 @@ export class OutlinePanel {
     this.endFilter();
     this.render();
     box.hidden = false;
-    /** @type {any} */ (this.win).gBrowser?.tabContainer.addEventListener(
-      "TabSelect",
-      this.onTabSelect,
-    );
+    const gBrowser = /** @type {any} */ (this.win).gBrowser;
+    if (!this.listening) {
+      gBrowser?.tabContainer.addEventListener("TabSelect", this.onTabSelect);
+      gBrowser?.addTabsProgressListener(this.progress);
+      this.listening = true;
+    }
     // The tree, which carries aria-activedescendant (m7-a11y).
     /** @type {HTMLElement} */ (this.list).focus();
   }
@@ -101,10 +115,12 @@ export class OutlinePanel {
     if (!this.state) return;
     this.state = null;
     this.browser = null;
-    /** @type {any} */ (this.win).gBrowser?.tabContainer.removeEventListener(
-      "TabSelect",
-      this.onTabSelect,
-    );
+    if (this.listening) {
+      const gBrowser = /** @type {any} */ (this.win).gBrowser;
+      gBrowser?.tabContainer.removeEventListener("TabSelect", this.onTabSelect);
+      gBrowser?.removeTabsProgressListener(this.progress);
+      this.listening = false;
+    }
     const box = /** @type {HTMLElement} */ (this.box);
     // Focus first, then hide (side-panel.mjs giveFocusBack).
     giveFocusBack(this.win, box, this.opener);

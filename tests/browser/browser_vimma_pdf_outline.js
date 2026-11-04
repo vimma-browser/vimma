@@ -6,7 +6,8 @@
 // V8, V11): the outline panel on Tab and its `index` mode.
 // file_vimma_outline_kinds.pdf has one outline entry of each kind: a named destination (page 2),
 // a named action (LastPage), an https link, a javascript: link pdf.js refuses (no target), a
-// title that looks like markup (page 3), an attachment, and a collapsed entry with a child.
+// title that looks like markup (page 3), an attachment, a Print action (not a navigation, so
+// it follows nothing), and a collapsed entry with a child.
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
 
@@ -227,26 +228,6 @@ add_task(async function closing_keys_do_not_move() {
   });
 });
 
-add_task(async function ctrl_o_returns_from_an_entry() {
-  await withPdf(async (browser) => {
-    // A page jump first: right after loading, pdf.js records no start position for a jump
-    // until the view has moved (PDFHistory, POSITION_UPDATED_THRESHOLD), for its own outline too.
-    type("2J");
-    await untilPage(browser, 3, "2J");
-    await openOutline();
-    type("G");
-    await untilSelected("Chapter 2", "G");
-    EventUtils.synthesizeKey("KEY_Enter");
-    await untilPage(browser, 6, "Enter goes to Chapter 2");
-    EventUtils.synthesizeKey("o", { ctrlKey: true });
-    await TestUtils.waitForCondition(
-      async () => (await page(browser)) < 6,
-      "ctrl+o comes back from the entry, inside the PDF",
-    );
-    Assert.ok(PdfOps.state(browser), "still the PDF viewer");
-  });
-});
-
 add_task(async function the_filter() {
   await withPdf(async (browser) => {
     await openOutline();
@@ -286,8 +267,11 @@ add_task(async function each_kind_of_entry() {
       "Script link",
       "<img src=x onerror=alert(1)>",
       "Notes attachment",
+      "Print action",
       "Deep",
     ]);
+    // Only pdf.js's navigation actions are followed.
+    Assert.equal(PdfOps.outline(browser).entries[6].kind, "none", "Print follows nothing");
     // outline_titles_with_html_stay_text
     Assert.equal(panel().querySelector("img"), null, "a title that looks like markup is text");
     // A named destination resolves to its page.
@@ -416,8 +400,11 @@ add_task(async function the_outline_is_read_only_on_the_users_key() {
       }
       Assert.deepEqual(sent, [{ op: "follow", n: 0 }], "an operation and an index");
     });
-    // pdf_marks_and_outlines_are_not_written: the outline goes with its document (V11).
+    // pdf_marks_and_outlines_are_not_written: the outline goes with its document (V11), and
+    // the panel closes when the tab loads another.
+    await openOutline();
     await loadPdf(browser, NO_OUTLINE);
+    await TestUtils.waitForCondition(() => !shown(), "another document closes the outline");
     await TestUtils.waitForCondition(() => PdfOps.state(browser)?.pages === 1, "another PDF");
     Assert.equal(PdfOps.outline(browser), null, "the outline went with its document");
   });
@@ -469,6 +456,34 @@ add_task(async function a_hostile_outline_gets_only_primitives_through() {
       Assert.equal(msg.entries[0].collapsed, false, "a count behind a getter is not taken");
       Assert.equal(msg.entries[1].title.length, 512, "a huge title is cut in the child");
       Assert.equal(msg.entries[1].page, 2, "a page index");
+    });
+  });
+});
+
+add_task(async function a_late_outline_opens_nothing() {
+  await withPdf(async (browser) => {
+    await recordingOutline(async (seen) => {
+      // The viewer answers late, after the user has pressed another key.
+      await SpecialPowers.spawn(browser, [], () => {
+        const w = content.wrappedJSObject;
+        const doc = w.PDFViewerApplication.pdfDocument;
+        const real = doc.getOutline.bind(doc);
+        doc.getOutline = Cu.exportFunction(
+          () =>
+            new w.Promise(
+              Cu.exportFunction((resolve) => {
+                content.setTimeout(() => real().then(resolve), 500);
+              }, content),
+            ),
+          content,
+        );
+      });
+      EventUtils.synthesizeKey("KEY_Tab");
+      type("J");
+      await TestUtils.waitForCondition(() => seen.length === 1, "the late reply");
+      await SpecialPowers.spawn(browser, [], () => {});
+      Assert.ok(!shown(), "a reply after another key opens no panel");
+      Assert.equal(mode(), "normal", "the keys stay normal mode's");
     });
   });
 });

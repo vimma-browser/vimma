@@ -89,6 +89,22 @@ export const PDFJS_DOM = Object.freeze({
 const EVENTS = ["pagesloaded", "pagechanging", "updatefindmatchescount", "updatefindcontrolstate"];
 
 /**
+ * The named actions an outline entry may run: pdf.js's navigation ones. Print and SaveAs from an
+ * entry with an innocent title follow nothing.
+ */
+const OUTLINE_ACTIONS = new Set([
+  "GoBack",
+  "GoForward",
+  "NextPage",
+  "PrevPage",
+  "FirstPage",
+  "LastPage",
+]);
+
+/** A read the viewer never answers is given up after this long, so Tab works again. */
+const OUTLINE_READ_MS = 5000;
+
+/**
  * Firefox's own test for the pdf.js viewer (nsContentUtils::IsPDFJS): its scheme and its origin
  * without the container suffix, so it holds in every workspace (V1).
  * @param {any} principal  an nsIPrincipal
@@ -194,6 +210,16 @@ export class PdfView {
     // behind Xrays (V3, V4).
     const onState = Cu.exportFunction(() => this.schedule(), win);
     const onCount = Cu.exportFunction((/** @type {any} */ evt) => this.#onCount(evt), win);
+    // pdf.js can open another PDF in the same viewer: the outline read goes with the old one.
+    const onDocument = Cu.exportFunction(() => {
+      this.#outline = null;
+    }, win);
+    try {
+      this.#app.eventBus.on("documentloaded", onDocument);
+      this.#listeners.push(["documentloaded", onDocument]);
+    } catch {
+      // no event bus: nothing to forget
+    }
     for (const name of EVENTS) {
       const fn = name.startsWith("updatefind") ? onCount : onState;
       try {
@@ -345,6 +371,9 @@ export class PdfView {
     }
     if (this.#readingOutline) return;
     this.#readingOutline = true;
+    lazy.setTimeout(() => {
+      this.#readingOutline = false;
+    }, OUTLINE_READ_MS);
     const done = Cu.exportFunction((/** @type {any} */ items) => this.#onOutline(items), this.#win);
     const failed = Cu.exportFunction(() => {
       this.#readingOutline = false;
@@ -389,11 +418,13 @@ export class PdfView {
     /** @type {[number, string][]} entries whose destination is a name, resolved below */
     const named = [];
     let truncated = false;
+    // Items visited, not entries kept: a sparse array with a huge length stops here too.
+    let visited = 0;
     /** @param {any} list @param {number} level */
     const walk = (list, level) => {
       const length = num(() => list?.length);
       for (let i = 0; i < length; i++) {
-        if (entries.length >= OUTLINE_MAX_ENTRIES) {
+        if (entries.length >= OUTLINE_MAX_ENTRIES || ++visited > OUTLINE_MAX_ENTRIES) {
           truncated = true;
           return;
         }
@@ -486,8 +517,10 @@ export class PdfView {
         entry.url = url;
       }
     } else if (typeof action === "string" && action) {
-      entry.kind = "action";
-      entry.target = action;
+      if (OUTLINE_ACTIONS.has(action)) {
+        entry.kind = "action";
+        entry.target = action;
+      }
     } else if (get("attachment") && typeof get("attachment") === "object") {
       entry.kind = "attachment";
     } else if (get("setOCGState") && typeof get("setOCGState") === "object") {
