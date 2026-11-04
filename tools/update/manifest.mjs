@@ -332,7 +332,7 @@ export function releaseInfo(tarball) {
  * hdiutil's reason, where `-quiet` leaves exit status 1 and nothing else (#715).
  * @param {string[]} args
  */
-const hdiutil = (args) =>
+const runHdiutil = (args) =>
   execFileSync("hdiutil", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
 /**
@@ -341,13 +341,19 @@ const hdiutil = (args) =>
  * a macOS runner; the image is mounted read-only and not browsed. The mount point is removed
  * with rmdir, which never reaches into a volume a failed detach left mounted.
  * @param {string} dmg
+ * @param {(args: string[]) => string} [hdiutil]  runs hdiutil; the default is the real one
  */
-export function dmgInfo(dmg) {
+export function dmgInfo(dmg, hdiutil = runHdiutil) {
   const mount = mkdtempSync(join(dirname(dmg), ".vimma-dmg-"));
   try {
     hdiutil(["attach", "-nobrowse", "-readonly", "-mountpoint", mount, dmg]);
   } catch (e) {
-    rmdirSync(mount);
+    try {
+      rmdirSync(mount);
+    } catch {
+      // An attach that failed after mounting leaves the volume there, so the mount point stays;
+      // hdiutil's reason is what the error must carry.
+    }
     throw e;
   }
   try {

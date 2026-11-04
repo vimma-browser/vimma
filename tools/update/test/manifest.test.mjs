@@ -816,6 +816,25 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
     },
     60_000,
   );
+
+  // An attach can fail after the volume is mounted, and then the mount point cannot be removed:
+  // that cleanup failure must not replace hdiutil's reason.
+  it("keeps hdiutil's reason when the mount point of a failed attach cannot be removed", () => {
+    const dir = tempDir("vimma-dmg-");
+    const dmg = join(dir, "v.dmg");
+    writeFileSync(dmg, "");
+    /** @param {string[]} args */
+    const hdiutil = (args) => {
+      writeFileSync(join(args[args.indexOf("-mountpoint") + 1], "mounted"), "");
+      // as execFileSync reports a failure: the command, then hdiutil's stderr
+      const stderr = "hdiutil: attach failed - Resource temporarily unavailable\n";
+      throw Object.assign(new Error(`Command failed: hdiutil ${args.join(" ")}\n${stderr}`), {
+        status: 1,
+        stderr,
+      });
+    };
+    expect(() => dmgInfo(dmg, hdiutil)).toThrow(/hdiutil: attach failed/);
+  });
 });
 
 const REAL = process.env.VIMMA_UPDATE_ASSETS;
