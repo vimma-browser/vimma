@@ -742,8 +742,9 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     (Since changed: Gemini CLI is offered, from 0.66.0, with Vimma removing what it records of
     each run (C5's note). Its entry runs `gemini` with `-o stream-json`,
     `--allowed-mcp-server-names vimma_chat` and `-e none`, and `-m` for the provider's model,
-    headless because its input is a pipe; Vimma's server is `vimma_chat` in the run folder's `.gemini/settings.json`, with the
-    ticket in the server's `env` and `trust: true`, since a headless run asks nobody;
+    headless because its input is a pipe; Vimma's server is `vimma_chat` in the run folder's
+    `.gemini/settings.json`, with the ticket in the server's `env` and `trust: true`, since a
+    headless run asks nobody;
     `GEMINI_CLI_TRUST_WORKSPACE=true` in its environment trusts that folder and loads the file.
     Extensions are off, because they bring servers, tools and context of their own and made
     Vimma's server start twice. A reply's pieces are joined; a tool it did not offer or its
