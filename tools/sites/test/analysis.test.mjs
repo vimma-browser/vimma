@@ -77,6 +77,28 @@ describe("chooseHintLink", () => {
   it("null when no label is on a followable link", () => {
     expect(chooseHintLink(links.slice(0, 2))).toBe(null);
   });
+
+  // Google's "Google apps" launcher is an <a href> with role="button" and aria-expanded: a click
+  // opens a menu and the URL stays (issue #734).
+  it.each([
+    ["role=button", { role: "button" }],
+    ["aria-haspopup", { "aria-haspopup": "true" }],
+    ["aria-expanded", { "aria-expanded": "false" }],
+    ["aria-pressed", { "aria-pressed": "false" }],
+    ["role=menuitem", { role: "menuitem" }],
+    ["role=tab", { role: "tab" }],
+  ])("skips a link that acts as a button (%s)", (_name, attrs) => {
+    const apps = { label: "j", href: "https://x.test/apps", target: "", sameDoc: false };
+    const picked = chooseHintLink([{ ...apps, sameOrigin: true, attrs }, ...links]);
+    expect(picked?.label).toBe("h");
+    expect(chooseHintLink([{ ...apps, sameOrigin: true, attrs }])).toBe(null);
+  });
+
+  it("keeps a link whose ARIA attributes say it is a plain link", () => {
+    const plain = { label: "k", href: "https://x.test/k", target: "", sameDoc: false };
+    const attrs = { role: "link", "aria-haspopup": "false" };
+    expect(chooseHintLink([{ ...plain, sameOrigin: true, attrs }])?.label).toBe("k");
+  });
 });
 
 describe("reactionOf", () => {
