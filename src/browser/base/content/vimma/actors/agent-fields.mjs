@@ -136,20 +136,61 @@ const HEADINGS = "h1, h2, h3, h4, h5, h6, [role='heading']";
 /** How many ancestors up a card's heading is looked for: product cards rarely nest deeper. */
 const CARD_DEPTH = 8;
 
+/** How many of an `aria-labelledby`'s ids are read: a name rarely joins more than a few. */
+const LABELLEDBY_IDS = 8;
+/** How many nodes one `aria-labelledby` text is gathered from, so a page's whole body costs little. */
+const LABELLEDBY_NODES = 2048;
+/**
+ * Subtrees whose text is never part of a name: script and style source (a page's inline state
+ * can hold account data), and what a user writes in a field or a rich text editor.
+ */
+const NOT_NAME = "script, style, noscript, template, textarea, select, [contenteditable]";
+
+/**
+ * The text of `node` as part of an accessible name: its text nodes, hidden ones included, but
+ * none inside NOT_NAME, gathered until `max` characters or LABELLEDBY_NODES nodes.
+ * @param {Element} node @param {number} max
+ */
+function labelTextOf(node, max) {
+  if (node.matches(NOT_NAME)) return "";
+  let out = "";
+  let seen = 0;
+  /** @type {Node[]} iterative: a page may nest deeper than the stack allows */
+  const stack = [...node.childNodes].reverse();
+  while (stack.length && out.length < max && seen++ < LABELLEDBY_NODES) {
+    const n = /** @type {any} */ (stack.pop());
+    if (n.nodeType === n.TEXT_NODE) out += n.data;
+    else if (n.nodeType === n.ELEMENT_NODE && !n.matches(NOT_NAME)) {
+      for (let c = n.lastChild; c; c = c.previousSibling) stack.push(c);
+    }
+  }
+  return cap(out, max);
+}
+
 /**
  * A target's accessible label: the text of the elements its `aria-labelledby` names (hidden ones
- * too, as a screen reader reads them), else its `aria-label`. A shop's add button that shows
- * only `+` names its product here (issue #693).
+ * too, as a screen reader reads them, but never script, style or a field's content), else its
+ * `aria-label`. A shop's add button that shows only `+` names its product here (issue #693).
+ * The pay check reads it too (mcp-checkpoints C6), so the model is never shown a name that the
+ * checkpoint does not read.
  * @param {Element} el
  */
 function ariaLabelOf(el) {
-  const ids = el.getAttribute("aria-labelledby")?.trim().split(/\s+/) ?? [];
-  const root = /** @type {any} */ (el.getRootNode());
-  const named = ids
+  const ids = (el.getAttribute("aria-labelledby")?.trim().split(/\s+/) ?? [])
     .filter(Boolean)
-    .map((id) => (root.getElementById ? root.getElementById(id) : null))
-    .filter((n) => n && n !== el)
-    .map((n) => cap(n.textContent, TEXT));
+    .slice(0, LABELLEDBY_IDS);
+  const root = /** @type {any} */ (el.getRootNode());
+  /** @type {string[]} */
+  const named = [];
+  let length = 0;
+  for (const id of ids) {
+    if (length >= TEXT) break;
+    const n = root.getElementById ? root.getElementById(id) : null;
+    if (!n || n === el) continue;
+    const t = labelTextOf(n, TEXT - length);
+    named.push(t);
+    length += t.length + 1;
+  }
   return oneLine(named.join(" ")) || oneLine(el.getAttribute("aria-label") ?? "");
 }
 
@@ -157,14 +198,21 @@ function ariaLabelOf(el) {
  * The heading of the card `el` is in: that of the nearest ancestor holding exactly one heading.
  * An ancestor with more is a list of cards, whose headings belong to other cards: none.
  * @param {Element} el
+ * @param {Map<Element, Element | null | false>} seen  each ancestor's lone heading (null: none,
+ *   false: several), shared across one list: repeated buttons share their ancestors
  */
-function cardHeadingOf(el) {
+function cardHeadingOf(el, seen) {
   let node = el.parentElement;
   for (let depth = 0; node && depth < CARD_DEPTH; depth++, node = node.parentElement) {
-    const headings = node.querySelectorAll(HEADINGS);
-    if (headings.length > 1) return "";
-    if (headings.length === 1) {
-      const h = /** @type {any} */ (headings[0]);
+    let lone = seen.get(node);
+    if (lone === undefined) {
+      const headings = node.querySelectorAll(HEADINGS);
+      lone = headings.length > 1 ? false : (headings[0] ?? null);
+      seen.set(node, lone);
+    }
+    if (lone === false) return "";
+    if (lone) {
+      const h = /** @type {any} */ (lone);
       return oneLine(cap(h.innerText ?? h.textContent, TEXT));
     }
   }
@@ -181,10 +229,12 @@ function nameRepeats(els, infos) {
   /** @type {Map<string, number>} */
   const counts = new Map();
   for (const i of infos) counts.set(key(i), (counts.get(key(i)) ?? 0) + 1);
+  /** @type {Map<Element, Element | null | false>} */
+  const seen = new Map();
   infos.forEach((info, n) => {
     if ((counts.get(key(info)) ?? 0) < 2) return;
     const el = els[n];
-    const heading = el ? cardHeadingOf(el) : "";
+    const heading = el ? cardHeadingOf(el, seen) : "";
     if (!heading || heading === info.text || info.caption?.includes(heading)) return;
     info.caption = cap(info.caption ? `${heading} · ${info.caption}` : heading, TEXT);
   });
@@ -916,6 +966,8 @@ export function payInfoOf(el, by) {
     const html = /** @type {any} */ (control);
     const words = [
       textOf(control, kindOf(control)),
+      // The accessible label, aria-labelledby first: the name the element list shows the model.
+      ariaLabelOf(control),
       control.getAttribute("aria-label"),
       control.getAttribute("title"),
       control.localName === "input" || control.localName === "button" ? html.value : "",

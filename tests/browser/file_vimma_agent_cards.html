@@ -4,7 +4,9 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!-- Fixture for browser_vimma_mcp_elements.js: search results shaped like Finnish grocery
    - shops' (issue #693). Each card names its product in a heading, shows the price apart, and has
-   - an add button that shows only an icon or a word the other cards share. -->
+   - an add button that shows only an icon or a word the other cards share. One button's
+   - aria-labelledby also names a script holding page state, which is never read as a name, and
+   - one names more ids than are read. -->
 <html lang="fi">
   <head>
     <meta charset="utf-8" />
@@ -51,13 +53,27 @@
         <div><button>Lisää</button></div>
       </article>
       <article>
+        <h3 id="riisi">Riisi 1 kg</h3>
+        <span>1,29 €</span>
+        <button aria-labelledby="add-word riisi state">+</button>
+      </article>
+      <article>
         <h3>Banaani</h3>
         <span>1,49 €/kg</span>
         <button aria-label="Osta">Osta</button>
       </article>
     </main>
     <span id="add-word" hidden>Lisää ostoskoriin</span>
+    <script id="state" type="application/json">
+      { "session": "s3cret-token" }
+    </script>
+    <div hidden>
+      <span id="w1">1</span><span id="w2">2</span><span id="w3">3</span><span id="w4">4</span>
+      <span id="w5">5</span><span id="w6">6</span><span id="w7">7</span><span id="w8">8</span>
+      <span id="w9">9</span><span id="w10">10</span>
+    </div>
     <footer>
+      <button aria-labelledby="w1 w2 w3 w4 w5 w6 w7 w8 w9 w10">Kori</button>
       <button>Näytä lisää</button>
       <button>Näytä lisää</button>
     </footer>

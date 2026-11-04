@@ -350,7 +350,7 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    shop's add button showing only `+` or a word every card shares still names its product
    ([#693](https://github.com/vimma-browser/vimma/issues/693)). The caption is its accessible
    label (`aria-labelledby`, else `aria-label`) when that differs from its text; and when its
-   text and label repeat on another target of the same list, the caption adds the heading of
+   kind, text and label repeat on another target of the same list, the caption adds the heading of
    its card, the nearest enclosing element that holds exactly one heading (`h1`-`h6` or
    `role=heading`, at most 8 levels up), so a heading of another card is never borrowed. Both
    are page strings, checked, normalised and cut at 80 as every caption is; the text stays the

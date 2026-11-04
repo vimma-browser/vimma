@@ -2398,11 +2398,11 @@ focus and hint mode.
   value; a checkbox's state; a select's options; and the forms they belong to, with where each
   sends its data. Disabled controls are listed as disabled. Only what is on screen is listed, up
   to 200 elements, as your own hints would show; the agent scrolls with `vimma_keys` for more.
-- **Buttons that show only an icon.** A shop's add button often shows `+` or the same word on
-  every product card. The list gives such a button its accessible label as a caption (`Lisää
-Kaurajuoma 1 l ostoskoriin`), and when several buttons say the same, each one's product card
-  heading, so the agent knows which product each button adds.
   Everything in it is marked as untrusted web content.
+- **Buttons that show only an icon.** A shop's add button often shows `+` or the same word on
+  every product card. The list gives such a button its accessible label as a caption (such as
+  `Lisää Kaurajuoma 1 l ostoskoriin`), and when several buttons say the same, each one's
+  product card heading, so the agent knows which product each button adds.
 - **Passwords, card numbers and one-time codes are never listed with their value.** A password
   field (also one a "show password" button turned into a text field), a one-time-code field and
   a payment card field are listed as sensitive, with no value, so the agent can tell you what to

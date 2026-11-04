@@ -846,11 +846,18 @@ addTidyTask(async function test_cards_name_their_buttons() {
       ["+", "Lisää ostoskoriin Tofu maustamaton 250 g"],
       ["Lisää", "Kikherneet 380 g"],
       ["Lisää", "Spagetti 500 g"],
+      ["+", "Lisää ostoskoriin Riisi 1 kg"],
       ["Osta", null],
+      ["Kori", "1 2 3 4 5 6 7 8"],
       ["Näytä lisää", null],
       ["Näytä lisää", null],
     ],
-    "each add button names its product; no other card's heading is borrowed",
+    "each add button names its product; no other card's heading is borrowed; a script's text " +
+      "is never part of a name, and only the first 8 ids are read",
+  );
+  Assert.ok(
+    !r.result.elements.includes("s3cret"),
+    "the page's script state never reaches the agent",
   );
   const found = await c.call("agent-elements", { tab: idOf(tab), query: "spagetti", full: true });
   Assert.deepEqual(
