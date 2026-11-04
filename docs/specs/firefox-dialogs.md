@@ -24,7 +24,9 @@ nothing in the dialog says which key keeps them.
 
 1. While one of Firefox's dialogs built on `commonDialog.xhtml` is open over a tab or over the
    window, `y` must press its main button (Leave page, OK, Yes) and `n` its cancel button (Stay
-   on page, Cancel, No), the one `Esc` already presses.
+   on page, Cancel, No), the one `Esc` already presses. (Since changed: the external protocol
+   questions over a tab, `permissionDialog.xhtml` and `appChooser.xhtml`, take the same keys and
+   line; see "Since changed: external protocol questions" below.)
 2. The keys have the permission prompt's guards: they count only once the dialog has been up for
    `security.notification_enable_delay` (500 ms by default) with no key typed in it in between,
    and any key typed in it restarts the wait; a held key never answers. A key that does not yet
@@ -101,7 +103,8 @@ hands it a key typed in one of the window's dialogs. No upstream file changes.
    place while hidden so the dialog does not change size under the reader.
 6. **Questions that are not `commonDialog.xhtml` are left as Firefox has them, because each is
    built differently and needs its own change.** The external protocol question and the download
-   question keep `Enter`, `Esc` and `Tab`.
+   question keep `Enter`, `Esc` and `Tab`. (Since changed: the external protocol questions now
+   follow the scheme; the download question still keeps Firefox's keys.)
 
 ### Audit of questions
 
@@ -115,11 +118,41 @@ hands it a key typed in one of the window's dialogs. No upstream file changes.
 | Agent question line                                             | `y`, `n`, `Esc`, `Enter`, `a`, `x`      | yes (vimma-mcp decision 13)            |
 | Vimma's `y/N` questions (restart, update, close a workspace)    | `y`; any other key, `Esc` included, no  | yes, `(y/N)` in the question           |
 | Site permissions picker (`:site`)                               | picker keys (`j`, `k`, `Enter`, `Esc`)  | yes, picker hint                       |
-| External protocol question, download question                   | `Enter`, `Esc`, `Tab` (Firefox's)       | no (Design 6)                          |
+| External protocol question and its application list             | `y`, `n` (this spec), `Esc`, `Tab`      | yes, `y open link · n cancel`          |
+| Download question                                               | `Enter`, `Esc`, `Tab` (Firefox's)       | no (Design 6)                          |
 
 The agent question keeps `a` (always for this site) and `x` (mute), because they answer
 questions a yes or a no cannot; Vimma's `y/N` questions keep their Vim-style `(y/N)` suffix,
 because it names the default and every key but `y` is already the safe answer.
+
+### Since changed: external protocol questions
+
+The external protocol questions follow the scheme, because `y` opening another application is
+the same answer, with the same risk, as `y` in a permission prompt:
+
+- `permissionDialog.xhtml` ("Allow this site to open the link with ...?") and
+  `appChooser.xhtml` (the application list) open in the tab's `TabDialogBox`
+  (`ContentDispatchChooser.sys.mjs`, `_openDialog`), a `SubDialog` frame like a page's
+  `confirm`, so `DialogKeys` takes them through a table of the dialog documents it knows: the
+  `<dialog>`, the element the line closes (the description in the permission question, the
+  "Always use" box in the list), and the text fields, if any.
+- Their buttons are labelled through Fluent after the frame loads and after
+  `document.l10n.ready`, so the line follows the buttons' `label` attributes rather than reading
+  them once.
+- Firefox keeps the main button disabled until the dialog's window has had focus for
+  `security.dialog_enable_delay` (`EnableDelayHelper`), and the application list keeps it
+  disabled while no application is picked. `y` waits for that button as well as for Vimma's own
+  wait, because it opens something outside the browser; `n` and the line wait only for Vimma's,
+  because cancelling is always safe and a list with nothing picked still has a key that answers
+  it. This also applies to `commonDialog.xhtml`, whose `enableDelay` used to hold back `n` too.
+- Text fields are the dialog's text inputs (`mozIsTextField`), not every `<input>`: the "Always
+  allow" checkbox is no text field, and the keys answer from it.
+- The application list finds an entry by the letters typed in it (`richlistbox`); `y` and `n`
+  are the question's keys there, because the answer matters more than a jump, and the arrow keys
+  still reach an application whose name starts with either.
+
+Tests: `browser_vimma_dialog_keys.js`, `protocol_permission_n_cancels_y_opens` and
+`protocol_app_chooser`.
 
 ## Security and privacy
 

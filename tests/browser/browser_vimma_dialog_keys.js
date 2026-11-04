@@ -161,3 +161,114 @@ add_task(async function window_dialog() {
     Assert.equal(answer, expected, `${key} answers the window's dialog`);
   }
 });
+
+// The external protocol questions (permissionDialog.xhtml, "Allow this site to open the link
+// with ...?", and appChooser.xhtml, the application list) open in the tab's SubDialog as the
+// page's dialogs do, and take the same keys: `y` opens the link, `n` cancels.
+const SCHEME = "vimmatest";
+const HANDLED = "https://example.org/";
+const PERMISSION_DIALOG = "chrome://mozapps/content/handling/permissionDialog.xhtml";
+const APP_CHOOSER = "chrome://mozapps/content/handling/appChooser.xhtml";
+
+/** A web handler for SCHEME, as a user who picked one has; removed when the test ends. */
+function storeHandler({ alwaysAsk }) {
+  const handlers = Cc["@mozilla.org/uriloader/handler-service;1"].getService(Ci.nsIHandlerService);
+  const info = Cc["@mozilla.org/uriloader/external-protocol-service;1"]
+    .getService(Ci.nsIExternalProtocolService)
+    .getProtocolHandlerInfo(SCHEME);
+  const web = Cc["@mozilla.org/uriloader/web-handler-app;1"].createInstance(Ci.nsIWebHandlerApp);
+  web.name = "Vimma test handler";
+  web.uriTemplate = HANDLED + "?url=%s";
+  info.possibleApplicationHandlers.appendElement(web);
+  info.preferredApplicationHandler = web;
+  info.preferredAction = Ci.nsIHandlerInfo.useHelperApp;
+  info.alwaysAskBeforeHandling = alwaysAsk;
+  handlers.store(info);
+  registerCleanupFunction(() => handlers.remove(info));
+}
+
+/** The next SubDialog of the window that loads `url`, once SubDialog has shown it. */
+async function nextSubDialog(url) {
+  const e = await BrowserTestUtils.waitForEvent(
+    document.documentElement,
+    "dialogopen",
+    true,
+    (ev) => ev.detail.dialog?._openedURL === url,
+  );
+  return e.detail.dialog._frame.contentWindow;
+}
+
+/** The page follows a SCHEME link, as a click on one does. */
+function followLink(browser) {
+  return SpecialPowers.spawn(browser, [SCHEME], (s) => {
+    const a = content.document.createElement("a");
+    a.href = `${s}://x`;
+    content.document.body.append(a);
+    a.click();
+  });
+}
+
+/** @param {Window} w */
+const acceptEnabled = (w) => !w.document.querySelector("dialog").getButton("accept").disabled;
+
+add_task(async function protocol_permission_n_cancels_y_opens() {
+  storeHandler({ alwaysAsk: false });
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  const browser = tab.linkedBrowser;
+
+  let shown = nextSubDialog(PERMISSION_DIALOG);
+  await followLink(browser);
+  let w = await shown;
+  Assert.ok(lineWaits(w), "the keys line waits while the question is not armed");
+  await until(() => lineShows(w, "y open link · n cancel"), "the line names the keys");
+  // The "always allow" checkbox is no text field: the keys answer from it.
+  w.document.getElementById("remember").focus();
+  press("n", w);
+  await gone(w);
+  await wait(100);
+  Assert.equal(browser.currentURI.spec, PAGE, "n leaves the link unopened");
+
+  shown = nextSubDialog(PERMISSION_DIALOG);
+  await followLink(browser);
+  w = await shown;
+  press("y", w);
+  await wait(50);
+  Assert.ok(!w.closed && w.document.documentElement, "y before the question is armed waits");
+  await until(() => lineShows(w, "y open link · n cancel") && acceptEnabled(w), "armed");
+  const opened = BrowserTestUtils.browserLoaded(browser, false, (url) => url.startsWith(HANDLED));
+  press("y", w);
+  await opened;
+  Assert.ok(true, "y opens the link with the handler");
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function protocol_app_chooser() {
+  storeHandler({ alwaysAsk: true });
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  const browser = tab.linkedBrowser;
+  // A site already allowed to open the scheme goes straight to the application list. The
+  // page's own principal: a workspace's tab carries its container in it.
+  const principal = browser.contentPrincipal;
+  const key = `open-protocol-handler^${SCHEME}`;
+  Services.perms.addFromPrincipal(principal, key, Services.perms.ALLOW_ACTION);
+  registerCleanupFunction(() => Services.perms.removeFromPrincipal(principal, key));
+
+  let shown = nextSubDialog(APP_CHOOSER);
+  await followLink(browser);
+  let w = await shown;
+  await until(() => lineShows(w, "y open link · n cancel"), "the list names the keys");
+  press("n", w);
+  await gone(w);
+  await wait(100);
+  Assert.equal(browser.currentURI.spec, PAGE, "n leaves the link unopened");
+
+  shown = nextSubDialog(APP_CHOOSER);
+  await followLink(browser);
+  w = await shown;
+  await until(() => lineShows(w, "y open link · n cancel") && acceptEnabled(w), "armed");
+  const opened = BrowserTestUtils.browserLoaded(browser, false, (url) => url.startsWith(HANDLED));
+  press("y", w);
+  await opened;
+  Assert.ok(true, "y opens the link with the chosen application");
+  BrowserTestUtils.removeTab(tab);
+});

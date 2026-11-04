@@ -3,21 +3,50 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Firefox's dialogs over a tab or over the window from the keyboard (docs/specs/
-// firefox-dialogs.md): "Leave page?", a page's alert, confirm and prompt, a sign-in, and
-// Firefox's own questions shown the same way. They are all commonDialog.xhtml in a SubDialog
-// frame of the browser window (TabDialogBox for a tab, gDialogBox for the window), and a key
-// typed in one reaches the window's capture listeners: SubDialog listens there itself
-// (SubDialog.sys.mjs, _addDialogEventListeners). PromptKeys hands those keys here.
+// firefox-dialogs.md): "Leave page?", a page's alert, confirm and prompt, a sign-in, Firefox's
+// own questions shown the same way, and the external protocol questions ("Open the link with
+// ...?", the application list). They are all a XUL <dialog> in a SubDialog frame of the browser
+// window (TabDialogBox for a tab, gDialogBox for the window), and a key typed in one reaches the
+// window's capture listeners: SubDialog listens there itself (SubDialog.sys.mjs,
+// _addDialogEventListeners). PromptKeys hands those keys here.
 //
 // `y` clicks the main button and `n` the cancel button, the one Firefox's Esc runs, with the
 // permission prompt's guards: a key counts once the dialog has shown for
 // security.notification_enable_delay with no key in between, and never in the dialog's own text
-// fields. A click on a button Firefox keeps disabled (CommonDialog's enableDelay) does nothing,
-// so such a dialog is not armed either. A line in the dialog names the keys once they count.
+// fields. `y` also waits for Firefox to enable the main button (EnableDelayHelper), and a click
+// on a disabled button does nothing. A line in the dialog names the keys once they count.
 
 import { dialogHint, dialogKey } from "../core/prompt-keys.mjs";
 
-const COMMON_DIALOG = "chrome://global/content/commonDialog.xhtml";
+/**
+ * @typedef {object} Kind  how one of Firefox's dialog documents is built
+ * @property {string} dialog  the <dialog>'s selector
+ * @property {string} parent  the selector of the element the line closes
+ * @property {string} [indent]  the element whose inline margin the line takes
+ * @property {string[]} [fields]  the containers of its text fields, hidden when unused
+ */
+
+/** @type {Record<string, Kind>} */
+const KINDS = {
+  // commonDialog.js: the message in #dialogGrid, the fields in their own containers.
+  "chrome://global/content/commonDialog.xhtml": {
+    dialog: "#commonDialog",
+    parent: "#dialogGrid",
+    indent: "#infoBody",
+    fields: ["loginContainer", "password1Container"],
+  },
+  // ContentDispatchChooser.sys.mjs: "Allow this site to open the link with ...?"
+  "chrome://mozapps/content/handling/permissionDialog.xhtml": {
+    dialog: "dialog",
+    parent: "#description-box",
+  },
+  // The application list, after the permission question or for a scheme set to always ask.
+  "chrome://mozapps/content/handling/appChooser.xhtml": {
+    dialog: "dialog",
+    parent: "#rememberContainer",
+  },
+};
+
 const DELAY_PREF = "security.notification_enable_delay";
 const DEFAULT_DELAY_MS = 500;
 const HINT_CLASS = "vimma-prompt-keys";
@@ -30,6 +59,8 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
  * @property {number} keyAt  the last key typed in it
  * @property {number} timer  shows the line once the keys count
  * @property {HTMLElement} line
+ * @property {any} dialog  the document's <dialog>
+ * @property {Kind} kind
  */
 
 /** @param {any} button */
@@ -66,10 +97,11 @@ export class DialogKeys {
   /** @param {Event} e */
   frameLoaded(e) {
     const doc = /** @type {any} */ (e.target)?.contentDocument;
-    if (doc?.documentURI !== COMMON_DIALOG || this.dialogs.has(doc)) return;
-    const dialog = doc.getElementById("commonDialog");
-    const grid = doc.getElementById("dialogGrid");
-    if (!dialog || !grid) return;
+    const kind = KINDS[doc?.documentURI];
+    if (!kind || this.dialogs.has(doc)) return;
+    const dialog = doc.querySelector(kind.dialog);
+    const parent = doc.querySelector(kind.parent);
+    if (!dialog || !parent) return;
     const line = doc.createElementNS(HTML_NS, "div");
     line.className = HINT_CLASS;
     // The buttons say what they do; the line is a reminder of the keys, not a second label.
@@ -84,52 +116,62 @@ export class DialogKeys {
       color: "var(--vimma-fg-dim, GrayText)",
       whiteSpace: "nowrap",
     });
-    line.textContent = dialogHint({
-      accept: shown(dialog.getButton("accept")) ? dialog.getButton("accept").label : "",
-      cancel: shown(dialog.getButton("cancel")) ? dialog.getButton("cancel").label : "",
-      field: this.hasField(doc),
-    });
-    grid.append(line);
+    parent.append(line);
     // In line with the message, whose XUL <description> has a margin of its own.
-    const body = doc.getElementById("infoBody");
+    const body = kind.indent && doc.querySelector(kind.indent);
     if (body)
       line.style.marginInlineStart = doc.defaultView.getComputedStyle(body).marginInlineStart;
     const now = ChromeUtils.now();
     /** @type {Shown} */
-    const state = { at: now, keyAt: now, timer: 0, line };
+    const state = { at: now, keyAt: now, timer: 0, line, dialog, kind };
+    this.label(doc, state);
+    // The protocol questions label their buttons through Fluent, after the frame has loaded
+    // and after document.l10n.ready: follow the buttons' labels rather than reading them once.
+    const relabel = new doc.defaultView.MutationObserver(() => this.label(doc, state));
+    for (const type of ["accept", "cancel"]) {
+      const button = dialog.getButton(type);
+      if (button) relabel.observe(button, { attributeFilter: ["label", "hidden"] });
+    }
     this.dialogs.set(doc, state);
     doc.defaultView.addEventListener(
       "unload",
       () => {
+        relabel.disconnect();
         this.win.clearTimeout(state.timer);
         this.dialogs.delete(doc);
       },
       { once: true },
     );
-    this.arm(doc, state);
+    this.arm(state);
   }
 
-  /** @param {Document} doc */
-  hasField(doc) {
-    return ["loginContainer", "password1Container"].some(
-      (id) => doc.getElementById(id)?.hidden === false,
-    );
+  /**
+   * The line's text, from the dialog's own buttons as they are labelled now.
+   * @param {Document} doc
+   * @param {Shown} state
+   */
+  label(doc, state) {
+    const { dialog } = state;
+    state.line.textContent = dialogHint({
+      accept: shown(dialog.getButton("accept")) ? dialog.getButton("accept").label : "",
+      cancel: shown(dialog.getButton("cancel")) ? dialog.getButton("cancel").label : "",
+      field: (state.kind.fields ?? []).some((id) => doc.getElementById(id)?.hidden === false),
+    });
   }
 
   /**
    * Hides the line of the dialog and shows it again once its keys count. It keeps its place
    * while hidden, so that the dialog does not change size under the reader.
-   * @param {Document} doc
    * @param {Shown} state
    */
-  arm(doc, state) {
+  arm(state) {
     this.win.clearTimeout(state.timer);
     const set = (/** @type {boolean} */ armed) => {
       state.line.toggleAttribute(ARMED_ATTR, armed);
       state.line.style.visibility = armed ? "visible" : "hidden";
     };
     const check = () => {
-      const left = this.armedAt(doc, state) - ChromeUtils.now();
+      const left = this.armedAt(state) - ChromeUtils.now();
       if (left <= 0) set(true);
       else state.timer = this.win.setTimeout(check, Math.ceil(left));
     };
@@ -138,17 +180,11 @@ export class DialogKeys {
   }
 
   /**
-   * When the keys count: the delay from when the dialog was built or the last key in it, and
-   * not before Firefox enables its buttons.
-   * @param {Document} doc
+   * When the keys count: the delay from when the dialog was built or the last key in it.
    * @param {Shown} state
    */
-  armedAt(doc, state) {
-    const at = Math.max(state.at, state.keyAt) + this.delay;
-    const accept = /** @type {any} */ (doc.getElementById("commonDialog"))?.getButton("accept");
-    // CommonDialog's enableDelay disables the buttons until the window is focused for a while
-    // (PromptUtils.sys.mjs, EnableDelayHelper); look again shortly.
-    return accept?.disabled ? Math.max(at, ChromeUtils.now() + 100) : at;
+  armedAt(state) {
+    return Math.max(state.at, state.keyAt) + this.delay;
   }
 
   /**
@@ -173,16 +209,19 @@ export class DialogKeys {
   onKey(e, doc, key) {
     const state = /** @type {Shown} */ (this.dialogs.get(doc));
     const now = ChromeUtils.now();
-    const armed = now >= this.armedAt(doc, state);
+    const armed = now >= this.armedAt(state);
     state.keyAt = now;
-    this.arm(doc, state);
-    const dialog = /** @type {any} */ (doc.getElementById("commonDialog"));
-    const accept = dialog.getButton("accept");
-    const cancel = dialog.getButton("cancel");
+    this.arm(state);
+    const accept = state.dialog.getButton("accept");
+    const cancel = state.dialog.getButton("cancel");
     const focused = /** @type {any} */ (doc.activeElement);
     const result = dialogKey(key, {
-      armed,
-      inField: focused?.localName === "input" || !!focused?.isContentEditable,
+      // Firefox keeps the main button disabled until its window has had focus for a while
+      // (PromptUtils.sys.mjs, EnableDelayHelper), or until an application is picked
+      // (appChooser.js): `y` waits for it too, `n` does not need to.
+      armed: armed && (key !== "y" || !accept?.disabled),
+      // Text fields only: a checkbox ("Always allow") is the dialog's, not typing.
+      inField: !!focused?.mozIsTextField?.(false) || !!focused?.isContentEditable,
       pending: this.host.pending(),
       accept: shown(accept),
       cancel: shown(cancel),

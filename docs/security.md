@@ -444,6 +444,16 @@ text that pages, add-ons and bookmarks choose.
     [`dialogKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
     [`leave_page_n_stays_y_leaves`](../tests/browser/browser_vimma_dialog_keys.js),
     [`prompt_field_types`](../tests/browser/browser_vimma_dialog_keys.js)
+  - The external protocol questions over a tab (`permissionDialog.xhtml`, "Allow this site to
+    open the link with ...?", and `appChooser.xhtml`, the application list) take the same keys
+    under the same wait: `y` opens another application, so a page that follows a link under a
+    typing hand must not get that typing as an answer. `y` **also** waits for Firefox's own
+    guard, the main button it keeps disabled until the dialog's window has had focus for
+    `security.dialog_enable_delay` (`EnableDelayHelper`): it is swallowed, never queued, while the
+    button is disabled. `n` (Cancel) opens nothing. A checkbox ("Always allow") is not a text
+    field, so the keys answer from it, and the box's state is the user's, never changed by them.
+    [`protocol_permission_n_cancels_y_opens`](../tests/browser/browser_vimma_dialog_keys.js),
+    [`protocol_app_chooser`](../tests/browser/browser_vimma_dialog_keys.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.
