@@ -31,7 +31,7 @@ export function manifest(redirectUrl, name = "vimma-upstream-autopilot") {
     url: "https://github.com/vimma-browser/vimma",
     description: "Opens Vimma's Firefox upstream bump pull requests so that their CI runs.",
     public: false,
-    hook_attributes: { active: false },
+    hook_attributes: { url: "https://github.com/vimma-browser/vimma", active: false },
     redirect_url: redirectUrl,
     default_permissions: { contents: "write", pull_requests: "write", issues: "write" },
     default_events: [],
@@ -182,6 +182,8 @@ async function main() {
       process.exitCode = 1;
     }
     server.close();
+    // The browser keeps its connection alive, which would hold the process open.
+    server.closeAllConnections();
   });
   server.listen(0, "127.0.0.1", () => {
     const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;

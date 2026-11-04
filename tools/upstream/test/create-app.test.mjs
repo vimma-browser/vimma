@@ -16,7 +16,11 @@ describe("the upstream App's manifest", () => {
       issues: "write",
     });
     expect(m.default_events).toEqual([]);
-    expect(m.hook_attributes).toEqual({ active: false });
+    // GitHub refuses a manifest whose hook_attributes has no url, even with the webhook off.
+    expect(m.hook_attributes).toEqual({
+      url: "https://github.com/vimma-browser/vimma",
+      active: false,
+    });
     expect(m.public).toBe(false);
     expect(m.redirect_url).toBe("http://127.0.0.1:4000/callback");
   });
