@@ -40,6 +40,11 @@ export class VimmaParent extends JSWindowActorParent {
       PdfOps.onState(this, msg.data);
       return;
     }
+    if (msg.name === "Vimma:PdfOutline") {
+      // Taken only after the user's Tab, from the same actor, and parsed (V8).
+      PdfOps.onOutline(this, msg.data);
+      return;
+    }
     if (msg.name === "Vimma:AgentSkipped") {
       // An agent's click or submit was skipped in this frame (docs/specs/mcp-forms.md F16;
       // security.md M28): the tab's allowed submission is withdrawn. From any frame of the tab,

@@ -275,6 +275,9 @@ const BADGE_COLORS = Object.freeze({
   panel: "blue",
   resize: "brown",
   prefix: "red",
+  // The PDF outline (docs/specs/pdf-mode.md decision 10): beside the side panel's blue. Last, so
+  // that no earlier badge moves for it.
+  index: "bright_blue",
 });
 
 /** Badges the status bar can show: every mode, and `prefix`. */

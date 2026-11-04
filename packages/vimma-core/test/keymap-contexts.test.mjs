@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG } from "../src/defaults.mjs";
 import { createDispatcher } from "../src/dispatcher.mjs";
 import { boundChords } from "../src/firefox-keys.mjs";
 import { KeymapError, compileKeymap } from "../src/keymap.mjs";
-import { CONTEXTS } from "../src/modes.mjs";
+import { CONTEXTS, MODES } from "../src/modes.mjs";
 import { formatKey, parseBinding, parseKey } from "../src/keys.mjs";
 
 // Keymap contexts (docs/specs/pdf-mode.md decision 4, docs/adr/024-keymap-contexts.md): the `pdf`
@@ -169,5 +169,57 @@ describe("dispatcher with a context", () => {
     expect(() => d.dispatch("normal", parseKey("j"), /** @type {any} */ ("nope"))).toThrow(
       /unknown context/,
     );
+  });
+});
+
+// docs/specs/pdf-mode.md Behaviour 5 and decision 10: the outline panel's `index` mode.
+describe("index mode", () => {
+  test("index is a mode, and Tab opens the outline in the pdf context only", () => {
+    const km = compileKeymap();
+    expect(MODES).toContain("index");
+    expect(lookup(km.trie("normal", "pdf"), "tab")).toBe("pdf_outline");
+    expect(lookup(km.trie("normal", "page"), "tab")).toBeUndefined();
+  });
+
+  test.each([
+    ["j", "index_down"],
+    ["down", "index_down"],
+    ["ctrl+n", "index_down"],
+    ["k", "index_up"],
+    ["up", "index_up"],
+    ["ctrl+p", "index_up"],
+    ["l", "index_expand"],
+    ["z o", "index_expand"],
+    ["h", "index_collapse"],
+    ["z c", "index_collapse"],
+    ["z shift+o", "index_expand_subtree"],
+    ["z shift+c", "index_collapse_subtree"],
+    ["shift+l", "index_expand_all"],
+    ["z shift+r", "index_expand_all"],
+    ["shift+h", "index_collapse_all"],
+    ["z shift+m", "index_collapse_all"],
+    ["g g", "index_first"],
+    ["shift+g", "index_last"],
+    ["ctrl+d", "index_half_down"],
+    ["ctrl+u", "index_half_up"],
+    ["enter", "index_follow"],
+    ["space", "index_follow"],
+    ["ctrl+j", "index_follow"],
+    ["tab", "index_close"],
+    ["esc", "index_close"],
+    ["ctrl+[", "index_close"],
+    ["ctrl+c", "index_close"],
+    ["q", "index_close"],
+    ["/", "index_filter"],
+  ])("%s is %s", (key, name) => {
+    expect(lookup(compileKeymap().trie("index"), key)).toBe(name);
+  });
+
+  test("config.toml accepts [modal.index] as a mode table", () => {
+    const r = parseConfig('[modal.index]\n"o" = "index_follow"\n[unbind]\nindex = ["q"]\n');
+    expect(r.errors).toEqual([]);
+    const trie = /** @type {any} */ (r.keymap).trie("index");
+    expect(lookup(trie, "o")).toBe("index_follow");
+    expect(lookup(trie, "q")).toBeUndefined();
   });
 });

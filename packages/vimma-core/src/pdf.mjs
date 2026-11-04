@@ -205,6 +205,9 @@ export const PDF_OPS = Object.freeze([
   "rotate",
   "presentation",
   "jump",
+  // Delivery PR 4 (decision 10): read the outline, and follow an entry by its index.
+  "outline",
+  "follow",
 ]);
 const OPS = new Set(PDF_OPS);
 

@@ -310,12 +310,13 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   /**
-   * The adapter's state message; its timer can fire while the document goes away.
-   * @param {object} state
+   * The adapter's state or outline message; its timer can fire while the document goes away.
+   * @param {object} data
+   * @param {string} [name]
    */
-  #sendPdf(state) {
+  #sendPdf(data, name = "Vimma:PdfState") {
     try {
-      this.sendAsyncMessage("Vimma:PdfState", state);
+      this.sendAsyncMessage(name, data);
     } catch {
       // the actor is being destroyed: the next document reports for itself
     }
@@ -395,7 +396,13 @@ export class VimmaChild extends JSWindowActorChild {
         // Only pdf.js's own event (chrome-only, trusted); PdfView.attach checks the principal.
         if (!event.isTrusted) return;
         if (this.#pdf) this.#pdf.schedule();
-        else this.#pdf = PdfView.attach(this, (state) => this.#sendPdf(state));
+        else {
+          this.#pdf = PdfView.attach(
+            this,
+            (state) => this.#sendPdf(state),
+            (outline) => this.#sendPdf(outline, "Vimma:PdfOutline"),
+          );
+        }
     }
   }
 

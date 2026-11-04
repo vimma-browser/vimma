@@ -1,0 +1,154 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R /Names << /Dests 5 0 R /EmbeddedFiles 6 0 R >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R 11 0 R 12 0 R 13 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Outlines /First 50 0 R /Last 56 0 R /Count 7 >>
+endobj
+5 0 obj
+<< /Names [(intro) [11 0 R /XYZ 0 792 null]] >>
+endobj
+6 0 obj
+<< /Names [(notes.txt) 7 0 R] >>
+endobj
+7 0 obj
+<< /Type /Filespec /F (notes.txt) /UF (notes.txt) /EF << /F 8 0 R >> >>
+endobj
+8 0 obj
+<< /Type /EmbeddedFile /Length 6 >>
+stream
+notes
+
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 30 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 31 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 32 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+13 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 33 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+30 0 obj
+<< /Length 43 >>
+stream
+BT /F1 24 Tf 72 720 Td (Kinds page 1) Tj ET
+endstream
+endobj
+31 0 obj
+<< /Length 43 >>
+stream
+BT /F1 24 Tf 72 720 Td (Kinds page 2) Tj ET
+endstream
+endobj
+32 0 obj
+<< /Length 43 >>
+stream
+BT /F1 24 Tf 72 720 Td (Kinds page 3) Tj ET
+endstream
+endobj
+33 0 obj
+<< /Length 43 >>
+stream
+BT /F1 24 Tf 72 720 Td (Kinds page 4) Tj ET
+endstream
+endobj
+50 0 obj
+<< /Title (Named intro) /Parent 4 0 R /Dest (intro) /Next 51 0 R >>
+endobj
+51 0 obj
+<< /Title (Last page action) /Parent 4 0 R /A << /S /Named /N /LastPage >> /Prev 50 0 R /Next 52 0 R >>
+endobj
+52 0 obj
+<< /Title (Example link) /Parent 4 0 R /A << /S /URI /URI (https://example.org/outline) >> /Prev 51 0 R /Next 53 0 R >>
+endobj
+53 0 obj
+<< /Title (Script link) /Parent 4 0 R /A << /S /URI /URI (javascript:alert\(1\)) >> /Prev 52 0 R /Next 54 0 R >>
+endobj
+54 0 obj
+<< /Title (<img src=x onerror=alert\(1\)>) /Parent 4 0 R /Dest [12 0 R /XYZ 0 792 null] /Prev 53 0 R /Next 55 0 R >>
+endobj
+55 0 obj
+<< /Title (Notes attachment) /Parent 4 0 R /A << /S /GoToE /T << /R /C /N (notes.txt) >> >> /Prev 54 0 R /Next 56 0 R >>
+endobj
+56 0 obj
+<< /Title (Deep) /Parent 4 0 R /Dest [13 0 R /XYZ 0 792 null] /First 57 0 R /Last 57 0 R /Count -1 /Prev 55 0 R >>
+endobj
+57 0 obj
+<< /Title (Deeper) /Parent 56 0 R /Dest [13 0 R /XYZ 0 400 null] >>
+endobj
+xref
+0 58
+0000000000 65535 f 
+0000000009 00000 n 
+0000000121 00000 n 
+0000000200 00000 n 
+0000000270 00000 n 
+0000000343 00000 n 
+0000000406 00000 n 
+0000000454 00000 n 
+0000000541 00000 n 
+0000000000 65535 f 
+0000000616 00000 n 
+0000000744 00000 n 
+0000000872 00000 n 
+0000001000 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000001128 00000 n 
+0000001222 00000 n 
+0000001316 00000 n 
+0000001410 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000001504 00000 n 
+0000001588 00000 n 
+0000001708 00000 n 
+0000001844 00000 n 
+0000001973 00000 n 
+0000002106 00000 n 
+0000002243 00000 n 
+0000002374 00000 n 
+trailer
+<< /Size 58 /Root 1 0 R >>
+startxref
+2458
+%%EOF

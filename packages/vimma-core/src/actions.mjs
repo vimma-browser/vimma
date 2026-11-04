@@ -430,6 +430,30 @@ group("PDF viewer", [
   ["pdf_single_page", "pdf.single_page", "One page at a time, or scrolling"],
   ["pdf_rotate", "pdf.rotate", "Rotate the pages 90 degrees clockwise (with a count: n times)"],
   ["pdf_presentation", "pdf.presentation", "Presentation mode, or leave it"],
+  ["pdf_outline", "pdf.outline", "Open the outline (table of contents) in a panel"],
+]);
+
+// docs/specs/pdf-mode.md decision 10: the outline panel's `index` mode, zathura's index keys.
+group("PDF outline", [
+  ["index_down", "index.down", "Outline: next entry"],
+  ["index_up", "index.up", "Outline: previous entry"],
+  ["index_expand", "index.expand", "Outline: expand the entry"],
+  ["index_collapse", "index.collapse", "Outline: collapse the entry, or go to its parent"],
+  ["index_expand_subtree", "index.expand_subtree", "Outline: expand the entry and all under it"],
+  [
+    "index_collapse_subtree",
+    "index.collapse_subtree",
+    "Outline: collapse the entry and all under it",
+  ],
+  ["index_expand_all", "index.expand_all", "Outline: expand every entry"],
+  ["index_collapse_all", "index.collapse_all", "Outline: collapse every entry"],
+  ["index_first", "index.first", "Outline: first entry"],
+  ["index_last", "index.last", "Outline: last entry"],
+  ["index_half_down", "index.half_down", "Outline: down half the entries shown"],
+  ["index_half_up", "index.half_up", "Outline: up half the entries shown"],
+  ["index_follow", "index.follow", "Outline: go to the entry and close the outline"],
+  ["index_close", "index.close", "Outline: close it (in the filter: back to the whole outline)"],
+  ["index_filter", "index.filter", "Outline: filter the entries by their titles"],
 ]);
 
 /** @type {readonly ActionDef[]} */

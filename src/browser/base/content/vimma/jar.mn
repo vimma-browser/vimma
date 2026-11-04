@@ -102,6 +102,7 @@ browser.jar:
         content/browser/vimma/ui/agent-chat.mjs           (ui/agent-chat.mjs)
         content/browser/vimma/ui/side-panel.mjs           (ui/side-panel.mjs)
         content/browser/vimma/ui/bookmarks-panel.mjs      (ui/bookmarks-panel.mjs)
+        content/browser/vimma/ui/pdf-outline.mjs          (ui/pdf-outline.mjs)
         skin/classic/browser/vimma/side-panel.css         (/browser/themes/shared/vimma/side-panel.css)
         content/browser/vimma/host/goto.mjs               (host/goto.mjs)
         content/browser/vimma/host/tab-search.mjs         (host/tab-search.mjs)

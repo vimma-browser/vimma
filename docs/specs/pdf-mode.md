@@ -1,12 +1,12 @@
 # Spec: pdf-mode
 
-Status: accepted (delivery PRs 1, 2, 3 and 6 implemented; PRs 2 and 3 behind `vimma.feature.pdf_mode`) · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
+Status: accepted (delivery PRs 1, 2, 3, 4 and 6 implemented; PRs 2 to 4 behind `vimma.feature.pdf_mode`) · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
 `modes.mjs` (`index` mode), `actions.mjs`, `defaults.mjs`, `statusbar.mjs`, `pdf.mjs` (new: state
 parser, page and zoom arithmetic, marks), `pdfoutline.mjs` (new: outline parser and the outline
 panel's state)); `actors/pdf-view.mjs` (new: the one module that touches pdf.js),
 `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, `host/VimmaHost.sys.mjs`,
-`host/find.mjs`, `host/pdf-ops.mjs` (new); `ui/pdf-outline.mjs` and its style sheet (new: the
-outline panel); `src/browser/branding/vimma/pref/firefox-branding.js`; `docs/guide.md`,
+`host/find.mjs`, `host/pdf-ops.mjs` (new); `ui/pdf-outline.mjs` (new: the outline panel, styled
+in `side-panel.css` beside the bookmarks panel); `src/browser/branding/vimma/pref/firefox-branding.js`; `docs/guide.md`,
 `docs/limits.md`, `docs/security.md` · Upstream patches: none (decision 2) · ADR:
 [ADR-024](../adr/024-keymap-contexts.md), keymap contexts (decision 4)
 
@@ -442,8 +442,10 @@ find: { current, total } }`), sent to the parent on the viewer's events.
       keeps each entry's target in the child and sends the parent, in document order, only
       `{ title, level, page, kind, collapsed }` per entry, plus `url` for a URL entry. `page` is
       the 1-based page the destination resolves to, resolved as pdf.js resolves its current entry
-      (Research), or 0 when it does not resolve; `kind` is `dest`, `url`, `action`, `attachment`
-      or `ocg`; `collapsed` is the entry's negative `count`. Destinations themselves (names and
+      (Research), or 0 when it does not resolve; `kind` is `dest`, `url`, `action`, `attachment`,
+      `ocg` or `none` (an entry pdf.js gives no target, such as a `javascript:` link it refuses,
+      which follows nothing); `collapsed` is the entry's negative `count`. Named destinations
+      resolve through one `pdfDocument.getDestinations()` call rather than one promise per entry. Destinations themselves (names and
       page references) never leave the content process, because the parent needs only a page
       number to select the current entry, and following an entry by its index keeps the parent's
       messages to operation names and numbers (V7).
@@ -466,7 +468,12 @@ find: { current, total } }`), sent to the parent on the viewer's events.
       opening an attachment goes through pdf.js's download path, which Vimma does not drive.
     - **Current entry and expansion.** On opening, the panel selects the deepest of the last
       entries whose page is at or before the current page, as pdf.js does, and expands the path to
-      it; other entries start expanded or collapsed as the document's `count` says.
+      it; other entries start expanded or collapsed as the document's `count` says. `h` on an
+      entry that is already collapsed, or has nothing under it, goes to its parent, as in the
+      bookmarks panel. `index` mode takes no counts, as zathura's index does not.
+    - **The filter's keys.** Typed keys go to the filter's field; `Enter` and the arrow keys are
+      the field's own there, and `Tab` closes the outline. `Esc` returns to the tree with the
+      entry selected before `/`.
     - **Lifetime.** The parsed outline is kept in the parent, in memory, for the tab's current
       document, so that a second `Tab` opens at once; it is dropped when the tab navigates or
       closes, and never written. The panel closes when its tab stops being the selected tab of

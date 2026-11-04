@@ -54,6 +54,7 @@ import {
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
 import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
+import { OutlinePanel } from "../ui/pdf-outline.mjs";
 import { AgentChatWindow } from "../ui/agent-chat.mjs";
 import { giveSelectedTab, runAgentCommand } from "./agent-chat-ops.mjs";
 import { quickAdd, runBookmarkEffect } from "./bookmark-actions.mjs";
@@ -71,6 +72,7 @@ import {
   closeTabById,
   newTab,
   openTyped,
+  openUrl,
   restoreTab,
   selectTab,
 } from "./tab-ops.mjs";
@@ -156,7 +158,8 @@ import {
   sitePermissionKey,
 } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
-import { PDF_ACTION_IDS, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
+import { NOT_PDF, PDF_ACTION_IDS, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
+import { outlineUrlAllowed } from "../core/pdfoutline.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -256,6 +259,10 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * @property {SidePanel} panel  prefix+b, `panel` mode while open (m3-workspaces 6)
  * @property {BookmarksPanel} bookmarks  prefix+shift+b, in the side panel's slot
  *   and `panel` mode (docs/specs/bookmarks.md)
+ * @property {OutlinePanel} outline  the PDF viewer's outline on Tab, in the side panel's slot and
+ *   `index` mode (docs/specs/pdf-mode.md decision 10)
+ * @property {any} outlineFor  the <browser> whose outline Tab asked for, until it comes
+ * @property {() => void} stopOutline  ends the PDF outline subscription (pdf-ops.mjs)
  * @property {AgentChatWindow} agentChat  `:agent`, the built-in agent's window in the side
  *   panel's slot; its keys are its own while focus is in it (docs/specs/builtin-agent.md)
  * @property {() => void} onAgentChat  the built-in agent's conversations changed: the status
@@ -303,6 +310,7 @@ function vimmaSurfaceOpen(s) {
     s.rename.isOpen ||
     s.panel.isOpen ||
     s.bookmarks.isOpen ||
+    s.outline.isOpen ||
     s.agentChat.focused ||
     s.find.typing
   );
@@ -464,6 +472,81 @@ function workspaceStep(step) {
 function panelAction(s, a) {
   if (s.bookmarks.isOpen) s.bookmarks.action(a);
   else s.panel.action(a);
+}
+
+/**
+ * An `[modal.index]` action, for the outline panel when it is open.
+ * @param {WindowState} s
+ * @param {Action} a
+ */
+function outlineAction(s, a) {
+  s.outline.action(a);
+}
+
+/** What Tab says in a PDF without an outline (docs/specs/pdf-mode.md Behaviour 5). */
+export const NO_OUTLINE = "no outline in this PDF";
+/** What following an attachment entry says (decision 10). */
+export const OUTLINE_ATTACHMENT = "open attachments from pdf.js's sidebar (F4)";
+
+/**
+ * Tab in the PDF viewer: the outline read once per document (V8), then shown at once; the
+ * other panels in the slot close (one at a time).
+ * @param {WindowState} s
+ */
+function openOutline(s) {
+  s.notice.hide();
+  if (s.outline.isOpen) {
+    s.outline.close();
+    return;
+  }
+  const browser = VimmaHost._selectedBrowser(s);
+  const outline = PdfOps.outline(browser);
+  if (outline) {
+    showOutline(s, browser, outline);
+    return;
+  }
+  if (!PdfOps.askOutline(browser)) {
+    s.notice.show(NOT_PDF);
+    return;
+  }
+  s.outlineFor = browser;
+}
+
+/**
+ * @param {WindowState} s
+ * @param {any} browser
+ * @param {import("../core/pdfoutline.mjs").PdfOutline | null} outline  null: malformed
+ */
+function showOutline(s, browser, outline) {
+  s.outlineFor = null;
+  if (!outline?.entries.length) {
+    s.notice.show(NO_OUTLINE);
+    return;
+  }
+  s.panel.close();
+  s.bookmarks.close();
+  s.agentChat.close();
+  s.outline.open(browser, outline, PdfOps.state(browser)?.page ?? 1);
+}
+
+/**
+ * Enter on an outline entry (decision 10): the viewer follows a destination, a named action or
+ * a layer change by the entry's index (V7); Vimma opens a URL entry under section 4 (http and
+ * https only); an attachment is pdf.js's to open.
+ * @param {WindowState} s
+ * @param {any} browser
+ * @param {number} index
+ */
+function followOutline(s, browser, index) {
+  const entry = PdfOps.outline(browser)?.entries[index];
+  if (!entry) return;
+  if (entry.kind === "url") {
+    const url = entry.url ?? "";
+    if (!outlineUrlAllowed(url) || !openUrl(s.win, url, "current")) {
+      s.notice.show(BLOCKED_URL_TEXT, { error: true });
+    }
+  } else if (entry.kind === "attachment") s.notice.show(OUTLINE_ATTACHMENT);
+  else if (entry.kind !== "none") PdfOps.run(browser, "follow", index);
 }
 
 /**
@@ -854,6 +937,7 @@ export const RUNNERS = Object.freeze({
     if (s.panel.isOpen) s.panel.close();
     else {
       s.bookmarks.close(); // one panel in the slot at a time
+      s.outline.close();
       s.agentChat.close();
       if (!s.panel.open()) s.notice.show(NO_WORKSPACES);
     }
@@ -922,6 +1006,7 @@ export const RUNNERS = Object.freeze({
     if (s.bookmarks.isOpen) s.bookmarks.close();
     else {
       s.panel.close();
+      s.outline.close();
       s.agentChat.close();
       s.bookmarks.open();
     }
@@ -944,6 +1029,24 @@ export const RUNNERS = Object.freeze({
   "bookmarks.delete": bookmarksAction,
   "bookmarks.yank": bookmarksAction,
   "bookmarks.filter": bookmarksAction,
+  // docs/specs/pdf-mode.md decision 10: Tab in the PDF viewer, the outline in the side panel's
+  // slot; its keys run in `index` mode while it is open.
+  "pdf.outline": (/** @type {WindowState} */ s) => openOutline(s),
+  "index.down": outlineAction,
+  "index.up": outlineAction,
+  "index.expand": outlineAction,
+  "index.collapse": outlineAction,
+  "index.expand_subtree": outlineAction,
+  "index.collapse_subtree": outlineAction,
+  "index.expand_all": outlineAction,
+  "index.collapse_all": outlineAction,
+  "index.first": outlineAction,
+  "index.last": outlineAction,
+  "index.half_down": outlineAction,
+  "index.half_up": outlineAction,
+  "index.follow": outlineAction,
+  "index.close": outlineAction,
+  "index.filter": outlineAction,
   // docs/specs/addon-manager.md: prefix+e / :addons, and :addon <name> (without one it asks).
   "addons.picker": (/** @type {WindowState} */ s) => {
     s.notice.hide();
@@ -991,6 +1094,7 @@ export const RUNNERS = Object.freeze({
     s.notice.hide();
     s.panel.close();
     s.bookmarks.close();
+    s.outline.close();
     runAgentCommand(s.agentChat, t, (text, error) => s.notice.show(text, { error: !!error }));
   },
   // prefix+shift+a (docs/specs/vimma-mcp.md decision 14): the waiting agent question, or with
@@ -1513,6 +1617,16 @@ export const VimmaHost = {
       stopPdf: PdfOps.subscribe((browser) => {
         if (browser?.ownerDocument?.defaultView === win) this._emit(state);
       }),
+      // The outline Tab asked for: shown if its tab is still the selected one.
+      outlineFor: null,
+      stopOutline: PdfOps.subscribeOutline((browser, outline) => {
+        if (browser !== state.outlineFor) return;
+        if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
+          showOutline(state, browser, outline);
+        }
+        state.outlineFor = null;
+        this._emit(state);
+      }),
       agentPrompt: new AgentPrompt(win),
       updatePrompt: new AgentPrompt(win, {
         id: "vimma-update-prompt",
@@ -1567,6 +1681,11 @@ export const VimmaHost = {
         // docs/specs/side-panel-unsplit.md: the split's panes start marked.
         split: () => shownSplit(win),
         alone: (tabId) => showAlone(win, tabId),
+      }),
+      outline: new OutlinePanel(win, {
+        effect: (browser, effect) => {
+          if (effect.type === "follow") followOutline(state, browser, effect.index);
+        },
       }),
       bookmarks: new BookmarksPanel(win, {
         load: () => loadTree(win),
@@ -1771,6 +1890,7 @@ export const VimmaHost = {
     state.rename.destroy();
     state.panel.destroy();
     state.bookmarks.destroy();
+    state.outline.destroy();
     lazy.AgentChat.removeListener(state.onAgentChat);
     state.agentChat.destroy();
     state.tabStrip?.uninit();
@@ -1780,6 +1900,7 @@ export const VimmaHost = {
     state.statusBar?.uninit();
     state.find.destroy();
     state.stopPdf();
+    state.stopOutline();
     state.listeners.clear();
     states.delete(win);
     windows.delete(win);
@@ -2071,6 +2192,7 @@ export const VimmaHost = {
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
+    if (state.outline.isOpen) return "index";
     if (state.panel.isOpen || state.bookmarks.isOpen) return "panel";
     // Resize mode ends by itself when the window is down to one pane (a tab closed meanwhile).
     if (state.resize && !hasPanes(state.win)) state.resize = false;
@@ -2204,7 +2326,8 @@ export const VimmaHost = {
     }
     // Typing into the help filter: plain keys belong to the input; Esc and chords stay ours.
     const typing = !chord.ctrl && !chord.alt && !chord.meta && chord.key !== "esc";
-    const filtering = state.help.filterFocused || state.bookmarks.filterFocused;
+    const filtering =
+      state.help.filterFocused || state.bookmarks.filterFocused || state.outline.filterFocused;
     if (typing && filtering && state.dispatcher.pending().length === 0) return;
     this._dispatch(win, state, e, mode, chord);
     // A key the page gets after Esc is the user acting on the page again: what the page
@@ -2235,7 +2358,12 @@ export const VimmaHost = {
     // The overlay is modal: in help mode every key is ours, handled or not, so nothing reaches
     // the browser underneath (ctrl+w would close the tab behind it). Hint mode too: every key
     // is a label key or ignored, never the page's. Resize mode too (ADR-014), and the side panel.
-    const modal = mode === "help" || mode === "hint" || mode === "resize" || mode === "panel";
+    const modal =
+      mode === "help" ||
+      mode === "hint" ||
+      mode === "resize" ||
+      mode === "panel" ||
+      mode === "index";
     switch (result.kind) {
       case "pass":
         if (this._editKey(state, e, mode, chord)) return;
