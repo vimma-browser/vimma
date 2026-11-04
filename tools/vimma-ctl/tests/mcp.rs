@@ -117,7 +117,22 @@ impl FakeVimma {
         Self::start_with(WELCOME, Some(TICKET), answer)
     }
 
+    /// [`FakeVimma::start`], but an `agent-ping` goes to `answer` too, as any request does.
+    fn start_answering_pings(answer: Answer) -> Self {
+        Self::start_full(WELCOME, None, false, answer)
+    }
+
     fn start_with(welcome: &'static str, ticket: Option<&'static str>, answer: Answer) -> Self {
+        Self::start_full(welcome, ticket, true, answer)
+    }
+
+    /// `pings`: answer every `agent-ping` at once, as Vimma does.
+    fn start_full(
+        welcome: &'static str,
+        ticket: Option<&'static str>,
+        pings: bool,
+        answer: Answer,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let profile = temp_profile();
@@ -131,7 +146,7 @@ impl FakeVimma {
                 let Ok(stream) = stream else { break };
                 *l.lock().unwrap() = Some(stream.try_clone().unwrap());
                 let (s, answer) = (s.clone(), answer.clone());
-                thread::spawn(move || serve_one(stream, welcome, ticket, &s, &answer));
+                thread::spawn(move || serve_one(stream, welcome, ticket, pings, &s, &answer));
             }
         });
         Self {
@@ -197,6 +212,7 @@ fn serve_one(
     stream: TcpStream,
     welcome: &str,
     ticket: Option<&str>,
+    pings: bool,
     seen: &Mutex<Seen>,
     answer: &Mutex<Answer>,
 ) {
@@ -247,7 +263,7 @@ fn serve_one(
                         r#"{{"type":"response","id":{},"ok":true,"result":{{"workspace":"agent","exists":true}}}}"#,
                         id_of(&msg)
                     ))
-                } else if str_of(&msg, "command") == "agent-ping" {
+                } else if pings && str_of(&msg, "command") == "agent-ping" {
                     Some(format!(
                         r#"{{"type":"response","id":{},"ok":true,"result":{{}}}}"#,
                         id_of(&msg)
@@ -1241,5 +1257,243 @@ fn calls_past_vimmas_four_in_flight_wait_here_and_all_run() {
         .collect();
     assert_eq!(results.len(), 6, "{results:?}");
     assert!(results.iter().all(|r| !is_error(r)), "{results:?}");
+    drop(tx);
+}
+
+/// A `tools/call` of `vimma_tabs` with MCP id `id`, as a stdin line.
+fn tabs_call(id: u64) -> Vec<u8> {
+    format!(
+        "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":\"vimma_tabs\"}}}}\n"
+    )
+    .into_bytes()
+}
+
+/// The control-protocol ids of the `command` requests the fake saw, in order.
+fn sent(s: &Seen, command: &str) -> Vec<u64> {
+    s.requests
+        .iter()
+        .filter(|r| str_of(r, "command") == command)
+        .map(id_of)
+        .collect()
+}
+
+/// An `ok` answer to `agent-tabs` request `id`.
+fn tabs_answer(id: u64) -> String {
+    format!(r#"{{"type":"response","id":{id},"ok":true,"result":{{"tabs":[]}}}}"#)
+}
+
+// Issue #693: Vimma counts a withdrawn call in flight until it answers it (an open waiting for
+// its page, a long keys run), so a call sent in its place would be refused as `busy`. It
+// waits here until Vimma's answer to the withdrawn one comes.
+#[test]
+fn a_withdrawn_call_counts_in_flight_until_vimma_answers_it() {
+    let vimma = FakeVimma::start(Box::new(|_| None));
+    let (tx, out) = serve_in_thread(
+        &vimma.profile,
+        short(Duration::from_secs(30), Duration::from_secs(60)),
+    );
+    tx.send(format!("{INIT}\n").into_bytes()).unwrap();
+    out.wait_lines(1);
+    for id in 2..6 {
+        tx.send(tabs_call(id)).unwrap();
+    }
+    let seen = vimma.wait_for("four calls", |s| sent(s, "agent-tabs").len() == 4);
+    let first = sent(&seen, "agent-tabs")[0];
+    tx.send(
+        br#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":2}}
+"#
+        .to_vec(),
+    )
+    .unwrap();
+    vimma.wait_for("the withdrawal", |s| !sent(s, "agent-cancel").is_empty());
+    tx.send(tabs_call(6)).unwrap();
+    thread::sleep(Duration::from_millis(300));
+    assert_eq!(
+        sent(&vimma.seen(), "agent-tabs").len(),
+        4,
+        "the withdrawn call still runs in Vimma: the fifth waits here"
+    );
+    // Vimma answers the withdrawn call: its place goes to the waiting one.
+    vimma.push(&format!(
+        r#"{{"type":"response","id":{first},"ok":false,"error":{{"code":"denied","message":"the request was cancelled","reason":"cancelled"}}}}"#
+    ));
+    vimma.wait_for("the fifth call", |s| sent(s, "agent-tabs").len() == 5);
+    assert_eq!(out.lines().len(), 1, "no result for the cancelled call");
+    drop(tx);
+}
+
+// Issue #693: a call past its deadline fails here and is withdrawn, but Vimma still counts it
+// until it answers, so the next call waits for that answer.
+#[test]
+fn an_expired_call_counts_in_flight_until_vimma_answers_it() {
+    let vimma = FakeVimma::start(Box::new(|_| None));
+    let (tx, out) = serve_in_thread(
+        &vimma.profile,
+        short(Duration::from_secs(30), Duration::from_millis(400)),
+    );
+    tx.send(format!("{INIT}\n").into_bytes()).unwrap();
+    out.wait_lines(1);
+    for id in 2..6 {
+        tx.send(tabs_call(id)).unwrap();
+    }
+    let lines = out.wait_lines(5);
+    assert!(lines[1..].iter().all(is_error), "the four ended: {lines:?}");
+    let first = sent(&vimma.seen(), "agent-tabs")[0];
+    tx.send(tabs_call(6)).unwrap();
+    thread::sleep(Duration::from_millis(200));
+    assert_eq!(
+        sent(&vimma.seen(), "agent-tabs").len(),
+        4,
+        "Vimma has not answered the expired calls: the fifth waits here"
+    );
+    vimma.push(&tabs_answer(first));
+    let seen = vimma.wait_for("the fifth call", |s| sent(s, "agent-tabs").len() == 5);
+    vimma.push(&tabs_answer(sent(&seen, "agent-tabs")[4]));
+    let lines = out.wait_lines(6);
+    assert_eq!(id_of(&lines[5]), 6);
+    assert!(!is_error(&lines[5]), "{:?}", lines[5]);
+    drop(tx);
+}
+
+// Issue #693: Vimma counts an `agent-ping` in flight too: with a ping unanswered, only three
+// calls go out, and the fourth waits for the ping's answer. A ping is not sent into a full
+// connection, where Vimma would refuse it (and its idle limit waits while anything runs).
+#[test]
+fn an_unanswered_ping_counts_in_flight() {
+    let vimma = FakeVimma::start_answering_pings(Box::new(|_| None));
+    let (tx, out) = serve_in_thread(
+        &vimma.profile,
+        short(Duration::from_millis(300), Duration::from_secs(60)),
+    );
+    tx.send(format!("{INIT}\n").into_bytes()).unwrap();
+    out.wait_lines(1);
+    tx.send(tabs_call(2)).unwrap();
+    let seen = vimma.wait_for("the call", |s| sent(s, "agent-tabs").len() == 1);
+    vimma.push(&tabs_answer(sent(&seen, "agent-tabs")[0]));
+    out.wait_lines(2);
+    let seen = vimma.wait_for("a ping", |s| !sent(s, "agent-ping").is_empty());
+    let ping = sent(&seen, "agent-ping")[0];
+    for id in 3..7 {
+        tx.send(tabs_call(id)).unwrap();
+    }
+    vimma.wait_for("three calls", |s| sent(s, "agent-tabs").len() >= 4);
+    thread::sleep(Duration::from_millis(700));
+    let seen = vimma.seen();
+    assert_eq!(
+        sent(&seen, "agent-tabs").len(),
+        4,
+        "the fourth waits: {seen:?}"
+    );
+    assert_eq!(
+        sent(&seen, "agent-ping").len(),
+        1,
+        "no ping into a full connection"
+    );
+    vimma.push(&format!(
+        r#"{{"type":"response","id":{ping},"ok":true,"result":{{}}}}"#
+    ));
+    vimma.wait_for("the fourth call", |s| sent(s, "agent-tabs").len() == 5);
+    drop(tx);
+}
+
+// Decision 40: a cancelled call that waits here never reaches Vimma and gets no response.
+#[test]
+fn a_cancelled_held_call_never_reaches_vimma() {
+    let vimma = FakeVimma::start(Box::new(|_| None));
+    let (tx, out) = serve_in_thread(
+        &vimma.profile,
+        short(Duration::from_secs(30), Duration::from_secs(60)),
+    );
+    tx.send(format!("{INIT}\n").into_bytes()).unwrap();
+    out.wait_lines(1);
+    for id in 2..7 {
+        tx.send(tabs_call(id)).unwrap();
+    }
+    let seen = vimma.wait_for("four calls", |s| sent(s, "agent-tabs").len() == 4);
+    tx.send(
+        br#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":6}}
+"#
+        .to_vec(),
+    )
+    .unwrap();
+    thread::sleep(Duration::from_millis(100));
+    for id in sent(&seen, "agent-tabs") {
+        vimma.push(&tabs_answer(id));
+    }
+    let lines = out.wait_lines(5);
+    thread::sleep(Duration::from_millis(300));
+    let seen = vimma.seen();
+    assert_eq!(
+        sent(&seen, "agent-tabs").len(),
+        4,
+        "the held call never went out"
+    );
+    assert!(
+        sent(&seen, "agent-cancel").is_empty(),
+        "nothing to withdraw in Vimma"
+    );
+    assert_eq!(out.lines().len(), 5, "no response for it: {lines:?}");
+    drop(tx);
+}
+
+// Decision 40: a held call has the same deadline as a sent one, and ends as a tool error
+// without ever reaching Vimma.
+#[test]
+fn a_held_call_ends_at_its_deadline() {
+    let vimma = FakeVimma::start(Box::new(|_| None));
+    let (tx, out) = serve_in_thread(
+        &vimma.profile,
+        short(Duration::from_secs(30), Duration::from_millis(400)),
+    );
+    tx.send(format!("{INIT}\n").into_bytes()).unwrap();
+    out.wait_lines(1);
+    for id in 2..7 {
+        tx.send(tabs_call(id)).unwrap();
+    }
+    let lines = out.wait_lines(6);
+    let held = lines
+        .iter()
+        .find(|l| id_of(l) == 6)
+        .expect("the held call's result");
+    assert!(
+        content_texts(held)[0].starts_with("Vimma did not answer within"),
+        "{held}"
+    );
+    thread::sleep(Duration::from_millis(200));
+    assert_eq!(
+        sent(&vimma.seen(), "agent-tabs").len(),
+        4,
+        "it never went out"
+    );
+    drop(tx);
+}
+
+// Decision 40: at most 16 calls wait at once, sent and held together; the 17th is refused here.
+#[test]
+fn sixteen_calls_wait_at_most_sent_and_held_together() {
+    let vimma = FakeVimma::start(Box::new(|_| None));
+    let (tx, out) = serve_in_thread(
+        &vimma.profile,
+        short(Duration::from_secs(30), Duration::from_secs(60)),
+    );
+    tx.send(format!("{INIT}\n").into_bytes()).unwrap();
+    out.wait_lines(1);
+    for id in 2..19 {
+        tx.send(tabs_call(id)).unwrap();
+    }
+    let lines = out.wait_lines(2);
+    let refused = &lines[1];
+    assert_eq!(id_of(refused), 18, "the 17th call: {refused}");
+    assert!(
+        content_texts(refused)[0].starts_with("Too many"),
+        "{refused}"
+    );
+    thread::sleep(Duration::from_millis(200));
+    assert_eq!(out.lines().len(), 2, "the other 16 wait");
+    assert_eq!(
+        sent(&vimma.seen(), "agent-tabs").len(),
+        4,
+        "4 sent, 12 held"
+    );
     drop(tx);
 }
