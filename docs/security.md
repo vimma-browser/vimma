@@ -803,9 +803,10 @@ workspace. What limits it: the agent workspace's container holds none of your ot
 (vimma-mcp decision 7), so what an agent can read is what the agent workspace holds; every call
 under a grant shows a notice (an open names its host) and is a `:mcp log` row with its whole URL
 (M23); at most 10 opens a minute (M3); `ctrl+b shift+a` ends every grant at once; and an agent
-with a shell can send what it read over its own network without Vimma anyway. A form submission,
-a step that may pay, a show, a dangerous or unscanned download and a page's own download still
-ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
+with a shell can send what it read over its own network without Vimma anyway. A step that may pay,
+a form submission that sends text, personal details, a secret or a file
+([mcp-consequence](specs/mcp-consequence.md)), a show, a dangerous or unscanned download and a
+page's own download still ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
 makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
 spends and leaves the grant as it was (M28, M33). The question's hint names only the keys
 (`a until it quits`, or `10a 10 min`), so that the question fits one line; the guide's key
@@ -820,7 +821,8 @@ submission: it gives no new reach, since any URL could already be opened under a
 is under the same rules as every other open (M6, the open rate of M3, the notice and the
 `:mcp log` row of M23). It skips only the form question; the words of the search are what the
 agent puts in the URL, the same risk as any open (mcp-grants, above). A form sent through the
-page, a search included, is still a form submission and asked every time (M28).
+page, a search included, is still a form submission under M28, asked whenever it sends what was
+typed.
 
 Under [agent-speed](specs/agent-speed.md) S6, the same instructions tell an agent that steps that
 do not depend on each other's results go as several tool calls in one turn, and that each call is
@@ -1372,11 +1374,30 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`vimma_fill: each field and value in the question, how many in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M28. A click that submits a form (a submit button or a submit or image input in a form whose
   method is not `dialog`, the element itself, the button it is in or its label's control)
-  **must** ask every time, also under any grant, with only `y` and `n`, naming
+  **must** ask every time without a grant, and under a grant when it is consequential
+  ([mcp-consequence](specs/mcp-consequence.md) K2, K3): a payment step (M33); a form that sends
+  a password, payment card, one-time-code or file field, an identity field (an autocomplete
+  name of a person's name, contact, address, birth date, username or organisation, one form
+  autofill's address heuristics infer, or `type=email` or `tel`; a failure of the heuristics
+  marks every field), or free text (a textarea or a text-like input other than `type=search`
+  whose value is not empty and not only a number); or a form whose fields the page did not
+  say in time or that sends more fields than the question lists. It asks with only `y` and `n`, naming
   the form's method, destination and each field it sends by name and value (hidden fields
   counted, a file field by its name), **never** a password, payment card or one-time-code
   field's value, only its name and `•••`, or the number of fields when the page did not say in
-  time; its yes **never** makes or ends a grant, and its `x` is a plain no; so **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
+  time; its yes **never** makes or ends a grant, and its `x` is a plain no. Under a grant, a
+  submission that is none of the above runs unasked, with the grant's notice and a `:mcp log`
+  row naming its method and destination (M23), and the guard below lets that one submission
+  through as after a yes. Under a grant, the question of a consequential submission that is not
+  a payment step and sends no password, card, one-time-code or file field also takes `a`
+  (mcp-consequence K5): it allows that submission and every later click of the same connection
+  whose tab's site (registrable domain), form method, destination (scheme, host, port and path)
+  and pressed button's text are the same, checked again on each click against the payment and
+  secret rules, until the grant ends (its end, `ctrl+b shift+a`, `:mcp revoke`, a built-in
+  conversation's stop, the connection's close; an allowance is held in memory and never kept
+  for a reconnect); `a` on a payment's question, or without a grant, allows nothing beyond that
+  step. Not covered: a page's own script that copies typed text into hidden fields before a
+  harmless-looking submission, as a page's own `fetch` is not (mcp-forms F17). So **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
   label or the form's default submission), under a grant too, naming the same and
   the fields it fills, only through a submit button of the filled fields' own form or that
   form's default submission, and it is not sent when the page put back a value the question
@@ -1426,6 +1447,12 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   not http or https, and data a button's script sends with `fetch`, also from a cancelled
   submission's `submit` listener: such a button is an ordinary click (mcp-forms F17).
   [`test_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_basket_form_runs_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_message_form_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_allows_that_button_on_that_site`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_is_not_offered_on_a_pay_step`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`free text, an identity field, a secret or a file makes it consequential`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`an allowance ends with the grant: its end, revoke, endGrant`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_page_script_submit_after_a_click_is_cancelled`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submission_the_page_makes_after_a_click_is_still_cancelled`](../tests/browser/browser_vimma_mcp_waits.js),
   [`test_an_allowed_submission_the_page_holds_back_is_cancelled_later`](../tests/browser/browser_vimma_mcp_waits.js),
@@ -1672,8 +1699,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_console_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_console.js),
   [`vimma_console: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M33. A payment step (mcp-checkpoints C6) **must** ask under any grant, with only `y` and `n`
-  (`x` is a plain no), and its yes **never** makes, lengthens or ends a grant; its no denies that
-  step only. A payment step is a `vimma_activate` click, a `vimma_fill` that submits, or a
+  (`x` is a plain no; `a` is no answer there and an allowance of M28 **never** covers it), and
+  its yes **never** makes, lengthens or ends a grant; its no denies that step only. The pay
+  phrases only add questions (mcp-consequence K6). A payment step is a `vimma_activate` click, a `vimma_fill` that submits, or a
   `vimma_keys` follow, `gu`, `gU`, `H` or `L`, in an agent tab whose page shows a payment card
   field in any frame (a `cc-*` autocomplete name or form autofill's card heuristics; a frame
   whose check fails or that does not answer within 5 s counts as one, a frame that navigates

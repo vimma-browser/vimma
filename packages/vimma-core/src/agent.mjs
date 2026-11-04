@@ -258,11 +258,13 @@ export const LOG_SIZE = 100;
 
 /**
  * @typedef {"yes" | "grant" | "user" | "timeout" | "busy" | "muted" | "cancelled" | "in-use"
- *   | "changed" | "stopped" | "followed" | "failed" | "checkpoint-yes" | "checkpoint-no"} LogOutcome
+ *   | "changed" | "stopped" | "followed" | "failed" | "checkpoint-yes" | "checkpoint-no"
+ *   | "checkpoint-here"} LogOutcome
  *   allowed once, run under a grant, why it was denied, that it stopped while it ran (`why`:
  *   changed, in-use, timeout, denied), a follow it made (`detail`: the URL loaded), that it
  *   failed after the yes (a show whose window could not switch), or the user's yes or no at a
- *   payment or form checkpoint (docs/specs/mcp-checkpoints.md Behaviour 6)
+ *   payment or form checkpoint (docs/specs/mcp-checkpoints.md Behaviour 6), `a` there among
+ *   them (mcp-consequence K5)
  * @typedef {{ at: number, client: string, tool: string, title: string, detail: string,
  *   outcome: LogOutcome, why?: string }} LogEntry  `detail`: the keys or URL, as the question
  *   showed them
@@ -337,17 +339,39 @@ export function mcpClientName(name) {
 
 /**
  * @typedef {string | number} ConnId
- * @typedef {{ id: number, conn: ConnId, tool: string, always?: boolean }} AgentRequest  `always`:
- *   asks even under a grant, and its answer never makes one (decision 31 d)
+ * @typedef {{ id: number, conn: ConnId, tool: string, always?: boolean,
+ *   covered?: true | string }} AgentRequest  `always`: asks even under a grant, and its answer
+ *   never makes one (decision 31 d); `covered`: a form a grant covers all the same, `true` for
+ *   a harmless one, or the allowance that covers it (docs/specs/mcp-consequence.md K1, K5)
  * @typedef {{ conn: ConnId, until: number }} AgentGrant  one per connection, for every tool but
  *   ALWAYS_ASK (mcp-grants G1, G5)
  * @typedef {{ id: number, allow: true } | { id: number, allow: false,
  *   reason: "user" | "timeout" | "muted" }} Resolution
  * @typedef {{ kind: "once" } | { kind: "deny" } | { kind: "mute" }
- *   | { kind: "grant", minutes: number }} Answer
+ *   | { kind: "grant", minutes: number }
+ *   | { kind: "here", key: string }} Answer  `here`: `a` on a form checkpoint, which allows that
+ *   step and, under a grant, every later one with the same allowance `key` until the grant ends
+ *   (docs/specs/mcp-consequence.md K5)
  * @typedef {{ kind: "run", grant: AgentGrant } | { kind: "wait", id: number }
  *   | { kind: "deny", reason: "busy" | "muted" }} Admission
  */
+
+/**
+ * A connection's grant starts or ends: the allowances `a` made under the one before go with it
+ * (docs/specs/mcp-consequence.md K5).
+ * @param {{ grant: number, allowed?: Set<string> }} c @param {number} until
+ */
+function setGrant(c, until) {
+  c.grant = until;
+  delete c.allowed;
+}
+
+/**
+ * Whether a form runs under the connection's grant all the same (mcp-consequence K1, K5).
+ * @param {{ allowed?: Set<string> }} c @param {true | string | undefined} covered
+ */
+const isCovered = (c, covered) =>
+  covered === true || (typeof covered === "string" && !!c.allowed?.has(covered));
 
 /**
  * The questions agents wait on, oldest first across connections, and each connection's grant
@@ -358,8 +382,10 @@ export class AgentQueue {
     /** @type {AgentRequest[]} */
     this.queue = [];
     /** @type {Map<ConnId, { denials: number, mutedUntil: number, grant: number,
-     *   session?: string }>} `grant`: when the connection's grant ends, 0 for none, Infinity
-     *   for the whole connection; `session`: its process's id, when no other connection had it */
+     *   session?: string, allowed?: Set<string> }>} `grant`: when the connection's grant ends,
+     *   0 for none, Infinity for the whole connection; `session`: its process's id, when no
+     *   other connection had it; `allowed`: the allowances `a` made under the grant in force,
+     *   which end with it (setGrant) */
     this.conns = new Map();
     /**
      * Grants of connections that closed, by session id, kept until `parkedUntil` for the same
@@ -389,6 +415,7 @@ export class AgentQueue {
       c.session = session;
       const parked = this.parked.get(session);
       this.parked.delete(session);
+      // An allowance is not parked: a reconnect asks again for the forms it covered.
       if (parked && parked.parkedUntil >= now && parked.grant > now) c.grant = parked.grant;
     }
     this.conns.set(conn, c);
@@ -425,7 +452,7 @@ export class AgentQueue {
       // `:mcp off` closes the socket's agent role, which the built-in agent does not use
       // (docs/specs/builtin-agent.md Behaviour 33): its conversations keep their grants.
       if (isBuiltinConn(conn)) continue;
-      c.grant = 0;
+      setGrant(c, 0);
       delete c.session;
     }
   }
@@ -443,23 +470,33 @@ export class AgentQueue {
   /**
    * A request arrives: it runs under a grant, waits for an answer, or is denied at once.
    * @param {ConnId} conn @param {string} tool @param {number} now
-   * @param {{ always?: boolean }} [options]  `always`: ask even under a grant (a dangerous
-   *   download, decision 31 d); an ALWAYS_ASK tool always does
+   * @param {{ always?: boolean, covered?: true | string }} [options]  `always`: ask even under a
+   *   grant (a dangerous download, decision 31 d); an ALWAYS_ASK tool always does. `covered`: a
+   *   form that runs under a grant all the same, `true` for a harmless one, or an allowance
+   *   key that covers it once `a` made it (docs/specs/mcp-consequence.md K1, K5); without a
+   *   grant it asks as `always` says, and an ALWAYS_ASK tool is never covered
    * @returns {Admission}
    */
-  ask(conn, tool, now, { always: asked = false } = {}) {
+  ask(conn, tool, now, { always: asked = false, covered } = {}) {
     const always = asked || ALWAYS_ASK.includes(tool);
     const c = this.conns.get(conn);
     if (!c) return { kind: "deny", reason: "busy" };
     if (c.mutedUntil > now) return { kind: "deny", reason: "muted" };
-    if (c.grant && c.grant <= now) c.grant = 0;
-    if (!always && c.grant) return { kind: "run", grant: { conn, until: c.grant } };
+    if (c.grant && c.grant <= now) setGrant(c, 0);
+    const cover = ALWAYS_ASK.includes(tool) ? undefined : covered;
+    if (c.grant && (!always || isCovered(c, cover))) {
+      return { kind: "run", grant: { conn, until: c.grant } };
+    }
     const mine = this.queue.filter((r) => r.conn === conn).length;
     if (mine >= QUEUE_LIMITS.perConnection || this.queue.length >= QUEUE_LIMITS.total) {
       return { kind: "deny", reason: "busy" };
     }
     const id = this.nextId++;
-    this.queue.push(always ? { id, conn, tool, always } : { id, conn, tool });
+    this.queue.push(
+      always
+        ? { id, conn, tool, always, ...(cover === undefined ? {} : { covered: cover }) }
+        : { id, conn, tool },
+    );
     return { kind: "wait", id };
   }
 
@@ -480,6 +517,21 @@ export class AgentQueue {
       this.conns.get(request.conn)
     );
     this.#drop(id);
+    if (answer.kind === "here") {
+      c.denials = 0;
+      if (c.grant && c.grant <= now) setGrant(c, 0);
+      // Without a grant there is nothing for the allowance to last with: a yes to this step.
+      if (!c.grant || request.covered !== answer.key) return { resolved: [{ id, allow: true }] };
+      (c.allowed ??= new Set()).add(answer.key);
+      const same = this.queue.filter((r) => r.conn === request.conn && r.covered === answer.key);
+      for (const r of same) this.#drop(r.id);
+      return {
+        resolved: [
+          { id, allow: true },
+          ...same.map((r) => ({ id: r.id, allow: /** @type {true} */ (true) })),
+        ],
+      };
+    }
     if (answer.kind === "once" || (answer.kind === "grant" && request.always)) {
       c.denials = 0;
       return { resolved: [{ id, allow: true }] };
@@ -487,9 +539,12 @@ export class AgentQueue {
     if (answer.kind === "grant") {
       c.denials = 0;
       const until = now + Math.max(1, answer.minutes) * 60_000;
-      c.grant = until;
-      // The same connection's queued calls now run under the grant, but not one that always asks.
-      const covered = this.queue.filter((r) => r.conn === request.conn && !r.always);
+      setGrant(c, until);
+      // The same connection's queued calls now run under the grant, but not one that always
+      // asks, unless it is a harmless form (mcp-consequence K1).
+      const covered = this.queue.filter(
+        (r) => r.conn === request.conn && (!r.always || r.covered === true),
+      );
       for (const r of covered) this.#drop(r.id);
       return {
         resolved: [
@@ -551,7 +606,7 @@ export class AgentQueue {
   grantConnection(conn, now) {
     const c = this.conns.get(conn);
     if (!c) return false;
-    c.grant = Infinity;
+    setGrant(c, Infinity);
     c.denials = 0;
     if (c.mutedUntil > now) c.mutedUntil = 0;
     return true;
@@ -565,7 +620,7 @@ export class AgentQueue {
   endGrant(conn) {
     const c = this.conns.get(conn);
     if (!c || !c.grant) return false;
-    c.grant = 0;
+    setGrant(c, 0);
     return true;
   }
 
@@ -578,7 +633,7 @@ export class AgentQueue {
     let n = 0;
     for (const c of this.conns.values()) {
       if (c.grant > now) n++;
-      c.grant = 0;
+      setGrant(c, 0);
     }
     this.parked.clear();
     return n;

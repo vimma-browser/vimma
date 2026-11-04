@@ -30,9 +30,10 @@ and workspaces, and your hands never leave the keyboard.
   first, and one answer (`a`) lets an agent work through its task until it quits. There
   they read and open pages, scroll, search and follow links with Vimma's own keys, click buttons
   and fill forms by hint label (never a password or payment card field), see a page as a
-  screenshot, read its errors, and show you a page when they want you to look at it. Sending a
-  form and paying are checkpoints, asked every time under any grant: the question shows what the
-  form sends, or the button, the site and the total the page states.
+  screenshot, read its errors, and show you a page when they want you to look at it. Paying and
+  sending a form with text or personal details are checkpoints, asked every time under any
+  grant: the question shows what the form sends, or the button, the site and the total the page
+  states.
 - **An agent of its own:** `ctrl+b i` opens a chat window where you write a task and watch every
   step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one by API key, or the
   Claude Code or Codex you already have, on its own login and plan. It works only in the agent

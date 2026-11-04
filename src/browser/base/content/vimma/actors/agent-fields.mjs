@@ -19,7 +19,7 @@
 // their machine-learning model). A failure of the heuristics makes every field of that form
 // sensitive: it refuses rather than fills.
 
-import { isStatedTotal } from "../core/agent-checkpoint.mjs";
+import { IDENTITY_FIELDS, isStatedTotal } from "../core/agent-checkpoint.mjs";
 import { isSensitiveAutocomplete, isSubmitControl } from "../core/agent-element.mjs";
 import { linkText } from "./hint-collect.mjs";
 
@@ -985,13 +985,58 @@ export function payInfoOf(el, by) {
 const SENT_MAX = 64;
 
 /**
+ * Input types someone types free text into (docs/specs/mcp-consequence.md K2); an input of a
+ * type Firefox does not know is `text`. A search field is left out: what it sends is a search.
+ */
+const TEXT_TYPES = new Set(["text", "url", "email", "tel"]);
+
+/**
+ * The fields of `form` that hold a person's identity, contact or address (mcp-consequence K2): by
+ * the autocomplete name the page gives, by `type=email` or `type=tel`, or by the name form
+ * autofill's address heuristics infer. A failure of the heuristics marks every field, so that a
+ * doubt asks.
+ * @param {any} form
+ * @returns {Set<Element>}
+ */
+function identityFields(form) {
+  /** @type {Set<Element>} */
+  const out = new Set();
+  const fields = [...form.elements].filter(
+    (/** @type {any} */ c) => c.localName === "input" || c.localName === "select",
+  );
+  for (const c of fields) {
+    if (c.type === "email" || c.type === "tel") out.add(c);
+    try {
+      if (IDENTITY_FIELDS.includes(String(c.getAutocompleteInfo?.()?.fieldName ?? ""))) out.add(c);
+    } catch {
+      out.add(c);
+    }
+  }
+  if (!fields.length) return out;
+  try {
+    const formLike = lazy.AutofillFormFactory.createFromField(fields[0]);
+    for (const d of lazy.FormAutofillHeuristics.getFormInfo(formLike, false) ?? []) {
+      const names = /** @type {unknown[]} */ ([]).concat(d?.fieldName ?? []);
+      if (names.some((n) => lazy.FormAutofillUtils.isAddressField(n))) out.add(d.element);
+    }
+  } catch (e) {
+    console.error("vimma agent-checkpoint: form autofill heuristics", e);
+    for (const c of fields) out.add(c);
+  }
+  return out;
+}
+
+/**
  * What a submission by the control a step presses sends (Behaviour 4): each named, enabled
  * field's name and value, as the form would send it, but for those in `skip` (the fields a fill
  * sets, which its question shows with their new values); a sensitive field (F6) by its name
- * only, never its value; a file field by its name; hidden fields counted, not listed.
+ * only, never its value; a file field by its name; hidden fields counted, not listed. A field
+ * someone types into is marked `text`, one of a person's identity `identity`, so that the parent
+ * can tell a form that sends them from one that sends only the page's own values
+ * (docs/specs/mcp-consequence.md K2).
  * @param {Element | null | undefined} el @param {"click" | "form"} by @param {Set<Element>} skip
- * @returns {{ fields: { name: string, value?: string, secret?: true, file?: true }[],
- *   hidden: number, more: number } | null} null: it submits no form
+ * @returns {{ fields: { name: string, value?: string, secret?: true, file?: true, text?: true,
+ *   identity?: true }[], hidden: number, more: number } | null} null: it submits no form
  */
 export function sentFieldsOf(el, by, skip) {
   if (!el?.isConnected) return null;
@@ -999,12 +1044,22 @@ export function sentFieldsOf(el, by, skip) {
   const form = by === "form" ? html.form : submitOf(el)?.form;
   const submit = form ? (by === "form" ? defaultSubmitOf(form) : submitOf(el)) : null;
   if (!form || !submit) return null;
-  /** @type {{ name: string, value?: string, secret?: true, file?: true }[]} */
+  /** @type {{ name: string, value?: string, secret?: true, file?: true, text?: true,
+   *   identity?: true }[]} */
   const fields = [];
   let hidden = 0;
   let more = 0;
-  /** @param {{ name: string, value?: string, secret?: true, file?: true }} f */
-  const add = (f) => (fields.length < SENT_MAX ? fields.push(f) : more++);
+  const identity = identityFields(form);
+  /** @param {{ name: string, value?: string, secret?: true, file?: true }} f @param {any} [c] */
+  const add = (f, c) => {
+    if (fields.length >= SENT_MAX) return more++;
+    /** @type {{ name: string, value?: string, secret?: true, file?: true, text?: true,
+     *   identity?: true }} */
+    const out = { ...f };
+    if (c && (c.localName === "textarea" || TEXT_TYPES.has(c.type))) out.text = true;
+    if (c && identity.has(c)) out.identity = true;
+    return fields.push(out);
+  };
   for (const c of form.elements) {
     if (!c.name || c.matches(":disabled") || c.closest("datalist") || skip.has(c)) continue;
     if (["fieldset", "output", "object"].includes(c.localName)) continue;
@@ -1024,9 +1079,9 @@ export function sentFieldsOf(el, by, skip) {
     } else if (c.type === "file") {
       add({ name, file: true });
     } else if (c.localName === "select") {
-      for (const o of c.selectedOptions) add({ name, value: cap(o.value, VALUE) });
+      for (const o of c.selectedOptions) add({ name, value: cap(o.value, VALUE) }, c);
     } else {
-      add({ name, value: cap(c.value, VALUE) });
+      add({ name, value: cap(c.value, VALUE) }, c);
     }
   }
   return { fields, hidden, more };

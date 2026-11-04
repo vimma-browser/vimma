@@ -6,7 +6,10 @@ import {
   PAY_PHRASES,
   TOTAL_COLUMNS,
   hasPayPhrase,
+  allowanceKey,
+  isConsequential,
   isPayStep,
+  mayAllowHere,
   isStatedTotal,
   pageText,
   parsePayInfo,
@@ -196,5 +199,88 @@ describe("what the child says of a step (checked like any content reply)", () =>
     expect(
       parseSentFields({ fields: Array(65).fill({ name: "a", value: "" }), hidden: 0, more: 0 }),
     ).toBe(null);
+  });
+});
+
+// docs/specs/mcp-consequence.md: under a grant a click's form asks by what it sends (K1-K3), and
+// `a` allows one button on one site for the rest of the grant (K5).
+describe("a consequential form (mcp-consequence K2, K3)", () => {
+  /** @param {object[]} fields @param {object} [rest] */
+  const sent = (fields, rest = {}) => ({ fields, hidden: 2, more: 0, ...rest });
+
+  test("a form of hidden fields, numbers and choices is not consequential", () => {
+    const basket = sent([
+      { name: "qty", value: "2", text: true },
+      { name: "qty2", value: " 1,5 ", text: true },
+      { name: "size", value: "Large oat drink 1 l" },
+      { name: "add", value: "Lisää" },
+      { name: "note", value: "", text: true },
+    ]);
+    expect(isConsequential({ pay: false, sent: basket })).toBe(false);
+    expect(isConsequential({ pay: false, sent: sent([]) })).toBe(false);
+  });
+
+  test("free text, an identity field, a secret or a file makes it consequential", () => {
+    expect(
+      isConsequential({ pay: false, sent: sent([{ name: "msg", value: "Hi", text: true }]) }),
+    ).toBe(true);
+    expect(
+      isConsequential({
+        pay: false,
+        sent: sent([{ name: "zip", value: "00100", identity: true }]),
+      }),
+    ).toBe(true);
+    expect(isConsequential({ pay: false, sent: sent([{ name: "pw", secret: true }]) })).toBe(true);
+    expect(isConsequential({ pay: false, sent: sent([{ name: "cv", file: true }]) })).toBe(true);
+  });
+
+  test("an unknown or overflowing field list is consequential: a doubt asks (K3)", () => {
+    expect(isConsequential({ pay: false, sent: null })).toBe(true);
+    expect(isConsequential({ pay: false, sent: sent([], { more: 1 }) })).toBe(true);
+  });
+
+  test("a payment step is consequential", () => {
+    expect(isConsequential({ pay: true, sent: sent([]) })).toBe(true);
+  });
+
+  test("a allows only a known form that pays nothing and sends no secret or file (K5)", () => {
+    expect(
+      mayAllowHere({ pay: false, sent: sent([{ name: "zip", value: "1", identity: true }]) }),
+    ).toBe(true);
+    expect(mayAllowHere({ pay: true, sent: sent([]) })).toBe(false);
+    expect(mayAllowHere({ pay: false, sent: null })).toBe(false);
+    expect(mayAllowHere({ pay: false, sent: sent([{ name: "pw", secret: true }]) })).toBe(false);
+    expect(mayAllowHere({ pay: false, sent: sent([{ name: "cv", file: true }]) })).toBe(false);
+    expect(mayAllowHere({ pay: false, sent: sent([], { more: 3 }) })).toBe(false);
+  });
+
+  test("the allowance: site, method, destination without its query, and the button's text", () => {
+    const key = (/** @type {object} */ o) =>
+      allowanceKey({
+        site: "shop.example",
+        method: "post",
+        action: "https://shop.example/cart/add?id=1",
+        text: "Add  to​ basket",
+        ...o,
+      });
+    expect(key({})).toBe(key({ action: "https://shop.example/cart/add?id=2", method: "POST" }));
+    expect(key({})).toBe(key({ text: "Add to basket" }));
+    expect(key({})).not.toBe(key({ site: "other.example" }));
+    expect(key({})).not.toBe(key({ method: "get" }));
+    expect(key({})).not.toBe(key({ action: "https://shop.example/cart/remove?id=1" }));
+    expect(key({})).not.toBe(key({ action: "http://shop.example/cart/add?id=1" }));
+    expect(key({})).not.toBe(key({ text: "Send message" }));
+    expect(key({ action: "not a url" })).toBe(null);
+    expect(key({ site: "" })).toBe(null);
+  });
+
+  test("the child's text and identity marks are checked like the rest", () => {
+    const raw = sent([
+      { name: "msg", value: "Hi", text: true },
+      { name: "email", value: "a@example.com", text: true, identity: true },
+    ]);
+    expect(parseSentFields(raw)).toEqual(raw);
+    expect(parseSentFields(sent([{ name: "a", value: "", text: 1 }]))).toBe(null);
+    expect(parseSentFields(sent([{ name: "a", value: "", identity: "yes" }]))).toBe(null);
   });
 });
