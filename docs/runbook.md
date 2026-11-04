@@ -1600,7 +1600,11 @@ One-time setup:
 3. **Auto-merge** (spec upstream-bump-automation, ADR-022): `gh variable set
 AUTO_MERGE_UPSTREAM -b all -R vimma-browser/vimma` lets GitHub merge a bump whose patches
    applied clean, whose suites passed and whose diff is only the version and copied prefs, once
-   every required check is green (the PR's "Auto-merge" row says why when it does not). `dot`
+   every check on it is green, not only the required ones (the PR's "Auto-merge" row says why
+   when it is not allowed). `upstream-merge.yml` runs each time a workflow on the PR finishes
+   and sets auto-merge after the last one; its run summary names what it still waits for or
+   what failed. A red or unapproved run (a macOS mochitest flake, for one) leaves the bump for a
+   person: re-run the failed job, and when it turns green the merge is set as usual. `dot`
    limits it to dot releases. To stop: `gh variable delete AUTO_MERGE_UPSTREAM`, and
    `gh pr merge <N> --disable-auto` on a PR already set. Repository auto-merge must stay allowed
    (Settings → General → Allow auto-merge).

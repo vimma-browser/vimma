@@ -534,25 +534,16 @@ describe("auto-merge in the upstream autopilot", () => {
     const decideRun = script(decide);
     expect(decideRun).toContain("node tools/upstream/bump-diff.mjs");
     expect(decideRun).toContain('--bump-diff "$RUNNER_TEMP/bump-diff.json"');
-    // step() stops at the first blank line; the outputs are written further down the step.
-    expect(job(upstream, "publish")).toContain('echo "auto-merge=$(body pr --auto-merge-only)"');
-    const block = step(upstream, "automerge");
-    // Only the App token: a GITHUB_TOKEN merge would start no push workflow on main.
-    expect(block).toContain("GH_TOKEN: ${{ steps.app.outputs.token }}");
-    expect(block).not.toContain("github.token");
-    expect(block).toContain(
-      "if: steps.pr.outputs.number != '' && steps.pr.outputs.auto-merge == 'true'",
+    // The marker records the head the allowlist read; upstream-merge.yml merges only that head.
+    expect(decideRun).toContain('--head "$head"');
+    expect(decideRun.indexOf("head=$(git rev-parse HEAD)")).toBeLessThan(
+      decideRun.indexOf('--head "$head"'),
     );
-    const run = script(block);
-    expect(run).toContain("--json isDraft,headRefOid");
-    expect(run).toContain('[ "$draft" = false ] && [ "$pr_head" = "$head" ]');
-    expect(upstream.indexOf("bump-diff.mjs")).toBeLessThan(upstream.indexOf("--auto --squash"));
   });
 
-  it("auto-merge uses --match-head-commit and the bump's subject", () => {
-    const run = script(step(upstream, "automerge"));
-    expect(run).toContain('gh pr merge "$number" --auto --squash --match-head-commit "$head"');
-    expect(run).toContain('--subject "$TITLE (#$number)"');
+  it("publish never sets auto-merge: upstream-merge.yml does, once every check is green", () => {
+    expect(upstream).not.toContain("--auto --squash");
+    expect(upstream).not.toMatch(/^ {8}id: automerge$/m);
   });
 
   it("the allowlist reads the branch as pushed", () => {
