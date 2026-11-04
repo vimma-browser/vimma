@@ -86,6 +86,11 @@ own configuration allows; Vimma does not confine them, and the window states whi
    A `command`, `path`, `args` or `env` field in a CLI provider is a config error, reported with
    its line, and the provider is not used (C4, C5).
 
+   (Since changed: a `cli` value this build does not know is a warning, not an error: that
+   provider is skipped, the status bar names its line, and the rest of the file applies, because
+   a file written by a newer build, or shared in dotfiles between versions, otherwise fell back to
+   the defaults whole. A `default` that names a skipped provider sets none. Issue #742.)
+
    Picking a CLI that `config.toml` does not list yet asks for its model on the prompt line,
    `agent model: `, as setup does for a hosted provider, with the CLI's suggested model filled in
    (`sonnet` for Claude Code, from `CLIS` in `agent-cli.mjs`). The model is the user's choice

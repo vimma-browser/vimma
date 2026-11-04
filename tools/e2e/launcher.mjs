@@ -22,7 +22,7 @@ import { delimiter, isAbsolute, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { validateMessage } from "../../packages/vimma-core/src/control.mjs";
-import { devPrefs } from "../start.mjs";
+import { CONFIG_PATH_PREF, devPrefs } from "../start.mjs";
 
 const ENGINE = fileURLToPath(new URL("../../engine/", import.meta.url));
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
@@ -140,6 +140,8 @@ export function createProfile(tmpRoot = tmpdir(), overrides = {}) {
   // plus npm start's dev prefs: content processes may read the repo's src/, where a local
   // objdir's chrome files lead (tools/start.mjs); harmless for a packaged build
   const prefs = new Map([...PROFILE_PREFS, ...devPrefs(REPO)]);
+  // A config.toml of the profile's own, whatever HOME the browser is given (tools/start.mjs).
+  prefs.set(CONFIG_PATH_PREF, join(dir, "vimma", "config.toml"));
   for (const [name, value] of Object.entries(overrides)) {
     if (value === null) prefs.delete(name);
     else prefs.set(name, value);
