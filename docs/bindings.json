@@ -2961,11 +2961,6 @@
               "keys": "down",
               "chords": ["down"],
               "mode": "index"
-            },
-            {
-              "keys": "ctrl+n",
-              "chords": ["ctrl+n"],
-              "mode": "index"
             }
           ]
         },
@@ -2981,11 +2976,6 @@
             {
               "keys": "up",
               "chords": ["up"],
-              "mode": "index"
-            },
-            {
-              "keys": "ctrl+p",
-              "chords": ["ctrl+p"],
               "mode": "index"
             }
           ]
@@ -3133,11 +3123,6 @@
               "keys": "space",
               "chords": ["space"],
               "mode": "index"
-            },
-            {
-              "keys": "ctrl+j",
-              "chords": ["ctrl+j"],
-              "mode": "index"
             }
           ]
         },
@@ -3158,11 +3143,6 @@
             {
               "keys": "ctrl+[",
               "chords": ["ctrl+["],
-              "mode": "index"
-            },
-            {
-              "keys": "ctrl+c",
-              "chords": ["ctrl+c"],
               "mode": "index"
             },
             {

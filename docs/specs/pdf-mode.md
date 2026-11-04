@@ -72,10 +72,10 @@ changes.
    mode, with the entry for the current page selected. `j` / `k` (and the arrow keys) move, `l` /
    `zo` expand and `h` / `zc` collapse, `zO` / `zC` expand / collapse the entry's whole subtree,
    `L` / `zR` and `H` / `zM` expand / collapse all, `gg` / `G` go to the first / last entry,
-   `ctrl+d` / `ctrl+u` move half a panel; `Enter`, `space` or `ctrl+j` goes to the entry and
-   closes the outline; `Tab`, `Esc`, `ctrl+[`, `ctrl+c` or `q` closes it without moving. `/`
+   `ctrl+d` / `ctrl+u` move half a panel; `Enter` or `space` goes to the entry and
+   closes the outline; `Tab`, `Esc`, `ctrl+[` or `q` closes it without moving. `/`
    filters the outline: typed text narrows it to the entries that match fuzzily, best match
-   first, each shown with the titles of the entries above it; `ctrl+n` / `ctrl+p` and the arrow
+   first, each shown with the titles of the entries above it; the arrow
    keys move, `Enter` goes to the entry, and `Esc` returns to the whole outline. A PDF without an
    outline says `no outline in this PDF`.
 6. As a user, PDF pages look exactly as the document draws them: Vimma does not recolour them,
@@ -132,7 +132,7 @@ changes.
 | `w`: single page mode (2026.x only, config.c:644)                                          | Same, through pdf.js's page scroll mode                                                                                                                           |
 | `Tab`: index, replacing the view, with its own keys (config.c:381, 660-690)                | `Tab`: Vimma's outline panel beside the page, `INDEX` mode with zathura's keys, and a fuzzy filter on `/`. **Not matched:** the outline does not replace the page |
 | Index: `j k`, arrows, `l h`, `zo zc`, `zO zC`, `L H`, `zR zM`, `ctrl+d ctrl+u` (661-680)   | Same keys in `index` mode                                                                                                                                         |
-| Index: `space`, `Return`, `ctrl+j` follow; `gg G`; `Tab Esc ctrl+[ ctrl+c` close (681-690) | Same keys in `index` mode                                                                                                                                         |
+| Index: `space`, `Return`, `ctrl+j` follow; `gg G`; `Tab Esc ctrl+[ ctrl+c` close (681-690) | Same keys in `index` mode but `ctrl+j` and `ctrl+c`. **Not matched:** those two, because a chord bound in any mode turns Firefox's key off in every tab           |
 | `q`: quit, in every mode (config.c:633-638)                                                | **Not matched:** `q` does not close the tab (`x`, `:q` do); in `index` mode `q` closes the outline, as it closes Vimma's overlays                                 |
 | `ctrl+r`: recolour, `recolor-darkcolor` / `-lightcolor` (config.c:330, 529-530)            | **Not matched:** pages keep the document's colours (decision 12); `ctrl+r` reloads as on every page                                                               |
 | `m{X}` / `'{X}`: marks with page, position, zoom, saved per file (marks.c:21-203)          | Same keys and contents, kept in memory only (decision 11)                                                                                                         |
@@ -471,6 +471,10 @@ find: { current, total } }`), sent to the parent on the viewer's events.
       it; other entries start expanded or collapsed as the document's `count` says. `h` on an
       entry that is already collapsed, or has nothing under it, goes to its parent, as in the
       bookmarks panel. `index` mode takes no counts, as zathura's index does not.
+    - **No new ctrl chords.** `index` mode binds no ctrl chord that Vimma leaves to Firefox
+      elsewhere (zathura's `ctrl+j` and `ctrl+c`, and `ctrl+n` / `ctrl+p` in the filter), because
+      a chord bound in any mode turns Firefox's key off in every tab (firefox-keys decision 2):
+      web search, copy, new window and print would stop working on every page.
     - **The filter's keys.** Typed keys go to the filter's field; `Enter` and the arrow keys are
       the field's own there, and `Tab` closes the outline. `Esc` returns to the tree with the
       entry selected before `/`.

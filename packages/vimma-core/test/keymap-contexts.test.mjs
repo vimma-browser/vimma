@@ -184,10 +184,8 @@ describe("index mode", () => {
   test.each([
     ["j", "index_down"],
     ["down", "index_down"],
-    ["ctrl+n", "index_down"],
     ["k", "index_up"],
     ["up", "index_up"],
-    ["ctrl+p", "index_up"],
     ["l", "index_expand"],
     ["z o", "index_expand"],
     ["h", "index_collapse"],
@@ -204,15 +202,19 @@ describe("index mode", () => {
     ["ctrl+u", "index_half_up"],
     ["enter", "index_follow"],
     ["space", "index_follow"],
-    ["ctrl+j", "index_follow"],
     ["tab", "index_close"],
     ["esc", "index_close"],
     ["ctrl+[", "index_close"],
-    ["ctrl+c", "index_close"],
     ["q", "index_close"],
     ["/", "index_filter"],
   ])("%s is %s", (key, name) => {
     expect(lookup(compileKeymap().trie("index"), key)).toBe(name);
+  });
+
+  test("index mode turns off none of Firefox's keys that no other mode binds", () => {
+    // ctrl+c is Firefox's copy; ctrl+j its web search once the user unbinds Vimma's.
+    expect(boundChords(compileKeymap()).has("ctrl+c")).toBe(false);
+    expect(boundChords(compileKeymap({ keys: { web_search: [] } })).has("ctrl+j")).toBe(false);
   });
 
   test("config.toml accepts [modal.index] as a mode table", () => {

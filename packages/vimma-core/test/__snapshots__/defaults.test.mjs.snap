@@ -316,10 +316,8 @@ insert_editing = true
 [modal.index]
 "j" = "index.down"
 "<Down>" = "index.down"
-"<C-n>" = "index.down"
 "k" = "index.up"
 "<Up>" = "index.up"
-"<C-p>" = "index.up"
 "l" = "index.expand"
 "zo" = "index.expand"
 "h" = "index.collapse"
@@ -336,11 +334,9 @@ insert_editing = true
 "<C-u>" = "index.half_up"
 "<CR>" = "index.follow"
 "<Space>" = "index.follow"
-"<C-j>" = "index.follow"
 "<Tab>" = "index.close"
 "<Esc>" = "index.close"
 "<C-[>" = "index.close"
-"<C-c>" = "index.close"
 "q" = "index.close"
 "/" = "index.filter"
 

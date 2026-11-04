@@ -193,15 +193,15 @@ add_task(async function index_mode() {
     await TestUtils.waitForCondition(() => !shown(), "and closes the outline");
     await TestUtils.waitForCondition(() => mode() === "normal", "back in normal mode");
 
-    // space and ctrl+j follow too.
+    // space follows too.
     await openOutline();
     type("gg ");
     await untilPage(browser, 1, "space follows");
     await openOutline();
     type("G");
     await untilSelected("Chapter 2", "G");
-    EventUtils.synthesizeKey("j", { ctrlKey: true });
-    await untilPage(browser, 6, "ctrl+j follows");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await untilPage(browser, 6, "Enter follows");
   });
 });
 
@@ -215,7 +215,6 @@ add_task(async function closing_keys_do_not_move() {
       ["KEY_Tab", {}],
       ["KEY_Escape", {}],
       ["[", { ctrlKey: true }],
-      ["c", { ctrlKey: true }],
       ["q", {}],
     ]) {
       await openOutline();
@@ -240,12 +239,12 @@ add_task(async function the_filter() {
     const path = panel().querySelector("[role=treeitem] .vimma-panel-host")?.textContent;
     Assert.equal(path, "Chapter 1", "each with the titles above it");
     Assert.equal(panel().querySelector("[role=treeitem] mark")?.textContent, "Sec", "marked");
-    EventUtils.synthesizeKey("n", { ctrlKey: true });
-    await untilSelected("Section 1.2", "ctrl+n");
-    EventUtils.synthesizeKey("p", { ctrlKey: true });
-    await untilSelected("Section 1.1", "ctrl+p");
     EventUtils.synthesizeKey("KEY_ArrowDown");
     await untilSelected("Section 1.2", "down in the filter");
+    EventUtils.synthesizeKey("KEY_ArrowUp");
+    await untilSelected("Section 1.1", "up in the filter");
+    EventUtils.synthesizeKey("KEY_ArrowDown");
+    await untilSelected("Section 1.2", "down again");
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => rows().length === 5, "Esc returns to the outline");
     Assert.ok(shown(), "still open");

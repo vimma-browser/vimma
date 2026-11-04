@@ -407,14 +407,14 @@ const modal = {
     "/": "bookmarks.filter",
   },
   // The PDF viewer's outline panel (docs/specs/pdf-mode.md decision 10): zathura's index keys,
-  // and `/` for Vimma's filter, where ctrl+n / ctrl+p and the arrow keys move.
+  // and `/` for Vimma's filter, where the arrow keys move. No ctrl chord Vimma leaves to Firefox
+  // elsewhere (ctrl+n, ctrl+p, ctrl+j, ctrl+c): a chord bound in any mode turns Firefox's key off
+  // in every tab (firefox-keys decision 2), and these would stop new window, print and copy.
   index: {
     j: "index.down",
     "<Down>": "index.down",
-    "<C-n>": "index.down",
     k: "index.up",
     "<Up>": "index.up",
-    "<C-p>": "index.up",
     l: "index.expand",
     zo: "index.expand",
     h: "index.collapse",
@@ -431,11 +431,9 @@ const modal = {
     "<C-u>": "index.half_up",
     "<CR>": "index.follow",
     "<Space>": "index.follow",
-    "<C-j>": "index.follow",
     "<Tab>": "index.close",
     "<Esc>": "index.close",
     "<C-[>": "index.close",
-    "<C-c>": "index.close",
     q: "index.close",
     "/": "index.filter",
   },

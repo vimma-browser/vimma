@@ -368,23 +368,23 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## PDF outline
 
-| Action                                                       | Config name              | Bindings                                                                      |
-| ------------------------------------------------------------ | ------------------------ | ----------------------------------------------------------------------------- |
-| Outline: next entry                                          | `index_down`             | `j [index]`, `down [index]`, `ctrl+n [index]`                                 |
-| Outline: previous entry                                      | `index_up`               | `k [index]`, `up [index]`, `ctrl+p [index]`                                   |
-| Outline: expand the entry                                    | `index_expand`           | `l [index]`, `zo [index]`                                                     |
-| Outline: collapse the entry, or go to its parent             | `index_collapse`         | `h [index]`, `zc [index]`                                                     |
-| Outline: expand the entry and all under it                   | `index_expand_subtree`   | `zO [index]`                                                                  |
-| Outline: collapse the entry and all under it                 | `index_collapse_subtree` | `zC [index]`                                                                  |
-| Outline: expand every entry                                  | `index_expand_all`       | `L [index]`, `zR [index]`                                                     |
-| Outline: collapse every entry                                | `index_collapse_all`     | `H [index]`, `zM [index]`                                                     |
-| Outline: first entry                                         | `index_first`            | `gg [index]`                                                                  |
-| Outline: last entry                                          | `index_last`             | `G [index]`                                                                   |
-| Outline: down half the entries shown                         | `index_half_down`        | `ctrl+d [index]`                                                              |
-| Outline: up half the entries shown                           | `index_half_up`          | `ctrl+u [index]`                                                              |
-| Outline: go to the entry and close the outline               | `index_follow`           | `enter [index]`, `space [index]`, `ctrl+j [index]`                            |
-| Outline: close it (in the filter: back to the whole outline) | `index_close`            | `tab [index]`, `esc [index]`, `ctrl+[ [index]`, `ctrl+c [index]`, `q [index]` |
-| Outline: filter the entries by their titles                  | `index_filter`           | `/ [index]`                                                                   |
+| Action                                                       | Config name              | Bindings                                                    |
+| ------------------------------------------------------------ | ------------------------ | ----------------------------------------------------------- |
+| Outline: next entry                                          | `index_down`             | `j [index]`, `down [index]`                                 |
+| Outline: previous entry                                      | `index_up`               | `k [index]`, `up [index]`                                   |
+| Outline: expand the entry                                    | `index_expand`           | `l [index]`, `zo [index]`                                   |
+| Outline: collapse the entry, or go to its parent             | `index_collapse`         | `h [index]`, `zc [index]`                                   |
+| Outline: expand the entry and all under it                   | `index_expand_subtree`   | `zO [index]`                                                |
+| Outline: collapse the entry and all under it                 | `index_collapse_subtree` | `zC [index]`                                                |
+| Outline: expand every entry                                  | `index_expand_all`       | `L [index]`, `zR [index]`                                   |
+| Outline: collapse every entry                                | `index_collapse_all`     | `H [index]`, `zM [index]`                                   |
+| Outline: first entry                                         | `index_first`            | `gg [index]`                                                |
+| Outline: last entry                                          | `index_last`             | `G [index]`                                                 |
+| Outline: down half the entries shown                         | `index_half_down`        | `ctrl+d [index]`                                            |
+| Outline: up half the entries shown                           | `index_half_up`          | `ctrl+u [index]`                                            |
+| Outline: go to the entry and close the outline               | `index_follow`           | `enter [index]`, `space [index]`                            |
+| Outline: close it (in the filter: back to the whole outline) | `index_close`            | `tab [index]`, `esc [index]`, `ctrl+[ [index]`, `q [index]` |
+| Outline: filter the entries by their titles                  | `index_filter`           | `/ [index]`                                                 |
 
 ## On macOS
 
