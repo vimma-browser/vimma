@@ -279,14 +279,15 @@ add_task(async function a_click_outside_the_prompt_closes_it_as_esc_does() {
     await assertBackInNormal(browser, "Enter after the click");
     Assert.equal(findStatus()?.query, "word", "the new query is the search");
 
-    // A click on Firefox's chrome (a tab) closes it too.
+    // A click on Vimma's chrome (the status bar) closes it too. Not a tab: a press on the tab
+    // strip left the page a pixel shorter for later files (browser_vimma_mcp_screenshot.js).
     type("/delta");
     await TestUtils.waitForCondition(
       () => document.activeElement === findbar._findField,
       "/ opens the prompt again",
     );
-    EventUtils.synthesizeMouseAtCenter(gBrowser.selectedTab, {});
-    await TestUtils.waitForCondition(findBarHidden, "a click on a tab closes the prompt");
+    EventUtils.synthesizeMouseAtCenter(document.getElementById("vimma-statusbar"), {});
+    await TestUtils.waitForCondition(findBarHidden, "a click on the status bar closes the prompt");
     Assert.equal(findStatus(), null, "and cancels the search");
   });
 });
