@@ -560,7 +560,7 @@ the table are `[modal.element]`'s, and can be rebound there.
 
 Find works as it does in Vim. `/` opens a search prompt that floats at the bottom centre of the
 page, above the status bar, because that is where Vim types a search and where the status bar
-shows it. It takes the style of Vimma's pickers and your theme, opens empty, and searches as you
+shows it, and it leaves the top of the page, where a match usually lands, uncovered. It takes the style of Vimma's pickers and your theme, opens empty, and searches as you
 type, in frames from other sites, inside web components and in the PDF viewer too. Opening it
 does not move the page. Matches are highlighted as in Firefox, and the prompt counts them as `[2/5]`, as the status
 bar does. The search starts at the top of what you see (or at the selection, if it
@@ -572,10 +572,10 @@ is on screen), as Vim's starts at the cursor.
   that found nothing goes back to where you were, and the status bar says `not found`.
 - **`Esc`** cancels: the bar closes, nothing stays selected and the page scrolls back to where
   it was when you pressed `/`.
-- **Back into the search:** a click on the page leaves the prompt open; only `Enter` and `Esc`
-  close it, because a search ends when you choose, as in Vim, not when a click happens to land
-  outside it. `/` (or `?`) then puts you back in the prompt with its text selected, so you can
-  type a new search or press `Enter` or `Esc`.
+- **A click outside the prompt** closes it as `Esc` does, as the pickers close: nothing stays
+  selected and the status bar forgets the search. The page stays where it is, and the click does
+  what it would have done anyway (follows a link, focuses a field). The next `/` starts a new
+  search.
 - **`n` / `N`** jump to the next / previous match without opening the bar, wrapping at the ends.
   After a search that found nothing they do nothing.
 - **`?`** searches backward: it shows matches as you type, as `/` does, and `Enter` lands on the

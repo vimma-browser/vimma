@@ -96,12 +96,15 @@ export class Find {
       this.#onFindEvent(/** @type {CustomEvent} */ (e));
     win.addEventListener("find", this.onFindEvent, true);
     win.addEventListener("findagain", this.onFindEvent, true);
+    this.onMouseDown = (/** @type {MouseEvent} */ e) => this.#onMouseDown(e);
+    win.addEventListener("mousedown", this.onMouseDown, true);
     this.stopFindBars = watchFindBars(win);
   }
 
   destroy() {
     this.win.removeEventListener("find", this.onFindEvent, true);
     this.win.removeEventListener("findagain", this.onFindEvent, true);
+    this.win.removeEventListener("mousedown", this.onMouseDown, true);
     this.stopFindBars();
     for (const b of /** @type {Browser[]} */ (this.#gBrowser().browsers ?? [])) {
       const l = this.listeners.get(b);
@@ -199,8 +202,8 @@ export class Find {
   }
 
   /**
-   * `/` or `?` while this tab's search is open and the focus has left its field (a click on the
-   * page): back into the field, its text selected, so the next keys replace it. The search keeps
+   * `/` or `?` while this tab's search is open and the focus has left its field without a click
+   * (a click closes it, `#onMouseDown`): back into the field, its text selected, so the next keys replace it. The search keeps
    * where it started, for Esc; it takes the direction of the key, as Vim's `?` starts a backward
    * search.
    * @param {Session} s
@@ -330,10 +333,11 @@ export class Find {
 
   /**
    * Closes the find bar back to where the search started: no match selected, the page
-   * scrolled back, focus on the page as it was.
+   * scrolled back (unless `scrollBack` is false), focus on the page as it was.
    * @param {Session} s
+   * @param {boolean} [scrollBack]
    */
-  #close(s) {
+  #close(s, scrollBack = true) {
     const findbar = /** @type {FindBar} */ (s.findbar);
     // Before close(): it forgets the frame that holds the match.
     s.browser.finder.removeSelection();
@@ -345,11 +349,14 @@ export class Find {
       this.suppressFocus = false;
     }
     s.browser.focus();
-    this.#restore(s.browser, s.mark);
+    this.#restore(s.browser, scrollBack ? s.mark : Promise.resolve(null));
   }
 
-  /** Esc: close the find bar, unselect the match, scroll back to where the search started. */
-  cancel() {
+  /**
+   * Esc: close the find bar, unselect the match, scroll back to where the search started.
+   * @param {{ scrollBack?: boolean }} [options]
+   */
+  cancel({ scrollBack = true } = {}) {
     const s = this.session;
     if (!s) return;
     this.win.clearTimeout(s.timer);
@@ -358,9 +365,23 @@ export class Find {
     this.entries.delete(s.browser);
     if (s.findbar) {
       s.findbar.removeEventListener("findbarclose", s.onClose);
-      this.#close(s);
+      this.#close(s, scrollBack);
     }
     this.onChange();
+  }
+
+  /**
+   * A click outside the open prompt ends the search as Esc does, as a picker closes, because the
+   * user has moved on (docs/specs/m1-find.md). The page stays where it is: the click acts on
+   * what is on screen. Focusing the page here comes before the click's own default action, so
+   * a click on a field (the address bar, a page's input) still focuses that field.
+   * @param {MouseEvent} e
+   */
+  #onMouseDown(e) {
+    const s = this.session;
+    if (!s?.findbar || s.findbar.hidden || s.accepting !== null) return;
+    if (e.composedPath().includes(s.findbar)) return;
+    this.cancel({ scrollBack: false });
   }
 
   /**

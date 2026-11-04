@@ -235,34 +235,85 @@ add_task(async function esc_cancels_and_returns_to_where_it_was() {
   });
 });
 
-add_task(async function slash_after_a_click_on_the_page_goes_back_into_the_open_search() {
+add_task(async function a_click_outside_the_prompt_closes_it_as_esc_does() {
   await withPage(async (browser) => {
     type("/delta");
-    // Firefox creates the find bar on the first `/`.
     await TestUtils.waitForCondition(
       () => document.activeElement === gBrowser.getCachedFindBar()?._findField,
       "/ focuses the find field",
     );
     const findbar = gBrowser.getCachedFindBar();
-    // A click on the page takes the focus out of the find field; the find bar stays open.
+    await TestUtils.waitForCondition(
+      async () => (await pageScrollY(browser)) > 1000,
+      "the incremental find scrolls to the match",
+    );
+    const atMatch = await pageScrollY(browser);
+
+    // A click in the prompt is the prompt's own: it stays open.
+    EventUtils.synthesizeMouseAtCenter(findbar._findField, {});
+    Assert.ok(!findBarHidden(), "a click in the prompt leaves it open");
+    Assert.equal(document.activeElement, findbar._findField, "and in the field");
+
+    // A click on the page ends the search as Esc does, but where the click is.
     EventUtils.synthesizeMouseAtCenter(browser, {});
+    await TestUtils.waitForCondition(findBarHidden, "a click on the page closes the prompt");
     await TestUtils.waitForCondition(
       () => document.activeElement === browser,
       "the click focuses the page",
     );
-    Assert.ok(!findBarHidden(), "the find bar is still open");
-    Assert.ok(
-      findbar.hasAttribute("vimma-prompt"),
-      "a click outside leaves the prompt open (#685)",
-    );
     Assert.equal(VimmaHost.status(window).mode, "normal", "the page has the keys: normal mode");
+    Assert.equal(findStatus(), null, "a cancelled find leaves nothing in the status bar");
+    Assert.deepEqual(await pageKeysThenUnbound(browser), [UNBOUND], "no find key reached the page");
+    Assert.equal(await pageScrollY(browser), atMatch, "the page stays where it was clicked");
+
+    // The next ? is a new search (#731: ? right after a click on the page).
+    EventUtils.synthesizeKey("?");
+    await TestUtils.waitForCondition(
+      () => document.activeElement === findbar._findField,
+      "? after the click opens a new search",
+    );
+    Assert.equal(findbar._findField.value, "", "a new search starts empty");
+    Assert.ok(findStatus()?.backward, "and backward");
+    type("word");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await assertBackInNormal(browser, "Enter after the click");
+    Assert.equal(findStatus()?.query, "word", "the new query is the search");
+
+    // A click on Firefox's chrome (a tab) closes it too.
+    type("/delta");
+    await TestUtils.waitForCondition(
+      () => document.activeElement === findbar._findField,
+      "/ opens the prompt again",
+    );
+    EventUtils.synthesizeMouseAtCenter(gBrowser.selectedTab, {});
+    await TestUtils.waitForCondition(findBarHidden, "a click on a tab closes the prompt");
+    Assert.equal(findStatus(), null, "and cancels the search");
+  });
+});
+
+add_task(async function slash_when_the_focus_left_the_open_search_goes_back_into_it() {
+  await withPage(async (browser) => {
+    type("/delta");
+    await TestUtils.waitForCondition(
+      () => document.activeElement === gBrowser.getCachedFindBar()?._findField,
+      "/ focuses the find field",
+    );
+    const findbar = gBrowser.getCachedFindBar();
+    const field = findbar._findField;
+    // The focus leaves the field without a click (a page or Firefox moving it): the prompt
+    // stays open.
+    browser.focus();
+    await TestUtils.waitForCondition(
+      () => VimmaHost.status(window).mode === "normal",
+      "the page has the keys: normal mode",
+    );
+    Assert.ok(!findBarHidden(), "the find bar is still open");
 
     EventUtils.synthesizeKey("/");
     await TestUtils.waitForCondition(
-      () => document.activeElement === findbar._findField,
+      () => document.activeElement === field,
       "/ again focuses the find field",
     );
-    const field = findbar._findField;
     Assert.equal(field.value, "delta", "the query is kept");
     Assert.deepEqual(
       [field.selectionStart, field.selectionEnd],
@@ -271,8 +322,7 @@ add_task(async function slash_after_a_click_on_the_page_goes_back_into_the_open_
     );
     Assert.equal(VimmaHost.status(window).mode, "command", "typing a search again: command mode");
 
-    // Back in the search, Enter and Esc work as before; ? turns it backward.
-    EventUtils.synthesizeMouseAtCenter(browser, {});
+    browser.focus();
     await TestUtils.waitForCondition(() => document.activeElement === browser, "page again");
     EventUtils.synthesizeKey("?");
     await TestUtils.waitForCondition(
