@@ -30,4 +30,5 @@ version-only bump that is not already checked.
 - A green dot or major bump reaches `main` without a person once the variable is set.
 - A defect in the autopilot that touches any other line or file cannot merge without a person.
 - The fine-grained `UPSTREAM_PR_TOKEN` is a credential to renew; when it lapses, bumps fall back
-  to drafts that a person marks ready.
+  to drafts that a person marks ready. (Since changed: the GitHub App `vimma-upstream-autopilot`
+  replaces the token, so nothing expires; without the App, bumps open as drafts.)

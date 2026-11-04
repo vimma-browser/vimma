@@ -1576,14 +1576,21 @@ One-time setup:
    permitted to create or approve pull requests"; the autopilot detects that message, keeps the
    pushed branch, and comments the full summary and a prefilled compare link on the tracking
    issue instead (open the PR from there). The same setting serves release-please and claude.yml.
-2. **`UPSTREAM_PR_TOKEN`.** Without it a PR opened with the default `GITHUB_TOKEN` starts no
+2. **Upstream App.** Without it a PR opened with the default `GITHUB_TOKEN` starts no
    workflows, so the autopilot opens it as a draft (mark it ready for review to start `ci.yml`
-   and `e2e.yml`) and never sets auto-merge. Create a fine-grained personal access token
-   (Settings → Developer settings → Fine-grained tokens): resource owner `vimma-browser`,
-   **Only select repositories → vimma**, repository permissions **Contents: Read and write** and
-   **Pull requests: Read and write** (Metadata: read is added automatically), nothing else and
-   **no Workflows**. Store it with `gh secret set UPSTREAM_PR_TOKEN -R vimma-browser/vimma`.
-   Renew it before it expires; when it lapses, bumps fall back to drafts.
+   and `e2e.yml`) and never sets auto-merge. The org's GitHub App `vimma-upstream-autopilot` has
+   repository permissions **Contents**, **Pull requests** and **Issues: Read and write** (Metadata:
+   read is added automatically), nothing else, **no Workflows** and no webhook, and is installed
+   on vimma only. The variable `UPSTREAM_APP_ID` holds its client ID and the secret
+   `UPSTREAM_APP_KEY`, of the `upstream-autopilot` environment (deployable only from `main`), its
+   private key; each run mints a one-hour token, so nothing expires (docs/security.md, G14).
+   `node tools/upstream/create-app.mjs` creates the App from a manifest, the environment, the
+   variable and the secret: open the local address it prints, confirm on GitHub, then install
+   the App on **Only select repositories → vimma** from the link it prints (GitHub has no API for
+   that step). To rotate the key, generate a new one on the App's page,
+   `gh secret set UPSTREAM_APP_KEY --env upstream-autopilot -R vimma-browser/vimma < new-key.pem`,
+   then delete the old key there. Because `publish` deploys to that environment, it runs only
+   from `main`.
 3. **Auto-merge** (spec upstream-bump-automation, ADR-022): `gh variable set
 AUTO_MERGE_UPSTREAM -b all -R vimma-browser/vimma` lets GitHub merge a bump whose patches
    applied clean, whose suites passed and whose diff is only the version and copied prefs, once

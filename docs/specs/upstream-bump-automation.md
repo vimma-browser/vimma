@@ -184,6 +184,8 @@ of Behaviour 5 hold, the step runs `gh pr merge --auto --squash --match-head-com
    dispatching `ci.yml`, `e2e.yml`, `semgrep.yml` and `codeql.yml` with `workflow_dispatch` on the
    branch, because whether those runs satisfy the ruleset's code-scanning gate for a PR is not
    documented, and the merge would still not start `push` workflows.
+   (Since changed: the org's GitHub App `vimma-upstream-autopilot` replaces the token. Its key, `UPSTREAM_APP_KEY`, is a secret of the `upstream-autopilot` environment, which only `main` may deploy to, and each run mints a one-hour token for this repository with Contents, Pull requests and Issues write, because an App's token needs no renewal and a pushed branch's copy of the workflow cannot read the key; docs/security.md, G14.)
+
 8. **A diff allowlist, checked line by line**, so that a defect in the autopilot (a wrong file in
    the commit, a stray edit from the pref refresh) cannot merge without a person. It is checked
    on the branch as pushed, not on what `publish` meant to push.
@@ -271,7 +273,9 @@ the existing G1 to G10) with their tests:
 - `UPSTREAM_PR_TOKEN` reaches only `publish`; it is
   fine-grained (this repository, Contents and Pull requests), so it cannot edit workflows. A
   leaked token could open and merge PRs that pass the required checks, the same reach as the
-  maintainer's own account minus workflows; it is revoked in the token settings.
+  maintainer's own account minus workflows; it is revoked in the token settings. (Since changed:
+  the upstream App's key replaces the token, in an environment only `main` may deploy to;
+  docs/security.md, G14.)
 - The failing-patches issue is written by `patch-issue` with `GITHUB_TOKEN` and `issues: write`
   only; no secret reaches it, and no model runs in any job.
 - No job runs on `pull_request_target` or `workflow_run`. Every action stays pinned by a full commit SHA.
