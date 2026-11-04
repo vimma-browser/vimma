@@ -445,58 +445,6 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     user for permission"); under the default permissions a `shell` call (`ls`) ran without one.
     A configuration file that does not parse is skipped with a warning in opencode's log, and
     the run goes on with the rest, its default provider included.
-- **pi 1.5.0** (`@earendil-works/pi-coding-agent`, a single binary). Its `docs/` folder and
-  `pi --help`, and runs against a scripted OpenAI-compatible chat-completions server on
-  127.0.0.1 (a provider in `~/.pi/agent/models.json` with a made-up key, `env -i`, a throwaway
-  `HOME`, XDG folders and `TMPDIR`, in a network namespace that has only loopback), with
-  one-tool stdio MCP servers. pi has MCP support of its own (`builtin:mcp`, an extension that
-  ships with it).
-  - `--mode json` writes one JSON object a line: a `session` header (`id`, `cwd`), then
-    `agent_start`, `turn_start`, `message_start` and `message_end` (roles `system`, `user`,
-    `assistant`, `toolResult`), `message_update` (`assistantMessageEvent` of type
-    `text_delta`, `toolcall_start`, `toolcall_end` and others), `tool_execution_start` and
-    `tool_execution_end` (`toolCallId`, `toolName`, `args`, `result`, `isError`), `turn_end`,
-    `agent_end` and `agent_settled`. The first `system` message lists every tool the model is
-    given in `toolsAdded`, MCP tools of `direct` exposure included. Each assistant
-    `message_end` carries `provider`, `model`, `stopReason` and `usage` (`input`, `output`,
-    `cacheRead`, `cacheWrite`, `totalTokens` and `cost`, which pi computes from its model
-    catalog's prices, `totalFromProvider: false`). The stream names no version.
-  - A refused key (401) gave an assistant `message_end` with `stopReason` `error` and the
-    API's message in `errorMessage`, then `agent_end` and `agent_settled`, and exit 0, so a
-    failed task is known only from the stream.
-  - `--mode rpc` reads commands from stdin and writes the same events, with a `response` to
-    each command. A `prompt` starts a task; a `steer` sent while a task runs (or a `prompt`
-    with `streamingBehavior: "steer"`) reached the model before its next request, so pi has
-    live input for added instructions (Behaviour 10). A `steer` sent after `agent_settled`
-    stayed queued and started nothing; a `prompt` then started a new task in the same
-    process. Closing stdin ended the process at once, also in the middle of a task, so the
-    input may close only after `agent_settled`.
-  - `--no-session` kept no session file. A run created an empty `auth.json` and
-    `models-store.json` in `~/.pi/agent` when they were missing, and a transpiled copy of
-    each TypeScript extension under `$TMPDIR/jiti`. A `bash` result over its limit was cut,
-    and its full output was kept in `$TMPDIR/pi-bash-<id>.log` after the run ended; an MCP
-    result over 20 KB was cut, and its full text was kept in `$TMPDIR/pi-mcp-<id>.txt`.
-  - MCP servers come from `~/.pi/agent/mcp.json`, a trusted project's `.pi/mcp.json` and
-    `pi.registerMcpServer` in extensions. With the run's server in `.pi/mcp.json` of the
-    working directory and `--approve`, a user's entry of the same name was replaced whole, and
-    `{"enabled": false}` under a name turned that user server off. A server an extension
-    registered still started and its tool reached the model, and only the extension's code
-    names it. `--tools` with an entry starting `mcp__` leaves out other servers' tools, but it
-    is an allowlist that replaces the user's tool selection; a `+name` or `-name` entry did not
-    remove an MCP tool. No option points pi at one MCP configuration, as Claude Code's
-    `--strict-mcp-config` does.
-  - `--no-mcp` turns the MCP support off: no server of `mcp.json` started, and a server an
-    extension registered was reported as an extension error and did not start. An extension
-    of 45 lines, loaded with `-e`, started one stdio MCP server itself, read its tools with
-    `tools/list` and registered each with `pi.registerTool`; its tool reached the model and its
-    calls ran, and a result of 75 KB reached the model whole, with no file kept. The ticket
-    stayed out of the arguments and of pi's own environment: the extension read it from a 0600
-    file named in its configuration and gave it only to the server's environment. An
-    extension of the user's that is an MCP client of its own (one that registers `/mcp`) is
-    not turned off by `--no-mcp`; `-ne` turns off every extension of the user's, their
-    permission prompts included.
-  - pi asks no permission before a tool call; prompts come only from extensions. Its `bash`
-    commands receive `PI_SESSION_ID`, `PI_PROVIDER` and `PI_MODEL`.
 
 ## Design
 
@@ -792,9 +740,9 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     reports tokens. Research, "Gemini CLI 0.66.0"; issue #726.)
 
     (Since changed: Gemini CLI is offered, from 0.66.0, with Vimma removing what it records of
-    each run (C5's note). Its entry runs `gemini -o stream-json --allowed-mcp-server-names
-vimma_chat -e none`, with `-m` for the provider's model, headless because its input is a
-    pipe; Vimma's server is `vimma_chat` in the run folder's `.gemini/settings.json`, with the
+    each run (C5's note). Its entry runs `gemini` with `-o stream-json`,
+    `--allowed-mcp-server-names vimma_chat` and `-e none`, and `-m` for the provider's model,
+    headless because its input is a pipe; Vimma's server is `vimma_chat` in the run folder's `.gemini/settings.json`, with the
     ticket in the server's `env` and `trust: true`, since a headless run asks nobody;
     `GEMINI_CLI_TRUST_WORKSPACE=true` in its environment trusts that folder and loads the file.
     Extensions are off, because they bring servers, tools and context of their own and made
@@ -804,16 +752,6 @@ vimma_chat -e none`, with `-m` for the provider's model, headless because its in
     not start is not in its stream, so such a run goes on without the browser's tools; the guide
     and `docs/limits.md` say so. Like Codex it has no live input (Behaviour 10 queues), no tool
     list and no cost. Issue #726.)
-
-    (Since changed: pi 1.5.0 was run against a scripted server and can meet C1, C3, C5, C7 and
-    Behaviour 10, but only without its own MCP support, so it is not offered until a pull
-    request adds it with its own security review. `--no-session` keeps no session. Its MCP
-    servers cannot all be turned off by name, because an extension's are named only in its
-    code, so its MCP support is turned off with `--no-mcp` and a small extension that Vimma
-    ships starts `vimma-ctl mcp` and gives its tools to pi, with the ticket read from a 0600
-    file. `--mode rpc` takes added instructions while a task runs, its first `system` message
-    lists its tools, and each reply reports tokens and a cost pi computes. Research, "pi
-    1.5.0".)
 
 13. **A CLI's cost is shown, and `max_cost` does not apply to it** (C13, Behaviour 15). The
     status bar shows a reported cost as `≈ $0.41 (claude-code)` while the task runs, and the
