@@ -338,6 +338,55 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
 - **opencode 2.0.32.** `opencode run --help` only: `--format json`, `--model`, `--auto`
   ("Auto-approve permissions that are not explicitly denied"). Its event shape was not found in
   the binary and is not described here.
+  - Run (issue #727) against a scripted OpenAI-compatible chat-completions server on 127.0.0.1
+    (a provider of the `@ai-sdk/openai-compatible` kind with a made-up key, a throwaway `HOME`
+    and XDG folders, in a network namespace that has only loopback), with a one-tool MCP server
+    named `vimma` and the task on stdin. `run` reads stdin to its end before it starts
+    (`text(process.stdin)` in its bundle), so it has no live input for added instructions
+    (Behaviour 10). Without `--standalone`, `run` hands the task to opencode's background
+    service (`opencode service`), which keeps the configuration and environment it started
+    with, so a run's own MCP configuration does not reach it; `--standalone` starts a private
+    server for the run (`opencode serve --stdio --port 0`).
+  - Output with `--format json`, one JSON object a line, each with `type`, `timestamp`,
+    `sessionID` and `part`: `step_start`; `tool_use`, once per finished call, with `part.tool`
+    and `part.state` (`status` `completed` or `error`, `input`, `output` or `error`);
+    `step_finish` with `part.tokens` (`input`, `output`, `reasoning`, `cache.read`,
+    `cache.write`) and `part.cost`; `text` with `part.text`; `reasoning` only with
+    `--thinking`; and `error` with `error.type` and `error.message` (a refused key:
+    `provider.auth`, `Incorrect API key provided`, exit 1).
+    No event names the model, the version or the run's tools, so the header cannot list its own
+    tools (C7). In every recorded run, the last step, the one that writes the reply, had no
+    `step_start` or `step_finish`, so its tokens and cost are not reported (C10, C13).
+  - MCP tools are reached only through `execute` ("Code Mode"): a tool that runs JavaScript,
+    with `fetch`, calling `tools.<server>.<tool>`. A call to Vimma's server is an `execute`
+    `tool_use` whose `metadata.metadata.toolCalls` names `vimma.vimma_tabs`. The catalog of MCP
+    tools is built when a step starts: with a server that took 1.5 s to start, the first step
+    listed none of Vimma's tools and its `execute` call returned
+    `Unknown tool 'vimma.vimma_tabs'`; the tools arrived in a later step as a `<system-update>`
+    message. Setting `mcp.timeout.catalog` did not change that.
+  - A run merges a system folder (`/etc/opencode`), the global folder
+    (`$XDG_CONFIG_HOME/opencode`, replaced by `OPENCODE_CONFIG_DIR` when set), the file
+    `OPENCODE_CONFIG` names, project files in and above the working directory, and
+    `OPENCODE_CONFIG_CONTENT`. A server of the global configuration stayed in the run with
+    `"enabled": false` under its name in `OPENCODE_CONFIG` or `OPENCODE_CONFIG_CONTENT` (the log
+    says "omitted enabled-only legacy MCP entry"); a whole entry under the same name with
+    `"enabled": false` turned it off, so turning a server off needs its name. `opencode mcp list`
+    has no `--standalone` and asks the background service, so the names cannot be listed without
+    starting or using that service, and Vimma would otherwise have to read every source above
+    itself. A `permissions` rule denying `*.*` and allowing `vimma.*` left the other server's
+    tools in the catalog. No option leaves the configured servers out, as Claude Code's
+    `--strict-mcp-config` does. The ticket can stay out of the arguments: `OPENCODE_CONFIG`
+    names a file whose server entry carries it in `environment`, and the server received it.
+  - Sessions and the logins `opencode auth login` stores are in one SQLite database,
+    `$XDG_DATA_HOME/opencode/opencode.db` (`OPENCODE_DB` names another). With
+    `OPENCODE_DB=:memory:` a run kept no database file, but a stored key (added with
+    `opencode auth import`) was no longer sent, while a key in the configuration was; with the
+    file, the run's session stayed in it. A shell command's output stayed under
+    `$XDG_DATA_HOME/opencode/shell/` either way.
+  - Without `--auto`, a permission request is refused ("This non-interactive run cannot ask the
+    user for permission"); under the default permissions a `shell` call (`ls`) ran without one.
+    A configuration file that does not parse is skipped with a warning in opencode's log, and
+    the run goes on with the rest, its default provider included.
 
 ## Design
 
@@ -595,6 +644,14 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     list, version arguments, argument builder, MCP configuration, input line and stream parser
     (with its usage, cost and own tools), because the window, the conversations and the runner
     read every per-CLI fact from that entry, and a unit test checks each entry for all of them.
+
+    (Since changed: opencode 2.0.32 was run against a scripted server and is still not offered,
+    because it cannot meet C5 and C7 as they stand. It keeps no session only with an in-memory
+    database, which also hides the logins `opencode auth login` stores. The MCP servers of its
+    configuration can be turned off only by name, and only its background service lists the
+    names. Its MCP tools reach the model only through Code Mode, and not in a step that starts
+    before Vimma's server has connected. Research, "opencode 2.0.32"; issue #727.)
+
 13. **A CLI's cost is shown, and `max_cost` does not apply to it** (C13, Behaviour 15). The
     status bar shows a reported cost as `≈ $0.41 (claude-code)` while the task runs, and the
     task's end line keeps it as `done · ≈ $0.41 (claude-code estimate)`, because it is the only
