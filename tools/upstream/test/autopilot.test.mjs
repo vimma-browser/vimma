@@ -738,7 +738,7 @@ describe("the bump PR and auto-merge", () => {
   it("names the first condition that did not hold", () => {
     const off = (/** @type {object} */ over) => autoMergeDecision(context({ ...green, ...over }));
     expect(off({ ref: "refs/heads/x" }).reason).toBe("off: the run is not on main");
-    expect(off({ hasToken: false }).reason).toBe("off: UPSTREAM_PR_TOKEN is not set");
+    expect(off({ hasToken: false }).reason).toBe("off: the upstream App is not set up");
     expect(off({ tests: "failure" }).reason).toBe(
       "off: the PR is a draft (the suites did not pass)",
     );

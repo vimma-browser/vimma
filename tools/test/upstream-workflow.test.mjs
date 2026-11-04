@@ -537,8 +537,8 @@ describe("auto-merge in the upstream autopilot", () => {
     // step() stops at the first blank line; the outputs are written further down the step.
     expect(job(upstream, "publish")).toContain('echo "auto-merge=$(body pr --auto-merge-only)"');
     const block = step(upstream, "automerge");
-    // Only the fine-grained token: a GITHUB_TOKEN merge would start no push workflow on main.
-    expect(block).toContain("GH_TOKEN: ${{ secrets.UPSTREAM_PR_TOKEN }}");
+    // Only the App token: a GITHUB_TOKEN merge would start no push workflow on main.
+    expect(block).toContain("GH_TOKEN: ${{ steps.app.outputs.token }}");
     expect(block).not.toContain("github.token");
     expect(block).toContain(
       "if: steps.pr.outputs.number != '' && steps.pr.outputs.auto-merge == 'true'",
@@ -569,11 +569,47 @@ describe("auto-merge in the upstream autopilot", () => {
     expect(disable).toBeLessThan(push);
   });
 
-  it("the token reaches only publish", () => {
-    const at = upstream.split("\n").filter((l) => l.includes("secrets.UPSTREAM_PR_TOKEN"));
-    expect(at.length).toBeGreaterThan(0);
+  it("the App's key reaches only publish, which deploys to upstream-autopilot", () => {
+    expect([...upstream.matchAll(/secrets\.(\w+)/g)].map((m) => m[1])).toEqual([
+      "UPSTREAM_APP_KEY",
+    ]);
+    expect(job(upstream, "publish")).toContain("secrets.UPSTREAM_APP_KEY");
+    expect(job(upstream, "publish")).toMatch(/\n {4}environment: upstream-autopilot\n/);
+    expect(upstream).not.toContain("UPSTREAM_PR_TOKEN");
+  });
+
+  it("mints the App token for this repository alone, before the checkout", () => {
+    const block = step(upstream, "app");
+    expect(block).toMatch(/uses: actions\/create-github-app-token@[0-9a-f]{40} #/);
+    expect(block).toContain("if: vars.UPSTREAM_APP_ID != ''");
+    const withLines = block
+      .slice(block.indexOf("with:\n") + 6)
+      .trim()
+      .split("\n")
+      .map((l) => l.trim());
+    expect(withLines).toEqual([
+      "client-id: ${{ vars.UPSTREAM_APP_ID }}",
+      "private-key: ${{ secrets.UPSTREAM_APP_KEY }}",
+      "owner: vimma-browser",
+      "repositories: vimma",
+      "permission-contents: write",
+      "permission-pull-requests: write",
+      "permission-issues: write",
+    ]);
     const publish = job(upstream, "publish");
-    for (const l of at) expect(publish).toContain(l);
+    expect(publish.indexOf("create-github-app-token")).toBeLessThan(
+      publish.indexOf("actions/checkout"),
+    );
+  });
+
+  it("publish pushes and opens the PR with the App token, else GITHUB_TOKEN", () => {
+    const token = "${{ steps.app.outputs.token || github.token }}";
+    const publish = job(upstream, "publish");
+    expect(publish).toContain(`token: ${token}`);
+    expect(step(upstream, "push")).toContain(`GH_TOKEN: ${token}`);
+    expect(step(upstream, "pr")).toContain(`GH_TOKEN: ${token}`);
+    expect(step(upstream, "pr")).toContain("HAS_TOKEN: ${{ steps.app.outputs.token != '' }}");
+    expect(publish).not.toMatch(/^ {6}GH_TOKEN:/m);
   });
 });
 

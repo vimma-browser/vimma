@@ -80,8 +80,8 @@ export function driftTitle(current) {
 
 /**
  * Open the PR as a draft unless it can be merged as it stands: every patch imports, the suites
- * passed, and a token is set so that the PR's own CI runs (a PR opened with GITHUB_TOKEN
- * starts no workflows; marking it ready for review does).
+ * passed, and the upstream App's token opens it so that its own CI runs (a PR opened with
+ * GITHUB_TOKEN starts no workflows; marking it ready for review does).
  * @param {{ patchResult: string, tests: string, hasToken: boolean,
  *   prefs?: PrefRefresh | null, reexport?: Reexport | null }} c
  * @returns {{ draft: boolean, reason: string }}
@@ -122,7 +122,7 @@ export function autoMergeDecision(c) {
   const allowed = c.autoMerge === "all" || (c.autoMerge === "dot" && kind === "dot");
   if (!allowed) return off(`AUTO_MERGE_UPSTREAM does not allow a ${kind} release`);
   if (c.ref !== "refs/heads/main") return off("the run is not on main");
-  if (!c.hasToken) return off("UPSTREAM_PR_TOKEN is not set");
+  if (!c.hasToken) return off("the upstream App is not set up");
   // Decision 15: a changed patch waits for a full build and a person.
   if (c.reexport?.state === "reexported") return off("patches were re-exported");
   const { draft, reason } = draftDecision(c);

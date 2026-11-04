@@ -146,7 +146,8 @@ days). The artifact preflight finds Mozilla's build of 157.0.1 indexed until 202
 1. Settings → Actions → General → Workflow permissions → "Allow GitHub Actions to create and
    approve pull requests". Without it the autopilot comments a compare link on the tracking issue.
 2. Optional: `UPSTREAM_PR_TOKEN` (fine-grained, this repo, Contents + Pull requests read/write),
-   so the PR's CI runs and an all-green bump opens ready for review.
+   so the PR's CI runs and an all-green bump opens ready for review. (Since changed: the GitHub
+   App `vimma-upstream-autopilot` replaces the token; docs/runbook.md, "Upstream App".)
 
 ## Dependencies
 

@@ -727,10 +727,19 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`refuses a re-exported patch`](../tools/upstream/test/bump-diff.test.mjs),
   [`refuses a new, deleted, renamed or mode-changed file`](../tools/upstream/test/bump-diff.test.mjs),
   [`refuses a file header it does not recognise instead of folding it into the last file`](../tools/upstream/test/bump-diff.test.mjs)
-- G14. `UPSTREAM_PR_TOKEN` **must** reach only the `publish` job. It is fine-grained: this
-  repository only, Contents and Pull requests read and write, no Workflows, so it cannot change a
-  workflow file. Without it, bumps open as drafts and are never set to auto-merge.
-  [`the token reaches only publish`](../tools/test/upstream-workflow.test.mjs),
+- G14. The private key of the org's GitHub App `vimma-upstream-autopilot`, the secret
+  `UPSTREAM_APP_KEY` of the `upstream-autopilot` environment, **must** reach only the `publish`
+  job, and that environment's only deployment policy is the branch `main`, so a workflow edited
+  on another branch cannot read it. Each run mints a one-hour token for this repository alone with
+  Contents, Pull requests and Issues read and write and no Workflows, so it cannot change a
+  workflow file. Without the App (the variable `UPSTREAM_APP_ID` unset), bumps open as drafts with
+  `GITHUB_TOKEN` and are never set to auto-merge. A leaked key could open pull requests and set
+  auto-merge on any that pass the required checks; revoke it on the App's page.
+  [`the App's key reaches only publish, which deploys to upstream-autopilot`](../tools/test/upstream-workflow.test.mjs),
+  [`mints the App token for this repository alone, before the checkout`](../tools/test/upstream-workflow.test.mjs),
+  [`publish pushes and opens the PR with the App token, else GITHUB_TOKEN`](../tools/test/upstream-workflow.test.mjs),
+  [`asks for contents, pull requests and issues, and nothing else`](../tools/upstream/test/create-app.test.mjs),
+  [`names every deployment policy other than the branch main`](../tools/upstream/test/create-app.test.mjs),
   [`grants nothing by default and each job only what it needs`](../tools/test/upstream-workflow.test.mjs)
 - G15. The `patch-issue` job (patches that do not apply) **must** use only `GITHUB_TOKEN` with
   `contents: read` and `issues: write`, check out without persisted credentials, and pass the
