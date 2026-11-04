@@ -335,6 +335,50 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
   `--allowed-mcp-server-names`, `--policy`, `-m`. The bundle's `JsonStreamEventType` has `init`,
   `message`, `tool_use`, `tool_result`, `error` and `result`. No option to keep no session files
   was found.
+  - Run (issue #726) against a scripted Gemini API server on 127.0.0.1
+    (`GOOGLE_GEMINI_BASE_URL`, a made-up `GEMINI_API_KEY`, `security.auth.selectedType`
+    `gemini-api-key`, a throwaway `HOME` and XDG folders, in a network namespace that has only
+    loopback), with one-tool MCP servers and the task on stdin. A headless run needs a trusted
+    working directory, else it exits with 55; `--skip-trust` trusts it but does not load the
+    folder's own `.gemini/settings.json`, while `GEMINI_CLI_TRUST_WORKSPACE=true` in the
+    environment does both.
+  - Output with `-o stream-json`, one JSON object a line, each with `type` and `timestamp`:
+    `init` with `session_id` and `model` (`auto`, the router, unless `-m` names one), and no
+    version, tool list or MCP server status; `message` with `role` `user` (the task as given)
+    or `assistant`, whose `content` is a piece of the reply (`delta: true`); `tool_use` with
+    `tool_name`, `tool_id` and `parameters`; `tool_result` with `tool_id`, `status` (`success`
+    or `error`), `output`, and `error` (`type`, `message`); `error` with `severity` and
+    `message`; and `result` with `status` (`success` or `error`, with `error.type` and
+    `error.message`) and `stats`. `stats` has `input_tokens`, `output_tokens`,
+    `total_tokens`, `cached`, `duration_ms`, `tool_calls` and the same counts per model,
+    including the router's own request and the last turn, and no cost. A refused key (401) gave
+    a `result` with `status` `error` and the API's message after the `init`, and exit 145.
+  - The task is read from stdin to its end (at most 8 MiB, and only if it starts within
+    500 ms), so there is no live input for added instructions (Behaviour 10). `--acp` speaks
+    the Agent Client Protocol on stdio instead, a different protocol from the stream above.
+  - MCP servers come from the settings files (`mcpServers`, merged per server name, a later
+    file's entry replacing the whole earlier one) and from extensions. With the run's server in
+    `.gemini/settings.json` of the working directory and `--allowed-mcp-server-names` naming
+    it, a server of the user's settings was never started, and the user's entry of the same
+    name (with its own `cwd` and `includeTools`) was replaced whole. The ticket can stay out of
+    the arguments: the server received it from that entry's `env`, and Gemini CLI's own
+    environment never held it. A server that took 1.5 s to start had its tool in the first
+    request to the model. A tool of the run's server reaches the model as
+    `mcp_<server>_<tool>`, and only when its entry has `trust: true` or a policy allows it.
+    A server whose command did not exist was not reported: the run went on without its tools
+    and ended with `success`.
+  - In a headless run with the default approval mode, the model was offered only tools that
+    need no confirmation (`list_directory`, `read_file`, `grep_search`, `glob`,
+    `google_web_search`, `invoke_agent`, `enter_plan_mode`, `update_topic`); a call to
+    `run_shell_command` came back as a `tool_result` with the error type
+    `tool_not_registered`. The user's policy files decide which others are allowed.
+  - Every run wrote its whole conversation, the task, each tool call and its result, and the
+    reply, to `~/.gemini/tmp/<project>/chats/session-<time>-<id>.jsonl`, and added the
+    working directory to `~/.gemini/projects.json`. No option or setting turns the recording
+    off. `general.sessionRetention` deletes old sessions only of the project a run starts in,
+    and each run's working directory is a new project, so they are never deleted.
+    `GEMINI_CLI_HOME` moves the whole `~/.gemini` folder, the Google login
+    (`oauth_creds.json`) and the user's settings and policies included.
 - **opencode 2.0.32.** `opencode run --help` only: `--format json`, `--model`, `--auto`
   ("Auto-approve permissions that are not explicitly denied"). Its event shape was not found in
   the binary and is not described here.
@@ -651,6 +695,15 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     configuration can be turned off only by name, and only its background service lists the
     names. Its MCP tools reach the model only through Code Mode, and not in a step that starts
     before Vimma's server has connected. Research, "opencode 2.0.32"; issue #727.)
+
+    (Since changed: Gemini CLI 0.66.0 was run against a scripted server and is still not
+    offered, because it cannot meet C5. Every headless run keeps its whole conversation, tool
+    results included, in a session file under `~/.gemini/tmp`, no setting turns that off, and
+    moving its folder elsewhere also hides its login. It can meet C1, C3 and C7's single server:
+    a settings file in the run's working directory gives it Vimma's server with the ticket in
+    the server's `env`, and `--allowed-mcp-server-names` keeps every other server from
+    starting. Like Codex, it has no live input and reports no tool list and no cost; it
+    reports tokens. Research, "Gemini CLI 0.66.0"; issue #726.)
 
 13. **A CLI's cost is shown, and `max_cost` does not apply to it** (C13, Behaviour 15). The
     status bar shows a reported cost as `≈ $0.41 (claude-code)` while the task runs, and the

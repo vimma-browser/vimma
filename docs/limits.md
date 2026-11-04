@@ -154,7 +154,9 @@ the [user guide](guide.md); planned work is on the
   read the profile.
 - The window does not open in a private window.
 - The window runs Claude Code and Codex (checked with Claude Code 2.1.303 and Codex 0.163.0);
-  Gemini CLI and opencode are not offered yet.
+  Gemini CLI and opencode are not offered yet: Gemini CLI 0.66.0 keeps every run's
+  conversation in a file of its own folder, with no setting to stop it, and opencode 2.0.32
+  cannot be limited to Vimma's tools alone.
 - Codex reports neither its tools nor its sandbox, so the window says only that its tools are
   `as its configuration allows`, and it reports no refusal of its own commands, so a command its
   sandbox stopped still shows as run. It reports no cost.
