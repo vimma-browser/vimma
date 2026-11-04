@@ -13,6 +13,7 @@
     "help",
     "panel",
     "resize",
+    "index",
     "pdf"
   ],
   "groups": [
@@ -2928,6 +2929,237 @@
               "keys": "f5",
               "chords": ["f5"],
               "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_outline",
+          "description": "Open the outline (table of contents) in a panel",
+          "keys": [
+            {
+              "keys": "tab",
+              "chords": ["tab"],
+              "mode": "pdf"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PDF outline",
+      "actions": [
+        {
+          "name": "index_down",
+          "description": "Outline: next entry",
+          "keys": [
+            {
+              "keys": "j",
+              "chords": ["j"],
+              "mode": "index"
+            },
+            {
+              "keys": "down",
+              "chords": ["down"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_up",
+          "description": "Outline: previous entry",
+          "keys": [
+            {
+              "keys": "k",
+              "chords": ["k"],
+              "mode": "index"
+            },
+            {
+              "keys": "up",
+              "chords": ["up"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_expand",
+          "description": "Outline: expand the entry",
+          "keys": [
+            {
+              "keys": "l",
+              "chords": ["l"],
+              "mode": "index"
+            },
+            {
+              "keys": "zo",
+              "chords": ["zo"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_collapse",
+          "description": "Outline: collapse the entry, or go to its parent",
+          "keys": [
+            {
+              "keys": "h",
+              "chords": ["h"],
+              "mode": "index"
+            },
+            {
+              "keys": "zc",
+              "chords": ["zc"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_expand_subtree",
+          "description": "Outline: expand the entry and all under it",
+          "keys": [
+            {
+              "keys": "zO",
+              "chords": ["zO"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_collapse_subtree",
+          "description": "Outline: collapse the entry and all under it",
+          "keys": [
+            {
+              "keys": "zC",
+              "chords": ["zC"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_expand_all",
+          "description": "Outline: expand every entry",
+          "keys": [
+            {
+              "keys": "L",
+              "chords": ["L"],
+              "mode": "index"
+            },
+            {
+              "keys": "zR",
+              "chords": ["zR"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_collapse_all",
+          "description": "Outline: collapse every entry",
+          "keys": [
+            {
+              "keys": "H",
+              "chords": ["H"],
+              "mode": "index"
+            },
+            {
+              "keys": "zM",
+              "chords": ["zM"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_first",
+          "description": "Outline: first entry",
+          "keys": [
+            {
+              "keys": "gg",
+              "chords": ["gg"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_last",
+          "description": "Outline: last entry",
+          "keys": [
+            {
+              "keys": "G",
+              "chords": ["G"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_half_down",
+          "description": "Outline: down half the entries shown",
+          "keys": [
+            {
+              "keys": "ctrl+d",
+              "chords": ["ctrl+d"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_half_up",
+          "description": "Outline: up half the entries shown",
+          "keys": [
+            {
+              "keys": "ctrl+u",
+              "chords": ["ctrl+u"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_follow",
+          "description": "Outline: go to the entry and close the outline",
+          "keys": [
+            {
+              "keys": "enter",
+              "chords": ["enter"],
+              "mode": "index"
+            },
+            {
+              "keys": "space",
+              "chords": ["space"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_close",
+          "description": "Outline: close it (in the filter: back to the whole outline)",
+          "keys": [
+            {
+              "keys": "tab",
+              "chords": ["tab"],
+              "mode": "index"
+            },
+            {
+              "keys": "esc",
+              "chords": ["esc"],
+              "mode": "index"
+            },
+            {
+              "keys": "ctrl+[",
+              "chords": ["ctrl+["],
+              "mode": "index"
+            },
+            {
+              "keys": "q",
+              "chords": ["q"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_filter",
+          "description": "Outline: filter the entries by their titles",
+          "keys": [
+            {
+              "keys": "/",
+              "chords": ["/"],
+              "mode": "index"
             }
           ]
         }

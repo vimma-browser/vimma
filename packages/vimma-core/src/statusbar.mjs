@@ -821,7 +821,7 @@ export function renderStatusBar(input, width) {
  * line's combobox, a panel's list): the status bar does not say them again.
  * @type {ReadonlySet<Mode>}
  */
-const SELF_ANNOUNCING = new Set(["help", "command", "panel"]);
+const SELF_ANNOUNCING = new Set(["help", "command", "panel", "index"]);
 
 /**
  * What the status bar last said: the mode, the failed search (page and query), how many

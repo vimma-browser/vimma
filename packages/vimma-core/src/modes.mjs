@@ -6,8 +6,9 @@
  * Modes the host can report to the dispatcher. `prefix` is not a mode here: the dispatcher
  * tracks a pending prefix itself and the host shows it in the status bar via `pending()`.
  * `element` is a focused text block (docs/specs/element-focus.md): the mode `v` and `y` start from.
+ * `index` is the PDF viewer's outline panel (docs/specs/pdf-mode.md decision 10).
  * @typedef {"normal" | "insert" | "visual" | "command" | "hint" | "element" | "help" | "panel"
- *   | "resize"} Mode
+ *   | "resize" | "index"} Mode
  */
 
 /** @type {readonly Mode[]} */
@@ -21,6 +22,7 @@ export const MODES = Object.freeze([
   "help",
   "panel",
   "resize",
+  "index",
 ]);
 
 /**

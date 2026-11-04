@@ -364,6 +364,27 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | One page at a time, or scrolling                              | `pdf_single_page`      | `w [pdf]`                                     |
 | Rotate the pages 90 degrees clockwise (with a count: n times) | `pdf_rotate`           | `r [pdf]`                                     |
 | Presentation mode, or leave it                                | `pdf_presentation`     | `f5 [pdf]`                                    |
+| Open the outline (table of contents) in a panel               | `pdf_outline`          | `tab [pdf]`                                   |
+
+## PDF outline
+
+| Action                                                       | Config name              | Bindings                                                    |
+| ------------------------------------------------------------ | ------------------------ | ----------------------------------------------------------- |
+| Outline: next entry                                          | `index_down`             | `j [index]`, `down [index]`                                 |
+| Outline: previous entry                                      | `index_up`               | `k [index]`, `up [index]`                                   |
+| Outline: expand the entry                                    | `index_expand`           | `l [index]`, `zo [index]`                                   |
+| Outline: collapse the entry, or go to its parent             | `index_collapse`         | `h [index]`, `zc [index]`                                   |
+| Outline: expand the entry and all under it                   | `index_expand_subtree`   | `zO [index]`                                                |
+| Outline: collapse the entry and all under it                 | `index_collapse_subtree` | `zC [index]`                                                |
+| Outline: expand every entry                                  | `index_expand_all`       | `L [index]`, `zR [index]`                                   |
+| Outline: collapse every entry                                | `index_collapse_all`     | `H [index]`, `zM [index]`                                   |
+| Outline: first entry                                         | `index_first`            | `gg [index]`                                                |
+| Outline: last entry                                          | `index_last`             | `G [index]`                                                 |
+| Outline: down half the entries shown                         | `index_half_down`        | `ctrl+d [index]`                                            |
+| Outline: up half the entries shown                           | `index_half_up`          | `ctrl+u [index]`                                            |
+| Outline: go to the entry and close the outline               | `index_follow`           | `enter [index]`, `space [index]`                            |
+| Outline: close it (in the filter: back to the whole outline) | `index_close`            | `tab [index]`, `esc [index]`, `ctrl+[ [index]`, `q [index]` |
+| Outline: filter the entries by their titles                  | `index_filter`           | `/ [index]`                                                 |
 
 ## On macOS
 

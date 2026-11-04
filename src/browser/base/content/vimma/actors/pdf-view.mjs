@@ -20,6 +20,12 @@ import {
   pdfZoomPercent,
   pdfZoomStep,
 } from "../core/pdf.mjs";
+import {
+  OUTLINE_MAX_DEPTH,
+  OUTLINE_MAX_ENTRIES,
+  OUTLINE_MAX_TITLE,
+  OUTLINE_MAX_URL,
+} from "../core/pdfoutline.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -60,6 +66,14 @@ export const PDFJS_CONTRACT = Object.freeze({
   pdfHistory: "object",
   "pdfHistory.pushCurrentPosition": "function",
   requestPresentationMode: "function",
+  // Delivery PR 4: the outline, read and followed as pdf.js's own outline view does.
+  pdfDocument: "object",
+  "pdfDocument.getOutline": "function",
+  "pdfDocument.getDestinations": "function",
+  "pdfDocument.cachedPageNumber": "function",
+  "pdfLinkService.goToDestination": "function",
+  "pdfLinkService.executeNamedAction": "function",
+  "pdfLinkService.executeSetOCGState": "function",
 });
 
 /**
@@ -73,6 +87,22 @@ export const PDFJS_DOM = Object.freeze({
 
 /** pdf.js events after which the state is read again. */
 const EVENTS = ["pagesloaded", "pagechanging", "updatefindmatchescount", "updatefindcontrolstate"];
+
+/**
+ * The named actions an outline entry may run: pdf.js's navigation ones. Print and SaveAs from an
+ * entry with an innocent title follow nothing.
+ */
+const OUTLINE_ACTIONS = new Set([
+  "GoBack",
+  "GoForward",
+  "NextPage",
+  "PrevPage",
+  "FirstPage",
+  "LastPage",
+]);
+
+/** A read the viewer never answers is given up after this long, so Tab works again. */
+const OUTLINE_READ_MS = 5000;
 
 /**
  * Firefox's own test for the pdf.js viewer (nsContentUtils::IsPDFJS): its scheme and its origin
@@ -123,6 +153,17 @@ export class PdfView {
   #previousScroll = PDF_SCROLL.VERTICAL;
   /** @type {(state: object) => void} */
   #send;
+  /** @type {(outline: object) => void} */
+  #sendOutline;
+  /** @type {Window} the viewer's window, through Xrays: exported functions belong to it */
+  #win;
+  /**
+   * The outline as last read: the message for the parent, and each entry's target, which stays
+   * here (V7, V8). null until the user's first Tab.
+   * @type {{ message: { entries: object[], truncated: boolean }, targets: any[] } | null}
+   */
+  #outline = null;
+  #readingOutline = false;
   /** @type {any} */
   #timer = null;
   #find = { current: 0, total: 0 };
@@ -134,9 +175,10 @@ export class PdfView {
    * the feature is off.
    * @param {any} actor   the VimmaChild
    * @param {(state: object) => void} send
+   * @param {(outline: object) => void} [sendOutline]
    * @returns {PdfView | null}
    */
-  static attach(actor, send) {
+  static attach(actor, send, sendOutline = () => {}) {
     if (!Services.prefs.getBoolPref(PDF_FEATURE_PREF, false)) return null;
     // Top level only: a PDF in a web page's frame keeps the page's keys (V2).
     if (actor.browsingContext.parent) return null;
@@ -149,22 +191,35 @@ export class PdfView {
       return null;
     }
     if (!app || typeof app !== "object") return null;
-    return new PdfView(actor.contentWindow, app, send);
+    return new PdfView(actor.contentWindow, app, send, sendOutline);
   }
 
   /**
    * @param {Window} win  the viewer's window, through Xrays
    * @param {any} app
    * @param {(state: object) => void} send
+   * @param {(outline: object) => void} sendOutline
    */
-  constructor(win, app, send) {
+  constructor(win, app, send, sendOutline) {
     this.#app = app;
+    this.#win = win;
     this.#doc = win.document;
     this.#send = send;
+    this.#sendOutline = sendOutline;
     // pdf.js calls these with its own event objects; Cu.exportFunction keeps the arguments
     // behind Xrays (V3, V4).
     const onState = Cu.exportFunction(() => this.schedule(), win);
     const onCount = Cu.exportFunction((/** @type {any} */ evt) => this.#onCount(evt), win);
+    // pdf.js can open another PDF in the same viewer: the outline read goes with the old one.
+    const onDocument = Cu.exportFunction(() => {
+      this.#outline = null;
+    }, win);
+    try {
+      this.#app.eventBus.on("documentloaded", onDocument);
+      this.#listeners.push(["documentloaded", onDocument]);
+    } catch {
+      // no event bus: nothing to forget
+    }
     for (const name of EVENTS) {
       const fn = name.startsWith("updatefind") ? onCount : onState;
       try {
@@ -283,6 +338,12 @@ export class PdfView {
           viewer.pagesRotation = pdfRotation(rotation, n);
           return true;
         }
+        case "outline":
+          // Only for the user's Tab in the PDF viewer (V8): the parent sends it for that key.
+          this.#readOutline();
+          return true;
+        case "follow":
+          return this.#follow(n);
         case "presentation":
           // Only for the user's own key (V9): the parent sends it for a key in the PDF viewer.
           // A viewer that claims presentation without being full screen gets nothing to exit.
@@ -296,6 +357,221 @@ export class PdfView {
       console.warn("vimma: pdf operation failed", op, e);
     }
     return false;
+  }
+
+  /**
+   * Reads the outline and sends it to the parent (decision 10, V8). pdf.js's promises come back
+   * only through exported callbacks passed to their `then` through Xrays, never awaited (V4); a
+   * second Tab sends the outline already read.
+   */
+  #readOutline() {
+    if (this.#outline) {
+      this.#sendOutline(this.#outline.message);
+      return;
+    }
+    if (this.#readingOutline) return;
+    this.#readingOutline = true;
+    lazy.setTimeout(() => {
+      this.#readingOutline = false;
+    }, OUTLINE_READ_MS);
+    const done = Cu.exportFunction((/** @type {any} */ items) => this.#onOutline(items), this.#win);
+    const failed = Cu.exportFunction(() => {
+      this.#readingOutline = false;
+    }, this.#win);
+    if (!this.#then(() => this.#app.pdfDocument.getOutline(), done, failed)) {
+      this.#readingOutline = false;
+    }
+  }
+
+  /**
+   * Calls `read` (a pdf.js method that returns a promise) and passes the callbacks to the
+   * promise's own `then`, seen through Xrays: a viewer's object with a `then` of its own is a
+   * plain object there, whose functions Xrays do not show.
+   * @param {() => any} read
+   * @param {Function} done  made with Cu.exportFunction
+   * @param {Function} failed
+   * @returns {boolean} whether the callbacks were passed on
+   */
+  #then(read, done, failed) {
+    try {
+      const promise = Cu.unwaiveXrays(read());
+      if (typeof promise?.then !== "function") return false;
+      promise.then(done, failed);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * The outline tree from pdf.js, read through Xrays (V4): only the fields Vimma shows, as
+   * primitives, bounded as the parent bounds them (parsePdfOutline), and each entry's target
+   * kept here.
+   * @param {any} items
+   */
+  #onOutline(items) {
+    const pages = num(() => this.#app.pagesCount);
+    /** @type {{ title: string, level: number, page: number, kind: string, collapsed: boolean, url?: string }[]} */
+    const entries = [];
+    /** @type {any[]} */
+    const targets = [];
+    /** @type {[number, string][]} entries whose destination is a name, resolved below */
+    const named = [];
+    let truncated = false;
+    // Items visited, not entries kept: a sparse array with a huge length stops here too.
+    let visited = 0;
+    /** @param {any} list @param {number} level */
+    const walk = (list, level) => {
+      const length = num(() => list?.length);
+      for (let i = 0; i < length; i++) {
+        if (entries.length >= OUTLINE_MAX_ENTRIES || ++visited > OUTLINE_MAX_ENTRIES) {
+          truncated = true;
+          return;
+        }
+        let item;
+        try {
+          item = list[i];
+        } catch {
+          continue;
+        }
+        if (!item || typeof item !== "object") continue;
+        const entry = this.#entry(item, level, pages);
+        if (typeof entry.target === "string" && entry.kind === "dest") {
+          named.push([entries.length, entry.target]);
+        }
+        targets.push(entry.target);
+        delete entry.target;
+        entries.push(entry);
+        let children;
+        try {
+          children = item.items;
+        } catch {
+          children = null;
+        }
+        if (num(() => children?.length) > 0) {
+          if (level >= OUTLINE_MAX_DEPTH) truncated = true;
+          else walk(children, level + 1);
+        }
+      }
+    };
+    walk(items, 1);
+    const finish = () => {
+      this.#readingOutline = false;
+      this.#outline = { message: { entries, truncated }, targets };
+      this.#sendOutline(this.#outline.message);
+    };
+    if (!named.length) {
+      finish();
+      return;
+    }
+    // Named destinations resolve to pages through the document's table, in one call.
+    const resolved = Cu.exportFunction((/** @type {any} */ dests) => {
+      for (const [index, name] of named) {
+        try {
+          const dest = dests && Object.hasOwn(dests, name) ? dests[name] : null;
+          /** @type {any} */ (entries[index]).page = this.#pageOf(dest, pages);
+        } catch {
+          // stays 0: not resolved
+        }
+      }
+      finish();
+    }, this.#win);
+    const failed = Cu.exportFunction(finish, this.#win);
+    if (!this.#then(() => this.#app.pdfDocument.getDestinations(), resolved, failed)) finish();
+  }
+
+  /**
+   * One outline item, as pdf.js's outline view reads it (`_bindLink`): its kind, by the first of
+   * url, action, attachment, layer change and destination it has.
+   * @param {any} item  through Xrays
+   * @param {number} level
+   * @param {number} pages
+   */
+  #entry(item, level, pages) {
+    /** @param {string} key */
+    const get = (key) => {
+      try {
+        return item[key];
+      } catch {
+        return undefined;
+      }
+    };
+    const title = get("title");
+    const count = get("count");
+    const url = get("url");
+    const action = get("action");
+    const dest = get("dest");
+    /** @type {{ title: string, level: number, page: number, kind: string, collapsed: boolean, url?: string, target?: any }} */
+    const entry = {
+      title: typeof title === "string" ? title.slice(0, OUTLINE_MAX_TITLE) : "",
+      level,
+      page: 0,
+      kind: "none",
+      collapsed: typeof count === "number" && count < 0,
+      target: null,
+    };
+    if (typeof url === "string" && url) {
+      // A longer URL is no link Vimma opens (V8): the entry stays, with nothing to follow.
+      if (url.length <= OUTLINE_MAX_URL) {
+        entry.kind = "url";
+        entry.url = url;
+      }
+    } else if (typeof action === "string" && action) {
+      if (OUTLINE_ACTIONS.has(action)) {
+        entry.kind = "action";
+        entry.target = action;
+      }
+    } else if (get("attachment") && typeof get("attachment") === "object") {
+      entry.kind = "attachment";
+    } else if (get("setOCGState") && typeof get("setOCGState") === "object") {
+      entry.kind = "ocg";
+      entry.target = get("setOCGState");
+    } else if (typeof dest === "string" || (dest && typeof dest === "object")) {
+      entry.kind = "dest";
+      entry.target = dest;
+      if (typeof dest !== "string") entry.page = this.#pageOf(dest, pages);
+    }
+    return entry;
+  }
+
+  /**
+   * The page an explicit destination points at, as pdf.js resolves its current outline item: a
+   * page reference it has seen, or a page index; 0 when it does not resolve.
+   * @param {any} dest  through Xrays
+   * @param {number} pages
+   */
+  #pageOf(dest, pages) {
+    let page = NaN;
+    try {
+      const ref = dest?.[0];
+      if (typeof ref === "number") page = ref + 1;
+      else if (ref && typeof ref === "object") {
+        page = num(() => this.#app.pdfDocument.cachedPageNumber(ref));
+      }
+    } catch {
+      // not resolved
+    }
+    return Number.isSafeInteger(page) && page >= 1 && page <= pages ? page : 0;
+  }
+
+  /**
+   * Follows the outline entry at `index` as pdf.js's outline view does (decision 10): the
+   * target never left this process, so the parent names it by its index only (V7).
+   * @param {number} index
+   * @returns {boolean} whether pdf.js was asked
+   */
+  #follow(index) {
+    const entries = this.#outline?.message.entries;
+    const target = this.#outline?.targets[index];
+    const kind = /** @type {any} */ (entries?.[index])?.kind;
+    if (target === undefined || target === null) return false;
+    const link = this.#app.pdfLinkService;
+    // goToDestination records a history entry first (decision 9).
+    if (kind === "dest") link.goToDestination(target);
+    else if (kind === "action") link.executeNamedAction(target);
+    else if (kind === "ocg") link.executeSetOCGState(target);
+    else return false;
+    return true;
   }
 
   /** Whether pdf.js shows its presentation mode (decision 15). */

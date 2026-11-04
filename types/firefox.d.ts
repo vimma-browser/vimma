@@ -178,6 +178,7 @@ declare const Cu: {
   };
   // The PDF viewer's adapter (actors/pdf-view.mjs; xpccomponents.idl).
   waiveXrays<T>(obj: T): any;
+  unwaiveXrays<T>(obj: T): any;
   exportFunction(fn: Function, target: object): Function;
 };
 

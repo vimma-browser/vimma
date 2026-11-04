@@ -7,9 +7,11 @@
 // (V2), and the state their adapter reports, parsed before anything shows it (V6).
 
 import { parsePdfOp, parsePdfState } from "../core/pdf.mjs";
+import { outlineUrlAllowed, parsePdfOutline } from "../core/pdfoutline.mjs";
 import { PDF_FEATURE_PREF, isPdfJsPrincipal } from "../actors/pdf-view.mjs";
 
 /** @import { PdfState } from "../core/pdf.mjs" */
+/** @import { PdfOutline } from "../core/pdfoutline.mjs" */
 /** @import { Context } from "../core/modes.mjs" */
 /** @import { FindStatus } from "../core/find.mjs" */
 
@@ -18,6 +20,18 @@ const states = new WeakMap();
 
 /** @type {Set<(browser: any) => void>} */
 const listeners = new Set();
+
+/**
+ * The parsed outline of a tab's document, kept in memory until the tab navigates or closes
+ * (decision 10, V11), and the documents asked for theirs (V8).
+ * @type {WeakMap<object, { windowId: number, pages: number, outline: PdfOutline }>}
+ */
+const outlines = new WeakMap();
+/** @type {WeakMap<object, number>} by <browser>: the window global asked for its outline */
+const asked = new WeakMap();
+
+/** @type {Set<(browser: any, outline: PdfOutline | null) => void>} */
+const outlineListeners = new Set();
 
 /**
  * The top document's window global when it is the pdf.js viewer, from the parent's view.
@@ -85,6 +99,12 @@ export const PdfOps = {
     if (!wg || wg !== actor.manager) return;
     const state = parsePdfState(data);
     const old = states.get(browser);
+    // Another document, or another PDF pdf.js opened in the same viewer: the outline read from
+    // the last one goes (V11).
+    const read = outlines.get(browser);
+    if (read && (read.windowId !== wg.innerWindowId || read.pages !== state?.pages)) {
+      outlines.delete(browser);
+    }
     // Nothing changed: no redraw, so a flood of equal messages costs the parent little.
     if (state && old && old.windowId === wg.innerWindowId && sameState(old.state, state)) return;
     if (!state && !old) return;
@@ -127,6 +147,110 @@ export const PdfOps = {
   subscribe(fn) {
     listeners.add(fn);
     return () => listeners.delete(fn);
+  },
+
+  /**
+   * The outline of `browser`'s current document, once read, or null. An outline of a document
+   * the tab has left is dropped here (V11).
+   * @param {any} browser
+   * @returns {PdfOutline | null}
+   */
+  outline(browser) {
+    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const entry = outlines.get(browser);
+    if (entry && entry.windowId === wg?.innerWindowId) return entry.outline;
+    outlines.delete(browser);
+    return null;
+  },
+
+  /**
+   * Drops `browser`'s outline and any outline asked for: its tab left the document (V11).
+   * @param {any} browser
+   */
+  forget(browser) {
+    outlines.delete(browser);
+    asked.delete(browser);
+  },
+
+  /**
+   * Opens an outline entry's URL in `browser` as the viewer's own link would load it
+   * (docs/security.md section 20, V8): http and https only, checked against the viewer's
+   * principal, which triggers the load, with no referrer and no fixup. A load with the system
+   * principal would look typed (no Sec-Fetch-Site, SameSite=Strict cookies sent) and could be
+   * routed to another workspace.
+   * @param {any} browser
+   * @param {string} url
+   * @returns {boolean} false when refused
+   */
+  openUrl(browser, url) {
+    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const parsed = outlineUrlAllowed(url) ? URL.parse(url) : null;
+    if (!wg || !parsed) return false;
+    const principal = wg.documentPrincipal;
+    try {
+      Services.scriptSecurityManager.checkLoadURIWithPrincipal(
+        principal,
+        parsed.URI,
+        Ci.nsIScriptSecurityManager.DISALLOW_INHERIT_PRINCIPAL,
+      );
+    } catch {
+      return false;
+    }
+    const referrerInfo = Cc["@mozilla.org/referrer-info;1"].createInstance(Ci.nsIReferrerInfo);
+    referrerInfo.init(Ci.nsIReferrerInfo.NO_REFERRER, false, wg.documentURI);
+    browser.loadURI(parsed.URI, { triggeringPrincipal: principal, referrerInfo });
+    return true;
+  },
+
+  /**
+   * Asks the viewer in `browser` for its outline, on the user's key (V8); the answer comes to
+   * the outline listeners. An outline already read is not asked for again.
+   * @param {any} browser
+   * @returns {boolean} false when `browser` does not show the PDF viewer
+   */
+  askOutline(browser) {
+    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    if (!wg) return false;
+    asked.set(browser, wg.innerWindowId);
+    return this.run(browser, "outline");
+  },
+
+  /**
+   * An outline message from a VimmaParent: taken only from the actor of the top viewer's
+   * current document, and only after the parent asked that document for it (V8). It is parsed
+   * against the page count the parent holds; an outline outside its bounds is dropped whole,
+   * and the listeners hear null.
+   * @param {any} actor  the VimmaParent
+   * @param {unknown} data
+   */
+  onOutline(actor, data) {
+    if (!this.enabled()) return;
+    const bc = actor.browsingContext;
+    if (!bc || bc.parent) return;
+    const browser = bc.embedderElement;
+    const wg = viewerGlobal(browser);
+    if (!wg || wg !== actor.manager || asked.get(browser) !== wg.innerWindowId) return;
+    asked.delete(browser);
+    const pages = this.state(browser)?.pages;
+    const outline = pages ? parsePdfOutline(data, pages) : null;
+    if (outline) outlines.set(browser, { windowId: wg.innerWindowId, pages: pages ?? 0, outline });
+    for (const fn of outlineListeners) {
+      try {
+        fn(browser, outline);
+      } catch (e) {
+        console.error("vimma: pdf outline listener failed", e);
+      }
+    }
+  },
+
+  /**
+   * @param {(browser: any, outline: PdfOutline | null) => void} fn  called with an outline asked
+   *   for on the user's key, or null when it was malformed
+   * @returns {() => void} unsubscribe
+   */
+  subscribeOutline(fn) {
+    outlineListeners.add(fn);
+    return () => outlineListeners.delete(fn);
   },
 };
 
@@ -175,7 +299,27 @@ const PDF_ACTIONS = Object.freeze({
 });
 
 /** The action ids that exist only while the PDF mode is on (the command line hides the rest). */
-export const PDF_ACTION_IDS = Object.freeze(Object.keys(PDF_ACTIONS));
+export const PDF_ACTION_IDS = Object.freeze([
+  ...Object.keys(PDF_ACTIONS),
+  "pdf.outline",
+  ...[
+    "down",
+    "up",
+    "expand",
+    "collapse",
+    "expand_subtree",
+    "collapse_subtree",
+    "expand_all",
+    "collapse_all",
+    "first",
+    "last",
+    "half_down",
+    "half_up",
+    "follow",
+    "close",
+    "filter",
+  ].map((op) => `index.${op}`),
+]);
 
 /**
  * The host's runners for the PDF viewer's actions.

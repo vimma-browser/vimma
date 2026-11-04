@@ -315,6 +315,8 @@ const modal = {
     R: "page.reload",
     Y: "page.yank_url",
     "<F5>": "pdf.presentation",
+    // The outline panel (decision 10); shift+Tab still moves focus through pdf.js's toolbar.
+    "<Tab>": "pdf.outline",
   },
   insert: { "<Esc>": "mode.normal" },
   visual: {
@@ -403,6 +405,37 @@ const modal = {
     d: "bookmarks.delete",
     y: "bookmarks.yank",
     "/": "bookmarks.filter",
+  },
+  // The PDF viewer's outline panel (docs/specs/pdf-mode.md decision 10): zathura's index keys,
+  // and `/` for Vimma's filter, where the arrow keys move. No ctrl chord Vimma leaves to Firefox
+  // elsewhere (ctrl+n, ctrl+p, ctrl+j, ctrl+c): a chord bound in any mode turns Firefox's key off
+  // in every tab (firefox-keys decision 2), and these would stop new window, print and copy.
+  index: {
+    j: "index.down",
+    "<Down>": "index.down",
+    k: "index.up",
+    "<Up>": "index.up",
+    l: "index.expand",
+    zo: "index.expand",
+    h: "index.collapse",
+    zc: "index.collapse",
+    zO: "index.expand_subtree",
+    zC: "index.collapse_subtree",
+    L: "index.expand_all",
+    zR: "index.expand_all",
+    H: "index.collapse_all",
+    zM: "index.collapse_all",
+    gg: "index.first",
+    G: "index.last",
+    "<C-d>": "index.half_down",
+    "<C-u>": "index.half_up",
+    "<CR>": "index.follow",
+    "<Space>": "index.follow",
+    "<Tab>": "index.close",
+    "<Esc>": "index.close",
+    "<C-[>": "index.close",
+    q: "index.close",
+    "/": "index.filter",
   },
   // ctrl+b r (m4-split-panes sub-spec 5, ADR-014): each key moves the focused pane's divider a
   // step; a count repeats it (3l).
