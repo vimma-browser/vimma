@@ -444,6 +444,9 @@ support-files = [
 ["browser_vimma_pdf_focus.js"]
 support-files = ["file_vimma_test.pdf", "file_vimma_pdf_attachment.pdf", "file_vimma_pdf_attachment.pdf^headers^"]
 
+["browser_vimma_pdf_keys.js"]
+support-files = ["file_vimma_outline.pdf"]
+
 ["browser_vimma_pdf_status.js"]
 support-files = ["file_vimma_outline.pdf"]
 

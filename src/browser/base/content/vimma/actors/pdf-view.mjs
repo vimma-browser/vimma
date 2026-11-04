@@ -8,7 +8,18 @@
 // it (V4) and sends at most one state message per 100 ms (V5). Every pdf.js member it uses is in
 // PDFJS_CONTRACT, which a mochitest holds to the pdf.js this build ships.
 
-import { PDF_MAX_LABEL } from "../core/pdf.mjs";
+import {
+  PDF_MAX_LABEL,
+  PDF_SPREAD,
+  PDF_SCROLL,
+  parsePdfOp,
+  pdfPageTarget,
+  pdfRotation,
+  pdfScrollMode,
+  pdfSpread,
+  pdfZoomPercent,
+  pdfZoomStep,
+} from "../core/pdf.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -35,6 +46,29 @@ export const PDFJS_CONTRACT = Object.freeze({
   pdfViewer: "object",
   // A string, or null when the document has no page labels.
   "pdfViewer.currentPageLabel": "object|string",
+  // Delivery PR 3: the page, zoom and layout keys.
+  "pdfViewer.currentScale": "number",
+  "pdfViewer.currentScaleValue": "string",
+  "pdfViewer.pagesRotation": "number",
+  "pdfViewer.spreadMode": "number",
+  "pdfViewer.scrollMode": "number",
+  "pdfViewer.isInPresentationMode": "boolean",
+  "pdfViewer.nextPage": "function",
+  "pdfViewer.previousPage": "function",
+  pdfLinkService: "object",
+  "pdfLinkService.goToPage": "function",
+  pdfHistory: "object",
+  "pdfHistory.pushCurrentPosition": "function",
+  requestPresentationMode: "function",
+});
+
+/**
+ * The viewer's elements the adapter measures, through Xrays: the scrolling container and a page,
+ * `{n}` standing for its number. The contract mochitest finds them too.
+ */
+export const PDFJS_DOM = Object.freeze({
+  container: "#viewerContainer",
+  page: '#viewer .page[data-page-number="{n}"]',
 });
 
 /** pdf.js events after which the state is read again. */
@@ -80,6 +114,13 @@ function str(read) {
 export class PdfView {
   /** @type {any} the viewer's PDFViewerApplication, waived */
   #app;
+  /** @type {any} the viewer's document, through Xrays */
+  #doc;
+  /** The spread `d` goes back to, and the scroll mode `w` goes back to (decision 8). */
+  /** @type {number} */
+  #lastSpread = PDF_SPREAD.EVEN;
+  /** @type {number} */
+  #previousScroll = PDF_SCROLL.VERTICAL;
   /** @type {(state: object) => void} */
   #send;
   /** @type {any} */
@@ -118,6 +159,7 @@ export class PdfView {
    */
   constructor(win, app, send) {
     this.#app = app;
+    this.#doc = win.document;
     this.#send = send;
     // pdf.js calls these with its own event objects; Cu.exportFunction keeps the arguments
     // behind Xrays (V3, V4).
@@ -150,6 +192,162 @@ export class PdfView {
       this.#find = { current, total };
     }
     this.schedule();
+  }
+
+  /**
+   * Runs one operation from the parent (V7): a name from PDF_OPS and an integer, checked again
+   * here. Only primitives go into pdf.js, so nothing needs Cu.cloneInto (V3); pdf.js's return
+   * values are not used, and nothing it returns is awaited (V4).
+   * @param {unknown} raw
+   * @returns {boolean} whether it reached pdf.js
+   */
+  run(raw) {
+    const msg = parsePdfOp(raw);
+    if (!msg) return false;
+    const { op, n } = msg;
+    const app = this.#app;
+    const viewer = app.pdfViewer;
+    // pdf.js's live values, or nothing happens: a viewer without its document (or a hostile
+    // getter) gives no number to compute from.
+    const page = num(() => app.page);
+    const pages = num(() => app.pagesCount);
+    const live = (/** @type {number[]} */ ...v) => v.every(Number.isFinite);
+    try {
+      switch (op) {
+        case "next":
+        case "prev":
+          // In presentation mode, too: one page at a time.
+          if (!live(page, pages)) return false;
+          app.page = pdfPageTarget(op, n, page, pages);
+          return true;
+        case "first":
+        case "last":
+          // A jump: goToPage records it in the history first (decision 9).
+          if (!live(page, pages)) return false;
+          app.pdfLinkService.goToPage(pdfPageTarget(op, n, page, pages));
+          return true;
+        case "jump":
+          // Before a search hit moves the view: ctrl+o comes back here (decision 9).
+          app.pdfHistory.pushCurrentPosition();
+          return true;
+        case "page_top":
+        case "page_bottom":
+          this.#toPageEdge(
+            op === "page_top",
+            num(() => app.page),
+          );
+          return true;
+        case "screen": {
+          const el = this.#doc.querySelector(PDFJS_DOM.container);
+          el?.scrollBy({ top: el.clientHeight * (n || 1), behavior: "instant" });
+          return true;
+        }
+        case "zoom": {
+          const scale = num(() => viewer.currentScale);
+          if (!live(scale)) return false;
+          viewer.currentScale = pdfZoomStep(scale, n || 1);
+          return true;
+        }
+        case "scale":
+          viewer.currentScale = pdfZoomPercent(n);
+          return true;
+        case "fit_page":
+          viewer.currentScaleValue = "page-fit";
+          return true;
+        case "fit_width":
+          viewer.currentScaleValue = "page-width";
+          return true;
+        case "dual":
+        case "first_alone": {
+          const next = pdfSpread(
+            op === "dual" ? "dual" : "first_alone",
+            num(() => viewer.spreadMode),
+            this.#lastSpread,
+          );
+          this.#lastSpread = next.last;
+          viewer.spreadMode = next.mode;
+          return true;
+        }
+        case "single": {
+          const next = pdfScrollMode(
+            num(() => viewer.scrollMode),
+            this.#previousScroll,
+          );
+          this.#previousScroll = next.previous;
+          viewer.scrollMode = next.mode;
+          return true;
+        }
+        case "rotate": {
+          const rotation = num(() => viewer.pagesRotation);
+          if (!live(rotation)) return false;
+          viewer.pagesRotation = pdfRotation(rotation, n);
+          return true;
+        }
+        case "presentation":
+          // Only for the user's own key (V9): the parent sends it for a key in the PDF viewer.
+          // A viewer that claims presentation without being full screen gets nothing to exit.
+          if (this.presenting()) {
+            if (this.#doc.fullscreenElement) this.#doc.exitFullscreen().catch(() => {});
+          } else app.requestPresentationMode();
+          return true;
+      }
+    } catch (e) {
+      // A viewer that is not ready yet (no document), or not pdf.js's: nothing happens.
+      console.warn("vimma: pdf operation failed", op, e);
+    }
+    return false;
+  }
+
+  /** Whether pdf.js shows its presentation mode (decision 15). */
+  presenting() {
+    try {
+      return this.#app.pdfViewer.isInPresentationMode === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * In presentation mode Vimma's scroll keys turn pages, since pdf.js shows one page at a time
+   * there (decision 15).
+   * @param {string} kind  the scroll kind
+   * @param {number} count
+   * @returns {boolean} whether it turned the page (false: scroll as usual)
+   */
+  turnPage(kind, count) {
+    if (!this.presenting()) return false;
+    /** @type {Record<string, string>} */
+    const ops = {
+      down: "next",
+      half_down: "next",
+      right: "next",
+      up: "prev",
+      half_up: "prev",
+      left: "prev",
+      top: "first",
+      bottom: "last",
+    };
+    const op = ops[kind];
+    if (!op) return false;
+    const n = op === "first" || op === "last" ? 0 : Math.max(0, Number(count) || 0);
+    return this.run({ op, n });
+  }
+
+  /**
+   * `H` / `P` and `L`: the current page's top or bottom edge at the view's, measured through
+   * Xrays, so nothing of the viewer's script runs.
+   * @param {boolean} top
+   * @param {number} page
+   */
+  #toPageEdge(top, page) {
+    if (!Number.isSafeInteger(page)) return;
+    const el = this.#doc.querySelector(PDFJS_DOM.container);
+    const div = this.#doc.querySelector(PDFJS_DOM.page.replace("{n}", String(page)));
+    if (!el || !div) return;
+    const view = el.getBoundingClientRect();
+    const box = div.getBoundingClientRect();
+    const by = top ? box.top - view.top : box.bottom - view.bottom;
+    el.scrollBy({ top: Math.round(by), behavior: "instant" });
   }
 
   /** The state record: primitives only, checked again by the parent (parsePdfState). */

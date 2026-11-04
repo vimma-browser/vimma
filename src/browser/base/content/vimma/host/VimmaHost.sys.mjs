@@ -156,7 +156,7 @@ import {
   sitePermissionKey,
 } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
-import { PdfOps, pdfFindStatus } from "./pdf-ops.mjs";
+import { PDF_ACTION_IDS, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -1163,6 +1163,8 @@ export const CONTENT_RUNNERS = Object.freeze({
   ...copyModeRunners(setBrowserMode, noticeFor),
   // yy, p / P, gi, gu / gU, gf (m1-actor-insert-scroll, follow-up: normal-mode extras).
   ...pageRunners(enterExplicitInsert, noticeFor),
+  // The PDF viewer's page, zoom and layout keys (docs/specs/pdf-mode.md).
+  ...pdfRunners(noticeFor),
 });
 
 /**
@@ -1380,6 +1382,8 @@ export const VimmaHost = {
           workspace: workspaceNames(win),
           search: SearchHost.completions,
         }),
+        // An unfinished feature's commands exist only with its pref on (`:12`, `:pdf_rotate`).
+        hidden: () => (PdfOps.enabled() ? [] : PDF_ACTION_IDS),
       }),
       tabStrip: null,
       toolbar: null,

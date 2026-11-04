@@ -411,6 +411,27 @@ group("Pop-ups", [
   ["popup_picker", "popups.picker", "Blocked pop-ups: open one, allow the site, settings"],
 ]);
 
+// docs/specs/pdf-mode.md: zathura's keys in the PDF viewer, bound in [modal.pdf].
+group("PDF viewer", [
+  ["pdf_next_page", "pdf.next_page", "Next page (with a count: that many pages)"],
+  ["pdf_previous_page", "pdf.previous_page", "Previous page (with a count: that many pages)"],
+  ["pdf_first_page", "pdf.first_page", "First page; with a count, that page (12gg, :12)"],
+  ["pdf_last_page", "pdf.last_page", "Last page; with a count, that page (12G)"],
+  ["pdf_page_top", "pdf.page_top", "Top of the current page"],
+  ["pdf_page_bottom", "pdf.page_bottom", "Bottom of the current page"],
+  ["pdf_screen_down", "pdf.screen_down", "Scroll a screen down"],
+  ["pdf_zoom_in", "pdf.zoom_in", "Zoom in by 10 % (with a count: that many steps)"],
+  ["pdf_zoom_out", "pdf.zoom_out", "Zoom out by 10 % (with a count: that many steps)"],
+  ["pdf_zoom_set", "pdf.zoom_set", "Zoom to 100 %; with a count, that percent (150=)"],
+  ["pdf_fit_page", "pdf.fit_page", "Fit the whole page, also after a resize"],
+  ["pdf_fit_width", "pdf.fit_width", "Fit the page's width, also after a resize"],
+  ["pdf_dual_page", "pdf.dual_page", "Two pages side by side, or one"],
+  ["pdf_first_page_alone", "pdf.first_page_alone", "Two pages: the first alone, or paired"],
+  ["pdf_single_page", "pdf.single_page", "One page at a time, or scrolling"],
+  ["pdf_rotate", "pdf.rotate", "Rotate the pages 90 degrees clockwise (with a count: n times)"],
+  ["pdf_presentation", "pdf.presentation", "Presentation mode, or leave it"],
+]);
+
 /** @type {readonly ActionDef[]} */
 export const ACTIONS = Object.freeze(defs);
 

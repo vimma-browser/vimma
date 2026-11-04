@@ -1,6 +1,6 @@
 # Spec: pdf-mode
 
-Status: accepted (delivery PRs 1, 2 and 6 implemented; PR 2 behind `vimma.feature.pdf_mode`) · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
+Status: accepted (delivery PRs 1, 2, 3 and 6 implemented; PRs 2 and 3 behind `vimma.feature.pdf_mode`) · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
 `modes.mjs` (`index` mode), `actions.mjs`, `defaults.mjs`, `statusbar.mjs`, `pdf.mjs` (new: state
 parser, page and zoom arithmetic, marks), `pdfoutline.mjs` (new: outline parser and the outline
 panel's state)); `actors/pdf-view.mjs` (new: the one module that touches pdf.js),
@@ -411,7 +411,9 @@ find: { current, total } }`), sent to the parent on the viewer's events.
    `{n}=` sets `n / 100`. A manual zoom leaves the fit, as in zathura.
 8. **Dual page is pdf.js's spread mode.** `d` toggles `NONE` and the last spread (`EVEN` the first
    time), and `D` toggles `EVEN` and `ODD`, so that the first page stands alone by default as in
-   zathura's `first-page-column` "1:2". `w` toggles `scrollMode` `PAGE` and the previous mode.
+   zathura's `first-page-column` "1:2". From one page, `D` shows two pages in the arrangement
+   other than the last one, because a toggle with nothing to show would read as a key that does
+   nothing. `w` toggles `scrollMode` `PAGE` and the previous mode.
    These are pdf.js's own view settings, which it remembers per document in its view history, so
    Vimma keeps no layout state.
 9. **The jump list is session history.** pdf.js records link, outline and page jumps as
@@ -734,7 +736,8 @@ since those describe what a user gets only once the pref is gone.
 3. **feat(keys): zathura's page, zoom and layout keys in the PDF viewer.** `J`, `K`, `gg`, `G`,
    counts, `:{n}`, `H`, `L`, `P`, `ctrl+f`, `+`, `-`, `=`, `zi`, `zI`, `zo`, `zO`, `z0`, `zz`,
    `zZ`, `{n}=`, `a`, `s`, `d`, `D`, `w`, `r`, `R`, `Y`, `F5`, presentation, history entries
-   before search jumps, the guide section.
+   before search jumps. The guide section comes with the PR that removes the pref, as the
+   paragraph above says of every user-facing doc.
 4. **feat(keys): the outline panel on `Tab` (`index` mode).** The adapter's outline read and
    follow, `parsePdfOutline`, the panel with its filter, screenshots in a built-in and an Omarchy
    theme, and V8 in `docs/security.md` section 20. Needs the fresh-agent review.

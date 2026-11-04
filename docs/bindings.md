@@ -105,7 +105,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Scroll to bottom                                      | `scroll_bottom`    | `G`                                               |
 | Go back                                               | `history_back`     | `alt+left`, `H`, `ctrl+o`, `ctrl+[`               |
 | Go forward                                            | `history_forward`  | `alt+right`, `L`, `ctrl+i`, `ctrl+]`              |
-| Reload page                                           | `reload`           | `f5`, `ctrl+r`, `r`                               |
+| Reload page                                           | `reload`           | `f5`, `ctrl+r`, `r`, `R [pdf]`                    |
 | Open a URL or search in this tab                      | `open_url`         | —                                                 |
 | Go up a level in the URL path                         | `url_up`           | `gu`                                              |
 | Go to the site's root                                 | `url_root`         | `gU`                                              |
@@ -113,13 +113,13 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Page
 
-| Action                                             | Config name          | Bindings |
-| -------------------------------------------------- | -------------------- | -------- |
-| Copy the page's URL                                | `yank_url`           | `yy`     |
-| Open the clipboard's URL or search in this tab     | `open_clipboard`     | `p`      |
-| Open the clipboard's URL or search in a new tab    | `open_clipboard_tab` | `P`      |
-| Focus the first text field (with a count: the Nth) | `focus_input`        | `gi`     |
-| View the page's source in a new tab                | `view_source`        | `gf`     |
+| Action                                             | Config name          | Bindings        |
+| -------------------------------------------------- | -------------------- | --------------- |
+| Copy the page's URL                                | `yank_url`           | `yy`, `Y [pdf]` |
+| Open the clipboard's URL or search in this tab     | `open_clipboard`     | `p`             |
+| Open the clipboard's URL or search in a new tab    | `open_clipboard_tab` | `P`             |
+| Focus the first text field (with a count: the Nth) | `focus_input`        | `gi`            |
+| View the page's source in a new tab                | `view_source`        | `gf`            |
 
 ## Browser
 
@@ -342,6 +342,28 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Action                                              | Config name    | Bindings |
 | --------------------------------------------------- | -------------- | -------- |
 | Blocked pop-ups: open one, allow the site, settings | `popup_picker` | —        |
+
+## PDF viewer
+
+| Action                                                        | Config name            | Bindings                                      |
+| ------------------------------------------------------------- | ---------------------- | --------------------------------------------- |
+| Next page (with a count: that many pages)                     | `pdf_next_page`        | `J [pdf]`                                     |
+| Previous page (with a count: that many pages)                 | `pdf_previous_page`    | `K [pdf]`                                     |
+| First page; with a count, that page (12gg, :12)               | `pdf_first_page`       | `gg [pdf]`                                    |
+| Last page; with a count, that page (12G)                      | `pdf_last_page`        | `G [pdf]`                                     |
+| Top of the current page                                       | `pdf_page_top`         | `H [pdf]`, `P [pdf]`                          |
+| Bottom of the current page                                    | `pdf_page_bottom`      | `L [pdf]`                                     |
+| Scroll a screen down                                          | `pdf_screen_down`      | `ctrl+f [pdf]`                                |
+| Zoom in by 10 % (with a count: that many steps)               | `pdf_zoom_in`          | `+ [pdf]`, `zi [pdf]`, `zI [pdf]`             |
+| Zoom out by 10 % (with a count: that many steps)              | `pdf_zoom_out`         | `- [pdf]`, `zo [pdf]`, `zO [pdf]`             |
+| Zoom to 100 %; with a count, that percent (150=)              | `pdf_zoom_set`         | `= [pdf]`, `zz [pdf]`, `zZ [pdf]`, `z0 [pdf]` |
+| Fit the whole page, also after a resize                       | `pdf_fit_page`         | `a [pdf]`                                     |
+| Fit the page's width, also after a resize                     | `pdf_fit_width`        | `s [pdf]`                                     |
+| Two pages side by side, or one                                | `pdf_dual_page`        | `d [pdf]`                                     |
+| Two pages: the first alone, or paired                         | `pdf_first_page_alone` | `D [pdf]`                                     |
+| One page at a time, or scrolling                              | `pdf_single_page`      | `w [pdf]`                                     |
+| Rotate the pages 90 degrees clockwise (with a count: n times) | `pdf_rotate`           | `r [pdf]`                                     |
+| Presentation mode, or leave it                                | `pdf_presentation`     | `f5 [pdf]`                                    |
 
 ## On macOS
 

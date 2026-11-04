@@ -3445,8 +3445,9 @@ which Firefox's site information panel shows already, and stores nothing of its 
 ## 20. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`)
 
 Vimma drives Firefox's pdf.js viewer through its content actor: it reads the page, page count,
-page label and find count to show them in the status bar, and chooses the PDF viewer's key
-bindings. It sits behind `vimma.feature.pdf_mode` while it is built. Spec:
+page label and find count to show them in the status bar, chooses the PDF viewer's key
+bindings, and sends the viewer the page, zoom, layout and presentation operations those keys
+run. It sits behind `vimma.feature.pdf_mode` while it is built. Spec:
 [pdf-mode](specs/pdf-mode.md).
 
 **Reach:** the PDF being viewed, through pdf.js, which a malformed PDF may compromise (pdf.js
@@ -3488,11 +3489,27 @@ bindings, so it is accepted here.
   status bar **must** draw it as text.
   [`pdf state outside its bounds is dropped`](../packages/vimma-core/test/pdf.test.mjs),
   [`a page label cannot carry bidi or zero-width characters`](../packages/vimma-core/test/pdf.test.mjs)
+- V7. The parent **must** send the viewer only operations: a name from `PDF_OPS` and one
+  bounded integer, checked by `parsePdfOp` in the parent before sending and again in the child
+  before the adapter touches pdf.js; no script, CSS text, markup or object **may** go into the
+  viewer. The adapter passes pdf.js only those numbers and its own fixed strings (`page-fit`,
+  `page-width`), and measures the page for `H`, `L`, `P` and `ctrl+f` through Xrays (the
+  viewer's container and page elements), so none of the viewer's script runs for it. In
+  presentation mode the scroll keys (`Vimma:Scroll`) turn pages through the same checked
+  operations, and fall back to scrolling when the adapter applied none.
+  [`the parent sends only operations and numbers`](../packages/vimma-core/test/pdf.test.mjs),
+  [`the_parent_sends_only_operations_and_numbers`](../tests/browser/browser_vimma_pdf_keys.js)
+- V9. Presentation mode **may** go full screen without user activation, as Firefox allows the
+  pdf.js principal (`dom/base/Element.cpp`); Vimma **must** request it only for the user's own
+  key in the PDF viewer, so it adds no spoofing surface: a page cannot reach it, the content
+  process cannot ask the parent for it, and Firefox's full-screen warning still shows.
+  [`presentation_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_keys.js),
+  [`presentation`](../tests/browser/browser_vimma_pdf_keys.js)
 
 - V10. Vimma **must not** write any `pdfjs.*` pref other than the default
   `pdfjs.featuresNotificationImpressionLimit = 0` (`firefox-branding.js`), and never one that
   changes scripting, fetching or sandboxing (`pdfjs.enableScripting`, `pdfjs.disabled`).
   [`pdf_mode_writes_no_pdfjs_prefs`](../tests/browser/browser_vimma_pdf_status.js)
 
-The parent sends the viewer nothing yet; the rules for operations, the outline, presentation
-mode and marks come with the pull requests that add them (pdf-mode, Delivery).
+The rules for the outline (V8) and marks (V11) come with the pull requests that add them
+(pdf-mode, Delivery).
