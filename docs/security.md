@@ -457,6 +457,14 @@ text that pages, add-ons and bookmarks choose.
     field, so the keys answer from it, and the box's state is the user's, never changed by them.
     [`protocol_permission_n_cancels_y_opens`](../tests/browser/browser_vimma_dialog_keys.js),
     [`protocol_app_chooser`](../tests/browser/browser_vimma_dialog_keys.js)
+  - The download question (`unknownContentType.xhtml`, a window of its own opened over the
+    browser window) takes the same keys under the same wait, from the window's `load` and again
+    each time it becomes the active window: `y`
+    presses OK, which saves the file or opens it with an application, so it **also** waits for
+    the OK button Firefox keeps disabled (`EnableDelayHelper`), and `n` cancels the download.
+    Only a window whose opener is the browser window and whose document is the download question
+    is taken; its keys are read in that window, never from a page.
+    [`download_n_cancels_y_saves`](../tests/browser/browser_vimma_dialog_keys.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.
