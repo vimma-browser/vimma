@@ -1036,7 +1036,7 @@ function identityFields(form) {
  * (docs/specs/mcp-consequence.md K2).
  * @param {Element | null | undefined} el @param {"click" | "form"} by @param {Set<Element>} skip
  * @returns {{ fields: { name: string, value?: string, secret?: true, file?: true, text?: true,
- *   identity?: true }[], hidden: number, more: number } | null} null: it submits no form
+ *   identity?: true, cut?: true }[], hidden: number, more: number } | null} null: it submits no form
  */
 export function sentFieldsOf(el, by, skip) {
   if (!el?.isConnected) return null;
@@ -1045,7 +1045,7 @@ export function sentFieldsOf(el, by, skip) {
   const submit = form ? (by === "form" ? defaultSubmitOf(form) : submitOf(el)) : null;
   if (!form || !submit) return null;
   /** @type {{ name: string, value?: string, secret?: true, file?: true, text?: true,
-   *   identity?: true }[]} */
+   *   identity?: true, cut?: true }[]} */
   const fields = [];
   let hidden = 0;
   let more = 0;
@@ -1054,10 +1054,12 @@ export function sentFieldsOf(el, by, skip) {
   const add = (f, c) => {
     if (fields.length >= SENT_MAX) return more++;
     /** @type {{ name: string, value?: string, secret?: true, file?: true, text?: true,
-     *   identity?: true }} */
+     *   identity?: true, cut?: true }} */
     const out = { ...f };
     if (c && (c.localName === "textarea" || TEXT_TYPES.has(c.type))) out.text = true;
     if (c && identity.has(c)) out.identity = true;
+    // What is past the cut is not known: a doubt asks (mcp-consequence K3).
+    if (c && String(c.value ?? "").length > VALUE) out.cut = true;
     return fields.push(out);
   };
   for (const c of form.elements) {
@@ -1075,7 +1077,7 @@ export function sentFieldsOf(el, by, skip) {
     } else if (secretOf(c)) {
       add({ name, secret: true });
     } else if (box) {
-      add({ name, value: cap(c.value, VALUE) });
+      add({ name, value: cap(c.value, VALUE) }, c);
     } else if (c.type === "file") {
       add({ name, file: true });
     } else if (c.localName === "select") {

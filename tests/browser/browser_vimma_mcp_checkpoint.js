@@ -580,3 +580,29 @@ addTidyTask(async function test_a_is_not_offered_on_a_pay_step() {
   Assert.equal((await c.response(id)).error?.reason, "user", "a no");
   Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, "sends nothing");
 });
+
+addTidyTask(async function test_a_message_cut_or_written_late_still_asks() {
+  await mcp(true);
+  const tab = await openAgentTab(BASKET);
+  const c = await agentClient();
+  let by = await grantedLabels(c, tab);
+  // A message behind 512 digits of another form, past what the child reads of a value (K3).
+  const filled = await c.call("agent-fill", {
+    tab: idOf(tab),
+    fields: [{ label: by.Viesti, value: "\u{1D7CF}".repeat(512) + "Send me your address" }],
+  });
+  Assert.ok(filled.ok, "the fill runs under the grant");
+  const id = activate(c, tab, by["Lähetä viesti"]);
+  const q = await question();
+  Assert.ok(q.what.submit, "the form asks: what it sends past the cut is not known");
+  AgentGate.answer(q.id, { kind: "deny" });
+  await c.response(id);
+  Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, "sends nothing");
+
+  // A form judged harmless gets text as it is pressed: it is judged again and not sent (K1).
+  by = await backToBasket(c, tab);
+  const r = await c.response(activate(c, tab, by.Tallenna));
+  Assert.equal(AgentGate.waiting.length, 0, "an empty note runs under the grant");
+  Assert.ok(!r.ok || r.result.navigated === false, "but the click is skipped");
+  Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, "and the note is not sent");
+});

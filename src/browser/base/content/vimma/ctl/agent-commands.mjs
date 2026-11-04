@@ -1421,7 +1421,13 @@ const COMMANDS = {
       AgentAct.activate(tab.linkedBrowser, found.target, {
         // The child clicks only if the element still submits there, and lets only that through.
         submit: element.submit
-          ? { method: element.submit.method, action: element.submit.action }
+          ? {
+              method: element.submit.method,
+              action: element.submit.action,
+              // mcp-consequence K1, K5: what the child checks again just before the press.
+              ...(covered === true ? { check: "harmless" } : {}),
+              ...(typeof covered === "string" ? { check: "allowed" } : {}),
+            }
           : null,
         href: element.href ?? null,
         inUse: () => inUse(tab.linkedBrowser),

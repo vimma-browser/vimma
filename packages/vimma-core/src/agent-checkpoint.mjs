@@ -228,10 +228,11 @@ export function parsePayInfo(raw) {
 
 /**
  * @typedef {{ name: string, value?: string, secret?: true, file?: true, text?: true,
- *   identity?: true }} SentField  one field a submission sends: its value, or `secret` (a
+ *   identity?: true, cut?: true }} SentField  one field a submission sends: its value, or `secret` (a
  *   password, card or one-time-code field, whose value is never read), or `file`; `text`: a
  *   field someone types into (a textarea, a text-like input), `identity`: a name, contact,
- *   address or birth-date field (docs/specs/mcp-consequence.md K2)
+ *   address or birth-date field (docs/specs/mcp-consequence.md K2); `cut`: its value was longer
+ *   than the child sends, so what it holds past the cut is not known (K3)
  * @typedef {{ fields: SentField[], hidden: number, more: number }} SentFields  `hidden`: hidden
  *   fields sent but not listed; `more`: fields past the cap
  */
@@ -254,11 +255,10 @@ export function parseSentFields(raw) {
   const fields = [];
   for (const f of v.fields) {
     if (!isRecord(f)) return null;
-    const { name, value, secret, file, text, identity } = /** @type {Record<string, unknown>} */ (
-      f
-    );
+    const { name, value, secret, file, text, identity, cut } =
+      /** @type {Record<string, unknown>} */ (f);
     if (!isText(name, CHECKPOINT_CAPS.name)) return null;
-    for (const mark of [secret, file, text, identity]) {
+    for (const mark of [secret, file, text, identity, cut]) {
       if (mark !== undefined && mark !== true) return null;
     }
     if (value !== undefined && (secret || file || !isText(value, CHECKPOINT_CAPS.value))) {
@@ -271,6 +271,7 @@ export function parseSentFields(raw) {
     else out.value = typeof value === "string" ? value : "";
     if (text) out.text = true;
     if (identity) out.identity = true;
+    if (cut) out.cut = true;
     fields.push(out);
   }
   return {
@@ -324,14 +325,19 @@ export const IDENTITY_FIELDS = Object.freeze([
   "tel-extension",
 ]);
 
-/** A value that is only a number, such as a quantity: `2`, `1,5`, `-3`, `10.00`. */
-const NUMBER_ONLY = /^[-+]?\d+(?:[.,]\d+)?$/;
+/**
+ * A value that is only a quantity: up to three ASCII digits, and decimals (`2`, `1,5`, `-3`,
+ * `10.00`), on the raw value, so that digits of other scripts or compatibility forms, which a
+ * cleaning would turn into ASCII, never pass; a longer number (a code, a PIN, an account) is
+ * free text.
+ */
+const NUMBER_ONLY = /^[-+]?[0-9]{1,3}(?:[.,][0-9]{1,3})?$/;
 
 /**
  * Whether a form submission has a consequence the user has to judge under a grant
  * (docs/specs/mcp-consequence.md K2, K3): it pays, or it sends a secret, a file, an identity
- * field or free text (a typed value that is not empty and not only a number); or what it sends
- * is not known whole (`sent` null, or fields past the cap), because a doubt asks.
+ * field or free text (a typed value that is not empty and not only a quantity); or what it
+ * sends is not known whole (`sent` null, fields past the cap, a value cut), because a doubt asks.
  * @param {{ pay: boolean, sent: SentFields | null }} step
  */
 export function isConsequential({ pay, sent }) {
@@ -341,7 +347,8 @@ export function isConsequential({ pay, sent }) {
       f.secret ||
       f.file ||
       f.identity ||
-      (f.text && !!pageText(f.value) && !NUMBER_ONLY.test(pageText(f.value))),
+      f.cut ||
+      (f.text && !!pageText(f.value) && !NUMBER_ONLY.test(String(f.value ?? "").trim())),
   );
 }
 

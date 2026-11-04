@@ -234,6 +234,22 @@ describe("a consequential form (mcp-consequence K2, K3)", () => {
     expect(isConsequential({ pay: false, sent: sent([{ name: "cv", file: true }]) })).toBe(true);
   });
 
+  test("a value cut to fit, digits in other scripts or forms, or a long number is free text", () => {
+    /** @param {object} f */
+    const one = (f) =>
+      isConsequential({ pay: false, sent: sent([{ name: "m", text: true, ...f }]) });
+    expect(one({ value: "1".repeat(1024), cut: true })).toBe(true);
+    expect(one({ value: "\u{1D7CF}\u{1D7CF}" })).toBe(true);
+    expect(one({ value: "\uFF12" })).toBe(true);
+    expect(one({ value: "864213" })).toBe(true);
+    expect(one({ value: "1234" })).toBe(true);
+    expect(one({ value: "12" })).toBe(false);
+    expect(one({ value: "0,5" })).toBe(false);
+    expect(
+      isConsequential({ pay: false, sent: sent([{ name: "id", value: "x", cut: true }]) }),
+    ).toBe(true);
+  });
+
   test("an unknown or overflowing field list is consequential: a doubt asks (K3)", () => {
     expect(isConsequential({ pay: false, sent: null })).toBe(true);
     expect(isConsequential({ pay: false, sent: sent([], { more: 1 }) })).toBe(true);
@@ -282,5 +298,8 @@ describe("a consequential form (mcp-consequence K2, K3)", () => {
     expect(parseSentFields(raw)).toEqual(raw);
     expect(parseSentFields(sent([{ name: "a", value: "", text: 1 }]))).toBe(null);
     expect(parseSentFields(sent([{ name: "a", value: "", identity: "yes" }]))).toBe(null);
+    const cut = sent([{ name: "m", value: "x", text: true, cut: true }]);
+    expect(parseSentFields(cut)).toEqual(cut);
+    expect(parseSentFields(sent([{ name: "a", value: "", cut: 1 }]))).toBe(null);
   });
 });

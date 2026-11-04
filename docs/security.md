@@ -1380,15 +1380,20 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   name of a person's name, contact, address, birth date, username or organisation, one form
   autofill's address heuristics infer, or `type=email` or `tel`; a failure of the heuristics
   marks every field), or free text (a textarea or a text-like input other than `type=search`
-  whose value is not empty and not only a number); or a form whose fields the page did not
-  say in time or that sends more fields than the question lists. It asks with only `y` and `n`, naming
+  whose value is not empty and not a quantity of at most three ASCII digits, read on the raw
+  value so digits of other scripts or forms never pass); or a form whose fields the page did
+  not say in time, that sends more fields than the question lists, or one of whose values is
+  longer than the child reads of it. It asks with only `y` and `n`, naming
   the form's method, destination and each field it sends by name and value (hidden fields
   counted, a file field by its name), **never** a password, payment card or one-time-code
   field's value, only its name and `•••`, or the number of fields when the page did not say in
   time; its yes **never** makes or ends a grant, and its `x` is a plain no. Under a grant, a
   submission that is none of the above runs unasked, with the grant's notice and a `:mcp log`
   row naming its method and destination (M23), and the guard below lets that one submission
-  through as after a yes. Under a grant, the question of a consequential submission that is not
+  through as after a yes. Because another call (a fill) may change the form between that
+  judgement and the click, the child judges the form again just before it presses the button,
+  after the page's handlers of the pressing ran, and skips the click when it no longer passes
+  (no longer harmless, or, under an allowance, sending a secret or file). Under a grant, the question of a consequential submission that is not
   a payment step and sends no password, card, one-time-code or file field also takes `a`
   (mcp-consequence K5): it allows that submission and every later click of the same connection
   whose tab's site (registrable domain), form method, destination (scheme, host, port and path)
@@ -1396,8 +1401,13 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   secret rules, until the grant ends (its end, `ctrl+b shift+a`, `:mcp revoke`, a built-in
   conversation's stop, the connection's close; an allowance is held in memory and never kept
   for a reconnect); `a` on a payment's question, or without a grant, allows nothing beyond that
-  step. Not covered: a page's own script that copies typed text into hidden fields before a
-  harmless-looking submission, as a page's own `fetch` is not (mcp-forms F17). So **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
+  step. An allowance covers later submissions whatever text or personal details they send,
+  which no question shows. Not covered: a page's own script that copies typed text into hidden
+  fields before a harmless-looking submission, as a page's own `fetch` is not (mcp-forms F17);
+  a form that sends only the page's own values runs unasked under a grant whatever it does on
+  the server (deleting, unsubscribing, confirming a step whose text an earlier step sent), and
+  only the payment signals of M33 add a question there; a short number typed into a plain text
+  field (a quantity, but also a three-digit code) is not free text. So **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
   label or the form's default submission), under a grant too, naming the same and
   the fields it fills, only through a submit button of the filled fields' own form or that
   form's default submission, and it is not sent when the page put back a value the question
@@ -1453,6 +1463,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_a_is_not_offered_on_a_pay_step`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`free text, an identity field, a secret or a file makes it consequential`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
   [`an allowance ends with the grant: its end, revoke, endGrant`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_a_message_cut_or_written_late_still_asks`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`a value cut to fit, digits in other scripts or forms, or a long number is free text`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
   [`test_page_script_submit_after_a_click_is_cancelled`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submission_the_page_makes_after_a_click_is_still_cancelled`](../tests/browser/browser_vimma_mcp_waits.js),
   [`test_an_allowed_submission_the_page_holds_back_is_cancelled_later`](../tests/browser/browser_vimma_mcp_waits.js),

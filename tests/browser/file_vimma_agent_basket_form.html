@@ -5,7 +5,8 @@
 <!-- Fixture for browser_vimma_mcp_checkpoint.js (docs/specs/mcp-consequence.md): a shop whose
    - basket buttons each submit a small form of their own, as some real shops build them. Two
    - "Lisää koriin" forms send a hidden product id and a quantity; a delivery form sends a postal
-   - code; a message form sends text; a form with an "Osta" (buy) button pays. Every form is a GET
+   - code; a message form sends text; a form with an "Osta" (buy) button pays; a "Tallenna"
+   - (save) form sends an empty note, which its button's mousedown fills. Every form is a GET
    - to file_vimma_agent_page.html, so the address after a submission says what was sent. -->
 <html lang="fi">
   <head>
@@ -43,9 +44,19 @@
       <textarea name="message" aria-label="Viesti">Hei</textarea>
       <button type="submit">Lähetä viesti</button>
     </form>
+    <form id="late" method="get" action="file_vimma_agent_page.html">
+      <textarea name="note" aria-label="Lisätieto"></textarea>
+      <button type="submit" id="late-send">Tallenna</button>
+    </form>
     <form id="buy" method="get" action="file_vimma_agent_page.html">
       <input type="hidden" name="order" value="1" />
       <button type="submit">Osta</button>
     </form>
+    <script>
+      // As the button is pressed, the page writes into the form the agent's click was judged by.
+      document.getElementById("late-send").addEventListener("mousedown", () => {
+        document.querySelector("#late textarea").value = "written as it was pressed";
+      });
+    </script>
   </body>
 </html>
