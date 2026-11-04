@@ -352,3 +352,21 @@ add_task(async function download_n_cancels_y_saves() {
   await until(() => calls.includes("save"), "the save runs on its own timer");
   Assert.ok(!calls.includes("cancel"), "y saves the file");
 });
+
+add_task(async function download_y_waits_for_firefoxs_ok_button() {
+  // Firefox keeps OK disabled until the window has had focus for this long (EnableDelayHelper).
+  await SpecialPowers.pushPrefEnv({ set: [["security.dialog_enable_delay", 60000]] });
+  const { launcher, calls } = mockLauncher();
+  const w = await downloadDialog(launcher);
+  await until(() => lineShows(w, "y ok · n cancel"), "Vimma's wait is over");
+  Assert.ok(!acceptEnabled(w), "Firefox still keeps OK disabled");
+  press("y", w);
+  await wait(100);
+  Assert.ok(!w.closed && calls.length === 0, "y waits for Firefox's OK button");
+  const closed = BrowserTestUtils.windowClosed(w);
+  await until(() => lineShows(w, "y ok · n cancel"), "armed again after the y");
+  press("n", w);
+  await closed;
+  Assert.deepEqual(calls, ["cancel"], "n still cancels");
+  await SpecialPowers.popPrefEnv();
+});

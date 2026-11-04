@@ -176,7 +176,8 @@ presses Cancel and cancels the download.
   a key sequence under way in the browser window does not apply there.
 - The line goes in at `load`, before `HelperAppDlg` fills the dialog in, so the window sizes
   itself to it (`postShowCallback`); its labels follow the buttons as in the other dialogs.
-- The wait starts at the window's `load`, which is when it is shown. `y` also waits for Firefox's
+- The wait starts at the window's `load` and again whenever the window becomes the active one
+  (`activate`), because a window manager can map or focus it well after it loads. `y` also waits for Firefox's
   OK button, which `EnableDelayHelper` keeps disabled until the window has had focus for
   `security.dialog_enable_delay`.
 - The window takes none of Vimma's theme (`theme-host.mjs` themes only `commonDialog.xhtml`

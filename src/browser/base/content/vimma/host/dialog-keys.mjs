@@ -126,6 +126,15 @@ export class DialogKeys {
         const doc = w.document;
         const kind = KINDS[doc.documentURI];
         if (!kind?.window || !this.attach(doc, kind)) return;
+        // A window can be mapped or focused well after its load (a window manager's focus
+        // rules): the wait starts again whenever it becomes the active window, so that it
+        // counts only time the window was in front of the user.
+        w.addEventListener("activate", () => {
+          const state = this.dialogs.get(doc);
+          if (!state) return;
+          state.at = ChromeUtils.now();
+          this.arm(state);
+        });
         w.addEventListener(
           "keydown",
           (e) => {
@@ -298,7 +307,8 @@ export class DialogKeys {
     const result = dialogKey(key, {
       // Firefox keeps the main button disabled until its window has had focus for a while
       // (PromptUtils.sys.mjs, EnableDelayHelper), or until an application is picked
-      // (appChooser.js): `y` waits for it too, `n` does not need to.
+      // (appChooser.js), or while the download question has nothing to open with
+      // (HelperAppDlg.sys.mjs, updateOKButton): `y` waits for it too, `n` does not need to.
       armed: armed && (key !== "y" || !accept?.disabled),
       // Text fields only: a checkbox ("Always allow") is the dialog's, not typing.
       inField:

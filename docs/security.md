@@ -458,7 +458,8 @@ text that pages, add-ons and bookmarks choose.
     [`protocol_permission_n_cancels_y_opens`](../tests/browser/browser_vimma_dialog_keys.js),
     [`protocol_app_chooser`](../tests/browser/browser_vimma_dialog_keys.js)
   - The download question (`unknownContentType.xhtml`, a window of its own opened over the
-    browser window) takes the same keys under the same wait, from the window's `load`: `y`
+    browser window) takes the same keys under the same wait, from the window's `load` and again
+    each time it becomes the active window: `y`
     presses OK, which saves the file or opens it with an application, so it **also** waits for
     the OK button Firefox keeps disabled (`EnableDelayHelper`), and `n` cancels the download.
     Only a window whose opener is the browser window and whose document is the download question
