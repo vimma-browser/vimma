@@ -345,7 +345,16 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 "caption":"Email address","value":"","form":1}`), so that every page string is a JSON string
    whose quotes the page cannot end, and a target cut by the size limit never names a form that
    is not in the list. Each string is NFKC-normalised and stripped of control, bidirectional and
-   invisible characters first, as `f`'s link texts are (security.md M21).
+   invisible characters first, as `f`'s link texts are (security.md M21). (Since changed: a
+   button, link or other target that is not a form control adds a `caption` too, so that a
+   shop's add button showing only `+` or a word every card shares still names its product
+   ([#693](https://github.com/vimma-browser/vimma/issues/693)). The caption is its accessible
+   label (`aria-labelledby`, else `aria-label`) when that differs from its text; and when its
+   text and label repeat on another target of the same list, the caption adds the heading of
+   its card, the nearest enclosing element that holds exactly one heading (`h1`-`h6` or
+   `role=heading`, at most 8 levels up), so a heading of another card is never borrowed. Both
+   are page strings, checked, normalised and cut at 80 as every caption is; the text stays the
+   visible text, which the checkpoint question shows the user.)
 6. **Sensitive fields.** A field is sensitive when any of these holds: it `hasBeenTypePassword`
    or is `type=password`; the page draws it as dots with `-webkit-text-security`, as PIN and
    card-code widgets do without `type=password`;

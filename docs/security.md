@@ -1517,7 +1517,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   password type and these names are counted in the parent too, whatever the child says), and
   one form autofill's heuristics infer as a payment card field, with, in a card form, any field
   they leave to their machine-learning model; if the heuristics fail, every field of that form
-  counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned.
+  counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned, except a target's accessible label and, for a text that repeats in the list, the heading of its card (mcp-forms F5, issue #693), both as its `caption`, under the same checks and cuts.
   The list `agent-open`, `agent-activate` and `agent-fill` return when asked with `elements`
   (issue #584) **must** be made by the same code as `agent-elements`' own, so every rule above
   holds for it, and the validator and `vimma-ctl mcp` check it the same way; it is made only

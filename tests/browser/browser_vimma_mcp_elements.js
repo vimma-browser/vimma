@@ -55,6 +55,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const FORM = `${DIR}file_vimma_agent_form.html`;
 const PAGE = `${DIR}file_vimma_agent_page.html`;
+const CARDS = `${DIR}file_vimma_agent_cards.html`;
 const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 /** Values the page holds in its sensitive fields: none may reach the agent (F6). */
@@ -820,6 +821,47 @@ addTidyTask(async function test_elements_query_and_kinds() {
       .filter((e) => "label" in e)
       .every((e) => e.kind === "field"),
     "and only fields",
+  );
+  c.close();
+  await mcp(false);
+});
+
+// docs/specs/mcp-forms.md F5, issue #693: a shop's add button that shows only "+" or a word every
+// card shares is named by its accessible label as its caption, and a text that repeats in the list
+// gets its card's heading, so the model sees which product each button adds; a heading of another
+// card is never borrowed, and a label the text already says adds nothing.
+addTidyTask(async function test_cards_name_their_buttons() {
+  await mcp(true);
+  const tab = await openAgentTab(CARDS);
+  const c = await agentClient();
+  const r = await elements(c, tab, { kind: "grant", minutes: 12 });
+  Assert.ok(r.ok, `vimma_elements runs: ${JSON.stringify(r.error)}`);
+  const items = parsed(r.result.elements).filter((e) => "label" in e);
+  const captions = items.filter((e) => e.kind === "button").map((e) => [e.text, e.caption ?? null]);
+  Assert.deepEqual(
+    captions,
+    [
+      ["+", "Lisää Kaurajuoma 1 l ostoskoriin"],
+      ["+", "Lisää Kauramaito luomu 1 l ostoskoriin"],
+      ["+", "Lisää ostoskoriin Tofu maustamaton 250 g"],
+      ["Lisää", "Kikherneet 380 g"],
+      ["Lisää", "Spagetti 500 g"],
+      ["Osta", null],
+      ["Näytä lisää", null],
+      ["Näytä lisää", null],
+    ],
+    "each add button names its product; no other card's heading is borrowed",
+  );
+  const found = await c.call("agent-elements", { tab: idOf(tab), query: "spagetti", full: true });
+  Assert.deepEqual(
+    parsed(found.result.elements)
+      .filter((e) => "label" in e)
+      .map((e) => [e.kind, e.text]),
+    [
+      ["link", "Spagetti 500 g"],
+      ["button", "Lisää"],
+    ],
+    "a query for the product finds its add button too",
   );
   c.close();
   await mcp(false);

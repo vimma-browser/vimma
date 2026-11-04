@@ -131,6 +131,65 @@ function captionOf(el) {
   return text || oneLine(el.getAttribute("placeholder") ?? "");
 }
 
+/** Selector of the headings a product card names its product in. */
+const HEADINGS = "h1, h2, h3, h4, h5, h6, [role='heading']";
+/** How many ancestors up a card's heading is looked for: product cards rarely nest deeper. */
+const CARD_DEPTH = 8;
+
+/**
+ * A target's accessible label: the text of the elements its `aria-labelledby` names (hidden ones
+ * too, as a screen reader reads them), else its `aria-label`. A shop's add button that shows
+ * only `+` names its product here (issue #693).
+ * @param {Element} el
+ */
+function ariaLabelOf(el) {
+  const ids = el.getAttribute("aria-labelledby")?.trim().split(/\s+/) ?? [];
+  const root = /** @type {any} */ (el.getRootNode());
+  const named = ids
+    .filter(Boolean)
+    .map((id) => (root.getElementById ? root.getElementById(id) : null))
+    .filter((n) => n && n !== el)
+    .map((n) => cap(n.textContent, TEXT));
+  return oneLine(named.join(" ")) || oneLine(el.getAttribute("aria-label") ?? "");
+}
+
+/**
+ * The heading of the card `el` is in: that of the nearest ancestor holding exactly one heading.
+ * An ancestor with more is a list of cards, whose headings belong to other cards: none.
+ * @param {Element} el
+ */
+function cardHeadingOf(el) {
+  let node = el.parentElement;
+  for (let depth = 0; node && depth < CARD_DEPTH; depth++, node = node.parentElement) {
+    const headings = node.querySelectorAll(HEADINGS);
+    if (headings.length > 1) return "";
+    if (headings.length === 1) {
+      const h = /** @type {any} */ (headings[0]);
+      return oneLine(cap(h.innerText ?? h.textContent, TEXT));
+    }
+  }
+  return "";
+}
+
+/**
+ * Give each element whose kind, text and caption repeat in `infos` its card's heading as (the
+ * start of) its caption, so that a row of identical "Add" buttons says which product each adds.
+ * @param {Element[]} els @param {AgentElementInfo[]} infos  in the same order
+ */
+function nameRepeats(els, infos) {
+  const key = (/** @type {AgentElementInfo} */ i) => `${i.kind}\n${i.text}\n${i.caption ?? ""}`;
+  /** @type {Map<string, number>} */
+  const counts = new Map();
+  for (const i of infos) counts.set(key(i), (counts.get(key(i)) ?? 0) + 1);
+  infos.forEach((info, n) => {
+    if ((counts.get(key(info)) ?? 0) < 2) return;
+    const el = els[n];
+    const heading = el ? cardHeadingOf(el) : "";
+    if (!heading || heading === info.text || info.caption?.includes(heading)) return;
+    info.caption = cap(info.caption ? `${heading} · ${info.caption}` : heading, TEXT);
+  });
+}
+
 /**
  * The payment card fields among `fields`, as form autofill's heuristics infer them over each
  * field's form-like group (F6). Every field of a group whose heuristics throw counts too.
@@ -292,9 +351,11 @@ export function describeAgentElements(els) {
       if (caption) info.caption = cap(caption, TEXT);
       if (html.required === true) info.required = true;
       if (html.readOnly === true) info.readonly = true;
-    } else if (kind === "checkbox" || kind === "radio") {
-      const caption = captionOf(el);
-      if (caption) info.caption = cap(caption, TEXT);
+    } else {
+      // A button, link or other target: its accessible label when the text does not say it.
+      const caption =
+        ((kind === "checkbox" || kind === "radio") && captionOf(el)) || ariaLabelOf(el);
+      if (caption && caption !== info.text) info.caption = cap(caption, TEXT);
     }
     if (el.matches(":disabled")) info.disabled = true;
     if (el.localName === "input" && (html.type === "checkbox" || html.type === "radio")) {
@@ -330,6 +391,7 @@ export function describeAgentElements(els) {
     }
     return info;
   });
+  nameRepeats(els, elements);
   return { elements, forms };
 }
 

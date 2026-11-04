@@ -69,7 +69,8 @@ export function isSubmitControl({ localName, type, inForm, method }) {
  * @property {string} [type]  a field's type (`email`, `password`, `contenteditable` …)
  * @property {string} [name]
  * @property {string} [autocomplete]  the parsed autocomplete field name
- * @property {string} [caption]  the text of its `<label>` elements, else its placeholder
+ * @property {string} [caption]  a field's `<label>` text, else its placeholder; another target's
+ *   accessible label; for a repeated text, its card's heading first (mcp-forms F5)
  * @property {boolean} [required]
  * @property {boolean} [disabled]
  * @property {boolean} [readonly]
