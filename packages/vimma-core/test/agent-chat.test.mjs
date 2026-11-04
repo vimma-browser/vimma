@@ -132,6 +132,13 @@ describe("the transcript", () => {
     ]);
   });
 
+  test("a message held for the next run of a cli without a live input is marked", () => {
+    const t = new Transcript();
+    t.user("first");
+    t.user("and eggs", { after: true });
+    expect(texts(t)).toEqual(["user: first", "user: and eggs (sent after the running task)"]);
+  });
+
   test("a task's end: stopped after the last step, the budget's limit, an error, done", () => {
     const t = new Transcript();
     t.task({ type: "call", call: call("vimma_activate") });

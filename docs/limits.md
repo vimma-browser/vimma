@@ -153,8 +153,22 @@ the [user guide](guide.md); planned work is on the
   passwords are: by a primary password if one is set, otherwise readable by anything that can
   read the profile.
 - The window does not open in a private window.
-- Claude Code is the one agent CLI the window runs so far (checked with Claude Code 2.1.303); Codex
-  follows.
+- The window runs Claude Code and Codex (checked with Claude Code 2.1.303 and Codex 0.163.0);
+  Gemini CLI and opencode are not offered yet.
+- Codex reports neither its tools nor its sandbox, so the window says only that its tools are
+  `as its configuration allows`, and it reports no refusal of its own commands, so a command its
+  sandbox stopped still shows as run. It reports no cost.
+- Codex cannot take a message during a task: one sent then starts the next task once this one is
+  done, and is dropped, with a notice, if the task is stopped, fails or meets a limit.
+- Vimma turns off each MCP server Codex's configuration lists, its apps and plugins (its
+  browser and computer-use tools among them), and its install of a skill's MCP server, for each
+  run. A Codex version that adds another
+  way in would keep it until Vimma knows of it; a call it reports to another server ends the
+  run.
+- Codex's ticket is in its own process's environment: its commands get it set empty, but the
+  `notify` and `hooks` programs of its configuration, and another process of yours reading
+  `/proc`, could read it while the task runs. It reaches only what
+  the conversation does.
 - An agent CLI keeps the shell, file and web tools its own settings allow. They are outside
   Vimma's gate: Vimma shows each use but does not approve, refuse or confine it.
 - Vimma cannot see where an agent CLI sends the page text it reads, so `local_only` refuses
@@ -196,6 +210,17 @@ the [user guide](guide.md); planned work is on the
   window in full screen is never hidden, so from full screen the private workspace is a
   fullscreen Space of its own and switching moves between Spaces.
 - The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
+- The Flatpak (`dev.vimma.browser`) is not on Flathub yet (issue #465). Once it is:
+  - Links from other apps are not routed by app: its desktop entry runs `vimma` without
+    `vimma-open`, whose look-up of the app that asked ends at Flatpak's own processes inside the
+    sandbox. `domain` and `url` routing rules still apply.
+  - The Omarchy hook is not installed (the sandbox cannot reach `~/.config/omarchy/hooks`), so
+    a new theme reaches Vimma within 2 seconds, when it next reads the theme (read-only), not
+    as soon as `omarchy-theme-set` finishes.
+  - Its profile and `config.toml` are under `~/.var/app/dev.vimma.browser/`, apart from any
+    other install's `~/.config/vimma`.
+  - It shows the update notice with `flatpak update dev.vimma.browser` even when a software
+    centre updates it on its own, and Flathub builds a release some hours after it is out.
 - The `.rpm` has no OpenPGP signature and there is no dnf or zypper repository for it: zypper
   installs it only with `--allow-unsigned-rpm`, `SHA256SUMS` and its cosign signature are what
   vouch for it, and `dnf upgrade` or `zypper update` never update it.

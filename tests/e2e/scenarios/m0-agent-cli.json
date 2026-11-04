@@ -1,0 +1,41 @@
+{
+  "name": "m0-agent-cli",
+  "description": "docs/specs/builtin-agent-cli.md, e2e: the built-in agent's CLI mode in the chat window, with the fake Claude Code (tests/browser/fake_vimma_agent_cli.py) installed as claude, alone on PATH beside the system folders, and the real vimma-ctl mcp, under a fixture Omarchy theme. :agent model, then the add: agent CLI row (the third row: the add rows come before any local server setup finds), lists the CLI setup found on PATH, claude 2.1.303 and its path (m0-agent-cli-setup-list); Enter picks it and Enter keeps the suggested model, sonnet. A task of three items is typed and sent with Enter, and y answers the first task's notice: the fake runs its own Bash tool, then, under the grant, opens shop.html and lists its elements, and activates 'Vahvista tilaus' (s), which stops at the payment checkpoint even under a grant; the header lists the CLI's own tools from its init, the transcript has the own-tool line, and the payment question waits in the prompt slot (m0-agent-cli-question). n denies it; the task then waits, and Esc and s stop it, with the stopped line (m0-agent-cli-stopped). The transcript, header and status bar show the fixture server's port and setup's list a few characters of the profile's path, which vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "timeoutSeconds": 120,
+  "prefs": {
+    "vimma.theme.source": "omarchy",
+    "vimma.theme.omarchyPath": "checkout:tests/e2e/fixtures/omarchy-theme"
+  },
+  "programs": { "claude": "tests/browser/fake_vimma_agent_cli.py" },
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "fixture:long.html" },
+    {
+      "wait-for-state": { "tabs": [{}, { "selected": true, "title": "long top navigate" }] }
+    },
+    { "keys": ": a g e n t space m o d e l enter" },
+    { "sleep": 2 },
+    { "keys": "k k k j j enter" },
+    { "sleep": 2 },
+    { "screenshot": "m0-agent-cli-setup-list" },
+    { "keys": "enter" },
+    { "sleep": 1 },
+    { "keys": "enter" },
+    { "sleep": 1.5 },
+    {
+      "type": "[[own Bash ls ~/Downloads]] [[open fixture:shop.html]] [[sleep 2]] [[elements]] [[activate s]] [[sleep 20]]"
+    },
+    { "keys": "enter" },
+    { "sleep": 1 },
+    { "keys": "y" },
+    { "sleep": 6 },
+    { "screenshot": "m0-agent-cli-question" },
+    { "keys": "n" },
+    { "sleep": 1.5 },
+    { "keys": "esc" },
+    { "sleep": 0.5 },
+    { "keys": "s" },
+    { "sleep": 2 },
+    { "screenshot": "m0-agent-cli-stopped" }
+  ]
+}

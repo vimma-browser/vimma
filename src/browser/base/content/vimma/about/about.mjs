@@ -57,6 +57,7 @@ const INSTALL_TYPES = /** @type {Record<string, string>} */ ({
   rpm: ".rpm",
   aur: "AUR vimma-bin",
   "pkgbuild-release": "the release's PKGBUILD",
+  flatpak: "Flatpak (Flathub)",
   packaged: "a package this version does not know",
   homebrew: "Homebrew cask",
   dmg: ".dmg",

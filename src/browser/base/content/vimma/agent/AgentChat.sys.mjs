@@ -80,11 +80,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
  *   last: { outcome: string, error?: string } | null, transcript: Transcript,
  *   confirmed: string | null, granted: boolean, asking: boolean, uid: string, created: number,
  *   used: number, stored: StoredEntry[], taskStart: number, urls: unknown[],
- *   cli: { model: string, tools: string[] | null } | null, costNoted: boolean }} Conversation
+ *   cli: { model: string, tools: string[] | null } | null, costNoted: boolean,
+ *   held: { text: string, ask: boolean }[] }} Conversation
  *   `confirmed`: the endpoint (or `cli:<id>`, core noticeTarget) whose notice of what leaves the
  *   machine the user answered y to (Behaviour 5); `cli`: what an agent CLI reported when its
  *   last run started, for the header (builtin-agent-cli C7); `costNoted`: the transcript said
- *   that max_cost does not apply to its CLI (C13); `granted`: whether it had a grant at the last
+ *   that max_cost does not apply to its CLI (C13); `held`: messages sent while an agent CLI
+ *   without a live input ran, which start its next run when it ends (builtin-agent-cli
+ *   Behaviour 10); `granted`: whether it had a grant at the last
  *   change, for the transcript's notice when that changes; `asking`: its latest task was sent
  *   with ctrl+Enter, so the header says each step asks (Behaviour 6, 25); `uid`: its file's
  *   name; `stored`: what its file holds (B15);
@@ -245,6 +248,7 @@ function make(o) {
     urls: [],
     cli: null,
     costNoted: false,
+    held: [],
   };
   for (const e of restoredEntries(stored)) {
     if (e.kind === "user") c.transcript.user(e.text);
@@ -415,6 +419,47 @@ function providerRefusal(provider, localOnly) {
 }
 
 /**
+ * Whether a message sent while `provider`'s task runs reaches that task: a model's loop and a
+ * CLI with a live input take it at their next turn; a CLI without one (Codex) does not
+ * (builtin-agent-cli Behaviour 10).
+ * @param {AgentProviderConfig} provider
+ */
+function takesSteering(provider) {
+  if (provider.kind !== "cli") return true;
+  return Object.hasOwn(CLIS, provider.cli ?? "") && CLIS[provider.cli ?? ""]?.live === true;
+}
+
+/**
+ * The messages held while `c`'s CLI ran (Behaviour 10), once its task ended: a task that ended
+ * done starts the next run with them, in one message; any other end leaves them unsent, and
+ * the transcript says so, since a task the user stopped, or that failed or met its budget,
+ * should not be followed by one nobody started.
+ * @param {Conversation} c @param {string} outcome
+ */
+function releaseHeld(c, outcome) {
+  const held = c.held.splice(0);
+  if (!held.length || !conversations.has(c.id)) return;
+  const what = held.length === 1 ? "the message" : `${held.length} messages`;
+  if (outcome !== "done") {
+    const ended =
+      outcome === "stopped" ? "was stopped" : outcome === "budget" ? "met a limit" : "failed";
+    c.transcript.notice(`${what} sent after the running task not sent: the task ${ended}`);
+    changed();
+    return;
+  }
+  const text = held.map((h) => h.text).join("\n\n");
+  const ask = /** @type {{ ask: boolean }} */ (held.at(-1)).ask;
+  AgentChat.send(c.id, text, { ask, held: true }).then(
+    (r) => {
+      if (!("refused" in r) || !conversations.has(c.id)) return;
+      c.transcript.notice(`${what} sent after the running task not sent: ${r.refused}`);
+      changed();
+    },
+    (e) => console.error("vimma agent: a held message could not be sent", e?.name),
+  );
+}
+
+/**
  * An agent CLI's run of conversation `c` (builtin-agent-cli Behaviour 7-16): its stream's
  * replies and own-tool steps go into the transcript, its steps in the browser come from the
  * gate (onGate), and what it reported at its start is kept for the header.
@@ -512,12 +557,16 @@ export const AgentChat = {
   /**
    * The user sends `text` (Behaviour 15, 24-25, 32). With `ask` (ctrl+Enter) every step asks;
    * without (Enter) the key press grants the conversation's connection. A message sent while a
-   * task runs reaches the model at its next turn.
-   * @param {number} id @param {string} text @param {{ ask?: boolean }} [opts]
-   * @returns {Promise<{ started: true } | { steered: true } | { refused: string, pick?: true }>}
+   * task runs reaches the model at its next turn; with an agent CLI without a live input, it
+   * is held and starts the next run when the task ends (builtin-agent-cli Behaviour 10).
+   * @param {number} id @param {string} text
+   * @param {{ ask?: boolean, held?: boolean }} [opts]  `held`: the held messages' own run, whose
+   *   transcript line was written when they were sent
+   * @returns {Promise<{ started: true } | { steered: true } | { held: true }
+   *   | { refused: string, pick?: true }>}
    *   `pick`: the conversation's model is not there, and the window opens the picker
    */
-  async send(id, text, { ask = false } = {}) {
+  async send(id, text, { ask = false, held = false } = {}) {
     const c = conversation(id);
     const max = config()?.maxRunning ?? AGENT_DEFAULTS.maxRunning;
     const localOnly = config()?.localOnly ?? false;
@@ -544,6 +593,14 @@ export const AgentChat = {
       c.asking = ask;
       return ask ? AgentGate.endGrant(c.conn) : AgentGate.grantConnection(c.conn);
     };
+    if (c.task && !c.stopped && !takesSteering(c.provider)) {
+      // Kept out of the store until its run starts, so the stored order stays message, reply.
+      c.transcript.user(text, { after: true });
+      c.held.push({ text, ask });
+      c.used = Date.now();
+      changed();
+      return { held: true };
+    }
     if (c.task && !c.stopped) {
       c.transcript.user(text, { during: true });
       c.stored.push({ kind: "user", text });
@@ -591,7 +648,7 @@ export const AgentChat = {
       changed();
       return { refused: `${c.provider.name} has no API key; m in the window sets one` };
     }
-    c.transcript.user(text);
+    if (!held) c.transcript.user(text);
     c.stored.push({ kind: "user", text });
     c.used = Date.now();
     c.taskStart = c.transcript.entries.length;
@@ -654,6 +711,7 @@ export const AgentChat = {
         summarize(c, result.outcome);
         c.transcript.end(result);
         changed();
+        releaseHeld(c, result.outcome);
         return result;
       },
       (e) => {
@@ -662,6 +720,7 @@ export const AgentChat = {
         summarize(c, "error");
         c.transcript.end(c.last);
         changed();
+        releaseHeld(c, "error");
         throw e;
       },
     );

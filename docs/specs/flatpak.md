@@ -1,7 +1,7 @@
 # Spec: flatpak
 
-Status: accepted (sub-PR 1 implemented; sub-PR 2, the Flathub submission, in
-[#465](https://github.com/vimma-browser/vimma/issues/465)) · Area: `tools/package/flatpak.mjs`
+Status: accepted (sub-PR 1 and sub-PR 2's install type implemented; the rest of sub-PR 2, the
+Flathub submission, in [#465](https://github.com/vimma-browser/vimma/issues/465)) · Area: `tools/package/flatpak.mjs`
 (new), `tools/package/flatpak-smoke.sh` (new), `.github/workflows/flatpak.yml` (new),
 `docs/runbook.md`, `docs/security.md` · Upstream patches: none · ADR: none
 
@@ -47,7 +47,11 @@ dev.vimma.browser`. The desktop file, the metainfo and the icons (16 to 128 px f
 4. Inside the sandbox, `config.toml` is `~/.var/app/dev.vimma.browser/config/vimma/config.toml`
    and the profiles are in `~/.var/app/dev.vimma.browser/config/vimma/vimma/`. The Omarchy
    theme in `~/.local/state/omarchy/current/theme` is read, never written.
-5. `flatpak.yml` builds a stub tarball's Flatpak on every pull request that changes
+5. The update check calls the install `flatpak`. `:update`, and the security question's `y`,
+   show `flatpak update dev.vimma.browser`, and the one-time message names it:
+   `Vimma 0.1.3 is available · run flatpak update dev.vimma.browser`. Vimma never downloads,
+   replaces or applies an update inside the Flatpak (decision 10).
+6. `flatpak.yml` builds a stub tarball's Flatpak on every pull request that changes
    `tools/package/`, the branding, `surfer.json` or the workflow, and the published release's
    Flatpak when a release is published or when run by hand with a tag. Each run checks the
    version line, the marker, the exported desktop file (`desktop-file-validate`) and the metainfo
@@ -86,7 +90,7 @@ app/org.mozilla.firefox.BaseApp/x86_64/25.08`, commit `7d5a63c8…`).
   (spec [m6a-updater](m6a-updater.md), section 3). Vimma's update check reads the marker:
   `vimma-package=flatpak` is not a type it knows, so it gives `packaged`
   (`packages/vimma-core/src/updates.mjs`, `installTypeFrom`), whose hint names the tool the user
-  installed with and never runs a command.
+  installed with and never runs a command. (Since changed: it gives `flatpak`, decision 10.)
 
 ## Design
 
@@ -121,7 +125,8 @@ app/org.mozilla.firefox.BaseApp/x86_64/25.08`, commit `7d5a63c8…`).
    gives `packaged` and its generic hint, never the tarball's unpack command, which would write
    into the read-only `/app`. Reason: no user can install this Flatpak until it is on Flathub,
    and the right hint (`flatpak update`, or no notice, since Flathub updates the app) belongs
-   with the submission in sub-PR 2.
+   with the submission in sub-PR 2. (Since changed: the marker gives the install type
+   `flatpak`, decision 10.)
 8. **CI in its own workflow, after the release is published.** `flatpak.yml` builds a stub on
    pull requests and the real release once it is public, from the URL Flathub would download.
    Reason: the Flatpak is not a release asset, so a failure must not hold back a release, and
@@ -137,6 +142,25 @@ app/org.mozilla.firefox.BaseApp/x86_64/25.08`, commit `7d5a63c8…`).
    nothing in the smoke test needs them. Rejected: `org.flatpak.Builder` from Flathub, which
    also brings `flatpak-builder-lint`, because it adds the 26.08 SDK and its own BaseApp, about
    a gigabyte more on every run; Flathub runs the linter on the submission (sub-PR 2).
+10. **Install type `flatpak`, whose hint is `flatpak update dev.vimma.browser`.** The marker `vimma-package=flatpak` gives its own install type
+    (`installTypeFrom`). The status bar keeps the notice every install gets; the one-time message
+    names the command (`Vimma 0.1.3 is available · run flatpak update dev.vimma.browser`), and
+    `:update` and the security question's `y` show it, with a sentence that a software centre
+    does the same and that Flathub builds a release only after it is published. Vimma never
+    downloads, replaces or applies an update inside the Flatpak: the AppImage replacement and its
+    restart require the install type `appimage`, and the command is a fixed string. Reason:
+    Flathub updates the app itself, but the user still needs to know the one command that
+    updates it right away. Flathub updates an app only where something runs `flatpak update`:
+    GNOME Software and KDE Discover do; a desktop with no software centre, such as Omarchy, does
+    not, so a security release would otherwise reach those users only when they happened to
+    update. The command touches nothing but the Flatpak and takes no part of the manifest. The
+    sentence names the delay because Flathub builds a release once its pull request to
+    `flathub/dev.vimma.browser` merges, so for some hours after the notice `flatpak update` can
+    find nothing new. The marker outranks `$APPIMAGE`, as the other known markers do, since a
+    Flatpak started from an AppImage's process inherits it. Rejected: no notice, because users
+    without a software centre would then not learn of a security release; the generic
+    `packaged` hint, because it names no command; a download command or the self-update,
+    because `/app` is read-only and the Flatpak runs Flathub's build, not the release's files.
 
 ## Security and privacy
 
@@ -163,7 +187,17 @@ download URL, pinned by SHA-256`, `refuses %s`, `grants Firefox's Flatpak permis
 Omarchy theme read-only, never the home`, `installs Vimma in /app/lib/vimma with the flatpak
 marker, the launcher and its files`, `puts no input into a build command, so none can change
 what the build runs`), the desktop entry, launcher and metainfo groups, `writeFlatpak`, the
-  install type, `flatpak-smoke.sh` and `flatpak.yml`.
+  install type (`is flatpak, whose update hint is flatpak update, never the tarball's unpack`),
+  `flatpak-smoke.sh` and `flatpak.yml`.
+- vitest, `packages/vimma-core/test/updates.test.mjs`: the marker gives `flatpak`, also with
+  `$APPIMAGE` set, and `flatpak: flatpak update, with no download (spec flatpak, decision 10)`.
+- vitest, `packages/vimma-core/test/update-notices.test.mjs`: `a Flatpak names flatpak update,
+for an ordinary and a security release`; `appimage-update.test.mjs`: `not an AppImage install:
+nothing to replace` (the Flatpak among them).
+- Mochitest, `browser_vimma_update_check.js`: `flatpak_gets_flatpak_update` (`:update` on the
+  Flatpak shows its install type and the command, and no download);
+  `browser_vimma_update_notices.js`: `a_flatpak_is_told_to_run_flatpak_update` (the message, the
+  security question's `y`, and nothing downloaded or replaced).
 - CI: `flatpak.yml`'s `stub` job on pull requests and its `release` job on published releases.
 
 ## Docs and changelog

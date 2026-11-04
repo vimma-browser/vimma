@@ -8,9 +8,13 @@ import { describe, expect, test } from "vitest";
 import {
   CLI_STREAM_LIMITS,
   CLIS,
+  CODEX_SERVER,
   ClaudeStream,
+  CodexStream,
   MAX_MODEL,
   claudeArguments,
+  codexArguments,
+  codexServers,
   cliEnvironment,
   cliNotice,
   dispatcherOf,
@@ -32,6 +36,7 @@ import {
   versionText,
 } from "../src/agent-cli.mjs";
 import { STORE_VERSION, readRecord } from "../src/agent-store.mjs";
+import { parseToml } from "../src/toml.mjs";
 
 /** @param {string} name */
 const fixture = (name) =>
@@ -715,19 +720,28 @@ describe("every CLIS entry supplies the whole interface", () => {
       for (const m of cli.models) expect(modelProblem(m)).toBeNull();
       expect(Array.isArray(cli.versionArgs)).toBe(true);
       expect(cli.note).toMatch(/vimma_open/);
-      const args = cli.args({ mcpConfig: "/run/x/mcp.json", model: "m-1" });
-      expect(args).toContain("m-1");
-      expect(args).toContain("/run/x/mcp.json");
-      expect(() => cli.args({ mcpConfig: "/run/x/mcp.json", model: "--bare" })).toThrow();
-      const config = cli.mcpConfig({
+      const run = {
+        mcpConfig: "/run/x/mcp.json",
         vimmaCtl: "/opt/vimma/vimma-ctl",
-        ticket: "t".repeat(64),
-        port: 1,
-      });
-      expect(JSON.stringify(config)).toContain("/opt/vimma/vimma-ctl");
-      expect(args.join(" ")).not.toContain("t".repeat(64));
+        dir: "/run/x",
+        others: [],
+      };
+      const args = cli.args({ ...run, model: "m-1" });
+      expect(args).toContain("m-1");
+      expect(() => cli.args({ ...run, model: "--bare" })).toThrow();
+      const ticket = "t".repeat(64);
+      const config = cli.mcpConfig({ vimmaCtl: "/opt/vimma/vimma-ctl", ticket, port: 1 });
+      const env = cli.env({ ticket, port: 1 });
+      // vimma-ctl is the one server, named in the file the arguments point at, or in them.
+      if (config) expect(args).toContain("/run/x/mcp.json");
+      expect(`${JSON.stringify(config)} ${args.join(" ")}`).toContain("/opt/vimma/vimma-ctl");
+      // The ticket reaches it through the file or the CLI's environment, never an argument.
+      expect(args.join(" ")).not.toContain(ticket);
+      expect(`${JSON.stringify(config)} ${Object.values(env).join(" ")}`).toContain(ticket);
+      expect(typeof cli.live).toBe("boolean");
+      expect(cli.servers === null || Array.isArray(cli.servers.args)).toBe(true);
       expect(cli.input("hello")).toMatch(/hello[\s\S]*\n$/);
-      const stream = cli.stream();
+      const stream = cli.stream({ model: "m-1" });
       expect(typeof stream.push).toBe("function");
       expect(typeof stream.end).toBe("function");
     });
@@ -754,5 +768,260 @@ describe("a CLI's words come from its entry alone", () => {
     });
     expect(cliModelText("made-up", "", made)).toBe("Made Up's own default model");
     expect(cliModelText("made-up", "large", made)).toBe("large");
+  });
+});
+
+// Codex 0.163.0, recorded as Claude Code was: `codex exec` with the arguments below against a
+// scripted OpenAI Responses server on 127.0.0.1, a made-up key, a throwaway HOME whose
+// config.toml also had an MCP server named `other`, and a one-tool MCP server for Vimma's. Its
+// model was unknown to Codex, hence the first item, a warning about the model's metadata.
+/** Every event of a whole Codex stream, fed in chunks that cut lines in two. */
+function codexEvents(/** @type {string} */ text, chunk = 97) {
+  const s = new CodexStream({ model: "" });
+  const out = [];
+  for (let i = 0; i < text.length; i += chunk) out.push(...s.push(text.slice(i, i + chunk)));
+  out.push(...s.end());
+  return { out, stream: s };
+}
+
+const CTL = "/opt/vimma/vimma-ctl";
+const RUN = "/run/user/1000/vimma-agent-cli-a1b2c3";
+const VIMMA_TABLE =
+  `mcp_servers.${"vimma_chat"}={command="${CTL}",args=["mcp"],` +
+  'env_vars=["VIMMA_AGENT_TICKET","VIMMA_AGENT_PORT"],' +
+  'default_tools_approval_mode="approve",required=true,enabled=true}';
+
+describe("codex's command line (C2, C3, C7)", () => {
+  test("codex's arguments are the fixture", () => {
+    expect(codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [] })).toEqual([
+      "exec",
+      "--json",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "-C",
+      RUN,
+      "-c",
+      VIMMA_TABLE,
+      "-c",
+      'shell_environment_policy.set.VIMMA_AGENT_TICKET=""',
+      "-c",
+      'shell_environment_policy.set.VIMMA_AGENT_PORT=""',
+      "--disable",
+      "apps",
+      "--disable",
+      "plugins",
+      "--disable",
+      "skill_mcp_dependency_install",
+      "-",
+    ]);
+    expect(
+      codexArguments({ vimmaCtl: CTL, dir: RUN, model: "gpt-6-astra", others: [] }).slice(-3),
+    ).toEqual(["-m", "gpt-6-astra", "-"]);
+    expect(CODEX_SERVER).toBe("vimma_chat");
+  });
+
+  test("every other mcp server of codex's configuration is off for the run", () => {
+    const args = codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: ["vimma", "other"] });
+    expect(args.slice(12, 16)).toEqual([
+      "-c",
+      "mcp_servers.vimma.enabled=false",
+      "-c",
+      "mcp_servers.other.enabled=false",
+    ]);
+  });
+
+  test("codex's features that add mcp servers are off, and fail the run once renamed", () => {
+    const args = codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [] });
+    // As a -c key, a feature Codex does not know is ignored; as --disable it ends the run, so
+    // a version that renames one fails instead of keeping its servers.
+    const off = args.flatMap((a, i) => (args[i - 1] === "--disable" ? [a] : []));
+    expect(off).toEqual(["apps", "plugins", "skill_mcp_dependency_install"]);
+    expect(args.some((a) => a.startsWith("features."))).toBe(false);
+  });
+
+  test("a server name that is not a plain word, or is vimma's own, refuses the run", () => {
+    for (const name of ['a"b', "a.b", "a b", "", "x=1", CODEX_SERVER]) {
+      expect(() => codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [name] })).toThrow(
+        /MCP server/,
+      );
+    }
+  });
+
+  test("vimma-ctl's path is a TOML string whatever it holds", () => {
+    const odd = '/home/u/a "b" \\c\u007fd\ne/vimma-ctl';
+    const args = codexArguments({ vimmaCtl: odd, dir: RUN, model: "", others: [] });
+    const parsed = /** @type {any} */ (parseToml(args[7] ?? "")).value;
+    expect(parsed.mcp_servers.vimma_chat.command).toBe(odd);
+    expect(parsed.mcp_servers.vimma_chat.env_vars).toEqual([
+      "VIMMA_AGENT_TICKET",
+      "VIMMA_AGENT_PORT",
+    ]);
+  });
+
+  test("the ticket reaches vimma-ctl through codex's environment, never its arguments", () => {
+    const codex = /** @type {any} */ (CLIS.codex);
+    const ticket = "ab".repeat(32);
+    expect(codex.mcpConfig({ vimmaCtl: CTL, ticket, port: 4123 })).toBeNull();
+    expect(codex.env({ ticket, port: 4123 })).toEqual({
+      VIMMA_AGENT_TICKET: ticket,
+      VIMMA_AGENT_PORT: "4123",
+    });
+    expect(CLIS["claude-code"]?.env({ ticket, port: 4123 })).toEqual({});
+    const args = codex.args({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] });
+    expect(args.join(" ")).not.toContain(ticket);
+  });
+
+  test("codex's own commands get the ticket's variables empty, the user's policy kept", () => {
+    // Codex 0.163.0 gives its shell commands its own environment: VIMMA_AGENT_TICKET included.
+    // A `set` key merges into the user's table; an `exclude` list would replace the user's.
+    const args = codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [] });
+    const values = args.filter((_, i) => args[i - 1] === "-c");
+    for (const name of ["VIMMA_AGENT_TICKET", "VIMMA_AGENT_PORT"]) {
+      const v = values.find((x) => x.startsWith(`shell_environment_policy.set.${name}=`));
+      const parsed = /** @type {any} */ (parseToml(v ?? "")).value;
+      expect(parsed.shell_environment_policy.set[name]).toBe("");
+    }
+    expect(values.some((x) => /^shell_environment_policy\.(exclude|inherit)/.test(x))).toBe(false);
+  });
+
+  test("the task is never an argument, and goes to stdin, which then closes", () => {
+    const codex = /** @type {any} */ (CLIS.codex);
+    const task = '--dangerously-bypass-approvals-and-sandbox; rm -rf ~ "q" $(x)';
+    expect(codex.input(task)).toBe(`${task}\n`);
+    expect(codex.live).toBe(false);
+    expect(CLIS["claude-code"]?.live).toBe(true);
+    // stdin, the last argument: `codex exec` reads the prompt from it to its end.
+    expect(codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [] }).at(-1)).toBe("-");
+  });
+
+  test("codex's own mcp servers are read from its list", () => {
+    const codex = /** @type {any} */ (CLIS.codex);
+    expect(codex.servers.args).toEqual(["mcp", "list", "--json"]);
+    const listed = readFileSync(
+      new URL("fixtures/agent-cli/codex-0.163.0-mcp-list.json", import.meta.url),
+      "utf8",
+    );
+    expect(codexServers(listed)).toEqual(["other"]);
+    expect(codexServers("[]")).toEqual([]);
+    for (const bad of ["", "{}", "not json", '[{"name":1}]', "[null]"]) {
+      expect(codexServers(bad)).toEqual({
+        problem: "codex listed its MCP servers in a form Vimma does not read",
+      });
+    }
+  });
+
+  test("codex's version line drops the program's name", () => {
+    expect(
+      versionText(/** @type {any} */ (CLIS.codex), "codex-cli 0.163.0\n", "/usr/bin/codex"),
+    ).toBe("codex 0.163.0 · /usr/bin/codex");
+  });
+
+  test("codex's suggested model is its own default", () => {
+    expect(CLIS.codex?.model).toBe("");
+    expect(modelPrompt("codex")).toEqual({
+      label: "agent model: ",
+      value: "",
+      placeholder: "empty: Codex's own default model",
+    });
+  });
+});
+
+describe("codex's stream (C7, C8)", () => {
+  test("a recorded codex stream maps to replies, own-tool lines and usage", () => {
+    const { out, stream } = codexEvents(fixture("codex-0.163.0-task"));
+    expect(out).toEqual([
+      { type: "init", model: "", version: "", tools: null },
+      {
+        type: "own-tool",
+        id: "item_2",
+        text: "codex ran its own tool: shell \"/usr/bin/bash -lc 'ls ~/Downloads'\"",
+      },
+      { type: "reply", text: "Two tabs are open: Example and Shop." },
+      {
+        type: "result",
+        ok: true,
+        error: null,
+        usage: { input: 3900, output: 123 },
+        rest: { input: 3900, output: 123 },
+        cost: null,
+        queued: 0,
+      },
+    ]);
+    // The model warning, the turn's start, the vimma call and the command's end.
+    expect(stream.ignored).toBeGreaterThan(0);
+  });
+
+  test("a run with no reported tool list says its configuration decides", () => {
+    expect(runStartedText(/** @type {any} */ (CLIS.codex), "", "", null)).toBe(
+      "run started: codex · its default model · its own tools: as its configuration allows",
+    );
+  });
+
+  test("a file change is an own-tool line naming its files", () => {
+    const { out } = codexEvents(fixture("codex-0.163.0-file-change"));
+    expect(out.filter((e) => e.type === "own-tool")).toEqual([
+      {
+        type: "own-tool",
+        id: "item_0",
+        text: 'codex ran its own tool: apply_patch "add /tmp/rec/work/notes.txt"',
+      },
+    ]);
+  });
+
+  test("mcp tool calls of vimma's server are not transcript steps", () => {
+    const { out } = codexEvents(fixture("codex-0.163.0-task"));
+    expect(out.map((e) => JSON.stringify(e)).some((t) => t.includes("vimma_tabs"))).toBe(false);
+  });
+
+  test("a call to any other mcp server ends the run", () => {
+    const line = JSON.stringify({
+      type: "item.started",
+      item: { id: "item_1", type: "mcp_tool_call", server: "other", tool: "x", arguments: {} },
+    });
+    const { out, stream } = codexEvents(`${line}\n${line}\n`);
+    expect(out).toEqual([
+      { type: "fail", error: "codex called an MCP server that is not Vimma's: other" },
+    ]);
+    expect(stream.failed).toBe(true);
+  });
+
+  test("a key the provider refuses ends in an error result, after the cli's retries", () => {
+    const { out } = codexEvents(fixture("codex-0.163.0-bad-key"));
+    const result = /** @type {any} */ (out.at(-1));
+    expect(result).toMatchObject({ type: "result", ok: false, usage: null, cost: null });
+    expect(result.error).toMatch(/^unexpected status 401 Unauthorized: Incorrect API key/);
+    expect(out.filter((e) => e.type === "result")).toHaveLength(1);
+  });
+
+  test("a run that ends without its turn's result reports codex's last error", () => {
+    const lines = [
+      { type: "thread.started", thread_id: "t" },
+      { type: "error", message: "stream disconnected before completion" },
+    ];
+    const { out } = codexEvents(lines.map((l) => JSON.stringify(l)).join("\n"));
+    expect(out.at(-1)).toEqual({
+      type: "result",
+      ok: false,
+      error: "stream disconnected before completion",
+      usage: null,
+      rest: null,
+      cost: null,
+      queued: 0,
+    });
+  });
+
+  test("a turn's end that no longer parses ends the run", () => {
+    const { out } = codexEvents(`${JSON.stringify({ type: "turn.completed", usage: 5 })}\n`);
+    expect(out).toEqual([{ type: "fail", error: "codex speaks a stream Vimma does not read" }]);
+  });
+
+  test("an unknown event is ignored and counted, and a long line ends the run", () => {
+    const { out, stream } = codexEvents('{"type":"thread.renamed"}\n');
+    expect(out).toEqual([]);
+    expect(stream.ignored).toBe(1);
+    const s = new CodexStream({ model: "" });
+    expect(s.push(`{"x":"${"a".repeat(CLI_STREAM_LIMITS.line)}"}\n`)).toEqual([
+      { type: "fail", error: "codex wrote a line over 1 MiB" },
+    ]);
   });
 });

@@ -1,6 +1,6 @@
 # Spec: builtin-agent-cli
 
-Status: accepted (Delivery 1-2 built, Claude Code turned on) · Area: `packages/vimma-core/src/` (new `agent-cli.mjs`:
+Status: implemented · Area: `packages/vimma-core/src/` (new `agent-cli.mjs`:
 argument builders and stream parsers per CLI; `config.mjs` for `kind = "cli"`; `control.mjs` for
 the ticket hello);
 `src/browser/base/content/vimma/` (new `agent/AgentCli.sys.mjs`: the process runner;
@@ -140,7 +140,10 @@ own configuration allows; Vimma does not confine them, and the window states whi
     input at once and reaches the model no later than its next turn, marked
     `(added during the task)` (builtin-agent Behaviour 15). For a CLI without a live input
     (Codex), the message waits and starts the next run when the current one ends, marked
-    `(sent after the running task)`.
+    `(sent after the running task)`; several such messages start one run together. A task that
+    ends other than done (stopped, failed or over a budget) starts no run: the transcript says
+    `the message sent after the running task not sent: the task was stopped` (or `failed`,
+    `met a limit`), and the user sends it again if it still applies.
 11. **Stopping.** `s`, `:agent stop` and `ctrl+b shift+a` end the conversation's grant and
     close its gate connection in the browser first, then stop the CLI: `SIGTERM`, then
     `SIGKILL` after 3 s (C9). The transcript says `stopped`. Nothing the CLI does after the stop
@@ -297,6 +300,31 @@ Each CLI was checked as stated; none was run against a real account, and no toke
   kinds `agent_message`, `mcp_tool_call`, `command_execution`, `file_change`, `todo_list`, and
   the usage fields `cached_input_tokens` and `reasoning_output_tokens`. No option that turns the
   shell off was found. No cost field was found.
+  - Run (Delivery 3) against a scripted Responses server (a `model_provider` with a made-up
+    key, a throwaway `HOME`), with the arguments of C2 and the task on stdin, which it reads to
+    its end before it starts: the streams recorded in `packages/vimma-core/test/fixtures/agent-cli/`.
+    `thread.started` carries only a `thread_id`: no model, version, tool list or sandbox, so
+    the header cannot name Codex's effective sandbox (C7). An MCP call is an `mcp_tool_call`
+    item naming its `server`; a shell command a `command_execution` item; a patch a
+    `file_change` item with its paths; `turn.completed.usage` has `input_tokens` (with
+    `cached_input_tokens` among them) and `output_tokens`, and no cost. A refused key gave
+    `error` events (retries), then `turn.failed`, and exit 1. `--ephemeral` kept no prompt or
+    reply in `CODEX_HOME`, which still received its state database.
+  - A `-c mcp_servers.<name>={…}` table merges with a server of that name in `config.toml`
+    (the user's `enabled_tools` stayed), so Vimma's server has a name of its own,
+    `vimma_chat`, and a name in `codex mcp list --json` equal to it refuses the run. `-c
+mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <feature>`
+    fails on a feature the version does not know, while `-c features.<name>=false` is
+    ignored, so Vimma's arguments use `--disable`, and a version that renames a feature ends
+    the run instead of keeping it on. `codex features list` showed `apps` and `plugins`, which
+    bring MCP servers of their own, and `skill_mcp_dependency_install`, which adds a skill's MCP
+    server to `config.toml` during a run, all on by default. `env_vars` passes the named variables of Codex's own environment to the server,
+    and `default_tools_approval_mode="approve"` is needed for its calls to run under the
+    `never` approval policy of `exec`; with `required=true`, a server that does not start ends
+    the run with exit 1 and `required MCP servers failed to initialize` on stderr.
+  - Codex's shell commands inherit its environment, `VIMMA_AGENT_TICKET` included;
+    `-c shell_environment_policy.set.<name>=""` sets a variable empty for them and merges into
+    the user's `set`, while `exclude` would replace the user's list.
 - **Gemini CLI 0.66.0.** `gemini --help` and its bundle; not run. `-p` runs headless,
   `-o, --output-format stream-json`, `--approval-mode` (`default`, `auto_edit`, `yolo`, `plan`),
   `--allowed-mcp-server-names`, `--policy`, `-m`. The bundle's `JsonStreamEventType` has `init`,
@@ -333,11 +361,20 @@ Each CLI was checked as stated; none was run against a real account, and no toke
                 --no-session-persistence --strict-mcp-config --mcp-config <file>
                 --allowedTools mcp__vimma --permission-mode dontAsk [--model <m>]
    codex:       exec --json --ephemeral --skip-git-repo-check -C <dir>
-                -c mcp_servers.vimma.command=<vimma-ctl> [-m <m>] -
+                -c mcp_servers.vimma_chat={command=<vimma-ctl>,args=["mcp"],
+                   env_vars=["VIMMA_AGENT_TICKET","VIMMA_AGENT_PORT"],
+                   default_tools_approval_mode="approve",required=true,enabled=true}
+                -c shell_environment_policy.set.VIMMA_AGENT_TICKET=""
+                -c shell_environment_policy.set.VIMMA_AGENT_PORT=""
+                [-c mcp_servers.<other>.enabled=false]...
+                --disable apps --disable plugins
+                --disable skill_mcp_dependency_install [-m <m>] -
    ```
 
    The builders are pure functions in `packages/vimma-core`, so the exact argument list of each CLI is a
-   vitest fixture. Rejected: a user-written command line, because it needs a shell or a parser
+   vitest fixture. Codex's `<other>` names come from `codex mcp list --json`, run with fixed
+   arguments from the confirmed path before the ticket is made; a name that is not letters,
+   digits, `_` or `-` refuses the run, so no name can add a key of its own to the arguments. Rejected: a user-written command line, because it needs a shell or a parser
    of quoting rules, and an argument such as `--dangerously-skip-permissions` or
    `--output-format text` would silently break the confinement statement or the transcript;
    `--bare` for Claude Code, because it reads no OAuth login, so a subscription user could not
@@ -349,8 +386,9 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    while no switch of S1 is on, only an `agent-hello` that carries a live ticket. The ticket and
    the port reach `vimma-ctl mcp` as `VIMMA_AGENT_TICKET` and `VIMMA_AGENT_PORT` in its own
    environment, through the MCP configuration (Claude Code's `--mcp-config` file's `env`,
-   written mode 0600 in the run's 0700 directory; Codex's `mcp_servers.vimma.env`, whose
-   delivery without the command line is checked in its PR), never in a process's arguments,
+   written mode 0600 in the run's 0700 directory; for Codex, Codex's own environment, which its
+   server table's `env_vars` passes on by name, and which its shell commands get with both
+   variables set empty, Research), never in a process's arguments,
    which other users can read in `/proc/<pid>/cmdline`. The handshake is S4's with the ticket
    as the key, so the server proves it knows the ticket before the client sends anything. The
    hello names the ticket by its id, HMAC-SHA256(ticket, `vimma-ticket` NUL), because the server
@@ -465,13 +503,14 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    trust decision the user has already made for that CLI in a terminal; and Codex cannot turn
    its shell off, so a narrowing flag would give one CLI a guarantee the other lacks. Vimma's
    own guarantee is the browser: the CLI reaches pages only through the conversation's gate
-   connection (C1), and `--strict-mcp-config` keeps every other MCP server out of the run,
+   connection (C1), and `--strict-mcp-config` keeps every other MCP server out of the run
+   (for Codex, which has no such flag: each server `codex mcp list` names turned off by name,
+   its apps, plugins and a skill's server installs off, and a call to a server other than Vimma's ends the run),
    because another server (a second browser driver, a `vimma-ctl` with the token) would reach
    pages outside the agent workspace and outside the gate. So that the user sees what the CLI
    can do, the header lists the CLI's own tools from Claude Code's `system`/`init` `tools`,
    without `mcp__vimma__*`, as the CLI reported them for this run; for Codex, whose events
-   report no tool list (Research), it says `as its configuration allows`, and PR 3 checks
-   whether Codex reports its effective sandbox, which the header then names. The list is the
+   report no tool list and no sandbox (Research), it says `as its configuration allows`. The list is the
    CLI's report, and the transcript's own-tool lines (Behaviour 9) are taken from the CLI's
    stream, so both are what the CLI says, not what Vimma observed. Rejected: the narrowest
    setting each CLI documents (`--tools ""`, `--sandbox read-only`), because it breaks the
@@ -485,16 +524,16 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    `agent-cli.mjs` reads stdout as JSON lines (at most 1 MiB a line, as S5; a run over 64 MiB of
    output is stopped) and maps each CLI's events to the transcript's entries:
 
-   | Transcript entry      | Claude Code (`stream-json`)                                  | Codex (`exec --json`)                                   |
-   | --------------------- | ------------------------------------------------------------ | ------------------------------------------------------- |
-   | run started, model    | `system`/`init`: `model`; `mcp_servers` must say `connected` | `thread.started`                                        |
-   | agent reply           | `assistant` block `text`                                     | `item.completed` with an `agent_message`                |
-   | step in the browser   | from the gate (not from `tool_use` of `mcp__vimma__*`)       | from the gate (not from `mcp_tool_call`)                |
-   | CLI's own tool        | `assistant` block `tool_use` of any other name               | `item.started` with `command_execution`, `file_change`  |
-   | own tool refused      | `system`/`permission_denied` with its `tool_use_id`          | not reported                                            |
-   | tokens, cost          | `result`: `usage`, `total_cost_usd`                          | `turn.completed`: `usage`                               |
-   | task ended, or failed | `result` (`is_error`, `subtype`); exit code                  | `turn.completed` or `turn.failed`, `error`; exit code   |
-   | ignored               | other `system` subtypes, `tool_result` bodies, thinking      | `reasoning`, `todo_list`, `item.updated`, unknown kinds |
+   | Transcript entry      | Claude Code (`stream-json`)                                  | Codex (`exec --json`)                                    |
+   | --------------------- | ------------------------------------------------------------ | -------------------------------------------------------- |
+   | run started, model    | `system`/`init`: `model`; `mcp_servers` must say `connected` | `thread.started` (the provider's model)                  |
+   | agent reply           | `assistant` block `text`                                     | `item.completed` with an `agent_message`                 |
+   | step in the browser   | from the gate (not from `tool_use` of `mcp__vimma__*`)       | from the gate (not from `mcp_tool_call` of `vimma_chat`) |
+   | CLI's own tool        | `assistant` block `tool_use` of any other name               | `item.started` with `command_execution`, `file_change`   |
+   | own tool refused      | `system`/`permission_denied` with its `tool_use_id`          | not reported                                             |
+   | tokens, cost          | `result`: `usage`, `total_cost_usd`                          | `turn.completed`: `usage`                                |
+   | task ended, or failed | `result` (`is_error`, `subtype`); exit code                  | `turn.completed` or `turn.failed`, `error`; exit code    |
+   | ignored               | other `system` subtypes, `tool_result` bodies, thinking      | `reasoning`, `todo_list`, `item.updated`, unknown kinds  |
 
    An own-tool line whose call the CLI's settings refused says `refused by its settings`,
    because a line that says the CLI ran a command it was not allowed to run would be wrong. An
@@ -507,7 +546,10 @@ Each CLI was checked as stated; none was run against a real account, and no toke
    their outcome, while the CLI's stream is the CLI's account of it; a CLI that reports a step
    the gate never saw shows nothing. An init whose `vimma` server is not `connected` ends the
    run with `claude-code could not start vimma-ctl`, because the task would otherwise run with
-   no browser tools and the model might use other means. Every value is rendered as text (B9),
+   no browser tools and the model might use other means. Codex reports no server status, so
+   its `required` server ends the run when it does not start, and an `mcp_tool_call` of a
+   server other than `vimma_chat` ends it with `codex called an MCP server that is not Vimma's:
+<name>`, because the arguments turned every other server off. Every value is rendered as text (B9),
    and stderr is drained and only its last 4 KB kept, for Behaviour 13. An unknown line or event
    is ignored and counted, so that a CLI update that adds events does not break the window; a
    CLI version whose `init` or `result` no longer parses ends the run with
@@ -538,8 +580,9 @@ Each CLI was checked as stated; none was run against a real account, and no toke
     Claude Code first, because each part of this design was checked against it (Research): a
     live input for added instructions, an MCP configuration from a file with every other server
     left out, a list of its own tools in its init, a reported cost, and no session files.
-    Codex second, because its JSON events and `--ephemeral` are documented, but its run was
-    not observed and its events report no list of its own tools. Gemini CLI and opencode each get their
+    Codex second, because its JSON events and `--ephemeral` are documented, but it has no live
+    input, no flag that leaves its configured MCP servers out, and its events report no list
+    of its own tools; Delivery 3 recorded its runs (Research). Gemini CLI and opencode each get their
     own PR after a run against a scripted server records their events, because neither offers a
     way to keep its session files out of storage that was found, and opencode's event shape is
     unknown; until then they are not offered in setup. Adding a CLI is one entry in `CLIS`
@@ -701,15 +744,32 @@ Claude Code's stream-json, scripted by the task's text; it also covers
 `test_a_link_beside_the_binary_is_judged_where_it_leads`;
 `test_agent_clis_are_on_with_a_pref_to_turn_them_off`.
 
+`browser_vimma_agent_cli_codex.js` (Delivery 3: Codex), with `fake_vimma_agent_codex.py`, which
+answers `codex --version` and `codex mcp list --json`, reads each `-c` value as TOML, starts the
+server the `vimma_chat` table names with only the variables its `env_vars` names, and prints
+`codex exec --json`: `test_setup_finds_codex_with_its_version`;
+`test_task_on_stdin_which_closes_and_fixed_arguments`;
+`test_every_other_server_of_codexs_configuration_is_off`;
+`test_a_server_named_as_vimmas_refuses_the_run`;
+`test_ticket_by_name_in_codexs_environment_never_an_argument`;
+`test_header_and_start_line_name_codexs_configuration`;
+`test_codexs_own_commands_and_files_are_its_own_lines`;
+`test_a_call_to_a_server_not_vimmas_ends_the_run`; `test_a_rejected_key_is_the_runs_error`;
+`test_a_message_during_the_task_is_held_for_the_next_run`;
+`test_a_held_message_is_not_sent_after_a_stop`.
+
 ### e2e (`tools/e2e`, under Xvfb)
 
-- `agent-cli`: the fake CLI through the real `vimma-ctl mcp` on the fixture shop, a three-item
+- `m0-agent-cli`: the fake CLI through the real `vimma-ctl mcp` on the fixture shop, a three-item
   task sent with `Enter`, ending at the payment checkpoint in the prompt slot answered `n`.
   Screenshots with the Omarchy theme: setup's CLI list, the header with the fake CLI's own
   tools listed, an own-tool line, a stopped task. It lands with Delivery 3, because a scenario
   can name neither a program by its path in the checkout nor a `PATH` for setup's search, and
   the harness's profile, with its `HOME` under the shared `/tmp` and no `$XDG_RUNTIME_DIR`, has
-  no run folder C6 accepts; the harness gains both with it. Claude Code is turned on before it (Delivery 2) because the
+  no run folder C6 accepts; the harness gains both with it (a scenario's `programs`, a private
+  `XDG_RUNTIME_DIR`, `checkout:` pref values, and a `type` step). The task's three items are
+  the CLI's own `Bash` call, `vimma_open` of the shop, and `vimma_activate` of its pay button
+  after `vimma_elements`. Claude Code is turned on before it (Delivery 2) because the
   mochitests already run the whole flow with the fake CLI and the real `vimma-ctl mcp`, from
   setup in the window to a stopped task, and Delivery 2's screens were checked in a real build
   with the Omarchy theme; the scenario adds a regression screenshot, not coverage.
@@ -767,6 +827,7 @@ since a CLI runs a program of the user's.
    its effective sandbox for the header; the guide and limits.md add Codex, the `agent-cli`
    e2e scenario lands with what the harness needs for it (Tests), and the status becomes
    `implemented`.
+   Built in the pull request that closes #609.
 4. Gemini CLI and opencode: one issue each, opened with PR 3, for the checks of C12.
 
 ## Open questions

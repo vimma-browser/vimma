@@ -2251,107 +2251,8 @@
       "name": "Side panel",
       "actions": [
         {
-          "name": "panel_select_1",
-          "description": "Select row 1",
-          "keys": [
-            {
-              "keys": "1",
-              "chords": ["1"],
-              "mode": "panel"
-            }
-          ]
-        },
-        {
-          "name": "panel_select_2",
-          "description": "Select row 2",
-          "keys": [
-            {
-              "keys": "2",
-              "chords": ["2"],
-              "mode": "panel"
-            }
-          ]
-        },
-        {
-          "name": "panel_select_3",
-          "description": "Select row 3",
-          "keys": [
-            {
-              "keys": "3",
-              "chords": ["3"],
-              "mode": "panel"
-            }
-          ]
-        },
-        {
-          "name": "panel_select_4",
-          "description": "Select row 4",
-          "keys": [
-            {
-              "keys": "4",
-              "chords": ["4"],
-              "mode": "panel"
-            }
-          ]
-        },
-        {
-          "name": "panel_select_5",
-          "description": "Select row 5",
-          "keys": [
-            {
-              "keys": "5",
-              "chords": ["5"],
-              "mode": "panel"
-            }
-          ]
-        },
-        {
-          "name": "panel_select_6",
-          "description": "Select row 6",
-          "keys": [
-            {
-              "keys": "6",
-              "chords": ["6"],
-              "mode": "panel"
-            }
-          ]
-        },
-        {
-          "name": "panel_select_7",
-          "description": "Select row 7",
-          "keys": [
-            {
-              "keys": "7",
-              "chords": ["7"],
-              "mode": "panel"
-            }
-          ]
-        },
-        {
-          "name": "panel_select_8",
-          "description": "Select row 8",
-          "keys": [
-            {
-              "keys": "8",
-              "chords": ["8"],
-              "mode": "panel"
-            }
-          ]
-        },
-        {
-          "name": "panel_select_9",
-          "description": "Select row 9",
-          "keys": [
-            {
-              "keys": "9",
-              "chords": ["9"],
-              "mode": "panel"
-            }
-          ]
-        },
-        {
           "name": "panel_down",
-          "description": "Next row",
+          "description": "Next row (4j: four rows)",
           "keys": [
             {
               "keys": "j",
@@ -2362,7 +2263,7 @@
         },
         {
           "name": "panel_up",
-          "description": "Previous row",
+          "description": "Previous row (3k: three rows)",
           "keys": [
             {
               "keys": "k",
@@ -2372,8 +2273,52 @@
           ]
         },
         {
+          "name": "panel_first",
+          "description": "First row",
+          "keys": [
+            {
+              "keys": "gg",
+              "chords": ["gg"],
+              "mode": "panel"
+            }
+          ]
+        },
+        {
+          "name": "panel_last",
+          "description": "Last row; with a count, that row (12G)",
+          "keys": [
+            {
+              "keys": "G",
+              "chords": ["G"],
+              "mode": "panel"
+            }
+          ]
+        },
+        {
+          "name": "panel_half_down",
+          "description": "Down half the rows shown",
+          "keys": [
+            {
+              "keys": "ctrl+d",
+              "chords": ["ctrl+d"],
+              "mode": "panel"
+            }
+          ]
+        },
+        {
+          "name": "panel_half_up",
+          "description": "Up half the rows shown",
+          "keys": [
+            {
+              "keys": "ctrl+u",
+              "chords": ["ctrl+u"],
+              "mode": "panel"
+            }
+          ]
+        },
+        {
           "name": "panel_open",
-          "description": "Apply the marks (the marked tabs become the panes), then go to the selected row",
+          "description": "Apply the marks (the marked tabs become the panes), then go to the selected row (4 Enter: row 4)",
           "keys": [
             {
               "keys": "enter",
@@ -2436,6 +2381,51 @@
               "mode": "panel"
             }
           ]
+        },
+        {
+          "name": "panel_select_1",
+          "description": "Select row 1",
+          "keys": []
+        },
+        {
+          "name": "panel_select_2",
+          "description": "Select row 2",
+          "keys": []
+        },
+        {
+          "name": "panel_select_3",
+          "description": "Select row 3",
+          "keys": []
+        },
+        {
+          "name": "panel_select_4",
+          "description": "Select row 4",
+          "keys": []
+        },
+        {
+          "name": "panel_select_5",
+          "description": "Select row 5",
+          "keys": []
+        },
+        {
+          "name": "panel_select_6",
+          "description": "Select row 6",
+          "keys": []
+        },
+        {
+          "name": "panel_select_7",
+          "description": "Select row 7",
+          "keys": []
+        },
+        {
+          "name": "panel_select_8",
+          "description": "Select row 8",
+          "keys": []
+        },
+        {
+          "name": "panel_select_9",
+          "description": "Select row 9",
+          "keys": []
         }
       ]
     },

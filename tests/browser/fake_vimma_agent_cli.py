@@ -8,7 +8,8 @@
 # (the real vimma-ctl mcp, with the ticket in its environment) and speaks Claude Code's
 # stream-json. No model runs. The task's text scripts it, in [[...]] directives:
 #   [[tabs]] [[open URL]] [[show]]            a vimma tool call through vimma-ctl mcp (show: the
-#                                             tab the last result named)
+#   [[elements]] [[activate LABEL]]           tab the last result named; elements, activate: the
+#                                             tab the last open named)
 #   [[own NAME TEXT]]                         a tool_use of its own (NAME "Bash": TEXT a command)
 #   [[sleep S]]  [[ignore-term]]  [[loop]]    wait; ignore SIGTERM; call vimma_tabs until killed
 #   [[fail CODE TEXT]]                        TEXT on stderr, exit CODE before any result
@@ -121,6 +122,7 @@ out({
 
 
 last_tab = [None]
+opened_tab = [None]
 
 
 def call(name, arguments):
@@ -133,6 +135,9 @@ def call(name, arguments):
     tab = re.search(r"\btab (\d+)\b", text)
     if tab:
         last_tab[0] = tab.group(1)
+    structured = result.get("structuredContent")
+    if isinstance(structured, dict) and structured.get("tab") is not None:
+        last_tab[0] = structured["tab"]
     report["calls"].append({"name": name, "isError": bool(result.get("isError")),
                             "text": text[:500], "at": time.time()})
     save()
@@ -146,6 +151,11 @@ for d in directives:
         call("vimma_tabs", {})
     elif word == "open":
         call("vimma_open", {"url": rest})
+        opened_tab[0] = last_tab[0]
+    elif word == "elements":
+        call("vimma_elements", {"tab": opened_tab[0] or "0"})
+    elif word == "activate":
+        call("vimma_activate", {"tab": opened_tab[0] or "0", "label": rest})
     elif word == "show":
         call("vimma_show", {"tab": last_tab[0] or "0"})
     elif word == "own":

@@ -393,6 +393,7 @@ describe("mergeWithDefaults", () => {
       },
       insertEditing: true,
       bookmarks: { root: "workspace" },
+      panel: { numbers: "absolute" },
       private: { placement: "swap" },
       mcp: {
         workspace: "agent",

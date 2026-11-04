@@ -94,6 +94,34 @@ async function openAgentTab(url = LINKS) {
   return tab;
 }
 
+/**
+ * Why the last collection of this tab's page was what it was, and whether the tab was ready to
+ * answer, for a failure message: this test fails only on the macOS runner and an empty list has
+ * four look-alike causes (#605).
+ * @param {any} tab
+ */
+function collectState(tab) {
+  const browser = tab.linkedBrowser;
+  const bc = browser.browsingContext;
+  const wg = bc?.currentWindowGlobal;
+  let actor = false;
+  try {
+    actor = !!wg?.getActor("Vimma");
+  } catch {
+    // No actor is itself the answer: it is reported as false.
+  }
+  return JSON.stringify({
+    reason: VimmaActors.lastCollectReason(browser),
+    actor,
+    readyState: browser.contentDocument?.readyState ?? null,
+    bcActive: bc?.isActive ?? null,
+    bcLoading: bc?.isLoading ?? null,
+    windowGlobal: !!wg,
+    hidden: tab.hidden,
+    size: `${browser.clientWidth}x${browser.clientHeight}`,
+  });
+}
+
 /** An agent connection, after its agent-hello. */
 async function agentClient(name = "example-agent") {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
@@ -340,7 +368,8 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
     r.result.url,
     SUB,
     `a follow to a subdomain runs under the grant (steps: ${JSON.stringify(r.result.steps)}; ` +
-      `f listed: ${JSON.stringify(lines(listed.result?.links ?? ""))}${sizes})`,
+      `f listed: ${JSON.stringify(lines(listed.result?.links ?? ""))}${sizes}; ` +
+      `collection: ${collectState(tab)})`,
   );
   await until(
     () => noticeText().startsWith('claude-code followed a link to test1.example.com in "'),

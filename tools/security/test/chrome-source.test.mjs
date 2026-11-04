@@ -120,16 +120,29 @@ describe("chrome code", () => {
 
   // C2's third exception (docs/specs/builtin-agent-cli.md C2, C4): an agent CLI the user picked
   // in setup, from its confirmed path only, with arguments from the fixed builders, the task on
-  // stdin, and no shell. Two calls: the run and `--version`; the PATH search only in `find`.
+  // stdin, and no shell. Two calls: the run, and `runFixed`'s short runs (`--version`, and the
+  // MCP server list of a CLI whose servers are turned off by name); the PATH search only in
+  // `find`.
   test("starts an agent CLI only from its checked path, with fixed arguments and no shell", () => {
     const text = readFileSync(join(ROOT, CLI), "utf8");
     expect(text.match(/Subprocess\.call\(/g)).toHaveLength(2);
     expect(text).toMatch(
-      /lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(\{ mcpConfig: file, model: o\.provider\.model \}\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
+      /const run = \{ mcpConfig: file, vimmaCtl: ctl\.path, dir, model: o\.provider\.model, others \};\s*proc = await lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(run\),\s*(\/\/[^\n]*\n\s*)*environment: \{\s*\.\.\.cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*\.\.\.cli\.env\(\{ ticket: issued\.ticket, port: issued\.port \}\),\s*\},\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
     );
     expect(text).toMatch(
-      /lazy\.Subprocess\.call\(\{\s*command: r\.path,\s*arguments: \[\.\.\.cli\.versionArgs\],\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: await runBase\(\),\s*stderr: "pipe",\s*\}\)/,
+      /lazy\.Subprocess\.call\(\{\s*command: path,\s*arguments: \[\.\.\.args\],\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir,\s*stderr: "pipe",\s*\}\)/,
     );
+    // runFixed's two callers: the version of a path inspect passed, and the server list of the
+    // run's checked path, each with its CLIS entry's frozen arguments, before any ticket.
+    expect(text.match(/runFixed\(/g)).toHaveLength(3);
+    expect(text).toContain(
+      "async function runFixed(path, args, { workdir, keep, ms = VERSION_MS }) {",
+    );
+    expect(text).toContain(
+      "const ran = await runFixed(r.path, cli.versionArgs, { workdir: await runBase(), keep: 400 });",
+    );
+    expect(text).toContain("const listed = await runFixed(checked.path, cli.servers.args, {");
+    expect(text.indexOf("cli.servers.args")).toBeLessThan(text.indexOf("issueTicket("));
     // `version` runs only a path `inspect` passed, checked inside it whoever calls it, and only
     // while agent CLIs are on; the run only `checked`, inspect's result.
     expect(text).toMatch(
@@ -160,8 +173,14 @@ describe("chrome code", () => {
     );
     const core = readFileSync(join(ROOT, "packages/vimma-core/src/agent-cli.mjs"), "utf8");
     expect(core).toContain('versionArgs: Object.freeze(["--version"]),');
+    expect(core).toContain("args: (/** @type {RunArgs} */ o) => claudeArguments(o),");
+    expect(core).toContain("args: (/** @type {RunArgs} */ o) => codexArguments(o),");
+    expect(core).toContain('args: Object.freeze(["mcp", "list", "--json"]),');
+    // Codex's task is on stdin (`-`), its ticket forwarded by name to vimma-ctl and set empty
+    // for its own commands (C3).
+    expect(core).toMatch(/\.\.\.\(model \? \["-m", model\] : \[\]\),\s*"-",\s*\];/);
     expect(core).toContain(
-      "args: (/** @type {{ mcpConfig: string, model: string }} */ o) => claudeArguments(o),",
+      '...TICKET_VARIABLES.flatMap((name) => ["-c", `shell_environment_policy.set.${name}=""`]),',
     );
     expect(core).toContain("input: (/** @type {string} */ text) => userLine(text),");
     expect(core).toMatch(

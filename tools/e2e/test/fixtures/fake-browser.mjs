@@ -27,7 +27,7 @@ writeFileSync(
     tmp: process.env.TMPDIR,
     env: Object.fromEntries(
       Object.entries(process.env).filter(([k]) =>
-        /^(DISPLAY|XUL_APP_FILE|GDK_|QT_|MOZ_|WAYLAND_DISPLAY)/.test(k),
+        /^(DISPLAY|XUL_APP_FILE|GDK_|QT_|MOZ_|WAYLAND_DISPLAY|PATH$|XDG_RUNTIME_DIR)/.test(k),
       ),
     ),
   }),

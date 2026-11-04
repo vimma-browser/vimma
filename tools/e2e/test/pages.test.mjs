@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fixtureUrl, startPageServer } from "../pages.mjs";
+import { fixtureText, fixtureUrl, startPageServer } from "../pages.mjs";
 
 /** @type {Array<() => unknown>} */
 const cleanups = [];
@@ -37,6 +37,16 @@ describe("fixtureUrl", () => {
 
   it("needs a running server for a fixture", () => {
     expect(() => fixtureUrl("fixture:input.html", null)).toThrow(/server/);
+  });
+});
+
+describe("fixtureText", () => {
+  it("maps every fixture:<name> in a text onto the server, up to a space or ]", () => {
+    expect(
+      fixtureText("[[open fixture:shop.html]] [[open fixture:a.html#x]] b", "http://h:9/"),
+    ).toBe("[[open http://h:9/shop.html]] [[open http://h:9/a.html#x]] b");
+    expect(fixtureText("no fixtures here", null)).toBe("no fixtures here");
+    expect(() => fixtureText("[[open fixture:../x]]", "http://h/")).toThrow(/fixture name/);
   });
 });
 

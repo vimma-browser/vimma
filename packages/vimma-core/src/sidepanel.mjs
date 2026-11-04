@@ -292,9 +292,67 @@ function openMarked(state) {
 }
 
 /**
- * One panel action (defaults.mjs `[modal.panel]`).
+ * `[panel] numbers` (docs/specs/side-panel-counts.md decision 6): the tab's number, the
+ * distance from the highlight (Vim's `relativenumber`), or both (`number` and
+ * `relativenumber`: the highlighted row shows its own number).
+ * @typedef {"absolute" | "relative" | "hybrid"} PanelNumbers
+ */
+/** `[panel] numbers` values. */
+export const PANEL_NUMBERS = Object.freeze(
+  /** @type {PanelNumbers[]} */ (["absolute", "relative", "hybrid"]),
+);
+
+/**
+ * The number row `i` shows with the highlight on row `selected`.
+ * @param {PanelNumbers} numbers
+ * @param {number} i
+ * @param {number} selected
+ */
+export function rowNumber(numbers, i, selected) {
+  if (numbers === "absolute" || (numbers === "hybrid" && i === selected)) return i + 1;
+  return Math.abs(i - selected);
+}
+
+/**
+ * The row a move lands on (docs/specs/side-panel-counts.md): `j` / `k` with a count, `gg`, `G`,
+ * `{N}G` and ctrl+d / ctrl+u, clamped to the rows, or null for an action that is not a move.
+ * `page` is how many rows the panel shows, for ctrl+d / ctrl+u; a count there is the rows to
+ * move, as Vim's count sets the `scroll` option. `nthLast`: `{N}G` goes to row N (the tabs
+ * panel); the bookmarks panel has no stable numbers, so its `G` ignores a count.
+ * @param {{ id: string, count?: number, page?: number }} action
+ * @param {number} selected
+ * @param {number} length
+ * @param {{ nthLast?: boolean }} [options]
+ * @returns {number | null}
+ */
+export function panelMove(action, selected, length, { nthLast = true } = {}) {
+  const last = Math.max(0, length - 1);
+  const clamp = (/** @type {number} */ i) => Math.max(0, Math.min(last, i));
+  const half = action.count ?? Math.max(1, Math.floor((action.page ?? 2) / 2));
+  switch (action.id) {
+    case "panel.down":
+      return clamp(selected + (action.count ?? 1));
+    case "panel.up":
+      return clamp(selected - (action.count ?? 1));
+    case "panel.first":
+      return 0;
+    case "panel.last":
+      return nthLast && action.count ? clamp(action.count - 1) : last;
+    case "panel.half_down":
+      return clamp(selected + half);
+    case "panel.half_up":
+      return clamp(selected - half);
+    default:
+      return null;
+  }
+}
+
+/**
+ * One panel action (defaults.mjs `[modal.panel]`). A count moves (`4j`, `12G`) or picks the row
+ * for Enter (`4 Enter`); the other keys act on the highlighted row once whatever the count, so
+ * `3x` cannot close three tabs by accident (docs/specs/side-panel-counts.md decision 4).
  * @param {PanelState} state
- * @param {{ id: string, arg?: number }} action
+ * @param {{ id: string, arg?: number, count?: number, page?: number }} action
  * @returns {{ state: PanelState, effect: PanelEffect | null }}
  */
 export function panelKey(state, action) {
@@ -302,17 +360,16 @@ export function panelKey(state, action) {
   /** @param {number} selected */
   const move = (selected) =>
     Object.freeze({ state: Object.freeze({ ...state, selected }), effect: null });
+  const to = panelMove(action, state.selected, state.rows.length);
+  if (to !== null) return move(to);
   /** @param {PanelRow | undefined} row */
   const select = (row) => ({
     state,
     effect: row ? /** @type {PanelEffect} */ ({ type: "select", id: row.tabId }) : null,
   });
   switch (action.id) {
-    case "panel.down":
-      return move(Math.max(0, Math.min(last, state.selected + 1)));
-    case "panel.up":
-      return move(Math.max(0, state.selected - 1));
     case "panel.open": {
+      if (action.count) return panelKey(state, { id: "panel.select", arg: action.count });
       const ready = state.anchor === null ? state : markRange(state);
       if (changed(ready)) return openMarked(ready);
       return { ...select(state.rows[state.selected]), state: ready };

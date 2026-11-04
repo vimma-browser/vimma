@@ -9,9 +9,12 @@
 // (an internal service's own signal that it is ready, which state does not show), and `sleep` waits for a time-based rule (the 1.5 s quiet, the 1 s arming). For
 // `vimma-ctl mcp` (sub-PR 3): `mcp` sends one JSON-RPC message to it over stdio (a request when
 // it names its answer with `as`, else a notification) and `mcp-result` checks the response.
+// For the built-in agent's CLI mode (docs/specs/builtin-agent-cli.md, "e2e"): `programs` names
+// files in the checkout the browser finds on its PATH under a given name, a pref value
+// `checkout:<path>` is that path in the checkout, and `type` types a text into the focused input.
 // Names carry the milestone (m<N>-…) or, for regression tests, the issue (issue-<N>-…).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 /**
@@ -22,6 +25,7 @@ import { setTimeout as sleep } from "node:timers/promises";
  *   "agent-result"?: { of: string, expect: unknown }, ctl?: { run: string[], as: string },
  *   "ctl-result"?: { of: string, expect: unknown }, mcp?: McpSend,
  *   "mcp-result"?: { of: string, expect: unknown }, "wait-for-profile-file"?: string,
+ *   type?: string,
  * }} Step
  * @typedef {{ method: string, params?: Record<string, unknown>, as?: string }} McpSend
  * @typedef {{ send: string, args?: Record<string, unknown>, as: string, client?: string }}
@@ -40,7 +44,7 @@ import { setTimeout as sleep } from "node:timers/promises";
  * @typedef {{
  *   name: string, description: string, issue?: number, pending?: string,
  *   timeoutSeconds?: number, prefs?: Record<string, boolean | number | string | null>,
- *   steps: Step[],
+ *   programs?: Record<string, string>, steps: Step[],
  * }} Scenario
  * @typedef {{
  *   ctl: { state: () => Promise<any>, sendKeys: (keys: string) => Promise<void>,
@@ -51,6 +55,7 @@ import { setTimeout as sleep } from "node:timers/promises";
  *   profile?: string,
  *   pollMs?: number,
  *   signal?: AbortSignal,
+ *   text?: (text: string) => string,
  * }} StepContext
  */
 
@@ -70,6 +75,7 @@ export const STEP_KINDS = Object.freeze([
   "mcp",
   "mcp-result",
   "wait-for-profile-file",
+  "type",
 ]);
 /** Steps that wait for something and so take `timeoutSeconds`. */
 const WAITS = ["wait-for-state", "wait-for-profile-file"];
@@ -89,9 +95,21 @@ const FIELDS = new Set([
   "pending",
   "timeoutSeconds",
   "prefs",
+  "programs",
   "steps",
 ]);
 const PREF_NAME = /^[\w.-]+$/;
+/** A program's name on PATH: one file name, not `.` or `..`. */
+const PROGRAM_NAME = /^(?!\.\.?$)[\w.-]+$/;
+/** A pref value naming a path in the checkout. */
+const CHECKOUT = "checkout:";
+/** The pref naming the vimma-ctl the agent CLI runs (AgentCli.sys.mjs, VIMMA_CTL_PREF). */
+const VIMMA_CTL_PREF = "vimma.agent.cli.vimmaCtl";
+/** control.mjs's MAX_CHORDS: the most chords one send-keys takes. */
+const MAX_CHORDS = 256;
+/** Control characters cannot be typed as one chord each. @param {string} text */
+const hasControlChar = (text) =>
+  [...text].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f);
 /**
  * How `restart` restarts: `quit` is ctrl+q, then a launch on the same profile; `kill` waits for
  * SessionStore's recovery file to settle, SIGKILLs the browser process (a crash: no quit
@@ -106,6 +124,15 @@ export const DEFAULT_WAIT_SECONDS = 10;
 
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+/**
+ * A relative path inside the checkout: no absolute path, no `..` part.
+ * @param {unknown} v
+ */
+const checkoutPath = (v) =>
+  typeof v === "string" &&
+  v !== "" &&
+  !v.startsWith("/") &&
+  !v.split("/").some((part) => part === ".." || part === "");
 /** @param {unknown} v */
 const positive = (v) => typeof v === "number" && Number.isFinite(v) && v > 0;
 
@@ -154,6 +181,25 @@ export function validateScenario(s, fileName) {
           errors.push(
             `prefs: "${name}" must be a pref name with a boolean, number, string or null`,
           );
+        } else if (
+          typeof value === "string" &&
+          value.startsWith(CHECKOUT) &&
+          !checkoutPath(value.slice(CHECKOUT.length))
+        ) {
+          errors.push(`prefs: "${name}": checkout: needs a relative path in the checkout`);
+        }
+      }
+    }
+  }
+  if ("programs" in s) {
+    if (!isObject(s.programs)) {
+      errors.push("programs must be an object of program name to a file in the checkout");
+    } else {
+      for (const [name, path] of Object.entries(s.programs)) {
+        if (!PROGRAM_NAME.test(name) || !checkoutPath(path)) {
+          errors.push(
+            `programs: "${name}" must be a file name with a relative path in the checkout`,
+          );
         }
       }
     }
@@ -184,6 +230,9 @@ export function validateScenario(s, fileName) {
     }
     if (kind === "keys" && (typeof value !== "string" || value.trim() === "")) {
       errors.push(`${at}: keys needs Herdr chords, e.g. "ctrl+b ?"`);
+    }
+    if (kind === "type" && (typeof value !== "string" || value === "" || hasControlChar(value))) {
+      errors.push(`${at}: type needs a non-empty text without control characters`);
     }
     if ((kind === "wait-for-state" || kind === "assert-state") && !isObject(value)) {
       errors.push(`${at}: ${kind} needs an object to match against state`);
@@ -342,6 +391,41 @@ export function matchState(expected, actual, path = "state") {
     : [`${path}: expected ${show(expected)}, got ${show(actual)}`];
 }
 
+/**
+ * What the harness launches a scenario with: its programs and `checkout:` prefs as absolute
+ * paths in the checkout `root`, and the vimma-ctl the agent CLI runs (the scenario's own pref
+ * wins). The build has no vimma-ctl beside its binary in a checkout, so without the pref the
+ * agent CLI could not start one.
+ * @param {Scenario} scenario
+ * @param {{ root: string, vimmaCtl: string | null }} o
+ * @returns {{ programs: Record<string, string>,
+ *   prefs: Record<string, boolean | number | string | null> }}
+ */
+export function scenarioLaunch(scenario, { root, vimmaCtl }) {
+  /** @type {Record<string, boolean | number | string | null>} */
+  const prefs = vimmaCtl ? { [VIMMA_CTL_PREF]: vimmaCtl } : {};
+  for (const [name, value] of Object.entries(scenario.prefs ?? {})) {
+    prefs[name] =
+      typeof value === "string" && value.startsWith(CHECKOUT)
+        ? resolve(root, value.slice(CHECKOUT.length))
+        : value;
+  }
+  const programs = Object.fromEntries(
+    Object.entries(scenario.programs ?? {}).map(([name, path]) => [name, resolve(root, path)]),
+  );
+  return { programs, prefs };
+}
+
+/**
+ * A text as send-keys chords, one per character: a space is `space`, any other character is
+ * its own chord (an upper-case letter is shift and the letter).
+ * @param {string} text
+ * @returns {string[]}
+ */
+function textChords(text) {
+  return [...text].map((c) => (c === " " ? "space" : c));
+}
+
 /** @param {AbortSignal | undefined} signal */
 function checkAborted(signal) {
   if (signal?.aborted) throw new Error("aborted (scenario timeout)");
@@ -354,7 +438,7 @@ function checkAborted(signal) {
  */
 export async function runSteps(
   scenario,
-  { ctl: own, screenshot, restart, control, profile, pollMs = 100, signal },
+  { ctl: own, screenshot, restart, control, profile, pollMs = 100, signal, text = (t) => t },
 ) {
   /** Agent answers so far, for `$name.path` in later args. @type {Record<string, unknown>} */
   const answers = {};
@@ -402,7 +486,12 @@ export async function runSteps(
         if (mismatches.length) throw new Error(mismatches.join("; "));
       } else if (step.open !== undefined) await ctl.open(step.open);
       else if (step.keys !== undefined) await ctl.sendKeys(step.keys);
-      else if (step.screenshot !== undefined) await screenshot(step.screenshot);
+      else if (step.type !== undefined) {
+        const chords = textChords(text(step.type));
+        for (let at = 0; at < chords.length; at += MAX_CHORDS) {
+          await ctl.sendKeys(chords.slice(at, at + MAX_CHORDS).join(" "));
+        }
+      } else if (step.screenshot !== undefined) await screenshot(step.screenshot);
       else if (step.restart !== undefined) {
         if (!restart) throw new Error("this session cannot restart");
         await restart(step.restart);

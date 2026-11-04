@@ -330,13 +330,16 @@ group("Copy mode", [
 ]);
 
 group("Side panel", [
-  ...numbered("panel_select", "panel.select", (n) => `Select row ${n}`),
-  ["panel_down", "panel.down", "Next row"],
-  ["panel_up", "panel.up", "Previous row"],
+  ["panel_down", "panel.down", "Next row (4j: four rows)"],
+  ["panel_up", "panel.up", "Previous row (3k: three rows)"],
+  ["panel_first", "panel.first", "First row"],
+  ["panel_last", "panel.last", "Last row; with a count, that row (12G)"],
+  ["panel_half_down", "panel.half_down", "Down half the rows shown"],
+  ["panel_half_up", "panel.half_up", "Up half the rows shown"],
   [
     "panel_open",
     "panel.open",
-    "Apply the marks (the marked tabs become the panes), then go to the selected row",
+    "Apply the marks (the marked tabs become the panes), then go to the selected row (4 Enter: row 4)",
   ],
   [
     "panel_close",
@@ -351,6 +354,9 @@ group("Side panel", [
     "panel.move",
     "Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder",
   ],
+  // Unbound since counts came to the panel (docs/specs/side-panel-counts.md): last, so the
+  // help overlay lists the keys that work first. `4 Enter` does what `panel_select_4` did.
+  ...numbered("panel_select", "panel.select", (n) => `Select row ${n}`),
 ]);
 
 group("Bookmarks", [

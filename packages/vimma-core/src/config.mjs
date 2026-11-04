@@ -22,6 +22,7 @@ import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral 
 import { canonicalChord, isShortcutChord } from "./firefox-keys.mjs";
 import { KeyNotationError, formatKey, parseKey } from "./keys.mjs";
 import { BOOKMARKS_ROOTS } from "./bookmarks.mjs";
+import { PANEL_NUMBERS } from "./sidepanel.mjs";
 import { quarantineProblem, resolveDownloadDir } from "./agent-downloads.mjs";
 import { resolveSearch, validateSearch } from "./search.mjs";
 import { checkEndpoint } from "./agent-providers.mjs";
@@ -41,6 +42,7 @@ import { hasControl } from "./strings.mjs";
 /** @import { InsertSiteMode, InsertSiteRule } from "./editable.mjs" */
 /** @import { Route } from "./routes.mjs" */
 /** @import { BookmarksRoot } from "./bookmarks.mjs" */
+/** @import { PanelNumbers } from "./sidepanel.mjs" */
 /** @import { ResolvedSearch } from "./search.mjs" */
 
 /**
@@ -77,6 +79,7 @@ import { hasControl } from "./strings.mjs";
  * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical (schema 2)
  * @property {boolean} insertEditing                     `[modal] insert_editing` (schema 2)
  * @property {{ root: BookmarksRoot }} bookmarks          `[bookmarks]` (schema 2)
+ * @property {{ numbers: PanelNumbers }} panel            `[panel]` (schema 2), side-panel-counts
  * @property {{ placement: PrivatePlacement }} private    `[private]` (schema 2), private-swap
  * @property {McpConfig} mcp                             `[mcp]` (schema 2), docs/specs/vimma-mcp.md
  * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null }} ui
@@ -210,6 +213,7 @@ const TOP_KEYS = [
   "search",
   "updates",
   "agent",
+  "panel",
 ];
 const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
@@ -243,9 +247,12 @@ const SCHEMA_2_KEYS = [
   "search",
   "updates",
   "agent",
+  "panel",
 ];
 /** `[bookmarks]` (docs/specs/bookmarks.md, decision 2). */
 const BOOKMARKS_KEYS = ["root"];
+/** `[panel]` (docs/specs/side-panel-counts.md, decision 6). */
+const PANEL_KEYS = ["numbers"];
 /** `[private] placement` (docs/specs/private-swap.md, decision 1). */
 export const PRIVATE_PLACEMENTS = Object.freeze(
   /** @type {PrivatePlacement[]} */ (["swap", "window"]),
@@ -598,6 +605,17 @@ function validate(raw, declared) {
       else if (typeof v !== "string") typeError(path, v, "a string");
       else if (!BOOKMARKS_ROOTS.includes(/** @type {BookmarksRoot} */ (v))) {
         fail(path, 'must be "workspace", "toolbar" or "all"', closest(v, BOOKMARKS_ROOTS));
+      }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.panel)) {
+    for (const [key, v] of Object.entries(raw.panel)) {
+      const path = ["panel", key];
+      if (key !== "numbers") unknownKey(path, key, PANEL_KEYS);
+      else if (typeof v !== "string") typeError(path, v, "a string");
+      else if (!PANEL_NUMBERS.includes(/** @type {PanelNumbers} */ (v))) {
+        fail(path, 'must be "absolute", "relative" or "hybrid"', closest(v, PANEL_NUMBERS));
       }
     }
   }
@@ -1110,6 +1128,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     firefox: resolveFirefox(user.firefox),
     insertEditing: /** @type {boolean | undefined} */ (user.modal?.insert_editing) ?? true,
     bookmarks: { root: user.bookmarks?.root ?? "workspace" },
+    panel: { numbers: user.panel?.numbers ?? "absolute" },
     private: { placement: user.private?.placement ?? "swap" },
     mcp: resolveMcp(user.mcp),
     ui: {

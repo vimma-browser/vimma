@@ -25,7 +25,8 @@ What works today, each with the section that explains it:
 - **[Workspaces](#workspaces):** each one a container with its own logins and cookies, kept
   with its tabs and split layout across restarts; `ctrl+^` goes back to the last one; a
   [private workspace](#private-workspace) (`ctrl+b shift+p`); a [side panel](#side-panel)
-  (`ctrl+b b`) that shows marked tabs together as panes.
+  (`ctrl+b b`) that reaches any tab with Vim's counts (`4j`, `12G`) and shows marked tabs
+  together as panes.
 - **[Every key is yours](#every-key-is-yours):** any binding, the prefix and the leader remap
   in [config.toml](#configtoml), which applies on save; Firefox's own shortcuts are Vimma
   bindings too ([Firefox's own shortcuts](#firefoxs-own-shortcuts)).
@@ -156,6 +157,31 @@ sha256sum -c --ignore-missing SHA256SUMS   # vimma-X.Y.Z-1.x86_64.rpm: OK
 There is no Vimma repository for dnf or zypper, so `dnf upgrade` and `zypper update` do not
 update it: install the newer `.rpm` the same way, or run the command `:update` shows. To remove
 it, `sudo dnf remove vimma` or `sudo zypper remove vimma`.
+
+#### Flatpak (Flathub)
+
+Vimma is not on Flathub yet: the Flatpak, `dev.vimma.browser`, is built and tested in CI, and
+listing it is issue [#465](https://github.com/vimma-browser/vimma/issues/465). Until it is listed
+on [flathub.org](https://flathub.org), use one of the files above. Once it is listed:
+
+```sh
+flatpak install flathub dev.vimma.browser   # install
+flatpak run dev.vimma.browser               # or start it from your application menu
+flatpak update dev.vimma.browser            # update
+flatpak uninstall dev.vimma.browser         # remove; add --delete-data to remove its profile too
+```
+
+The Flatpak is built from the release's tarball, so it is the same Vimma, but it runs in
+Flatpak's sandbox and keeps its own files apart from any other install of Vimma:
+
+| What                       | Where                                                   |
+| -------------------------- | ------------------------------------------------------- |
+| [config.toml](#configtoml) | `~/.var/app/dev.vimma.browser/config/vimma/config.toml` |
+| profiles                   | `~/.var/app/dev.vimma.browser/config/vimma/vimma/`      |
+| downloads                  | `~/Downloads`, as in the other installs                 |
+
+Vimma reads the Omarchy theme but never installs the Omarchy hook, and routing rules by app do not
+apply; [limits.md](limits.md#platforms-and-packaging) lists what differs.
 
 #### macOS
 
@@ -1486,7 +1512,7 @@ it. A private window has no agent. With no model set up, the window says how to 
   which shares its weights, since a ten-item task needs about 19,000. Once you pick an Ollama
   model, Vimma loads it (with no prompt, so no text reaches it) and says where it runs and with
   what context, such as `qwen3:14b-ctx32768 runs on the GPU, with 32,768 tokens of context`;
-- `add: agent CLI (Claude Code)`, and once one is set up, its models: Vimma runs the agent CLI
+- `add: agent CLI (Claude Code, Codex)`, and once one is set up, its models: Vimma runs the agent CLI
   you have, on its own login
   ([Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window)).
 
@@ -1854,7 +1880,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 
 1. Install the CLI and log in to it once in a terminal, as its own documentation says (for
    Claude Code, [its setup page](https://docs.anthropic.com/en/docs/claude-code/setup); then run
-   `claude` and `/login`). Vimma runs the same program with the same login.
+   `claude` and `/login`; for Codex, `codex login`). Vimma runs the same program with the same login.
 2. Press `ctrl+b i` (or type `:agent`): the chat window opens beside the page.
 3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
    `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
@@ -1870,7 +1896,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 6. While it works, the transcript shows the CLI's replies, each step it takes in the browser
    (from Vimma's own record), and a `◆` line for each use of its own tools; the status bar shows
    its steps and tokens. Writing in the input while it works adds an instruction to the running
-   task. `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
+   task (Codex takes it as the next task, once this one is done). `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
    `done · ≈ $0.41 (claude-code estimate)`.
 7. To change the model later, press `Esc`, then `m`: the picker lists the CLI's models
    (`claude · opus`, `claude · haiku`, …) and `claude · other model…`. `Enter` switches the open
@@ -1959,7 +1985,12 @@ provider is refused, because Vimma cannot see where a CLI sends what it reads.
   and each use is a line marked `◆` (`◆ claude-code ran its own tool: Bash "ls ~/Downloads"`),
   with `refused by its settings` when its settings said no. A page that steers the model can make
   it use them, so allow only what you would allow it in a terminal.
-- A message you send while it works is added to the running task. `s` (or `:agent stop`,
+- A message you send while it works is added to the running task, marked
+  `(added during the task)`. A CLI that cannot take one mid-task (Codex) gets it as the next task
+  once this one is done, marked `(sent after the running task)`; several such messages go as one
+  task. When the running task is stopped, fails or meets a limit instead, they are not sent, and
+  the transcript says so (`the message sent after the running task not sent: the task was
+stopped`): send it again if it still applies. `s` (or `:agent stop`,
   `ctrl+b shift+a`) stops it: its access to the browser ends first, then the CLI gets 3 s to exit
   before it is killed. A shell command it started may outlive the stop.
 
@@ -2048,6 +2079,8 @@ again` (with your version manager's program and your CLI's name): Vimma 0.1.13 s
   `it has control characters`, `it is longer than 200 characters`): type a model name as the CLI
   takes it; the prompt line keeps what you typed to correct.
 - `agent CLIs are turned off (vimma.agent.cli.enabled)`: the pref is `false`; set it to `true`.
+- `stopped: <cli> did not list its MCP servers: …`, or `stopped: codex's configuration has an
+MCP server named vimma_chat, Vimma's own`: see Codex under Supported CLIs.
 
 ##### Supported CLIs
 
@@ -2073,7 +2106,33 @@ again` (with your version manager's program and your CLI's name): Vimma 0.1.13 s
 - Not logged in: `stopped: claude-code exited (1): Invalid API key · Please run /login`; run
   `claude` in a terminal and `/login`.
 
-Codex follows.
+**Codex** (`cli = "codex"`, from version 0.163.0):
+
+- Program: `codex` on your `PATH`. Log in with `codex login`; a ChatGPT plan or an OpenAI API key
+  both work.
+- Models: setup leaves the model empty, for Codex's own default; the picker lists
+  `gpt-6-astra`, `gpt-6.1-sol` and `gpt-6-luna` (Codex 0.163.0's presets), and `other model…`
+  takes any model your Codex takes.
+- Its own tools follow `~/.codex/config.toml`: its sandbox (`sandbox_mode`, read-only by default
+  for `codex exec`), approvals and shell environment. Vimma passes none of those, so the header
+  says `its own tools: as its configuration allows`; Codex does not report which sandbox a run
+  has. Its commands get `VIMMA_AGENT_TICKET` and `VIMMA_AGENT_PORT` set empty, and the rest of
+  your `shell_environment_policy` stays as it is.
+- Vimma gives it one MCP server of its own, `vimma_chat`, and turns off by name each server of
+  your configuration (it runs `codex mcp list --json` first, from the same program, for their
+  names), and Codex's apps, plugins and installs of a skill's MCP server. So the `vimma` server you may have added for a terminal
+  (Using Vimma from an agent) stays in `config.toml` but is off in these runs. A server named
+  `vimma_chat` stops each task with `codex's configuration has an MCP server named vimma_chat,
+Vimma's own`; rename it. A call to any server other than Vimma's ends the task.
+- Each shell command and each file change is a `◆` line
+  (`◆ codex ran its own tool: shell "/usr/bin/bash -lc 'ls ~/Downloads'"`,
+  `◆ codex ran its own tool: apply_patch "add /run/user/1000/vimma-agent-cli/…/notes.txt"`). Codex reports no refusal of
+  its own tools, so a command its sandbox stopped still shows as run.
+- It reports tokens and no cost. It cannot take a message during a task: a message you send
+  then waits for the next task (see "What happens when you send a task"). `--ephemeral` keeps no
+  session file, but Codex still updates its own state in `~/.codex`.
+- Not logged in, or a key its provider refused: `stopped:` with Codex's own error, such as
+  `unexpected status 401 Unauthorized`; run `codex login` in a terminal.
 
 #### Running an agent CLI headless
 
@@ -2852,9 +2911,11 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 
 | Key                     | What it does                                                                                                                                                                                               |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `j` / `k`               | Move the highlight down / up.                                                                                                                                                                              |
+| `j` / `k`               | Move the highlight down / up. With a count, that many rows: `4j`, `3k`.                                                                                                                                    |
+| `gg` / `G`              | Go to the first / last row. `12G` goes to row 12 (the last row when there are fewer).                                                                                                                      |
+| `ctrl+d` / `ctrl+u`     | Move half the rows shown down / up; with a count, that many rows.                                                                                                                                          |
 | `Enter`                 | Go to the highlighted tab and close the panel. With marks, show the marked tabs together ([below](#showing-tabs-together)); with a split, apply your changes to it ([below](#changing-or-ending-a-split)). |
-| `1` … `9`               | Go to that row's tab and close the panel.                                                                                                                                                                  |
+| `4 Enter`               | Go to row 4's tab and close the panel; with no row 4 it says `no tab 4 in work`. Any number works, past 9 too.                                                                                             |
 | `space`                 | Mark the highlighted tab (or unmark it). The highlight stays on it.                                                                                                                                        |
 | `V`                     | Start a range: `j` / `k` stretch it, and `V` or `space` marks every row in it.                                                                                                                             |
 | `x`                     | Close the highlighted tab; the highlight moves to the next row and the panel stays open, so `x x x` closes three.                                                                                          |
@@ -2866,10 +2927,29 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 | `ctrl+b b`              | Close the panel.                                                                                                                                                                                           |
 
 Pinned tabs belong to no workspace, so the panel never lists them and `x` never closes one (a
-row whose tab was pinned after the panel was drawn says "pinned tab: unpin it to close it"). The panel takes no
-count: digits pick rows, so `3x` goes to row 3's tab and closes the panel, and that `x` is then
-normal mode's, which closes the tab. In the bookmarks panel `x` does nothing;
-`d` deletes a bookmark there.
+row whose tab was pinned after the panel was drawn says "pinned tab: unpin it to close it").
+
+**Counts.** Digits are a count, as in Vim: type `4` and the status bar shows it while the panel
+waits for `j`, `k`, `G`, `ctrl+d`, `ctrl+u` or `Enter`. Moves stop at the first and last row. A
+count before any other key is dropped and the key acts once, so `3x` closes one tab, not three.
+To reach a tab without the panel, `ctrl+b 4`, `alt+4` (`cmd+4` on macOS) and `4gt` still work.
+In the bookmarks panel `x` does nothing; `d` deletes a bookmark there.
+
+**Row numbers.** Each row shows its number, the one `4 Enter` and `4G` go to. To see how far
+each row is from the highlight instead, as Vim's `relativenumber` does, set `numbers` in
+[config.toml](#configtoml):
+
+```toml
+schema = 2
+
+[panel]
+numbers = "relative"  # "absolute" (the default), "relative" or "hybrid"
+```
+
+With `"relative"` the highlighted row shows `0` and the others how many `j` or `k` reach them:
+the row showing `3` is `3j` (or `3k`) away. `"hybrid"` shows the highlighted row's own number
+instead of `0`, as Vim's `number` and `relativenumber` together. The bookmarks panel follows
+the same setting ([below](#bookmarks)).
 
 While it is open, every other plain key is the panel's and never reaches the page; `ctrl+b`
 keys and `:` commands still work, and a tab you open meanwhile shows up in the list. The panel
@@ -3206,9 +3286,11 @@ unless you press `d`.
 
 | Key                     | What it does                                                                              |
 | ----------------------- | ----------------------------------------------------------------------------------------- |
-| `j` / `k`               | Move down / up.                                                                           |
+| `j` / `k`               | Move down / up; `4j` moves four rows.                                                     |
+| `gg` / `G`              | Go to the first / last row.                                                               |
+| `ctrl+d` / `ctrl+u`     | Move half the rows shown down / up; with a count, that many rows.                         |
 | `l`                     | Open the folder (again: go into it). On a bookmark: open it in this tab.                  |
-| `h`                     | Close the folder; inside one, go to its folder and close that.                            |
+| `h`                     | Close the folder; inside one, go to its folder and close that. `3h` goes up three.        |
 | `Enter`                 | Open the bookmark in this tab and close the panel; on a folder, open or close it.         |
 | `t`                     | Open the bookmark in a new tab behind this one; the panel stays open for more.            |
 | `s` / `S`               | Open it in a new pane right / below (as `ctrl+b v` / `-`, at most 8 panes).               |
@@ -3228,6 +3310,12 @@ Vimma: it says so instead, since they would run code in the page. Changes made e
 Library, Sync, another window) show in the panel at once. With `root = "all"`, the four top
 folders cannot be renamed, moved or deleted. The panel remembers which folders you opened until
 Vimma quits.
+
+Counts work as in the [side panel](#side-panel), except that a folder tree has no fixed row
+numbers: the rows shift as folders open and close. So the bookmarks panel shows no numbers by
+default, and `4G` and `4 Enter` ignore the count. With `[panel] numbers = "relative"` or
+`"hybrid"` each row shows its distance from the highlight (`0` on the highlighted row), so you
+can read off the count for `j` and `k`.
 
 ### Firefox's Bookmarks Toolbar
 
@@ -3634,7 +3722,9 @@ accent = "#ff9e64"
   shortcuts are off, [above](#firefoxs-own-shortcuts)); `[modal] insert_editing` (`ctrl+w`,
   `ctrl+u`, `ctrl+h` in text fields, default `true`); `[bookmarks] root` (`"workspace"`, the
   default: the current workspace's folder; `"toolbar"`; or `"all"`: what the
-  [bookmarks panel](#bookmarks) lists and where paths start); `[private] placement` (`"swap"`, the
+  [bookmarks panel](#bookmarks) lists and where paths start); `[panel] numbers` (`"absolute"`, the
+  default, `"relative"` or `"hybrid"`: the [side panel](#side-panel)'s row numbers);
+  `[private] placement` (`"swap"`, the
   default: on Hyprland and macOS the [private workspace](#private-workspace) takes the Vimma
   window's place;
   `"window"`: it is a window of its own beside it); `[mcp]` (local AI agents:
@@ -3651,7 +3741,7 @@ accent = "#ff9e64"
   Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[updates] check`
   (`true`, the default, or `false`: no [update check](#updates) at all).
 - **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[firefox]`,
-  `[bookmarks]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,
+  `[bookmarks]`, `[panel]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,
   `hint_chars`, `insert_editing`, `[theme] name` and `appearance`. Every key is in the template
   `:config` writes, with its default commented out (the same as
   [`defaults.toml`](../packages/vimma-core/defaults.toml) in the source).
@@ -3794,7 +3884,8 @@ Except for the AppImage, it installs nothing; it tells you.
   start.
 - **The first time a version is offered**, a message above the status bar says
   `Vimma 0.3.1 is available · :update shows the command` (or `fixes security issues` for a
-  security release) for a few seconds. It takes no focus and no keys, and is not shown again for
+  security release) for a few seconds; in the Flatpak it names the command itself:
+  `Vimma 0.3.1 is available · run flatpak update dev.vimma.browser`. It takes no focus and no keys, and is not shown again for
   that version, even after a restart.
 - **A security release also asks**, once per session:
   `Vimma 0.3.1 fixes security issues. Show the update command? (y/N)`. `y` shows the update steps,
@@ -3845,6 +3936,7 @@ Except for the AppImage, it installs nothing; it tells you.
   | `.rpm`                   | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
   | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                               |
   | AppImage                 | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
+  | Flatpak (Flathub)        | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice        |
   | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |
   | `.dmg` (macOS)           | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
   | A build from source      | nothing: source builds never check (pull and rebuild)                                                                                                            |

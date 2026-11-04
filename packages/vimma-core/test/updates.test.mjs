@@ -768,6 +768,12 @@ describe("install type (§3)", () => {
       "pkgbuild-release",
     ],
     [{ packaged: true, marker: "vimma-package=appimage\n", appImage: null }, "appimage"],
+    [{ packaged: true, marker: "vimma-package=flatpak\n", appImage: null }, "flatpak"],
+    // $APPIMAGE is inherited by every program an AppImage starts (decision 34): the marker wins.
+    [
+      { packaged: true, marker: "vimma-package=flatpak\n", appImage: "/home/u/V.AppImage" },
+      "flatpak",
+    ],
     [{ packaged: true, marker: "", appImage: "/home/u/Vimma.AppImage" }, "appimage"],
     [{ packaged: true, marker: "", appImage: null }, "packaged"],
     [{ packaged: true, marker: "vimma-package=snap\n", appImage: null }, "packaged"],
@@ -999,6 +1005,14 @@ describe("updateSteps (:update and about:vimma)", () => {
     const s = updateSteps("homebrew", hashed, where);
     expect(s.commands).toEqual(["brew upgrade --cask vimma"]);
     expect(s.text).toMatch(/Homebrew/);
+    expect(s.link).toBe(offer.detailsUrl);
+  });
+
+  test("flatpak: flatpak update, with no download (spec flatpak, decision 10)", () => {
+    const s = updateSteps("flatpak", hashed, where);
+    expect(s.commands).toEqual(["flatpak update dev.vimma.browser"]);
+    expect(s.text).toMatch(/Flathub/);
+    expect(s.text).not.toMatch(/curl|tar /);
     expect(s.link).toBe(offer.detailsUrl);
   });
 

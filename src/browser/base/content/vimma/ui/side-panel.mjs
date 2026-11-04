@@ -15,10 +15,11 @@ import {
   openPanel,
   panelKey,
   refreshPanel,
+  rowNumber,
 } from "../core/sidepanel.mjs";
 import { PRIVATE_COLOR_TOKEN, PRIVATE_GLYPH } from "../core/privatews.mjs";
 
-/** @import { PanelOptions, PanelState, PanelTabInfo } from "../core/sidepanel.mjs" */
+/** @import { PanelNumbers as Numbers, PanelOptions, PanelState, PanelTabInfo } from "../core/sidepanel.mjs" */
 /** @import { Workspaces } from "../core/workspaces.mjs" */
 
 export const PANEL_ID = "vimma-panel";
@@ -28,6 +29,32 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 const styled = new WeakSet();
 /** Tab events that change a row: re-render while open. */
 const TAB_EVENTS = ["TabOpen", "TabClose", "TabSelect", "TabAttrModified", "TabMove"];
+
+/**
+ * `[panel] numbers` from config.toml (docs/specs/side-panel-counts.md decision 6), for the side
+ * panel and the bookmarks panel of every window; ConfigHost sets it. A panel reads it when it
+ * renders, so a change shows from the next key or the next time it opens.
+ */
+export const PanelNumbers = {
+  /** @type {Numbers} */
+  mode: "absolute",
+  /** @param {Numbers} mode */
+  set(mode) {
+    this.mode = mode;
+  },
+};
+
+/**
+ * How many rows a panel's list shows, for ctrl+d / ctrl+u (half of it): its height over its
+ * first row's, at least 1.
+ * @param {HTMLElement | null} list
+ */
+export function rowsShown(list) {
+  const row = list?.querySelector("[role=option], [role=treeitem]");
+  const height = row?.getBoundingClientRect().height ?? 0;
+  if (!list || !height) return 1;
+  return Math.max(1, Math.floor(list.clientHeight / height));
+}
 
 /**
  * @typedef {object} SidePanelHost
@@ -127,13 +154,15 @@ export class SidePanel {
   }
 
   /**
-   * One `[modal.panel]` action (panel.down, panel.up, panel.open, panel.select, panel.close,
-   * panel.close_tab, panel.mark, panel.visual, panel.move).
-   * @param {{ id: string, arg?: number }} action
+   * One `[modal.panel]` action (panel.down, panel.up, panel.first, panel.last, panel.half_down,
+   * panel.half_up, panel.open, panel.select, panel.close, panel.close_tab, panel.mark,
+   * panel.visual, panel.move), with its count.
+   * @param {{ id: string, arg?: number, count?: number }} action
    */
   action(action) {
     if (!this.state) return;
-    const { state, effect } = panelKey(this.state, action);
+    const page = rowsShown(this.list);
+    const { state, effect } = panelKey(this.state, { ...action, page });
     if (state !== this.state) {
       this.state = state;
       this.render();
@@ -248,6 +277,10 @@ export class SidePanel {
     // list reads as before.
     const checkable = state.marked.length > 0 || state.anchor !== null || state.panes.length > 0;
     const marked = new Set(state.marked);
+    const numbers = PanelNumbers.mode;
+    /** @param {PanelState["rows"][number]} r @param {number} i */
+    const numberOf = (r, i) =>
+      numbers === "absolute" ? r.number : rowNumber(numbers, i, state.selected);
     list.replaceChildren(
       ...state.rows.map((r, i) => {
         const row = el("li", "vimma-panel-row");
@@ -269,7 +302,7 @@ export class SidePanel {
         const marks = [r.playing ? "♪" : "", r.foreign ? "foreign" : ""].filter(Boolean);
         row.append(
           gutter,
-          el("span", "vimma-panel-number", String(r.number)),
+          el("span", "vimma-panel-number", String(numberOf(r, i))),
           el("span", "vimma-panel-title", r.display),
           el("span", "vimma-panel-host", r.host),
         );
@@ -296,7 +329,7 @@ export class SidePanel {
     const { box, header, list } = buildPanelBox(this.win, {
       id: PANEL_ID,
       label: "Side panel",
-      hint: "j/k move · 1-9 or Enter go · space V mark, Enter splits or unsplits · x close tab · m move tab · Esc close",
+      hint: "j/k move, 4j · gg G 12G jump · Enter or 4 Enter go · space V mark, Enter splits or unsplits · x close tab · m move tab · Esc close",
     });
     const count = panelElement(this.win.document, "div", "vimma-panel-count");
     count.setAttribute("role", "status");

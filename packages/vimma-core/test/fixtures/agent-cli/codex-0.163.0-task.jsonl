@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"01a19d34-a447-7573-8259-723cbd8d6247"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `mock-model` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","server":"vimma_chat","tool":"vimma_tabs","arguments":{},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","server":"vimma_chat","tool":"vimma_tabs","arguments":{},"result":{"content":[{"type":"text","text":"1 Example\n2 Shop"}],"structured_content":null},"error":null,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/usr/bin/bash -lc 'ls ~/Downloads'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/usr/bin/bash -lc 'ls ~/Downloads'","aggregated_output":"ls: cannot access '/tmp/rec/home/Downloads': No such file or directory\n","exit_code":2,"status":"failed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"Two tabs are open: Example and Shop."}}
+{"type":"turn.completed","usage":{"input_tokens":3900,"cached_input_tokens":1950,"cache_write_input_tokens":0,"output_tokens":123,"reasoning_output_tokens":9}}
