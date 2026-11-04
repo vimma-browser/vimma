@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_elements.js: search results shaped like Finnish grocery
+   - shops' (issue #693). Each card names its product in a heading, shows the price apart, and has
+   - an add button that shows only an icon or a word the other cards share. One button's
+   - aria-labelledby also names a script holding page state, which is never read as a name, and
+   - one names more ids than are read. -->
+<html lang="fi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cards agent fixture</title>
+    <style>
+      article {
+        display: inline-block;
+        width: 180px;
+        margin: 4px;
+        border: 1px solid;
+      }
+      h3 {
+        font-size: 14px;
+        margin: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h2>Hakutulokset</h2>
+      <article>
+        <h3>Kaurajuoma 1 l</h3>
+        <span>0,75 €</span>
+        <button aria-label="Lisää Kaurajuoma 1 l ostoskoriin">+</button>
+      </article>
+      <article>
+        <h3>Kauramaito luomu 1 l</h3>
+        <span>0,85 €</span>
+        <button aria-label="Lisää Kauramaito luomu 1 l ostoskoriin">+</button>
+      </article>
+      <article>
+        <div><h3 id="tofu">Tofu maustamaton 250 g</h3></div>
+        <span>1,99 €</span>
+        <div><button aria-labelledby="add-word tofu">+</button></div>
+      </article>
+      <article>
+        <h3><a href="#kikherne">Kikherneet 380 g</a></h3>
+        <span>0,89 €</span>
+        <div><button>Lisää</button></div>
+      </article>
+      <article>
+        <h3><a href="#spagetti">Spagetti 500 g</a></h3>
+        <span>0,59 €</span>
+        <div><button>Lisää</button></div>
+      </article>
+      <article>
+        <h3 id="riisi">Riisi 1 kg</h3>
+        <span>1,29 €</span>
+        <button aria-labelledby="add-word riisi state">+</button>
+      </article>
+      <article>
+        <h3>Banaani</h3>
+        <span>1,49 €/kg</span>
+        <button aria-label="Osta">Osta</button>
+      </article>
+    </main>
+    <span id="add-word" hidden>Lisää ostoskoriin</span>
+    <script id="state" type="application/json">
+      { "session": "s3cret-token" }
+    </script>
+    <div hidden>
+      <span id="w1">1</span><span id="w2">2</span><span id="w3">3</span><span id="w4">4</span>
+      <span id="w5">5</span><span id="w6">6</span><span id="w7">7</span><span id="w8">8</span>
+      <span id="w9">9</span><span id="w10">10</span>
+    </div>
+    <footer>
+      <button aria-labelledby="w1 w2 w3 w4 w5 w6 w7 w8 w9 w10">Kori</button>
+      <button>Näytä lisää</button>
+      <button>Näytä lisää</button>
+    </footer>
+  </body>
+</html>

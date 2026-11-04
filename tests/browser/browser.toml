@@ -204,6 +204,7 @@ support-files = [
 
 ["browser_vimma_mcp_elements.js"]
 support-files = [
+  "file_vimma_agent_cards.html",
   "file_vimma_agent_form.html",
   "file_vimma_agent_page.html",
   "file_vimma_agent_widget.html",

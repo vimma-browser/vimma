@@ -177,6 +177,23 @@ addTidyTask(async function test_pay_button_outside_a_form_asks_under_a_grant() {
   Assert.ok((await c.response(arrow)).ok, "and its yes runs it");
 });
 
+addTidyTask(async function test_button_named_by_aria_labelledby_asks_under_a_grant() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await grantedLabels(c, tab);
+  // A check-mark button outside any form, on a page with no card field: only the hidden text its
+  // aria-labelledby names says "Place order", the name the model is shown as its caption (C6).
+  const id = c.request("agent-activate", { tab: idOf(tab), label: by["✓"] });
+  const q = await question();
+  Assert.equal(q.tool, "vimma_activate", "the click asks under the grant (C1)");
+  Assert.equal(q.what.pay?.text, "✓", "as a payment, quoting the button's own text (C7)");
+  Assert.deepEqual(await clicked(tab), [], "nothing is clicked before the answer");
+  AgentGate.answer(q.id, { kind: "once" });
+  Assert.ok((await c.response(id)).ok, "the yes runs the click");
+  await until(async () => (await clicked(tab)).includes("tick"), "the page saw it");
+});
+
 addTidyTask(async function test_basket_button_does_not_ask() {
   await mcp(true);
   const tab = await openAgentTab();

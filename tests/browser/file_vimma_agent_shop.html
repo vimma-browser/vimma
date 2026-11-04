@@ -6,7 +6,8 @@
    - shop's basket built as some real shops build theirs, with every button a type=submit button
    - outside any form, so that none of them submits a form. "Lisää ostoskoriin" adds to the
    - basket; "Vahvista tilaus" (confirm order) and an arrow button named "Pay now" only by its
-   - aria-label place the order from a click listener. The basket states a subtotal, delivery
+   - aria-label place the order from a click listener, and so does a check-mark button of
+   - type=button named "Place order" only by the hidden text its aria-labelledby points at. The basket states a subtotal, delivery
    - and a total before the confirm button, and a decoy total after it; a link "Maksa nyt" (pay
    - now) goes to another page of the shop. Each click is counted in #log. Everything fits the
    - test window. -->
@@ -45,13 +46,15 @@
     <p>
       <button id="confirm" type="submit">Vahvista tilaus</button>
       <button id="arrow" type="submit" aria-label="Pay now">→</button>
+      <button id="tick" type="button" aria-labelledby="tick-name">✓</button>
+      <span id="tick-name" hidden>Place order</span>
       <a id="paylink" href="file_vimma_agent_page.html?paid">Maksa nyt</a>
     </p>
     <p class="sum"><span>Total next month</span><span>99,00 €</span></p>
     <ol id="log"></ol>
     <script>
       const log = document.getElementById("log");
-      for (const id of ["add", "confirm", "arrow"]) {
+      for (const id of ["add", "confirm", "arrow", "tick"]) {
         document.getElementById(id).addEventListener("click", () => {
           const li = document.createElement("li");
           li.textContent = id;

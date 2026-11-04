@@ -1517,7 +1517,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   password type and these names are counted in the parent too, whatever the child says), and
   one form autofill's heuristics infer as a payment card field, with, in a card form, any field
   they leave to their machine-learning model; if the heuristics fail, every field of that form
-  counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned.
+  counts. A one-time-code field without that autocomplete name or a mask is not recognised. No page text beyond the elements' own is returned, except a target's accessible label and, for a text that repeats in the list, the heading of its card (mcp-forms F5, issue #693), both as its `caption`, under the same checks and cuts. The label includes the text of the elements its `aria-labelledby` names, hidden ones too, as a screen reader reads them; it never reads script, style, noscript or template text or a field's or rich text editor's content, and reads at most 8 ids and 512 characters.
   The list `agent-open`, `agent-activate` and `agent-fill` return when asked with `elements`
   (issue #584) **must** be made by the same code as `agent-elements`' own, so every rule above
   holds for it, and the validator and `vimma-ctl mcp` check it the same way; it is made only
@@ -1679,7 +1679,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   whose check fails or that does not answer within 5 s counts as one, a frame that navigates
   away or whose process ends during the check does not), or whose pressed control has a phrase
   of the fixed list (`PAY_PHRASES`, six languages) as whole words in its text, accessible name,
-  title or value. Its question **must** name the button (for a key step, its keys), the host of
+  title or value; the accessible name includes the text its `aria-labelledby` names, which the
+  element list shows the model as the control's `caption` (issue #693), so the check reads every
+  name the model is shown. Its question **must** name the button (for a key step, its keys), the host of
   the frame of the control or link the step presses or follows, followed by the tab's host in
   parentheses when that frame is of another site (a payment provider's hosted frame; a key step
   that presses nothing, and a frame with no host of its own, such as about:srcdoc, data: or
