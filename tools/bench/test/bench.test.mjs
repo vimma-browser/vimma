@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 // Issue #125: the gate must still catch a real regression. The dispatcher is wrapped so a flag can
@@ -164,6 +165,26 @@ describe("extractCommit", () => {
     expect(() => extractCommit("not-a-commit-0000", tempDir("vimma-bench-base-"))).toThrow(
       /not-a-commit-0000/,
     );
+  });
+
+  // A name that is not a full commit id was fetched from origin before being refused: a network
+  // round trip that once took 7.4 s on a hosted runner and timed the test above out.
+  it("refuses a name it cannot resolve without asking origin, fetching only a full commit id", () => {
+    const bin = tempDir("vimma-bench-git-");
+    const log = join(bin, "git.log");
+    const real = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
+    writeFileSync(join(bin, "git"), `#!/bin/sh\necho "$1" >> "${log}"\nexec "${real}" "$@"\n`);
+    chmodSync(join(bin, "git"), 0o755);
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path}`;
+    try {
+      expect(() => extractCommit("not-a-commit-0000", tempDir("vimma-bench-base-"))).toThrow(
+        /not-a-commit-0000/,
+      );
+    } finally {
+      process.env.PATH = path;
+    }
+    expect(readFileSync(log, "utf8").split("\n")).not.toContain("fetch");
   });
 });
 

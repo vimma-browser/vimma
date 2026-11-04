@@ -78,8 +78,8 @@ export function childArgs(p, baseDir) {
 
 /**
  * Writes `commit`'s core and bench cases under `dir`, so one process can import both versions.
- * A shallow clone may lack the commit; it is fetched then, as CI's checkout of a pull request
- * only has the history it asked for.
+ * A shallow clone may lack the commit; a full commit id is fetched then, as CI's checkout of a
+ * pull request only has the history it asked for.
  * @param {string} commit
  * @param {string} dir
  * @returns {string} the path of the commit's cases.mjs
@@ -87,7 +87,9 @@ export function childArgs(p, baseDir) {
 export function extractCommit(commit, dir) {
   const git = (/** @type {string[]} */ ...args) =>
     spawnSync("git", args, { cwd: REPO, maxBuffer: 256 * 1024 * 1024 });
-  if (git("cat-file", "-e", `${commit}^{commit}`).status !== 0) {
+  // Only a full id can be fetched by itself; any other name that does not resolve here is refused
+  // without a network round trip, which on a hosted runner can take longer than a test's timeout.
+  if (git("cat-file", "-e", `${commit}^{commit}`).status !== 0 && /^[0-9a-f]{40}$/.test(commit)) {
     git("fetch", "--quiet", "--no-tags", "--depth=1", "origin", commit);
   }
   const tar = git("archive", "--format=tar", `${commit}^{commit}`, ...CORE_PATHS);
