@@ -2379,7 +2379,7 @@ Vimma checks `https://updates.vimma.dev/updates/browser/<target>/<channel>/updat
 (`Linux_x86_64-gcc3`, or `Darwin_aarch64-gcc3` on Apple Silicon) every 12 hours and accepts only a manifest signed by a key pinned in
 `packages/vimma-core/src/update-keys.mjs` (step 5; a build with no pinned key refuses every
 manifest and shows nothing). These steps need the maintainer's accounts; do them once, in order.
-All steps but 4 (the offline secondary key) are done. Step 7 sets up `update-publish.yml`, which
+All steps but 4 (the offline secondary key) and 5b (the updater's certificates) are done. Step 7 sets up `update-publish.yml`, which
 signs and publishes a manifest for every published release; nothing is published while the
 repository variable `UPDATES_ENABLED` is not `true`. It is `true`, so update notices are on for
 every install of 0.1.2 or later (0.1.1 pins no key and never shows one).
@@ -2538,6 +2538,44 @@ installs keep trusting it until they are updated by hand.
 | --------- | ---------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------ |
 | primary   | Cloud KMS key ring `vimma-updates`, key `update-primary`, version 1, HSM, RSA-4096 | `fb4d33b6` | `fb4d33b6ea54ddb81a6a40ce50a61a6f9383b5850f27e2218045f5d3a07dab9a` |
 | secondary | not pinned yet (step 4)                                                            | -          | -                                                                  |
+
+**5b. The updater's certificates** (spec §6, decision 39; ADR-016). Firefox's updater embeds a
+certificate per slot, `src/toolkit/mozapps/update/updater/vimma/primary.der` and
+`secondary.der`, and a `VIMMA_UPDATES=1` build stops without them. The primary's certificate is
+self-signed by the KMS key, which signs only a DigestInfo it is sent, so
+`tools/update/update-cert.mjs` builds the certificate around one KMS signature. Every field is
+fixed, so the request is the same each time and a reviewer can rebuild it from the public key.
+With `update-primary.pem` from step 3 and the maintainer's own `gcloud` credentials, as in
+step 6:
+
+```sh
+node tools/update/update-cert.mjs request --public-key update-primary.pem --slot primary --out-dir cert
+gcloud kms asymmetric-sign --version 1 --key update-primary --keyring vimma-updates \
+  --location "$LOCATION" --input-file cert/primary.digestinfo.bin --signature-file cert/primary.sig.bin
+node tools/update/update-cert.mjs assemble --dir cert --slot primary --signature cert/primary.sig.bin \
+  --out src/toolkit/mozapps/update/updater/vimma/primary.der
+cp src/toolkit/mozapps/update/updater/vimma/primary.der src/toolkit/mozapps/update/updater/vimma/secondary.der
+openssl x509 -inform DER -in src/toolkit/mozapps/update/updater/vimma/primary.der -noout -subject -pubkey \
+  | openssl pkey -pubin -outform DER | sha256sum   # the primary's SPKI SHA-256 in the table above
+sha256sum src/toolkit/mozapps/update/updater/vimma/*.der
+npm run gen-update-keys   # update-keys.mjs from the certificates; it must not change the key
+```
+
+`assemble` refuses a signature that does not verify with the certificate's own key, and a key
+other than the primary `update-keys.mjs` pins. The secondary slot holds the primary's
+certificate again until step 4's ceremony; after it, `secondary.der` is the offline key's
+certificate, made there with openssl, and `npm run gen-update-keys` pins it too. Record each
+certificate's SHA-256 here; `npm test` fails when `update-keys.mjs` and the certificates
+disagree, or when the primary certificate's hash is missing from this file.
+
+| Certificate     | Subject                                 | SHA-256 of the DER                     |
+| --------------- | --------------------------------------- | -------------------------------------- |
+| `primary.der`   | `CN=Vimma update signing primary`       | not made yet (needs the KMS signature) |
+| `secondary.der` | the primary's certificate (decision 39) | not made yet                           |
+
+Before a package with the updater is signed or published, `tools/update/check-build.mjs
+<unpacked tarball>` checks that it asks `updates.vimma.dev`, that both channel files say
+`vimma`, and that its `updater` binary carries these certificates and none of Mozilla's.
 
 **6. Check the chain end to end** before the pipeline exists: sign a manifest with KMS and serve
 it. The raw PKCS#1 key signs exactly the bytes it is sent, so the SHA-384 DigestInfo is built

@@ -39,7 +39,8 @@
     "bench": "node tools/bench/bench.mjs",
     "agent-bench": "node tools/agent-bench/agent-bench.mjs",
     "mutation": "stryker run",
-    "gen-agent-tools": "node tools/gen-agent-tools.mjs"
+    "gen-agent-tools": "node tools/gen-agent-tools.mjs",
+    "gen-update-keys": "node tools/update/gen-update-keys.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",

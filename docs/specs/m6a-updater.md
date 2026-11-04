@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question, `:restart` and `updates: off` notice, and sub-PR 4's release manifest implemented; Firefox's updater for tarball installs, that is sub-PRs 2 and 5, the rest of sub-PR 3 and sub-PR 4's MAR and nightly parts, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question, `:restart` and `updates: off` notice, sub-PR 4's release manifest, and sub-PR 2's build switch, patches and certificate tools implemented; Firefox's updater for tarball installs, that is sub-PR 2's primary certificate, sub-PR 5, the rest of sub-PR 3 and sub-PR 4's MAR and nightly parts, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -1140,6 +1140,19 @@ tested:
    `[AppUpdate] URL=https://updates.vimma.dev/…`, `update-settings.ini` says `vimma`, the `updater` binary
    contains Vimma's primary DER's bytes and not `dep1.der`'s, and the built updater applies a
    test-signed MAR from an installed tarball (rpath question answered).
+   (Since changed: sub-PR 2 brings two of the three patches, `moz-configure.patch` and
+   `moz-build.patch`; `UpdateService-sys-mjs.patch` comes with sub-PR 3, whose hook it is,
+   because a patch with no verifier to call would only be a hunk to rebase, and no shipped build
+   has the updater before sub-PR 4 sets `VIMMA_UPDATES=1`. `MOZ_APPUPDATE_HOST` is set outside
+   artifact builds only (`when=~artifact_builds`), because their updater is Mozilla's prebuilt
+   one, which trusts only Mozilla's keys, so they keep asking `aus5.mozilla.org` as before
+   (ADR-010). The mozconfig stops a `VIMMA_UPDATES=1` build when either certificate is missing,
+   because the channel's fallback branch in `moz.build` would embed Mozilla's test keys.
+   `update-keys.mjs` is generated from the certificates by `npm run gen-update-keys`
+   (`tools/update/gen-update-keys.mjs`); the primary's certificate is self-signed through one
+   Cloud KMS signature by `tools/update/update-cert.mjs` (runbook step 5b), and
+   `tools/update/check-build.mjs` checks a package against the done criteria above. ADR-016
+   records the channel, host and certificates.)
 3. **Host for Firefox's updater** (the `UpdateService-sys-mjs.patch` hook calling the same
    verifier, the staged notices, the urgent prompt, `:restart`, `updates: off` once per session,
    AppImage replacement, the anonymous MAR download, the control `state` field): the remaining

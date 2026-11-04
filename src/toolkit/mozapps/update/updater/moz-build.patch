@@ -1,0 +1,15 @@
+diff --git a/toolkit/mozapps/update/updater/moz.build b/toolkit/mozapps/update/updater/moz.build
+index 1f997ef0cad1e477c591257c0a41c4a873c2e708..3989cf35e580f8a45e80b59bd957c799af0c05a7 100644
+--- a/toolkit/mozapps/update/updater/moz.build
++++ b/toolkit/mozapps/update/updater/moz.build
+@@ -123,6 +123,10 @@ elif CONFIG["MOZ_UPDATE_CHANNEL"] in (
+ ):
+     primary_cert.inputs += ["nightly_aurora_level3_primary.der"]
+     secondary_cert.inputs += ["nightly_aurora_level3_secondary.der"]
++elif CONFIG["MOZ_UPDATE_CHANNEL"] == "vimma":
++    # Vimma's update certificates (m6a-updater); Mozilla's files above stay untouched.
++    primary_cert.inputs += ["vimma/primary.der"]
++    secondary_cert.inputs += ["vimma/secondary.der"]
+ else:
+     primary_cert.inputs += ["dep1.der"]
+     secondary_cert.inputs += ["dep2.der"]
