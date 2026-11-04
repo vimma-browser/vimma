@@ -18,7 +18,7 @@ import {
 } from "../core/agent-act.mjs";
 import { cutTo } from "../core/agent-keys.mjs";
 import { quietVerdict } from "../core/agent-wait.mjs";
-import { collectTargets, linkText } from "./hint-collect.mjs";
+import { collectTargets, linkText, viewportSize } from "./hint-collect.mjs";
 import {
   actTargetOf,
   cardFieldShown,
@@ -132,6 +132,17 @@ function canScroll(el, vertical) {
 const SEARCH_LIMIT = 10000;
 /** A search that found nothing is not repeated for this long (holding j). */
 const SEARCH_BACKOFF_MS = 1000;
+/**
+ * How long a page's hint collection waits for the page's first size (#collectHints): well under
+ * the parent's wait for a top frame (2 s, and 4 s for an agent's), so the answer still counts.
+ */
+const SIZE_WAIT_MS = 1500;
+
+/** Whether the frame has been given a viewport size. @param {Window} win */
+function hasSize(win) {
+  const { vw, vh } = viewportSize(win);
+  return vw > 0 && vh > 0;
+}
 
 /**
  * The parent element, stepping out of a shadow root to its host.
@@ -715,14 +726,15 @@ export class VimmaChild extends JSWindowActorChild {
    * (`texts`, docs/specs/mcp-drive.md D12) gets each link's text too; an agent's
    * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
    * controls included, each described, with the frame's forms, and keeps its elements apart from
-   * the user's (F4).
+   * the user's (F4). A top frame without a size yet is given time to get one first (#sized).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
    *   elements?: boolean }} data
    */
-  #collectHints(data) {
+  async #collectHints(data) {
     const gen = data?.gen;
     const win = this.contentWindow;
     if (!isIndex(gen) || !win) return null;
+    if (!this.browsingContext?.parent && !hasSize(win) && !(await this.#sized(win))) return null;
     const t0 = ChromeUtils.now();
     const elements = data.elements === true;
     const { targets, frames } = collectTargets(win, {
@@ -751,6 +763,32 @@ export class VimmaChild extends JSWindowActorChild {
       ms: ChromeUtils.now() - t0,
       ...(described ? { forms: described.forms } : {}),
     };
+  }
+
+  /**
+   * Waits, at most SIZE_WAIT_MS, for this top frame's viewport to have a size; false when its
+   * document went away meanwhile. The parent sends a tab its size after a layout of its
+   * <browser>, and on a busy chrome (its refresh driver waiting on a slow compositor) that can
+   * come after the page loaded: a fresh hidden tab can be complete at 0 by 0, where no element is
+   * on screen, and an agent's `f` there listed no link (#605). Out of time, the page is collected
+   * as it is.
+   * @param {Window} win
+   */
+  async #sized(win) {
+    const doc = win.document;
+    const until = Date.now() + SIZE_WAIT_MS;
+    while (!hasSize(win) && Date.now() < until) {
+      // A chrome timer: a hidden tab's page timers are held to one a second.
+      await new Promise((resolve) => lazy.setTimeout(resolve, 25));
+      try {
+        if (!(/** @type {any} */ (this.manager)?.isCurrentGlobal) || this.document !== doc) {
+          return false;
+        }
+      } catch {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**

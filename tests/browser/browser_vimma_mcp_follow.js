@@ -344,6 +344,42 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   await mcp(false);
 });
 
+// A new tab's page has no viewport size until the parent lays out its <browser> and sends the
+// size, which on a busy chrome (the macOS runner's software compositing) can come after the page
+// loaded. An agent's f there waits for the size instead of listing nothing (#605). Pausing the
+// chrome refresh driver holds that layout back, as the runner did.
+add_task(async function test_f_on_a_tab_not_sized_yet_waits_for_its_size() {
+  await mcp(true);
+  const c = await agentClient();
+  const utils = window.windowUtils;
+  registerCleanupFunction(() => utils.restoreNormalRefresh());
+  utils.advanceTimeAndRefresh(0);
+  const tab = await openAgentTab();
+  const size = await SpecialPowers.spawn(tab.linkedBrowser, [], () => [
+    content.innerWidth,
+    content.innerHeight,
+  ]);
+  Assert.deepEqual(size, [0, 0], "the page loaded before the parent sized it");
+  const id = c.request("agent-keys", { tab: idOf(tab), keys: "f" });
+  AgentGate.answer((await question()).id, { kind: "once" });
+  // The layout resumes while the collection runs.
+  const resume = setTimeout(() => utils.restoreNormalRefresh(), 200);
+  const r = await c.response(id);
+  // A collection that did not wait must not leave the next test's tabs unsized.
+  clearTimeout(resume);
+  utils.restoreNormalRefresh();
+  Assert.deepEqual(
+    lines(r.result.links).map((l) => l.split(" ")[0]),
+    Object.values(LABEL),
+    `f lists every link once the page has its size (steps: ${JSON.stringify(r.result.steps)}; ` +
+      `collection: ${collectState(tab)})`,
+  );
+  Assert.equal(VimmaActors.lastCollectReason(tab.linkedBrowser), "ok", "the collection ended ok");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   await mcp(true);
   const tab = await openAgentTab();
