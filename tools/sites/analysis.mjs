@@ -33,11 +33,31 @@ export function scrollMovement(before, after) {
 
 /**
  * @typedef {{ label: string, href: string | null, target?: string, sameDoc?: boolean,
- *   sameOrigin?: boolean }} HintLink
+ *   sameOrigin?: boolean, attrs?: Record<string, string | null> }} HintLink
  */
+
+/** Roles under which a link's click is a widget's, not a navigation. */
+const WIDGET_ROLES = new Set(["button", "menuitem", "menuitemcheckbox", "menuitemradio", "tab"]);
+
+/**
+ * A link that acts as a button: its click handler opens a menu or toggles something and the URL
+ * stays, such as Google's "Google apps" launcher (`<a href role="button" aria-expanded>`).
+ * @param {HintLink} l
+ */
+function actsAsButton(l) {
+  const a = l.attrs ?? {};
+  const set = (/** @type {string} */ name) => a[name] != null && a[name] !== "false";
+  return (
+    WIDGET_ROLES.has((a.role ?? "").trim().toLowerCase()) ||
+    set("aria-haspopup") ||
+    a["aria-expanded"] != null ||
+    a["aria-pressed"] != null
+  );
+}
 
 /**
  * The hint to follow: a link that opens another document in the same tab, same-origin first.
+ * Links that act as buttons are skipped, as their click does not navigate.
  * @param {HintLink[]} links
  * @returns {HintLink | null}
  */
@@ -47,7 +67,8 @@ export function chooseHintLink(links) {
       l.href &&
       /^https?:/.test(l.href) &&
       !l.sameDoc &&
-      (l.target === "" || l.target === "_self" || l.target === "_top"),
+      (l.target === "" || l.target === "_self" || l.target === "_top") &&
+      !actsAsButton(l),
   );
   return followable.find((l) => l.sameOrigin) ?? followable[0] ?? null;
 }

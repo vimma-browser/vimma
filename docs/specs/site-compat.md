@@ -119,7 +119,11 @@ needs no dependency.
   `.vimma-hint` per target, `data-label` and `left`/`top` at the target's top-left in content
   CSS pixels times the zoom (`ui/hint-overlay.mjs:13, 50-55`). A probe in the tab maps each
   label's point to the link under it (`elementFromPoint(...).closest("a[href]")`), so the suite
-  can choose a same-tab link and type its label.
+  can choose a same-tab link and type its label. (Since changed: the probe also reads the link's
+  `role`, `aria-haspopup`, `aria-expanded` and `aria-pressed`, and the suite skips a link that acts
+  as a button, because its click opens a menu instead of navigating. Google's "Google apps"
+  launcher is such a link, and following it made the check fail on the days Google served it in
+  the viewport; issue #734.)
 - **Scrolling.** `j`/`k` step 60 px, `ctrl+d`/`ctrl+u` half a page, `gg`/`G` top and bottom
   (`packages/vimma-core/src/defaults.mjs:105-121`). The actor scrolls the document's scrolling
   element, or the largest scrollable inner element when the page is an app shell or locked

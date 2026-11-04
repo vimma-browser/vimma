@@ -286,6 +286,12 @@ export function contentLinksAt({ points }) {
       label,
       href,
       target: a.target || "",
+      attrs: Object.fromEntries(
+        ["role", "aria-haspopup", "aria-expanded", "aria-pressed"].map((n) => [
+          n,
+          a.getAttribute(n),
+        ]),
+      ),
       sameDoc: href.split("#")[0] === here,
       sameOrigin: (() => {
         try {
