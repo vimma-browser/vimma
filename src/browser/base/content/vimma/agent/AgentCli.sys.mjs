@@ -18,6 +18,7 @@ import {
   CLI_IDS,
   CLI_STREAM_LIMITS,
   KILL_GRACE_MS,
+  MAX_MINUTES,
   besideBinary,
   cliEnvironment,
   dispatcherOf,
@@ -69,6 +70,17 @@ const EXIT_GRACE_MS = 2000;
 /** How often, and how many times, a run waits for Gemini CLI's lock on its registry. */
 const LOCK_WAIT_MS = 100;
 const LOCK_TRIES = 50;
+
+/** The mark a run's folder holds: the process id of the Vimma that runs it. */
+const RUN_MARK = ".vimma-run";
+/**
+ * A run folder older than this is a leftover whoever made it: a run ends within its
+ * `max_minutes`, at most a day, and the time to clean up after it. Where no process can be asked
+ * about (no /proc, macOS), this is the only rule.
+ */
+const RUN_LIFE_MS = (MAX_MINUTES + 60) * 60_000;
+/** Run folders of this Vimma's that are going. @type {Set<string>} */
+const liveRuns = new Set();
 
 /** @param {number} ms */
 const delay = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
@@ -344,6 +356,9 @@ async function cleanGemini(ours) {
   }
   const registry = PathUtils.join(root, "projects.json");
   if (!(await IOUtils.exists(registry))) return;
+  // A link (a dotfile manager's) is locked and written at the file it leads to by Gemini CLI;
+  // a rename here would replace the link, under a lock Gemini CLI does not take. Its entry stays.
+  if (lazy.AgentDownloads.ownerAndMode(registry)?.isLink !== false) return;
   const lock = `${registry}.lock`;
   let locked = false;
   for (let i = 0; i < LOCK_TRIES && !locked; i++) {
@@ -359,10 +374,32 @@ async function cleanGemini(ours) {
   try {
     const edited = geminiProjects(await IOUtils.readUTF8(registry), ours);
     if (edited.text !== null) {
+      const { permissions } = await IOUtils.stat(registry);
       await IOUtils.writeUTF8(registry, edited.text, { tmpPath: `${registry}.vimma.tmp` });
+      await IOUtils.setPermissions(registry, permissions, false);
     }
   } finally {
     await IOUtils.remove(lock, { ignoreAbsent: true });
+  }
+}
+
+/**
+ * Whether a run folder is a leftover (C5): not a run of this Vimma's that is going, and either
+ * marked by a process that is gone, or older than any run lasts. A run of another Vimma that is
+ * going has a process that is not gone, and is young.
+ * @param {string} dir
+ */
+async function deadRun(dir) {
+  if (liveRuns.has(dir)) return false;
+  try {
+    const { lastModified } = await IOUtils.stat(dir);
+    if (Date.now() - lastModified > RUN_LIFE_MS) return true;
+    const pid = Number.parseInt(await IOUtils.readUTF8(PathUtils.join(dir, RUN_MARK)), 10);
+    if (pid === Services.appinfo.processID) return true;
+    if (!Number.isInteger(pid) || pid <= 0 || !(await IOUtils.exists("/proc/self"))) return false;
+    return !(await IOUtils.exists(`/proc/${pid}`));
+  } catch {
+    return false;
   }
 }
 
@@ -505,11 +542,31 @@ export const AgentCli = {
     } catch {
       // No registry, or one Gemini CLI would reset itself.
     }
+    // Run folders a crash left (their run's clean-up never ran), with what they hold.
+    /** @type {string[]} */
+    const dead = [];
+    for (const base of bases) {
+      const children = await IOUtils.getChildren(base).catch(() => []);
+      for (const dir of children) {
+        if (geminiLeftover(dir, bases) && (await deadRun(dir))) {
+          dead.push(dir);
+          gone.add(dir);
+        }
+      }
+    }
     for (const path of seen) {
       if (geminiLeftover(path, bases) && !(await IOUtils.exists(path))) gone.add(path);
     }
+    // Asked again last: another Vimma may have made a run of that name since.
+    for (const path of [...gone]) {
+      if ((await IOUtils.exists(path)) && !dead.includes(path)) gone.delete(path);
+    }
     if (gone.size) await cleanGemini((p) => gone.has(p));
+    for (const dir of dead) await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
   },
+
+  /** Test-only: run folders of this Vimma's that are going. */
+  _liveRuns: liveRuns,
 
   get enabled() {
     return Services.prefs.getBoolPref(CLI_ENABLED_PREF, false);
@@ -699,8 +756,11 @@ export const AgentCli = {
       let tick = null;
       /** @type {any} */
       let limit = null;
+      liveRuns.add(dir);
       try {
         await IOUtils.setPermissions(dir, 0o700);
+        // Whose run it is, so a start after a crash knows the folder for a leftover.
+        await IOUtils.writeUTF8(PathUtils.join(dir, RUN_MARK), `${Services.appinfo.processID}\n`);
         // The servers of the CLI's own configuration, each then turned off by name (C7), asked
         // before any ticket exists.
         /** @type {string[]} */
@@ -884,6 +944,7 @@ export const AgentCli = {
         await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true }).catch((e) =>
           console.error("vimma agent: a CLI's folder could not be removed", e?.name),
         );
+        liveRuns.delete(dir);
       }
     })().catch((e) => {
       if (ticket) lazy.VimmaControl.revokeTicket(ticket);

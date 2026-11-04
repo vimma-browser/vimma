@@ -371,3 +371,81 @@ addTidyTask(async function test_a_lock_gemini_holds_is_waited_for_not_broken() {
     "and edits the registry once the lock is free",
   );
 });
+
+addTidyTask(async function test_a_run_folder_a_crash_left_goes_with_its_records() {
+  // Vimma itself crashed: the run folder is still there, with a dead process's mark.
+  if (!(await IOUtils.exists("/proc/self"))) {
+    info("skipped: a process is known to be gone only through /proc");
+    return;
+  }
+  let dead = 4194000;
+  while (await IOUtils.exists(`/proc/${dead}`)) dead++;
+  const left = await IOUtils.createUniqueDirectory(runBase(), "vimma-agent-cli", 0o700);
+  const live = await IOUtils.createUniqueDirectory(runBase(), "vimma-agent-cli", 0o700);
+  try {
+    await IOUtils.writeUTF8(PathUtils.join(left, ".vimma-run"), `${dead}\n`);
+    await IOUtils.writeUTF8(PathUtils.join(left, "gemini-client-error-x.json"), "{}");
+    await IOUtils.writeUTF8(PathUtils.join(live, ".vimma-run"), `${Services.appinfo.processID}\n`);
+    const projects = {
+      "/home/someone/code/vimma-agent-cli": "app",
+      [left]: "left",
+      [live]: "live",
+    };
+    await IOUtils.writeJSON(geminiPath("projects.json"), { projects });
+    for (const [slug, root] of [
+      ["left", left],
+      ["live", live],
+    ]) {
+      for (const kind of ["tmp", "history"]) {
+        await IOUtils.makeDirectory(geminiPath(kind, slug), { createAncestors: true });
+        await IOUtils.writeUTF8(geminiPath(kind, slug, ".project_root"), root);
+      }
+    }
+    AgentCli._liveRuns.add(live);
+    await AgentCli.sweepGemini();
+    Assert.ok(
+      !(await IOUtils.exists(left)),
+      "the crashed run's folder goes, error reports and all",
+    );
+    Assert.ok(await IOUtils.exists(live), "a run of this Vimma's that is going stays");
+    Assert.deepEqual(
+      await recorded(),
+      ["history/app", "history/live", "tmp/app", "tmp/live"],
+      "and so do their records: the crashed run's go",
+    );
+    Assert.deepEqual(
+      Object.keys(await registry()).sort(),
+      ["/home/someone/code/vimma-agent-cli", live].sort(),
+    );
+  } finally {
+    AgentCli._liveRuns.delete(live);
+    await IOUtils.remove(left, { recursive: true, ignoreAbsent: true });
+    await IOUtils.remove(live, { recursive: true, ignoreAbsent: true });
+  }
+});
+
+addTidyTask(async function test_a_linked_registry_is_left_a_link() {
+  if (!(await needCtl())) return;
+  // A dotfile manager's link: Gemini CLI locks and writes the file it leads to, so Vimma does
+  // not edit it, and removes only the run's folders.
+  const real = PathUtils.join(fake.home, "projects-real.json");
+  await IOUtils.writeJSON(real, { projects: { "/home/someone/code/vimma-agent-cli": "app" } });
+  await IOUtils.remove(geminiPath("projects.json"));
+  const target = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  target.initWithPath(geminiPath("projects.json"));
+  // nsIFile has no symlink call: python3 makes the link, as a user's dotfile manager would.
+  await new Promise((resolve) => {
+    const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
+    const py = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    py.initWithPath("/usr/bin/python3");
+    proc.init(py);
+    const args = ["-c", "import os,sys; os.symlink(sys.argv[1], sys.argv[2])", real, target.path];
+    proc.runAsync(args, args.length, { observe: resolve });
+  });
+  Assert.ok(target.clone().isSymlink(), "the registry is a link");
+  const c = conversation();
+  const result = await run(c.id, "hello");
+  Assert.equal(result.outcome, "done", `done: ${result.error}`);
+  Assert.ok(target.clone().isSymlink(), "the registry is still a link");
+  Assert.deepEqual(await recorded(), ["history/app", "tmp/app"], "the run's folders are gone");
+});

@@ -601,9 +601,15 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
    (`vimma-agent-cli`, `vimma-agent-cli-<n>`) directly in a folder runs are made in, because the
    user's own Gemini CLI projects and sessions must never be touched. The remaining gap: from
    the run's start to its end the conversation is in Gemini CLI's folder, and a crash, a kill or
-   a power cut leaves it there; at the next start Vimma removes the records of every run of its
-   own whose folder is gone, while a run still going, in this Vimma or another, has its folder
-   and is left alone. Gemini CLI's `TMPDIR` is the run's folder, because its error reports hold
+   a power cut leaves it there. Each run folder holds the process id of the Vimma that runs it,
+   so that at the next start Vimma knows a folder a crash left: one whose process is gone (on
+   Linux, through `/proc`), one its own process id marks while no run of this Vimma's uses it,
+   or one older than any run lasts (`max_minutes`' longest, a day, and an hour more, the only
+   rule where no process can be asked about, as on macOS). It removes such a folder with what
+   Gemini CLI recorded of its run, and the records of every run of its own whose folder is
+   gone, while a run still going, in this Vimma or another, is left alone. A registry that is
+   a link (a dotfile manager's) is not edited, because Gemini CLI locks and writes the file it
+   leads to and a rename would replace the link; its entries stay, the folders still go. Gemini CLI's `TMPDIR` is the run's folder, because its error reports hold
    the conversation and would otherwise stay in `/tmp`, readable by other users. Rejected:
    keeping Gemini CLI off until it can be asked, because its users would wait on an upstream
    change; stating in the window that its files are kept, because they would never be removed;

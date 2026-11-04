@@ -159,7 +159,9 @@ the [user guide](guide.md); planned work is on the
 - Gemini CLI saves each task's conversation, page text included, in its own folder
   (`~/.gemini/tmp`), with no setting to stop it. Vimma deletes it when the task ends, but until
   then it is on disk, unencrypted, and a crash or a power cut leaves it there until the next
-  start of Vimma. Vimma relies on Gemini CLI's own layout of that folder (0.66.0): a version that
+  start of Vimma (on macOS, which Vimma cannot ask whether a process is gone, until a start a
+  day after the task). A `projects.json` that is a link is not edited: Vimma's tasks stay
+  listed in it, without their folders. Vimma relies on Gemini CLI's own layout of that folder (0.66.0): a version that
   saves elsewhere keeps its files until Vimma knows of it.
 - Gemini CLI does not report an MCP server that did not start: a task whose `vimma-ctl` failed
   runs without the browser's tools, and no message says why. It reports neither its tools nor a

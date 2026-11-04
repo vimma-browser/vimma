@@ -2161,7 +2161,9 @@ Vimma's own`; rename it. A call to any server other than Vimma's ends the task.
   file, its project folders in `~/.gemini/tmp` and `~/.gemini/history`, and its entry in
   `~/.gemini/projects.json`. It finds them by the task's own folder, so your other Gemini CLI
   projects and sessions are never touched. If Vimma or the computer stops during a task, the next
-  start of Vimma deletes what that task left. Gemini CLI's error reports, which also hold the
+  start of Vimma deletes what that task left (on macOS, once the task's folder is a day old).
+  If `~/.gemini/projects.json` is a link, as a dotfile manager makes it, Vimma leaves it as it
+  is, so the tasks' entries stay in it; their folders still go. Gemini CLI's error reports, which also hold the
   conversation, go to the task's own folder, which goes when the task ends.
 - If `vimma-ctl` does not start, Gemini CLI does not say so: the task runs without the
   browser's tools, and its reply says it could not reach them. Check that `vimma-ctl` is next to

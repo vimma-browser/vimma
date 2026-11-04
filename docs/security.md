@@ -2091,9 +2091,11 @@ own process, not a process group.
   whose `.project_root` marker names the run's folder (its session files, the whole
   conversation with the page text, among them) and the registry entry in `projects.json`,
   edited under Gemini CLI's own lock, which is waited for and never broken. At each start Vimma
-  **must** remove the same of every run of its own whose folder is gone (one a crash ended); a
-  project is Vimma's only when its path is a run folder's name directly in a folder runs are
-  made in, so no project of the user's is ever touched. Gemini CLI's `TMPDIR` is the run's
+  **must** remove the same of every run of its own whose folder is gone, and of every run folder
+  a crash left, with the folder: one whose marked process is gone (Linux), that its own
+  process id marks while unused, or older than a day and an hour; a registry that is a link
+  is not edited. A project is Vimma's only when its path is a run folder's name directly in a
+  folder runs are made in, so no project of the user's is ever touched. Gemini CLI's `TMPDIR` is the run's
   folder, since its error reports hold the conversation. Between a run's start and its end,
   and after a crash until the next start, the conversation is on disk in Gemini CLI's folder
   (`docs/limits.md`).
@@ -2129,6 +2131,8 @@ own process, not a process group.
   [`test_a_stopped_run_keeps_nothing_either`](../tests/browser/browser_vimma_agent_cli_gemini.js),
   [`test_a_rejected_key_is_the_runs_error_and_its_report_goes`](../tests/browser/browser_vimma_agent_cli_gemini.js),
   [`test_leftovers_of_runs_a_crash_ended_go_at_the_next_start`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_run_folder_a_crash_left_goes_with_its_records`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_linked_registry_is_left_a_link`](../tests/browser/browser_vimma_agent_cli_gemini.js),
   [`test_a_lock_gemini_holds_is_waited_for_not_broken`](../tests/browser/browser_vimma_agent_cli_gemini.js),
   [`only a run folder of vimma's is one of its runs`](../packages/vimma-core/test/agent-cli.test.mjs),
   [`the registry keeps every other project, and names the runs' folders`](../packages/vimma-core/test/agent-cli.test.mjs),
