@@ -124,8 +124,8 @@ const fresh = () => ({
 /** @type {UpdateState} */
 let state = fresh();
 /**
- * config.toml cannot be read (its TOML does not parse) and only the defaults stand in for it: no
- * check but `:update` until it is fixed (decision 31).
+ * config.toml's `[updates] check` cannot be read (decision 31) and only the defaults stand in for
+ * the file: no check but `:update` until it can be.
  */
 let held = false;
 /** `[updates] check` of the config in force; null before config.toml is read. */
@@ -190,6 +190,15 @@ function notify() {
       console.error("vimma: update listener failed", e);
     }
   }
+}
+
+/**
+ * Why checks are off, for about:vimma: the pref first, because it stops `:update` too, so a
+ * hold must not claim that `:update` still checks.
+ */
+function offFrom() {
+  if (!Services.prefs.getBoolPref(ENABLED_PREF, true)) return "pref";
+  return held ? "config-errors" : configCheck === false ? "config" : "pref";
 }
 
 /** @param {{ asked?: boolean }} [options]  asked: the user typed `:update` */
@@ -862,7 +871,7 @@ export const VimmaUpdates = {
     const { offer } = state;
     return {
       enabled: enabled(),
-      from: held ? "config-errors" : configCheck === false ? "config" : "pref",
+      from: offFrom(),
       installType: where.type,
       channel: channel(),
       intervalHours: Services.prefs.getIntPref(INTERVAL_PREF, 43200) / 3600,
@@ -932,7 +941,7 @@ export const VimmaUpdates = {
       ...state,
       stage: stage(),
       enabled: enabled(),
-      from: held ? "config-errors" : configCheck === false ? "config" : "pref",
+      from: offFrom(),
     };
   },
 

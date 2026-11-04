@@ -561,6 +561,26 @@ add_task(async function a_config_with_errors_still_turns_checks_off() {
   await until(() => VimmaUpdates.status().enabled, "back on with the defaults");
 });
 
+add_task(async function an_opt_out_under_a_misspelt_table_never_turns_checks_on() {
+  await fetch(`${HOST}?reset`);
+  await serve(await manifest());
+  const off = PathUtils.join(dir, "off.toml");
+  await IOUtils.writeUTF8(off, "schema = 2\n[updates]\ncheck = false\n");
+  await ConfigHost.reload(off);
+  await until(() => !VimmaUpdates.status().enabled, "check = false");
+  // [update] for [updates]: the file parses and may mean check = false.
+  const misspelt = PathUtils.join(dir, "misspelt.toml");
+  await IOUtils.writeUTF8(misspelt, "schema = 2\n[update]\ncheck = false\n");
+  await ConfigHost.reload(misspelt);
+  Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
+  Assert.ok(!VimmaUpdates.status().enabled, "checks stay off");
+  Assert.equal((await VimmaUpdates.check()).outcome, "off");
+  Assert.deepEqual(await requests(), [], "no request");
+  await ConfigHost.reload();
+  await until(() => VimmaUpdates.status().enabled, "back on with the defaults");
+  VimmaUpdates._reset();
+});
+
 add_task(async function a_config_that_parses_with_errors_still_checks() {
   await fetch(`${HOST}?reset`);
   await serve(await manifest());
@@ -589,6 +609,7 @@ add_task(async function update_runs_while_checks_are_held() {
   Assert.deepEqual(await requests(), [], "no request");
   Assert.equal((await VimmaUpdates.check({ asked: true })).outcome, "offer", ":update runs");
   await SpecialPowers.pushPrefEnv({ set: [["vimma.update.enabled", false]] });
+  Assert.equal(VimmaUpdates.status().from, "pref", "about:vimma names the pref, not :update");
   Assert.equal((await VimmaUpdates.check({ asked: true })).outcome, "off", "the pref holds");
   await SpecialPowers.popPrefEnv();
   VimmaUpdates.configure({ check: true, held: false });

@@ -1250,18 +1250,35 @@ export function reloadConfig(active, text, { mac = false } = {}) {
 }
 
 /**
+ * A boolean `check` in some table other than `[updates]`, such as `[ui.updates]` or `[ui]`: an
+ * opt-out written in the wrong place. No other section has a `check` key.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function strayCheck(value) {
+  if (Array.isArray(value)) return value.some(strayCheck);
+  if (!isTable(value)) return false;
+  return Object.entries(value).some(
+    ([k, v]) => (k === "check" && typeof v === "boolean") || strayCheck(v),
+  );
+}
+
+/**
  * `[updates] check` as the file says it, even when the file as a whole has errors elsewhere
  * (docs/specs/m6a-updater.md decision 31): a boolean; "missing" when the TOML parses and says
  * nothing about it; null when it cannot be read (the TOML does not parse, `updates` is not a
- * table, `check` is not a boolean, or `[updates]` has other keys but no `check`, such as a
- * misspelt `chekc = false`), since the file may then mean `check = false`.
+ * table, `check` is not a boolean, `[updates]` has other keys but no `check`, such as a
+ * misspelt `chekc = false`, the file has a top-level key no section is named, such as
+ * `[update]`, or a boolean `check` sits in another table), since the file may then mean
+ * `check = false`.
  * @param {string} text
  * @returns {boolean | "missing" | null}
  */
 export function rawUpdatesCheck(text) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return null;
-  const updates = parsed.value.updates;
+  const { updates, ...rest } = parsed.value;
+  if (Object.keys(rest).some((key) => !TOP_KEYS.includes(key)) || strayCheck(rest)) return null;
   if (updates === undefined) return "missing";
   if (!isTable(updates)) return null;
   if (updates.check === undefined) return Object.keys(updates).length ? null : "missing";

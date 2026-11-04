@@ -1125,6 +1125,20 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
     );
   });
 
+  test("an opt-out under a misspelt or misplaced table may mean check = false", () => {
+    for (const text of [
+      "schema = 2\n[update]\ncheck = false\n",
+      "schema = 2\n[Updates]\ncheck = false\n",
+      "schema = 2\ncheck = false\n",
+      "schema = 2\n[ui.updates]\ncheck = false\n",
+      "schema = 2\n[ui]\ncheck = false\n",
+      "schema = 2\n[updatez]\nfoo = 1\n",
+    ]) {
+      expect(parseConfig(text).errors.length, text).toBeGreaterThan(0);
+      expect(rawUpdatesCheck(text), text).toBeNull();
+    }
+  });
+
   test("a file that parses but has errors checks as a valid file would (#741)", () => {
     // A value from a newer build (an unknown provider cli) must not lock the user out of the
     // release that accepts it.
