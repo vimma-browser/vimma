@@ -836,6 +836,12 @@ is one more key away, while unsaved changes left behind are gone. A dialog with 
 such as a page asking for a name or a site asking you to sign in, keeps `y` and `n` as text, and
 its line names `Enter` and `Esc` instead.
 
+The question Firefox asks before a link opens another application, such as a `mailto:` or a
+`zoommtg:` link ("Allow this site to open the link with ...?"), and its list of applications take
+the same keys: `y` opens the link (Open Link, Choose Application) and `n` cancels, so nothing
+outside the browser starts. `y` also waits until Firefox enables its Open Link button, which it
+keeps greyed out for a moment after the question appears.
+
 ### Colours and themes
 
 The status bar, the command line, the `ctrl+b ?` overlay, the pickers and prompts, link hints,
