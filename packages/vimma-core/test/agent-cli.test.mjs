@@ -11,6 +11,8 @@ import {
   CODEX_SERVER,
   ClaudeStream,
   CodexStream,
+  GEMINI_SERVER,
+  GeminiStream,
   MAX_MODEL,
   claudeArguments,
   codexArguments,
@@ -20,6 +22,9 @@ import {
   dispatcherOf,
   dispatcherProblem,
   exitText,
+  geminiArguments,
+  geminiLeftover,
+  geminiProjects,
   cliModelText,
   mcpConfig,
   modelProblem,
@@ -731,9 +736,16 @@ describe("every CLIS entry supplies the whole interface", () => {
       expect(() => cli.args({ ...run, model: "--bare" })).toThrow();
       const ticket = "t".repeat(64);
       const config = cli.mcpConfig({ vimmaCtl: "/opt/vimma/vimma-ctl", ticket, port: 1 });
-      const env = cli.env({ ticket, port: 1 });
-      // vimma-ctl is the one server, named in the file the arguments point at, or in them.
-      if (config) expect(args).toContain("/run/x/mcp.json");
+      const env = cli.env({ ticket, port: 1, dir: "/run/x" });
+      // vimma-ctl is the one server, named in the file the arguments point at, in the run's
+      // folder where the CLI looks for it, or in the arguments.
+      expect(typeof cli.configFile).toBe("string");
+      expect(Boolean(config)).toBe(Boolean(cli.configFile));
+      if (config) expect(cli.configFile).toMatch(/^[\w.-]+(\/[\w.-]+)*$/);
+      if (config && args.some((a) => a.startsWith("/run/x/"))) {
+        expect(args).toContain(`/run/x/${cli.configFile}`);
+      }
+      expect(["none", "gemini-projects"]).toContain(cli.sessions);
       expect(`${JSON.stringify(config)} ${args.join(" ")}`).toContain("/opt/vimma/vimma-ctl");
       // The ticket reaches it through the file or the CLI's environment, never an argument.
       expect(args.join(" ")).not.toContain(ticket);
@@ -1023,5 +1035,266 @@ describe("codex's stream (C7, C8)", () => {
     expect(s.push(`{"x":"${"a".repeat(CLI_STREAM_LIMITS.line)}"}\n`)).toEqual([
       { type: "fail", error: "codex wrote a line over 1 MiB" },
     ]);
+  });
+});
+
+// Gemini CLI 0.66.0, recorded as Codex was (issue #726): headless with the arguments below,
+// inside a network namespace that has only loopback, against a scripted Gemini API server
+// (`GOOGLE_GEMINI_BASE_URL`, a made-up key), a throwaway HOME, and a one-tool MCP server named
+// vimma_chat in the run folder's `.gemini/settings.json`. The model asked for Vimma's tool, then
+// for a shell command, which headless Gemini CLI does not offer; the bad-key run had the server
+// answer 401.
+/** Every event of a whole Gemini CLI stream, fed in chunks that cut lines in two. */
+function geminiEvents(/** @type {string} */ text, chunk = 97) {
+  const s = new GeminiStream({ model: "" });
+  const out = [];
+  for (let i = 0; i < text.length; i += chunk) out.push(...s.push(text.slice(i, i + chunk)));
+  out.push(...s.end());
+  return { out, stream: s };
+}
+
+const GEMINI = /** @type {any} */ (CLIS.gemini);
+
+describe("gemini's command line (C2, C3, C5, C7)", () => {
+  test("gemini's arguments are the fixture", () => {
+    expect(geminiArguments({ model: "" })).toEqual([
+      "-o",
+      "stream-json",
+      "--allowed-mcp-server-names",
+      "vimma_chat",
+      "-e",
+      "none",
+    ]);
+    expect(geminiArguments({ model: "pro" }).slice(-2)).toEqual(["-m", "pro"]);
+    expect(() => geminiArguments({ model: "--yolo" })).toThrow();
+    expect(GEMINI_SERVER).toBe("vimma_chat");
+  });
+
+  test("vimma's server is in the run folder's settings file, the ticket in its env", () => {
+    const ticket = "ab".repeat(32);
+    expect(GEMINI.configFile).toBe(".gemini/settings.json");
+    expect(GEMINI.mcpConfig({ vimmaCtl: CTL, ticket, port: 4123 })).toEqual({
+      mcpServers: {
+        vimma_chat: {
+          command: CTL,
+          args: ["mcp"],
+          env: { VIMMA_AGENT_TICKET: ticket, VIMMA_AGENT_PORT: "4123" },
+          trust: true,
+        },
+      },
+    });
+    const args = GEMINI.args({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] });
+    expect(args.join(" ")).not.toContain(ticket);
+    expect(args.join(" ")).not.toContain(CTL);
+  });
+
+  test("gemini trusts the run folder from its environment, and keeps its reports there", () => {
+    // --skip-trust trusts the folder but does not load its settings file; the variable does
+    // both. An error report holds the conversation and goes to TMPDIR, which is the run's folder.
+    const env = GEMINI.env({ ticket: "ab".repeat(32), port: 4123, dir: RUN });
+    expect(env).toEqual({ GEMINI_CLI_TRUST_WORKSPACE: "true", TMPDIR: RUN });
+  });
+
+  test("the task goes to stdin, which then closes, and gemini's runs are cleaned up", () => {
+    const task = '--yolo "q" $(x)';
+    expect(GEMINI.input(task)).toBe(`${task}\n`);
+    expect(GEMINI.live).toBe(false);
+    expect(GEMINI.servers).toBeNull();
+    expect(GEMINI.sessions).toBe("gemini-projects");
+    expect(CLIS.codex?.sessions).toBe("none");
+    expect(CLIS["claude-code"]?.sessions).toBe("none");
+  });
+
+  test("gemini's version line and suggested model", () => {
+    expect(versionText(GEMINI, "0.66.0\n", "/usr/bin/gemini")).toBe(
+      "gemini 0.66.0 · /usr/bin/gemini",
+    );
+    expect(GEMINI.model).toBe("");
+    expect(modelPrompt("gemini").placeholder).toBe("empty: Gemini CLI's own default model");
+  });
+});
+
+describe("gemini's stream (C7, C8)", () => {
+  test("a recorded gemini stream maps to replies, own-tool lines and usage", () => {
+    const { out, stream } = geminiEvents(fixture("gemini-0.66.0-task"));
+    const shell = "run_shell_command__run_shell_command_1793818749495_0";
+    expect(out).toEqual([
+      { type: "init", model: "", version: "", tools: null },
+      {
+        type: "own-tool",
+        id: shell,
+        text: 'gemini ran its own tool: run_shell_command "ls /"',
+      },
+      { type: "own-tool-refused", id: shell },
+      { type: "reply", text: "Done: you have one tab." },
+      {
+        type: "result",
+        ok: true,
+        error: null,
+        usage: { input: 403, output: 28 },
+        rest: { input: 403, output: 28 },
+        cost: null,
+        queued: 0,
+      },
+    ]);
+    // The task echoed back, and vimma's own call and its result.
+    expect(stream.ignored).toBeGreaterThan(0);
+  });
+
+  test("the pieces of one reply are joined, and a tool call between them splits it", () => {
+    const lines = [
+      { type: "init", session_id: "s", model: "auto" },
+      { type: "message", role: "assistant", content: "Let me ", delta: true },
+      { type: "message", role: "assistant", content: "look.", delta: true },
+      { type: "tool_use", tool_name: "mcp_vimma_chat_vimma_tabs", tool_id: "a", parameters: {} },
+      { type: "tool_result", tool_id: "a", status: "success", output: "1 tab" },
+      { type: "message", role: "assistant", content: "One tab.", delta: true },
+    ];
+    const { out } = geminiEvents(lines.map((l) => JSON.stringify(l)).join("\n"));
+    expect(out.filter((e) => e.type === "reply")).toEqual([
+      { type: "reply", text: "Let me look." },
+      { type: "reply", text: "One tab." },
+    ]);
+    expect(out.map((e) => JSON.stringify(e)).some((t) => t.includes("vimma_tabs"))).toBe(false);
+  });
+
+  test("a tool of another mcp server that ran ends the run; one never offered does not", () => {
+    const use = (/** @type {string} */ id) =>
+      JSON.stringify({
+        type: "tool_use",
+        tool_name: "mcp_other_read",
+        tool_id: id,
+        parameters: {},
+      });
+    const missing = JSON.stringify({
+      type: "tool_result",
+      tool_id: "x",
+      status: "error",
+      error: { type: "tool_not_registered", message: "not found" },
+    });
+    expect(geminiEvents(`${use("x")}\n${missing}\n`).out).toEqual([
+      { type: "own-tool", id: "x", text: "gemini ran its own tool: mcp_other_read {}" },
+      { type: "own-tool-refused", id: "x" },
+    ]);
+    const ran = JSON.stringify({ type: "tool_result", tool_id: "y", status: "success" });
+    const { out, stream } = geminiEvents(`${use("y")}\n${ran}\n${use("z")}\n`);
+    expect(out.at(-1)).toEqual({
+      type: "fail",
+      error: "gemini called an MCP server that is not Vimma's: mcp_other_read",
+    });
+    expect(stream.failed).toBe(true);
+  });
+
+  test("a step its policy refuses is marked refused", () => {
+    const lines = [
+      { type: "tool_use", tool_name: "write_file", tool_id: "w", parameters: { file_path: "/a" } },
+      { type: "tool_result", tool_id: "w", status: "error", error: { type: "policy_violation" } },
+    ];
+    const { out } = geminiEvents(lines.map((l) => JSON.stringify(l)).join("\n"));
+    expect(out).toEqual([
+      { type: "own-tool", id: "w", text: 'gemini ran its own tool: write_file "/a"' },
+      { type: "own-tool-refused", id: "w" },
+    ]);
+  });
+
+  test("a key the provider refuses ends in an error result", () => {
+    const { out } = geminiEvents(fixture("gemini-0.66.0-bad-key"));
+    const result = /** @type {any} */ (out.at(-1));
+    expect(result).toMatchObject({ type: "result", ok: false, cost: null });
+    expect(result.error).toMatch(/API key not valid/);
+    expect(out.filter((e) => e.type === "result")).toHaveLength(1);
+  });
+
+  test("a run that ends without its result reports gemini's last error", () => {
+    const lines = [
+      { type: "init", session_id: "s", model: "auto" },
+      { type: "error", severity: "error", message: "quota exhausted" },
+    ];
+    const { out } = geminiEvents(lines.map((l) => JSON.stringify(l)).join("\n"));
+    expect(out.at(-1)).toEqual({
+      type: "result",
+      ok: false,
+      error: "quota exhausted",
+      usage: null,
+      rest: null,
+      cost: null,
+      queued: 0,
+    });
+  });
+
+  test("a result that no longer parses ends the run", () => {
+    const { out } = geminiEvents(`${JSON.stringify({ type: "result", status: "maybe" })}\n`);
+    expect(out).toEqual([{ type: "fail", error: "gemini speaks a stream Vimma does not read" }]);
+  });
+});
+
+// docs/specs/builtin-agent-cli.md C5 (Since changed): Gemini CLI records every run in
+// ~/.gemini; Vimma removes what its own runs left there, found by the run's folder, never a
+// project of the user's.
+describe("gemini's records of vimma's runs (C5)", () => {
+  const BASES = ["/run/user/1000", "/home/u/.cache/vimma-agent-cli"];
+
+  test("only a run folder of vimma's is one of its runs", () => {
+    for (const p of [
+      "/run/user/1000/vimma-agent-cli",
+      "/run/user/1000/vimma-agent-cli-12",
+      "/home/u/.cache/vimma-agent-cli/vimma-agent-cli-3",
+    ]) {
+      expect(geminiLeftover(p, BASES)).toBe(true);
+    }
+    for (const p of [
+      "/home/u/projects/vimma-agent-cli",
+      "/run/user/1000/vimma-agent-cli-x",
+      "/run/user/1000/vimma-agent-cli/sub",
+      "/run/user/1000/other",
+      "/run/user/1000/../1000/vimma-agent-cli",
+      "relative/vimma-agent-cli",
+    ]) {
+      expect(geminiLeftover(p, BASES)).toBe(false);
+    }
+  });
+
+  test("the registry keeps every other project, and names the runs' folders", () => {
+    const registry = JSON.stringify({
+      projects: {
+        "/home/u/code/app": "app",
+        "/run/user/1000/vimma-agent-cli-2": "vimma-agent-cli-2",
+        "/run/user/1000/vimma-agent-cli": "vimma-agent-cli",
+      },
+    });
+    const r = geminiProjects(registry, (p) => p === "/run/user/1000/vimma-agent-cli-2");
+    expect(r.removed).toEqual([
+      { path: "/run/user/1000/vimma-agent-cli-2", slug: "vimma-agent-cli-2" },
+    ]);
+    expect(JSON.parse(/** @type {string} */ (r.text))).toEqual({
+      projects: {
+        "/home/u/code/app": "app",
+        "/run/user/1000/vimma-agent-cli": "vimma-agent-cli",
+      },
+    });
+  });
+
+  test("a slug that is not a plain folder name is never a folder to remove", () => {
+    const registry = JSON.stringify({
+      projects: {
+        "/run/user/1000/vimma-agent-cli": "..",
+        "/run/user/1000/vimma-agent-cli-1": "a/b",
+        "/run/user/1000/vimma-agent-cli-2": "",
+      },
+    });
+    const r = geminiProjects(registry, () => true);
+    expect(r.removed.map((x) => x.slug)).toEqual([null, null, null]);
+    expect(JSON.parse(/** @type {string} */ (r.text))).toEqual({ projects: {} });
+  });
+
+  test("a registry it cannot read is left as it is", () => {
+    for (const bad of ["", "not json", "[]", '{"projects":[]}', '{"projects":{"/a":1}}']) {
+      expect(geminiProjects(bad, () => true)).toEqual({ text: null, removed: [] });
+    }
+    // Nothing of vimma's in it: nothing to write.
+    expect(geminiProjects('{"projects":{"/a":"a"}}', () => false)).toEqual({
+      text: null,
+      removed: [],
+    });
   });
 });

@@ -127,7 +127,7 @@ describe("chrome code", () => {
     const text = readFileSync(join(ROOT, CLI), "utf8");
     expect(text.match(/Subprocess\.call\(/g)).toHaveLength(2);
     expect(text).toMatch(
-      /const run = \{ mcpConfig: file, vimmaCtl: ctl\.path, dir, model: o\.provider\.model, others \};\s*proc = await lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(run\),\s*(\/\/[^\n]*\n\s*)*environment: \{\s*\.\.\.cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*\.\.\.cli\.env\(\{ ticket: issued\.ticket, port: issued\.port \}\),\s*\},\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
+      /const run = \{ mcpConfig: file, vimmaCtl: ctl\.path, dir, model: o\.provider\.model, others \};\s*proc = await lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(run\),\s*(\/\/[^\n]*\n\s*)*environment: \{\s*\.\.\.cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*...cli\.env\(\{ ticket: issued\.ticket, port: issued\.port, dir \}\),\s*\},\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
     );
     expect(text).toMatch(
       /lazy\.Subprocess\.call\(\{\s*command: path,\s*arguments: \[\.\.\.args\],\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir,\s*stderr: "pipe",\s*\}\)/,

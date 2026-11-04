@@ -23,6 +23,8 @@ import {
   dispatcherOf,
   dispatcherProblem,
   exitText,
+  geminiLeftover,
+  geminiProjects,
   pathProblem,
   refusedText,
   shimText,
@@ -63,6 +65,10 @@ const SERVERS_LIST_CHARS = 256 * 1024;
 const TICK_MS = 30_000;
 /** How long a CLI has to exit after its work is done, and its output to drain after that. */
 const EXIT_GRACE_MS = 2000;
+
+/** How often, and how many times, a run waits for Gemini CLI's lock on its registry. */
+const LOCK_WAIT_MS = 100;
+const LOCK_TRIES = 50;
 
 /** @param {number} ms */
 const delay = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
@@ -286,6 +292,81 @@ async function runBase() {
 }
 
 /**
+ * The folders runs are made in (`runBase`), without making one, as the paths they name and as
+ * they resolve: Gemini CLI records its working directory as the kernel gives it, links resolved.
+ * @returns {string[]}
+ */
+function runBases() {
+  const runtime = Services.env.get("XDG_RUNTIME_DIR");
+  const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
+  const bases = [PathUtils.join(home, ".cache", "vimma-agent-cli")];
+  if (runtime && PathUtils.isAbsolute(runtime)) bases.unshift(runtime);
+  return [...new Set(bases.flatMap((b) => [b, resolve(b)?.real ?? b]))];
+}
+
+/** Gemini CLI's own folder, where it finds it: GEMINI_CLI_HOME, else the home folder. */
+function geminiDir() {
+  const home = Services.env.get("GEMINI_CLI_HOME") || Services.dirsvc.get("Home", Ci.nsIFile).path;
+  return PathUtils.isAbsolute(home) ? PathUtils.join(home, ".gemini") : null;
+}
+
+/**
+ * Removes what Gemini CLI recorded of the runs of Vimma's that `ours` picks (C5, Since changed):
+ * each one's project folder in `tmp/` (its session files, the whole conversation with the page
+ * text) and in `history/`, and its entry in `projects.json`. A folder goes only when its
+ * `.project_root` marker names a run `ours` picks, so no project of the user's is ever touched,
+ * whatever the registry says. The registry is edited under Gemini CLI's own lock (a folder
+ * beside it, proper-lockfile's), waited for and never broken; if it stays locked the entry
+ * waits for the next clean-up, while the folders still go.
+ * @param {(path: string) => boolean} ours
+ */
+async function cleanGemini(ours) {
+  const root = geminiDir();
+  if (!root || !(await IOUtils.exists(root))) return;
+  for (const kind of ["tmp", "history"]) {
+    const dir = PathUtils.join(root, kind);
+    /** @type {string[]} */
+    let children;
+    try {
+      children = await IOUtils.getChildren(dir);
+    } catch {
+      continue;
+    }
+    for (const child of children) {
+      let owner;
+      try {
+        owner = (await IOUtils.readUTF8(PathUtils.join(child, ".project_root"))).trim();
+      } catch {
+        continue;
+      }
+      if (ours(owner)) await IOUtils.remove(child, { recursive: true, ignoreAbsent: true });
+    }
+  }
+  const registry = PathUtils.join(root, "projects.json");
+  if (!(await IOUtils.exists(registry))) return;
+  const lock = `${registry}.lock`;
+  let locked = false;
+  for (let i = 0; i < LOCK_TRIES && !locked; i++) {
+    try {
+      await IOUtils.makeDirectory(lock, { ignoreExisting: false, createAncestors: false });
+      locked = true;
+    } catch (e) {
+      if (/** @type {any} */ (e)?.name !== "NoModificationAllowedError") return;
+      await delay(LOCK_WAIT_MS);
+    }
+  }
+  if (!locked) return;
+  try {
+    const edited = geminiProjects(await IOUtils.readUTF8(registry), ours);
+    if (edited.text !== null) {
+      await IOUtils.writeUTF8(registry, edited.text, { tmpPath: `${registry}.vimma.tmp` });
+    }
+  } finally {
+    await IOUtils.remove(lock, { ignoreAbsent: true });
+  }
+}
+
+/**
  * Reads a pipe to its end, keeping its last `keep` characters.
  * @param {any} pipe @param {number} [keep]
  */
@@ -377,6 +458,58 @@ async function findVimmaCtl(binDir = binaryDir()) {
 
 export const AgentCli = {
   findVimmaCtl,
+
+  /**
+   * Once per app (vimma.js): the leftovers of Gemini CLI runs that a crash or a kill ended
+   * before their clean-up, once Gemini CLI is set up.
+   */
+  init() {
+    if (this.initialised) return;
+    this.initialised = true;
+    if (!this.enabled || !Services.prefs.getStringPref(pathPref("gemini"), "")) return;
+    // After the window's start, which it need not hold up.
+    Services.tm.dispatchToMainThread(() => {
+      this.sweepGemini().catch((e) =>
+        console.error("vimma agent: Gemini CLI's records of past runs not removed", e?.name),
+      );
+    });
+  },
+  initialised: false,
+
+  /**
+   * Removes what Gemini CLI recorded of Vimma's runs whose folder is gone (C5): a run that is
+   * still going, in this Vimma or another, has its folder.
+   */
+  async sweepGemini() {
+    const bases = runBases();
+    /** @type {Set<string>} */
+    const gone = new Set();
+    const root = geminiDir();
+    if (!root) return;
+    // Which run folders are gone, read before the synchronous predicate needs them.
+    /** @type {Set<string>} */
+    const seen = new Set();
+    for (const kind of ["tmp", "history"]) {
+      const children = await IOUtils.getChildren(PathUtils.join(root, kind)).catch(() => []);
+      for (const child of children) {
+        try {
+          seen.add((await IOUtils.readUTF8(PathUtils.join(child, ".project_root"))).trim());
+        } catch {
+          // Not a project folder.
+        }
+      }
+    }
+    try {
+      const data = JSON.parse(await IOUtils.readUTF8(PathUtils.join(root, "projects.json")));
+      for (const path of Object.keys(data?.projects ?? {})) seen.add(path);
+    } catch {
+      // No registry, or one Gemini CLI would reset itself.
+    }
+    for (const path of seen) {
+      if (geminiLeftover(path, bases) && !(await IOUtils.exists(path))) gone.add(path);
+    }
+    if (gone.size) await cleanGemini((p) => gone.has(p));
+  },
 
   get enabled() {
     return Services.prefs.getBoolPref(CLI_ENABLED_PREF, false);
@@ -613,8 +746,12 @@ export const AgentCli = {
           ticket: issued.ticket,
           port: issued.port,
         });
-        const file = config ? PathUtils.join(dir, "mcp.json") : "";
+        const file = config ? PathUtils.join(dir, ...cli.configFile.split("/")) : "";
         if (config) {
+          await IOUtils.makeDirectory(/** @type {string} */ (PathUtils.parent(file)), {
+            permissions: 0o700,
+            ignoreExisting: true,
+          });
           // 0600 before the ticket is written into it; the folder is 0700 already.
           await IOUtils.writeUTF8(file, "", { mode: "create" });
           await IOUtils.setPermissions(file, 0o600);
@@ -627,7 +764,7 @@ export const AgentCli = {
           // A CLI whose server takes no file has the ticket in its own environment (C3).
           environment: {
             ...cliEnvironment(lazy.Subprocess.getEnvironment()),
-            ...cli.env({ ticket: issued.ticket, port: issued.port }),
+            ...cli.env({ ticket: issued.ticket, port: issued.port, dir }),
           },
           workdir: dir,
           stderr: "pipe",
@@ -737,6 +874,13 @@ export const AgentCli = {
         lazy.clearInterval(tick);
         // M51: the run's end revokes its ticket.
         if (ticket) lazy.VimmaControl.revokeTicket(ticket);
+        // What Gemini CLI recorded of this run: its project is the run's folder (C5).
+        if (cli.sessions === "gemini-projects") {
+          const real = resolve(dir)?.real ?? dir;
+          await cleanGemini((p) => p === dir || p === real).catch((e) =>
+            console.error("vimma agent: Gemini CLI's record of a run not removed", e?.name),
+          );
+        }
         await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true }).catch((e) =>
           console.error("vimma agent: a CLI's folder could not be removed", e?.name),
         );
