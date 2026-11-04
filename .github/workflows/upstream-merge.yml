@@ -1,0 +1,88 @@
+# Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security.md G13 and G14.
+# Sets the upstream autopilot's bump PR to auto-merge only once every workflow the PR started has
+# finished green, not only the checks the main ruleset requires: the macOS mochitests, vimma-ctl
+# on macOS and the package checks hold the merge too.
+#
+# Runs each time one of those workflows completes (workflow_run, so main's copy of this file runs,
+# never the branch's) and reads the head's runs and checks again; the last one to finish decides.
+# A red, cancelled or unapproved run leaves the bump for a person; re-running it green starts this
+# again. upstream.yml marks in the PR body the head commit its allowlist checked; only that head,
+# opened by the upstream App, is merged, and `--auto` keeps the ruleset's required checks and code
+# scanning as the last word. The merge is made with the App's token, because a merge made with
+# GITHUB_TOKEN starts no push workflow on main (decision 7).
+name: upstream merge
+
+on:
+  workflow_run:
+    workflows: [CI, CodeQL, e2e, flatpak, key-guard, macos, pkgbuild, Semgrep]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: upstream-merge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  # head_repository: a fork's PR may name its branch upstream/firefox-*, but its runs are not ours.
+  merge:
+    name: auto-merge the bump once every check is green
+    if: >-
+      github.repository == 'vimma-browser/vimma' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'upstream/firefox-') &&
+      vars.UPSTREAM_APP_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: upstream-autopilot
+    permissions:
+      contents: read
+    steps:
+      - name: token for the upstream App
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.UPSTREAM_APP_ID }}
+          private-key: ${{ secrets.UPSTREAM_APP_KEY }}
+          owner: vimma-browser
+          repositories: vimma
+          permission-contents: write
+          permission-pull-requests: write
+
+      # main's merge-ready.mjs, never the bump branch's.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The runner's own Node: merge-ready.mjs uses built-ins only.
+      - name: merge the bump when every run on its head is green
+        id: merge
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          repo="repos/$GITHUB_REPOSITORY"
+          gh api -X GET "$repo/pulls" -f head="${GITHUB_REPOSITORY_OWNER}:$BRANCH" -f state=open \
+            > "$RUNNER_TEMP/pulls.json"
+          gh api --paginate --slurp \
+            "$repo/actions/runs?head_sha=$HEAD&event=pull_request&per_page=100" \
+            > "$RUNNER_TEMP/runs.json"
+          gh api --paginate --slurp "$repo/commits/$HEAD/check-runs?per_page=100" \
+            > "$RUNNER_TEMP/checks.json"
+          node tools/upstream/merge-ready.mjs --pulls "$RUNNER_TEMP/pulls.json" \
+            --runs "$RUNNER_TEMP/runs.json" --checks "$RUNNER_TEMP/checks.json" --head "$HEAD" \
+            > "$RUNNER_TEMP/ready.json"
+          ready=$(jq -r .ready "$RUNNER_TEMP/ready.json")
+          reason=$(jq -r .reason "$RUNNER_TEMP/ready.json")
+          number=$(jq -r .number "$RUNNER_TEMP/ready.json")
+          title=$(jq -r .title "$RUNNER_TEMP/ready.json")
+          if [ "$ready" != true ]; then
+            echo "Not merging $BRANCH at $HEAD: $reason" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # The squash body is the bump commit's body, as the autopilot wrote it.
+          gh api "$repo/commits/$HEAD" --jq .commit.message | tail -n +3 > "$RUNNER_TEMP/body.txt"
+          gh pr merge "$number" --auto --squash --match-head-commit "$HEAD" --subject "$title (#$number)" --body-file "$RUNNER_TEMP/body.txt"
+          echo "Auto-merge on for #$number at $HEAD: $reason" >> "$GITHUB_STEP_SUMMARY"

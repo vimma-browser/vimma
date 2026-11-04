@@ -11,6 +11,7 @@ import {
   betaIssues,
   branchName,
   autoMergeDecision,
+  autoMergeMarker,
   conflictLines,
   draftDecision,
   driftBody,
@@ -764,10 +765,14 @@ describe("the bump PR and auto-merge", () => {
     );
   });
 
-  it("the PR body has an Auto-merge row and says GitHub merges it", () => {
-    const body = prBody(context(green));
+  it("the PR body has an Auto-merge row and says it merges once every check is green", () => {
+    const head = "c".repeat(40);
+    const body = prBody(context({ ...green, head }));
     expect(body).toContain("| Auto-merge | on |");
-    expect(body).toContain("GitHub merges this PR once every required check is green");
+    expect(body).toContain("merges this PR once every check on it is green");
+    expect(body).toContain(autoMergeMarker(head));
+    expect(prBody(context({ ...green, head, autoMerge: "" }))).not.toContain("upstream-auto-merge");
+    expect(prBody(context(green))).not.toContain("upstream-auto-merge");
     expect(prBody(context({ ...green, autoMerge: "" }))).toContain(
       "| Auto-merge | off: AUTO_MERGE_UPSTREAM does not allow a dot release |",
     );

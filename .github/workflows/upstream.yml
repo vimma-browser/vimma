@@ -411,7 +411,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" --run-url "$RUN_URL" --error "$RUNNER_TEMP/pr-error.txt" \
               --beta-issues "$BETA_ISSUES" --prefs "$pc/prefs-refresh.json" \
               --reexport "$pc/reexport/reexport.json" --auto-merge "$AUTO_MERGE" \
-              --ref "$GITHUB_REF" --bump-diff "$RUNNER_TEMP/bump-diff.json"
+              --ref "$GITHUB_REF" --bump-diff "$RUNNER_TEMP/bump-diff.json" --head "$head"
           }
           body pr > "$RUNNER_TEMP/pr.md"
           title=$(body title)
@@ -449,8 +449,6 @@ jobs:
           echo "Opened or updated $pr for $branch" >> "$GITHUB_STEP_SUMMARY"
           {
             echo "number=${pr#\#}"
-            echo "head=$head"
-            echo "title=$title"
             echo "auto-merge=$(body pr --auto-merge-only)"
           } >> "$GITHUB_OUTPUT"
           [ -n "$ISSUE" ] && gh issue comment "$ISSUE" --body "The autopilot opened $pr ([run]($RUN_URL))."
@@ -466,32 +464,6 @@ jobs:
             while read -r n; do
               gh issue close "$n" --comment "Superseded by Firefox $VERSION ($pr)."
             done
-
-      # Spec upstream-bump-automation, Behaviour 5 (docs/security.md, G13): GitHub's auto-merge, so
-      # the main ruleset's required checks decide the merge. Only the App's token: a merge made
-      # with GITHUB_TOKEN would start no push workflow on main (decision 7).
-      - name: Set the bump PR to auto-merge when allowed
-        id: automerge
-        if: steps.pr.outputs.number != '' && steps.pr.outputs.auto-merge == 'true'
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          NUMBER: ${{ steps.pr.outputs.number }}
-          HEAD: ${{ steps.pr.outputs.head }}
-          TITLE: ${{ steps.pr.outputs.title }}
-        run: |
-          number="$NUMBER"
-          head="$HEAD"
-          # A draft marks a bump that needs a person (decision 11); the head must be the commit
-          # the allowlist checked (decision 9).
-          state=$(gh pr view "$number" --json isDraft,headRefOid --jq '"\(.isDraft) \(.headRefOid)"')
-          read -r draft pr_head <<< "$state"
-          if [ "$draft" = false ] && [ "$pr_head" = "$head" ]; then
-            gh pr merge "$number" --auto --squash --match-head-commit "$head" \
-              --subject "$TITLE (#$number)" --body "$(git log -1 --format=%b "$head")"
-            echo "Auto-merge on for #$number at $head" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::warning::#$number not set to auto-merge: draft=$draft, head $pr_head != $head"
-          fi
 
   # Patches that do not apply: one triage issue per Firefox version for a person or a coding
   # agent; no model runs in CI (spec upstream-bump-automation, decisions 16 to 21 and 23).

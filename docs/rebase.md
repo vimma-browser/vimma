@@ -436,7 +436,8 @@ If the PR is a draft, steps 2–7 as usual, but there is no need to wait for a n
 full-build suite is the same test. Releases skipped in between need nothing extra: the autopilot
 bumps straight to the latest and closes the older PR and issue as superseded; the drift check
 still counts from the oldest unshipped security release. With `AUTO_MERGE_UPSTREAM` set, a green
-bump merges itself once its required checks pass; otherwise a person merges.
+bump merges itself once every check on it passes (`upstream-merge.yml`); otherwise a person
+merges.
 
 ## Rolling back
 

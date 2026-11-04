@@ -70,7 +70,11 @@ drift check (docs/security.md, G2) fails the scheduled run after 3 days.
    Mozilla's artifacts existed and the autopilot's suites passed; and its diff against `main`
    changes only the `version.version` value in `surfer.json` and copied-pref lines in
    `firefox-branding.js`. GitHub then merges it once every check the `main` ruleset requires is
-   green.
+   green. (Since changed: `publish` no longer sets auto-merge; it records the allowed head in a
+   hidden marker in the PR body, and `upstream-merge.yml` sets auto-merge once every workflow run
+   the PR started on that head is green and no check failed, because the ruleset does not require
+   the macOS mochitests, vimma-ctl on macOS or the package checks, and a bump should not merge
+   past a red one; docs/security.md, G13.)
 6. **No auto-merge with changed patches.** A bump with re-exported (3) or failing (4) patches is
    never set to auto-merge; it is marked ready for review and mentions the owner.
 7. **Explained outcome.** The PR body's table gains a row "Auto-merge" that says "on" or names the
@@ -173,7 +177,9 @@ of Behaviour 5 hold, the step runs `gh pr merge --auto --squash --match-head-com
 6. **GitHub's auto-merge, not a merge call**, because GitHub merges only once every required check
    of the `main` ruleset is green, so nothing in this workflow decides that the checks passed or
    can skip one. Rejected: `gh pr merge` after polling the checks, because it would re-implement
-   the ruleset and race with it.
+   the ruleset and race with it. (Since changed: `upstream-merge.yml` reads the head's runs on
+   each `workflow_run` instead of polling, and still sets GitHub's auto-merge, so the ruleset
+   keeps the last word; see Behaviour 5.)
 7. **`UPSTREAM_PR_TOKEN` opens, pushes and enables auto-merge**, because a `GITHUB_TOKEN` PR gets
    its required checks only after a person approves the runs, and a merge made with
    `GITHUB_TOKEN` would not start the `push` workflows on `main`, which the security release path
@@ -303,6 +309,9 @@ another line in firefox-branding.js`; `refuses a re-exported patch`.
 - `tools/test/upstream-workflow.test.mjs`: `auto-merge only with the variable, the token, a ready
 PR and the allowlist`; `auto-merge uses --match-head-commit`; `rebuild disables auto-merge
 before the push`; `the e2e call passes the prefs patch and no secret`.
+  (Since changed: `auto-merge uses --match-head-commit` moved to
+  `tools/test/upstream-merge-workflow.test.mjs`, `reads every run and check of the head, and
+merges that head only, with the bump's subject`, beside `tools/upstream/test/merge-ready.test.mjs`.)
 - `tools/upstream/test/autopilot.test.mjs`: the failing-patches issue lists each failing hunk and
   links the PR and run.
 - `tools/test/upstream-workflow.test.mjs`: `patch-issue runs only on a failed patch check, with

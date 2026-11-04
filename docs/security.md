@@ -710,14 +710,25 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`asks the API nothing while the variable is off or outside main`](../tools/release/test/security-release.test.mjs),
   [`fails when the variable is on and RELEASE_PLEASE_TOKEN is missing`](../tools/release/test/security-release.test.mjs)
 
-- G13. An upstream bump PR **must** be set to auto-merge only by `publish` run on `main`, only
+- G13. An upstream bump PR **must** be allowed to auto-merge only by `publish` run on `main`, only
   when `AUTO_MERGE_UPSTREAM` allows its release kind, only for a non-draft PR whose every patch
   applied clean or with an offset and whose diff changes nothing but `version.version` in
-  `surfer.json` and the copied pref lines, and only pinned to the head commit that diff was read
-  from. GitHub's auto-merge then waits for every required check of the `main` ruleset (spec
-  [upstream-bump-automation](specs/upstream-bump-automation.md), ADR-022).
+  `surfer.json` and the copied pref lines, and only for the head commit that diff was read from,
+  which `publish` records in a hidden marker in the PR body. `upstream-merge.yml`, run from
+  `main` (`workflow_run`) each time a workflow on the PR completes, **must** set auto-merge only
+  on a PR opened by the App from a branch of this repository, at the marked head, and only once
+  every workflow run the PR started on that head finished green or skipped and no check on it
+  failed: the macOS mochitests and package checks that the ruleset does not require hold the
+  merge too. GitHub's auto-merge then still waits for every required check of the `main` ruleset
+  (spec [upstream-bump-automation](specs/upstream-bump-automation.md), ADR-022). The marker
+  grants nothing on its own: a person who can edit the body can already merge.
   [`auto-merge only with the variable, the token, a ready PR and the allowlist`](../tools/test/upstream-workflow.test.mjs),
-  [`auto-merge uses --match-head-commit and the bump's subject`](../tools/test/upstream-workflow.test.mjs),
+  [`publish never sets auto-merge: upstream-merge.yml does, once every check is green`](../tools/test/upstream-workflow.test.mjs),
+  [`reads every run and check of the head, and merges that head only, with the bump's subject`](../tools/test/upstream-merge-workflow.test.mjs),
+  [`runs when any workflow a pull request starts completes, and on nothing else`](../tools/test/upstream-merge-workflow.test.mjs),
+  [`acts only on this repository's upstream branches, with the App set up`](../tools/test/upstream-merge-workflow.test.mjs),
+  [`refuses a failed, cancelled, timed-out or unapproved run or check`](../tools/upstream/test/merge-ready.test.mjs),
+  [`only for the App's own non-draft PR at the head the autopilot allowed`](../tools/upstream/test/merge-ready.test.mjs),
   [`the allowlist reads the branch as pushed`](../tools/test/upstream-workflow.test.mjs),
   [`rebuild disables auto-merge before the push`](../tools/test/upstream-workflow.test.mjs),
   [`dot allows dot releases only; unset or anything else allows none`](../tools/upstream/test/autopilot.test.mjs),
@@ -729,7 +740,8 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`refuses a file header it does not recognise instead of folding it into the last file`](../tools/upstream/test/bump-diff.test.mjs)
 - G14. The private key of the org's GitHub App `vimma-upstream-autopilot`, the secret
   `UPSTREAM_APP_KEY` of the `upstream-autopilot` environment, **must** reach only the `publish`
-  job, and that environment's only deployment policy is the branch `main`, so a workflow edited
+  job and `upstream-merge.yml`'s `merge` job (which mints a token with Contents and Pull requests
+  write only, and runs main's code), and that environment's only deployment policy is the branch `main`, so a workflow edited
   on another branch cannot read it. Each run mints a one-hour token for this repository alone with
   Contents, Pull requests and Issues read and write and no Workflows, so it cannot change a
   workflow file. Without the App (the variable `UPSTREAM_APP_ID` unset), bumps open as drafts with
