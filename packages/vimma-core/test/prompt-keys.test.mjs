@@ -2,7 +2,14 @@
 // keyboard. `y` runs the prompt's main action and `n` its secondary one, only once the prompt is
 // armed; `Tab` moves focus into the prompt; nothing typed in a field ever answers it.
 import { describe, test, expect } from "vitest";
-import { doorhangerHint, doorhangerKey, popupBarHint, popupBarKey } from "../src/prompt-keys.mjs";
+import {
+  dialogHint,
+  dialogKey,
+  doorhangerHint,
+  doorhangerKey,
+  popupBarHint,
+  popupBarKey,
+} from "../src/prompt-keys.mjs";
 
 /** An open, armed prompt, focus in the page (normal mode), no key sequence under way. */
 const base = { open: true, armed: true, inField: false, inPrompt: false, pending: false };
@@ -164,5 +171,62 @@ describe("popupBarHint", () => {
   test("with the pop-up pref locked, only the way to close is named", () => {
     expect(popupBarHint({ locked: true })).toBe("Esc close");
     expect(popupBarHint({ inField: true, locked: true })).toBe("Esc, then Esc close");
+  });
+});
+
+// docs/specs/firefox-dialogs.md: Firefox's dialogs over a tab or over the window (a page's alert,
+// confirm and prompt, "Leave page?", a sign-in) take the same keys: `y` the main button, `n` the
+// button Esc runs (the safe choice), once the dialog is armed, never from its text fields.
+describe("dialogKey", () => {
+  /** An armed two-button dialog, focus on its buttons. */
+  const dialog = { armed: true, inField: false, pending: false, accept: true, cancel: true };
+
+  test("y runs the main button and n the cancel button of an armed dialog", () => {
+    expect(dialogKey("y", dialog)).toEqual({ kind: "accept" });
+    expect(dialogKey("n", dialog)).toEqual({ kind: "cancel" });
+  });
+
+  test("before it is armed, or held down, y and n wait", () => {
+    for (const s of [
+      { ...dialog, armed: false },
+      { ...dialog, repeat: true },
+    ]) {
+      expect(dialogKey("y", s)).toEqual({ kind: "wait" });
+      expect(dialogKey("n", s)).toEqual({ kind: "wait" });
+    }
+  });
+
+  test("typing in the dialog's own fields is never an answer", () => {
+    for (const key of ["y", "n"]) {
+      expect(dialogKey(key, { ...dialog, inField: true })).toEqual({ kind: "pass" });
+    }
+  });
+
+  test("an alert has no cancel button: n is not its key", () => {
+    const alert = { ...dialog, cancel: false };
+    expect(dialogKey("y", alert)).toEqual({ kind: "accept" });
+    expect(dialogKey("n", alert)).toEqual({ kind: "pass" });
+  });
+
+  test("Esc, Enter, Tab and the rest stay Firefox's; a key sequence passes", () => {
+    for (const key of ["esc", "enter", "tab", "Y", "shift+y", "ctrl+n", "j"]) {
+      expect(dialogKey(key, dialog)).toEqual({ kind: "pass" });
+    }
+    expect(dialogKey("y", { ...dialog, pending: true })).toEqual({ kind: "pass" });
+  });
+});
+
+describe("dialogHint", () => {
+  test("named after the dialog's own buttons", () => {
+    expect(dialogHint({ accept: "Leave page", cancel: "Stay on page" })).toBe(
+      "y leave page · n stay on page",
+    );
+    expect(dialogHint({ accept: "OK", cancel: "" })).toBe("y ok");
+  });
+
+  test("with a text field the letters type: Enter and Esc answer", () => {
+    expect(dialogHint({ accept: "OK", cancel: "Cancel", field: true })).toBe(
+      "Enter ok · Esc cancel",
+    );
   });
 });

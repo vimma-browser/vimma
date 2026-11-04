@@ -433,6 +433,17 @@ text that pages, add-ons and bookmarks choose.
     [`a_row_never_lands_on_a_site_the_page_navigated_to`](../tests/browser/browser_vimma_popups.js),
     [`a_locked_popup_pref_leaves_the_site_permission_alone`](../tests/browser/browser_vimma_popups.js),
     [`the_agent_workspace_refuses_and_grants_nothing`](../tests/browser/browser_vimma_popups.js)
+  - Firefox's dialogs over a tab or the window (`commonDialog.xhtml`: leave page, a page's
+    `alert`, `confirm` and `prompt`, a sign-in; docs/specs/firefox-dialogs.md) take `y` (the
+    main button) and `n` (the button `Esc` runs) under the same wait: from the later of the
+    moment the dialog's frame loaded and the last key typed in it, plus
+    `security.notification_enable_delay`; a key before then, or held, is swallowed and answers
+    nothing. They **never** answer from the dialog's own text fields, and press Firefox's own
+    buttons, so a button Firefox keeps disabled stays so. A page can open a dialog under a typing
+    hand; the wait is what keeps that typing from answering it.
+    [`dialogKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
+    [`leave_page_n_stays_y_leaves`](../tests/browser/browser_vimma_dialog_keys.js),
+    [`prompt_field_types`](../tests/browser/browser_vimma_dialog_keys.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.
