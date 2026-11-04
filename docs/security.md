@@ -3220,15 +3220,19 @@ _Pages_ and _extensions_ cannot reach it.
   [`an AppImage without a usable $APPIMAGE falls back to Firefox's restart`](../packages/vimma-core/test/restart.test.mjs),
   [`gives up after RELAUNCH_WAIT_S when the old process never exits`](../packages/vimma-core/test/restart.test.mjs)
 - UP12. Firefox's updater is built **only** with `VIMMA_UPDATES=1` (the release and nightly
-  jobs; source and dev builds keep `--disable-updater`), and such a binary **only** asks
-  `updates.vimma.dev` and **only** applies a MAR signed by a key whose certificate Vimma commits
-  (`src/toolkit/mozapps/update/updater/vimma/`, ADR-016). It **never** trusts Mozilla's
-  test-signing keys (`dep1.der`, `dep2.der`), whose private halves are public: the mozconfig
-  stops the build when either of Vimma's certificates is missing, since the channel would
-  otherwise fall back to them, and `check-build.mjs` refuses a package whose `updater` carries
-  any of Mozilla's certificates. The manifest check's pinned keys (UP1) are generated from the
-  same certificates, so the two verifiers trust the same keys. The primary's certificate is
-  self-signed by the KMS key itself, and its maker refuses any other key.
+  jobs; source and dev builds keep `--disable-updater`), **only** for the update channel
+  `vimma`, and such a binary **only** asks `updates.vimma.dev` and **only** applies a MAR signed
+  by a key whose certificate Vimma commits (`src/toolkit/mozapps/update/updater/vimma/`,
+  ADR-016). It **never** trusts Mozilla's keys, test-signing keys (`dep1.der`, `dep2.der`, whose
+  private halves are public) included: the mozconfig stops the build when either of Vimma's
+  certificates is missing, and `moz-build.patch` stops it on any other channel, since every
+  other channel embeds Mozilla's. The manifest check's pinned keys (UP1) are generated from the
+  same certificates, so the two verifiers trust the same keys, and a certificate that is not
+  self-signed by its own key is refused. The primary's certificate is made from the request
+  `update-cert.mjs` builds for the pinned primary key; only `--any-key`, for throwaway test
+  keys, takes another. `check-build.mjs` checks a package (the URL, both channel files, and
+  that its `updater` carries Vimma's certificates and none of Mozilla's); the release and
+  nightly jobs run it from sub-PR 4 on.
   **⚠ limit:** until sub-PR 3's hook, Firefox's update service would parse the manifest without
   Vimma's verifier (UP1), so no release or nightly sets `VIMMA_UPDATES=1` before that hook lands
   (sub-PR 4). Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
@@ -3241,6 +3245,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`the repository: update-keys.mjs is what the committed certificates give`](../tools/update/test/gen-update-keys.test.mjs),
   [`pins the primary once when the secondary slot holds the primary again (decision 39)`](../tools/update/test/gen-update-keys.test.mjs),
   [`refuses a signature that is not the key's own over this request`](../tools/update/test/update-cert.test.mjs),
+  [`refuses a certificate whose self-signature does not verify`](../tools/update/test/gen-update-keys.test.mjs),
+  [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../tools/update/test/check-build.test.mjs),
   [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../tools/update/test/update-cert.test.mjs)
 
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable

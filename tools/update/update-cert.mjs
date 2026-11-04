@@ -218,6 +218,13 @@ function main(argv) {
       }
     }
     const tbs = new Uint8Array(readFileSync(join(dir, `${slot}.tbs.der`)));
+    // Only the request this tool makes for this key and slot: a stale or edited file, or another
+    // slot's, would otherwise become a certificate as long as the key signed it.
+    if (!Buffer.from(tbs).equals(Buffer.from(certificateRequest(spki, slot).tbs))) {
+      throw new Error(
+        `${slot}.tbs.der is not the request for this key and slot; run request again`,
+      );
+    }
     const sig = new Uint8Array(readFileSync(str(args.signature, "--signature")));
     const der = assembleCertificate(tbs, sig, spki);
     const out = str(args.out, "--out");

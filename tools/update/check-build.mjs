@@ -26,6 +26,20 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/**
+ * Mozilla's certificates beside the updater's moz.build (Firefox 159.0.1): each must be found,
+ * so a wrong --mozilla-certs fails instead of comparing nothing.
+ */
+export const MOZILLA_CERTS = [
+  "dep1.der",
+  "dep2.der",
+  "nightly_aurora_level3_primary.der",
+  "nightly_aurora_level3_secondary.der",
+  "release_primary.der",
+  "release_secondary.der",
+  "xpcshellCertificate.der",
+];
+
 export const UPDATE_URL =
   "https://updates.vimma.dev/updates/browser/%BUILD_TARGET%/%CHANNEL%/update.xml";
 
@@ -90,9 +104,11 @@ export function checkBuild({ install, certs, mozilla, channel = "vimma" }) {
         problems.push(`updater: does not embed Vimma's ${f}`);
       }
     }
-    for (const f of readdirSync(mozilla)
-      .filter((n) => n.endsWith(".der"))
-      .sort()) {
+    const present = new Set(readdirSync(mozilla));
+    for (const f of MOZILLA_CERTS.filter((n) => !present.has(n))) {
+      problems.push(`${join(mozilla, f)}: missing, so the updater cannot be checked against it`);
+    }
+    for (const f of [...present].filter((n) => n.endsWith(".der")).sort()) {
       if (updater.includes(readFileSync(join(mozilla, f)))) {
         problems.push(`updater: embeds Mozilla's ${f}`);
       }

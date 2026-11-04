@@ -140,6 +140,12 @@ describe("update-cert: the updater's self-signed certificate", () => {
     expect(() => run(assemble)).toThrow(/pinned primary/);
     // ...and --any-key (tests and rehearsals with a throwaway key) accepts it.
     run([...assemble, "--any-key"]);
+    // A request file that is not the one certificateRequest makes for this key and slot (stale,
+    // edited, or another slot's) is refused even when the signature over it verifies.
+    const other = certificateRequest(spkiOf(publicKey), "secondary");
+    writeFileSync(join(dir, "primary.tbs.der"), other.tbs);
+    writeFileSync(join(dir, "sig.bin"), kmsSign(privateKey, other.digestInfo));
+    expect(() => run([...assemble, "--any-key"])).toThrow(/request/);
     const cert = new X509Certificate(readFileSync(join(dir, "primary.der")));
     expect(cert.verify(publicKey)).toBe(true);
   }, 60_000);

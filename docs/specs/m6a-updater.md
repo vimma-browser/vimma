@@ -1147,7 +1147,10 @@ tested:
    artifact builds only (`when=~artifact_builds`), because their updater is Mozilla's prebuilt
    one, which trusts only Mozilla's keys, so they keep asking `aus5.mozilla.org` as before
    (ADR-010). The mozconfig stops a `VIMMA_UPDATES=1` build when either certificate is missing,
-   because the channel's fallback branch in `moz.build` would embed Mozilla's test keys.
+   because the channel's fallback branch in `moz.build` would embed Mozilla's test keys, and
+   `moz-build.patch` stops an updater build on any channel but `vimma` (Surfer's brand sets the
+   channel), because every other channel embeds Mozilla's keys; an artifact build, which
+   compiles no updater, takes neither branch and needs no certificate.
    `update-keys.mjs` is generated from the certificates by `npm run gen-update-keys`
    (`tools/update/gen-update-keys.mjs`); the primary's certificate is self-signed through one
    Cloud KMS signature by `tools/update/update-cert.mjs` (runbook step 5b), and

@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { checkBuild } from "../check-build.mjs";
+import { MOZILLA_CERTS, checkBuild } from "../check-build.mjs";
 
 const SCRIPT = new URL("../check-build.mjs", import.meta.url).pathname;
 const URL_LINE =
@@ -34,8 +34,8 @@ function fixture(o = {}) {
   };
   writeFileSync(join(certs, "primary.der"), bytes["primary.der"]);
   writeFileSync(join(certs, "secondary.der"), bytes["secondary.der"]);
-  for (const f of ["dep1.der", "dep2.der", "release_primary.der"]) {
-    writeFileSync(join(mozilla, f), bytes[f]);
+  for (const f of MOZILLA_CERTS) {
+    writeFileSync(join(mozilla, f), bytes[f] ?? Buffer.from(`mozilla-${f}-bytes`));
   }
   const url = o.url === undefined ? URL_LINE : o.url;
   writeFileSync(
@@ -63,7 +63,9 @@ describe("check-build: an updater-enabled package", () => {
   it("fails without the [AppUpdate] URL or with another host", () => {
     expect(checkBuild(fixture({ url: null })).join("\n")).toMatch(/AppUpdate/);
     const aus = URL_LINE.replace("updates.vimma.dev", "aus5.mozilla.org");
-    expect(checkBuild(fixture({ url: aus })).join("\n")).toMatch(/aus5\.mozilla\.org/);
+    expect(checkBuild(fixture({ url: aus })).join("\n")).toContain(
+      "URL is https://aus5.mozilla.org/updates/",
+    );
   });
 
   it("fails on another MAR channel or update channel", () => {
@@ -83,6 +85,14 @@ describe("check-build: an updater-enabled package", () => {
     expect(
       checkBuild(fixture({ updater: ["primary.der", "release_primary.der"] })).join("\n"),
     ).toMatch(/release_primary\.der/);
+  });
+
+  it("fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing", () => {
+    const f = fixture();
+    const empty = tempDir("vimma-check-build-empty-");
+    expect(checkBuild({ ...f, mozilla: empty }).join("\n")).toMatch(
+      /dep1\.der.*missing|missing.*dep1\.der/,
+    );
   });
 
   it("CLI: exit 0 with a summary, 1 with every problem listed", () => {

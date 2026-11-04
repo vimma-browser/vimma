@@ -121,6 +121,16 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     expect(() => readCertificates(dir)).toThrow(/secondary\.der/);
   }, 60_000);
 
+  it("refuses a certificate whose self-signature does not verify", () => {
+    const dir = tempDir("vimma-update-keys-");
+    const der = Buffer.from(certificate(dir, "primary.der", "Vimma update signing primary"));
+    // The signature is the certificate's last bytes: flip one, so the key and the subject stay.
+    der[der.length - 1] ^= 0x01;
+    writeFileSync(join(dir, "primary.der"), der);
+    writeFileSync(join(dir, "secondary.der"), der);
+    expect(() => readCertificates(dir)).toThrow(/self-signed/);
+  }, 60_000);
+
   it("--check fails when update-keys.mjs differs from what the certificates give", async () => {
     const dir = tempDir("vimma-update-keys-");
     const primary = certificate(dir, "primary.der", "Vimma update signing primary");
