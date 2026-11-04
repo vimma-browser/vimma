@@ -199,68 +199,64 @@ export class PdfView {
    * here. Only primitives go into pdf.js, so nothing needs Cu.cloneInto (V3); pdf.js's return
    * values are not used, and nothing it returns is awaited (V4).
    * @param {unknown} raw
+   * @returns {boolean} whether it reached pdf.js
    */
   run(raw) {
     const msg = parsePdfOp(raw);
-    if (!msg) return;
+    if (!msg) return false;
     const { op, n } = msg;
     const app = this.#app;
     const viewer = app.pdfViewer;
+    // pdf.js's live values, or nothing happens: a viewer without its document (or a hostile
+    // getter) gives no number to compute from.
+    const page = num(() => app.page);
+    const pages = num(() => app.pagesCount);
+    const live = (/** @type {number[]} */ ...v) => v.every(Number.isFinite);
     try {
       switch (op) {
         case "next":
         case "prev":
           // In presentation mode, too: one page at a time.
-          app.page = pdfPageTarget(
-            op,
-            n,
-            num(() => app.page),
-            num(() => app.pagesCount),
-          );
-          return;
+          if (!live(page, pages)) return false;
+          app.page = pdfPageTarget(op, n, page, pages);
+          return true;
         case "first":
         case "last":
           // A jump: goToPage records it in the history first (decision 9).
-          app.pdfLinkService.goToPage(
-            pdfPageTarget(
-              op,
-              n,
-              num(() => app.page),
-              num(() => app.pagesCount),
-            ),
-          );
-          return;
+          if (!live(page, pages)) return false;
+          app.pdfLinkService.goToPage(pdfPageTarget(op, n, page, pages));
+          return true;
         case "jump":
           // Before a search hit moves the view: ctrl+o comes back here (decision 9).
           app.pdfHistory.pushCurrentPosition();
-          return;
+          return true;
         case "page_top":
         case "page_bottom":
           this.#toPageEdge(
             op === "page_top",
             num(() => app.page),
           );
-          return;
+          return true;
         case "screen": {
           const el = this.#doc.querySelector(PDFJS_DOM.container);
           el?.scrollBy({ top: el.clientHeight * (n || 1), behavior: "instant" });
-          return;
+          return true;
         }
-        case "zoom":
-          viewer.currentScale = pdfZoomStep(
-            num(() => viewer.currentScale),
-            n || 1,
-          );
-          return;
+        case "zoom": {
+          const scale = num(() => viewer.currentScale);
+          if (!live(scale)) return false;
+          viewer.currentScale = pdfZoomStep(scale, n || 1);
+          return true;
+        }
         case "scale":
           viewer.currentScale = pdfZoomPercent(n);
-          return;
+          return true;
         case "fit_page":
           viewer.currentScaleValue = "page-fit";
-          return;
+          return true;
         case "fit_width":
           viewer.currentScaleValue = "page-width";
-          return;
+          return true;
         case "dual":
         case "first_alone": {
           const next = pdfSpread(
@@ -270,7 +266,7 @@ export class PdfView {
           );
           this.#lastSpread = next.last;
           viewer.spreadMode = next.mode;
-          return;
+          return true;
         }
         case "single": {
           const next = pdfScrollMode(
@@ -279,23 +275,27 @@ export class PdfView {
           );
           this.#previousScroll = next.previous;
           viewer.scrollMode = next.mode;
-          return;
+          return true;
         }
-        case "rotate":
-          viewer.pagesRotation = pdfRotation(
-            num(() => viewer.pagesRotation),
-            n,
-          );
-          return;
+        case "rotate": {
+          const rotation = num(() => viewer.pagesRotation);
+          if (!live(rotation)) return false;
+          viewer.pagesRotation = pdfRotation(rotation, n);
+          return true;
+        }
         case "presentation":
           // Only for the user's own key (V9): the parent sends it for a key in the PDF viewer.
-          if (this.presenting()) this.#doc.exitFullscreen();
-          else app.requestPresentationMode();
+          // A viewer that claims presentation without being full screen gets nothing to exit.
+          if (this.presenting()) {
+            if (this.#doc.fullscreenElement) this.#doc.exitFullscreen().catch(() => {});
+          } else app.requestPresentationMode();
+          return true;
       }
     } catch (e) {
       // A viewer that is not ready yet (no document), or not pdf.js's: nothing happens.
       console.warn("vimma: pdf operation failed", op, e);
     }
+    return false;
   }
 
   /** Whether pdf.js shows its presentation mode (decision 15). */
@@ -316,9 +316,21 @@ export class PdfView {
    */
   turnPage(kind, count) {
     if (!this.presenting()) return false;
-    const back = kind === "up" || kind === "half_up" || kind === "left";
-    this.run({ op: back ? "prev" : "next", n: Math.max(0, Number(count) || 0) });
-    return true;
+    /** @type {Record<string, string>} */
+    const ops = {
+      down: "next",
+      half_down: "next",
+      right: "next",
+      up: "prev",
+      half_up: "prev",
+      left: "prev",
+      top: "first",
+      bottom: "last",
+    };
+    const op = ops[kind];
+    if (!op) return false;
+    const n = op === "first" || op === "last" ? 0 : Math.max(0, Number(count) || 0);
+    return this.run({ op, n });
   }
 
   /**

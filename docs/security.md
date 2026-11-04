@@ -3494,7 +3494,9 @@ bindings, so it is accepted here.
   before the adapter touches pdf.js; no script, CSS text, markup or object **may** go into the
   viewer. The adapter passes pdf.js only those numbers and its own fixed strings (`page-fit`,
   `page-width`), and measures the page for `H`, `L`, `P` and `ctrl+f` through Xrays (the
-  viewer's container and page elements), so none of the viewer's script runs for it.
+  viewer's container and page elements), so none of the viewer's script runs for it. In
+  presentation mode the scroll keys (`Vimma:Scroll`) turn pages through the same checked
+  operations, and fall back to scrolling when the adapter applied none.
   [`the parent sends only operations and numbers`](../packages/vimma-core/test/pdf.test.mjs),
   [`the_parent_sends_only_operations_and_numbers`](../tests/browser/browser_vimma_pdf_keys.js)
 - V9. Presentation mode **may** go full screen without user activation, as Firefox allows the

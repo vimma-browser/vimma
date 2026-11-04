@@ -260,8 +260,15 @@ add_task(async function presentation_only_on_the_users_key() {
     // sends to the parent is not an operation, and the parent sends one only for a key.
     const actor = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
     actor.receiveMessage({ name: "Vimma:PdfOp", data: { op: "presentation", n: 0 } });
-    await new Promise((r) => setTimeout(r, 300));
-    Assert.equal((await view(browser)).presenting, false, "no presentation from a message");
+    // An F5 the page itself dispatches is untrusted: Vimma's keys never see it.
+    await SpecialPowers.spawn(browser, [], () => {
+      const init = { key: "F5", code: "F5", bubbles: true, cancelable: true };
+      content.document.dispatchEvent(new content.KeyboardEvent("keydown", init));
+    });
+    // A positive control: a real key after them runs, so they have had their turn.
+    type("J");
+    await until(browser, { page: 2 }, "the next key runs");
+    Assert.equal((await view(browser)).presenting, false, "no presentation from them");
     Assert.ok(!window.fullScreen, "no full screen");
   });
 });
