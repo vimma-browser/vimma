@@ -138,6 +138,10 @@ and the second at the provider's own card fields or pay button.
    not seen. The grant stays in force after a checkpoint (Behaviour 1), because stopping the
    whole task to protect one step would make the user re-grant after every purchase or
    submission and bring back the fatigue mcp-grants removes.
+   (Since changed: under a grant, a click that sends a form asks only when it pays or sends text,
+   personal details, a secret or a file, and a form checkpoint offers `a` to allow that button on
+   that site for the rest of the grant, because a basket form asked on every item;
+   [mcp-consequence](mcp-consequence.md) K1-K5.)
 2. **A checkpoint shows the content of the step** (C2), because a yes is only as good as what
    the user saw: a form's values and destination, a payment's site and amount. A form's sensitive
    values are never shown (they are not the agent's to read, mcp-forms F6), only that they go.
@@ -152,6 +156,8 @@ and the second at the provider's own card fields or pay button.
    costs one key and a missed payment costs money, and each signal alone misses a common
    checkout (Research, Shops). Rejected: the Payment Request API, which Firefox does not enable;
    asking the agent whether a step pays, because the agent is the party being checked.
+   (Since changed: the signals of C6 also decide whether a form submission under a grant asks,
+   with what the form sends; a doubt still asks; [mcp-consequence](mcp-consequence.md) K2, K3.)
 6. **The signals are card fields and the button's words** (C6). A step is a payment step when
    the tab's page, in any frame (payment providers' cross-site frames included), holds a payment
    card field (an `autocomplete` `cc-*` name or form autofill's card heuristics), or when the
@@ -176,6 +182,9 @@ and the second at the provider's own card fields or pay button.
    checkpoint stops the agent; `[mcp] pay_words` and `[mcp] pay_sites` in config.toml, because
    a fixed list keeps the rule the same for every user and the config surface small, and a
    missed phrase is better added to the list for everyone.
+   (Since changed: the pay phrases are an extra signal only: they add a question and never
+   decide that a step is harmless, because no word list is complete; whether a form asks under a
+   grant follows from what it sends; [mcp-consequence](mcp-consequence.md) K2, K6.)
 7. **The question quotes the total the page states** (C7). The amount is the text of the nearest
    element, in reading order before the control, that holds a currency amount and a total word
    (`total`, `yhteensä`, `summa`, `totalt`, `gesamt`, `importe`, …), cleaned as page text,

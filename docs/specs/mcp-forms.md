@@ -516,6 +516,11 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     value whole, its submit button must belong to the filled fields' form, and the submission
     is allowed only after the last field is set: a page that submits the form from a field's
     `change` handler while it is being filled sends nothing.
+    (Since changed: under a grant, a click that submits a form asks only when it pays or sends
+    text, personal details, a secret or a file, or Vimma cannot tell what it sends, and a form
+    question under a grant offers `a`, which allows that button on that site for the rest of the
+    grant, because a basket form asked on every item; a fill that submits still asks every time;
+    [mcp-consequence](mcp-consequence.md) K1-K5.)
 16. **Submissions the agent did not ask for are stopped.** Before each agent step the parent
     consumes the page's transient user activation in every frame and marks the tab; an
     `http-on-modify-request` observer then cancels, before it is sent, the request of a
