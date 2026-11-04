@@ -1969,6 +1969,10 @@ A CLI provider names no program, arguments or environment: a `command`, `path`, 
 there once even when the provider is in `config.toml`. With `[agent] local_only = true` a CLI
 provider is refused, because Vimma cannot see where a CLI sends what it reads.
 
+A `cli` this version of Vimma does not know, such as one a newer version added, is not an error:
+that provider is left out, the status bar names its line, and the rest of `config.toml` applies.
+A `config.toml` shared between machines on different versions keeps working on each.
+
 **What happens when you send a task.**
 
 - The first task of a conversation says where data goes and asks `y`: page text, field values,

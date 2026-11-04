@@ -1140,9 +1140,9 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
   });
 
   test("a file that parses but has errors checks as a valid file would (#741)", () => {
-    // A value from a newer build (an unknown provider cli) must not lock the user out of the
-    // release that accepts it.
-    const newer = 'schema = 2\n[[agent.providers]]\nname = "x"\nkind = "cli"\ncli = "future"\n';
+    // A key from a newer build must not lock the user out of the release that accepts it. (An
+    // unknown provider cli, the case #741 met, is now only a warning: #742.)
+    const newer = "schema = 2\n[agent]\nfuture_key = 1\n";
     expect(parseConfig(newer).errors).toHaveLength(1);
     expect(rawUpdatesCheck(newer)).toBe("missing");
     expect(rawUpdatesCheck("schema = 2\n[updates]\n")).toBe("missing");

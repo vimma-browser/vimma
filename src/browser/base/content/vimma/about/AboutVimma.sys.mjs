@@ -51,7 +51,7 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  * @property {{ window: number, current: boolean, mode: string }[]} modes
  * @property {import("./key-log.mjs").KeyEvent[]} keys
  * @property {{ path: string, file: "pending" | "missing" | "read", schema: number | null,
- *   errors: string[] }} config
+ *   errors: string[], warnings: string[] }} config  `warnings`: what a loaded file left out
  * @property {{ name: string, group: string, bindings: string[], overridden: boolean }[]} bindings
  * @property {{ default: string | null, fromConfig: boolean, template: string | null,
  *   aliases: { alias: string, engine: string, unencrypted: boolean }[], errors: string[] }} search
@@ -301,6 +301,7 @@ export const AboutVimma = {
         file: ConfigHost.file,
         schema: ConfigHost.config?.schema ?? null,
         errors: ConfigHost.errors.map((e) => formatConfigError(e, ConfigHost.errorsPath)),
+        warnings: ConfigHost.warnings.map((e) => formatConfigError(e, ConfigHost.errorsPath)),
       },
       search: {
         ...SearchHost.status,
@@ -364,6 +365,7 @@ export const AboutVimma = {
       `Last keys: ${data.keys.map((k) => `${k.key}→${k.outcome}`).join(" ") || "none"}`,
       `Config: ${data.config.path} (${data.config.file}, schema ${data.config.schema ?? "-"})`,
       ...data.config.errors.map((e) => `  error: ${e}`),
+      ...data.config.warnings.map((e) => `  warning: ${e}`),
       `Overrides: ${
         data.bindings
           .filter((b) => b.overridden)

@@ -197,6 +197,12 @@ build with `XUL_APP_FILE` as `tools/mochitest.mjs` does, with
 lock on `<profile>/.parentlock` (`/proc/locks`) or a `lock` symlink whose pid is alive (the link
 can outlive the browser).
 
+It merges `vimma.config.path=<profile>/vimma/config.toml` into the profile's `user.js` (an
+existing value is kept), so a dev or lane build never reads or writes the installed Vimma's
+`~/.config/vimma/config.toml`: a setting only the dev build knows, written there by its setup,
+once broke the installed release's config. The e2e harness sets the same pref inside each
+throwaway profile; mochitests set `/nonexistent/vimma-test/config.toml` in `browser.toml`.
+
 It merges `security.sandbox.content.read_path_whitelist=<repo>/src/` into the profile's `user.js`.
 In a local objdir the chrome files are symlinks into `engine/`, which `surfer import` links to the
 repo's `src/`, outside the Firefox tree; the content sandbox then refuses them and the console

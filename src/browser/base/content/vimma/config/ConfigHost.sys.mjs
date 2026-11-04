@@ -81,6 +81,8 @@ let active = null;
 let fallback = false;
 /** @type {ConfigError[]} the last read's errors; [] when it was applied */
 let errors = [];
+/** @type {ConfigError[]} what the last applied read left out (an unknown agent CLI, #742) */
+let warnings = [];
 /** The file `errors` are about: config.toml, or the file `:source <path>` named. */
 let errorsPath = "";
 /** @type {string | null} the file `:source <path>` put in force; null: config.toml */
@@ -171,10 +173,16 @@ function apply(next, text) {
  * @param {string} path
  * @param {ConfigError[]} list  [] when the file was applied
  * @param {boolean} kept  a config was in force before (else: the defaults are)
+ * @param {ConfigError[]} [left]  what an applied file left out
  */
-function report(path, list, kept) {
+function report(path, list, kept, left = []) {
   errors = list;
+  warnings = left;
   errorsPath = path;
+  if (warnings.length) {
+    const lines = warnings.map((e) => formatConfigError(e, path));
+    console.warn(`vimma: ${path} applied without:\n  ${lines.join("\n  ")}`);
+  }
   if (errors.length) {
     // Logged once per change of the file (or :source): the signature holds until then.
     const lines = errors.map((e) => formatConfigError(e, path));
@@ -188,12 +196,12 @@ function report(path, list, kept) {
 }
 
 /**
- * The status bar's errors: the last read's, then `[search]`'s, which only the profile's engines
- * reveal once the file is applied (search-engines decision 9).
+ * The status bar's errors: the last read's, or what it left out, then `[search]`'s, which only
+ * the profile's engines reveal once the file is applied (search-engines decision 9).
  */
 function showErrors() {
   VimmaHost.configure({
-    configErrors: [...errors, ...SearchHost.errors],
+    configErrors: [...errors, ...warnings, ...SearchHost.errors],
     configFile: PathUtils.filename(errorsPath || configPath()),
   });
 }
@@ -220,7 +228,7 @@ function use(path, text) {
     }),
   );
   fallback = previous === null ? r.errors.length > 0 : fallback && r.errors.length > 0;
-  report(path, r.errors, previous !== null);
+  report(path, r.errors, previous !== null, r.warnings);
   return r.errors.length === 0;
 }
 
@@ -628,6 +636,14 @@ export const ConfigHost = {
   /** The last read's errors, [] when it was applied (the status bar shows the first). */
   get errors() {
     return errors;
+  },
+
+  /**
+   * What the last read left out of a file it applied, such as a provider whose `cli` this build
+   * does not know (#742); [] otherwise. The status bar shows them after the errors.
+   */
+  get warnings() {
+    return warnings;
   },
 
   /** The file whose config is in force: config.toml, or the one `:source <path>` read. */

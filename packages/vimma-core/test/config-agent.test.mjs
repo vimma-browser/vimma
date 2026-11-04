@@ -1,7 +1,7 @@
 // docs/specs/builtin-agent.md Behaviour 8-9, 32, 34, B8, B10, B11, B17: `[agent]`, a schema-2
 // table with the providers by endpoint and model only.
 import { describe, expect, test } from "vitest";
-import { AGENT_DEFAULTS, parseConfig } from "../src/config.mjs";
+import { AGENT_DEFAULTS, parseConfig, reloadConfig } from "../src/config.mjs";
 
 /** @param {...string} lines */
 const v2 = (...lines) => ["schema = 2", ...lines].join("\n") + "\n";
@@ -247,11 +247,58 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
       message: "a CLI provider has no endpoint: the CLI decides where it sends requests",
     });
     expect(errors(v2(...CLI.slice(0, 3)))[0]?.message).toBe('a CLI provider needs "cli"');
-    expect(errors(v2(...CLI.slice(0, 3), 'cli = "claude-cod"'))[0]).toMatchObject({
+    expect(errors(v2(...CLI.slice(0, 3), "cli = 3"))[0]).toMatchObject({
       path: "agent.providers[0].cli",
-      message: 'must be "claude-code" or "codex"',
-      suggestion: "claude-code",
+      message: "expected a string, got an integer",
     });
+  });
+
+  test("an unknown cli skips its provider with a warning; the rest of the file applies", () => {
+    // A config written by a newer build, or shared in dotfiles, names a CLI this build lacks.
+    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "claude-cod"'];
+    const r = parseConfig(v2("[agent]", "max_steps = 7", ...other, ...CLI));
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      {
+        line: 7,
+        path: "agent.providers[0].cli",
+        message:
+          'unknown agent CLI "claude-cod": this provider is skipped ' +
+          '(this version knows "claude-code" or "codex")',
+        suggestion: "claude-code",
+      },
+    ]);
+    expect(r.config?.agent.maxSteps).toBe(7);
+    expect(r.config?.agent.providers.map((p) => p.name)).toEqual(["claude"]);
+  });
+
+  test("a default naming a skipped provider is no error, and no default is set", () => {
+    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "gemini"'];
+    const r = parseConfig(v2("[agent]", 'default = "new"', ...other, ...CLI));
+    expect(r.errors).toEqual([]);
+    expect(r.warnings.map((w) => w.path)).toEqual(["agent.providers[0].cli"]);
+    expect(r.config?.agent.default).toBe(null);
+  });
+
+  test("a skipped provider's other mistakes are still errors", () => {
+    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "gemini"'];
+    expect(errors(v2(...other, 'command = "/bin/sh"'))[0]).toMatchObject({
+      path: "agent.providers[0].command",
+    });
+    const again = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "codex"'];
+    expect(errors(v2(...other, ...again))[0]).toMatchObject({
+      path: "agent.providers[1].name",
+      message: 'a second provider named "new"',
+    });
+  });
+
+  test("a file without unknown CLIs has no warnings, and reloadConfig passes them on", () => {
+    expect(parseConfig(v2(...CLI)).warnings).toEqual([]);
+    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "gemini"'];
+    const r = reloadConfig(null, v2(...other));
+    expect(r.kept).toBe(false);
+    expect(r.warnings.map((w) => w.path)).toEqual(["agent.providers[0].cli"]);
+    expect(r.active.config.agent.providers).toEqual([]);
   });
 
   test("a cli provider's model is refused by the rule its run uses", () => {

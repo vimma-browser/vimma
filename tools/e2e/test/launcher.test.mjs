@@ -187,6 +187,13 @@ describe("profile", () => {
     expect(plain).toContain('user_pref("browser.startup.page", 0);');
   });
 
+  it("names a config.toml inside the profile, never the user's", () => {
+    const dir = createProfile(tempDir());
+    expect(readFileSync(join(dir, "user.js"), "utf8")).toContain(
+      `user_pref("vimma.config.path", ${JSON.stringify(join(dir, "vimma", "config.toml"))});`,
+    );
+  });
+
   it("creates a private temp profile holding user.js", () => {
     const dir = createProfile(tempDir());
     expect(readFileSync(join(dir, "user.js"), "utf8")).toContain(

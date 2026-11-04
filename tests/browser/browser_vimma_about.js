@@ -147,6 +147,20 @@ add_task(async function config_errors_show_with_file_and_line() {
   Assert.stringContains(overridden[0], "ctrl+b y", "with its binding, as keys to press");
   BrowserTestUtils.removeTab(again);
 
+  // #742: a provider whose CLI this build does not know is left out of a file that loads.
+  await IOUtils.writeUTF8(
+    file,
+    `schema = 2\n[[agent.providers]]\nname = "x"\nkind = "cli"\ncli = "gemini"\n`,
+  );
+  await ConfigHost.reload();
+  Assert.equal(ConfigHost.warnings.length, 1, "sanity: one warning");
+  const skipped = await openAbout();
+  const text = section(skipped.linkedBrowser, "config");
+  Assert.stringContains(text, "loaded", "the file is loaded");
+  Assert.stringContains(text, `${file}:5: agent.providers[0].cli`, "the warning with file:line");
+  Assert.stringContains(text, "this provider is skipped", "and what it left out");
+  BrowserTestUtils.removeTab(skipped);
+
   await SpecialPowers.popPrefEnv();
   await ConfigHost.reload();
 });

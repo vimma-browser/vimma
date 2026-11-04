@@ -179,6 +179,41 @@ add_task(async function a_broken_line_keeps_the_old_config_and_shows_file_and_li
   await resetConfig();
 });
 
+// #742: a provider naming a CLI this build does not know (a newer build's config, or dotfiles
+// shared between versions) is left out with a notice; the rest of the file applies.
+add_task(async function an_unknown_agent_cli_skips_its_provider_and_the_file_applies() {
+  const tab = await openPage("unknown-cli");
+  await writeConfig(
+    [
+      "schema = 2",
+      "[keys]",
+      'new_tab = "prefix+t"',
+      "[[agent.providers]]",
+      'name = "later"',
+      'kind = "cli"',
+      'cli = "gemini"',
+    ].join("\n"),
+  );
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the file applies");
+  Assert.deepEqual(ConfigHost.errors, [], "an unknown cli is no error");
+  Assert.deepEqual(ConfigHost.config.agent.providers, [], "its provider is left out");
+  Assert.equal(ConfigHost.warnings.length, 1, "it is a warning");
+  await until(
+    () => segText("error")?.startsWith("config.toml:7: agent.providers[0].cli: unknown agent CLI"),
+    "the status bar names the file, the line and the CLI",
+  );
+  Assert.ok(segText("error").includes("this provider is skipped"), "and says what happened");
+  await focusContent(tab.linkedBrowser);
+  Assert.equal((await tabsAfterPrefix("t")).delta, 1, "the file's mapping works");
+
+  await writeConfig(`[keys]\nnew_tab = "prefix+t"`);
+  await until(() => segText("error") === null, "removing the provider clears the notice");
+  Assert.deepEqual(ConfigHost.warnings, [], "and the warning");
+
+  BrowserTestUtils.removeTab(tab);
+  await resetConfig();
+});
+
 // A repeating timer leaves the timer list while it fires and comes back after its callback.
 // browser-test.js lists the repeating timers once, as the run starts, and reports any timer
 // not in that list after each file: a poll firing at that moment was reported as left by the

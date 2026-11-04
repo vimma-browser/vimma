@@ -220,6 +220,10 @@ function render(d) {
     ...(c.errors.length
       ? [el("ul", {}, ...c.errors.map((e) => el("li", { class: "error" }, e)))]
       : []),
+    // What a loaded file left out (#742), in the same colour: it still needs an edit.
+    ...(c.warnings.length
+      ? [el("ul", {}, ...c.warnings.map((e) => el("li", { class: "error" }, e)))]
+      : []),
   );
 
   // docs/specs/search-engines.md decision 14: the default, the aliases, the problems.
