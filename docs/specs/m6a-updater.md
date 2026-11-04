@@ -862,6 +862,17 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     startup) no check runs until it is fixed, because the defaults would otherwise silently undo
     an opt-out that the broken file still states; about:vimma says "off until config.toml's
     errors are fixed".
+    (Since changed: the hold applies only when `[updates] check` cannot be read, mainly when the
+    TOML does not parse, because a file that parses but has an error elsewhere, such as a value
+    a newer build writes, otherwise kept the user from the release that accepts it. Such a file
+    applies its `check` as a valid file would, missing meaning `true`; `[updates]` with other
+    keys but no `check`, a top-level key no section is named (such as `[update]`) and a boolean
+    `check` in another table count as unreadable, since a misspelt key or table may mean
+    `check = false`. `:update` runs while checks are held, because the user asks in person; the
+    pref and a readable `check = false` still stop it, and the AppImage does not replace itself
+    until the file is fixed. about:vimma says "off until config.toml's [updates] can be read
+    (:update still checks)", or names the pref when it is off, since the pref stops `:update`
+    too; [#741](https://github.com/vimma-browser/vimma/issues/741).)
 32. **A manifest response may hold at most 256 KiB, counted after decompression**: a larger
     `Content-Length` is refused before reading, and the body is read as a stream and cancelled
     past the cap, because a compromised host could otherwise send a body or a gzip or brotli bomb

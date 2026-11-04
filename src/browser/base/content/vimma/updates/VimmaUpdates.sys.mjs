@@ -124,8 +124,8 @@ const fresh = () => ({
 /** @type {UpdateState} */
 let state = fresh();
 /**
- * config.toml has errors and only the defaults stand in for it: no check until it is fixed
- * (decision 31).
+ * config.toml's `[updates] check` cannot be read (decision 31) and only the defaults stand in for
+ * the file: no check but `:update` until it can be.
  */
 let held = false;
 /** `[updates] check` of the config in force; null before config.toml is read. */
@@ -192,11 +192,22 @@ function notify() {
   }
 }
 
-function enabled() {
-  if (held) return false;
+/**
+ * Why checks are off, for about:vimma: the pref first, because it stops `:update` too, so a
+ * hold must not claim that `:update` still checks.
+ */
+function offFrom() {
+  if (!Services.prefs.getBoolPref(ENABLED_PREF, true)) return "pref";
+  return held ? "config-errors" : configCheck === false ? "config" : "pref";
+}
+
+/** @param {{ asked?: boolean }} [options]  asked: the user typed `:update` */
+function enabled({ asked = false } = {}) {
   return updatesEnabled({
     pref: Services.prefs.getBoolPref(ENABLED_PREF, true),
     config: configCheck === null ? null : { check: configCheck },
+    held,
+    asked,
   });
 }
 
@@ -401,9 +412,10 @@ async function readCapped(response, abort) {
   return new TextDecoder().decode(bytes);
 }
 
-async function runCheck() {
+/** @param {boolean} asked  a check typed in person (`:update`) */
+async function runCheck(asked) {
   const where = await installInfo();
-  if (!enabled()) return finish({ outcome: "off", reason: null, offer: null });
+  if (!enabled({ asked })) return finish({ outcome: "off", reason: null, offer: null });
   if (where.type === "source") return finish({ outcome: "source", reason: null, offer: null });
   /** @param {string} reason */
   const refuse = (reason) =>
@@ -811,10 +823,12 @@ export const VimmaUpdates = {
 
   /**
    * Checks now (`:update`, the timer), one check at a time.
+   * @param {{ asked?: boolean }} [options]  asked: `:update`, which runs while checks are held
+   *   for an unreadable config.toml (decision 31); the AppImage's own replacement still waits
    * @returns {Promise<UpdateState>}
    */
-  check() {
-    running ??= runCheck()
+  check({ asked = false } = {}) {
+    running ??= runCheck(asked)
       .then(async (result) => {
         await maybeReplace();
         return result;
@@ -857,7 +871,7 @@ export const VimmaUpdates = {
     const { offer } = state;
     return {
       enabled: enabled(),
-      from: held ? "config-errors" : configCheck === false ? "config" : "pref",
+      from: offFrom(),
       installType: where.type,
       channel: channel(),
       intervalHours: Services.prefs.getIntPref(INTERVAL_PREF, 43200) / 3600,
@@ -927,7 +941,7 @@ export const VimmaUpdates = {
       ...state,
       stage: stage(),
       enabled: enabled(),
-      from: held ? "config-errors" : configCheck === false ? "config" : "pref",
+      from: offFrom(),
     };
   },
 

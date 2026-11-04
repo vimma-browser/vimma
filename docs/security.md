@@ -2956,8 +2956,13 @@ _Pages_ and _extensions_ cannot reach it.
   [`ask updates.vimma.dev with the platform and channel only`](../tools/branding/test/branding-prefs.test.mjs)
 - UP4. With `[updates] check = false` or `vimma.update.enabled` = `false`, and in a build run from
   its objdir, Vimma **never** makes an update request, and shows no update message or question.
-  A `config.toml` with errors **never** turns checks on: a `check = false` still readable in it
-  holds, and while only the defaults stand in for the broken file no check runs. Apart from
+  A `config.toml` with errors **never** turns checks on past an opt-out it may state: a
+  `check = false` still readable in it holds, and while `[updates] check` cannot be read
+  (the file cannot be read or its TOML does not parse; `updates` is not a table; `check` is not
+  a boolean; `[updates]` has other keys but no `check`; the file has a top-level key Vimma does
+  not know, such as `[update]`; or a boolean `check` sits in another table) and only the
+  defaults stand in for the file, no check runs but `:update`, which the pref still stops. A
+  file that parses applies its `check` as a valid file would. Apart from
   `:update`, an attempt that got no answer is **never** repeated within 10 minutes, so restarts
   send no burst of requests.
   [`off_by_pref_or_config_sends_nothing`](../tests/browser/browser_vimma_update_check.js),
@@ -2967,7 +2972,13 @@ _Pages_ and _extensions_ cannot reach it.
   [`startup_checks_when_due_and_not_when_fresh`](../tests/browser/browser_vimma_update_notices.js),
   [`a_source_build_checks_nothing`](../tests/browser/browser_vimma_update_check.js),
   [`a_config_with_errors_still_turns_checks_off`](../tests/browser/browser_vimma_update_check.js),
-  [`a file with errors: a readable check = false holds; else the config in force, or held`](../packages/vimma-core/test/updates.test.mjs)
+  [`a file with errors: a readable check = false holds; else the config in force, or held`](../packages/vimma-core/test/updates.test.mjs),
+  [`a file that parses but has errors checks as a valid file would (#741)`](../packages/vimma-core/test/updates.test.mjs),
+  [`:update runs while checks are held, never past a stated opt-out`](../packages/vimma-core/test/updates.test.mjs),
+  [`an opt-out under a misspelt or misplaced table may mean check = false`](../packages/vimma-core/test/updates.test.mjs),
+  [`an_opt_out_under_a_misspelt_table_never_turns_checks_on`](../tests/browser/browser_vimma_update_check.js),
+  [`a_config_that_parses_with_errors_still_checks`](../tests/browser/browser_vimma_update_check.js),
+  [`update_runs_while_checks_are_held`](../tests/browser/browser_vimma_update_check.js)
 - UP5. A response is read **only** up to 256 KiB, counted after decompression: a larger
   `Content-Length` is refused unread, and a longer body or a compression bomb is cancelled at the
   cap. Manifest text is parsed **only** after its signature verifies, and only in the one format

@@ -561,6 +561,61 @@ add_task(async function a_config_with_errors_still_turns_checks_off() {
   await until(() => VimmaUpdates.status().enabled, "back on with the defaults");
 });
 
+add_task(async function an_opt_out_under_a_misspelt_table_never_turns_checks_on() {
+  await fetch(`${HOST}?reset`);
+  await serve(await manifest());
+  const off = PathUtils.join(dir, "off.toml");
+  await IOUtils.writeUTF8(off, "schema = 2\n[updates]\ncheck = false\n");
+  await ConfigHost.reload(off);
+  await until(() => !VimmaUpdates.status().enabled, "check = false");
+  // [update] for [updates]: the file parses and may mean check = false.
+  const misspelt = PathUtils.join(dir, "misspelt.toml");
+  await IOUtils.writeUTF8(misspelt, "schema = 2\n[update]\ncheck = false\n");
+  await ConfigHost.reload(misspelt);
+  Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
+  Assert.ok(!VimmaUpdates.status().enabled, "checks stay off");
+  Assert.equal((await VimmaUpdates.check()).outcome, "off");
+  Assert.deepEqual(await requests(), [], "no request");
+  await ConfigHost.reload();
+  await until(() => VimmaUpdates.status().enabled, "back on with the defaults");
+  VimmaUpdates._reset();
+});
+
+add_task(async function a_config_that_parses_with_errors_still_checks() {
+  await fetch(`${HOST}?reset`);
+  await serve(await manifest());
+  // A value a newer build writes: the file parses, and says nothing about [updates] check.
+  const file = PathUtils.join(dir, "newer.toml");
+  await IOUtils.writeUTF8(
+    file,
+    'schema = 2\n[[agent.providers]]\nname = "x"\nkind = "cli"\ncli = "future"\n',
+  );
+  await ConfigHost.reload(file);
+  Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
+  Assert.ok(VimmaUpdates.status().enabled, "checks stay on");
+  Assert.equal(VimmaUpdates.status().from, "pref");
+  Assert.equal((await VimmaUpdates.check()).outcome, "offer");
+  await ConfigHost.reload();
+  VimmaUpdates._reset();
+});
+
+add_task(async function update_runs_while_checks_are_held() {
+  await fetch(`${HOST}?reset`);
+  await serve(await manifest());
+  // What ConfigHost does at startup for a config.toml whose TOML does not parse.
+  VimmaUpdates.configure({ check: false, held: true });
+  Assert.equal(VimmaUpdates.status().from, "config-errors");
+  Assert.equal((await VimmaUpdates.check()).outcome, "off", "no timer check");
+  Assert.deepEqual(await requests(), [], "no request");
+  Assert.equal((await VimmaUpdates.check({ asked: true })).outcome, "offer", ":update runs");
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.update.enabled", false]] });
+  Assert.equal(VimmaUpdates.status().from, "pref", "about:vimma names the pref, not :update");
+  Assert.equal((await VimmaUpdates.check({ asked: true })).outcome, "off", "the pref holds");
+  await SpecialPowers.popPrefEnv();
+  VimmaUpdates.configure({ check: true, held: false });
+  VimmaUpdates._reset();
+});
+
 add_task(async function a_serial_from_the_future_is_refused() {
   await serve(await manifest({ at: "20991231000000" }));
   const r = await VimmaUpdates.check();

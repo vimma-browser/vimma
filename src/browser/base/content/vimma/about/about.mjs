@@ -86,7 +86,7 @@ function renderUpdates(u) {
       u.enabled
         ? `on, every ${u.intervalHours} hours`
         : u.from === "config-errors"
-          ? "off until config.toml's errors are fixed"
+          ? "off until config.toml's [updates] can be read (:update still checks)"
           : u.from === "config"
             ? "off ([updates] check = false in config.toml)"
             : "off (vimma.update.enabled)",
