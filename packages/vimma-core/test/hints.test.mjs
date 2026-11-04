@@ -19,6 +19,9 @@ import {
   HINT_REPLY_MAX_TARGETS,
   HINT_REPLY_MAX_FRAMES,
   HINT_REPLY_MAX_HREF,
+  HINT_TOP_TIMEOUT_MS,
+  HINT_AGENT_FRAMES_MS,
+  HINT_SIZE_WAIT_MS,
 } from "../src/hints.mjs";
 import { ACTIONS } from "../src/actions.mjs";
 import { parseKey } from "../src/keys.mjs";
@@ -669,6 +672,14 @@ describe("parseBlockReply: untrusted Vimma:Block replies from a content process"
       },
     };
     expect(parseBlockReply(hostile, "next")).toBeNull();
+  });
+});
+
+describe("a collection's waits", () => {
+  test("a page's wait for its first size ends before the parent stops waiting for it", () => {
+    expect(HINT_SIZE_WAIT_MS).toBeGreaterThan(0);
+    expect(HINT_SIZE_WAIT_MS).toBeLessThan(HINT_TOP_TIMEOUT_MS);
+    expect(HINT_TOP_TIMEOUT_MS).toBeLessThan(HINT_AGENT_FRAMES_MS);
   });
 });
 
