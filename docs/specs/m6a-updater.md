@@ -1152,7 +1152,11 @@ tested:
    (`tools/update/gen-update-keys.mjs`); the primary's certificate is self-signed through one
    Cloud KMS signature by `tools/update/update-cert.mjs` (runbook step 5b), and
    `tools/update/check-build.mjs` checks a package against the done criteria above. ADR-016
-   records the channel, host and certificates.)
+   records the channel, host and certificates. The rpath question is answered: Firefox 159.0.1's
+   Linux `updater` already has `RUNPATH $ORIGIN`, and the `updater` of an installed
+   `VIMMA_UPDATES=1` tarball, run with an empty environment, applied a complete MAR signed with a
+   test key in its slots and refused one signed with Mozilla's test key (`failed: 19`), so Zen's
+   `-Wl,-rpath=$ORIGIN` hunk is not needed.)
 3. **Host for Firefox's updater** (the `UpdateService-sys-mjs.patch` hook calling the same
    verifier, the staged notices, the urgent prompt, `:restart`, `updates: off` once per session,
    AppImage replacement, the anonymous MAR download, the control `state` field): the remaining

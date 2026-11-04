@@ -745,9 +745,11 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
 - **Gecko itself.** Page isolation, the sandbox, TLS and the JavaScript engine are Firefox's.
   Vimma is only as safe as the Firefox release under it, so security comes from shipping each
   Firefox release, and each security dot release, quickly: §10 above and
-  [docs/rebase.md](rebase.md) ("Security dot release: the fast path"). Vimma has no built-in
-  updater ([`updater_is_not_built`](../tests/browser/browser_vimma_updater.js)); updates come
-  with your package.
+  [docs/rebase.md](rebase.md) ("Security dot release: the fast path"). Source and dev builds
+  have no built-in updater, and release builds will carry Firefox's updater pointed at
+  updates.vimma.dev only (UP12,
+  [`update_url_matches_the_build`](../tests/browser/browser_vimma_updater.js)); until then
+  updates come with your package or Vimma's update check (§16).
 - **Malware running as you.** It can read your profile, cookies, the control token and
   config.toml, and drive any app you run. Vimma does not defend against it; file modes keep out
   other local users, not your own processes.
