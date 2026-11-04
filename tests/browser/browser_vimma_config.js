@@ -191,7 +191,7 @@ add_task(async function an_unknown_agent_cli_skips_its_provider_and_the_file_app
       "[[agent.providers]]",
       'name = "later"',
       'kind = "cli"',
-      'cli = "gemini"',
+      'cli = "opencode"',
     ].join("\n"),
   );
   await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the file applies");
