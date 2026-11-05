@@ -234,12 +234,15 @@ add_task(async function private_marks_go_with_the_private_windows() {
 });
 
 /**
- * Starts hints with `key` and returns the label of the link to `href`.
+ * Starts hints with `key` (a `:` command is typed and run) and returns the label of the link.
  * @param {string} key
  * @param {(href: string) => boolean} which
  */
 async function labelOf(key, which) {
-  EventUtils.synthesizeKey(key, key === key.toUpperCase() ? { shiftKey: true } : {});
+  if (key.startsWith(":")) {
+    EventUtils.sendString(key);
+    EventUtils.synthesizeKey("KEY_Enter");
+  } else EventUtils.synthesizeKey(key, key === key.toUpperCase() ? { shiftKey: true } : {});
   await TestUtils.waitForCondition(() => VimmaHost._hints(window)?.hints.length, "hints");
   const hints = VimmaHost._hints(window).hints;
   const hit = hints.find((/** @type {any} */ h) => which(h.target.href ?? ""));
@@ -262,15 +265,16 @@ add_task(async function links() {
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => !VimmaHost._hints(window), "hints end");
 
-    // F shows a target without following it.
-    type(await labelOf("F", (h) => h === EXTERNAL));
-    await untilNotice(EXTERNAL, "F shows the external link's URL");
+    // :show_link_target shows a target without following it; F stays the text-block hints
+    // (decision 21).
+    type(await labelOf(":show_link_target", (h) => h === EXTERNAL));
+    await untilNotice(EXTERNAL, ":show_link_target shows the external link's URL");
     Assert.equal(browser.currentURI.spec, LINKS, "and stays");
-    type(await labelOf("F", (h) => h.startsWith(LINKS + "#") && h.includes("%5B")));
-    await untilNotice("page 3", "F shows an explicit destination's page");
-    type(await labelOf("F", (h) => h.endsWith("#chapter-two")));
-    await untilNotice("page 4", "F shows a named destination's page");
-    Assert.equal((await view(browser)).page, 1, "F follows nothing");
+    type(await labelOf(":show_link_target", (h) => h.startsWith(LINKS + "#") && h.includes("%5B")));
+    await untilNotice("page 3", "it shows an explicit destination's page");
+    type(await labelOf(":show_link_target", (h) => h.endsWith("#chapter-two")));
+    await untilNotice("page 4", "and a named destination's page");
+    Assert.equal((await view(browser)).page, 1, "it follows nothing");
 
     // c copies a target.
     SpecialPowers.clipboardCopyString("before");

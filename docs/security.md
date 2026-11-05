@@ -3748,8 +3748,9 @@ bindings, so it is accepted here.
   [`links`](../tests/browser/browser_vimma_pdf_marks.js)
 - V9. Presentation mode **may** go full screen without user activation, as Firefox allows the
   pdf.js principal (`dom/base/Element.cpp`); Vimma **must** request it only for the user's own
-  key in the PDF viewer, so it adds no spoofing surface: a page cannot reach it, the content
-  process cannot ask the parent for it, and Firefox's full-screen warning still shows.
+  key or `:present` command in the PDF viewer, so it adds no spoofing surface: a page cannot
+  reach it, the content process cannot ask the parent for it, and Firefox's full-screen warning
+  still shows.
   [`presentation_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_keys.js),
   [`presentation`](../tests/browser/browser_vimma_pdf_keys.js)
 

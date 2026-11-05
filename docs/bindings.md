@@ -190,7 +190,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Follow link in new tab                        | `follow_link_new_tab`    | `gF`               |
 | Follow link in new tab and switch to it       | `follow_link_new_tab_fg` | —                  |
 | Focus a text block: v selects it, y copies it | `focus_element`          | `F`, `F [element]` |
-| Show a link's target without following it     | `show_link_target`       | `F [pdf]`          |
+| Show a link's target without following it     | `show_link_target`       | —                  |
 | Copy a link's target                          | `copy_link_target`       | `c [pdf]`          |
 | Leave hint mode                               | `hint_cancel`            | `esc [hint]`       |
 
@@ -351,28 +351,28 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## PDF viewer
 
-| Action                                                        | Config name            | Bindings                                      |
-| ------------------------------------------------------------- | ---------------------- | --------------------------------------------- |
-| Next page (with a count: that many pages)                     | `pdf_next_page`        | `J [pdf]`                                     |
-| Previous page (with a count: that many pages)                 | `pdf_previous_page`    | `K [pdf]`                                     |
-| First page; with a count, that page (12gg, :12)               | `pdf_first_page`       | `gg [pdf]`                                    |
-| Last page; with a count, that page (12G)                      | `pdf_last_page`        | `G [pdf]`                                     |
-| Top of the current page                                       | `pdf_page_top`         | `H [pdf]`, `P [pdf]`                          |
-| Bottom of the current page                                    | `pdf_page_bottom`      | `L [pdf]`                                     |
-| Scroll a screen down                                          | `pdf_screen_down`      | `ctrl+f [pdf]`                                |
-| Zoom in by 10 % (with a count: that many steps)               | `pdf_zoom_in`          | `+ [pdf]`, `zi [pdf]`, `zI [pdf]`             |
-| Zoom out by 10 % (with a count: that many steps)              | `pdf_zoom_out`         | `- [pdf]`, `zo [pdf]`, `zO [pdf]`             |
-| Zoom to 100 %; with a count, that percent (150=)              | `pdf_zoom_set`         | `= [pdf]`, `zz [pdf]`, `zZ [pdf]`, `z0 [pdf]` |
-| Fit the whole page, also after a resize                       | `pdf_fit_page`         | `a [pdf]`                                     |
-| Fit the page's width, also after a resize                     | `pdf_fit_width`        | `s [pdf]`                                     |
-| Two pages side by side, or one                                | `pdf_dual_page`        | `d [pdf]`                                     |
-| Two pages: the first alone, or paired                         | `pdf_first_page_alone` | `D [pdf]`                                     |
-| One page at a time, or scrolling                              | `pdf_single_page`      | `w [pdf]`                                     |
-| Rotate the pages 90 degrees clockwise (with a count: n times) | `pdf_rotate`           | `r [pdf]`                                     |
-| Presentation mode, or leave it                                | `pdf_presentation`     | `f5 [pdf]`                                    |
-| Open the outline (table of contents) in a panel               | `pdf_outline`          | `tab [pdf]`                                   |
-| Set a mark here: m and a letter or digit                      | `pdf_mark_set`         | `m [pdf]`                                     |
-| Go back to a mark: ' and its letter or digit                  | `pdf_mark_go`          | `' [pdf]`                                     |
+| Action                                                            | Config name            | Bindings                                      |
+| ----------------------------------------------------------------- | ---------------------- | --------------------------------------------- |
+| Next page (with a count: that many pages)                         | `pdf_next_page`        | `J [pdf]`                                     |
+| Previous page (with a count: that many pages)                     | `pdf_previous_page`    | `K [pdf]`                                     |
+| First page; with a count, that page (12gg, :12)                   | `pdf_first_page`       | `gg [pdf]`                                    |
+| Last page; with a count, that page (12G)                          | `pdf_last_page`        | `G [pdf]`                                     |
+| Top of the current page                                           | `pdf_page_top`         | —                                             |
+| Bottom of the current page                                        | `pdf_page_bottom`      | —                                             |
+| Scroll a screen down                                              | `pdf_screen_down`      | —                                             |
+| Zoom in by 10 % (with a count: that many steps)                   | `pdf_zoom_in`          | `+ [pdf]`, `zi [pdf]`, `zI [pdf]`             |
+| Zoom out by 10 % (with a count: that many steps)                  | `pdf_zoom_out`         | `- [pdf]`, `zo [pdf]`, `zO [pdf]`             |
+| Zoom to 100 %; with a count, that percent (150=)                  | `pdf_zoom_set`         | `= [pdf]`, `zz [pdf]`, `zZ [pdf]`, `z0 [pdf]` |
+| Fit the whole page, also after a resize                           | `pdf_fit_page`         | `a [pdf]`                                     |
+| Fit the page's width, also after a resize                         | `pdf_fit_width`        | `s [pdf]`                                     |
+| Two pages side by side, or one (:dual)                            | `pdf_dual_page`        | —                                             |
+| Two pages: the first alone, or paired                             | `pdf_first_page_alone` | `D [pdf]`                                     |
+| One page at a time, or scrolling                                  | `pdf_single_page`      | `w [pdf]`                                     |
+| Rotate the pages 90 degrees clockwise (:rotate; a count: n times) | `pdf_rotate`           | —                                             |
+| Presentation mode, or leave it (:present)                         | `pdf_presentation`     | —                                             |
+| Open the outline (table of contents) in a panel                   | `pdf_outline`          | `tab [pdf]`                                   |
+| Set a mark here: m and a letter or digit                          | `pdf_mark_set`         | `m [pdf]`                                     |
+| Go back to a mark: ' and its letter or digit                      | `pdf_mark_go`          | `' [pdf]`                                     |
 
 ## PDF outline
 

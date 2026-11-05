@@ -55,18 +55,23 @@ changes.
 
 1. As a user in the PDF viewer, Vimma's normal-mode keys work as on any page (`j`, `k`, `h`, `l`,
    `ctrl+d`, `ctrl+u`, `/`, `n`, `N`, `f`, `v`, `:`, `t`, `x`, `gt`, `ctrl+o`, `ctrl+i`, the
-   prefix layer), except the keys in this list that take a PDF meaning there.
+   prefix layer), except the keys in this list that take a PDF meaning there. (Since changed:
+   decision 21 keeps every normal-mode key's meaning in the PDF viewer; the list's keys are those
+   Vimma leaves free.)
 2. As a user, `J` / `K` go to the next / previous page, with a count (`3J`). `gg` goes to the first
    page and `G` to the last; with a count both go to that page (`12G`, `12gg`), counted from 1 as
    physical pages, not page labels. `:12` on the command line goes to page 12 too. `H` / `L` go to
    the top / bottom of the current page, `P` snaps the view to the current page's top. `ctrl+f`
    scrolls a screen down; `space` and `shift+space` keep scrolling a screen down and up.
+   (Since changed: decision 21: `H`, `L`, `P` and `ctrl+f` keep Vimma's meaning; the page's top and
+   bottom are `:pdf_page_top` and `:pdf_page_bottom`.)
 3. As a user, `+` / `zi` / `zI` and `-` / `zo` / `zO` zoom in and out by 10 % per step, with a
    count. `=`, `zz`, `zZ` and `z0` set 100 %; `150=` sets 150 %. `a` fits the whole page, `s` fits the width, and the fit
    follows window and pane resizes until I zoom by hand.
 4. As a user, `d` toggles two pages side by side, with the first page alone as in a printed
    book; `D` toggles whether the first page stands alone. `w` toggles showing one page at a time.
-   `r` rotates the pages 90° clockwise, with a count.
+   `r` rotates the pages 90° clockwise, with a count. (Since changed: decision 21: `d` and `r`
+   keep Vimma's meaning; two pages are `:dual` and rotation `:rotate`.)
 5. As a user, `Tab` opens the document's outline (table of contents) in Vimma's outline panel on
    the left of the window, drawn in the theme like the side panel, and puts the tab in `INDEX`
    mode, with the entry for the current page selected. `j` / `k` (and the arrow keys) move, `l` /
@@ -94,13 +99,15 @@ changes.
     page has a label that is not its number.
 11. As a user, `f` labels the links on screen (pdf.js draws them as links), `F` labels them and
     shows the chosen link's target in a notice without following it, and `c` labels them and
-    copies the chosen target.
+    copies the chosen target. (Since changed: decision 21: `F` stays element focus;
+    `:show_link_target` shows a target.)
 12. As a user, `F5` starts pdf.js's presentation mode (full screen, one page at a time, fit to
     page); there `j`, `J`, `space` and the arrow keys go forward a page, `k`, `K` and `shift+space`
     back, and `F5` or `Esc` leaves it. `F11` is Vimma's full screen as everywhere.
+    (Since changed: decision 21: `:present` starts it and `Esc` leaves it; `F5` reloads.)
 13. As a user, `R` and `ctrl+r` reload the PDF (Vimma's `r` and `F5` have their PDF meanings here);
     `ctrl+p` prints, `ctrl+s` saves, `yy` and `Y` copy the URL and `:pdf_info` shows pdf.js's
-    document properties.
+    document properties. (Since changed: decision 21: `r` and `F5` reload as on any page.)
 14. As a user, every binding in this list can be changed in `config.toml` under `[modal.pdf]`
     (the PDF viewer's normal mode) and `[modal.index]`, and removed with `[unbind] pdf = [...]`.
     `ctrl+b ?` lists them under their own headings, `[pdf]` and `[index]`.
@@ -158,6 +165,10 @@ changes.
 | Status bar: file, `[x/y]`, `[label (x/y)]`, optional percent (zathura.c:1595-1640)         | `page x/y`, `page label (x/y)`; the title and host as on any page                                                                                                 |
 | Selection copies to the primary selection on mouse release (callbacks.c:612-645)           | Firefox's selection; `v` copy mode with `y` copies to the clipboard                                                                                               |
 | SyncTeX: `--synctex-forward`, ctrl+click backward search over D-Bus (synctex.c, xml)       | **Not matched** in this spec (decision 14)                                                                                                                        |
+
+(Since changed: decision 21 keeps Vimma's meaning on `H` / `L`, `P`, `ctrl+f`, `d`, `r`, `F` and
+`F5` in the PDF viewer. zathura's are commands there: `:pdf_page_top`, `:pdf_page_bottom`,
+`:pdf_screen_down`, `:dual`, `:rotate`, `:show_link_target` and `:present`.)
 
 ## Research
 
@@ -316,6 +327,7 @@ changes.
   tab (233); `[keys]` `reload` on `f5` (121; its `ctrl+r` stays), `find_forward` on `ctrl+f`
   (155).
   `J`, `K`, `w`, `a`, `s`, `D`, `c`, `R`, `m`, `'`, `+`, `-`, `=`, `z…` and `Tab` are unbound.
+  (Since changed: decision 21 drops these shadows.)
 - The status bar's find text already formats a count, `/query [3/41]`
   (`packages/vimma-core/src/find.mjs:32-38`); it needs only `current` and `total`.
 
@@ -409,7 +421,8 @@ find: { current, total } }`), sent to the parent on the viewer's events.
    key is one `[modal.pdf]` line away. Rejected: Vimma's meaning on the shared keys, with dual
    page and rotation on other keys, because the viewer would then behave as zathura only in
    part; a `[pdf] keys = "zathura" | "vimma"` switch, because `[modal.pdf]` already lets a user
-   change any key and a switch doubles the bindings to document and test.
+   change any key and a switch doubles the bindings to document and test. (Since changed:
+   decision 21 reverses this: Vimma's meaning wins on every key it binds.)
 6. **Counts are physical page numbers.** `{n}G`, `{n}gg` and `:{n}` go to the nth page, counting
    from 1, because zathura's do (Research, zathura table) and because a count is typed without
    knowing the labels. The status bar shows the label when it differs, so the number to type is
@@ -555,6 +568,7 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     (or its binding) in the PDF viewer, so that it gives no page a way to go full screen. While `isInPresentationMode`, the
     adapter turns Vimma's scroll and page actions into `nextPage` / `previousPage`, because pdf.js
     shows one page at a time there and scrolling has no meaning; `Esc` and `F5` leave it.
+    (Since changed: decision 21 moves it to `:present`; `Esc` leaves it.)
 16. **Hints on PDF links.** pdf.js draws link annotations as `<a>` elements in its annotation
     layer, so `f` labels them with the existing collector; `F` and `c` are two hint actions,
     `hint.show_target` and `hint.copy_target`, which return the chosen link's `href` through the
@@ -564,8 +578,9 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     and the adapter reads the link's fragment as pdf.js's `setHash` does (`page=`, an explicit
     destination, a named one). `c` copies the link's URL, an internal link's with the fragment
     that reopens that place. `F` shadows the text-block hints there, which pdf.js's lines do not
-    have (element-focus decision 14). The collector labels pdf.js's internal links (checked by
-    the `links` mochitest).
+    have (element-focus decision 14). (Since changed: decision 21 leaves `F` to element focus;
+    `hint.show_target` is `:show_link_target`.) The collector labels pdf.js's internal links
+    (checked by the `links` mochitest).
 17. **about:pdf stays; the viewer's promotion is off.** `firefox-branding.js` sets
     `pdfjs.featuresNotificationImpressionLimit` to 0, so that the "PDFs just got easier" bar never
     covers a document; `about:pdf` and its menu entries stay as Firefox ships them, and the guide
@@ -620,6 +635,27 @@ toolbar` is applied. Reason: zathura users open a document to read it, and a lon
     Rejected: per-selector overrides, because they break with each pdf.js redesign; a global user
     sheet, because the viewer's document has the PDF's URL and no selector tells it apart from a
     web page.
+21. **Vimma's keys win in the PDF viewer; zathura's are added only on free keys.** The `pdf`
+    context binds no key that normal mode binds, except `gg` and `G`, which still go to the top
+    and the bottom and in a PDF take a count as a page (decision 6). zathura's `d` (dual page),
+    `r` (rotate), `H` / `L` (top / bottom of the page), `P` (snap to the page), `F` (show a link's
+    target), `ctrl+f` (a screen down) and `F5` (presentation) are dropped from `[modal.pdf]`, so
+    those keys do there what they do on every page: half a page down, reload, history back /
+    forward, open the clipboard in a new tab, element focus, find, reload. Because the same key
+    should do the same thing on every page: a reader who moves between web pages and PDFs builds
+    one set of habits, and `d` turning into a layout switch in one kind of tab breaks them.
+    zathura's additions on free keys stay (`J`, `K`, `a`, `s`, `w`, `D`, `R`, `Y`, `c`, `m`,
+    `'`, `+`, `-`, `=`, `z…`, `Tab`), and `F11` is full screen as everywhere. The dropped actions
+    stay reachable as commands: `:rotate`, `:dual` and `:present`, named as the command line
+    names its other short commands (`:popups`, `:downloads`), and `:pdf_page_top`,
+    `:pdf_page_bottom`, `:pdf_screen_down` and `:show_link_target` by their action names.
+    No free key takes them, because none of the free letters carries their meaning and a key
+    with no mnemonic is one nobody remembers; the command line completes them by name. A user
+    who wants zathura's keys gets them back with one block: the `config.toml` that `:config`
+    writes, and `defaults.toml`, carry them commented out under `[modal.pdf]`
+    (`ZATHURA_PDF_KEYS` in `defaults.mjs`). Rejected: keeping zathura's meanings (decision 5),
+    because it makes the meaning of Vimma's most used keys depend on the document; a switch
+    between the two key sets, for decision 5's reason.
 
 ## Security and privacy
 
