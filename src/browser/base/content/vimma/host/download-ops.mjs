@@ -105,11 +105,13 @@ export class DownloadWatch {
     /** @type {any} */
     this.list = null;
     this.view = null;
-    this.text = "";
+    /** @type {DownloadSegment | null} */
+    this.current = null;
+    this.text = "null";
     this.destroyed = false;
-    this.observe = () => this.sync();
+    this.observe = () => void this.sync().catch(console.error);
     Services.prefs.addObserver(DOWNLOADS_FEATURE_PREF, this.observe);
-    this.sync();
+    this.observe();
   }
 
   get on() {
@@ -150,14 +152,23 @@ export class DownloadWatch {
 
   /** @private Progress fires on every chunk; the bar hears only of a change it shows. */
   changed() {
-    const text = JSON.stringify(this.segment());
+    this.current = this.compute();
+    const text = JSON.stringify(this.current);
     if (text === this.text) return;
     this.text = text;
     this.emit();
   }
 
-  /** @returns {DownloadSegment | null} */
+  /**
+   * The segment as last computed: the bar asks on every host change, downloads change it rarely.
+   * @returns {DownloadSegment | null}
+   */
   segment() {
+    return this.current;
+  }
+
+  /** @private */
+  compute() {
     if (!this.view || !this.on) return null;
     const records = [...this.downloads].map(recordOf);
     // The end states (`done`, `failed`, `blocked`) clear when the picker opens, so they come

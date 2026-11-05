@@ -117,6 +117,41 @@ add_task(async function test_no_segment_while_the_feature_is_off() {
   await clean();
 });
 
+add_task(async function test_a_private_window_counts_only_its_private_downloads() {
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  /** @param {Window} win */
+  const seg = (win) =>
+    win.document.querySelector('#vimma-statusbar [data-segment="downloads"] [aria-hidden]')
+      ?.textContent ?? null;
+  const list = await Downloads.getList(Downloads.PRIVATE);
+  const download = await Downloads.createDownload({
+    source: { url: `${SJS}?hold&name=private.bin`, isPrivate: true },
+    target: PathUtils.join(saveDir, "private.bin"),
+  });
+  await list.add(download);
+  const done = download.start();
+  await until(() => seg(priv) === "↓ 50%", "the private window shows its private download");
+  Assert.equal(seg(window), null, "a normal window never counts a private download");
+
+  const normal = await held("public.bin");
+  await until(() => seg(window) === "↓ 50%", "the normal window shows its own download");
+  Assert.equal(seg(priv), "↓ 50%", "the private window does not count the normal download");
+
+  await release();
+  await Promise.all([done, normal.done]);
+  await BrowserTestUtils.closeWindow(priv);
+  await clean();
+});
+
+add_task(async function test_a_new_profiles_first_download_opens_no_panel() {
+  // Firefox opens its panel on a profile's first download whatever alwaysOpenPanel says, unless
+  // the panel has shown before (DownloadsCommon.sys.mjs, _notifyDownloadEvent).
+  Assert.ok(
+    Services.prefs.getDefaultBranch("").getBoolPref("browser.download.panel.shown"),
+    "Vimma's default marks the panel as shown",
+  );
+});
+
 /** @param {string} url */
 async function clickDownload(url) {
   const added = new Promise((resolve) => {
