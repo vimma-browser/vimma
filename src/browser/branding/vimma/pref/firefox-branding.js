@@ -197,7 +197,3 @@ pref("browser.toolbars.bookmarks.visibility", "never");
 // Firefox's PDF promotion that interrupts reading, so it gets no impressions. about:pdf and its
 // menu entries stay (docs/specs/pdf-mode.md decision 17). The budget is shared with about:pdf.
 pref("pdfjs.featuresNotificationImpressionLimit", 0);
-
-// Unfinished: the PDF viewer's zathura keys and status (docs/specs/pdf-mode.md), delivered over
-// several pull requests (CONTRIBUTING.md, "Unfinished features").
-pref("vimma.feature.pdf_mode", false);

@@ -157,7 +157,7 @@ import {
   sitePermissionKey,
 } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
-import { NOT_PDF, PDF_ACTION_IDS, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
+import { NOT_PDF, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
 import { stripInvisible } from "../core/pdf.mjs";
 
 const lazy = /** @type {any} */ ({});
@@ -1505,8 +1505,6 @@ export const VimmaHost = {
           workspace: workspaceNames(win),
           search: SearchHost.completions,
         }),
-        // An unfinished feature's commands exist only with its pref on (`:12`, `:pdf_rotate`).
-        hidden: () => (PdfOps.enabled() ? [] : PDF_ACTION_IDS),
       }),
       tabStrip: null,
       toolbar: null,

@@ -33,9 +33,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-/** The pref an unfinished feature sits behind (CONTRIBUTING.md, "Unfinished features"). */
-export const PDF_FEATURE_PREF = "vimma.feature.pdf_mode";
-
 /** At most one state message per this many milliseconds (V5). */
 export const PDF_STATE_MS = 100;
 
@@ -186,15 +183,13 @@ export class PdfView {
   #listeners = [];
 
   /**
-   * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer or
-   * the feature is off.
+   * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer.
    * @param {any} actor   the VimmaChild
    * @param {(state: object) => void} send
    * @param {(outline: object) => void} [sendOutline]
    * @returns {PdfView | null}
    */
   static attach(actor, send, sendOutline = () => {}) {
-    if (!Services.prefs.getBoolPref(PDF_FEATURE_PREF, false)) return null;
     // Top level only: a PDF in a web page's frame keeps the page's keys (V2).
     if (actor.browsingContext.parent) return null;
     const doc = actor.document;
@@ -778,8 +773,7 @@ export class PdfView {
 
   /** Sends the state once the burst it is part of is over (V5). */
   schedule() {
-    // The pref turned off after attaching: send nothing (the parent drops it anyway).
-    if (this.#timer || !Services.prefs.getBoolPref(PDF_FEATURE_PREF, false)) return;
+    if (this.#timer) return;
     this.#timer = lazy.setTimeout(() => {
       this.#timer = null;
       this.#send(this.read());

@@ -28,10 +28,7 @@ const NO_OUTLINE = ROOT + "file_vimma_test.pdf";
 
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["vimma.feature.pdf_mode", true],
-      ["general.smoothScroll", false],
-    ],
+    set: [["general.smoothScroll", false]],
   });
 });
 

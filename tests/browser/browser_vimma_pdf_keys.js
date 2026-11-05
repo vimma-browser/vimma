@@ -23,7 +23,6 @@ const PDF = ROOT + "file_vimma_outline.pdf";
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["vimma.feature.pdf_mode", true],
       // Instant scrolling: the positions below are read right after a key.
       ["general.smoothScroll", false],
     ],

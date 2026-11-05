@@ -26,10 +26,7 @@ const EXTERNAL = "https://example.org/vimma-pdf";
 
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["vimma.feature.pdf_mode", true],
-      ["general.smoothScroll", false],
-    ],
+    set: [["general.smoothScroll", false]],
   });
 });
 

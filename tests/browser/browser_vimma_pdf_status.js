@@ -5,8 +5,6 @@
 // Spec: docs/specs/pdf-mode.md (delivery PR 2), docs/security.md section 20: the PDF viewer's
 // adapter, the pdf context, and the page and match count in the status bar.
 
-/* global add_setup -- the browser-chrome harness (browser-test.js) */
-
 "use strict";
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -22,10 +20,6 @@ const ROOT = getRootDirectory(gTestPath).replace(
   "https://example.com",
 );
 const PDF = ROOT + "file_vimma_outline.pdf";
-
-add_setup(async () => {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.pdf_mode", true]] });
-});
 
 /** @param {string} id */
 const segment = (id) =>
@@ -326,17 +320,18 @@ add_task(async function a_flood_of_pagesloaded_is_coalesced() {
   });
 });
 
-add_task(async function the_feature_pref_off_shows_nothing() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.pdf_mode", false]] });
-  try {
-    await withPdf(async (browser) => {
-      Assert.equal(PdfOps.context(browser), "page", "no pdf context with the feature off");
-      await new Promise((r) => setTimeout(r, 300));
-      Assert.equal(segment("page"), "", "no page segment");
-    });
-  } finally {
-    await SpecialPowers.popPrefEnv();
-  }
+add_task(async function pdf_mode_is_on_with_no_pref_set() {
+  // PDF mode is on in every profile: no pref turns it on or off.
+  Assert.equal(
+    Services.prefs.getPrefType("vimma.feature.pdf_mode"),
+    Services.prefs.PREF_INVALID,
+    "no vimma.feature.pdf_mode pref exists",
+  );
+  await withPdf(async (browser) => {
+    Assert.equal(PdfOps.context(browser), "pdf", "the pdf context with no pref set");
+    await TestUtils.waitForCondition(() => segment("page") !== "", "the page segment shows");
+    Assert.equal(segment("page"), "page i (1/6)", "page segment");
+  });
 });
 
 add_task(async function pdf_mode_writes_no_pdfjs_prefs() {

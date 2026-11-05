@@ -1,6 +1,6 @@
 # Spec: pdf-mode
 
-Status: accepted (delivery PRs 1 to 6 implemented; PRs 2 to 5 behind `vimma.feature.pdf_mode`) · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
+Status: implemented · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
 `modes.mjs` (`index` mode), `actions.mjs`, `defaults.mjs`, `statusbar.mjs`, `pdf.mjs` (new: state
 parser, page and zoom arithmetic, marks), `pdfoutline.mjs` (new: outline parser and the outline
 panel's state)); `actors/pdf-view.mjs` (new: the one module that touches pdf.js),

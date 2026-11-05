@@ -3480,8 +3480,8 @@ Vimma drives Firefox's pdf.js viewer through its content actor: it reads the pag
 page label and find count to show them in the status bar, chooses the PDF viewer's key
 bindings, sends the viewer the page, zoom, layout and presentation operations those keys run,
 reads the document's outline into a chrome panel on the user's `Tab`, keeps marks (positions in
-a document) in the parent's memory, and shows or copies a link's target on `F` and `c`. It sits
-behind `vimma.feature.pdf_mode` while it is built. Spec: [pdf-mode](specs/pdf-mode.md).
+a document) in the parent's memory, and shows or copies a link's target on `F` and `c`. Spec:
+[pdf-mode](specs/pdf-mode.md).
 
 **Reach:** the PDF being viewed, through pdf.js, which a malformed PDF may compromise (pdf.js
 parses untrusted files, and CVE-2024-4367 let a PDF run script in the viewer); web pages, which
