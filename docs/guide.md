@@ -1135,8 +1135,9 @@ alone in the whole window, as Firefox's own split view does. The split is not lo
 hidden, with its panes, sizes and focused pane, and the status bar says `split 3 hidden`. Go to
 any of its tabs, by any of the same routes, and the whole split comes back, with that tab's pane
 focused. A pinned tab works the same way. While the split is hidden the pane keys act on the tab
-you see as on a single pane, and `ctrl+b v` / `-` / `enter` say "the split is hidden: go to one
-of its tabs first". The hidden split survives a workspace switch and a restart.
+you see as on a single pane, and `ctrl+b v` / `-` / `enter` say "the split is hidden: select one
+of its tabs (ctrl+b b) to go back"; the message stays until your next key. The hidden split
+survives a workspace switch and a restart.
 
 A new tab you open while the split shows (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`, a link
 opened in a new foreground tab, also with `f`, or a link from another app) opens in the focused

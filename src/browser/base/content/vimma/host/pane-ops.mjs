@@ -9,7 +9,7 @@
 import { closest, describeAction } from "../core/actions.mjs";
 import { LAYOUTS, isLayoutName, layoutOfAction } from "../core/layouts.mjs";
 import { leaves } from "../core/panes.mjs";
-import { PaneViews } from "../split/PaneView.mjs";
+import { HIDDEN_REASON, PaneViews } from "../split/PaneView.mjs";
 import { closeTab } from "./tab-ops.mjs";
 import { tabById } from "./goto.mjs";
 
@@ -66,7 +66,10 @@ function focusPage(win) {
  * @returns {string | null}
  */
 function refusal(action, result) {
-  return result && !result.ok ? `${describeAction(action)}: ${result.reason}` : null;
+  if (!result || result.ok) return null;
+  // It already says what happened and what to do; the action's name would only lengthen it.
+  if (result.reason === HIDDEN_REASON) return HIDDEN_REASON;
+  return `${describeAction(action)}: ${result.reason}`;
 }
 
 /**

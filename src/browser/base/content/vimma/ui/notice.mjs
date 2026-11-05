@@ -32,6 +32,8 @@ export class Notice {
     this.alert = null;
     /** @type {number | null} */
     this.timer = null;
+    /** Shown until the next key (`untilKey`) rather than for a time. */
+    this.untilKey = false;
   }
 
   /**
@@ -39,11 +41,13 @@ export class Notice {
    * it, and Firefox's own chrome is hidden there too (`inDOMFullscreen` on the root, set by
    * browser-fullScreenAndPointerLock.js).
    * @param {string} text
-   * @param {{ error?: boolean, ms?: number }} [options]  error: something was refused or failed;
-   *   said assertively. ms: how long it stays (NOTICE_MS unless given)
+   * @param {{ error?: boolean, ms?: number, untilKey?: boolean }} [options]  error: something was
+   *   refused or failed; said assertively. ms: how long it stays (NOTICE_MS unless given).
+   *   untilKey: it stays until the host sees the next key (`keyPressed`) instead, for a refusal
+   *   that says what to do and would be missed in 1.5 s (docs/specs/multiple-splits.md, 4)
    * @returns {boolean} whether it is shown
    */
-  show(text, { error = false, ms = NOTICE_MS } = {}) {
+  show(text, { error = false, ms = NOTICE_MS, untilKey = false } = {}) {
     if (this.win.document.documentElement.hasAttribute("inDOMFullscreen")) return false;
     const fresh = !this.el;
     const el = this.el ?? this.build();
@@ -57,13 +61,20 @@ export class Notice {
     el.textContent = text;
     if (!shown) el.showPopover();
     if (this.timer !== null) this.win.clearTimeout(this.timer);
-    this.timer = this.win.setTimeout(() => this.hide(), ms);
+    this.timer = untilKey ? null : this.win.setTimeout(() => this.hide(), ms);
+    this.untilKey = untilKey;
     return true;
+  }
+
+  /** A key was pressed: a notice shown `untilKey` goes. Called before the key's own action. */
+  keyPressed() {
+    if (this.untilKey) this.hide();
   }
 
   hide() {
     if (this.timer !== null) this.win.clearTimeout(this.timer);
     this.timer = null;
+    this.untilKey = false;
     if (this.el?.matches(":popover-open")) this.el.hidePopover();
   }
 
