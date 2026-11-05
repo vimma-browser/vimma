@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question, `:restart` and `updates: off` notice, sub-PR 4's release manifest, and sub-PR 2's build switch, patches and certificate tools implemented; Firefox's updater for tarball installs, that is sub-PR 2's primary certificate, sub-PR 5, the rest of sub-PR 3 and sub-PR 4's MAR and nightly parts, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PR 1, sub-PR 2, sub-PR 3 but for the control `state` field, and sub-PR 4's release manifest implemented; the control `state` field, sub-PR 4's MAR and nightly parts and sub-PR 5, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -1168,6 +1168,28 @@ tested:
    verifier, the staged notices, the urgent prompt, `:restart`, `updates: off` once per session,
    AppImage replacement, the anonymous MAR download, the control `state` field): the remaining
    mochitests.
+   (Since changed: the control `state` field comes in a pull request of its own after the hook,
+   because it changes the control protocol, vimma-ctl's validator and the protocol docs, a
+   surface of its own; sub-PR 5's scenario is its first user. The hook has four hunks and ten
+   lines, not two: the lazy import of `VimmaUpdates`, `allowCheck` in `#checkForUpdates` next to
+   the policy check, `beforeCheck` before the request is sent and `verify` before
+   `#parseUpdates`. Checks that are off end as not allowed there, before any request, because a
+   check stopped later in `#updateCheck` would leave its entry in the checker's table of
+   checks under way, and every later check would join it. The request asks for the file
+   uncompressed (`Accept-Encoding: identity`) and Necko does not decode it
+   (`applyConversion = false`), because XMLHttpRequest counts its progress in the bytes
+   received, so a cap on that count would not stop a compression bomb, and a static manifest of
+   at most 64 KiB needs no compression; a compressed answer fails the signature. A manifest's
+   `<update>` may hold at most one `<patch>`, a complete MAR on https, because the anonymous
+   download (decision 1) covers the one URL the verified manifest names and the redirects it
+   learns from that URL's answers. On a tarball whose Firefox updater is usable, Firefox's
+   timer checks and Vimma's own fetch stays off, so one check runs; `:update` starts Firefox's
+   check, unless a download is under way or an update is in place, when Firefox checks no
+   further either. While Firefox downloads, the status bar shows the offer as it does while an
+   AppImage downloads (`⇡ 0.3.1 available`); once staged, `⇡ 0.3.1 on restart`, or for a
+   security update `⇡ 0.3.1 security: :restart` and the restart question. A tarball Vimma
+   cannot write keeps the offer and `:update`'s commands, which then say that the directory's
+   owner has to run them (Behaviour 2).)
 4. **Packaging and pipeline** (`package.mjs`, `tools/update/`, `release.yml`, `nightly.yml`,
    `update-publish.yml`): workflow tests and a dry run. Lands after the
    build-supply-chain implementation, whose full builds this extends (decision 4).

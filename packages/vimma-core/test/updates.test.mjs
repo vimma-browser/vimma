@@ -350,9 +350,59 @@ describe("parseManifest", () => {
           urgent: true,
           advisories: ["MFSA 2026-110"],
           assets: {},
+          marUrl: "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/x.mar",
         },
       },
     });
+  });
+
+  // The complete MAR Firefox's updater downloads for a tarball (spec §2, decision 5); its URL is
+  // what decision 1 downloads without cookies.
+  const PATCH = / {4}<patch [^\n]*\n/;
+  const mar = (/** @type {string} */ attrs) => manifest().replace(PATCH, `    <patch ${attrs}/>\n`);
+  const MAR = "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/x.mar";
+  const good = `type="complete" size="98113536" hashFunction="sha512" hashValue="ab" URL="${MAR}"`;
+
+  test("an <update> without a <patch> has no MAR", () => {
+    const r = /** @type {any} */ (parseManifest(manifest().replace(PATCH, "")));
+    expect(r.ok).toBe(true);
+    expect(r.manifest.update.marUrl).toBeNull();
+  });
+
+  test.each([
+    ["a partial MAR (decision 5: complete MARs only)", good.replace("complete", "partial")],
+    ["no type", good.replace('type="complete" ', "")],
+    ["a download on plain http", good.replace("https://", "http://")],
+    ["no URL", good.replace(/ URL="[^"]*"/, "")],
+  ])("refuses a <patch> with %s", (_name, attrs) => {
+    const r = parseManifest(mar(attrs));
+    expect(r.ok).toBe(false);
+    expect(/** @type {any} */ (r).reason).toMatch(/^manifest: .*<patch>/);
+  });
+
+  // Firefox's parser reads elements by local name: a prefixed <x:update> or <x:patch> would be an
+  // update to Firefox that this parser never sees.
+  test.each([
+    [
+      "a prefixed <update>",
+      (/** @type {string} */ m) =>
+        m.replace(/<(\/?)update /g, "<$1x:update ").replace("</update>", "</x:update>"),
+    ],
+    [
+      "a prefixed <patch>",
+      (/** @type {string} */ m) => m.replace("<patch ", '<x:patch xmlns:x="urn:x" '),
+    ],
+  ])("refuses %s", (_name, change) => {
+    const r = parseManifest(change(manifest()));
+    expect(r.ok).toBe(false);
+    expect(/** @type {any} */ (r).reason).toMatch(/prefixed/);
+  });
+
+  test("refuses two <patch> elements, so Firefox can pick no MAR the download rule misses", () => {
+    const two = manifest().replace(PATCH, (line) => line + line);
+    const r = parseManifest(two);
+    expect(r.ok).toBe(false);
+    expect(/** @type {any} */ (r).reason).toMatch(/more than one <patch>/);
   });
 
   test("an empty <updates> offers nothing but still carries its serial", () => {
@@ -956,6 +1006,19 @@ describe("updateSteps (:update and about:vimma)", () => {
       expect(c).toContain("./vimma-0.4.0~rc.1-1.x86_64.rpm");
       expect(c).not.toContain("sha512sum");
     }
+  });
+
+  // Behaviour 2: Firefox's updater cannot apply in a directory Vimma cannot write.
+  test("a tarball Vimma cannot write: its owner updates it, with the same commands", () => {
+    const own = updateSteps("tarball", hashed, where);
+    const ro = updateSteps("tarball", hashed, { ...where, writable: false });
+    expect(ro.text).toBe(
+      "Vimma cannot write /home/u/apps/vimma, so it cannot update itself: update it as the " +
+        "directory's owner, or reinstall. As its owner, quit Vimma, then unpack the new " +
+        "tarball over this install:",
+    );
+    expect(ro.commands).toEqual(own.commands);
+    expect(updateSteps("tarball", hashed, { ...where, writable: true })).toEqual(own);
   });
 
   test("tarball: quit, download and check it, then unpack over the install's parent, quoted", () => {

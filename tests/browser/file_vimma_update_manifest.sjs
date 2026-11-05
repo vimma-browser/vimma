@@ -18,7 +18,8 @@ const MANIFEST = "vimma-update-manifest";
 const LOG = "vimma-update-log";
 
 function handleRequest(request, response) {
-  const query = request.queryString;
+  // Firefox's checker adds force=1 to a check started by hand (browser_vimma_update_verify.js).
+  const query = request.queryString.replace(/&force=1$/, "");
   response.setHeader("Cache-Control", "no-cache", false);
   if (query === "set") {
     const stream = new BinaryInputStream(request.bodyInputStream);

@@ -141,6 +141,8 @@ describe("buildManifest (spec §2)", () => {
             deb: { size: 87718612, sha512: HASH("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
             rpm: { size: 87921340, sha512: HASH("d"), url: `${DL}/vimma-0.3.1-1.x86_64.rpm` },
           },
+          // No <patch> until sub-PR 4 builds the MARs.
+          marUrl: null,
         },
       },
     });
