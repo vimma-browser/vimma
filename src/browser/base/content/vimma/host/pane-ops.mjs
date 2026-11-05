@@ -155,7 +155,10 @@ export function showTabs(win, tabIds, focusId, aloneId) {
   const result = view.showTabs(list, /** @type {any} */ (focus), {
     alone: /** @type {any} */ (alone ?? undefined),
   });
-  if (!result.ok) return `${TOGETHER}: ${result.reason}`;
+  // A new split's refusal names itself (docs/specs/multiple-splits.md behaviour 5).
+  if (!result.ok) {
+    return result.reason.startsWith("new split:") ? result.reason : `${TOGETHER}: ${result.reason}`;
+  }
   focusPage(win);
   return null;
 }
