@@ -378,9 +378,13 @@ export function downloadAsks(op) {
  * @param {"cancel" | "delete"} op
  */
 export function downloadQuestion(r, op) {
+  // Format characters (bidi overrides, zero-width) could reorder the line, and a long name could
+  // push `(y/N)` out of view: both are the page's choice.
+  const clean = r.name.replace(/\p{Cf}/gu, "");
+  const name = [...clean].length > 80 ? [...clean].slice(0, 79).join("") + "…" : clean;
   return op === "cancel"
-    ? `cancel "${r.name}" and remove its partial file? (y/N)`
-    : `delete "${r.name}" from disk? (y/N)`;
+    ? `cancel "${name}" and remove its partial file? (y/N)`
+    : `delete "${name}" from disk? (y/N)`;
 }
 
 /**
@@ -435,6 +439,9 @@ function refusal(r, op, { allowOverride }) {
       return r.hasPartialData || !r.stopped ? null : "not in progress";
     case "retry":
       if (r.agent) return "agent downloads are never retried by Vimma";
+      // A history entry with no path cannot be told apart from an agent download by its folder
+      // (docs/security.md D4), so it is not fetched again from here.
+      if (!r.path) return "no file to retry; the Library (shift+l) can";
       return state === S.FAILED || state === S.CANCELED ? null : "only a failed or canceled one";
     case "referrer":
       if (r.agent) return "an agent download's page is never opened by Vimma";

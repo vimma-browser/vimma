@@ -498,7 +498,11 @@ const RUNS = new Set([
  */
 async function current(win, d) {
   const list = await listFor(win);
-  return (await list.getAll()).includes(d) ? recordOf(d, win) : null;
+  if (!(await list.getAll()).includes(d)) return null;
+  // The file may have gone outside Firefox while the question was open: `refresh` reads the
+  // disk, as Firefox's views do, before the answer is weighed.
+  if (d.stopped && typeof d.refresh === "function") await d.refresh().catch(() => {});
+  return recordOf(d, win);
 }
 
 /**
@@ -605,7 +609,7 @@ function copy(text) {
  * @param {string} key
  * @param {string} id
  * @param {{ say: (text: string, error?: boolean) => void, close: () => void,
- *   ask: (question: string, yes: () => void) => void }} ui
+ *   ask: (question: string, yes: () => void) => boolean }} ui
  */
 export function downloadPickerKey(win, rows, key, id, { say, close, ask }) {
   const d = rows.byId(id);
@@ -623,12 +627,14 @@ export function downloadPickerKey(win, rows, key, id, { say, close, ask }) {
     // An open picker takes every key first: it closes, so the `y` reaches the question
     // (decision 6, docs/security.md D5). Closing detaches the rows; `d` and `r` are kept.
     close();
-    ask(downloadQuestion(r, op), () =>
+    const asked = ask(downloadQuestion(r, op), () =>
       answered(win, d, r, op, say).catch((/** @type {any} */ e) => {
         console.error(e);
         say(`${op}: ${e?.message ?? e}`, true);
       }),
     );
+    // The question line does not show over a page in DOM fullscreen.
+    if (!asked) say(`${op}: cannot ask over a fullscreen page; nothing was done`, true);
     return;
   }
   switch (result.op) {

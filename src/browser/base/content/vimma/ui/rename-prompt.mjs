@@ -75,10 +75,12 @@ export class RenamePrompt {
    * A y/N question: `y` runs `yes`; any other key, Enter (the default, N) or Esc says no.
    * @param {string} question  ends with "y/N"
    * @param {() => void} yes  after the prompt has closed
+   * @returns {boolean} whether it opened (not over a page in DOM fullscreen)
    */
   ask(question, yes) {
-    if (!this.show(`${question} `, "", question, "alertdialog")) return;
+    if (!this.show(`${question} `, "", question, "alertdialog")) return false;
     this.yes = yes;
+    return true;
   }
 
   /**

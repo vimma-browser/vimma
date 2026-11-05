@@ -612,7 +612,6 @@ add_task(async function test_y_copies_the_link_and_Y_the_path() {
   await clean();
 });
 
-/** @param {string} url */
 add_task(async function test_pause_resume_and_retry() {
   const tab = await pageTab();
   const one = await held("pause-me.bin", { resumable: true });
@@ -778,10 +777,25 @@ add_task(async function test_an_answer_does_nothing_if_the_download_changed() {
   EventUtils.synthesizeKey("y");
   await until(() => noticeText().includes("changed"), "the notice says it changed");
   Assert.ok(await IOUtils.exists(file.target.path), "the file stays");
+  // Its file deleted outside Firefox while asked: the answer finds it changed.
+  const outside = await finished("deleted-outside.bin");
+  await openPicker();
+  await highlight("deleted-outside.bin");
+  EventUtils.synthesizeKey("D", { shiftKey: true });
+  await until(promptOpen, "shift+d asks");
+  await IOUtils.remove(outside.target.path);
+  const said = noticeText();
+  EventUtils.synthesizeKey("y");
+  await until(
+    () => noticeText() !== said && noticeText().includes("changed"),
+    "a file gone while asked counts as a change",
+  );
+  Assert.ok(!outside.deleted, "nothing was deleted");
   BrowserTestUtils.removeTab(tab);
   await clean();
 });
 
+/** @param {string} url */
 const referrerOf = (url) => {
   const info = Cc["@mozilla.org/referrer-info;1"].createInstance(Ci.nsIReferrerInfo);
   info.init(Ci.nsIReferrerInfo.EMPTY, true, Services.io.newURI(url));

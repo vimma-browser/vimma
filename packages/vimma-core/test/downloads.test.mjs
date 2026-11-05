@@ -379,6 +379,9 @@ describe("downloadKey", () => {
       text: "an agent download's page is never opened by Vimma",
     });
     expect(op(failed(agent), "r")).toBe("refuse");
+    // A history entry with no path may be an agent download whose folder is unknown.
+    expect(op(failed({ path: "" }), "r")).toBe("refuse");
+    expect(op(failed({ path: "" }), "enter")).toBe("refuse");
     expect(op(failed(agent), "enter")).toBe("refuse");
     expect(op(blocked(agent), "!")).toBe("refuse");
     for (const [key, want] of [
@@ -404,6 +407,12 @@ describe("downloadKey", () => {
       'cancel "report.pdf" and remove its partial file? (y/N)',
     );
     expect(downloadQuestion(rec(), "delete")).toBe('delete "report.pdf" from disk? (y/N)');
+    // The page's name: no format characters, and short enough to keep (y/N) on screen.
+    expect(downloadQuestion(rec({ name: "a\u202Efdp.exe" }), "delete")).toBe(
+      'delete "afdp.exe" from disk? (y/N)',
+    );
+    const long = downloadQuestion(rec({ name: "x".repeat(200) }), "delete");
+    expect(long).toBe(`delete "${"x".repeat(79)}…" from disk? (y/N)`);
   });
 
   test("a yes stands only for the download asked about (docs/security.md D5)", () => {

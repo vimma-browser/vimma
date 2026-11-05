@@ -3818,7 +3818,9 @@ referring pages are chosen by the sites the files came from.
   followed to its referring page from the picker, because its file is admitted only under M12
   and its page was chosen by the agent; `o` is refused twice, by the picker and by M12's
   `launchDownload` override. Showing it in its folder, copying its link or path and removing it
-  stay. For any download, `u` **must** open only an `http:` or `https:` page, never a script,
+  stay. A history entry with no file path is **never** retried from the picker either, because
+  without its folder it cannot be told apart from an agent download. For any download, `u`
+  **must** open only an `http:` or `https:` page, never a script,
   `data:` or `file:` address a page chose as its referrer, and **must** open it in the
   download's own container (the window's non-agent one for a history entry), **never** the agent
   workspace's, even with that workspace on screen: the full referrer may carry a token.
