@@ -170,13 +170,34 @@ const validMessage = fc.oneof(
         }),
         { maxLength: 3 },
       ),
+      // Every split of the workspace (multiple-splits): optional, as from an older Vimma.
+      fc.option(
+        fc.array(
+          fc.record({
+            number: fc.integer({ min: 1, max: 9 }),
+            shown: fc.boolean(),
+            focus: fc.string(),
+            zoomed: fc.boolean(),
+            root: fc.constant({}),
+          }),
+          { maxLength: 3 },
+        ),
+        { nil: undefined },
+      ),
     )
-    .map(([mode, tabs]) => ({
+    .map(([mode, tabs, splits]) => ({
       m: {
         type: "response",
         id: 1,
         ok: true,
-        result: { mode, pending: null, workspace: "w", tabs, panes: null },
+        result: {
+          mode,
+          pending: null,
+          workspace: "w",
+          tabs,
+          panes: null,
+          ...(splits ? { splits } : {}),
+        },
       },
       o: { command: "state" },
     })),

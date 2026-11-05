@@ -319,6 +319,22 @@ describe("validateMessage: state", () => {
     ]);
   });
 
+  test("splits, when present, is a list of numbered splits (multiple-splits)", () => {
+    const one = { number: 2, shown: true, focus: "1", zoomed: false, root: {} };
+    expect(errorsOf(ok({ ...state, splits: [] }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, splits: [one] }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, splits: {} }), { command: "state" })).toEqual([
+      "result.splits must be an array",
+    ]);
+    const bad = [1, { ...one, number: 0 }, { ...one, number: 1.5 }, { ...one, shown: "yes" }];
+    expect(errorsOf(ok({ ...state, splits: bad }), { command: "state" })).toEqual([
+      "result.splits[0] must be an object",
+      "result.splits[1].number must be an integer from 1 to 9",
+      "result.splits[2].number must be an integer from 1 to 9",
+      "result.splits[3].shown must be a boolean",
+    ]);
+  });
+
   test("a private window's state withholds every url and title (private-workspace 8d)", () => {
     const hidden = { id: "1", url: null, title: null, selected: true };
     const priv = { ...state, private: true, workspace: "private", tabs: [hidden] };

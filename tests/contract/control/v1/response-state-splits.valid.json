@@ -1,0 +1,64 @@
+{
+  "description": "state with two splits in the workspace, split 2 shown (multiple-splits)",
+  "kind": "response",
+  "command": "state",
+  "message": {
+    "type": "response",
+    "id": 2,
+    "ok": true,
+    "result": {
+      "mode": "normal",
+      "pending": null,
+      "workspace": "work",
+      "tabs": [
+        { "id": "7", "url": "https://a.example/", "title": "A", "selected": false },
+        { "id": "8", "url": "https://b.example/", "title": "B", "selected": false },
+        { "id": "12", "url": "https://c.example/", "title": "C", "selected": true },
+        { "id": "13", "url": "https://d.example/", "title": "D", "selected": false }
+      ],
+      "panes": {
+        "focus": "12",
+        "zoomed": false,
+        "hidden": false,
+        "root": {
+          "axis": "x",
+          "ratios": [0.5, 0.5],
+          "children": [
+            { "tab": "12", "index": 2 },
+            { "tab": "13", "index": 3 }
+          ]
+        }
+      },
+      "splits": [
+        {
+          "number": 1,
+          "shown": false,
+          "focus": "7",
+          "zoomed": false,
+          "root": {
+            "axis": "x",
+            "ratios": [0.5, 0.5],
+            "children": [
+              { "tab": "7", "index": 0 },
+              { "tab": "8", "index": 1 }
+            ]
+          }
+        },
+        {
+          "number": 2,
+          "shown": true,
+          "focus": "12",
+          "zoomed": false,
+          "root": {
+            "axis": "x",
+            "ratios": [0.5, 0.5],
+            "children": [
+              { "tab": "12", "index": 2 },
+              { "tab": "13", "index": 3 }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

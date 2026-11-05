@@ -8,6 +8,7 @@ import {
   SplitsError,
   createSplits,
   endSplit,
+  hiddenSplitRefusal,
   newSplit,
   removeSplitTab,
   selectSplitTab,
@@ -430,6 +431,14 @@ describe("invariants", () => {
           if (s.last !== null) expect(ns).toContain(s.last);
         }
       }),
+    );
+  });
+});
+
+describe("hiddenSplitRefusal (decision 4)", () => {
+  test("names the split shown last and the way back, before the split keys exist", () => {
+    expect(hiddenSplitRefusal(2)).toBe(
+      "split S2 is hidden: select one of its tabs (ctrl+b b) to go back, or mark tabs there for a new split",
     );
   });
 });

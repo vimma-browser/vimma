@@ -63,6 +63,19 @@ export function splitLabel(number) {
 }
 
 /**
+ * Why a new pane is refused on a lone tab while the workspace keeps splits (decision 4): it names
+ * the split shown last and the ways back or on. The split keys (`]s`, `ctrl+b S`) join the text
+ * once they are bound (Delivery 5 and 6).
+ * @param {number} number
+ */
+export function hiddenSplitRefusal(number) {
+  return (
+    `split ${splitLabel(number)} is hidden: select one of its tabs (ctrl+b b) to go back, ` +
+    "or mark tabs there for a new split"
+  );
+}
+
+/**
  * @param {unknown} max
  * @returns {number}
  */
