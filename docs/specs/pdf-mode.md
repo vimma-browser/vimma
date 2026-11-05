@@ -504,8 +504,9 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     `pdfLinkService.goToDestination`, which records the history entry first; the scale is pdf.js's
     numeric one, so a mark set at fit width comes back at that zoom as a number. A letter or digit
     names a mark, as in zathura; another key after `m` or `'` does nothing. At most 1,000
-    documents keep marks, the one marked longest ago dropped first, so a long session's marks
-    stay bounded. Reason: marks are reading positions, and Vimma keeps what it learns about a page in
+    documents keep marks, the one used longest ago dropped first, so a long session's marks
+    stay bounded. Marks are shared by every workspace of a window kind, because a mark is a
+    reading position the user set and tells no page anything; a private window's are its own. Reason: marks are reading positions, and Vimma keeps what it learns about a page in
     memory, as live grep keeps page text (`docs/security.md` §15). In the private workspace marks
     live with its windows and go when it closes. zathura saves marks and its jump list per file;
     Vimma does not, because saving them would keep a list of the PDFs read in the profile, a

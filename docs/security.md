@@ -3539,6 +3539,10 @@ bindings, so it is accepted here.
   Xrays (the viewer's container and page elements), so none of the viewer's script runs for it. In
   presentation mode the scroll keys (`Vimma:Scroll`) turn pages through the same checked operations,
   and fall back to scrolling when the adapter applied none.
+  Accepted: in the PDF viewer `ctrl+o` and `ctrl+i` step to a neighbouring entry of the same
+  document without Firefox's user-interaction check (decision 9), so a compromised viewer that
+  pushes many same-document entries makes them step through each; a count (`9ctrl+o`) or the
+  toolbar's back button still leaves, so it is a nuisance, not a trap.
   [`the parent sends only operations and numbers`](../packages/vimma-core/test/pdf.test.mjs),
   [`the_parent_sends_only_operations_and_numbers`](../tests/browser/browser_vimma_pdf_keys.js),
   [`pdf marks`](../packages/vimma-core/test/pdf.test.mjs),
@@ -3560,8 +3564,9 @@ bindings, so it is accepted here.
   against the viewer's principal, which triggers the load, with no referrer and no fixup, as a link
   chosen with `f` loads; never with the system principal, which would make it look typed and could
   route it to another workspace (§2). pdf.js already gives a `javascript:` link no URL, so such an
-  entry follows nothing. A link target from `F` or `c` is shown in the notice or copied as text,
-  without control or format characters, and never followed.
+  entry follows nothing. A link target from `F` or `c` is shown in the notice or copied as text
+  only when it parses as a URL, as the URL parser writes it, without control or format
+  characters, and never followed.
   [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js),
   [`an outline outside its bounds is dropped`](../packages/vimma-core/test/pdfoutline.test.mjs),
   [`each_kind_of_entry`](../tests/browser/browser_vimma_pdf_outline.js),
@@ -3587,4 +3592,5 @@ bindings, so it is accepted here.
   the last private window closes. Neither is ever written.
   [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js),
   [`another_pdf_in_the_same_viewer_drops_the_outline`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`a_read_under_way_does_not_outlive_its_document`](../tests/browser/browser_vimma_pdf_outline.js),
   [`private_marks_go_with_the_private_windows`](../tests/browser/browser_vimma_pdf_marks.js)

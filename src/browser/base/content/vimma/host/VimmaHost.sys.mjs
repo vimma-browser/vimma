@@ -2849,7 +2849,8 @@ export const VimmaHost = {
   async _linkTarget(state, browser, target, action) {
     // From the content process (bounded by parseHintReply): shown and copied as text only, with
     // no control or format characters (docs/security.md section 20, V8).
-    const href = stripInvisible(target.href ?? "");
+    // A URL as the URL parser writes it, so a content process cannot put free text there.
+    const href = URL.parse(stripInvisible(target.href ?? ""))?.href ?? "";
     if (!href) return;
     if (action === "hint.copy_target") {
       Cc["@mozilla.org/widget/clipboardhelper;1"]
@@ -2861,6 +2862,8 @@ export const VimmaHost = {
     const here = browser.currentURI?.specIgnoringRef;
     const own = !!here && href.startsWith(`${here}#`);
     const page = own ? await PdfOps.linkPage(browser, target) : 0;
+    // The answer can come after the user has gone to another tab or pressed another key.
+    if (state.hint || browser !== /** @type {any} */ (state.win).gBrowser?.selectedBrowser) return;
     state.notice.show(page ? `page ${page}` : href);
   },
 

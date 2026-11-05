@@ -235,9 +235,14 @@ export const PdfOps = {
     const wg = this.enabled() ? viewerGlobal(browser) : null;
     const key = wg && pdfDocumentKey(wg.documentURI.spec);
     if (!wg || !key) return "not-pdf";
-    const at = marksFor(browser).get(key)?.get(c);
+    const all = marksFor(browser);
+    const mine = all.get(key);
+    const at = mine?.get(c);
     const msg = at && parsePdfOp({ op: "go", n: 0, at });
-    if (!msg) return "none";
+    if (!msg || !mine) return "none";
+    // A document read now is the last one dropped.
+    all.delete(key);
+    all.set(key, mine);
     try {
       wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfOp", msg);
     } catch {

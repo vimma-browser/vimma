@@ -229,6 +229,7 @@ export class PdfView {
     // and the parent learns of it from the next state message (V11).
     const onDocument = Cu.exportFunction(() => {
       this.#outline = null;
+      this.#readingOutline = false;
       this.#generation++;
       this.schedule();
     }, win);
@@ -405,7 +406,12 @@ export class PdfView {
     lazy.setTimeout(() => {
       this.#readingOutline = false;
     }, OUTLINE_READ_MS);
-    const done = Cu.exportFunction((/** @type {any} */ items) => this.#onOutline(items), this.#win);
+    // A read under way when pdf.js opens another PDF is the old document's: dropped (V11).
+    const generation = this.#generation;
+    const done = Cu.exportFunction((/** @type {any} */ items) => {
+      if (generation === this.#generation) this.#onOutline(items);
+      else this.#readingOutline = false;
+    }, this.#win);
     const failed = Cu.exportFunction(() => {
       this.#readingOutline = false;
     }, this.#win);
@@ -486,8 +492,10 @@ export class PdfView {
       }
     };
     walk(items, 1);
+    const generation = this.#generation;
     const finish = () => {
       this.#readingOutline = false;
+      if (generation !== this.#generation) return;
       this.#outline = { message: { entries, truncated }, targets };
       this.#sendOutline(this.#outline.message);
     };
@@ -667,16 +675,23 @@ export class PdfView {
       // not a link
     }
     if (!hash || hash.length > MAX_LINK_HASH) return answer(0);
-    if (hash.includes("=")) {
-      const page = Number(new URLSearchParams(hash).get("page"));
-      return answer(Number.isSafeInteger(page) && page >= 1 && page <= pages ? page : 0);
-    }
     /** @type {unknown} */
     let dest = unescape(hash);
-    try {
-      dest = JSON.parse(/** @type {string} */ (dest));
-    } catch {
-      // a named destination
+    if (hash.includes("=")) {
+      const params = new URLSearchParams(hash);
+      if (params.has("nameddest")) dest = params.get("nameddest") ?? "";
+      else {
+        const page = Number(params.get("page"));
+        return answer(Number.isSafeInteger(page) && page >= 1 && page <= pages ? page : 0);
+      }
+    } else {
+      try {
+        dest = JSON.parse(/** @type {string} */ (dest));
+        // pdf.js reads anything but an array as a destination's name (`#5` names "5").
+        if (!Array.isArray(dest)) dest = String(dest);
+      } catch {
+        // a named destination
+      }
     }
     if (Array.isArray(dest)) {
       // pdf.js looks the page reference up in its own cache: a clone it can read (V3).
