@@ -1,6 +1,6 @@
 # Spec: downloads
 
-Status: accepted (sub-PR 1 built) · Area: `packages/vimma-core/src/` (new `downloads.mjs`;
+Status: accepted (sub-PRs 1 and 2 built) · Area: `packages/vimma-core/src/` (new `downloads.mjs`;
 `picker.mjs`, `statusbar.mjs`, `actions.mjs`, `defaults.mjs`, `cmdline.mjs`);
 `src/browser/base/content/vimma/` (new `host/download-ops.mjs`; `ui/picker.mjs`, `ui/statusbar.mjs`,
 `host/VimmaHost.sys.mjs`); `src/browser/branding/vimma/pref/firefox-branding.js`; generated

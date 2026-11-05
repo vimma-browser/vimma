@@ -33,6 +33,7 @@ import { CommandLine } from "../ui/cmdline.mjs";
 import { HelpOverlay } from "../ui/help-overlay.mjs";
 import { HintOverlay } from "../ui/hint-overlay.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
+import { DownloadWatch } from "./download-ops.mjs";
 import { Find } from "./find.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
 import { ElementFocus } from "./element-focus.mjs";
@@ -248,6 +249,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * @property {AddonPicker} addonPicker  the prefix+e overlay (docs/specs/addon-manager.md)
  * @property {PermissionPicker} permissionPicker  `:site` (docs/specs/site-permissions.md)
  * @property {PopupPicker} popups  the `:popups` overlay (docs/specs/popup-blocked.md)
+ * @property {DownloadWatch} downloads  the status bar's `↓` segment (docs/specs/downloads.md)
  * @property {GrepSession} grep  prefix+f g, `:grep`, `]q`/`[q` (docs/specs/live-grep.md)
  * @property {RenamePrompt} rename  the prefix+shift+t prompt (m2-picker-rename)
  * @property {AgentPrompt} agentPrompt  the agent question line (docs/specs/vimma-mcp.md)
@@ -1611,6 +1613,7 @@ export const VimmaHost = {
           if (notice) state.notice.show(notice, { error: true });
         },
       }),
+      downloads: new DownloadWatch(win, () => this._emit(state)),
       popups: new PopupPicker(win, {
         load: () => popupPickerItems(win),
         refuse: (rows) => popupRefusal(win, /** @type {any} */ (rows)),
@@ -1914,6 +1917,7 @@ export const VimmaHost = {
     state.permissionPicker.destroy();
     forgetSitePermissions(win);
     state.popups.destroy();
+    state.downloads.destroy();
     state.mcpLog.destroy();
     state.grep.destroy();
     state.rename.destroy();
@@ -1949,7 +1953,8 @@ export const VimmaHost = {
    *   update?: import("../core/updates.mjs").UpdateNotice | null,
    *   element?: import("../core/statusbar.mjs").ElementStatus | null,
    *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null,
-   *   pdf?: import("../core/pdf.mjs").PdfState | null }}
+   *   pdf?: import("../core/pdf.mjs").PdfState | null,
+   *   downloads?: import("../core/downloads.mjs").DownloadSegment | null }}
    */
   status(win) {
     const state = states.get(win);
@@ -1982,6 +1987,8 @@ export const VimmaHost = {
         : null,
       // docs/specs/popup-blocked.md: `pop-up blocked · y allow · n block · Esc close`.
       popups: popupStatus(win, state.promptKeys?.popupHint() ?? null),
+      // docs/specs/downloads.md decision 9: `↓ 42%`, `↓ 3 · 42%`, `↓ paused`.
+      downloads: state.downloads.segment(),
     };
   },
 
