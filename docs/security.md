@@ -433,6 +433,38 @@ text that pages, add-ons and bookmarks choose.
     [`a_row_never_lands_on_a_site_the_page_navigated_to`](../tests/browser/browser_vimma_popups.js),
     [`a_locked_popup_pref_leaves_the_site_permission_alone`](../tests/browser/browser_vimma_popups.js),
     [`the_agent_workspace_refuses_and_grants_nothing`](../tests/browser/browser_vimma_popups.js)
+  - Firefox's dialogs over a tab or the window (`commonDialog.xhtml`: leave page, a page's
+    `alert`, `confirm` and `prompt`, a sign-in; docs/specs/firefox-dialogs.md) take `y` (the
+    main button) and `n` (the button `Esc` runs) under the same wait: from the later of the
+    moment the dialog's frame loaded and the last key typed in it, plus
+    `security.notification_enable_delay`; a key before then, or held, is swallowed and answers
+    nothing. They **never** answer from the dialog's own text fields, and press Firefox's own
+    buttons, so a button Firefox keeps disabled stays so. A page can open a dialog under a typing
+    hand; the wait is what keeps that typing from answering it.
+    [`dialogKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
+    [`leave_page_n_stays_y_leaves`](../tests/browser/browser_vimma_dialog_keys.js),
+    [`prompt_field_types`](../tests/browser/browser_vimma_dialog_keys.js)
+  - The external protocol questions over a tab (`permissionDialog.xhtml`, "Allow this site to
+    open the link with ...?", and `appChooser.xhtml`, the application list) take the same keys
+    under the same wait: `y` opens another application, so a page that follows a link under a
+    typing hand must not get that typing as an answer. The wait for every one of these dialogs
+    starts again when `SubDialog` shows the frame (`dialogopen`), so it counts only time on
+    screen. `y` **also** waits for Firefox's own guard where Firefox applies it (the permission
+    question always; the application list when the permission question was skipped), the main
+    button it keeps disabled until the dialog's window has had focus for
+    `security.dialog_enable_delay` (`EnableDelayHelper`): it is swallowed, never queued, while the
+    button is disabled. Only `SubDialog` frames (`.dialogFrame`) are taken. `n` (Cancel) opens nothing. A checkbox ("Always allow") is not a text
+    field, so the keys answer from it, and the box's state is the user's, never changed by them.
+    [`protocol_permission_n_cancels_y_opens`](../tests/browser/browser_vimma_dialog_keys.js),
+    [`protocol_app_chooser`](../tests/browser/browser_vimma_dialog_keys.js)
+  - The download question (`unknownContentType.xhtml`, a window of its own opened over the
+    browser window) takes the same keys under the same wait, from the window's `load` and again
+    each time it becomes the active window: `y`
+    presses OK, which saves the file or opens it with an application, so it **also** waits for
+    the OK button Firefox keeps disabled (`EnableDelayHelper`), and `n` cancels the download.
+    Only a window whose opener is the browser window and whose document is the download question
+    is taken; its keys are read in that window, never from a page.
+    [`download_n_cancels_y_saves`](../tests/browser/browser_vimma_dialog_keys.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.
@@ -710,14 +742,25 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`asks the API nothing while the variable is off or outside main`](../tools/release/test/security-release.test.mjs),
   [`fails when the variable is on and RELEASE_PLEASE_TOKEN is missing`](../tools/release/test/security-release.test.mjs)
 
-- G13. An upstream bump PR **must** be set to auto-merge only by `publish` run on `main`, only
+- G13. An upstream bump PR **must** be allowed to auto-merge only by `publish` run on `main`, only
   when `AUTO_MERGE_UPSTREAM` allows its release kind, only for a non-draft PR whose every patch
   applied clean or with an offset and whose diff changes nothing but `version.version` in
-  `surfer.json` and the copied pref lines, and only pinned to the head commit that diff was read
-  from. GitHub's auto-merge then waits for every required check of the `main` ruleset (spec
-  [upstream-bump-automation](specs/upstream-bump-automation.md), ADR-022).
+  `surfer.json` and the copied pref lines, and only for the head commit that diff was read from,
+  which `publish` records in a hidden marker in the PR body. `upstream-merge.yml`, run from
+  `main` (`workflow_run`) each time a workflow on the PR completes, **must** set auto-merge only
+  on a PR opened by the App from a branch of this repository, at the marked head, and only once
+  every workflow run the PR started on that head finished green or skipped and no check on it
+  failed: the macOS mochitests and package checks that the ruleset does not require hold the
+  merge too. GitHub's auto-merge then still waits for every required check of the `main` ruleset
+  (spec [upstream-bump-automation](specs/upstream-bump-automation.md), ADR-022). The marker
+  grants nothing on its own: a person who can edit the body can already merge.
   [`auto-merge only with the variable, the token, a ready PR and the allowlist`](../tools/test/upstream-workflow.test.mjs),
-  [`auto-merge uses --match-head-commit and the bump's subject`](../tools/test/upstream-workflow.test.mjs),
+  [`publish never sets auto-merge: upstream-merge.yml does, once every check is green`](../tools/test/upstream-workflow.test.mjs),
+  [`reads every run and check of the head, and merges that head only, with the bump's subject`](../tools/test/upstream-merge-workflow.test.mjs),
+  [`runs when any workflow a pull request starts completes, and on nothing else`](../tools/test/upstream-merge-workflow.test.mjs),
+  [`acts only on this repository's upstream branches, with the App set up`](../tools/test/upstream-merge-workflow.test.mjs),
+  [`refuses a failed, cancelled, timed-out or unapproved run or check`](../tools/upstream/test/merge-ready.test.mjs),
+  [`only for the App's own non-draft PR at the head the autopilot allowed`](../tools/upstream/test/merge-ready.test.mjs),
   [`the allowlist reads the branch as pushed`](../tools/test/upstream-workflow.test.mjs),
   [`rebuild disables auto-merge before the push`](../tools/test/upstream-workflow.test.mjs),
   [`dot allows dot releases only; unset or anything else allows none`](../tools/upstream/test/autopilot.test.mjs),
@@ -727,10 +770,20 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`refuses a re-exported patch`](../tools/upstream/test/bump-diff.test.mjs),
   [`refuses a new, deleted, renamed or mode-changed file`](../tools/upstream/test/bump-diff.test.mjs),
   [`refuses a file header it does not recognise instead of folding it into the last file`](../tools/upstream/test/bump-diff.test.mjs)
-- G14. `UPSTREAM_PR_TOKEN` **must** reach only the `publish` job. It is fine-grained: this
-  repository only, Contents and Pull requests read and write, no Workflows, so it cannot change a
-  workflow file. Without it, bumps open as drafts and are never set to auto-merge.
-  [`the token reaches only publish`](../tools/test/upstream-workflow.test.mjs),
+- G14. The private key of the org's GitHub App `vimma-upstream-autopilot`, the secret
+  `UPSTREAM_APP_KEY` of the `upstream-autopilot` environment, **must** reach only the `publish`
+  job and `upstream-merge.yml`'s `merge` job (which mints a token with Contents and Pull requests
+  write only, and runs main's code), and that environment's only deployment policy is the branch `main`, so a workflow edited
+  on another branch cannot read it. Each run mints a one-hour token for this repository alone with
+  Contents, Pull requests and Issues read and write and no Workflows, so it cannot change a
+  workflow file. Without the App (the variable `UPSTREAM_APP_ID` unset), bumps open as drafts with
+  `GITHUB_TOKEN` and are never set to auto-merge. A leaked key could open pull requests and set
+  auto-merge on any that pass the required checks; revoke it on the App's page.
+  [`the App's key reaches only publish, which deploys to upstream-autopilot`](../tools/test/upstream-workflow.test.mjs),
+  [`mints the App token for this repository alone, before the checkout`](../tools/test/upstream-workflow.test.mjs),
+  [`publish pushes and opens the PR with the App token, else GITHUB_TOKEN`](../tools/test/upstream-workflow.test.mjs),
+  [`asks for contents, pull requests and issues, and nothing else`](../tools/upstream/test/create-app.test.mjs),
+  [`names every deployment policy other than the branch main`](../tools/upstream/test/create-app.test.mjs),
   [`grants nothing by default and each job only what it needs`](../tools/test/upstream-workflow.test.mjs)
 - G15. The `patch-issue` job (patches that do not apply) **must** use only `GITHUB_TOKEN` with
   `contents: read` and `issues: write`, check out without persisted credentials, and pass the
@@ -3460,3 +3513,124 @@ which Firefox's site information panel shows already, and stores nothing of its 
   the picker's ops, and the agent's keys are the spec's fixed list.
   [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.mjs),
   [`the whitelist is the spec's table`](../packages/vimma-core/test/agent-keys.test.mjs)
+
+## 20. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`)
+
+Vimma drives Firefox's pdf.js viewer through its content actor: it reads the page, page count,
+page label and find count to show them in the status bar, chooses the PDF viewer's key
+bindings, sends the viewer the page, zoom, layout and presentation operations those keys run,
+reads the document's outline into a chrome panel on the user's `Tab`, keeps marks (positions in
+a document) in the parent's memory, and shows or copies a link's target on `F` and `c`. It sits
+behind `vimma.feature.pdf_mode` while it is built. Spec: [pdf-mode](specs/pdf-mode.md).
+
+**Reach:** the PDF being viewed, through pdf.js, which a malformed PDF may compromise (pdf.js
+parses untrusted files, and CVE-2024-4367 let a PDF run script in the viewer); web pages, which
+can define `PDFViewerApplication` or frame a PDF. A compromised viewer is treated as a hostile
+page that also controls every pdf.js function and event the adapter touches. A compromised
+content process can claim pdf.js's principal for its top document, as it can claim any
+principal; that gives it no more than in-bounds status text and the user's own `[modal.pdf]`
+bindings, so it is accepted here.
+
+- V1. The adapter **must** waive Xrays only in a top-level document whose principal passes
+  `schemeIs("resource")` and `originNoSuffix === "resource://pdf.js"`, Firefox's own test
+  (`nsContentUtils::IsPDFJS`), so that it holds in every container; never on the content type,
+  the URL or the presence of `window.PDFViewerApplication`.
+  [`a_page_that_defines_PDFViewerApplication_gets_no_pdf_keys`](../tests/browser/browser_vimma_pdf_status.js),
+  [`pdf_keys_work_in_a_workspace_container`](../tests/browser/browser_vimma_pdf_status.js)
+- V2. The parent **must** decide the `pdf` keymap context from the top `WindowGlobalParent`'s
+  `documentPrincipal` with the same test, and **must** accept state only from the actor of that
+  window global; a pdf.js document in a frame or `<embed>` **must not** set the context or
+  report state. A document that only inherits pdf.js's principal (an `about:blank`, `blob:` or
+  `data:` page the viewer opens) is not the viewer: the parent also requires an `http`, `https`
+  or `file` document URI, which the viewer keeps from the PDF it shows.
+  [`a_pdf_in_a_frame_gets_no_pdf_context`](../tests/browser/browser_vimma_pdf_status.js)
+- V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction`, arrays made
+  with `Cu.cloneInto` into the viewer's window as `PdfJsChild` does (a mark's `XYZ` destination,
+  an internal link's explicit destination read from its fragment), or an outline entry's target
+  that pdf.js itself gave it (V8); no chrome object **may** be passed in.
+  [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js)
+- V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
+  fields they need; the child **must** keep only values whose `typeof` is `number`, `boolean` or
+  `string` before `sendAsyncMessage`, and **must not** `await` a value returned by pdf.js. An
+  asynchronous result (the outline, the named destinations, the page of a link's named
+  destination) **must** come back only through a
+  `Cu.exportFunction` callback passed to the promise's own `then` seen through Xrays, so that a
+  viewer's object with a `then` of its own is never called; the result is read by the same rules.
+  [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js),
+  [`a_hostile_outline_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_outline.js)
+- V5. Bursts of pdf.js callbacks and of chrome-only events (`pagesloaded`, which the viewer can
+  fire at will through `FirefoxCom.request("dispatchGlobalEvent")`) **must** be coalesced to at
+  most one state message per 100 ms per document.
+  [`a_flood_of_pagesloaded_is_coalesced`](../tests/browser/browser_vimma_pdf_status.js)
+- V6. The parent **must** parse every state record with `parsePdfState`, which bounds every
+  number, drops a page label over 32 characters and strips control and Unicode format characters
+  (categories Cc and Cf: bidirectional overrides and isolates, zero-width characters), and the
+  status bar **must** draw it as text.
+  [`pdf state outside its bounds is dropped`](../packages/vimma-core/test/pdf.test.mjs),
+  [`a page label cannot carry bidi or zero-width characters`](../packages/vimma-core/test/pdf.test.mjs)
+- V7. The parent **must** send the viewer only operations: a name from `PDF_OPS` and one bounded
+  integer, checked by `parsePdfOp` in the parent before sending and again in the child before the
+  adapter touches pdf.js; `go` (a mark) also carries a position, exactly four bounded numbers
+  (`parsePdfPosition`), which is also how the parent checks the position the viewer reports when a
+  mark is set. No script, CSS text, markup or object **may** go into the viewer. `F` asks for an
+  internal link's page by the hint's generation and index only, and the parent keeps the answer only
+  when it is a page of the document. The adapter passes pdf.js only those numbers and its own fixed
+  strings (`page-fit`, `page-width`), and measures the page for `H`, `L`, `P` and `ctrl+f` through
+  Xrays (the viewer's container and page elements), so none of the viewer's script runs for it. In
+  presentation mode the scroll keys (`Vimma:Scroll`) turn pages through the same checked operations,
+  and fall back to scrolling when the adapter applied none.
+  Accepted: in the PDF viewer `ctrl+o` and `ctrl+i` step to a neighbouring entry of the same
+  document without Firefox's user-interaction check (decision 9), so a compromised viewer that
+  pushes many same-document entries makes them step through each; a count (`9ctrl+o`) or the
+  toolbar's back button still leaves, so it is a nuisance, not a trap.
+  [`the parent sends only operations and numbers`](../packages/vimma-core/test/pdf.test.mjs),
+  [`the_parent_sends_only_operations_and_numbers`](../tests/browser/browser_vimma_pdf_keys.js),
+  [`pdf marks`](../packages/vimma-core/test/pdf.test.mjs),
+  [`marks`](../tests/browser/browser_vimma_pdf_marks.js)
+- V8. The adapter **must** read the outline only for the user's `Tab` in the PDF viewer (the
+  `outline` operation), and send only each entry's title, level, page number, kind, collapsed flag
+  and, for a URL entry, its URL, never a destination; it cuts titles to 512 characters and stops at
+  5,000 entries and a depth of 32. The parent **must** take an outline message only from the top
+  viewer's current actor after asking that document for it (opening the panel only if no other key
+  was pressed, the tab is still selected and at most 2 s passed), and **must** parse it with
+  `parsePdfOutline`, which drops the whole message for more than 5,000 entries, a level deeper than
+  32 or more than one step below the previous entry's, a title over 512 characters, a URL over
+  8,192, a page outside the document, an unknown kind or an unknown field, and strips control and
+  format characters (Cc, Cf) from titles. `Enter` names an entry by its index (V7); its destination,
+  named action or layer change stays in the child, which hands pdf.js back its own object; a named
+  action is followed only when it is one of pdf.js's navigation actions (not `Print` or `SaveAs`).
+  The outline panel **must** set titles with `textContent` (§6, C1). A URL entry is opened in the
+  tab only when it is `http` or `https` (`outlineUrlAllowed`), after `checkLoadURIWithPrincipal`
+  against the viewer's principal, which triggers the load, with no referrer and no fixup, as a link
+  chosen with `f` loads; never with the system principal, which would make it look typed and could
+  route it to another workspace (§2). pdf.js already gives a `javascript:` link no URL, so such an
+  entry follows nothing. A link target from `F` or `c` is shown in the notice or copied as text
+  only when it parses as a URL, as the URL parser writes it, without control or format
+  characters, and never followed.
+  [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`an outline outside its bounds is dropped`](../packages/vimma-core/test/pdfoutline.test.mjs),
+  [`each_kind_of_entry`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`outlineUrlAllowed`](../packages/vimma-core/test/pdfoutline.test.mjs),
+  [`links`](../tests/browser/browser_vimma_pdf_marks.js)
+- V9. Presentation mode **may** go full screen without user activation, as Firefox allows the
+  pdf.js principal (`dom/base/Element.cpp`); Vimma **must** request it only for the user's own
+  key in the PDF viewer, so it adds no spoofing surface: a page cannot reach it, the content
+  process cannot ask the parent for it, and Firefox's full-screen warning still shows.
+  [`presentation_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_keys.js),
+  [`presentation`](../tests/browser/browser_vimma_pdf_keys.js)
+
+- V10. Vimma **must not** write any `pdfjs.*` pref other than the default
+  `pdfjs.featuresNotificationImpressionLimit = 0` (`firefox-branding.js`), and never one that
+  changes scripting, fetching or sandboxing (`pdfjs.enableScripting`, `pdfjs.disabled`).
+  [`pdf_mode_writes_no_pdfjs_prefs`](../tests/browser/browser_vimma_pdf_status.js)
+
+- V11. The parsed outline **must** stay in the parent's memory, for the tab's current document
+  only, and **must** be dropped when the tab navigates or closes, or pdf.js opens another PDF in
+  the same viewer (the state message counts the documents the viewer opened); the panel closes
+  with it. Marks **must** stay in the parent's memory too, by document URL without its
+  fragment, at most 1,000 documents; a private window's marks are kept apart and dropped when
+  the last private window closes. Neither is ever written.
+  [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`another_pdf_in_the_same_viewer_drops_the_outline`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`a_read_under_way_does_not_outlive_its_document`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`private_marks_go_with_the_private_windows`](../tests/browser/browser_vimma_pdf_marks.js)

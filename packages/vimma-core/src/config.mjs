@@ -13,7 +13,7 @@ import { DEFAULT_CONFIG, WORKSPACE_DEFAULTS, formatConfigTemplate } from "./defa
 import { INSERT_SITE_MODES } from "./editable.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "./hints.mjs";
 import { KeymapError, compileKeymap } from "./keymap.mjs";
-import { MODES, isMode } from "./modes.mjs";
+import { MODES, isKeymapTable } from "./modes.mjs";
 import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "./panes.mjs";
 import { MAIN_SIZE_DEFAULT } from "./layouts.mjs";
 import { APPEARANCES, BUILTIN_THEMES, PALETTE_KEYS, isHexColor, normalizeHex } from "./theme.mjs";
@@ -421,9 +421,10 @@ function isHintCharset(chars) {
  * Checks the current schema and returns every problem; keymap contents are left to compileKeymap.
  * @param {Record<string, unknown>} raw  migrated to the current schema
  * @param {number} declared  the schema the file declared (0 without `schema`)
+ * @param {Problem[]} [warnings]  receives what is left out without failing the file
  * @returns {Problem[]}
  */
-function validate(raw, declared) {
+function validate(raw, declared, warnings = []) {
   /** @type {Problem[]} */
   const problems = [];
   /** @param {Path} path @param {string} message @param {string} [suggestion] */
@@ -483,10 +484,10 @@ function validate(raw, declared) {
       } else if (key === "insert_editing") {
         if (gated(path)) continue;
         if (typeof v !== "boolean") typeError(path, v, "a boolean");
-      } else if (isMode(key)) {
+      } else if (isKeymapTable(key)) {
         table(path, v);
       } else {
-        unknownKey(path, key, [...MODES, ...MODAL_KEYS]);
+        unknownKey(path, key, [...MODES, "pdf", ...MODAL_KEYS]);
       }
     }
   }
@@ -531,8 +532,9 @@ function validate(raw, declared) {
 
   if (isTable(raw.unbind)) {
     for (const [mode, v] of Object.entries(raw.unbind)) {
-      if (!isMode(mode)) fail(["unbind", mode], `unknown mode "${mode}"`, closest(mode, MODES));
-      else if (!Array.isArray(v)) typeError(["unbind", mode], v, "a list of key strings");
+      if (!isKeymapTable(mode)) {
+        fail(["unbind", mode], `unknown mode "${mode}"`, closest(mode, [...MODES, "pdf"]));
+      } else if (!Array.isArray(v)) typeError(["unbind", mode], v, "a list of key strings");
     }
   }
 
@@ -662,7 +664,7 @@ function validate(raw, declared) {
   if (declared >= 2 && isTable(raw.mcp)) validateMcp(raw.mcp, { fail, typeError, unknownKey });
 
   if (declared >= 2 && isTable(raw.agent)) {
-    validateAgent(raw.agent, { fail, typeError, unknownKey });
+    validateAgent(raw.agent, { fail, typeError, unknownKey, warnings });
   }
 
   // docs/specs/search-engines.md, decision 2.
@@ -810,9 +812,10 @@ function validateMcp(mcp, { fail, typeError, unknownKey }) {
  * @param {Record<string, unknown>} agent
  * @param {{ fail: (path: Path, message: string, suggestion?: string) => void,
  *   typeError: (path: Path, v: unknown, expected: string) => void,
- *   unknownKey: (path: Path, key: string, known: readonly string[]) => void }} report
+ *   unknownKey: (path: Path, key: string, known: readonly string[]) => void,
+ *   warnings: Problem[] }} report
  */
-function validateAgent(agent, { fail, typeError, unknownKey }) {
+function validateAgent(agent, { fail, typeError, unknownKey, warnings }) {
   /** @param {Path} path @param {unknown} v @param {number} min @param {number} max */
   const integer = (path, v, min, max, unit = "") => {
     if (typeof v !== "bigint") typeError(path, v, "an integer");
@@ -859,7 +862,15 @@ function validateAgent(agent, { fail, typeError, unknownKey }) {
       return;
     }
     if (p.kind === "cli") {
-      validateCliProvider(p, at, { fail, typeError, unknownKey, text, localOnly, names });
+      validateCliProvider(p, at, {
+        fail,
+        typeError,
+        unknownKey,
+        text,
+        localOnly,
+        names,
+        warnings,
+      });
       return;
     }
     if (!("kind" in p && "endpoint" in p && "model" in p)) {
@@ -904,15 +915,21 @@ function validateAgent(agent, { fail, typeError, unknownKey }) {
  * An agent CLI provider (docs/specs/builtin-agent-cli.md Behaviour 2, 6, C4, C10, C11): which
  * supported CLI, its model and its time limit only. A program, its arguments or its
  * environment is an error, and so is `local_only`, since Vimma cannot see where a CLI sends
- * what it reads.
+ * what it reads. A `cli` this build does not know is a warning and the provider is skipped
+ * (resolveAgent), because a newer build's file, or one shared in dotfiles between versions,
+ * must not take the rest of the file down with it; its other mistakes stay errors.
  * @param {Record<string, unknown>} p @param {Path} at
  * @param {{ fail: (path: Path, message: string, suggestion?: string) => void,
  *   typeError: (path: Path, v: unknown, expected: string) => void,
  *   unknownKey: (path: Path, key: string, known: readonly string[]) => void,
  *   text: (path: Path, v: unknown, max: number) => boolean, localOnly: boolean,
- *   names: Set<string> }} o
+ *   names: Set<string>, warnings: Problem[] }} o
  */
-function validateCliProvider(p, at, { fail, typeError, unknownKey, text, localOnly, names }) {
+function validateCliProvider(
+  p,
+  at,
+  { fail, typeError, unknownKey, text, localOnly, names, warnings },
+) {
   if (!("cli" in p)) fail(at, 'a CLI provider needs "cli"');
   for (const [key, v] of Object.entries(p)) {
     const path = [...at, key];
@@ -930,7 +947,12 @@ function validateCliProvider(p, at, { fail, typeError, unknownKey, text, localOn
       if (typeof v !== "string") typeError(path, v, "a string");
       else if (!CLI_IDS.includes(v)) {
         const ids = CLI_IDS.map((c) => `"${c}"`).join(" or ");
-        fail(path, `must be ${ids}`, closest(v, [...CLI_IDS]));
+        const suggestion = closest(v, [...CLI_IDS]);
+        warnings.push({
+          path,
+          message: `unknown agent CLI ${JSON.stringify(v)}: this provider is skipped (this version knows ${ids})`,
+          ...(suggestion ? { suggestion } : {}),
+        });
       }
     } else if (key === "model") {
       // The rule the command line applies (C2), so a bad model is reported with its line.
@@ -954,11 +976,14 @@ function validateCliProvider(p, at, { fail, typeError, unknownKey, text, localOn
  */
 function resolveAgent(agent) {
   /** @type {any[]} */
-  const providers = Array.isArray(agent?.providers) ? agent.providers : [];
+  const listed = Array.isArray(agent?.providers) ? agent.providers : [];
+  const providers = listed.filter((p) => p.kind !== "cli" || CLI_IDS.includes(p.cli));
+  // A default that names a skipped provider (validateCliProvider) sets none.
+  const named = providers.some((p) => p.name === agent?.default);
   const num = (/** @type {unknown} */ v, /** @type {number | null} */ d) =>
     v === undefined ? d : Number(v);
   return {
-    default: agent?.default ?? null,
+    default: named ? agent.default : null,
     localOnly: agent?.local_only ?? false,
     maxRunning: /** @type {number} */ (num(agent?.max_running, AGENT_DEFAULTS.maxRunning)),
     maxSteps: /** @type {number} */ (num(agent?.max_steps, AGENT_DEFAULTS.maxSteps)),
@@ -1146,6 +1171,8 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
  * @property {ResolvedConfig | null} config   null whenever errors is non-empty
  * @property {Keymap | null} keymap
  * @property {ConfigError[]} errors           in file order
+ * @property {ConfigError[]} warnings         what was left out of a file that applies, in file
+ *   order: a provider whose `cli` this build does not know
  * @property {number | null} migratedFrom     the file's schema when older than the current one
  */
 
@@ -1156,7 +1183,13 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
  */
 export function parseConfig(text, { mac = false } = {}) {
   /** @param {ConfigError[]} errors @returns {ParseResult} */
-  const failed = (errors) => ({ config: null, keymap: null, errors, migratedFrom: null });
+  const failed = (errors) => ({
+    config: null,
+    keymap: null,
+    errors,
+    warnings: [],
+    migratedFrom: null,
+  });
 
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return failed([{ path: "", ...parsed.error }]);
@@ -1189,7 +1222,9 @@ export function parseConfig(text, { mac = false } = {}) {
     return failed(located([{ path: ["schema"], message }]));
   }
   const migrated = migrate(raw, schema).config;
-  const problems = validate(migrated, schema);
+  /** @type {Problem[]} */
+  const warnings = [];
+  const problems = validate(migrated, schema, warnings);
   const user = /** @type {UserConfig} */ (toNumbers(migrated));
 
   /** @type {Keymap | null} */
@@ -1226,6 +1261,7 @@ export function parseConfig(text, { mac = false } = {}) {
     config: mergeWithDefaults(user, fileOrder("workspaces"), fileOrder("sites")),
     keymap,
     errors: [],
+    warnings: located(warnings),
     migratedFrom: schema === CONFIG_SCHEMA_VERSION ? null : schema,
   };
 }
@@ -1235,18 +1271,26 @@ export function parseConfig(text, { mac = false } = {}) {
  * @param {ActiveConfig | null} active  the config in use, null before the first load
  * @param {string} text
  * @param {{ mac?: boolean }} [options]  macOS's default keys (compileKeymap)
- * @returns {{ active: ActiveConfig, errors: ConfigError[], kept: boolean }}
- *   kept: the text was not applied; `active` is the previous config, or the defaults
+ * @returns {{ active: ActiveConfig, errors: ConfigError[], warnings: ConfigError[],
+ *   kept: boolean }}
+ *   kept: the text was not applied; `active` is the previous config, or the defaults.
+ *   warnings: what an applied text left out (parseConfig)
  */
 export function reloadConfig(active, text, { mac = false } = {}) {
   const r = parseConfig(text, { mac });
-  if (r.config && r.keymap)
-    return { active: { config: r.config, keymap: r.keymap }, errors: [], kept: false };
+  if (r.config && r.keymap) {
+    return {
+      active: { config: r.config, keymap: r.keymap },
+      errors: [],
+      warnings: r.warnings,
+      kept: false,
+    };
+  }
   const fallback = active ?? {
     config: mergeWithDefaults({}),
     keymap: compileKeymap({}, { mac }),
   };
-  return { active: fallback, errors: r.errors, kept: true };
+  return { active: fallback, errors: r.errors, warnings: [], kept: true };
 }
 
 /**

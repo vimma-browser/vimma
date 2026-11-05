@@ -25,9 +25,14 @@
 // so its clock is ours: from when the selected page's bar was first seen, or the last key since.
 // The status bar names its keys (popupHint) and VimmaHost redraws it when they come to count; the
 // bar names them too, in the prompt's keys line beside its button, hidden while the keys wait.
+//
+// Firefox's dialogs over a tab or the window ("Leave page?", a page's confirm) take the same keys
+// with the same guards (docs/specs/firefox-dialogs.md, host/dialog-keys.mjs); a key typed in one
+// is the dialog's alone.
 
 import { doorhangerHint, doorhangerKey, popupBarHint, popupBarKey } from "../core/prompt-keys.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
+import { DialogKeys } from "./dialog-keys.mjs";
 import { answerPopupBar, inAgentTab, popupBar, popupLocked } from "./popup-ops.mjs";
 
 const DELAY_PREF = "security.notification_enable_delay";
@@ -77,13 +82,16 @@ export class PromptKeys {
     /** @type {MutationObserver | null} watches the seen bar's box for its removal */
     this.barGone = null;
     this.onPopup = (/** @type {Event} */ e) => this.popup(e);
+    this.dialogKeys = new DialogKeys(win, host);
   }
 
   init() {
     for (const type of EVENTS) this.win.addEventListener(type, this.onPopup, true);
+    this.dialogKeys.init();
   }
 
   uninit() {
+    this.dialogKeys.uninit();
     for (const type of EVENTS) this.win.removeEventListener(type, this.onPopup, true);
     this.win.clearTimeout(this.armTimer);
     this.win.clearTimeout(this.barTimer);
@@ -379,6 +387,8 @@ export class PromptKeys {
   onKey(e) {
     const chord = chordFromEvent(e);
     if (!chord) return false; // a bare modifier
+    const dialog = this.dialogKeys.dialogOf(e);
+    if (dialog) return this.dialogKeys.onKey(e, dialog, formatKey(chord));
     const n = this.notification;
     if (!n) return this.onBarKey(e, chord);
     const now = ChromeUtils.now();

@@ -124,7 +124,7 @@ export function bindingsJson(keymap) {
     }
     const keys = r.bindings.map((text) => {
       const m = / \[([a-z]+)\]$/.exec(text);
-      const mode = m?.[1] && isMode(m[1]) ? m[1] : undefined;
+      const mode = m?.[1] && (isMode(m[1]) || m[1] === "pdf") ? m[1] : undefined;
       const pressed = mode ? text.slice(0, -` [${mode}]`.length) : text;
       /** @type {JsonKey} */
       const key = { keys: pressed, chords: pressed.split(" ") };
@@ -139,7 +139,8 @@ export function bindingsJson(keymap) {
       "Generated from packages/vimma-core/src/actions.mjs and defaults.mjs by npm run gen-docs; do not edit.",
     prefix: displayKey(keymap.prefix),
     legend: keyLegend(keymap),
-    modes: [...MODES],
+    // The PDF viewer's context tags its bindings as a mode does (docs/specs/pdf-mode.md).
+    modes: [...MODES, "pdf"],
     groups,
   };
 }

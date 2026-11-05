@@ -45,3 +45,4 @@ export * from "./hyprswap.mjs";
 export * from "./updates.mjs";
 export * from "./ctl-version.mjs";
 export * from "./grep.mjs";
+export * from "./pdf.mjs";

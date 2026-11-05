@@ -331,6 +331,19 @@ function collectBlocks(onScreen, win, vw, vh) {
 }
 
 /**
+ * The frame's viewport in its CSS pixels, without its scrollbars; 0 by 0 until the frame has
+ * been given a size.
+ * @param {Window} win
+ */
+export function viewportSize(win) {
+  const doc = win.document;
+  return {
+    vw: doc.documentElement?.clientWidth || win.innerWidth,
+    vh: doc.documentElement?.clientHeight || win.innerHeight,
+  };
+}
+
+/**
  * The hint targets of one frame, in no particular order (core orders them), and its visible
  * subframes.
  * @param {Window} win  the frame's content window
@@ -340,9 +353,7 @@ function collectBlocks(onScreen, win, vw, vh) {
  * @returns {{ targets: Found[], frames: FoundFrame[] }}
  */
 export function collectTargets(win, { linksOnly, blocks = false, disabled = false }) {
-  const doc = win.document;
-  const vw = doc.documentElement?.clientWidth || win.innerWidth;
-  const vh = doc.documentElement?.clientHeight || win.innerHeight;
+  const { vw, vh } = viewportSize(win);
   if (blocks) {
     const onScreen = onScreenElements(win, vw, vh);
     return { targets: collectBlocks(onScreen, win, vw, vh), frames: visibleFrames(win, onScreen) };

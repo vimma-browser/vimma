@@ -1,14 +1,14 @@
 # Spec: pdf-mode
 
-Status: accepted · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
+Status: accepted (delivery PRs 1 to 6 implemented; PRs 2 to 5 behind `vimma.feature.pdf_mode`) · Area: `packages/vimma-core/src/` (`keymap.mjs` and `dispatcher.mjs` contexts,
 `modes.mjs` (`index` mode), `actions.mjs`, `defaults.mjs`, `statusbar.mjs`, `pdf.mjs` (new: state
 parser, page and zoom arithmetic, marks), `pdfoutline.mjs` (new: outline parser and the outline
 panel's state)); `actors/pdf-view.mjs` (new: the one module that touches pdf.js),
 `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, `host/VimmaHost.sys.mjs`,
-`host/find.mjs`, `host/pdf-ops.mjs` (new); `ui/pdf-outline.mjs` and its style sheet (new: the
-outline panel); `src/browser/branding/vimma/pref/firefox-branding.js`; `docs/guide.md`,
-`docs/limits.md`, `docs/security.md` · Upstream patches: none (decision 2) · ADR: ADR-023, keymap
-contexts (new, written with delivery PR 1, decision 4)
+`host/find.mjs`, `host/pdf-ops.mjs` (new); `ui/pdf-outline.mjs` (new: the outline panel, styled
+in `side-panel.css` beside the bookmarks panel); `src/browser/branding/vimma/pref/firefox-branding.js`; `docs/guide.md`,
+`docs/limits.md`, `docs/security.md` · Upstream patches: none (decision 2) · ADR:
+[ADR-024](../adr/024-keymap-contexts.md), keymap contexts (decision 4)
 
 Issue: [#487](https://github.com/vimma-browser/vimma/issues/487)
 
@@ -72,10 +72,10 @@ changes.
    mode, with the entry for the current page selected. `j` / `k` (and the arrow keys) move, `l` /
    `zo` expand and `h` / `zc` collapse, `zO` / `zC` expand / collapse the entry's whole subtree,
    `L` / `zR` and `H` / `zM` expand / collapse all, `gg` / `G` go to the first / last entry,
-   `ctrl+d` / `ctrl+u` move half a panel; `Enter`, `space` or `ctrl+j` goes to the entry and
-   closes the outline; `Tab`, `Esc`, `ctrl+[`, `ctrl+c` or `q` closes it without moving. `/`
+   `ctrl+d` / `ctrl+u` move half a panel; `Enter` or `space` goes to the entry and
+   closes the outline; `Tab`, `Esc`, `ctrl+[` or `q` closes it without moving. `/`
    filters the outline: typed text narrows it to the entries that match fuzzily, best match
-   first, each shown with the titles of the entries above it; `ctrl+n` / `ctrl+p` and the arrow
+   first, each shown with the titles of the entries above it; the arrow
    keys move, `Enter` goes to the entry, and `Esc` returns to the whole outline. A PDF without an
    outline says `no outline in this PDF`.
 6. As a user, PDF pages look exactly as the document draws them: Vimma does not recolour them,
@@ -132,7 +132,7 @@ changes.
 | `w`: single page mode (2026.x only, config.c:644)                                          | Same, through pdf.js's page scroll mode                                                                                                                           |
 | `Tab`: index, replacing the view, with its own keys (config.c:381, 660-690)                | `Tab`: Vimma's outline panel beside the page, `INDEX` mode with zathura's keys, and a fuzzy filter on `/`. **Not matched:** the outline does not replace the page |
 | Index: `j k`, arrows, `l h`, `zo zc`, `zO zC`, `L H`, `zR zM`, `ctrl+d ctrl+u` (661-680)   | Same keys in `index` mode                                                                                                                                         |
-| Index: `space`, `Return`, `ctrl+j` follow; `gg G`; `Tab Esc ctrl+[ ctrl+c` close (681-690) | Same keys in `index` mode                                                                                                                                         |
+| Index: `space`, `Return`, `ctrl+j` follow; `gg G`; `Tab Esc ctrl+[ ctrl+c` close (681-690) | Same keys in `index` mode but `ctrl+j` and `ctrl+c`. **Not matched:** those two, because a chord bound in any mode turns Firefox's key off in every tab           |
 | `q`: quit, in every mode (config.c:633-638)                                                | **Not matched:** `q` does not close the tab (`x`, `:q` do); in `index` mode `q` closes the outline, as it closes Vimma's overlays                                 |
 | `ctrl+r`: recolour, `recolor-darkcolor` / `-lightcolor` (config.c:330, 529-530)            | **Not matched:** pages keep the document's colours (decision 12); `ctrl+r` reloads as on every page                                                               |
 | `m{X}` / `'{X}`: marks with page, position, zoom, saved per file (marks.c:21-203)          | Same keys and contents, kept in memory only (decision 11)                                                                                                         |
@@ -375,15 +375,19 @@ find: { current, total } }`), sent to the parent on the viewer's events.
    as it does for a mode. The host passes `pdf` while the selected tab (the focused pane's) is the
    PDF viewer, as the parent decides it from the top document's principal (The layers), and the
    tab is in normal mode; a pdf.js document in a frame never sets it, so that a web page cannot
-   change which bindings the user's keys have. Reason: the tab is still in normal mode, so insert
+   change which bindings the user's keys have. `[unbind] normal` removes a binding in both
+   contexts, and `[unbind] pdf` only in the PDF viewer, because the `pdf` trie inherits normal's.
+   Reason: the tab is still in normal mode, so insert
    mode, hints, copy mode, `Esc`, the status bar's `NORMAL` badge and every check of
    `mode === "normal"` in the host stay as they are; only which binding a key has changes. The
    outline is a real mode, `index`, like `panel`, because its keys mean something else and `Esc`
-   leaves it. This changes the dispatcher's contract, so ADR-023 records it (`plan.md` §4,
+   leaves it. This changes the dispatcher's contract, so ADR-024 records it (`plan.md` §4,
    "Design"). Rejected: a `pdf` mode that replaces normal, because every host path that tests for
    normal mode would need a second case; host-side branching on the same actions (`G` meaning a
    page only in a PDF), because `d`, `r`, `H` and `L` would then need two names in one action and
-   `ctrl+b ?` could not show which meaning applies where.
+   `ctrl+b ?` could not show which meaning applies where. A chord bound only in `[modal.pdf]`
+   counts as bound for Firefox's keys ("bound means off", firefox-keys decision 2) in every tab,
+   because which of Firefox's keys are off is set per window, not per tab.
 5. **zathura's meaning wins on the keys it shares, in the PDF viewer only.** Where zathura and
    Vimma's normal mode bind the same key differently (`d`, `H`, `L`, `r`, `P`, `F`, `ctrl+f`,
    `F5`), the `pdf` context takes zathura's, because a zathura user expects them in a PDF and
@@ -407,7 +411,9 @@ find: { current, total } }`), sent to the parent on the viewer's events.
    `{n}=` sets `n / 100`. A manual zoom leaves the fit, as in zathura.
 8. **Dual page is pdf.js's spread mode.** `d` toggles `NONE` and the last spread (`EVEN` the first
    time), and `D` toggles `EVEN` and `ODD`, so that the first page stands alone by default as in
-   zathura's `first-page-column` "1:2". `w` toggles `scrollMode` `PAGE` and the previous mode.
+   zathura's `first-page-column` "1:2". From one page, `D` shows two pages in the arrangement
+   other than the last one, because a toggle with nothing to show would read as a key that does
+   nothing. `w` toggles `scrollMode` `PAGE` and the previous mode.
    These are pdf.js's own view settings, which it remembers per document in its view history, so
    Vimma keeps no layout state.
 9. **The jump list is session history.** pdf.js records link, outline and page jumps as
@@ -417,7 +423,16 @@ find: { current, total } }`), sent to the parent on the viewer's events.
    do not jump), by calling `pdfHistory.pushCurrentPosition()` first, so that every jump zathura
    records is in the list. Reason: one history for the tab, which `H`, `L` and the back button
    already use on every other page. Rejected: a jump list of Vimma's own, because it would
-   disagree with the back button.
+   disagree with the back button. Two details make the walk one jump at a time. First, Firefox's
+   `goBack` and `goForward` skip entries the user never interacted with
+   (`browser.navigation.requireUserInteraction`), and pdf.js's entries carry none once the
+   document has had its first interaction, since Vimma takes the keys in chrome; so in the PDF
+   viewer `ctrl+o` / `ctrl+i` step with `gotoIndex` to the neighbouring entry while it shares the
+   viewer's document (`PdfOps.jumpIndex`), and with `goBack` / `goForward` when it leaves the PDF.
+   Second, pdf.js records where a jump starts from its record of the view, which it updates on
+   the animation frame after a scroll; the adapter calls `pdfViewer.update()` before each jump,
+   so that a jump right after another (`G` then `'a`) or right after the document loaded starts
+   from where the view is.
 10. **The outline is a Vimma panel, driven by `index` mode.** `Tab` asks the adapter for the
     outline and opens it in Vimma's outline panel, in the side panel's slot on the left of the
     window (one panel at a time there, as with the bookmarks panel), styled with the theme's
@@ -436,8 +451,10 @@ find: { current, total } }`), sent to the parent on the viewer's events.
       keeps each entry's target in the child and sends the parent, in document order, only
       `{ title, level, page, kind, collapsed }` per entry, plus `url` for a URL entry. `page` is
       the 1-based page the destination resolves to, resolved as pdf.js resolves its current entry
-      (Research), or 0 when it does not resolve; `kind` is `dest`, `url`, `action`, `attachment`
-      or `ocg`; `collapsed` is the entry's negative `count`. Destinations themselves (names and
+      (Research), or 0 when it does not resolve; `kind` is `dest`, `url`, `action`, `attachment`,
+      `ocg` or `none` (an entry pdf.js gives no target, such as a `javascript:` link it refuses,
+      which follows nothing); `collapsed` is the entry's negative `count`. Named destinations
+      resolve through one `pdfDocument.getDestinations()` call rather than one promise per entry. Destinations themselves (names and
       page references) never leave the content process, because the parent needs only a page
       number to select the current entry, and following an entry by its index keeps the parent's
       messages to operation names and numbers (V7).
@@ -460,7 +477,16 @@ find: { current, total } }`), sent to the parent on the viewer's events.
       opening an attachment goes through pdf.js's download path, which Vimma does not drive.
     - **Current entry and expansion.** On opening, the panel selects the deepest of the last
       entries whose page is at or before the current page, as pdf.js does, and expands the path to
-      it; other entries start expanded or collapsed as the document's `count` says.
+      it; other entries start expanded or collapsed as the document's `count` says. `h` on an
+      entry that is already collapsed, or has nothing under it, goes to its parent, as in the
+      bookmarks panel. `index` mode takes no counts, as zathura's index does not.
+    - **No new ctrl chords.** `index` mode binds no ctrl chord that Vimma leaves to Firefox
+      elsewhere (zathura's `ctrl+j` and `ctrl+c`, and `ctrl+n` / `ctrl+p` in the filter), because
+      a chord bound in any mode turns Firefox's key off in every tab (firefox-keys decision 2):
+      web search, copy, new window and print would stop working on every page.
+    - **The filter's keys.** Typed keys go to the filter's field; `Enter` and the arrow keys are
+      the field's own there, and `Tab` closes the outline. `Esc` returns to the tree with the
+      entry selected before `/`.
     - **Lifetime.** The parsed outline is kept in the parent, in memory, for the tab's current
       document, so that a second `Tab` opens at once; it is dropped when the tab navigates or
       closes, and never written. The panel closes when its tab stops being the selected tab of
@@ -473,8 +499,14 @@ find: { current, total } }`), sent to the parent on the viewer's events.
       none, Vimma adds nothing to the viewer's document.
 11. **Marks in memory, per document.** A mark stores `{ page, left, top, scale }` from pdf.js's
     current location, keyed by the document's URL without its fragment, in the host, for the
-    session; `'x` restores it with `scrollPageIntoView` and an `XYZ` destination after a history
-    entry. Reason: marks are reading positions, and Vimma keeps what it learns about a page in
+    session; the host asks the viewer for it on `m` (`Vimma:PdfWhere`) and checks it with
+    `parsePdfPosition`. `'x` sends it back as an `XYZ` destination to
+    `pdfLinkService.goToDestination`, which records the history entry first; the scale is pdf.js's
+    numeric one, so a mark set at fit width comes back at that zoom as a number. A letter or digit
+    names a mark, as in zathura; another key after `m` or `'` does nothing. At most 1,000
+    documents keep marks, the one used longest ago dropped first, so a long session's marks
+    stay bounded. Marks are shared by every workspace of a window kind, because a mark is a
+    reading position the user set and tells no page anything; a private window's are its own. Reason: marks are reading positions, and Vimma keeps what it learns about a page in
     memory, as live grep keeps page text (`docs/security.md` §15). In the private workspace marks
     live with its windows and go when it closes. zathura saves marks and its jump list per file;
     Vimma does not, because saving them would keep a list of the PDFs read in the profile, a
@@ -515,8 +547,12 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     `hint.show_target` and `hint.copy_target`, which return the chosen link's `href` through the
     parser that already checks hint replies (`parseHintReply`, `core/hints.mjs:265`) and show or
     copy it as text. An internal link's target is shown as `page 12` from the destination pdf.js
-    resolves. **Unverified:** that the collector labels pdf.js's internal links, whose `href` is
-    a fragment with a click handler. Check: the links mochitest in Tests.
+    resolves: the host asks the viewer by the hint's generation and index (`Vimma:PdfLinkPage`),
+    and the adapter reads the link's fragment as pdf.js's `setHash` does (`page=`, an explicit
+    destination, a named one). `c` copies the link's URL, an internal link's with the fragment
+    that reopens that place. `F` shadows the text-block hints there, which pdf.js's lines do not
+    have (element-focus decision 14). The collector labels pdf.js's internal links (checked by
+    the `links` mochitest).
 17. **about:pdf stays; the viewer's promotion is off.** `firefox-branding.js` sets
     `pdfjs.featuresNotificationImpressionLimit` to 0, so that the "PDFs just got easier" bar never
     covers a document; `about:pdf` and its menu entries stay as Firefox ships them, and the guide
@@ -541,7 +577,7 @@ the adapter touches.
 `docs/security.md` gets a section in its format, with these rules and the tests that enforce them
 (each listed under Tests):
 
-> ## 18. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`)
+> ## 20. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`)
 >
 > Vimma drives Firefox's pdf.js viewer through its content actor. Spec:
 > [pdf-mode](specs/pdf-mode.md).
@@ -701,8 +737,8 @@ cannot carry bidi or zero-width characters`); page targets for
   not matched that a user would look for (SyncTeX, saved marks and jumps, `ctrl+b` full-page
   up, recolouring), and for PDFs from `blob:` and `data:` URLs.
 - `docs/bindings.md`, `docs/bindings.json`, `defaults.toml`: regenerated by each keymap PR.
-- `docs/security.md`: section 18 (Security and privacy).
-- `docs/adr/023-keymap-contexts.md`: new, with delivery PR 1.
+- `docs/security.md`: section 20 (Security and privacy).
+- `docs/adr/024-keymap-contexts.md`: new, with delivery PR 1.
 - `CHANGELOG.md` [Unreleased]: added by the maintainer at merge time, except the lines for the
   help snapshot and the e2e baseline, which the PRs that change them add.
 
@@ -712,20 +748,29 @@ Keymap changes go one pull request at a time, each regenerating the bindings doc
 snapshot with a screenshot of the `ctrl+b ?` overlay (`plan.md` §6, item 8), so PRs 3 to 5 merge
 in order and none runs beside another keymap PR.
 
+PRs 2 to 5 land behind `vimma.feature.pdf_mode`, default `false` (`CONTRIBUTING.md`, "Unfinished
+features"), because `main` must stay releasable while only part of the keys exist: with the pref
+off, the viewer behaves as before (no adapter, the `page` context, no page segment). The last of
+them removes the pref and makes the user-facing doc changes (`docs/guide.md`, `docs/limits.md`),
+since those describe what a user gets only once the pref is gone.
+
 1. **feat(keymap): keymap contexts.** Core only: `trie(mode, context)`, the dispatcher's context
-   argument, `[modal.pdf]` and `[modal.index]` accepted (empty by default), the `index` mode,
-   ADR-023. The host passes `page` everywhere. No binding changes.
+   argument, `[modal.pdf]` and `[unbind] pdf` accepted (empty by default), ADR-024. The host
+   passes `page` everywhere. No binding changes. The `index` mode and `[modal.index]` come with
+   PR 4, because the mode's `Esc` exit and its status bar badge need the outline panel's close
+   action, which that PR adds.
 2. **feat(pdf): page and match count in the status bar.** The adapter with its principal check
    and contract test, `parsePdfState`, the host's context switch to `pdf`, the status bar's page
-   segment and the find count; `docs/limits.md` loses its PDF find line; `docs/security.md`
-   section 18. Needs the fresh-agent review. No binding changes.
+   segment and the find count; `docs/security.md` section 20 (V1 to V6). Needs the fresh-agent
+   review. No binding changes.
 3. **feat(keys): zathura's page, zoom and layout keys in the PDF viewer.** `J`, `K`, `gg`, `G`,
    counts, `:{n}`, `H`, `L`, `P`, `ctrl+f`, `+`, `-`, `=`, `zi`, `zI`, `zo`, `zO`, `z0`, `zz`,
    `zZ`, `{n}=`, `a`, `s`, `d`, `D`, `w`, `r`, `R`, `Y`, `F5`, presentation, history entries
-   before search jumps, the guide section.
+   before search jumps. The guide section comes with the PR that removes the pref, as the
+   paragraph above says of every user-facing doc.
 4. **feat(keys): the outline panel on `Tab` (`index` mode).** The adapter's outline read and
    follow, `parsePdfOutline`, the panel with its filter, screenshots in a built-in and an Omarchy
-   theme, and V8 in `docs/security.md` section 18. Needs the fresh-agent review.
+   theme, and V8 in `docs/security.md` section 20. Needs the fresh-agent review.
 5. **feat(keys): marks and link keys in the PDF viewer.** `m`, `'`, `F`, `c`.
 6. **chore(branding): turn off the PDF viewer's features notification.**
    `pdfjs.featuresNotificationImpressionLimit = 0` (decision 17). Independent of the others.

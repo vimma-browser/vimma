@@ -7,10 +7,10 @@
  * See docs/specs/m0-core-dispatcher.md § Dispatcher contract.
  */
 import { formatKey } from "./keys.mjs";
-import { COUNT_MODES, isMode } from "./modes.mjs";
+import { COUNT_MODES, isContext, isMode } from "./modes.mjs";
 
 /** @import { Chord } from "./keys.mjs" */
-/** @import { Mode } from "./modes.mjs" */
+/** @import { Context, Mode } from "./modes.mjs" */
 /** @import { Keymap } from "./keymap.mjs" */
 /** @import { TrieNode } from "./keymap.mjs" */
 /** @import { ActionDef } from "./actions.mjs" */
@@ -52,6 +52,8 @@ function typedChar(c) {
 export function createDispatcher(keymap) {
   /** @type {Mode | null} */
   let mode = null;
+  /** @type {Context} */
+  let context = "page";
   /** @type {TrieNode | null} */
   let node = null; // non-null while a sequence is pending
   /** @type {string[]} */
@@ -86,13 +88,17 @@ export function createDispatcher(keymap) {
   /**
    * @param {Mode} m
    * @param {Chord} chord
+   * @param {Context} [c]  the document's keymap context (docs/adr/024-keymap-contexts.md)
    * @returns {DispatchResult}
    */
-  function dispatch(m, chord) {
+  function dispatch(m, chord, c = "page") {
     if (!isMode(m)) throw new Error(`unknown mode "${m}"`);
-    if (m !== mode) {
+    if (!isContext(c)) throw new Error(`unknown context "${c}"`);
+    // A sequence started under one set of bindings never finishes under another.
+    if (m !== mode || c !== context) {
       reset();
       mode = m;
+      context = c;
     }
     const busy = node !== null || count !== "" || wantsChar !== null;
     const isEsc = chord.key === "esc" && !chord.ctrl && !chord.alt && !chord.meta && !chord.shift;
@@ -109,7 +115,7 @@ export function createDispatcher(keymap) {
       }
       return emit(wantsChar, char);
     }
-    const root = keymap.trie(m);
+    const root = keymap.trie(m, c);
     const key = formatKey(chord);
 
     if (

@@ -176,6 +176,11 @@ declare const Cu: {
     setContainerNode(node: Node): void;
     encodeToString(): string;
   };
+  // The PDF viewer's adapter (actors/pdf-view.mjs; xpccomponents.idl).
+  waiveXrays<T>(obj: T): any;
+  unwaiveXrays<T>(obj: T): any;
+  exportFunction(fn: Function, target: object): Function;
+  cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
 };
 
 // XPCOM in system modules: interface constants and component constructors.

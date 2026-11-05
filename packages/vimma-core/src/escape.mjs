@@ -29,6 +29,7 @@ const EXITS = {
   help: { id: "help.close", back: true },
   panel: { id: "panel.close", back: true },
   resize: { id: "pane.resize_exit", back: true },
+  index: { id: "index.close", back: true },
 };
 
 /**

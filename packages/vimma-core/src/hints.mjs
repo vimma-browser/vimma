@@ -17,8 +17,8 @@ import { parseAgentElement, parseAgentForms } from "./agent-element.mjs";
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
 /** @typedef {{ rect: Rect }} Target */
 /**
- * @typedef {"hint.follow" | "hint.follow_new_tab" | "hint.follow_new_tab_fg" | "hint.element"}
- *   HintAction
+ * @typedef {"hint.follow" | "hint.follow_new_tab" | "hint.follow_new_tab_fg" | "hint.element"
+ *   | "hint.show_target" | "hint.copy_target"} HintAction
  */
 /**
  * @template {Target} [T=Target]
@@ -58,6 +58,8 @@ export const HINT_ACTIONS = Object.freeze([
   "hint.follow_new_tab",
   "hint.follow_new_tab_fg",
   "hint.element",
+  "hint.show_target",
+  "hint.copy_target",
 ]);
 
 /** @param {string} chars */
@@ -250,6 +252,26 @@ export function hintKey(state, chord) {
  * @returns {{ kind: "narrow", visible: number }}
  */
 const narrow = (state) => Object.freeze({ kind: "narrow", visible: visibleHints(state).length });
+
+/**
+ * How long, in ms, chrome waits for the top frame's `Vimma:CollectHints` answer in the user's
+ * hint mode: longer than a subframe's, as without it there are no hints at all.
+ */
+export const HINT_TOP_TIMEOUT_MS = 2000;
+/**
+ * An agent's collection (docs/specs/mcp-drive.md D12, mcp-forms.md F2): every frame answers
+ * within this many ms of its start. No user waits on labels there, and an agent's tab is in the
+ * background, whose frames' processes may be busy or just started: at the user's 150 ms, a
+ * frame of another site would be left out of the list without a word. The calls give up after
+ * 5 s, so the frames that answered are still listed then.
+ */
+export const HINT_AGENT_FRAMES_MS = 4000;
+/**
+ * How long, in ms, a top frame waits for its first viewport size before it collects (the
+ * content actor's `#sized`): under HINT_TOP_TIMEOUT_MS, and so under HINT_AGENT_FRAMES_MS, so
+ * that its answer still counts.
+ */
+export const HINT_SIZE_WAIT_MS = 1500;
 
 /** Most targets one frame may report (`Vimma:CollectHints`, docs/specs/m1-hints.md). */
 export const HINT_REPLY_MAX_TARGETS = 5000;

@@ -16,7 +16,9 @@
  * the Firefox tree, so the content sandbox refuses to read them and VimmaChild never loads. On
  * macOS the pref is security.sandbox.content.mac.testing_read_path1 = <repo>/src instead.
  * Packaged builds copy the files and do not need it. It also turns on the developer tools a
- * shipped build keeps off (DEVTOOLS_PREFS). Other user.js lines are kept.
+ * shipped build keeps off (DEVTOOLS_PREFS), and vimma.config.path = <profile>/vimma/config.toml,
+ * so the dev build never writes the installed Vimma's config.toml (a vimma.config.path the
+ * user.js already sets is kept). Other user.js lines are kept.
  * Refuses to start when the profile is in use by a running instance.
  */
 import { spawn, spawnSync } from "node:child_process";
@@ -42,6 +44,8 @@ const REPO = fileURLToPath(new URL("../", import.meta.url));
 export const READ_PATH_PREF = "security.sandbox.content.read_path_whitelist";
 /** The mac content sandbox's extra read path (dom/ipc/ContentParent.cpp), a Seatbelt subpath. */
 export const MAC_READ_PATH_PREF = "security.sandbox.content.mac.testing_read_path1";
+/** The config file a build reads and writes (ConfigHost.sys.mjs); unset, the installed one's. */
+export const CONFIG_PATH_PREF = "vimma.config.path";
 const FULL_OBJDIR = "obj-x86_64-pc-linux-gnu";
 const ARTIFACT_OBJDIR = "obj-artifact";
 const MAC_APP_BINARY = "dist/Vimma.app/Contents/MacOS/vimma";
@@ -139,11 +143,14 @@ export function devPrefs(root, platform = process.platform) {
 
 /** Prefs whose value is a comma-separated list: merged, never replaced. */
 const LIST_PREFS = new Set([READ_PATH_PREF]);
+/** Prefs a profile's user.js may already set its own way: then left as they are. */
+const KEEP_PREFS = new Set([CONFIG_PATH_PREF]);
 const USER_PREF = /^\s*user_pref\(\s*("(?:[^"\\]|\\.)*")\s*,\s*(.*?)\s*\)\s*;?\s*$/;
 
 /**
  * Merge prefs into the text of a user.js, keeping every other line as it was. A pref already
- * set is rewritten in place (a list pref gains the missing entries); a new one is appended.
+ * set is rewritten in place (a list pref gains the missing entries, a kept one stays as it is);
+ * a new one is appended.
  * @param {string} existing
  * @param {ReadonlyArray<readonly [string, string | number | boolean]>} prefs
  * @returns {string}
@@ -158,6 +165,7 @@ export function mergeUserJs(existing, prefs) {
       const m = USER_PREF.exec(/** @type {string} */ (lines[i]));
       if (!m || JSON.parse(/** @type {string} */ (m[1])) !== name) continue;
       found = true;
+      if (KEEP_PREFS.has(name)) continue;
       let next = value;
       if (LIST_PREFS.has(name)) {
         let old;
@@ -195,13 +203,20 @@ export const DEVTOOLS_PREFS = [
 ];
 
 /**
- * What npm start writes into its profile's user.js.
+ * What npm start writes into its profile's user.js. With a profile, the build gets a config.toml
+ * of its own inside it: without one it would read and write the installed Vimma's
+ * (`~/.config/vimma/config.toml`), and a setting only this build knows would break that release.
  * @param {string} root the repository root
  * @param {string} [platform] process.platform
+ * @param {string} [profile]
  * @returns {Array<readonly [string, string | boolean]>}
  */
-export function startPrefs(root, platform = process.platform) {
-  return [...devPrefs(root, platform), ...DEVTOOLS_PREFS];
+export function startPrefs(root, platform = process.platform, profile) {
+  return [
+    ...devPrefs(root, platform),
+    ...DEVTOOLS_PREFS,
+    ...(profile ? [[CONFIG_PATH_PREF, join(profile, "vimma", "config.toml")]] : []),
+  ];
 }
 
 /**
@@ -354,7 +369,7 @@ async function main() {
     );
     return 1;
   }
-  prepareProfile(profile, startPrefs(REPO));
+  prepareProfile(profile, startPrefs(REPO, process.platform, profile));
   const [bin, args] = browserCommand(build, profile, options.browserArgs);
   console.log(`start: ${build.kind} build ${bin}\nstart: profile ${profile}`);
   const child = spawn(bin, args, { stdio: "inherit", env: { ...process.env, ...build.env } });

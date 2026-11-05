@@ -192,3 +192,12 @@ pref("accessibility.typeaheadfind.manual", false);
 // the start page too; the bookmarks panel (ctrl+b shift+b) is the way in. A default, not
 // locked: View > Toolbars, ctrl+shift+b, :bookmarkstoolbar and [ui] bookmarks_toolbar change it.
 pref("browser.toolbars.bookmarks.visibility", "never");
+
+// The PDF viewer's "PDFs just got easier" bar covers the top of a document; it is the only part of
+// Firefox's PDF promotion that interrupts reading, so it gets no impressions. about:pdf and its
+// menu entries stay (docs/specs/pdf-mode.md decision 17). The budget is shared with about:pdf.
+pref("pdfjs.featuresNotificationImpressionLimit", 0);
+
+// Unfinished: the PDF viewer's zathura keys and status (docs/specs/pdf-mode.md), delivered over
+// several pull requests (CONTRIBUTING.md, "Unfinished features").
+pref("vimma.feature.pdf_mode", false);

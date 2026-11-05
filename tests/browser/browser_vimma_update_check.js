@@ -584,12 +584,10 @@ add_task(async function an_opt_out_under_a_misspelt_table_never_turns_checks_on(
 add_task(async function a_config_that_parses_with_errors_still_checks() {
   await fetch(`${HOST}?reset`);
   await serve(await manifest());
-  // A value a newer build writes: the file parses, and says nothing about [updates] check.
+  // A key a newer build writes: the file parses, and says nothing about [updates] check. (An
+  // unknown provider cli, the case #741 met, is now only a warning: #742.)
   const file = PathUtils.join(dir, "newer.toml");
-  await IOUtils.writeUTF8(
-    file,
-    'schema = 2\n[[agent.providers]]\nname = "x"\nkind = "cli"\ncli = "future"\n',
-  );
+  await IOUtils.writeUTF8(file, "schema = 2\n[agent]\nfuture_key = 1\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   Assert.ok(VimmaUpdates.status().enabled, "checks stay on");

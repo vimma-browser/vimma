@@ -815,6 +815,37 @@ password?" prompt opens with the `Esc, then` line. In the prompt's own username 
 fields, every key is the field's: a `y` or an `n` there is typed, and `Tab` is Firefox's, as
 everywhere inside the prompt.
 
+#### Answering a dialog
+
+Firefox's dialogs over a page or over the window take the same keys: "This page is asking you to
+confirm that you want to leave" when you close or leave a page with unsaved changes, a page's own
+alert and confirm questions, and Firefox's own yes-or-no questions shown the same way.
+
+| Key   | What it does                                                               |
+| ----- | -------------------------------------------------------------------------- |
+| `y`   | The dialog's main button: Leave page, OK, Yes.                             |
+| `n`   | The button `Esc` runs, the safe choice: Stay on page, Cancel, No.          |
+| `Esc` | As in Firefox: the same as `n`.                                            |
+| `Tab` | As in Firefox: moves between the buttons; `Enter` presses the focused one. |
+
+A line in the dialog names the keys after its own buttons, such as `y leave page · n stay on
+page`, and shows once they count: as with a permission prompt, after half a second with no key
+pressed in between, so typing that was meant for the page never answers a dialog that opens under
+it. `n` stays on the page because it is the answer that loses nothing: a page you meant to leave
+is one more key away, while unsaved changes left behind are gone. A dialog with a text field,
+such as a page asking for a name or a site asking you to sign in, keeps `y` and `n` as text, and
+its line names `Enter` and `Esc` instead.
+
+The question Firefox asks before a link opens another application, such as a `mailto:` or a
+`zoommtg:` link ("Allow this site to open the link with ...?"), and its list of applications take
+the same keys: `y` opens the link (Open Link, Choose Application) and `n` cancels, so nothing
+outside the browser starts. `y` also waits until Firefox enables its Open Link button, which it
+keeps greyed out for a moment after the question appears.
+
+The download question, "What should Vimma do with this file?" for a file type set to always ask,
+takes them too: `y` presses OK, which opens or saves the file as picked in the question, and `n`
+cancels the download. `y` waits until the OK button is enabled.
+
 ### Colours and themes
 
 The status bar, the command line, the `ctrl+b ?` overlay, the pickers and prompts, link hints,
@@ -1968,6 +1999,10 @@ A CLI provider names no program, arguments or environment: a `command`, `path`, 
 `endpoint` key in one is an error. The program is the one you picked in the window, so set it up
 there once even when the provider is in `config.toml`. With `[agent] local_only = true` a CLI
 provider is refused, because Vimma cannot see where a CLI sends what it reads.
+
+A `cli` this version of Vimma does not know, such as one a newer version added, is not an error:
+that provider is left out, the status bar names its line, and the rest of `config.toml` applies.
+A `config.toml` shared between machines on different versions keeps working on each.
 
 **What happens when you send a task.**
 

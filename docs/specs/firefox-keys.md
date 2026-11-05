@@ -546,7 +546,9 @@ keys (ctrl+b ? lists them). enable = ["ctrl+j"] gives one back exactly as Firefo
     finder. Three exceptions, each with its reason:
     - **`'` (quick find, links only) and the `alt` tap stay off**, because they clash with
       Vimma's modal keys: `'` is a plain key that normal mode owns, and an `alt` tap moves focus
-      to the menu bar, away from the page whose keys normal mode handles.
+      to the menu bar, away from the page whose keys normal mode handles. (Since changed: the PDF
+      viewer binds `'` to its marks in `[modal.pdf]` only, and Firefox's quick find stays off;
+      [pdf-mode](pdf-mode.md) decision 11.)
     - **The 7 menu bar access keys (`alt+f e v s b t h`) are fate d**, left to Firefox's menu
       bar while it exists, because they are attributes of its menus rather than shortcuts Vimma
       can rebind, and dropping them would leave the menu bar without a keyboard path.

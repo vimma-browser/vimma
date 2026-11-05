@@ -166,7 +166,7 @@ add_task(async function a_b_c_keys_are_disabled_a_b_chords_bound_c_chords_unboun
   for (const row of FIREFOX_SHORTCUTS) {
     if (row.action && !row.unbound) {
       Assert.equal(
-        keymap.trie("normal").children.get(row.chord)?.action?.name,
+        keymap.trie("normal", row.context).children.get(row.chord)?.action?.name,
         row.action,
         `${row.chord} runs ${row.action}`,
       );
@@ -354,7 +354,8 @@ add_task(async function real_key_events_for_each_firefox_chord_run_vimmas_action
   registerCleanupFunction(() => (VimmaHost._run = run));
   try {
     for (const row of FIREFOX_SHORTCUTS) {
-      if (!row.action || row.unbound || row.when) continue;
+      // A chord bound in the PDF viewer only runs there (browser_vimma_pdf_marks.js types ').
+      if (!row.action || row.unbound || row.when || row.context) continue;
       const { key, mods } = keyEventOf(row.chord);
       const count = ran.length;
       EventUtils.synthesizeKey(key, mods);

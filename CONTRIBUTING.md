@@ -81,8 +81,12 @@ npm start -- --profile DIR -- --jsconsole   # another profile; after the second 
 
 `npm start` (`tools/start.mjs`) passes its own profile, so it never touches your Firefox profile
 (remoting is keyed by app name and profile: a `vimma` command line never reaches Firefox), and refuses to start a second instance on the same profile. It adds
-one line to the profile's `user.js` (other lines are kept):
-`security.sandbox.content.read_path_whitelist` set to this checkout's `src/`. A local build's
+these lines to the profile's `user.js` (other lines are kept):
+`security.sandbox.content.read_path_whitelist` set to this checkout's `src/`, and
+`vimma.config.path` set to `<profile>/vimma/config.toml`, so a dev build reads and writes a
+`config.toml` of its own and never the installed Vimma's `~/.config/vimma/config.toml` (a setting
+only the dev build knows would break that release). Copy your own file there to try it with your
+settings; a `vimma.config.path` the `user.js` already sets is kept. A local build's
 front-end files are symlinks into `src/`, outside the Firefox tree, and without that pref the
 content sandbox refuses them, so Vimma's page actor never loads (packaged builds copy the files
 and do not need it). `npx surfer run` uses a scratch profile without it.

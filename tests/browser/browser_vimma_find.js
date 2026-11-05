@@ -130,6 +130,84 @@ async function pageKeysThenUnbound(browser) {
   return pageKeys(browser);
 }
 
+/** @param {any} node */
+function describeNode(node) {
+  if (!node) return "null";
+  if (node === window) return "window";
+  if (node === document) return "document";
+  const id = node.id ? `#${node.id}` : "";
+  const cls = node.className && typeof node.className === "string" ? `.${node.className}` : "";
+  return `${node.localName ?? node.nodeName}${id}${cls}`.slice(0, 80);
+}
+
+/**
+ * Records the chrome window's focus, key and mouse events from now on, so a wait that times out
+ * can show what happened. `? after a click` failed once in CI and never locally (#731): this
+ * puts the cause in the log of the next failure.
+ * @param {XULBrowserElement} browser
+ */
+function traceFocus(browser) {
+  const t0 = performance.now();
+  /** @type {string[]} */
+  const events = [];
+  const types = ["focus", "blur", "keydown", "mousedown", "mouseup", "findbarclose"];
+  /** @param {Event} e */
+  const record = (e) => {
+    const key = e.type === "keydown" ? ` key=${/** @type {KeyboardEvent} */ (e).key}` : "";
+    const target = describeNode(e.composedTarget ?? e.target);
+    events.push(`${(performance.now() - t0).toFixed(1)}ms ${e.type} ${target}${key}`);
+  };
+  for (const type of types) window.addEventListener(type, record, true);
+  return {
+    /**
+     * TestUtils.waitForCondition, and on a timeout an info() dump of the trace and the state.
+     * @param {() => any} condition
+     * @param {string} msg
+     */
+    async waitFor(condition, msg) {
+      try {
+        await TestUtils.waitForCondition(condition, msg);
+      } catch (e) {
+        await dumpFindState(browser, events, msg);
+        throw e;
+      } finally {
+        for (const type of types) window.removeEventListener(type, record, true);
+      }
+    },
+  };
+}
+
+/**
+ * @param {XULBrowserElement} browser
+ * @param {string[]} events
+ * @param {string} msg
+ */
+async function dumpFindState(browser, events, msg) {
+  const state = VimmaHost._state(window);
+  const s = state?.find.session;
+  const lines = [
+    `#731 diagnostics, "${msg}" timed out`,
+    `activeElement: ${describeNode(document.activeElement)}`,
+    `focusManager: element ${describeNode(Services.focus.focusedElement)}, ` +
+      `window ${Services.focus.focusedWindow === window ? "this chrome window" : "other"}`,
+    `mode: ${VimmaHost.status(window).mode}, page mode: ${VimmaHost._browserMode(browser)}`,
+    `pending keys: ${JSON.stringify(state?.dispatcher.pending() ?? null)}`,
+    s
+      ? `find session: same tab ${s.browser === browser}, findbar ${!!s.findbar}, ` +
+        `hidden ${s.findbar?.hidden}, accepting ${JSON.stringify(s.accepting)}, ` +
+        `backward ${s.backward}, field "${s.findbar?._findField.value ?? s.buffer}"`
+      : "find session: none",
+    `cached findbar hidden: ${findBarHidden()}`,
+    ...events.map((line) => `event ${line}`),
+  ];
+  try {
+    lines.push(`page keys: ${JSON.stringify(await pageKeys(browser))}`);
+  } catch (e) {
+    lines.push(`page keys: unavailable (${e})`);
+  }
+  for (const line of lines) info(line);
+}
+
 /**
  * The frame whose document URL contains `marker`.
  * @param {XULBrowserElement} browser
@@ -255,6 +333,7 @@ add_task(async function a_click_outside_the_prompt_closes_it_as_esc_does() {
     Assert.equal(document.activeElement, findbar._findField, "and in the field");
 
     // A click on the page ends the search as Esc does, but where the click is.
+    const trace = traceFocus(browser);
     EventUtils.synthesizeMouseAtCenter(browser, {});
     await TestUtils.waitForCondition(findBarHidden, "a click on the page closes the prompt");
     await TestUtils.waitForCondition(
@@ -268,7 +347,7 @@ add_task(async function a_click_outside_the_prompt_closes_it_as_esc_does() {
 
     // The next ? is a new search (#731: ? right after a click on the page).
     EventUtils.synthesizeKey("?");
-    await TestUtils.waitForCondition(
+    await trace.waitFor(
       () => document.activeElement === findbar._findField,
       "? after the click opens a new search",
     );
@@ -323,13 +402,11 @@ add_task(async function slash_when_the_focus_left_the_open_search_goes_back_into
     );
     Assert.equal(VimmaHost.status(window).mode, "command", "typing a search again: command mode");
 
+    const trace = traceFocus(browser);
     browser.focus();
     await TestUtils.waitForCondition(() => document.activeElement === browser, "page again");
     EventUtils.synthesizeKey("?");
-    await TestUtils.waitForCondition(
-      () => document.activeElement === field,
-      "? focuses the find field too",
-    );
+    await trace.waitFor(() => document.activeElement === field, "? focuses the find field too");
     Assert.ok(findStatus()?.backward, "? makes the open search a backward one");
     type("word");
     EventUtils.synthesizeKey("KEY_Enter");

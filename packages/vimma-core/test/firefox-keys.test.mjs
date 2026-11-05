@@ -295,7 +295,8 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     expect(pageFirst("shift+esc")).toBe(true);
   });
 
-  test("the only unbound c keys are the conditional ones, ' and the alt tap", () => {
+  // ' was one of them until the PDF viewer bound it to its marks (docs/specs/pdf-mode.md).
+  test("the only unbound c keys are the conditional ones and the alt tap", () => {
     const left = rows.filter((r) => r.fate === "c" && !r.conditional).map((r) => r.chord);
     expect(left).toEqual([
       "ctrl+f7",
@@ -305,7 +306,6 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
       "ctrl+meta+f7",
       "alt+meta+f7",
       "ctrl+alt+meta+f7",
-      "'",
     ]);
     expect(getAction("devtools_dom")).toBeDefined();
     expect(keymap.trie("normal").children.get("ctrl+shift+w")?.action?.name).toBe("close_window");
@@ -317,7 +317,7 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
       const modes =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
-        const node = keymap.trie(/** @type {any} */ (mode)).children.get(r.chord);
+        const node = keymap.trie(/** @type {any} */ (mode), r.context).children.get(r.chord);
         expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
         expect(node?.children.size, `${r.chord} in ${mode} is a whole binding`).toBe(0);
       }
@@ -420,10 +420,11 @@ describe("bound means off (decision 2)", () => {
     for (const chord of ["ctrl+t", "ctrl+b", "ctrl+w", "alt+left", "ctrl+[", "esc", "f12"]) {
       expect(bound.has(chord), chord).toBe(true);
     }
-    for (const chord of ["ctrl+f", "ctrl+j", "f7", "ctrl+shift+b"]) {
+    // ' is bound in the PDF viewer only (marks); its Firefox key is off by its pref anyway.
+    for (const chord of ["ctrl+f", "ctrl+j", "f7", "ctrl+shift+b", "'"]) {
       expect(bound.has(chord), chord).toBe(true);
     }
-    for (const chord of ["'", "alt+f", "alt+h"]) {
+    for (const chord of ["alt+f", "alt+h"]) {
       expect(bound.has(chord), chord).toBe(false);
     }
   });
@@ -597,7 +598,7 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
       const modes =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
-        const node = keymap.trie(/** @type {any} */ (mode)).children.get(r.chord);
+        const node = keymap.trie(/** @type {any} */ (mode), r.context).children.get(r.chord);
         expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
       }
     }

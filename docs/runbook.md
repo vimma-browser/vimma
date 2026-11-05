@@ -197,6 +197,12 @@ build with `XUL_APP_FILE` as `tools/mochitest.mjs` does, with
 lock on `<profile>/.parentlock` (`/proc/locks`) or a `lock` symlink whose pid is alive (the link
 can outlive the browser).
 
+It merges `vimma.config.path=<profile>/vimma/config.toml` into the profile's `user.js` (an
+existing value is kept), so a dev or lane build never reads or writes the installed Vimma's
+`~/.config/vimma/config.toml`: a setting only the dev build knows, written there by its setup,
+once broke the installed release's config. The e2e harness sets the same pref inside each
+throwaway profile; mochitests set `/nonexistent/vimma-test/config.toml` in `browser.toml`.
+
 It merges `security.sandbox.content.read_path_whitelist=<repo>/src/` into the profile's `user.js`.
 In a local objdir the chrome files are symlinks into `engine/`, which `surfer import` links to the
 repo's `src/`, outside the Firefox tree; the content sandbox then refuses them and the console
@@ -1576,18 +1582,29 @@ One-time setup:
    permitted to create or approve pull requests"; the autopilot detects that message, keeps the
    pushed branch, and comments the full summary and a prefilled compare link on the tracking
    issue instead (open the PR from there). The same setting serves release-please and claude.yml.
-2. **`UPSTREAM_PR_TOKEN`.** Without it a PR opened with the default `GITHUB_TOKEN` starts no
+2. **Upstream App.** Without it a PR opened with the default `GITHUB_TOKEN` starts no
    workflows, so the autopilot opens it as a draft (mark it ready for review to start `ci.yml`
-   and `e2e.yml`) and never sets auto-merge. Create a fine-grained personal access token
-   (Settings → Developer settings → Fine-grained tokens): resource owner `vimma-browser`,
-   **Only select repositories → vimma**, repository permissions **Contents: Read and write** and
-   **Pull requests: Read and write** (Metadata: read is added automatically), nothing else and
-   **no Workflows**. Store it with `gh secret set UPSTREAM_PR_TOKEN -R vimma-browser/vimma`.
-   Renew it before it expires; when it lapses, bumps fall back to drafts.
+   and `e2e.yml`) and never sets auto-merge. The org's GitHub App `vimma-upstream-autopilot` has
+   repository permissions **Contents**, **Pull requests** and **Issues: Read and write** (Metadata:
+   read is added automatically), nothing else, **no Workflows** and no webhook, and is installed
+   on vimma only. The variable `UPSTREAM_APP_ID` holds its client ID and the secret
+   `UPSTREAM_APP_KEY`, of the `upstream-autopilot` environment (deployable only from `main`), its
+   private key; each run mints a one-hour token, so nothing expires (docs/security.md, G14).
+   `node tools/upstream/create-app.mjs` creates the environment (and stops if it already allows
+   another ref), then the App from a manifest, the variable and the secret: open the local
+   address it prints, confirm on GitHub, then install the App on **Only select repositories →
+   vimma** from the link it prints (GitHub has no API for that step). To rotate the key, generate a new one on the App's page,
+   `gh secret set UPSTREAM_APP_KEY --env upstream-autopilot -R vimma-browser/vimma < new-key.pem`,
+   then delete the old key there. Because `publish` deploys to that environment, it runs only
+   from `main`.
 3. **Auto-merge** (spec upstream-bump-automation, ADR-022): `gh variable set
 AUTO_MERGE_UPSTREAM -b all -R vimma-browser/vimma` lets GitHub merge a bump whose patches
    applied clean, whose suites passed and whose diff is only the version and copied prefs, once
-   every required check is green (the PR's "Auto-merge" row says why when it does not). `dot`
+   every check on it is green, not only the required ones (the PR's "Auto-merge" row says why
+   when it is not allowed). `upstream-merge.yml` runs each time a workflow on the PR finishes
+   and sets auto-merge after the last one; its run summary names what it still waits for or
+   what failed. A red or unapproved run (a macOS mochitest flake, for one) leaves the bump for a
+   person: re-run the failed job, and when it turns green the merge is set as usual. `dot`
    limits it to dot releases. To stop: `gh variable delete AUTO_MERGE_UPSTREAM`, and
    `gh pr merge <N> --disable-auto` on a PR already set. Repository auto-merge must stay allowed
    (Settings → General → Allow auto-merge).

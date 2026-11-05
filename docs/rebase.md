@@ -106,8 +106,9 @@ bump PR names the canary's issues for that version.
    For a new major, the PR body also names the Beta canary's `Firefox N beta: canary findings`
    issues, open or closed (see "Before the release: the Beta canary"), so you see what was
    already found and fixed on `main` before you review the bump.
-   The PR is a **draft** unless every patch applies, the suites passed and `UPSTREAM_PR_TOKEN` is
-   set (runbook): a PR opened with `GITHUB_TOKEN` starts no CI until you mark it ready.
+   The PR is a **draft** unless every patch applies, the suites passed and the upstream App is set
+   up (runbook, "Upstream App"): a PR opened with `GITHUB_TOKEN` starts no CI until you mark it
+   ready.
    **If Actions may not open PRs** (the repository setting is off), the branch is still pushed
    and the tracking issue gets the whole summary plus a compare link with the title and
    `Closes #N` filled in: open the PR from it.
@@ -435,7 +436,8 @@ If the PR is a draft, steps 2–7 as usual, but there is no need to wait for a n
 full-build suite is the same test. Releases skipped in between need nothing extra: the autopilot
 bumps straight to the latest and closes the older PR and issue as superseded; the drift check
 still counts from the oldest unshipped security release. With `AUTO_MERGE_UPSTREAM` set, a green
-bump merges itself once its required checks pass; otherwise a person merges.
+bump merges itself once every check on it passes (`upstream-merge.yml`); otherwise a person
+merges.
 
 ## Rolling back
 

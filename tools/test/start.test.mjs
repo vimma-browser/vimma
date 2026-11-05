@@ -18,6 +18,7 @@ import {
   browserCommand,
   devPrefs,
   startPrefs,
+  CONFIG_PATH_PREF,
   mergeUserJs,
   parseStartArgs,
   prepareProfile,
@@ -175,6 +176,15 @@ describe("startPrefs", () => {
     expect(new Map(devPrefs(root, "linux")).has("devtools.chrome.enabled")).toBe(false);
   });
 
+  it("gives the profile its own config.toml, never the installed Vimma's", () => {
+    // Without the pref every build reads and writes $XDG_CONFIG_HOME/vimma/config.toml, so a
+    // dev build's setup once added a provider an installed release could not read.
+    const root = tempDir();
+    const prefs = new Map(startPrefs(root, "linux", "/p/dev"));
+    expect(prefs.get(CONFIG_PATH_PREF)).toBe("/p/dev/vimma/config.toml");
+    expect(CONFIG_PATH_PREF).toBe("vimma.config.path");
+  });
+
   it("carries the mac read path on macOS", () => {
     const root = tempDir();
     const prefs = new Map(startPrefs(root, "darwin"));
@@ -186,6 +196,14 @@ describe("startPrefs", () => {
 
 describe("mergeUserJs", () => {
   const prefs = /** @type {const} */ ([[READ_PATH_PREF, "/repo/src/"]]);
+
+  it("keeps a config path the profile's user.js already names", () => {
+    const mine = `user_pref("${CONFIG_PATH_PREF}", "~/vimma-dev.toml");\n`;
+    expect(mergeUserJs(mine, [[CONFIG_PATH_PREF, "/p/vimma/config.toml"]])).toBe(mine);
+    expect(mergeUserJs("", [[CONFIG_PATH_PREF, "/p/vimma/config.toml"]])).toBe(
+      `user_pref("${CONFIG_PATH_PREF}", "/p/vimma/config.toml");\n`,
+    );
+  });
 
   it("writes the pref into an empty user.js", () => {
     expect(mergeUserJs("", prefs)).toBe(`user_pref("${READ_PATH_PREF}", "/repo/src/");\n`);
