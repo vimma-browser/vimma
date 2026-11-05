@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { IDENTITY_REGEXP } from "../../package/package.mjs";
@@ -16,6 +16,7 @@ import {
   verifyManifest,
 } from "../../../packages/vimma-core/src/updates.mjs";
 import { buildManifest, serialAt } from "../manifest.mjs";
+import { addSignaturePlaceholder, insertSignature, readMar, verifyMar } from "../mar.mjs";
 
 const text = readFileSync(
   new URL("../../../.github/workflows/update-publish.yml", import.meta.url),
@@ -81,8 +82,8 @@ const GUARD =
   "github.ref == 'refs/heads/main'";
 
 describe("update-publish.yml", () => {
-  it("has the jobs: start on publish, then prepare, sign, publish and the failure report", () => {
-    expect([...all.keys()]).toEqual(["start", "prepare", "sign", "publish", "failure"]);
+  it("has the jobs: start on publish, prepare, sign, publish, release.yml's mar-sign, failure", () => {
+    expect([...all.keys()]).toEqual(["start", "prepare", "sign", "publish", "mar-sign", "failure"]);
   });
 
   it("runs when a release is published, or by hand; never on a push or a pull request", () => {
@@ -180,16 +181,21 @@ describe("update-publish.yml", () => {
     expect(permissionsOf(job("prepare"))).toEqual(["contents: read", "pull-requests: read"]);
     expect(permissionsOf(job("sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("publish"))).toEqual(["contents: read"]);
+    expect(permissionsOf(job("mar-sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("failure"))).toEqual(["issues: write"]);
   });
 
-  it("only sign mints an OIDC token, and only sign names the signing environment", () => {
+  // The two signing jobs: the manifest's and the MAR's. Both are this file's, so Google Cloud's
+  // job_workflow_ref condition (update-publish.yml at refs/heads/main) admits both and nothing
+  // else.
+  it("only sign and mar-sign mint an OIDC token or name the signing environment", () => {
+    const signers = ["sign", "mar-sign"];
     for (const [id, block] of all) {
-      expect(block.includes("id-token"), id).toBe(id === "sign");
-      expect(block.includes("update-signing"), id).toBe(id === "sign");
-      expect(block.includes("GCP_"), id).toBe(id === "sign");
+      expect(block.includes("id-token"), id).toBe(signers.includes(id));
+      expect(block.includes("update-signing"), id).toBe(signers.includes(id));
+      expect(block.includes("GCP_"), id).toBe(signers.includes(id));
     }
-    expect(job("sign")).toMatch(/^ {4}environment: update-signing$/m);
+    for (const id of signers) expect(job(id)).toMatch(/^ {4}environment: update-signing$/m);
   });
 
   it("the deploy key lives in its own environment and reaches only the push step", () => {
@@ -207,11 +213,14 @@ describe("update-publish.yml", () => {
     expect(publish).toContain("UPDATES_DEPLOY_KEY_SET: ${{ secrets.UPDATES_DEPLOY_KEY != '' }}");
   });
 
-  it("the signing job runs no repository code: no checkout, no node, no npm", () => {
-    const sign = job("sign");
-    expect(sign).not.toContain("actions/checkout");
-    expect(sign).not.toMatch(/\bnode\b|\bnpm\b|\bnpx\b|setup-node/);
-  });
+  it.each(["sign", "mar-sign"])(
+    "the signing job %s runs no repository code: no checkout, no node, no npm",
+    (id) => {
+      const sign = job(id);
+      expect(sign).not.toContain("actions/checkout");
+      expect(sign).not.toMatch(/\bnode\b|\bnpm\b|\bnpx\b|setup-node/);
+    },
+  );
 
   it("no job installs dependencies, and no checkout keeps a token in .git/config", () => {
     expect(text).not.toMatch(/npm (?:ci|install)|npx /);
@@ -249,8 +258,51 @@ describe("update-publish.yml", () => {
       const cond = condition(job(id));
       expect(cond).toContain(GUARD);
       expect(cond).toContain("(vars.UPDATES_ENABLED == 'true' || inputs.dry_run)");
+      // In release.yml's call, event_name is the caller's workflow_dispatch: never a manifest.
+      expect(cond).toMatch(/ && !inputs\.mar$/);
     },
   );
+
+  it("is called by release.yml alone, with the MAR's name, and signs only there", () => {
+    const on = text.slice(text.indexOf("\non:\n"), text.indexOf("\npermissions:"));
+    expect(on).toMatch(
+      /^ {2}workflow_call:\n {4}inputs:\n {6}mar:\n {8}description: .+\n {8}required: true\n {8}type: string\n$/m,
+    );
+    expect(condition(job("mar-sign"))).toBe(
+      "inputs.mar != '' && github.repository == 'vimma-browser/vimma' && " +
+        "github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' && " +
+        "github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main'",
+    );
+    expect(condition(job("failure"))).toContain("!inputs.mar");
+    const callers = readdirSync(new URL("../../../.github/workflows/", import.meta.url)).filter(
+      (f) =>
+        readFileSync(new URL(`../../../.github/workflows/${f}`, import.meta.url), "utf8").includes(
+          "uses: ./.github/workflows/update-publish.yml",
+        ),
+    );
+    expect(callers).toEqual(["release.yml"]);
+  });
+
+  it("downloads the MAR SHA256SUMS lists, and the one the signed manifest offers", () => {
+    const prepare = runOf(job("prepare"), "Download the release's files");
+    expect(prepare).toContain('mar="vimma-$v-linux-x86_64.complete.mar"');
+    expect(prepare).toContain(
+      `if [ "$TARGET_OS" = linux ] && awk -v f="$mar" '$2 == f { found = 1 } END { exit !found }' "$SUMS"; then`,
+    );
+    const publish = runOf(job("publish"), "Download the release's files");
+    expect(publish).toContain(
+      `if grep -q '<patch ' signed/update.xml; then files+=("vimma-$v-linux-x86_64.complete.mar"); fi`,
+    );
+    const publishJob = job("publish");
+    expect(publishJob.indexOf("name: manifest-signed")).toBeLessThan(
+      publishJob.indexOf("- name: Download the release's files"),
+    );
+  });
+
+  it("keeps the signed MAR as long as release.yml's own artifacts", () => {
+    const sign = job("mar-sign");
+    expect(sign.slice(sign.indexOf("name: mar-signed"))).toMatch(/retention-days: 7(?: #.*)?\n/);
+  });
 
   it("keeps the signed manifest only a day: a dry run's signature is real", () => {
     const sign = job("sign");
@@ -270,9 +322,13 @@ describe("update-publish.yml", () => {
   it("runs one manifest per target at a time, never cancelling one half done", () => {
     // Per event: the release event's run, which only starts another, never waits behind or
     // displaces a signing run. Per target: GitHub keeps one pending run per group, so a Linux
-    // and a macOS run started together must not replace each other.
-    expect(text).toMatch(
-      /^concurrency:\n {2}group: update-publish-\$\{\{ github\.event_name \}\}-\$\{\{ inputs\.target \|\| 'linux' \}\}\n {2}cancel-in-progress: false$/m,
+    // and a macOS run started together must not replace each other. release.yml's call (with
+    // `mar`) signs for its own run, so it has a group of its own and never waits behind, or
+    // replaces, a manifest run; a manifest run's group is the same as before the call existed.
+    expect(text).toContain(
+      "\nconcurrency:\n  group: ${{ inputs.mar && format('update-publish-mar-{0}', github.run_id) || " +
+        "format('update-publish-{0}-{1}', github.event_name, inputs.target || 'linux') }}\n" +
+        "  cancel-in-progress: false\n",
     );
   });
 
@@ -483,9 +539,10 @@ esac
    * @param {string} dir
    * @param {string} name
    * @param {Record<string, string>} env
+   * @param {string} [id] the job
    */
-  const run = (dir, name, env) =>
-    spawnSync("bash", ["-e", "-o", "pipefail", "-c", runOf(job("sign"), name)], {
+  const run = (dir, name, env, id = "sign") =>
+    spawnSync("bash", ["-e", "-o", "pipefail", "-c", runOf(job(id), name)], {
       cwd: dir,
       encoding: "utf8",
       env: {
@@ -600,11 +657,199 @@ esac
     ).not.toBe(0);
   }, 60_000);
 
+  const MAR_URL =
+    "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/vimma-0.3.1-linux-x86_64.complete.mar";
+  const withPatch = (/** @type {string} */ url = MAR_URL) =>
+    offerBody().replace(
+      "    <vimmaTarball ",
+      `    <patch type="complete" size="5" hashFunction="sha512" hashValue="${"e".repeat(128)}" URL="${url}"/>\n    <vimmaTarball `,
+    );
+
+  it("signs a body whose <patch> is the tag's MAR", () => {
+    const { dir } = setUp(withPatch());
+    const check = run(dir, "Check what is about to be signed", {
+      TAG: "v0.3.1",
+      OFFER: "release",
+      TARGET_OS: "linux",
+    });
+    expect(check.stderr).toBe("");
+    expect(check.status).toBe(0);
+  }, 60_000);
+
+  it.each([
+    [
+      "at another URL",
+      () => withPatch("https://example.com/vimma-0.3.1-linux-x86_64.complete.mar"),
+    ],
+    ["for another tag", () => withPatch(MAR_URL.replaceAll("0.3.1", "0.3.0"))],
+    [
+      "twice",
+      () =>
+        withPatch().replace(
+          "  </update>",
+          `${withPatch()
+            .split("\n")
+            .find((l) => l.includes("<patch "))}\n  </update>`,
+        ),
+    ],
+  ])(
+    "refuses a <patch> %s",
+    (_name, body) => {
+      const { dir } = setUp(body());
+      const check = run(dir, "Check what is about to be signed", {
+        TAG: "v0.3.1",
+        OFFER: "release",
+        TARGET_OS: "linux",
+      });
+      expect(check.status).not.toBe(0);
+    },
+    60_000,
+  );
+
+  it("refuses a <patch> in the macOS manifest", () => {
+    const mac = buildManifest({
+      serial: serialAt(new Date()),
+      update: { ...macOffer(), displayVersion: "0.3.1" },
+      os: "macos",
+    }).replace(
+      "    <vimmaDmg ",
+      `    <patch type="complete" size="5" hashFunction="sha512" hashValue="${"e".repeat(128)}" URL="${MAR_URL}"/>\n    <vimmaDmg `,
+    );
+    const env = {
+      TAG: "v0.3.1",
+      OFFER: "release",
+      TARGET_OS: "macos",
+      BUILD_TARGET: "Darwin_aarch64-gcc3",
+    };
+    expect(run(setUp(mac).dir, "Check what is about to be signed", env).status).not.toBe(0);
+  }, 60_000);
+
   it("signs an empty manifest when nothing is offered", () => {
     const { dir } = setUp(buildManifest({ serial: serialAt(new Date()), update: null }));
     const check = run(dir, "Check what is about to be signed", { TAG: "", OFFER: "nothing" });
     expect(check.status).toBe(0);
   }, 60_000);
+});
+
+// mar-sign, run with the same stand-in for gcloud: the placeholder MAR release.yml's package job
+// builds (tools/update/mar.mjs, from a MAR Mozilla's own `mar` made) comes out signed so that the
+// updater's check accepts it under the KMS key.
+describe.skipIf(process.platform !== "linux")("the MAR signing job's steps, run", () => {
+  const NAME = "vimma-0.3.1-linux-x86_64.complete.mar";
+  const fixture = () => readFileSync(new URL("fixtures/mar/unsigned.mar", import.meta.url));
+
+  /** @param {Buffer} mar */
+  function setUp(mar) {
+    const dir = tempDir("vimma-mar-sign-");
+    const pair = generateKeyPairSync("rsa", { modulusLength: 4096 });
+    writeFileSync(join(dir, "kms.key"), pair.privateKey.export({ type: "pkcs8", format: "pem" }));
+    mkdirSync(join(dir, "bin"));
+    mkdirSync(join(dir, "in"));
+    writeFileSync(join(dir, "in", NAME), mar);
+    writeFileSync(
+      join(dir, "bin", "gcloud"),
+      `#!/bin/sh
+set -e
+args="$*"
+arg() { printf '%s\\n' "$args" | sed -n "s/.*$1 \\([^ ]*\\).*/\\1/p"; }
+case "$args" in
+  "kms asymmetric-sign --version $KEY_VERSION "*)
+    node -e 'const c = require("node:crypto"), fs = require("node:fs");
+      const [, key, input, output] = process.argv;
+      fs.writeFileSync(output, c.privateEncrypt(
+        { key: fs.readFileSync(key), padding: c.constants.RSA_PKCS1_PADDING }, fs.readFileSync(input)));' \\
+      "$FAKE_KMS_KEY" "$(arg --input-file)" "$(arg --signature-file)" ;;
+  "kms keys versions get-public-key $KEY_VERSION "*)
+    openssl pkey -in "$FAKE_KMS_KEY" -pubout -out "$(arg --output-file)" ;;
+  *) echo "unexpected gcloud $args" >&2; exit 2 ;;
+esac
+`,
+      { mode: 0o755 },
+    );
+    return { dir, publicKey: pair.publicKey };
+  }
+
+  /**
+   * @param {string} dir
+   * @param {string} name
+   * @param {Record<string, string>} [env]
+   */
+  const run = (dir, name, env = {}) =>
+    spawnSync("bash", ["-e", "-o", "pipefail", "-c", runOf(job("mar-sign"), name)], {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${join(dir, "bin")}:${process.env.PATH}`,
+        KEY_VERSION: "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
+        FAKE_KMS_KEY: join(dir, "kms.key"),
+        GITHUB_OUTPUT: join(dir, "github-output"),
+        MAR: NAME,
+        CALLER_TAG: "v0.3.1",
+        ...env,
+      },
+    });
+
+  it("signs the placeholder so that the updater's check accepts it under the KMS key", () => {
+    const placeholder = addSignaturePlaceholder(fixture());
+    const { dir, publicKey } = setUp(placeholder);
+    const check = run(dir, "Check the MAR placeholder");
+    expect(check.stderr).toBe("");
+    expect(check.status).toBe(0);
+    expect(check.stdout).toContain("channel vimma");
+    const signed = run(dir, "Sign the MAR with Cloud KMS");
+    expect(signed.stderr).not.toMatch(/error/i);
+    expect(signed.status).toBe(0);
+    const out = readFileSync(join(dir, "out", NAME));
+    expect(verifyMar(out, [publicKey], { channel: "vimma", productVersion: "159.0.1" })).toEqual({
+      channel: "vimma",
+      productVersion: "159.0.1",
+      entries: 3,
+    });
+    // Only the signature bytes changed: what signmar -s would have written.
+    expect(insertSignature(placeholder, out.subarray(28, 540)).equals(out)).toBe(true);
+  }, 60_000);
+
+  /** @param {(b: Buffer) => Buffer} change */
+  const changed = (change) => change(Buffer.from(addSignaturePlaceholder(fixture())));
+
+  it.each([
+    ["an unsigned MAR (no placeholder)", () => fixture(), {}],
+    ["a MAR already signed", () => changed((b) => (b.fill(7, 28, 540), b)), {}],
+    ["another channel", () => changed((b) => (b.write("vimmb", 552, "latin1"), b)), {}],
+    ["no MAR at all", () => Buffer.from("XAR1".padEnd(1000, "x")), {}],
+    [
+      "a size field that is not the file's",
+      () => changed((b) => (b.writeBigUInt64BE(1n, 8), b)),
+      {},
+    ],
+    ["another algorithm", () => changed((b) => (b.writeUInt32BE(1, 20), b)), {}],
+    [
+      "a name that is not the tag's MAR",
+      () => addSignaturePlaceholder(fixture()),
+      { MAR: "vimma-0.3.2-linux-x86_64.complete.mar" },
+    ],
+    [
+      "a caller tag that is not vX.Y.Z",
+      () => addSignaturePlaceholder(fixture()),
+      { CALLER_TAG: "main" },
+    ],
+  ])(
+    "refuses to sign %s",
+    (_name, mar, env) => {
+      const { dir } = setUp(mar());
+      if (env.MAR) writeFileSync(join(dir, "in", env.MAR), readFileSync(join(dir, "in", NAME)));
+      const check = run(dir, "Check the MAR placeholder", env);
+      expect(check.status).not.toBe(0);
+      expect(check.stdout + check.stderr).toMatch(/::error::/);
+    },
+    60_000,
+  );
+
+  it("the checked offsets are the ones mar.mjs reads", () => {
+    const mar = readMar(addSignaturePlaceholder(fixture()));
+    expect(mar.signatures).toEqual([{ algorithm: 2, offset: 28, length: 512 }]);
+  });
 });
 
 describe("tools/update/manifest.mjs verify (the CLI the publish job runs)", () => {

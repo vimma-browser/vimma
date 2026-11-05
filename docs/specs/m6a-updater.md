@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1, sub-PR 2, sub-PR 3 and sub-PR 4's release manifest implemented; sub-PR 4's MAR and nightly parts and sub-PR 5, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PRs 1 to 4 implemented, the nightly's signed MAR and manifest waiting for public nightly releases (decision 23); sub-PR 5, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -628,6 +628,27 @@ non-exportable KMS key cannot be placed in. This is a constraint on sub-PR 4: it
 path must use raw PKCS#1 KMS signing over a SHA-384 DigestInfo; `signmar -v` still verifies the
 result.)
 
+(Since changed: sub-PR 4 signs the MAR in `update-publish.yml`'s `mar-sign` job, which
+`release.yml` calls as a reusable workflow, not in an `update-sign` job of `release.yml`,
+because a called job's OIDC token names the called file, so the Workload Identity condition that
+admits `update-publish.yml` on `main` alone (docs/runbook.md, step 7b) admits it unchanged and
+the key gains no new workflow; the job runs no repository code, as the manifest's `sign` does.
+The MAR is built in `package`, not `build`, from the release tarball, because `package` adds
+`vimma-ctl` to that tarball after the build and the MAR must install what the tarball does; the
+build hands over its host `mar`, Mozilla's `make_full_update.sh` and `signmar`
+(`tools/update/mar.mjs build` runs the script as `./mach repackage mar` does). `mar.mjs` gives
+the MAR a signature block whose one signature is zero, laid out as `signmar -s` lays it out,
+and `mar-sign` signs every byte but those: the bytes start with `MAR1`, so the manifest's
+domain prefix keeps the two uses apart (decision 12). A job with no secret, `mar`, then checks
+that only the signature changed and that `signmar -v` and `mar.mjs verify` accept it under the
+committed certificates, and adds it to `SHA256SUMS`, which cosign signs as before; the
+manifest's `<patch>` follows the release's `SHA256SUMS`, so a release from before the MAR keeps
+its manifest. The nightly sets its channel with `tools/update/channel.mjs` rather than
+`package.mjs --channel`, because it uploads `./mach package`'s tarball and runs none of the
+packaging, and it builds its MAR as a check of the release's step but signs, keeps and offers
+none until public nightly releases (decision 23). docs/runbook.md, "Update signing keys and the
+update host", step 8; docs/security.md UP14.)
+
 (Since changed: the release manifest is published by a workflow of its own,
 `update-publish.yml`, on `release: released`, because a release has no MAR until sub-PR 2 and
 "check and tell" (decision 26) needs only the manifest; `release.yml` gains the MAR steps with
@@ -1211,6 +1232,8 @@ tested:
 4. **Packaging and pipeline** (`package.mjs`, `tools/update/`, `release.yml`, `nightly.yml`,
    `update-publish.yml`): workflow tests and a dry run. Lands after the
    build-supply-chain implementation, whose full builds this extends (decision 4).
+   (Since changed: delivered as §7's note on `mar-sign` says; the nightly's signed MAR, its manifest
+   and the rolling `nightly` release come with public nightly releases, decision 23.)
 5. **e2e and the security rehearsal**: the scenarios above; the M6a gate.
 
 ## Open questions

@@ -833,7 +833,7 @@ export const gnuTar = () =>
  * @param {string} extract the directory holding `vimma/`
  * @param {string} to
  */
-function packTarball(extract, to) {
+export function packTarball(extract, to) {
   const owner = gnuTar()
     ? ["--sort=name", "--owner=0", "--group=0", "--numeric-owner"]
     : ["--uid", "0", "--gid", "0", "--numeric-owner"];

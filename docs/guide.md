@@ -52,8 +52,9 @@ What works today, each with the section that explains it:
   for a security release), a short message announces each new version once, a security release
   asks once per session whether to show the update command, and `:update` shows the exact
   commands for how you installed it. The AppImage replaces its own file with a newer release
-  checked against the signed update file, and runs it from the next start; once a security
-  release is in place it asks once per session to restart, and `:restart` restarts into it.
+  checked against the signed update file, and runs it from the next start; a tarball built with
+  Firefox's updater installs a signed update at its next start. Once a security release is in
+  place it asks once per session to restart, and `:restart` restarts into it.
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
   uploads; Safe Browsing on; a site's permissions shown and changed from the keyboard with
@@ -134,7 +135,9 @@ install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
 tarball over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
 command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so update it this way once.
 An AppImage from a release that includes the self-update replaces its own file when a newer
-release is out; the next start runs it.
+release is out; the next start runs it. A tarball from a release built with Firefox's updater
+(its release lists `vimma-X.Y.Z-linux-x86_64.complete.mar`) updates itself the same way, through
+Firefox's updater ([Updates](#updates)).
 
 **Building from source.** Follow [CONTRIBUTING.md](../CONTRIBUTING.md#build-and-run): `npm ci`,
 `npx surfer download`, `npx surfer bootstrap`, `npm run import`, `npx surfer build`. The first
@@ -4253,7 +4256,8 @@ slots busy. Turn the pref off to stop either.
 
 Vimma 0.1.2 and later tell you when a newer release is out, on Linux x86_64 and on Macs with
 Apple Silicon. Vimma notifies you and shows the command; it does not install the update itself,
-except as an AppImage, which replaces its own file (below).
+except as an AppImage, which replaces its own file, and as a tarball built with Firefox's
+updater, which applies the update at its next start (below).
 
 **Vimma 0.1.6 on a Mac** shows the notice, but its `:update` shows the Linux tarball command,
 which does not apply to a Mac: do not run it. Update with `brew upgrade --cask vimma`, or install
@@ -4268,7 +4272,7 @@ fetches one small signed file from `updates.vimma.dev` that names the newest rel
 update channel. A check that fails is tried again every hour while Vimma runs. Vimma checks the
 file's signature against the keys built into Vimma and refuses anything else: a file signed by
 another key, one for another channel or platform, or one older than a file it already accepted.
-Except for the AppImage, it installs nothing; it tells you.
+Except for the AppImage and such a tarball, it installs nothing; it tells you.
 
 - **A newer version:** the status bar's right side shows `⇡ 0.3.1 available`, dim. A release that
   carries a Firefox security fix shows `⇡ 0.3.1 security: :update` in the error colour. The
@@ -4296,13 +4300,23 @@ Except for the AppImage, it installs nothing; it tells you.
   0.3.1; `about:vimma` shows the version that runs. If the AppImage's directory is not writable,
   the download does not match, or it fails, your file stays as it was, `about:vimma` says why,
   `:update` shows the manual steps, and the next check tries again.
+- **The tarball updates itself** once its release was built with Firefox's updater (the release
+  lists `vimma-X.Y.Z-linux-x86_64.complete.mar` beside the tarball). Firefox's own updater checks
+  the same signed file, downloads the new release's complete update (the `.complete.mar`, from
+  the project's GitHub release, without cookies), checks its signature against the update key
+  built into Vimma and prepares it. The status bar then shows `⇡ 0.3.1 on restart`
+  (`⇡ 0.3.1 security: :restart` in the error colour for a security release), and the next start
+  of Vimma installs it. Vimma never restarts by itself. If Vimma cannot write the directory it
+  runs from (a tarball unpacked as root into `/opt`, say), it keeps showing the offer, and
+  `:update`'s commands say that the directory's owner has to run them.
 - **A security update that is installed asks to restart**, once per session:
   `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, with
   `Private tabs will close.` before `(y/N)` while the private workspace has tabs, and
   `Tabs will not come back.` in place of `Tabs come back.` when they will not (below). `y` restarts
   Vimma at once, as `:restart` does; `n`, Esc or any other key dismisses it, and a session that
   runs on is asked again 24 hours later. It waits and arms as the question above does, and is not
-  asked in a private window. Today this is the AppImage, once it has replaced its file.
+  asked in a private window. This is the AppImage once it has replaced its file, and the tarball
+  once its update is ready for the next start.
 - **`:restart`** restarts Vimma. Your workspaces, tabs and panes come back, as after any restart;
   the private workspace's tabs do not, so with private tabs open it asks first:
   `Restart Vimma? 2 private tabs will close. (y/N)`. A page that asks before it is left (unsaved
@@ -4326,7 +4340,7 @@ Except for the AppImage, it installs nothing; it tells you.
   | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
   | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
   | `.rpm`                   | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
-  | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                               |
+  | Tarball                  | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory             |
   | AppImage                 | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
   | Flatpak (Flathub)        | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice        |
   | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |

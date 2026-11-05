@@ -3125,7 +3125,7 @@ Rules:
   a frame that has navigated since gets nothing, and the notice says the match is gone.
   [`a_jump_never_reaches_a_document_the_frame_navigated_to`](../tests/browser/browser_vimma_live_grep.js)
 
-## 16. Update check (`updates/VimmaUpdates.sys.mjs`, `update-publish.yml`)
+## 16. Update check (`updates/VimmaUpdates.sys.mjs`, `update-publish.yml`, the MAR in `release.yml`)
 
 Spec: [m6a-updater](specs/m6a-updater.md) (delivery 1) and [update-notices](specs/update-notices.md).
 Vimma fetches one signed manifest from `updates.vimma.dev` every 12 hours, at startup when a check
@@ -3308,8 +3308,8 @@ _Pages_ and _extensions_ cannot reach it.
   start a run on `main` that re-signs a published release or offers nothing (withholding
   updates).
   [`grants nothing by default, and each job only what it needs`](../tools/update/test/update-workflow.test.mjs),
-  [`only sign mints an OIDC token, and only sign names the signing environment`](../tools/update/test/update-workflow.test.mjs),
-  [`the signing job runs no repository code: no checkout, no node, no npm`](../tools/update/test/update-workflow.test.mjs),
+  [`only sign and mar-sign mint an OIDC token or name the signing environment`](../tools/update/test/update-workflow.test.mjs),
+  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../tools/update/test/update-workflow.test.mjs),
   [`a published release only starts the run on main, and only with UPDATES_ENABLED`](../tools/update/test/update-workflow.test.mjs),
   [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../tools/update/test/update-workflow.test.mjs),
   [`checks that the release is published, not a pre-release, and on main`](../tools/update/test/update-workflow.test.mjs),
@@ -3456,10 +3456,10 @@ _Pages_ and _extensions_ cannot reach it.
   self-signed by its own key is refused. The primary's certificate is made from the request
   `update-cert.mjs` builds for the pinned primary key; only `--any-key`, for throwaway test
   keys, takes another. `check-build.mjs` checks a package (the URL, both channel files, and
-  that its `updater` carries Vimma's certificates and none of Mozilla's); the release and
-  nightly jobs run it from sub-PR 4 on.
-  **⚠ limit:** no release or nightly sets `VIMMA_UPDATES=1` before sub-PR 4, which first
-  builds and signs the MARs; Firefox's check runs Vimma's verifier first (UP13). Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
+  that its `updater` carries Vimma's certificates and none of Mozilla's): `release.yml`'s
+  `package` job on the release tarball, and `nightly.yml` on its tarball once it is set to the
+  `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
+  **⚠ limit:** Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
   Mozilla's keys, and keep `aus5.mozilla.org`; they are never shipped.
   [`is not built without VIMMA_UPDATES (source and dev builds)`](../tools/test/mozconfig-updater.test.mjs),
   [`refuses VIMMA_UPDATES=1 without Vimma's certificates, so no updater trusts Mozilla's test keys`](../tools/test/mozconfig-updater.test.mjs),
@@ -3475,7 +3475,10 @@ _Pages_ and _extensions_ cannot reach it.
   [`refuses a signature that is not the key's own over this request`](../tools/update/test/update-cert.test.mjs),
   [`refuses a certificate whose self-signature does not verify`](../tools/update/test/gen-update-keys.test.mjs),
   [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../tools/update/test/check-build.test.mjs),
-  [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../tools/update/test/update-cert.test.mjs)
+  [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../tools/update/test/update-cert.test.mjs),
+  [`package checks the release tarball's updater, whether or not updates are on`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`packages for the nightly channel and checks the updater before the upload`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`rewrites both channel files, and nothing else in them`](../tools/update/test/channel.test.mjs)
 
 - UP13. Firefox's update check **never** hands Firefox's update parser (`#parseUpdates`) or its
   choice of an update a manifest that Vimma's rules (UP1, UP2) have not accepted:
@@ -3511,9 +3514,80 @@ _Pages_ and _extensions_ cannot reach it.
   [`update_checks_a_tarball_through_firefoxs_updater`](../tests/browser/browser_vimma_update_verify.js),
   [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../packages/vimma-core/test/updates.test.mjs)
 
+- UP14. A complete MAR is **only** signed by `update-publish.yml`'s `mar-sign` job, which
+  `release.yml` run from `main` calls (`workflow_call`), and **only** for that release's own MAR
+  on the release channel. A called job is the called file's job, so its OIDC token names
+  `update-publish.yml` at `refs/heads/main`: the Workload Identity condition on
+  `job_workflow_ref` (UP7) admits no new workflow, and the key is reached by no job of
+  `release.yml` itself. The job refuses to run unless its caller is `release.yml` at
+  `refs/heads/main` (`github.workflow_ref`) and `UPDATES_ENABLED` is `true`, uses the
+  `update-signing` environment (deployment branch `main` alone), holds only `id-token: write`
+  and runs no repository code. `release.yml`'s calling job allows the union of what
+  `update-publish.yml`'s jobs ask for (`actions: write`, `contents: read`,
+  `pull-requests: read`, `issues: write`, `id-token: write`), because GitHub refuses a call
+  whose jobs, skipped ones included, ask for more than the caller allows; that is a ceiling, and
+  in a call no job but `mar-sign` runs (`start` needs the release event, the others no `mar`
+  input). Before Cloud KMS signs anything it checks with the shell alone
+  that the file is named as the caller's tag's MAR, that its size field is its size, that it has
+  exactly one signature entry, 512 bytes of RSA-PKCS#1 v1.5 with SHA-384 (algorithm 2), all
+  zero, and that its product information block names the channel `vimma`. It signs every byte
+  but that placeholder, bytes that start with `MAR1`, while a manifest's signed bytes start with
+  `vimma-update-xml-v1\n`, so under the one key (spec decision 12) a MAR signature can never pass
+  as a manifest's or back. It checks KMS's signature with openssl and writes in only the
+  signature bytes. The MAR is built in `package`, a job with no secret, from the release tarball
+  with the build's own host `mar` and Mozilla's `make_full_update.sh`
+  (`tools/update/mar.mjs build`). Then `mar`, a job with no secret and a read-only token, checks
+  that the signed MAR differs from the one `package` built only in its signature bytes, that the
+  signature verifies under the committed certificates with `mar.mjs` and with Mozilla's `signmar`
+  (the updater's own verification code, from this release's build), and that its channel and
+  product version are the release's; only then does `SHA256SUMS` list it, so cosign signs it
+  with the other assets and `publish` uploads it. While `UPDATES_ENABLED` is `true`, `sign` and
+  `publish` **never** run unless `mar` succeeded, so a release never ships without the MAR its
+  manifest offers, and `mar` fails when `mar-sign` did not succeed, skipped included, so the
+  release run fails and opens the `release-failure` issue rather than uploading nothing. The manifest offers a MAR (`<patch>`) **only** when the release's
+  cosign-signed `SHA256SUMS` lists it, with its size and SHA-512 and at the release's own
+  download URL; the manifest's signing job refuses a `<patch>` at any other URL, a second one,
+  or one in the macOS manifest, and the publish job downloads the MAR again and checks it
+  against the signed manifest. The nightly builds its MAR with the same step, as a check, and
+  neither signs nor keeps it until public nightly releases ([m6a-updater](specs/m6a-updater.md),
+  decision 23).
+  **⚠ limit:** the key signs what the build job built: a compromised build (it compiles Firefox
+  with the Safe Browsing key in reach) can produce a malicious MAR that `mar-sign` then signs, as
+  it can produce a malicious tarball that cosign signs; it cannot copy the key out, and every
+  signature is in Cloud KMS's audit log. A signed MAR is kept 7 days as a workflow artifact of
+  the release run, which any signed-in GitHub user can download before the release is
+  published; an install applies it only when a manifest signed by the same key offers it.
+  **⚠ setting:** as UP7, the `update-signing` environment's branch rule and the Workload
+  Identity condition keep other branches and workflows from the key; `github.workflow_ref` only
+  keeps another workflow on `main` from calling `mar-sign`.
+  [`is called by release.yml alone, with the MAR's name, and signs only there`](../tools/update/test/update-workflow.test.mjs),
+  [`only sign and mar-sign mint an OIDC token or name the signing environment`](../tools/update/test/update-workflow.test.mjs),
+  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../tools/update/test/update-workflow.test.mjs),
+  [`signs the placeholder so that the updater's check accepts it under the KMS key`](../tools/update/test/update-workflow.test.mjs),
+  [`refuses to sign %s`](../tools/update/test/update-workflow.test.mjs),
+  [`refuses a <patch> %s`](../tools/update/test/update-workflow.test.mjs),
+  [`refuses a <patch> in the macOS manifest`](../tools/update/test/update-workflow.test.mjs),
+  [`downloads the MAR SHA256SUMS lists, and the one the signed manifest offers`](../tools/update/test/update-workflow.test.mjs),
+  [`writes signmar's layout byte for byte, with the signature zeroed`](../tools/update/test/mar.test.mjs),
+  [`signmar's signature verifies over the bytes around the placeholder`](../tools/update/test/mar.test.mjs),
+  [`the signed bytes start with the MAR ID, so no manifest signature can pass as a MAR's`](../tools/update/test/mar.test.mjs),
+  [`accepts a MAR signed the way the KMS key signs, and refuses one byte changed`](../tools/update/test/mar.test.mjs),
+  [`refuses a MAR no given key signed`](../tools/update/test/mar.test.mjs),
+  [`mar-sign calls update-publish.yml, the one workflow the key signs for`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`mar-sign's permissions are the ceiling update-publish.yml's jobs need, no more`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`mar fails, loudly, when the MAR was not signed, so a release never stops silently`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../tools/update/test/update-workflow.test.mjs),
+  [`mar checks the signed MAR with no secret: same content, the certificates, signmar`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`cosign signs the MAR with the other assets, after it is checked`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`publish uploads the MAR and the new SHA256SUMS, never a release that lost its MAR`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`runs the release's MAR step for the nightly channel, and keeps no MAR`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`prepareRelease offers the MAR SHA256SUMS lists, with its size and SHA-512`](../tools/update/test/manifest.test.mjs),
+  [`checkSigned checks the MAR the manifest offers against the downloaded file`](../tools/update/test/manifest.test.mjs),
+  [`checkSigned refuses a <patch> at any URL but the release's MAR`](../tools/update/test/manifest.test.mjs)
+
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
-Google Cloud KMS key that only `update-publish.yml`'s signing job on `main`, in the `update-signing` environment, can
-ask to sign, through GitHub OIDC (UP7); the secondary is to be generated and kept offline by the maintainer (not made yet). Their
+Google Cloud KMS key that only `update-publish.yml`'s signing jobs on `main`, in the `update-signing` environment, can
+ask to sign, through GitHub OIDC: `sign` for manifests (UP7) and `mar-sign`, called by `release.yml`, for MARs (UP14); the secondary is to be generated and kept offline by the maintainer (not made yet). Their
 setup is in [runbook.md](runbook.md#update-signing-keys-and-the-update-host-spec-m6a-updater).
 The primary's public key is pinned in `update-keys.mjs` (its SHA-256 is recorded in the runbook
 and checked by

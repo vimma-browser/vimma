@@ -96,6 +96,8 @@ const SHA512_HEX = /^[0-9a-f]{128}$/;
  * @property {"normal" | "security"} urgency
  * @property {string[]} advisories    MFSA IDs
  * @property {Required<Assets>} assets
+ * @property {{ size: number, sha512: string }} [mar]  the complete MAR (Linux only), offered to
+ *   Firefox's updater as `<patch>`; a release built before the updater has none
  */
 
 /**
@@ -124,6 +126,14 @@ export function assetNames(version, os = "linux") {
   };
   return Object.fromEntries(targetOf(os).kinds.map((k) => [k, all[k]]));
 }
+
+/**
+ * The complete MAR's file name, as release.yml uploads it.
+ * @param {string} version
+ */
+export const marName = (version) => `vimma-${version}-linux-x86_64.complete.mar`;
+/** @param {string} version */
+const marUrl = (version) => `${RELEASES_URL}/download/v${version}/${marName(version)}`;
 
 /**
  * @param {Partial<Record<AssetKind, string>>} names
@@ -170,6 +180,16 @@ export function buildManifest({ serial, update, os = "linux" }) {
       ` platformVersion="${update.appVersion}" buildID="${update.buildId}"` +
       ` displayVersion="${v}" detailsURL="${RELEASES_URL}/tag/v${v}"` +
       ` vimmaUrgency="${update.urgency}"${advisories}>\n`;
+    if (update.mar) {
+      const { size, sha512 } = update.mar;
+      need(os === "linux", "a MAR in a manifest that is not Linux's");
+      need(Number.isSafeInteger(size) && size > 0, `MAR: size ${size}`);
+      need(SHA512_HEX.test(sha512), `MAR: ${sha512} is not a SHA-512`);
+      // Firefox refuses a 0-byte patch (UpdatePatch), and checks the size and hash itself.
+      body +=
+        `    <patch type="complete" size="${size}" hashFunction="sha512"` +
+        ` hashValue="${sha512}" URL="${marUrl(v)}"/>\n`;
+    }
     for (const kind of kinds) {
       const name = nameOf(names, kind);
       const a = update.assets[kind];
@@ -232,7 +252,7 @@ export function parseSums(text, file = "SHA256SUMS") {
 /**
  * Every asset must be in the sums file with the SHA-256 of the file that was downloaded.
  * @param {Map<string, string>} sums
- * @param {Partial<Record<AssetKind, { name: string, sha256: string }>>} files
+ * @param {Partial<Record<AssetKind | "mar", { name: string, sha256: string }>>} files
  * @param {string} [file] the sums file's name, for messages
  */
 export function checkAssets(sums, files, file = "SHA256SUMS") {
@@ -472,7 +492,15 @@ export function prepareRelease({ tag, dir, commits, published, now, os = "linux"
     if (!existsSync(path)) throw new Error(`${name} was not downloaded`);
     files[kind] = { name, ...hashFile(path) };
   }
-  checkAssets(parseSums(readFileSync(join(dir, sums), "utf8"), sums), files, sums);
+  const listed = parseSums(readFileSync(join(dir, sums), "utf8"), sums);
+  // The MAR is offered when the release lists it: SHA256SUMS is what release.yml signed.
+  let mar;
+  if (os === "linux" && listed.has(marName(version))) {
+    const path = join(dir, marName(version));
+    if (!existsSync(path)) throw new Error(`${marName(version)} was not downloaded`);
+    mar = { name: marName(version), ...hashFile(path) };
+  }
+  checkAssets(listed, mar ? { ...files, mar } : files, sums);
   const info = appInfo ?? (os === "macos" ? dmgInfo : releaseInfo);
   const { appVersion, buildId } = info(
     join(dir, nameOf(names, os === "macos" ? "dmg" : "tarball")),
@@ -484,7 +512,14 @@ export function prepareRelease({ tag, dir, commits, published, now, os = "linux"
   );
   const body = buildManifest({
     serial: nextSerial(now, floor?.serial ?? null),
-    update: { appVersion, buildId, displayVersion: version, ...urgencyOf(commits), assets },
+    update: {
+      appVersion,
+      buildId,
+      displayVersion: version,
+      ...urgencyOf(commits),
+      assets,
+      ...(mar ? { mar: { size: mar.size, sha512: mar.sha512 } } : {}),
+    },
     os,
   });
   return { body, version };
@@ -539,7 +574,29 @@ export async function checkSigned(text, { keys, tag, dir, published, now, os = "
     const f = hashFile(path);
     need(f.size === a.size && f.sha512 === a.sha512, `${name} does not match the manifest`);
   }
+  if (u.marUrl) {
+    const name = marName(version);
+    need(u.marUrl === marUrl(version), `<patch> URL ${u.marUrl}, not ${marUrl(version)}`);
+    const patch = patchOf(verified.body);
+    const path = join(dir, name);
+    need(existsSync(path), `${name} was not downloaded`);
+    const f = hashFile(path);
+    need(f.size === patch.size && f.sha512 === patch.sha512, `${name} does not match the manifest`);
+  }
   return out;
+}
+
+/**
+ * The size and SHA-512 of a verified manifest's `<patch>`, in the one form buildManifest writes.
+ * @param {string} body
+ */
+function patchOf(body) {
+  const m =
+    /<patch type="complete" size="(\d{1,15})" hashFunction="sha512" hashValue="([0-9a-f]{128})" URL="[^"]*"\/>/.exec(
+      body,
+    );
+  need(!!m, "<patch> is not in the form buildManifest writes");
+  return { size: Number(m[1]), sha512: m[2] ?? "" };
 }
 
 /** @param {string} path */

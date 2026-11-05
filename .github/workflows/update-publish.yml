@@ -25,6 +25,19 @@
 # is published; the macOS run when its .dmg is on the published release, which is usually
 # later, from release.yml's macos-tap job, or here when the .dmg was there first.
 #
+# The complete MAR (spec m6a-updater §6 and §7): release.yml calls this workflow (workflow_call)
+# to sign the MAR its package job built with a zeroed signature placeholder (tools/update/mar.mjs).
+#
+#   mar-sign  environment update-signing, id-token: write and nothing else; runs no repository
+#             code: checks that the file is the release's MAR for the release channel with one
+#             zeroed SHA-384 placeholder, signs the bytes around it with Cloud KMS, checks the
+#             signature with openssl and writes it in. release.yml then checks the result with
+#             Mozilla's signmar and the committed certificates before it lists the MAR in SHA256SUMS.
+#
+# A called job is this file's job on main, so its OIDC token names update-publish.yml at
+# refs/heads/main, the one job_workflow_ref Google Cloud admits (docs/runbook.md, step 7b): the
+# key gains no new workflow. The manifest's prepare, sign and publish jobs never run in a call.
+#
 # Nothing is pushed until the repository variable UPDATES_ENABLED is `true` and the deploy key
 # exists. A dry run (-f dry_run=true) signs and checks everything and pushes nothing. By hand:
 #   gh workflow run update-publish.yml -f tag=vX.Y.Z [-f target=macos]      re-publish a manifest
@@ -57,15 +70,24 @@ on:
         required: false
         type: boolean
         default: false
+  # release.yml's mar-sign job: only a workflow on main can call this file's copy on main.
+  workflow_call:
+    inputs:
+      mar:
+        description: "The complete MAR's file name in the calling run's mar-unsigned artifact"
+        required: true
+        type: string
 
 permissions: {}
 
 # One signing run per target at a time (workflow_dispatch), so each manifest's serials only
 # grow; the release event's run, which only starts them, has a group of its own. GitHub keeps
 # one pending run per group: a third dispatch while one runs and one waits replaces the waiting
-# one, so the targets have a group each and a Linux and a macOS run never replace each other.
+# one, so the targets have a group each and a Linux and a macOS run never replace each other. A
+# call signs one MAR for its caller's run and shares no group: in a call, event_name is the
+# caller's (workflow_dispatch), and a release must never wait behind, or replace, a manifest run.
 concurrency:
-  group: update-publish-${{ github.event_name }}-${{ inputs.target || 'linux' }}
+  group: ${{ inputs.mar && format('update-publish-mar-{0}', github.run_id) || format('update-publish-{0}-{1}', github.event_name, inputs.target || 'linux') }}
   cancel-in-progress: false
 
 env:
@@ -122,7 +144,8 @@ jobs:
   prepare:
     if: >-
       github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' &&
-      github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run)
+      github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run) &&
+      !inputs.mar
     # macOS reads the build ID from the .dmg with hdiutil. A one-leg matrix rather than a
     # conditional runs-on, so that the runner check (docs/security.md, B5) sees both runners.
     runs-on: ${{ matrix.os }}
@@ -200,6 +223,13 @@ jobs:
           # release.yml's signature on it (docs/security.md UP7).
           curl -fsSL --proto =https --retry 3 -o "$SUMS.sigstore.json" "$base/$SUMS.sigstore.json" \
             || { echo "::error::$TAG has no $SUMS.sigstore.json; an unsigned release gets no update manifest"; exit 1; }
+          # The complete MAR, which a release built with Firefox's updater lists in SHA256SUMS;
+          # manifest.mjs offers it to that updater (<patch>), and releases from before have none.
+          mar="vimma-$v-linux-x86_64.complete.mar"
+          if [ "$TARGET_OS" = linux ] && awk -v f="$mar" '$2 == f { found = 1 } END { exit !found }' "$SUMS"; then
+            curl -fsSL --proto =https --retry 3 -o "$mar" "$base/$mar" \
+              || { echo "::error::$base/$mar: listed in $SUMS but not found"; exit 1; }
+          fi
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         if: env.OFFER == 'release'
@@ -258,7 +288,8 @@ jobs:
     needs: prepare
     if: >-
       github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' &&
-      github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run)
+      github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run) &&
+      !inputs.mar
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -300,6 +331,14 @@ jobs:
             [ "$(grep -c '<update ' "$body")" = 1 ] && grep -qF " displayVersion=\"${TAG#v}\" " "$body" \
               || { echo "::error::the body does not offer ${TAG#v}"; exit 1; }
           fi
+          # A <patch> is the MAR Firefox's updater downloads: Linux only, one, the tag's own.
+          patches=$(grep -c '<patch ' "$body" || true)
+          if [ "$patches" != 0 ]; then
+            mar_url="https://github.com/vimma-browser/vimma/releases/download/$TAG/vimma-${TAG#v}-linux-x86_64.complete.mar"
+            [ "$OFFER" = release ] && [ "$TARGET_OS" = linux ] && [ "$patches" = 1 ] \
+              && grep -Eq "^    <patch type=\"complete\" size=\"[0-9]+\" hashFunction=\"sha512\" hashValue=\"[0-9a-f]{128}\" URL=\"${mar_url//./\\.}\"/>$" "$body" \
+              || { echo "::error::the body's <patch> is not one complete MAR at $mar_url"; exit 1; }
+          fi
           project=$(printf '%s' "$KEY_VERSION" | sed -n 's|^projects/\([a-z][a-z0-9-]*\)/locations/.*/cryptoKeyVersions/[0-9]*$|\1|p')
           [ -n "$project" ] || { echo "::error::GCP_KMS_KEY_VERSION is not a key version resource name"; exit 1; }
           echo "project=$project" >> "$GITHUB_OUTPUT"
@@ -338,7 +377,8 @@ jobs:
     needs: sign
     if: >-
       github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' &&
-      github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run)
+      github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run) &&
+      !inputs.mar
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -375,6 +415,8 @@ jobs:
             linux) files=("vimma-$v-linux-x86_64.tar.xz" "vimma-$v-x86_64.AppImage" "vimma_${v}_amd64.deb" "vimma-$v-1.x86_64.rpm") ;;
             macos) files=("vimma-$v-macos-aarch64.dmg") ;;
           esac
+          # The MAR the signed manifest offers, checked against it below.
+          if grep -q '<patch ' signed/update.xml; then files+=("vimma-$v-linux-x86_64.complete.mar"); fi
           mkdir -p assets && cd assets
           for f in "${files[@]}"; do
             curl -fsSL --proto =https --retry 3 -o "$f" "$base/$f" \
@@ -482,9 +524,104 @@ jobs:
           echo "::error::pushed, but $url does not serve serial $SERIAL after 10 minutes (Cloudflare Workers Builds)"
           exit 1
 
+  # release.yml's call: sign the complete MAR. Only release.yml on main may call it, so the MAR
+  # channel is the release channel and the name must be the tag's MAR; the tag is the caller's
+  # input (in a call, github.event is the caller's workflow_dispatch event).
+  mar-sign:
+    if: >-
+      inputs.mar != '' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' &&
+      github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      id-token: write # GitHub OIDC for Google Cloud Workload Identity Federation
+    # As sign: main alone may deploy to it, and the key's IAM binding names it.
+    environment: update-signing
+    env:
+      KEY_VERSION: ${{ vars.GCP_KMS_KEY_VERSION }}
+      MAR: ${{ inputs.mar }}
+      CALLER_TAG: ${{ github.event.inputs.tag }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mar-unsigned
+          path: in
+
+      # The file comes from a job with no secret; before KMS signs anything, the shell alone
+      # checks that it is the tag's MAR for the release channel, with exactly one signature
+      # entry: RSA-PKCS#1 v1.5 with SHA-384 (algorithm 2), 512 bytes, all zero. Then what is
+      # signed starts with "MAR1", which the manifest's signed bytes never do (decision 12). The
+      # offsets are mar_sign.c's: the entry's header at 20, its bytes at 28 to 539, the product
+      # information block's header at 544 and its channel ID at 552 (tools/update/mar.mjs).
+      - name: Check the MAR placeholder
+        run: |
+          [[ $CALLER_TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::'$CALLER_TAG' is not a vX.Y.Z release tag"; exit 1; }
+          [ "$MAR" = "vimma-${CALLER_TAG#v}-linux-x86_64.complete.mar" ] \
+            || { echo "::error::$MAR is not $CALLER_TAG's complete MAR"; exit 1; }
+          mar="in/$MAR"
+          [ -f "$mar" ] && [ ! -L "$mar" ] || { echo "::error::no file $mar"; exit 1; }
+          size=$(stat -c %s "$mar")
+          [ "$size" -gt 552 ] && [ "$size" -le 524288000 ] || { echo "::error::$size bytes"; exit 1; }
+          u32() { od -An -tu4 --endian=big -j "$1" -N 4 "$mar" | tr -d ' '; }
+          [ "$(head -c 4 "$mar")" = MAR1 ] || { echo "::error::not a MAR"; exit 1; }
+          [ "$(od -An -tu8 --endian=big -j 8 -N 8 "$mar" | tr -d ' ')" = "$size" ] \
+            || { echo "::error::the MAR's size field is not its size"; exit 1; }
+          [ "$(u32 16)" = 1 ] && [ "$(u32 20)" = 2 ] && [ "$(u32 24)" = 512 ] \
+            || { echo "::error::not one 512-byte SHA-384 signature entry"; exit 1; }
+          [ -z "$(od -An -v -tx1 -j 28 -N 512 "$mar" | tr -d ' \n0')" ] \
+            || { echo "::error::the signature placeholder is not zeroed"; exit 1; }
+          [ "$(u32 540)" -ge 1 ] && [ "$(u32 548)" = 1 ] \
+            || { echo "::error::no product information block"; exit 1; }
+          channel=$(od -An -v -c -j 552 -N 64 "$mar" | tr -d ' \n' | sed 's/\\0.*//')
+          [ "$channel" = vimma ] || { echo "::error::MAR channel '$channel', not vimma"; exit 1; }
+          echo "signing $MAR ($size bytes, channel $channel)"
+
+      - name: The project of the key
+        id: key
+        run: |
+          project=$(printf '%s' "$KEY_VERSION" | sed -n 's|^projects/\([a-z][a-z0-9-]*\)/locations/.*/cryptoKeyVersions/[0-9]*$|\1|p')
+          [ -n "$project" ] || { echo "::error::GCP_KMS_KEY_VERSION is not a key version resource name"; exit 1; }
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          project_id: ${{ steps.key.outputs.project }}
+
+      # As the manifest's signature (docs/runbook.md, step 6): the SHA-384 DigestInfo of every
+      # byte but the placeholder's, signed by the raw PKCS#1 key, so the result is the
+      # RSASSA-PKCS1-v1_5 SHA-384 signature `signmar -s` would have written there.
+      - name: Sign the MAR with Cloud KMS
+        run: |
+          mar="in/$MAR"
+          { head -c 28 "$mar"; tail -c +541 "$mar"; } > signed.bin
+          { printf '\060\101\060\015\006\011\140\206\110\001\145\003\004\002\002\005\000\004\060'
+            openssl dgst -sha384 -binary signed.bin; } > digestinfo.bin
+          [ "$(wc -c < digestinfo.bin)" = 67 ] || { echo "::error::the DigestInfo is not 67 bytes"; exit 1; }
+          gcloud kms asymmetric-sign --version "$KEY_VERSION" \
+            --input-file digestinfo.bin --signature-file sig.bin
+          [ "$(wc -c < sig.bin)" = 512 ] || { echo "::error::the signature is not 512 bytes"; exit 1; }
+          gcloud kms keys versions get-public-key "$KEY_VERSION" --output-file kms.pem
+          openssl dgst -sha384 -verify kms.pem -signature sig.bin signed.bin
+          mkdir -p out
+          { head -c 28 "$mar"; cat sig.bin; tail -c +541 "$mar"; } > "out/$MAR"
+          [ "$(stat -c %s "out/$MAR")" = "$(stat -c %s "$mar")" ] || { echo "::error::the signed MAR changed size"; exit 1; }
+          echo "signed $MAR with key $(openssl pkey -pubin -in kms.pem -outform DER | sha256sum | cut -c1-8)"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mar-signed
+          path: out/${{ inputs.mar }}
+          retention-days: 7 # as release.yml's artifacts, so a re-run of its later jobs finds it
+          if-no-files-found: error
+
+  # The manifest's failures; a failed mar-sign fails the calling release.yml run, whose own
+  # failure job reports it.
   failure:
     needs: [start, prepare, sign, publish]
-    if: failure() && github.repository == 'vimma-browser/vimma'
+    if: failure() && github.repository == 'vimma-browser/vimma' && !inputs.mar
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

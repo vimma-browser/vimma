@@ -5,6 +5,11 @@
 # Nothing runs until the repository variable RELEASE_ENABLED is `true`, manual runs included.
 # Setup and verification: docs/runbook.md, "Releases".
 #
+# Spec m6a-updater §7: the Linux build has Firefox's updater (VIMMA_UPDATES=1), and while the
+# repository variable UPDATES_ENABLED is `true` a release also ships its complete MAR: package
+# builds it with a zeroed signature placeholder, mar-sign has update-publish.yml's job of that
+# name sign it with the Cloud KMS update key, and mar checks it before SHA256SUMS lists it.
+#
 # Trigger: workflow_dispatch only. A draft fires no `release` event, and a tag pushed with
 # GITHUB_TOKEN starts no workflow, but GITHUB_TOKEN may dispatch one: release-please.yml's
 # release-build job runs `workflow_dispatch` on main with the new tag, and a retry is the same
@@ -58,6 +63,10 @@ jobs:
     timeout-minutes: 180
     permissions:
       contents: read
+    env:
+      # Firefox's updater with Vimma's channel, update host and certificates
+      # (configs/common/mozconfig, spec m6a-updater §6); every mach call of this job reads it.
+      VIMMA_UPDATES: "1"
     outputs:
       sha: ${{ steps.tag.outputs.sha }}
     steps:
@@ -214,6 +223,32 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/vimma-safebrowsing.key"
 
+      # This build's own MAR tools for the jobs after it (spec m6a-updater §7): the host `mar`
+      # and Mozilla's make_full_update.sh and common.sh, which `./mach repackage mar` runs;
+      # signmar with the NSS libraries it loads from beside it, for Mozilla's own check of the
+      # signature; and Mozilla's update certificates, which check-build.mjs makes sure the
+      # updater does not embed. No job that holds a secret runs any of them.
+      - name: MAR tools for the package and mar jobs
+        run: |
+          rm -rf mar-tools && mkdir -p mar-tools/mozilla-certs
+          cp "$MOZ_OBJDIR/dist/host/bin/mar" engine/tools/update-packaging/make_full_update.sh \
+            engine/tools/update-packaging/common.sh mar-tools/
+          cp "$MOZ_OBJDIR/dist/bin/signmar" mar-tools/
+          # NSS opens softokn3 and freeblpriv3 itself at startup, so ldd does not list them.
+          for lib in $(ldd "$MOZ_OBJDIR/dist/bin/signmar" | awk -v d="$MOZ_OBJDIR/dist/bin/" 'index($3, d) == 1 { print $3 }') \
+            "$MOZ_OBJDIR/dist/bin/libsoftokn3.so" "$MOZ_OBJDIR/dist/bin/libfreeblpriv3.so"; do
+            cp "$lib" mar-tools/
+          done
+          cp engine/toolkit/mozapps/update/updater/*.der mar-tools/mozilla-certs/
+          ls -l mar-tools mar-tools/mozilla-certs
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mar-tools
+          path: mar-tools/
+          retention-days: 7
+          if-no-files-found: error
+
       - name: SBOM (CycloneDX), checked against the official 1.6 schema
         run: |
           node tools/package/sbom.mjs --engine engine --out "release/vimma-${TAG#v}.cdx.json"
@@ -303,6 +338,8 @@ jobs:
       contents: read
     env:
       MAINTAINER: ${{ vars.PACKAGE_MAINTAINER }}
+    outputs:
+      mar: ${{ steps.mar.outputs.mar }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -324,6 +361,11 @@ jobs:
         with:
           name: ctl
           path: ctl
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mar-tools
+          path: mar-tools
 
       # For validate-sbom.mjs (ajv), which checks the SBOM once vimma-ctl is in it.
       - name: npm ci
@@ -398,6 +440,37 @@ jobs:
       - name: Smoke test the .rpm on Fedora and openSUSE
         run: tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"
 
+      # docs/specs/m6a-updater.md, sub-PR 2's done criteria, on the tarball users download: it asks
+      # updates.vimma.dev, both channel files say vimma, and its updater embeds Vimma's
+      # certificates and none of Mozilla's.
+      - name: Check the updater in the release tarball
+        run: |
+          unpacked=$(mktemp -d)
+          tar -xJf "dist/vimma-${TAG#v}-linux-x86_64.tar.xz" -C "$unpacked"
+          node tools/update/check-build.mjs "$unpacked/vimma" --mozilla-certs mar-tools/mozilla-certs
+          rm -rf "$unpacked"
+
+      # From the release tarball, so the MAR installs exactly what the tarball does, vimma-ctl
+      # included. Not in dist/: SHA256SUMS lists the MAR once it is signed and checked (mar).
+      - name: Build the complete MAR (unsigned, with its placeholder)
+        id: mar
+        if: vars.UPDATES_ENABLED == 'true'
+        run: |
+          # download-artifact does not keep the mode
+          chmod 755 mar-tools/mar mar-tools/make_full_update.sh
+          mar="vimma-${TAG#v}-linux-x86_64.complete.mar"
+          mkdir -p mar
+          node tools/update/mar.mjs build --tarball "dist/vimma-${TAG#v}-linux-x86_64.tar.xz" --tools mar-tools --channel vimma --out "mar/$mar"
+          echo "mar=$mar" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: vars.UPDATES_ENABLED == 'true'
+        with:
+          name: mar-unsigned
+          path: mar/
+          retention-days: 7
+          if-no-files-found: error
+
       # makepkg -si in an Arch Linux container, with the tarball served from dist/ on localhost
       # (the draft has no assets yet, and a draft's download URLs answer 404 to anyone); the
       # PKGBUILD's pinned SHA-256 still checks the bytes.
@@ -412,14 +485,135 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # cosign keyless: the certificate names this workflow at refs/heads/main (IDENTITY_REGEXP in
-  # tools/package/package.mjs). Only this job can mint an OIDC token; it runs no repository code.
-  sign:
+  # The update key signs the MAR in update-publish.yml's mar-sign job, called here: its token
+  # names update-publish.yml at refs/heads/main, the one workflow Google Cloud admits for the key
+  # (docs/runbook.md, "Update signing keys and the update host", step 7b), and it runs no
+  # repository code. It reads mar-unsigned and uploads mar-signed in this run.
+  #
+  # These permissions are a ceiling, not a grant: each called job gets only what its own
+  # `permissions:` asks for, within them. GitHub refuses a call whose jobs ask for more than the
+  # caller allows, skipped jobs included, so the ceiling covers the manifest's jobs too. None of
+  # them runs in a call: `start` needs the release event, and prepare, sign, publish and failure
+  # need no `mar` input (tools/update/test/update-workflow.test.mjs). The one job that runs,
+  # mar-sign, asks only for its OIDC token.
+  mar-sign:
     needs: package
     if: >-
       vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true'
+    permissions:
+      id-token: write # GitHub OIDC for Cloud KMS, in update-publish.yml's mar-sign job
+      actions: write # ceiling only: update-publish.yml's start, which never runs in a call
+      contents: read # ceiling only: its prepare and publish
+      pull-requests: read # ceiling only: its prepare
+      issues: write # ceiling only: its failure
+    uses: ./.github/workflows/update-publish.yml
+    with:
+      mar: ${{ needs.package.outputs.mar }}
+
+  # The signed MAR, checked with no secret before anything lists it: only its signature bytes
+  # differ from the MAR package built; its signature verifies under the committed certificates
+  # (tools/update/mar.mjs, and Mozilla's signmar, the check the updater itself runs); its
+  # channel is the release's and its version Firefox's. Then SHA256SUMS lists it.
+  #
+  # It runs whenever package succeeded, so a mar-sign that was skipped (its job's conditions in
+  # update-publish.yml) fails here, loudly, rather than leaving a release that uploads nothing.
+  mar:
+    needs: [build, package, mar-sign]
+    if: >-
+      always() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' &&
+      needs.package.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      MAR: ${{ needs.package.outputs.mar }}
+      MAR_SIGN: ${{ needs.mar-sign.result }}
+    steps:
+      - name: The MAR was signed
+        run: |
+          [ "$MAR_SIGN" = success ] \
+            || { echo "::error::mar-sign ended '$MAR_SIGN', so the MAR is not signed and the release is not uploaded"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: dist
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mar-unsigned
+          path: mar-unsigned
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mar-signed
+          path: mar-signed
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mar-tools
+          path: mar-tools
+
+      - name: Check the signed MAR
+        run: |
+          echo "$MAR" | grep -Eqx "vimma-${TAG#v}-linux-x86_64\.complete\.mar" \
+            || { echo "::error::'$MAR' is not $TAG's complete MAR"; exit 1; }
+          node tools/update/mar.mjs same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"
+          firefox=$(node -p 'require("./surfer.json").version.version')
+          node tools/update/mar.mjs verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma --product-version "$firefox"
+          # Mozilla's signmar, from this release's build: the verification code the updater runs
+          # (libmar's mar_verify.c), against an NSS database holding each certificate.
+          sudo apt-get update -q
+          sudo apt-get install -y -q libnss3-tools
+          chmod 755 mar-tools/signmar
+          db=$(mktemp -d)
+          certutil -N -d "sql:$db" --empty-password
+          certutil -A -n primary -t ,, -i configs/updater/primary.der -d "sql:$db"
+          certutil -A -n secondary -t ,, -i configs/updater/secondary.der -d "sql:$db"
+          LD_LIBRARY_PATH=mar-tools mar-tools/signmar -d "sql:$db" -n primary -v "mar-signed/$MAR"
+          LD_LIBRARY_PATH=mar-tools mar-tools/signmar -d "sql:$db" -n secondary -v "mar-signed/$MAR"
+          echo "signmar: $MAR verifies under primary.der and secondary.der"
+
+      # The sums file package.mjs wrote, with the MAR's line, in its order (by name).
+      - name: Add the MAR to SHA256SUMS
+        run: |
+          mkdir -p release-mar
+          cp "mar-signed/$MAR" release-mar/
+          { cat dist/SHA256SUMS; (cd release-mar && sha256sum "$MAR"); } | LC_ALL=C sort -k 2 > release-mar/SHA256SUMS
+          cp "mar-signed/$MAR" dist/
+          cp release-mar/SHA256SUMS dist/SHA256SUMS
+          (cd dist && sha256sum -c SHA256SUMS)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-mar
+          path: release-mar/
+          retention-days: 7
+          if-no-files-found: error
+
+  # cosign keyless: the certificate names this workflow at refs/heads/main (IDENTITY_REGEXP in
+  # tools/package/package.mjs). It runs no repository code. With UPDATES_ENABLED it waits for
+  # the checked MAR and signs it and the SHA256SUMS that lists it; a failed MAR stops it, so a
+  # release never goes out signed without the MAR its manifest would offer.
+  sign:
+    needs: [package, mar]
+    if: >-
+      always() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
-      vars.SIGNING_ENABLED == 'true'
+      vars.SIGNING_ENABLED == 'true' && needs.package.result == 'success' &&
+      (needs.mar.result == 'success' || (needs.mar.result == 'skipped' && vars.UPDATES_ENABLED != 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -428,6 +622,13 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release
+          path: dist
+
+      # The MAR and the SHA256SUMS that lists it, over package's.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.mar.result == 'success'
+        with:
+          name: release-mar
           path: dist
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -446,12 +647,15 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [build, package, sign]
-    # sign is skipped while SIGNING_ENABLED is unset; publish then uploads unsigned assets.
+    needs: [build, package, mar, sign]
+    # sign is skipped while SIGNING_ENABLED is unset; publish then uploads unsigned assets. The
+    # MAR must be in while UPDATES_ENABLED is `true`: a release without it would leave tarball
+    # installs on their version.
     if: >-
       always() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
       needs.package.result == 'success' &&
+      (needs.mar.result == 'success' || (needs.mar.result == 'skipped' && vars.UPDATES_ENABLED != 'true')) &&
       (needs.sign.result == 'success' || needs.sign.result == 'skipped')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -465,6 +669,12 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release
+          path: dist
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.mar.result == 'success'
+        with:
+          name: release-mar
           path: dist
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -1310,6 +1520,8 @@ jobs:
       - build
       - ctl
       - package
+      - mar-sign
+      - mar
       - sign
       - publish
       - macos-ctl
