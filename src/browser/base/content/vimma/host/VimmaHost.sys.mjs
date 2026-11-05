@@ -2728,6 +2728,10 @@ export const VimmaHost = {
     const command = chord && this._editCommand(state, chord);
     const browser = this._contentBrowser(state);
     if (!command || !browser || this._mode(state) !== "insert") return;
+    // A late reply (a busy page) must not edit, or press Enter in, the tab or pane focused since:
+    // Firefox dispatches it on the <browser> the key went to (BrowserParent::RecvReplyKeyEvent).
+    const remote = /** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent;
+    if (remote && e.target !== browser) return;
     e.preventDefault();
     VimmaActors.edit(browser, command);
   },

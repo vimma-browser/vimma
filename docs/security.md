@@ -2386,7 +2386,7 @@ own process, not a process group.
   [`test_stop_closes_the_connection_before_the_signal`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_cli_that_ignores_sigterm_is_killed_and_takes_no_step`](../tests/browser/browser_vimma_agent_cli_run.js)
 
-## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
+## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`, `host/edit-keys.mjs`)
 
 Whether a key is Vimma's or the page's depends on the tab's mode, which the content actor's focus
 reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
@@ -2421,6 +2421,20 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`after_esc_a_page_refocusing_its_field_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
   [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
+- K5. Vim's text-field keys ([key-handling-batch](specs/key-handling-batch.md) § 2) **must**
+  act only on a key the user pressed, in insert mode or in a focused chrome field, and in a page
+  only after the page left the key alone. `ctrl+j` and `ctrl+m` press a trusted `Enter` from the
+  parent (`actors/enter-key.mjs`, a `TextInputProcessor`), which Firefox routes to the focused
+  element as a keyboard's `Enter`: it carries no modifier, it is pressed only while the same
+  chrome field, or the same `<browser>` and frame, still has focus, a page's reply acts only on
+  the `<browser>` it came from (a late reply never edits the tab or pane focused since), and no
+  message from a content process can ask for it. The content actor's `Vimma:Edit` **must** run only the three editor commands
+  (`INSERT_EDIT_COMMANDS`), never Enter. A compromised content process that claims insert mode
+  (K1) gets an `Enter` in place of its own `ctrl+j`, which it could synthesize itself.
+  [`Enter is no editor command: the content actor never takes it`](../packages/vimma-core/test/editable.test.mjs),
+  [`a_page_that_takes_ctrl_j_keeps_it`](../tests/browser/browser_vimma_edit_keys.js),
+  [`a_late_reply_presses_no_enter_in_another_tab`](../tests/browser/browser_vimma_edit_keys.js),
+  [`ctrl_j_m_submit_a_single_line_inputs_form_with_a_trusted_enter`](../tests/browser/browser_vimma_edit_keys.js)
 
 ## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`, `site-dispatch.yml`)
 

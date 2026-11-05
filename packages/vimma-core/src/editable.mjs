@@ -96,18 +96,32 @@ export const INSERT_SITE_MODES = Object.freeze(["auto", "never", "always"]);
 const EDITABLE_CE = new Set(["true", "", "plaintext-only"]);
 
 /**
+ * Enter, sent as a trusted key press rather than run as an editor command: Enter is a different
+ * action in each field (a new line, a form's submit, the page's own handler, the address bar's
+ * load), and only a real Enter gets every one of them.
+ */
+export const INSERT_ENTER = "vimma_enter";
+
+/**
  * Vim's insert-mode keys in text fields (docs/specs/key-handling-batch.md § 2): chord → the
- * editor's own command, so the edit is one undo step.
+ * editor's own command, so the edit is one undo step, or INSERT_ENTER.
  * @type {Readonly<Record<string, string>>}
  */
 const INSERT_EDIT_KEYS = Object.freeze({
   "ctrl+w": "cmd_deleteWordBackward",
   "ctrl+u": "cmd_deleteToBeginningOfLine",
   "ctrl+h": "cmd_deleteCharBackward",
+  "ctrl+j": INSERT_ENTER,
+  "ctrl+m": INSERT_ENTER,
 });
 
-/** The commands a text-field key may run; the content actor takes no other. */
-export const INSERT_EDIT_COMMANDS = Object.freeze(Object.values(INSERT_EDIT_KEYS));
+/**
+ * The editor commands a text-field key may run; the content actor takes no other. INSERT_ENTER
+ * is not one: the parent presses Enter itself (actors/enter-key.mjs).
+ */
+export const INSERT_EDIT_COMMANDS = Object.freeze(
+  Object.values(INSERT_EDIT_KEYS).filter((c) => c !== INSERT_ENTER),
+);
 
 /**
  * The editor command a chord runs in a text field, or null. On macOS Cocoa's own key bindings

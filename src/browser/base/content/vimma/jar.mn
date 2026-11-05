@@ -52,6 +52,7 @@ browser.jar:
         content/browser/vimma/actors/hint-collect.mjs     (actors/hint-collect.mjs)
         content/browser/vimma/actors/agent-fields.mjs     (actors/agent-fields.mjs)
         content/browser/vimma/actors/caret.mjs            (actors/caret.mjs)
+        content/browser/vimma/actors/enter-key.mjs        (actors/enter-key.mjs)
         content/browser/vimma/actors/block.mjs            (actors/block.mjs)
         content/browser/vimma/actors/text-model.mjs       (actors/text-model.mjs)
         content/browser/vimma/actors/grep-worker.mjs      (actors/grep-worker.mjs)

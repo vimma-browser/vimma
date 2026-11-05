@@ -16,6 +16,8 @@ import {
 import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
 import { parsePayInfo, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { ACTIVATE_CHANGES } from "../core/control.mjs";
+import { INSERT_ENTER } from "../core/editable.mjs";
+import { pressEnterLater } from "./enter-key.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
 
@@ -292,11 +294,27 @@ export const VimmaActors = {
 
   /**
    * Runs a text-field command (ctrl+w, ctrl+u, ctrl+h; docs/specs/key-handling-batch.md § 2)
-   * in the focused frame, on its focused text field, if any.
+   * in the focused frame, on its focused text field, if any. INSERT_ENTER (ctrl+j, ctrl+m) is
+   * an Enter pressed here in the parent, which Firefox routes to the page's focused element as
+   * it does a keyboard's.
    * @param {any} browser XULBrowserElement
-   * @param {string} command  one of core INSERT_EDIT_COMMANDS
+   * @param {string} command  one of core INSERT_EDIT_COMMANDS, or INSERT_ENTER
    */
   edit(browser, command) {
+    if (command === INSERT_ENTER) {
+      // The frame focused now: a page that moves focus (into another frame) in the time before
+      // the Enter gets none, rather than an Enter where the user did not type.
+      const frame = Services.focus.focusedContentBrowsingContext;
+      const win = browser.ownerDocument?.defaultView;
+      if (!win || !frame) return;
+      pressEnterLater(
+        win,
+        () =>
+          Services.focus.focusedElement === browser &&
+          Services.focus.focusedContentBrowsingContext === frame,
+      );
+      return;
+    }
     actorFor(framesFor(browser)[0])?.sendAsyncMessage("Vimma:Edit", { command });
   },
 

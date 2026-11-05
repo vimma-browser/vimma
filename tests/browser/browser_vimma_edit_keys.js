@@ -5,8 +5,10 @@
 // Spec: docs/specs/key-handling-batch.md § 2. In text fields ctrl+w deletes the word before the
 // caret, ctrl+u everything before it on the line, ctrl+h one character, with the editor's own
 // commands so ctrl+z undoes them: in a page's input, textarea, contenteditable and frame, in the
-// URL bar and on the `:` line. A page that takes the key keeps it; [modal] insert_editing =
-// false turns them off (Firefox's own ctrl+w stays off). Normal mode keeps ctrl+u and ctrl+w.
+// URL bar and on the `:` line. ctrl+j and ctrl+m are a trusted Enter there: a new line, a form's
+// submit, the URL bar's load, the `:` line's run. A page that takes the key keeps it;
+// [modal] insert_editing = false turns them off (Firefox's own ctrl+w stays off; ctrl+m mutes).
+// Normal mode keeps ctrl+u and ctrl+w.
 
 "use strict";
 
@@ -15,6 +17,9 @@
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
+
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+const MAC = AppConstants.platform === "macosx";
 
 const ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -204,4 +209,179 @@ add_task(async function insert_editing_false_turns_them_off() {
     gURLBar.handleRevert();
   });
   VimmaHost.configure({ insertEditing: true });
+});
+
+// ctrl+j and ctrl+m are Enter, as in Vim (i_CTRL-J, i_CTRL-M; c_CTRL-J on the command line).
+const ENTER_PAGE = ROOT + "file_vimma_enter_keys.html";
+
+/** @param {XULBrowserElement} browser */
+const pageLog = (browser) =>
+  SpecialPowers.spawn(browser, [], () => [...content.wrappedJSObject.log]);
+
+/**
+ * @param {XULBrowserElement} browser
+ * @param {string} entry
+ * @param {string} msg
+ */
+const waitForLog = (browser, entry, msg) =>
+  TestUtils.waitForCondition(async () => (await pageLog(browser)).includes(entry), msg);
+
+/** @param {(browser: XULBrowserElement) => Promise<void>} fn */
+async function withEnterPage(fn) {
+  await BrowserTestUtils.withNewTab(ENTER_PAGE, async (browser) => {
+    await recordPageKeys(browser);
+    await focusContent(browser);
+    await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "normal", "normal");
+    await fn(browser);
+  });
+}
+
+for (const key of ["j", "m"]) {
+  add_task(async function ctrl_j_m_submit_a_single_line_inputs_form_with_a_trusted_enter() {
+    await withEnterPage(async (browser) => {
+      await fill(browser, "text", "query");
+      await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "i");
+      EventUtils.synthesizeKey(key, { ctrlKey: true });
+      await waitForLog(browser, "submit:true", `ctrl+${key} submits the form, as Enter does`);
+      Assert.ok(
+        (await pageLog(browser)).includes("Enter:true:false"),
+        "the page saw a trusted Enter without ctrl",
+      );
+      Assert.equal(await fieldText(browser, "text"), "query", "and typed nothing");
+    });
+  });
+
+  for (const id of ["area", "ce"]) {
+    add_task(async function ctrl_j_m_begin_a_new_line_in_a_multi_line_field() {
+      await withEnterPage(async (browser) => {
+        await fill(browser, id, "one");
+        await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "i");
+        EventUtils.synthesizeKey(key, { ctrlKey: true });
+        await waitForLog(browser, "Enter:true:false", `#${id}: ctrl+${key} is a trusted Enter`);
+        EventUtils.sendString("two");
+        await TestUtils.waitForCondition(async () => {
+          const lines = await SpecialPowers.spawn(browser, [id], (i) => {
+            const el = content.document.getElementById(i);
+            return el.localName === "textarea" ? el.value.split("\n") : el.innerText.split("\n");
+          });
+          return lines[0] === "one" && lines.at(-1) === "two" && lines.length >= 2;
+        }, `#${id}: ctrl+${key} begins a new line`);
+        Assert.equal(VimmaHost._browserMode(browser), "insert", "still in insert mode");
+      });
+    });
+  }
+}
+
+// docs/security.md K5: a busy page's late reply must not press Enter in the tab focused since.
+add_task(async function a_late_reply_presses_no_enter_in_another_tab() {
+  const other = ENTER_PAGE.replace("https://example.com", "https://example.org");
+  const tabB = await BrowserTestUtils.openNewForegroundTab(gBrowser, other);
+  await withEnterPage(async (browser) => {
+    await SpecialPowers.spawn(browser, [], () => {
+      content.document.getElementById("area").addEventListener("keydown", (e) => {
+        if (!e.ctrlKey || e.key !== "j") return;
+        const end = Date.now() + 1500;
+        while (Date.now() < end) {
+          // Holds the reply back, as a busy page does.
+        }
+        content.wrappedJSObject.log.push("busy-done");
+      });
+    });
+    await fill(browser, "area", "one");
+    await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "i");
+    EventUtils.synthesizeKey("j", { ctrlKey: true });
+    await BrowserTestUtils.switchTab(gBrowser, tabB);
+    await focusContent(tabB.linkedBrowser);
+    await fill(tabB.linkedBrowser, "text", "b");
+    await TestUtils.waitForCondition(
+      () => VimmaHost._browserMode(tabB.linkedBrowser) === "insert",
+      "tab B in insert",
+    );
+    await waitForLog(browser, "busy-done", "tab A handled its ctrl+j");
+    // The reply goes to the parent before this answer from A's process, and a pressed Enter
+    // would reach B before this answer from B.
+    await pageLog(browser);
+    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    const log = await pageLog(tabB.linkedBrowser);
+    Assert.ok(!log.some((e) => e.startsWith("Enter")), "tab B got no Enter");
+    Assert.ok(!log.includes("submit:true"), "and its form was not sent");
+    Assert.equal(await fieldText(browser, "area"), "one", "nor did tab A get a line");
+  });
+  BrowserTestUtils.removeTab(tabB);
+});
+
+add_task(async function a_page_that_takes_ctrl_j_keeps_it() {
+  await withEnterPage(async (browser) => {
+    await fill(browser, "term", "ls");
+    await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "i");
+    EventUtils.synthesizeKey("j", { ctrlKey: true });
+    await waitForLog(browser, "term:ctrl+j", "the page handled ctrl+j");
+    EventUtils.synthesizeKey("x");
+    await waitForValue(browser, "term", "lsx", "the next key still types");
+    Assert.ok(
+      !(await pageLog(browser)).some((e) => e.startsWith("Enter")),
+      "and Vimma sent no Enter",
+    );
+  });
+});
+
+add_task(async function ctrl_j_in_the_url_bar_navigates() {
+  await withEnterPage(async (browser) => {
+    const url = ENTER_PAGE + "?from-url-bar";
+    gURLBar.focus();
+    gURLBar.value = url;
+    const loaded = BrowserTestUtils.browserLoaded(browser, false, url);
+    EventUtils.synthesizeKey("j", { ctrlKey: true });
+    await loaded;
+    Assert.equal(browser.currentURI.spec, url, "ctrl+j loads the address, as Enter does");
+  });
+});
+
+add_task(async function ctrl_m_on_the_command_line_runs_the_command() {
+  await withEnterPage(async (browser) => {
+    EventUtils.synthesizeKey(":");
+    const input = await TestUtils.waitForCondition(
+      () => document.getElementById("vimma-cmdline-input"),
+      "the : line opens",
+    );
+    await TestUtils.waitForCondition(() => document.activeElement === input, "and has focus");
+    const url = ENTER_PAGE + "?from-cmdline";
+    EventUtils.sendString(`open ${url}`);
+    const loaded = BrowserTestUtils.browserLoaded(browser, false, url);
+    EventUtils.synthesizeKey("m", { ctrlKey: true });
+    await loaded;
+    Assert.equal(browser.currentURI.spec, url, "ctrl+m runs :open, as Enter does");
+  });
+});
+
+add_task(async function insert_editing_false_keeps_ctrl_m_as_mute_in_a_field() {
+  const { compileKeymap } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/keymap.mjs",
+  );
+  const restore = () =>
+    VimmaHost.configure({
+      insertEditing: true,
+      keymap: compileKeymap({}, { mac: MAC }),
+    });
+  VimmaHost.configure({
+    insertEditing: false,
+    keymap: compileKeymap({ modal: { insert_editing: false } }, { mac: MAC }),
+  });
+  registerCleanupFunction(restore);
+  await withEnterPage(async (browser) => {
+    await fill(browser, "area", "one");
+    await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "i");
+    const tab = gBrowser.getTabForBrowser(browser);
+    EventUtils.synthesizeKey("m", { ctrlKey: true });
+    Assert.ok(await waitForPageKey(browser, ["m"]), "the page got ctrl+m");
+    await TestUtils.waitForCondition(() => tab.muted, "ctrl+m mutes the tab, after the page");
+    EventUtils.synthesizeKey("x");
+    await waitForValue(browser, "area", "onex", "no new line");
+    Assert.ok(
+      !(await pageLog(browser)).some((e) => e.startsWith("Enter")),
+      "and no Enter reached the page",
+    );
+    tab.toggleMuteAudio();
+  });
+  restore();
 });
