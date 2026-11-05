@@ -2378,7 +2378,9 @@ can serve as research), and does steps 3 and 4 by hand.
    and `flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo`. Fix every
    error in `flatpak.mjs`, not in the generated files. Expect one warning,
    `runtime-update-available-to-org.freedesktop.Platform-26.08`, while Mozilla's Flatpak stays
-   on 25.08; and `metainfo-missing-screenshots` until the metainfo has screenshots.
+   on 25.08. The metainfo links its screenshots at the release's tag
+   (`docs/assets/screenshots/README.md`), so submit a release whose tag has
+   `docs/assets/screenshots/`; for an earlier one, the screenshot mirror cannot download them.
 3. Fork `flathub/flathub`, branch from its `new-pr` branch, add the generated files at the top
    level, and open a pull request against `new-pr` titled `Add dev.vimma.browser`. The
    description explains the D-Bus names outside the app id (`org.mozilla.vimma.*` for Firefox's
