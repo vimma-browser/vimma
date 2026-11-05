@@ -115,6 +115,7 @@ Browser
   save_page                 ctrl+s                                               Save the page
   print_page                ctrl+p                                               Print the page
   downloads                 ctrl+shift+y                                         Downloads (the Library)
+  downloads_picker          ctrl+b d                                             Downloads picker: open, show in folder, pause, retry, remove
   addons_manager            ctrl+shift+f                                         Add-ons manager (about:addons)
   history_library           ctrl+shift+h                                         History (the Library)
   bookmarks_library         ctrl+shift+o                                         Bookmarks (the Library)
@@ -435,6 +436,7 @@ Browser
   save_page                 ctrl+s                                               Save the page
   print_page                ctrl+p                                               Print the page
   downloads                 ctrl+shift+y                                         Downloads (the Library)
+  downloads_picker          ctrl+b d                                             Downloads picker: open, show in folder, pause, retry, remove
   addons_manager            ctrl+shift+f                                         Add-ons manager (about:addons)
   history_library           ctrl+shift+h                                         History (the Library)
   bookmarks_library         ctrl+shift+o                                         Bookmarks (the Library)

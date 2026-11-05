@@ -1,6 +1,6 @@
 # Spec: downloads
 
-Status: accepted (sub-PRs 1 and 2 built) · Area: `packages/vimma-core/src/` (new `downloads.mjs`;
+Status: accepted (sub-PRs 1, 2 and 3 built) · Area: `packages/vimma-core/src/` (new `downloads.mjs`;
 `picker.mjs`, `statusbar.mjs`, `actions.mjs`, `defaults.mjs`, `cmdline.mjs`);
 `src/browser/base/content/vimma/` (new `host/download-ops.mjs`; `ui/picker.mjs`, `ui/statusbar.mjs`,
 `host/VimmaHost.sys.mjs`); `src/browser/branding/vimma/pref/firefox-branding.js`; generated
@@ -332,7 +332,10 @@ download list view and runs each action through Firefox's own objects. The picke
    test's `Integration.downloads` override can record it instead of reaching the OS. Vimma never
    calls `nsIFile.launch`, `nsIFile.reveal`, `DownloadUIHelper.loadFileIn` or
    `DownloadIntegration.launchDownload` itself, except the agent override's delegation to the base
-   (`ctl/AgentDownloads.sys.mjs`, `base.launchDownload`) (rule C2).
+   (`ctl/AgentDownloads.sys.mjs`, `super.launchDownload`) (rule C2). The override delegates
+   with `super`, not `base.`, so that Firefox's `launchDownload` calls `launchFile` and
+   `confirmLaunchExecutable` on the combined integration, and an override registered later (a
+   test's recorder) is reached.
 6. **`shift+d` and `c` ask; nothing else does.** Deleting a file and cancelling a download (which
    removes its partial data) ask `y/N` with `RenamePrompt.ask`, because they cannot be undone and a
    single key in a list is easier to hit by mistake than Firefox's context-menu item. The picker
@@ -452,11 +455,14 @@ blocked`, and so on, and the end of each download is announced once (m7-a11y: no
     meaning for a case Firefox's panel already covers.
 19. **Opening another workspace's file shows it.** Firefox opens a file it views itself in a tab of
     the download's container (`DownloadIntegration.sys.mjs:912`), and Vimma's routing puts that tab
-    in the workspace that owns the container, hidden, with an `opened in "work"` notice. After `o`
-    or `Enter` opens such a download, `host/download-ops.mjs` switches to that workspace and
-    selects the new tab, because the key asks to see the file, and the container only decides
-    where it opens, not whether it is seen. The open itself still goes through
-    `DownloadsCommon.openDownload` (decision 5). Rejected: leaving the tab hidden with the notice,
+    in the workspace that owns the container. After `o` or `Enter` opens such a download, Vimma
+    shows that workspace with the new tab selected, because the key asks to see the file, and the
+    container only decides where it opens, not whether it is seen. The open itself still goes
+    through `DownloadsCommon.openDownload` (decision 5). This needs no code of the picker's own:
+    `loadFileIn` opens the tab in the foreground for an open from a key or a click
+    (`openInBackgroundIfSwitchedBrowsingContext` is set only for `launchWhenSucceeded`), and a
+    foreground open into another workspace switches to it ([workspace-routing](workspace-routing.md)
+    decision 4); `test_o_on_another_workspaces_pdf_switches_to_it` holds it. Rejected: leaving the tab hidden with the notice,
     because `o` would then show nothing; opening it in the current workspace, because that needs
     Vimma's own `loadFileIn` in place of `launchDownload` and would bypass the integration point
     where the agent rule lives.
@@ -485,7 +491,7 @@ agent-download rules M11-M13 all apply. What changes:
   `launchDownload(`, `loadFileIn(`, `launchWithFile(` and `showContainingDirectory(`. It allows
   `openDownload(` and `showContainingDirectory(` in `host/download-ops.mjs` only, and, by file and
   exact text, the three matches already on `main` at a109596: the agent override's definition
-  `launchDownload(download, options) {` and its delegation `base.launchDownload(download, options)`
+  `launchDownload(download, options) {` and its delegation `super.launchDownload(download, options)`
   in `ctl/AgentDownloads.sys.mjs` (lines 867 and 873), and the toolbar's own method call
   `this.reveal(shown);` in `ui/toolbar.mjs` (line 190), which is not `nsIFile.reveal`. A grep of
   `src/browser/base/content/vimma/` and `packages/vimma-core/src/` for every listed pattern finds
@@ -576,15 +582,17 @@ reach those through `DownloadsCommon.openDownload` and `Download.showContainingD
 - `test_a_second_ctrl_b_d_does_not_close_the_picker`
 - `test_o_on_another_workspaces_pdf_switches_to_it`
 
-In `browser_vimma_private_workspace.js`: `test_a_private_window_lists_only_private_downloads` and
-`test_a_normal_window_never_lists_a_private_download`. In `browser_vimma_mcp_downloads.js`:
-`test_the_picker_never_opens_an_agent_download`,
-`test_the_picker_never_opens_an_agent_downloads_referring_page` and `test_vimma_keys_cannot_open_the_downloads_picker`.
+Also in `browser_vimma_downloads.js`, with no MCP connection needed (a path in the agent's
+folder makes a download an agent download): `test_a_private_window_lists_only_private_downloads`
+(a normal window never lists a private one either) and
+`test_the_picker_never_opens_an_agent_download` (nor its referring page). That `vimma_keys`
+cannot open the picker is core's `agent-keys.test.mjs`, above.
 
-**e2e:** a scenario `downloads-picker.json` that starts a slow download from a fixture page under
-the Omarchy theme, saves baselines of the status bar's `↓` segment and of the open picker, and
-checks the row's progress changes between two frames. The keymap sub-PR also screenshots the
-`ctrl+b ?` overlay with the new row.
+**e2e:** a scenario `issue-618-downloads-picker.json` where a fixture page downloads a file as it
+loads, with baselines of the status bar's `↓ done` and of the open picker. Its file finishes at
+once: a live download's bytes, speed and time left differ between runs, so its progress in
+place is the mochitest's (`test_progress_updates_live_and_the_highlight_stays`), not a
+baseline's. The keymap sub-PR also screenshots the `ctrl+b ?` overlay with the new row.
 
 ## Docs and changelog
 

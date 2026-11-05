@@ -278,3 +278,15 @@ describe("the built-in agent's window (docs/specs/builtin-agent.md B13)", () => 
     expect(compileKeymap().bindingsFor("agent_chat")).toEqual(["prefix+i"]);
   });
 });
+
+describe("the downloads picker (docs/specs/downloads.md decision 2)", () => {
+  test("downloads_picker is downloads.picker, in Browser, on prefix+d", () => {
+    expect(getAction("downloads_picker")).toMatchObject({
+      id: "downloads.picker",
+      group: "Browser",
+    });
+    expect(compileKeymap().bindingsFor("downloads_picker")).toEqual(["prefix+d"]);
+    // ctrl+shift+y keeps Firefox's meaning, the Library (firefox-keys).
+    expect(compileKeymap().bindingsFor("downloads")).toEqual(["ctrl+shift+y"]);
+  });
+});

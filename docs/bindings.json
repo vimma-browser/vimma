@@ -1287,6 +1287,16 @@
           ]
         },
         {
+          "name": "downloads_picker",
+          "description": "Downloads picker: open, show in folder, pause, retry, remove",
+          "keys": [
+            {
+              "keys": "ctrl+b d",
+              "chords": ["ctrl+b", "d"]
+            }
+          ]
+        },
+        {
           "name": "addons_manager",
           "description": "Add-ons manager (about:addons)",
           "keys": [

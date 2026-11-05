@@ -162,6 +162,15 @@ export class StatusBar {
     this.bar = this.left = this.right = this.live = this.probe = null;
   }
 
+  /**
+   * Say `text` once in the bar's polite live region: a download that finished, failed or was
+   * blocked (docs/specs/downloads.md, Behaviour 13).
+   * @param {string} text
+   */
+  announce(text) {
+    if (this.live) this.live.textContent = text;
+  }
+
   /** Mark dirty; one render per frame however many triggers fire. */
   schedule() {
     if (this.frame || !this.bar) return;

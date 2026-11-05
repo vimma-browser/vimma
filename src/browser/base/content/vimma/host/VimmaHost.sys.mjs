@@ -33,7 +33,7 @@ import { CommandLine } from "../ui/cmdline.mjs";
 import { HelpOverlay } from "../ui/help-overlay.mjs";
 import { HintOverlay } from "../ui/hint-overlay.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
-import { DownloadWatch } from "./download-ops.mjs";
+import { DownloadRows, DownloadWatch, downloadPickerKey, downloadsOn } from "./download-ops.mjs";
 import { Find } from "./find.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
 import { ElementFocus } from "./element-focus.mjs";
@@ -46,6 +46,7 @@ import { bookmarksToolbarNotice } from "../core/bookmarks-toolbar.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import {
   AddonPicker,
+  DownloadPicker,
   GotoPicker,
   MCP_LOG,
   PermissionPicker,
@@ -250,6 +251,8 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * @property {PermissionPicker} permissionPicker  `:site` (docs/specs/site-permissions.md)
  * @property {PopupPicker} popups  the `:popups` overlay (docs/specs/popup-blocked.md)
  * @property {DownloadWatch} downloads  the status bar's `↓` segment (docs/specs/downloads.md)
+ * @property {DownloadPicker} downloadPicker  the prefix+d overlay (docs/specs/downloads.md)
+ * @property {DownloadRows} downloadRows  the picker's rows while it is open
  * @property {GrepSession} grep  prefix+f g, `:grep`, `]q`/`[q` (docs/specs/live-grep.md)
  * @property {RenamePrompt} rename  the prefix+shift+t prompt (m2-picker-rename)
  * @property {AgentPrompt} agentPrompt  the agent question line (docs/specs/vimma-mcp.md)
@@ -306,6 +309,7 @@ function vimmaSurfaceOpen(s) {
     s.addonPicker.isOpen ||
     s.permissionPicker.isOpen ||
     s.popups.isOpen ||
+    s.downloadPicker.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
     s.cmdline.isOpen ||
@@ -1123,6 +1127,14 @@ export const RUNNERS = Object.freeze({
     s.notice.hide();
     s.popups.open();
   },
+  // docs/specs/downloads.md: prefix+d / :downloads, behind vimma.feature.downloads (decision 20).
+  "downloads.picker": (/** @type {WindowState} */ s) => {
+    if (!downloadsOn()) return;
+    s.notice.hide();
+    // The segment's `done`, `failed` and `blocked` have been seen once the picker opens.
+    s.downloads.clearEnd();
+    s.downloadPicker.open();
+  },
   "addons.popup": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
     if (!text) s.cmdline.open("addon ");
     else sayAddon(s, openAddonByName(s.win, text));
@@ -1534,6 +1546,7 @@ export const VimmaHost = {
         state.addonPicker.close({ tabChanged: true });
         state.permissionPicker.close({ tabChanged: true });
         state.popups.close({ tabChanged: true });
+        state.downloadPicker.close({ tabChanged: true });
         state.mcpLog.close({ tabChanged: true });
         state.grep.close({ tabChanged: true });
         state.rename.close({ tabChanged: true });
@@ -1547,7 +1560,13 @@ export const VimmaHost = {
         showOutlineBeside(state);
       },
       dispatcher: createDispatcher(keymap),
-      help: new HelpOverlay(win, keymap, RUNNABLE, () => state.firefoxKeys?.status().on ?? []),
+      help: new HelpOverlay(
+        win,
+        keymap,
+        RUNNABLE,
+        () => state.firefoxKeys?.status().on ?? [],
+        () => (downloadsOn() ? [] : ["downloads_picker"]),
+      ),
       notice: new Notice(win),
       cmdline: new CommandLine(win, {
         run: (result) => this._runCommand(state, result),
@@ -1558,6 +1577,8 @@ export const VimmaHost = {
           workspace: workspaceNames(win),
           search: SearchHost.completions,
         }),
+        // An unfinished feature's commands exist only with its pref on (`:downloads`).
+        hidden: () => (downloadsOn() ? [] : ["downloads.picker"]),
       }),
       tabStrip: null,
       toolbar: null,
@@ -1662,7 +1683,22 @@ export const VimmaHost = {
           if (notice) state.notice.show(notice, { error: true });
         },
       }),
-      downloads: new DownloadWatch(win, () => this._emit(state)),
+      downloads: new DownloadWatch(
+        win,
+        () => this._emit(state),
+        (text) => state.statusBar?.announce(text),
+      ),
+      downloadRows: new DownloadRows(win, (rows) => state.downloadPicker.update(rows)),
+      downloadPicker: new DownloadPicker(win, {
+        load: () => state.downloadRows.open(),
+        select: () => {},
+        download: (key, id) =>
+          downloadPickerKey(win, state.downloadRows, key, id, {
+            say: (text, error) => state.notice.show(text, { error: !!error }),
+            close: () => state.downloadPicker.close(),
+          }),
+        closed: () => state.downloadRows.close(),
+      }),
       popups: new PopupPicker(win, {
         load: () => popupPickerItems(win),
         refuse: (rows) => popupRefusal(win, /** @type {any} */ (rows)),
@@ -1985,6 +2021,8 @@ export const VimmaHost = {
     forgetSitePermissions(win);
     state.popups.destroy();
     state.downloads.destroy();
+    state.downloadPicker.destroy();
+    state.downloadRows.close();
     state.mcpLog.destroy();
     state.grep.destroy();
     state.rename.destroy();
@@ -2291,7 +2329,7 @@ export const VimmaHost = {
     if (state.help.isOpen || state.picker.isOpen || state.wsPicker.isOpen) return "help";
     if (state.addonPicker.isOpen || state.mcpLog.isOpen || state.grep.isOpen) return "help";
     if (state.permissionPicker.isOpen) return "help";
-    if (state.popups.isOpen) return "help";
+    if (state.popups.isOpen || state.downloadPicker.isOpen) return "help";
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
@@ -2415,6 +2453,7 @@ export const VimmaHost = {
       state.addonPicker,
       state.permissionPicker,
       state.popups,
+      state.downloadPicker,
       state.mcpLog,
       state.grep,
     ].find((p) => p.isOpen);

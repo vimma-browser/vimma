@@ -18,6 +18,7 @@ import { accessibleName, countText, rowRange, sectionHeading } from "../core/tab
 /** @import { LogItem } from "../core/picker.mjs" */
 /** @import { PermissionItem, PermissionOp } from "../core/sitepermissions.mjs" */
 /** @import { PopupItem } from "../core/popups.mjs" */
+/** @import { DownloadItem } from "../core/downloads.mjs" */
 
 export const PICKER_ID = "vimma-picker";
 export const WORKSPACE_PICKER_ID = "vimma-workspace-picker";
@@ -25,6 +26,7 @@ export const ADDON_PICKER_ID = "vimma-addon-picker";
 export const MCP_LOG_ID = "vimma-mcp-log";
 export const PERMISSION_PICKER_ID = "vimma-permission-picker";
 export const POPUP_PICKER_ID = "vimma-popup-picker";
+export const DOWNLOAD_PICKER_ID = "vimma-downloads-picker";
 const STYLESHEET = "chrome://browser/skin/vimma/picker.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<Window>} windows our stylesheet is loaded into */
@@ -40,6 +42,8 @@ const styled = new WeakSet();
  * @property {(op: AddonOp, id: string) => void} [addon]  an add-on key; the picker stays open
  * @property {(op: PermissionOp, id: string) => void} [permission]  a site permission key; the
  *   picker stays open
+ * @property {(key: string, id: string) => void} [download]  a key on a download row, Enter
+ *   included; the picker stays open unless the host closes it
  */
 
 /**
@@ -51,6 +55,9 @@ const styled = new WeakSet();
  * @property {string} hint
  * @property {(item: any) => [index: string, right: string]} cells
  * @property {string} [empty]  the list's one row when there are no items
+ * @property {(item: any, count: number) => string} [heading]  a section's heading, for a picker
+ *   listed in sections (core sectionOf) other than tab search
+ * @property {(item: any) => string} [rowClass]  a class for a row
  * @property {boolean} [tabs]  tab search (docs/specs/tab-search.md): typing from the first
  *   key, section headings, a muted cell for workspace, window and markers, host highlights,
  *   accessible names and a live count
@@ -131,6 +138,24 @@ const PERMISSIONS = {
   listLabel: "Site permissions",
   hint: "a allow · b block · r reset · Enter next · / search · Esc close",
   cells: (/** @type {PermissionItem} */ item) => [item.set ? "●" : "", item.detail],
+};
+
+/** @type {PickerLook} docs/specs/downloads.md: newest first, `active` then `recent`. */
+const DOWNLOADS = {
+  id: DOWNLOAD_PICKER_ID,
+  title: "Downloads",
+  listLabel: "Downloads, newest first",
+  hint: "o open · O system app · s folder · y link · Y path · u page · L all · / search",
+  cells: (/** @type {DownloadItem} */ item) => [
+    item.state,
+    [item.detail, item.host, item.ended, item.workspace].filter(Boolean).join(" · "),
+  ],
+  empty: "No downloads yet.",
+  heading: (/** @type {DownloadItem} */ item, count) =>
+    `${item.section === "active" ? "Active" : "Recent"} · ${count}`,
+  // A failed or blocked download's state word is in the error colour, as on the status bar.
+  rowClass: (/** @type {DownloadItem} */ item) =>
+    item.state === "failed" || item.state === "blocked" ? "vimma-picker-problem" : "",
 };
 
 /** @type {PickerLook} `:mcp log` (docs/specs/mcp-drive.md D14): newest first, read only. */
@@ -240,6 +265,7 @@ export class GotoPicker {
     }
     if (effect?.type === "addon") this.host.addon?.(effect.op, effect.id);
     if (effect?.type === "permission") this.host.permission?.(effect.op, effect.id);
+    if (effect?.type === "download") this.host.download?.(effect.key, effect.id);
   }
 
   /**
@@ -330,7 +356,7 @@ export class GotoPicker {
       : { start: 0, end: state.matches.length };
     // Section headings in the grouped view (blank query): not options, so j/k and screen readers
     // skip them; each option's name carries its section instead (tab-search decision 11).
-    const grouped = tabs && !state.query.trim();
+    const grouped = (tabs || !!this.look.heading) && !state.query.trim();
     /** @type {Map<string, number>} */
     const sizes = new Map();
     if (grouped) {
@@ -353,10 +379,13 @@ export class GotoPicker {
       const m = /** @type {import("../core/picker.mjs").Match} */ (state.matches[i]);
       if (grouped && sectionOf(m.item) !== section) {
         section = sectionOf(m.item);
+        const count = sizes.get(section) ?? 0;
         const heading = el(
           "li",
           "vimma-picker-heading",
-          sectionHeading(/** @type {PickerItem} */ (m.item), sizes.get(section) ?? 0),
+          this.look.heading
+            ? this.look.heading(m.item, count)
+            : sectionHeading(/** @type {PickerItem} */ (m.item), count),
         );
         heading.setAttribute("role", "presentation");
         nodes.push(heading);
@@ -369,6 +398,8 @@ export class GotoPicker {
       if ("tabId" in m.item) row.dataset.tabId = m.item.tabId;
       if (m.item.active) row.classList.add("vimma-picker-active");
       if ("enabled" in m.item && !m.item.enabled) row.classList.add("vimma-picker-disabled");
+      const extra = this.look.rowClass?.(m.item);
+      if (extra) row.classList.add(extra);
       const title = marked(
         el("span", "vimma-picker-title"),
         m.item.display,
@@ -636,5 +667,37 @@ export class PopupPicker extends AddonPicker {
    */
   constructor(win, host) {
     super(win, host, POPUPS);
+  }
+}
+
+/**
+ * `prefix+d` / `:downloads` (docs/specs/downloads.md): the window's downloads, read when it
+ * opens and kept live by the host while it is open (`update`); `closed` lets the host stop
+ * listening.
+ */
+export class DownloadPicker extends AddonPicker {
+  /**
+   * @param {Window} win  a browser window
+   * @param {ConstructorParameters<typeof AddonPicker>[1] & { closed?: () => void }} host
+   */
+  constructor(win, host) {
+    super(win, host, DOWNLOADS);
+    this.closed = host.closed ?? (() => {});
+  }
+
+  /**
+   * New rows while open: progress, a new download, a state change.
+   * @param {AnyItem[]} rows
+   */
+  update(rows) {
+    this.setRows(rows);
+    if (this.isOpen) this.setItems(rows);
+  }
+
+  /** @param {{ tabChanged?: boolean }} [options] */
+  close(options) {
+    const open = this.isOpen;
+    super.close(options);
+    if (open) this.closed();
   }
 }

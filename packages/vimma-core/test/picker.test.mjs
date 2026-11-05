@@ -9,10 +9,12 @@ import {
   pickerKey,
   pickerSelection,
   scoreField,
+  sectionOf,
   setPickerItems,
   unitsBuilt,
   workspaceItems,
 } from "../src/picker.mjs";
+import { downloadSections } from "../src/downloads.mjs";
 
 /** @import { PickerState, PickerItem } from "../src/picker.mjs" */
 
@@ -589,5 +591,92 @@ describe("tab search (docs/specs/tab-search.md)", () => {
     expect(Math.max(...times)).toBeLessThan(8);
     // Every text was segmented in the warm-up: the measured passes build no units at all.
     expect(unitsBuilt() - before).toBe(0);
+  });
+});
+
+describe("downloads picker (docs/specs/downloads.md)", () => {
+  /**
+   * @param {number} id
+   * @param {Partial<import("../src/downloads.mjs").DownloadRecord>} [over]
+   * @returns {import("../src/downloads.mjs").DownloadRecord}
+   */
+  const record = (id, over = {}) => ({
+    id,
+    name: `file${id}.pdf`,
+    url: `https://files${id}.example.com/get?token=secret`,
+    path: `/home/u/Downloads/file${id}.pdf`,
+    referrer: null,
+    stopped: true,
+    succeeded: true,
+    canceled: false,
+    deleted: false,
+    hasProgress: true,
+    hasPartialData: false,
+    hasBlockedData: false,
+    currentBytes: 100,
+    totalBytes: 100,
+    size: 100,
+    speed: 0,
+    targetExists: true,
+    partFileExists: false,
+    error: null,
+    startTime: id * 1000,
+    endTime: id * 1000 + 500,
+    viewsInternally: true,
+    workspace: null,
+    agent: false,
+    ...over,
+  });
+  const NOW = 10_000;
+  const running = { stopped: false, succeeded: false, currentBytes: 50, hasPartialData: true };
+  const rows = () =>
+    downloadSections([record(1), record(2, { workspace: "work" }), record(3, running)], NOW);
+
+  test("a download row's keys give a download effect; / types them", () => {
+    let s = openPicker(rows());
+    // The running one heads the active section.
+    expect(pickerSelection(s)?.item).toMatchObject({ kind: "download", downloadId: "3" });
+    s = pickerKey(s, "j").state;
+    for (const key of ["o", "shift+o", "s", "y", "shift+y", "u", "shift+l", "enter"]) {
+      expect(pickerKey(s, key).effect, key).toEqual({ type: "download", key, id: "2" });
+    }
+    expect(pickerKey(s, "x").effect).toBeNull();
+    expect(pickerKey(s, "q").effect).toEqual({ type: "close" });
+    s = pickerKey(s, "/").state;
+    for (const key of ["o", "s", "y", "u"]) {
+      const r = pickerKey(s, key);
+      expect(r.effect, key).toBeNull();
+      s = r.state;
+    }
+    expect(s.query).toBe("osyu");
+  });
+
+  test("the filter matches name, host, state and workspace", () => {
+    const ids = (/** @type {string} */ q) =>
+      filterItems(rows(), q).map((m) => /** @type {any} */ (m.item).downloadId);
+    expect(ids("file1")).toEqual(["1"]);
+    expect(ids("files2.example")).toEqual(["2"]);
+    expect(ids("50%")).toEqual(["3"]);
+    expect(ids("work")).toEqual(["2"]);
+    expect(ids("token")).toEqual([]);
+    const third = /** @type {any} */ (rows()[2]);
+    expect(matchItem(third, "file1")?.highlights.display).toEqual([[0, 5]]);
+  });
+
+  test("sections are active and recent", () => {
+    expect(rows().map(sectionOf)).toEqual(["active", "recent", "recent"]);
+  });
+
+  test("the highlight stays on its download when rows move", () => {
+    let s = openPicker(rows());
+    s = pickerKey(s, "j").state;
+    expect(pickerSelection(s)?.item).toMatchObject({ downloadId: "2" });
+    const moved = downloadSections(
+      [record(1), record(2, { workspace: "work" }), record(4, running), record(3, running)],
+      NOW,
+    );
+    s = setPickerItems(s, moved);
+    expect(pickerSelection(s)?.item).toMatchObject({ downloadId: "2" });
+    expect(s.selected).toBe(2);
   });
 });

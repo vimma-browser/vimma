@@ -296,6 +296,7 @@ support-files = [
 support-files = [
   "file_vimma_downloads.sjs",
   "file_vimma_plain.html",
+  "file_vimma_test.pdf",
 ]
 
 ["browser_vimma_mcp_downloads.js"]

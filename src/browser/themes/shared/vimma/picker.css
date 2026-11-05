@@ -91,6 +91,20 @@
     grid-template-columns: 8ch 1fr max-content;
   }
 
+  /* The downloads picker (docs/specs/downloads.md): the state word first, then the file, then
+     its size or progress, host, end time and workspace. */
+  &#vimma-downloads-picker {
+    width: min(64rem, calc(100vw - 4rem));
+  }
+
+  &#vimma-downloads-picker .vimma-picker-row {
+    grid-template-columns: 9ch minmax(0, 1fr) minmax(0, 28rem);
+  }
+
+  & .vimma-picker-problem .vimma-picker-index {
+    color: var(--vimma-text-error, var(--vimma-text-accent, AccentColor));
+  }
+
   & .vimma-picker-index {
     font-family: var(--vimma-font, monospace);
     text-align: end;
