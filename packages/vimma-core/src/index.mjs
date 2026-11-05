@@ -21,6 +21,7 @@ export * from "./cmdline.mjs";
 export * from "./escape.mjs";
 export * from "./page-first.mjs";
 export * from "./panes.mjs";
+export * from "./splits.mjs";
 export * from "./workspaces.mjs";
 export * from "./snapshot.mjs";
 export * from "./workspacedefs.mjs";

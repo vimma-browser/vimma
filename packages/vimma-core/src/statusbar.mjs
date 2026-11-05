@@ -7,6 +7,7 @@
  * token names, fitted to a character budget. The host renders them; no HTML here.
  */
 import { pdfPageText } from "./pdf.mjs";
+import { splitLabel } from "./splits.mjs";
 import { formatConfigError } from "./config.mjs";
 import { findStatusText } from "./find.mjs";
 import { displayLabel } from "./tablabels.mjs";
@@ -45,6 +46,18 @@ export { textWidth };
  */
 
 /**
+ * The pane segment: `S2 pane 1/3` while a split shows in a workspace with several, `3 splits
+ * hidden` on a lone tab with several (docs/specs/multiple-splits.md decision 14), else as with
+ * one split.
+ * @param {{ index: number, count: number, hidden?: boolean, split?: number, splits?: number }} pane
+ */
+function paneText({ index, count, hidden, split, splits = 1 }) {
+  if (hidden) return splits > 1 ? `${splits} splits hidden` : `split ${count} hidden`;
+  const place = `pane ${index}/${count}`;
+  return splits > 1 && split !== undefined ? `${splitLabel(split)} ${place}` : place;
+}
+
+/**
  * @typedef {object} StatusInput
  * @property {Mode} mode
  * @property {readonly string[]} [pending]      dispatcher.pending()
@@ -52,8 +65,10 @@ export { textWidth };
  *   `private`: the private workspace (docs/specs/private-workspace.md), `◆ private`
  * @property {{ index: number, count: number, title?: string | null, url?: string | null,
  *   label?: string | null, origin?: UrlOrigin | null } | null} [tab]
- * @property {{ index: number, count: number, hidden?: boolean } | null} [pane]  `hidden`: the
- *   split is kept as a view that is not shown (docs/specs/side-panel-unsplit.md decision 27)
+ * @property {{ index: number, count: number, hidden?: boolean, split?: number, splits?: number }
+ *   | null} [pane]  `hidden`: the split is kept as a view that is not shown
+ *   (docs/specs/side-panel-unsplit.md decision 27); `split`, the shown split's number, and
+ *   `splits`, how many the workspace has (docs/specs/multiple-splits.md decision 14)
  * @property {boolean} [loading]
  * @property {number | null} [progress]          0..1
  * @property {readonly ConfigError[]} [configErrors]
@@ -459,7 +474,7 @@ export function statusSegments(input) {
     left.push(
       seg({
         id: "pane",
-        text: pane.hidden ? `split ${pane.count} hidden` : `pane ${pane.index}/${pane.count}`,
+        text: paneText(pane),
         fg: pane.hidden ? "--vimma-fg-dim" : "--vimma-statusbar-fg",
         priority: 7,
       }),

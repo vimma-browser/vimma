@@ -25,7 +25,9 @@ import {
   alternateWorkspace,
   setAlternate,
   leaveSkipped,
+  splitsOf,
 } from "../src/workspaces.mjs";
+import { createSplits, newSplit } from "../src/splits.mjs";
 import { closePane, focus, leaves, resize, setPaneTab, swap, toggleZoom } from "../src/panes.mjs";
 import { toSnapshot, fromSnapshot } from "../src/snapshot.mjs";
 
@@ -245,6 +247,29 @@ describe("tab bookkeeping", () => {
     s = closeTab(s, "a");
     expect(ws(s)).toMatchObject({ tabs: [], activeTab: null, panes: null });
     expectWsError(() => closeTab(s, "a"), "unknown-tab");
+  });
+
+  // docs/specs/multiple-splits.md decision 2: a split never names a closed tab.
+  test("closing a tab of a workspace's splits closes its pane there; one pane left ends it", () => {
+    let s = abc();
+    const splits = newSplit(createSplits(), ["a", "b", "c"]).splits;
+    const active = s.active;
+    s = Object.freeze({
+      ...s,
+      workspaces: Object.freeze(
+        s.workspaces.map((w) => (w.id === active ? { ...w, ...splits } : w)),
+      ),
+    });
+    s = closeTab(s, "b");
+    expect(splitsOf(ws(s)).splits.map((x) => leaves(x).map((l) => l.tab))).toEqual([["a", "c"]]);
+    s = closeTab(s, "c");
+    expect(splitsOf(ws(s))).toEqual(createSplits());
+  });
+
+  test("splitsOf: a workspace without splits reads its tree as split 1, a lone tab as none", () => {
+    expect(splitsOf(ws(abc())).splits).toEqual([]);
+    const s = splitPane(selectTab(abc(), "a"), "vertical", "d");
+    expect(splitsOf(ws(s)).splits.map((x) => x.number)).toEqual([1]);
   });
 
   test("closing a hidden tab changes nothing else", () => {

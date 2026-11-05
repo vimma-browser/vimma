@@ -624,6 +624,86 @@ describe("tokens", () => {
     }
   });
 
+  // docs/specs/multiple-splits.md decision 11.
+  const SPLIT_FROM = [
+    "blue",
+    "green",
+    "magenta",
+    "yellow",
+    "cyan",
+    "orange",
+    "bright_blue",
+    "bright_green",
+    "bright_magenta",
+  ];
+  const SPLIT_SURFACES = ["--vimma-bg", "--vimma-bg-dark", "--vimma-selection"];
+
+  test("nine split tokens, from the palette keys in decision 11's order, none from red", () => {
+    const splits = THEME_TOKENS.filter((t) => t.name.startsWith("--vimma-split-"));
+    expect(splits.map((t) => t.name)).toEqual(
+      Array.from({ length: 9 }, (_, i) => `--vimma-split-${i + 1}`),
+    );
+    expect(splits.map((t) => t.from)).toEqual(SPLIT_FROM);
+  });
+
+  test("every theme gives nine split colours at 3:1 or more on the panel and picker", () => {
+    for (const [name, r] of [
+      ...badgeThemes(),
+      [
+        "mono.colors.toml",
+        resolveTheme({
+          theme: themeCfg({ source: "omarchy" }),
+          omarchy: fixture("mono.colors.toml"),
+        }),
+      ],
+    ]) {
+      const t = /** @type {ReturnType<typeof resolveTheme>} */ (r).tokens;
+      for (let n = 1; n <= 9; n++) {
+        const c = /** @type {string} */ (t[`--vimma-split-${n}`]);
+        expect(c, `${name} split ${n}`).toMatch(/^#[0-9a-f]{6}$/);
+        for (const bg of SPLIT_SURFACES) {
+          expect(
+            contrastRatio(c, /** @type {string} */ (t[bg])),
+            `${name} split ${n} on ${bg}`,
+          ).toBeGreaterThanOrEqual(3);
+        }
+      }
+    }
+  });
+
+  test("a split colour that already reaches 3:1 is the palette's own", () => {
+    const r = resolveTheme({ theme: themeCfg({ name: "vimma", appearance: "dark" }) });
+    expect(r.tokens["--vimma-split-1"]).toBe(VIMMA_DARK.blue);
+  });
+
+  test("[theme.colors] split_3 overrides split 3 alone, adjusted to 3:1 like the others", () => {
+    const keep = resolveTheme({
+      theme: themeCfg({ name: "vimma", appearance: "dark", colors: { split_3: "#ff8800" } }),
+    });
+    expect(keep.errors).toEqual([]);
+    expect(keep.tokens["--vimma-split-3"]).toBe("#ff8800");
+    expect(keep.tokens["--vimma-magenta"]).toBe(VIMMA_DARK.magenta);
+    expect(keep.tokens["--vimma-split-1"]).toBe(VIMMA_DARK.blue);
+    const dim = resolveTheme({
+      theme: themeCfg({ name: "vimma", appearance: "dark", colors: { split_3: "#101010" } }),
+    });
+    const c = /** @type {string} */ (dim.tokens["--vimma-split-3"]);
+    expect(c).not.toBe("#101010");
+    for (const bg of SPLIT_SURFACES) {
+      expect(contrastRatio(c, /** @type {string} */ (dim.tokens[bg]))).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  test("an invalid split_N, or one past 9, is an error and leaves the palette's colour", () => {
+    const r = resolveTheme({
+      theme: themeCfg({ colors: { split_2: "green", split_10: "#ffffff" } }),
+    });
+    expect(r.errors.map((e) => e.path)).toEqual(["theme.colors.split_2", "theme.colors.split_10"]);
+    expect(r.tokens["--vimma-split-2"]).toBe(
+      resolveTheme({ theme: themeCfg() }).tokens["--vimma-split-2"],
+    );
+  });
+
   // A theme of nine greys has no room for ten greys MIN_BADGE_DISTANCE apart.
   test("a monochrome theme still gives every badge a grey of its own", () => {
     const t = resolveTheme({
@@ -724,7 +804,7 @@ describe("tokens", () => {
     const css = tokensToCss(r.tokens);
     expect(css.startsWith(":root {\n")).toBe(true);
     expect(css).toContain("  --vimma-bg: #071011;\n");
-    expect(css.match(/--vimma-[a-z-]+:/g)).toHaveLength(THEME_TOKENS.length);
+    expect(css.match(/--vimma-[a-z0-9-]+:/g)).toHaveLength(THEME_TOKENS.length);
     expect(tokensToCss({ "--vimma-bg": "#000000" }, "#vimma-root")).toBe(
       "#vimma-root {\n  --vimma-bg: #000000;\n}\n",
     );
