@@ -89,6 +89,7 @@ browser.jar:
         skin/classic/browser/vimma/firefox-sidebar-page.css (/browser/themes/shared/vimma/firefox-sidebar-page.css)
         skin/classic/browser/vimma/firefox-chrome.css     (/browser/themes/shared/vimma/firefox-chrome.css)
         skin/classic/browser/vimma/firefox-pages.css      (/browser/themes/shared/vimma/firefox-pages.css)
+        skin/classic/browser/vimma/firefox-pdf.css        (/browser/themes/shared/vimma/firefox-pdf.css)
         skin/classic/browser/vimma/statusbar.css          (/browser/themes/shared/vimma/statusbar.css)
         content/browser/vimma/ui/notice.mjs               (ui/notice.mjs)
         skin/classic/browser/vimma/notice.css             (/browser/themes/shared/vimma/notice.css)

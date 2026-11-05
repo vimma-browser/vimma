@@ -832,7 +832,12 @@ add_task(async function no_element_hints_in_the_pdf_viewer() {
     BrowserTestUtils.startLoadingURIString(browser, DIR + "file_vimma_test.pdf");
     await rendered;
     await focusContent(browser);
-    EventUtils.synthesizeKey(KEY);
+    // `F` shows a link's target in the PDF viewer (docs/specs/pdf-mode.md, Behaviour 11), so
+    // element focus is reached here by its action, as a user's own binding would run it.
+    VimmaHost._run(VimmaHost._state(window), {
+      kind: "action",
+      action: { id: "hint.element" },
+    });
     await TestUtils.waitForCondition(
       () => notice() === "no text blocks here (PDF: use v)",
       "the notice points to copy mode",

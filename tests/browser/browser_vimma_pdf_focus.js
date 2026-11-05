@@ -34,8 +34,8 @@ function viewerScroll(browser) {
 }
 
 /**
- * With no click first: focus is in the tab, the tab is in normal mode, and `j`, `G` and `:` do
- * what they do on any page.
+ * With no click first: focus is in the tab, the tab is in normal mode, `j` and `:` do what they
+ * do on any page, and `G` goes to the last page (docs/specs/pdf-mode.md, Behaviour 2).
  * @param {XULBrowserElement} browser
  */
 async function keysWorkAtOnce(browser) {
@@ -49,11 +49,13 @@ async function keysWorkAtOnce(browser) {
     async () => (await viewerScroll(browser)).top > start,
     "j scrolls the PDF down",
   );
+  // The fixture has one page, so its last page's top is above where `j` left the view.
+  const scrolled = (await viewerScroll(browser)).top;
   EventUtils.synthesizeKey("G", { shiftKey: true });
-  await TestUtils.waitForCondition(async () => {
-    const s = await viewerScroll(browser);
-    return s.top >= s.max - 1;
-  }, "G scrolls the PDF to its end");
+  await TestUtils.waitForCondition(
+    async () => (await viewerScroll(browser)).top < scrolled,
+    "G goes to the top of the last page",
+  );
   EventUtils.synthesizeKey(":", { shiftKey: true });
   await TestUtils.waitForCondition(
     () => VimmaHost.status(window).mode === "command",

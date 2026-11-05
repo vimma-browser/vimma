@@ -346,6 +346,19 @@ export class VimmaChild extends JSWindowActorChild {
     }
   }
 
+  /**
+   * The theme's token sheet for the viewer (docs/specs/pdf-mode.md decision 20; security.md
+   * section 20, V12): the parent answers only the top viewer's current actor.
+   */
+  #askTheme() {
+    this.sendQuery("Vimma:PdfTheme").then(
+      (css) => this.#pdf?.setTheme(css),
+      () => {
+        // the actor went with its document
+      },
+    );
+  }
+
   /** Listens to this document's selection (again, if the PresShell replaced it). */
   #watchSelection() {
     const sel = this.contentWindow?.getSelection() ?? null;
@@ -416,8 +429,9 @@ export class VimmaChild extends JSWindowActorChild {
       case "dragstart":
         this.#dragging = true;
         return;
+      case "documentloaded":
       case "pagesloaded":
-        // Only pdf.js's own event (chrome-only, trusted); PdfView.attach checks the principal.
+        // Only pdf.js's own events (chrome-only, trusted); PdfView.attach checks the principal.
         if (!event.isTrusted) return;
         if (this.#pdf) this.#pdf.schedule();
         else {
@@ -426,6 +440,7 @@ export class VimmaChild extends JSWindowActorChild {
             (state) => this.#sendPdf(state),
             (outline) => this.#sendPdf(outline, "Vimma:PdfOutline"),
           );
+          if (this.#pdf) this.#askTheme();
         }
     }
   }
@@ -577,6 +592,10 @@ export class VimmaChild extends JSWindowActorChild {
         // pdf.js's presentation mode shows one page at a time: the scroll keys turn pages.
         if (this.#pdf?.turnPage(msg.data.kind, msg.data.count)) return true;
         return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+      case "Vimma:PdfTheme":
+        // A theme change (V12): the token sheet again.
+        this.#pdf?.setTheme(msg.data?.css);
+        return undefined;
       case "Vimma:PdfOp":
         // An operation name and a number (docs/security.md section 20, V7), checked again by
         // the adapter; only the top-level viewer has one.

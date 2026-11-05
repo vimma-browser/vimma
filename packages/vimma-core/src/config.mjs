@@ -83,9 +83,11 @@ import { hasControl } from "./strings.mjs";
  * @property {{ numbers: PanelNumbers }} panel            `[panel]` (schema 2), side-panel-counts
  * @property {{ placement: PrivatePlacement }} private    `[private]` (schema 2), private-swap
  * @property {McpConfig} mcp                             `[mcp]` (schema 2), docs/specs/vimma-mcp.md
- * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null }} ui
+ * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null,
+ *   pdfOutline: ToolbarSetting }} ui
  *   `[ui]` (schema 2): toolbar-toggle; `bookmarksToolbar` is null when unset
- *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides)
+ *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides); `pdfOutline`,
+ *   whether the PDF viewer opens with Vimma's outline shown (docs/specs/pdf-mode.md decision 19)
  * @property {ResolvedSearch | null} search              `[search]` (schema 2), null without it;
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]` (schema 2),
@@ -267,7 +269,7 @@ const PRIVATE_KEYS = ["placement"];
 export const TOOLBAR_SETTINGS = Object.freeze(
   /** @type {ToolbarSetting[]} */ (["shown", "hidden"]),
 );
-const UI_KEYS = ["toolbar", "bookmarks_toolbar"];
+const UI_KEYS = ["toolbar", "bookmarks_toolbar", "pdf_outline"];
 /** Firefox's words for the bookmarks toolbar's states, and the Vimma word each means. */
 const FIREFOX_VISIBILITY_WORDS = Object.freeze({ always: "shown", never: "hidden" });
 /** `[updates]` (docs/specs/m6a-updater.md, Security and privacy, "Off"). */
@@ -1178,6 +1180,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     ui: {
       toolbar: user.ui?.toolbar ?? "shown",
       bookmarksToolbar: user.ui?.bookmarks_toolbar ?? null,
+      pdfOutline: user.ui?.pdf_outline ?? "shown",
     },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },

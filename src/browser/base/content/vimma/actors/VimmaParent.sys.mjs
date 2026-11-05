@@ -40,6 +40,10 @@ export class VimmaParent extends JSWindowActorParent {
       PdfOps.onState(this, msg.data);
       return;
     }
+    if (msg.name === "Vimma:PdfTheme") {
+      // The token sheet, only for the top viewer's current document (V12); null for any other.
+      return PdfOps.theme(this);
+    }
     if (msg.name === "Vimma:PdfOutline") {
       // Taken only after the user's Tab, from the same actor, and parsed (V8).
       PdfOps.onOutline(this, msg.data);
@@ -89,6 +93,7 @@ export class VimmaParent extends JSWindowActorParent {
   }
 
   didDestroy() {
+    PdfOps.dropActor(this);
     // The document went away (a navigation, a closed tab): element focus in it ends.
     try {
       VimmaHost.onFrameGone(this.manager);

@@ -460,11 +460,14 @@ support-files = ["file_vimma_test.pdf", "file_vimma_pdf_attachment.pdf", "file_v
 ["browser_vimma_pdf_keys.js"]
 support-files = ["file_vimma_outline.pdf"]
 
+["browser_vimma_pdf_look.js"]
+support-files = ["file_vimma_outline_pagemode.pdf", "file_vimma_plain.html"]
+
 ["browser_vimma_pdf_marks.js"]
 support-files = ["file_vimma_outline.pdf", "file_vimma_pdf_links.pdf"]
 
 ["browser_vimma_pdf_outline.js"]
-support-files = ["file_vimma_outline.pdf", "file_vimma_outline_kinds.pdf", "file_vimma_test.pdf"]
+support-files = ["file_vimma_outline.pdf", "file_vimma_outline_kinds.pdf", "file_vimma_outline_pagemode.pdf", "file_vimma_test.pdf"]
 
 ["browser_vimma_pdf_status.js"]
 support-files = ["file_vimma_outline.pdf"]

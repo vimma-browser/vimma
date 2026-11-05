@@ -14,6 +14,7 @@ import {
   openOutline,
   outlineKey,
   outlineRows,
+  selectOutlinePage,
   setOutlineQuery,
 } from "../core/pdfoutline.mjs";
 import {
@@ -35,6 +36,7 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
  * @typedef {object} OutlinePanelHost
  * @property {(browser: any, effect: OutlineEffect) => void} effect  a follow, for the host
  * @property {(browser: any) => void} left  the tab left the document the outline was read from
+ * @property {(browser: any) => void} [hidden]  the user hid an outline shown beside the document
  */
 
 export class OutlinePanel {
@@ -59,6 +61,10 @@ export class OutlinePanel {
     this.opener = null;
     this.start = 0;
     this.listening = false;
+    /** The keys are the panel's (`index` mode); false while it is only shown (decision 19). */
+    this.focused = false;
+    /** Shown beside the document when it opened: following an entry leaves it shown. */
+    this.beside = false;
     // The outline belongs to one document: it closes when its tab stops being the selected one.
     this.onTabSelect = () => {
       const selected = /** @type {any} */ (this.win).gBrowser?.selectedBrowser;
@@ -80,20 +86,32 @@ export class OutlinePanel {
     return !!this.state;
   }
 
+  /** Open with the keys: `index` mode (decision 19: it may be shown without them). */
+  get isActive() {
+    return !!this.state && this.focused;
+  }
+
   /** Typing goes to the filter, not the keymap, while it has focus. */
   get filterFocused() {
     return !!this.filter && this.win.document.activeElement === this.filter;
   }
 
   /**
-   * Shows `outline` for `browser`'s document, with the entry for `page` selected.
+   * Shows `outline` for `browser`'s document, with the entry for `page` selected. With `focus`
+   * false it is only shown beside the document (decision 19): the keys stay the document's.
    * @param {any} browser
    * @param {PdfOutline} outline
    * @param {number} page
+   * @param {boolean} [focus]
    */
-  open(browser, outline, page) {
+  open(browser, outline, page, focus = true) {
     const box = this.box ?? this.build();
-    if (!this.state) this.opener = rememberFocus(this.win);
+    if (this.state && this.browser === browser && !this.focused && focus) {
+      // Shown beside the document already: Tab gives it the keys, as it was.
+      this.focus();
+      return;
+    }
+    if (!this.state) this.beside = !focus;
     this.browser = browser;
     this.state = openOutline(outline, page);
     this.start = 0;
@@ -106,15 +124,54 @@ export class OutlinePanel {
       gBrowser?.addTabsProgressListener(this.progress);
       this.listening = true;
     }
+    if (focus) this.focus();
+  }
+
+  /** Gives it the keys: `index` mode, focus in the tree. */
+  focus() {
+    if (!this.state) return;
+    if (!this.focused) this.opener = rememberFocus(this.win);
+    this.focused = true;
     // The tree, which carries aria-activedescendant (m7-a11y).
     /** @type {HTMLElement} */ (this.list).focus();
+  }
+
+  /**
+   * The document's page, for an outline shown beside it: its entry is selected as it changes.
+   * @param {number} page
+   */
+  followPage(page) {
+    if (!this.state || this.focused) return;
+    const next = selectOutlinePage(this.state, page);
+    if (next === this.state) return;
+    this.state = next;
+    this.render();
+  }
+
+  /** Gives the keys back to the document; the outline stays shown. */
+  release() {
+    if (!this.state || !this.focused) return;
+    this.focused = false;
+    this.endFilter();
+    giveFocusBack(this.win, /** @type {HTMLElement} */ (this.box), this.opener);
+    this.opener = null;
+  }
+
+  /** The user closes it (Tab, Esc, q): the host keeps it hidden for the document. */
+  hide() {
+    const browser = this.browser;
+    this.close();
+    if (browser) this.host.hidden?.(browser);
   }
 
   /** Closes it; focus goes back where it was (the page). */
   close() {
     if (!this.state) return;
+    const focused = this.focused;
     this.state = null;
     this.browser = null;
+    this.focused = false;
+    this.beside = false;
     if (this.listening) {
       const gBrowser = /** @type {any} */ (this.win).gBrowser;
       gBrowser?.tabContainer.removeEventListener("TabSelect", this.onTabSelect);
@@ -123,7 +180,7 @@ export class OutlinePanel {
     }
     const box = /** @type {HTMLElement} */ (this.box);
     // Focus first, then hide (side-panel.mjs giveFocusBack).
-    giveFocusBack(this.win, box, this.opener);
+    if (focused) giveFocusBack(this.win, box, this.opener);
     this.opener = null;
     this.endFilter();
     box.hidden = true;
@@ -146,7 +203,10 @@ export class OutlinePanel {
     if (!effect) return;
     if (effect.type === "filter") this.startFilter();
     else {
-      this.close();
+      // Following an entry of an outline shown beside the document leaves it shown; closing
+      // hides it for the document (decision 19).
+      if (effect.type === "follow" && this.beside) this.release();
+      else this.hide();
       if (effect.type === "follow") this.host.effect(browser, effect);
     }
   }
@@ -193,7 +253,7 @@ export class OutlinePanel {
     e.preventDefault();
     e.stopPropagation();
     if (id) this.action({ id });
-    else this.close();
+    else this.hide();
   }
 
   /** Close and remove the box (VimmaHost.uninit). */

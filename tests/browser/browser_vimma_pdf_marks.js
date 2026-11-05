@@ -26,9 +26,11 @@ const EXTERNAL = "https://example.org/vimma-pdf";
 
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
+    // The outline shown beside a PDF narrows the viewer as it opens (pdf-mode decision 19), and
+    // marks are positions: browser_vimma_pdf_outline.js covers the outline.
     set: [
-      ["vimma.feature.pdf_mode", true],
       ["general.smoothScroll", false],
+      ["vimma.ui.pdf_outline.hidden", true],
     ],
   });
 });

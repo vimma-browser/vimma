@@ -23,9 +23,12 @@ const PDF = ROOT + "file_vimma_outline.pdf";
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["vimma.feature.pdf_mode", true],
       // Instant scrolling: the positions below are read right after a key.
       ["general.smoothScroll", false],
+      // The outline shown beside a PDF (pdf-mode decision 19) narrows the viewer as it opens,
+      // which pdf.js answers with a relayout of its own; these tests read positions and pages
+      // right after keys pressed as the PDF opens. browser_vimma_pdf_outline.js covers it.
+      ["vimma.ui.pdf_outline.hidden", true],
     ],
   });
 });

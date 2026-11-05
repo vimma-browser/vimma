@@ -158,7 +158,7 @@ import {
   sitePermissionKey,
 } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
-import { NOT_PDF, PDF_ACTION_IDS, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
+import { NOT_PDF, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
 import { stripInvisible } from "../core/pdf.mjs";
 
 const lazy = /** @type {any} */ ({});
@@ -312,7 +312,7 @@ function vimmaSurfaceOpen(s) {
     s.rename.isOpen ||
     s.panel.isOpen ||
     s.bookmarks.isOpen ||
-    s.outline.isOpen ||
+    s.outline.isActive ||
     s.agentChat.focused ||
     s.find.typing
   );
@@ -503,8 +503,46 @@ function dropOutlineAsk(s) {
 
 /** What Tab says in a PDF without an outline (docs/specs/pdf-mode.md Behaviour 5). */
 export const NO_OUTLINE = "no outline in this PDF";
-/** What following an attachment entry says (decision 10). */
-export const OUTLINE_ATTACHMENT = "open attachments from pdf.js's sidebar (F4)";
+/** What following an attachment entry says (decisions 10 and 18: pdf.js's sidebar is hidden). */
+export const OUTLINE_ATTACHMENT = "the PDF viewer does not open attachments";
+
+/** `[ui] pdf_outline = "hidden"` (docs/specs/pdf-mode.md decision 19), applied by ConfigHost. */
+export const PDF_OUTLINE_PREF = "vimma.ui.pdf_outline.hidden";
+/**
+ * Per tab, the document (PdfOps.documentKey) whose outline the host asked for to show beside it,
+ * and the one whose outline the user closed: it stays hidden until the tab shows another.
+ * @type {WeakMap<object, string>}
+ */
+const outlineAsked = new WeakMap();
+/** @type {WeakMap<object, string>} */
+const outlineHidden = new WeakMap();
+
+/**
+ * Shows the selected tab's PDF outline beside the document, without the keys (decision 19):
+ * when `[ui] pdf_outline` is "shown", the user has not closed it for this document, the window is
+ * in normal mode and no other panel or Vimma surface is open. The outline is asked for once per
+ * document (V8); its answer comes back here through the outline subscription. Called again when
+ * focus moves, so a PDF opened from the address bar shows it once focus reaches the page.
+ * @param {WindowState} s
+ */
+function showOutlineBeside(s) {
+  if (Services.prefs.getBoolPref(PDF_OUTLINE_PREF, false)) return;
+  const browser = /** @type {any} */ (s.win).gBrowser?.selectedBrowser;
+  const key = browser && PdfOps.documentKey(browser);
+  if (!key || s.outline.isOpen || outlineHidden.get(browser) === key) return;
+  if (vimmaSurfaceOpen(s) || s.agentChat.isOpen) return;
+  if (VimmaHost._mode(s) !== "normal") return;
+  const outline = PdfOps.outline(browser);
+  if (outline) {
+    if (outline.entries.length) {
+      s.outline.open(browser, outline, PdfOps.state(browser)?.page ?? 1, false);
+    }
+    return;
+  }
+  if (outlineAsked.get(browser) === key) return;
+  outlineAsked.set(browser, key);
+  PdfOps.askOutline(browser);
+}
 
 /**
  * Tab in the PDF viewer: the outline read once per document (V8), then shown at once; the
@@ -513,11 +551,16 @@ export const OUTLINE_ATTACHMENT = "open attachments from pdf.js's sidebar (F4)";
  */
 function openOutline(s) {
   s.notice.hide();
-  if (s.outline.isOpen) {
-    s.outline.close();
+  if (s.outline.isActive) {
+    s.outline.hide();
     return;
   }
   const browser = VimmaHost._selectedBrowser(s);
+  if (s.outline.isOpen && s.outline.browser === browser) {
+    // Shown beside the document (decision 19): Tab gives it the keys.
+    s.outline.focus();
+    return;
+  }
   const outline = PdfOps.outline(browser);
   if (outline) {
     showOutline(s, browser, outline);
@@ -1494,6 +1537,14 @@ export const VimmaHost = {
         state.mcpLog.close({ tabChanged: true });
         state.grep.close({ tabChanged: true });
         state.rename.close({ tabChanged: true });
+        // The outline belongs to its tab's document; the new tab's PDF shows its own.
+        if (
+          state.outline.isOpen &&
+          state.outline.browser !== /** @type {any} */ (win).gBrowser?.selectedBrowser
+        ) {
+          state.outline.close();
+        }
+        showOutlineBeside(state);
       },
       dispatcher: createDispatcher(keymap),
       help: new HelpOverlay(win, keymap, RUNNABLE, () => state.firefoxKeys?.status().on ?? []),
@@ -1507,8 +1558,6 @@ export const VimmaHost = {
           workspace: workspaceNames(win),
           search: SearchHost.completions,
         }),
-        // An unfinished feature's commands exist only with its pref on (`:12`, `:pdf_rotate`).
-        hidden: () => (PdfOps.enabled() ? [] : PDF_ACTION_IDS),
       }),
       tabStrip: null,
       toolbar: null,
@@ -1642,12 +1691,25 @@ export const VimmaHost = {
         if (state.outline.isOpen && state.outline.browser === browser && !PdfOps.outline(browser)) {
           state.outline.close();
         }
+        if (state.outline.browser === browser) {
+          state.outline.followPage(PdfOps.state(browser)?.page ?? 1);
+        }
+        if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
+          showOutlineBeside(state);
+        }
         this._emit(state);
       }),
       // The outline Tab asked for: shown if its tab is still the selected one.
       outlineFor: null,
       stopOutline: PdfOps.subscribeOutline((browser, outline) => {
-        if (browser !== state.outlineFor?.browser) return;
+        if (browser !== state.outlineFor?.browser) {
+          // The outline asked for as the PDF opened (decision 19): shown if it still may be.
+          if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
+            showOutlineBeside(state);
+            this._emit(state);
+          }
+          return;
+        }
         dropOutlineAsk(state);
         // Only into the state Tab was pressed in: its tab selected, in normal mode or with a panel
         // in the slot, which the outline replaces; never under a picker, prompt or the help.
@@ -1666,6 +1728,7 @@ export const VimmaHost = {
       onFocus: () => {
         AgentUi.onFocusChange(win);
         UpdateUi.onFocusChange(win);
+        showOutlineBeside(state);
       },
       panel: new SidePanel(win, {
         // A private window lists its tabs as the private workspace (private-workspace 6).
@@ -1718,6 +1781,10 @@ export const VimmaHost = {
           if (effect.type === "follow") followOutline(state, browser, effect.index);
         },
         left: (browser) => PdfOps.forget(browser),
+        hidden: (browser) => {
+          const key = PdfOps.documentKey(browser);
+          if (key) outlineHidden.set(browser, key);
+        },
       }),
       bookmarks: new BookmarksPanel(win, {
         load: () => loadTree(win),
@@ -2228,7 +2295,7 @@ export const VimmaHost = {
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
-    if (state.outline.isOpen) return "index";
+    if (state.outline.isActive) return "index";
     if (state.panel.isOpen || state.bookmarks.isOpen) return "panel";
     // Resize mode ends by itself when the window is down to one pane (a tab closed meanwhile).
     if (state.resize && !hasPanes(state.win)) state.resize = false;

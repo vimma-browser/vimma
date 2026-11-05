@@ -20,6 +20,8 @@ and workspaces, and your hands never leave the keyboard.
 - **Vim on the page:** `j`/`k` to scroll, `f` for link hints, `/` to find, `:` for commands, and
   `Esc` to get back to normal mode. Copy a paragraph, list item or code block in three keys: `F`,
   its label, then `y` (or `v` to adjust it first).
+- **PDFs with zathura's keys:** `J`/`K` and `12G` by page, zoom and fit, the outline on `Tab`,
+  marks and presentation mode in Firefox's own PDF viewer, with the page count in the status bar.
 - **tmux for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab, `v` to split,
   `w` to switch workspace. If your fingers know tmux, they already know Vimma.
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
