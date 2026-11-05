@@ -44,6 +44,14 @@ import {
 } from "../core/layouts.mjs";
 import { planSplit } from "../core/splitplan.mjs";
 import {
+  MAX_SPLITS_DEFAULT,
+  hiddenSplitRefusal,
+  newSplit,
+  removeSplitTab,
+  splitsFromPanes,
+  updateSplit,
+} from "../core/splits.mjs";
+import {
   applyLayout,
   clearLayout,
   contentArea,
@@ -58,6 +66,7 @@ import {
  */
 /** @import { SplitPlan } from "../core/splitplan.mjs" */
 /** @import { LayoutName } from "../core/layouts.mjs" */
+/** @import { NumberedSplit, Splits } from "../core/splits.mjs" */
 
 /**
  * @typedef {Element & { linkedPanel: string, label: string, pinned: boolean, closing?: boolean,
@@ -76,6 +85,18 @@ import {
  * @property {() => boolean} busy  a switch or restore is under way: adopt nothing until after it
  * @property {(text: string) => void} notify  the status-bar notice
  */
+/**
+ * A split of the shown workspace other than the current one (docs/specs/multiple-splits.md
+ * decision 16): its tree, its own Firefox wrapper, which Firefox suspends while another tab is
+ * selected, and the tabs whose panels carry its geometry.
+ * @typedef {{ panes: Panes, wrapper: Wrapper | null, laidOut: Set<Tab> }} Slot
+ */
+
+/**
+ * Several splits per workspace (docs/specs/multiple-splits.md decision 17); removed by the
+ * sub-PR that turns the feature on.
+ */
+export const MULTIPLE_SPLITS_PREF = "vimma.feature.multiple_splits";
 
 /** The notices for splits made outside Vimma that Vimma undoes (m3-workspaces decision 14). */
 export const SPANS_WORKSPACES = "split undone: its tabs are in different workspaces";
@@ -98,6 +119,41 @@ export const PANE_VIEW_EVENTS = Object.freeze([
  * (docs/specs/multiple-splits.md, decision 4).
  */
 export const HIDDEN_REASON = "the split is hidden: select one of its tabs (ctrl+b b) to go back";
+
+/**
+ * Whether `text` is the hidden-split refusal, which the host keeps on screen until the next key
+ * (multiple-splits decision 4): HIDDEN_REASON, or core's text naming the split.
+ * @param {string} text
+ */
+export function isHiddenRefusal(text) {
+  return text === HIDDEN_REASON || /^split S\d is hidden: /.test(text);
+}
+
+/**
+ * A split's tree without its number, as PaneView keeps trees.
+ * @param {NumberedSplit} split
+ * @returns {Panes}
+ */
+function treeOf(split) {
+  /** @type {Record<string, unknown>} */
+  const tree = { ...split };
+  delete tree.number;
+  return /** @type {Panes} */ (Object.freeze(tree));
+}
+
+/**
+ * Whether two trees show different tabs.
+ * @param {Panes} a
+ * @param {Panes} b
+ */
+function otherTabs(a, b) {
+  const tabs = (/** @type {Panes} */ p) =>
+    leaves(p)
+      .map((l) => l.tab)
+      .sort()
+      .join(" ");
+  return tabs(a) !== tabs(b);
+}
 
 /** Dwindle's area while the content area has no size yet: wide, as most windows are. */
 const WIDE = Object.freeze({ x: 0, y: 0, width: 16, height: 9 });
@@ -133,7 +189,25 @@ export class PaneView {
   #scheduled = false;
   /** @type {Set<Tab>} tabs whose panel carries our geometry */
   #laidOut = new Set();
-  /** @type {Map<string, { panes: Panes, wrapper: Wrapper | null, laidOut: Set<Tab> }>} */
+  /**
+   * The current tree's split number (docs/specs/multiple-splits.md): the current tree is the
+   * split shown, else the split shown last, kept as a hidden view.
+   */
+  #number = 1;
+  /**
+   * The shown workspace's other splits by number, each hidden; empty while the feature pref is
+   * off. Never non-empty without a current tree: when that ends, one of these takes its place.
+   * @type {Map<number, Slot>}
+   */
+  #others = new Map();
+  /** Splits of #others that ended on a TabClose: their wrapper and geometry go next reconcile. */
+  /** @type {Slot[]} */
+  #ended = [];
+  /** config `[panes] max_splits` (docs/specs/multiple-splits.md decision 7) */
+  maxSplits = MAX_SPLITS_DEFAULT;
+  /**
+   * @type {Map<string, Slot & { number: number, others: Map<number, Slot> }>}
+   */
   #parked = new Map();
   /**
    * The tab whose TabOpen came in this task: its TabSelect is a new foreground tab, not a pick
@@ -217,6 +291,169 @@ export class PaneView {
     return !!this.#panes && isHiddenView(this.#panes);
   }
 
+  /** Whether a workspace keeps several splits (multiple-splits decision 17). */
+  get multiple() {
+    return Services.prefs.getBoolPref(MULTIPLE_SPLITS_PREF, false);
+  }
+
+  /**
+   * The shown workspace's splits (core's model, docs/specs/multiple-splits.md decision 1): the
+   * current tree with its number, shown unless a hidden view, and every other split, hidden.
+   * @returns {Splits}
+   */
+  get splits() {
+    return this.#modelOf(this.#panes, this.#number, this.#others);
+  }
+
+  /**
+   * The splits parked under workspace `id` by `swap`; none for a workspace without a split.
+   * @param {string} id
+   * @returns {Splits}
+   */
+  parkedSplits(id) {
+    const p = this.#parked.get(id);
+    return p ? this.#modelOf(p.panes, p.number, p.others) : splitsFromPanes(null);
+  }
+
+  /**
+   * @param {Panes | null} panes
+   * @param {number} number
+   * @param {Map<number, Slot>} others
+   * @returns {Splits}
+   */
+  #modelOf(panes, number, others) {
+    if (!panes) return splitsFromPanes(null);
+    const numbered = (/** @type {Panes} */ p, /** @type {number} */ n) =>
+      /** @type {NumberedSplit} */ (Object.freeze({ ...showView(p), number: n }));
+    const list = [numbered(panes, number), ...[...others].map(([n, s]) => numbered(s.panes, n))];
+    list.sort((a, b) => a.number - b.number);
+    return Object.freeze({
+      splits: Object.freeze(list),
+      shown: isHiddenView(panes) ? null : number,
+      last: number,
+    });
+  }
+
+  /**
+   * Makes the shown workspace's splits `next` (core's model): the current tree becomes the split
+   * shown, else the one shown last. A split that ended loses its wrapper and geometry; a hidden
+   * one whose tabs changed loses its wrapper, rebuilt when it shows again. Touches Firefox only
+   * for those; the caller reconciles.
+   * @param {Splits} next
+   */
+  #use(next) {
+    /** @type {Map<number, Slot>} */
+    const slots = new Map(this.#others);
+    if (this.#panes) {
+      slots.set(this.#number, {
+        panes: this.#panes,
+        wrapper: this.#wrapper,
+        laidOut: this.#laidOut,
+      });
+    }
+    const want = next.shown ?? next.last ?? next.splits[0]?.number ?? null;
+    const kept = new Set(next.splits.map((x) => x.number));
+    for (const [n, slot] of slots) {
+      if (!kept.has(n)) this.#dissolve(slot);
+    }
+    this.#others = new Map();
+    /** @type {Slot | null} */
+    let current = null;
+    for (const x of next.splits) {
+      const tree = treeOf(x);
+      const was = slots.get(x.number);
+      /** @type {Slot} */
+      const slot = {
+        panes: tree,
+        wrapper: was?.wrapper ?? null,
+        laidOut: was?.laidOut ?? new Set(),
+      };
+      if (x.number === want) {
+        current = slot;
+        continue;
+      }
+      if (was && otherTabs(was.panes, tree)) {
+        this.#dissolve(slot);
+        slot.wrapper = null;
+        slot.laidOut = new Set();
+      }
+      this.#others.set(x.number, slot);
+    }
+    if (want !== this.#number || !current) {
+      this.#resize?.disconnect();
+      this.#resize = null;
+    }
+    this.#panes = current && (next.shown === null ? hideView(current.panes) : current.panes);
+    this.#wrapper = current?.wrapper ?? null;
+    this.#laidOut = current?.laidOut ?? new Set();
+    this.#number = want ?? 1;
+  }
+
+  /**
+   * A split that is no longer one, or no longer the same: its Firefox wrapper is undone and its
+   * panels lose Vimma's geometry. Its tabs stay open.
+   * @param {Slot} slot
+   */
+  #dissolve(slot) {
+    const wrapper = this.#wrapperOf(slot);
+    if (wrapper?.isConnected) wrapper.unsplitTabs();
+    const live = [...slot.laidOut].filter((t) => t.isConnected && !t.closing);
+    if (live.length) clearLayout(this.#win, live, { all: false });
+  }
+
+  /**
+   * A slot's wrapper: the one it kept, else the one its tabs are in.
+   * @param {Slot} slot
+   * @returns {Wrapper | null}
+   */
+  #wrapperOf(slot) {
+    if (slot.wrapper?.isConnected && slot.wrapper.tabs.length) return slot.wrapper;
+    const ids = leaves(slot.panes).map((l) => l.tab);
+    return ids.map((id) => this.#tab(id)?.splitview).find(Boolean) ?? null;
+  }
+
+  /**
+   * The number of the hidden split (not the current one) showing `tabId`, if any.
+   * @param {string} tabId
+   */
+  #otherOf(tabId) {
+    for (const [n, slot] of this.#others) if (paneOfTab(slot.panes, tabId)) return n;
+    return undefined;
+  }
+
+  /**
+   * Shows hidden split `number` with focus on `tabId`'s pane (behaviour 2): the current tree is
+   * kept among the others, as it was. Returns the tree put away, whose pages then sleep.
+   * @param {number} number
+   * @param {string} tabId
+   * @returns {Panes | null}
+   */
+  #bring(number, tabId) {
+    const slot = /** @type {Slot} */ (this.#others.get(number));
+    this.#others.delete(number);
+    const away = this.#panes;
+    if (away) {
+      this.#others.set(this.#number, {
+        panes: showView(away),
+        wrapper: this.#wrapper,
+        laidOut: this.#laidOut,
+      });
+    }
+    const pane = /** @type {string} */ (paneOfTab(slot.panes, tabId));
+    this.#panes = focusPane(slot.panes, pane);
+    this.#wrapper = slot.wrapper;
+    this.#laidOut = slot.laidOut;
+    this.#number = number;
+    this.#resize?.disconnect();
+    this.#resize = null;
+    return away;
+  }
+
+  /** The refusal of a new pane on a lone tab: naming the split once there can be several. */
+  #hiddenReason() {
+    return this.multiple ? hiddenSplitRefusal(this.#number) : HIDDEN_REASON;
+  }
+
   /** @param {number} max  config `[panes] max` */
   set max(max) {
     this.#max = max;
@@ -241,6 +478,9 @@ export class PaneView {
         panes: this.#panes,
         wrapper: this.#wrapper,
         laidOut: this.#laidOut,
+        // Every split is parked with its number (multiple-splits behaviour 10).
+        number: this.#number,
+        others: this.#others,
       });
     } else {
       this.#parked.delete(from);
@@ -250,6 +490,8 @@ export class PaneView {
     this.#panes = back?.panes ?? null;
     this.#wrapper = back?.wrapper ?? null;
     this.#laidOut = back?.laidOut ?? new Set();
+    this.#number = back?.number ?? 1;
+    this.#others = back?.others ?? new Map();
     this.#resize?.disconnect();
     this.#resize = null;
   }
@@ -267,17 +509,35 @@ export class PaneView {
    * A session restore (m3-workspaces sub-spec 3): `trees` replaces every workspace's tree, the
    * one of `active` shown, the others parked. Like `swap`, it touches nothing in Firefox; the
    * caller's `reconcile()` lays it out (SessionStore restored the wrappers; any that differ are
-   * rebuilt).
-   * @param {Map<string, Panes>} trees
+   * rebuilt). A workspace's value is its one tree, or its splits (docs/specs/multiple-splits.md
+   * behaviour 10): the shown one current, else the one shown last as a hidden view.
+   * @param {Map<string, Panes | Splits>} trees
    * @param {string} active
    */
   restore(trees, active) {
-    this.#panes = trees.get(active) ?? null;
     this.#wrapper = null;
+    this.#laidOut = new Set();
     this.#parked = new Map();
-    for (const [id, panes] of trees) {
-      if (id !== active) this.#parked.set(id, { panes, wrapper: null, laidOut: new Set() });
+    this.#panes = null;
+    this.#number = 1;
+    this.#others = new Map();
+    for (const [id, value] of trees) {
+      if (id === active) continue;
+      this.#use("splits" in value ? value : splitsFromPanes(value));
+      if (this.#panes) {
+        this.#parked.set(id, {
+          panes: this.#panes,
+          wrapper: null,
+          laidOut: new Set(),
+          number: this.#number,
+          others: this.#others,
+        });
+      }
+      this.#panes = null;
+      this.#others = new Map();
     }
+    const shown = trees.get(active);
+    this.#use(shown ? ("splits" in shown ? shown : splitsFromPanes(shown)) : splitsFromPanes(null));
   }
 
   /**
@@ -286,6 +546,11 @@ export class PaneView {
    * @param {Tab} tab
    */
   release(tab) {
+    const other = this.#otherOf(tab.linkedPanel);
+    if (other !== undefined) {
+      this.#use(removeSplitTab(this.splits, tab.linkedPanel));
+      return;
+    }
     const pane = this.#panes && paneOfTab(this.#panes, tab.linkedPanel);
     if (this.#panes && pane) this.#set(closePane(this.#panes, pane));
   }
@@ -344,10 +609,11 @@ export class PaneView {
   /** Wrappers with no tab in any tree: unsplit, adopt, or leave for later. */
   #adoptOthers() {
     const gBrowser = gBrowserOf(this.#win);
+    const slots = [{ panes: this.#panes, others: this.#others }, ...this.#parked.values()];
     const ours = new Set(
-      [this.#panes, ...[...this.#parked.values()].map((p) => p.panes)].flatMap((p) =>
-        p ? leaves(p).map((l) => l.tab) : [],
-      ),
+      slots
+        .flatMap((p) => [p.panes, ...[...p.others.values()].map((s) => s.panes)])
+        .flatMap((p) => (p ? leaves(p).map((l) => l.tab) : [])),
     );
     const notify = (/** @type {string} */ text) => this.adoption?.notify(text);
     for (const wrapper of [...(gBrowser.splitViews ?? [])]) {
@@ -403,7 +669,7 @@ export class PaneView {
    * @returns {PaneResult}
    */
   split(direction, { tab } = {}) {
-    if (this.hidden) return { ok: false, reason: HIDDEN_REASON };
+    if (this.hidden) return { ok: false, reason: this.#hiddenReason() };
     const gBrowser = gBrowserOf(this.#win);
     const current = this.#panes ?? createPanes(gBrowser.selectedTab.linkedPanel);
     const refusal = /** @type {SplitRefusal | null} */ (
@@ -428,7 +694,7 @@ export class PaneView {
    * @returns {PaneResult}
    */
   newPane(options = {}) {
-    if (this.hidden) return { ok: false, reason: HIDDEN_REASON };
+    if (this.hidden) return { ok: false, reason: this.#hiddenReason() };
     const current = this.#panes ?? createPanes(gBrowserOf(this.#win).selectedTab.linkedPanel);
     const direction =
       this.mode === "manual" ? "vertical" : dwindleDirection(current, this.#area() ?? WIDE);
@@ -458,6 +724,9 @@ export class PaneView {
    * sizes, each removed one closed as `close` would (docs/specs/side-panel-unsplit.md decision
    * 15). Past `[panes] max`, or with no space: refused, nothing changes. With `alone`, the new
    * tree is kept as a hidden view and that tab shows by itself (side-panel-unsplit decision 25).
+   * With several splits (docs/specs/multiple-splits.md): on a lone tab the tabs make a new split
+   * with the lowest free number, refused at `[panes] max_splits` (decision 5); a tab of a hidden
+   * split leaves it, which ends it when one pane is left (decision 6).
    * @param {Tab[]} tabs  two or more, each with its panel
    * @param {Tab} focus
    * @param {{ alone?: Tab }} [options]
@@ -465,17 +734,30 @@ export class PaneView {
    */
   showTabs(tabs, focus, { alone } = {}) {
     const ids = tabs.map((t) => t.linkedPanel);
+    const multiple = this.multiple;
+    const fresh = multiple && this.hidden;
+    const base = fresh ? null : this.#panes;
     const options = {
-      preset: this.#panes?.layout,
+      preset: base?.layout,
       mode: this.mode,
       focus: focus.linkedPanel,
       area: this.#area(),
       mainSize: this.mainSize,
       max: this.#max,
     };
-    const refusal = repaneRefusal(this.#panes, ids, options);
+    const refusal = repaneRefusal(base, ids, options);
     if (refusal) return { ok: false, reason: refusal.message };
-    const next = repane(this.#panes, ids, options);
+    let next = repane(base, ids, options);
+    if (fresh) {
+      const made = newSplit(this.splits, ids, { max: this.maxSplits, focus: focus.linkedPanel });
+      if (made.refusal) return { ok: false, reason: made.refusal };
+      this.#use(updateSplit(made.splits, /** @type {number} */ (made.splits.shown), next));
+      next = /** @type {Panes} */ (this.#panes);
+    } else if (multiple && ids.some((id) => this.#otherOf(id) !== undefined)) {
+      let model = this.splits;
+      for (const id of ids) if (this.#otherOf(id) !== undefined) model = removeSplitTab(model, id);
+      this.#use(model);
+    }
     if (!alone) {
       this.#set(showView(next));
       return { ok: true };
@@ -603,6 +885,21 @@ export class PaneView {
 
   /** @param {Tab} tab */
   #onTabClose(tab) {
+    // A tab of a hidden split (multiple-splits): its pane closes there, as `ctrl+b x` closes it,
+    // and a split left with one pane ends once the tab is gone.
+    const other = this.#otherOf(tab.linkedPanel);
+    if (other !== undefined) {
+      const slot = /** @type {Slot} */ (this.#others.get(other));
+      if (leaves(slot.panes).length > 2) {
+        const pane = /** @type {string} */ (paneOfTab(slot.panes, tab.linkedPanel));
+        slot.panes = closePane(slot.panes, pane);
+      } else {
+        this.#others.delete(other);
+        this.#ended.push(slot);
+      }
+      this.#schedule();
+      return;
+    }
     const panes = this.#panes;
     const pane = panes && paneOfTab(panes, tab.linkedPanel);
     if (!panes || !pane) return;
@@ -634,6 +931,12 @@ export class PaneView {
     if (/** @type {Tab | undefined} */ (e.detail?.previousTab)?.closing) return;
     const inTree = !!tab.linkedPanel && paneOfTab(panes, tab.linkedPanel) !== undefined;
     if (!inTree && !tab.pinned && this.accepts && !this.accepts(tab)) return;
+    // A tab of a hidden split shows that split whole (multiple-splits behaviour 2): reconcile
+    // brings it forward.
+    if (tab.linkedPanel && this.#otherOf(tab.linkedPanel) !== undefined) {
+      this.reconcile();
+      return;
+    }
     const { panes: next, change } = pickTab(panes, tab.linkedPanel || "", {
       opened,
       canJoin: this.#canShow(tab),
@@ -696,7 +999,30 @@ export class PaneView {
     if (this.#reconciling) return;
     this.#reconciling = true;
     try {
+      for (const slot of this.#ended.splice(0)) this.#dissolve(slot);
+      /** @type {Panes | null} */
+      let away = null;
+      // The selected tab is in a hidden split (picked, or Firefox's successor for a closed tab):
+      // that split shows (docs/specs/multiple-splits.md behaviour 2).
+      const selected = gBrowserOf(this.#win).selectedTab?.linkedPanel;
+      const other = selected ? this.#otherOf(selected) : undefined;
+      if (other !== undefined) away = this.#bring(other, /** @type {string} */ (selected));
       this.#reconcile();
+      // The current split ended while others are kept: the lowest becomes the one shown last,
+      // hidden, so a workspace with splits always has a current tree (and `]s` a way back).
+      const [first] = [...this.#others.keys()].sort((a, b) => a - b);
+      if (!this.#panes && first !== undefined) {
+        const slot = /** @type {Slot} */ (this.#others.get(first));
+        this.#others.delete(first);
+        this.#panes = hideView(slot.panes);
+        this.#wrapper = slot.wrapper;
+        this.#laidOut = slot.laidOut;
+        this.#number = first;
+        this.#reconcile();
+      } else if (!this.#panes) {
+        this.#number = 1;
+      }
+      if (away) this.#sleep(away);
     } finally {
       this.#reconciling = false;
     }

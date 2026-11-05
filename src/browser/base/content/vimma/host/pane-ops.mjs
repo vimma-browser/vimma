@@ -9,7 +9,7 @@
 import { closest, describeAction } from "../core/actions.mjs";
 import { LAYOUTS, isLayoutName, layoutOfAction } from "../core/layouts.mjs";
 import { leaves } from "../core/panes.mjs";
-import { HIDDEN_REASON, PaneViews } from "../split/PaneView.mjs";
+import { PaneViews, isHiddenRefusal } from "../split/PaneView.mjs";
 import { closeTab } from "./tab-ops.mjs";
 import { tabById } from "./goto.mjs";
 
@@ -68,7 +68,7 @@ function focusPage(win) {
 function refusal(action, result) {
   if (!result || result.ok) return null;
   // It already says what happened and what to do; the action's name would only lengthen it.
-  if (result.reason === HIDDEN_REASON) return HIDDEN_REASON;
+  if (isHiddenRefusal(result.reason)) return result.reason;
   return `${describeAction(action)}: ${result.reason}`;
 }
 
@@ -177,18 +177,42 @@ export function showAlone(win, tabId) {
 /**
  * The split the side panel pre-marks (docs/specs/side-panel-unsplit.md): the shown tree's tabs
  * and its focused pane's tab, as panel ids, and whether it is a hidden view; null without one.
+ * With several splits (docs/specs/multiple-splits.md behaviour 6 and decision 9) also every
+ * split's number and tabs and the shown one's number; on a lone tab nothing is pre-marked.
  * @param {Window} win
- * @returns {{ panes: string[], focus: string | null, hidden: boolean } | null}
+ * @returns {{ panes: string[], focus: string | null, hidden: boolean,
+ *   splits?: { number: number, tabs: string[] }[], shown?: number | null } | null}
  */
 export function shownSplit(win) {
-  const panes = PaneViews.get(win)?.panes;
-  if (!panes) return null;
+  const view = PaneViews.get(win);
+  const panes = view?.panes;
+  if (!view || !panes) return null;
   const order = leaves(panes);
-  return {
+  const split = {
     panes: order.map((l) => l.tab),
     focus: order.find((l) => l.pane === panes.focus)?.tab ?? null,
     hidden: panes.hidden === true,
   };
+  if (!view.multiple) return split;
+  const { splits, shown } = view.splits;
+  return {
+    ...(shown === null ? { panes: [], focus: null, hidden: false } : split),
+    splits: splits.map((x) => ({ number: x.number, tabs: leaves(x).map((l) => l.tab) })),
+    shown,
+  };
+}
+
+/**
+ * The status bar's split fields (docs/specs/multiple-splits.md decision 14): the shown split's
+ * number and how many the workspace has; none while a workspace keeps one split.
+ * @param {Window} win
+ * @returns {{ split?: number, splits?: number }}
+ */
+export function splitStatus(win) {
+  const view = PaneViews.get(win);
+  if (!view?.panes || !view.multiple) return {};
+  const { splits, shown, last } = view.splits;
+  return { split: shown ?? last ?? undefined, splits: splits.length };
 }
 
 /**
