@@ -252,7 +252,10 @@ add_task(async function links() {
     await TestUtils.waitForCondition(() => VimmaHost._hints(window)?.hints.length, "f labels");
     // pdf.js's toolbar buttons get labels too, without an href.
     const hrefs = VimmaHost._hints(window).hints.map((h) => h.target.href ?? "");
-    Assert.ok(hrefs.includes(EXTERNAL), "the external link");
+    Assert.ok(
+      hrefs.some((h) => h === EXTERNAL),
+      "the external link",
+    );
     Assert.equal(hrefs.filter((h) => h.startsWith(LINKS + "#")).length, 2, "two internal ones");
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => !VimmaHost._hints(window), "hints end");
