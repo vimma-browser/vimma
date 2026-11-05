@@ -102,7 +102,7 @@ const REASONS = /** @type {const} */ ([
   ],
   [["mode.visual", "caret.", "selection."], "copy mode and the selection are the user's"],
   [
-    ["page.yank_url", "page.open_clipboard", "page.open_clipboard_new_tab"],
+    ["page.yank_url", "page.open_clipboard", "page.open_clipboard_new_tab", "hint.copy_target"],
     "the clipboard is the user's",
   ],
   [

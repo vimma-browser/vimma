@@ -158,6 +158,7 @@ import {
 } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
 import { NOT_PDF, PDF_ACTION_IDS, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
+import { stripInvisible } from "../core/pdf.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -1257,6 +1258,8 @@ export const CONTENT_RUNNERS = Object.freeze({
   "hint.follow_new_tab": (b, a) => VimmaHost._startHints(b, a),
   "hint.follow_new_tab_fg": (b, a) => VimmaHost._startHints(b, a),
   "hint.element": (b, a) => VimmaHost._startHints(b, a),
+  "hint.show_target": (b, a) => VimmaHost._startHints(b, a),
+  "hint.copy_target": (b, a) => VimmaHost._startHints(b, a),
   // The ELEMENT mode's keys (docs/specs/element-focus.md decision 7).
   "element.visual": (b) => elementOf(b)?.visual(false),
   "element.visual_line": (b) => elementOf(b)?.visual(true),
@@ -1287,11 +1290,14 @@ export const CONTENT_RUNNERS = Object.freeze({
 /**
  * Moves `browser` `delta` entries through its session history, clamped to the first and last
  * entry (`5H` on the third page lands on the first). One step goes through goBack/goForward,
- * which skip entries the user never interacted with, like the toolbar buttons.
+ * which skip entries the user never interacted with, like the toolbar buttons; in the PDF viewer
+ * a step to another jump inside the PDF goes there directly (PdfOps.jumpIndex).
  * @param {any} browser
  * @param {number} delta  negative goes back
  */
 function goHistory(browser, delta) {
+  const jump = PdfOps.jumpIndex(browser, delta);
+  if (jump !== null) return browser.gotoIndex(jump);
   if (delta === -1) return browser.goBack();
   if (delta === 1) return browser.goForward();
   const history = browser.browsingContext?.sessionHistory;
@@ -1628,7 +1634,12 @@ export const VimmaHost = {
       find: new Find(win, () => this._emit(state)),
       // The PDF viewer's page and match count (docs/specs/pdf-mode.md decision 13).
       stopPdf: PdfOps.subscribe((browser) => {
-        if (browser?.ownerDocument?.defaultView === win) this._emit(state);
+        if (browser?.ownerDocument?.defaultView !== win) return;
+        // pdf.js opened another PDF in the viewer: the outline of the last one closes (V11).
+        if (state.outline.isOpen && state.outline.browser === browser && !PdfOps.outline(browser)) {
+          state.outline.close();
+        }
+        this._emit(state);
       }),
       // The outline Tab asked for: shown if its tab is still the selected one.
       outlineFor: null,
@@ -2812,6 +2823,10 @@ export const VimmaHost = {
           if (result.target.kind === "block") state.element.start(session.browser, result.target);
           return;
         }
+        if (result.action === "hint.show_target" || result.action === "hint.copy_target") {
+          this._linkTarget(state, session.browser, result.target, result.action);
+          return;
+        }
         if (result.action === "hint.follow_new_tab" || result.action === "hint.follow_new_tab_fg") {
           // docs/specs/follow-link-switch.md: an upper-case last key, or the switching action.
           VimmaActors.openInNewTab(session.browser, result.target, { background: !result.switch });
@@ -2819,6 +2834,37 @@ export const VimmaHost = {
           VimmaActors.activateHint(result.target);
         }
     }
+  },
+
+  /**
+   * `F` and `c` in the PDF viewer (docs/specs/pdf-mode.md decision 16): a link's target shown or
+   * copied as text, never followed. An internal link of the PDF is shown as the page it goes to,
+   * which the viewer resolves; its URL, with the fragment that reopens that place, is what `c`
+   * copies.
+   * @param {WindowState} state
+   * @param {any} browser
+   * @param {HintTarget} target
+   * @param {"hint.show_target" | "hint.copy_target"} action
+   */
+  async _linkTarget(state, browser, target, action) {
+    // From the content process (bounded by parseHintReply): shown and copied as text only, with
+    // no control or format characters (docs/security.md section 20, V8).
+    // A URL as the URL parser writes it, so a content process cannot put free text there.
+    const href = URL.parse(stripInvisible(target.href ?? ""))?.href ?? "";
+    if (!href) return;
+    if (action === "hint.copy_target") {
+      Cc["@mozilla.org/widget/clipboardhelper;1"]
+        .getService(Ci.nsIClipboardHelper)
+        .copyString(href);
+      state.notice.show(`yanked ${href}`);
+      return;
+    }
+    const here = browser.currentURI?.specIgnoringRef;
+    const own = !!here && href.startsWith(`${here}#`);
+    const page = own ? await PdfOps.linkPage(browser, target) : 0;
+    // The answer can come after the user has gone to another tab or pressed another key.
+    if (state.hint || browser !== /** @type {any} */ (state.win).gBrowser?.selectedBrowser) return;
+    state.notice.show(page ? `page ${page}` : href);
   },
 
   /**

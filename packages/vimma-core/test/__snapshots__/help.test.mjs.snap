@@ -153,6 +153,8 @@ Hints
   follow_link_new_tab       gF                                                   Follow link in new tab
   follow_link_new_tab_fg    (unbound)                                            Follow link in new tab and switch to it
   focus_element             F, F [element]                                       Focus a text block: v selects it, y copies it
+  show_link_target          F [pdf]                                              Show a link's target without following it
+  copy_link_target          c [pdf]                                              Copy a link's target
   hint_cancel               esc [hint]                                           Leave hint mode
 
 Element focus
@@ -296,6 +298,8 @@ PDF viewer
   pdf_rotate                r [pdf]                                              Rotate the pages 90 degrees clockwise (with a count: n times)
   pdf_presentation          f5 [pdf]                                             Presentation mode, or leave it
   pdf_outline               tab [pdf]                                            Open the outline (table of contents) in a panel
+  pdf_mark_set              m [pdf]                                              Set a mark here: m and a letter or digit
+  pdf_mark_go               ' [pdf]                                              Go back to a mark: ' and its letter or digit
 
 PDF outline
   index_down                j [index], down [index]                              Outline: next entry
@@ -469,6 +473,8 @@ Hints
   follow_link_new_tab       gF                                                   Follow link in new tab
   follow_link_new_tab_fg    (unbound)                                            Follow link in new tab and switch to it
   focus_element             F, F [element]                                       Focus a text block: v selects it, y copies it
+  show_link_target          F [pdf]                                              Show a link's target without following it
+  copy_link_target          c [pdf]                                              Copy a link's target
   hint_cancel               esc [hint]                                           Leave hint mode
 
 Element focus
@@ -612,6 +618,8 @@ PDF viewer
   pdf_rotate                r [pdf]                                              Rotate the pages 90 degrees clockwise (with a count: n times)
   pdf_presentation          f5 [pdf]                                             Presentation mode, or leave it
   pdf_outline               tab [pdf]                                            Open the outline (table of contents) in a panel
+  pdf_mark_set              m [pdf]                                              Set a mark here: m and a letter or digit
+  pdf_mark_go               ' [pdf]                                              Go back to a mark: ' and its letter or digit
 
 PDF outline
   index_down                j [index], down [index]                              Outline: next entry

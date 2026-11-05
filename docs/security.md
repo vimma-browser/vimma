@@ -3479,8 +3479,9 @@ which Firefox's site information panel shows already, and stores nothing of its 
 Vimma drives Firefox's pdf.js viewer through its content actor: it reads the page, page count,
 page label and find count to show them in the status bar, chooses the PDF viewer's key
 bindings, sends the viewer the page, zoom, layout and presentation operations those keys run,
-and reads the document's outline into a chrome panel on the user's `Tab`. It sits behind `vimma.feature.pdf_mode` while it is built. Spec:
-[pdf-mode](specs/pdf-mode.md).
+reads the document's outline into a chrome panel on the user's `Tab`, keeps marks (positions in
+a document) in the parent's memory, and shows or copies a link's target on `F` and `c`. It sits
+behind `vimma.feature.pdf_mode` while it is built. Spec: [pdf-mode](specs/pdf-mode.md).
 
 **Reach:** the PDF being viewed, through pdf.js, which a malformed PDF may compromise (pdf.js
 parses untrusted files, and CVE-2024-4367 let a PDF run script in the viewer); web pages, which
@@ -3503,15 +3504,16 @@ bindings, so it is accepted here.
   `data:` page the viewer opens) is not the viewer: the parent also requires an `http`, `https`
   or `file` document URI, which the viewer keeps from the PDF it shows.
   [`a_pdf_in_a_frame_gets_no_pdf_context`](../tests/browser/browser_vimma_pdf_status.js)
-- V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction` (and, where
-  a later operation needs one, objects made with `Cu.cloneInto` into the viewer's window, as
-  `PdfJsChild` does), or an outline entry's target that pdf.js itself gave it (V8); no chrome
-  object **may** be passed in.
+- V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction`, arrays made
+  with `Cu.cloneInto` into the viewer's window as `PdfJsChild` does (a mark's `XYZ` destination,
+  an internal link's explicit destination read from its fragment), or an outline entry's target
+  that pdf.js itself gave it (V8); no chrome object **may** be passed in.
   [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js)
 - V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
   fields they need; the child **must** keep only values whose `typeof` is `number`, `boolean` or
   `string` before `sendAsyncMessage`, and **must not** `await` a value returned by pdf.js. An
-  asynchronous result (the outline, the named destinations) **must** come back only through a
+  asynchronous result (the outline, the named destinations, the page of a link's named
+  destination) **must** come back only through a
   `Cu.exportFunction` callback passed to the promise's own `then` seen through Xrays, so that a
   viewer's object with a `then` of its own is never called; the result is read by the same rules.
   [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js),
@@ -3526,38 +3528,50 @@ bindings, so it is accepted here.
   status bar **must** draw it as text.
   [`pdf state outside its bounds is dropped`](../packages/vimma-core/test/pdf.test.mjs),
   [`a page label cannot carry bidi or zero-width characters`](../packages/vimma-core/test/pdf.test.mjs)
-- V7. The parent **must** send the viewer only operations: a name from `PDF_OPS` and one
-  bounded integer, checked by `parsePdfOp` in the parent before sending and again in the child
-  before the adapter touches pdf.js; no script, CSS text, markup or object **may** go into the
-  viewer. The adapter passes pdf.js only those numbers and its own fixed strings (`page-fit`,
-  `page-width`), and measures the page for `H`, `L`, `P` and `ctrl+f` through Xrays (the
-  viewer's container and page elements), so none of the viewer's script runs for it. In
-  presentation mode the scroll keys (`Vimma:Scroll`) turn pages through the same checked
-  operations, and fall back to scrolling when the adapter applied none.
+- V7. The parent **must** send the viewer only operations: a name from `PDF_OPS` and one bounded
+  integer, checked by `parsePdfOp` in the parent before sending and again in the child before the
+  adapter touches pdf.js; `go` (a mark) also carries a position, exactly four bounded numbers
+  (`parsePdfPosition`), which is also how the parent checks the position the viewer reports when a
+  mark is set. No script, CSS text, markup or object **may** go into the viewer. `F` asks for an
+  internal link's page by the hint's generation and index only, and the parent keeps the answer only
+  when it is a page of the document. The adapter passes pdf.js only those numbers and its own fixed
+  strings (`page-fit`, `page-width`), and measures the page for `H`, `L`, `P` and `ctrl+f` through
+  Xrays (the viewer's container and page elements), so none of the viewer's script runs for it. In
+  presentation mode the scroll keys (`Vimma:Scroll`) turn pages through the same checked operations,
+  and fall back to scrolling when the adapter applied none.
+  Accepted: in the PDF viewer `ctrl+o` and `ctrl+i` step to a neighbouring entry of the same
+  document without Firefox's user-interaction check (decision 9), so a compromised viewer that
+  pushes many same-document entries makes them step through each; a count (`9ctrl+o`) or the
+  toolbar's back button still leaves, so it is a nuisance, not a trap.
   [`the parent sends only operations and numbers`](../packages/vimma-core/test/pdf.test.mjs),
-  [`the_parent_sends_only_operations_and_numbers`](../tests/browser/browser_vimma_pdf_keys.js)
+  [`the_parent_sends_only_operations_and_numbers`](../tests/browser/browser_vimma_pdf_keys.js),
+  [`pdf marks`](../packages/vimma-core/test/pdf.test.mjs),
+  [`marks`](../tests/browser/browser_vimma_pdf_marks.js)
 - V8. The adapter **must** read the outline only for the user's `Tab` in the PDF viewer (the
-  `outline` operation), and send only each entry's title, level, page number, kind, collapsed
-  flag and, for a URL entry, its URL, never a destination; it cuts titles to 512 characters and
-  stops at 5,000 entries and a depth of 32. The parent **must** take an outline message only
-  from the top viewer's current actor after asking that document for it (opening the panel only
-  if no other key was pressed, the tab is still selected and at most 2 s passed), and **must** parse it
-  with `parsePdfOutline`, which drops the whole message for more than 5,000 entries, a level
-  deeper than 32 or more than one step below the previous entry's, a title over 512 characters,
-  a URL over 8,192, a page outside the document, an unknown kind or an unknown field, and strips
-  control and format characters (Cc, Cf) from titles. `Enter` names an entry by its index (V7);
-  its destination, named action or layer change stays in the child, which hands pdf.js back its
-  own object; a named action is followed only when it is one of pdf.js's navigation actions (not
-  `Print` or `SaveAs`). The outline panel **must** set titles with `textContent` (§6, C1). A URL
-  entry is opened in the tab only when it is `http` or `https` (`outlineUrlAllowed`), after
-  `checkLoadURIWithPrincipal` against the viewer's principal, which triggers the load, with no
-  referrer and no fixup, as a link chosen with `f` loads; never with the system principal, which
-  would make it look typed and could route it to another workspace (§2). pdf.js already gives a
-  `javascript:` link no URL, so such an entry follows nothing.
+  `outline` operation), and send only each entry's title, level, page number, kind, collapsed flag
+  and, for a URL entry, its URL, never a destination; it cuts titles to 512 characters and stops at
+  5,000 entries and a depth of 32. The parent **must** take an outline message only from the top
+  viewer's current actor after asking that document for it (opening the panel only if no other key
+  was pressed, the tab is still selected and at most 2 s passed), and **must** parse it with
+  `parsePdfOutline`, which drops the whole message for more than 5,000 entries, a level deeper than
+  32 or more than one step below the previous entry's, a title over 512 characters, a URL over
+  8,192, a page outside the document, an unknown kind or an unknown field, and strips control and
+  format characters (Cc, Cf) from titles. `Enter` names an entry by its index (V7); its destination,
+  named action or layer change stays in the child, which hands pdf.js back its own object; a named
+  action is followed only when it is one of pdf.js's navigation actions (not `Print` or `SaveAs`).
+  The outline panel **must** set titles with `textContent` (§6, C1). A URL entry is opened in the
+  tab only when it is `http` or `https` (`outlineUrlAllowed`), after `checkLoadURIWithPrincipal`
+  against the viewer's principal, which triggers the load, with no referrer and no fixup, as a link
+  chosen with `f` loads; never with the system principal, which would make it look typed and could
+  route it to another workspace (§2). pdf.js already gives a `javascript:` link no URL, so such an
+  entry follows nothing. A link target from `F` or `c` is shown in the notice or copied as text
+  only when it parses as a URL, as the URL parser writes it, without control or format
+  characters, and never followed.
   [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js),
   [`an outline outside its bounds is dropped`](../packages/vimma-core/test/pdfoutline.test.mjs),
   [`each_kind_of_entry`](../tests/browser/browser_vimma_pdf_outline.js),
-  [`outlineUrlAllowed`](../packages/vimma-core/test/pdfoutline.test.mjs)
+  [`outlineUrlAllowed`](../packages/vimma-core/test/pdfoutline.test.mjs),
+  [`links`](../tests/browser/browser_vimma_pdf_marks.js)
 - V9. Presentation mode **may** go full screen without user activation, as Firefox allows the
   pdf.js principal (`dom/base/Element.cpp`); Vimma **must** request it only for the user's own
   key in the PDF viewer, so it adds no spoofing surface: a page cannot reach it, the content
@@ -3572,6 +3586,11 @@ bindings, so it is accepted here.
 
 - V11. The parsed outline **must** stay in the parent's memory, for the tab's current document
   only, and **must** be dropped when the tab navigates or closes, or pdf.js opens another PDF in
-  the same viewer; the panel closes with it. It is never written.
-  [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js)
-  Marks join this rule with the pull request that adds them (pdf-mode, Delivery).
+  the same viewer (the state message counts the documents the viewer opened); the panel closes
+  with it. Marks **must** stay in the parent's memory too, by document URL without its
+  fragment, at most 1,000 documents; a private window's marks are kept apart and dropped when
+  the last private window closes. Neither is ever written.
+  [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`another_pdf_in_the_same_viewer_drops_the_outline`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`a_read_under_way_does_not_outlive_its_document`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`private_marks_go_with_the_private_windows`](../tests/browser/browser_vimma_pdf_marks.js)

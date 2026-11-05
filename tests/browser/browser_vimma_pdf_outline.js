@@ -409,6 +409,77 @@ add_task(async function the_outline_is_read_only_on_the_users_key() {
   });
 });
 
+// V11: pdf.js can open another PDF in the same viewer, with no navigation; an outline read
+// from the first goes even when the second has as many pages.
+add_task(async function another_pdf_in_the_same_viewer_drops_the_outline() {
+  await withPdf(async (browser) => {
+    await openOutline();
+    Assert.ok(PdfOps.outline(browser), "the outline is read");
+    const loaded = BrowserTestUtils.waitForContentEvent(
+      browser,
+      "textlayerrendered",
+      false,
+      null,
+      true,
+    );
+    // The same bytes again: a new document with the same page count.
+    await SpecialPowers.spawn(browser, [], async () => {
+      const app = content.wrappedJSObject.PDFViewerApplication;
+      const data = await app.pdfDocument.getData();
+      app.open(Cu.cloneInto({ data }, content));
+    });
+    await loaded;
+    await TestUtils.waitForCondition(() => !shown(), "the open outline closes");
+    Assert.equal(PdfOps.outline(browser), null, "the outline went with the first document");
+  });
+});
+
+// V11: an outline read still under way when pdf.js opens another PDF is not taken for it.
+add_task(async function a_read_under_way_does_not_outlive_its_document() {
+  await withPdf(async (browser) => {
+    await recordingOutline(async (seen) => {
+      // The first document answers only once the second one is open.
+      await SpecialPowers.spawn(browser, [], () => {
+        const w = content.wrappedJSObject;
+        const doc = w.PDFViewerApplication.pdfDocument;
+        // The old document is gone by then: an outline of its own shape stands in for it.
+        const old = Cu.cloneInto([{ title: "Old", dest: [0], items: [] }], content);
+        doc.getOutline = Cu.exportFunction(
+          () =>
+            new w.Promise(
+              Cu.exportFunction((resolve) => {
+                w.vimmaAnswerOutline = Cu.exportFunction(() => resolve(old), content);
+              }, content),
+            ),
+          content,
+        );
+      });
+      EventUtils.synthesizeKey("KEY_Tab");
+      await SpecialPowers.spawn(browser, [], () => {});
+      const loaded = BrowserTestUtils.waitForContentEvent(
+        browser,
+        "textlayerrendered",
+        false,
+        null,
+        true,
+      );
+      await SpecialPowers.spawn(browser, [], async () => {
+        const app = content.wrappedJSObject.PDFViewerApplication;
+        const data = await app.pdfDocument.getData();
+        app.open(Cu.cloneInto({ data }, content));
+      });
+      await loaded;
+      // The new document's state has reached the parent before the old answer.
+      await TestUtils.waitForCondition(() => PdfOps.state(browser)?.doc === 1, "the new PDF");
+      await SpecialPowers.spawn(browser, [], () => content.wrappedJSObject.vimmaAnswerOutline());
+      await new Promise((r) => setTimeout(r, 300));
+      Assert.equal(seen.length, 0, "the old document's outline is not sent");
+      Assert.equal(PdfOps.outline(browser), null, "nor kept");
+      Assert.ok(!shown(), "nor shown");
+    });
+  });
+});
+
 add_task(async function a_hostile_outline_gets_only_primitives_through() {
   await withPdf(async (browser) => {
     await recordingOutline(async (seen) => {

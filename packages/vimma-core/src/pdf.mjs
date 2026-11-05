@@ -21,6 +21,8 @@ const MAX_MATCHES = 10_000_000;
  * @property {number} pages     the page count
  * @property {string} label     the current page's label, "" when it has none
  * @property {{ current: number, total: number }} find  the find controller's count, 0/0 for none
+ * @property {number} doc       which document the viewer shows: pdf.js can open another PDF in
+ *   the same viewer, with no navigation, and what the parent read from the last one goes (V11)
  */
 
 /**
@@ -62,11 +64,13 @@ export function parsePdfState(raw) {
   if (!find || typeof find !== "object") return null;
   const { current, total } = /** @type {Record<string, unknown>} */ (find);
   if (!intIn(total, 0, MAX_MATCHES) || !intIn(current, 0, total)) return null;
+  if (!intIn(r.doc, 0, Number.MAX_SAFE_INTEGER)) return null;
   return Object.freeze({
     page,
     pages,
     label: stripInvisible(label).trim(),
     find: Object.freeze({ current, total }),
+    doc: r.doc,
   });
 }
 
@@ -208,6 +212,8 @@ export const PDF_OPS = Object.freeze([
   // Delivery PR 4 (decision 10): read the outline, and follow an entry by its index.
   "outline",
   "follow",
+  // Delivery PR 5 (decision 11): go to a mark's position, sent as `at` (parsePdfPosition).
+  "go",
 ]);
 const OPS = new Set(PDF_OPS);
 
@@ -216,16 +222,75 @@ const MAX_OP_N = PDF_MAX_PAGES * 10;
 
 /**
  * An operation message, or null unless it is exactly `{ op, n }` with a known name and a bounded
- * integer (V7). The adapter checks every message with it before touching pdf.js.
+ * integer, or `{ op: "go", n, at }` with a position (V7). The adapter checks every message with
+ * it before touching pdf.js.
  * @param {unknown} raw
- * @returns {{ op: string, n: number } | null}
+ * @returns {{ op: string, n: number, at?: PdfPosition } | null}
  */
 export function parsePdfOp(raw) {
   if (!raw || typeof raw !== "object") return null;
   const keys = Object.keys(raw);
-  if (keys.length !== 2 || !keys.includes("op") || !keys.includes("n")) return null;
-  const { op, n } = /** @type {Record<string, unknown>} */ (raw);
+  const { op, n, at } = /** @type {Record<string, unknown>} */ (raw);
+  // `go` alone carries a position: four more numbers, never anything else (V7).
+  const want = op === "go" ? 3 : 2;
+  if (keys.length !== want || !keys.includes("op") || !keys.includes("n")) return null;
   if (typeof op !== "string" || !OPS.has(op)) return null;
   if (!intIn(n, -MAX_OP_N, MAX_OP_N)) return null;
-  return { op, n };
+  if (op !== "go") return { op, n };
+  const position = parsePdfPosition(at);
+  return position && { op, n, at: position };
+}
+
+// Delivery PR 5: marks (decision 11).
+
+/**
+ * A place in a document as pdf.js's view reports it: the page, the point of the page at the
+ * view's top left in PDF units, and the scale (1 is 100 %).
+ * @typedef {{ page: number, left: number, top: number, scale: number }} PdfPosition
+ */
+
+/** PDF units past this are on no page: a page is at most 14,400 units a side (ISO 32000). */
+const MAX_PDF_UNITS = 1e6;
+
+/** @param {unknown} v @returns {v is number} */
+const finiteIn = (v, /** @type {number} */ lo, /** @type {number} */ hi) =>
+  typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
+
+/**
+ * A position from the viewer (where a mark is set) or for it (going back to one), or null
+ * unless it is exactly the four bounded numbers.
+ * @param {unknown} raw
+ * @returns {PdfPosition | null}
+ */
+export function parsePdfPosition(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const keys = Object.keys(raw);
+  if (keys.length !== 4) return null;
+  const { page, left, top, scale } = /** @type {Record<string, unknown>} */ (raw);
+  if (!intIn(page, 1, PDF_MAX_PAGES)) return null;
+  if (!finiteIn(left, -MAX_PDF_UNITS, MAX_PDF_UNITS)) return null;
+  if (!finiteIn(top, -MAX_PDF_UNITS, MAX_PDF_UNITS)) return null;
+  if (!finiteIn(scale, PDF_ZOOM_MIN, PDF_ZOOM_MAX)) return null;
+  return { page, left, top, scale };
+}
+
+/**
+ * Whether `c` names a mark: one ASCII letter or digit, as zathura's marks are.
+ * @param {string} c
+ */
+export function isPdfMarkChar(c) {
+  return typeof c === "string" && /^[A-Za-z0-9]$/.test(c);
+}
+
+/**
+ * The document a mark belongs to: its URL without the fragment, which pdf.js changes as the
+ * view moves; null for something that is not a URL.
+ * @param {string} url
+ * @returns {string | null}
+ */
+export function pdfDocumentKey(url) {
+  const parsed = URL.parse(url);
+  if (!parsed) return null;
+  parsed.hash = "";
+  return parsed.href;
 }

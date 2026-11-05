@@ -17,8 +17,8 @@ import { parseAgentElement, parseAgentForms } from "./agent-element.mjs";
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
 /** @typedef {{ rect: Rect }} Target */
 /**
- * @typedef {"hint.follow" | "hint.follow_new_tab" | "hint.follow_new_tab_fg" | "hint.element"}
- *   HintAction
+ * @typedef {"hint.follow" | "hint.follow_new_tab" | "hint.follow_new_tab_fg" | "hint.element"
+ *   | "hint.show_target" | "hint.copy_target"} HintAction
  */
 /**
  * @template {Target} [T=Target]
@@ -58,6 +58,8 @@ export const HINT_ACTIONS = Object.freeze([
   "hint.follow_new_tab",
   "hint.follow_new_tab_fg",
   "hint.element",
+  "hint.show_target",
+  "hint.copy_target",
 ]);
 
 /** @param {string} chars */

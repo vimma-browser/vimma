@@ -186,6 +186,8 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Follow link in new tab                        | `follow_link_new_tab`    | `gF`               |
 | Follow link in new tab and switch to it       | `follow_link_new_tab_fg` | —                  |
 | Focus a text block: v selects it, y copies it | `focus_element`          | `F`, `F [element]` |
+| Show a link's target without following it     | `show_link_target`       | `F [pdf]`          |
+| Copy a link's target                          | `copy_link_target`       | `c [pdf]`          |
 | Leave hint mode                               | `hint_cancel`            | `esc [hint]`       |
 
 ## Element focus
@@ -365,6 +367,8 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Rotate the pages 90 degrees clockwise (with a count: n times) | `pdf_rotate`           | `r [pdf]`                                     |
 | Presentation mode, or leave it                                | `pdf_presentation`     | `f5 [pdf]`                                    |
 | Open the outline (table of contents) in a panel               | `pdf_outline`          | `tab [pdf]`                                   |
+| Set a mark here: m and a letter or digit                      | `pdf_mark_set`         | `m [pdf]`                                     |
+| Go back to a mark: ' and its letter or digit                  | `pdf_mark_go`          | `' [pdf]`                                     |
 
 ## PDF outline
 
@@ -541,7 +545,7 @@ unchanged.
 | `alt+t`               | open a menu                                    | unchanged                                   |
 | `alt+h`               | open a menu                                    | unchanged                                   |
 | `alt+p`               | open the Profiles menu                         | unchanged                                   |
-| `'`                   | quick find, links only                         | unbound                                     |
+| `'`                   | quick find, links only                         | `pdf_mark_go` (normal mode)                 |
 | `/`                   | quick find                                     | `find_forward` (normal mode)                |
 | `f10`                 | the menu bar                                   | unchanged                                   |
 | `shift+f10`           | the context menu                               | unchanged                                   |

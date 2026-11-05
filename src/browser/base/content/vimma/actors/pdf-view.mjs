@@ -74,6 +74,13 @@ export const PDFJS_CONTRACT = Object.freeze({
   "pdfLinkService.goToDestination": "function",
   "pdfLinkService.executeNamedAction": "function",
   "pdfLinkService.executeSetOCGState": "function",
+  // Delivery PR 5: marks (the view's position) and the pages internal links go to.
+  "pdfViewer.update": "function",
+  "pdfViewer._location": "object",
+  "pdfViewer._location.pageNumber": "number",
+  "pdfViewer._location.left": "number",
+  "pdfViewer._location.top": "number",
+  "pdfDocument.getDestination": "function",
 });
 
 /**
@@ -103,6 +110,12 @@ const OUTLINE_ACTIONS = new Set([
 
 /** A read the viewer never answers is given up after this long, so Tab works again. */
 const OUTLINE_READ_MS = 5000;
+
+/** A link's page the viewer does not resolve in this long is shown as its URL. */
+const LINK_PAGE_MS = 2000;
+
+/** Longer than any fragment pdf.js writes for a link (the hint collector's href limit). */
+const MAX_LINK_HASH = 8192;
 
 /**
  * Firefox's own test for the pdf.js viewer (nsContentUtils::IsPDFJS): its scheme and its origin
@@ -164,6 +177,8 @@ export class PdfView {
    */
   #outline = null;
   #readingOutline = false;
+  /** Counts the documents pdf.js opens in this viewer, so the parent drops an old outline. */
+  #generation = 0;
   /** @type {any} */
   #timer = null;
   #find = { current: 0, total: 0 };
@@ -210,9 +225,13 @@ export class PdfView {
     // behind Xrays (V3, V4).
     const onState = Cu.exportFunction(() => this.schedule(), win);
     const onCount = Cu.exportFunction((/** @type {any} */ evt) => this.#onCount(evt), win);
-    // pdf.js can open another PDF in the same viewer: the outline read goes with the old one.
+    // pdf.js can open another PDF in the same viewer: the outline read goes with the old one,
+    // and the parent learns of it from the next state message (V11).
     const onDocument = Cu.exportFunction(() => {
       this.#outline = null;
+      this.#readingOutline = false;
+      this.#generation++;
+      this.schedule();
     }, win);
     try {
       this.#app.eventBus.on("documentloaded", onDocument);
@@ -279,10 +298,12 @@ export class PdfView {
         case "last":
           // A jump: goToPage records it in the history first (decision 9).
           if (!live(page, pages)) return false;
+          this.#settle();
           app.pdfLinkService.goToPage(pdfPageTarget(op, n, page, pages));
           return true;
         case "jump":
           // Before a search hit moves the view: ctrl+o comes back here (decision 9).
+          this.#settle();
           app.pdfHistory.pushCurrentPosition();
           return true;
         case "page_top":
@@ -344,6 +365,17 @@ export class PdfView {
           return true;
         case "follow":
           return this.#follow(n);
+        case "go": {
+          // A mark (decision 11): an XYZ destination on its page, through goToDestination,
+          // which records the jump in the history first (decision 9). The array is cloned into
+          // the viewer (V3); the promise goToDestination returns is not used (V4).
+          const at = msg.at;
+          if (!at || !live(pages) || at.page > pages) return false;
+          const dest = [at.page - 1, { name: "XYZ" }, at.left, at.top, at.scale];
+          this.#settle();
+          app.pdfLinkService.goToDestination(Cu.cloneInto(dest, this.#win));
+          return true;
+        }
         case "presentation":
           // Only for the user's own key (V9): the parent sends it for a key in the PDF viewer.
           // A viewer that claims presentation without being full screen gets nothing to exit.
@@ -374,7 +406,12 @@ export class PdfView {
     lazy.setTimeout(() => {
       this.#readingOutline = false;
     }, OUTLINE_READ_MS);
-    const done = Cu.exportFunction((/** @type {any} */ items) => this.#onOutline(items), this.#win);
+    // A read under way when pdf.js opens another PDF is the old document's: dropped (V11).
+    const generation = this.#generation;
+    const done = Cu.exportFunction((/** @type {any} */ items) => {
+      if (generation === this.#generation) this.#onOutline(items);
+      else this.#readingOutline = false;
+    }, this.#win);
     const failed = Cu.exportFunction(() => {
       this.#readingOutline = false;
     }, this.#win);
@@ -455,8 +492,10 @@ export class PdfView {
       }
     };
     walk(items, 1);
+    const generation = this.#generation;
     const finish = () => {
       this.#readingOutline = false;
+      if (generation !== this.#generation) return;
       this.#outline = { message: { entries, truncated }, targets };
       this.#sendOutline(this.#outline.message);
     };
@@ -566,12 +605,110 @@ export class PdfView {
     const kind = /** @type {any} */ (entries?.[index])?.kind;
     if (target === undefined || target === null) return false;
     const link = this.#app.pdfLinkService;
+    this.#settle();
     // goToDestination records a history entry first (decision 9).
     if (kind === "dest") link.goToDestination(target);
     else if (kind === "action") link.executeNamedAction(target);
     else if (kind === "ocg") link.executeSetOCGState(target);
     else return false;
     return true;
+  }
+
+  /**
+   * Brings pdf.js's record of the view up to date before a jump. pdf.js updates it on the
+   * animation frame after a scroll, and its history records where a jump starts from that
+   * record: a jump a moment after another (`G` then `'a`), or right after the document loaded,
+   * would record a stale start or none, and ctrl+o would come back to the wrong place
+   * (decision 9).
+   */
+  #settle() {
+    try {
+      this.#app.pdfViewer.update();
+    } catch {
+      // a viewer without its document: nothing to record
+    }
+  }
+
+  /**
+   * Where the view is, for a mark (decision 11): pdf.js's own record of the page and the point
+   * of it at the view's top left, and the scale; primitives only (V4), checked by the parent
+   * (parsePdfPosition).
+   */
+  position() {
+    const viewer = this.#app.pdfViewer;
+    let location = null;
+    // A mark set right after a key that scrolled is where the view is now.
+    this.#settle();
+    try {
+      location = viewer._location;
+    } catch {
+      // no position: the parent drops the record
+    }
+    return {
+      page: num(() => location?.pageNumber),
+      left: num(() => location?.left),
+      top: num(() => location?.top),
+      scale: num(() => viewer.currentScale),
+    };
+  }
+
+  /**
+   * The page an internal link of pdf.js's annotation layer goes to, for `F` (decision 16): its
+   * fragment read as pdf.js's setHash reads it (`page=`, an explicit destination in JSON, or a
+   * named destination). `done` gets a page number, or 0 when it does not resolve; a named
+   * destination comes back only through an exported callback (V4).
+   * @param {Element} el  the link, through Xrays
+   * @param {(page: number) => void} done
+   */
+  linkPage(el, done) {
+    let answered = false;
+    const answer = (/** @type {number} */ page) => {
+      if (answered) return;
+      answered = true;
+      done(page);
+    };
+    const pages = num(() => this.#app.pagesCount);
+    let hash = "";
+    try {
+      hash = URL.parse(/** @type {HTMLAnchorElement} */ (el).href)?.hash.slice(1) ?? "";
+    } catch {
+      // not a link
+    }
+    if (!hash || hash.length > MAX_LINK_HASH) return answer(0);
+    /** @type {unknown} */
+    let dest = unescape(hash);
+    if (hash.includes("=")) {
+      const params = new URLSearchParams(hash);
+      if (params.has("nameddest")) dest = params.get("nameddest") ?? "";
+      else {
+        const page = Number(params.get("page"));
+        return answer(Number.isSafeInteger(page) && page >= 1 && page <= pages ? page : 0);
+      }
+    } else {
+      try {
+        dest = JSON.parse(/** @type {string} */ (dest));
+        // pdf.js reads anything but an array as a destination's name (`#5` names "5").
+        if (!Array.isArray(dest)) dest = String(dest);
+      } catch {
+        // a named destination
+      }
+    }
+    if (Array.isArray(dest)) {
+      // pdf.js looks the page reference up in its own cache: a clone it can read (V3).
+      return answer(this.#pageOf(Cu.cloneInto(dest, this.#win), pages));
+    }
+    if (typeof dest !== "string") return answer(0);
+    lazy.setTimeout(() => answer(0), LINK_PAGE_MS);
+    const resolved = Cu.exportFunction(
+      (/** @type {any} */ explicit) => answer(this.#pageOf(explicit, pages)),
+      this.#win,
+    );
+    const failed = Cu.exportFunction(() => answer(0), this.#win);
+    const name = /** @type {string} */ (dest);
+    if (!this.#then(() => this.#app.pdfDocument.getDestination(name), resolved, failed)) {
+      answer(0);
+    }
+    return undefined;
   }
 
   /** Whether pdf.js shows its presentation mode (decision 15). */
@@ -635,6 +772,7 @@ export class PdfView {
       // Bounded here too, so that a hostile viewer cannot push a huge string over IPC (V4).
       label: str(() => app.pdfViewer.currentPageLabel).slice(0, PDF_MAX_LABEL + 1),
       find: { current: this.#find.current, total: this.#find.total },
+      doc: this.#generation,
     };
   }
 

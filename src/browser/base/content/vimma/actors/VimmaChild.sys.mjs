@@ -558,6 +558,17 @@ export class VimmaChild extends JSWindowActorChild {
         // the adapter; only the top-level viewer has one.
         this.#pdf?.run(msg.data);
         return undefined;
+      case "Vimma:PdfWhere":
+        // Where the view is, for a mark (docs/specs/pdf-mode.md decision 11).
+        return this.#pdf?.position() ?? null;
+      case "Vimma:PdfLinkPage": {
+        // `F` on an internal link of the last hints (decision 16): the page it goes to.
+        const { gen, id } = msg.data ?? {};
+        if (!this.#pdf || !isIndex(gen) || !isIndex(id) || gen !== this.#hints.gen) return 0;
+        const el = this.#hints.els[id]?.deref();
+        const pdf = this.#pdf;
+        return el?.isConnected ? new Promise((resolve) => pdf.linkPage(el, resolve)) : 0;
+      }
       case "Vimma:ScrollFraction": {
         // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16): the element `j`
         // scrolls, as a fraction of how far it can go.
