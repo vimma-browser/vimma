@@ -1699,6 +1699,7 @@ export const VimmaHost = {
           downloadPickerKey(win, state.downloadRows, key, id, {
             say: (text, error) => state.notice.show(text, { error: !!error }),
             close: () => state.downloadPicker.close(),
+            ask: (question, yes) => state.rename.ask(question, yes),
           }),
         closed: () => state.downloadRows.close(),
       }),

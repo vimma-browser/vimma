@@ -6,13 +6,17 @@
 // decision 9) and the `ctrl+b d` picker (decisions 3, 5 and 12), each a view on the window's
 // Firefox download list, read into core DownloadRecords. A picker key runs through Firefox's own
 // download code only: `DownloadsCommon.openDownload` and `Download.showContainingDirectory` are
-// the only calls here that hand a file to the OS (docs/security.md C2).
+// the only calls here that hand a file to the OS (docs/security.md C2). Cancel and delete ask
+// `y/N` first, with the picker closed (decision 6, docs/security.md D5).
 
 import {
   DONE_MS,
   DOWNLOAD_ROW_CAP,
+  downloadAsks,
+  downloadChanged,
   downloadEnds,
   downloadKey,
+  downloadQuestion,
   downloadSections,
   downloadSegment,
   downloadState,
@@ -25,7 +29,7 @@ import { runCommand } from "./browser-ops.mjs";
 import { refusedScheme } from "../core/pageurl.mjs";
 import { openUrl } from "./tab-ops.mjs";
 
-/** @import { DownloadEndState, DownloadItem, DownloadRecord, DownloadSegment } from "../core/downloads.mjs" */
+/** @import { DownloadEndState, DownloadItem, DownloadOp, DownloadRecord, DownloadSegment } from "../core/downloads.mjs" */
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -468,10 +472,98 @@ async function showInFolder(d) {
 }
 
 /**
- * The ops a picker key runs in this build; Enter's resume and retry, and the other keys of the
- * table, come with theirs (docs/specs/downloads.md, Delivery).
+ * The ops a picker key runs in this build; unblock comes with its key (docs/specs/downloads.md,
+ * Delivery 5).
  */
-const RUNS = new Set(["open", "openSystem", "show", "copyLink", "copyPath", "referrer", "library"]);
+const RUNS = new Set([
+  "open",
+  "openSystem",
+  "show",
+  "copyLink",
+  "copyPath",
+  "referrer",
+  "library",
+  "pauseResume",
+  "cancel",
+  "retry",
+  "remove",
+  "delete",
+]);
+
+/**
+ * The download as it is now, or null when it has left the window's list (removed in the
+ * Library, by another window, or by clearing history).
+ * @param {Window} win
+ * @param {any} d
+ */
+async function current(win, d) {
+  const list = await listFor(win);
+  return (await list.getAll()).includes(d) ? recordOf(d, win) : null;
+}
+
+/**
+ * Cancel and delete, after `y/N`, through Firefox's own commands (decision 6): the picker has
+ * closed, so the answer goes to the question. The yes stands only for the download asked about:
+ * if it changed before the answer, nothing is done and the notice says so (docs/security.md D5).
+ * @param {Window} win
+ * @param {any} d
+ * @param {DownloadRecord} asked  the download as it was when the question showed
+ * @param {"cancel" | "delete"} op
+ * @param {(text: string, error?: boolean) => void} say
+ */
+async function answered(win, d, asked, op, say) {
+  if (downloadChanged(asked, await current(win, d), op)) {
+    say(`${op}: "${asked.name}" changed since you were asked; nothing was done`, true);
+    return;
+  }
+  if (op === "cancel") {
+    // DownloadsViewUI's downloadsCmd_cancel: cancel, then remove the partial data, the order
+    // Firefox uses to avoid a race with the cancellation.
+    d.cancel().catch(() => {});
+    await d.removePartialData().finally(() => d.target.refresh());
+    say(`canceled "${asked.name}"`);
+    return;
+  }
+  // DownloadsViewUI's downloadsCmd_deleteFile, with the user's browser.download.clearHistoryOnDelete.
+  await lazy.DownloadsCommon.deleteDownloadFiles(
+    d,
+    Services.prefs.getIntPref("browser.download.clearHistoryOnDelete", 0),
+  );
+  say(`deleted "${asked.name}"`);
+}
+
+/**
+ * Pause, resume, retry and remove, as Firefox's panel runs them (DownloadsViewUI.sys.mjs,
+ * downloadsCmd_pauseResume, downloadsCmd_retry and cmd_delete).
+ * @param {Window} win
+ * @param {any} d
+ * @param {DownloadRecord} r
+ * @param {DownloadOp} op
+ * @param {(text: string, error?: boolean) => void} say
+ */
+function runState(win, d, r, op, say) {
+  if (op === "pauseResume") {
+    if (d.stopped) {
+      // A failure while it runs is reported as the download's own failed state.
+      d.start().catch(() => {});
+      say(`resumed "${r.name}"`);
+    } else {
+      d.cancel().catch(console.error);
+      say(`paused "${r.name}"`);
+    }
+  } else if (op === "retry") {
+    if (typeof d.start === "function") {
+      d.start().catch(() => {});
+    } else {
+      // A history entry is not a Download: Firefox's Library downloads its URL again.
+      /** @type {any} */ (win).DownloadURL(r.url, r.path ? r.name : null, win.document);
+    }
+    say(`retrying "${r.name}"`);
+  } else if (op === "remove") {
+    lazy.DownloadsCommon.deleteDownload(d).catch(console.error);
+    say(`removed "${r.name}" from the list; the file stays`);
+  }
+}
 
 /**
  * `u`: the page a download came from, in a new tab of the download's own container, or of the
@@ -512,9 +604,10 @@ function copy(text) {
  * @param {DownloadRows} rows
  * @param {string} key
  * @param {string} id
- * @param {{ say: (text: string, error?: boolean) => void, close: () => void }} ui
+ * @param {{ say: (text: string, error?: boolean) => void, close: () => void,
+ *   ask: (question: string, yes: () => void) => void }} ui
  */
-export function downloadPickerKey(win, rows, key, id, { say, close }) {
+export function downloadPickerKey(win, rows, key, id, { say, close, ask }) {
   const d = rows.byId(id);
   if (!d) {
     say("that download is gone", true);
@@ -525,7 +618,25 @@ export function downloadPickerKey(win, rows, key, id, { say, close }) {
   const result = downloadKey(r, key, { allowOverride });
   if (result.type === "refuse") say(result.text, true);
   if (result.type !== "run" || !RUNS.has(result.op)) return;
+  if (downloadAsks(result.op)) {
+    const op = /** @type {"cancel" | "delete"} */ (result.op);
+    // An open picker takes every key first: it closes, so the `y` reaches the question
+    // (decision 6, docs/security.md D5). Closing detaches the rows; `d` and `r` are kept.
+    close();
+    ask(downloadQuestion(r, op), () =>
+      answered(win, d, r, op, say).catch((/** @type {any} */ e) => {
+        console.error(e);
+        say(`${op}: ${e?.message ?? e}`, true);
+      }),
+    );
+    return;
+  }
   switch (result.op) {
+    case "pauseResume":
+    case "retry":
+    case "remove":
+      runState(win, d, r, result.op, say);
+      return;
     case "open":
     case "openSystem":
       // The file shows over the picker's page, in a tab or the system's app.

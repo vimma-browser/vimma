@@ -3790,7 +3790,8 @@ bindings, so it is accepted here.
 
 `ctrl+b d` (or `:downloads`) opens a picker over the window's downloads, where one key opens a
 file, opens it in the system's app, shows it in its folder, copies its link or path, opens the
-page it came from, or opens Firefox's full downloads view. It lists files on your disk and
+page it came from, pauses, resumes, cancels or retries a download, removes it from the list,
+deletes its file, or opens Firefox's full downloads view. It lists files on your disk and
 hands them to the OS, so these rules keep it to Firefox's own download code and out of an
 agent's reach. Spec: [downloads](specs/downloads.md).
 
@@ -3826,11 +3827,24 @@ referring pages are chosen by the sites the files came from.
   [`test_u_opens_the_referring_page`](../tests/browser/browser_vimma_downloads.js),
   [`an agent download refuses o, shift+o, u, r and !`](../packages/vimma-core/test/downloads.test.mjs),
   [`the keys that apply follow isCommandEnabled for each state`](../packages/vimma-core/test/downloads.test.mjs)
+- D5. `shift+d` (delete the file) and `c` (cancel, which removes the partial data) **must** ask
+  `y/N` first, and the picker **must** close before the question shows, because an open picker
+  takes every key first and a `y` meant for the question would otherwise reach it. A yes **must**
+  act only on the download asked about: if it left the list, changed state, or its file moved or
+  went before the answer, nothing is done and the notice says so. Both run through Firefox's own
+  commands (`Download.cancel` and `removePartialData`, `DownloadsCommon.deleteDownloadFiles`);
+  `d` removes only the list and history entry, keeps the file, and does not ask, as in Firefox.
+  [`test_cancel_asks_and_removes_the_partial_file`](../tests/browser/browser_vimma_downloads.js),
+  [`test_D_asks_and_deletes_the_file`](../tests/browser/browser_vimma_downloads.js),
+  [`test_the_y_answer_goes_to_the_question_never_to_the_picker`](../tests/browser/browser_vimma_downloads.js),
+  [`test_an_answer_does_nothing_if_the_download_changed`](../tests/browser/browser_vimma_downloads.js),
+  [`shift+d and c need a y/N; d does not`](../packages/vimma-core/test/downloads.test.mjs),
+  [`a yes stands only for the download asked about (docs/security.md D5)`](../packages/vimma-core/test/downloads.test.mjs)
 - D6. No agent role **may** reach the picker or the downloads list: `downloads.picker` is not
   one of `vimma_keys`' actions, no control or MCP command lists or opens a download, and no
   `ctl/` or `agent/` module imports the picker's ops.
   [`downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.mjs)
 
-D3 (blocked downloads, released only through Firefox's dialog) and D5 (`y/N` before cancel and
-delete) come with the keys they govern.
+D3 (blocked downloads, released only through Firefox's dialog) comes with the `!` key it
+governs.

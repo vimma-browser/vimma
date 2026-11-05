@@ -640,6 +640,10 @@ describe("downloads picker (docs/specs/downloads.md)", () => {
     for (const key of ["o", "shift+o", "s", "y", "shift+y", "u", "shift+l", "enter"]) {
       expect(pickerKey(s, key).effect, key).toEqual({ type: "download", key, id: "2" });
     }
+    // Pause, cancel, retry, remove and delete (docs/specs/downloads.md, Delivery 4).
+    for (const key of ["p", "c", "r", "d", "shift+d"]) {
+      expect(pickerKey(s, key).effect, key).toEqual({ type: "download", key, id: "2" });
+    }
     expect(pickerKey(s, "x").effect).toBeNull();
     expect(pickerKey(s, "q").effect).toEqual({ type: "close" });
     s = pickerKey(s, "/").state;

@@ -10,6 +10,8 @@ import {
   downloadSearchText,
   downloadKey,
   downloadAsks,
+  downloadQuestion,
+  downloadChanged,
   downloadSummary,
   downloadSegment,
   downloadEnds,
@@ -395,6 +397,27 @@ describe("downloadKey", () => {
     expect(downloadAsks("cancel")).toBe(true);
     expect(downloadAsks("remove")).toBe(false);
     expect(downloadAsks("open")).toBe(false);
+  });
+
+  test("the question names the file and its effect, and ends with y/N", () => {
+    expect(downloadQuestion(running(), "cancel")).toBe(
+      'cancel "report.pdf" and remove its partial file? (y/N)',
+    );
+    expect(downloadQuestion(rec(), "delete")).toBe('delete "report.pdf" from disk? (y/N)');
+  });
+
+  test("a yes stands only for the download asked about (docs/security.md D5)", () => {
+    // Unchanged, or only its bytes moved on: the answer stands.
+    expect(downloadChanged(running(), running({ currentBytes: 4 * MB }), "cancel")).toBe(false);
+    expect(downloadChanged(rec(), rec(), "delete")).toBe(false);
+    // Gone from the list, finished, paused or failed before the y: nothing is done.
+    expect(downloadChanged(rec(), null, "delete")).toBe(true);
+    expect(downloadChanged(running(), rec(), "cancel")).toBe(true);
+    expect(downloadChanged(running(), paused(), "cancel")).toBe(true);
+    expect(downloadChanged(running(), failed(), "delete")).toBe(true);
+    // Its file was deleted elsewhere, or now stands at another path.
+    expect(downloadChanged(rec(), rec({ targetExists: false }), "delete")).toBe(true);
+    expect(downloadChanged(rec(), rec({ path: "/tmp/other.pdf" }), "delete")).toBe(true);
   });
 });
 
