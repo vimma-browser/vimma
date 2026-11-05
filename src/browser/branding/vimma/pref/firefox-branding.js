@@ -130,6 +130,12 @@ pref("vimma.ui.pdf_outline.hidden", false);
 // download behaves as every later one: the start of a burst still opens the panel, unless the
 // download opens in a tab of its own (vimma/services/ViewedDownloads.sys.mjs).
 pref("browser.download.panel.shown", true);
+// Downloads (docs/specs/downloads.md decision 10): the start of a burst no longer opens the panel,
+// which brought the hidden toolbar over the page; the status bar's `↓` segment says a download
+// started, ended, failed or was blocked. A download blocked as it is added (an `Insecure` one) or as
+// spam still opens the panel, as Firefox's warning (an `error` event opens it whatever this pref
+// says); one blocked after its transfer shows as `↓ blocked`.
+pref("browser.download.alwaysOpenPanel", false);
 
 // Vimma's update check (spec m6a-updater): on by default; false, or [updates] check = false in
 // config.toml, stops every request. The URL may use only %BUILD_TARGET% and %CHANNEL%, so a
@@ -203,11 +209,3 @@ pref("pdfjs.featuresNotificationImpressionLimit", 0);
 // pdf.js opens its sidebar on no view by itself (a PDF's /PageMode, the view last used): Vimma's
 // outline panel is the outline, and firefox-pdf.css hides pdf.js's sidebar (pdf-mode decision 18).
 pref("pdfjs.sidebarViewOnLoad", 0);
-
-// Unfinished: the downloads picker and the status bar's downloads segment
-// (docs/specs/downloads.md), delivered over several pull requests (CONTRIBUTING.md, "Unfinished
-// features").
-pref("vimma.feature.downloads", false);
-
-// Unfinished: several splits per workspace (docs/specs/multiple-splits.md), delivered over several
-// pull requests (CONTRIBUTING.md, "Unfinished features").

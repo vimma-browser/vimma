@@ -3791,7 +3791,8 @@ bindings, so it is accepted here.
 `ctrl+b d` (or `:downloads`) opens a picker over the window's downloads, where one key opens a
 file, opens it in the system's app, shows it in its folder, copies its link or path, opens the
 page it came from, pauses, resumes, cancels or retries a download, removes it from the list,
-deletes its file, or opens Firefox's full downloads view. It lists files on your disk and
+deletes its file, allows or removes a blocked download through Firefox's own dialog, or opens
+Firefox's full downloads view. It lists files on your disk and
 hands them to the OS, so these rules keep it to Firefox's own download code and out of an
 agent's reach. Spec: [downloads](specs/downloads.md).
 
@@ -3813,6 +3814,36 @@ referring pages are chosen by the sites the files came from.
   download is gone with its session, as in Firefox.
   [`test_a_private_window_lists_only_private_downloads`](../tests/browser/browser_vimma_downloads.js),
   [`test_a_private_window_counts_only_its_private_downloads`](../tests/browser/browser_vimma_downloads.js)
+- D3. A download Firefox blocked by a verdict **must** be released only through Firefox's own
+  dialog, `DownloadsCommon.confirmUnblockDownload` with the `chooseUnblock` type, opened by `!`
+  with the picker closed first: that dialog words the warning by verdict, its default button
+  (`Enter`) removes the file, and `Esc` cancels. Vimma **must never** use `chooseOpen`, whose
+  default opens the file, and an allow **must** open nothing: a download whose question was
+  answered "open" is released without opening, and the file is opened afterwards only with `o`,
+  through Firefox's executable prompt. `!` **must** do nothing with
+  `browser.safebrowsing.allowOverride` off, for a `Malware` verdict (which can only be removed,
+  as in Firefox's Library), for an agent download (D4), or without blocked data. `Enter` on a
+  blocked row **must** only show Firefox's reason and the keys that apply. The dialog's answer
+  **must** act only on the download asked about, as in D5: if its state, data or file changed,
+  or `allowOverride` was turned off, before the answer, nothing is done. Removing (`d`) and
+  deleting (`shift+d`) blocked data **must** confirm the block (`Download.confirmBlock`), as
+  Firefox's own remove does, and a content-analysis `Malware` download **must never** be removed
+  or deleted from the picker, because the scanner, not the user, owns it. Firefox's dialog keeps
+  Vimma's dialog keys (firefox-dialogs): `y` runs its first button, "Allow download", only once
+  the keys are armed after `security.notification_enable_delay` with no key in between, so a key
+  typed on into the dialog cannot allow it.
+  [`test_a_blocked_download_unblocks_only_through_firefoxs_dialog`](../tests/browser/browser_vimma_downloads.js),
+  [`test_enter_in_firefoxs_unblock_dialog_never_reaches_the_picker`](../tests/browser/browser_vimma_downloads.js),
+  [`test_enter_on_a_blocked_download_says_why_and_the_keys`](../tests/browser/browser_vimma_downloads.js),
+  [`test_no_unblock_when_allowOverride_is_false`](../tests/browser/browser_vimma_downloads.js),
+  [`test_a_malware_verdict_can_only_be_removed`](../tests/browser/browser_vimma_downloads.js),
+  [`test_a_content_analysis_malware_verdict_cannot_be_unblocked_removed_or_deleted`](../tests/browser/browser_vimma_downloads.js),
+  [`test_d_on_a_blocked_download_deletes_its_data`](../tests/browser/browser_vimma_downloads.js),
+  [`test_D_on_a_blocked_download_confirms_the_block`](../tests/browser/browser_vimma_downloads.js),
+  [`unblock needs blocked data and allowOverride`](../packages/vimma-core/test/downloads.test.mjs),
+  [`a Malware verdict refuses !`](../packages/vimma-core/test/downloads.test.mjs),
+  [`a content-analysis Malware verdict refuses !, d and shift+d`](../packages/vimma-core/test/downloads.test.mjs),
+  [`an answer in Firefox's unblock dialog stands only while it still applies`](../packages/vimma-core/test/downloads.test.mjs)
 - D4. An agent download (M11's test: its container, its tab's container, or a path in the
   quarantine folder) **must never** be opened, opened in the system's app, retried, allowed or
   followed to its referring page from the picker, because its file is admitted only under M12
@@ -3847,6 +3878,3 @@ referring pages are chosen by the sites the files came from.
   `ctl/` or `agent/` module imports the picker's ops.
   [`downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.mjs)
-
-D3 (blocked downloads, released only through Firefox's dialog) comes with the `!` key it
-governs.

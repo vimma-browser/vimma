@@ -428,6 +428,16 @@ describe("downloadKey", () => {
     expect(downloadChanged(rec(), rec({ targetExists: false }), "delete")).toBe(true);
     expect(downloadChanged(rec(), rec({ path: "/tmp/other.pdf" }), "delete")).toBe(true);
   });
+
+  test("an answer in Firefox's unblock dialog stands only while it still applies", () => {
+    expect(downloadChanged(blocked(), blocked(), "unblock", ctx)).toBe(false);
+    // Its blocked data gone, or allowing turned off, while the dialog was open.
+    expect(downloadChanged(blocked(), blocked({ hasBlockedData: false }), "unblock", ctx)).toBe(
+      true,
+    );
+    expect(downloadChanged(blocked(), blocked(), "unblock", { allowOverride: false })).toBe(true);
+    expect(downloadChanged(blocked(), null, "unblock", ctx)).toBe(true);
+  });
 });
 
 describe("downloadSegment", () => {

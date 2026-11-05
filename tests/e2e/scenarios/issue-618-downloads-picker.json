@@ -1,11 +1,9 @@
 {
   "name": "issue-618-downloads-picker",
   "issue": 618,
-  "description": "docs/specs/downloads.md, behind vimma.feature.downloads: the fixture page downloads report.txt as it loads; the status bar says `↓ done` and Firefox's downloads panel stays shut (downloads-done.png); ctrl+b d opens the downloads picker over the page with the file under Recent, its state, size, host and end time (downloads-picker.png); Esc closes it, and the picker has cleared the segment's end state. The end time and the fixture server's port vary between runs, a few digits well inside the 0.5 % screenshot tolerance.",
+  "description": "docs/specs/downloads.md: the fixture page downloads report.txt as it loads; the status bar says `↓ done` and Firefox's downloads panel stays shut (downloads-done.png); ctrl+b d opens the downloads picker over the page with the file under Recent, its state, size, host and end time (downloads-picker.png); Esc closes it, and the picker has cleared the segment's end state. The end time and the fixture server's port vary between runs, a few digits well inside the 0.5 % screenshot tolerance.",
   "timeoutSeconds": 60,
   "prefs": {
-    "vimma.feature.downloads": true,
-    "browser.download.alwaysOpenPanel": false,
     "browser.download.always_ask_before_handling_new_types": false
   },
   "steps": [

@@ -149,7 +149,7 @@ const DOWNLOADS = {
   id: DOWNLOAD_PICKER_ID,
   title: "Downloads",
   listLabel: "Downloads, newest first",
-  hint: "o open · O system app · s folder · p pause · c cancel · r retry · d remove · D delete · y link · Y path · u page · L all · / search",
+  hint: "o open · O app · s folder · p pause · c cancel · r retry · d remove · D delete · ! allow · y link · Y path · u page · L all · / search",
   cells: (/** @type {DownloadItem} */ item) => [
     item.state,
     [item.detail, item.host, item.ended, item.workspace].filter(Boolean).join(" · "),
