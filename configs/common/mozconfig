@@ -43,8 +43,9 @@ unset _vimma_version_file
 # itself every release (its build ID is newer) and only adds traffic to the update host. Without
 # it, application.ini has no [AppUpdate] URL, the About dialog shows the version only and
 # Settings no update controls. With it, the updater embeds Vimma's update certificates
-# (toolkit/mozapps/update/updater/moz-build.patch); a tree without them would fall back to
-# Mozilla's test keys (dep1.der), so the build stops instead.
+# (toolkit/mozapps/update/updater/moz-build.patch), which `npm run import` links from
+# configs/updater/; a tree without them would fall back to Mozilla's test keys (dep1.der), so
+# the build stops instead.
 case "${VIMMA_UPDATES:-}" in
   "" | 1) ;;
   *)
@@ -55,7 +56,8 @@ esac
 if [ "${VIMMA_UPDATES:-}" = 1 ]; then
   for _vimma_cert in primary.der secondary.der; do
     if [ ! -s "$topsrcdir/toolkit/mozapps/update/updater/vimma/$_vimma_cert" ]; then
-      echo "mozconfig: VIMMA_UPDATES=1 needs toolkit/mozapps/update/updater/vimma/$_vimma_cert" \
+      echo "mozconfig: VIMMA_UPDATES=1 needs toolkit/mozapps/update/updater/vimma/$_vimma_cert," \
+        "linked from configs/updater/ by npm run import" \
         "(docs/runbook.md, \"Update signing keys and the update host\")" >&2
       exit 1
     fi

@@ -467,7 +467,10 @@ Rules, in order (each failure has a reason string for about:vimma and the status
 1. The trailing comment parses and the signature verifies under a pinned key: the primary or
    secondary slot. The public keys are the SPKI of the DER certificates the updater embeds,
    generated into `vimma/updates/keys.mjs` at import time from
-   `src/toolkit/mozapps/update/updater/vimma/`. A test key is accepted only from the pref
+   `src/toolkit/mozapps/update/updater/vimma/`. (Since changed: generated into
+   `packages/vimma-core/src/update-keys.mjs` by `npm run gen-update-keys` from
+   `configs/updater/`, outside `src/` because `surfer license-check` cannot accept a binary file
+   there.) A test key is accepted only from the pref
    `vimma.update.testKeys` and only when `Cu.isInAutomation`.
 2. `vimmaChannel` equals `UpdateUtils.UpdateChannel` and `vimmaTarget` equals the build target (a
    nightly or other-target manifest served at the release path is refused).
@@ -581,8 +584,9 @@ ever added, its own spec can revisit it.
 
 **Key ceremony (any option).** RSA-4096, a self-signed certificate per slot (the updater only
 reads the public key; the subject is `CN=Vimma update signing primary|secondary`; validity is
-irrelevant). The two public DERs are committed under `src/toolkit/mozapps/update/updater/vimma/`
-with their SHA-256 in the runbook. The secondary's private half is never on a networked machine.
+irrelevant). The two public DERs are committed under `configs/updater/` (linked into the engine
+by `npm run import`, since `surfer license-check` refuses a binary file under `src/`) with their
+SHA-256 in the runbook. The secondary's private half is never on a networked machine.
 
 **Rotation (planned, for example every two years or on any doubt).** Release R carries an updater
 with `primary = new`, `secondary = cold` and is signed with the **old** primary, which every client

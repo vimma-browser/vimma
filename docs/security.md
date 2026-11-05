@@ -3437,10 +3437,12 @@ _Pages_ and _extensions_ cannot reach it.
 - UP12. Firefox's updater is built **only** with `VIMMA_UPDATES=1` (the release and nightly
   jobs; source and dev builds keep `--disable-updater`), **only** for the update channel
   `vimma`, and such a binary **only** asks `updates.vimma.dev` and **only** applies a MAR signed
-  by a key whose certificate Vimma commits (`src/toolkit/mozapps/update/updater/vimma/`,
-  ADR-016). It **never** trusts Mozilla's keys, test-signing keys (`dep1.der`, `dep2.der`, whose
+  by a key whose certificate Vimma commits (`configs/updater/`, which `npm run import` links to
+  `engine/toolkit/mozapps/update/updater/vimma/` where `moz-build.patch` reads it; ADR-016). It
+  **never** trusts Mozilla's keys, test-signing keys (`dep1.der`, `dep2.der`, whose
   private halves are public) included: the mozconfig stops the build when either of Vimma's
-  certificates is missing, and `moz-build.patch` stops it on any other channel, since every
+  certificates is missing or empty in the engine (a dangling link counts as missing), the import
+  refuses to link a missing or empty one, and `moz-build.patch` stops it on any other channel, since every
   other channel embeds Mozilla's. The manifest check's pinned keys (UP1) are generated from the
   same certificates, so the two verifiers trust the same keys, and a certificate that is not
   self-signed by its own key is refused. The primary's certificate is made from the request
@@ -3455,6 +3457,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`is not built without VIMMA_UPDATES (source and dev builds)`](../tools/test/mozconfig-updater.test.mjs),
   [`refuses VIMMA_UPDATES=1 without Vimma's certificates, so no updater trusts Mozilla's test keys`](../tools/test/mozconfig-updater.test.mjs),
   [`refuses any other value of VIMMA_UPDATES rather than guessing`](../tools/test/mozconfig-updater.test.mjs),
+  [`links both certificates into the engine and ignores them in its git`](../tools/import/test/link-update-certs.test.mjs),
+  [`refuses a repository without a certificate, so no import leaves a half-set behind`](../tools/import/test/link-update-certs.test.mjs),
   [`fails when the updater lacks Vimma's certificate or carries one of Mozilla's`](../tools/update/test/check-build.test.mjs),
   [`fails without the [AppUpdate] URL or with another host`](../tools/update/test/check-build.test.mjs),
   [`the repository: update-keys.mjs is what the committed certificates give`](../tools/update/test/gen-update-keys.test.mjs),

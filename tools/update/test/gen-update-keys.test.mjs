@@ -1,6 +1,6 @@
 // docs/specs/m6a-updater.md "Delivery" (sub-PR 2) and decision 39: the manifest check's pinned
 // keys (packages/vimma-core/src/update-keys.mjs) are generated from the certificates Firefox's
-// updater embeds (src/toolkit/mozapps/update/updater/vimma/*.der), so the two verifiers trust
+// updater embeds (configs/updater/*.der), so the two verifiers trust
 // the same keys from one source. Keys and certificates are generated in the test.
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
@@ -149,13 +149,10 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
 
   it("the repository: update-keys.mjs is what the committed certificates give", async () => {
     const certs = join(ROOT, CERT_DIR);
-    if (!existsSync(join(certs, "primary.der"))) {
-      // Until the KMS-signed primary certificate is committed (docs/runbook.md step 5b), no
-      // updater can be built: configs/common/mozconfig refuses VIMMA_UPDATES=1 without it
-      // (mozconfig-updater.test.mjs), so there is no second verifier to disagree with. The
-      // manifest check pins the primary by hand until then (updates.test.mjs).
-      expect(existsSync(join(certs, "secondary.der"))).toBe(false);
-      return;
+    // The KMS-signed certificate is committed (docs/runbook.md step 5b): a missing one is a move
+    // that forgot this check, not a tree from before the ceremony.
+    for (const f of ["primary.der", "secondary.der"]) {
+      expect(existsSync(join(certs, f)), f).toBe(true);
     }
     const expected = await renderUpdateKeys(readCertificates(certs));
     expect(readFileSync(join(ROOT, UPDATE_KEYS_FILE), "utf8")).toBe(expected);

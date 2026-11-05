@@ -16,7 +16,7 @@
  *   none of Mozilla's (dep1.der, dep2.der and the release and nightly ones beside them).
  *
  *   check-build.mjs INSTALL_DIR [--certs DIR] [--mozilla-certs DIR] [--channel NAME]
- *       --certs: Vimma's primary.der and secondary.der (default: src/…/updater/vimma)
+ *       --certs: Vimma's primary.der and secondary.der (default: configs/updater)
  *       --mozilla-certs: the engine's toolkit/mozapps/update/updater (default: under engine/)
  *
  * Exit 0 when every check passes; 1 with each problem on stderr.
@@ -25,6 +25,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CERT_DIR } from "./cert-dir.mjs";
 
 /**
  * Mozilla's certificates beside the updater's moz.build (Firefox 159.0.1): each must be found,
@@ -122,7 +123,7 @@ function main(argv) {
   const root = fileURLToPath(new URL("../../", import.meta.url));
   /** @type {{ install?: string, certs: string, mozilla: string, channel: string }} */
   const o = {
-    certs: join(root, "src/toolkit/mozapps/update/updater/vimma"),
+    certs: join(root, CERT_DIR),
     mozilla: join(root, "engine/toolkit/mozapps/update/updater"),
     channel: "vimma",
   };

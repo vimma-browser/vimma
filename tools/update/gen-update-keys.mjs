@@ -6,8 +6,8 @@
 /**
  * npm run gen-update-keys: writes packages/vimma-core/src/update-keys.mjs, the keys the manifest
  * check pins, from the certificates Firefox's updater embeds
- * (src/toolkit/mozapps/update/updater/vimma/primary.der and secondary.der,
- * toolkit/mozapps/update/updater/moz-build.patch). One source for both verifiers
+ * (configs/updater/primary.der and secondary.der, which npm run import links to where
+ * toolkit/mozapps/update/updater/moz-build.patch reads them). One source for both verifiers
  * (docs/specs/m6a-updater.md "Delivery", sub-PR 2): a key can only be trusted by the manifest
  * check if the updater trusts it too, and the other way round.
  *
@@ -22,9 +22,9 @@ import { X509Certificate, createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CERT_DIR } from "./cert-dir.mjs";
 
-/** Relative to the repository root. */
-export const CERT_DIR = "src/toolkit/mozapps/update/updater/vimma";
+export { CERT_DIR };
 export const UPDATE_KEYS_FILE = "packages/vimma-core/src/update-keys.mjs";
 
 /** @typedef {{ slot: "primary" | "secondary", spki: Uint8Array }} SlotKey */

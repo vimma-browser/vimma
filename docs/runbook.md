@@ -2561,8 +2561,11 @@ installs keep trusting it until they are updated by hand.
 | secondary | not pinned yet (step 4)                                                            | -          | -                                                                  |
 
 **5b. The updater's certificates** (spec §6, decision 39; ADR-016). Firefox's updater embeds a
-certificate per slot, `src/toolkit/mozapps/update/updater/vimma/primary.der` and
-`secondary.der`, and a `VIMMA_UPDATES=1` build stops without them. The primary's certificate is
+certificate per slot, `configs/updater/primary.der` and `secondary.der`, which `npm run import`
+links to `engine/toolkit/mozapps/update/updater/vimma/` (`tools/import/link-update-certs.mjs`),
+and a `VIMMA_UPDATES=1` build stops without them. They are outside `src/` because
+`npx surfer license-check` reads every file there for an MPL header, which a DER file cannot
+carry. The primary's certificate is
 self-signed by the KMS key, which signs only a DigestInfo it is sent, so
 `tools/update/update-cert.mjs` builds the certificate around one KMS signature. Every field is
 fixed, so the request is the same each time and a reviewer can rebuild it from the public key.
@@ -2574,11 +2577,11 @@ node tools/update/update-cert.mjs request --public-key update-primary.pem --slot
 gcloud kms asymmetric-sign --version 1 --key update-primary --keyring vimma-updates \
   --location "$LOCATION" --input-file cert/primary.digestinfo.bin --signature-file cert/primary.sig.bin
 node tools/update/update-cert.mjs assemble --dir cert --slot primary --signature cert/primary.sig.bin \
-  --out src/toolkit/mozapps/update/updater/vimma/primary.der
-cp src/toolkit/mozapps/update/updater/vimma/primary.der src/toolkit/mozapps/update/updater/vimma/secondary.der
-openssl x509 -inform DER -in src/toolkit/mozapps/update/updater/vimma/primary.der -noout -subject -pubkey \
+  --out configs/updater/primary.der
+cp configs/updater/primary.der configs/updater/secondary.der
+openssl x509 -inform DER -in configs/updater/primary.der -noout -subject -pubkey \
   | openssl pkey -pubin -outform DER | sha256sum   # the primary's SPKI SHA-256 in the table above
-sha256sum src/toolkit/mozapps/update/updater/vimma/*.der
+sha256sum configs/updater/*.der
 npm run gen-update-keys   # update-keys.mjs from the certificates; it must not change the key
 ```
 
