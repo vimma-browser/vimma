@@ -600,7 +600,11 @@ export class WindowWorkspacesImpl {
         return;
       case "SSWindowStateReady":
         this.#endPending();
-        if (this.#started) this.#reconcile();
+        // A switch that selects a lazy tab makes SessionStore restore it inside the switch
+        // (insertBrowser, then #restoreTab), which can send this before the switch has selected
+        // that tab: a rebuild then would read the old selection and switch back. Run it after.
+        if (this.#started && this.#switching) this.#win.queueMicrotask(() => this.#reconcile());
+        else if (this.#started) this.#reconcile();
         return;
       case "SSWindowClosing":
         this.#save();
