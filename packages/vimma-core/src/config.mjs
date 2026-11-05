@@ -946,7 +946,9 @@ function validateCliProvider(
     } else if (key === "cli") {
       if (typeof v !== "string") typeError(path, v, "a string");
       else if (!CLI_IDS.includes(v)) {
-        const ids = CLI_IDS.map((c) => `"${c}"`).join(" or ");
+        const quoted = CLI_IDS.map((c) => `"${c}"`);
+        const ids =
+          quoted.length > 1 ? `${quoted.slice(0, -1).join(", ")} or ${quoted.at(-1)}` : quoted[0];
         const suggestion = closest(v, [...CLI_IDS]);
         warnings.push({
           path,

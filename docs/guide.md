@@ -1543,7 +1543,7 @@ it. A private window has no agent. With no model set up, the window says how to 
   which shares its weights, since a ten-item task needs about 19,000. Once you pick an Ollama
   model, Vimma loads it (with no prompt, so no text reaches it) and says where it runs and with
   what context, such as `qwen3:14b-ctx32768 runs on the GPU, with 32,768 tokens of context`;
-- `add: agent CLI (Claude Code, Codex)`, and once one is set up, its models: Vimma runs the agent CLI
+- `add: agent CLI (Claude Code, Codex, Gemini CLI)`, and once one is set up, its models: Vimma runs the agent CLI
   you have, on its own login
   ([Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window)).
 
@@ -1797,7 +1797,7 @@ one. New conversations start with `[agent] default`. A model you pick that `conf
 not list is added there, and becomes the default only when none was set; to change the default,
 edit `[agent] default`.
 
-**Claude Code and Codex** run as programs on your computer rather than as models Vimma calls,
+**Claude Code, Codex and Gemini CLI** run as programs on your computer rather than as models Vimma calls,
 so they are not set up by endpoint: see [CLI providers](specs/builtin-agent-cli.md).
 
 #### Connecting an agent's tool
@@ -1911,7 +1911,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 
 1. Install the CLI and log in to it once in a terminal, as its own documentation says (for
    Claude Code, [its setup page](https://docs.anthropic.com/en/docs/claude-code/setup); then run
-   `claude` and `/login`; for Codex, `codex login`). Vimma runs the same program with the same login.
+   `claude` and `/login`; for Codex, `codex login`; for Gemini CLI, `gemini` and its sign-in). Vimma runs the same program with the same login.
 2. Press `ctrl+b i` (or type `:agent`): the chat window opens beside the page.
 3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
    `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
@@ -1927,7 +1927,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 6. While it works, the transcript shows the CLI's replies, each step it takes in the browser
    (from Vimma's own record), and a `◆` line for each use of its own tools; the status bar shows
    its steps and tokens. Writing in the input while it works adds an instruction to the running
-   task (Codex takes it as the next task, once this one is done). `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
+   task (Codex and Gemini CLI take it as the next task, once this one is done). `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
    `done · ≈ $0.41 (claude-code estimate)`.
 7. To change the model later, press `Esc`, then `m`: the picker lists the CLI's models
    (`claude · opus`, `claude · haiku`, …) and `claude · other model…`. `Enter` switches the open
@@ -2168,6 +2168,42 @@ Vimma's own`; rename it. A call to any server other than Vimma's ends the task.
   session file, but Codex still updates its own state in `~/.codex`.
 - Not logged in, or a key its provider refused: `stopped:` with Codex's own error, such as
   `unexpected status 401 Unauthorized`; run `codex login` in a terminal.
+
+**Gemini CLI** (`cli = "gemini"`, from version 0.66.0):
+
+- Program: `gemini` on your `PATH`. Sign in by running `gemini` once in a terminal; a Google
+  account, a Gemini API key or Vertex AI all work, as your Gemini CLI settings choose.
+- Models: setup leaves the model empty, for Gemini CLI's own default (its router, which picks a
+  model for each request); the picker lists `pro`, `flash` and `flash-lite` (Gemini CLI's aliases
+  for its newest models), and `other model…` takes a full model name such as `gemini-2.5-pro`.
+- Its own tools follow your Gemini CLI settings and policies. Run without a terminal, Gemini CLI
+  offers its model only the tools that need no confirmation (reading and searching files, its
+  web search) unless a policy of yours allows more, so the header says
+  `its own tools: as its configuration allows`. A tool it did not offer, or that a policy
+  refused, shows as refused on its `◆` line
+  (`◆ gemini ran its own tool: run_shell_command "ls /"`).
+- Vimma gives it one MCP server, `vimma_chat`, in a settings file in the task's own folder, and
+  lets no other server start (`--allowed-mcp-server-names vimma_chat`); its extensions are off
+  for these runs (`-e none`), since they bring servers and tools of their own. So the `vimma`
+  server you may have added for a terminal (Using Vimma from an agent) stays in your settings but
+  does not start. A call to any other server ends the task.
+- Gemini CLI saves every conversation, page text included, under `~/.gemini/tmp`, and has no
+  setting to stop it. After each task, Vimma deletes what Gemini CLI saved of it: its session
+  file, its project folders in `~/.gemini/tmp` and `~/.gemini/history`, and its entry in
+  `~/.gemini/projects.json`. It finds them by the task's own folder, so your other Gemini CLI
+  projects and sessions are never touched. If Vimma or the computer stops during a task, the next
+  start of Vimma deletes what that task left (on macOS, once the task's folder is a day old).
+  If `~/.gemini/projects.json` is a link, as a dotfile manager makes it, Vimma leaves it as it
+  is, so the tasks' entries stay in it; their folders still go. Gemini CLI's error reports, which also hold the
+  conversation, go to the task's own folder, which goes when the task ends.
+- If `vimma-ctl` does not start, Gemini CLI does not say so: the task runs without the
+  browser's tools, and its reply says it could not reach them. Check that `vimma-ctl` is next to
+  Vimma (or the pref `vimma.agent.cli.vimmaCtl`).
+- It reports tokens and no cost. It cannot take a message during a task: a message you send
+  then waits for the next task.
+- Not signed in, or a key its provider refused: `stopped:` with Gemini CLI's own error, such as
+  `gemini exited (145): [API Error: … API key not valid …]`; run `gemini` in a terminal to sign
+  in again.
 
 #### Running an agent CLI headless
 

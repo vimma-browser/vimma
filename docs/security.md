@@ -2129,6 +2129,20 @@ own process, not a process group.
   asdf, volta) runs the real tool from the manager's own install folder and configuration, which
   Vimma does not check (a group-writable `MISE_DATA_DIR`, for example). A run **must** end, and
   revoke its ticket, when the CLI's work is done even if a child of it keeps its output open.
+  A CLI that records its runs **must** be asked not to (`--no-session-persistence`,
+  `--ephemeral`); Gemini CLI, which cannot be asked, **must** have what it recorded of a run
+  removed when the run ends, a stop included: the project folders in its `tmp/` and `history/`
+  whose `.project_root` marker names the run's folder (its session files, the whole
+  conversation with the page text, among them) and the registry entry in `projects.json`,
+  edited under Gemini CLI's own lock, which is waited for and never broken. At each start Vimma
+  **must** remove the same of every run of its own whose folder is gone, and of every run folder
+  a crash left, with the folder: one whose marked process is gone (Linux), that its own
+  process id marks while unused, or older than a day and an hour; a registry that is a link
+  is not edited. A project is Vimma's only when its path is a run folder's name directly in a
+  folder runs are made in, so no project of the user's is ever touched. Gemini CLI's `TMPDIR` is the run's
+  folder, since its error reports hold the conversation. Between a run's start and its end,
+  and after a crash until the next start, the conversation is on disk in Gemini CLI's folder
+  (`docs/limits.md`).
   [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_shim_runs_as_the_cli_it_is_named_after`](../tests/browser/browser_vimma_agent_cli_run.js),
@@ -2153,14 +2167,33 @@ own process, not a process group.
   [`a cli provider's model is refused by the rule its run uses`](../packages/vimma-core/test/config-agent.test.mjs),
   [`test_setup_asks_the_clis_model_and_saves_it`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`the environment is Vimma's, minus the variables Vimma and Firefox set`](../packages/vimma-core/test/agent-cli.test.mjs),
-  [`anything else is refused, with the reason`](../packages/vimma-core/test/agent-cli.test.mjs)
+  [`anything else is refused, with the reason`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`gemini's arguments are the fixture`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`test_setup_finds_gemini_with_its_version`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_task_on_stdin_fixed_arguments_and_the_folders_settings`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_gemini_keeps_nothing_of_the_run_after_it`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_stopped_run_keeps_nothing_either`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_rejected_key_is_the_runs_error_and_its_report_goes`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_leftovers_of_runs_a_crash_ended_go_at_the_next_start`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_run_folder_a_crash_left_goes_with_its_records`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_linked_registry_is_left_a_link`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_lock_gemini_holds_is_waited_for_not_broken`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`only a run folder of vimma's is one of its runs`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`the registry keeps every other project, and names the runs' folders`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a slug that is not a plain folder name is never a folder to remove`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M56. The ticket **must** reach the CLI's `vimma-ctl mcp` only through the MCP configuration's
-  `env`, in a file that is 0600 in that 0700 folder and removed with it, or, for a CLI whose
+  `env`, in a file that is 0600 in that 0700 folder (for Gemini CLI, `.gemini/settings.json`
+  there, in a 0700 `.gemini` folder, which it reads from its working directory once
+  `GEMINI_CLI_TRUST_WORKSPACE=true` in its environment trusts that folder) and removed with it,
+  or, for a CLI whose
   servers are arguments (Codex), through the CLI's own environment, passed to the server by
   name (`env_vars`) and set empty for the CLI's own shell commands
   (`shell_environment_policy.set`, which keeps the user's policy); **never** through a
   command line. The CLI **must** be given no MCP server but Vimma's, so that it reaches pages
-  only through the gate: `--strict-mcp-config`, or for Codex each server its own list names
+  only through the gate: `--strict-mcp-config`; for Gemini CLI `--allowed-mcp-server-names`
+  naming its server alone (`vimma_chat`, whose entry in the run folder's settings replaces a
+  user's entry of that name whole), its extensions off (`-e none`), and a tool of any other MCP
+  server that ran ending the run; or for Codex each server its own list names
   turned off by name, its apps, plugins and a skill's MCP server installs off with
   `--disable` (which fails on a feature name the version does not know), its server named apart from any the user may
   have (`vimma_chat`, whose name in the list refuses the run, as does a name that is not
@@ -2191,7 +2224,10 @@ own process, not a process group.
   [`test_ticket_by_name_in_codexs_environment_never_an_argument`](../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_every_other_server_of_codexs_configuration_is_off`](../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_a_server_named_as_vimmas_refuses_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js),
-  [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js)
+  [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`vimma's server is in the run folder's settings file, the ticket in its env`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`gemini trusts the run folder from its environment, and keeps its reports there`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a tool of another mcp server that ran ends the run; one never offered does not`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
   own (the `Enter` grant covers them, checkpoints and `vimma_show` still ask), and shown from the
   gate's record, never from the CLI's account of them. A CLI's output **must** be rendered as
@@ -2205,7 +2241,9 @@ own process, not a process group.
   [`each gate event of the conversation is a step, asked or run under the grant`](../packages/vimma-core/test/agent-chat.test.mjs),
   [`an own-tool line is marked, muted, and says when the cli's settings refused it`](../packages/vimma-core/test/agent-chat.test.mjs),
   [`mcp tool calls of vimma's server are not transcript steps`](../packages/vimma-core/test/agent-cli.test.mjs),
-  [`test_codexs_own_commands_and_files_are_its_own_lines`](../tests/browser/browser_vimma_agent_cli_codex.js)
+  [`test_codexs_own_commands_and_files_are_its_own_lines`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`a recorded gemini stream maps to replies, own-tool lines and usage`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a step its policy refuses is marked refused`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M58. A CLI's own shell, file and web tools are **outside** Vimma's gate (above). Before a
   conversation's first task with a CLI (and after a provider change), the window **must** say
   where page text goes and that those tools are not confined, and send nothing without a `y`;
