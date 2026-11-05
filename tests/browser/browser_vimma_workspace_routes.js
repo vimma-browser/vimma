@@ -835,7 +835,7 @@ add_task(async function about_vimma_shows_the_last_names_without_the_url() {
     const last = about.linkedBrowser.contentDocument.getElementById("route-last").textContent;
     Assert.stringContains(last, "testapp", "the names the link carried");
     Assert.stringContains(last, "rule 1 (rt-home)", "and the rule it matched");
-    Assert.ok(!last.includes("signin") && !last.includes("example.com"), "never its URL");
+    Assert.ok(!/signin|example\.com/.test(last), "never its URL");
     const report = AboutVimma.report(await AboutVimma.collect(window));
     Assert.ok(!report.includes("testapp"), "the :bug report keeps only the rule count");
     BrowserTestUtils.removeTab(about);
