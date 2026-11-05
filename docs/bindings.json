@@ -664,7 +664,12 @@
         {
           "name": "split_picker",
           "description": "Split picker: show one of the workspace's splits",
-          "keys": []
+          "keys": [
+            {
+              "keys": "ctrl+b shift+s",
+              "chords": ["ctrl+b", "shift+s"]
+            }
+          ]
         },
         {
           "name": "next_split",

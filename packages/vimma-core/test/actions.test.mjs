@@ -291,16 +291,21 @@ describe("the downloads picker (docs/specs/downloads.md decision 2)", () => {
   });
 });
 
-describe("the split actions (docs/specs/multiple-splits.md decision 13, Delivery 4)", () => {
-  test("split_picker, next_split and previous_split are pane actions without a default key", () => {
-    const keymap = compileKeymap();
+describe("the split actions (docs/specs/multiple-splits.md decision 13, Delivery 4 and 5)", () => {
+  test("split_picker, next_split and previous_split are pane actions", () => {
     for (const [name, id] of [
       ["split_picker", "pane.split_picker"],
       ["next_split", "pane.next_split"],
       ["previous_split", "pane.previous_split"],
     ]) {
       expect(getAction(name)).toMatchObject({ id, group: "Panes" });
-      expect(keymap.bindingsFor(name)).toEqual([]);
     }
+  });
+
+  test("ctrl+b S opens the split picker; ]s and [s are not bound yet", () => {
+    const keymap = compileKeymap();
+    expect(keymap.bindingsFor("split_picker")).toEqual(["prefix+shift+s"]);
+    expect(keymap.bindingsFor("next_split")).toEqual([]);
+    expect(keymap.bindingsFor("previous_split")).toEqual([]);
   });
 });

@@ -4,7 +4,8 @@ Status: accepted (sub-PRs 1 to 3 implemented: the hidden-split refusal stays unt
 the core model, snapshot, status bar text, split colours and `max_splits` parsing; several splits
 in the window, the side panel's labels and new-split flow and `state.splits`, behind
 `vimma.feature.multiple_splits`; sub-PR 4 implemented: the split picker and the step actions,
-without default keys, behind the same pref) · Area:
+without default keys, behind the same pref; sub-PR 5 implemented: `ctrl+b S` opens the split
+picker, which does nothing while the pref is off) · Area:
 core (`packages/vimma-core/src/panes.mjs`, `splits.mjs` new, `sidepanel.mjs`, `snapshot.mjs`,
 `statusbar.mjs`, `workspaces.mjs`, `theme.mjs`, `config.mjs`, `picker.mjs`, `actions.mjs`,
 `defaults.mjs`), host (`split/PaneView.mjs`, `host/pane-ops.mjs`, `host/VimmaHost.sys.mjs`,
