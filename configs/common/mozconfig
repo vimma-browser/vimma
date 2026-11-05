@@ -61,6 +61,14 @@ if [ "${VIMMA_UPDATES:-}" = 1 ]; then
         "(docs/runbook.md, \"Update signing keys and the update host\")" >&2
       exit 1
     fi
+    # engine/ sits in the repository: a stale file or a link to another checkout, from a build
+    # that skipped npm run import, would embed other keys than the committed ones.
+    if ! cmp -s "$topsrcdir/toolkit/mozapps/update/updater/vimma/$_vimma_cert" \
+      "$topsrcdir/../configs/updater/$_vimma_cert"; then
+      echo "mozconfig: toolkit/mozapps/update/updater/vimma/$_vimma_cert is not" \
+        "configs/updater/$_vimma_cert; run npm run import" >&2
+      exit 1
+    fi
   done
   unset _vimma_cert
   ac_add_options --enable-updater

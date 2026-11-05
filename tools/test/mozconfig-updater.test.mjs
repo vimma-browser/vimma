@@ -13,17 +13,24 @@ const MOZCONFIG = readFileSync(new URL("../../configs/common/mozconfig", import.
 const CERT_DIR = "toolkit/mozapps/update/updater/vimma";
 
 /**
- * A topsrcdir with the files the mozconfig checks for.
- * @param {{ certs?: string[] }} [opts] the certificate files to create under CERT_DIR
+ * A topsrcdir (a repository's engine/) with the files the mozconfig checks for, and the
+ * repository's committed certificates in configs/updater/ beside it.
+ * @param {{ certs?: string[], stale?: string }} [opts] the certificate files to create under
+ *   CERT_DIR, and one of them to give other bytes than the committed one
  */
-function srcdir({ certs = [] } = {}) {
-  const dir = tempDir("vimma-mozconfig-");
+function srcdir({ certs = [], stale } = {}) {
+  const repo = tempDir("vimma-mozconfig-");
+  mkdirSync(join(repo, "configs/updater"), { recursive: true });
+  for (const c of ["primary.der", "secondary.der"]) {
+    writeFileSync(join(repo, "configs/updater", c), "der");
+  }
+  const dir = join(repo, "engine");
   mkdirSync(join(dir, "browser/config/vimma"), { recursive: true });
   for (const f of ["version.txt", "version_display.txt"]) {
     writeFileSync(join(dir, "browser/config/vimma", f), "159.0.1\n");
   }
   mkdirSync(join(dir, CERT_DIR), { recursive: true });
-  for (const c of certs) writeFileSync(join(dir, CERT_DIR, c), "der");
+  for (const c of certs) writeFileSync(join(dir, CERT_DIR, c), c === stale ? "old der" : "der");
   return dir;
 }
 
@@ -85,6 +92,18 @@ describe("configs/common/mozconfig: the updater", () => {
       expect(r.stderr).toContain(`${CERT_DIR}/`);
       expect(r.stderr).toContain("docs/runbook.md");
     }
+  });
+
+  it("refuses VIMMA_UPDATES=1 when a certificate in the engine is not the committed one", () => {
+    // A stale file or a link to another checkout, left by a build that skipped npm run import.
+    const r = source(
+      MOZCONFIG,
+      srcdir({ certs: ["primary.der", "secondary.der"], stale: "secondary.der" }),
+      { VIMMA_UPDATES: "1" },
+    );
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(`${CERT_DIR}/secondary.der`);
+    expect(r.stderr).toContain("configs/updater/");
   });
 
   it("refuses any other value of VIMMA_UPDATES rather than guessing", () => {

@@ -2563,11 +2563,10 @@ installs keep trusting it until they are updated by hand.
 **5b. The updater's certificates** (spec §6, decision 39; ADR-016). Firefox's updater embeds a
 certificate per slot, `configs/updater/primary.der` and `secondary.der`, which `npm run import`
 links to `engine/toolkit/mozapps/update/updater/vimma/` (`tools/import/link-update-certs.mjs`),
-and a `VIMMA_UPDATES=1` build stops without them. They are outside `src/` because
-`npx surfer license-check` reads every file there for an MPL header, which a DER file cannot
-carry. The primary's certificate is
-self-signed by the KMS key, which signs only a DigestInfo it is sent, so
-`tools/update/update-cert.mjs` builds the certificate around one KMS signature. Every field is
+and a `VIMMA_UPDATES=1` build stops without them or when they differ from `configs/updater/`.
+They are outside `src/` because `npx surfer license-check` reads every file there for an MPL
+header, which a DER file cannot carry. The primary's certificate is self-signed by the KMS key,
+which signs only a DigestInfo it is sent, so `tools/update/update-cert.mjs` builds the certificate around one KMS signature. Every field is
 fixed, so the request is the same each time and a reviewer can rebuild it from the public key.
 With `update-primary.pem` from step 3 and the maintainer's own `gcloud` credentials, as in
 step 6:

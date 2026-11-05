@@ -10,6 +10,7 @@ import {
   readFileSync,
   readdirSync,
   readlinkSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -100,6 +101,16 @@ describe("linkUpdateCerts", () => {
     writeFileSync(join(root, CERT_DIR, "secondary.der"), "");
     expect(() => linkUpdateCerts(root, engine)).toThrow(/secondary\.der/);
     expect(existsSync(join(engine, ENGINE_CERT_DIR, "primary.der"))).toBe(false);
+  });
+
+  it("refuses a certificate that is a link, which could lead to any file on the machine", () => {
+    const { root, engine } = fixture();
+    const elsewhere = join(root, "elsewhere.der");
+    writeFileSync(elsewhere, "other bytes");
+    rmSync(join(root, CERT_DIR, "primary.der"));
+    symlinkSync(elsewhere, join(root, CERT_DIR, "primary.der"));
+    expect(() => linkUpdateCerts(root, engine)).toThrow(/primary\.der/);
+    expect(existsSync(join(engine, ENGINE_CERT_DIR, "secondary.der"))).toBe(false);
   });
 
   it("refuses a missing engine/", () => {

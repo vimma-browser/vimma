@@ -29,14 +29,15 @@ Mozilla's test-signing keys, whose private halves anyone can find in Mozilla's s
   for release and nightly builds alike; a nightly package rewrites `channel-prefs.js` and
   `update-settings.ini` to `vimma-nightly` (spec §1). Updates never touch those two files, so an
   install keeps its channel.
-- **The updater trusts Vimma's certificates only.** `src/toolkit/mozapps/update/updater/moz-build.patch`
-  adds one branch for the channel `vimma` that embeds `vimma/primary.der` and
-  `vimma/secondary.der`, files of Vimma's own beside Mozilla's, which stay untouched (overwriting
-  them, as Zen does, would hide the change from a rebase). The repository keeps them in
-  `configs/updater/`, and `npm run import` links them there, because `surfer license-check`
-  reads every file under `src/` for an MPL header, which a binary certificate cannot carry. The same branch stops the build of
-  an updater for any other channel, because every other channel embeds Mozilla's keys. The primary is the Cloud KMS key that
-  also signs the manifest (spec decisions 12 and 16); until the offline ceremony makes the
+- **The updater trusts Vimma's certificates only.**
+  `src/toolkit/mozapps/update/updater/moz-build.patch` adds one branch for the channel `vimma`
+  that embeds `vimma/primary.der` and `vimma/secondary.der`, files of Vimma's own beside
+  Mozilla's, which stay untouched (overwriting them, as Zen does, would hide the change from a
+  rebase). The repository keeps them in `configs/updater/`, and `npm run import` links them
+  there, because `surfer license-check` reads every file under `src/` for an MPL header, which a
+  binary certificate cannot carry. The same branch stops the build of an updater for any other
+  channel, because every other channel embeds Mozilla's keys. The primary is the Cloud KMS key
+  that also signs the manifest (spec decisions 12 and 16); until the offline ceremony makes the
   recovery key, the secondary slot holds the primary's certificate again (decision 39).
 - **One source for both verifiers.** `packages/vimma-core/src/update-keys.mjs`, the keys the
   manifest check pins, is generated from those certificates (`npm run gen-update-keys`), and a

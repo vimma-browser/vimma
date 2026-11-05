@@ -3441,8 +3441,8 @@ _Pages_ and _extensions_ cannot reach it.
   `engine/toolkit/mozapps/update/updater/vimma/` where `moz-build.patch` reads it; ADR-016). It
   **never** trusts Mozilla's keys, test-signing keys (`dep1.der`, `dep2.der`, whose
   private halves are public) included: the mozconfig stops the build when either of Vimma's
-  certificates is missing or empty in the engine (a dangling link counts as missing), the import
-  refuses to link a missing or empty one, and `moz-build.patch` stops it on any other channel, since every
+  certificates is missing or empty in the engine (a dangling link counts as missing) or differs
+  from the committed one, the import refuses to link a missing, empty or symlinked one, and `moz-build.patch` stops it on any other channel, since every
   other channel embeds Mozilla's. The manifest check's pinned keys (UP1) are generated from the
   same certificates, so the two verifiers trust the same keys, and a certificate that is not
   self-signed by its own key is refused. The primary's certificate is made from the request
@@ -3459,6 +3459,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`refuses any other value of VIMMA_UPDATES rather than guessing`](../tools/test/mozconfig-updater.test.mjs),
   [`links both certificates into the engine and ignores them in its git`](../tools/import/test/link-update-certs.test.mjs),
   [`refuses a repository without a certificate, so no import leaves a half-set behind`](../tools/import/test/link-update-certs.test.mjs),
+  [`refuses a certificate that is a link, which could lead to any file on the machine`](../tools/import/test/link-update-certs.test.mjs),
+  [`refuses VIMMA_UPDATES=1 when a certificate in the engine is not the committed one`](../tools/test/mozconfig-updater.test.mjs),
   [`fails when the updater lacks Vimma's certificate or carries one of Mozilla's`](../tools/update/test/check-build.test.mjs),
   [`fails without the [AppUpdate] URL or with another host`](../tools/update/test/check-build.test.mjs),
   [`the repository: update-keys.mjs is what the committed certificates give`](../tools/update/test/gen-update-keys.test.mjs),

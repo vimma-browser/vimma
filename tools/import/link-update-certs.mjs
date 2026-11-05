@@ -19,10 +19,10 @@
 import {
   appendFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   rmSync,
-  statSync,
   symlinkSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -43,8 +43,12 @@ export function linkUpdateCerts(root, engine) {
   // Check both before linking either, so a failed run leaves no half-set for a build to embed.
   const sources = SLOTS.map((f) => {
     const src = join(root, CERT_DIR, f);
-    if (!existsSync(src) || statSync(src).size === 0) {
-      throw new Error(`${src}: missing or empty (docs/runbook.md, "Update signing keys")`);
+    // lstat: a committed link could lead to any file on the build machine.
+    const st = lstatSync(src, { throwIfNoEntry: false });
+    if (!st?.isFile() || st.size === 0) {
+      throw new Error(
+        `${src}: missing, empty or not a regular file (docs/runbook.md, "Update signing keys")`,
+      );
     }
     return src;
   });

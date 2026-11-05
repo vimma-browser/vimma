@@ -467,11 +467,11 @@ Rules, in order (each failure has a reason string for about:vimma and the status
 1. The trailing comment parses and the signature verifies under a pinned key: the primary or
    secondary slot. The public keys are the SPKI of the DER certificates the updater embeds,
    generated into `vimma/updates/keys.mjs` at import time from
-   `src/toolkit/mozapps/update/updater/vimma/`. (Since changed: generated into
-   `packages/vimma-core/src/update-keys.mjs` by `npm run gen-update-keys` from
+   `src/toolkit/mozapps/update/updater/vimma/`. A test key is accepted only from the pref
+   `vimma.update.testKeys` and only when `Cu.isInAutomation`. (Since changed: the keys are
+   generated into `packages/vimma-core/src/update-keys.mjs` by `npm run gen-update-keys` from
    `configs/updater/`, outside `src/` because `surfer license-check` cannot accept a binary file
-   there.) A test key is accepted only from the pref
-   `vimma.update.testKeys` and only when `Cu.isInAutomation`.
+   there.)
 2. `vimmaChannel` equals `UpdateUtils.UpdateChannel` and `vimmaTarget` equals the build target (a
    nightly or other-target manifest served at the release path is refused).
 3. **Replay**: `vimmaSerial` must be ≥ the highest serial this profile has accepted
