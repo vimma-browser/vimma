@@ -415,7 +415,7 @@ const DIALOG_BUTTON_RULES = `
     appearance: none;
     padding: 4px 16px;
     border: 1px solid var(--vimma-muted);
-    border-radius: 4px;
+    border-radius: var(--vimma-radius, 0);
     background-color: color-mix(in srgb, currentColor 12%, transparent);
     color: var(--vimma-fg);
   }
