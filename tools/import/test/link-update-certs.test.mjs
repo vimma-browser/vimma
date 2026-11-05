@@ -73,9 +73,10 @@ describe("linkUpdateCerts", () => {
     linkUpdateCerts(root, engine);
     for (const f of SLOTS) {
       const link = join(engine, ENGINE_CERT_DIR, f);
-      expect(lstatSync(link).isSymbolicLink()).toBe(true);
-      expect(readlinkSync(link)).toBe(join(root, CERT_DIR, f));
+      // Read before inspecting the link: a read after a stat of the same path is a check-then-use
+      // race (CodeQL js/file-system-race).
       expect(readFileSync(link, "utf8")).toBe(`${f}-bytes`);
+      expect(readlinkSync(link)).toBe(join(root, CERT_DIR, f));
     }
     const ignore = readFileSync(join(engine, ".gitignore"), "utf8").split("\n");
     for (const f of SLOTS) expect(ignore).toContain(`${ENGINE_CERT_DIR}/${f}`);
